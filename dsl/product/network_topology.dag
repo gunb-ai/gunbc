@@ -1,18 +1,32 @@
-// product/network_topology.dag — measured network topology for placement + BMC reachability.
-//
-// LAYER: product (domain model). Generic shapes live here; the operator's measured
-// srv1/srv2 topology is instantiated in gunbc/operator_fleet_network.dag (3a-ours,
-// public-in-repo meta-model — same tier as gunbc/ci_fleet.dag). Secrets stay in ctrl.
-//
-// Extends NetworkLocality vocabulary from product.compute_fabric.
-
 module product.network_topology
 
-import product.compute_fabric { NetworkLocality, Lan, DockerBridge, TailscaleOverlay }
 import product.placement_supply { HostIdentity }
+import std.measure { Bandwidth }
 import std.types { NonEmptyStr, Bool, List }
 
-// Which network plane an endpoint attachment serves.
+type NetworkLocality =
+    Loopback
+  | Lan
+  | Internet
+  | WslNat
+  | WslBridged
+  | DockerBridge
+  | TailscaleOverlay
+type NetworkAddressability = Unicast | Multicast | Broadcast
+type NetworkEgressClass =
+    None
+  | CratesIo
+  | InternalMirror
+  | Unrestricted
+type LatencyClass = UltraLow | Low | Medium | High
+
+type NetworkInterface {
+  addressability: NetworkAddressability
+  bandwidth: Bandwidth?
+  latency_class: LatencyClass?
+  locality: NetworkLocality
+}
+
 type NetworkAttachmentRole =
     HostOperatingSystem
   | BmcOutOfBand
@@ -21,16 +35,12 @@ type NetworkAttachmentRole =
   | TailscaleEndpoint
   | LanGateway
 
-// Policy zones for reachability (who is asking → who is the target).
 type NetworkReachabilityZone =
     ContainerRunner
   | HostLan
   | BmcManagement
   | TailscaleMesh
 
-// 🟡 feature:ipv4-cidr-decomposition — dissolve-on: first consumer requiring octet-range
-// validation or prefix arithmetic (DESIGN §2). Display spellings stay NonEmptyStr until
-// IpV4Address / IpV4Cidr records land.
 type NetworkSegment {
   cidr: NonEmptyStr
   gateway: NonEmptyStr?
@@ -51,8 +61,6 @@ type NetworkTopology {
   endpoints: List<NetworkEndpoint>
 }
 
-// Closed reachability policy for the operator fleet class. Grounded by operator probes
-// (container→BMC via docker0 NAT yes; container→host LAN no).
 fn network_reachability(
   from: NetworkReachabilityZone,
   to: NetworkReachabilityZone

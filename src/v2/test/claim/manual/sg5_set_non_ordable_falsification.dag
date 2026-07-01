@@ -1,0 +1,63 @@
+module v2.test.manual.sg5_set_non_ordable_falsification
+
+import v2.compiler.translate { translate_type_expression_project }
+import v2.extdeps.languages.rust {
+  rust_sg5_non_ordable_type_node,
+  rust_sg5_set_non_ordable_source_type_node,
+  rust_sg2_type_expr_target_model,
+  rust_type_expression_projection
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+fn sg5_pass_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^sg5_pass_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn sg5_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^sg5_fail_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn sg5_claim_input(ok: Bool) -> Node {
+  if ok {
+    sg5_pass_node()
+  } else {
+    sg5_fail_node()
+  }
+}
+
+fn sg5_set_non_ordable_projection_rejects() -> Bool {
+  match translate_type_expression_project(
+    node: rust_sg5_set_non_ordable_source_type_node(),
+    target: rust_sg2_type_expr_target_model(),
+    projection: rust_type_expression_projection()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+data claim_sg5_set_non_ordable_fail_closed: TestClaim = CompilesClaim {
+  label: "manual/sg5: Set<NonOrdable> projection rejects (TargetCollectionRealization fallback, not BTreeSet)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: sg5_claim_input(ok: sg5_set_non_ordable_projection_rejects()),
+  expected_value: sg5_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

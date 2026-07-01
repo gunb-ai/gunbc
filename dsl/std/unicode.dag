@@ -1,72 +1,12 @@
-// std/unicode.dag -- Unicode domain model for character classification.
-//
-// Authority: Unicode Character Database (UCD) 15.x and UAX #11 "East Asian
-// Width" for the display-width classification (`DisplayWidth`, the
-// zero/narrow/wide block tables, and `char_display_width`). UAX #9
-// (Bidirectional Algorithm) is NOT consulted: this file does not model
-// bidi properties. Code-point ranges below are a local 15.x-compatible
-// subset, not a full East_Asian_Width data-file mirror: code points inside
-// an already-enumerated wide or zero-width range inherit that block's class,
-// but code points outside every enumerated table fall through to `Narrow`.
-// UAX #11 §6.1 classifies unassigned CJK ideographic ranges as Wide, so full
-// UAX #11 coverage requires modeling those unassigned ranges or loading the
-// UCD `EastAsianWidth.txt` data directly.
-//
-// Follows the same modelling pattern as Encoding (std/encoding.dag) + @file_types:
-// structured types for the domain, `data` for lookup tables, `fn` for
-// classification.  Everything here is reusable -- other modules can
-// import `char_display_width` for terminal layout, `in_block` for
-// block membership queries, or the data tables for encoding detection.
-
 module std.unicode
 
 import std.types { Char }
 
-// --- Lexical character classes (ASCII-oriented tokenizer vocabulary) ---
-//
-// These intentionally align with the historical Rust `u8` scanner helpers
-// (`is_ascii_whitespace`, `is_ascii_digit`, `is_ascii_alphabetic`,
-// `is_ascii_alphanumeric`) on the ASCII sub-range: they classify Unicode
-// scalar values (`Char` / `Int` code points) by the same ASCII byte rules
-// the v3 `.dag` tokenizer uses today. Full Unicode identifier classes are a
-// separate follow-up.
-//
-// **Concept placement (non-blocking / exploratory):** `CharClass` here is
-// *lexical* vocabulary (what a tokenizer treats as whitespace / ident) more than
-// a Unicode-intrinsic property like `DisplayWidth`. It lives in `std.unicode`
-// today as the nearest shared character-classification home. Once structural
-// class rows land in tokenizer authority, revisit whether this sum moves to a
-// lexical sibling (e.g. std-facing tokenize) vs staying co-located with `Char`.
-//
-// **Dissolution receipt — `CharClass` (modeling-discipline principle 4).**
-// 🟢 TERMINAL at ASCII-oriented lexical scanner scope: four irreducible named
-// buckets for the closed `char_in_class` dispatch (and the mirrored
-// `TokenizerCharClass` in the v3 tokenizer bridge). Four-pattern ledger:
-// 1 Fact placement — rejected: a single authority (`char_in_class`) already owns
-//   all four predicates; scattering them would duplicate the same four-way
-//   dispatch without a richer upstream fact.
-// 2 Variant-is-data — rejected: shapes differ materially (fixed whitespace set
-//   vs digit range vs letter/underscore rules; `IdentContinue` repeats the digit
-//   codepoint range inline — no recursive `char_in_class` call, so CX/bounded
-//   recursion can prove descent), not interchangeable labels on one record.
-// 3 Algebraic form — rejected: not a thin `Apply` over one shared `std/`
-//   numeric elimination; each variant names a distinct ASCII rule aligned with
-//   the historical `u8::is_ascii_*` scanner contract until tokenizer authority
-//   can read structural class rows (M1(2.8) class-5 gap #3).
-// 4 Dimensional — rejected: variants are not axes of one interpretation space.
-//
-// Named follow-up (not silent variant accretion here): fuller Unicode-wide
-// identifier classes / tokenizer structural consumption — ROADMAP tokenize lane.
-
 type CharClass = Whitespace | Digit | IdentStart | IdentContinue
 
-// Expression body (PATH X / Brief 3): staged `.dag` sources skip-parse brace-bodied
-// `fn` bodies into `ArrowBody::Unparsed`; `fn ... -> T = expr` parses as real
-// `SurfaceExpr` regardless of extension. Predicate semantics stay substrate-authored
-// (no host `is_ascii_*`); `code_point(c)` inlined per arm to avoid inner `let`.
 fn char_in_class(c: Char, class: CharClass) -> Bool =
   match class {
-    // Match Rust `u8::is_ascii_whitespace`: TAB, LF, FF, CR, SPACE — not U+000B VT.
+
     Whitespace =>
       code_point(c) == 9 || code_point(c) == 10 || code_point(c) == 12
       || code_point(c) == 13 || code_point(c) == 32
@@ -75,25 +15,13 @@ fn char_in_class(c: Char, class: CharClass) -> Bool =
       code_point(c) >= 65 && code_point(c) <= 90
       || code_point(c) >= 97 && code_point(c) <= 122
       || code_point(c) == 95
-    // Inline digit range (same as `Digit` arm) — do not call `char_in_class`
-    // recursively here: same `c` gives no structural descent for CX proofs.
+
     IdentContinue =>
       code_point(c) >= 48 && code_point(c) <= 57
       || code_point(c) >= 65 && code_point(c) <= 90
       || code_point(c) >= 97 && code_point(c) <= 122
       || code_point(c) == 95
   }
-
-// --- Display width classification ---
-//
-//      DisplayWidth
-//      /     |     \
-//  ZeroWidth Narrow Wide
-//
-// Set meaning:
-//   ZeroWidth -- combining marks, zero-width joiners (0 terminal columns)
-//   Narrow    -- most characters including ASCII, Latin (1 terminal column)
-//   Wide      -- CJK ideographs, fullwidth forms, emoji (2 terminal columns)
 
 type DisplayWidth = ZeroWidth | Narrow | Wide
 
@@ -105,11 +33,6 @@ fn display_width_columns(w: DisplayWidth) -> Int {
   }
 }
 
-// --- Unicode block model ---
-// Each block is a named range of code points with a default display width.
-// Reusable: other modules can query blocks for character classification,
-// encoding detection, identifier validation, etc.
-
 type UnicodeBlock {
   name: String
   start: Int
@@ -117,7 +40,6 @@ type UnicodeBlock {
   default_width: DisplayWidth
 }
 
-// Zero-width blocks (combining marks, variation selectors)
 data zero_width_blocks: List<UnicodeBlock> = [
   { name: "Combining Diacritical Marks",             start: 768,   end_inclusive: 879,   default_width: ZeroWidth },
   { name: "Combining Diacritical Marks Extended",    start: 6832,  end_inclusive: 6911,  default_width: ZeroWidth },
@@ -127,15 +49,13 @@ data zero_width_blocks: List<UnicodeBlock> = [
   { name: "Combining Half Marks",                    start: 65056, end_inclusive: 65071, default_width: ZeroWidth }
 ]
 
-// Individual zero-width code points (outside zero-width blocks)
 data zero_width_codepoints: List<Int> = [
-  8203,   // U+200B Zero Width Space
-  8204,   // U+200C Zero Width Non-Joiner
-  8205,   // U+200D Zero Width Joiner
-  65279   // U+FEFF Zero Width No-Break Space (BOM)
+  8203,
+  8204,
+  8205,
+  65279
 ]
 
-// Wide blocks (CJK, fullwidth forms, emoji)
 data wide_blocks: List<UnicodeBlock> = [
   { name: "Hangul Jamo",                        start: 4352,   end_inclusive: 4447,   default_width: Wide },
   { name: "CJK Radicals and Symbols",           start: 11904,  end_inclusive: 12350,  default_width: Wide },
@@ -155,10 +75,6 @@ data wide_blocks: List<UnicodeBlock> = [
   { name: "Symbols Extended",                   start: 129536, end_inclusive: 131071, default_width: Wide }
 ]
 
-// --- Classification functions ---
-
-// Extract the integer code point from a Char.
-// `+ 0` coerces branded Char to plain Int for the typechecker.
 fn code_point(c: Char) -> Int = c + 0
 
 fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
@@ -166,7 +82,7 @@ fn in_block(cp: Int, block: UnicodeBlock) -> Bool {
 }
 
 fn char_display_width(c: Char) -> DisplayWidth {
-  let cp = code_point(c: c)
+  let cp = c
   let is_zero_width = contains(zero_width_codepoints, item: cp) || any(zero_width_blocks, predicate: b => in_block(cp: cp, block: b))
   if is_zero_width { return ZeroWidth }
   if any(wide_blocks, predicate: b => in_block(cp: cp, block: b)) { return Wide }

@@ -1,12 +1,3 @@
-// dsl/test/claim/realization_reconcile_witness.dag — by-execution witnesses for
-// std.realization reconcile → Share collapse (increment 3 materialization arm).
-//
-// GREEN:        two same-KeySource CreateIfAbsent steps collapse to ONE Share.
-// RED-if-wrong: two different-KeySource steps stay TWO un-Shared; PostAlways never collapses.
-// The only difference between the GREEN and RED create cases is the InputField string,
-// so a reconcile that collapsed on anything but KeySource equality (or fail-open) goes red.
-// Run: gunbc run --source-root dsl --entry <this> --function reconcile_share_collapse_witnesses --claim-run
-
 module test.claim.realization_reconcile_witness
 
 import std.types { Bool, String, List }
@@ -18,10 +9,6 @@ import std.realization {
 }
 import std.realization_schedule { cost_account_predicted_zero }
 
-// Test-local Share discriminator. `is_share` is NOT in std.realization: reconcile sets
-// `materialization: Share` directly and nothing in std/ reads it back, so a Materialization
-// `is_*` predicate there would be an undispositioned std/ predicate (review #5168). The
-// only consumer is this witness, so the match lives here (single owner, std/ stays fold-clean).
 fn is_share(m: Materialization) -> Bool {
   match m {
     Share => true
@@ -56,7 +43,6 @@ fn has_no_share(steps: List<RealizedStep>) -> Bool {
   (steps |> filter(e => is_share(m: e.materialization)) |> length) == 0
 }
 
-// GREEN (+): two same-KeySource create-if-absent steps collapse to ONE Share.
 fn witness_same_keysource_collapses_to_share() -> Bool {
   let out = reconcile(steps: [
     step_create_if_absent(field: "id"),
@@ -65,7 +51,6 @@ fn witness_same_keysource_collapses_to_share() -> Bool {
   (out |> length) == 1 && has_exactly_one_share(steps: out)
 }
 
-// RED-if-wrong (−): two DIFFERENT-KeySource steps do NOT collapse (stay two un-Shared).
 fn witness_different_keysource_does_not_collapse() -> Bool {
   let out = reconcile(steps: [
     step_create_if_absent(field: "id"),
@@ -74,7 +59,6 @@ fn witness_different_keysource_does_not_collapse() -> Bool {
   (out |> length) == 2 && has_no_share(steps: out)
 }
 
-// Fail-closed (−): PostAlways create-always never collapses (no proven identity).
 fn witness_post_always_never_collapses() -> Bool {
   let out = reconcile(steps: [ step_post_always(), step_post_always() ])
   (out |> length) == 2 && has_no_share(steps: out)

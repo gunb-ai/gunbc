@@ -1,38 +1,25 @@
-// extdeps/transports/shell.dag -- Subprocess transport definition
-//
-// Spec: POSIX.1-2017 Shell Command Language
-//       https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
-// Exec: POSIX.1-2017 exec family
-//       https://pubs.opengroup.org/onlinepubs/9699919799/functions/exec.html
-//
-// Configuration schema for service operations bound to subprocess execution.
-// A service operation with `transport shell { ... }` executes via
-// subprocess invocation with captured stdout/stderr.
-
 module extdeps.transports.shell
 
 import std.fidelity { TransportFidelity }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Fidelity row for the shell realization (§3: cited specifics live with the
-// realization, not in std). A local subprocess fork/exec is sub-second
-// (POSIX.1-2017 exec family, no network) and hermetic — stdout/stderr are
-// captured deterministically from a local process, replayable without a
-// remote dependency.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  }
+}
+
 data shell_transport_fidelity: TransportFidelity = TransportFidelity { depth: S, hermetic: true }
 
-// Process output channels (POSIX.1-2017).
-// Each variant names the source a shell output field reads from.
-// Output fields declare their channel via `from "VariantName"`.
 type ShellOutputChannel
-  = Stdout          // fd 1 captured as String (POSIX.1-2017 Section 2.5.1)
-  | Stderr          // fd 2 captured as String (POSIX.1-2017 Section 2.5.1)
-  | StdoutLines     // fd 1 split by newline into List<String>
-  | ExitSuccess     // waitpid(2) WEXITSTATUS == 0 as Bool
+  = Stdout
+  | Stderr
+  | StdoutLines
+  | ExitSuccess
 
-// Configuration type for shell transport bindings.
-// argv is the command + arguments (POSIX.1-2017 Section 2.9.2).
-// env is additional environment variables (POSIX.1-2017 Section 8.1).
 type ShellTransportConfig {
-  working_dir: String?          // POSIX PWD; none = inherit from parent process
-  env: Map<String, String>      // Additional environment variables
+  working_dir: String?
+  env: Map<String, String>
 }

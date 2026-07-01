@@ -1,0 +1,329 @@
+module v2.test.parse.parse_table_claims
+
+import v2.std.logic { Bool }
+import v2.std.collection { List, Set }
+import v2.std.algebra { Cons, Empty, length }
+import v2.std.compilers.lexing { Token }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node {
+  Atom,
+  Node,
+  Symbol,
+  TypeNode
+}
+import v2.std.grammar {
+  StampClass,
+  Choice,
+  GrammarExpr,
+  GrammarProduction,
+  GrammarRoot,
+  ModeledGrammar,
+  Nonterminal,
+  Optional,
+  ParseGrammar,
+  Repeat,
+  Sequence,
+  Terminal,
+  grammar_atom,
+  grammar_carries_symbol,
+  grammar_empty_sync_tokens
+}
+import v2.compiler.parse {
+  expr_direct_left_corner_list,
+  expr_has_undefined_nonterminal,
+  expr_is_nullable_given_set,
+  parse_expr,
+  parse_prov_initial,
+  parse_table_empty,
+  ParseExprAccepted,
+  ParseExprRejected,
+  token_position_indices
+}
+
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+fn parse_table_token(class: Symbol) -> Token {
+  Token { class: class, lexeme: Empty, file: class, start: 0, end: 0 }
+}
+
+data parse_table_two_tokens: List<Token> = Cons {
+  head: parse_table_token(class: ^parse_table_probe_class),
+  tail: Cons { head: parse_table_token(class: ^parse_table_probe_class), tail: Empty }
+}
+
+data parse_table_empty_tokens: List<Token> = Empty
+
+test fn parse_table_token_position_indices_no_extra_append_holds() -> Bool {
+  (length(xs: token_position_indices(tokens: parse_table_two_tokens)) == 3)
+    && (length(xs: token_position_indices(tokens: parse_table_empty_tokens)) == 1)
+    && ((length(xs: token_position_indices(tokens: parse_table_two_tokens)) == 4) == false)
+}
+
+fn nullable_set_singleton(name: Symbol) -> Set<Symbol> {
+  Set { member: fn(sym) { sym == name } }
+}
+
+test fn parse_table_nullable_morphism_holds() -> Bool {
+  let ns = nullable_set_singleton(name: ^parse_table_nullable_probe_nt)
+  (expr_is_nullable_given_set(
+    expr: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass },
+    nullable_set: ns
+  ) == false)
+    && (expr_is_nullable_given_set(
+      expr: Optional { element: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass } },
+      nullable_set: ns
+    ) == true)
+    && (expr_is_nullable_given_set(
+      expr: Repeat { element: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass } },
+      nullable_set: ns
+    ) == true)
+    && (expr_is_nullable_given_set(
+      expr: Nonterminal { production: ^parse_table_nullable_probe_nt },
+      nullable_set: ns
+    ) == true)
+    && (expr_is_nullable_given_set(
+      expr: Nonterminal { production: ^parse_table_nullable_other_nt },
+      nullable_set: ns
+    ) == false)
+    && (expr_is_nullable_given_set(
+      expr: Sequence {
+        left: Optional { element: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass } },
+        right: Nonterminal { production: ^parse_table_nullable_probe_nt }
+      },
+      nullable_set: ns
+    ) == true)
+    && (expr_is_nullable_given_set(
+      expr: Sequence {
+        left: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass },
+        right: Optional { element: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass } }
+      },
+      nullable_set: ns
+    ) == false)
+    && (expr_is_nullable_given_set(
+      expr: Choice {
+        left: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass },
+        right: Optional { element: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass } }
+      },
+      nullable_set: ns
+    ) == true)
+    && (expr_is_nullable_given_set(
+      expr: Choice {
+        left: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass },
+        right: Nonterminal { production: ^parse_table_nullable_other_nt }
+      },
+      nullable_set: ns
+    ) == false)
+}
+
+fn parse_table_projection_grammar() -> ParseGrammar {
+  ModeledGrammar {
+    root: GrammarRoot {
+      start: ^pt_proj_start,
+      productions: Cons {
+        head: GrammarProduction {
+          name: ^pt_proj_start,
+          expression: Sequence {
+            left: Terminal { token_class: ^pt_proj_tok_a, stamp: StampClass },
+            right: Choice {
+              left: Nonterminal { production: ^pt_proj_nt_b },
+              right: Optional { element: Repeat { element: Terminal { token_class: ^pt_proj_tok_c, stamp: StampClass } } }
+            }
+          },
+          emitted: grammar_atom(identity: ^pt_proj_start)
+        },
+        tail: Empty
+      },
+      sync_tokens: grammar_empty_sync_tokens()
+    }
+  }
+}
+
+test fn parse_table_grammar_expr_projection_holds() -> Bool {
+  (grammar_carries_symbol(grammar: parse_table_projection_grammar(), sym: ^pt_proj_tok_a) == true)
+    && (grammar_carries_symbol(grammar: parse_table_projection_grammar(), sym: ^pt_proj_nt_b) == true)
+    && (grammar_carries_symbol(grammar: parse_table_projection_grammar(), sym: ^pt_proj_tok_c) == true)
+    && (grammar_carries_symbol(grammar: parse_table_projection_grammar(), sym: ^pt_proj_absent) == false)
+}
+
+data parse_table_defined_root: GrammarRoot = GrammarRoot {
+  start: ^pt_undef_defined,
+  productions: Cons {
+    head: GrammarProduction {
+      name: ^pt_undef_defined,
+      expression: Terminal { token_class: ^pt_undef_tok, stamp: StampClass },
+      emitted: grammar_atom(identity: ^pt_undef_defined)
+    },
+    tail: Empty
+  },
+  sync_tokens: grammar_empty_sync_tokens()
+}
+
+test fn parse_table_left_corner_morphism_holds() -> Bool {
+  let ns = nullable_set_singleton(name: ^parse_table_nullable_probe_nt)
+  (length(xs: expr_direct_left_corner_list(
+    expr: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass },
+    nullable_set: ns
+  )) == 0)
+    && (length(xs: expr_direct_left_corner_list(
+      expr: Nonterminal { production: ^parse_table_nullable_probe_nt },
+      nullable_set: ns
+    )) == 1)
+    && (length(xs: expr_direct_left_corner_list(
+      expr: Sequence {
+        left: Optional { element: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass } },
+        right: Nonterminal { production: ^parse_table_nullable_probe_nt }
+      },
+      nullable_set: ns
+    )) == 1)
+    && (length(xs: expr_direct_left_corner_list(
+      expr: Sequence {
+        left: Terminal { token_class: ^parse_table_nullable_tok, stamp: StampClass },
+        right: Nonterminal { production: ^parse_table_nullable_probe_nt }
+      },
+      nullable_set: ns
+    )) == 0)
+    && (length(xs: expr_direct_left_corner_list(
+      expr: Choice {
+        left: Nonterminal { production: ^parse_table_nullable_probe_nt },
+        right: Nonterminal { production: ^parse_table_nullable_other_nt }
+      },
+      nullable_set: ns
+    )) == 2)
+    && (length(xs: expr_direct_left_corner_list(
+      expr: Optional { element: Nonterminal { production: ^parse_table_nullable_probe_nt } },
+      nullable_set: ns
+    )) == 1)
+    && (length(xs: expr_direct_left_corner_list(
+      expr: Repeat { element: Nonterminal { production: ^parse_table_nullable_probe_nt } },
+      nullable_set: ns
+    )) == 1)
+}
+
+test fn parse_table_undefined_nonterminal_morphism_holds() -> Bool {
+  let root = parse_table_defined_root
+  (expr_has_undefined_nonterminal(
+    expr: Terminal { token_class: ^pt_undef_tok, stamp: StampClass },
+    root: root
+  ) == false)
+    && (expr_has_undefined_nonterminal(
+      expr: Nonterminal { production: ^pt_undef_defined },
+      root: root
+    ) == false)
+    && (expr_has_undefined_nonterminal(
+      expr: Nonterminal { production: ^pt_undef_missing },
+      root: root
+    ) == true)
+    && (expr_has_undefined_nonterminal(
+      expr: Sequence {
+        left: Terminal { token_class: ^pt_undef_tok, stamp: StampClass },
+        right: Nonterminal { production: ^pt_undef_missing }
+      },
+      root: root
+    ) == true)
+    && (expr_has_undefined_nonterminal(
+      expr: Sequence {
+        left: Terminal { token_class: ^pt_undef_tok, stamp: StampClass },
+        right: Nonterminal { production: ^pt_undef_defined }
+      },
+      root: root
+    ) == false)
+    && (expr_has_undefined_nonterminal(
+      expr: Choice {
+        left: Terminal { token_class: ^pt_undef_tok, stamp: StampClass },
+        right: Nonterminal { production: ^pt_undef_missing }
+      },
+      root: root
+    ) == true)
+    && (expr_has_undefined_nonterminal(
+      expr: Optional { element: Nonterminal { production: ^pt_undef_missing } },
+      root: root
+    ) == true)
+}
+
+test fn parse_table_parse_expr_combinator_holds() -> Bool {
+  let prov = parse_prov_initial()
+  let table = parse_table_empty()
+  let root = GrammarRoot {
+    start: ^pt_parse_expr_start,
+    productions: Empty,
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+  let tok_a = parse_table_token(class: ^pt_parse_expr_tok_a)
+  let tok_b = parse_table_token(class: ^pt_parse_expr_tok_b)
+  let toks_a = Cons { head: tok_a, tail: Empty }
+  let toks_b = Cons { head: tok_b, tail: Empty }
+  let toks_ab = Cons { head: tok_a, tail: Cons { head: tok_b, tail: Empty } }
+  let toks_aab = Cons { head: tok_a, tail: Cons { head: tok_a, tail: Cons { head: tok_b, tail: Empty } } }
+  let r1 = match parse_expr(
+    expr: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass },
+    tokens: toks_a, all_tokens: toks_a, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+      length(xs: rest) == 0
+    ParseExprRejected { diagnostics: _ } => false
+  }
+  let r2 = match parse_expr(
+    expr: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass },
+    tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _ } => false
+    ParseExprRejected { diagnostics: _ } => true
+  }
+  let r3 = match parse_expr(
+    expr: Sequence {
+      left: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass },
+      right: Terminal { token_class: ^pt_parse_expr_tok_b, stamp: StampClass }
+    },
+    tokens: toks_ab, all_tokens: toks_ab, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+      length(xs: rest) == 0
+    ParseExprRejected { diagnostics: _ } => false
+  }
+  let r4 = match parse_expr(
+    expr: Choice {
+      left: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass },
+      right: Terminal { token_class: ^pt_parse_expr_tok_b, stamp: StampClass }
+    },
+    tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+      length(xs: rest) == 0
+    ParseExprRejected { diagnostics: _ } => false
+  }
+  let r5 = match parse_expr(
+    expr: Optional { element: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass } },
+    tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+      length(xs: rest) == 1
+    ParseExprRejected { diagnostics: _ } => false
+  }
+  let r6 = match parse_expr(
+    expr: Repeat { element: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass } },
+    tokens: toks_aab, all_tokens: toks_aab, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+      length(xs: rest) == 1
+    ParseExprRejected { diagnostics: _ } => false
+  }
+  let r7 = match parse_expr(
+    expr: Repeat { element: Optional { element: Terminal { token_class: ^pt_parse_expr_tok_a, stamp: StampClass } } },
+    tokens: toks_b, all_tokens: toks_b, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: rest, captured: _, diagnostics: _, prov: _ } =>
+      length(xs: rest) == 1
+    ParseExprRejected { diagnostics: _ } => false
+  }
+  let r8 = match parse_expr(
+    expr: Nonterminal { production: ^pt_parse_expr_undefined_prod },
+    tokens: toks_a, all_tokens: toks_a, root: root, table: table, prov: prov
+  ) {
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _ } => false
+    ParseExprRejected { diagnostics: _ } => true
+  }
+  r1 && r2 && r3 && r4 && r5 && r6 && r7 && r8
+}

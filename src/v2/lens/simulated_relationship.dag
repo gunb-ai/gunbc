@@ -1,0 +1,27 @@
+module v2.lens.simulated_relationship
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+
+import v2.std.node { Node }
+import v2.std.algebra { FreeMonoid, length }
+import v2.std.anti_unification {
+  ChainGeneralization, anti_unify_chain, template_has_hole, fillings_all_leaves
+}
+import v2.std.logic { Bool }
+
+fn chain_is_simulated(steps: FreeMonoid<Node>) -> Bool {
+  if length(xs: steps) < 3 {
+    false
+  } else {
+    chain_generalization_is_fold(g: anti_unify_chain(steps: steps))
+  }
+}
+
+fn chain_generalization_is_fold(g: ChainGeneralization) -> Bool {
+  template_has_hole(template: g.template)
+    && fillings_all_leaves(per_element: g.per_element)
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

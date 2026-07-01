@@ -1,6 +1,3 @@
-// Scope: single-representation CI witnesses for the affected-set → testgen → run loop.
-// Imports the implementation module; no parallel gate_entry roster.
-
 module v2.test.workflow.affected_testgen_ci_runner_gate
 
 import v2.std.logic { Bool }
@@ -22,10 +19,8 @@ test data witness_affected_testgen_dependency_frontier_reaches_generated_input_g
 
 test data witness_affected_testgen_dependency_diff_selects_generated_claim_green: Bool = affected_testgen_dependency_diff_selects_generated_claim_holds()
 
-// Positive end-to-end: generate → affected-set select → run_test_claim → Pass.
 test data witness_affected_testgen_generated_claim_run_passes_green: Bool = affected_testgen_generated_claim_run_passes_holds()
 
-// Negative discriminator: unrelated diff must select zero generated claims.
 test data witness_affected_testgen_unrelated_diff_selects_no_claims_green: Bool = affected_testgen_unrelated_diff_selects_no_claims_holds()
 
 test data witness_affected_testgen_fusion_green: Bool = affected_testgen_fusion_holds()

@@ -1,0 +1,318 @@
+module gunbc.ci_runner_placement
+
+import gunbc.ci_fleet { ComputeOffer }
+import gunbc.fleet_intent { compute_host_ram_bytes_total, compute_host_primary_cpu }
+import product.placement_supply { HostIdentity }
+import std.measure { ByteSize, byte_size, byte_size_count, measure_scale_fraction_floor, measure_le, HardwareThreadCount }
+import std.types { Int, List, String, Bool }
+import std.disposition { Disposition, Terminal }
+import extdeps.github.actions { RunnerSpec }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.fleet_host_budget {
+  gunbc_fleet_oomd_evidence,
+  gunbc_runner_pool_budget,
+  host_allocation_conserves,
+  declared_runner_count,
+  oomd_actuation_floor,
+}
+import extdeps.cpu { cpu_facts_threads }
+import gunbc.ci_floor_measurement {
+  HostFixedOverhead,
+  HostFixedOverheadMeasured,
+  HostFixedOverheadUnmeasured,
+  SessionOperatingPoint,
+  SessionOperatingPointSet,
+  SessionOperatingPointUnset,
+  SessionAggregateMeasured,
+  SessionAggregateUnmeasured,
+  OomdEnforcementEvidence,
+  OomdEnforced,
+  OomdUnverified,
+  SessionReservationMode,
+  Regime1WorstCase,
+  Regime2AggregateOomd,
+  SessionReservationModeUnset,
+  gunbc_ci_host_fixed_overhead,
+  gunbc_ci_per_session_peak_samples,
+  gunbc_ci_session_reservation_mode,
+  gunbc_ci_runner_cgroup_memory_cap,
+}
+import gunbc.ci_fleet { fleet_intent_offers }
+
+type WorkloadClass
+  = BatchLatencyTolerant
+  | InteractiveLatencySensitive
+
+data gunbc_ci_cpu_weight_workload_class_marker: String = "WorkloadClass grounds the cgroup v2 cpu.weight kernel axis (range 1-10000, kernel default 100). BatchLatencyTolerant=100 (runner slice: CI builds are batch work, latency-tolerant); InteractiveLatencySensitive=1000 (sessions slice: dashboard/agent sessions are interactive, latency-sensitive, 10x weight). cgroup v2 cpu.weight is WORK-CONSERVING: raising sessions above runners costs zero CI throughput when sessions are idle; under contention the scheduler gives interactive sessions 10x the time slices of runner builds. This is the grounded fix for dashboard slowness under CI load on srv2. dissolve-on: replace the coarse 10x ratio with a weight derived from a measured CPU-PSI/contention curve once contention data is collected."
+
+data gunbc_ci_cpu_weight_unit_modeling_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "Measure",
+    field: WholeDeclaration
+  }
+}
+
+fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
+  match wc {
+    BatchLatencyTolerant => 100
+    InteractiveLatencySensitive => 1000
+  }
+}
+
+type RunnerHostDeployment {
+  identity: HostIdentity
+  runner_count: Int
+  runner_slice_cap: ByteSize
+  per_runner_memory_cap: ByteSize
+  build_tokens: HardwareThreadCount
+  runner: RunnerSpec
+  workload_class: WorkloadClass
+}
+
+type RunnerDeploymentPlan
+  = PlanDerived { hosts: List<RunnerHostDeployment>, fleet_concurrent_runs: Int }
+  | PlanUnsound { reason: String }
+
+
+type DeploymentAccumulator {
+  deployments: List<RunnerHostDeployment>
+  unsound_reason: String
+  any_unfit: Bool
+  total: Int
+}
+
+type SessionSliceResolution
+  = SessionSliceResolved { bytes: ByteSize, per_session_cap: ByteSize, concurrency: Int }
+  | SessionSliceUnresolved { reason: String }
+
+fn resolve_regime1_slice(c: ByteSize, n: Int) -> SessionSliceResolution {
+  if byte_size_count(b: c) == 0 {
+    SessionSliceUnresolved { reason: "per-session cap is zero bytes: refuse a degenerate sessions-slice" }
+  } else if n <= 0 {
+    SessionSliceUnresolved { reason: "session concurrency is non-positive: refuse a degenerate sessions-slice" }
+  } else {
+    SessionSliceResolved {
+      bytes: measure_scale_fraction_floor(m: c, num: n, den: 1),
+      per_session_cap: c,
+      concurrency: n,
+    }
+  }
+}
+
+fn resolve_session_slice(mode: SessionReservationMode, oomd: OomdEnforcementEvidence) -> SessionSliceResolution {
+  match mode {
+    SessionReservationModeUnset =>
+      SessionSliceUnresolved {
+        reason: "session reservation mode unset: the per-session budget is an operator operating-point choice (REGIME-1 worst-case cap C * concurrency N, or REGIME-2 measured aggregate with C as the oomd eviction ceiling) grounded in the measured distribution (min 0.28 / median ~2.06 / max 8.27 GiB); refuse to derive the host sessions-slice (and therefore the conserving runner count) until gunbc_ci_session_reservation_mode is set. See the operating curve in the manifest."
+      }
+    Regime1WorstCase { point: p } =>
+      match p {
+        SessionOperatingPointUnset =>
+          SessionSliceUnresolved { reason: "REGIME-1 operating point unset: refuse to derive a worst-case sessions-slice without a (cap, concurrency) pair" }
+        SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } =>
+          resolve_regime1_slice(c: c, n: n)
+      }
+    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: n, aggregate_reservation: agg } =>
+      match oomd {
+        OomdUnverified =>
+          SessionSliceUnresolved { reason: "REGIME-2 keystone unmet: it over-commits the per-session caps, so it is unsound until per-cgroup memory.max + systemd-oomd eviction is verified live on the hosts (gunbc_fleet_oomd_evidence = OomdUnverified). Fail closed; do NOT reserve the smaller aggregate without the runtime eviction floor." }
+        OomdEnforced =>
+          match agg {
+            SessionAggregateUnmeasured =>
+              SessionSliceUnresolved { reason: "REGIME-2 aggregate-concurrent-peak series unmeasured: refuse to derive the aggregate sessions-slice without a measured realistic concurrent peak (the 13 per-session samples are NOT an aggregate). Fail closed." }
+            SessionAggregateMeasured { bytes: agg_bytes } =>
+              if byte_size_count(b: agg_bytes) == 0 {
+                SessionSliceUnresolved { reason: "REGIME-2 measured aggregate is zero bytes: refuse a degenerate sessions-slice" }
+              } else if byte_size_count(b: ceiling) == 0 {
+                SessionSliceUnresolved { reason: "REGIME-2 oomd eviction ceiling is zero bytes: refuse a degenerate per-session ceiling" }
+              } else if n <= 0 {
+                SessionSliceUnresolved { reason: "REGIME-2 session concurrency is non-positive: refuse a degenerate admitted-session target" }
+              } else {
+                SessionSliceResolved {
+                  bytes: agg_bytes,
+                  per_session_cap: ceiling,
+                  concurrency: n,
+                }
+              }
+          }
+      }
+  }
+}
+
+data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN conservation model: the runner count divides the DECLARED runner_pool_budget by the DECLARED per_runner_memory_cap (gunbc.fleet_host_budget). Soundness is host_allocation_conserves (node_conserves over runner_pool + session_pool + fixed_overhead + headroom <= host RAM); it replaces the old chicken-and-egg RunnerSlotUnenforced gate (which refused to derive a count premised on a cap not yet enforced live). 'Is the cap live on the host' is no longer a plan-soundness question - it is a converge-receipt question. Session pool is the uniform 1 GiB demand class shared with the ctrl session dashboard." }
+
+fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
+  match o {
+    HostFixedOverheadMeasured { bytes: b } => b
+    HostFixedOverheadUnmeasured => byte_size(0)
+  }
+}
+
+fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount) -> RunnerHostDeployment {
+  RunnerHostDeployment {
+    identity: offer.supply.physical.identity,
+    runner_count: declared_runner_count(),
+    runner_slice_cap: gunbc_runner_pool_budget,
+    per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
+    build_tokens: nproc,
+    runner: runner_spec_from_offer(offer: offer),
+    workload_class: BatchLatencyTolerant,
+  }
+}
+
+fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: ComputeOffer) -> DeploymentAccumulator {
+  match compute_host_primary_cpu(host: offer.supply.physical) {
+    Absent =>
+      DeploymentAccumulator {
+        deployments: acc.deployments,
+        unsound_reason: if acc.unsound_reason == "" { concat("compute offer has no primary CPU facts: ", offer.supply.physical.identity) } else { acc.unsound_reason },
+        any_unfit: acc.any_unfit,
+        total: acc.total,
+      }
+    Present { value: cpu } => {
+      let host_ram = compute_host_ram_bytes_total(host: offer.supply.physical)
+      let overhead = host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead)
+      let headroom = oomd_actuation_floor(host: host_ram)
+      if host_allocation_conserves(
+        host: host_ram,
+        overhead: overhead,
+        headroom: headroom,
+        runner_pool: gunbc_runner_pool_budget,
+        session_pool: byte_size(0)
+      ) {
+        let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
+        DeploymentAccumulator {
+          deployments: concat(acc.deployments, [dep]),
+          unsound_reason: acc.unsound_reason,
+          any_unfit: acc.any_unfit || (dep.runner_count == 0),
+          total: acc.total + dep.runner_count,
+        }
+      } else {
+        DeploymentAccumulator {
+          deployments: acc.deployments,
+          unsound_reason: if acc.unsound_reason == "" { concat("host allocation over-committed (runner_pool + session_pool + overhead + headroom exceeds host RAM): ", offer.supply.physical.identity) } else { acc.unsound_reason },
+          any_unfit: acc.any_unfit,
+          total: acc.total,
+        }
+      }
+    }
+  }
+}
+
+fn runner_deployment_plan() -> RunnerDeploymentPlan {
+  let acc = fold(
+    fleet_intent_offers,
+    init: DeploymentAccumulator { deployments: [], unsound_reason: "", any_unfit: false, total: 0 },
+    f: (a, o) => accumulate_conservation_deployment(acc: a, offer: o)
+  )
+  if acc.unsound_reason != "" {
+    PlanUnsound { reason: acc.unsound_reason }
+  } else if acc.any_unfit {
+    PlanUnsound { reason: "declared runner_pool_budget admits zero runners at the declared per_runner_memory_cap: raise runner_pool_budget or lower per_runner_memory_cap" }
+  } else {
+    PlanDerived { hosts: acc.deployments, fleet_concurrent_runs: acc.total }
+  }
+}
+
+type RunnersPerHostResolution
+  = RunnersPerHostDerived { count: Int }
+  | RunnersPerHostUnsound { reason: String }
+
+fn effective_runners_per_host() -> RunnersPerHostResolution {
+  match runner_deployment_plan() {
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
+      RunnersPerHostDerived { count: fold(hosts, init: 0, f: (acc, h) => if h.runner_count > acc { h.runner_count } else { acc }) }
+    PlanUnsound { reason: r } => RunnersPerHostUnsound { reason: r }
+  }
+}
+
+type SessionHostReservation {
+  identity: HostIdentity
+  session_count: Int
+  per_session_reservation: ByteSize
+  workload_class: WorkloadClass
+}
+
+type SessionReservationPlan
+  = SessionReservationDerived {
+      hosts: List<SessionHostReservation>,
+      fleet_concurrent_sessions: Int,
+      per_session_reservation: ByteSize,
+      coverage_count: Int,
+      sample_count: Int
+    }
+  | SessionReservationUnsound { reason: String }
+
+fn samples_covered(cap: ByteSize) -> Int {
+  fold(gunbc_ci_per_session_peak_samples, init: 0, f: (acc, s) => if measure_le(a: s, b: cap) { acc + 1 } else { acc })
+}
+
+fn session_reservation_plan() -> SessionReservationPlan {
+  match resolve_session_slice(mode: gunbc_ci_session_reservation_mode, oomd: gunbc_fleet_oomd_evidence) {
+    SessionSliceUnresolved { reason: r } => SessionReservationUnsound { reason: r }
+    SessionSliceResolved { bytes: _, per_session_cap: c, concurrency: n } =>
+      SessionReservationDerived {
+        hosts: map(fleet_intent_offers, o => SessionHostReservation {
+          identity: o.supply.physical.identity,
+          session_count: n,
+          per_session_reservation: c,
+          workload_class: InteractiveLatencySensitive,
+        }),
+        fleet_concurrent_sessions: n * fleet_intent_offers.length(),
+        per_session_reservation: c,
+        coverage_count: samples_covered(cap: c),
+        sample_count: gunbc_ci_per_session_peak_samples.length(),
+      }
+  }
+}
+
+data gunbc_ci_count_field_measure_followup: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "HardwareThreadCount",
+    field: WholeDeclaration
+  }
+}
+
+
+type OperatingPointRow {
+  per_session_cap: ByteSize
+  session_concurrency: Int
+  sessions_slice: ByteSize
+  coverage_count: Int
+  sample_count: Int
+}
+
+fn evaluate_operating_point(cap: ByteSize, n: Int) -> OperatingPointRow {
+  let slice = match resolve_session_slice(mode: Regime1WorstCase { point: SessionOperatingPointSet { per_session_cap: cap, session_concurrency: n } }, oomd: gunbc_fleet_oomd_evidence) {
+    SessionSliceResolved { bytes: b, per_session_cap: _, concurrency: _ } => b
+    SessionSliceUnresolved { reason: _ } => byte_size(0)
+  }
+  OperatingPointRow {
+    per_session_cap: cap,
+    session_concurrency: n,
+    sessions_slice: slice,
+    coverage_count: samples_covered(cap: cap),
+    sample_count: gunbc_ci_per_session_peak_samples.length(),
+  }
+}
+
+data gunbc_ci_session_operating_curve_candidates: List<SessionOperatingPoint> = [
+  SessionOperatingPointSet { per_session_cap: byte_size(2211908157), session_concurrency: 16 },
+  SessionOperatingPointSet { per_session_cap: byte_size(4294967296), session_concurrency: 16 },
+  SessionOperatingPointSet { per_session_cap: byte_size(8879844884), session_concurrency: 6 },
+  SessionOperatingPointSet { per_session_cap: byte_size(10737418240), session_concurrency: 6 },
+  SessionOperatingPointSet { per_session_cap: byte_size(8879844884), session_concurrency: 4 },
+]
+
+fn operating_curve() -> List<OperatingPointRow> {
+  map(gunbc_ci_session_operating_curve_candidates, op => match op {
+    SessionOperatingPointSet { per_session_cap: c, session_concurrency: n } => evaluate_operating_point(cap: c, n: n)
+    SessionOperatingPointUnset => evaluate_operating_point(cap: byte_size(0), n: 0)
+  })
+}

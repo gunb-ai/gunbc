@@ -1,0 +1,307 @@
+module extdeps.languages.html
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.communication.medium { Medium, Lossless }
+import std.markup {
+  MarkupNode, MarkupAttr, ElementNode, TextNode,
+  MarkupBracket, MarkupMedium, EscapeHtml,
+  VoidTagRendering, OmitClose,
+  serialize_markup_node_with,
+  unescape_text, unescape_attribute, unescape_url,
+  attr_is_url_attr,
+}
+import extdeps.uri_validation {
+  validate_href, SafeHref, RejectedHref,
+  find_first_rejected_url,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "html.spec.whatwg.org/"
+  }
+}
+
+data canonical_html_spellings: MarkupBracket = MarkupBracket {
+  tag_open: "<",
+  end_tag_open: "</",
+  tag_close: ">",
+  attr_sep: " ",
+  attr_assign: "=",
+  attr_quote: "\"",
+}
+
+type HtmlIngestResult
+  = IngestedNode { node: MarkupNode }
+  | IngestRejected { reason: String }
+
+type HtmlSplitResult {
+  children: String
+  rest: String
+}
+
+type HtmlCloseState {
+  depth: Int
+  found: Bool
+  child_chunks: List<String>
+  rest_chunks: List<String>
+  idx: Int
+  total: Int
+}
+
+type HtmlAttrFoldState {
+  attrs: List<MarkupAttr>
+  pending_name: String
+  is_value: Bool
+  rejected: Bool
+  reject_reason: String
+}
+
+type HtmlParseOneResult
+  = ParsedOne { node: MarkupNode, rest: String }
+  | ParseOneRejected { reason: String }
+
+type HtmlChildrenResult
+  = ParsedChildren { nodes: List<MarkupNode> }
+  | ChildrenRejected { reason: String }
+
+fn html_count_str(s: String, pattern: String) -> Int {
+  split(s: s, delimiter: pattern).length() - 1
+}
+
+fn html_strip_prefix(s: String, prefix: String) -> String {
+  if starts_with(s: s, prefix: prefix) {
+    substring(s: s, start: prefix.length(), end: s.length())
+  } else {
+    s
+  }
+}
+
+fn html_strip_suffix(s: String, suffix: String) -> String {
+  if ends_with(s: s, suffix: suffix) {
+    substring(s: s, start: 0, end: s.length() - suffix.length())
+  } else {
+    s
+  }
+}
+
+fn find_matching_close_with(s: String, tag: String, sp: MarkupBracket) -> HtmlSplitResult {
+  let close_tag = join([sp.end_tag_open, tag, sp.tag_close], "")
+  let open_pat = join([sp.tag_open, tag], "")
+  let chunks = split(s: s, delimiter: close_tag)
+  let n = chunks.length()
+  let state = fold(chunks, init: HtmlCloseState {
+    depth: 1,
+    found: false,
+    child_chunks: [],
+    rest_chunks: [],
+    idx: 0,
+    total: n,
+  }, f: (acc, chunk) => {
+    if acc.found {
+      HtmlCloseState {
+        depth: acc.depth,
+        found: true,
+        child_chunks: acc.child_chunks,
+        rest_chunks: concat(acc.rest_chunks, [chunk]),
+        idx: acc.idx + 1,
+        total: acc.total,
+      }
+    } else {
+      let opens = html_count_str(s: chunk, pattern: open_pat)
+      let has_delim = acc.idx < acc.total - 1
+      let post_depth = if has_delim { acc.depth + opens - 1 } else { acc.depth + opens }
+      let found_now = has_delim && (post_depth == 0)
+      HtmlCloseState {
+        depth: post_depth,
+        found: found_now,
+        child_chunks: concat(acc.child_chunks, [chunk]),
+        rest_chunks: [],
+        idx: acc.idx + 1,
+        total: acc.total,
+      }
+    }
+  })
+  HtmlSplitResult {
+    children: join(state.child_chunks, close_tag),
+    rest: join(state.rest_chunks, close_tag),
+  }
+}
+
+fn parse_attrs_with(attrs_str: String, sp: MarkupBracket) -> HtmlAttrFoldState {
+  let pieces = split(s: attrs_str, delimiter: sp.attr_quote)
+  fold(pieces, init: HtmlAttrFoldState {
+    attrs: [],
+    pending_name: "",
+    is_value: false,
+    rejected: false,
+    reject_reason: "",
+  }, f: (acc, piece) => {
+    if acc.rejected {
+      acc
+    } else if acc.is_value {
+      let name = acc.pending_name
+      let raw_val = piece
+      let is_url = attr_is_url_attr(name: name)
+      let unescaped = if is_url { unescape_url(s: raw_val) } else { unescape_attribute(s: raw_val) }
+      if is_url {
+        match validate_href(url: unescaped) {
+          RejectedHref { reason: _ } =>
+            HtmlAttrFoldState {
+              attrs: acc.attrs,
+              pending_name: "",
+              is_value: false,
+              rejected: true,
+              reject_reason: join(["rejected href: ", unescaped], ""),
+            }
+          SafeHref { url: safe } =>
+            HtmlAttrFoldState {
+              attrs: concat(acc.attrs, [MarkupAttr { name: name, value: safe }]),
+              pending_name: "",
+              is_value: false,
+              rejected: false,
+              reject_reason: "",
+            }
+        }
+      } else {
+        HtmlAttrFoldState {
+          attrs: concat(acc.attrs, [MarkupAttr { name: name, value: unescaped }]),
+          pending_name: "",
+          is_value: false,
+          rejected: false,
+          reject_reason: "",
+        }
+      }
+    } else {
+      let stripped = html_strip_suffix(
+        s: html_strip_prefix(s: piece, prefix: sp.attr_sep),
+        suffix: sp.attr_assign
+      )
+      if stripped == "" {
+        acc
+      } else {
+        HtmlAttrFoldState {
+          attrs: acc.attrs,
+          pending_name: stripped,
+          is_value: true,
+          rejected: false,
+          reject_reason: "",
+        }
+      }
+    }
+  })
+}
+
+fn parse_one_with(s: String, sp: MarkupBracket) -> HtmlParseOneResult {
+  if starts_with(s: s, prefix: sp.end_tag_open) {
+    ParseOneRejected { reason: "unexpected end tag" }
+  } else if starts_with(s: s, prefix: sp.tag_open) {
+    let open_chunks = split(s: s, delimiter: sp.tag_close)
+    let open_content = open_chunks.first()
+    let after_open_tag = html_strip_prefix(s: s, prefix: join([open_content, sp.tag_close], ""))
+    let tag_and_attrs = html_strip_prefix(s: open_content, prefix: sp.tag_open)
+    let tag_parts = split(s: tag_and_attrs, delimiter: sp.attr_sep)
+    let tag = tag_parts.first()
+    let attrs_raw = join(tag_parts.skip(n: 1), sp.attr_sep)
+    let attr_result = parse_attrs_with(attrs_str: attrs_raw, sp: sp)
+    if attr_result.rejected {
+      ParseOneRejected { reason: attr_result.reject_reason }
+    } else {
+      let split_result = find_matching_close_with(s: after_open_tag, tag: tag, sp: sp)
+      let children_result = parse_children_with(s: split_result.children, sp: sp)
+      match children_result {
+        ChildrenRejected { reason } => ParseOneRejected { reason: reason }
+        ParsedChildren { nodes } =>
+          ParsedOne {
+            node: ElementNode { tag: tag, attrs: attr_result.attrs, children: nodes },
+            rest: split_result.rest,
+          }
+      }
+    }
+  } else {
+    let text_raw = split(s: s, delimiter: sp.tag_open).first()
+    let rest = html_strip_prefix(s: s, prefix: text_raw)
+    ParsedOne { node: TextNode { text: unescape_text(s: text_raw) }, rest: rest }
+  }
+}
+
+fn parse_children_with(s: String, sp: MarkupBracket) -> HtmlChildrenResult {
+  if s == "" {
+    ParsedChildren { nodes: [] }
+  } else if starts_with(s: s, prefix: sp.end_tag_open) {
+    ParsedChildren { nodes: [] }
+  } else {
+    let one = parse_one_with(s: s, sp: sp)
+    match one {
+      ParseOneRejected { reason } => ChildrenRejected { reason: reason }
+      ParsedOne { node, rest } =>
+        let tail = parse_children_with(s: rest, sp: sp)
+        match tail {
+          ChildrenRejected { reason } => ChildrenRejected { reason: reason }
+          ParsedChildren { nodes } => ParsedChildren { nodes: concat([node], nodes) }
+        }
+    }
+  }
+}
+
+data html5_void_tags: List<String> = [
+  "area", "base", "br", "col", "embed", "hr", "img",
+  "input", "link", "meta", "param", "source", "track", "wbr",
+]
+
+fn html_medium_with(sp: MarkupBracket) -> MarkupMedium {
+  MarkupMedium {
+    tag_overrides: [],
+    bracket: sp,
+    text_escape: EscapeHtml,
+    void_tags: html5_void_tags,
+    void_rendering: OmitClose,
+  }
+}
+
+fn serialize_html_source_with(node: MarkupNode, sp: MarkupBracket) -> String {
+  serialize_markup_node_with(node: node, medium: html_medium_with(sp: sp))
+}
+
+fn serialize_html_source(node: MarkupNode) -> String {
+  serialize_html_source_with(node: node, sp: canonical_html_spellings)
+}
+
+fn ingest_html_source_with(src: String, sp: MarkupBracket) -> HtmlIngestResult {
+  let s = trim(src)
+  let one = parse_one_with(s: s, sp: sp)
+  match one {
+    ParseOneRejected { reason } => IngestRejected { reason: reason }
+    ParsedOne { node, rest: _ } => IngestedNode { node: node }
+  }
+}
+
+fn ingest_html_source(src: String) -> HtmlIngestResult {
+  ingest_html_source_with(src: src, sp: canonical_html_spellings)
+}
+
+fn html_medium_lossless(node: MarkupNode) -> Medium<MarkupNode> {
+  Medium { carried: node, fidelity: Lossless }
+}
+
+type HtmlEmitResult
+  = EmitOk { html: String }
+  | EmitRejected { reason: String }
+
+fn try_serialize_html_source(node: MarkupNode) -> HtmlEmitResult {
+  match find_first_rejected_url(node: node) {
+    Present { value: r } =>
+      EmitRejected { reason: r.url }
+    Absent =>
+      EmitOk { html: serialize_html_source(node: node) }
+  }
+}
+
+fn html_markup_medium() -> MarkupMedium {
+  html_medium_with(sp: canonical_html_spellings)
+}
+
+fn serialize_markup_node(node: MarkupNode) -> String {
+  serialize_markup_node_with(node: node, medium: html_markup_medium())
+}

@@ -1,19 +1,4 @@
-// De-vacuum (DESIGN.md §5/§6): the roster fold alone only proves the lens behaves on the ONE
-// positive subject (DataDependsOn → DataDependent). A lens stubbed to a constant verdict would
-// still pass it — the §6 "machinery exists but nothing gates on it" trap. The two discriminating
-// controls below pin the lens against that collapse, each a positive paired with a PERTURBED
-// negative over the SAME tree, RED-on-revert:
-//   (1) kind-discrimination — EffectDependsOn must classify EffectCoupled, NOT the positive's
-//       DataDependent; a classifier collapsed to a constant reds it.
-//   (2) reject-unresolved — TypeDependsOn routes through ReadsParallelismFacts and, with no
-//       coupling carrier on the source facts, the witness MUST Violate; a witness collapsed to
-//       always-Holds reds it.
-// These are gate-correctness controls (the discrimination_roster.dag precedent), so the edge runs
-// gate → lens; the lens never imports this. Whole-corpus/change-set coverage stays OUT of scope
-// this window — blocked on the .dag structural-reflection wall shared by lens/coverage.dag and
-// lens/testgen.dag (the documented dissolve trigger in lens_discrimination_family_eval_test.dag).
 module v2.test.workflow.lens_parallelism_family_eval
-
 
 import v2.compiler.eval {
   TestClaimRun,
@@ -59,8 +44,6 @@ import v2.test.lens_parallelism.family_receipt {
   lens_parallelism_runtime_value_rows
 }
 
-// Perturbed inputs over the SAME source/dependent the positive subject uses — only the
-// dependency KIND differs, so any pass is attributable to the lens reading the kind.
 data parallelism_control_effect_dep: DependencyView = DependencyView {
   source: parallelism_root,
   dependent: parallelism_child,
@@ -75,7 +58,6 @@ data parallelism_control_type_dep: DependencyView = DependencyView {
   usage_site: parallelism_child
 }
 
-// (1) kind-discrimination — EffectDependsOn → EffectCoupled (≠ the positive's DataDependent).
 fn parallelism_control_effect_is_effect_coupled() -> Bool {
   match parallelism_witness(tree: parallelism_claim_tree(), dependencies: [parallelism_control_effect_dep]) {
     Holds { value: f } =>
@@ -94,8 +76,6 @@ fn parallelism_control_effect_is_effect_coupled() -> Bool {
   }
 }
 
-// Strong half of (1): the SAME EffectDependsOn input must NOT classify DataDependent — a
-// classifier collapsed to the positive's constant would satisfy the positive subject yet fail here.
 fn parallelism_control_effect_not_data_dependent() -> Bool {
   match parallelism_witness(tree: parallelism_claim_tree(), dependencies: [parallelism_control_effect_dep]) {
     Holds { value: f } =>
@@ -114,7 +94,6 @@ fn parallelism_control_effect_not_data_dependent() -> Bool {
   }
 }
 
-// (2) reject-unresolved — TypeDependsOn with no coupling carrier MUST Violate (fail-closed).
 fn parallelism_control_unresolved_violates() -> Bool {
   match parallelism_witness(tree: parallelism_claim_tree(), dependencies: [parallelism_control_type_dep]) {
     Violates { diagnostic: _ } => true
@@ -128,23 +107,19 @@ fn parallelism_discriminating_controls_pass() -> Bool {
     && parallelism_control_unresolved_violates()
 }
 
-
 type LensFamilyEvalEntry {
   run: TestClaimRun<Node, RuntimeValue>
 }
 
-
 type LensFamilyEvalReport {
   entries: List<LensFamilyEvalEntry>
 }
-
 
 fn lens_family_eval_report_tally(r: LensFamilyEvalReport) -> VerdictTally {
   fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
     verdict_tally_add(t: acc, v: test_claim_run_verdict(run: e.run))
   })
 }
-
 
 fn run_lens_parallelism_family_eval() -> LensFamilyEvalReport {
   LensFamilyEvalReport {
@@ -155,12 +130,10 @@ fn run_lens_parallelism_family_eval() -> LensFamilyEvalReport {
   }
 }
 
-
 fn lens_parallelism_family_all_pass(report: LensFamilyEvalReport) -> Bool {
   let tally = lens_family_eval_report_tally(r: report)
   (tally.fail == Zero) && (tally.deferred == Zero)
 }
-
 
 fn lens_parallelism_family_gate(report: LensFamilyEvalReport) -> Bool {
   if is_empty(xs: report.entries) {
@@ -170,7 +143,6 @@ fn lens_parallelism_family_gate(report: LensFamilyEvalReport) -> Bool {
       && parallelism_discriminating_controls_pass()
   }
 }
-
 
 test data witness_lens_parallelism_family_gate_closed: Bool = lens_parallelism_family_gate(
   report: run_lens_parallelism_family_eval()

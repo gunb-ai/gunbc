@@ -1,40 +1,21 @@
-// extdeps/version.dag — base versioning model (DESIGN.md §3).
-//
-// Spec anchors (intersubjective grounding — §1 A3):
-//   Wikipedia "Software versioning": https://en.wikipedia.org/wiki/Software_versioning
-//   Wikipedia "Version (computing)": https://en.wikipedia.org/wiki/Version_(computing)
-//
-// Models version IDENTITY and ORDERING only — not any specific scheme.
-//
-// Key invariants:
-//   VersionIdentity — opaque label as the upstream ecosystem names it; no parsing here.
-//   VersionScheme   — the ordering interface each scheme must supply:
-//                     compare(VersionIdentity, VersionIdentity) -> std.algebra.Ordering.
-//   VersionConstraint — a predicate or range *over* identities; structurally distinct
-//                       from VersionIdentity (">= 1.0.0" is not a version).
-//
-// Do NOT use std.types.SemVer as the authority for VersionIdentity.
-// std.types.SemVer remains a String alias; structured SemVer lives in extdeps.version.semver.
-
 module extdeps.version
 
 import std.types { NonEmptyStr }
 import std.algebra { Ordering }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// A version label as the upstream ecosystem declares it — opaque.
-// Schemes project structure onto this label; the label is not parsed or
-// ordered here. Each scheme carries its own VersionIdentity values.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Software_versioning"
+  }
+}
+
 type VersionIdentity = NonEmptyStr where brand("VersionIdentity")
 
-// Interface contract for ordering versions within a scheme.
-// Follows std.algebra.OrderedRing's compare/Ordering pattern (Ordering reused, not re-minted).
-// Concrete schemes supply a data row: `data <scheme>_scheme: VersionScheme = { compare: ... }`.
 type VersionScheme {
   compare: fn(VersionIdentity, VersionIdentity) -> Ordering
 }
 
-// A version constraint — a predicate or range over VersionIdentity values.
-// Structurally distinct from VersionIdentity: a constraint is not a version.
-// Scheme-specific constraint syntax (">= 1.0.0", "^1.2", "~= 2.3.4") lives
-// in the respective slice; this is the base carrier.
 type VersionConstraint = NonEmptyStr where brand("VersionConstraint")

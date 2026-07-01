@@ -1,28 +1,15 @@
-// src/v2/std/program_segment.dag
-// Scope: program-segment selection for in-language emit / partition (design-in-language-emission-program-partition.md §4.1).
-// Status: segment coproduct + boundary policy + fail-closed reason symbols; closure projection
-//   and boundary-free-ref checks live in v2.compiler.program_partition (Wave A §6.1).
-
 module v2.std.program_segment
 
 import v2.std.node { Node, Path, Symbol }
 
-// 🟢 TERMINAL at emit-segment-selection scope. Closed coproduct naming how an ambient program
-// is sliced before emit. WholeProgram preserves today's `emit(tree)` behavior; path and root
-// variants expose arbitrary Node segments without CLI or per-target emitter functions.
 type ProgramSegment
   = WholeProgram
   | SubtreeAtPath { path: Path }
   | SubtreeRoot { root: Node }
 
-// 🟢 TERMINAL at emit-partition-boundary scope. Default is fail-closed on references that
-// escape the selected subtree (C-8). AmbientContextAvailable is the module-in-context emit
-// mode: ambient declarations remain visible at the partition boundary (Q-EP2 in design doc).
 type PartitionBoundaryPolicy
   = FailClosedOnFreeRefs
   | AmbientContextAvailable
-
-// Fail-closed partition reason symbols (design §4.3). Consumers emit these in Diagnostic.reason.
 
 fn program_segment_whole_program() -> ProgramSegment {
   WholeProgram

@@ -1,52 +1,46 @@
-// extdeps/package_managers/apt.dag — APT package manager (Debian/Ubuntu).
-//
-// Spec: https://manpages.debian.org/testing/apt/apt.8.en.html
-// Version: APT 2.x+
-//
-// This is a STUB. APT is the package manager for Debian, Ubuntu, and
-// derivatives — used by most Linux dev environments and CI runners
-// (GitHub Actions ubuntu-latest). When a CLI tool can be installed
-// via apt, that path is declared in CliTool.installable_via with the
-// package name.
-//
-// What we actually depend on from apt:
-//   - The `apt install PACKAGE` (or `apt-get install`) command
-//   - System-wide install to /usr/bin (no per-user prefixes)
-//   - The fact that PATH defaults include /usr/bin
-//   - Specific packages listed below
-//
-// What we do NOT currently depend on:
-//   - Custom apt sources (third-party PPAs)
-//   - apt update / repository management
-//   - apt remove / purge workflows
-//   - Pinning, holds, or version policies
-//
-// Future: When we model apt operations programmatically (preflight
-// checks, install verification, etc.), this file gains service
-// declarations.
-
 module extdeps.apt
 
-import std.types { NonEmptyStr, FilePath }
+import std.types { NonEmptyStr, FilePath, String, Bool }
 
-// ── Install layout ──────────────────────────────────────────────────
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// System binaries land here on Debian/Ubuntu.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "manpages.debian.org/testing/apt/apt.8.en.html"
+  }
+}
+
 data apt_bin_dir: FilePath = "/usr/bin"
 data apt_local_bin_dir: FilePath = "/usr/local/bin"
 
-// ── Packages we know about ──────────────────────────────────────────
+data package_coreutils: NonEmptyStr = "coreutils"     
+data package_grep: NonEmptyStr = "grep"               
+data package_diffutils: NonEmptyStr = "diffutils"     
+data package_cargo: NonEmptyStr = "cargo"
+data package_rustc: NonEmptyStr = "rustc"
 
-// The apt packages that install tools gunbc actually uses.
-// On Debian/Ubuntu, coreutils ships in the base system — these are
-// the package names you'd `apt install` if for some reason they
-// weren't already present (or in minimal containers).
-data package_coreutils: NonEmptyStr = "coreutils"     // cp, rm, mv, ls, ...
-data package_grep: NonEmptyStr = "grep"               // grep, egrep, fgrep
-data package_diffutils: NonEmptyStr = "diffutils"     // diff, cmp, sdiff
-data package_cargo: NonEmptyStr = "cargo"             // cargo + rustc
-data package_rustc: NonEmptyStr = "rustc"             // standalone Rust compiler
-
-// ── Spec citations ──────────────────────────────────────────────────
+data package_systemd_oomd_defaults: NonEmptyStr = "systemd-oomd-defaults"
+data package_tailscale: NonEmptyStr = "tailscale"
+data package_nodejs: NonEmptyStr = "nodejs"
 
 data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
+
+
+service apt.PackageManager {
+  operation Install {
+    input { package: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["apt-get", "install", "--yes", "{package}"] }
+    exit {
+      0 => Unit
+      100 => String "apt-get install failed (lock held, fetch error, or unmet dependency)"
+      nonzero => String "apt-get install failed"
+    }
+  }
+}

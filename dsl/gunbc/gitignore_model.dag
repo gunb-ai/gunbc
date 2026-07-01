@@ -1,0 +1,92 @@
+module gunbc.gitignore_model
+
+type DerivableProducerKind
+  = CargoArtifacts
+  | CargoCacheLocal
+  | CodegenSymlink
+  | CoverageReport
+  | GeneratorStamp
+  | WorkflowRuntime
+  | TestgenOutput
+  | RegenTempDir
+  | ClaudeCodeSession
+  | ClaimMapOutput
+  | OpenClawArtifact
+  | GithubCLICache
+  | AuthSessionTranscript
+  | PythonLocalDevScript
+  | SupersededPlanningDir
+
+type CitedProducerKind
+  = JetBrainsIDE
+  | VSCodeIDE
+  | VimEditor
+  | EmacsEditor
+  | GenericEditorBackup
+  | MacOSFinder
+  | WindowsExplorer
+  | Tmux
+  | NodeJS
+  | SecretsConvention
+  | CPythonInterpreter
+
+type Producer
+  = Derivable { kind: DerivableProducerKind }
+  | Cited { kind: CitedProducerKind, upstream: String }
+
+type IgnoreArtifact
+  = CargoTargetDir
+  | CargoTargetCodexDir
+  | LocalCargoHome
+  | CodegenBinSymlink
+  | TarpaulinHtmlReport
+  | TarpaulinJsonReport
+  | CoberturaReport
+  | LcovReport
+  | CoverageOutputDir
+  | JetBrainsProjectDir
+  | VSCodeWorkspaceDir
+  | VimSwapFile
+  | VimSwapFileAlt
+  | EmacsBackupFile
+  | GenericBackupFile
+  | MacOSFinderMetadata
+  | WindowsThumbnailCache
+  | TmuxLogFile
+  | DotEnvFile
+  | DotEnvLocalFile
+  | DotEnvLocalWildcard
+  | GeneratorStampFile
+  | GunbcWorkflowDir
+  | TestgenOutputDir
+  | NodeModulesDir
+  | ClaudeSessionDir
+  | RegenSourcesDir
+  | RegenOutputDir
+  | RegenGeneratedSourceRootDir
+  | FreshnessCheckDir
+  | AuthTranscriptFile
+  | OpenClawControlDir
+  | OpenClawAgentsFile
+  | OpenClawHeartbeatFile
+  | OpenClawIdentityFile
+  | OpenClawSoulFile
+  | OpenClawToolsFile
+  | OpenClawUserFile
+  | OpenClawWorkboardFile
+  | OpenClawScriptsDir
+  | V2InspectFile
+  | V2InspectErrorsFile
+  | GithubCLICacheDir
+  | PythonLocalDevScriptFile
+  | PythonBytecodeCacheDir
+  | PythonCompiledBytecode
+  | ClaimMapDir
+  | ScratchProbeFile
+  | GunbcPlanningDir
+  | ScriptsFixturesDir
+
+type IgnoreGroup {
+  producer: Producer
+  artifacts: List<IgnoreArtifact>
+}

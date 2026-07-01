@@ -1,9 +1,3 @@
-// src/v2/compiler/03_normalize.dag
-//
-// Scope: Stage 3a — ParseTree→NormalizedTree; C3 sugar to Node.
-// Status: T-8 modeled — traversal on normalize_fold init/step; model in std/compilers/sugar.dag.
-// Anchor: https://en.wikipedia.org/wiki/Abstract_syntax_tree
-
 module v2.compiler.normalize
 
 import v2.std.algebra { list_snoc_item }
@@ -42,7 +36,6 @@ import v2.extdeps.languages.dag {
 }
 
 type NormalizedTree = Node
-
 
 fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
@@ -136,7 +129,6 @@ fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Nod
   }
 }
 
-// 🟡 traverse-dissolution interim — feature:traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: Outcome-bearing fold_node algebra carries sugar-finish per node natively, replacing manual child-slot normalize_node re-entry; forbidden: bare fold_node(n, normalize_fold_algebra) here — fold_node's child slot only recurses fold_node (structural shells), so per-depth sugar finish requires normalize_node in the step child slot until Q4 lands.
 fn normalize_node(n: Node) -> Outcome<Node> {
   match fold(n.children, init: normalize_fold_init(n: n), f: fn(acc, e) {
     normalize_fold_step(acc: acc, edge: e, child: normalize_node(n: e.target))

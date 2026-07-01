@@ -1,0 +1,165 @@
+module v2.test.lens_wiring_liveness.wiring_liveness_corpus_test
+
+import v2.std.algebra { length, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  SyntheticOccurrence,
+  Symbol,
+  TypeNode
+}
+import v2.std.text { String }
+import v2.std.fn_index { FnArrowDecl, FnArrowParam, fn_arrow_decl_facts_live }
+import v2.lens.wiring_liveness {
+  WiringDeadWire,
+  wiring_dead_wires_over,
+  wiring_fn_dead_wires
+}
+
+fn wiring_corpus_probe(alpha: Bool, beta: Bool) -> Bool {
+  alpha && beta
+}
+
+fn wiring_corpus_helper(seed: Bool) -> Bool {
+  seed
+}
+
+fn wiring_corpus_probe_live_let(seed: Bool) -> Bool {
+  let live = wiring_corpus_helper(seed: seed)
+  live
+}
+
+fn wiring_corpus_probe_dead_let(seed: Bool) -> Bool {
+  let dead = wiring_corpus_helper(seed: seed)
+  true
+}
+
+fn wiring_corpus_probe_dead_let_transitive(seed: Bool) -> Bool {
+  let mid = wiring_corpus_helper(seed: seed)
+  let tail = mid
+  true
+}
+
+fn wiring_corpus_probe_inert_let(seed: Bool) -> Bool {
+  let _seed = wiring_corpus_helper(seed: seed)
+  true
+}
+
+fn wiring_corpus_probe_lambda(flag: Bool, items: List<Bool>) -> Bool {
+  fold(items, init: true, f: fn(acc, it) { acc && flag })
+}
+
+fn decls_named(decls: List<FnArrowDecl>, target: String) -> List<FnArrowDecl> {
+  fold(decls, init: [], f: fn(acc, d) {
+    if d.name == target {
+      list_snoc_item(xs: acc, item: d)
+    } else {
+      acc
+    }
+  })
+}
+
+fn params_has_name(params: List<FnArrowParam>, name: Symbol) -> Bool {
+  fold(params, init: false, f: fn(acc, p) { acc || (p.name == name) })
+}
+
+fn probe_present_with_params(decls: List<FnArrowDecl>) -> Bool {
+  fold(decls_named(decls: decls, target: "wiring_corpus_probe"), init: false, f: fn(acc, d) {
+    acc
+      || ((length(xs: d.params) == 2)
+          && params_has_name(params: d.params, name: ^alpha)
+          && params_has_name(params: d.params, name: ^beta))
+  })
+}
+
+fn probe_named_is_wired(decls: List<FnArrowDecl>, target: String) -> Bool {
+  let matches = decls_named(decls: decls, target: target)
+  (length(xs: matches) > 0)
+    && fold(matches, init: true, f: fn(acc, d) {
+        acc && (length(xs: wiring_fn_dead_wires(decl: d)) == 0)
+      })
+}
+
+fn probe_named_is_dead_wire(decls: List<FnArrowDecl>, target: String) -> Bool {
+  let matches = decls_named(decls: decls, target: target)
+  (length(xs: matches) > 0)
+    && fold(matches, init: true, f: fn(acc, d) {
+        acc
+          && (length(xs: wiring_fn_dead_wires(decl: d)) == 1)
+          && fold(wiring_fn_dead_wires(decl: d), init: false, f: fn(seen, w) {
+              seen || (w.param == ^seed)
+            })
+      })
+}
+
+fn is_deadlet_witness_fixture(name: String) -> Bool {
+  (name == "wiring_corpus_probe_dead_let")
+    || (name == "wiring_corpus_probe_dead_let_transitive")
+}
+
+fn corpus_clean_excluding_deadlet_fixtures(decls: List<FnArrowDecl>) -> Bool {
+  fold(decls, init: true, f: fn(acc, d) {
+    if is_deadlet_witness_fixture(name: d.name) {
+      acc
+    } else {
+      acc && (length(xs: wiring_fn_dead_wires(decl: d)) == 0)
+    }
+  })
+}
+
+fn probe_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dead_wire_decl() -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: "synthetic.wiring_corpus.dead_wire",
+    name: "wiring_corpus_synthetic_dead_wire",
+    output: Node {
+      kind: TypeNode { connective: Conj },
+      children: [
+        Edge { label: Positional, target: probe_atom(s: ^wiring_corpus_present_input) }
+      ],
+      occurrence_id: SyntheticOccurrence
+    },
+    params: [
+      FnArrowParam {
+        name: ^wiring_corpus_present_input,
+        node: probe_atom(s: ^wiring_corpus_present_input)
+      },
+      FnArrowParam {
+        name: ^wiring_corpus_dead_input,
+        node: probe_atom(s: ^wiring_corpus_dead_input)
+      }
+    ]
+  }
+}
+
+fn witness_dead_wire_detected() -> Bool {
+  let dead = wiring_fn_dead_wires(decl: dead_wire_decl())
+  (length(xs: dead) == 1)
+    && fold(dead, init: false, f: fn(acc, w) { acc || (w.param == ^wiring_corpus_dead_input) })
+}
+
+test fn wiring_liveness_corpus_witnesses() -> Bool {
+  let decls = fn_arrow_decl_facts_live()
+  return witness_dead_wire_detected()
+    && (length(xs: decls) > 0)
+    && probe_present_with_params(decls: decls)
+    && probe_named_is_wired(decls: decls, target: "wiring_corpus_probe")
+    && probe_named_is_wired(decls: decls, target: "wiring_corpus_probe_lambda")
+    && probe_named_is_wired(decls: decls, target: "wiring_corpus_probe_live_let")
+    && probe_named_is_wired(decls: decls, target: "wiring_corpus_probe_inert_let")
+    && probe_named_is_dead_wire(decls: decls, target: "wiring_corpus_probe_dead_let")
+    && probe_named_is_dead_wire(decls: decls, target: "wiring_corpus_probe_dead_let_transitive")
+    && corpus_clean_excluding_deadlet_fixtures(decls: decls)
+}

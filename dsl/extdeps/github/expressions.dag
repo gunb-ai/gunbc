@@ -1,46 +1,8 @@
-// extdeps/github/expressions.dag — GitHub Actions `${{ }}` expression sub-language as Nodes.
-//
-// The first roster entry of the **medium-as-Node guard** (docs/plans/emission-ingestion-inverse.md
-// §5: a target medium stays a modeled Node from authoring through checking; raw string only at the
-// realization edge). GitHub Actions expressions are a sub-language layered on YAML scalars; modeling
-// them as opaque `String` (see `actions.dag` `RunsOnExpression { expression: String }`, 🟡 scaffold)
-// makes every consumer hand-author the `${{ … }}` delimiters and every check string-grep the emitted
-// YAML — an ad-hoc partial re-ingest, the N×M heuristic DESIGN §4 forbids. This module makes the
-// expression a typed `Node`, and `serialize_expression` / `interpolate` the SINGLE place the
-// `${{ … }}` delimiter bytes are produced. Emit-side (`gunbc.ci_workflow_expressions`) and check-side
-// (the model-walk witnesses) both consume it; neither carries the inline syntax (§3 single authority).
-//
-// Grounding (DESIGN §3 — cite the real upstream, keep its real names, model what it actually provides):
-//   Expressions: https://docs.github.com/en/actions/learn-github-actions/expressions
-//   Contexts:    https://docs.github.com/en/actions/learn-github-actions/contexts
-// The context set (`github`/`env`/`vars`/`runner`/…) and the documented functions
-// (`contains`/`hashFiles`/…) are GitHub's, not minted nicknames.
-//
-// Scope (the first instance — one medium): the expression sub-language sufficient for the
-// expressions `gunbc.ci_workflow` emits (context access, function call, logical-or, string literal,
-// and a literal/interpolation template). NOT all of YAML and NOT shell-in-`run:` blocks — those are
-// later roster entries (§5.1 census).
-//
-// v1-interpreter-clean (only language builtins + citation deps), so the witnesses execute under
-// `gunbc run` exactly as `extdeps/formats/yaml.dag` does.
-//
-// 🟡 SCAFFOLD (round-trip slice, #5527) — feature:gha-expr-round-trip; dissolve-on: the v2
-// 06_translate GHA-expression `TargetModel` lands and the `ExpressionSpellings` delimiter ROWS +
-// the v1-seed `ingest_*` relocate into it as the TargetModel `binding_spellings`
-// (`Map<Symbol, String>`) read by the grammar-inverse `target_model_edge_translation_rules` — they
-// RELOCATE, no rework (same rows, table-driven), and the §5.2 round-trip law is then INHERITED from
-// `v2.compiler.source_authority.source_authority_round_trip_with_model` over that TargetModel, not
-// this hand-rolled v1-seed ingest + witness. (Parity with the markdown medium's header dissolve-on,
-// `extdeps/languages/markdown.dag`.) SCOPE of this scaffold: the `ExpressionSpellings` rows and
-// `ingest_expression` / `ingest_template` (the §5.2 round-trip inverse, this slice). The typed
-// `Expression` / `ExpressionTemplate` model, the `serialize_*` emit, and the model-walk guard
-// witnesses are the MERGED medium-as-Node surface (#5499), NOT scaffold.
-
 module extdeps.github.expressions
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import extdeps.communication.medium { Medium, Lossless }
+import extdeps.communication.medium { Lossless }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -49,10 +11,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// -- Contexts ---------------------------------------------------------
-// The documented GitHub Actions expression contexts (the objects an expression may read).
-// Closed set per the contexts spec; expanding it is a deliberate taxonomy change when GitHub
-// documents a new context.
 type ExpressionContext
   = Github
   | Env
@@ -67,7 +25,6 @@ type ExpressionContext
   | Needs
   | Inputs
 
-// The documented GitHub Actions expression functions (general + status-check).
 type ExpressionFunction
   = Contains
   | StartsWith
@@ -82,30 +39,12 @@ type ExpressionFunction
   | Cancelled
   | Failure
 
-// -- Expression -------------------------------------------------------
-// One `${{ … }}` expression, as an AST rather than a string.
-//
-// Field ledger (§2 decompress — each arm genuinely atomic):
-//   ContextAccess — a context object read by a dotted property path. `runner.os` is
-//     `ContextAccess { context: Runner, path: ["os"] }`; `github.event.pull_request.number`
-//     is `ContextAccess { context: Github, path: ["event", "pull_request", "number"] }`. The
-//     path is the grounded GitHub property path — NOT split into a fresh enum per context
-//     (GitHub's property space per context is open).
-//   FunctionCall — a documented function applied to argument expressions.
-//   StringLiteral — a single-quoted expression-level string literal (GitHub uses `'…'`).
-//   LogicalOr — the `||` operator (the only operator `ci_workflow` uses today; other
-//     operators are added as arms when a consumer needs them, not pre-minted — §6 just-in-time).
 type Expression
   = ContextAccess { context: ExpressionContext, path: List<String> }
   | FunctionCall { function: ExpressionFunction, args: List<Expression> }
   | StringLiteral { value: String }
   | LogicalOr { left: Expression, right: Expression }
 
-// -- Template ---------------------------------------------------------
-// A YAML scalar may interleave literal text with one or more `${{ }}` expressions
-// (`cargo-ci-${{ runner.os }}-${{ runner.arch }}-…`). A template is that interleaving:
-// literal runs and interpolated expressions. A lone `${{ runner.temp }}` is the degenerate
-// one-segment template `[Interpolation { … }]`.
 type TemplateSegment
   = LiteralText { text: String }
   | Interpolation { expression: Expression }
@@ -113,8 +52,6 @@ type TemplateSegment
 type ExpressionTemplate {
   segments: List<TemplateSegment>
 }
-
-// -- Serialization (the SINGLE delimiter-byte authority) --------------
 
 fn context_name(context: ExpressionContext) -> String {
   match context {
@@ -150,24 +87,15 @@ fn function_name(function: ExpressionFunction) -> String {
   }
 }
 
-// -- The delimiter spelling rows (single authority, read in BOTH directions) ---
-//
-// Every structural delimiter byte the serializer produces lives in ONE row the
-// fold looks up, so a wrong delimiter is one row edit (and one RED witness),
-// never a literal buried in the fold. This is what lets the §5.2 round-trip law
-// read the SAME rows backward (the ingest below) — DESIGN §4 one grammar, both
-// directions. The closed name maps (context_name / function_name) are the OTHER
-// authority; ingest reverses those same functions. (The default values are the
-// real GitHub Actions spellings — `${{ … }}`, `.`, `'…'`, `||` — not nicknames.)
 type ExpressionSpellings {
-  path_sep: String       // "."     dotted context property path
-  call_open: String      // "("     function call open
-  call_close: String     // ")"     function call close
-  arg_sep: String        // ", "    between function arguments
-  string_quote: String   // "'"     expression-level string literal delimiter
-  or_op: String          // " || "  logical-or operator
-  interp_open: String    // "${{ "  interpolation open
-  interp_close: String   // " }}"   interpolation close
+  path_sep: String
+  call_open: String
+  call_close: String
+  arg_sep: String
+  string_quote: String
+  or_op: String
+  interp_open: String
+  interp_close: String
 }
 
 data default_expression_spellings: ExpressionSpellings = {
@@ -189,7 +117,6 @@ fn serialize_args_with(args: List<Expression>, sp: ExpressionSpellings) -> Strin
   join(map(args, a => serialize_expression_with(expression: a, sp: sp)), sp.arg_sep)
 }
 
-// The expression body (no `${{ }}` delimiters): `runner.os`, `hashFiles('a', 'b')`, `x || y`.
 fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) -> String {
   match expression {
     ContextAccess { context: c, path: p } =>
@@ -203,7 +130,6 @@ fn serialize_expression_with(expression: Expression, sp: ExpressionSpellings) ->
   }
 }
 
-// The place the interpolation delimiter bytes are produced (now via the rows).
 fn interpolate_with(expression: Expression, sp: ExpressionSpellings) -> String {
   join([sp.interp_open, serialize_expression_with(expression: expression, sp: sp), sp.interp_close], "")
 }
@@ -220,10 +146,6 @@ fn serialize_template_with(template: ExpressionTemplate, sp: ExpressionSpellings
     concat(acc, serialize_segment_with(segment: segment, sp: sp)))
 }
 
-// -- Canonical-spelling entries (the corpus surface; consumers untouched) ------
-// `serialize_expression` / `interpolate` / `serialize_template` keep their
-// signatures, delegating to the `_with` forms over the default GHA spellings.
-
 fn join_path(path: List<String>) -> String {
   join_path_with(path: path, sp: default_expression_spellings)
 }
@@ -232,13 +154,10 @@ fn serialize_args(args: List<Expression>) -> String {
   serialize_args_with(args: args, sp: default_expression_spellings)
 }
 
-// The expression body (no delimiters): `runner.os`, `hashFiles('a', 'b')`, `x || y`.
 fn serialize_expression(expression: Expression) -> String {
   serialize_expression_with(expression: expression, sp: default_expression_spellings)
 }
 
-// The ONLY place the `${{ … }}` delimiter bytes are produced. Every emitted GitHub Actions
-// expression in the corpus routes through here; nothing hand-authors the delimiters.
 fn interpolate(expression: Expression) -> String {
   interpolate_with(expression: expression, sp: default_expression_spellings)
 }
@@ -251,41 +170,6 @@ fn serialize_template(template: ExpressionTemplate) -> String {
   serialize_template_with(template: template, sp: default_expression_spellings)
 }
 
-// =========================================================================
-// INGEST — GHA expression SOURCE → Expression / ExpressionTemplate (the §5.2
-// round-trip inverse). DESIGN §4 one grammar, both directions; §5.2 the
-// round-trip law `ingest ∘ emit = id` is the medium-completeness oracle.
-//
-// Reads the SAME authorities the emitter writes: the `ExpressionSpellings`
-// delimiter rows (backward) AND the closed name maps `context_name` /
-// `function_name` (reversed via the enumerations below — NO re-spelled second
-// name authority; §3 single authority). Fail-closed: any structure outside the
-// core yields `Absent`, never a fabricated expression (§5).
-//
-// FIDELITY BOUNDARY (extdeps.communication.medium):
-// `ingest ∘ emit = id` is Lossless over the **FLAT canonical core**:
-//   - ContextAccess (context + dotted path), StringLiteral (delimiter-free value),
-//   - FunctionCall whose args are FLAT ContextAccess/StringLiteral,
-//   - LogicalOr in LEFT-associative (canonical) nesting,
-//   - ExpressionTemplate interleaving literal text + interpolations.
-// This is round-trip-complete for the FLAT core, NOT the whole GHA expression
-// language — nesting is COMMON in real GHA (`contains(x, fromJSON(y))`) and is
-// explicitly the **Lossy frontier**, not claimed:
-//   - nested FunctionCall / LogicalOr as a function argument,
-//   - RIGHT-associative LogicalOr nesting (emit→ingest collapses to left-assoc:
-//     `id` on the canonical normal form, a section on non-canonical input),
-//   - StringLiteral values containing delimiter bytes (quote / `||` / `, ` / parens),
-//   - whitespace variants (`${{runner.os}}` — emit/ingest use canonical spacing only).
-// Frontier inputs fail the round-trip (Absent or a different tree), asserted by
-// execution in the witness — the boundary is enforced, not just commented.
-// Dissolve-on: a precedence/paren-aware tokenizer recovering nested expressions,
-// at which point nesting flips to Lossless.
-// =========================================================================
-
-// The closed variant enumerations — the reverse name lookups iterate these and
-// match via the FORWARD authority (context_name / function_name), so the spelling
-// of each name lives in exactly one place (§3). Listing the closed set is not a
-// name fork; the names themselves are never re-typed here.
 data all_expression_contexts: List<ExpressionContext> = [
   Github, Env, Vars, Job, Jobs, Steps, Runner, Secrets, Strategy, Matrix, Needs, Inputs
 ]
@@ -333,7 +217,6 @@ fn parse_args_with(args_str: String, sp: ExpressionSpellings) -> List<Expression
   }
 }
 
-// A non-or atom: string literal, function call, or context access.
 fn parse_atom_with(s: String, sp: ExpressionSpellings) -> Expression? {
   if expr_is_string_literal(s: s, sp: sp) {
     Present { value: StringLiteral {
@@ -363,7 +246,6 @@ fn parse_atom_with(s: String, sp: ExpressionSpellings) -> Expression? {
   }
 }
 
-// Top-level: split on or_op and fold LEFT (the canonical normal form), else atom.
 fn parse_expression_with(s: String, sp: ExpressionSpellings) -> Expression? {
   let parts = split(s: s, delimiter: sp.or_op)
   if parts.length() == 1 {
@@ -387,8 +269,6 @@ fn ingest_expression(src: String) -> Expression? {
   ingest_expression_with(src: src, sp: default_expression_spellings)
 }
 
-// Template ingest: split on interp_open; the leading segment is literal text,
-// each following segment is `<expr><interp_close><trailing literal>`.
 fn ingest_template_with(src: String, sp: ExpressionSpellings) -> ExpressionTemplate? {
   let parts = split(s: src, delimiter: sp.interp_open)
   let lead = parts.first()
@@ -423,24 +303,10 @@ fn ingest_template(src: String) -> ExpressionTemplate? {
   ingest_template_with(src: src, sp: default_expression_spellings)
 }
 
-// The §5.2 (B) per-medium decidability partition: the FLAT core is Lossless;
-// the carried representation is the recovered expression. Nesting / non-canonical
-// input is the unclaimed Lossy partition (never advertised by this Medium).
-fn gha_expression_medium_lossless(expr: Expression) -> Medium<Expression> {
-  Medium { carried: expr, fidelity: Lossless }
-}
-
-// -- Runner-context grounding -----------------------------------------
-// Constructors for the runner context properties `gunbc.ci_workflow` reads (real property names).
 fn runner_os() -> Expression { ContextAccess { context: Runner, path: ["os"] } }
 fn runner_arch() -> Expression { ContextAccess { context: Runner, path: ["arch"] } }
 fn runner_temp() -> Expression { ContextAccess { context: Runner, path: ["temp"] } }
 
-// The default environment variables GitHub injects that mirror the runner context (each has a
-// proper `runner.*` home). Reading one of these through the `env` context instead of `runner.*`
-// ties correctness to runtime step-ordering rather than the model — the bad state the model-walk
-// guard flags. Grounded in the runner default-env-var table:
-// https://docs.github.com/en/actions/learn-github-actions/variables#default-environment-variables
 data runner_provided_env_var_names: List<String> = [
   "RUNNER_NAME",
   "RUNNER_OS",
@@ -455,10 +321,6 @@ fn string_in_list(needle: String, haystack: List<String>) -> Bool {
   fold(haystack, init: false, f: (acc, candidate) => acc || (candidate == needle))
 }
 
-// -- Model-walk predicates (the guard) --------------------------------
-// These walk the typed expression model — never the emitted YAML string.
-
-// True iff this expression (recursively) reads a runner-provided var through the `env` context.
 fn expression_accesses_runner_var_via_env(expression: Expression) -> Bool {
   match expression {
     ContextAccess { context: c, path: p } =>
@@ -475,7 +337,6 @@ fn expression_accesses_runner_var_via_env(expression: Expression) -> Bool {
   }
 }
 
-// True iff this expression (recursively) reads the given context.
 fn expression_uses_context(expression: Expression, target: ExpressionContext) -> Bool {
   match expression {
     ContextAccess { context: c, path: _ } => context_name(context: c) == context_name(context: target)
@@ -502,7 +363,6 @@ fn template_uses_context(template: ExpressionTemplate, target: ExpressionContext
   })
 }
 
-// Walk a roster of templates: does ANY interpolated expression read a runner-provided var via env?
 fn any_template_accesses_runner_var_via_env(templates: List<ExpressionTemplate>) -> Bool {
   fold(templates, init: false, f: (acc, template) =>
     acc || template_accesses_runner_var_via_env(template: template))

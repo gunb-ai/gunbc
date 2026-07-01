@@ -1,0 +1,34 @@
+module v2.test.manual.chained_generic_field_access
+
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+type Inner<S> { value: S }
+type Middle<S> { inner: Inner<S> }
+type Outer<S> { middle: Middle<S> }
+type Rec { v: Int }
+
+fn chained_field<S>(o: Outer<S>) -> S {
+  o.middle.inner.value
+}
+
+fn use_chained() -> Int {
+  chained_field(o: Outer { middle: Middle { inner: Inner { value: Rec { v: 9 } } } }).v
+}
+
+data witness_chained_generic_field: Bool = use_chained() == 9
+
+data claim_chained_generic_field_compiles: TestClaim = CompilesClaim {
+  label: "manual/chained_generic_field_access: chained o.middle.inner.value compiles",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: Rec { v: 0 },
+  expected_value: Rec { v: 0 },
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

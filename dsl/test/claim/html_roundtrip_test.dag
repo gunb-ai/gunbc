@@ -1,0 +1,135 @@
+module test.claim.html_roundtrip
+
+import std.markup {
+  MarkupNode, MarkupAttr, ElementNode, TextNode,
+  MarkupBracket,
+}
+import extdeps.languages.html {
+  HtmlIngestResult,
+  IngestedNode,
+  IngestRejected,
+  canonical_html_spellings,
+  serialize_html_source,
+  serialize_html_source_with,
+  ingest_html_source,
+  ingest_html_source_with,
+  html_medium_lossless,
+}
+import extdeps.communication.medium { Lossless, Lossy }
+
+fn roundtrip_core_node() -> MarkupNode {
+  ElementNode {
+    tag: "div",
+    attrs: [],
+    children: [
+      ElementNode {
+        tag: "p",
+        attrs: [],
+        children: [TextNode { text: "hello & world" }],
+      },
+      ElementNode {
+        tag: "a",
+        attrs: [MarkupAttr { name: "href", value: "https://example.com" }],
+        children: [TextNode { text: "link" }],
+      },
+    ],
+  }
+}
+
+fn witness_roundtrip_core() -> Bool {
+  match ingest_html_source(src: serialize_html_source(node: roundtrip_core_node())) {
+    IngestedNode { node } => node == roundtrip_core_node()
+    IngestRejected { reason: _ } => false
+  }
+}
+
+fn perturbed_spellings() -> MarkupBracket {
+  MarkupBracket {
+    tag_open: canonical_html_spellings.tag_open,
+    end_tag_open: canonical_html_spellings.end_tag_open,
+    tag_close: canonical_html_spellings.tag_close,
+    attr_sep: canonical_html_spellings.attr_sep,
+    attr_assign: ":=",
+    attr_quote: canonical_html_spellings.attr_quote,
+  }
+}
+
+fn perturbed_node() -> MarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [MarkupAttr { name: "href", value: "/about" }],
+    children: [TextNode { text: "plain text" }],
+  }
+}
+
+fn witness_roundtrip_under_perturbed_rows() -> Bool {
+  let sp = perturbed_spellings()
+  match ingest_html_source_with(src: serialize_html_source_with(node: perturbed_node(), sp: sp), sp: sp) {
+    IngestedNode { node } => node == perturbed_node()
+    IngestRejected { reason: _ } => false
+  }
+}
+
+fn attr_node() -> MarkupNode {
+  ElementNode {
+    tag: "a",
+    attrs: [MarkupAttr { name: "href", value: "https://example.com" }],
+    children: [TextNode { text: "click" }],
+  }
+}
+
+fn witness_ingest_reads_attr_assign_row() -> Bool {
+  let emitted_perturbed = serialize_html_source_with(node: attr_node(), sp: perturbed_spellings())
+  match ingest_html_source(src: emitted_perturbed) {
+    IngestedNode { node } => !(node == attr_node())
+    IngestRejected { reason: _ } => false
+  }
+}
+
+fn witness_core_advertised_lossless() -> Bool {
+  let node = roundtrip_core_node()
+  let m = html_medium_lossless(node: node)
+  match m.fidelity {
+    Lossless => m.carried == node
+    Lossy => false
+  }
+}
+
+fn witness_frontier_unsafe_href_rejected() -> Bool {
+  let serialized = serialize_html_source(node: ElementNode {
+    tag: "a",
+    attrs: [MarkupAttr { name: "href", value: "javascript:alert(1)" }],
+    children: [TextNode { text: "x" }],
+  })
+  match ingest_html_source(src: serialized) {
+    IngestRejected { reason: _ } => true
+    IngestedNode { node: _ } => false
+  }
+}
+
+fn adjacent_text_node() -> MarkupNode {
+  ElementNode {
+    tag: "span",
+    attrs: [],
+    children: [
+      TextNode { text: "a" },
+      TextNode { text: "b" },
+    ],
+  }
+}
+
+fn witness_frontier_not_roundtripped() -> Bool {
+  match ingest_html_source(src: serialize_html_source(node: adjacent_text_node())) {
+    IngestedNode { node } => !(node == adjacent_text_node())
+    IngestRejected { reason: _ } => false
+  }
+}
+
+test fn html_roundtrip_keystone_holds() -> Bool {
+  witness_roundtrip_core()
+    && witness_roundtrip_under_perturbed_rows()
+    && witness_ingest_reads_attr_assign_row()
+    && witness_core_advertised_lossless()
+    && witness_frontier_unsafe_href_rejected()
+    && witness_frontier_not_roundtripped()
+}

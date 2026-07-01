@@ -1,36 +1,15 @@
-// src/v2/test/filesystem/filesystem_read_dag_file_test.dag
-// Scope: Prove filesystem_read is runnable on the v2 interpreter by reading a real .dag file
-//   and asserting on its content. Entry point for concept-index READ infrastructure.
-// Status: Wave-1 consumer — filesystem_read routes through Filesystem.Read (hermetic gate);
-//   v2 evaluator call_primitive extension is wave-2 (blocked on bytes↔String bridge).
-//
-// WET-ONLY (`func`, not `test fn`): real disk I/O requires --wet or --record capture.
-// Hermetic floor proof lives in dsl/test/claim/filesystem_read_hermetic_witness.dag and
-// interp_recorded_fixture_test.rs (record/replay + fail-closed without fixture store).
-
 module v2.test.filesystem.filesystem_read_dag_file
 
 import extdeps.filesystem.filesystem_io
 import v2.std.logic { Bool }
 
-// Local declaration: FilesystemReadResult mirrors v1_rt.rs pub struct FilesystemReadResult.
-// Dissolve-on-arrival: migrate to std.resources or std.filesystem when those gain a
-// runtime-facing read-result type (feature:filesystem-read-result-dag-type).
 type FilesystemReadResult { content: String }
 
-// filesystem_read is a v1 bridge primitive (dsl/std/primitives.dag filesystem_read_contract).
-// eval_builtin dispatches through modeled Filesystem.Read (hermetic gate), returning
-// FilesystemReadResult { content: <file text> }. Requires import extdeps.filesystem.filesystem_io.
-
-// Read dsl/std/filesystem.dag and assert it contains its own module declaration.
-// Discriminating: if filesystem_read returned empty or wrong content this would go red.
 func filesystem_read_dag_module_decl_holds() -> Bool {
   let result = filesystem_read(path: "dsl/std/filesystem.dag")
   string_contains(result.content, "module std.filesystem")
 }
 
-// Read dsl/std/primitives.dag and assert it contains the filesystem_read contract name.
-// Exercises a different file; cross-checks that read returns actual file content, not a stub.
 func filesystem_read_primitives_contract_holds() -> Bool {
   let result = filesystem_read(path: "dsl/std/primitives.dag")
   string_contains(result.content, "filesystem_read")

@@ -1,0 +1,285 @@
+module v2.test.provenance.parse_stamp_span_index
+
+import v2.compiler.parse {
+  grammar_validate_for_parse,
+  parse_production,
+}
+import v2.std.algebra { Cons, Empty, length }
+import v2.std.collection { List, list_nth }
+import v2.std.diagnostic {
+  Accepted,
+  ByteRange,
+  Diagnostic,
+  ExternalContractUnknown,
+  Rejected,
+  Textual,
+  Unavailable,
+  WholeFile,
+  node_locus,
+  port_locus
+}
+import v2.std.grammar {
+  StampClass,
+  StampBinding,
+  GrammarProduction,
+  GrammarRoot,
+  Sequence,
+  Terminal,
+  grammar_atom,
+  grammar_empty_sync_tokens
+}
+import v2.std.compilers.lexing { Token }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Conj,
+  MintedOccurrence,
+  Node,
+  OccurrenceId,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.node_query { find_named_child }
+import v2.std.provenance {
+  DerivedBy,
+  FromSource,
+  GeneratedBy,
+  SpanIndex,
+  span_index_lookup
+}
+import v2.std.occurrence_id { occurrence_id_eq }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+import v2.std.witness { Holds, Violates }
+
+fn parse_stamp_list_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^parse_stamp_list_absent,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn parse_stamp_token(start: Int, end: Int) -> Token {
+  Token {
+    class: ^parse_stamp_tok,
+    lexeme: Empty,
+    file: ^parse_stamp_file,
+    start: start,
+    end: end
+  }
+}
+
+fn parse_stamp_terminal_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^parse_stamp_start,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^parse_stamp_start,
+        expression: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
+        emitted: grammar_atom(identity: ^parse_stamp_start)
+      },
+      tail: Empty
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn parse_stamp_sequence_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^parse_stamp_start,
+    productions: Cons {
+      head: GrammarProduction {
+        name: ^parse_stamp_start,
+        expression: Sequence {
+          left: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
+          right: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass }
+        },
+        emitted: grammar_atom(identity: ^parse_stamp_start)
+      },
+      tail: Empty
+    },
+    sync_tokens: grammar_empty_sync_tokens()
+  }
+}
+
+fn parse_stamp_from_source_extent_holds(
+  index: SpanIndex,
+  id: OccurrenceId,
+  start: Int,
+  end: Int
+) -> Bool {
+  match span_index_lookup(index: index, id: id) {
+    Holds { value: got } =>
+      match got {
+        FromSource { locus: got_locus } =>
+          match got_locus {
+            Textual { file: f, extent: ext } =>
+              (f == ^parse_stamp_file)
+                && match ext {
+                  ByteRange { start: s, end: e } => (s == start) && (e == end)
+                  WholeFile => false
+                }
+            _ => false
+          }
+        DerivedBy { producer: _, from: _ } => false
+        GeneratedBy { generator: _, from: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn parse_stamp_derived_by_pair_holds(
+  index: SpanIndex,
+  id: OccurrenceId,
+  left: OccurrenceId,
+  right: OccurrenceId
+) -> Bool {
+  match span_index_lookup(index: index, id: id) {
+    Holds { value: got } =>
+      match got {
+        DerivedBy { producer: p, from: child_ids } =>
+          (p == ^parse_stage_producer)
+            && (length(xs: child_ids) == 2)
+            && match list_nth(
+              xs: child_ids,
+              wanted: 0,
+              absent: parse_stamp_list_absent_diagnostic()
+            ) {
+              Holds { value: h } =>
+                match list_nth(
+                  xs: child_ids,
+                  wanted: 1,
+                  absent: parse_stamp_list_absent_diagnostic()
+                ) {
+                  Holds { value: t } =>
+                    occurrence_id_eq(left: h, right: left)
+                      && occurrence_id_eq(left: t, right: right)
+                  Violates { diagnostic: _ } => false
+                }
+              Violates { diagnostic: _ } => false
+            }
+        FromSource { locus: _ } => false
+        GeneratedBy { generator: _, from: _ } => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn parse_stamp_terminal_from_source_holds() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: parse_stamp_terminal_root(), at: at) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: validated, diagnostics: _ } =>
+      match parse_production(
+        tokens: Cons {
+          head: parse_stamp_token(start: 3, end: 8),
+          tail: Empty
+        },
+        validated: validated,
+        production_name: ^parse_stamp_start
+      ) {
+        Accepted { value: artifact, diagnostics: _ } =>
+          match find_named_child(
+            root: artifact.tree,
+            name: ^grammar_production_captured_node_projection
+          ) {
+            Accepted { value: captured, diagnostics: _ } =>
+              match captured.occurrence_id {
+                MintedOccurrence { id: id } =>
+                  parse_stamp_from_source_extent_holds(
+                    index: artifact.span_index,
+                    id: id,
+                    start: 3,
+                    end: 8
+                  )
+                SyntheticOccurrence => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+fn parse_stamp_sequence_derived_by_holds() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: parse_stamp_sequence_root(), at: at) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: validated, diagnostics: _ } =>
+      match parse_production(
+        tokens: Cons {
+          head: parse_stamp_token(start: 0, end: 5),
+          tail: Cons { head: parse_stamp_token(start: 5, end: 10), tail: Empty }
+        },
+        validated: validated,
+        production_name: ^parse_stamp_start
+      ) {
+        Accepted { value: artifact, diagnostics: _ } =>
+          match find_named_child(
+            root: artifact.tree,
+            name: ^grammar_production_captured_node_projection
+          ) {
+            Accepted { value: sequence_conj, diagnostics: _ } =>
+              match find_named_child(
+                root: sequence_conj,
+                name: ^grammar_sequence_left_node_projection
+              ) {
+                Accepted { value: left_term, diagnostics: _ } =>
+                  match find_named_child(
+                    root: sequence_conj,
+                    name: ^grammar_sequence_right_node_projection
+                  ) {
+                    Accepted { value: right_term, diagnostics: _ } =>
+                      match left_term.occurrence_id {
+                        MintedOccurrence { id: left_id } =>
+                          match right_term.occurrence_id {
+                            MintedOccurrence { id: right_id } =>
+                              match sequence_conj.occurrence_id {
+                                MintedOccurrence { id: seq_id } =>
+                                  parse_stamp_from_source_extent_holds(
+                                    index: artifact.span_index,
+                                    id: left_id,
+                                    start: 0,
+                                    end: 5
+                                  )
+                                    && parse_stamp_from_source_extent_holds(
+                                      index: artifact.span_index,
+                                      id: right_id,
+                                      start: 5,
+                                      end: 10
+                                    )
+                                    && parse_stamp_derived_by_pair_holds(
+                                      index: artifact.span_index,
+                                      id: seq_id,
+                                      left: left_id,
+                                      right: right_id
+                                    )
+                                SyntheticOccurrence => false
+                              }
+                            SyntheticOccurrence => false
+                          }
+                        SyntheticOccurrence => false
+                      }
+                    Rejected { diagnostics: _ } => false
+                  }
+                Rejected { diagnostics: _ } => false
+              }
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+  }
+}
+
+test fn witness_parse_stamp_span_index_holds() -> Bool {
+  parse_stamp_terminal_from_source_holds()
+    && parse_stamp_sequence_derived_by_holds()
+}

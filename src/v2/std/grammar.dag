@@ -1,8 +1,3 @@
-// src/v2/std/grammar.dag
-// Grounds in: https://en.wikipedia.org/wiki/Formal_grammar, https://en.wikipedia.org/wiki/Context-free_grammar, https://en.wikipedia.org/wiki/Parsing
-// Scope: canonical grammar model shared by compiler stages and target-language specs.
-// Status: T-7 grammar data carriers; parser implementation remains in v2.compiler.parse.
-
 module v2.std.grammar
 
 import v2.std.algebra { Cons, Empty, fold_list, fold_list_node, list_append, list_snoc_item }
@@ -55,55 +50,23 @@ import v2.std.compilers.target_model {
 }
 import v2.std.text { String }
 
-// "What is a terminal symbol?"
-// Ref: https://en.wikipedia.org/wiki/Terminal_and_nonterminal_symbols
-// A terminal is a symbol drawn from the terminal alphabet Σ. It cannot appear
-// as the left-hand side of any production rule; it represents an atomic
-// input token that terminates a derivation.
 type FormalTerminal {
   identity: Symbol
 }
 
-
-// "What is a nonterminal symbol?"
-// A nonterminal is a symbol drawn from the nonterminal set N. It may appear
-// as the left-hand side of a production rule; it represents a syntactic
-// category subject to rewriting.
 type FormalNonterminal {
   identity: Symbol
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// "What is an element of the grammar vocabulary (N ∪ Σ)?"
-// Ref: https://en.wikipedia.org/wiki/Formal_grammar#Formal_definition
-// A grammar symbol is either a terminal or a nonterminal. Sequences of
-// grammar symbols form the right-hand sides of production rules.
 type FormalGrammarSymbol
   = FormalTerminalOccurrence { terminal: FormalTerminal, binding: Optional<Symbol> }
   | FormalNonterminalOccurrence { nonterminal: FormalNonterminal }
 
-
-// "What is a production rule?"
-// Ref: https://en.wikipedia.org/wiki/Production_(computer_science)
-// In a context-free grammar: A → α where A ∈ N and α ∈ (N ∪ Σ)*.
-// The left-hand side is a single nonterminal; the right-hand side is
-// a (possibly empty) sequence of grammar symbols.
 type FormalProduction {
   lhs: FormalNonterminal
   rhs: List<FormalGrammarSymbol>
 }
 
-
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — dissolve-on: v2.compiler.parse operational grammar types (ParseGrammar, GrammarExpr, GrammarProduction) converge onto this canonical substrate; this file is the dissolution destination, parse.dag operational types dissolve into it.
-// 🟡 gated — feature:grammar-well-formed-witness — FormalGrammar carries five representable invalid states: (1) start ∉ nonterminals, (2) FormalProduction.lhs not in N, (3) FormalProduction.rhs symbols not drawn from N∪Σ, (4) N∩Σ overlap (FormalTerminal and FormalNonterminal both carry identity: Symbol), (5) N or Σ infinite (Set<T> is a predicate fn(T)->Bool; finiteness not enforced by the type). Dissolve-on: consumers require WellFormedFormalGrammar (below) not bare FormalGrammar; bare FormalGrammar becomes internal construction only.
-// "What is a formal grammar?"
-// Ref: https://en.wikipedia.org/wiki/Formal_grammar
-// G = (N, Σ, P, S) — the four-component definition of a formal language:
-//   N  (nonterminals): finite set of nonterminal symbols
-//   Σ  (terminals):    finite set of terminal symbols, disjoint from N
-//   P  (productions):  finite collection of production rules
-//   S  (start):        designated start symbol, S ∈ N
 type FormalGrammar {
   nonterminals: Set<FormalNonterminal>
   terminals: Set<FormalTerminal>
@@ -111,26 +74,18 @@ type FormalGrammar {
   start: FormalNonterminal
 }
 
-
-// 🟡 gated — feature:grammar-well-formed-witness — invariants (4) N∩Σ=∅ and (5) finiteness require
-// PointwisePower enumeration (gunbc#4766). validate_grammar proves (1)(2)(3) only; this marker
-// records (4)(5) honestly unproven until #4766 lands.
 type GrammarAlphabetEnumerationEvidence {
   blocker: Symbol
 }
-
 
 fn grammar_alphabet_enumeration_deferred_4766() -> GrammarAlphabetEnumerationEvidence {
   GrammarAlphabetEnumerationEvidence { blocker: ^grammar_enumeration_deferred_4766 }
 }
 
-
-// 🟡 gated — feature:grammar-well-formed-witness — witness that a FormalGrammar value satisfies all five invariants: (1) start∈N, (2) each FormalProduction.lhs∈N, (3) each FormalProduction.rhs symbol∈N∪Σ, (4) N∩Σ=∅, (5) N and Σ are finite (Set<T> is a predicate; finiteness requires an explicit cardinality proof). Dissolve-on: validate_grammar(g: FormalGrammar) -> Witness<WellFormedFormalGrammar> is the only constructor; sub-invariant checks require set-membership fold over grammar alphabets.
 type WellFormedFormalGrammar {
   grammar: FormalGrammar
   alphabet_enumeration: GrammarAlphabetEnumerationEvidence
 }
-
 
 fn validate_grammar_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
@@ -139,7 +94,6 @@ fn validate_grammar_diagnostic(reason: Symbol) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
 
 fn formal_grammar_symbol_in_alphabet(
   nonterminals: Set<FormalNonterminal>,
@@ -153,7 +107,6 @@ fn formal_grammar_symbol_in_alphabet(
       nonterminals.member(nonterminal)
   }
 }
-
 
 fn formal_production_rhs_in_alphabet(
   nonterminals: Set<FormalNonterminal>,
@@ -174,7 +127,6 @@ fn formal_production_rhs_in_alphabet(
   )
 }
 
-
 fn validate_grammar_all_lhs_in_nonterminals(g: FormalGrammar) -> Bool {
   fold_list(
     xs: g.productions,
@@ -184,7 +136,6 @@ fn validate_grammar_all_lhs_in_nonterminals(g: FormalGrammar) -> Bool {
     }
   )
 }
-
 
 fn validate_grammar_all_rhs_in_alphabet(g: FormalGrammar) -> Bool {
   fold_list(
@@ -200,7 +151,6 @@ fn validate_grammar_all_rhs_in_alphabet(g: FormalGrammar) -> Bool {
     }
   )
 }
-
 
 fn validate_grammar(g: FormalGrammar) -> Witness<WellFormedFormalGrammar> {
   if !g.nonterminals.member(g.start) {
@@ -225,23 +175,14 @@ fn validate_grammar(g: FormalGrammar) -> Witness<WellFormedFormalGrammar> {
   }
 }
 
-
 type GrammarTerminalLexCoverageObligation {
   lex: LexRules
   grammar: WellFormedFormalGrammar
 }
 
-
-// Branch B ingestion-unification ruling (2026-06-02): concrete syntax is a
-// single authority row. Terminal coverage is an explicit obligation on the
-// carrier, not a completed proof in this PR: Bmin.2 must replace this obligation
-// with an enumerating validator tying every FormalTerminal.identity to LexRules
-// token rules. LexPattern and GrammarExpr remain operational projections until
-// CP-1b convergence; they are not independent authorities.
 type ConcreteSyntaxSchema {
   terminal_coverage: GrammarTerminalLexCoverageObligation
 }
-
 
 fn concrete_syntax_schema(
   terminal_coverage: GrammarTerminalLexCoverageObligation
@@ -251,25 +192,19 @@ fn concrete_syntax_schema(
   }
 }
 
-
 fn concrete_syntax_schema_lex(schema: ConcreteSyntaxSchema) -> LexRules {
   schema.terminal_coverage.lex
 }
-
 
 fn concrete_syntax_schema_grammar(schema: ConcreteSyntaxSchema) -> WellFormedFormalGrammar {
   schema.terminal_coverage.grammar
 }
 
-
-// 🟢 coproduct dissolution — T-8 parse-stage terminal identity (lane 3a.2 QN materialization):
-// how parse_stamp_terminal projects a matched token into an Atom identity.
 type TerminalStampMode
   = StampClass
   | StampBinding { binding: Symbol }
   | StampLexeme
 
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — dissolve-on: GrammarExpr converges with LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type GrammarExpr
   = Terminal { token_class: Symbol, stamp: TerminalStampMode }
   | Nonterminal { production: Symbol }
@@ -282,21 +217,17 @@ fn grammar_expr_optional(element: GrammarExpr) -> GrammarExpr {
   Optional { element: element }
 }
 
-
 fn grammar_expr_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
-
 
 fn grammar_expr_terminal_bound(token_class: Symbol, binding: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampBinding { binding: binding } }
 }
 
-
 fn grammar_expr_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampLexeme }
 }
-
 
 fn formal_grammar_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
   match sym {
@@ -312,12 +243,6 @@ fn formal_grammar_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExp
   }
 }
 
-// 🟢 substrate catamorphism — feature:grammar-expr-structural-morphism — bind node://adhoc-b696538c-710.
-// GrammarExprFold is the algebra for a structural fold (catamorphism) over the GrammarExpr
-// coproduct: one handler per variant, with recursive positions (Sequence/Choice children,
-// Optional/Repeat element) already reduced to R before the handler sees them. Consumers express
-// a GrammarExpr query or projection as a GrammarExprFold instead of re-deriving the per-variant
-// recursion by hand — the same role NodeFold plays for Node (v2.std.node.fold_node).
 type GrammarExprFold<R> {
   terminal: fn(Symbol, TerminalStampMode) -> R
   nonterminal: fn(Symbol) -> R
@@ -327,11 +252,6 @@ type GrammarExprFold<R> {
   repeat: fn(R) -> R
 }
 
-
-// fold_grammar_expr: catamorphism over GrammarExpr. Structurally recursive on the finite
-// expression tree (no fuel needed). The leaf arms (Terminal/Nonterminal) carry their Symbol to
-// the algebra; the recursive arms fold children first, then combine via the matching handler.
-// First consumer: v2.compiler.parse.expr_is_nullable_given_set.
 fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
   match expr {
     Terminal { token_class: token_class, stamp: stamp } =>
@@ -354,42 +274,30 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
   }
 }
 
-
 type GrammarProduction {
   name: Symbol
   expression: GrammarExpr
   emitted: Node
 }
 
-
-// 🟡 gated — feature: T-8 parse error-recovery trigger — sync_tokens present; parse_skip_to_sync
-// is structurally correct but unreachable until parse_expr emits non-empty diagnostics on
-// committed Terminal mismatches. Dissolve-on: T-8.
 type GrammarRoot {
   start: Symbol
   productions: List<GrammarProduction>
   sync_tokens: Set<Symbol>
 }
 
-
-// Parse-table entrypoint carrier: produced only after undefined/duplicate/left-recursion gates pass.
 type ValidatedGrammarRoot {
   root: GrammarRoot
 }
 
-
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — dissolve-on: ParseGrammar converges with FormalGrammar/LexPattern on single declarative bidirectional grammar model; forbidden: parallel production algebras without explicit structural justification.
 type ParseGrammar
   = VoidGrammar
   | ModeledGrammar { root: GrammarRoot }
 
-
-// 🟡 gated — feature:CP-1b-concrete-syntax-schema-projection — dissolve-on: GrammarSchemaProbeBinding consumes ConcreteSyntaxSchema directly and ParseGrammar is derived from the well-formed formal grammar authority; forbidden: treating GrammarSchema as a second concrete-syntax authority.
 type GrammarSchema {
   lex: LexRules
   grammar: ParseGrammar
 }
-
 
 type GrammarSchemaProbe {
   fixture: String
@@ -397,31 +305,21 @@ type GrammarSchemaProbe {
   expected_parse_surface: Node
 }
 
-
 type GrammarSchemaProbeBinding {
   schema: GrammarSchema
   probe: GrammarSchemaProbe
 }
 
-
-// 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind gunbc#4761 — canonical grammar-relation
-// row carrier (FormalProduction + emitted Node); per-language concrete-token lists project to
-// the tokens edge via grammar_relation_row_to_node.
 type GrammarRelationRow {
   production: FormalProduction
   emitted: Node
 }
 
-
 type ParseTree = Node
-
 
 type GrammarSymbolFoldState {
   found: Bool
 }
-
-
-
 
 fn grammar_atom(identity: Symbol) -> Node {
   Node {
@@ -433,7 +331,6 @@ fn grammar_atom(identity: Symbol) -> Node {
 }
 }
 
-
 fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
   Edge {
     label: Named { name: name },
@@ -441,21 +338,17 @@ fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
   }
 }
 
-
 fn grammar_empty_sync_tokens() -> Set<Symbol> {
   Set { member: fn(_) { false } }
 }
-
 
 fn grammar_empty_node() -> Node {
   stamp_node_shape_synthetic(shape: type_shape(connective: Conj, children: []))
 }
 
-
 fn grammar_formal_nonterminal(identity: Symbol) -> FormalNonterminal {
   FormalNonterminal { identity: identity }
 }
-
 
 fn grammar_formal_terminal(identity: Symbol) -> FormalGrammarSymbol {
   FormalTerminalOccurrence {
@@ -464,7 +357,6 @@ fn grammar_formal_terminal(identity: Symbol) -> FormalGrammarSymbol {
   }
 }
 
-
 fn grammar_formal_terminal_bound(identity: Symbol, binding: Symbol) -> FormalGrammarSymbol {
   FormalTerminalOccurrence {
     terminal: FormalTerminal { identity: identity },
@@ -472,34 +364,15 @@ fn grammar_formal_terminal_bound(identity: Symbol, binding: Symbol) -> FormalGra
   }
 }
 
-
-// Free-name-slot marker: one emitted Atom per ident terminal, binding spelled from atom identity
-// (symbol interning — parse text→intern→^Name, emit ^Name→name→"Name"). Distinct from fixed
-// grammar_formal_terminal_bound spellings; invertibility requires exactly one atom per slot.
-// 🟡 gated — feature:grammar-free-name-slot-binding — the free-vs-fixed terminal binding is
-//   carried as a sentinel Symbol (^grammar_free_name_slot) + the predicate
-//   formal_binding_is_free_name_slot, an in-band three-way discriminator over
-//   binding: Optional<Symbol> (Absent | Present{sentinel} | Present{real ident}) on the core
-//   FormalGrammarSymbol carrier — a hand-rolled sum, not a declared coproduct (§3/§4;
-//   the sentinel could collide with a real ident). dissolve-on: declare
-//   FormalTerminalBinding = AbsentBinding | FixedBinding { symbol: Symbol } | FreeNameSlot,
-//   carry it on the formal terminal instead of the bare Symbol, and replace every
-//   formal_binding_is_free_name_slot(...) call (formal_production_rhs_matches_emitted_conj_step,
-//   formal_production_matches_emitted_child, derive_grammar_relation_token_edges_recursive_step)
-//   with a match — once the carrier change is scoped against the forward parser consumers
-//   (03_ingest / 02_parse). The sentinel + predicate dissolve with it.
 data grammar_free_name_slot_binding: Symbol = ^grammar_free_name_slot
-
 
 fn formal_binding_is_free_name_slot(binding: Symbol) -> Bool {
   binding == ^grammar_free_name_slot
 }
 
-
 fn grammar_formal_terminal_free(identity: Symbol) -> FormalGrammarSymbol {
   grammar_formal_terminal_bound(identity: identity, binding: ^grammar_free_name_slot)
 }
-
 
 fn grammar_formal_nonterminal_occurrence(identity: Symbol) -> FormalGrammarSymbol {
   FormalNonterminalOccurrence {
@@ -507,14 +380,12 @@ fn grammar_formal_nonterminal_occurrence(identity: Symbol) -> FormalGrammarSymbo
   }
 }
 
-
 fn grammar_formal_production(lhs: Symbol, rhs: List<FormalGrammarSymbol>) -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: lhs),
     rhs: rhs
   }
 }
-
 
 fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
   Node {
@@ -527,7 +398,6 @@ fn formal_terminal_to_node(terminal: FormalTerminal) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optional<Symbol>) -> Node {
   match binding {
@@ -552,7 +422,6 @@ fn formal_terminal_occurrence_to_node(terminal: FormalTerminal, binding: Optiona
   }
 }
 
-
 fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> Node {
   Node {
     kind: TypeNode {
@@ -564,7 +433,6 @@ fn formal_nonterminal_to_node(nonterminal: FormalNonterminal) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
   match symbol {
@@ -594,7 +462,6 @@ fn formal_grammar_symbol_to_node(symbol: FormalGrammarSymbol) -> Node {
   }
 }
 
-
 fn formal_rhs_to_edges(symbols: List<FormalGrammarSymbol>) -> List<Edge> {
   fold_list(
     xs: symbols,
@@ -607,7 +474,6 @@ fn formal_rhs_to_edges(symbols: List<FormalGrammarSymbol>) -> List<Edge> {
     }
   )
 }
-
 
 fn formal_production_to_node(production: FormalProduction) -> Node {
   Node {
@@ -631,9 +497,6 @@ fn formal_production_to_node(production: FormalProduction) -> Node {
 }
 }
 
-
-// Structural inverse of formal_production_to_node — decode a production wire-node back into the
-// typed FormalProduction carrier (fail-closed on malformed projections).
 fn grammar_atom_identity_from_node(node: Node) -> Witness<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => Holds { value: id }
@@ -647,7 +510,6 @@ fn grammar_atom_identity_from_node(node: Node) -> Witness<Symbol> {
     }
   }
 }
-
 
 fn formal_nonterminal_from_node(node: Node) -> Witness<FormalNonterminal> {
   match node.kind {
@@ -679,7 +541,6 @@ fn formal_nonterminal_from_node(node: Node) -> Witness<FormalNonterminal> {
   }
 }
 
-
 fn formal_terminal_from_node(node: Node) -> Witness<FormalTerminal> {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -710,7 +571,6 @@ fn formal_terminal_from_node(node: Node) -> Witness<FormalTerminal> {
   }
 }
 
-
 fn formal_terminal_occurrence_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
   match formal_terminal_from_node(node: node) {
     Holds { value: terminal } =>
@@ -737,7 +597,6 @@ fn formal_terminal_occurrence_from_node(node: Node) -> Witness<FormalGrammarSymb
     Violates { diagnostic: d } => Violates { diagnostic: d }
   }
 }
-
 
 fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
   match node.kind {
@@ -776,7 +635,6 @@ fn formal_grammar_symbol_from_node(node: Node) -> Witness<FormalGrammarSymbol> {
   }
 }
 
-
 fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -814,7 +672,6 @@ fn formal_rhs_from_node(node: Node) -> Witness<List<FormalGrammarSymbol>> {
       }
   }
 }
-
 
 fn formal_production_from_node(node: Node) -> Witness<FormalProduction> {
   match node.kind {
@@ -863,7 +720,6 @@ fn formal_production_from_node(node: Node) -> Witness<FormalProduction> {
   }
 }
 
-
 fn grammar_relation_row_production_from_node(row: Node) -> Witness<FormalProduction> {
   match find_named_child(root: row, name: ^grammar_relation_field_production) {
     Accepted { value: production_node, diagnostics: _ } =>
@@ -879,11 +735,9 @@ fn grammar_relation_row_production_from_node(row: Node) -> Witness<FormalProduct
   }
 }
 
-
 fn grammar_relation_row_emitted_fixture(row: Node) -> Outcome<Node> {
   find_named_child(root: row, name: ^grammar_relation_field_emitted)
 }
-
 
 fn grammar_relation_rules_formal_productions_step(
   acc: Outcome<List<FormalProduction>>,
@@ -900,7 +754,6 @@ fn grammar_relation_rules_formal_productions_step(
     }
   )
 }
-
 
 fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<List<FormalProduction>> {
   match rules.kind {
@@ -931,7 +784,6 @@ fn grammar_relation_rules_formal_productions_from_rows(rules: Node) -> Outcome<L
   }
 }
 
-
 fn formal_productions_catalog_to_node(productions: List<FormalProduction>) -> Node {
   Node {
     kind: TypeNode {
@@ -953,7 +805,6 @@ fn formal_productions_catalog_to_node(productions: List<FormalProduction>) -> No
     occurrence_id: SyntheticOccurrence
   }
 }
-
 
 fn formal_productions_from_catalog_node(node: Node) -> Outcome<List<FormalProduction>> {
   match node.kind {
@@ -991,7 +842,6 @@ fn formal_productions_from_catalog_node(node: Node) -> Outcome<List<FormalProduc
   }
 }
 
-
 fn grammar_relation_rules_formal_productions(rules: Node) -> Outcome<List<FormalProduction>> {
   match find_named_child(root: rules, name: ^grammar_relation_rules_formal_productions) {
     Accepted { value: catalog, diagnostics: _ } =>
@@ -1001,14 +851,12 @@ fn grammar_relation_rules_formal_productions(rules: Node) -> Outcome<List<Formal
   }
 }
 
-
 fn derive_grammar_relation_row(production: FormalProduction, emitted: Node) -> GrammarRelationRow {
   GrammarRelationRow {
     production: production,
     emitted: emitted
   }
 }
-
 
 fn grammar_relation_row_to_node(row: GrammarRelationRow, tokens: Node) -> Node {
   Node {
@@ -1027,10 +875,6 @@ fn grammar_relation_row_to_node(row: GrammarRelationRow, tokens: Node) -> Node {
 }
 }
 
-// 🟡 bootstrap-limitation interim — feature:B-POSITIONAL-CONJ-FOLD-LIST-1 — ctrl#1476 B5 Option-B
-// chokepoint: grammar-relation / serialize_source token sequences lower via fold_list_node named-cons
-// spine (not positional-Conj fold_list-by-construction); dissolve-on-arrival: emit-path consumers
-// read only this helper; forbidden: *_relation_token_edges / *_positional_edges_from_token_classes.
 fn grammar_relation_tokens_node<T>(
   tokens: List<T>,
   token_to_node: fn(T) -> Node
@@ -1038,18 +882,15 @@ fn grammar_relation_tokens_node<T>(
   fold_list_node(xs: tokens, item_node: token_to_node)
 }
 
-
 fn grammar_concrete_fixed_token_node(token_class: Symbol) -> Node {
   concrete_syntax_token_to_node(token: FixedToken { token_class: token_class })
 }
-
 
 fn grammar_concrete_bound_token_node(token_class: Symbol, binding: Symbol) -> Node {
   concrete_syntax_token_to_node(
     token: BoundToken { token_class: token_class, binding: binding }
   )
 }
-
 
 fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: Optional<Symbol>) -> Edge {
   match binding {
@@ -1066,7 +907,6 @@ fn grammar_terminal_occurrence_to_token_edge(terminal: FormalTerminal, binding: 
   }
 }
 
-
 fn derive_grammar_relation_terminal_token_edges_step(
   acc: List<Edge>,
   symbol: FormalGrammarSymbol
@@ -1081,8 +921,6 @@ fn derive_grammar_relation_terminal_token_edges_step(
   }
 }
 
-
-// Terminal occurrences in the caller-supplied production only (MVP-1 add-fn formal row).
 fn derive_grammar_relation_terminal_token_edges(production: FormalProduction) -> List<Edge> {
   fold_list(
     xs: production.rhs,
@@ -1093,7 +931,6 @@ fn derive_grammar_relation_terminal_token_edges(production: FormalProduction) ->
   )
 }
 
-
 fn conj_positional_child_count(children: List<Node>) -> Int {
   fold_list(
     xs: children,
@@ -1103,7 +940,6 @@ fn conj_positional_child_count(children: List<Node>) -> Int {
     }
   )
 }
-
 
 fn conj_positional_children(parent: Node) -> List<Node> {
   match parent.kind {
@@ -1121,7 +957,6 @@ fn conj_positional_children(parent: Node) -> List<Node> {
     _ => Empty
   }
 }
-
 
 fn formal_production_emitted_slot_count_step(count: Int, symbol: FormalGrammarSymbol) -> Int {
   match symbol {
@@ -1142,11 +977,34 @@ fn formal_production_emitted_slot_count(production: FormalProduction) -> Int {
   )
 }
 
-
 fn formal_production_lhs_matches(production: FormalProduction, lhs: Symbol) -> Bool {
   production.lhs.identity == lhs
 }
 
+fn formal_productions_for_lhs_step(
+  acc: List<FormalProduction>,
+  production: FormalProduction,
+  lhs: Symbol
+) -> List<FormalProduction> {
+  if formal_production_lhs_matches(production: production, lhs: lhs) {
+    list_snoc_item(xs: acc, item: production)
+  } else {
+    acc
+  }
+}
+
+fn formal_productions_for_lhs(
+  productions: List<FormalProduction>,
+  lhs: Symbol
+) -> List<FormalProduction> {
+  fold_list(
+    xs: productions,
+    empty: Empty,
+    cons: fn(acc, production) {
+      formal_productions_for_lhs_step(acc: acc, production: production, lhs: lhs)
+    }
+  )
+}
 
 fn formal_production_matches_lhs_and_slot_count(
   production: FormalProduction,
@@ -1157,14 +1015,10 @@ fn formal_production_matches_lhs_and_slot_count(
     formal_production_emitted_slot_count(production: production) == emitted_slot_count
 }
 
-
-// 🟢 PR-1.5b DESIGN-2 — ephemeral fold state for atom-child lhs-exact match: production RHS
-// is exactly one unbound terminal (e.g. type_annotation → ty_string); not for bound slots.
 type RhsSingletonTerminalLookup
   = RhsSingletonTerminalNotSeen
   | RhsSingletonTerminalFound { identity: Symbol }
   | RhsSingletonTerminalAmbiguous
-
 
 fn formal_production_rhs_singleton_terminal_identity_step(
   state: RhsSingletonTerminalLookup,
@@ -1196,14 +1050,10 @@ fn formal_production_rhs_singleton_terminal_identity(production: FormalProductio
   }
 }
 
-
-// 🟢 PR-1.5b DESIGN-2 — ephemeral fold state for atom-child lhs-exact match: production RHS
-// is exactly one bound terminal (emitted Conj slot = bound-terminal atom per DESIGN-1).
 type RhsSingletonBindingLookup
   = RhsSingletonBindingNotSeen
   | RhsSingletonBindingFound { binding: Symbol }
   | RhsSingletonBindingAmbiguous
-
 
 fn formal_production_rhs_singleton_binding_step(
   state: RhsSingletonBindingLookup,
@@ -1235,7 +1085,6 @@ fn formal_production_rhs_singleton_binding(production: FormalProduction) -> Symb
   }
 }
 
-
 fn node_atom_identity_optional(node: Node) -> Symbol? {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => Present { value: id }
@@ -1243,13 +1092,9 @@ fn node_atom_identity_optional(node: Node) -> Symbol? {
   }
 }
 
-
-// 🟢 PR-1.5b DESIGN-2 — ephemeral fold state walking production RHS against Conj positional
-// children (bound terminals + nonterminals); dissolves when parser-derived selection lands.
 type EmittedRhsMatchState
   = EmittedRhsMatchOk { children: List<Node>, index: Int }
   | EmittedRhsMatchFail
-
 
 fn formal_production_rhs_matches_emitted_conj_step(
   state: EmittedRhsMatchState,
@@ -1334,7 +1179,6 @@ fn formal_production_rhs_matches_emitted_conj_step(
   }
 }
 
-
 fn formal_production_rhs_matches_emitted_conj(
   production: FormalProduction,
   productions: List<FormalProduction>,
@@ -1350,7 +1194,6 @@ fn formal_production_rhs_matches_emitted_conj(
     _ => false
   }
 }
-
 
 fn formal_production_rhs_matches_emitted_conj_conj(
   production: FormalProduction,
@@ -1376,9 +1219,6 @@ fn formal_production_rhs_matches_emitted_conj_conj(
   }
 }
 
-
-// Atom child: unbound-singleton-terminal or bound-singleton-binding (DESIGN-1).
-// Conj child: structural RHS/emitted Conj walk. Arrow/Cardinality/Instantiation/etc. reject.
 fn formal_production_matches_emitted_child(
   production: FormalProduction,
   productions: List<FormalProduction>,
@@ -1409,7 +1249,6 @@ fn formal_production_matches_emitted_child(
   }
 }
 
-
 fn emitted_shape_supported_for_lhs_exact(child: Node) -> Bool {
   match child.kind {
     TypeNode { connective: Conj } => true
@@ -1418,14 +1257,6 @@ fn emitted_shape_supported_for_lhs_exact(child: Node) -> Bool {
   }
 }
 
-
-// 🟡 gated — feature:grammar-inverse-lhs-exact-selection — owner/lane: T-11 typescript ext PR-1.5b
-// Bash (v2.extdeps.languages.bash) is the first PRODUCTION emit consumer of this path; on
-// parser-convergence dissolution, migrate bash FormalProduction rows together with typescript's.
-// (DESIGN-2) — dissolve-on: parser-derived production selection replaces this hand-rolled
-// lhs+emitted-shape walk in formal_production_for_lhs_exact (same commit train as
-// v2.compiler.parse substrate convergence). Interim: filter by emitted-slot arity, then walk
-// RHS symbols against positional emitted children (binding atoms + nested lhs-exact recursion).
 fn formal_production_for_lhs_exact(
   productions: List<FormalProduction>,
   lhs: Symbol,
@@ -1448,7 +1279,6 @@ fn formal_production_for_lhs_exact(
   }
 }
 
-
 fn formal_production_for_lhs_exact_supported(
   productions: List<FormalProduction>,
   lhs: Symbol,
@@ -1461,14 +1291,11 @@ fn formal_production_for_lhs_exact_supported(
   )
 }
 
-
-// 🟢 PR-1.5b DESIGN-2 — ephemeral fold state for recursive token-edge derive over Conj slots.
 type DeriveGrammarRelationTokensProgress {
   edges: List<Edge>
   conj_index: Int
   conj_children: List<Node>
 }
-
 
 fn emitted_node_slot_count(emitted: Node) -> Int {
   match emitted.kind {
@@ -1478,7 +1305,6 @@ fn emitted_node_slot_count(emitted: Node) -> Int {
     _ => -1
   }
 }
-
 
 fn derive_grammar_relation_token_edges_recursive_step(
   progress: Witness<DeriveGrammarRelationTokensProgress>,
@@ -1597,7 +1423,6 @@ fn derive_grammar_relation_token_edges_recursive_step(
   }
 }
 
-
 fn derive_grammar_relation_token_edges_recursive(
   production: FormalProduction,
   productions: List<FormalProduction>,
@@ -1638,14 +1463,6 @@ fn derive_grammar_relation_token_edges_recursive(
   }
 }
 
-
-// The recursive token-edge derivation accumulates Positional edges; the grammar-relation token
-// spine authority (grammar_relation_tokens_node, the only shape concrete_syntax_token_list_from_node
-// decodes — grammar.dag:535) is the fold_list_node named-cons spine, NOT a positional Conj. Project
-// the derived edges to their ordered token-node targets so the row's tokens field is built through
-// that single authority. Producing a positional Conj here (the prior shape) typechecked but was
-// undecodable by the emit/ingest selectors — a spec-without-execution gap surfaced by running the
-// grammar-inverse round trip on a type-decl Conj node (DESIGN.md §5).
 fn grammar_relation_token_edge_targets(edges: List<Edge>) -> List<Node> {
   fold(
     edges,
@@ -1656,11 +1473,6 @@ fn grammar_relation_token_edge_targets(edges: List<Edge>) -> List<Node> {
   )
 }
 
-
-// 🟢 coproduct dissolution — REPLAN-3 PR-1.5 — bind gunbc#4761 — derive production+emitted+bindings
-// into the grammar_relation_row Node shape consumed by 06_translate.dag (via target_model fields).
-// 🟢 PR-1.5b — Conj-positional emitted + lhs-exact production recursion only; non-Conj emitted
-// rejects (no fail-soft terminal-only fallback — PR-1.5 prohibition restored).
 fn derive_grammar_relation_row_node(
   production: FormalProduction,
   productions: List<FormalProduction>,
@@ -1696,7 +1508,6 @@ fn derive_grammar_relation_row_node(
   }
 }
 
-
 fn grammar_expr_node(children: List<Edge>) -> Node {
   Node {
     kind: TypeNode {
@@ -1707,12 +1518,6 @@ fn grammar_expr_node(children: List<Edge>) -> Node {
 }
 }
 
-
-// 🟢 walker dissolution — feature:grammar-expr-node-projection — bind node://adhoc-b696538c-710 —
-// the hand-rolled per-variant GrammarExpr match is dissolved: grammar_expr_to_node is now a
-// fold_grammar_expr consumer (GrammarExprFold<Node>). Recursive positions (Sequence/Choice children,
-// Optional/Repeat element) arrive already projected to Node, so each handler only wraps the canonical
-// named edges. No second structural walker over GrammarExpr remains.
 fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
   fold_grammar_expr(
     expr: expr,
@@ -1766,7 +1571,6 @@ fn grammar_expr_to_node(expr: GrammarExpr) -> Node {
   )
 }
 
-
 fn grammar_production_to_node(production: GrammarProduction) -> Node {
   Node {
     kind: TypeNode {
@@ -1781,7 +1585,6 @@ fn grammar_production_to_node(production: GrammarProduction) -> Node {
 }
 }
 
-
 fn grammar_production_to_list_step(acc: List<Edge>, production: GrammarProduction) -> List<Edge> {
   list_snoc_item(
     xs: acc,
@@ -1791,7 +1594,6 @@ fn grammar_production_to_list_step(acc: List<Edge>, production: GrammarProductio
     )
   )
 }
-
 
 fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
   Node {
@@ -1809,13 +1611,6 @@ fn grammar_productions_to_node(productions: List<GrammarProduction>) -> Node {
 }
 }
 
-
-// 🟡 gated T-8 — boundary interim — feature: grammar-root-node-projection-completeness —
-// bind gunbc#4766 — GrammarRoot.sync_tokens: Set<Symbol> is a predicate closure
-// { member: fn(Symbol) -> Bool }; the Node substrate has no edge kind for function values, so
-// sync_tokens cannot be materialized as a Node child here. ^grammar_root_sync_tokens_node_projection
-// names the intended edge. Dissolve-on: T-8, when Set<Symbol> is reified as an explicit membership
-// list type (or substrate gains literal-value edge support), enabling the edge to be emitted.
 fn grammar_root_to_node(root: GrammarRoot) -> Node {
   Node {
     kind: TypeNode {
@@ -1829,14 +1624,12 @@ fn grammar_root_to_node(root: GrammarRoot) -> Node {
 }
 }
 
-
 fn grammar_to_node(grammar: ParseGrammar) -> Node {
   match grammar {
     VoidGrammar => grammar_empty_node()
     ModeledGrammar { root: root } => grammar_root_to_node(root: root)
   }
 }
-
 
 fn grammar_symbol_fold(sym: Symbol) -> NodeFold<GrammarSymbolFoldState> {
   NodeFold {
@@ -1847,7 +1640,6 @@ fn grammar_symbol_fold(sym: Symbol) -> NodeFold<GrammarSymbolFoldState> {
   }
 }
 
-
 fn grammar_symbol_fold_init(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -1857,7 +1649,6 @@ fn grammar_symbol_fold_init(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
   }
 }
 
-
 fn grammar_symbol_fold_step(
   acc: GrammarSymbolFoldState,
   edge: Edge,
@@ -1866,37 +1657,23 @@ fn grammar_symbol_fold_step(
   GrammarSymbolFoldState { found: acc.found || child_has_symbol.found }
 }
 
-
 fn grammar_symbol_fold_state(n: Node, sym: Symbol) -> GrammarSymbolFoldState {
   fold_node(n: n, algebra: grammar_symbol_fold(sym: sym))
 }
-
 
 fn grammar_carries_symbol(grammar: ParseGrammar, sym: Symbol) -> Bool {
   grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
 }
 
-
-// #g-bidir G.2 — bidirectional interpretation modeling.
-// Status: MODELING ONLY — names the find_witness selection discipline at the syntax layer.
-// Preservation rules wire into find_witness when G.3 forward interpreter lands (02_parse
-// de-anemic owned with Mgr-CONSOLIDATION). By-execution bidir witnesses gated on emit S1.
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL — closed two-arm sum for the only two
-//    interpreters over a declared production row (backward render / forward parse); no
-//    third direction and no arm payloads to decompress.
 type GrammarInterpretationDirection
   = GrammarInterpretBackward
   | GrammarInterpretForward
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL — closed four-arm sum is exactly the
-//    bidirectionality obligation carve (obligations 1–4); exhaustive by design, not an
-//    open classifier awaiting further variants.
 type BidirectionalGrammarObligation
   = ObligationSlotBijection
   | ObligationForwardDeterminism
   | ObligationBackwardDeterminism
   | ObligationQuotientDeclaration
-
 
 fn grammar_production_selection_predicate(direction: GrammarInterpretationDirection) -> Symbol {
   match direction {
@@ -1905,8 +1682,6 @@ fn grammar_production_selection_predicate(direction: GrammarInterpretationDirect
   }
 }
 
-// 🟢 coproduct dissolution — ephemeral fold state for fail-closed unique lhs-exact match
-// (find_witness multiplicity discipline at the syntax layer).
 type LhsExactProductionMatchFold
   = LhsExactProductionMatchNone
   | LhsExactProductionMatchOne { production: FormalProduction }
@@ -2028,8 +1803,6 @@ fn formal_production_unique_emitted_match(
   }
 }
 
-// 🟢 PR-1.5b free-name-slot inverse — rebuild emitted core nodes from a derived token spine
-// (bindings carry ident spellings via symbol interning; no fixture rows required).
 type RebuildRhsWalkState
   = RebuildRhsWalkOk { children: List<Node>, token_index: Int }
   | RebuildRhsWalkFail
@@ -2042,7 +1815,6 @@ type RebuildProductionMatchFold
   = RebuildProductionMatchNone
   | RebuildProductionMatchOne { emitted: Node, token_index: Int }
   | RebuildProductionMatchMany
-
 
 fn rebuild_emitted_atom_node(identity: Symbol) -> Node {
   Node {
@@ -2069,12 +1841,6 @@ fn rebuild_emitted_conj_node(children: List<Node>) -> Node {
   }
 }
 
-// 🟡 gated — feature:concrete-syntax-fixed-token-match-inline — this is a named Bool classifier
-//   over the ConcreteSyntaxToken coproduct (FixedToken → class-equality, BoundToken → false)
-//   used at one reverse-parse call site (rebuild_emitted_rhs_walk_step), rather than the match
-//   being inlined there (§4/§6 predicate-dissolution: ops from inhabitance, not hand-rolled Bool
-//   predicates). dissolve-on: inline this match/fold at its call site (grammar.dag:~1977) so the
-//   coproduct discrimination lives in the walk, not a wrapper predicate.
 fn concrete_syntax_fixed_token_matches_terminal(
   token: ConcreteSyntaxToken,
   terminal: Symbol
@@ -2208,29 +1974,24 @@ fn rebuild_emitted_from_production(
 fn rebuild_production_match_fold_step(
   acc: RebuildProductionMatchFold,
   productions: List<FormalProduction>,
-  lhs: Symbol,
   tokens: List<ConcreteSyntaxToken>,
   token_index: Int,
   candidate: FormalProduction
 ) -> RebuildProductionMatchFold {
-  if formal_production_lhs_matches(production: candidate, lhs: lhs) {
-    match rebuild_emitted_from_production(
-      production: candidate,
-      productions: productions,
-      tokens: tokens,
-      token_index: token_index
-    ) {
-      Holds { value: RebuildEmittedOk { emitted: emitted, token_index: end_index } } =>
-        match acc {
-          RebuildProductionMatchNone =>
-            RebuildProductionMatchOne { emitted: emitted, token_index: end_index }
-          RebuildProductionMatchOne { emitted: _, token_index: _ } => RebuildProductionMatchMany
-          RebuildProductionMatchMany => RebuildProductionMatchMany
-        }
-      Violates { diagnostic: _ } => acc
-    }
-  } else {
-    acc
+  match rebuild_emitted_from_production(
+    production: candidate,
+    productions: productions,
+    tokens: tokens,
+    token_index: token_index
+  ) {
+    Holds { value: RebuildEmittedOk { emitted: emitted, token_index: end_index } } =>
+      match acc {
+        RebuildProductionMatchNone =>
+          RebuildProductionMatchOne { emitted: emitted, token_index: end_index }
+        RebuildProductionMatchOne { emitted: _, token_index: _ } => RebuildProductionMatchMany
+        RebuildProductionMatchMany => RebuildProductionMatchMany
+      }
+    Violates { diagnostic: _ } => acc
   }
 }
 
@@ -2240,14 +2001,14 @@ fn grammar_relation_emitted_rebuild_for_lhs(
   tokens: List<ConcreteSyntaxToken>,
   token_index: Int
 ) -> Witness<RebuildEmittedResult> {
+  let lhs_productions = formal_productions_for_lhs(productions: productions, lhs: lhs)
   match fold_list(
-    xs: productions,
+    xs: lhs_productions,
     empty: RebuildProductionMatchNone,
     cons: fn(acc, candidate) {
       rebuild_production_match_fold_step(
         acc: acc,
         productions: productions,
-        lhs: lhs,
         tokens: tokens,
         token_index: token_index,
         candidate: candidate
@@ -2336,8 +2097,9 @@ fn formal_production_unique_lhs_exact_match(
   child: Node
 ) -> Witness<FormalProduction> {
   if emitted_shape_supported_for_lhs_exact(child: child) {
+    let lhs_productions = formal_productions_for_lhs(productions: productions, lhs: lhs)
     match fold_list(
-      xs: productions,
+      xs: lhs_productions,
       empty: LhsExactProductionMatchNone,
       cons: fn(acc, candidate) {
         lhs_exact_production_match_fold_step(
@@ -2404,11 +2166,6 @@ fn grammar_relation_row_backward_selection(
   }
 }
 
-
-// Reverse-parse fold: does this row's production structurally match the emitted core node?
-// Conj/Atom shapes walk the production RHS against positional emitted children (the grammar-
-// inverse of forward parse); Arrow and other unsupported shapes fall back to exact fixture
-// equality on grammar_relation_field_emitted until lhs-exact structural coverage lands.
 fn grammar_relation_row_emitted_reverse_parse_matches(
   row: Node,
   productions: List<FormalProduction>,
@@ -2433,13 +2190,10 @@ fn grammar_relation_row_emitted_reverse_parse_matches(
   }
 }
 
-
-// Three-state fold accumulator for unique backward selection (G.2 backward-determinism).
 type BackwardRowSelection
   = BackwardRowNone
   | BackwardRowOne { row: Node }
   | BackwardRowMany
-
 
 fn backward_row_select_step(
   acc: BackwardRowSelection,
@@ -2462,7 +2216,6 @@ fn backward_row_select_step(
   }
 }
 
-
 fn grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: Node) -> Diagnostic {
   Diagnostic {
     reason: ^grammar_relation_production_not_found,
@@ -2471,10 +2224,6 @@ fn grammar_relation_row_reverse_parse_selection_not_found_diagnostic(emitted: No
   }
 }
 
-
-// Select the unique translation row whose production structurally matches the emitted core node
-// (reverse parse fold over grammar_relation_field_production — NOT exact fixture lookup on
-// grammar_relation_field_emitted). GENERIC — every row is tried by the same structural match.
 fn grammar_relation_row_reverse_parse_selection(rules: Node, emitted: Node) -> Outcome<Node> {
   bind_outcome(
     o: grammar_relation_rules_formal_productions(rules: rules),

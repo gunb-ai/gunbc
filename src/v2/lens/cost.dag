@@ -1,29 +1,7 @@
-// src/v2/lens/cost.dag
-//
-// Scope: cost lens — symbolic cost composition with target-realization.
-// Anchor: Cost dimension + per-target realization in extdeps/languages/*
-//
-// U2 (ratified 2026-05-15) — cost is TOTAL over the closed
-// kernel. SymbolicCost is defined at the kernel level (the 6 connectives
-// × 5 behaviors), NOT per surface-feature. There is NO per-feature cost
-// opt-in: anything expressible is kernel-composed, so it has a cost by
-// construction; new surface dissolves to already-costed kernel nodes
-// (C3); a new connective/behavior is a C1 STOP. A future language
-// addition therefore CANNOT bypass cost/complexity — that is the
-// no-eternal-maintenance property. This is the single U1 cost carrier;
-// `lens/complexity.dag` CONSUMES this and projects it asymptotically —
-// it never re-derives cost (one mechanism, two projections). Verify the
-// SymbolicCost lattice axioms at fill (`UnknownCost`-as-top must satisfy
-// the lattice laws — the AbelianGroup<Nat> precedent).
-//
-// Status: SymbolicCost lattice + cost_lens + asymptotic projection surface + llvm_instruction_cost per-target realization.
-// This file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-
-
 module v2.lens.cost
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import std.disposition { SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import v2.extdeps.languages.llvm_ir { LlvmInstruction }
 import v2.std.algebra {
@@ -73,9 +51,7 @@ import v2.std.node {
 }
 import v2.std.nat { Nat, Succ, Zero, nat_add, nat_compare }
 import v2.std.witness { Holds, Violates, Witness }
-// single cost carrier — Complexity imports the
-// `asymptotic_class_of_cost` projection below and does not re-walk `Node`.
-// 🟢 coproduct dissolution — T-12-COST-CARRIER.
+
 type SizeVariable {
   source: Node
 }
@@ -92,7 +68,6 @@ type ExponentialBase {
   predecessor_after_one: NonZeroNat
 }
 
-// 🟢 coproduct dissolution — T-12-COST-CARRIER.
 type SymbolicCost
   = ConstantCost { value: Nat }
   | LinearCost { variable: SizeVariable }
@@ -105,7 +80,6 @@ type SymbolicCost
   | ProductCost { lhs: SymbolicCost, rhs: SymbolicCost }
   | UnknownCost { diagnostic: Diagnostic }
 
-// 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
 type AsymptoticClass
   = ClassConstant
   | ClassLog
@@ -117,10 +91,6 @@ type AsymptoticClass
   | ClassFactorial
   | ClassUnknown
 
-// Private fold state: the parent node chooses how child costs compose.
-// This is lens-over-substrate: the only input is the existing `Node`
-// tree plus the fold algebra, never a parallel authored cost table.
-// 🟢 coproduct dissolution — T-12-FOLD-MODE.
 type CostCompositionMode
   = SequentialCost
   | AlternativeCost
@@ -392,14 +362,9 @@ fn compose_child_cost(
 ) -> SymbolicCost {
   match mode {
     SequentialCost => symbolic_sequential(a: acc, b: child)
-    // Per-alternative factor = max(acc, max(branch, one decision step)). symbolic_max
-    // floors ONLY zero: max(acc, max(0,1))=max(acc,1) — a zero-cost branch still costs
-    // one decision; max(acc, max(1,1))=max(acc,1) and max(acc, max(linear,1))=max(acc,linear)
-    // leave unit/linear branches unchanged. symbolic_max itself absorbing zero untouched.
+
     AlternativeCost => symbolic_max(a: acc, b: symbolic_max(a: child, b: unit_cost()))
-    // Per-iteration factor = max(body, one control step). symbolic_max floors ONLY
-    // zero: max(0,1)=1 (empty body -> O(n)); max(1,1)=1 and max(linear,1)=linear leave
-    // unit/linear bodies unchanged vs plain symbolic_product. Absorbing zero untouched.
+
     IterativeCost =>
       symbolic_product(
         a: acc,
@@ -674,7 +639,6 @@ data asymptotic_class_lattice: BoundedLattice<AsymptoticClass> = BoundedLattice 
   bottom: ClassConstant
 }
 
-
 fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
   match i {
     Binary { result: _, result_type: _, op: _, lhs: _, rhs: _ } => 1
@@ -705,11 +669,9 @@ fn llvm_instruction_cost(i: LlvmInstruction) -> Int {
   }
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallNow {
-    construction: "cost is TOTAL over the closed 6-connective x 5-behavior kernel -- anything expressible is kernel-composed, so it has a SymbolicCost by construction (a new connective/behavior is a C1 STOP)"
-  },
-  rationale: "Cost is computed by construction over the closed kernel, not validated; there is no 'uncosted' bad state to flag. complexity and synthesis are its projections."
+    mechanism: SubstrateMandatoryTag,
+    authority: DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: WholeDeclaration }
+  }
 }

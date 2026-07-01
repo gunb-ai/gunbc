@@ -1,15 +1,3 @@
-// Status: discovered fail-closed family eval for the leaf-model-verification lens (DESIGN.md §6
-// inert-lens hygiene: every lens is a discovered fail-closed witness or deleted). Folds the lens's
-// generated Rust leaf-model fixture pairs and asserts each is verification-READY: a happy fixture
-// expected to compile-accept paired with a falsification expected to compile-reject — the "claim
-// without a paired falsification is not verifiable" invariant (std §5). Empty roster => false; a
-// pair whose two probes do not discriminate (both accept / both reject) => RED.
-//
-// SCOPE: this verifies the generated corpus is well-formed and discriminating. Behavioral
-// host-execution verdicts (actually running rustc/python/tsc/go over the fixtures) arrive with the
-// T-22 `run_target_verification` runner; this witness UPGRADES to fold that runner's verdicts when
-// it lands (dissolve-on: T-22), and is the discriminating receipt that upgrade must reproduce.
-
 module v2.test.workflow.lens_leaf_model_verification_family_eval
 
 import v2.lens.leaf_model_verification {
@@ -42,18 +30,11 @@ fn leaf_model_pair_falsification_rejects(pair: LeafModelFixturePair) -> Bool {
   }
 }
 
-// A COMPILE-discriminated pair is verification-ready iff its happy probe is expected to compile-ACCEPT
-// and its falsification probe to compile-REJECT — the "claim without a paired falsification is not
-// verifiable" invariant, on the compile axis (std §5).
 fn leaf_model_pair_compile_discriminates(pair: LeafModelFixturePair) -> Bool {
   leaf_model_pair_happy_accepts(pair: pair)
     && leaf_model_pair_falsification_rejects(pair: pair)
 }
 
-// R1 (type mismatch), R2a (method-not-found) and R3 (alias-vs-ctor) discriminate at COMPILE time.
-// R2b (default integer overflow) discriminates at RUNTIME (debug panic vs release wrap) — both probes
-// compile-accept — so it is excluded from the compile-discrimination fold and covered by the T-22
-// runtime exercise instead.
 fn leaf_model_compile_discriminated_pairs() -> List<LeafModelFixturePair> {
   [
     rust_r1_fixture_pair(),
@@ -62,8 +43,6 @@ fn leaf_model_compile_discriminated_pairs() -> List<LeafModelFixturePair> {
   ]
 }
 
-// All generated pairs (incl. the runtime-discriminated R2b) must at least have a happy probe expected
-// to compile-accept — a verification fixture whose happy case does not compile is malformed.
 fn leaf_model_all_rust_pairs() -> List<LeafModelFixturePair> {
   [
     rust_r1_fixture_pair(),

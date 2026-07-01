@@ -1,18 +1,5 @@
-// std/error_primitives.dag — minimal error carriers with **no** dependency on
-// `Int` / `String` / other `std.types` surface, so this module can load in the
-// v3 std bootstrap seed *before* `algebra.dag` (which needs `Result` / `DivError`
-// for `OrderedRing.div`).
-
 module std.error_primitives
 
-// 🟡 STRUCTURAL-CARRIER: algebraic Result sum for fallible std operations
-// (e.g. `OrderedRing.div` totality). It is substrate-owned until target
-// realizations can consume this declaration directly instead of filtering it
-// from emitted std surfaces and reintroducing per-target carriers.
 type Result<ok, err> = Ok { value: ok } | Err { value: err }
 
-// 🟡 STRUCTURAL-CARRIER: signed integer division (`Int / Int`) failure modes
-// (C-8): zero divisor vs MIN / -1 signed overflow. The target preludes mirror
-// this declaration until `std.error_primitives` is emitted through the normal
-// filtered-type path.
 type DivError = DivideByZero | Overflow

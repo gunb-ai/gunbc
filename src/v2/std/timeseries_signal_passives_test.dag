@@ -1,5 +1,3 @@
-// Scope: canonical S1 witnesses — torsor carriers + map/fold passive substrate (std-only).
-
 module v2.test.std.timeseries_signal_passives
 
 import v2.std.logic { Bool }

@@ -1,85 +1,3 @@
-//! Batch Bool-witness runner: build the module source index ONCE from the
-//! source roots, then resolve each entry's import closure and run its witness
-//! functions — all in a single process.
-//!
-//! Two use-cases are supported in one invocation:
-//!
-//! 1. **Shared-entry batch** (original #4719 pattern): one `--entry` with
-//!    many `--function`/`--functions` flags.  The import closure is resolved
-//!    once; all named functions run against the same graph.  This is the shape
-//!    the node-frontier rows-fn's green pass (gate-3) uses.
-//!
-//! 2. **Multi-entry batch** (lens-gate extension, #4719 follow-on): multiple
-//!    `--entry` flags each followed by its own `--function`/`--functions`
-//!    flags.  The module source index is built once; each entry's closure is
-//!    resolved separately in the same process.  This is what the v2 lens CI
-//!    rows-fn's GREEN pass uses.
-//!
-//! Motivation. The v2 node-frontier rows-fn (now invoked from the single
-//! `ci_claim_gate` binary) runs N Bool witnesses
-//! that ALL share a single `--entry` file, differing only in `--function`.
-//! The v2 lens CI rows-fn (same host) has one witness per
-//! entry file.  Both previously ran `gunbc run --claim-run` once per
-//! row, re-resolving the module tree each time (~5-13s per resolve —
-//! `build_module_index` + closure-compile dominates).  Multi-entry mode
-//! collapses that to ONE filesystem scan + one resolve per distinct entry.
-//!
-//! The perturb pass still runs per-row through `gunbc run`: each row mutates
-//! a DIFFERENT function to `false` in its own temp source-root, so those
-//! resolves are genuinely distinct and cannot share an index.
-//!
-//! Usage (single-entry — unchanged from #4719):
-//!   claim_batch --source-root <dir> [--source-root <dir> ...] \
-//!               --entry <file.dag> \
-//!               --functions f1,f2,... [--function f3 ...] [--claim-run]
-//!
-//! Usage (multi-entry):
-//!   claim_batch --source-root <dir> [--source-root <dir> ...] \
-//!               --entry <e1.dag> --function f1 [--functions f2,...] \
-//!               --entry <e2.dag> --function g1 [--functions g2,...] \
-//!               ... [--claim-run]
-//!
-//! 3. **Discovery batch** (CI floor; absorbed from the retired
-//!    `ci_claim_gate` binary). Instead of a hand-typed `--entry`/`--function`
-//!    roster, reflect over the discovered `unified_claim_*` BoolWitness corpus
-//!    plus the single-representation `test fn`/`test data` decls under the scan
-//!    dirs, group the discovered rows by entry, and run them through the SAME
-//!    batch loop. No hand roster, no rows-fn. The perturb pass that
-//!    `ci_claim_gate` carried was flag-gated (`--perturb-check`) and never run
-//!    in CI, so it is intentionally dropped with that binary.
-//!
-//! 4. **Discovery + explicit append** (consolidated CI floor witnesses):
-//!    `--roster-from-discovery` may be combined with explicit `--entry`/
-//!    `--function` rows. Discovered rows run first; explicit rows are appended
-//!    with (entry, function) dedup. `--scan-dir` is optional when explicit rows
-//!    are given (the `test fn` walk still runs over all `--source-root`s).
-//!
-//! Usage (discovery — the CI floor shape):
-//!   claim_batch --source-root <dir> [--source-root <dir> ...] \
-//!               --roster-from-discovery \
-//!               [--scan-dir <dir> ...] \
-//!               [--entry <file.dag> --function <fn> ...] \
-//!               [--notice-title <title>] [--wet] [--hermetic]
-//!
-//! Exit codes: 0 = all witnesses returned Bool(true); 1 = any witness failed,
-//! returned non-Bool, raised a runtime error, or resolve failed; 2 = usage
-//! error (including: discovery roster produced an empty corpus → fail closed).
-//!
-//! Set GUNBC_INTERP_STATS=1 to print the phase-0 memory measurement report
-//! (ctrl#1533) on stderr after the run.  In multi-entry mode only the
-//! flatten-counter delta and RSS lines are printed (mutation counters are
-//! per-context and each context is dropped after its entry's witnesses finish).
-//!
-//! Set GUNBC_INTERP_PROFILE=1 to additionally print, per witness, the
-//! per-instruction eval breakdown (`[eval-profile]`): each `ExprData` variant's
-//! eval count and self-time, sorted by self-time.  This answers "where do the
-//! witness ms go" for the cost/complexity lens witnesses whose trivial Bool
-//! result hides a multi-million-node symbolic tree walk.
-
-// Binary entrypoint: it reports witness results directly on stdout/stderr, so
-// println!/eprintln! are appropriate here (the disallowed-macros lint is aimed
-// at library crates that should return structured errors). The generated
-// main.rs carries the same allow.
 #![allow(clippy::disallowed_macros)]
 
 use std::collections::HashMap;
@@ -90,28 +8,17 @@ use std::time::Instant;
 
 use v1_compiler::cli_run::{
     build_multi_entry_index, check_floor_filename_hygiene, closure_subject_for_entry,
-    discover_floor_corpus_rows, make_eval_context_with_runtime_options,
+    discover_floor_corpus_rows, make_eval_context_with_runtime_options, peak_rss_vhwm_bytes,
     precompute_whole_tree_published_mock_keys, resolve_entry_with_index, run_claim_measured,
-    ClaimOutcome, DiscoveryRow, MultiEntryIndex,
+    ClaimOutcome, DiscoveryRow, MultiEntryIndex, FLOOR_DISCOVERY_EXCLUDES,
 };
 use v1_compiler::recorded_fixture::RecordedFixtureStore;
 use v1_compiler::v1_compiler_compile::ResolvedGraph;
 use v1_compiler::v1_interpreter::{ExecutionMode, InterpContext};
 use v1_compiler::v1_std_core::NewlineIndex;
 
-/// What `resolve_entry_with_index` hands back: the resolved import-closure graph
-/// plus the per-file newline indices used for span reporting.
 type ResolvedEntry = (Rc<ResolvedGraph>, Rc<HashMap<String, Rc<NewlineIndex>>>);
 
-/// Per-phase wall-clock / closure-size accounting for the green pass.
-///
-/// The lens + node-frontier CI jobs spend most of their wall in this binary's
-/// resolves (`build_module_index` + closure-compile is ~5-13s per distinct
-/// entry; the witness eval that follows is comparatively cheap). The CI latency
-/// attack (2026-06-13) needs that split visible per row, so every resolve
-/// reports its wall plus closure size (modules scanned + resolved items) and
-/// every witness reports its eval wall. The end-of-run summary lets a reader
-/// confirm "resolve dominates" at a glance instead of timestamp archaeology.
 #[derive(Default)]
 struct ResolveTimings {
     resolves: u64,
@@ -120,7 +27,6 @@ struct ResolveTimings {
     witness_ms: u128,
 }
 
-/// VmHWM/VmRSS lines from /proc/self/status (linux best-effort; empty elsewhere).
 fn peak_rss_lines() -> String {
     std::fs::read_to_string("/proc/self/status")
         .map(|s| {
@@ -130,6 +36,51 @@ fn peak_rss_lines() -> String {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+fn peak_rss_bytes() -> Option<u64> {
+    peak_rss_vhwm_bytes()
+}
+
+/// Peak RSS of terminated child processes (Linux `getrusage(RUSAGE_CHILDREN)`).
+#[cfg(all(target_os = "linux", target_pointer_width = "64"))]
+fn children_max_rss_bytes() -> Option<u64> {
+    // Hand-decoded `struct rusage` (no libc dep): layout assumes Linux lp64
+    // (x86_64 / aarch64) — 144-byte buffer, `ru_maxrss` at byte offset 32 after
+    // two 16-byte `timeval`s. Non-lp64 Linux is gated out below; syscall failure → None.
+    // If this probe survives phase-0, replace with `libc::rusage` (dissolves with PerformanceReceipt).
+    extern "C" {
+        fn getrusage(who: i32, usage: *mut std::ffi::c_void) -> i32;
+    }
+    const RUSAGE_CHILDREN: i32 = -1;
+    const RU_MAXRSS_OFFSET: usize = 32; // after two struct timeval (16 bytes each)
+    let mut buf = [0u8; 144];
+    if unsafe { getrusage(RUSAGE_CHILDREN, buf.as_mut_ptr().cast()) } != 0 {
+        return None;
+    }
+    let ru_maxrss = i64::from_ne_bytes(
+        buf[RU_MAXRSS_OFFSET..RU_MAXRSS_OFFSET + 8]
+            .try_into()
+            .ok()?,
+    );
+    Some(ru_maxrss as u64 * 1024)
+}
+
+#[cfg(all(target_os = "linux", not(target_pointer_width = "64")))]
+fn children_max_rss_bytes() -> Option<u64> {
+    None
+}
+
+#[cfg(not(target_os = "linux"))]
+fn children_max_rss_bytes() -> Option<u64> {
+    None
+}
+
+fn emit_rss_measurement(label: &str) {
+    match peak_rss_bytes() {
+        Some(bytes) => eprintln!("[measurement] {label}: {bytes} bytes (VmHWM)"),
+        None => eprintln!("[measurement] {label}: unavailable (no /proc/self/status)"),
+    }
 }
 
 fn print_interp_stats(ctx: &InterpContext, flatten_baseline: (u64, u64)) {
@@ -170,8 +121,6 @@ fn print_interp_stats(ctx: &InterpContext, flatten_baseline: (u64, u64)) {
     eprint!("{}", peak_rss_lines());
 }
 
-// Multi-entry mode: per-context mutation counters are not available (each
-// context is dropped after its entry finishes). Print flatten counters + RSS.
 fn print_interp_stats_multi_entry(flatten_baseline: (u64, u64)) {
     let (snap_calls, snap_items) = v1_compiler::v1_interpreter::flatten_counters_snapshot();
     let flatten_calls = snap_calls.saturating_sub(flatten_baseline.0);
@@ -202,33 +151,19 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
     }
 }
 
-/// One entry file with its associated witness function names.
 struct EntryGroup {
     entry: String,
     functions: Vec<String>,
 }
 
-// The discovery ROSTER (exclude set, `unified_claim_*`/`test fn`/`test data`
-// reflection, filename hygiene, `*_test.dag`-only convention) is the single
-// authority in `cli_run` (`discover_floor_corpus_rows` /
-// `check_floor_filename_hygiene`), shared with the scheduler's `DiscoveryBatch`
-// node — see those functions. This bin keeps only its timing/stats run loop.
-
-/// Parsed CLI config. Roster is sourced one of two ways: an explicit
-/// `--entry`/`--function` list (`entry_groups`), or `--roster-from-discovery`
-/// reflection over the scan dirs (`discovery`). The two are mutually exclusive.
 struct ParsedArgs {
     source_roots: Vec<String>,
     entry_groups: Vec<EntryGroup>,
     discovery: Option<DiscoveryConfig>,
-    /// Witness execution mode. Phase 2 default: Hermetic (CI floor). `--wet` opts into
-    /// live dispatch for real-I/O witnesses; `--hermetic` is explicit parity with default.
     execution_mode: ExecutionMode,
-    /// Directory for recorded fixture JSON files (`--fixture-store <path>`).
     fixture_store: Option<PathBuf>,
 }
 
-/// Discovery-mode config (set when `--roster-from-discovery` is given).
 struct DiscoveryConfig {
     scan_dirs: Vec<String>,
     notice_title: String,
@@ -240,8 +175,6 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     let mut roster_from_discovery = false;
     let mut scan_dirs: Vec<String> = Vec::new();
     let mut notice_title = "v2 CI claim gate".to_string();
-    // Phase 2: default Hermetic for CI floor (P3c equivalence gate green). `--wet` opts
-    // into live dispatch for real-I/O witnesses.
     let mut execution_mode = ExecutionMode::Hermetic;
     let mut fixture_store: Option<PathBuf> = None;
 
@@ -296,8 +229,6 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
                 i += 1;
                 notice_title = require_value(args, i, "--notice-title")?;
             }
-            // Accepted for call-site parity with `gunbc run`; this bin is always
-            // claim-run (Bool witnesses).
             "--claim-run" => {}
             "--wet" => execution_mode = ExecutionMode::Wet,
             "--hermetic" => execution_mode = ExecutionMode::Hermetic,
@@ -338,9 +269,6 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, ExitCode> {
     })
 }
 
-/// Report one witness outcome on stdout (PASS/FAIL line consumed by callers),
-/// flipping `any_failed` on any non-pass. Shared by the single- and multi-entry
-/// paths so the failure-reporting shape stays in one place.
 fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) {
     match outcome {
         ClaimOutcome::Pass => println!("PASS {}", function),
@@ -362,8 +290,6 @@ fn report_outcome(function: &str, outcome: ClaimOutcome, any_failed: &mut bool) 
     }
 }
 
-/// Resolve one entry's closure, timing the resolve and reporting its wall plus
-/// closure size (modules in the import closure, resolved items) on stderr.
 fn resolve_timed(
     index: &MultiEntryIndex,
     entry: &str,
@@ -382,6 +308,9 @@ fn resolve_timed(
             );
             timings.resolves += 1;
             timings.resolve_ms += ms;
+            if timings.resolves == 1 {
+                emit_rss_measurement("post-first-entry-resolve-rss");
+            }
             Ok((graph, source_indices))
         }
         Err(msg) => {
@@ -391,7 +320,6 @@ fn resolve_timed(
     }
 }
 
-/// Run one witness, timing its eval and reporting it on stderr.
 fn run_claim_timed(
     ctx: &InterpContext,
     closure_subject: &str,
@@ -413,11 +341,6 @@ fn run_claim_timed(
     timings.witness_ms += receipt.wall_nanos / 1_000_000;
 }
 
-/// Print the per-instruction eval breakdown for the witness just run, sorted by
-/// self-time. No-op unless GUNBC_INTERP_PROFILE=1 produced a profile (all-zero
-/// snapshot ⇒ profiling was off). Answers "where do the witness ms go" —
-/// each `ExprData` variant's eval count and self-nanoseconds (gross frame time
-/// minus child eval frames), so a reader sees the hot instruction directly.
 fn print_eval_profile(function: &str) {
     use v1_compiler::v1_interpreter::{
         eval_profile_snapshot, expr_variant_name, EXPR_VARIANT_COUNT,
@@ -426,7 +349,7 @@ fn print_eval_profile(function: &str) {
     let total_ns: u128 = prof.self_nanos.iter().sum();
     let total_count: u64 = prof.counts.iter().sum();
     if total_count == 0 {
-        return; // profiling disabled
+        return;
     }
     let mut rows: Vec<usize> = (0..EXPR_VARIANT_COUNT)
         .filter(|&i| prof.counts[i] > 0)
@@ -503,8 +426,6 @@ fn run_witnesses(
     Ok(())
 }
 
-/// Group discovered rows into per-entry `EntryGroup`s, preserving the discovery
-/// sort order (rows are sorted by (entry, function) in `discover_floor_corpus_rows`).
 fn group_discovered_rows(rows: Vec<DiscoveryRow>) -> Vec<EntryGroup> {
     let mut groups: Vec<EntryGroup> = Vec::new();
     for row in rows {
@@ -533,18 +454,19 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(2));
     }
 
-    // Discovery mode: reflect over the scan dirs for the roster, optionally append
-    // explicit `--entry` rows, group by entry, and run through the SAME batch
-    // loop the explicit-only path uses.
+    // Funnel host-effect traces per the .dag output policy (see claim_executor).
+    v1_compiler::cli_run::install_output_policy(&source_roots);
+
     let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
-        // Filename hygiene (fail-closed): no `__` in any `.dag` basename under the
-        // source roots — folder-based naming, no legacy flat-dir encoding (#5051,
-        // preserved from the retired ci_claim_gate).
         if let Err(e) = check_floor_filename_hygiene(&source_roots) {
             eprintln!("claim_batch: {e}");
             return Err(ExitCode::from(2));
         }
-        let mut rows = match discover_floor_corpus_rows(&source_roots, &disc.scan_dirs) {
+        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let mut rows = match discover_floor_corpus_rows(&source_roots, &disc.scan_dirs, &excludes) {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("claim_batch: discovery roster failed: {e}");
@@ -601,11 +523,14 @@ fn run() -> Result<ExitCode, ExitCode> {
         total_witnesses,
     );
 
-    // Build the module source index ONCE for all entries.
     let index = build_multi_entry_index(&source_roots);
 
     let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(&source_roots) {
         Ok(keys) => {
+            emit_rss_measurement("post-mock-precompute-rss");
+            if let Some(bytes) = children_max_rss_bytes() {
+                eprintln!("[measurement] post-mock-precompute-children-max-rss: {bytes} bytes (getrusage RUSAGE_CHILDREN)");
+            }
             if keys.is_empty() {
                 eprintln!(
                     "claim_batch: whole-tree published mock corpus — no dsl/ corpora precomputed; \
@@ -633,7 +558,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut timings = ResolveTimings::default();
 
     if entry_groups.len() == 1 {
-        // Single-entry path: keep `ctx` alive for the full stats report.
         let group = &entry_groups[0];
         eprintln!(
             "claim_batch: resolved {} once; running {} witness(es)",
@@ -665,7 +589,6 @@ fn run() -> Result<ExitCode, ExitCode> {
             print_interp_stats(&ctx, flatten_baseline);
         }
     } else {
-        // Multi-entry path: resolve each entry in turn; context dropped per entry.
         for group in &entry_groups {
             eprintln!(
                 "claim_batch: resolving {} ({} witness(es))",
@@ -687,19 +610,20 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     }
 
-    // Phase split for the CI latency attack: confirm resolve dominates the green
-    // pass at a glance (the index build above is amortized once across all rows).
     eprintln!(
         "[resolve-summary] {} resolve(s) in {}ms; {} witness(es) in {}ms",
         timings.resolves, timings.resolve_ms, timings.witnesses, timings.witness_ms,
     );
 
+    emit_rss_measurement("per-shard-peak-rss");
+    if let Some(bytes) = children_max_rss_bytes() {
+        eprintln!("[measurement] children-max-rss: {bytes} bytes (getrusage RUSAGE_CHILDREN)");
+    }
+
     if any_failed {
         return Ok(ExitCode::from(1));
     }
 
-    // Discovery mode emits the CI floor notice (parity with the retired
-    // ci_claim_gate): `"{title}: {N} discriminating witness(es) passed"`.
     if let Some(title) = discovery_notice {
         println!("{title}: {total_witnesses} discriminating witness(es) passed");
     }

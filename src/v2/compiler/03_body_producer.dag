@@ -1,8 +1,3 @@
-// src/v2/compiler/03_body_producer.dag
-// Scope: COMPREP wave-1 — parse-tree / surface expression → Behavior sub-DAG; Arrow.body attachment.
-// Status: keystone producer slice — MVP add(x,y)=x+y body construction + E-9 edge attach.
-// Anchor: COMPREP wave 1; E-9 edge attach.
-
 module v2.compiler.body_producer
 
 import v2.std.algebra { fold_list, list_append, list_snoc_item }
@@ -68,8 +63,6 @@ import v2.std.node_query {
   find_named_child
 }
 
-
-// COMPREP wave-2 M0-B1 — bridge maps parse atoms to eval-recognizable literal/condition symbols.
 data body_producer_pick_lit_one: Symbol = ^dag_mvp1_pick_lit_one
 data body_producer_pick_lit_two: Symbol = ^dag_mvp1_pick_lit_two
 data body_producer_pick_kw_true: Symbol = ^dag_token_kw_true
@@ -119,19 +112,6 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
   }
 }
 
-// The structured-Behavior dispatch surface: given a resolved signature Arrow + the Behavior body
-// normalize emits (Transform call / Branch / Loop / Bind, keyed on the node.dag Behavior coproduct
-// node.dag:38; Transform callee-ref child[0] per node_query.node_is_call), validate it against the
-// per-variant edge contract (well_formed → behavior_edges_conform) and marry it to the Arrow.
-// Subsumes the four flat-index tables (produce_mvp1_{add,pick_if,loop,bind}_*_from_resolved);
-// per-form reconstruction + atom→symbol bridging dissolve UP into normalize.
-// 🟡 gated — dormant structured-Behavior dispatch surface — feature:NORMALIZE-TO-DISPATCH-DISSOLUTION — bind:node://adhoc-87678e9b-420 —
-// dissolve-on: normalize emits the structured Behavior body (03_normalize.dag / std/compilers/
-// body_lowering.dag) and the pipeline rewires its produce_mvp1_*_from_resolved call sites to
-// produce_arrow_with_structured_body, deleting the four flat-index tables — that deletion is
-// licensed by the byte-identical subsumption witnesses (test/claim/manual/structured_body_dispatch.dag
-// = add; structured_body_subsumption_set.dag = pick/loop/bind) — forbidden: wiring this surface into
-// the pipeline while any flat-index table still runs (dual-authority half-rewire).
 fn body_producer_validated_behavior(body: Node) -> Outcome<Node> {
   if well_formed(n: body) {
     outcome_accepted(value: body)
@@ -145,10 +125,6 @@ fn body_producer_validated_behavior(body: Node) -> Outcome<Node> {
   }
 }
 
-// Recognize that the normalized body is a structured Behavior (vs a residual parse node) and
-// validate it. The Behavior variant is the dispatch key: control-flow forms (Branch/Loop/Bind)
-// and the call form (Transform, callee-keyed via the carrier) all flow through the per-variant
-// edge contract. A non-Behavior body is the malformed-normalize case.
 fn body_producer_dispatch_structured_body(body: Node) -> Outcome<Node> {
   match body.kind {
     ComputationNode { behavior: _ } => body_producer_validated_behavior(body: body)
@@ -162,10 +138,6 @@ fn body_producer_dispatch_structured_body(body: Node) -> Outcome<Node> {
   }
 }
 
-// The dissolution producer: given a resolved signature Arrow and the structured Behavior body
-// normalize emitted, validate the body and attach it. Replaces the four per-form
-// produce_mvp1_*_from_resolved tables once normalize lands (slice i); the resolved-tree
-// signature/body extraction plumbing arrives with the emit's output shape.
 fn produce_arrow_with_structured_body(signature: Node, structured_body: Node) -> Outcome<Node> {
   bind_outcome(
     o: body_producer_dispatch_structured_body(body: structured_body),
@@ -255,12 +227,6 @@ fn body_producer_transform_body_from_bindings(
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature:COMPREP-WAVE1-BODY-BRIDGE — consumer:produce_mvp1_add_arrow_with_body_from_resolved
-// (executed by comprep_eval_by_execution keystone) — bind:node://adhoc-9a72d4fb-8c2 —
-// dissolve-on: body_producer reads structured normalize/resolve Behavior carriers instead of
-// flat MVP1 token-index extraction into a flattened atom list; owner/lane: Mgr-RUNTIME
-// (neat-bat-593) — trigger: structured fn-body normalize output lands; forbidden: permanent
-// untagged index-walk bridge helpers in body_producer.
 fn mvp1_flat_atom_at(
   atoms: List<Node>,
   wanted: Int,
@@ -276,7 +242,6 @@ fn mvp1_flat_atom_at(
   }
 }
 
-
 fn mvp1_atom_has_binding_identity(node: Node, wanted_binding: Symbol) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == wanted_binding
@@ -284,8 +249,6 @@ fn mvp1_atom_has_binding_identity(node: Node, wanted_binding: Symbol) -> Bool {
   }
 }
 
-
-// First flattened captured atom whose Atom identity matches the binding Symbol.
 fn mvp1_resolved_first_atom_with_binding(
   atoms: List<Node>,
   wanted_binding: Symbol,
@@ -364,15 +327,6 @@ fn mvp1_resolved_captured_atoms(resolved_root: Node) -> Outcome<List<Node>> {
   )
 }
 
-// 🟡 gated — COMPREP wave-1 hard-coded bridge scaffold — feature:COMPREP-WAVE1-BODY-BRIDGE —
-// consumer:produce_mvp1_add_arrow_with_body_from_resolved (executed by comprep_eval_by_execution
-// keystone) — bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: signature+body production derives
-// from the resolved Arrow's declared signature+body carriers (real body_producer dispatch)
-// rather than recognizing the fixed MVP1 flat-token indices 5/9/12/14/15/16; owner/lane:
-// Mgr-RUNTIME (neat-bat-593) — trigger: structured fn-body normalize output lands; forbidden:
-// adding a third hard-coded flat-index shape here (wave-2 M0-B1 pick indices 8/10/12 is the
-// reviewed second shape — see COMPREP-WAVE2-BODY-BRIDGE marks below; a third would mean
-// building the dispatch surface, not another literal index table).
 fn produce_mvp1_add_arrow_signature_from_resolved(resolved_root: Node) -> Outcome<Node> {
   bind_outcome(
     o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
@@ -619,13 +573,6 @@ fn body_producer_pick_condition_from_atom(cond: Node) -> Outcome<Node> {
   }
 }
 
-// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
-// consumer:body_producer_pick_if_body_from_atoms (via produce_mvp1_pick_if_arrow_with_body_from_resolved;
-// executed by comprep_branch_eval_by_execution keystone) — bind:node://adhoc-9a72d4fb-8c2 —
-// dissolve-on: if-then-else body production derives from structured normalize/resolve Behavior
-// carriers (Branch child projection) rather than fixed MVP1 flat-token indices 8/10/12;
-// owner/lane: Mgr-§2 (sharp-ibex-851) — trigger: structured fn-body normalize output lands;
-// forbidden: permanent untagged pick flat-index bridge helpers in body_producer.
 fn body_producer_pick_if_body_from_atoms(
   atoms: List<Node>,
   witness: Node
@@ -682,13 +629,6 @@ fn body_producer_pick_if_body_from_atoms(
   )
 }
 
-// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
-// consumer:produce_mvp1_pick_if_arrow_signature_from_resolved (via
-// produce_mvp1_pick_if_arrow_with_body_from_resolved; executed by comprep_branch_eval_by_execution
-// keystone) — bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: zero-param arrow signature derives
-// from resolved Arrow carriers rather than flat-token index 5 + pick binding table;
-// owner/lane: Mgr-§2 (sharp-ibex-851) — trigger: structured fn-body normalize output lands;
-// forbidden: permanent untagged pick signature flat-index bridge in body_producer.
 fn produce_mvp1_pick_if_arrow_signature_from_resolved(resolved_root: Node) -> Outcome<Node> {
   bind_outcome(
     o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),
@@ -908,11 +848,6 @@ fn body_producer_loop_body(body_lit: Node, measure: Node) -> Outcome<Node> {
   )
 }
 
-// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
-// consumer:body_producer_loop_body_from_atoms (via produce_mvp1_loop_arrow_with_body_from_resolved;
-// executed by comprep_loop_eval_by_execution keystone) — bind:node://adhoc-0a43712d-e1c —
-// dissolve-on: loop body production derives from structured normalize/resolve Behavior carriers;
-// owner/lane: Mgr-§2 (crisp-crane-18).
 fn body_producer_loop_body_from_atoms(
   atoms: List<Node>,
   witness: Node
@@ -938,11 +873,6 @@ fn body_producer_loop_body_from_atoms(
   )
 }
 
-// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
-// consumer:body_producer_bind_body_from_atoms (via produce_mvp1_bind_arrow_with_body_from_resolved;
-// executed by comprep_bind_eval_by_execution keystone) — bind:node://adhoc-9a72d4fb-8c2 —
-// dissolve-on: let-in body production derives from structured normalize/resolve Behavior carriers;
-// owner/lane: Mgr-§2 (crisp-crane-18).
 fn body_producer_bind_body_from_atoms(
   atoms: List<Node>,
   witness: Node
@@ -1005,13 +935,6 @@ fn body_producer_bind_body_from_atoms(
   )
 }
 
-// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
-// consumer:produce_mvp1_loop_arrow_signature_from_resolved (via
-// produce_mvp1_loop_arrow_with_body_from_resolved; executed by comprep_loop_eval_by_execution
-// keystone) — bind:node://adhoc-0a43712d-e1c — dissolve-on: zero-param arrow signature derives
-// from resolved Arrow carriers rather than flat-token index 5 + loop binding table;
-// owner/lane: Mgr-§2 (crisp-crane-18) — trigger: structured fn-body normalize output lands;
-// forbidden: permanent untagged loop signature flat-index bridge in body_producer.
 fn produce_mvp1_loop_arrow_signature_from_resolved(resolved_root: Node) -> Outcome<Node> {
   bind_outcome(
     o: mvp1_resolved_captured_atoms(resolved_root: resolved_root),

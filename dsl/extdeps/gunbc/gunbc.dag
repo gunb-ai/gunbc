@@ -1,20 +1,14 @@
-// extdeps/gunbc/gunbc.dag -- "What is gunbc?"
-//
-// Meta model of this repo's workspace structure. Technically an
-// internal system, but modeled as an extdep because:
-//   1. The crate graph is a stable fact (changes rarely)
-//   2. Multiple tools derive from it (clippy policy, codegen, testgen)
-//   3. Treating it uniformly with external deps simplifies composition
-//
-// Consumers:
-//   config/arch_rules.dag    -- exemption scopes reference packages
-//   config/clippy_policy.dag -- crate policies reference roles
-//   tools/codegen.dag        -- codegen shell operations
-
 module extdeps.gunbc
 
-// -- Package roles ---------------------------------------------------
-// How a crate participates in the architecture.
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/gunbc"
+  }
+}
 
 type CrateRole
   = TransportBoundary
@@ -25,9 +19,6 @@ type CrateRole
   | Library
   | Tool
 
-// -- Package declarations --------------------------------------------
-// Each package states its role and whether it's an I/O boundary.
-
 type WorkspacePackage {
   name: String
   role: CrateRole
@@ -36,19 +27,17 @@ type WorkspacePackage {
 }
 
 data packages: List<WorkspacePackage> = [
-  // Transport layer -- the designated I/O boundary
+
   { name: "gunbc-lib-transport",
     role: TransportBoundary,
     description: "Designated I/O boundary: all filesystem, network, process I/O flows through here",
     io_boundary: true },
 
-  // Execution engine
   { name: "gunbc-exec",
     role: Runtime,
     description: "DAG execution engine with freshness checking and CI display",
     io_boundary: false },
 
-  // IR and infrastructure
   { name: "gunbc-ir",
     role: Infra,
     description: "Intermediate representation types, workspace layout, transport credential",
@@ -58,13 +47,11 @@ data packages: List<WorkspacePackage> = [
     description: "Leaf infrastructure: ResourceId, ContentHash, hash, manifest, freshness",
     io_boundary: false },
 
-  // Codegen and tool registry
   { name: "gunbc-codegen",
     role: CodegenBootstrap,
     description: "Code generation from IR to Rust/Go/C/MIPS targets",
     io_boundary: false },
 
-  // Compiler pipeline
   { name: "daglang-syntax",
     role: Compiler,
     description: "DSL lexer and parser",
@@ -94,7 +81,6 @@ data packages: List<WorkspacePackage> = [
     description: "CLI frontend for the DSL compiler",
     io_boundary: false },
 
-  // Main DAG crate
   { name: "gunbc-app",
     role: CodegenBootstrap,
     description: "Workspace DAG: tool graphs, extern impls, policy, registry",
@@ -102,14 +88,12 @@ data packages: List<WorkspacePackage> = [
 
 ]
 
-// -- Service: codegen shell operations ---------------------------
-
 service shell.Codegen {
   operation Check {
     input {}
     output { needed: Bool from "exit_success" }
     readonly
-    // Checks if codegen output files exist / are stale
+
     transport shell { argv: ["test", "-f", "target/codegen/.stamp"] }
     exit {
       0 => Unit "File exists"

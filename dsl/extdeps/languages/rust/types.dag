@@ -1,38 +1,17 @@
-// extdeps/languages/rust/types.dag -- Rust coercion data.
-//
-// Declares which Rust types inhabit which .dag algebraic structures.
-// Type coercion is a sidecast: same algebra, different representation.
-//
-// FAIL-CLOSED CONTRACT: If this file does not declare an inhabitant for
-// an algebra, the compiler REFUSES to emit code for any .dag type that
-// requires that algebra. Missing inhabitant = compile error.
-//
-// SCHEMA: Type definitions live in std/coercion.dag (shared authority).
-// This file instantiates data only — no local type families.
-//
-// Ref: The Rust Reference (doc.rust-lang.org/reference)
-//      The Rustonomicon (doc.rust-lang.org/nomicon)
-//      std/algebra.dag (algebraic structure definitions)
-//      std/coercion.dag (shared coercion vocabulary)
-//
-// Consumers:
-//   v2/05_emit.dag       -- coercion engine reads inhabitants
-//   v2/05_emit_rust.dag  -- Rust-specific emit (TypeRendering boundary)
-
 module extdeps.languages.rust.types
 
 import std.coercion {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, CastRule
 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-
-// =========================================================================
-// Type checkpoints
-//
-// Checked FIRST before algebra resolution. Maps .dag names directly to
-// Rust types. is_copy carries Copy trait status for the resolved type;
-// the emitter uses this (via ValueContext) to decide Rc wrapping.
-// =========================================================================
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/reference/types.html"
+  }
+}
 
 data rust_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Int",    target_type: "i64",    default_expr: "0",              is_copy: true,  literal_suffix: none },
@@ -49,24 +28,8 @@ data rust_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "witness", target_type: "Witness",           default_expr: none,                    is_copy: false, literal_suffix: none }
 ]
 
-
-// =========================================================================
-// Algebra inhabitants
-//
-// Fallback when no checkpoint matches. The compiler resolves through the
-// type's algebra and applies the matching InhabitantDecl template.
-//
-// CROSS-LANGUAGE COMPARISON:
-//   FreeMonoid     → Vec<T> (Rust) vs list[T] (Python) vs []T (Go)
-//   BooleanAlgebra → BTreeSet<A> (Rust) vs set[A] (Python) vs map[A]struct{} (Go)
-//   PartialFunction→ HashMap<K,V> (Rust) vs dict[K,V] (Python) vs map[K]V (Go)
-// =========================================================================
-
 data rust_algebra_inhabitants: List<InhabitantDecl> = [
-  // FreeMonoid<T> → Vec<T>
-  // Ordered sequences: concat + empty + positional access.
-  // BTreeSet chosen over HashSet: Ord is derivable for all .dag types;
-  // Hash is not derivable for types containing f64.
+
   { algebra: "FreeMonoid",
     template: "Vec<\{0\}>",
     arity: 1,
@@ -74,10 +37,6 @@ data rust_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: none,
     is_copy: false },
 
-  // BooleanAlgebra<A> → BTreeSet<A>
-  // Sets: union (join) + intersect (meet) + complement.
-  // HISTORICAL BUG: Set<A> was mapped to FreeMonoidCollectionProfile,
-  // giving sets list operations instead of set operations.
   { algebra: "BooleanAlgebra",
     template: "std::collections::BTreeSet<\{0\}>",
     arity: 1,
@@ -85,8 +44,6 @@ data rust_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: "use std::collections::BTreeSet;",
     is_copy: false },
 
-  // PartialFunction<K,V> → HashMap<K,V>
-  // Keyed partial functions: lookup + insert + merge.
   { algebra: "PartialFunction",
     template: "HashMap<\{0\}, \{1\}>",
     arity: 2,
@@ -94,9 +51,6 @@ data rust_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: "use std::collections::HashMap;",
     is_copy: false },
 
-  // OrderedRing → i64
-  // Algebra-level fallback for Int. Normally the checkpoint handles
-  // Int → i64 directly; this exists for user-defined OrderedRing types.
   { algebra: "OrderedRing",
     template: "i64",
     arity: 0,
@@ -104,9 +58,6 @@ data rust_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: none,
     is_copy: true },
 
-  // ApproximateField → f64
-  // Extends OrderedRing with division. "Approximate" because IEEE 754
-  // breaks exact associativity.
   { algebra: "ApproximateField",
     template: "f64",
     arity: 0,
@@ -115,27 +66,9 @@ data rust_algebra_inhabitants: List<InhabitantDecl> = [
     is_copy: true }
 ]
 
-
-// =========================================================================
-// Optional coercion
-// .dag T? → Rust Option<T>
-// =========================================================================
-
 data rust_optional_template: String = "Option<\{0\}>"
 data rust_none_expr: String = "None"
 data rust_some_template: String = "Some(\{0\})"
-
-
-// =========================================================================
-// Callable coercion
-//
-// Base callable template. Context-dependent wrapping (Box<dyn Fn> for
-// owned closures, Rc<dyn Fn> for stored closures) is derived from
-// ValueContext at emit time, not declared here.
-//
-// HISTORICAL BUG: Callable was mapped to "String" in rust_type_map.
-// This caused 9 E0425 errors in std_algebra.rs.
-// =========================================================================
 
 data rust_callable: CallableRepr = CallableRepr {
   template: "fn(\{params\}) -> \{return\}",
@@ -144,57 +77,11 @@ data rust_callable: CallableRepr = CallableRepr {
   import_path: none
 }
 
-
-// =========================================================================
-// Sharing
-//
-// NOT declared as a configuration surface. Sharing is a COERCION EFFECT
-// derived from ValueContext at the TypeRendering boundary:
-//
-//   ValueContext.is_constant = true  → no Rc (const data)
-//   ValueContext.has_fn_fields = true → skip PartialEq/Debug derives
-//   resolved type is_copy = true     → no Rc (value semantics sufficient)
-//   otherwise                        → Rc<T> wrapping
-//
-// Recursive types get Box<T> for indirection. These decisions are
-// structural facts already in the annotated graph, not language config.
-//
-// HISTORICAL BUG: lazy_static + Rc for constant data → E0277 Send/Sync.
-// The sharing effect was applied uniformly instead of being gated on
-// ValueContext. The fix: ValueContext carries the facts, emitter translates.
-// =========================================================================
-
-
-
-// =========================================================================
-// Test generation
-//
-// Test obligations are derived by the compiler from algebra definitions
-// in std/algebra.dag crossed with the inhabitant declarations above:
-//
-//   Refusal tests: auto-generated for every algebra WITHOUT an inhabitant.
-//   Positive tests: auto-generated only from explicit law metadata in
-//     std/algebra.dag (each algebra field → law assertion).
-//   Hand-written tests: reserved for exceptional cases only.
-//
-// See docs/coercion-design.md for the full algorithm.
-// =========================================================================
-
-
-// =========================================================================
-// Ownership model
-// =========================================================================
-
 type OwnershipKind
   = Owned
   | SharedRef
   | MutRef
   | RawPtr
-
-
-// =========================================================================
-// Additional Rust type system facts
-// =========================================================================
 
 data pass_copy_by_value: Bool = true
 data pass_non_copy_by_ref: Bool = true
@@ -224,28 +111,18 @@ data integer_types: List<String> = [
 
 data float_types: List<String> = ["f32", "f64"]
 
-// Cast syntax: Rust uses `expr as type` for numeric casts.
-// Rust Reference §8.2.4 — cast validity is a (source, target) relation.
-// Valid pairs for .dag types (mapped to Rust target types):
-//   i64 → i64, f64         (Int → Int, Float)
-//   f64 → i64, f64         (Float → Int, Float)
-//   bool → i64             (Bool → Int)
-// Invalid:
-//   bool → f64             (Bool → Float: not allowed)
-//   i64 → bool             (Int → Bool: not allowed)
-//   f64 → bool             (Float → Bool: not allowed)
 data rust_cast_syntax: CastSyntax = {
   template: "\{expr\} as \{type\}",
   cast_rules: [
-    // Integer ↔ Integer
+
     { from_type: "i64", to_type: "i64" },
-    // Integer → Float
+
     { from_type: "i64", to_type: "f64" },
-    // Float → Integer
+
     { from_type: "f64", to_type: "i64" },
-    // Float ↔ Float
+
     { from_type: "f64", to_type: "f64" },
-    // Bool → Integer (bool as i64 = 0 or 1)
+
     { from_type: "bool", to_type: "i64" }
   ]
 }

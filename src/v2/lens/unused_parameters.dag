@@ -1,10 +1,6 @@
-// src/v2/lens/unused_parameters.dag
-// Scope: unused-parameters lens — split-contract per Phase-1 design (crisp-boar-896 2026-05-21). Projection contract = per-edge use classification `Witness<UseClassificationFact>` (per-edge classification-family shape, same as parallelism/effect/ownership/idempotency); behavioral contract = declaration roll-up `Witness<UnusedParametersFact>` aligned with `LensIdV0::UnusedParameters` registry and v3 `UnusedParametersLens::query`. Behavioral is implemented as COMPOSITION over projection — `unused_parameters_fact = rollup_unused ∘ use_classification_fact` (single mechanism, two outputs).
-// Status: per-edge classification-family ratchet + registry split-contract.
-
-
 module v2.lens.unused_parameters
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredTree }
 import v2.std.algebra { Empty, bag_eq, list_snoc_item }
@@ -20,22 +16,16 @@ import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Witness }
 
-// 🟢 USE classification — `BindsTo` is the single USE kind (symbol-
-// resolution attaches uses through BindsTo). `Contains` is structural
-// composition, others are non-USE dependencies. The fail-closed slot
-// `RequiresResolutionWitness` covers kinds that need further evidence.
 type UseRelation
   = IsUseOfDeclaration
   | IsStructuralComposition
   | IsNonUseDependency
   | RequiresResolutionWitness
 
-// PROJECTION OUTPUT — per-edge classification-family shape.
 type UseClassificationFact {
   uses: List<ClassifiedDependencyView<UseRelation>>
 }
 
-// BEHAVIORAL OUTPUT — registry-aligned; rollup_unused derives rows from UseClassificationFact without copying InferredFacts payloads.
 type UnusedParameterFact {
   declaration: Node
 }
@@ -65,8 +55,7 @@ fn use_relation_dependency_kind_classifier() -> DependencyKindClassifier<UseRela
 }
 
 fn use_classify(view: DependencyView) -> ClassifiedDependencyView<UseRelation> {
-  // Orientation: BindsTo carries Declaration → Use, so `view.source`
-  // is the declaration; downstream readers access via `classified_source`.
+
   classify_dependency_view(classifier: use_relation_dependency_kind_classifier(), view: view)
 }
 
@@ -84,7 +73,6 @@ fn use_classification_witness(tree: InferredTree, dependencies: List<DependencyV
   }
 }
 
-// 🟡 predicate dissolution — feature:variant-tag-partition-predicate — roll-up blocks unused on proven use or unresolved-use evidence until variant partition is substrate-derived.
 fn use_relation_blocks_unused(relation: UseRelation) -> Bool {
   match relation {
     IsUseOfDeclaration => true
@@ -116,7 +104,6 @@ fn already_in_unused(unused: List<UnusedParameterFact>, declaration: Node) -> Bo
   })
 }
 
-// Only Contains dependents are unused candidates; BindsTo sources already have a use, and other dependency kinds are not declaration positions.
 fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
   UnusedParametersFact {
     unused: fold(use_fact.uses, init: Empty, f: fn(acc, classified) {
@@ -188,12 +175,6 @@ fn unused_parameters_fact_eq(a: UnusedParametersFact, b: UnusedParametersFact) -
   bag_eq(xs: a.unused, ys: b.unused, eq: unused_parameter_fact_eq)
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "substrate dataflow use-classification (the per-edge classification family becoming a construction; LensIdV0::UnusedParameters registry split-contract)",
-    dissolve_on: "an unused parameter is a dataflow fact the substrate computes by construction, not a per-edge lens ratchet"
-  },
-  rationale: "A parameter unused in a body is decidable by dataflow; a per-edge classification ratchet (behavioral roll-up composed over projection) until use-classification is a substrate construction."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

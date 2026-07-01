@@ -1,0 +1,27 @@
+module v2.test.round_trip.dag_comment_wall_test
+
+import v2.extdeps.languages.dag {
+  dag_block_comment_fidelity,
+  dag_line_comment_fidelity,
+  DagBlockCommentFailClosed,
+  DagLineCommentFailClosed
+}
+import v2.extdeps.languages.fidelity { FailClosed }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+fn slash_slash_in_string() -> String {
+  "https://example.com"
+}
+
+test fn dag_line_comment_is_fail_closed() -> Bool {
+  dag_line_comment_fidelity() == FailClosed { feature: DagLineCommentFailClosed }
+}
+
+test fn dag_block_comment_is_fail_closed() -> Bool {
+  dag_block_comment_fidelity() == FailClosed { feature: DagBlockCommentFailClosed }
+}
+
+test fn slash_slash_inside_string_literal_accepted() -> Bool {
+  slash_slash_in_string() == "https://example.com"
+}

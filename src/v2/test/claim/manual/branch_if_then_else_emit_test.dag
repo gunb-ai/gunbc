@@ -1,0 +1,316 @@
+module v2.test.manual.branch_if_then_else_emit
+
+import v2.compiler.body_producer {
+  produce_mvp1_pick_if_arrow_with_body,
+  produce_mvp1_pick_if_arrow_with_body_swapped_arms
+}
+import v2.test.execution.branch_if_then_else_round_trip {
+  branch_if_then_else_inferred_facts_for,
+  branch_if_then_else_inferred_tree
+}
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import extdeps.communication.medium { Lossless, Medium }
+import v2.extdeps.languages.dag {
+  dag_mvp1_fixture_emitted_pick_fn,
+  dag_mvp1_node_is_kw_true_atom,
+  dag_mvp1_pick_arrow_domain_conj_node,
+  dag_mvp1_pick_if_body_fixture,
+  dag_mvp1_pick_source_text,
+  dag_mvp1_pick_target_model
+}
+import v2.compiler.source_authority { source_authority_node_equal }
+import v2.compiler.translate {
+  coerce_grounded_node,
+  target_serialize_source_from_model,
+  translate_emitted_node
+}
+import v2.std.collection { Map, list_at_optional }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected,
+  bind_outcome
+}
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.node_query {
+  find_arrow_body_child,
+  node_positional_child_targets
+}
+import v2.std.compilers.target_model { TargetModel, target_value_expr_branch_bool_gate }
+import v2.std.witness { Holds, Witness }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+fn branch_if_then_else_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  branch_if_then_else_inferred_facts_for(node: key)
+}
+
+fn branch_if_then_else_emit_inferred_tree_for(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: branch_if_then_else_emit_facts_lookup }
+  }
+}
+
+fn branch_if_then_else_emit_producer_tree() -> Outcome<InferredTree> {
+  match produce_mvp1_pick_if_arrow_with_body() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: branch_if_then_else_emit_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn branch_if_then_else_emit_swapped_producer_tree() -> Outcome<InferredTree> {
+  match produce_mvp1_pick_if_arrow_with_body_swapped_arms() {
+    Accepted { value: root, diagnostics: d } =>
+      Accepted {
+        value: branch_if_then_else_emit_inferred_tree_for(root: root),
+        diagnostics: d
+      }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn branch_if_then_else_emit_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: branch_if_then_else_emit_producer_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+fn branch_if_then_else_emit_swapped_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: branch_if_then_else_emit_swapped_producer_tree(),
+    f: fn(tree) {
+      emit(tree: tree, target: target)
+    }
+  )
+}
+
+fn branch_if_then_else_emit_holds() -> Bool {
+  match target_serialize_source_from_model(
+    target: dag_mvp1_pick_target_model(),
+    emitted: dag_mvp1_fixture_emitted_pick_fn
+  ) {
+    Accepted { value: authority, diagnostics: ad } =>
+      match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+        Accepted { value: source, diagnostics: d } =>
+          (source == authority) && (d == None) && (ad == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_swapped_arms_discriminates() -> Bool {
+  match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+    Accepted { value: canonical, diagnostics: dc } =>
+      match branch_if_then_else_emit_swapped_from_producer(target: dag_mvp1_pick_target_model()) {
+        Accepted { value: swapped, diagnostics: ds } =>
+          (swapped != canonical) && (dc == None) && (ds == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn branch_if_then_else_emit_keystone_holds() -> Bool {
+  branch_if_then_else_emit_holds() && branch_if_then_else_emit_swapped_arms_discriminates()
+}
+
+fn branch_if_then_else_emit_post_translate_root() -> Outcome<Node> {
+  bind_outcome(
+    o: branch_if_then_else_emit_producer_tree(),
+    f: fn(tree) {
+      translate_emitted_node(tree: tree, target: dag_mvp1_pick_target_model())
+    }
+  )
+}
+
+fn branch_if_then_else_emit_diag_substrate_eq_post_translate() -> Bool {
+  match branch_if_then_else_emit_post_translate_root() {
+    Accepted { value: translated, diagnostics: d } =>
+      source_authority_node_equal(
+        left: dag_mvp1_fixture_emitted_pick_fn,
+        right: translated
+      ) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_serialize_raw_eq_serialize_translated() -> Bool {
+  match branch_if_then_else_emit_post_translate_root() {
+    Accepted { value: translated, diagnostics: td } =>
+      match target_serialize_source_from_model(
+        target: dag_mvp1_pick_target_model(),
+        emitted: dag_mvp1_fixture_emitted_pick_fn
+      ) {
+        Accepted { value: raw_ser, diagnostics: rd } =>
+          match target_serialize_source_from_model(
+            target: dag_mvp1_pick_target_model(),
+            emitted: translated
+          ) {
+            Accepted { value: tr_ser, diagnostics: sd } =>
+              (raw_ser == tr_ser) && (td == None) && (rd == None) && (sd == None)
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_branch_gate_on_post_translate_body() -> Bool {
+  match branch_if_then_else_emit_post_translate_root() {
+    Accepted { value: translated, diagnostics: d } =>
+      match find_arrow_body_child(root: translated) {
+        Accepted { value: body, diagnostics: bd } =>
+          target_value_expr_branch_bool_gate(node: body) && (d == None) && (bd == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_node_is_bare_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_then_arm_bare_atom_on_post_translate() -> Bool {
+  match branch_if_then_else_emit_post_translate_root() {
+    Accepted { value: translated, diagnostics: d } =>
+      match find_arrow_body_child(root: translated) {
+        Accepted { value: body, diagnostics: bd } =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
+            Present { value: then_arm } =>
+              branch_if_then_else_emit_node_is_bare_atom(node: then_arm)
+                && (d == None)
+                && (bd == None)
+            Absent => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_cond_bare_kw_true_on_post_translate() -> Bool {
+  match branch_if_then_else_emit_post_translate_root() {
+    Accepted { value: translated, diagnostics: d } =>
+      match find_arrow_body_child(root: translated) {
+        Accepted { value: body, diagnostics: bd } =>
+          match list_at_optional(xs: node_positional_child_targets(node: body), index: 0) {
+            Present { value: cond } =>
+              dag_mvp1_node_is_kw_true_atom(node: cond) && (d == None) && (bd == None)
+            Absent => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_producer_emit_accepts() -> Bool {
+  match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_authority_serialize_accepts() -> Bool {
+  match target_serialize_source_from_model(
+    target: dag_mvp1_pick_target_model(),
+    emitted: dag_mvp1_fixture_emitted_pick_fn
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_translate_accepts() -> Bool {
+  match branch_if_then_else_emit_post_translate_root() {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_fixture_translate_accepts() -> Bool {
+  match translate_emitted_node(
+    tree: branch_if_then_else_inferred_tree,
+    target: dag_mvp1_pick_target_model()
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_branch_body_translate_accepts() -> Bool {
+  match translate_emitted_node(
+    tree: branch_if_then_else_emit_inferred_tree_for(
+      root: dag_mvp1_pick_if_body_fixture
+    ),
+    target: dag_mvp1_pick_target_model()
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_pick_empty_domain_coerce_accepts() -> Bool {
+  match coerce_grounded_node(
+    source: dag_mvp1_pick_arrow_domain_conj_node(),
+    tree: branch_if_then_else_inferred_tree,
+    target: dag_mvp1_pick_target_model()
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_pick_empty_domain_translate_accepts() -> Bool {
+  match translate_emitted_node(
+    tree: branch_if_then_else_emit_inferred_tree_for(
+      root: dag_mvp1_pick_arrow_domain_conj_node()
+    ),
+    target: dag_mvp1_pick_target_model()
+  ) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_post_translate_serialize_accepts() -> Bool {
+  match branch_if_then_else_emit_post_translate_root() {
+    Accepted { value: translated, diagnostics: d } =>
+      match target_serialize_source_from_model(
+        target: dag_mvp1_pick_target_model(),
+        emitted: translated
+      ) {
+        Accepted { value: _, diagnostics: sd } => (d == None) && (sd == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_if_then_else_emit_diag_emit_eq_authority_text() -> Bool {
+  match branch_if_then_else_emit_from_producer(target: dag_mvp1_pick_target_model()) {
+    Accepted { value: emitted, diagnostics: d } =>
+      (emitted.carried == dag_mvp1_pick_source_text) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}

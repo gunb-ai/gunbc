@@ -1,24 +1,18 @@
-// extdeps/rust/cargo.dag -- "What is Cargo?"
-//
-// Rust's build system and package manager: packages, targets, profiles,
-// features, and command behaviors.
-//
-// Consumers:
-//   tools/clippy.dag          -- clippy lint workflow
-//   config/build_commands.dag -- build command composition
-//   tools/build.dag           -- build workflow
-
 module extdeps.cargo
 
 import extdeps.cargo_version { CargoPackageVersion, CargoVersionRequirement, CargoToolVersionFloor }
 import std.types { FilePathParts }
 
-// -- Edition -------------------------------------------------------
-// Rust edition is a CLOSED set (Cargo Reference: "The edition field"), not an
-// arbitrary String. Single authority: this is the one place the edition values
-// live — `languages/rust/imports.dag` imports `default_rust_edition` rather than
-// re-coining `default_edition: String = "2021"` (that fork is the §3 violation
-// this collapses). `rust_edition_str` renders the canonical manifest token.
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/cargo/"
+  }
+}
+
 type RustEdition
   = Edition2015
   | Edition2018
@@ -36,11 +30,7 @@ fn rust_edition_str(edition: RustEdition) -> String {
 
 data default_rust_edition: RustEdition = Edition2021
 
-// Minimum cargo for edition 2021 (Cargo Reference: "The edition field").
-// Pinned toolchain stays rust-toolchain.toml — this is the honest floor.
 data min_cargo_version: CargoToolVersionFloor = ">= 1.56"
-
-// -- Package model -------------------------------------------------
 
 type CargoPackage {
   name: String
@@ -49,12 +39,6 @@ type CargoPackage {
   path: String
 }
 
-// -- Dependencies --------------------------------------------------
-// Cargo.toml dependency entry (Cargo Reference: Specifying Dependencies).
-//
-// A dependency names a crate and a source. A registry dependency pins a
-// version (with optional features); a path dependency points at a local
-// crate directory. (Git/other sources extend this coproduct when needed.)
 type CargoDepSource
   = RegistryDep  { version: CargoVersionRequirement, features: List<String> }
   | LocalPathDep { path: String }
@@ -64,8 +48,6 @@ type CargoDependency {
   source: CargoDepSource
 }
 
-// -- Targets -------------------------------------------------------
-
 type CargoTarget
   = Lib
   | Bin { name: String }
@@ -73,21 +55,6 @@ type CargoTarget
   | Example { name: String }
   | Bench { name: String }
 
-// The per-CargoTarget DEFAULT source-file path — Cargo's target auto-discovery
-// rule, modeled as DATA so the file set DERIVES from the crate model rather than
-// being a hand-declared path list (DESIGN §2 deep). SINGLE AUTHORITY: this is the
-// one place the target→file rule lives; the content-addressed CI gate and (later)
-// the stage0_crates emitter both reuse it instead of re-coining `src/lib.rs` /
-// `src/main.rs` literals. (Cargo Reference: "Package Layout" / "Target
-// auto-discovery".) Returns the structured `FilePathParts` (the grounded path
-// authority), not the `String` alias.
-//
-//   Lib                                  → src/lib.rs
-//   Bin{name} where name == package      → src/main.rs   (the package-named bin)
-//   Bin{name}                            → src/bin/{name}.rs
-//   CargoTest{name}                      → tests/{name}.rs
-//   Example{name}                        → examples/{name}.rs
-//   Bench{name}                          → benches/{name}.rs
 fn cargo_target_source_path(target: CargoTarget, package_name: String) -> FilePathParts {
   match target {
     Lib => FilePathParts { segments: ["src", "lib.rs"] }
@@ -103,11 +70,6 @@ fn cargo_target_source_path(target: CargoTarget, package_name: String) -> FilePa
   }
 }
 
-// A Rust module stem resolves to one of two candidate files (Cargo/rustc module
-// rule): `src/{stem}.rs` OR `src/{stem}/mod.rs`. Modeled as data (the rule, not a
-// resolution — which of the two exists on disk is a host read at gate time, the
-// §3(b) seam). Single authority for the {mod}.rs vs {mod}/mod.rs rule that is
-// today prose in `languages/rust/imports.dag`.
 fn rust_module_candidate_paths(stem: String) -> List<FilePathParts> {
   [
     FilePathParts { segments: ["src", concat(stem, ".rs")] },
@@ -115,34 +77,15 @@ fn rust_module_candidate_paths(stem: String) -> List<FilePathParts> {
   ]
 }
 
-// -- Profiles ------------------------------------------------------
-// Cargo allows arbitrary user-defined profiles in Cargo.toml
-// (e.g., [profile.ci-optimized]). Use String to avoid a closed-world
-// enum that cannot represent valid workspaces.
-
 type CargoProfile = String
 
 data canonical_profiles: List<String> = ["dev", "release", "test", "bench"]
-
-// -- Features ------------------------------------------------------
 
 type CargoFeature {
   name: String
   dependencies: List<String>
 }
 
-// -- Test harness --------------------------------------------------
-
 type TestHarness = Harness | NoHarness
 
-// -- Constants -----------------------------------------------------
-// (Edition default is `default_rust_edition: RustEdition` above — the single
-// authority; the old `default_edition: String` lived here and was the fork.)
-
 data default_profile: CargoProfile = "dev"
-
-// -- Service: shell transport wiring -----------------------------
-// The `cargo.Build` command service (build/test/clippy/doc/run) lives in
-// `extdeps.cargo_build` so this pure model can be imported by the compiler
-// (e.g. v1.compiler.stage0_crates) without dragging a shell-transport service
-// into the bootstrap seed. The model here carries no transport.

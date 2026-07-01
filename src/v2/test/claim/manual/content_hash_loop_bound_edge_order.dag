@@ -1,0 +1,173 @@
+module v2.test.manual.content_hash_loop_bound_edge_order
+
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  content_hash,
+  SyntheticOccurrence
+}
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+fn content_hash_loop_body_leaf() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_body_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_measure_leaf() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_measure_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_body() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: content_hash_loop_body_leaf() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_body_two() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: content_hash_loop_body_leaf() },
+      Edge { label: Positional, target: content_hash_loop_body_leaf() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_bound_last() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: content_hash_loop_body() },
+      Edge {
+        label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_bound_first() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge {
+        label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf()
+      },
+      Edge { label: Positional, target: content_hash_loop_body() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_bound_middle() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: content_hash_loop_body_two() },
+      Edge {
+        label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf()
+      },
+      Edge { label: Positional, target: content_hash_loop_body_two() }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_bound_last_two_body() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: content_hash_loop_body_two() },
+      Edge { label: Positional, target: content_hash_loop_body_two() },
+      Edge {
+        label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_pass_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_pass_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^content_hash_loop_fail_sym } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+fn content_hash_loop_with_extra_named() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    children: [
+      Edge { label: Positional, target: content_hash_loop_body() },
+      Edge {
+        label: Named { name: ^loop_bound_edge },
+        target: content_hash_loop_measure_leaf()
+      },
+      Edge {
+        label: Named { name: ^content_hash_loop_extra_named_sym },
+        target: content_hash_loop_body_leaf()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn content_hash_loop_bound_edge_order_holds() -> Bool {
+  content_hash(n: content_hash_loop_bound_last()) ==
+    content_hash(n: content_hash_loop_bound_first())
+  && content_hash(n: content_hash_loop_bound_last_two_body()) ==
+    content_hash(n: content_hash_loop_bound_middle())
+  && content_hash(n: content_hash_loop_bound_last()) !=
+    content_hash(n: content_hash_loop_with_extra_named())
+}
+
+fn content_hash_loop_order_claim_input(ok: Bool) -> Node {
+  if ok { content_hash_loop_pass_node() } else { content_hash_loop_fail_node() }
+}
+
+data claim_content_hash_loop_bound_edge_order_invariant: TestClaim = CompilesClaim {
+  label: "manual/content_hash: Loop loop_bound_edge digest is placement-independent",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: content_hash_loop_order_claim_input(ok: content_hash_loop_bound_edge_order_holds()),
+  expected_value: content_hash_loop_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

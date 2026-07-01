@@ -1,7 +1,3 @@
-// FIXTURE — planted module with a bare string literal in script: position at a
-// shell.Exec.Run call. Read as SHAPE-ONLY by transport_script_literal_violation_count_for_path
-// (parse-tree shape classification, no content scan, never executed). The by-execution oracle
-// that the projection flags a BareStringLiteral violation. DO NOT import this module.
 module v2.test.fixture.transport_script_scan.bare_string_literal_plant
 
 import extdeps.shell

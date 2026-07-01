@@ -1,5 +1,3 @@
-// Scope: IRT-1 leaf — dimension seed rerun receipt.
-
 module v2.test.lens_affected_set.irt1_dimension_seed_receipt
 
 import v2.lens.affected_set { DimensionNotRead, Excluded, ExclusionKey, FrontierDecision, Rerun, empty_frontier, mark_rerun }
@@ -35,9 +33,6 @@ fn irt1_dimension_seed_receipt_claim_holds() -> Bool {
   )
 }
 
-// Discrimination receipt (perturb-red, committed): seeded decision is Rerun, which must
-// NOT match a wrong Excluded decision. Holds == true proves the comparison discriminates
-// on the FrontierDecision arm, not a tautology.
 data irt1_dimension_seed_wrong_decision: FrontierDecision = Excluded {
   first: DimensionNotRead {
     usage_site: affected_set_example_node,

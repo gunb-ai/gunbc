@@ -1,7 +1,3 @@
-// src/v2/std/runtime.dag
-// Scope: Abstract runtime carriers for v2 evaluation.
-// Status: Option-C abstract runtime substrate; concrete runtime bundles live under v2.extdeps.runtimes.*.
-
 module v2.std.runtime
 
 import v2.std.collection { List, Map }
@@ -72,12 +68,6 @@ type RuntimeUnitValue {
   unit_type: Node
 }
 
-// 🟢 terminal — decompress→map→reduce (DESIGN.md §2; faithful modeling DESIGN.md §3) — Option-C
-// abstract runtime value domain at std/runtime authority. Step-2: arms are mutually exclusive
-// inhabitants (a value is one kind), not coordinates over Connective/TargetTypeExprKind (type
-// vs runtime boundary). Step-1: DAG-ancestor is observable eval result, not type connectives.
-// Step-3: substrate primitive for InterpretationAlgebra / TestClaimRun. No payloads to unify (payloads
-// structurally distinct; no richer named source). RuntimeValueNodeProjection is separately 🟡.
 type RuntimeValue
   = RuntimePrimitive { value: RuntimePrimitiveValue }
   | RuntimeAggregate { value: RuntimeAggregateValue }
@@ -85,54 +75,20 @@ type RuntimeValue
   | RuntimeClosure { value: RuntimeClosureValue }
   | RuntimeUnit { value: RuntimeUnitValue }
 
-// 🟡 gated — feature:leaf-model-runtime-outcome — bind docs/planning/v2-leaf-model-verification-2026-05-30.md §5 —
-// dissolve-on-arrival: consumer:leaf-model-fixture-runner lands PanicClassification coproduct (replacing panic_classification: Symbol); forbidden: parallel outcome or panic-class vocab outside std/runtime.dag.
 type RuntimeOutcome
   = Panic { panic_classification: Symbol }
   | Wrap
   | CheckedReturn { wrapped_value: Node }
   | ExceptionRaise { exception_node: Node }
 
-// 🟡 coproduct dissolution — consumer:runtime-value-node-reification — HONEST PARTIAL (Cut 3):
-// RuntimePrimitive (type+bytes) and RuntimeAggregate (recursive fields) project faithfully;
-// RuntimeReference / RuntimeClosure / RuntimeUnit remain Unrepresentable until their carriers
-// gain faithful Node encodings. Nested aggregates fail-closed when any field value is not projectable.
 type RuntimeValueNodeProjection
   = RuntimeValueNodeProjected { node: Node }
   | RuntimeValueNodeUnrepresentable
 
-// ctrl#1533 M-C at the v2.std authority (placement per ctrl#1534 §3.3):
-// identity-of-values laws the hosts implementing RuntimeValue must obey.
-// Grounded in referential transparency of the total λ-fragment (faithful
-// modeling, DESIGN.md §3): a value denotes its structure, so two
-// references to one allocation cannot disagree — identity-of-values is a
-// theorem there, not a choice.
-//
-// Law 1 (soundness, one-way): reference-identical ⇒ structurally equal.
-//   Reference-distinct implies NOTHING. This is what licenses a host to
-//   short-circuit deep equality on shared subtrees (and what the v2 pure-call
-//   memo and CanonKey address-keying already rely on implicitly).
-// Law 2 (order-independence): equality and hashing of keyed aggregates are
-//   functions of the entry SET — the same entries yield equal values and
-//   equal hashes regardless of insertion or iteration order
-//   (hash_fields_commutative in the v2 host implements this).
-// Executable witnesses: v2.test.std_grounding.value_carrier_laws —
-// these must stay green across any carrier swap (ctrl#1533 phase-2 gate).
-//
-// 🟢 terminal — decompress→map→reduce (DESIGN.md §2) — variant-is-data
-// already applied: a three-arm sum (ReferenceIdentical /
-// StructurallyEqual / StructurallyDistinct) would let an inhabitant claim
-// reference identity WITHOUT structural equality; folding the structural
-// verdict into a Bool payload makes Law 1 hold by construction —
-// ReferenceIdentical carries no equal:false arm to violate it. Remaining
-// arms are mutually exclusive observations (how identity was established),
-// not coordinates.
 type IdentityEvidence
   = ReferenceIdentical
   | StructurallyCompared { equal: Bool }
 
-// Law-1 projection: the equality verdict an IdentityEvidence licenses.
-// Reference identity short-circuits to true — that IS Law 1.
 fn identity_evidence_equal(evidence: IdentityEvidence) -> Bool {
   match evidence {
     ReferenceIdentical => true
@@ -150,13 +106,6 @@ fn runtime_value_resolved_type(value: RuntimeValue) -> Node {
   }
 }
 
-// Cut 3 honest-partial projection helpers. DFS (§2): eval Value literals use
-// ComputationNode{Value} — a different axis than RuntimePrimitiveValue{type,bytes};
-// no existing faithful (type+bytes) Node encoding to reuse. Encoding follows
-// std integer/grammar named-edge Conj + fold_list_node list spines.
-// Forward (Cut 4+): unify with the compiler's literal/value-node representation if
-// eval-output Nodes must interchange with source literal nodes — avoid silent
-// parallel-representation debt.
 fn runtime_value_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
@@ -315,12 +264,6 @@ type EvaluationCall {
   arguments: List<RuntimeValue>
 }
 
-// 🟢 terminal — decompress→map→reduce (DESIGN.md §2; faithful modeling DESIGN.md §3) — abstract
-// control-effect sum for InterpretationAlgebra (continue/return/raise/suspend). Step-2: one effect
-// at a time, not coordinates with Outcome/Diagnostic (Raise carries Diagnostic but is the control
-// path, not a parallel authority). Step-1: CEK-style control at eval boundary, not Behavior/Node
-// connectives. No payloads to unify (semantically distinct arms; Continue≠Return despite shared payload
-// type). Concrete runtimes (v2.extdeps.runtimes.*) interpret; this carrier is the closed vocabulary.
 type ControlTransfer
   = Continue { value: RuntimeValue }
   | Return { value: RuntimeValue }
@@ -380,7 +323,6 @@ type InterpretationAlgebra {
   match: MatchInterpreter
 }
 
-// P2/P3: one Symbol per top-level interpreter fn ref — co-located with InterpretationAlgebra literals at call sites; cache digests derive from this witness (not manual module pins alone).
 type InterpretationStructureWitness {
   allocate_literal: Symbol,
   call_primitive: Symbol,
@@ -390,7 +332,6 @@ type InterpretationStructureWitness {
   choose_arm: Symbol
 }
 
-// 🟢 coproduct dissolution — behavior dispatch authority lives with InterpretationAlgebra, not eval consumers.
 type RuntimeBehaviorInterpreter
   = ValueRuntimeInterpreter { interpreter: ValueInterpreter }
   | TransformRuntimeInterpreter { interpreter: TransformInterpreter }
@@ -443,34 +384,10 @@ type ResourceEffectBoundary {
   identity_reference: BoundaryAllowance
 }
 
-// ── Effects/IO boundary: effect-request carriers (docs/design-v2-runtime-architecture.md §4.3, §7) ──
-// Wave-2 E-1 substrate. Additive: no connective/behavior change (design §2 substrate target);
-// 05_eval consumes these through the existing InterpretationAlgebra in a later wave (gate:
-// substrate before pipeline/eval consumers). Concrete pure/test and host handler bundles inhabit
-// EffectHandler under v2.extdeps.runtimes.* — this layer owns only the abstract carriers.
-
-// 🟡 gated — feature:effect-signature-effect-shape — the runtime handler-dispatch vocabulary,
-// operator-trimmed to resource read/write (design §7 Q-R1: "ReadResource/WriteResource (the
-// effects.dag shapes)"). Not 🟢: a richer source is namable — the kind is a projection of the
-// operation's declared effect (ReadResource ≙ effects.dag IsIdempotent(ReadEffect), WriteResource
-// ≙ IsBreaking(…)). It is carried explicitly only because EffectSignature.signature is still an
-// opaque Node (model_core.dag) with no structural read/write face. Bound plan: when EffectSignature
-// gains an effects.dag EffectShape projection — the substrate that exposes read/write structurally
-// — this coproduct dissolves into effect_request_kind_of(signature) and the binding indexes by the
-// projected shape. dissolve-on-arrival: the first consumer that derives kind from the signature.
 type EffectRequestKind
   = ReadResource
   | WriteResource
 
-// 🟢 fact-bundle — the reified, typed effect request eval *yields* to a handler at
-// the boundary (design §4.3), never performs inline. Faithful bundle of the design's four named
-// parts: kind, operation ref, dimensioned arguments, continuation slot. Structural purity (design
-// §4.3 "minted only by a constructor that requires the signature fact"): the required
-// `operation: PrimitiveOperationRef` field IS that requirement — a PrimitiveOperationRef cannot
-// exist without an EffectSignature (model_core.dag), so a function whose Arrow declares no effects
-// has no signature to supply and no path to construct a request. The continuation is wave-1
-// resume-the-fold (design §7 Q-R2: handler-returns-value-then-fold-continues, no first-class
-// continuations) — the existing Suspend frame (EvaluationFrame), reused not duplicated.
 type EffectRequest {
   kind: EffectRequestKind
   operation: PrimitiveOperationRef
@@ -478,32 +395,15 @@ type EffectRequest {
   continuation: EvaluationFrame
 }
 
-// 🟢 fact-bundle — a handler answers one effect kind (design §4.3). Wave-1 contract:
-// handler-returns-value, the run-loop resumes the fold (Q-R2). Concrete inhabitants live in
-// v2.extdeps.runtimes.*: the pure/test bundle answers from declared fixtures and records a receipt;
-// the host bundle routes through the single host door (std/host_run.dag, single authority DESIGN.md §3). The kind
-// is NOT a field — position in EffectHandlerBinding determines it, so a kind/slot mismatch is
-// unrepresentable (make-it-unrepresentable). `Outcome<RuntimeValue>` keeps the two failure categories separate
-// (design §4.2): modeled refusal is the Rejected arm; a host fault is a host receipt, never
-// reinterpreted as a program value here.
 type EffectHandler {
   handle: fn(EffectRequest) -> Outcome<RuntimeValue>
 }
 
-// 🟢 fact-bundle — wave-1 flat binding (design §4.3): exactly one handler per effect
-// kind, injected per run at run start from the per-claim-selected runtime bundle (design §7 Q-R3:
-// per-claim declaration). No dynamic handler stacks/shadowing (§8 non-goal; revisit only with a
-// real consumer — no code without a consumer, DESIGN.md §5). A total record over the closed kind vocabulary: an unhandled kind cannot
-// surface mid-run — a bundle that fails to inhabit a slot never constructs the binding, so absence
-// fails closed at run start (design §6 red), not as a mid-run defect.
 type EffectHandlerBinding {
   read_resource: EffectHandler
   write_resource: EffectHandler
 }
 
-// Route a request to its bound handler by kind. Total over EffectRequestKind — the structural
-// guarantee that every effect kind has a handler before any request is yielded (design §4.3
-// fail-closed-at-run-start). Projection, not enumeration.
 fn effect_handler_for_kind(binding: EffectHandlerBinding, kind: EffectRequestKind) -> EffectHandler {
   match kind {
     ReadResource => binding.read_resource
@@ -511,18 +411,11 @@ fn effect_handler_for_kind(binding: EffectHandlerBinding, kind: EffectRequestKin
   }
 }
 
-// 🟢 fact-bundle — the receipt a handler records per request: the replay log and the
-// test surface for effectful claims (design §4.3 pure/test records the request sequence; §4.4 "a
-// run's receipt sequence is its replay log"). `result` carries the handler outcome
-// (modeled-refusal aware, §4.2).
 type EffectReceipt {
   request: EffectRequest
   result: Outcome<RuntimeValue>
 }
 
-// Ordered replay log (design §4.4) — the deterministic record of a run's yielded effects. Named
-// single-list carrier mirrors host_run BuildLog; gives the sequence a home for future ordering
-// invariants.
 type EffectReceiptLog {
   entries: List<EffectReceipt>
 }

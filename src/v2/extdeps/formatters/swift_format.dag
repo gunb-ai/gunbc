@@ -1,8 +1,3 @@
-// src/v2/extdeps/formatters/swift_format.dag
-// Scope: swift-format formatting configuration model — formatting knobs only; rules carrier excluded (see gate below).
-// Status: T-4.16 scaffold — formatting-knob option space grounded in swift-format Configuration.md; rules field gated pending Map primitive availability.
-// Anchor: https://github.com/apple/swift-format/blob/main/Documentation/Configuration.md
-
 module v2.extdeps.formatters.swift_format
 
 import v2.std.collection { List }
@@ -17,50 +12,37 @@ import v2.std.refinement {
   positive_int_authoritative_literal,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SwiftFormatIndentation
   = SwiftFormatSpaces { count: Outcome<PositiveInt> }
   | SwiftFormatTabs { count: Outcome<PositiveInt> }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SwiftFormatFileScopedAccessLevel
   = SwiftFormatPrivate
   | SwiftFormatFileprivate
-
 
 type SwiftFormatFileScopedDeclarationPrivacy {
   access_level: SwiftFormatFileScopedAccessLevel,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SwiftFormatTrailingCommaBehavior
   = SwiftFormatTrailingCommaAlwaysUsed
   | SwiftFormatTrailingCommaNeverUsed
   | SwiftFormatTrailingCommaKeptAsWritten
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SwiftFormatMultilineStringReflow
   = SwiftFormatReflowNever
   | SwiftFormatReflowOnlyLinesOverLength
   | SwiftFormatReflowAlways
 
-
 type SwiftFormatNoAssignmentInExpressions {
   allowed_functions: List<String>,
 }
-
 
 type SwiftFormatOrderedImports {
   include_conditional_imports: Bool,
   should_group_imports: Bool,
 }
 
-
-// 🟡 gated — feature: swift-format-rules-carrier — bind v2-lang:map-primitive — dissolve-on-arrival: add rules: Map<String, Bool> field to SwiftFormatConfig once Map is available as a language-level primitive without requiring a std import; forbidden: List<SwiftFormatRuleOverride> workarounds that lose the Bool-keyed semantics of the rules dictionary.
 type SwiftFormatConfig {
   version: Outcome<ExactOneInt>
   line_length: Outcome<PositiveInt>
@@ -86,7 +68,6 @@ type SwiftFormatConfig {
   indent_blank_lines: Bool,
   ordered_imports: SwiftFormatOrderedImports,
 }
-
 
 data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
   version: exact_one_int_authoritative_literal(value: 1),
@@ -121,9 +102,7 @@ data swift_format_defaults: SwiftFormatConfig = SwiftFormatConfig {
   },
 }
 
-
 type SwiftFormatConfigPatch = ConfigPatchRecord<SwiftFormatConfig>
-
 
 fn swift_format_layer(base: SwiftFormatConfig, patch: SwiftFormatConfigPatch) -> SwiftFormatConfig {
   config_patch_layer(base: base, patch: patch)

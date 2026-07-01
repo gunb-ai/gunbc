@@ -1,59 +1,36 @@
-// dsl/test/claim/design_argument_witness_test.dag
-//
-// Floor witness for the AXIOM+SYLLOGISM lens, §1 vertical slice (DESIGN open thread
-// #1). The lens runs over DESIGN.md's own argument (gunbc/design_argument.dag) using
-// the std/syllogism.dag framework, and proves the §5 ① VALIDITY wall holds on REAL
-// §1 claims — by execution (gunbc run --claim-run), not typecheck/grep.
-//
-// THE WALL (validity = form, decidable): the DESIGN §1 argument is a rooted, acyclic
-// graph over a closed axiom set — every consequence reaches an axiom (no orphan), no
-// claim derives itself (no cycle), the only roots are A1-A3 (no smuggled axiom). The
-// reachability/cycle facts are REUSED from std/graph.dag; this module mints no graph.
-//
-// NOT checked (honest §5 ③): SOUNDNESS — whether A1-A3 are actually TRUE, or whether
-// each inference truly entails. Premise-truth is assumed, not proven; selling it as a
-// wall is the "never" trap. There is no is_sound fold to call.
-//
-// EVERY test fn is true-WHEN-CORRECT (a positive proof tooth, RED on revert):
-//   - design_s1_argument_form_is_valid / _is_non_vacuous: GREEN over the real §1 rows.
-//     RED on revert: delete a `premises` edge in design_argument.dag -> that row
-//     orphans -> validity goes false -> this test RED.
-//   - orphan / cycle / smuggled-axiom / vacuity DISCRIMINATORS: each asserts the
-//     verdict goes RED on a deliberately-broken §1-shaped argument, so it returns true
-//     exactly when the wall still has teeth. Mutate the std fold to fail-open and the
-//     discriminator goes RED. (A negative control as its own test fn would break
-//     discovery, which expects PASS=true — so each is phrased as `== false`.)
-//
-// Run: gunbc run --source-root dsl --entry <this> --function <fn> --claim-run
-
 module test.claim.design_argument_witness
 
-import gunbc.design_argument { design_section_1_argument, design_axioms }
+import gunbc.design_argument { design_section_1_argument, design_argument, design_axioms }
 import std.syllogism {
   Axiom, NonLogicalAxiom, Proposition, Argument,
   argument_has_no_orphan, argument_is_acyclic,
   argument_axiom_set_is_closed, argument_form_is_valid, argument_is_non_vacuous
 }
 
-// (test fns below; the empty-argument tooth proves the HEADLINE validity predicate is
-// fail-closed on vacuity, not just the separate floor.)
-
-// ---- GREEN over the real DESIGN §1 rows --------------------------------------
-
-// The DESIGN §1 argument is a valid form: rooted at A1-A3, acyclic, closed axiom set.
 test fn design_s1_argument_form_is_valid() -> Bool {
   argument_form_is_valid(design_section_1_argument)
 }
 
-// §5 non-vacuity floor: a zero-claim universe would fail-open every check above.
 test fn design_s1_argument_is_non_vacuous() -> Bool {
   argument_is_non_vacuous(design_section_1_argument)
 }
 
-// ---- discriminators: the wall has teeth (each true-when-correct) -------------
+test fn design_full_argument_form_is_valid() -> Bool {
+  argument_form_is_valid(design_argument)
+}
 
-// A §1-shaped argument with a consequence that reaches NO axiom (mutual derivation
-// with no root) — an orphan / smuggled premise. has_no_orphan must reject it.
+test fn design_full_argument_has_no_orphan() -> Bool {
+  argument_has_no_orphan(design_argument)
+}
+
+test fn design_full_argument_is_acyclic() -> Bool {
+  argument_is_acyclic(design_argument)
+}
+
+test fn design_full_argument_axiom_set_is_closed() -> Bool {
+  argument_axiom_set_is_closed(design_argument)
+}
+
 fn orphaned_variant() -> Argument {
   Argument {
     axioms: design_axioms,
@@ -68,8 +45,6 @@ test fn orphan_is_detected() -> Bool {
   argument_has_no_orphan(orphaned_variant()) == false
 }
 
-// A §1-shaped argument where two consequences derive each other (a forward edge that
-// closes a cycle) while still reaching an axiom — the §4 acyclicity violation.
 fn cyclic_variant() -> Argument {
   Argument {
     axioms: design_axioms,
@@ -84,8 +59,6 @@ test fn cycle_is_detected() -> Bool {
   argument_is_acyclic(cyclic_variant()) == false
 }
 
-// A §1-shaped argument carrying a consequence with NO premises — a covert root, i.e.
-// a fourth axiom smuggled in without being assumed. axiom_set_is_closed must reject it.
 fn smuggled_axiom_variant() -> Argument {
   Argument {
     axioms: design_axioms,
@@ -100,16 +73,12 @@ test fn smuggled_axiom_is_detected() -> Bool {
   argument_axiom_set_is_closed(smuggled_axiom_variant()) == false
 }
 
-// The empty argument fail-opens every shape check (vacuously no orphan) — so it is
-// itself rejected by the non-vacuity floor.
 fn empty_variant() -> Argument {
   Argument { axioms: [], propositions: [] }
 }
 
 test fn vacuous_argument_is_rejected() -> Bool {
-  // both the non-vacuity floor AND the headline validity predicate reject the empty
-  // argument — argument_form_is_valid conjoins non-vacuity, so it is fail-closed here
-  // rather than fail-open (no caller asking form-validity alone can pass an empty one).
+
   (argument_is_non_vacuous(empty_variant()) == false)
     && (argument_form_is_valid(empty_variant()) == false)
 }

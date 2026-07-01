@@ -1,0 +1,20 @@
+module v2.test.manual.multi_target_emit_verification_gate
+
+import v2.std.verification {
+  Boundary,
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  manual_claim_anchor
+}
+import v2.test.manual.connective_anchors { stub_empty_conj }
+
+data claim_emit_verification_gate_obligation_modeled: TestClaim = CompilesClaim {
+  label: "multi-target emit verification gate obligation is modeled (v3 harness is authority until T-38)"
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent)
+  input: stub_empty_conj
+  expected_value: stub_empty_conj
+  classification: TestClassification { tier: Tier1, layer: Boundary }
+}

@@ -1,14 +1,3 @@
-// v2/test/claim/cargo_build_run_argv_witness_test.dag
-//
-// DESIGN §5 green-by-execution consumer for cargo.Build.Run: the escaped-literal
-// defect (`"\{package\}"` / `"\{bin\}"`) produced static "{package}" tokens and left
-// the op unexercised. Lives under src/v2 (not dsl/) because shell_materialize_argv_for_operation
-// is a runtime projection builtin — dsl/ compile-clean must not see it.
-//
-// Hermetic floor witness only: materializes argv with concrete params and asserts the
-// exact token list (RED if substitution does not fire). Wet cargo.Build.Run execution
-// is intentionally out of the floor — non-hermetic and flake-prone under fleet cargo spawn.
-
 module v2.test.claim.cargo_build_run_argv_witness
 
 import std.logic { Bool }

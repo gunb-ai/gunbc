@@ -1,0 +1,124 @@
+module v2.test.manual.v2_evaluator_runtime_anchor
+
+import v2.extdeps.runtimes.v2_evaluator {
+  V4EvaluatorRuntime,
+  v2_eval_wave1_call_primitive,
+  v2_eval_wave1_empty_environment,
+  v2_eval_wave1_empty_frame,
+  v2_eval_wave1_transfer,
+  v2_eval_wave1_unit_type_node,
+  v2_evaluator_boundary_wave1,
+  v2_evaluator_execution_wave1,
+  v2_evaluator_interpretation_wave1,
+  v2_evaluator_model_core_wave1,
+  v2_evaluator_runtime_wave1,
+  v2_evaluator_value_representation_wave1
+}
+import v2.std.collection { List }
+import v2.std.diagnostic { Rejected }
+import v2.std.model_core { ModelCore, wave1_model_core }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.runtime {
+  ExecutionSemantics,
+  InterpretationAlgebra,
+  ResourceEffectBoundary,
+  Suspend,
+  ValueRepresentationModel
+}
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+type v2_evaluator_anchor_runtime_type = V4EvaluatorRuntime
+
+data v2_evaluator_anchor_runtime: v2_evaluator_anchor_runtime_type = v2_evaluator_runtime_wave1()
+
+data v2_evaluator_anchor_core: ModelCore = v2_evaluator_anchor_runtime.core
+
+data v2_evaluator_anchor_core_standalone: ModelCore = v2_evaluator_model_core_wave1()
+
+data v2_evaluator_anchor_values: ValueRepresentationModel = v2_evaluator_anchor_runtime.values
+
+data v2_evaluator_anchor_values_standalone: ValueRepresentationModel = v2_evaluator_value_representation_wave1()
+
+data v2_evaluator_anchor_interpretation: InterpretationAlgebra = v2_evaluator_interpretation_wave1()
+
+data v2_evaluator_anchor_interpretation_standalone: InterpretationAlgebra = v2_evaluator_interpretation_wave1()
+
+data v2_evaluator_anchor_execution: ExecutionSemantics = v2_evaluator_anchor_runtime.execution
+
+data v2_evaluator_anchor_execution_standalone: ExecutionSemantics = v2_evaluator_execution_wave1()
+
+data v2_evaluator_anchor_boundary: ResourceEffectBoundary = v2_evaluator_anchor_runtime.boundary
+
+data v2_evaluator_anchor_boundary_standalone: ResourceEffectBoundary = v2_evaluator_boundary_wave1()
+
+data witness_v4_evaluator_runtime_identity: Bool = v2_evaluator_anchor_runtime.runtime_identity == ^v2_evaluator_runtime_id
+
+data witness_v4_evaluator_interpretation_reinstantiation_eq: Bool = v2_evaluator_anchor_interpretation == v2_evaluator_anchor_interpretation_standalone
+
+data witness_v4_evaluator_interpretation_fresh_call_eq: Bool = v2_evaluator_anchor_interpretation == v2_evaluator_interpretation_wave1()
+
+data witness_v4_evaluator_model_core_wires_wave1: Bool = v2_evaluator_anchor_core == wave1_model_core() && v2_evaluator_anchor_core_standalone == wave1_model_core()
+
+data witness_v4_evaluator_semantics_fail_closed: Bool = match v2_eval_wave1_call_primitive(
+  node: v2_eval_wave1_unit_type_node(),
+  args: [],
+  env: v2_eval_wave1_empty_environment()
+) {
+  Rejected { diagnostics: _ } => true
+  _ => false
+}
+
+data witness_v4_evaluator_transfer_fail_closed: Bool = match v2_eval_wave1_transfer(
+  control: Suspend { continuation: v2_eval_wave1_empty_frame() },
+  frame: v2_eval_wave1_empty_frame()
+) {
+  Rejected { diagnostics: _ } => true
+  _ => false
+}
+
+fn v2_evaluator_witness_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^v2_evaluator_witness_fail_atom } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn v2_evaluator_witness_claim_input(ok: Bool) -> Node {
+  if ok {
+    v2_eval_wave1_unit_type_node()
+  } else {
+    v2_evaluator_witness_fail_node()
+  }
+}
+
+data claim_v4_evaluator_runtime_bundle: TestClaim = CompilesClaim {
+  label: "T-34 v2 evaluator concrete runtime bundle constructs and carriers wire",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: v2_evaluator_witness_claim_input(ok: witness_v4_evaluator_runtime_identity && witness_v4_evaluator_model_core_wires_wave1 && witness_v4_evaluator_interpretation_reinstantiation_eq && witness_v4_evaluator_interpretation_fresh_call_eq),
+  expected_value: v2_eval_wave1_unit_type_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_v4_evaluator_semantics_fail_closed: TestClaim = CompilesClaim {
+  label: "T-34 v2 evaluator wave-1 call_primitive rejects deferred semantics",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: v2_evaluator_witness_claim_input(ok: witness_v4_evaluator_semantics_fail_closed),
+  expected_value: v2_eval_wave1_unit_type_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_v4_evaluator_transfer_fail_closed: TestClaim = CompilesClaim {
+  label: "T-34 v2 evaluator wave-1 transfer rejects deferred control",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: v2_evaluator_witness_claim_input(ok: witness_v4_evaluator_transfer_fail_closed),
+  expected_value: v2_eval_wave1_unit_type_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

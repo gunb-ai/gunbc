@@ -1,0 +1,92 @@
+module v2.test.manual.rust_wire_serde_naming_policy_test
+
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.rust_wire_serde {
+  rust_wire_serde_review_event_emitted,
+  rust_wire_serde_screaming_snake_target,
+  rust_wire_serde_snake_case_target,
+  rust_ws_review_event_body_golden,
+  rust_ws_review_event_screaming_golden,
+  rust_ws_review_event_snake_golden
+}
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.text { String }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+fn rust_ws_serialize_accepts(target: TargetModel, emitted: Node) -> Bool {
+  match target_serialize_source_from_model(target: target, emitted: emitted) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn rust_ws_serialized_text(target: TargetModel, emitted: Node) -> String {
+  match target_serialize_source_from_model(target: target, emitted: emitted) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn witness_rust_wire_serde_screaming_snake_holds() -> Bool {
+  rust_ws_serialize_accepts(
+    target: rust_wire_serde_screaming_snake_target,
+    emitted: rust_wire_serde_review_event_emitted
+  )
+    && rust_ws_serialized_text(
+      target: rust_wire_serde_screaming_snake_target,
+      emitted: rust_wire_serde_review_event_emitted
+    ) == rust_ws_review_event_screaming_golden
+}
+
+fn witness_rust_wire_serde_snake_case_holds() -> Bool {
+  rust_ws_serialize_accepts(
+    target: rust_wire_serde_snake_case_target,
+    emitted: rust_wire_serde_review_event_emitted
+  )
+    && rust_ws_serialized_text(
+      target: rust_wire_serde_snake_case_target,
+      emitted: rust_wire_serde_review_event_emitted
+    ) == rust_ws_review_event_snake_golden
+}
+
+fn witness_rust_wire_serde_naming_discriminates() -> Bool {
+  let screaming = rust_ws_serialized_text(
+    target: rust_wire_serde_screaming_snake_target,
+    emitted: rust_wire_serde_review_event_emitted
+  )
+  let snake = rust_ws_serialized_text(
+    target: rust_wire_serde_snake_case_target,
+    emitted: rust_wire_serde_review_event_emitted
+  )
+  screaming != snake
+    && screaming != rust_ws_review_event_body_golden
+    && snake != rust_ws_review_event_body_golden
+}
+
+data unified_claim_rust_wire_serde_screaming_snake: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v2/test/claim/manual/rust_wire_serde_naming_policy_test.dag",
+    function: witness_rust_wire_serde_screaming_snake_holds
+  }
+}
+
+data unified_claim_rust_wire_serde_snake_case: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v2/test/claim/manual/rust_wire_serde_naming_policy_test.dag",
+    function: witness_rust_wire_serde_snake_case_holds
+  }
+}
+
+data unified_claim_rust_wire_serde_naming_discriminates: UnifiedTestClaim = BoolWitnessClaim {
+  witness: BoolWitness {
+    entry: "src/v2/test/claim/manual/rust_wire_serde_naming_policy_test.dag",
+    function: witness_rust_wire_serde_naming_discriminates
+  }
+}

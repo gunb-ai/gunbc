@@ -1,61 +1,13 @@
-// std/coercion.dag -- Shared coercion vocabulary.
-//
-// Single authority for coercion schema types. Per-language files
-// (extdeps/languages/*/types.dag) import these types and instantiate
-// data. This prevents schema drift across language targets.
-//
-// IDENTITY NOTE (M4/Lane 1):
-// dag_name and algebra fields are currently String-keyed. This is the
-// transitional form. M4/Lane 1 will replace these with edges to
-// declaration nodes — structural identity rather than proxy strings.
-// The resolution phase converts these strings to resolved declaration
-// identity at startup; after that point, no semantic decision uses
-// string equality on type or algebra names.
-//
-// Consumers:
-//   extdeps/languages/rust/types.dag    -- Rust inhabitant data
-//   extdeps/languages/python/types.dag  -- Python inhabitant data
-//   extdeps/languages/go/types.dag      -- Go inhabitant data
-//   v2/05_emit.dag                      -- coercion engine
-//   docs/coercion-design.md             -- design specification
-
 module std.coercion
 
-// TypeCheckpoint: "this exact .dag type name maps to this target type."
-//
-// Checkpoints are the fast path — checked FIRST before algebra resolution.
-// They handle the common case (Int → i64, String → str, etc.) without
-// needing to trace through the algebra composition stack.
-//
-// Per-language files instantiate List<TypeCheckpoint> with their mappings.
-//
-// Fields:
-//   dag_name     — .dag type name (String until M4 gives us declaration edges)
-//   target_type  — target language type expression
-//   default_expr — default/zero/falsy value expression (none if no default)
-//   is_copy      — Rust-specific: Copy trait status. none for GC languages
-//                  where the distinction does not exist.
 type TypeCheckpoint {
   dag_name: String
   target_type: String
   default_expr: String?
   is_copy: Bool?
-  literal_suffix: String?   // Rust String: ".to_string()" (&str → String ownership)
+  literal_suffix: String?
 }
 
-// InhabitantDecl: "this target type inhabits this .dag algebra."
-//
-// When no TypeCheckpoint matches, the compiler resolves through the type's
-// algebra (from std/algebra.dag) and applies the matching InhabitantDecl.
-//
-// Fields:
-//   algebra       — algebra name from std/algebra.dag (String until M4)
-//   template      — target type template. {0}, {1} are positional type params.
-//   arity         — number of type parameters. 0 = leaf, 1 = Vec<{0}>, etc.
-//   identity_expr — algebra identity element in target language (Monoid.identity,
-//                   Ring.zero, etc.). Used for empty literals and fold init.
-//   import_path   — import/use statement needed for this type (none if prelude)
-//   is_copy       — Rust-specific: Copy trait. none for GC languages.
 type InhabitantDecl {
   algebra: String
   template: String
@@ -65,18 +17,6 @@ type InhabitantDecl {
   is_copy: Bool?
 }
 
-// CallableRepr: how .dag function types render in the target language.
-//
-// This is the BASE callable rendering. Context-dependent wrapping (Rust's
-// Box<dyn Fn>/Rc<dyn Fn> distinction) is derived from ValueContext at emit
-// time, not declared here. The template captures the language's syntax for
-// a plain function type.
-//
-// Fields:
-//   template         — function type template ({params} and {return} placeholders)
-//   param_separator  — separator between parameters (", " in most languages)
-//   return_separator — separator before return type (" -> ", " ", etc.)
-//   import_path      — import needed for the callable type annotation (none if builtin)
 type CallableRepr {
   template: String
   param_separator: String
@@ -84,21 +24,6 @@ type CallableRepr {
   import_path: String?
 }
 
-// CastSyntax: how type casts render in the target language.
-//
-// Each language has different cast rules:
-//   Rust:   `expr as type` — only valid for specific source-target pairs
-//           (Rust Reference §8.2.4 "Type cast expressions")
-//   Go:     `type(expr)` — all numeric conversions valid
-//   Python: `type(expr)` — constructor calls, always syntactically valid
-//
-// Fields:
-//   template       — cast expression template ({expr} and {type} placeholders)
-//   valid_targets  — target types valid for casting (empty if fail_open)
-//   fail_open      — true = all casts syntactically valid (Python/Go),
-//                    false = check valid_targets (Rust)
-// CastRule: one valid (source, target) pair for type casting.
-// Ref: Rust Reference §8.2.4 — cast validity is a relation, not a set.
 type CastRule {
   from_type: String
   to_type: String
@@ -109,9 +34,6 @@ type CastSyntax {
   cast_rules: List<CastRule>
 }
 
-// .dag-level cast validity — language-independent numeric rules.
-// Validated at infer time so emit can render unconditionally.
-// Alias casts (Secret→String, etc.) bypass this: they're identity at emit level.
 data dag_cast_rules: List<CastRule> = [
   { from_type: "Int",   to_type: "Int" },
   { from_type: "Int",   to_type: "Float" },
@@ -124,9 +46,6 @@ fn dag_can_cast(source_type: String, target_type: String) -> Bool {
   dag_cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
 }
 
-// Whether a type appears in the dag cast domain — derived from dag_cast_rules
-// (single authority). Types outside this domain bypass infer-phase cast
-// validation; emit's per-target can_cast is the fail-closed safety net.
 fn is_dag_cast_domain_type(name: String) -> Bool {
   dag_cast_rules |> any(r => r.from_type == name || r.to_type == name)
 }

@@ -1,12 +1,7 @@
-// src/v2/compiler/04_infer.dag
-// Scope: Stage 4 — ResolvedTree -> InferredTree; bounded Find phase (DECISIONS C1 / IR-1).
-// Status: T-9 modeled — coercion substrate in std/coercion.dag. Option B: canonical_grounding_from_inferred_facts fails-closed on bare-Atom algebra references (bridge-symbol guard).
-// Anchor: https://en.wikipedia.org/wiki/Type_inference
-
 module v2.compiler.infer
 
 import v2.std.algebra { length, list_snoc_item }
-// kernel-mark: SG-6 gate imports — `_bounded` substring is BoundedLattice domain naming, not fuel.
+
 import v2.std.bounded_lattice_completeness {
   infer_bounded_lattice_consumer_gate,
   partial_bounded_lattice_instances_in_tree
@@ -66,22 +61,16 @@ import v2.std.node {
 import v2.std.node_query { find_named_child, node_positional_child_targets }
 import v2.std.witness { Holds, StructuralPropertyWitness, Violates, Witness }
 
-// AlgebraRef is the typed IR-1 bridge for algebra inhabitance coordinates.
 type AlgebraRef {
   algebra: Node
   witness: Node
 }
 
-// InferredFacts bundles CanonicalGrounding + descent. std/constraints.dag
-// CanonicalGrounding is not yet proof-by-construction (scaffold:T-9-ground) — infer
-// enforces admission at construction and re-export via canonical_grounding_admits_infer_facts
-// until std/constraints lands a structural carrier for node/witness/closedness alignment.
 type InferredFacts {
   grounding: CanonicalGrounding
   descent: Witness<TerminationProof>
 }
 
-// Subject node (map key / grounding.node) vs resolved value type (structural algebra witness).
 fn inferred_facts_resolved_type(facts: InferredFacts) -> Node {
   facts.grounding.witness.structural.evidence
 }
@@ -108,7 +97,6 @@ type InferredFactsEntry {
   facts: InferredFacts
 }
 
-// Named fold carrier — avoids nested Outcome<List<InferredFactsEntry>> in gather init (parser).
 type InferGatherFoldAcc {
   node: Node
   entries: List<InferredFactsEntry>
@@ -118,12 +106,6 @@ type InferGatherFoldAcc {
   await_match_row: Bool
   children_remaining: Int
 }
-
-// 🟢 SM5-satisfied: v2 bootstrap on src/v2 emits 0 infer_algebra_ref_ungrounded diagnostics (2026-05-26); guard dissolves when T-4 Wave 2b/T-2 populate AlgebraRef from grounded algebra Node constructors.
-// §1-tail A4 disposition (post-#4692): `_bounded` fuel residue = 0 in this stage.
-// SG-6 BoundedLattice gather/gate → fuel-delete: rows in v2.std.bounded_lattice_completeness
-// (fold_node owns traversal; fold_init/fold_step are algebra rows, not fuel).
-// Constraint solve → kernel-mark: solve_constraints in v2.std.constraints (fixpoint; call-graph ≠ data-graph).
 
 fn infer_facts_lookup_miss_diagnostic(key: Node) -> Diagnostic {
   Diagnostic {
@@ -212,7 +194,6 @@ fn infer_match_non_exhaustive_diagnostic(node: Node) -> Diagnostic {
   }
 }
 
-// 🟡 gated — feature:infer-algebra-ref-grounding-fold — bind v2.compiler.infer://algebra-ref-grounded — dissolve-on-arrival: std/node.dag or std/model_core.dag exports the canonical grounded-algebra query.
 fn algebra_ref_is_grounded(algebra: Node) -> Bool {
   match algebra.kind {
     TypeNode { connective: c } =>
@@ -232,7 +213,6 @@ fn infer_descent_not_derived_diagnostic(at: Locus) -> Diagnostic {
   }
 }
 
-// SPI-3: infer owns the reason symbol; substrate/cardinality owns the failing locus (fold preserves child Violates).
 fn infer_descent_witness_for_node(n: Node) -> Witness<TerminationProof> {
   match termination_proof_witness_for_node(n: n) {
     Holds { value: proof } => Holds { value: proof }
@@ -250,9 +230,6 @@ fn algebra_ref_from_grounding(grounding: CanonicalGrounding) -> AlgebraRef {
   }
 }
 
-// Infer admission gate — not a post-hoc InferredFacts field patch. Validates the
-// algebra_ref_from_grounding / closedness alignment CanonicalGrounding must satisfy
-// before infer accepts or re-exports grounding as authoritative.
 fn canonical_grounding_admits_infer_facts(grounding: CanonicalGrounding) -> Bool {
   well_formed(n: grounding.node)
     && well_formed(n: grounding.witness.structural.evidence)
@@ -304,9 +281,6 @@ fn infer_constraint_graph(n: Node) -> ConstraintGraph {
   ConstraintGraph { root: n }
 }
 
-// 🟡 gated — feature:branch-infer-constraint-solve-bridge —
-// bind:github.com/gunb-ai/gunbc#4772 —
-// dissolve-on: solve_constraints emits being_canonical at source; delete infer_grounding_from_constraint_solve.
 fn infer_grounding_from_constraint_solve(grounding: CanonicalGrounding) -> CanonicalGrounding {
   CanonicalGrounding {
     node: grounding.node,
@@ -320,7 +294,6 @@ fn infer_grounding_from_constraint_solve(grounding: CanonicalGrounding) -> Canon
   }
 }
 
-// Route-scoped bridge: only infer_node_facts → solve_constraints calls this remapper.
 fn infer_node_facts(n: Node, partials: List<Node>) -> Outcome<InferredFacts> {
   match infer_bounded_lattice_consumer_gate(consumer: n, partials: partials) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -369,9 +342,6 @@ fn lookup_inferred_facts_in_entries(
   )
 }
 
-// Fail-closed map construction: rejects (with diagnostic) any entry where node != facts.grounding.node.
-// admitted_inferred_facts_entry is the primary enforcement point; this function is the secondary
-// fail-closed gate — it makes invariant violations visible as Rejected rather than silently dropping them.
 fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node, InferredFacts>> {
   match fold(entries, init: Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None }, f: fn(acc, entry) {
     match acc {
@@ -423,7 +393,6 @@ fn canonical_grounding_from_inferred_facts(
   }
 }
 
-// RULING-1: infer-authored canonical witness only — no compiler-side fabrication.
 fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<CanonicalGrounding> {
   match inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
@@ -433,8 +402,6 @@ fn canonical_grounding_for_node(tree: InferredTree, node: Node) -> Outcome<Canon
   }
 }
 
-// Construction guard: enforces node == facts.grounding.node before admitting an entry.
-// Prevents an InferredFactsEntry where the map key diverges from the grounding subject.
 fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<InferredFactsEntry> {
   if node == facts.grounding.node {
     Accepted {
@@ -470,9 +437,6 @@ fn infer_branch_is_int_literal_atom(node: Node) -> Bool {
   }
 }
 
-// 🟡 gated — branch infer M0 literal operand typing — feature:branch-infer-literal-types —
-// dissolve-on: github.com/gunb-ai/gunbc#4772 constraint carriers at infer_node_facts
-// assign literal operand types during infer_node_facts instead of Branch-row semantic projection.
 fn infer_branch_operand_resolved_type(node: Node, facts: InferredFacts) -> Node {
   if infer_branch_is_bool_literal_atom(node: node) {
     bool_node()
@@ -532,7 +496,6 @@ fn infer_unify_branch_arm_types(
   }
 }
 
-// Q-B2 gather-algebra row: Bool-if-else Branch — cond child typed Bool; arms unify to Branch result type.
 fn infer_branch_bool_if_else(
   node: Node,
   partials: List<Node>,
@@ -632,12 +595,6 @@ type InferMatchArmRow {
   body_type: Node
 }
 
-// 🟡 gated — feature:match-infer-bool-literal-pattern-m0 — consumer:infer_match_bool_arm_row —
-// bind: Lane 2a bool-only match infer — dissolve-on: Q-B1 named pattern edges replace literal-atom classify;
-// forbidden: parallel hand-rolled has_true/has_false exhaustiveness records.
-// 🟡 gated — predicate-dissolution interim — feature:branch-infer-bool-literal-atom-classify —
-// consumer:infer_bool_literal_pattern_classify — dissolve-on: grammar-backed literal pattern carrier (M0-B5);
-// forbidden: parallel is_* bool-literal atom predicates outside this classify cluster.
 fn infer_branch_is_bool_true_literal_atom(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => id == ^dag_token_kw_true
@@ -736,7 +693,6 @@ fn infer_match_bool_arm_row(
   }
 }
 
-// Q-B2 gather-algebra row: Bool match — scrutinee typed Bool; bool-literal arms unify; exhaustiveness fail-closed.
 fn infer_match_bool(
   node: Node,
   partials: List<Node>,

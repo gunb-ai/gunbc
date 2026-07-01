@@ -1,6 +1,3 @@
-//! Interpreter REST wire serialization must honor modeled `CoproductWireContract`
-//! rows via the same `RustEnumWireSerde` policy emit uses.
-
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};

@@ -1,21 +1,3 @@
-// extdeps/vendor.dag — Vendor: a party that supplies goods or services.
-//
-// A vendor (supplier/seller) is an enterprise that contributes goods or services to
-// another party. This is the agnostic SHAPE — generic over the DOMAIN of goods via a
-// phantom type parameter, so a single Vendor concept spans every domain (a hardware
-// maker is `Vendor<Hardware>`, a hypothetical software maker `Vendor<Software>`, …).
-// The domain is a type ARGUMENT, never a forked per-domain enum — DESIGN §2 (one
-// concept, every breadth) and §3 (single authority; this dissolves the former
-// CpuVendor / GpuVendor / DramManufacturer fork — three name-lists for one concept).
-//
-// The specific companies are cited external entities, one file each, in
-// extdeps/vendor/<company>.dag — referencing a company means grounding it as a real
-// upstream entity (cite the source, keep the legal name), not minting an enum nickname.
-// Anchor: https://en.wikipedia.org/wiki/Vendor
-//
-// Identity is the cited legal name; further axes (country of incorporation, ticker, …)
-// decompose here only when a consumer needs to dispatch on one (DESIGN §6).
-
 module extdeps.vendor
 
 import std.types { NonEmptyStr }

@@ -1,5 +1,3 @@
-// RED perturb fixture — external anchor with unrecognized Uri scheme constructor identity.
-
 module extdeps.fixture.external_authority_bogus_scheme
 
 import extdeps.external_authority { ExternalAuthority }

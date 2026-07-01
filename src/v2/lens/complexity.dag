@@ -1,26 +1,5 @@
-// src/v2/lens/complexity.dag
-//
-// Scope: complexity lens — structural fact carried by data model, not behavioral test.
-// Anchor: https://en.wikipedia.org/wiki/Computational_complexity_theory + https://en.wikipedia.org/wiki/Big_O_notation
-// Unifies: coercion cost = complexity. The cost of converting between representations IS a complexity-lens read; no parallel CoercionCost carrier. A worker computing coercion cost reads via this lens.
-//
-// U2 (ratified 2026-05-15): this lens is the asymptotic
-// PROJECTION of `lens/cost.dag`'s SymbolicCost — it CONSUMES that
-// carrier and never independently re-derives cost. One mechanism, two
-// projections (SymbolicCost = the realization-cost expression;
-// ComplexityBound = its asymptotic class). Re-deriving here would create
-// a second cost authority — forbidden (the parallel-authority bug U1/U2
-// foreclose).
-//
-// Status: ComplexityBound projection + complexity_lens consuming cost_lens + complexity_bound_dominates.
-// This file's I/O contract is the immutable
-// contract for the worker. Splitting this file requires explicit operator
-// ratification (substrate extension = stop signal).
-
-
 module v2.lens.complexity
 import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
-
 
 import v2.lens.cost {
   AsymptoticClass,
@@ -74,31 +53,24 @@ import v2.std.refinement {
   refined_vacuous_stub_pack
 }
 import v2.std.witness { Holds, Violates, Witness }
-// Intentionally trivial: routes lens-internal SizeVariable lists through refine (placeholder).
-// 🟡 gated — feature:complexity-variables-refine-placeholder — bind T-12-COMPLEXITY-PROJECTION — dissolve-on-arrival: replace admits=true with a real SizeVariable-list predicate or remove the refine wrapper once complexity projection no longer needs a Refined carrier; forbidden: permanent vacuous refinement without a dissolution receipt.
+
 fn complexity_variables_admits(xs: List<SizeVariable>) -> Bool {
   true
 }
-
 
 data complexity_variables_validation: Validation<List<SizeVariable>> = Validation {
   reason: ^complexity_variables_invalid,
   admits: complexity_variables_admits
 }
 
-
-// 🟡 dissolution cohort — feature:refinement-vacuous-oracle-terminal — bind T-12-COMPLEXITY-PROJECTION
-// with testgen; dissolve-on-arrival: delete with std.refinement vacuous_admits machinery.
 data complexity_variables_vacuous_validation: VacuousValidation<List<SizeVariable>> = VacuousValidation {
   reason: ^complexity_variables_invalid,
   vacuous: vacuous_admits_marker
 }
 
-
 fn complexity_projection_locus() -> Locus {
   Textual { file: ^complexity_projection_virtual_file, extent: WholeFile }
 }
-
 
 fn complexity_variables_from_refine(xs: List<SizeVariable>) -> Witness<ComplexityVariables> {
   match refine(base: xs, by: complexity_variables_validation, at: complexity_projection_locus()) {
@@ -107,15 +79,10 @@ fn complexity_variables_from_refine(xs: List<SizeVariable>) -> Witness<Complexit
   }
 }
 
-
-// Exported helpers return ComplexityVariables (main API); refine Witness stays internal.
 fn complexity_variables_unwrap_refine(xs: List<SizeVariable>) -> ComplexityVariables {
   match complexity_variables_from_refine(xs: xs) {
     Holds { value: variables } => variables
-    // 🟡 gated — feature:complexity-variables-vacuous-oracle-fallback — bind T-12-COMPLEXITY-PROJECTION —
-    // dissolve-on-arrival: propagate Violates at exported boundary when admits is real (delete
-    // refined_vacuous_stub_pack path). Today complexity_variables_admits is constantly true, so
-    // Violates is unreachable; this arm ignores the Violates diagnostic (placeholder only).
+
     Violates { diagnostic: _ } =>
       refined_vacuous_stub_pack(
         base: xs,
@@ -125,11 +92,8 @@ fn complexity_variables_unwrap_refine(xs: List<SizeVariable>) -> ComplexityVaria
   }
 }
 
-
-// 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
 type ComplexityVariables = Refined<List<SizeVariable>>
 
-// 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
 type SizeIndexedAsymptoticClass
   = SizedLogClass
   | SizedLinearClass
@@ -139,10 +103,6 @@ type SizeIndexedAsymptoticClass
   | SizedExponentialClass
   | SizedFactorialClass
 
-// ComplexityBound is the asymptotic projection of `SymbolicCost`. The
-// `class` relation remains owned by `cost.dag`; this carrier packages the
-// projected user-facing bound without adding another cost mechanism.
-// 🟢 coproduct dissolution — T-12-COMPLEXITY-PROJECTION.
 type ComplexityBound
   = ConstantComplexity
   | SizedComplexity { class: SizeIndexedAsymptoticClass, variables: ComplexityVariables }
@@ -361,11 +321,6 @@ fn complexity_bound_dominates(a: ComplexityBound, b: ComplexityBound) -> Bool {
   }
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever {
-    undecidable_because: "tight asymptotic class / optimality is undecidable (Rice), and cost is a runtime property -- slow code is never a representational error, so it can never be made unwritable by construction"
-  },
-  rationale: "Budget-dominance is a complete decidable hard-gate (DESIGN's wall), but the asymptotic optimum the lens projects toward is undecidable; the lens is the residue mechanism for a class that has no representational wall."
+  class: RatchetForever
 }

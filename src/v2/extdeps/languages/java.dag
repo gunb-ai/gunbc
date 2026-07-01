@@ -1,8 +1,3 @@
-// src/v2/extdeps/languages/java.dag
-// Scope: Java SE Language Specification (JLS) LanguageModel — scalar fact-bundles, inhabitants, bidirectional grammar data.
-// Status: T-4.17 Wave 2a/2b — wave-1 MVP-1 + wave-2 lex/grammar aligned to JLS production boundaries (§8.1.7 ClassBodyDeclaration, §8.4 MethodHeader/MethodBody/MethodDeclarator/FormalParameterList, §14.17 optional return Expression). Wave-2 productions declared as `FormalProduction` flat rhs (`java_wave2_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence. canonical_symbols via `lex_rule_set_token_class_member` + `grammar_carries_symbol`. ModelCore wave-2b: primitive storage on full integer catalog; arithmetic inhabitance/laws on `int`/`long` only (JLS §5.6 promotion — byte/short/char stay primitives-only); wrapping int/long → commutative_semiring modular laws; float/double primitives-only (JLS §15.20.1 NaN compare); bool algebra; div/rem-by-zero partiality only. bool canonical-B decl-ref — 🟡 E-6(b) staging.
-// Anchor: https://docs.oracle.com/javase/specs/jls/se21/html/jls-4.html#jls-4.2
-
 module v2.extdeps.languages.java
 import v2.std.language_model { LanguageModel }
 
@@ -97,26 +92,20 @@ import v2.std.algebra {
 }
 import v2.std.text { String }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// `Unsigned` arm is cataloged for `char` (JLS §4.2.1 — 16-bit unsigned UTF-16 code unit); signed integrals use `Signed`.
 type JavaIntKind
   = Signed
   | Unsigned
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type JavaIntWidth
   = Bits8
   | Bits16
   | Bits32
   | Bits64
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type JavaFloatWidth
   = Bits32
   | Bits64
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type JavaScalar
   = IntScalar { kind: JavaIntKind, width: JavaIntWidth }
   | FloatScalar { width: JavaFloatWidth }
@@ -138,8 +127,6 @@ type JavaFloatPrimitiveFacts {
   std_projection: Symbol
 }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// Single-class non-integer primitive today; reserved arm mirrors rust.dag two-arm shape for v2 compile.
 type JavaNonIntegerScalar
   = BoolScalar
   | JavaNonIntegerScalarReserved
@@ -151,24 +138,16 @@ type JavaNonIntegerPrimitiveFacts {
   representation: Symbol
 }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// Java integral ops wrap (JLS); `PanicOnOverflow` arm mirrors rust.dag for v2 compile (never cataloged).
 type OverflowAction
   = PanicOnOverflow
   | TwoComplementWrap
-
-
-// T-11 java grammar relation row: fixed terminals and bound terminals share
-// the Java grammar production instead of an operator string template.
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 
 type JavaGrammarRelationRow {
   production: GrammarProduction
   emitted: Node
   tokens: List<ConcreteSyntaxToken>
 }
-// Law-kind schedule keys — carried on grounded law Nodes (kind edge), not as bare AlgebraLawObligation.law atoms.
-// 🟡 needs-more-work — feature:java-model-core-law-keys — scaffold:T-4-wave-2b · declared law-kind coproduct for java_model_core_law_node kind edge; dissolve-on: std/algebra exports typed law/equation Nodes replacing kind atoms (same gate as model_core ModelCoreWave1BoolLawKey).
+
 type JavaModelCoreLawKey
   = JavaLawIntegerAddAssociativeModular
   | JavaLawIntegerAddCommutativeModular
@@ -178,7 +157,7 @@ type JavaModelCoreLawKey
   | JavaLawIntegerModularWrap
   | JavaLawBoolBoundedLattice
   | JavaLawBoolComplement
-// Sole MVP-1 concrete-syntax authority — grammar and serialize_source project from this relation.
+
 fn java_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^java_token_kw_static },
@@ -255,7 +234,6 @@ data java_facts_boolean: JavaNonIntegerPrimitiveFacts = JavaNonIntegerPrimitiveF
   representation: ^java_repr_boolean,
 }
 
-// JLS §4.2.1 — char is a 16-bit unsigned integral type (UTF-16 code unit).
 data java_facts_char: JavaIntegerPrimitiveFacts = JavaIntegerPrimitiveFacts {
   surface_spelling: ^java_surface_spelling_char,
   signedness: Unsigned,
@@ -264,7 +242,6 @@ data java_facts_char: JavaIntegerPrimitiveFacts = JavaIntegerPrimitiveFacts {
   std_projection: ^java_std_projection_char,
 }
 
-// Sole primitive-fact list authorities — ModelCore.primitives and catalog surface_symbol membership derive via fold.
 data java_integer_facts_catalog: List<JavaIntegerPrimitiveFacts> = [
   java_facts_byte,
   java_facts_short,
@@ -273,7 +250,6 @@ data java_integer_facts_catalog: List<JavaIntegerPrimitiveFacts> = [
   java_facts_char,
 ]
 
-// JLS §5.6 — numeric promotion: byte/short/char arithmetic is performed on int; only int/long carry ModelCore algebra.
 data java_integer_algebra_inhabitance_facts_catalog: List<JavaIntegerPrimitiveFacts> = [
   java_facts_int,
   java_facts_long,
@@ -284,17 +260,10 @@ data java_float_facts_catalog: List<JavaFloatPrimitiveFacts> = [
   java_facts_double,
 ]
 
-// JLS §15.20.1 — float/double relational ops are boolean-valued with NaN unordered; std
-// `ApproximateField` bundles an Ordering-valued compare. Float primitive facts stay in
-// `ModelCore.primitives`; AlgebraInhabitanceDecl/laws withheld until std exports a
-// NaN-aware float arithmetic carrier (kotlin.dag char / go.dag complex precedent).
-
-// §4.2 boolean only — char is integral (integer catalog); void is declared-inhabitant-only (not ModelCore).
 data java_noninteger_facts_catalog: List<JavaNonIntegerPrimitiveFacts> = [
   java_facts_boolean,
 ]
 
-// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1)
 data java_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn java_inhabitant_atom(id: Symbol) -> Node {
@@ -535,11 +504,6 @@ fn java_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
-// Declared-inhabitant Conj root for `target_model_edge_declared_inhabitants`. T-10 staging
-// (`coercion_candidates_from_target_model`) passes this whole Conj as one aggregate
-// `CandidateSet.candidates` entry — not a flat List of per-primitive nodes. find_witness
-// enumeration inside the root is forward work (W-T-10). Coercion fixture pins int via
-// `TargetDeclaredPriority` on `java_inhabitant_int_node`, not via inhabitants-root walk.
 fn java_declared_inhabitants_root() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -579,11 +543,9 @@ fn java_mvp1_source_text_authority() -> String {
 }
 
 fn java_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
-  // T-11: serialize through the single shared morphism (no parallel wire authority).
+
   concrete_syntax_token_to_node(token: token)
 }
-
-
 
 fn java_mvp1_serialize_source_prefix_edges() -> List<Edge> {
   Cons {
@@ -617,7 +579,7 @@ fn java_mvp1_serialize_source_children() -> List<Edge> {
 }
 
 fn java_mvp1_serialize_source_node() -> Node {
-  // liveness anchor — `^java_mvp1_source_literal` pairs with `java_mvp1_source_text` until literal Node lands
+
   let _authority = java_mvp1_source_text_authority()
   Node {
     kind: TypeNode { connective: Conj },
@@ -699,7 +661,6 @@ fn java_mvp1_grammar_relation_row() -> JavaGrammarRelationRow {
     tokens: java_mvp1_concrete_tokens()
   }
 }
-
 
 fn java_grammar_relation_row_node(row: JavaGrammarRelationRow) -> Node {
   Node {
@@ -804,8 +765,6 @@ fn java_ident_lex_rule() -> LexRule {
   }
 }
 
-// NOTE: layout whitespace is baked into LiteralPattern.text below (e.g. "static " not "static").
-// Dissolves when T-6 supplies TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout.
 fn java_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -831,8 +790,6 @@ fn java_wave1_lex() -> LexRules {
 fn java_grammar_atom(id: Symbol) -> Node {
   java_inhabitant_atom(id: id)
 }
-
-
 
 fn java_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
@@ -902,7 +859,6 @@ fn java_wave2_lex() -> LexRules {
   ModeledLexRules { root: java_wave2_lex_rules() }
 }
 
-// Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
 fn java_wave2_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(lhs: ^java_production_compilation_unit, rhs: [grammar_formal_nonterminal_occurrence(identity: ^java_production_class_declaration)]),
@@ -1183,7 +1139,6 @@ fn java_grammar_primitive_type_expr() -> GrammarExpr {
   )
 }
 
-// JLS §8.4 Result — `void` is a method return type only, not a §4.2 primitive type.
 fn java_grammar_result_expr() -> GrammarExpr {
   java_grammar_choice(
     left: java_grammar_nonterminal(production: ^java_production_primitive_type),
@@ -1198,12 +1153,10 @@ fn java_grammar_formal_parameter_expr() -> GrammarExpr {
   )
 }
 
-// JLS §8.4.1 FormalParameterList — comma-separated parameters only (non-empty when present).
 fn java_grammar_formal_parameter_list_expr() -> GrammarExpr {
   java_grammar_comma_list_expr(item: java_grammar_formal_parameter_expr())
 }
 
-// JLS §8.4 MethodDeclarator — Identifier ( [FormalParameterList] ).
 fn java_grammar_method_declarator_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_terminal(token_class: ^java_token_ident),
@@ -1254,7 +1207,6 @@ fn java_grammar_expression_expr() -> GrammarExpr {
   java_grammar_nonterminal(production: ^java_production_additive_expression)
 }
 
-// JLS §14.17 ReturnStatement — return [Expression] ;
 fn java_grammar_return_statement_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_terminal(token_class: ^java_token_kw_return),
@@ -1267,7 +1219,6 @@ fn java_grammar_return_statement_expr() -> GrammarExpr {
   )
 }
 
-// JLS §14.4.1 LocalVariableDeclaration — type and variable declarator id only.
 fn java_grammar_local_variable_declaration_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_nonterminal(production: ^java_production_type),
@@ -1275,7 +1226,6 @@ fn java_grammar_local_variable_declaration_expr() -> GrammarExpr {
   )
 }
 
-// JLS §14.4.2 LocalVariableDeclarationStatement — LocalVariableDeclaration `;`.
 fn java_grammar_local_variable_declaration_statement_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_nonterminal(production: ^java_production_local_variable_declaration),
@@ -1283,12 +1233,10 @@ fn java_grammar_local_variable_declaration_statement_expr() -> GrammarExpr {
   )
 }
 
-// JLS §14.2 Statement — wave-2 subset: ReturnStatement only.
 fn java_grammar_statement_expr() -> GrammarExpr {
   java_grammar_nonterminal(production: ^java_production_return_statement)
 }
 
-// JLS §14.2 BlockStatement — LocalVariableDeclarationStatement | Statement.
 fn java_grammar_block_statement_expr() -> GrammarExpr {
   java_grammar_choice(
     left: java_grammar_nonterminal(production: ^java_production_local_variable_declaration_statement),
@@ -1306,7 +1254,6 @@ fn java_grammar_block_expr() -> GrammarExpr {
   )
 }
 
-// JLS §8.4 MethodHeader — wave-2 subset: `static` Result MethodDeclarator.
 fn java_grammar_method_header_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_terminal(token_class: ^java_token_kw_static),
@@ -1317,12 +1264,10 @@ fn java_grammar_method_header_expr() -> GrammarExpr {
   )
 }
 
-// JLS §8.4 MethodBody — wave-2 subset: Block.
 fn java_grammar_method_body_expr() -> GrammarExpr {
   java_grammar_nonterminal(production: ^java_production_block)
 }
 
-// JLS §8.4 MethodDeclaration — MethodHeader MethodBody.
 fn java_grammar_method_declaration_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_nonterminal(production: ^java_production_method_header),
@@ -1350,12 +1295,10 @@ fn java_grammar_class_member_declaration_expr() -> GrammarExpr {
   )
 }
 
-// JLS §8.1.7 ClassBodyDeclaration — wave-2 subset: ClassMemberDeclaration only.
 fn java_grammar_class_body_declaration_expr() -> GrammarExpr {
   java_grammar_nonterminal(production: ^java_production_class_member_declaration)
 }
 
-// JLS §8.1.7 ClassBody — `{` ClassBodyDeclaration* `}`.
 fn java_grammar_class_body_expr() -> GrammarExpr {
   java_grammar_sequence(
     left: java_grammar_terminal(token_class: ^java_token_lbrace),
@@ -1383,7 +1326,6 @@ fn java_grammar_compilation_unit_expr() -> GrammarExpr {
   java_grammar_nonterminal(production: ^java_production_class_declaration)
 }
 
-// JLS §4.3 Type — wave-2 subset aliases to PrimitiveType.
 fn java_grammar_type_expr() -> GrammarExpr {
   java_grammar_nonterminal(production: ^java_production_primitive_type)
 }
@@ -1645,7 +1587,6 @@ fn java_wave1_lex_token_symbol(sym: Symbol) -> Bool {
     sym == ^java_token_semicolon
 }
 
-// Single symbol authority: fact-catalog surface spellings + wave-1 lex/grammar/MVP symbols.
 fn java_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {

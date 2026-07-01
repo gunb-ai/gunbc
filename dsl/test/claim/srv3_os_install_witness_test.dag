@@ -1,0 +1,85 @@
+module test.claim.srv3_os_install
+
+import std.logic { Bool }
+import std.os.types { UbuntuOs, WindowsOs, MacosOs, NobleNumbat2404Lts }
+import extdeps.toolchain.types { X86_64, Riscv64 }
+import extdeps.provisioning.network_boot {
+  network_uefi_bootloader_artifact,
+  NativeDhcpBootOptions,
+  ProxyDhcp,
+  UefiHttpBoot,
+  LegacyBiosPxe,
+  UefiPxe,
+}
+import extdeps.os.ubuntu_autoinstall {
+  NoCloudNet,
+  NoCloudLocal,
+}
+import gunbc.os_install {
+  LanInstallInfraSurvey,
+  survey_implied_dhcp_direction,
+  srv3_network_boot_chain,
+  srv3_os_install_plan,
+}
+import extdeps.bmc.types {
+  redfish_boot_target_wire,
+  redfish_boot_override_enabled_wire,
+}
+
+test fn srv3_bootloader_artifact_is_arch_grounded() -> Bool {
+  match network_uefi_bootloader_artifact(arch: srv3_os_install_plan.host_architecture) {
+    Present { value: a } => a == "grubnetaa64.efi"
+    Absent => false
+  }
+    && match network_uefi_bootloader_artifact(arch: X86_64) {
+      Present { value: x } => x == "grubnetx64.efi"
+      Absent => false
+    }
+    && match network_uefi_bootloader_artifact(arch: Riscv64) {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+test fn srv3_chain_is_uefi_http_boot() -> Bool {
+  match srv3_network_boot_chain.boot_mode {
+    UefiHttpBoot => true
+    LegacyBiosPxe { tftp_root: _ } => false
+    UefiPxe { tftp_root: _ } => false
+  }
+}
+
+test fn srv3_survey_forces_proxy_dhcp() -> Bool {
+  match srv3_network_boot_chain.dhcp_direction {
+    ProxyDhcp => true
+    NativeDhcpBootOptions => false
+  }
+    && match survey_implied_dhcp_direction(
+      survey: LanInstallInfraSurvey {
+        existing_dhcp_configurable: true,
+        dedicated_install_server_present: false,
+      }
+    ) {
+      ProxyDhcp => false
+      NativeDhcpBootOptions => true
+    }
+}
+
+test fn srv3_plan_targets_ubuntu_2404_aarch64_pxe_once() -> Bool {
+  match srv3_os_install_plan.os_target {
+    UbuntuOs { distro: d } =>
+      match d {
+        NobleNumbat2404Lts => true
+      }
+    WindowsOs { distro: _ } => false
+    MacosOs { distro: _ } => false
+  }
+    && redfish_boot_target_wire(t: srv3_os_install_plan.bmc_boot_target) == "Pxe"
+    && redfish_boot_override_enabled_wire(e: srv3_os_install_plan.bmc_boot_enabled) == "Once"
+    && srv3_os_install_plan.network_boot_delivery.autoinstall.fully_automated
+    && srv3_os_install_plan.network_boot_delivery.autoinstall.autoinstall_version == 1
+    && match srv3_os_install_plan.network_boot_delivery.autoinstall.delivery {
+      NoCloudNet { seed_url: _ } => true
+      NoCloudLocal => false
+    }
+}

@@ -1,22 +1,3 @@
-// dsl/test/claim/hermetic_fixture_realization_test.dag
-//
-// M5 fixture-store consolidation SPIKE witness (node://adhoc-3efc6449-ec5).
-//
-// Proves BY EXECUTION that the two formerly-forked fixture stores inhabit ONE content-addressed
-// cache kernel (std.cache_interface) as two handlers that have CONVERGED on key derivation
-// (both ContentAddressedByValue + content_verified_on_read) and now differ ONLY on placement —
-// and that one ArtifactIdentity routes to both backends (§2 one spec -> N handlers).
-//
-// Discriminating RED: witness_in_process_handler_is_content_addressed_converged and
-// witness_handlers_converged_on_key_derivation fail closed if the in-process row is reverted to
-// the old fork state (HandAuthoredString / content_verified_on_read:false) — i.e. if the M5
-// value-derived-key fold is regressed. The fold itself is proven by execution in
-// src/v2/extdeps/runtimes/effect_io_handler_claims_test.dag (distinct resources -> distinct keys,
-// RED on the constant pin); this witness asserts the cited row tracks that landed state.
-//
-// Run: gunbc run --source-root dsl --entry dsl/test/claim/hermetic_fixture_realization_test.dag \
-//        --function hermetic_fixture_realization_witnesses --claim-run
-
 module test.claim.hermetic_fixture_realization
 
 import std.types { Bool, ContentHash }
@@ -43,7 +24,6 @@ import extdeps.realization.hermetic_fixture {
 
 data shared_input_digest: ContentHash = "hermetic-fixture-witness-shared-input-digest"
 
-// The v1 on-disk RecordedFixture handler is the mature content-addressed reference.
 fn witness_file_handler_is_content_addressed_reference() -> Bool {
   let f = cache_interface_facts_from_catalog(row: hermetic_fixture_file_facts)
   (catalog_key_derivation_classification(kd: hermetic_fixture_file_facts.key_derivation) == ContentAddressedByValue)
@@ -52,9 +32,6 @@ fn witness_file_handler_is_content_addressed_reference() -> Bool {
     && (f.value_shape == StructuredArtifact)
 }
 
-// The v2 in-process EffectIoFixtureStore handler has CONVERGED: value-derived content-addressed
-// key (content_hash of the reified locator) + content_verified_on_read. RED if the row is reverted
-// to the old fork state (the M5 fold regressed).
 fn witness_in_process_handler_is_content_addressed_converged() -> Bool {
   let m = cache_interface_facts_from_catalog(row: hermetic_fixture_in_process_facts)
   (catalog_key_derivation_classification(kd: hermetic_fixture_in_process_facts.key_derivation) == ContentAddressedByValue)
@@ -63,9 +40,6 @@ fn witness_in_process_handler_is_content_addressed_converged() -> Bool {
     && (m.value_shape == StructuredArtifact)
 }
 
-// The convergence as a RELATION, not two independent claims: the two handlers now AGREE on key
-// derivation (both ContentAddressedByValue, both verify on read) — the fork is closed — while their
-// placement still differs (PerHostFilesystem vs InProcess). RED if either side regresses.
 fn witness_handlers_converged_on_key_derivation() -> Bool {
   let f = cache_interface_facts_from_catalog(row: hermetic_fixture_file_facts)
   let m = cache_interface_facts_from_catalog(row: hermetic_fixture_in_process_facts)
@@ -78,8 +52,6 @@ fn witness_handlers_converged_on_key_derivation() -> Bool {
     && !(f.locality == m.locality)
 }
 
-// Shared kernel invariants both handlers already satisfy: same artifact value-shape family and
-// fail-closed on miss (a missing fixture is a loud diagnostic, never a silent fabricated value).
 fn witness_handlers_share_kernel_invariants() -> Bool {
   let f = cache_interface_facts_from_catalog(row: hermetic_fixture_file_facts)
   let m = cache_interface_facts_from_catalog(row: hermetic_fixture_in_process_facts)
@@ -88,8 +60,6 @@ fn witness_handlers_share_kernel_invariants() -> Bool {
     && (m.miss_semantics == MissIsDiagnostic)
 }
 
-// §2 horizontal, executed: ONE ArtifactIdentity (one content digest + the hermetic_fixture
-// artifact kind) routes through each backend's transport projection to its own store key.
 fn witness_one_artifact_routes_to_both_backends() -> Bool {
   let id = ArtifactIdentity {
     subject_digest: shared_input_digest,

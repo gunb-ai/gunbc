@@ -1,15 +1,6 @@
-// src/v2/lens/discrimination.dag
-// Scope: discrimination meta-lens — DESIGN.md §5 made structural. A witness UNIT
-//        (the List<TestClaim> covering one change) is DISCRIMINATING iff it asserts
-//        BOTH a positive (green-by-execution) AND a discriminating negative (a
-//        *perturbed* input asserted to go RED). A unit that only asserts green is the
-//        §5 specification-without-execution trap — vacuously green, no discriminator —
-//        and is Violated here. Pure Node/data reader: imports only v2.std.* (no roster,
-//        no corpus knowledge; how the compiler enforces this is the gate's job).
-// Status: filled.
-
 module v2.lens.discrimination
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SubstrateMandatoryTag }
 
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.verification {
@@ -33,21 +24,14 @@ import v2.std.collection { List }
 import v2.std.algebra { any, filter, is_empty }
 import v2.std.logic { Bool }
 
-// The two §5 polarities a witness can assert. A claim asserting a behavior HOLDS
-// (green by execution) vs a claim asserting a perturbed/known-bad input is REJECTED
-// (goes red). The discriminator is the assertion shape, not a tag.
 type WitnessPolarity
   = AssertsGreen
   | AssertsRed
 
-// Holds-evidence: the unit that was proven discriminating.
 type DiscriminatingWitness {
   unit: List<TestClaim>
 }
 
-// Structural polarity over the closed TestClaim coproduct. Compiles/Equals/
-// StructuralEquals/RoundTrip assert the input is ACCEPTED (green); DiagnosticClaim
-// carries an expected_rejection — it asserts the input is REJECTED (red).
 fn test_claim_polarity(c: TestClaim) -> WitnessPolarity {
   match c {
     CompilesClaim { label: _, anchor: _, input: _, expected_value: _, classification: _ } =>
@@ -63,13 +47,6 @@ fn test_claim_polarity(c: TestClaim) -> WitnessPolarity {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — bound target: exact structural equality /
-// compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a —
-// dissolve-on-arrival: replace claim_asserts_green / claim_asserts_red with
-// `test_claim_polarity(c) == AssertsGreen` / `== AssertsRed` (the canonical fold composed
-// with closed-sum equality) and delete these two helpers in that same PR; forbidden:
-// permanent per-arm WitnessPolarity Bool predicate drift. These exist ONLY as the
-// `fn(T)->Bool` adapters `filter` requires; they add no new authority over test_claim_polarity.
 fn claim_asserts_green(c: TestClaim) -> Bool {
   match test_claim_polarity(c: c) {
     AssertsGreen => true
@@ -92,13 +69,6 @@ fn unit_reds(unit: List<TestClaim>) -> List<TestClaim> {
   filter(xs: unit, predicate: claim_asserts_red)
 }
 
-// A genuine §5 discriminator perturbs the input: EVERY discriminating negative must assert
-// rejection of an input that differs from EVERY positive's accepted input. A red over an
-// input some positive accepts proves nothing. The weaker "∃ red, ∃ green with different
-// inputs" reading is WRONG — a unit like [Compiles(A), Compiles(B), Diagnostic(A)] would
-// satisfy it via the unrelated B while Diagnostic(A) still sits on accepted input A. So the
-// structural guarantee is: NO red input may equal ANY green input (every red is a real
-// perturbation, not merely some unrelated input delta somewhere in the unit).
 fn red_coincides_with_a_green(unit: List<TestClaim>) -> Bool {
   any(
     xs: unit_reds(unit: unit),
@@ -125,9 +95,6 @@ fn discrimination_diagnostic(reason: Symbol) -> Diagnostic {
   }
 }
 
-// The lens. Fail-closed: a unit lacking a positive, lacking a discriminating
-// negative, or whose negative is not a perturbation is Violated with a located,
-// typed reason. Empty unit → no green → Violates (anti-vacuity).
 fn discrimination_lens(unit: List<TestClaim>) -> Witness<DiscriminatingWitness> {
   if is_empty(xs: unit_greens(unit: unit)) {
     Violates {
@@ -153,12 +120,6 @@ fn unit_is_discriminating(unit: List<TestClaim>) -> Bool {
   }
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "the witness-authoring surface requiring a discriminating red-arm (the DESIGN sec 5 discrimination gate, PR #5116)",
-    dissolve_on: "a green-only TestClaim unit becomes unwritable: the authoring surface mandates a perturbed-red assertion by construction"
-  },
-  rationale: "Whether a witness unit asserts both green and a perturbed-red is decidable over TestClaim polarity; it is a lens until the witness-authoring surface makes a green-only unit unwritable."
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

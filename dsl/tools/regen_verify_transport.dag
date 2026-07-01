@@ -1,0 +1,46 @@
+module tools.regen_verify_transport
+
+import extdeps.shell
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt,
+  Command, Lit, VarRef,
+  lit, var_ref, command, serialize_bash
+}
+import tools.host_prelude { ensure_regen_stage0_built }
+import tools.self_host_realized_comparison_transport {
+  realized_comparison_stable_dir,
+  realized_comparison_roster_manifest_path
+}
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+fn regen_verify_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let regen = var_ref(name: "REGEN_STAGE0")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_regen_stage0_built(), [
+      command(words: [lit(text: "cd"), root]),
+      command(words: [
+        regen,
+        lit(text: "--emit-fresh"), lit(text: realized_comparison_stable_dir),
+        lit(text: "--write-manifest"), lit(text: realized_comparison_roster_manifest_path),
+        lit(text: "--verify")
+      ])
+    ])
+  }
+}
+
+data regen_verify_transport_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.bash.program",
+    decl_name: "serialize_bash",
+    field: WholeDeclaration
+  }
+}
+
+fn run_regen_verify() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: regen_verify_program()))
+  result.success
+}

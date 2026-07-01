@@ -1,8 +1,3 @@
-// src/v2/extdeps/languages/cpp.dag
-// Scope: C++ language primitive fact bundles + T-11 MVP-1 grammar-data target model.
-// Status: T-4 C++ slice — fact-bundle completion + ModelCore wave-1 in the rust.dag pattern; wave-1 MVP-1 grammar declared as `FormalProduction` flat rhs (`cpp_wave1_formal_productions`); `GrammarExpr`/`GrammarProduction` below remain operational parse scaffold until CP-1b convergence. Wave 2b inhabitance: signed/unsigned int/long/llong only (char/short excluded — [conv.prom] integral promotion), signed → ordered_ring_node + partiality, unsigned → commutative_semiring_node, bool → boolean_algebra_node; C++ integer widths stay ABI-width-parametric through CppTargetProfile width-selection witnesses; bool canonical-B decl-ref grounding stays 🟡 E-6(b) staging; scaffold:T-4-cpp-slice / 🟡 feature:t4-cpp-scalar-ladder bounds generated per-spelling concrete CppTargetProfile selection rows.
-// Anchor: ISO/IEC 14882:2020 (C++20) [basic.fundamental], [expr.pre]; upstream mirror https://eel.is/c++draft/basic.fundamental.
-
 module v2.extdeps.languages.cpp
 import v2.std.language_model { LanguageModel }
 
@@ -69,8 +64,6 @@ import v2.std.node { Arrow, Atom, Conj, Edge, Named, Node, Positional, Symbol, T
 import v2.extdeps.cpp_abi { CppTargetProfile }
 import v2.std.text { String }
 
-// 🟢 pretty-much-done — closed signed integer spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution · T29-CPP-SCALAR-FORWARD.
 type CppSignedIntegerSurfaceSpelling
   = SignedChar
   | ShortInt
@@ -78,8 +71,6 @@ type CppSignedIntegerSurfaceSpelling
   | LongInt
   | LongLongInt
 
-// 🟢 pretty-much-done — closed unsigned integer spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution · T29-CPP-SCALAR-FORWARD.
 type CppUnsignedIntegerSurfaceSpelling
   = UnsignedChar
   | UnsignedShortInt
@@ -87,24 +78,17 @@ type CppUnsignedIntegerSurfaceSpelling
   | UnsignedLongInt
   | UnsignedLongLongInt
 
-// 🟢 pretty-much-done — singleton plain-char spelling; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppPlainCharSurfaceSpelling
 
-// 🟢 pretty-much-done — singleton wchar_t spelling; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppWcharTSurfaceSpelling
 
-// 🟢 pretty-much-done — closed fixed unsigned code-unit spelling family; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution · T29-CPP-SCALAR-FORWARD.
 type CppFixedUnsignedCodeUnitIntegerSurfaceSpelling
   = Char8T
   | Char16T
   | Char32T
 
-// 🟢 pretty-much-done — C++20 signed integer representation fact; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppTwosComplement
 
-// 🟡 needs-more-work — generated per-spelling target-profile selection rows still produce these witnesses; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟡 feature:t4-cpp-scalar-ladder — scaffold:T-4-cpp-slice; dissolve-on: generated per-spelling target-profile selection rows consume CppTargetProfile and select these widths.
 type CppSignedIntegerWidthSelection {
   spelling: CppSignedIntegerSurfaceSpelling
   target_profile: CppTargetProfile
@@ -130,13 +114,9 @@ type CppFixedUnsignedCodeUnitIntegerWidthSelection {
   target_profile: CppTargetProfile
 }
 
-// Anchor: ISO/IEC 14882:2020 (C++20) [expr.pre]; upstream mirror https://eel.is/c++draft/expr.pre.
-// 🟢 pretty-much-done — arm-specific overflow witnesses; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
 type CppRepresentableResultRequired
 type CppUnsignedModuloArithmetic
 
-// 🟢 pretty-much-done — scalar fact-bundle arms prevent spelling/signedness/overflow cross-pairings; testcase: test/claim/manual/cpp_scalar_grounding_anchor.dag.
-// 🟢 coproduct dissolution · T29-CPP-SCALAR-FORWARD.
 type CppScalar
   = SignedIntegerScalar {
       width_selection: CppSignedIntegerWidthSelection,
@@ -178,10 +158,6 @@ type CppBoolPrimitiveFacts {
   surface_spelling: Symbol
   encoding_fact: Node
 }
-
-
-// Tokens are the shared v2.std.compilers.target_model ConcreteSyntaxToken carrier (FixedToken | BoundToken);
-// per-target C++ coproduct dissolved into that std authority.
 
 type CppGrammarRelationRow {
   production: GrammarProduction
@@ -440,8 +416,6 @@ fn cpp_integer_facts_catalog(target_profile: Node) -> List<CppIntegerPrimitiveFa
   )
 }
 
-// Anchor: ISO/IEC 14882:2020 [conv.prom] / [expr.arith.conv] — char and short
-// promote before usual arithmetic, so they stay in primitive facts only (no T,T→T algebra closure).
 fn cpp_signed_integer_algebra_inhabitance_facts_catalog(
   target_profile: Node
 ) -> List<CppIntegerPrimitiveFacts> {
@@ -899,10 +873,6 @@ fn cpp_fail_closed_partial_operation(
   }
 }
 
-// Partiality keys off canonical OrderedRing field identities from v2.std.algebra
-// (ring_field_add / ring_field_mul / group_field_inverse), not target-private op symbols.
-// Subtraction is not an exported ring field; representable-result for sub is covered
-// via the additive/inverse carriers until a canonical subtract ref lands in std.algebra.
 fn cpp_partiality_semantics_wave1() -> PartialitySemanticsDecl {
   PartialitySemanticsDecl {
     operations: [
@@ -975,8 +945,6 @@ fn cpp_declared_inhabitants_root(target_profile: Node) -> Node {
 }
 }
 
-// Zip-fold support nodes derived from cpp signed-int facts — not parallel fixture data.
-// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind gunbc#4760 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
 fn cpp_mvp1_int_zip_fold_closure_edges(target_profile: Node) -> List<Edge> {
   let facts = cpp_signed_integer_facts(
     spelling: Int,
@@ -1068,11 +1036,9 @@ fn cpp_mvp1_emitted_add_fn_node(target_profile: Node) -> Node {
 }
 
 fn cpp_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
-  // T-11: serialize through the single shared morphism (no parallel wire authority).
+
   concrete_syntax_token_to_node(token: token)
 }
-
-
 
 fn cpp_mvp1_serialize_source_children() -> List<Edge> {
   list_append(
@@ -1097,7 +1063,6 @@ fn cpp_mvp1_serialize_source_node() -> Node {
  occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn cpp_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
@@ -1172,7 +1137,6 @@ fn cpp_mvp1_grammar_relation_row(target_profile: Node) -> CppGrammarRelationRow 
     tokens: cpp_mvp1_concrete_tokens()
   }
 }
-
 
 fn cpp_grammar_relation_row_node(row: CppGrammarRelationRow) -> Node {
   Node {
@@ -1269,6 +1233,4 @@ fn cpp_wave1_lex() -> LexRules {
   ModeledLexRules { root: LexRuleSet { rules: cpp_wave1_lex_rules() } }
 }
 
-// Anchor: https://eel.is/c++draft/basic.fundamental
-// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1)
 data cpp_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra

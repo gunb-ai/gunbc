@@ -1,14 +1,3 @@
-// src/v2/std/inhabitant_bridge.dag
-// Scope: cross-language inhabitant bridge vocabulary — shared field labels and canonical
-//   std_projection key VALUES for emit-surface neutralization (extdeps DATA rows import here).
-// Status: std-FIRST domain authority; model_core substrate not used for bridge keys.
-
 module v2.std.inhabitant_bridge
 
 import v2.std.node { Symbol }
-
-// Structural field label: labeled edge on PrimitiveFacts carrying the std_projection atom.
-
-// Cross-language inhabitant carrier field labels (selection_policy alignment tiebreak).
-
-// Canonical bridge key VALUE: MVP1 additive int/number slice (python int, ts number, go int).

@@ -22,73 +22,88 @@ use std::rc::Rc;
 #[derive(Clone)]
 pub struct Magma<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Semigroup<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Monoid<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
-    pub identity: Box<T>,
+    pub identity: T,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct CommutativeMonoid<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
-    pub identity: Box<T>,
+    pub identity: T,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Group<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
-    pub identity: Box<T>,
+    pub identity: T,
     pub inverse: Rc<dyn Fn(T) -> T>,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct AbelianGroup<T> {
     pub op: Rc<dyn Fn(T, T) -> T>,
-    pub identity: Box<T>,
+    pub identity: T,
     pub inverse: Rc<dyn Fn(T) -> T>,
+    pub _phantom: std::marker::PhantomData<T>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GroupCompletion<M>(pub std::marker::PhantomData<M>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FieldOfFractions<R>(pub std::marker::PhantomData<R>);
 
 #[derive(Clone)]
 pub struct Semiring<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
-    pub zero: Box<T>,
+    pub zero: T,
     pub mul: Rc<dyn Fn(T, T) -> T>,
-    pub one: Box<T>,
+    pub one: T,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct CommutativeSemiring<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
-    pub zero: Box<T>,
+    pub zero: T,
     pub mul: Rc<dyn Fn(T, T) -> T>,
-    pub one: Box<T>,
+    pub one: T,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Ring<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
-    pub zero: Box<T>,
+    pub zero: T,
     pub negate: Rc<dyn Fn(T) -> T>,
     pub mul: Rc<dyn Fn(T, T) -> T>,
-    pub one: Box<T>,
+    pub one: T,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct OrderedRing<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
     pub sub: Rc<dyn Fn(T, T) -> T>,
-    pub zero: Box<T>,
+    pub zero: T,
     pub negate: Rc<dyn Fn(T) -> T>,
     pub mul: Rc<dyn Fn(T, T) -> T>,
     pub div: Rc<dyn Fn(T, T) -> Rc<Result<T, DivError>>>,
-    pub one: Box<T>,
+    pub one: T,
     pub compare: Rc<dyn Fn(T, T) -> Ordering>,
     pub eq: Rc<dyn Fn(T, T) -> bool>,
     pub ne: Rc<dyn Fn(T, T) -> bool>,
@@ -96,31 +111,35 @@ pub struct OrderedRing<T> {
     pub le: Rc<dyn Fn(T, T) -> bool>,
     pub gt: Rc<dyn Fn(T, T) -> bool>,
     pub ge: Rc<dyn Fn(T, T) -> bool>,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Field<T> {
     pub add: Rc<dyn Fn(T, T) -> T>,
-    pub zero: Box<T>,
+    pub zero: T,
     pub negate: Rc<dyn Fn(T) -> T>,
     pub mul: Rc<dyn Fn(T, T) -> T>,
-    pub one: Box<T>,
+    pub one: T,
     pub reciprocal: Rc<dyn Fn(T) -> T>,
     pub compare: Rc<dyn Fn(T, T) -> Ordering>,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct Lattice<T> {
     pub meet: Rc<dyn Fn(T, T) -> T>,
     pub join: Rc<dyn Fn(T, T) -> T>,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
 pub struct BoundedLattice<T> {
     pub meet: Rc<dyn Fn(T, T) -> T>,
     pub join: Rc<dyn Fn(T, T) -> T>,
-    pub top: Box<T>,
-    pub bottom: Box<T>,
+    pub top: T,
+    pub bottom: T,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
@@ -128,8 +147,9 @@ pub struct BooleanAlgebra<T> {
     pub meet: Rc<dyn Fn(T, T) -> T>,
     pub join: Rc<dyn Fn(T, T) -> T>,
     pub complement: Rc<dyn Fn(T) -> T>,
-    pub top: Box<T>,
-    pub bottom: Box<T>,
+    pub top: T,
+    pub bottom: T,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
@@ -155,6 +175,7 @@ pub struct FreeMonoid<T> {
     pub take: Rc<dyn Fn(i64) -> Rc<Vec<T>>>,
     pub sort_by: Rc<dyn Fn(Rc<dyn Fn(T, T) -> i64>) -> Rc<Vec<T>>>,
     pub contains: Rc<dyn Fn(T) -> bool>,
+    pub _phantom: std::marker::PhantomData<T>,
 }
 
 #[derive(Clone)]
@@ -169,6 +190,7 @@ pub struct PartialFunction<K, V> {
     pub has: Rc<dyn Fn(K) -> bool>,
     pub contains_key: Rc<dyn Fn(K) -> bool>,
     pub size: Rc<dyn Fn() -> i64>,
+    pub _phantom: std::marker::PhantomData<(K, V)>,
 }
 
 #[derive(
@@ -1416,3 +1438,38 @@ pub fn algebra_type_param_names(profile: AlgebraProfile) -> Rc<Vec<String>> {
         AlgebraProfile::PartialFunctionProfile => Rc::new(vec!["K".to_string(), "V".to_string()]),
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Less;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Equal;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Greater;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OrderedRingProfile;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ApproximateFieldProfile;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BooleanAlgebraProfile;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct BooleanAlgebraCollectionProfile;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FreeMonoidScalarProfile;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FreeMonoidCollectionProfile;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PartialFunctionProfile;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShrinkEffect;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ProjectionEffect;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct IdentityEffect;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShapeConstant;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShapeLinearScan;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShapeIterateBody;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ShapeSortBody;

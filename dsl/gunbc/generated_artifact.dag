@@ -1,0 +1,99 @@
+
+module gunbc.generated_artifact
+
+import gunbc.os_install { HostAutoinstall, fleet_autoinstall_specs, InstallServerSpec, fleet_install_server_specs }
+import gunbc.plan { Plan, plan_path }
+import gunbc.plan_registry { all_plans }
+
+type GeneratedArtifact
+  = CiYamlArtifact
+  | GitignoreArtifact
+  | RoadmapArtifact
+  | DesignArtifact
+  | GithooksPrePushArtifact
+  | RunnerDeployArtifact
+  | FleetConvergeArtifact
+  | AutoinstallUserDataArtifact { spec: HostAutoinstall }
+  | ProxyDhcpDnsmasqArtifact { spec: InstallServerSpec }
+  | PlanArtifact { plan: Plan }
+
+data generated_artifact_registry: List<GeneratedArtifact> = concat(
+  concat(
+    concat(
+      [CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, RunnerDeployArtifact, FleetConvergeArtifact],
+      map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
+    ),
+    map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
+  ),
+  map(all_plans, pl => PlanArtifact { plan: pl })
+)
+
+type RepoConsumer
+  = GitProtocol
+  | GithubActionsWorkflow
+  | ProjectDocumentation
+  | HostReconciler
+
+type CommitPolicy
+  = CommitRequired { consumer: RepoConsumer }
+  | NotCommitted
+
+fn artifact_path(a: GeneratedArtifact) -> String {
+  match a {
+    CiYamlArtifact => ".github/workflows/ci.yml"
+    GitignoreArtifact => ".gitignore"
+    RoadmapArtifact => "ROADMAP.md"
+    DesignArtifact => "DESIGN.md"
+    GithooksPrePushArtifact => ".githooks/pre-push"
+    RunnerDeployArtifact => ".github/fleet-runner-deploy.manifest"
+    FleetConvergeArtifact => ".github/fleet-converge.sh"
+    AutoinstallUserDataArtifact { spec } => concat(concat("provisioning/", spec.host), "/user-data")
+    ProxyDhcpDnsmasqArtifact { spec } => concat(concat("provisioning/", spec.host), "/dnsmasq.conf")
+    PlanArtifact { plan } => plan_path(p: plan)
+  }
+}
+
+fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
+  match a {
+    GitignoreArtifact => CommitRequired { consumer: GitProtocol }
+    GithooksPrePushArtifact => CommitRequired { consumer: GitProtocol }
+    CiYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
+    RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
+    DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
+    PlanArtifact { plan: _ } => CommitRequired { consumer: ProjectDocumentation }
+    RunnerDeployArtifact => NotCommitted
+    FleetConvergeArtifact => CommitRequired { consumer: HostReconciler }
+    AutoinstallUserDataArtifact { spec: _ } => NotCommitted
+    ProxyDhcpDnsmasqArtifact { spec: _ } => NotCommitted
+  }
+}
+
+fn artifact_is_committed(a: GeneratedArtifact) -> Bool {
+  match artifact_commit_policy(a: a) {
+    CommitRequired { consumer: _ } => true
+    NotCommitted => false
+  }
+}
+
+fn committed_generated_artifacts() -> List<GeneratedArtifact> {
+  filter(generated_artifact_registry, a => artifact_is_committed(a: a))
+}
+
+fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
+  match a {
+    CiYamlArtifact => match b { CiYamlArtifact => true  _ => false }
+    GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
+    RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
+    DesignArtifact => match b { DesignArtifact => true  _ => false }
+    GithooksPrePushArtifact => match b { GithooksPrePushArtifact => true  _ => false }
+    RunnerDeployArtifact => match b { RunnerDeployArtifact => true  _ => false }
+    FleetConvergeArtifact => match b { FleetConvergeArtifact => true  _ => false }
+    AutoinstallUserDataArtifact { spec } => match b { AutoinstallUserDataArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
+    ProxyDhcpDnsmasqArtifact { spec } => match b { ProxyDhcpDnsmasqArtifact { spec: spec2 } => spec.host == spec2.host  _ => false }
+    PlanArtifact { plan } => match b { PlanArtifact { plan: plan2 } => plan.slug == plan2.slug  _ => false }
+  }
+}
+
+fn registry_contains(a: GeneratedArtifact) -> Bool {
+  any(generated_artifact_registry, x => artifact_eq(a: x, b: a))
+}

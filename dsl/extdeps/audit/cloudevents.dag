@@ -1,22 +1,17 @@
-// extdeps/audit/cloudevents.dag -- CloudEvents audit emission target surface.
-//
-// Specs:
-//   CloudEvents 1.0.2 core event attributes
-//     https://github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md
-//   RFC 3339 timestamp profile
-//     https://www.rfc-editor.org/rfc/rfc3339
-//
-// Ctrl-Migration Phase 3 authority for emitted audit event facts. The target
-// describes stable event records; it does not decide storage backend, queueing,
-// retention, or alerting policy.
-
 module extdeps.audit.cloudevents
 
 import std.types { NonEmptyStr, Timestamp }
 
-// CloudEvents core attribute carriers. They intentionally stay separate from
-// ctrl audit convenience fields so emitted audit records preserve the external
-// wire vocabulary until a generated emitter owns the final serialization.
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/cloudevents/spec/blob/v1.0.2/cloudevents/spec.md"
+  }
+}
+
 type CloudEventId = NonEmptyStr where brand("CloudEventId")
 type CloudEventSource = NonEmptyStr where brand("CloudEventSource")
 type CloudEventSpecVersion = NonEmptyStr where brand("CloudEventSpecVersion")
@@ -25,17 +20,11 @@ type CloudEventSubject = NonEmptyStr where brand("CloudEventSubject")
 type CloudEventExtensionName = NonEmptyStr where brand("CloudEventExtensionName")
 type CloudEventExtensionValue = NonEmptyStr where brand("CloudEventExtensionValue")
 
-// Coproduct dissolution classification:
-// GREEN (terminal). Actor source changes authorization and attribution
-// semantics; collapsing to a string would lose the external audit dimension.
 type AuditActorKind
   = HumanActor
   | ServiceActor
   | SystemActor
 
-// Coproduct dissolution classification:
-// GREEN (terminal). Outcome is part of the externally reported audit fact
-// and drives different downstream compliance interpretations.
 type AuditOutcome
   = AuditSucceeded
   | AuditDenied
@@ -63,8 +52,6 @@ type AuditEventRecord {
   fields: List<AuditEventField>
 }
 
-// STAGED. Ctrl subsystem projections emit into this target only after parity
-// tests prove the event stream matches the existing TypeScript implementation.
 type AuditEventEmissionTarget {
   stream_name: NonEmptyStr
   events: List<AuditEventRecord>

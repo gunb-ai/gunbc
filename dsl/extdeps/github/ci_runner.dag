@@ -1,0 +1,22 @@
+module extdeps.github.ci_runner
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/monitoring-and-troubleshooting-self-hosted-runners"
+  }
+}
+
+type RunnerLifecycleSignal
+  = ShutdownReceived
+  | OperationCanceled
+
+fn runner_lifecycle_log_fragment(signal: RunnerLifecycleSignal) -> String {
+  match signal {
+    ShutdownReceived => "The runner has received a shutdown signal"
+    OperationCanceled => "The operation was canceled"
+  }
+}

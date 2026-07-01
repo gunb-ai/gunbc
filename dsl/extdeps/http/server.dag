@@ -1,30 +1,17 @@
-// extdeps/http/server.dag -- HTTP server emission target surface.
-//
-// Specs:
-//   RFC 9110 HTTP Semantics
-//     https://www.rfc-editor.org/rfc/rfc9110
-//   RFC 3986 URI generic syntax
-//     https://www.rfc-editor.org/rfc/rfc3986
-//   OpenAPI 3.1 path templating convention
-//     https://spec.openapis.org/oas/v3.1.0
-//   Node.js http module (gunbhub-A serve/listen/respond effect chain)
-//     https://nodejs.org/api/http.html#httpcreateserveroptions-requestlistener
-//     https://nodejs.org/api/http.html#serverlisten
-//     https://nodejs.org/api/http.html#responseenddata-encoding-callback
-//
-// Ctrl-Migration Phase 3 authority for generated HTTP server surfaces.
-// This file models the emitted server artifact shape, not a runtime framework
-// and not a concrete ctrl subsystem. Subsystem projections consume this target
-// only after their staged model has parity coverage.
-
 module extdeps.http.server
 
 import std.http_path { PathTemplate }
 import std.types { HttpMethod, HttpStatus, Port }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟢 GREEN (terminal). Static-route content types are a closed MIME surface for
-// the gunbhub serve host; wire labels are the RFC 9110 media-type strings.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110"
+  }
+}
+
 type HttpContentType
   = TextHtmlUtf8
   | TextPlainUtf8
@@ -40,10 +27,6 @@ fn http_content_type_wire_label(content_type: HttpContentType) -> String {
   }
 }
 
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// GREEN (terminal). These are distinct HTTP request-body media families
-// with externally specified wire behavior. A variant payload would erase the
-// parser/serializer selection carried by the media type itself.
 type HttpRequestBodyKind
   = NoRequestBody
   | JsonRequestBody
@@ -51,10 +34,6 @@ type HttpRequestBodyKind
   | BinaryRequestBody
   | FormRequestBody
 
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// GREEN (terminal). Route parameters are externally visible in different
-// request locations; server emitters must bind them from different request
-// components, so the variants are not aliases for one unstructured map.
 type HttpInputLocation
   = PathInput
   | QueryInput
@@ -72,7 +51,6 @@ type HttpStatusResponse {
   body_kind: HttpRequestBodyKind
 }
 
-// Framework-agnostic route metadata + declared response contract.
 type HttpServerRoute {
   operation_name: String
   method: HttpMethod
@@ -82,15 +60,11 @@ type HttpServerRoute {
   responses: List<HttpStatusResponse>
 }
 
-// STAGED. This is the Phase 3 emission target contract a ctrl subsystem
-// projection will consume. It intentionally carries no framework, port, or
-// deployment policy; those are subsystem/runtime decisions, not HTTP facts.
 type HttpServerEmissionTarget {
   service_name: String
   routes: List<HttpServerRoute>
 }
 
-// Node requestListener emission symbol (nodejs.org/api/http.html#createServer).
 type NodeHttpRequestListener {
   handler_name: String
 }
@@ -100,35 +74,27 @@ type HttpServerListenConfig {
   port: Port
 }
 
-// Per-route Node projection: route metadata + requestListener + respond contract.
-// Respond (ServerResponse#end) is per-binding callback work inside the listener,
-// not a server-level step parallel to createServer/listen.
 type NodeHttpServerRouteBinding {
   route: HttpServerRoute
   listener: NodeHttpRequestListener
 }
 
-// http.createServer(requestListener) — registers route→listener dispatch.
 type NodeHttpCreateServerServe {
   route_bindings: List<NodeHttpServerRouteBinding>
 }
 
-// Fixed Node server effect chain: createServer (serve) then listen.
-// Field shape enforces ordering; not a free phase list.
 type NodeHttpCreateServerEffectChain {
   serve: NodeHttpCreateServerServe
   listen: HttpServerListenConfig
 }
 
-// STAGED. Node http.createServer emission target for gunbhub web surfaces.
 type NodeHttpCreateServerEmissionTarget {
   service_name: String
   effects: NodeHttpCreateServerEffectChain
 }
 
-// Host contract (gunbhub-M2 consumer → quick-crane host): pre-rendered static
-// routes. Bodies are verbatim serialize output; host MUST NOT re-encode/escape.
-// Miss → host 404; consumer supplies no body for misses.
+data node_http_create_server_chain_dissolution_trigger: String = "dissolve-on: P3 dynamic-handler serving lane inhabits NodeHttpCreateServerEmissionTarget/EffectChain/Serve — these become live when a realization handler binds a handler_name dispatch to each NodeHttpServerRouteBinding"
+
 type ServedStaticRoute {
   method: HttpMethod
   path_pattern: PathTemplate

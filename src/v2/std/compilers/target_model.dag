@@ -1,13 +1,12 @@
-// src/v2/std/compilers/target_model.dag
-// Scope: TargetModel carrier + Conj-bundle edge keys + grammar-relation protocol symbols
-//   + target-realization carriers (SG-1/SG-2/SG-3 canonical home per design-target-realization-canonical-home.md).
-// Status: single authority (DESIGN.md §3) — consumers import; do not redeclare.
-
 module v2.std.compilers.target_model
 
 import v2.std.algebra {
   Cons,
   Empty,
+  Equal,
+  Greater,
+  Less,
+  Ordering,
   FreeMonoid,
   fold_list,
   fold_list_node,
@@ -46,6 +45,7 @@ import v2.std.diagnostic {
   node_locus,
   outcome_accepted,
   outcome_rejected,
+  port_locus,
   rejected_with_pending
 }
 import v2.std.compilers.lexing {
@@ -117,6 +117,12 @@ import v2.std.node_query {
   node_labeled_child_edges,
   node_positional_child_targets
 }
+import v2.std.qualified_name {
+  QnCons,
+  QnEmpty,
+  QualifiedName,
+  qualified_name_from_node
+}
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 import v2.std.host_transport {
@@ -125,21 +131,6 @@ import v2.std.host_transport {
   configured_emit_host_runtime_row_from_target_row
 }
 
-// NEGATIVE TRIPWIRE — do NOT add `import v2.std.runtime` (or any closure-widening import:
-// machine, model_core) here. target_model's large generic-type closure trips a v2 bootstrap
-// generic-instantiation bug — Optional<T> variant lookup fails (62 "variant Present/Absent not
-// found in type Optional" across target_model + 06_value_expression). Reuse the runtime effect
-// vocabulary by DISCRIMINANT SYMBOL instead (TargetValueExprEffectApply stores the
-// EffectRequestKind discriminant); do the typed EffectRequestKind/Read|WriteResource decode at
-// the small-closure 06_value_expression projection boundary. Reintroducing this edge is caught
-// by ci_floor_emit + v2_lens witnesses (they went red on it; head eed2a7a). v2 fix is tracked
-// separately (work-item adhoc-708ea66d-bb3) — this absence assertion stands until that lands.
-
-// Emit-time spelling transform keyed by BoundToken token_class. FixedToken spellings still
-// resolve from lex LiteralPattern.text verbatim; bound spellings resolve from binding_spellings
-// (or symbol interning) then pass through a per-class fn when the map holds one.
-// Absent => identity (preserves every existing target). Which transforms exist and what they do
-// live in extdeps/languages/* — std owns only the lookup hook (§3: no realization taxonomy).
 type TargetModel {
   bundle: Node
   lex: LexRules
@@ -149,7 +140,6 @@ type TargetModel {
   runtime_row: TargetEmitHostRuntimeRow
 }
 
-// Default-empty emit transforms for non-shell targets (identity on absent lookup).
 data target_model_emit_transforms_empty: Map<Symbol, fn(String) -> String> = empty_map()
 
 fn target_model_make_with_emit_transforms(
@@ -174,31 +164,10 @@ fn runtime_row_from_target(target: TargetModel) -> Outcome<EmitHostRuntimeRow> {
   configured_emit_host_runtime_row_from_target_row(row: target.runtime_row)
 }
 
-// #g-bidir Q-G2 — per-target C5 quotient: Conj of per-feature FidelityDisposition inhabitants.
-// T-11: the typed ConcreteSyntaxToken coproduct below is the single concrete-syntax-token
-// authority. Per-language `*ConcreteSyntaxToken` coproducts dissolve into this carrier
-// (src/v2/extdeps/languages/*.dag), dag.dag's emit_fixed_token/emit_bound_token construct it,
-// and 06_translate matches it structurally. The `concrete_syntax_token_kind_{fixed,bound}`
-// Symbols persist only as the serialized wire-form tags written by `concrete_syntax_token_to_node`
-// and read back by the translate-side decoder — they are no longer dispatch discriminators.
-
-// T-11 shared concrete-syntax-token carrier (single authority, DESIGN.md §3).
-// FixedToken: a terminal whose spelling is the token class' literal lexeme.
-// BoundToken: a terminal whose spelling is resolved from a binding (e.g. an identifier site).
-// 🟢 coproduct dissolution — terminal sum, no further dissolution. FixedToken and BoundToken are
-// genuine one-at-a-time alternatives (a concrete-syntax terminal is either a fixed lexeme or a
-// binding-resolved terminal, never both) and the bound arm carries a `binding` payload the fixed
-// arm lacks — an irreducible sum, not compressed record coordinates (a genuine coproduct vs a
-// record; DESIGN.md §2). Inherits the 🟢 classification the dissolved per-language
-// *ConcreteSyntaxToken coproducts carried before this carrier consolidated them.
 type ConcreteSyntaxToken
   = FixedToken { token_class: Symbol }
   | BoundToken { token_class: Symbol, binding: Symbol }
 
-// Sole serialization morphism: typed token -> Conj wire node carrying the
-// concrete_syntax_token_field_* edges and concrete_syntax_token_kind_* tags. Both the
-// per-language grammar-row builders and dag.dag's self-emission project through this function,
-// so the wire shape has exactly one author.
 fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
   match token {
     FixedToken { token_class: c } =>
@@ -265,12 +234,6 @@ fn concrete_syntax_token_class(token: ConcreteSyntaxToken) -> Symbol {
   }
 }
 
-// Projection of a LexicalPhrase (lexing.dag) to its concrete-token sequence — the grammar/
-// serialize side of the same single-authority carrier, homed here because it is where
-// ConcreteSyntaxToken lives (the import arrow runs target_model -> lexing, never back). Each
-// span is a FixedToken on its token_class: a phrase whose spelling is literal has no
-// binding-resolved (BoundToken) span, so this projection is total over today's LexicalPhrase.
-// A binding-carrying span / BoundToken projection is the T-6/bound-word migration extension.
 fn phrase_to_fixed_concrete_tokens(p: LexicalPhrase) -> List<ConcreteSyntaxToken> {
   fold_list(
     xs: p.spans,
@@ -280,8 +243,6 @@ fn phrase_to_fixed_concrete_tokens(p: LexicalPhrase) -> List<ConcreteSyntaxToken
     }
   )
 }
-
-// Per-target lex + binding-spelling lookup (tokens/layout authority for translate serialize).
 
 fn target_lex_rule_literal_not_found_diagnostic(token_class: Symbol) -> Diagnostic {
   Diagnostic {
@@ -330,7 +291,6 @@ fn target_node_atom_identity(node: Node) -> Outcome<Symbol> {
   }
 }
 
-// Single Symbol -> typed-variant decode boundary for concrete syntax tokens (T-11).
 fn concrete_syntax_token_from_node(token: Node) -> Outcome<ConcreteSyntaxToken> {
   bind_outcome(
     o: find_named_child(root: token, name: ^concrete_syntax_token_field_kind),
@@ -484,16 +444,6 @@ fn target_binding_spelling_lookup(
   }
 }
 
-// Case (a): parse preserves surface name in atom identity; Symbol values are their interned
-// source spelling (name_interning_covers_all_domains — no per-instance Map<Symbol,String>).
-// 🟡 gated — feature:symbol-interned-string-coercion — this returns binding (a Symbol) where
-//   Outcome<String> is declared, relying on the substrate identity Symbol ≡ its interned source
-//   spelling. There is no named Symbol→String coercion primitive (String = FreeMonoid<Char>,
-//   Symbol is a distinct opaque primitive), so the conversion is an implicit return-type pun at
-//   this single authority for binding-spelling lookup — ungrounded (§3/§4). It is functionally
-//   correct (the emit→tokenize→reparse keystone is green), but the coercion is unnamed.
-//   dissolve-on: introduce a named symbol_to_interned_string(s: Symbol) -> String primitive at the
-//   interning boundary and call it here, so the Symbol→String bridge is the explicit authority.
 fn symbol_interned_spelling(binding: Symbol) -> Outcome<String> {
   outcome_accepted(value: binding)
 }
@@ -552,30 +502,13 @@ fn serialize_type_expr_arrow_param_spelling(
   target_binding_spelling_lookup(target: target, binding: label)
 }
 
-
-// SG-1b function-boundary signature realization catalog (per-language; Param/Return sites only).
-
-// --- SG-1 atom realization vocabulary (M6 coproduct carriers with variant payloads) ---
-
 type SourceAtomValue
   = SourceAtomSymbol { identity: Symbol }
   | SourceAtomBool { value: Bool }
   | SourceAtomChar { codepoint: Char }
-  // 🟡 gated — feature:source-atom-string-canonical-carrier — owner:Modeling DFS / std.algebra lane —
-  // bind TS-ATOM-REALIZATION String bridge — dissolve-on: std.algebra exposes a canonical
-  // `String = FreeMonoid<Char>` value/projection carrier that target realization can name
-  // directly; replace this encoded `Node` payload with that carrier and delete the paired
-  // encoded-node projection below. forbidden: treating raw `Node` as the permanent string value
-  // carrier or adding another string/FreeMonoid raw-node bridge outside this receipt.
+
   | SourceAtomString { value: Node }
 
-// 🟢 coproduct dissolution — T6 value-expression Behavior arm-shape axis; BindingRef and
-// PrimitiveApply are genuine one-at-a-time alternatives keyed to ComputationNode behavior forms.
-// EffectApply is the emit-side projection of an applied v2.std.runtime EffectRequest (it
-// attaches to the existing runtime EffectRequestKind concept — no parallel emit effect vocabulary).
-// The carrier stores the effect kind as its discriminant Symbol; the typed runtime reuse
-// (EffectRequestKind ↔ discriminant, ReadResource|WriteResource) lives at the value-expression
-// projection boundary where effects are lowered, keeping this structural substrate import-free.
 type TargetValueExpressionKind
   = TargetValueExprSymbolIdentity
   | TargetValueExprSymbolToOwnedString
@@ -587,14 +520,9 @@ type TargetValueExpressionKind
   | TargetValueExprBindingRef
   | TargetValueExprPrimitiveApply
   | TargetValueExprEffectApply
-  // Lane 2c — value-level function application `callee(arg, ...)` (positional). The head of a
-  // Transform body that does NOT canonicalize to an operator is a callee reference (eval treats a
-  // Transform with a non-operator Atom/Arrow head as a call, 05_eval eval_node_is_callee_reference);
-  // args are arbitrary value-expressions, so a closure argument recurses through the same projector.
+
   | TargetValueExprCallableApply
-  // Lane 2c — anonymous function value `fn(params) { body }`. Appears as an argument to a callable
-  // apply (the fold-family `cons`/`f`/`step` closures); the body recurses through the value-expr
-  // projector with the closure's own param domain as scope (nested-closure scoping).
+
   | TargetValueExprClosure
   | TargetValueExprConditional
   | TargetValueExprBindLet
@@ -608,9 +536,6 @@ type TargetValueExpression {
   node: Node
 }
 
-// Bidirectional templates: emission and ingestion share the same row (§10.6).
-// 🟢 coproduct dissolution — T6 value-expression ingestion twin axis; each arm pairs with
-// its TargetValueExpressionKind emission counterpart on the shared template row.
 type TargetValueTemplateKind
   = ValueSymbolIdentityPassthrough
   | ValueSymbolToOwnedString
@@ -632,19 +557,100 @@ type TargetValueTemplate {
   node: Node
 }
 
-// T6 — closed canonical operation vocabulary (substrate-owned; arms land with producers).
-// Q-V1 (design-value-emit-schema.md §7): each arm carries its algebra-field witness.
-type CanonicalOperation
-  = OpAdd { algebra_field: Symbol }
+type OrderingPredicate
+  = IsLess
+  | IsLessOrEqual
+  | IsGreater
+  | IsGreaterOrEqual
 
-fn canonical_operation_op_add() -> CanonicalOperation {
-  OpAdd { algebra_field: ^ring_field_add }
+type EqualityPredicate
+  = IsEqual
+  | IsNotEqual
+
+type CanonicalOperation
+  = AlgebraPrimitive { algebra_field: Symbol }
+  | AlgebraInverseCompose { binary_field: Symbol, inverse_field: Symbol }
+  | OrderingComparison { compare_field: Symbol, predicate: OrderingPredicate }
+  | EqualityComparison { eq_field: Symbol, predicate: EqualityPredicate }
+
+fn ordering_predicate_accepts(predicate: OrderingPredicate) -> List<Ordering> {
+  match predicate {
+    IsLess => [Less]
+    IsLessOrEqual => [Less, Equal]
+    IsGreater => [Greater]
+    IsGreaterOrEqual => [Equal, Greater]
+  }
 }
 
-// T6 — per-language operator spelling shape axis.
-// 🟢 coproduct dissolution — InfixToken, PrefixToken, CallIdent, and MethodIdent are genuine
-// one-at-a-time alternatives for how a canonical operation is realized on a target surface; each
-// arm carries a distinct spelling payload and none reduces to record coordinates.
+fn equality_predicate_accepts(predicate: EqualityPredicate) -> Bool {
+  match predicate {
+    IsEqual => true
+    IsNotEqual => false
+  }
+}
+
+fn canonical_operation_op_add() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^ring_field_add }
+}
+
+fn canonical_operation_op_mul() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^ring_field_mul }
+}
+
+fn canonical_operation_op_negate() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^group_field_inverse }
+}
+
+fn canonical_operation_op_and() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^lattice_field_meet }
+}
+
+fn canonical_operation_op_or() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^lattice_field_join }
+}
+
+fn canonical_operation_op_not() -> CanonicalOperation {
+  AlgebraPrimitive { algebra_field: ^boolean_algebra_field_complement }
+}
+
+fn canonical_operation_op_sub() -> CanonicalOperation {
+  AlgebraInverseCompose {
+    binary_field: ^ring_field_add,
+    inverse_field: ^group_field_inverse
+  }
+}
+
+fn canonical_operation_op_div() -> CanonicalOperation {
+  AlgebraInverseCompose {
+    binary_field: ^ring_field_mul,
+    inverse_field: ^field_field_reciprocal
+  }
+}
+
+fn canonical_operation_op_lt() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsLess }
+}
+
+fn canonical_operation_op_le() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsLessOrEqual }
+}
+
+fn canonical_operation_op_gt() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsGreater }
+}
+
+fn canonical_operation_op_ge() -> CanonicalOperation {
+  OrderingComparison { compare_field: ^ordered_ring_field_compare, predicate: IsGreaterOrEqual }
+}
+
+fn canonical_operation_op_eq() -> CanonicalOperation {
+  EqualityComparison { eq_field: ^equivalence_field_eq, predicate: IsEqual }
+}
+
+fn canonical_operation_op_ne() -> CanonicalOperation {
+  EqualityComparison { eq_field: ^equivalence_field_eq, predicate: IsNotEqual }
+}
+
 type TargetOperatorShape
   = InfixToken { token: Symbol }
   | PrefixToken { token: Symbol }
@@ -656,7 +662,6 @@ type TargetOperatorRealization {
   shape: TargetOperatorShape
 }
 
-// T6 — per-language value-expression projection row (mirrors TargetTypeExpressionProjection).
 type TargetBindingRefShape {
   ident_token: Symbol
 }
@@ -674,28 +679,11 @@ type TargetCallApplyShape {
   close: Symbol
 }
 
-// T6 — per-language applied-effect projection. The emit arm selects the host shim callee by the
-// carrier's stored effect-kind discriminant Symbol — which equals `^ReadResource` / `^WriteResource`
-// by identity (`discriminant(v: ReadResource {}) == ^ReadResource`, proven; same dispatch idiom as
-// the canonical-operation `id == discriminant(v: OpAdd {})` at the catalog lookup below).
-//
-// One descriptor catalog row: an effect-kind discriminant Symbol bound to the host shim callee
-// token that realizes that effect. Mirrors a `target_operator_realization` row — the catalog,
-// not a shape field, is the per-effect authority, so a new EffectRequestKind variant extends the
-// projection by exactly ONE row (Cost-of-Change = 1), never a new shape field or callee branch.
 type TargetEffectCalleeRow {
   effect_kind: Symbol
   callee: Symbol
 }
 
-// `callees` is a data catalog of `TargetEffectCalleeRow` (effect-kind discriminant -> host shim
-// callee token), mirroring `target_operator_realizations_catalog`. The emit arm resolves a
-// carrier's stored discriminant (`^ReadResource` / `^WriteResource` by identity) by folding the
-// catalog rows into a `Map<Symbol, Symbol>` and taking ONE fail-closed `map_get` — a miss is
-// rejected, never silently emitted (anti-cement gunbc#4623: the stage hard-codes no per-effect
-// callee). The catalog is a `List` (not an in-memory `Map`) so it round-trips through the wire
-// projection bundle, which a closure-backed `Map` cannot. Operand binding refs are framed exactly
-// like a primitive `CallIdent` apply (open / separator / close).
 type TargetEffectApplyShape {
   callees: List<TargetEffectCalleeRow>
   open: Symbol
@@ -703,10 +691,6 @@ type TargetEffectApplyShape {
   separator: Symbol
 }
 
-// Lane 2c — per-language anonymous-function spelling. `fn ( p, ... ) { body }` for .dag; a target
-// whose closures read `(p, ...) => body` supplies the same single-token framing fields with its own
-// token classes. param_ident_token spells each param binding (via binding_spellings, like a
-// binding-ref). Single-token fields keep the wire bundle flat (no token-list round-trip).
 type TargetClosureShape {
   fn_token: Symbol
   open: Symbol
@@ -733,11 +717,23 @@ type TargetLoopShape {
   loop_token: Symbol
 }
 
+type BlockEvaluationMode
+  = ValueProducing
+  | StatementSequenced {
+      return_token: Symbol
+      statement_terminator: Symbol
+    }
+
+type RecordLiteralTypeNaming
+  = Prepend
+  | Omit
+
 type TargetRecordConstructShape {
   open: Symbol
   close: Symbol
   separator: Symbol
   assign: Symbol
+  record_literal_names_type: RecordLiteralTypeNaming
 }
 
 type TargetFieldAccessShape {
@@ -764,16 +760,65 @@ type TargetValueExpressionProjection {
   record_construct_form: TargetRecordConstructShape
   field_access_form: TargetFieldAccessShape
   match_form: TargetMatchShape
+  block_evaluation_mode: BlockEvaluationMode
 }
 
-// T6 — per-language bodied-arrow statement scaffold (prefix/suffix around dynamic body tokens).
 type TargetBodiedArrowStatementScaffold {
   prefix: List<ConcreteSyntaxToken>
   suffix: List<ConcreteSyntaxToken>
 }
 
+type TargetImportShape
+  = EsModuleImport {
+      import_token: Symbol
+      names_open: Symbol
+      names_separator: Symbol
+      names_close: Symbol
+      from_token: Symbol
+      path_open: Symbol
+      path_segment_separator: Symbol
+      path_close: Symbol
+      terminator: Symbol
+      name_ident_token: Symbol
+      path_segment_token: Symbol
+    }
 
+type TargetModuleProjection {
+  import_form: TargetImportShape
+}
 
+type TargetImport {
+  path_segments: List<Symbol>
+  names: List<Symbol>
+}
+
+fn derive_bodied_arrow_scaffold(
+  signature_with_open: List<ConcreteSyntaxToken>,
+  block_close: List<ConcreteSyntaxToken>,
+  mode: BlockEvaluationMode
+) -> TargetBodiedArrowStatementScaffold {
+  match mode {
+    ValueProducing =>
+      TargetBodiedArrowStatementScaffold {
+        prefix: signature_with_open,
+        suffix: block_close
+      }
+    StatementSequenced {
+      return_token: return_token,
+      statement_terminator: statement_terminator
+    } =>
+      TargetBodiedArrowStatementScaffold {
+        prefix: list_snoc_item(
+          xs: signature_with_open,
+          item: FixedToken { token_class: return_token }
+        ),
+        suffix: list_append(
+          left: [FixedToken { token_class: statement_terminator }],
+          right: block_close
+        )
+      }
+  }
+}
 
 fn target_model_type_atom_node(identity: Symbol) -> Node {
   Node {
@@ -799,7 +844,10 @@ fn target_canonical_operation_wire_malformed_diagnostic(wire: Node) -> Diagnosti
   }
 }
 
-fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optional<Symbol> {
+fn target_model_canonical_operation_atom_field_from_wire(
+  wire: Node,
+  field_name: Symbol
+) -> Optional<Symbol> {
   match fold(
     wire.children,
     init: optional_absent(),
@@ -809,7 +857,7 @@ fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optio
         Absent =>
           match edge.label {
             Named { name: n } =>
-              if n == ^target_canonical_operation_field_algebra_field {
+              if n == field_name {
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: id } } =>
                     optional_present(value: id)
@@ -828,15 +876,116 @@ fn target_model_canonical_operation_algebra_field_from_wire(wire: Node) -> Optio
   }
 }
 
+fn ordering_predicate_wire_symbol(predicate: OrderingPredicate) -> Symbol {
+  match predicate {
+    IsLess => ^ordering_predicate_is_less
+    IsLessOrEqual => ^ordering_predicate_is_less_or_equal
+    IsGreater => ^ordering_predicate_is_greater
+    IsGreaterOrEqual => ^ordering_predicate_is_greater_or_equal
+  }
+}
+
+fn ordering_predicate_from_wire_symbol(id: Symbol) -> Optional<OrderingPredicate> {
+  if id == ^ordering_predicate_is_less {
+    optional_present(value: IsLess)
+  } else {
+    if id == ^ordering_predicate_is_less_or_equal {
+      optional_present(value: IsLessOrEqual)
+    } else {
+      if id == ^ordering_predicate_is_greater {
+        optional_present(value: IsGreater)
+      } else {
+        if id == ^ordering_predicate_is_greater_or_equal {
+          optional_present(value: IsGreaterOrEqual)
+        } else {
+          optional_absent()
+        }
+      }
+    }
+  }
+}
+
+fn ordering_predicate_equal(left: OrderingPredicate, right: OrderingPredicate) -> Bool {
+  ordering_predicate_wire_symbol(predicate: left) == ordering_predicate_wire_symbol(predicate: right)
+}
+
+fn equality_predicate_wire_symbol(predicate: EqualityPredicate) -> Symbol {
+  match predicate {
+    IsEqual => ^equality_predicate_is_equal
+    IsNotEqual => ^equality_predicate_is_not_equal
+  }
+}
+
+fn equality_predicate_from_wire_symbol(id: Symbol) -> Optional<EqualityPredicate> {
+  if id == ^equality_predicate_is_equal {
+    optional_present(value: IsEqual)
+  } else {
+    if id == ^equality_predicate_is_not_equal {
+      optional_present(value: IsNotEqual)
+    } else {
+      optional_absent()
+    }
+  }
+}
+
+fn equality_predicate_equal(left: EqualityPredicate, right: EqualityPredicate) -> Bool {
+  equality_predicate_wire_symbol(predicate: left) == equality_predicate_wire_symbol(predicate: right)
+}
+
 fn target_model_canonical_operation_wire_node(operation: CanonicalOperation) -> Node {
   match operation {
-    OpAdd { algebra_field: f } =>
+    AlgebraPrimitive { algebra_field: f } =>
       Node {
-        kind: TypeNode { connective: Atom { identity: discriminant(v: OpAdd {}) } },
+        kind: TypeNode { connective: Atom { identity: discriminant(v: AlgebraPrimitive {}) } },
         children: [
           target_model_named_edge(
             name: ^target_canonical_operation_field_algebra_field,
             target: target_model_type_atom_node(identity: f)
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    AlgebraInverseCompose { binary_field: b, inverse_field: i } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: AlgebraInverseCompose {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_binary_field,
+            target: target_model_type_atom_node(identity: b)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_inverse_field,
+            target: target_model_type_atom_node(identity: i)
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    OrderingComparison { compare_field: c, predicate: p } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: OrderingComparison {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_compare_field,
+            target: target_model_type_atom_node(identity: c)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_predicate,
+            target: target_model_type_atom_node(identity: ordering_predicate_wire_symbol(predicate: p))
+          )
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    EqualityComparison { eq_field: e, predicate: p } =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: discriminant(v: EqualityComparison {}) } },
+        children: [
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_eq_field,
+            target: target_model_type_atom_node(identity: e)
+          ),
+          target_model_named_edge(
+            name: ^target_canonical_operation_field_predicate,
+            target: target_model_type_atom_node(identity: equality_predicate_wire_symbol(predicate: p))
           )
         ],
         occurrence_id: SyntheticOccurrence
@@ -849,9 +998,36 @@ fn canonical_operation_equal(
   right: CanonicalOperation
 ) -> Bool {
   match left {
-    OpAdd { algebra_field: lf } =>
+    AlgebraPrimitive { algebra_field: lf } =>
       match right {
-        OpAdd { algebra_field: rf } => lf == rf
+        AlgebraPrimitive { algebra_field: rf } => lf == rf
+        AlgebraInverseCompose { binary_field: _, inverse_field: _ } => false
+        OrderingComparison { compare_field: _, predicate: _ } => false
+        EqualityComparison { eq_field: _, predicate: _ } => false
+      }
+    AlgebraInverseCompose { binary_field: lb, inverse_field: li } =>
+      match right {
+        AlgebraPrimitive { algebra_field: _ } => false
+        AlgebraInverseCompose { binary_field: rb, inverse_field: ri } =>
+          lb == rb && li == ri
+        OrderingComparison { compare_field: _, predicate: _ } => false
+        EqualityComparison { eq_field: _, predicate: _ } => false
+      }
+    OrderingComparison { compare_field: lc, predicate: lp } =>
+      match right {
+        AlgebraPrimitive { algebra_field: _ } => false
+        AlgebraInverseCompose { binary_field: _, inverse_field: _ } => false
+        OrderingComparison { compare_field: rc, predicate: rp } =>
+          lc == rc && ordering_predicate_equal(left: lp, right: rp)
+        EqualityComparison { eq_field: _, predicate: _ } => false
+      }
+    EqualityComparison { eq_field: le, predicate: lp } =>
+      match right {
+        AlgebraPrimitive { algebra_field: _ } => false
+        AlgebraInverseCompose { binary_field: _, inverse_field: _ } => false
+        OrderingComparison { compare_field: _, predicate: _ } => false
+        EqualityComparison { eq_field: re, predicate: rp } =>
+          le == re && equality_predicate_equal(left: lp, right: rp)
       }
   }
 }
@@ -859,19 +1035,123 @@ fn canonical_operation_equal(
 fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation> {
   match wire.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      if id == discriminant(v: OpAdd {}) {
-        match target_model_canonical_operation_algebra_field_from_wire(wire: wire) {
+      if id == discriminant(v: AlgebraPrimitive {}) {
+        match target_model_canonical_operation_atom_field_from_wire(
+          wire: wire,
+          field_name: ^target_canonical_operation_field_algebra_field
+        ) {
           Present { value: algebra_field } =>
-            outcome_accepted(OpAdd { algebra_field: algebra_field })
+            outcome_accepted(AlgebraPrimitive { algebra_field: algebra_field })
           Absent =>
             outcome_rejected(
               target_canonical_operation_wire_malformed_diagnostic(wire: wire)
             )
         }
       } else {
-        outcome_rejected(
-          target_canonical_operation_wire_malformed_diagnostic(wire: wire)
-        )
+        if id == discriminant(v: AlgebraInverseCompose {}) {
+          match target_model_canonical_operation_atom_field_from_wire(
+            wire: wire,
+            field_name: ^target_canonical_operation_field_binary_field
+          ) {
+            Present { value: binary_field } =>
+              match target_model_canonical_operation_atom_field_from_wire(
+                wire: wire,
+                field_name: ^target_canonical_operation_field_inverse_field
+              ) {
+                Present { value: inverse_field } =>
+                  outcome_accepted(
+                    AlgebraInverseCompose {
+                      binary_field: binary_field,
+                      inverse_field: inverse_field
+                    }
+                  )
+                Absent =>
+                  outcome_rejected(
+                    target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                  )
+              }
+            Absent =>
+              outcome_rejected(
+                target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+              )
+          }
+        } else {
+          if id == discriminant(v: OrderingComparison {}) {
+            match target_model_canonical_operation_atom_field_from_wire(
+              wire: wire,
+              field_name: ^target_canonical_operation_field_compare_field
+            ) {
+              Present { value: compare_field } =>
+                match target_model_canonical_operation_atom_field_from_wire(
+                  wire: wire,
+                  field_name: ^target_canonical_operation_field_predicate
+                ) {
+                  Present { value: predicate_id } =>
+                    match ordering_predicate_from_wire_symbol(id: predicate_id) {
+                      Present { value: predicate } =>
+                        outcome_accepted(
+                          OrderingComparison {
+                            compare_field: compare_field,
+                            predicate: predicate
+                          }
+                        )
+                      Absent =>
+                        outcome_rejected(
+                          target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                        )
+                    }
+                  Absent =>
+                    outcome_rejected(
+                      target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                    )
+                }
+              Absent =>
+                outcome_rejected(
+                  target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                )
+            }
+          } else {
+            if id == discriminant(v: EqualityComparison {}) {
+              match target_model_canonical_operation_atom_field_from_wire(
+                wire: wire,
+                field_name: ^target_canonical_operation_field_eq_field
+              ) {
+                Present { value: eq_field } =>
+                  match target_model_canonical_operation_atom_field_from_wire(
+                    wire: wire,
+                    field_name: ^target_canonical_operation_field_predicate
+                  ) {
+                    Present { value: predicate_id } =>
+                      match equality_predicate_from_wire_symbol(id: predicate_id) {
+                        Present { value: predicate } =>
+                          outcome_accepted(
+                            EqualityComparison {
+                              eq_field: eq_field,
+                              predicate: predicate
+                            }
+                          )
+                        Absent =>
+                          outcome_rejected(
+                            target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                          )
+                      }
+                    Absent =>
+                      outcome_rejected(
+                        target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                      )
+                  }
+                Absent =>
+                  outcome_rejected(
+                    target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+                  )
+              }
+            } else {
+              outcome_rejected(
+                target_canonical_operation_wire_malformed_diagnostic(wire: wire)
+              )
+            }
+          }
+        }
       }
     _ =>
       outcome_rejected(
@@ -880,11 +1160,6 @@ fn canonical_operation_from_wire_node(wire: Node) -> Outcome<CanonicalOperation>
   }
 }
 
-// 🟡 gated — predicate-dissolution interim —
-// feature:canonical-operation-wire-decode-bool — consumer:target_operator_realization_row_matches_canonical_op
-// — bind: operator-catalog row operation wire match — owner: T6 value-expression (lively-badger-242) —
-// lane: std/compilers/target_model — dissolve-on-arrival: Outcome-bearing wire decode propagates diagnostics
-// in catalog lookup; forbidden: Rejected => false silent swallow in substrate Bool matchers.
 fn canonical_operation_wire_matches_operation(
   wire: Node,
   operation: CanonicalOperation
@@ -1147,7 +1422,6 @@ fn target_operator_realization_node(
   )
 }
 
-
 fn target_operator_realizations_catalog_node(rows: List<Node>) -> Node {
   target_model_type_conj_node(
     children: fold_list(
@@ -1307,6 +1581,108 @@ fn decode_loop_shape_bundle(bundle: Node) -> Outcome<TargetLoopShape> {
   )
 }
 
+fn record_literal_type_naming_to_symbol(naming: RecordLiteralTypeNaming) -> Symbol {
+  match naming {
+    Prepend => ^record_literal_type_naming_prepend
+    Omit => ^record_literal_type_naming_omit
+  }
+}
+
+fn record_literal_type_naming_from_symbol(symbol: Symbol) -> Outcome<RecordLiteralTypeNaming> {
+  if symbol == ^record_literal_type_naming_prepend {
+    outcome_accepted(Prepend)
+  } else if symbol == ^record_literal_type_naming_omit {
+    outcome_accepted(Omit)
+  } else {
+    outcome_rejected(
+      target_value_expr_operand_wire_malformed_diagnostic(
+        wire: target_model_type_atom_node(identity: symbol)
+      )
+    )
+  }
+}
+
+fn block_evaluation_mode_to_node(mode: BlockEvaluationMode) -> Node {
+  match mode {
+    ValueProducing =>
+      target_model_type_conj_node(
+        children: [
+          target_model_named_edge(
+            name: ^target_value_expr_field_block_eval_kind,
+            target: target_model_type_atom_node(
+              identity: ^block_evaluation_mode_value_producing
+            )
+          )
+        ]
+      )
+    StatementSequenced {
+      return_token: return_token,
+      statement_terminator: statement_terminator
+    } =>
+      target_model_type_conj_node(
+        children: [
+          target_model_named_edge(
+            name: ^target_value_expr_field_block_eval_kind,
+            target: target_model_type_atom_node(
+              identity: ^block_evaluation_mode_statement_sequenced
+            )
+          ),
+          target_model_named_edge(
+            name: ^target_value_expr_field_block_eval_return_token,
+            target: target_model_type_atom_node(identity: return_token)
+          ),
+          target_model_named_edge(
+            name: ^target_value_expr_field_block_eval_terminator,
+            target: target_model_type_atom_node(identity: statement_terminator)
+          )
+        ]
+      )
+  }
+}
+
+fn decode_block_evaluation_mode(bundle: Node) -> Outcome<BlockEvaluationMode> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(
+      bundle: bundle,
+      field: ^target_value_expr_field_block_eval_kind
+    ),
+    f: fn(kind) {
+      if kind == ^block_evaluation_mode_value_producing {
+        outcome_accepted(ValueProducing)
+      } else if kind == ^block_evaluation_mode_statement_sequenced {
+        bind_outcome(
+          o: projection_bundle_symbol_field(
+            bundle: bundle,
+            field: ^target_value_expr_field_block_eval_return_token
+          ),
+          f: fn(return_token) {
+            bind_outcome(
+              o: projection_bundle_symbol_field(
+                bundle: bundle,
+                field: ^target_value_expr_field_block_eval_terminator
+              ),
+              f: fn(statement_terminator) {
+                outcome_accepted(
+                  StatementSequenced {
+                    return_token: return_token,
+                    statement_terminator: statement_terminator
+                  }
+                )
+              }
+            )
+          }
+        )
+      } else {
+        outcome_rejected(
+          target_value_expr_operand_wire_malformed_diagnostic(
+            wire: bundle
+          )
+        )
+      }
+    }
+  )
+}
+
 fn decode_record_construct_shape_bundle(bundle: Node) -> Outcome<TargetRecordConstructShape> {
   bind_outcome(
     o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_record_open),
@@ -1320,12 +1696,26 @@ fn decode_record_construct_shape_bundle(bundle: Node) -> Outcome<TargetRecordCon
               bind_outcome(
                 o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_record_assign),
                 f: fn(assign) {
-                  outcome_accepted(
-                    TargetRecordConstructShape {
-                      open: open,
-                      close: close,
-                      separator: separator,
-                      assign: assign
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(
+                      bundle: bundle,
+                      field: ^target_value_expr_field_record_names_type
+                    ),
+                    f: fn(names_type_symbol) {
+                      bind_outcome(
+                        o: record_literal_type_naming_from_symbol(symbol: names_type_symbol),
+                        f: fn(names_type) {
+                          outcome_accepted(
+                            TargetRecordConstructShape {
+                              open: open,
+                              close: close,
+                              separator: separator,
+                              assign: assign,
+                              record_literal_names_type: names_type
+                            }
+                          )
+                        }
+                      )
                     }
                   )
                 }
@@ -1427,7 +1817,6 @@ fn decode_callable_apply_shape_bundle(bundle: Node) -> Outcome<TargetCallApplySh
   )
 }
 
-// Lane 2c — decode the closure spelling shape (fn / param framing / body framing).
 fn decode_closure_shape_bundle(bundle: Node) -> Outcome<TargetClosureShape> {
   bind_outcome(
     o: projection_bundle_symbol_field(bundle: bundle, field: ^target_value_expr_field_fn_token),
@@ -1492,7 +1881,6 @@ fn decode_closure_shape_bundle(bundle: Node) -> Outcome<TargetClosureShape> {
   )
 }
 
-// Serialize one effect-callee catalog row (effect-kind discriminant + host shim callee Symbol).
 fn target_value_expr_effect_callee_row_node(row: TargetEffectCalleeRow) -> Node {
   target_model_type_conj_node(
     children: [
@@ -1508,7 +1896,6 @@ fn target_value_expr_effect_callee_row_node(row: TargetEffectCalleeRow) -> Node 
   )
 }
 
-// Decode one effect-callee catalog row (effect-kind discriminant + host shim callee Symbol).
 fn target_value_expr_effect_callee_row_from_wire(row: Node) -> Outcome<TargetEffectCalleeRow> {
   bind_outcome(
     o: projection_bundle_symbol_field(bundle: row, field: ^target_value_expr_field_effect_kind),
@@ -1525,10 +1912,6 @@ fn target_value_expr_effect_callee_row_from_wire(row: Node) -> Outcome<TargetEff
   )
 }
 
-// Fold the effect-callee catalog rows off the wire bundle. Row edges carry
-// `^target_value_expr_effect_callee_row_edge`; the open / close / separator framing edges are named
-// differently and are skipped here (decoded by `decode_effect_apply_shape_bundle`). A malformed row
-// fails the whole decode closed.
 fn decode_effect_apply_callee_rows(bundle: Node) -> Outcome<List<TargetEffectCalleeRow>> {
   match fold(
     bundle.children,
@@ -1596,9 +1979,6 @@ fn decode_effect_apply_shape_bundle(bundle: Node) -> Outcome<TargetEffectApplySh
   )
 }
 
-// Infer perf: decode_value_expression_projection_bundle was one 15-deep bind_outcome
-// tower (~287s analyze_item). Shard into parent-field helpers + one bind per
-// top-level chain step so infer never walks a single mega-closure.
 fn decode_vep_parent_binding_ref(bundle: Node) -> Outcome<TargetBindingRefShape> {
   bind_outcome(
     o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_binding_ref),
@@ -1692,6 +2072,48 @@ fn decode_vep_chain_match(
   bind_outcome(
     o: decode_vep_parent_match(bundle: bundle),
     f: fn(match_form) {
+      decode_vep_chain_block_eval(
+        bundle: bundle,
+        binding_ref_form: binding_ref_form,
+        primitive_apply_form: primitive_apply_form,
+        callable_apply_form: callable_apply_form,
+        closure_form: closure_form,
+        effect_apply_form: effect_apply_form,
+        conditional_form: conditional_form,
+        let_form: let_form,
+        loop_form: loop_form,
+        record_construct_form: record_construct_form,
+        field_access_form: field_access_form,
+        match_form: match_form
+      )
+    }
+  )
+}
+
+fn decode_vep_parent_block_eval(bundle: Node) -> Outcome<BlockEvaluationMode> {
+  bind_outcome(
+    o: projection_bundle_child(bundle: bundle, name: ^target_value_expr_field_block_eval),
+    f: decode_block_evaluation_mode
+  )
+}
+
+fn decode_vep_chain_block_eval(
+  bundle: Node,
+  binding_ref_form: TargetBindingRefShape,
+  primitive_apply_form: TargetPrimitiveApplyShape,
+  callable_apply_form: TargetCallApplyShape,
+  closure_form: TargetClosureShape,
+  effect_apply_form: TargetEffectApplyShape,
+  conditional_form: TargetConditionalShape,
+  let_form: TargetBindLetShape,
+  loop_form: TargetLoopShape,
+  record_construct_form: TargetRecordConstructShape,
+  field_access_form: TargetFieldAccessShape,
+  match_form: TargetMatchShape
+) -> Outcome<TargetValueExpressionProjection> {
+  bind_outcome(
+    o: decode_vep_parent_block_eval(bundle: bundle),
+    f: fn(block_evaluation_mode) {
       outcome_accepted(
         TargetValueExpressionProjection {
           binding_ref_form: binding_ref_form,
@@ -1704,7 +2126,8 @@ fn decode_vep_chain_match(
           loop_form: loop_form,
           record_construct_form: record_construct_form,
           field_access_form: field_access_form,
-          match_form: match_form
+          match_form: match_form,
+          block_evaluation_mode: block_evaluation_mode
         }
       )
     }
@@ -2553,7 +2976,6 @@ fn concrete_syntax_token_from_wire_node(token: Node) -> Outcome<ConcreteSyntaxTo
   )
 }
 
-
 fn target_value_projection_bundle_malformed_diagnostic(bundle: Node) -> Diagnostic {
   Diagnostic {
     reason: ^target_value_projection_bundle_malformed,
@@ -2573,10 +2995,6 @@ type TargetAtomRealization {
   constructor_form: Optional<TargetConstructorTemplate>
   display_name: Symbol
 }
-
-
-
-// Kernel-ambient type carriers (Node-keyed authority; not spelling-keyed tables).
 
 fn symbol_kernel_type_node() -> Node {
   Node {
@@ -2618,13 +3036,6 @@ fn source_atom_char_projection_from_node(source: Node) -> Optional<SourceAtomVal
   }
 }
 
-// 🟡 gated — feature:free-monoid-node-projection — owner:Modeling DFS / std.algebra lane —
-// dissolve-on: std.algebra exports a canonical `Node -> Optional<FreeMonoid<T>>` (or
-// `Node -> Optional<String>`) projection over `free_monoid_type_node`'s encoded surface; replace
-// this local encoded-node projection with that accessor. The bridge proves Empty or Cons(head:
-// Char, tail: String) with fuel derived from the input node tree size so malformed tails fail
-// closed without adding an arbitrary string-length cap; named-edge lookup remains delegated to
-// node_query. Forbidden: adding another FreeMonoid storage walker outside this receipt.
 fn source_atom_string_projection_from_node(source: Node) -> Optional<SourceAtomValue> {
   source_atom_string_projection_from_node_bounded(source: source, fuel: source_atom_string_projection_node_count(source: source))
 }
@@ -2696,8 +3107,6 @@ fn source_atom_symbol_projection_from_node(source: Node) -> Optional<SourceAtomV
   }
 }
 
-// Project infer/translate grounding nodes onto SourceAtomValue using row.value_form.kind
-// (single authority — consumers must not re-derive carrier-hash projections).
 fn source_atom_value_for_value_template(
   source: Node,
   template: TargetValueTemplate
@@ -3142,12 +3551,6 @@ fn target_value_expression_primitive_apply(
   }
 }
 
-// Emit-side constructor for an applied effect. `effect_kind_discriminant` is the discriminant
-// Symbol of a v2.std.runtime EffectRequestKind (e.g. discriminant(v: ReadResource)); the caller
-// at the value-expression projection boundary supplies it, so this structural substrate reuses
-// the runtime effect vocabulary by identity without importing runtime (no parallel vocabulary).
-// Operand edges mirror primitive_apply — the lowered effect application carries its argument
-// value-expressions positionally for the projection arm (PR2) to emit through the host shim.
 fn target_value_expression_effect_apply(
   effect_kind_discriminant: Symbol,
   operands: List<TargetValueExpression>
@@ -3172,10 +3575,6 @@ fn target_value_expression_effect_apply(
   }
 }
 
-// Carrier wire-schema guard for the effect-apply expression node — mirrors
-// `target_value_expr_primitive_apply_wire_schema_valid`: the atom must be the effect-apply atom,
-// the `effect_kind` discriminant edge must occur exactly once, and every child is either that
-// `effect_kind` edge or an `operand` edge. Fail-closed for any other shape.
 fn target_value_expr_effect_apply_wire_schema_valid(wire: Node) -> Outcome<Bool> {
   match wire.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -3221,8 +3620,6 @@ fn target_value_expr_effect_apply_wire_schema_valid(wire: Node) -> Outcome<Bool>
   }
 }
 
-// Recover the stored effect-kind discriminant Symbol (== ^ReadResource / ^WriteResource by
-// identity) from the effect-apply carrier wire.
 fn target_value_expr_effect_apply_kind_from_wire(wire: Node) -> Outcome<Symbol> {
   match fold(
     wire.children,
@@ -3255,9 +3652,6 @@ fn target_value_expr_effect_apply_kind_from_wire(wire: Node) -> Outcome<Symbol> 
   }
 }
 
-// Operand binding refs of the effect-apply carrier — mirrors
-// `target_value_expr_primitive_apply_operand_bindings`, skipping the `effect_kind` edge instead
-// of the `operation` edge. Operands are binding refs (the host shim receives them as arguments).
 fn target_value_expr_effect_apply_operand_bindings(wire: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
     o: target_value_expr_effect_apply_wire_schema_valid(wire: wire),
@@ -3303,11 +3697,6 @@ fn target_value_expr_effect_apply_operand_bindings(wire: Node) -> Outcome<List<S
   )
 }
 
-// Resolve the host shim callee for the stored effect-kind discriminant from the descriptor
-// catalog: fold the `callees` rows into a `Map<Symbol, Symbol>`, then take ONE `map_get`. A miss
-// fails closed (unsupported-kind diagnostic), never silently emitted. No effect kind is branched on
-// or host token named here — the catalog is the sole per-effect authority, so a new
-// EffectRequestKind variant extends `callees` by one row and this resolver is untouched.
 fn target_value_expr_effect_apply_callee(
   effect_kind: Symbol,
   shape: TargetEffectApplyShape,
@@ -3333,9 +3722,6 @@ fn target_value_expr_effect_apply_callee(
   }
 }
 
-// Emit arm for an applied effect: `callee(operand-binding-refs...)` framed by the descriptor's
-// effect-apply shape (open / separator / close), with the callee chosen by the stored effect-kind
-// discriminant. Structurally mirrors the primitive `CallIdent` shape.
 fn target_value_expression_effect_apply_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection
@@ -3353,8 +3739,7 @@ fn target_value_expression_effect_apply_to_concrete_tokens(
           bind_outcome(
             o: target_value_expr_effect_apply_operand_bindings(wire: expr.node),
             f: fn(bindings) {
-              // Host-call order: `callee ( args )` — callee precedes the open paren so the
-              // emitted text is a valid target-language call expression (not Lisp-prefix).
+
               outcome_accepted(
                 list_append(
                   left: list_append(
@@ -3614,10 +3999,6 @@ fn target_value_expression_match(
   }
 }
 
-// Lane 2c — callable-apply wire: a `callee` atom edge followed by one `callable_arg` edge per
-// positional argument (order preserved; args extracted by an order-preserving fold, never by
-// content_hash reorder). Mirrors primitive_apply's operand-edge layout but the head is a callee
-// binding rather than a canonical-operation row.
 fn target_value_expr_callable_arg_edges(
   args: List<TargetValueExpression>
 ) -> List<Edge> {
@@ -3660,8 +4041,6 @@ fn target_value_expression_callable_apply(
   }
 }
 
-// Lane 2c — closure wire: one `closure_param` atom edge per param (order preserved) followed by a
-// single `closure_body` edge carrying the body value-expression.
 fn target_value_expr_closure_param_edges(params: List<Symbol>) -> List<Edge> {
   fold_list_right(
     xs: params,
@@ -3701,7 +4080,6 @@ fn target_value_expression_closure(
     }
   }
 }
-
 
 fn target_value_expression_emit_unsupported_kind_diagnostic(expr: TargetValueExpression) -> Diagnostic {
   Diagnostic {
@@ -4340,6 +4718,83 @@ fn target_value_expr_bind_let_child_from_wire(
   target_value_expr_conditional_child_from_wire(wire: wire, field: field)
 }
 
+fn bind_let_value_producing_tokens(
+  projection: TargetValueExpressionProjection,
+  key_tokens: List<ConcreteSyntaxToken>,
+  value_tokens: List<ConcreteSyntaxToken>,
+  body_tokens: List<ConcreteSyntaxToken>
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: list_append(
+            left: [
+              FixedToken { token_class: projection.let_form.let_token }
+            ],
+            right: key_tokens
+          ),
+          right: [
+            FixedToken { token_class: projection.let_form.assign_token }
+          ]
+        ),
+        right: value_tokens
+      ),
+      right: [
+        FixedToken { token_class: projection.let_form.in_token }
+      ]
+    ),
+    right: body_tokens
+  )
+}
+
+fn bind_let_statement_sequenced_tokens(
+  projection: TargetValueExpressionProjection,
+  key_tokens: List<ConcreteSyntaxToken>,
+  value_tokens: List<ConcreteSyntaxToken>,
+  body_tokens: List<ConcreteSyntaxToken>,
+  return_token: Symbol,
+  statement_terminator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  list_append(
+    left: list_append(
+      left: list_append(
+        left: list_append(
+          left: list_append(
+            left: list_append(
+              left: [
+                FixedToken { token_class: projection.primitive_apply_form.open },
+                FixedToken { token_class: projection.closure_form.fn_token },
+                FixedToken { token_class: projection.closure_form.open },
+                FixedToken { token_class: projection.closure_form.close },
+                FixedToken { token_class: projection.closure_form.body_open },
+                FixedToken { token_class: projection.let_form.let_token }
+              ],
+              right: key_tokens
+            ),
+            right: [
+              FixedToken { token_class: projection.let_form.assign_token }
+            ]
+          ),
+          right: value_tokens
+        ),
+        right: [
+          FixedToken { token_class: statement_terminator },
+          FixedToken { token_class: return_token }
+        ]
+      ),
+      right: body_tokens
+    ),
+    right: [
+      FixedToken { token_class: statement_terminator },
+      FixedToken { token_class: projection.closure_form.body_close },
+      FixedToken { token_class: projection.primitive_apply_form.close },
+      FixedToken { token_class: projection.primitive_apply_form.open },
+      FixedToken { token_class: projection.primitive_apply_form.close }
+    ]
+  )
+}
+
 fn target_value_expression_bind_let_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
@@ -4387,39 +4842,31 @@ fn target_value_expression_bind_let_to_concrete_tokens(
                               catalog: catalog
                             ),
                             f: fn(body_tokens) {
-                              outcome_accepted(
-                                list_append(
-                                  left: list_append(
-                                    left: list_append(
-                                      left: list_append(
-                                        left: list_append(
-                                          left: Cons {
-                                            head: FixedToken {
-                                              token_class: projection.let_form.let_token
-                                            },
-                                            tail: Empty
-                                          },
-                                          right: key_tokens
-                                        ),
-                                        right: Cons {
-                                          head: FixedToken {
-                                            token_class: projection.let_form.assign_token
-                                          },
-                                          tail: Empty
-                                        }
-                                      ),
-                                      right: value_tokens
-                                    ),
-                                    right: Cons {
-                                      head: FixedToken {
-                                        token_class: projection.let_form.in_token
-                                      },
-                                      tail: Empty
-                                    }
-                                  ),
-                                  right: body_tokens
-                                )
-                              )
+                              match projection.block_evaluation_mode {
+                                ValueProducing =>
+                                  outcome_accepted(
+                                    bind_let_value_producing_tokens(
+                                      projection: projection,
+                                      key_tokens: key_tokens,
+                                      value_tokens: value_tokens,
+                                      body_tokens: body_tokens
+                                    )
+                                  )
+                                StatementSequenced {
+                                  return_token: return_token,
+                                  statement_terminator: statement_terminator
+                                } =>
+                                  outcome_accepted(
+                                    bind_let_statement_sequenced_tokens(
+                                      projection: projection,
+                                      key_tokens: key_tokens,
+                                      value_tokens: value_tokens,
+                                      body_tokens: body_tokens,
+                                      return_token: return_token,
+                                      statement_terminator: statement_terminator
+                                    )
+                                  )
+                              }
                             }
                           )
                         }
@@ -4467,7 +4914,51 @@ fn target_value_expr_loop_child_from_wire(wire: Node) -> Outcome<TargetValueExpr
   )
 }
 
+fn statement_sequenced_block_construct_unwired_diagnostic(wire: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^statement_sequenced_block_construct_unwired,
+    at: node_locus(node: wire),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn statement_sequenced_block_construct_guard(
+  block_evaluation_mode: BlockEvaluationMode,
+  wire: Node
+) -> Outcome<Bool> {
+  match block_evaluation_mode {
+    ValueProducing => outcome_accepted(true)
+    StatementSequenced {
+      return_token: _,
+      statement_terminator: _
+    } =>
+      outcome_rejected(
+        statement_sequenced_block_construct_unwired_diagnostic(wire: wire)
+      )
+  }
+}
+
 fn target_value_expression_loop_to_concrete_tokens(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
+    o: statement_sequenced_block_construct_guard(
+      block_evaluation_mode: projection.block_evaluation_mode,
+      wire: expr.node
+    ),
+    f: fn(_) {
+      target_value_expression_loop_to_concrete_tokens_inner(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    }
+  )
+}
+
+fn target_value_expression_loop_to_concrete_tokens_inner(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
   catalog: Node
@@ -4716,35 +5207,36 @@ fn target_value_expression_record_construct_to_concrete_tokens(
                   catalog: catalog
                 ),
                 f: fn(field_tokens) {
+                  let type_name_prefix_tokens = match projection.record_construct_form.record_literal_names_type {
+                    Prepend => Cons {
+                      head: target_value_expression_binding_ref_token(
+                        binding: type_name,
+                        projection: projection
+                      ),
+                      tail: Empty
+                    }
+                    Omit => Empty
+                  }
                   outcome_accepted(
                     list_append(
                       left: list_append(
                         left: list_append(
-                          left: list_append(
-                            left: Cons {
-                              head: target_value_expression_binding_ref_token(
-                                binding: type_name,
-                                projection: projection
-                              ),
-                              tail: Empty
+                          left: type_name_prefix_tokens,
+                          right: Cons {
+                            head: FixedToken {
+                              token_class: projection.record_construct_form.open
                             },
-                            right: Cons {
-                              head: FixedToken {
-                                token_class: projection.record_construct_form.open
-                              },
-                              tail: Empty
-                            }
-                          ),
-                          right: field_tokens
+                            tail: Empty
+                          }
                         ),
-                        right: Cons {
-                          head: FixedToken {
-                            token_class: projection.record_construct_form.close
-                          },
-                          tail: Empty
-                        }
+                        right: field_tokens
                       ),
-                      right: Empty
+                      right: Cons {
+                        head: FixedToken {
+                          token_class: projection.record_construct_form.close
+                        },
+                        tail: Empty
+                      }
                     )
                   )
                 }
@@ -4753,6 +5245,327 @@ fn target_value_expression_record_construct_to_concrete_tokens(
           )
         }
       )
+    }
+  )
+}
+
+fn target_import_empty_names_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^target_import_names_empty,
+    at: port_locus(port: ^target_import_names_empty),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_import_empty_path_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^target_import_path_empty,
+    at: port_locus(port: ^target_import_path_empty),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn target_import_bound_tokens_intersperse(
+  bindings: List<Symbol>,
+  ident_token: Symbol,
+  separator: Symbol
+) -> List<ConcreteSyntaxToken> {
+  fold(
+    bindings,
+    init: Empty,
+    f: fn(acc, binding) {
+      if is_empty(xs: acc) {
+        Cons { head: BoundToken { token_class: ident_token, binding: binding }, tail: Empty }
+      } else {
+        list_append(
+          left: acc,
+          right: Cons {
+            head: FixedToken { token_class: separator },
+            tail: Cons {
+              head: BoundToken { token_class: ident_token, binding: binding },
+              tail: Empty
+            }
+          }
+        )
+      }
+    }
+  )
+}
+
+fn target_import_to_concrete_tokens(
+  import_value: TargetImport,
+  projection: TargetModuleProjection
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  match projection.import_form {
+    EsModuleImport {
+      import_token: import_token,
+      names_open: names_open,
+      names_separator: names_separator,
+      names_close: names_close,
+      from_token: from_token,
+      path_open: path_open,
+      path_segment_separator: path_segment_separator,
+      path_close: path_close,
+      terminator: terminator,
+      name_ident_token: name_ident_token,
+      path_segment_token: path_segment_token
+    } =>
+      if is_empty(xs: import_value.names) {
+        outcome_rejected(target_import_empty_names_diagnostic())
+      } else if is_empty(xs: import_value.path_segments) {
+        outcome_rejected(target_import_empty_path_diagnostic())
+      } else {
+        outcome_accepted(
+          list_append(
+            left: Cons {
+              head: FixedToken { token_class: import_token },
+              tail: Cons { head: FixedToken { token_class: names_open }, tail: Empty }
+            },
+            right: list_append(
+              left: target_import_bound_tokens_intersperse(
+                bindings: import_value.names,
+                ident_token: name_ident_token,
+                separator: names_separator
+              ),
+              right: list_append(
+                left: Cons {
+                  head: FixedToken { token_class: names_close },
+                  tail: Cons {
+                    head: FixedToken { token_class: from_token },
+                    tail: Cons { head: FixedToken { token_class: path_open }, tail: Empty }
+                  }
+                },
+                right: list_append(
+                  left: target_import_bound_tokens_intersperse(
+                    bindings: import_value.path_segments,
+                    ident_token: path_segment_token,
+                    separator: path_segment_separator
+                  ),
+                  right: Cons {
+                    head: FixedToken { token_class: path_close },
+                    tail: Cons { head: FixedToken { token_class: terminator }, tail: Empty }
+                  }
+                )
+              )
+            )
+          )
+        )
+      }
+  }
+}
+
+fn import_qualified_name_symbols(qn: QualifiedName) -> List<Symbol> {
+  match qn {
+    QnEmpty => Empty
+    QnCons { head: h, tail: t } =>
+      Cons { head: h, tail: import_qualified_name_symbols(qn: t) }
+  }
+}
+
+fn import_name_symbols_from_block(block: Node) -> Outcome<List<Symbol>> {
+  fold(
+    node_positional_child_targets(node: block),
+    init: outcome_accepted(value: Empty),
+    f: fn(acc, nd) {
+      bind_outcome(
+        o: acc,
+        f: fn(syms) {
+          bind_outcome(
+            o: target_node_atom_identity(node: nd),
+            f: fn(sym) {
+              outcome_accepted(
+                value: list_append(left: syms, right: Cons { head: sym, tail: Empty })
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn import_value_from_carrier(carrier: Node) -> Outcome<TargetImport> {
+  bind_outcome(
+    o: find_named_child(root: carrier, name: ^dag_surface_import_decl_qualified_name),
+    f: fn(qn_node) {
+      bind_outcome(
+        o: qualified_name_from_node(root: qn_node),
+        f: fn(qn) {
+          bind_outcome(
+            o: find_named_child(root: carrier, name: ^dag_surface_import_decl_block),
+            f: fn(block) {
+              bind_outcome(
+                o: import_name_symbols_from_block(block: block),
+                f: fn(names) {
+                  outcome_accepted(
+                    value: TargetImport {
+                      path_segments: import_qualified_name_symbols(qn: qn),
+                      names: names
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn module_import_projection_bundle_node(projection: TargetModuleProjection) -> Node {
+  match projection.import_form {
+    EsModuleImport {
+      import_token: import_token,
+      names_open: names_open,
+      names_separator: names_separator,
+      names_close: names_close,
+      from_token: from_token,
+      path_open: path_open,
+      path_segment_separator: path_segment_separator,
+      path_close: path_close,
+      terminator: terminator,
+      name_ident_token: name_ident_token,
+      path_segment_token: path_segment_token
+    } =>
+      target_model_type_conj_node(
+        children: [
+          target_model_named_edge(
+            name: ^target_module_import_field_import_token,
+            target: target_model_type_atom_node(identity: import_token)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_names_open,
+            target: target_model_type_atom_node(identity: names_open)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_names_separator,
+            target: target_model_type_atom_node(identity: names_separator)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_names_close,
+            target: target_model_type_atom_node(identity: names_close)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_from_token,
+            target: target_model_type_atom_node(identity: from_token)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_path_open,
+            target: target_model_type_atom_node(identity: path_open)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_path_segment_separator,
+            target: target_model_type_atom_node(identity: path_segment_separator)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_path_close,
+            target: target_model_type_atom_node(identity: path_close)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_terminator,
+            target: target_model_type_atom_node(identity: terminator)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_name_ident_token,
+            target: target_model_type_atom_node(identity: name_ident_token)
+          ),
+          target_model_named_edge(
+            name: ^target_module_import_field_path_segment_token,
+            target: target_model_type_atom_node(identity: path_segment_token)
+          )
+        ]
+      )
+  }
+}
+
+fn decode_module_import_projection_bundle(
+  bundle: Node
+) -> Outcome<TargetModuleProjection> {
+  bind_outcome(
+    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_import_token),
+    f: fn(import_token) {
+      bind_outcome(
+        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_names_open),
+        f: fn(names_open) {
+          bind_outcome(
+            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_names_separator),
+            f: fn(names_separator) {
+              bind_outcome(
+                o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_names_close),
+                f: fn(names_close) {
+                  bind_outcome(
+                    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_from_token),
+                    f: fn(from_token) {
+                      bind_outcome(
+                        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_path_open),
+                        f: fn(path_open) {
+                          bind_outcome(
+                            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_path_segment_separator),
+                            f: fn(path_segment_separator) {
+                              bind_outcome(
+                                o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_path_close),
+                                f: fn(path_close) {
+                                  bind_outcome(
+                                    o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_terminator),
+                                    f: fn(terminator) {
+                                      bind_outcome(
+                                        o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_name_ident_token),
+                                        f: fn(name_ident_token) {
+                                          bind_outcome(
+                                            o: projection_bundle_symbol_field(bundle: bundle, field: ^target_module_import_field_path_segment_token),
+                                            f: fn(path_segment_token) {
+                                              outcome_accepted(
+                                                value: TargetModuleProjection {
+                                                  import_form: EsModuleImport {
+                                                    import_token: import_token,
+                                                    names_open: names_open,
+                                                    names_separator: names_separator,
+                                                    names_close: names_close,
+                                                    from_token: from_token,
+                                                    path_open: path_open,
+                                                    path_segment_separator: path_segment_separator,
+                                                    path_close: path_close,
+                                                    terminator: terminator,
+                                                    name_ident_token: name_ident_token,
+                                                    path_segment_token: path_segment_token
+                                                  }
+                                                }
+                                              )
+                                            }
+                                          )
+                                        }
+                                      )
+                                    }
+                                  )
+                                }
+                              )
+                            }
+                          )
+                        }
+                      )
+                    }
+                  )
+                }
+              )
+            }
+          )
+        }
+      )
+    }
+  )
+}
+
+fn module_import_projection_from_target(
+  target: TargetModel
+) -> Outcome<TargetModuleProjection> {
+  bind_outcome(
+    o: projection_bundle_child(
+      bundle: target.bundle,
+      name: ^target_model_edge_module_import_projection
+    ),
+    f: fn(bundle) {
+      decode_module_import_projection_bundle(bundle: bundle)
     }
   )
 }
@@ -5146,6 +5959,26 @@ fn target_value_expression_match_to_concrete_tokens(
   catalog: Node
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
+    o: statement_sequenced_block_construct_guard(
+      block_evaluation_mode: projection.block_evaluation_mode,
+      wire: expr.node
+    ),
+    f: fn(_) {
+      target_value_expression_match_to_concrete_tokens_inner(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    }
+  )
+}
+
+fn target_value_expression_match_to_concrete_tokens_inner(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
     o: target_value_expr_match_wire_schema_valid(wire: expr.node),
     f: fn(_) {
       bind_outcome(
@@ -5322,8 +6155,6 @@ fn target_value_expression_conditional_to_concrete_tokens(
   )
 }
 
-// ── Lane 2c: callable-apply + closure extraction and emission ──────────────────
-
 fn target_value_expr_callable_apply_callee_from_wire(wire: Node) -> Outcome<Symbol> {
   match fold(
     wire.children,
@@ -5392,8 +6223,6 @@ fn target_value_expr_callable_apply_args_from_wire(
   )
 }
 
-// Recursively tokenize a list of value-expressions, interspersing one `separator` FixedToken
-// between adjacent members (no leading/trailing separator). Fail-closed on any member.
 fn target_value_expr_tokenize_intersperse(
   exprs: List<TargetValueExpression>,
   projection: TargetValueExpressionProjection,
@@ -5563,6 +6392,26 @@ fn target_value_expression_closure_to_concrete_tokens(
   catalog: Node
 ) -> Outcome<List<ConcreteSyntaxToken>> {
   bind_outcome(
+    o: statement_sequenced_block_construct_guard(
+      block_evaluation_mode: projection.block_evaluation_mode,
+      wire: expr.node
+    ),
+    f: fn(_) {
+      target_value_expression_closure_to_concrete_tokens_inner(
+        expr: expr,
+        projection: projection,
+        catalog: catalog
+      )
+    }
+  )
+}
+
+fn target_value_expression_closure_to_concrete_tokens_inner(
+  expr: TargetValueExpression,
+  projection: TargetValueExpressionProjection,
+  catalog: Node
+) -> Outcome<List<ConcreteSyntaxToken>> {
+  bind_outcome(
     o: target_value_expr_closure_params_from_wire(wire: expr.node),
     f: fn(params) {
       bind_outcome(
@@ -5627,7 +6476,6 @@ fn target_value_expression_closure_to_concrete_tokens(
   )
 }
 
-// Substrate fold — exhaustive match over TargetValueExpressionKind (design-value-emit-schema.md §4.4).
 fn target_value_expression_to_concrete_tokens(
   expr: TargetValueExpression,
   projection: TargetValueExpressionProjection,
@@ -5747,13 +6595,6 @@ fn target_inhabitant_wire_primary_atom_identity(wire: Node) -> Optional<Symbol> 
   }
 }
 
-// 🟡 gated — predicate-dissolution interim —
-// feature:target-wave1-signature-declared-inhabitants — consumer:06_value_expression
-// target_wave1_add_signature_matches — bind: COMPREP wave-1 Arrow signature slots vs
-// declared_inhabitants catalog — owner: T6 value-expression (lively-badger-242) —
-// lane: std/compilers/target_model — dissolve-on-arrival: Outcome-bearing substrate signature query
-// replaces Bool fold predicates in std; forbidden: hand-rolled match/fold signature gates
-// without per-function disposition in std/.
 fn target_catalog_contains_node_shape(
   slot: Node,
   catalog_targets: List<Node>
@@ -5985,10 +6826,7 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
       target_model_named_edge(
         name: ^target_value_expr_field_effect_apply,
         target: target_model_type_conj_node(
-          // Serialize the effect-callee catalog as one row edge per `TargetEffectCalleeRow`,
-          // followed by the shared open / close / separator framing. Decode inverts this in
-          // `decode_effect_apply_shape_bundle`. Wire symmetry is why `callees` is a `List` and not
-          // an in-memory closure-backed `Map` (which has no enumeration to serialize).
+
           children: list_append(
             left: fold_list(
               xs: projection.effect_apply_form.callees,
@@ -6116,6 +6954,14 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               target: target_model_type_atom_node(
                 identity: projection.record_construct_form.assign
               )
+            ),
+            target_model_named_edge(
+              name: ^target_value_expr_field_record_names_type,
+              target: target_model_type_atom_node(
+                identity: record_literal_type_naming_to_symbol(
+                  naming: projection.record_construct_form.record_literal_names_type
+                )
+              )
             )
           ]
         )
@@ -6168,6 +7014,12 @@ fn value_expr_projection_bundle_node(projection: TargetValueExpressionProjection
               )
             )
           ]
+        )
+      ),
+      target_model_named_edge(
+        name: ^target_value_expr_field_block_eval,
+        target: block_evaluation_mode_to_node(
+          mode: projection.block_evaluation_mode
         )
       )
     ]
@@ -6287,10 +7139,6 @@ fn target_atom_realization_lookup_step(
   }
 }
 
-// Named step for the second-pass Optional fold: explicit row type pins v2 type inference.
-// The v2 type-inferencer cannot resolve field access on a closure element whose type is
-// constrained only through a polymorphic accumulator (optional_absent()); routing through
-// a named function with an explicit 'row: TargetAtomRealization' annotation fixes it.
 fn target_atom_realization_lookup_extract_row_step(
   acc: Optional<TargetAtomRealization>,
   row: TargetAtomRealization,
@@ -6307,8 +7155,6 @@ fn target_atom_realization_lookup_extract_row_step(
   }
 }
 
-// Second-pass extraction for the typed-list path: after PassingCandidateFold confirms exactly
-// one matching row, re-scan to retrieve the typed TargetAtomRealization.
 fn target_atom_realization_lookup_extract_row(
   catalog: List<TargetAtomRealization>,
   source_carrier: Node
@@ -6326,9 +7172,6 @@ fn target_atom_realization_lookup_extract_row(
   )
 }
 
-// Typed-list lookup for row authoring (e.g. rust_target_atom_realization_catalog before
-// target_atom_realization_catalog_node encode). Translate consumers use the Node-keyed
-// target_atom_realization_lookup_in_catalog_node path on the bundle catalog edge.
 fn target_atom_realization_lookup_in_catalog(
   catalog: List<TargetAtomRealization>,
   source_carrier: Node
@@ -6473,9 +7316,7 @@ fn target_constructor_template_from_node(
 fn target_model_bundle_core_keep_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
   match edge.label {
     Named { name: n } =>
-      // Strip realization-catalog edges (atom SG-1 + signature SG-1b) so a row's encoded
-      // host_bundle (pre-catalog core) structurally matches core(live host) regardless of
-      // which catalogs the live host carries.
+
       match n == ^target_model_edge_atom_realizations
         || n == ^target_model_edge_signature_realizations {
         true => acc
@@ -6503,13 +7344,6 @@ fn target_model_bundle_core(host: TargetModel) -> Node {
   }
 }
 
-// 🟡 gated — feature:SG-1-atom-realization-row-bundle-staging — bind PR #3956 / SG-1 dispatch —
-// dissolve-on-arrival: catalog row encode always carries the full host TargetModel bundle
-// (including target_model_edge_atom_realizations); decode matches via structural equality on
-// that single shape only — delete target_model_bundle_core from this predicate and the
-// content_hash disjunction. Until then, rows encode with host bundle minus
-// atom_realizations (including collection_realization when on the live host); forbidden: a third bundle
-// shape or widening the disjunction without modeling escalation.
 fn target_atom_realization_bundle_matches_host(row_bundle: Node, host: TargetModel) -> Bool {
   content_hash(n: row_bundle) == content_hash(n: host.bundle)
   || content_hash(n: row_bundle) == content_hash(n: target_model_bundle_core(host: host))
@@ -6877,31 +7711,10 @@ fn target_atom_realization_lookup_in_catalog_node(
   }
 }
 
-// --- SG-1b function-boundary signature realization (sibling to SG-1; catalog label SG-1-FOLLOWON) ---
-//
-// TargetFunctionSignatureRealization supplies the signature_type_form for a fn entry/exit
-// (Param/Return) site, keyed by the SAME source_carrier Node identity as the SG-1
-// TargetAtomRealization row. It does NOT duplicate the atom catalog: per-language rows
-// reference SG-1 type_form by field projection (see extdeps/languages/<lang>.dag), so changing
-// one realization row moves both the signature annotation and the value body together.
-//
-// M6: FunctionBoundarySite is a pure nullary discriminator (mirror of TargetTypeExprKind);
-// TargetFunctionSignatureRealization is a product (heterogeneous fields), not an N-arm
-// identical-payload coproduct.
-
-
-
-// 🟢 terminal coproduct — fn entry/exit site discriminator. The Arrow connective has exactly two
-// boundary roles (domain = Param, codomain = Return); the axis is closed by Arrow's shape, so there
-// is nothing further to dissolve. Nullary arms (no payload axis) — mirror of TargetTypeExprKind.
 type FunctionBoundarySite
   = FunctionBoundaryParam
   | FunctionBoundaryReturn
 
-// 🟢 product carrier (M6) — SG-1b function-boundary signature realization. Fields are heterogeneous
-// (Node key, host model, boundary discriminator, SG-2 type expression); this is NOT an N-arm
-// identical-payload coproduct. signature_type_form is sourced BY REFERENCE from the paired SG-1
-// TargetAtomRealization (shared source_carrier), so it carries no second atom catalog.
 type TargetFunctionSignatureRealization {
   source_carrier: Node
   target_model: TargetModel
@@ -6991,10 +7804,6 @@ fn target_function_boundary_site_from_node(
   }
 }
 
-// Single host authority: the encoded bundle is derived from row.target_model (its catalog-stripped
-// core), NOT a separately-threaded host_bundle that could disagree with the row's declared model.
-// target_model_bundle_core strips realization-catalog edges so the encoded bundle matches
-// core(live host) on decode regardless of which catalogs the live host carries.
 fn target_function_signature_realization_to_node(
   row: TargetFunctionSignatureRealization
 ) -> Node {
@@ -7022,10 +7831,6 @@ fn target_function_signature_realization_to_node(
 }
 }
 
-// Catalog rows are POSITIONAL slots, not Named edges: the (source_carrier, boundary_site)
-// lookup key lives inside each encoded row, so a Named edge keyed on either coordinate alone
-// would alias a second row at the same boundary (or same carrier) into a duplicate Conj edge
-// name. Positional slots keep every (carrier × site) row representable without collision.
 fn target_function_signature_realization_catalog_edge(
   row: TargetFunctionSignatureRealization
 ) -> Edge {
@@ -7114,9 +7919,6 @@ fn target_function_signature_realization_from_row_node(
   }
 }
 
-// 🟢 coproduct dissolution — internal fold state for the SG-1b signature-realization catalog scan
-// (Result-style: heterogeneous arms — Unique carries a row payload, the other three are nullary
-// outcome tags). Not an N-arm identical-payload coproduct; PassingCandidateFold does not apply here.
 type TargetFunctionSignatureRealizationCatalogLookup
   = TargetFunctionSignatureRealizationCatalogMissing
   | TargetFunctionSignatureRealizationCatalogUnique { row: TargetFunctionSignatureRealization }
@@ -7196,11 +7998,7 @@ fn target_function_signature_realization_lookup_in_catalog_node(
       )
   }
 }
-// TargetModel bundle edge — per-language TargetTypeExpressionProjection row (SG-2).
 
-// Emitted type-expression Conj fields — declared kind coproduct tag + surface + positional slots.
-
-// 🟢 coproduct dissolution — SG-2 emitted type-expression wire-shape tag (six projection row forms).
 type TargetTypeExprKind
   = TargetTypeExprAtom
   | TargetTypeExprInstantiation
@@ -7209,9 +8007,6 @@ type TargetTypeExprKind
   | TargetTypeExprSum
   | TargetTypeExprArrow
 
-// TargetTypeExpressionProjection bundle edge keys (row stored on TargetModel bundle).
-
-// 🟢 coproduct dissolution — SG-2 emitted arrow wire encodes positional inputs+codomain vs labeled param slots+codomain (authority: target_type_expr_arrow_wire_shape on emitted node).
 type TargetTypeExprArrowWireShape
   = TargetTypeExprArrowPositionalWire
   | TargetTypeExprArrowLabeledWire
@@ -7239,19 +8034,16 @@ fn target_type_expr_arrow_wire_shape(node: Node) -> Outcome<TargetTypeExprArrowW
   }
 }
 
-// 🟢 coproduct dissolution — SG-2 labeled arrow parameter slot (label required; distinct from record TargetTypeExprFieldSlot).
 type TargetTypeExprArrowParamSlot {
   label: Symbol
   type_expr: Node
 }
 
-// SG-2 — atom type name: bound ident from source Atom identity via binding_spellings.
 type TargetAtomTypeShape {
   surface: Symbol
   ident_token: Symbol
 }
 
-// SG-2 — delimited-surface shape (generic apply F<A,B>, record { f: T }, shared open/separator/close).
 type TargetGenericApply {
   surface: Symbol
   open: Symbol
@@ -7260,25 +8052,21 @@ type TargetGenericApply {
   close: Symbol
 }
 
-// SG-2 — sum / disj coproduct type.
 type TargetSumTypeShape {
   surface: Symbol
   variant_separator: Symbol
 }
 
-// SG-2 — labeled Conj field slot (substrate LabeledEdges preserved through projection).
 type TargetTypeExprFieldSlot {
   label: Symbol
   type_expr: Node
 }
 
-// SG-2 — labeled Disj variant slot (substrate LabeledEdges preserved through projection).
 type TargetTypeExprVariantSlot {
   label: Symbol
   type_expr: Node
 }
 
-// SG-2 — function / arrow type (domain -> codomain).
 type TargetFunctionTypeShape {
   surface: Symbol
   open: Symbol
@@ -7289,13 +8077,11 @@ type TargetFunctionTypeShape {
   param_list_separator: Symbol
 }
 
-// 🟢 coproduct dissolution — SG-2 declared emitted type-expression wire authority (M6 product carrier; kind axis is TargetTypeExprKind).
 type TargetTypeExpression {
   kind: TargetTypeExprKind
   node: Node
 }
 
-// SG-2 — canonical per-connective type-expression projection (one row per target language).
 type TargetTypeExpressionProjection {
   atom_form: TargetAtomTypeShape
   conj_form: TargetGenericApply
@@ -7344,21 +8130,16 @@ fn target_type_expr_kind_from_atom(id: Symbol) -> Optional<TargetTypeExprKind> {
   }
 }
 
-
-// Emitted-wire kind authority probe — exactly-one decodable kind marker, or fail-closed invalid.
-// 🟢 coproduct dissolution — SG-2 emitted type-expression kind authority read surface.
 type TargetTypeExprKindProbe
   = TypeExprKindAuthority { value: TargetTypeExprKind }
   | TypeExprKindNotEmitted
   | TypeExprKindAuthorityInvalid
 
-// 🟢 coproduct dissolution — internal fold state for target_type_expr_emitted_kind authority scan.
 type TargetTypeExprKindAuthorityFold
   = KindAuthorityFoldNone
   | KindAuthorityFoldUnique { value: TargetTypeExprKind }
   | KindAuthorityFoldConflict
 
-// 🟢 coproduct dissolution — internal edge decode for target_type_expr_emitted_kind authority scan.
 type TargetTypeExprKindEdgeDecode
   = KindEdgeNotKindField
   | KindEdgeAuthority { value: TargetTypeExprKind }
@@ -7578,7 +8359,6 @@ fn target_type_expr_emitted_shape_malformed_diagnostic(node: Node) -> Diagnostic
   }
 }
 
-// 🟢 coproduct dissolution — internal fold state for emitted metadata edge scan.
 type TargetTypeExprNamedMetadataFold
   = NamedMetadataFoldMalformed
   | NamedMetadataFoldOk { kind_seen: Bool, surface_seen: Bool, extra_named: Int }
@@ -7989,22 +8769,16 @@ fn target_type_expr_arrow_labeled_param_slots(node: Node) -> Outcome<List<Target
   }
 }
 
-// ═══ SG-5 — TargetCollectionRealization (canonical home) ═══
-
-
-// 🟢 coproduct dissolution — SG-5 collection representation kind axis (M6 product; no duplicate-payload arms).
 type TargetCollectionReprKind
   = TargetCollectionReprBTreeSet
   | TargetCollectionReprHashSet
   | TargetCollectionReprVec
 
-// SG-5 — per-representation wire authority (kind + generic-apply shape; no fill-in String templates).
 type TargetRepresentation {
   kind: TargetCollectionReprKind
   apply: TargetGenericApply
 }
 
-// 🟢 coproduct dissolution — SG-5 required-trait witness axis (illegal trait tags unrepresentable).
 type RequiredTraitWitness
   = TargetCollectionWitnessOrd { type_param: Symbol }
   | TargetCollectionWitnessHash { type_param: Symbol }
@@ -8015,15 +8789,12 @@ type TargetRepresentationChoice {
   constraints: List<RequiredTraitWitness>
 }
 
-// SG-5 — canonical collection realization row (source_carrier is Node-keyed per DFS).
-// Owning TargetModel is the translate caller's parameter — not stored on the row (avoids bundle back-edge).
 type TargetCollectionRealization {
   source_carrier: Node
   primary: TargetRepresentationChoice
   alternatives: List<TargetRepresentationChoice>
   fallback_diagnostic: Diagnostic
 }
-
 
 fn target_collection_set_no_representation_diagnostic() -> Diagnostic {
   Diagnostic {
@@ -8057,7 +8828,6 @@ fn target_collection_realization_lookup_ambiguous_diagnostic(source_carrier: Nod
   }
 }
 
-// 🟢 coproduct dissolution — SG-5 collection realization lookup state (missing / unique / ambiguous).
 type TargetCollectionRealizationLookup
   = TargetCollectionRealizationMissing
   | TargetCollectionRealizationUnique { row: TargetCollectionRealization }
@@ -8225,9 +8995,6 @@ fn target_collection_fallback_from_node(node: Node) -> Outcome<Diagnostic> {
   )
 }
 
-// 🟡 gated — feature:SG-5-element-trait-eligibility — bind docs/planning/v2-sg5-sg6-collection-bounded-lattice-worksheet-2026-05-30.md §10.0 — dissolve-on: witness eligibility reads declared_inhabitants algebra witnesses instead of kernel atom tags.
-
-// 🟡 gated — feature:SG-5-element-trait-eligibility — bind docs/planning/v2-sg5-sg6-collection-bounded-lattice-worksheet-2026-05-30.md §10.0 — dissolve-on: witness eligibility reads declared_inhabitants algebra witnesses instead of kernel atom tags.
 fn target_collection_element_ord_eligible(elem: Node) -> Bool {
   match elem.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -8239,17 +9006,14 @@ fn target_collection_element_ord_eligible(elem: Node) -> Bool {
   }
 }
 
-// 🟡 gated — feature:SG-5-element-trait-eligibility — MVP-1: same kernel set as Ord until declared_inhabitants witness wiring.
 fn target_collection_element_hash_eligible(elem: Node) -> Bool {
   target_collection_element_ord_eligible(elem: elem)
 }
 
-// 🟡 gated — feature:SG-5-element-trait-eligibility — MVP-1: same kernel set as Hash until declared_inhabitants witness wiring.
 fn target_collection_element_eq_eligible(elem: Node) -> Bool {
   target_collection_element_hash_eligible(elem: elem)
 }
 
-// 🟢 coproduct dissolution — SG-5 witness satisfaction fold over RequiredTraitWitness coproduct.
 fn target_collection_trait_witness_satisfied(
   witness: RequiredTraitWitness,
   elem: Node
@@ -8307,7 +9071,6 @@ fn target_collection_set_carrier_head(node: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
 }
 
-// 🟡 gated — predicate-dissolution interim — feature:SG-5-set-carrier-recognition — bind docs/planning/v2-sg5-sg6-collection-bounded-lattice-worksheet-2026-05-30.md §10.0 — dissolve-on: 06_translate Cardinality arm matches set_carrier structurally without Bool predicate over Node.kind.
 fn target_collection_type_node_is_set_carrier(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Cardinality } =>
@@ -8331,13 +9094,6 @@ fn target_collection_free_monoid_carrier_head(node: Node) -> Optional<Node> {
   list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
 }
 
-// 🟡 gated — predicate-dissolution interim —
-// owner: vivid-lynx-81 / Rust RCA SG critical path; lane: SG-COLLECTION-PROJECTION;
-// planning-row: ROADMAP.md § "What v2 is building toward" rows `src/v2/std/` and
-// `Compiler stages`; bind: PR #4218 / node://adhoc-2d1d6d4b-023. Dissolve-on:
-// introduce a canonical collection-carrier projection returning `(kind, element)` once for
-// Set and FreeMonoid, then delete the paired Bool predicates/accessors before a third
-// collection carrier lands.
 fn target_collection_type_node_is_free_monoid_carrier(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Instantiation } =>
@@ -8363,22 +9119,12 @@ fn target_collection_free_monoid_element_type_node(free_monoid_node: Node) -> Op
   }
 }
 
-// ═══ SG-RC — TargetUseSiteOwnershipRealization (canonical home) ═══
-
-
-
-// Value-semantics (Copy) carrier set — the target-authored discrimination the
-// use-site-ownership lookup short-circuits on (Copy ⇒ by-value). Atom-identity
-// keyed, mirroring how the reference-ownership catalog matches carriers.
-
-// 🟢 coproduct dissolution — SG-RC ownership boundary role axis (four use sites; not Node.kind).
 type TargetOwnershipUseSite
   = OwnershipAtFunctionReturn
   | OwnershipAtFunctionParameter
   | OwnershipAtStructField
   | OwnershipAtBindingProjection
 
-// 🟢 coproduct dissolution — SG-RC reference layer axis (owned / shared / indirect).
 type TargetReferenceLayer
   = ReferenceLayerOwned
   | ReferenceLayerRc
@@ -8391,13 +9137,6 @@ type TargetReferenceLayerTokens {
   box_new_ctor: Symbol
 }
 
-// 🟢 coproduct dissolution — TERMINAL. SG-RC ownership rows must distinguish exact-carrier
-// identity from generic-family/head identity while still projecting the emitted shell through
-// SG-2. This is not a derivable fact from Node alone: `Outcome<T>`/`TestClaimRun<S,A>` rows
-// intentionally match by instantiation head, while `Node`, `Diagnostics`, and other rows match
-// exact carriers. Encoding that choice in source_carrier would conflate carrier identity with
-// lookup semantics; encoding it in the lookup would reintroduce consumer-local special cases.
-// The row-authored sum is the canonical authority for the finite source-key semantics.
 type TargetUseSiteOwnershipSourceProjection
   = UseSiteOwnershipExactCarrier
   | UseSiteOwnershipInstantiationHeadCarrier
@@ -8410,24 +9149,9 @@ type TargetUseSiteOwnershipRealization {
   display_name: Symbol
 }
 
-// 🟢 coproduct dissolution — value-vs-reference carrier semantics. A carrier is
-// owned by value (Copy ⇒ defaults to by-value: no reference layer applied) or by
-// reference (the SG-RC reference-layer realization applies). This is a DISTINCT
-// axis from TargetReferenceLayer (Owned|Rc|Box, which lives WITHIN the by-reference
-// arm) — reference_layer is inapplicable to value carriers, so it appears only in
-// CarrierOwnershipByReference. The use-site-ownership lookup discriminates this at
-// the authority: a value-semantics carrier short-circuits to ByValue before the
-// reference-catalog lookup; a reference carrier with no row is still a fail-closed
-// miss. Note: 'Copy ⇒ by-value default' is a default, not an absolute — a witness
-// later needing &primitive is a consumer-triggered extension, not pre-built here.
 type TargetCarrierOwnership
   = CarrierOwnershipByValue
   | CarrierOwnershipByReference { realization: TargetUseSiteOwnershipRealization }
-
-
-
-
-// Kernel-ambient carrier keys (Node-keyed; not spelling-keyed tables).
 
 fn target_carrier_type_node(identity: Symbol) -> Node {
   Node {
@@ -8545,7 +9269,6 @@ fn target_use_site_ownership_catalog_row_decode_invalid_diagnostic(
   }
 }
 
-// 🟢 coproduct dissolution — SG-RC list-catalog lookup fold state (missing / unique / ambiguous).
 type TargetUseSiteOwnershipLookup
   = TargetUseSiteOwnershipMissing
   | TargetUseSiteOwnershipUnique { row: TargetUseSiteOwnershipRealization }
@@ -8569,7 +9292,6 @@ fn target_use_site_ownership_source_key(
   }
 }
 
-// Lookup key: (content_hash(source_carrier), use_site) only — display_name is wire label, not part of the key.
 fn target_use_site_ownership_lookup_step(
   acc: TargetUseSiteOwnershipLookup,
   row: TargetUseSiteOwnershipRealization,
@@ -8707,7 +9429,6 @@ fn target_use_site_ownership_row_from_node(
   )
 }
 
-// 🟢 coproduct dissolution — SG-RC bundle-node catalog lookup fold state (missing / unique / ambiguous / invalid row decode).
 type TargetUseSiteOwnershipCatalogLookup
   = TargetUseSiteOwnershipCatalogMissing
   | TargetUseSiteOwnershipCatalogUnique { row: TargetUseSiteOwnershipRealization }
@@ -8756,10 +9477,6 @@ fn target_use_site_ownership_catalog_lookup_step(
   }
 }
 
-// Reference-ownership catalog lookup (SG-RC): consult the per-carrier catalog for a
-// reference realization. A carrier with no row is a fail-closed miss. Extracted so
-// the value-semantics discrimination can live inline at the lookup authority below
-// without a standalone is_* predicate.
 fn target_use_site_ownership_reference_catalog_lookup(
   catalog: Node,
   source_carrier: Node,
@@ -8807,13 +9524,7 @@ fn target_use_site_ownership_lookup_in_catalog_node(
   source_carrier: Node,
   use_site: TargetOwnershipUseSite
 ) -> Outcome<TargetCarrierOwnership> {
-  // Discrimination AT THE AUTHORITY (no standalone is_* predicate): a value-semantics
-  // (Copy) carrier — a bare atom whose identity is in the target's value-semantics set
-  // — owns BY VALUE (Copy ⇒ by-value default), short-circuiting before the SG-RC
-  // reference catalog so it does not wrongly miss for lacking a row. Every other
-  // carrier (an atom not in the set, or a composite) falls through to the reference
-  // catalog; a reference carrier with no row is still a fail-closed miss. Call sites
-  // just call this lookup.
+
   match source_carrier.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if value_semantics_carriers |> any(c => c == id) {
@@ -8907,9 +9618,6 @@ fn target_use_site_ownership_catalog_node(
 }
 }
 
-// Value-semantics carrier set encode/decode (a Conj of bare atom nodes keyed by
-// identity — mirrors how carriers are encoded elsewhere). Encodes the target's
-// Copy carrier atom-identities for the bundle; the lookup decodes + matches.
 fn target_value_semantics_carrier_atom_node(id: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: id } }, children: Empty,
  occurrence_id: SyntheticOccurrence
@@ -9021,7 +9729,6 @@ fn target_reference_layer_tokens_from_node(node: Node) -> Outcome<TargetReferenc
       )
   }
 }
-
 
 fn target_reference_layer_tokens_node(tokens: TargetReferenceLayerTokens) -> Node {
   Node {
@@ -9147,23 +9854,15 @@ fn target_reference_layer_apply_value_expression(
   }
 }
 
-// 🟢 coproduct dissolution — SG-RC wrapped reference layers only (Rc|Box; Owned via ReferenceLayerProbeNotWrapped).
 type TargetReferenceLayerWrapped
   = ReferenceLayerRc
   | ReferenceLayerBox
 
-// 🟢 coproduct dissolution — SG-RC bidirectional read: outer instantiation head → reference layer.
 type TargetReferenceLayerProbe
   = ReferenceLayerProbe { value: TargetReferenceLayerWrapped }
   | ReferenceLayerProbeNotWrapped
   | ReferenceLayerProbeInvalid
 
-// 🟡 gated — call-site arg-name bug fix — feature:B-RC-PROBE-WIRE-DECODE-CALL-1 (ctrl#1476 B3-Gap2)
-// — the SG-RC bidirectional read decodes the emitted wire via target_type_expr_emitted_wire_decode,
-// whose signature is (node:, projection:). The named-arg `emitted:` was wrong and `projection:` was
-// omitted, leaving `node` unbound at runtime ("undefined variable: node"). Uncaught because v2 has no
-// call-site arg-name/arity check yet. dissolve-on: enforcement-B call-site arg-check makes misnamed/
-// missing-arg calls compile-time errors (this mark + the manual guard then become redundant).
 fn target_reference_layer_probe_from_emitted_type(
   emitted: Node,
   projection: TargetTypeExpressionProjection,
@@ -9198,8 +9897,6 @@ fn target_reference_layer_probe_from_emitted_type(
     Rejected { diagnostics: _ } => ReferenceLayerProbeInvalid
   }
 }
-
-// SG-2 fold — closed per-connective projection-row candidate algebra (std authority; translate consumer).
 
 fn target_type_expr_symbol_atom(id: Symbol) -> Node {
   Node {
@@ -9333,8 +10030,6 @@ fn target_type_expr_arrow_shape_node(form: TargetFunctionTypeShape) -> Node {
   }
 }
 
-// SG-2 fold — edge-discipline DATA per connective (connective_edge_discipline authority).
-// TypeNode connectives never map to LoopBoundEdges (see node.dag connective_edge_discipline).
 fn type_expr_projection_child_slot_discipline_atom(connective: Connective) -> Node {
   match connective_edge_discipline(c: connective) {
     NoEdges => target_type_expr_symbol_atom(id: ^target_type_expr_discipline_no_edges)
@@ -9364,7 +10059,6 @@ fn type_expr_projection_row_shape_envelope(
   )
 }
 
-// Row-shape authority — consumed by *type_expression_projection_bundle_node in language targets.
 fn type_expr_projection_step_algebra(projection: TargetTypeExpressionProjection) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -9518,7 +10212,6 @@ fn type_expr_projection_row_witness_gate_with_rule(
   )
 }
 
-// SG-2 fold — bundle row-shape closedness (no graft child-slot coordinate; exact structural match).
 fn type_expr_projection_row_shape_witness_gate(
   source_facts: Node,
   projection: TargetTypeExpressionProjection,
@@ -9532,7 +10225,6 @@ fn type_expr_projection_row_shape_witness_gate(
   )
 }
 
-// SG-2 fold — connective → step_algebra row slot field (uniform key for bundle decode).
 fn type_expr_projection_row_field_for_connective(connective: Connective) -> Symbol {
   match connective {
     Atom { identity: _ } => ^target_type_expr_field_atom
@@ -9544,7 +10236,6 @@ fn type_expr_projection_row_field_for_connective(connective: Connective) -> Symb
   }
 }
 
-// SG-2 fold — connective shape node from TargetModel bundle (authority; not caller projection).
 fn type_expr_projection_bundle_shape_for_connective(
   bundle: Node,
   connective: Connective
@@ -9555,7 +10246,6 @@ fn type_expr_projection_bundle_shape_for_connective(
   )
 }
 
-// SG-2 fold — fail-close when caller projection row disagrees with bundle authority.
 fn type_expr_projection_row_closedness_from_target(
   target: TargetModel,
   projection: TargetTypeExpressionProjection,
@@ -9583,18 +10273,6 @@ fn type_expr_projection_row_closedness_from_target(
     }
   )
 }
-
-// ── Value-tier projection (§1.5 stage-fold: dissolved from v2.compiler.value_expression) ──────────
-// Authority: design-value-emit-schema.md §4.1–§4.4.
-// These functions were in 06_value_expression.dag and dissolved here via the §1.5 translate_algebra
-// stage-fold. The surface decode (^dag_token_plus → CanonicalOperation) stays in the compiler/ layer
-// (06_translate imports dag_surface_operator_canonicalization_member); functions that need it receive
-// a pre-decoded canonical_op or a handle_transform callback threaded from 06_translate.
-// The dissolution mark that read "authority: canonical_operation_from_wire_node" was imprecise:
-// canonical_operation_from_wire_node decodes the WIRE discriminant format, not the surface token.
-// The true authority for the Transform arm is a composition:
-//   surface-decode (compiler/, extdep) → canonical_op → target_model apply (pre-decoded).
-
 
 fn target_value_expr_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
@@ -9638,13 +10316,6 @@ fn target_value_expr_declared_inhabitants_from_target(target: TargetModel) -> Ou
   projection_bundle_child(bundle: target.bundle, name: ^target_model_edge_declared_inhabitants)
 }
 
-// 🟡 gated — predicate-dissolution interim —
-// feature:target-wave1-signature-declared-inhabitants — consumer:target_value_expr_arrow_body_scope_binding —
-// bind: COMPREP wave-1 Arrow signature vs TargetModel.declared_inhabitants —
-// owner: T6 value-expression (lively-badger-242) —
-// lane: compiler 06_value_expression + 06_translate —
-// dissolve-on-arrival: substrate Outcome-bearing signature query replaces Bool fold + silent Rejected swallow;
-// forbidden: parallel compiler-stage wave-1 signature matchers.
 fn target_value_expr_wave1_add_signature_matches_for_target(
   arrow: Node,
   target: TargetModel
@@ -9659,14 +10330,6 @@ fn target_value_expr_wave1_add_signature_matches_for_target(
   }
 }
 
-// 🟡 gated — predicate-dissolution interim —
-// feature:t6-value-expr-bodied-arrow-serialize — consumer:target_value_expr_arrow_body_scope_binding —
-// bind: PR #4627 / docs/design-value-emit-schema.md §4.5 —
-// owner: T6 value-expression (lively-badger-242) —
-// lane: compiler 06_value_expression + 06_translate —
-// dissolve-on-arrival: bodied Arrow serialize routes through grammar relation-row / connective dispatch;
-// delete transform-body Bool predicate steady-state;
-// forbidden: ComputationNode behavior Transform match for binding-validation dispatch.
 fn target_value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
@@ -9678,15 +10341,6 @@ fn target_value_expr_arrow_has_transform_body(arrow: Node) -> Bool {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim —
-// feature:t6-value-expr-bodied-arrow-serialize — consumer:06_translate + program_partition —
-// bind: bodied-arrow OR-dispatch (branch/bind/loop/match/record_construct) delegates to gated shape
-// predicates below; combiner target_value_expr_arrow_has_value_expression_body —
-// owner: Lane 2a value-expression (jolly-wren-91) —
-// lane: compiler 06_value_expression + 06_translate —
-// dissolve-on-arrival: bodied Arrow serialize routes through grammar relation-row / connective dispatch;
-// delete per-behavior Bool has_* predicates steady-state;
-// forbidden: ComputationNode behavior match for binding-validation dispatch past M0.
 fn target_value_expr_arrow_has_branch_body(arrow: Node) -> Bool {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
@@ -9740,14 +10394,6 @@ fn target_value_expr_arrow_has_value_expression_body(arrow: Node) -> Bool {
     || target_value_expr_arrow_has_record_construct_body(arrow: arrow)
 }
 
-// 🟡 gated — predicate-dissolution interim —
-// feature:arrow-domain-binding-list-membership —
-// consumer:target_value_expr_arrow_body_scope_binding —
-// bind: membership in arrow_domain_named_param_bindings ordered list —
-// owner: T6 value-expression (lively-badger-242) —
-// lane: compiler 06_value_expression —
-// dissolve-on-arrival: std.collection symbol-list contains accessor;
-// forbidden: local Bool fold membership predicates in compiler stages.
 fn target_value_expr_binding_in_declared_param_list(
   binding: Symbol,
   bindings: List<Symbol>
@@ -9790,9 +10436,6 @@ fn target_value_expr_arrow_body_scope_binding(
   )
 }
 
-// Surface decode (^dag_token_plus → CanonicalOperation) is the caller's responsibility.
-// 06_translate imports dag_surface_operator_canonicalization_member (extdep), decodes the surface
-// token, and passes the result as canonical_op. target_model stays extdep-free.
 fn target_project_transform_primitive_apply_in_arrow_scope(
   arrow: Node,
   body: Node,
@@ -9854,9 +10497,6 @@ fn target_project_transform_primitive_apply_in_arrow_scope(
   }
 }
 
-// Lane 2c — project one call argument. A bare Atom argument is a binding reference (scope-checked
-// against the enclosing arrow's params, like a primitive operand); any other shape (a nested call
-// Transform, an inline closure Arrow, a branch, …) recurses through the subexpression projector.
 fn target_project_callable_arg_in_arrow_scope(
   arrow: Node,
   body: Node,
@@ -9887,9 +10527,6 @@ fn target_project_callable_arg_in_arrow_scope(
   }
 }
 
-// Lane 2c — project a call Transform (`callee(arg, ...)`) to a callable-apply value-expression. The
-// caller (translate) routes here when the Transform head atom does NOT canonicalize to an operator;
-// the head is then the callee binding and the remaining positional children are the arguments.
 fn target_project_transform_callable_apply_in_arrow_scope(
   arrow: Node,
   body: Node,
@@ -9942,13 +10579,6 @@ fn target_project_transform_callable_apply_in_arrow_scope(
   )
 }
 
-// 🟡 gated — predicate-dissolution interim —
-// feature:value-expression-branch-bool-condition-m0 —
-// consumer:target_value_expr_branch_bool_gate —
-// bind: M0 bool-if-else branch condition (kw_true / kw_false TypeNode atoms) —
-// lane: compiler 06_value_expression —
-// dissolve-on: Q-B1 named pattern edges for branch (M0-B5);
-// forbidden: hand-rolled symbol literal identity checks past grammar relation rows.
 fn target_value_expr_cond_is_bool_atom(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -9957,15 +10587,6 @@ fn target_value_expr_cond_is_bool_atom(node: Node) -> Bool {
   }
 }
 
-// ^dag_token_kw_true / ^dag_token_kw_false are symbol literals (no extdep import required).
-// These inline the dag_mvp1_node_is_kw_true_atom / dag_mvp1_node_is_kw_false_atom predicates.
-// 🟡 gated — predicate-dissolution interim —
-// feature:value-expression-branch-bool-condition-m0 —
-// consumer:target_project_branch_bool_if_else —
-// bind: design-comprep-m0-branch-mapping.md §12.9(A) positional Branch + bool-literal condition —
-// lane: compiler 06_value_expression —
-// dissolve-on: Q-B1 named pattern edges for branch (M0-B5);
-// forbidden: silent ordinal coupling past M0 Bool-if-else.
 fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
   if length(xs: node_positional_child_targets(node: node)) != 3 {
     false
@@ -9978,11 +10599,6 @@ fn target_value_expr_branch_bool_gate(node: Node) -> Bool {
   }
 }
 
-// 🟡 gated — feature:value-expression-pick-literal-binding-ref —
-// consumer:target_value_expr_project_atom_literal —
-// bind:node://adhoc-ecf6bf2b-84c —
-// dissolve-on: Q-B2 literal-arm binding table lands;
-// forbidden: hand-rolled int-literal token_class projection for M0 pick arms past this interim map.
 fn target_value_expr_project_pick_literal_atom(id: Symbol) -> Outcome<TargetValueExpression> {
   if id == ^dag_mvp1_pick_lit_one {
     outcome_accepted(
@@ -10025,11 +10641,6 @@ fn target_value_expr_project_atom_literal(node: Node) -> Outcome<TargetValueExpr
   }
 }
 
-// 🟡 gated — feature:value-expression-record-construct-m0 —
-// consumer:target_value_expr_project_body_subexpression —
-// bind: COMPREP wave-2 M0 record construct (Conj body with type atom + named field inits) —
-// dissolve-on: Q-B1 named pattern edges for record construct (M0-B5);
-// forbidden: silent ordinal coupling past M0 constructor Conj.
 fn target_value_expr_record_construct_gate(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -10155,11 +10766,6 @@ fn target_project_record_construct(
   }
 }
 
-// 🟡 gated — feature:value-expression-field-access-m0 —
-// consumer:target_value_expr_project_body_subexpression —
-// bind: COMPREP wave-2 M0 field access (Transform[callee=dot, base, field]) —
-// dissolve-on: Q-B1 named pattern edges for field access (M0-B5);
-// forbidden: silent ordinal coupling past M0 postfix dot Transform.
 fn target_value_expr_field_access_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Transform } =>
@@ -10244,11 +10850,6 @@ fn target_project_field_access(
   }
 }
 
-// 🟡 gated — feature:value-expression-match-positional-m0 —
-// consumer:target_value_expr_project_body_subexpression —
-// bind: COMPREP wave-2 M0 match (ComputationNode Match + positional arms) —
-// dissolve-on: Q-B1 named pattern edges for match (M0-B5);
-// forbidden: silent ordinal coupling past M0 match arms.
 fn target_value_expr_match_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Match } =>
@@ -10390,11 +10991,6 @@ fn target_project_match(
   }
 }
 
-// 🟡 gated — feature:value-expression-branch-positional-m0 —
-// consumer:target_value_expr_project_body_subexpression —
-// bind: design-comprep-m0-branch-mapping.md §12.9(A) —
-// dissolve-on: Q-B1 named pattern edges for match (M0-B5);
-// forbidden: silent ordinal coupling past M0 Bool-if-else.
 fn target_project_branch_bool_if_else(
   arrow: Node,
   body: Node,
@@ -10487,11 +11083,6 @@ fn target_value_expr_bind_let_gate(node: Node) -> Bool {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature:value-expression-loop-positional-m0 —
-// consumer:target_project_loop —
-// bind: COMPREP wave-2 M0-Loop (symmetric w/ bind/branch §12.9) —
-// dissolve-on: Q-B1 named pattern edges for Loop (M0-B5);
-// forbidden: silent ordinal coupling past M0 loop body.
 fn target_value_expr_loop_gate(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Loop } =>
@@ -10500,11 +11091,6 @@ fn target_value_expr_loop_gate(node: Node) -> Bool {
   }
 }
 
-// 🟡 gated — feature:value-expression-bind-positional-m0 —
-// consumer:target_project_bind_let —
-// bind: design-comprep-m0-bind-mapping (symmetric w/ branch §12.9) —
-// dissolve-on: Q-B1 named pattern edges for Bind (M0-B5);
-// forbidden: silent ordinal coupling past M0 let-in.
 fn target_project_bind_let(
   arrow: Node,
   body: Node,
@@ -10559,11 +11145,6 @@ fn target_project_bind_let(
   }
 }
 
-// 🟡 gated — feature:value-expression-loop-positional-m0 —
-// consumer:target_project_loop —
-// bind: COMPREP wave-2 M0-Loop (symmetric w/ bind/branch §12.9) —
-// dissolve-on: Q-B1 named pattern edges for Loop (M0-B5);
-// forbidden: silent ordinal coupling past M0 loop body.
 fn target_project_loop(
   arrow: Node,
   body: Node,
@@ -10661,10 +11242,7 @@ fn target_value_expr_project_body_subexpression(
           )
         )
       }
-    // Lane 2c — a `TypeNode { connective: Arrow }` appearing as an operand is an inline closure
-    // (`fn(params) { body }`). Project its own param domain + body, with the closure itself as the
-    // new scope arrow so the body's binding refs resolve against the closure params (nested-closure
-    // scoping). Captures of the enclosing scope are a follow-up (only closure-local params today).
+
     TypeNode { connective: Arrow } =>
       target_project_closure_in_arrow_scope(
         closure: node,
@@ -10683,9 +11261,6 @@ fn target_value_expr_project_body_subexpression(
   }
 }
 
-// Lane 2c — project an inline closure node to a closure value-expression. The body recurses through
-// the same subexpression projector with `closure` as the scope arrow, so an operator/call inside the
-// closure resolves its binding refs against the closure's own params.
 fn target_project_closure_in_arrow_scope(
   closure: Node,
   target: TargetModel,

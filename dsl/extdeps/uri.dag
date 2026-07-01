@@ -1,48 +1,88 @@
-// extdeps/uri.dag — RFC 3986 URI carrier (scheme + locator).
-//
-// Spec anchors (intersubjective grounding — §1 A3):
-//   RFC 3986 URI generic syntax: https://www.rfc-editor.org/rfc/rfc3986
-//   IANA URI scheme registry: https://www.rfc-editor.org/rfc/rfc7595
-//
-// Uri is an extdeps concept (external authority), not std business logic.
-// Carrier caveat (§3): shares the RFC3986 anchor with v2.std.network.Url; different
-// layer (extdeps citation) + purpose (closed-sum scheme axis for anchor grounding).
-// §6 dissolution: locator is opaque NonEmptyStr for now; fuller RFC 3986
-// authority / path / query / fragment decomposition deferred until field-level
-// FactAuthorityOverride needs granular fragments (e.g. #page=12 on a PDF).
-
 module extdeps.uri
 
-import std.types { NonEmptyStr, Url }
+import std.types { NonEmptyStr }
 
-// Closed sum — categorical axis for URI scheme (§2). Add variants as we cite
-// new IANA schemes; never string-match "https://" in lens or gate logic.
 type UriScheme
   = Http
   | Https
   | File
   | Ftp
+  | Javascript
+  | Data
+  | Vbscript
+  | Mailto
 
 type Uri {
   scheme: UriScheme
   locator: NonEmptyStr
 }
 
-// 🟢 TERMINAL — closed-sum membership: Http|Https vs File|Ftp (discriminating witness
-// surface for the extdeps.uri carrier; scheme recognition for live anchors lives in
-// scheme recognition for live anchors lives in
-// v2.lens.extdeps_external_authority.decode_uri_scheme over projected constructor identity).
 fn uri_scheme_is_http(s: UriScheme) -> Bool {
   match s {
     Http => true
     Https => true
     File => false
     Ftp => false
+    Javascript => false
+    Data => false
+    Vbscript => false
+    Mailto => false
   }
 }
 
-// 🟢 TERMINAL — documents [Url] ⊂ { uri | uri_scheme_is_http(uri.scheme) } relation only;
-// Url=String consumer migration is a separate follow-up.
 fn uri_is_url(uri: Uri) -> Bool {
   uri_scheme_is_http(s: uri.scheme)
+}
+
+fn uri_scheme_wire(s: UriScheme) -> NonEmptyStr {
+  match s {
+    Http => "http://"
+    Https => "https://"
+    File => "file://"
+    Ftp => "ftp://"
+    Javascript => "javascript:"
+    Data => "data:"
+    Vbscript => "vbscript:"
+    Mailto => "mailto:"
+  }
+}
+
+fn uri_wire(uri: Uri) -> NonEmptyStr {
+  concat(uri_scheme_wire(s: uri.scheme), uri.locator)
+}
+
+type ParsedHrefScheme
+  = HrefScheme { scheme: UriScheme }
+  | RelativeHref
+  | UnknownHref
+
+fn href_is_relative_reference(s: String) -> Bool {
+  starts_with(s, prefix: "/")
+    || starts_with(s, prefix: "#")
+    || starts_with(s, prefix: "./")
+    || starts_with(s, prefix: "../")
+    || !(s |> contains(":"))
+}
+
+fn parse_href_scheme(url: String) -> ParsedHrefScheme {
+  let s = trim(url)
+  if starts_with(s, prefix: "//") {
+    UnknownHref
+  } else if href_is_relative_reference(s: s) {
+    RelativeHref
+  } else if starts_with(s, prefix: "javascript:") || starts_with(s, prefix: "JAVASCRIPT:") {
+    HrefScheme { scheme: Javascript }
+  } else if starts_with(s, prefix: "data:") || starts_with(s, prefix: "DATA:") {
+    HrefScheme { scheme: Data }
+  } else if starts_with(s, prefix: "vbscript:") || starts_with(s, prefix: "VBSCRIPT:") {
+    HrefScheme { scheme: Vbscript }
+  } else if starts_with(s, prefix: "https://") || starts_with(s, prefix: "HTTPS://") {
+    HrefScheme { scheme: Https }
+  } else if starts_with(s, prefix: "http://") || starts_with(s, prefix: "HTTP://") {
+    HrefScheme { scheme: Http }
+  } else if starts_with(s, prefix: "mailto:") || starts_with(s, prefix: "MAILTO:") {
+    HrefScheme { scheme: Mailto }
+  } else {
+    UnknownHref
+  }
 }

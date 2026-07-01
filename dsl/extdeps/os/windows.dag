@@ -1,6 +1,3 @@
-// extdeps/os/windows.dag — Windows distribution catalog (cited facts).
-// Scope: Windows 11 24H2 (OS build 26100).
-
 module extdeps.os.windows
 
 import std.os.types {
@@ -21,7 +18,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Anchor: https://learn.microsoft.com/en-us/windows/release-health/windows11-release-information
 data windows_11_24h2_catalog: WindowsDistributionCatalogRow = WindowsDistributionCatalogRow {
   distribution: Windows1124H2Build26100,
   release_label: "24H2",

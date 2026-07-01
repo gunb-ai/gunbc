@@ -1,12 +1,16 @@
-// extdeps/llm/openai_errors.dag -- OpenAI API error envelope shape.
-//
-// Spec: https://platform.openai.com/docs/guides/error-codes/api-errors
-
 module extdeps.llm.openai_errors
 
 import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// OpenAI API error `error.type` registry (extensible — closed cited rows + Other).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "platform.openai.com/docs/guides/error-codes/api-errors"
+  }
+}
+
 type OpenAiErrorType
   = OpenAiInvalidRequestError
   | OpenAiAuthenticationError

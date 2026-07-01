@@ -1,18 +1,9 @@
-// tools/floor_effect_gate_witness.dag — nullary Bool adapters for the effectful
-// CI gates, so the dependency-ordered scheduler (claim_executor) can run each gate
-// as a plan node (`RunnableSingleClaim` is nullary — one `(entry, function)`).
-//
-// REUSE, not re-coin (DESIGN §2/§3): the Gate→effect mapping stays the single
-// authority `tools.ci_gates.run_spec_gate` (itself driven by `gunbc_ci_spec.gates`).
-// Each adapter just pins one closed `Gate` variant and maps its ProcessExit to the
-// Bool the scheduler's per-node verdict needs. These are `func` (effectful) — the
-// host runs them in Wet mode so the transports fire.
-
 module tools.floor_effect_gate_witness
 
 import gunbc.ci_spec {
-  RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
-  ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate
+  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
+  RegenVerifyGate, EmitDeterminismGate
 }
 import tools.ci_gates { exit_ok, run_spec_gate }
 
@@ -28,10 +19,6 @@ func layering_imports_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: LayeringImportsGate))
 }
 
-func resolved_imports_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: ResolvedImportsGate))
-}
-
 func extdeps_external_authority_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: ExtdepsExternalAuthorityGate))
 }
@@ -40,6 +27,14 @@ func dsl_compile_clean_gate_passes() -> Bool {
   exit_ok(e: run_spec_gate(g: DslCompileCleanGate))
 }
 
-func ci_yaml_gate_passes() -> Bool {
-  exit_ok(e: run_spec_gate(g: CiYamlGate))
+func generated_artifact_drift_gate_passes() -> Bool {
+  exit_ok(e: run_spec_gate(g: GeneratedArtifactDriftGate))
+}
+
+func regen_verify_gate_passes() -> Bool {
+  exit_ok(e: run_spec_gate(g: RegenVerifyGate))
+}
+
+func emit_determinism_gate_passes() -> Bool {
+  exit_ok(e: run_spec_gate(g: EmitDeterminismGate))
 }

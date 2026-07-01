@@ -1,15 +1,3 @@
-// tools/emit_host_transport.dag — shell transports for emit-host MVP smoke rows.
-//
-// Each operation writes a fixture to a temp dir, runs the target toolchain, and checks
-// stdout byte count. Scripts are POSIX `sh` (gunbc shell transport uses `sh -c`, not bash).
-//
-// rust + python are modeled as structured `ShellProgram`s (extdeps.languages.bash.program),
-// proven green by execution here (cargo + python3 are local). go + ts stay hand-written `let
-// script` blobs FOR NOW: each embeds a toolchain *workaround* (go: curl|tar arch-bootstrap of a
-// Go release; ts: npx network fetch of tsc) that per DESIGN.md §6 is debt to DISSOLVE by modeling
-// the underlying provisioning concept, not to mechanically cement into a ShellProgram — and
-// neither is verifiable without network. They ride the `RawLine` escape hatch at the type flip.
-
 module tools.emit_host_transport
 
 import extdeps.shell
@@ -28,11 +16,11 @@ import tools.emit_host_fixtures {
   mvp2_stdout_byte_count,
   ts_signed_i32_le_byte_count
 }
+import gunbc.node_http_server_emit { gunbhub_node_http_server_source }
 import tools.host_prelude { toolchain_provision_shell_exec }
 
 data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nversion = \"0.0.0\"\nedition = \"2021\"\n\n[[bin]]\nname = \"fixture\"\npath = \"src/main.rs\""
 
-// BYTES=$(<producer> | wc -c | tr -d ' ')
 fn byte_count_assign(producer: ShellStmt) -> ShellStmt {
   assign(name: "BYTES", value: CmdSubst { body: Pipe {
     left: Pipe {
@@ -43,16 +31,10 @@ fn byte_count_assign(producer: ShellStmt) -> ShellStmt {
   } })
 }
 
-// test "$BYTES" -eq <expected>
 fn assert_bytes_eq(expected: Int) -> ShellStmt {
   command(words: [lit(text: "test"), var_ref(name: "BYTES"), lit(text: "-eq"), lit(text: to_string(expected))])
 }
 
-// Run emitted rust fixture: cargo build + run; pass iff stdout is exactly five bytes.
-//   set -e; WORKDIR=$(mktemp -d); mkdir -p "$WORKDIR"/src
-//   cat > "$WORKDIR"/Cargo.toml <<'EOF' ... EOF; cat > "$WORKDIR"/src/main.rs <<'EOF' ... EOF
-//   CARGO_TARGET_DIR="$WORKDIR"/target cargo build --quiet --manifest-path "$WORKDIR"/Cargo.toml
-//   BYTES=$("$WORKDIR"/target/debug/fixture | wc -c | tr -d ' '); rm -rf "$WORKDIR"; test "$BYTES" -eq N
 fn rust_mvp2_program() -> ShellProgram {
   let workdir = var_ref(name: "WORKDIR")
   ShellProgram {
@@ -82,8 +64,6 @@ fn run_rust_mvp2_smoke() -> Bool {
   result.success
 }
 
-//   set -e; WORKDIR=$(mktemp -d); cat > "$WORKDIR"/fixture.py <<'EOF' ... EOF
-//   BYTES=$(python3 "$WORKDIR"/fixture.py | wc -c | tr -d ' '); rm -rf "$WORKDIR"; test "$BYTES" -eq N
 fn python_mvp2_program() -> ShellProgram {
   let workdir = var_ref(name: "WORKDIR")
   ShellProgram {
@@ -103,17 +83,20 @@ fn run_python_mvp2_smoke() -> Bool {
   result.success
 }
 
-// 🟡 go: embeds a curl|tar Go-toolchain arch-bootstrap (a provisioning workaround) — dissolve by
-// modeling toolchain provisioning, not by cementing into a ShellProgram. Networked, unverifiable here.
 fn run_go_mvp2_smoke() -> Bool {
   let expected = byte_size_count(mvp2_stdout_byte_count)
   let script = "set -e\nWORKDIR=$(mktemp -d)\nif ! command -v go >/dev/null 2>&1; then\n  GOBOOT=\"$WORKDIR/gotool\"\n  mkdir -p \"$GOBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) GOARCH=arm64 ;; x86_64|amd64) GOARCH=amd64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://go.dev/dl/go1.22.5.linux-$GOARCH.tar.gz\" | tar -xz -C \"$GOBOOT\"\n  PATH=\"$GOBOOT/go/bin:$PATH\"\n  export PATH\nfi\ncat > \"$WORKDIR/main.go\" <<'EOF'\n{go_mvp2_stdout_fixture_source}\nEOF\nBYTES=$(go run \"$WORKDIR/main.go\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
   toolchain_provision_shell_exec(script: script)
 }
 
-// 🟡 ts: npx network fetch of typescript@5.9.2 (a provisioning workaround). Unverifiable here.
 fn run_ts_mvp1_smoke() -> Bool {
   let expected = byte_size_count(ts_signed_i32_le_byte_count)
   let script = "set -e\ncommand -v node >/dev/null 2>&1\ncommand -v npx >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/fixture.ts\" <<'EOF'\n{ts_mvp1_host_fixture_source}\nEOF\ncd \"$WORKDIR\" && npx -y -p typescript@5.9.2 tsc --target ES2022 --module commonjs --outDir . fixture.ts\nBYTES=$(node \"$WORKDIR/fixture.js\" | wc -c | tr -d ' ')\nrm -rf \"$WORKDIR\"\ntest \"$BYTES\" -eq {expected}"
+  toolchain_provision_shell_exec(script: script)
+}
+
+fn run_node_http_serve_smoke() -> Bool {
+  let server_source = gunbhub_node_http_server_source()
+  let script = "set -e\ncommand -v node >/dev/null 2>&1\ncommand -v curl >/dev/null 2>&1\nWORKDIR=$(mktemp -d)\ncat > \"$WORKDIR/server.js\" <<'GUNBC_EOF'\n{server_source}\nGUNBC_EOF\nPORT=18471\nHOST=127.0.0.1 PORT=$PORT node \"$WORKDIR/server.js\" &\nSERVER_PID=$!\ntrap 'kill $SERVER_PID 2>/dev/null; rm -rf \"$WORKDIR\"' EXIT\nfor i in 1 2 3 4 5; do\n  sleep 0.3\n  if curl -sf http://127.0.0.1:$PORT/ >/dev/null 2>&1; then break; fi\ndone\nSTATUS=$(curl -s -o /dev/null -w '%\{http_code\}' http://127.0.0.1:$PORT/)\ntest \"$STATUS\" -eq 200"
   toolchain_provision_shell_exec(script: script)
 }

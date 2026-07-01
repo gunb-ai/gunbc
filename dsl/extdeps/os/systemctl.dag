@@ -1,0 +1,108 @@
+module extdeps.os.systemctl
+
+import std.types { NonEmptyStr, String, List, Bool, Int }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemctl.html"
+  }
+}
+
+
+type UnitFileState
+  = UnitEnabled
+  | UnitEnabledRuntime
+  | UnitLinked
+  | UnitMasked
+  | UnitStatic
+  | UnitDisabled
+  | UnitIndirect
+  | UnitGenerated
+  | UnitTransient
+  | UnitBad
+
+service systemd.Systemctl {
+  operation Enable {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "enable", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl enable failed"
+    }
+  }
+
+  operation Start {
+    input { unit: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "start", "{unit}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl start failed"
+    }
+  }
+
+  operation SetProperty {
+    input { unit: NonEmptyStr, property: NonEmptyStr, value: NonEmptyStr }
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "set-property", "{unit}", "{property}={value}"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl set-property failed"
+    }
+  }
+
+  operation DaemonReload {
+    input {}
+    output {
+      success: Bool from "exit_success"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["systemctl", "daemon-reload"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl daemon-reload failed"
+    }
+  }
+
+  operation IsActive {
+    input { unit: NonEmptyStr }
+    output {
+      state: String from "stdout"
+      active: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["systemctl", "is-active", "{unit}"] }
+    exit {
+      0 => Unit
+      3 => Unit "unit is not active"
+      nonzero => String "systemctl is-active failed"
+    }
+  }
+
+  operation ShowProperty {
+    input { unit: NonEmptyStr, property: NonEmptyStr }
+    output { value: String from "stdout" }
+    readonly
+    transport shell { argv: ["systemctl", "show", "{unit}", "--property={property}", "--value"] }
+    exit {
+      0 => Unit
+      nonzero => String "systemctl show failed"
+    }
+  }
+}

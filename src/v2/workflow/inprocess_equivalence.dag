@@ -1,21 +1,4 @@
-// Scope: A.1.5a — in-process `TestClaimRun` equivalence claim (RR-A §4 R7).
-// Status: equivalence SPEC (tracked deferral on harness execution). On a fixed
-//   corpus slice the harness path (corpus-runner machinery
-//   `run_node_runtime_value_subjects` → entry wrap, the same fold
-//   `run_manual_testclaim_corpus_eval` applies to the full manual roster) must
-//   produce the same `TestClaimRun` rows as the in-process path (direct
-//   `run_test_claim`). `witness_inprocess_equivalence` is that compile-time law.
-// DEFERRAL (RR-A §5 landing order / §6): this file is NOT itself a harness-executed
-//   gate and deliberately declares NO `data run_*: TestClaimRun = run_test_claim(...)`
-//   row — that authoring-time co-authority is forbidden (RR-A §6). The runtime
-//   verdict and the corpus/claim-id roster wiring belong to the A.1 harness lane
-//   (Compiler Spine bootstrap entry + `manual_corpus_roster`/`ci.dag` claim-id
-//   frontier), which consumes this slice and asserts the same equivalence at
-//   execution time. Dissolve-on: A.1 harness wires `inprocess_equivalence_slice`
-//   into the runner roster and the runtime report satisfies `inprocess_equivalence_holds`.
-
 module v2.test.workflow.inprocess_equivalence
-
 
 import v2.compiler.eval {
   TestClaimEvalSubject,
@@ -34,26 +17,16 @@ import v2.test.workflow.testclaim_corpus_runner {
   run_node_runtime_value_subjects
 }
 
-
-// Fixed slice: the canonical eval_mvp2 route subject (RR-A §4 R7 "fixed slice").
-// The A.1 harness lane wires this same slice into the live runner roster.
 data inprocess_equivalence_slice: List<TestClaimEvalSubject<Node>> = [
   subject_eval_mvp2_test_claim_route
 ]
 
-
-// Harness path: corpus-runner machinery (map run_test_claim over the slice, then
-// wrap into CorpusEvalEntry rows) — the same fold `run_manual_testclaim_corpus_eval`
-// applies to the full manual roster, scoped here to the fixed slice.
 fn inprocess_equivalence_harness_entries() -> List<CorpusEvalEntry> {
   corpus_entries_from_node_runtime_value_runs(
     runs: run_node_runtime_value_subjects(subjects: inprocess_equivalence_slice)
   )
 }
 
-
-// In-process path: direct `run_test_claim` on the same fixed subject, wrapped into
-// a CorpusEvalEntry so the two paths compare at the same type.
 fn inprocess_equivalence_inprocess_entries() -> List<CorpusEvalEntry> {
   [
     corpus_entry_from_node_runtime_value_run(
@@ -62,12 +35,8 @@ fn inprocess_equivalence_inprocess_entries() -> List<CorpusEvalEntry> {
   ]
 }
 
-
-// The equivalence law: harness path and in-process path agree row-for-row on the
-// fixed slice. The A.1 harness lane re-asserts this at runtime over the live report.
 fn inprocess_equivalence_holds() -> Bool {
   inprocess_equivalence_harness_entries() == inprocess_equivalence_inprocess_entries()
 }
-
 
 data witness_inprocess_equivalence: Bool = inprocess_equivalence_holds()

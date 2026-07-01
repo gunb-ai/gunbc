@@ -1,10 +1,6 @@
-// src/v2/lens/fact_density.dag
-// Scope: fact-density lens — classifies each type carrier by the spec facts it records; structural gate that fails closed on hollow aliases (NoFact carriers).
-// Status: structural Node -> Outcome gate — enforcement adapter runs via run_required_lens_gates (mechanism ratified 2026-05-25).
-
 module v2.lens.fact_density
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-
+import std.disposition { SubstrateMandatoryTag }
 
 import v2.std.diagnostic {
   Diagnostic,
@@ -43,14 +39,11 @@ fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
     s == ^fact_density_kernel_ambient_map
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SourceSpecReadFact
   = NamedFieldFacts { density: NonZeroNat }
   | KernelAmbientAtom
   | NoFact
   | NotATypeCarrier
-
 
 fn named_fact_count(children: List<Edge>) -> Nat {
   fold(children, init: Zero, f: fn(acc, e) {
@@ -61,14 +54,12 @@ fn named_fact_count(children: List<Edge>) -> Nat {
   })
 }
 
-
 fn density_fact(named_facts: Nat) -> SourceSpecReadFact {
   match named_facts {
     Zero => NoFact
     Succ { prev: p } => NamedFieldFacts { density: NonZeroNat { prev: p } }
   }
 }
-
 
 fn connective_is_kernel_ambient_atom(c: Connective) -> Bool {
   match c {
@@ -77,7 +68,6 @@ fn connective_is_kernel_ambient_atom(c: Connective) -> Bool {
   }
 }
 
-
 fn connective_spec_fact(c: Connective, named_facts: Nat) -> SourceSpecReadFact {
   if connective_is_kernel_ambient_atom(c: c) {
     KernelAmbientAtom
@@ -85,7 +75,6 @@ fn connective_spec_fact(c: Connective, named_facts: Nat) -> SourceSpecReadFact {
     density_fact(named_facts: named_facts)
   }
 }
-
 
 fn carrier_spec_fact(carrier: Node) -> SourceSpecReadFact {
   match carrier.kind {
@@ -110,12 +99,6 @@ fn fact_density_hollow_alias_gate(node: Node) -> Outcome<Witness<Node>> {
   }
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "fact-presence required at type declaration by construction (a hollow NoFact carrier becomes unwritable)",
-    dissolve_on: "a type carrier with no recorded spec facts is rejected at declaration, not flagged after the fact"
-  },
-  rationale: "Detecting a structurally-hollow alias (a NoFact carrier) is decidable and gateable; the deeper DESIGN sec 2 leaf-side -- whether a leaf is adequately DECOMPOSED -- needs domain knowledge and stays region-3 review (the parked sec 2 open thread)."
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

@@ -1,25 +1,7 @@
-// extdeps/tools/tools.dag — Holistic CLI tool modeling.
-//
-// Every .dag program that shells out depends on external CLI binaries
-// (cargo, grep, diff, cp, ...). This file models those binaries as
-// explicit declared facts with install sources, and provides a
-// fail-closed upsert that resolves tool → absolute path via `which`.
-//
-// Each tool can be installed via multiple paths (rustup OR brew OR
-// apt OR system) — installable_via is a list, not a single value.
-// This is honest: the same tool reaches different developers via
-// different package managers depending on platform. The resolver
-// doesn't care which one was used; it just runs `which`. The list
-// is for install hints when the tool is missing, and for documenting
-// the supported environments.
-//
-// Faithful modeling (DESIGN.md §3): every InstallSource variant
-// references a proper extdeps file. Adding a new variant requires
-// modeling the install source first.
-//
-// Pattern reference: gunb.ai/tools/toolpaths/toolpaths.go (Ensure upsert).
-
 module extdeps.tools
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 import std.types { FilePath, NonEmptyStr }
 import extdeps.shell
@@ -29,54 +11,34 @@ import extdeps.brew   { brew_install_url }
 import extdeps.apt
 import extdeps.version { VersionConstraint }
 
-// ── Install source ──────────────────────────────────────────────────
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/tools"
+  }
+}
 
-// Closed set of install paths. Each variant references its backing
-// extdeps file. Adding a new variant means modeling that source first.
-//
-//   SourceCoreutils → extdeps/shell/gnu_coreutils.dag (cp, rm, grep, diff, ...)
-//   SourceRustup    → extdeps/rust/rustup.dag    (cargo, rustc)
-//   SourceBrew      → extdeps/package_managers/brew.dag      (macOS Homebrew)
-//   SourceApt       → extdeps/package_managers/apt.dag       (Debian/Ubuntu APT)
 type InstallSource
   = SourceCoreutils
   | SourceRustup
   | SourceBrew { formula: NonEmptyStr }
   | SourceApt { package: NonEmptyStr }
 
-// ── Tool declaration and resolution ────────────────────────────────
-
-// A required external CLI tool. installable_via is a list of all
-// known install paths — the same tool reaches macOS via brew, Linux
-// via apt or rustup, CI via rustup, etc. The resolver just runs
-// `which` and uses whatever's first on PATH; install_hint enumerates
-// all paths when the tool is missing.
 type CliTool {
   name: NonEmptyStr
   min_version: VersionConstraint?
   installable_via: List<InstallSource>
 }
 
-// A resolved tool: the declared CliTool paired with its actual absolute
-// filesystem path (from `which`). Workflows build command strings from
-// resolved.path, never from the bare name.
 type ResolvedTool {
   tool: CliTool
   path: FilePath
 }
 
-// The outcome of attempting to resolve a tool. Fail-closed: if the
-// tool isn't found, the hint enumerates ALL known install paths so
-// the user can pick the one for their platform.
 type ResolveResult
   = Resolved { resolved: ResolvedTool }
   | NotFound { tool: CliTool, hint: String }
 
-// ── Install hints ──────────────────────────────────────────────────
-
-// Recovery instruction for a single install source. Each variant
-// references its backing extdeps file's install URL or canonical
-// command form.
 fn one_hint(source: InstallSource) -> String {
   match source {
     SourceCoreutils => "expected from system coreutils (GNU on Linux, BSD on macOS)"
@@ -86,18 +48,10 @@ fn one_hint(source: InstallSource) -> String {
   }
 }
 
-// Enumerate ALL install paths for a tool. The user picks the one for
-// their platform. Joined with " | " so the hint reads:
-//   "install rustup from https://rustup.rs | brew install rust | apt install cargo"
 fn install_hint(sources: List<InstallSource>) -> String {
   sources |> map(s => one_hint(source: s)) |> join(separator: " | ")
 }
 
-// ── Resolution workflow ─────────────────────────────────────────────
-
-// Fail-closed upsert: check if the tool is on PATH via `which`, return
-// Resolved with the absolute path if found, NotFound with the
-// enumerated install hint if not.
 func resolve(tool: CliTool) -> ResolveResult {
   let check = shell.Which.Check(command: tool.name)
   match check.path {

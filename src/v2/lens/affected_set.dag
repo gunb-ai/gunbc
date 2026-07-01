@@ -1,10 +1,6 @@
-// src/v2/lens/affected_set.dag
-// Scope: canonical affected-set authority for CI/incremental re-execution; fail-closed B-4/B-5 node frontier.
-// Status: filled — re_exec_frontier_from_diff changed-subgraph fold; inline FailClosed absorption in seed_edit_fold_acc; CI node-precision closure via affected_set_from_diff.
-
 module v2.lens.affected_set
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-
+import std.disposition { SingleAuthority }
 
 import v2.std.collection { Absent, List, Map, Present, list_at_optional, map_get, map_insert }
 import v2.std.algebra { TailAbsent, TailFound, contains, length, list_append, list_snoc_item, list_tail }
@@ -66,65 +62,42 @@ import v2.std.witness { Holds, Witness }
 import v2.std.node_query { coproduct_arm_keys }
 import v2.lens.application { AncestorFrame, AncestorWalk, collect_ancestor_frames, find_child_by_name, subterm_at, substitute_at }
 
-
-// RULING-1: 🟢 pretty-much-done — node alias.
 type Dag = Node
 
-
-// RULING-1: 🟢 pretty-much-done — dimension identity.
 type AffectedDimension = Symbol
 
-// RULING-1: 🟢 pretty-much-done — frontier carrier.
 type ExclusionKey {
   at: Node
   dimension: AffectedDimension
 }
 
-
-// RULING-1: 🟢 pretty-much-done — frontier carrier.
 type EditDimension {
   edit: Edit
   dimension: AffectedDimension
 }
 
-
-// 🟡 needs-more-work — feature:affected-set-exclusion-proof-carrier — dissolve-on: affected_set gains additional proof arms beyond EmptyDimensionDelta
 type ExclusionProof
   = EmptyDimensionDelta { subject: Path }
 
-
-// 🟡 needs-more-work — feature:affected-set-propagation-exclusion-proof-carrier — dissolve-on: B-4/B-5 per-arrow effect receipts populate DimensionNotRead evidence
 type PropagationExclusionProof
   = DimensionNotRead { usage_site: Node, changed_dimension: AffectedDimension }
 
-
-// 🟡 needs-more-work — feature:affected-set-boundary-exclusion-proof-carrier — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace scaffold
 type BoundaryExclusionProof
   = UnchangedPureBoundary { content_hash: Hash }
 
-
-// RULING-1: 🟢 pretty-much-done — frontier carrier.
 type BoundaryExclusion {
   edit: Edit
   proof: BoundaryExclusionProof
 }
 
-
-// 🟡 needs-more-work — feature:affected-set-fail-closed-reason-carrier — dissolve-on: structured FailClosedReason coproduct arms derived from B-4/B-5 failure signal taxonomy
 type FailClosedReason
   = ReasonSymbol { reason: Symbol }
   | ReasonDiagnostics { diagnostics: NonEmptyDiagnostics }
 
-
-// 🟡 needs-more-work — feature:affected-set-frontier-decision-carrier — dissolve-on: Excluded proof witnesses populated by propagation exclusion receipts
 type FrontierDecision
   = Rerun
   | Excluded { first: PropagationExclusionProof, rest: List<PropagationExclusionProof> }
 
-
-// 🟢 coproduct dissolution — #3153-subsumed; whole/changed-subgraph gate.
-// RULING-1: 🟢 pretty-much-done — frontier carrier.
-// 🟢 coproduct dissolution — #3153-subsumed; whole/changed-subgraph gate.
 type ReExecFrontier
   = ChangedSubgraphFrontier {
       boundary_exclusions: List<BoundaryExclusion>,
@@ -132,84 +105,60 @@ type ReExecFrontier
     }
   | FailClosed { reason: FailClosedReason }
 
-
-// 🟡 needs-more-work — feature:affected-set-hash-receipt-carrier — dissolve-on: B1/B-5 receipt primitives replace scaffold
 type HashReceipt
   = HashUnchangedPure { content_hash: Hash }
   | HashChanged
   | HashUnknown { reason: Symbol }
 
-
-// 🟡 needs-more-work — feature:affected-set-boundary-receipt-carrier — dissolve-on: affected-set TestClaims boundary coverage
 type BoundaryReceipt
   = BoundaryPruned { proof: BoundaryExclusionProof }
   | BoundaryExpands
   | BoundaryUnknown { reason: Symbol }
 
-
-// 🟡 needs-more-work — feature:affected-set-dimension-delta-receipt-carrier — dissolve-on: per-edit dimension delta generation produces ChangedDimensions
 type ChangedDimensionReceipt
   = ChangedDimensions { first: AffectedDimension, rest: List<AffectedDimension> }
   | ChangedDimensionsUnknown { reason: Symbol }
 
-
-// 🟡 needs-more-work — feature:B4-B5-propagation-receipt-carrier — dissolve-on: B-4/B-5 edge receipts replace scaffold
 type PropagationReceipt
   = Propagates
   | DoesNotPropagate { proof: PropagationExclusionProof }
   | PropagationUnknown { reason: Symbol }
 
-
-// 🟡 needs-more-work — feature:affected-set-frontier-dependency-carrier — dissolve-on: DependencyKind-specific invalidation rules replace endpoint selector
 type FrontierDependency {
   dependency: DependencyView
   target: DependencyEndpoint
 }
 
-
-// 🟡 needs-more-work — feature:affected-set-frontier-receipt-carrier — dissolve-on: transitive dependency frontier from DependencyView replaces scaffold
 type FrontierReceipt
   = FrontierProduced { dependencies: List<FrontierDependency> }
   | FrontierUnknown { reason: Symbol }
   | FrontierRejected { diagnostic: Diagnostic }
 
-
-// RULING-1: 🟡 needs-more-work — frontier read.
 type AffectedFrontierRead {
   proven_transitive_dependency_frontier: fn(Dag, EditDimension) -> FrontierReceipt
 }
 
-
-// RULING-1: 🟡 needs-more-work — boundary read.
 type AffectedBoundaryRead {
   boundary_hash_receipt: fn(Dag, Path, Node) -> HashReceipt,
   changed_dimension_receipt: fn(Dag, Edit) -> ChangedDimensionReceipt
 }
 
-
-// RULING-1: 🟡 needs-more-work — read model.
 type AffectedSetRead {
   boundary: AffectedBoundaryRead
   frontier: AffectedFrontierRead,
   propagation_receipt: fn(Dag, EditDimension, DependencyView) -> PropagationReceipt
 }
 
-
-// RULING-1: 🟡 needs-more-work — post-edit read.
 type AffectedPostEditDagRead {
   outcome: Outcome<Node>
 }
 
-
-// RULING-1: 🟢 pretty-much-done — fold state.
 type AffectedFoldAcc {
   dag: Dag
   frontier: ReExecFrontier
   pending: Diagnostics
 }
 
-
-// 🟢 coproduct dissolution — Wave-2-A affected-set fold state.
 type AffectedSetFoldAcc
   = AffectedSetActive {
       dag: Dag,
@@ -222,8 +171,6 @@ type AffectedSetFoldAcc
       evidence: AffectedSetEvidence
     }
 
-
-// 🟢 coproduct dissolution — edit/rebuild projection; preserves fail-closed evidence.
 type RerunNodeSet
   = RerunNodeSetProduced {
       nodes: List<Node>
@@ -232,25 +179,21 @@ type RerunNodeSet
       evidence: AffectedSetEvidence
     }
 
-
 type AffectedSetReading {
   edit_locus: Node
   affected: List<Node>
   dependencies: List<FrontierDependency>
 }
 
-
 type AffectedSetClosureAcc {
   frontier: List<Node>
   dependencies: List<FrontierDependency>
 }
 
-
 type AffectedSetClosureFixpointState {
   acc: AffectedSetClosureAcc
   stable: Bool
 }
-
 
 fn empty_frontier() -> ReExecFrontier {
   ChangedSubgraphFrontier {
@@ -259,7 +202,6 @@ fn empty_frontier() -> ReExecFrontier {
   }
 }
 
-
 fn empty_affected_fold_acc(dag: Dag) -> AffectedFoldAcc {
   AffectedFoldAcc {
     dag: dag,
@@ -267,7 +209,6 @@ fn empty_affected_fold_acc(dag: Dag) -> AffectedFoldAcc {
     pending: None
   }
 }
-
 
 fn empty_affected_set_fold_acc(dag: Dag) -> AffectedSetFoldAcc {
   AffectedSetActive {
@@ -278,14 +219,10 @@ fn empty_affected_set_fold_acc(dag: Dag) -> AffectedSetFoldAcc {
   }
 }
 
-
 fn fold_pending(acc: AffectedFoldAcc, next: Diagnostics) -> Diagnostics {
   diagnostics_merge(outer: acc.pending, inner: next)
 }
 
-
-// Pending accepted diagnostics escalate to whole-DAG fail-closed (conservative Q11 policy).
-// When both a reason and pending diagnostics exist, diagnostics evidence wins.
 fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
   match acc.pending {
     Some { diagnostics: nds } => FailClosed {
@@ -295,12 +232,10 @@ fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
   }
 }
 
-
-// 🟡 modeled-policy interim — feature:ai-16-r1-7-affected-set-frontier-kind-policy — consumer:v2.workflow.affected_set_selection ci_select_from_affected_set (relocated from the deleted v2.workflow.ci by PR #4543; lands at the #4540 rebase) — bind gunbc#4758 — dissolve-on-arrival: replace closed list with substrate dependency-policy carrier (dimension-parameterized frontier kinds); forbidden: permanent hardcoded match arms on DependencyKind outside this policy data.
 fn lens_frontier_dependency_kinds() -> List<DependencyKind> {
   [ProjectionDependsOn, VerifiedBy, Contains]
 }
-// 🟡 receipt-node scaffold — feature:affected-set-boundary-exclusion-proof-carrier — dissolve-on: B1 content_hash plus B-5 purity/effect receipts replace boundary atom target.
+
 fn affected_set_boundary_pure_receipt_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^affected_set_boundary_pure_receipt_payload } },
@@ -309,8 +244,6 @@ fn affected_set_boundary_pure_receipt_node() -> Node {
 }
 }
 
-
-// 🟡 receipt-node scaffold — feature:affected-set-propagation-exclusion-proof-carrier — dissolve-on: B-4/B-5 per-arrow effect receipts replace dimension atom target.
 fn affected_set_dimension_not_read_receipt_node(dimension: AffectedDimension) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: dimension } },
@@ -318,7 +251,6 @@ fn affected_set_dimension_not_read_receipt_node(dimension: AffectedDimension) ->
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn dependency_kind_in_lens_frontier_policy(kind: DependencyKind) -> Bool {
   contains(
@@ -328,7 +260,6 @@ fn dependency_kind_in_lens_frontier_policy(kind: DependencyKind) -> Bool {
   )
 }
 
-
 fn change_for_edit(edit: Edit) -> Change {
   Change {
     kind: NodeChanged,
@@ -336,7 +267,6 @@ fn change_for_edit(edit: Edit) -> Change {
     at: edit.at
   }
 }
-
 
 fn affected_set_from_fold_acc(acc: AffectedSetFoldAcc) -> AffectedSet {
   match acc {
@@ -355,13 +285,11 @@ fn affected_set_from_fold_acc(acc: AffectedSetFoldAcc) -> AffectedSet {
   }
 }
 
-
 fn append_change(changes: ChangeSet, change: Change) -> ChangeSet {
   ChangeSet {
     changes: list_snoc_item(xs: changes.changes, item: change)
   }
 }
-
 
 fn add_change_to_affected_acc(acc: AffectedSetFoldAcc, change: Change) -> AffectedSetFoldAcc {
   match acc {
@@ -379,7 +307,6 @@ fn add_change_to_affected_acc(acc: AffectedSetFoldAcc, change: Change) -> Affect
       }
   }
 }
-
 
 fn record_affected_dependency(
   acc: AffectedSetFoldAcc,
@@ -416,18 +343,15 @@ fn record_affected_dependency(
   }
 }
 
-
 fn dependency_in_lens_frontier(dependency: DependencyView) -> Bool {
   dependency_kind_in_lens_frontier_policy(kind: dependency.kind)
 }
-
 
 fn node_in_list(nodes: List<Node>, needle: Node) -> Bool {
   fold(nodes, init: false, f: fn(found, node) {
     found || (node == needle)
   })
 }
-
 
 fn affected_set_closure_step(acc: AffectedSetClosureAcc, dependency: DependencyView) -> AffectedSetClosureAcc {
   if node_in_list(nodes: acc.frontier, needle: dependency.source) && (node_in_list(nodes: acc.frontier, needle: dependency.dependent) == false) {
@@ -451,7 +375,6 @@ fn affected_set_closure_step(acc: AffectedSetClosureAcc, dependency: DependencyV
   }
 }
 
-
 fn affected_set_closure_pass(dependencies: List<DependencyView>, acc: AffectedSetClosureAcc) -> AffectedSetClosureAcc {
   fold(
     dependencies,
@@ -462,7 +385,6 @@ fn affected_set_closure_pass(dependencies: List<DependencyView>, acc: AffectedSe
   )
 }
 
-
 fn affected_set_closure_frontier_unchanged(
   before: AffectedSetClosureAcc,
   after: AffectedSetClosureAcc
@@ -470,13 +392,9 @@ fn affected_set_closure_frontier_unchanged(
   length(xs: before.frontier) == length(xs: after.frontier)
 }
 
-
-// Convergence bound: at most one frontier growth per round, so 2×|dependencies| rounds
-// subsume any |V|-deep chain (|dependencies| ≥ |V|−1 on tree-shaped substrates).
 fn affected_set_closure_convergence_rounds(dependencies: List<DependencyView>) -> List<DependencyView> {
   list_append(left: dependencies, right: dependencies)
 }
-
 
 fn affected_set_closure_fixpoint_step(
   dependencies: List<DependencyView>,
@@ -493,8 +411,6 @@ fn affected_set_closure_fixpoint_step(
   }
 }
 
-
-// 🟡 whole-graph scan — feature:ai-16-r1-7-affected-set-o-affected-region — consumer:v2.workflow.affected_set_selection ci_select_from_affected_set (relocated from the deleted v2.workflow.ci by PR #4543; lands at the #4540 rebase) — bind gunbc#4758 — dissolve-on-arrival: content-hash + pure-boundary pruning + edit-locus scoping replace O(whole-program) transitive closure here; forbidden: permanent full-graph dependency walk without dimension/content-hash pruning (IRT requires O(affected-region) not O(whole-program)).
 fn affected_set_closure(dependencies: List<DependencyView>, edit_locus: Node) -> AffectedSetClosureAcc {
   let state = fold(
     affected_set_closure_convergence_rounds(dependencies: dependencies),
@@ -512,7 +428,6 @@ fn affected_set_closure(dependencies: List<DependencyView>, edit_locus: Node) ->
   state.acc
 }
 
-
 fn affected_set_reading(graph: InferredTree, edit_locus: Node) -> AffectedSetReading {
   let dependency_reading = dependency_lens(root: graph.root)
   let closure = affected_set_closure(dependencies: dependency_reading, edit_locus: edit_locus)
@@ -523,13 +438,11 @@ fn affected_set_reading(graph: InferredTree, edit_locus: Node) -> AffectedSetRea
   }
 }
 
-
 fn append_changed_node_subjects(nodes: List<Node>, changes: ChangeSet) -> List<Node> {
   fold(changes.changes, init: nodes, f: fn(acc, change) {
     list_snoc_item(xs: acc, item: change.subject)
   })
 }
-
 
 fn append_affected_dependency_nodes(nodes: List<Node>, affected: List<AffectedDependency>) -> List<Node> {
   fold(affected, init: nodes, f: fn(acc, row) {
@@ -539,7 +452,6 @@ fn append_affected_dependency_nodes(nodes: List<Node>, affected: List<AffectedDe
     )
   })
 }
-
 
 fn affected_set_rerun_nodes(affected_set_value: AffectedSet) -> RerunNodeSet {
   match affected_set_value {
@@ -557,23 +469,11 @@ fn affected_set_rerun_nodes(affected_set_value: AffectedSet) -> RerunNodeSet {
   }
 }
 
-
-// Node-precise CI-consumer bridge: a closure `AffectedSetReading` (edit-locus +
-// dependency-closure frontier from `affected_set_reading`) is already the exact set of
-// Nodes whose rebuild/re-test the CI runner must rerun. Its `affected` list IS the rerun
-// frontier — no change-set re-derivation. This is the single authority converting a
-// node-precise reading into the `RerunNodeSet`. (Its former CI consumer
-// `v2.workflow.ci ci_select_from_affected_set_reading` was deleted with ci.dag in PR #4543 —
-// only the affected-set-gate-consumed selectors were extracted into
-// `v2.workflow.affected_set_selection`; re-wiring the reading path is affected-set-lane work.)
-// Always `Produced`; fail-closed for the reading
-// path lives upstream in `affected_set_reading_from_git_diff` (Witness Violates).
 fn affected_set_reading_rerun_nodes(reading: AffectedSetReading) -> RerunNodeSet {
   RerunNodeSetProduced {
     nodes: reading.affected
   }
 }
-
 
 fn record_affected_exclusion(
   acc: AffectedSetFoldAcc,
@@ -605,7 +505,6 @@ fn record_affected_exclusion(
   }
 }
 
-
 fn fail_affected_set_with_reason(acc: AffectedSetFoldAcc, reason: Symbol) -> AffectedSetFoldAcc {
   match acc {
     AffectedSetActive { dag: _, changes: changes, affected: _, exclusions: _ } =>
@@ -620,7 +519,6 @@ fn fail_affected_set_with_reason(acc: AffectedSetFoldAcc, reason: Symbol) -> Aff
       }
   }
 }
-
 
 fn fail_affected_set_with_diagnostics(acc: AffectedSetFoldAcc, diagnostics: NonEmptyDiagnostics) -> AffectedSetFoldAcc {
   match acc {
@@ -637,7 +535,6 @@ fn fail_affected_set_with_diagnostics(acc: AffectedSetFoldAcc, diagnostics: NonE
   }
 }
 
-
 fn root_key(subject: Node, dimension: AffectedDimension) -> ExclusionKey {
   ExclusionKey {
     at: subject,
@@ -645,14 +542,12 @@ fn root_key(subject: Node, dimension: AffectedDimension) -> ExclusionKey {
   }
 }
 
-
 fn dependency_endpoint_node(dependency: DependencyView, target: DependencyEndpoint) -> Node {
   match target {
     DependencySource => dependency.source
     DependencyDependent => dependency.dependent
   }
 }
-
 
 fn frontier_dependency_key(dependency: FrontierDependency, dimension: AffectedDimension) -> ExclusionKey {
   ExclusionKey {
@@ -663,7 +558,6 @@ fn frontier_dependency_key(dependency: FrontierDependency, dimension: AffectedDi
     dimension: dimension
   }
 }
-
 
 fn mark_rerun(frontier: ReExecFrontier, key: ExclusionKey) -> ReExecFrontier {
   match frontier {
@@ -676,7 +570,6 @@ fn mark_rerun(frontier: ReExecFrontier, key: ExclusionKey) -> ReExecFrontier {
   }
 }
 
-
 fn mark_boundary_excluded(frontier: ReExecFrontier, edit: Edit, proof: BoundaryExclusionProof) -> ReExecFrontier {
   match frontier {
     FailClosed { reason: e } => FailClosed { reason: e }
@@ -688,12 +581,11 @@ fn mark_boundary_excluded(frontier: ReExecFrontier, edit: Edit, proof: BoundaryE
   }
 }
 
-
 fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: PropagationExclusionProof) -> ReExecFrontier {
   match frontier {
     FailClosed { reason: e } => FailClosed { reason: e }
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
-      // 🟡 gated — bootstrap-limitation interim — feature:B-LOOKUP-1 — map_get(Option<V>); dissolve-on: bootstrap Witness<V> generic dispatch for Map.lookup (substrate already Witness at v2.std.collection:27); site: mark_excluded decisions
+
       match map_get(decisions, key) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: decision } =>
@@ -715,17 +607,15 @@ fn mark_excluded(frontier: ReExecFrontier, key: ExclusionKey, proof: Propagation
               decisions: map_insert(decisions, key, Excluded { first: proof, rest: [] })
             }
         }
-        // map_get contract violation: escalate whole frontier (not a per-key decisions update).
+
         Rejected { diagnostics: d } => mark_whole_dag_diagnostics(diagnostics: d)
       }
   }
 }
 
-
 fn mark_whole_dag(reason: Symbol) -> ReExecFrontier {
   FailClosed { reason: ReasonSymbol { reason: reason } }
 }
-
 
 fn mark_whole_dag_diagnostics(diagnostics: NonEmptyDiagnostics) -> ReExecFrontier {
   FailClosed { reason: ReasonDiagnostics { diagnostics: diagnostics } }
@@ -735,7 +625,6 @@ fn mark_whole_dag_diagnostic(diagnostic: Diagnostic) -> ReExecFrontier {
     diagnostics: diagnostics_singleton(d: diagnostic)
   )
 }
-
 
 fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replacement: Node) -> BoundaryReceipt {
   match read_model.boundary.boundary_hash_receipt(dag, path, replacement) {
@@ -750,7 +639,6 @@ fn boundary_receipt(read_model: AffectedSetRead, dag: Dag, path: Path, replaceme
   }
 }
 
-
 fn frontier_receipt(
   read_model: AffectedSetRead,
   dag: Dag,
@@ -762,7 +650,6 @@ fn frontier_receipt(
     EditDimension { edit: edit, dimension: dimension }
   )
 }
-
 
 fn propagation_receipt(
   read_model: AffectedSetRead,
@@ -777,7 +664,6 @@ fn propagation_receipt(
     dependency
   )
 }
-
 
 fn expand_dimension(
   read_model: AffectedSetRead,
@@ -818,7 +704,6 @@ fn expand_dimension(
       }
   }
 }
-
 
 fn seed_edit_fold_acc_live(
   read_model: AffectedSetRead,
@@ -877,7 +762,6 @@ fn seed_edit_fold_acc_live(
   }
 }
 
-
 fn expand_changed_dimensions(
   read_model: AffectedSetRead,
   boundary_dag: Dag,
@@ -907,7 +791,6 @@ fn expand_changed_dimensions(
   }
 }
 
-
 fn seed_edit_fold_acc(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
@@ -925,7 +808,6 @@ fn seed_edit_fold_acc(
       )
   }
 }
-
 
 fn expand_affected_dimension(
   read_model: AffectedSetRead,
@@ -972,7 +854,6 @@ fn expand_affected_dimension(
   }
 }
 
-
 fn expand_affected_dimensions(
   read_model: AffectedSetRead,
   boundary_dag: Dag,
@@ -1001,7 +882,6 @@ fn expand_affected_dimensions(
       fail_affected_set_with_reason(acc: acc, reason: r)
   }
 }
-
 
 fn seed_affected_set_fold_acc_live(
   read_model: AffectedSetRead,
@@ -1085,7 +965,6 @@ fn seed_affected_set_fold_acc_live(
   }
 }
 
-
 fn affected_set_from_diff(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
@@ -1106,8 +985,6 @@ fn affected_set_from_diff(
   }
 }
 
-
-// canonical entry: pure fold over diff.edits — O(changed-region), fail-closed on unknown receipts.
 fn re_exec_frontier_from_diff(
   read_model: AffectedSetRead,
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
@@ -1128,7 +1005,6 @@ fn re_exec_frontier_from_diff(
   }
 }
 
-
 fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt {
   match find_child_by_name(root: node, name: ^affected_set_boundary_pure_receipt_edge) {
     Accepted { value: receipt, diagnostics: _ } =>
@@ -1145,7 +1021,6 @@ fn canonical_boundary_exclusion_receipt(node: Node, h: Hash) -> BoundaryReceipt 
       BoundaryUnknown { reason: ^affected_set_reason_boundary_purity_unproven }
   }
 }
-
 
 fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
   match subterm_at(root: dag, p: path) {
@@ -1167,7 +1042,6 @@ fn canonical_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> H
   }
 }
 
-
 fn connective_to_dimension_family(connective: Connective) -> AffectedDimension {
   match connective {
     Atom { identity: identity } => identity
@@ -1178,7 +1052,6 @@ fn connective_to_dimension_family(connective: Connective) -> AffectedDimension {
     Instantiation => ^canonical_tag_instantiation
   }
 }
-
 
 fn behavior_to_dimension_family(behavior: Behavior) -> AffectedDimension {
   match behavior {
@@ -1191,7 +1064,6 @@ fn behavior_to_dimension_family(behavior: Behavior) -> AffectedDimension {
   }
 }
 
-
 fn node_root_dimension_family(node: Node) -> List<AffectedDimension> {
   match node.kind {
     TypeNode { connective: connective } =>
@@ -1201,11 +1073,9 @@ fn node_root_dimension_family(node: Node) -> List<AffectedDimension> {
   }
 }
 
-
 fn dimension_in_list(xs: List<AffectedDimension>, item: AffectedDimension) -> Bool {
   contains(xs: xs, item: item, eq: fn(left, right) { left == right })
 }
-
 
 fn union_dimension_into(acc: List<AffectedDimension>, dim: AffectedDimension) -> List<AffectedDimension> {
   if dimension_in_list(xs: acc, item: dim) {
@@ -1215,13 +1085,11 @@ fn union_dimension_into(acc: List<AffectedDimension>, dim: AffectedDimension) ->
   }
 }
 
-
 fn union_dimension_lists(left: List<AffectedDimension>, right: List<AffectedDimension>) -> List<AffectedDimension> {
   fold(right, init: left, f: fn(acc, dim) {
     union_dimension_into(acc: acc, dim: dim)
   })
 }
-
 
 fn list_to_changed_dimension_receipt(dims: List<AffectedDimension>) -> ChangedDimensionReceipt {
   match list_at_optional(xs: dims, index: 0) {
@@ -1237,8 +1105,6 @@ fn list_to_changed_dimension_receipt(dims: List<AffectedDimension>) -> ChangedDi
   }
 }
 
-
-// Conservative union of before/after root families: over-reports (⊇ true affected), never under-attributes.
 fn changed_dimension_families_union(before: Node, after: Node) -> ChangedDimensionReceipt {
   if content_hash(n: before) == content_hash(n: after) {
     ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
@@ -1252,8 +1118,6 @@ fn changed_dimension_families_union(before: Node, after: Node) -> ChangedDimensi
   }
 }
 
-
-// D1b gap-1: real diff→dimension classification (conservative union; Unknown only on unresolved path).
 fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
   match subterm_at(root: dag, path: edit.at) {
     Accepted { value: current, diagnostics: _ } =>
@@ -1262,7 +1126,6 @@ fn canonical_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimension
       ChangedDimensionsUnknown { reason: ^affected_set_reason_changed_dimension_unresolved }
   }
 }
-
 
 fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceipt {
   match find_child_by_name(root: frame.ancestor, name: frame.step) {
@@ -1285,14 +1148,12 @@ fn canonical_ancestor_frame_dependencies(frame: AncestorFrame) -> FrontierReceip
   }
 }
 
-
 fn frontier_dependency_from_dependency_view(dependency: DependencyView) -> FrontierDependency {
   FrontierDependency {
     dependency: dependency,
     target: DependencyDependent
   }
 }
-
 
 fn frontier_dependencies_from_dependency_views(dependencies: List<DependencyView>) -> List<FrontierDependency> {
   fold(dependencies, init: [], f: fn(acc, dependency) {
@@ -1302,7 +1163,6 @@ fn frontier_dependencies_from_dependency_views(dependencies: List<DependencyView
     )
   })
 }
-
 
 fn append_canonical_ancestor_dependencies(
   acc: FrontierReceipt,
@@ -1330,13 +1190,11 @@ fn append_canonical_ancestor_dependencies(
   }
 }
 
-
 fn canonical_ancestor_dependencies(frames: List<AncestorFrame>) -> FrontierReceipt {
   fold(frames, init: FrontierProduced { dependencies: [] }, f: fn(acc, frame) {
     append_canonical_ancestor_dependencies(acc: acc, frame: frame)
   })
 }
-
 
 fn canonical_region_dependencies(dag: Dag, walk: AncestorWalk) -> FrontierReceipt {
   match canonical_ancestor_dependencies(frames: walk.frames) {
@@ -1352,7 +1210,6 @@ fn canonical_region_dependencies(dag: Dag, walk: AncestorWalk) -> FrontierReceip
   }
 }
 
-
 fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> FrontierReceipt {
   match collect_ancestor_frames(root: dag, steps: edit_dimension.edit.at.steps) {
     Accepted { value: walk, diagnostics: _ } =>
@@ -1361,7 +1218,6 @@ fn canonical_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> Fro
       FrontierUnknown { reason: ^affected_set_reason_frontier_path_unresolved }
   }
 }
-
 
 fn canonical_propagation_receipt(
   dag: Dag,
@@ -1389,7 +1245,6 @@ fn canonical_propagation_receipt(
   }
 }
 
-
 fn canonical_affected_set_read() -> AffectedSetRead {
   AffectedSetRead {
     boundary: AffectedBoundaryRead {
@@ -1403,13 +1258,11 @@ fn canonical_affected_set_read() -> AffectedSetRead {
   }
 }
 
-
 fn canonical_post_edit_dag(dag: Dag, edit: Edit) -> AffectedPostEditDagRead {
   AffectedPostEditDagRead {
     outcome: substitute_at(root: dag, path: edit.at, replacement: edit.replacement)
   }
 }
-
 
 fn affected_set(dag: Dag, diff: Diff) -> Witness<ReExecFrontier> {
   re_exec_frontier_from_diff(
@@ -1420,78 +1273,40 @@ fn affected_set(dag: Dag, diff: Diff) -> Witness<ReExecFrontier> {
   )
 }
 
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Repo-process universe — the COMPLETENESS half (testgen-oracle.md §4.4).
-//
-// Everything above reasons over one `Dag = Node` and its dependency closure. But the set
-// of processes a change may invalidate is wider than one Dag's nodes: the CI gates, the
-// analysis lenses, AND the META-processes that operate on processes (this affected-set
-// lens, testgen, the CI scheduler/floor-runner). A process the universe OMITS is a blind
-// spot — a change to it never re-runs what it covers, so CI is green-but-broken (false
-// confidence). DESIGN §5: an incomplete universe is a fail-open silent-wrong-answer, so the
-// universe is built by CONSTRUCTION — reflected from declared coproducts via v2.std.node_query
-// (a new process is an *arm*, picked up automatically; no producer-local roster that can
-// silently omit one) — and any declared process kind without a reflected producer fails
-// CLOSED to UniverseIncomplete. Honesty boundary (DESIGN §5, the "never" trap): completeness
-// is over *declared* process coproducts; discovering an *undeclared* process (a new lens file
-// nobody registered as an arm) is the host-filesystem-scan residue, left for the Lane-3a
-// whole-tree producer — it is not claimed complete here.
-//
-// Selection-as-CI-gate stays shelved (0-min shadow, testgen-oracle.md §3): this models the
-// universe for completeness; it does NOT gate floor selection.
-
-// The categories of repo process the affected-set universe must cover. Each arm has a
-// reflected producer below; completeness = every arm covered (else UniverseIncomplete).
 type RepoProcessKind
-  = CiGateProcess     // a gunbc.ci_spec Gate — reflected from coproduct_arm_keys(^Gate)
-  | MetaProcessRole   // a process-over-processes — reflected from coproduct_arm_keys(^MetaProcessKind)
+  = CiGateProcess
+  | MetaProcessRole
 
-
-// The meta-process roster — processes whose SUBJECT is other processes. Omitting one is the
-// sharpest blind spot (a change to the scheduler that never re-runs the floor = false green),
-// so it is a reflected coproduct (a new meta-process is an arm) — never a list inside a producer.
 type MetaProcessKind
-  = AffectedSetLens   // src/v2/lens/affected_set.dag — THIS lens (the universe is reflexive: not a self-blind-spot)
-  | TestgenLens       // src/v2/lens/testgen.dag — generates conformance witnesses from declared structure
-  | CiScheduler       // src/v2/workflow/ci_floor_plan.dag — derives floor batches from gunbc.ci_spec
-  | FloorRunner       // src/v2/workflow/affected_set_floor_runner.dag — per-witness node-frontier skip policy
-
+  = AffectedSetLens
+  | TestgenLens
+  | CiScheduler
+  | FloorRunner
 
 type RepoProcess {
   kind: RepoProcessKind
   identity: Symbol
 }
 
-
-// Fail-closed universe carrier (DESIGN §5): a declared kind with no reflected producer is
-// UniverseIncomplete, never a silently-shorter process list.
 type RepoProcessUniverse
   = UniverseComplete { processes: List<RepoProcess> }
   | UniverseIncomplete { uncovered_kind: Symbol, reason: FailClosedReason }
-
 
 data affected_set_reflect_gate_type: Symbol = ^Gate
 data affected_set_reflect_meta_process_kind_type: Symbol = ^MetaProcessKind
 data affected_set_reflect_repo_process_kind_type: Symbol = ^RepoProcessKind
 
-
-// Gate processes: one RepoProcess per reflected Gate arm — complete by construction (a new
-// Gate arm flows in automatically; no producer-local roster to drift). DESIGN §2-horizontal.
 fn ci_gate_processes() -> List<RepoProcess> {
   fold(coproduct_arm_keys(type_name: affected_set_reflect_gate_type), init: [], f: fn(acc, key) {
     list_snoc_item(xs: acc, item: RepoProcess { kind: CiGateProcess, identity: key })
   })
 }
 
-
-// Meta-processes: one RepoProcess per reflected MetaProcessKind arm — same construction.
 fn meta_processes() -> List<RepoProcess> {
   fold(coproduct_arm_keys(type_name: affected_set_reflect_meta_process_kind_type), init: [], f: fn(acc, key) {
     list_snoc_item(xs: acc, item: RepoProcess { kind: MetaProcessRole, identity: key })
   })
 }
-
 
 fn universe_has_process_of_kind(processes: List<RepoProcess>, kind_key: Symbol) -> Bool {
   fold(processes, init: false, f: fn(acc, p) {
@@ -1499,9 +1314,6 @@ fn universe_has_process_of_kind(processes: List<RepoProcess>, kind_key: Symbol) 
   })
 }
 
-
-// Coverage fold over every reflected RepoProcessKind arm: a kind with no contributing process
-// fails CLOSED (the declared category whose enumeration is missing IS the blind spot).
 fn repo_process_universe_from(processes: List<RepoProcess>) -> RepoProcessUniverse {
   fold(
     coproduct_arm_keys(type_name: affected_set_reflect_repo_process_kind_type),
@@ -1524,21 +1336,12 @@ fn repo_process_universe_from(processes: List<RepoProcess>) -> RepoProcessUniver
   )
 }
 
-
-// Canonical universe: the reflected union of every process producer. Complete by construction
-// over declared coproducts; the reflexive `AffectedSetLens` arm closes the meta self-blind-spot.
 fn repo_process_universe() -> RepoProcessUniverse {
   repo_process_universe_from(
     processes: list_append(left: ci_gate_processes(), right: meta_processes())
   )
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "the v2 scheduler consuming the re-execution frontier natively (B-4/B-5 node-precision closure)",
-    dissolve_on: "the scheduler derives incremental re-execution from the changed-subgraph fold by construction"
-  },
-  rationale: "Changed-subgraph reachability is a decidable fold (re_exec_frontier_from_diff); it is a lens today only because the scheduler does not yet consume the frontier as a construction."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

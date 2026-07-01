@@ -1,9 +1,3 @@
-// src/v2/program.dag
-// Scope: §4 first runnable v2 program — pick_if Branch body composed with effect_io handlers.
-// Status: runnable entry + Bool witness for `dag run --entry src/v2/program.dag --claim-run`.
-//   Spine: pick_if Branch then-arm yields ReadResource→WriteResource (handlers bound at run start).
-//   Run loop: runtime_run schedules kw_true → effect_io_roundtrip (wave-1 sequential, §4c).
-
 module v2.program
 
 import v2.compiler.body_producer { produce_mvp1_pick_if_arrow_with_body }
@@ -173,7 +167,6 @@ data program_effect_io_roundtrip: Node = effect_io_roundtrip_transform(
   payload: program_payload_literal
 )
 
-// pick_if-shaped Branch: true → effect_io roundtrip; false → literal two (discriminating else arm).
 data program_pick_if_branch_with_effect_io: Node = dag_mvp1_pick_if_body_from_arms(
   condition: program_kw_true(),
   then_arm: program_effect_io_roundtrip,
@@ -376,7 +369,6 @@ fn program_eval_root(root: Node) -> Outcome<RuntimeValue> {
   )
 }
 
-// Runnable entry: evaluate the pick_if Branch with effect_io in the then-arm.
 fn program_branch_effect_io_holds() -> Bool {
   match program_eval_root(root: program_pick_if_branch_with_effect_io) {
     Accepted { value: v, diagnostics: None } => v == program_unit_value()
@@ -409,7 +401,6 @@ fn program_pick_if_arrow_tree(callee: Node) -> InferredTree {
   }
 }
 
-// §2 body: source-bridged pick_if arrow executes under the same handler-bound program context.
 fn program_pick_if_arrow_holds() -> Bool {
   match produce_mvp1_pick_if_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } => {
@@ -427,7 +418,6 @@ fn program_pick_if_arrow_holds() -> Bool {
   }
 }
 
-// §4c: runtime_run loop — scheduler orders kw_true then effect_io_roundtrip; IO step uses handler-bound context.
 data program_run_branch_gate: Node = program_kw_true()
 
 data program_run_io_step: Node = program_effect_io_roundtrip
@@ -458,7 +448,6 @@ fn program_runtime_run_holds() -> Bool {
   }
 }
 
-// Main witness: spine Branch+IO, §2 pick_if body, and runtime_run loop composition.
 fn program_runs_holds() -> Bool {
   program_branch_effect_io_holds()
     && program_pick_if_arrow_holds()

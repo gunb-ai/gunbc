@@ -1,0 +1,22 @@
+module gunbc.plan_registry_batch_f
+
+import gunbc.plan { Plan }
+import gunbc.plans.self_applying_lenses { self_applying_lenses_plan }
+import gunbc.plans.budget_tree { budget_tree_plan }
+import gunbc.plans.cardinality_refinement { cardinality_refinement_plan }
+import gunbc.plans.compute_envelope_model { compute_envelope_model_plan }
+import gunbc.plans.input_envelope_roadmap { input_envelope_roadmap_plan }
+import gunbc.plans.ci_selection_vs_scheduling { ci_selection_vs_scheduling_plan }
+import gunbc.plans.ci_process_end_to_end { ci_process_end_to_end_plan }
+import gunbc.plans.ci_oom_reclassification { ci_oom_reclassification_plan }
+
+data batch_f_plans: List<Plan> = [
+  self_applying_lenses_plan,
+  budget_tree_plan,
+  cardinality_refinement_plan,
+  compute_envelope_model_plan,
+  input_envelope_roadmap_plan,
+  ci_selection_vs_scheduling_plan,
+  ci_process_end_to_end_plan,
+  ci_oom_reclassification_plan
+]

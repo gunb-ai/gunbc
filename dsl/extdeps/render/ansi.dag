@@ -1,13 +1,3 @@
-// extdeps/render/ansi.dag — ANSI escape / SGR color realization for SemanticColor.
-//
-// Anchor: https://ecma-international.org/publications-and-standards/standards/ecma-48/
-//   (ISO/IEC 6429 Select Graphic Rendition CSI sequences: ESC [ <params> m)
-//
-// Provenance: gunb.ai/pkg/fermi/colors.go — project palette-index choices per SemanticColor.
-//
-// P2 split: std.symbols owns the agnostic SemanticColor concept; the cited SGR
-// realization lives here.
-
 module extdeps.render.ansi
 
 import std.symbols { SemanticColor }
@@ -22,11 +12,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// ECMA-48 CSI framing — emitted once via emit_sgr_csi, not repeated per mapping row.
 data csi_esc: String = "\x1b["
 data csi_end: String = "m"
 
-// ISO 8613-6 / xterm 256-color palette index (0..255).
 type PaletteIndex = Int
 
 type SgrStyle
@@ -62,7 +50,6 @@ fn emit_sgr_csi(style: SgrStyle) -> String {
   concat(concat(csi_esc, format_sgr_params(style: style)), csi_end)
 }
 
-// Lookup via fold + structural == (filter+field-equality hits a v1 interpreter bug).
 fn ansi_code(c: SemanticColor) -> String? {
   fold(ansi_mappings,
     init: none,

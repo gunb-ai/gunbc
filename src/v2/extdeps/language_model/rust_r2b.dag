@@ -1,7 +1,4 @@
-// Status: modeled claim + fixture rows for live sub-claims 1–2.
-
 module v2.test.language_model.rust_r2b
-
 
 import v2.extdeps.languages.rust { rust_integer_algebra_inhabitance_rust_facts_i32 }
 import v2.lens.leaf_model_verification {
@@ -45,7 +42,6 @@ fn rust_r2b_claim_bool_atom(b: Bool) -> Node {
   }
 }
 
-
 data claim_rust_r2b_debug_fixture_pair_wired: TestClaim = EqualsClaim {
   label: "language_model/rust_r2b: debug-default fixture references overflow inhabitance fact + runtime source",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -57,7 +53,6 @@ data claim_rust_r2b_debug_fixture_pair_wired: TestClaim = EqualsClaim {
   ),
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
-
 
 data claim_rust_r2b_release_fixture_pair_wired: TestClaim = EqualsClaim {
   label: "language_model/rust_r2b: release-default fixture references overflow inhabitance fact + runtime source",
@@ -78,7 +73,6 @@ fn rust_r2b_pending_verification_diagnostic() -> Diagnostic {
   }
 }
 
-
 data rust_r2b_debug_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
   claim_id: leaf_model_claim_rust_r2b_debug_default_overflow,
   happy_verdict: verdict_fail(
@@ -89,7 +83,6 @@ data rust_r2b_debug_verification_run_receipt_default: LeafModelVerificationRunRe
   )
 }
 
-
 data rust_r2b_release_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
   claim_id: leaf_model_claim_rust_r2b_release_default_overflow,
   happy_verdict: verdict_fail(
@@ -99,7 +92,6 @@ data rust_r2b_release_verification_run_receipt_default: LeafModelVerificationRun
     actual: outcome_rejected(d: rust_r2b_pending_verification_diagnostic())
   )
 }
-
 
 data claim_rust_r2b_verification_receipt_shapes: TestClaim = EqualsClaim {
   label: "language_model/rust_r2b: debug + release verification receipt carriers present",

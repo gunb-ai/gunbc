@@ -1,0 +1,47 @@
+module test.claim.ci_floor_measurement_per_shard
+
+import std.logic { Bool }
+import std.measure { byte_size_count }
+import gunbc.ci_floor_measurement {
+  gunbc_ci_floor_per_shard_peak_rss_bytes,
+  gunbc_ci_floor_per_shard_peak_max,
+  gunbc_ci_floor_per_shard_peak_samples,
+  gunbc_ci_floor_executor_base_overhead_bytes,
+  gunbc_ci_floor_memory_derived_width,
+  gunbc_ci_runner_cgroup_memory_cap,
+  gunbc_ci_dashboard_session_container_cap,
+  witness_runner_cgroup_cap_lt_dashboard_session_cap,
+  witness_derived_width_committed_fits_with_margin,
+}
+
+fn witness_per_shard_is_max_observed_sample() -> Bool {
+  byte_size_count(b: gunbc_ci_floor_per_shard_peak_rss_bytes()) == 4556861440
+    && byte_size_count(b: gunbc_ci_floor_per_shard_peak_max()) == 4556861440
+}
+
+fn witness_per_shard_max_is_at_least_every_sample() -> Bool {
+  fold(gunbc_ci_floor_per_shard_peak_samples, init: true, f: fn(ok, s) {
+    ok && byte_size_count(b: s) <= byte_size_count(b: gunbc_ci_floor_per_shard_peak_max())
+  })
+}
+
+fn witness_executor_base_overhead_is_measured_positive() -> Bool {
+  byte_size_count(b: gunbc_ci_floor_executor_base_overhead_bytes()) == 1610612736
+}
+
+fn witness_derived_width_at_runner_cap_is_one() -> Bool {
+  gunbc_ci_floor_memory_derived_width(cap: gunbc_ci_runner_cgroup_memory_cap, cpu_bound: 128) == 1
+}
+
+fn witness_runner_cap_lt_session_cap() -> Bool {
+  witness_runner_cgroup_cap_lt_dashboard_session_cap()
+}
+
+test fn ci_floor_measurement_per_shard_rss_witnesses() -> Bool {
+  witness_per_shard_is_max_observed_sample()
+    && witness_per_shard_max_is_at_least_every_sample()
+    && witness_executor_base_overhead_is_measured_positive()
+    && witness_derived_width_at_runner_cap_is_one()
+    && witness_runner_cap_lt_session_cap()
+    && witness_derived_width_committed_fits_with_margin()
+}

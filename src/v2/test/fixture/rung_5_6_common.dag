@@ -1,7 +1,4 @@
-// Scope: shared rung 5–6 post-emit algebra-law TestClaim subject + emit-host target wiring.
-
 module v2.test.rung_5_6_common
-
 
 import v2.compiler.emit_host {
   run_test_claim_emit_vs_eval
@@ -23,7 +20,6 @@ import v2.test.rung_3_4_common {
   rung34_test_claim_subject
 }
 
-
 data rung56_emit_host_python_target_model: TargetModel = TargetModel {
   bundle: rung34_emit_host_target_bundle,
   lex: VoidLexRules,
@@ -33,7 +29,6 @@ data rung56_emit_host_python_target_model: TargetModel = TargetModel {
   runtime_row: python_mvp1_runtime_row()
 }
 
-
 data rung56_emit_host_go_target_model: TargetModel = TargetModel {
   bundle: rung34_emit_host_target_bundle,
   lex: VoidLexRules,
@@ -42,7 +37,6 @@ data rung56_emit_host_go_target_model: TargetModel = TargetModel {
   authority_source_text: go_mvp1_source_text,
   runtime_row: go_mvp1_runtime_row()
 }
-
 
 fn rung56_emit_vs_eval_run(
   claim: TestClaim,

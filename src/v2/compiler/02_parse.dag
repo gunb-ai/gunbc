@@ -1,15 +1,4 @@
-// src/v2/compiler/02_parse.dag
-// Scope: generic parsing over language grammar rules.
-// Anchor: https://en.wikipedia.org/wiki/Parsing
-// Status: T-7 parse walk realized; sync_tokens field staged for T-8 error-recovery trigger.
-//         Zero Annotation Mandate applied: fold-based fixpoint for nullable/left-corner sets;
-//         parse_expr Nonterminal arm expands productions by direct recursive descent
-//         (grammar_has_left_recursion rejects left cycles pre-parse). CYK table pre-fill
-//         removed (#5084); ParseTable Realization carrier inhabitation: node://adhoc-942b5811-772.
-
-
 module v2.compiler.parse
-
 
 import v2.compiler.parse_engine_hooks {
   parse_engine_expr_production,
@@ -76,7 +65,14 @@ import v2.std.collection { Absent, List, Map, Optional, Present, Set, empty_map,
 import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail, unique }
 import v2.std.text { Char, CharAbsent, CharFound, string_head }
 import v2.std.witness { Holds, Violates, Witness }
-import v2.std.compilers.lexing { Lexeme, Token, TokenStream, symbol_intern_lexeme }
+import v2.std.compilers.lexing {
+  Lexeme,
+  Token,
+  TokenStream,
+  symbol_intern_lexeme,
+  token_stream_remaining,
+  token_stream_remaining_count
+}
 import v2.std.grammar {
   Choice,
   ParseGrammar,
@@ -102,9 +98,6 @@ import v2.std.grammar {
   grammar_to_node
 }
 
-
-// PROV A-pivot wave-2: per-compile occurrence mint + off-tree SpanIndex; global coherence via
-// parse_prov_merge across memoized parse-table cells and threaded table build.
 type ParseProvenanceState {
   alloc: OccurrenceIdAllocator
   index: SpanIndex
@@ -125,7 +118,6 @@ type ParseStampResult {
   prov: ParseProvenanceState
 }
 
-// 🟡 coproduct dissolution — feature:T-8-parse-result-projection; per-expression walk result; dissolves when parse-walk result carrier unifies with Outcome<ParseTree> via T-8 projection (remaining/captured consolidates; List<Diagnostic> accumulator lifts into standard Diagnostics).
 type ParseExprResult
   = ParseExprAccepted {
       remaining: List<Token>,
@@ -140,9 +132,6 @@ type ParseSyncState {
   result: List<Token>
 }
 
-// Accumulator for the fold-list based Repeat implementation in parse_expr.
-// fold_list over the token stream bounds iterations to length(tokens);
-// done: true short-circuits remaining steps.
 type ParseRepeatAcc {
   remaining: List<Token>
   acc_nodes: List<Node>
@@ -151,24 +140,11 @@ type ParseRepeatAcc {
   prov: ParseProvenanceState
 }
 
-// Product accumulator for expr_direct_left_corner_list: corners plus nullable flag
-// threaded through fold_grammar_expr so Sequence can gate right corners on left nullability.
 type GrammarExprCornerFold {
   corners: List<Symbol>
   nullable: Bool
 }
 
-// 🟢 coproduct dissolved — feature: GrammarExpr parse interpreter — bind node://adhoc-2145db6b-69a
-// ParseExprWalk (1:1 GrammarExpr mirror) deleted; parse_expr_run_walk deleted. parse_expr now
-// uses fold_grammar_expr<fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult>: each
-// algebra handler returns a parse thunk; sequence/choice/optional/repeat compose thunks with
-// correct token threading; Nonterminal delegates to parse_nonterminal_memoized (leaf).
-
-// Authority facts (dissolve-on: import extdeps.realization.parse_table_memo when v2 compiler layer resolves extdeps):
-//   dsl/std/cache_identity.dag: parse_table_artifact_kind = "parse_table"
-//   extdeps/realization/parse_table_memo.dag: parse_table_memo_id = "parse_table_memo_cache"
-// Tracked scaffold — Symbol mirrors until v2 compiler layer imports std (dissolution receipt:
-// that layer-resolution landing, not a follow-up). Do not fork ids.
 data parse_table_artifact_kind: Symbol = ^parse_table
 data parse_table_memo_interface: Symbol = ^parse_table_memo
 
@@ -177,11 +153,6 @@ type ParsePositionKey {
   production: Symbol
 }
 
-// ParseTable Realization carrier — spec projects through extdeps realization catalog facts; in-process
-// handler is v1_interpreter `parse_table_memo` (dissolves hand-rolled Map-only threading).
-// grammar_digest: content_hash of the validated grammar root — stable across files sharing lm.grammar.
-// token_stream_digest: content-address of the parse_production token stream — memo cells are
-// grammar-scoped but token-stream-specific (prevents cross-source pollution in one context).
 type ParseTableRealization {
   artifact_kind: Symbol
   interface: Symbol
@@ -192,17 +163,6 @@ type ParseTableRealization {
 
 type ParseTable = ParseTableRealization
 
-
-
-
-
-
-
-
-
-
-
-
 fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_not_well_formed,
@@ -210,7 +170,6 @@ fn parse_grammar_not_well_formed_diagnostic(at: Locus) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
 
 fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -220,7 +179,6 @@ fn parse_g0_tokens_remain_diagnostic(at: Locus) -> Diagnostic {
   }
 }
 
-
 fn parse_grammar_left_recursive_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_left_recursive,
@@ -228,7 +186,6 @@ fn parse_grammar_left_recursive_diagnostic(at: Locus) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
 
 fn parse_grammar_undefined_nonterminal_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -238,7 +195,6 @@ fn parse_grammar_undefined_nonterminal_diagnostic(at: Locus) -> Diagnostic {
   }
 }
 
-
 fn parse_grammar_duplicate_production_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^parse_grammar_duplicate_production,
@@ -246,7 +202,6 @@ fn parse_grammar_duplicate_production_diagnostic(at: Locus) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
 
 fn parse_e1_syntax_error_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -256,12 +211,6 @@ fn parse_e1_syntax_error_diagnostic(at: Locus) -> Diagnostic {
   }
 }
 
-
-// 🟢 substrate catamorphism consumer — feature: GrammarRoot production lookup — bind
-// node://adhoc-a896516d-3f7 — name match expressed as v2.std.algebra.filter + the
-// v2.std.collection.list_at_optional head projection; the hand-written first-match Witness
-// fold (grammar_lookup_production_step) dissolved. First match == unique match because
-// grammar_has_duplicate_productions rejects duplicate names before parse.
 fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<GrammarProduction> {
   match list_at_optional(
     xs: filter(xs: root.productions, predicate: fn(p) { p.name == name }),
@@ -276,9 +225,6 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
       }
   }
 }
-
-
-// --- Parse table (Realization carrier: lazy content-addressed memo) ---
 
 fn parse_table_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<ParseExprResult> {
   table.entries.lookup(key)
@@ -358,39 +304,6 @@ fn parse_table_empty() -> ParseTable {
   }
 }
 
-// --- ParseTable content-key (realize SUBJECT) — DESIGN-FIRST model, node adhoc-822f5c65-e9c P2 ---
-//
-// The positional cell key ParsePositionKey {position, production} is unique only WITHIN one table;
-// the table itself is scoped by grammar_digest × token_stream_digest. The realize kernel
-// (std.cache_interface, ROADMAP §2 P2 "one door") keys EVERY cache on a single content-addressed
-// SUBJECT, so a parse-memo cell's subject must fold BOTH the table scope and the cell coordinate
-// into one content hash (the "ParseTableSubject" the parse_table_memo.dag evidence row names):
-//   subject = grammar_digest ⊕ token_stream_digest ⊕ position ⊕ production
-// reusing v2.std.node combine_hash / byte_limb_hash_peano_digest / atom_identity_hash — NO fresh
-// hashing authority (§2/§3 single authority). Distinct (grammar, token-stream, position, production)
-// derive distinct subjects; identical inputs derive an identical subject (deterministic) — that IS
-// the content-addressing property a realize subject requires (proven by execution in
-// parse/parse_table_content_key_test.dag).
-//
-// CONSUMER + DEFERRAL (honestly-marked deferred-consumer model — a DEFINED consumer + a NAMED
-// trigger, so NOT a declared-but-dead fork). The SOLE consumer is the DEFERRED std-kernel handler
-// binding; there is deliberately NO premature v2-local rewire, because the v1 host is the real
-// memo authority:
-//  - The v1 host (try_parse_table_memo_dispatch / parse_table_memo_scope_and_key) is the SOLE parse-
-//    memo authority — the .dag table.entries map is VESTIGIAL (parse_table_insert's result is
-//    discarded; the same empty-entries table is threaded). So routing the .dag lookup/insert through
-//    this subject WITHOUT changing the host is cosmetic (feeds the discarded map = §5
-//    spec-without-execution), and changing the host to key by this content hash NOW would (a) trade
-//    the host's collision-FREE structural (grammar, token, position, production) tuple for content-hash
-//    collision risk on a load-bearing memo (§5 fail-open), and (b) re-derive this fold in Rust (more
-//    §3 host duplication) — for ZERO benefit before the de-fork. So we do not do it early.
-//  - DEFERRED std-kernel HANDLER binding — named dissolution trigger = the dsl→v2 cross-tree de-fork
-//    (no v2.std.cache_interface exists today; 02_parse is `module v2.compiler.parse`, the realize
-//    kernel lives in `dsl/std/cache_interface`). When that import lands, the host re-key and the
-//    kernel binding (ArtifactIdentity<ParseExprResult> / realize_route) arrive as ONE step and THIS
-//    subject becomes the realize key — that single step is the consumer. Explicitly NOT gated on
-//    #5429 (that gates only the separate resolved_graph handler). Until then the ArtifactKindId stays
-//    the Symbol mirror (parse_table_artifact_kind above).
 fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> Hash {
   combine_hash(
     a: combine_hash(a: table.grammar_digest, b: table.token_stream_digest),
@@ -405,7 +318,6 @@ fn parse_current_position(all_tokens: List<Token>, tokens: List<Token>) -> Int {
   length(xs: all_tokens) - length(xs: tokens)
 }
 
-// Positions 0..N inclusive for a token stream of length N (N+1 suffixes).
 fn token_position_indices(tokens: List<Token>) -> List<Int> {
   match is_empty(xs: tokens) {
     true => Cons { head: 0, tail: Empty }
@@ -621,9 +533,6 @@ fn parse_nonterminal_memoized(
   }
 }
 
-
-// Gap-4: match-arm stmt body — mirror v1 parse_match_arm_stmts / looks_like_arm_start
-// (v1_compiler_parse.rs). Brace-less repeat(stmt) with arm-boundary stop (not generic Repeat).
 type ParseMatchArmStmtAcc {
   remaining: List<Token>
   acc_nodes: List<Node>
@@ -632,16 +541,13 @@ type ParseMatchArmStmtAcc {
   prov: ParseProvenanceState
 }
 
-
 fn parse_char_is_arm_pattern_lead(c: Char) -> Bool {
   (c == 95) || ((c >= 65) && (c <= 90))
 }
 
-
 fn parse_token_lexeme_is(tok: Token, lit: String) -> Bool {
   tok.lexeme == lit
 }
-
 
 fn parse_next_brace_depth(tok: Token, depth: Int) -> Int {
   if parse_token_lexeme_is(tok: tok, lit: "{") {
@@ -652,7 +558,6 @@ fn parse_next_brace_depth(tok: Token, depth: Int) -> Int {
     depth
   }
 }
-
 
 fn parse_scan_fat_arrow_after_lbrace(tokens: List<Token>, depth: Int) -> Bool {
   if depth <= 0 {
@@ -676,14 +581,12 @@ fn parse_scan_fat_arrow_after_lbrace(tokens: List<Token>, depth: Int) -> Bool {
   }
 }
 
-
 fn parse_tokens_drop_one(tokens: List<Token>) -> List<Token> {
   match list_tail(xs: tokens) {
     TailFound { tail: rest } => rest
     TailAbsent => []
   }
 }
-
 
 fn parse_tokens_drop(tokens: List<Token>, count: Int) -> List<Token> {
   if count <= 0 {
@@ -692,7 +595,6 @@ fn parse_tokens_drop(tokens: List<Token>, count: Int) -> List<Token> {
     parse_tokens_drop(tokens: parse_tokens_drop_one(tokens: tokens), count: count - 1)
   }
 }
-
 
 fn parse_looks_like_match_arm_start(tokens: List<Token>) -> Bool {
   match parse_token_first(tokens: tokens) {
@@ -723,7 +625,6 @@ fn parse_looks_like_match_arm_start(tokens: List<Token>) -> Bool {
   }
 }
 
-
 fn parse_stamp_match_arm_stmt_nodes(
   acc_nodes: List<Node>,
   prov: ParseProvenanceState
@@ -737,7 +638,6 @@ fn parse_stamp_match_arm_stmt_nodes(
     parse_stamp_derived_repeat(acc_nodes: acc_nodes, prov: prov)
   }
 }
-
 
 fn parse_match_arm_stmt_body(
   all_tokens: List<Token>,
@@ -825,7 +725,6 @@ fn parse_match_arm_stmt_body(
   }
 }
 
-
 fn parse_nonterminal_memoized_core(
   all_tokens: List<Token>,
   tokens: List<Token>,
@@ -844,9 +743,7 @@ fn parse_nonterminal_memoized_core(
     Holds { value: production } =>
       match parse_table_lookup(table: table, key: key) {
         Holds { value: inner } =>
-          // Hit: cached inner was stored without this call-site production wrap — merge caller
-          // prov before parse_wrap_production_captured. Miss (below) threads prov through
-          // parse_expr so inner_prov is already ambient-correct; host memo reuses values.
+
           match inner {
             ParseExprRejected { diagnostics: diags } =>
               ParseExprRejected { diagnostics: diags }
@@ -873,8 +770,7 @@ fn parse_nonterminal_memoized_core(
             table: table,
             prov: prov
           )
-          // Realization contract: host memo lives in v1_interpreter ParseTableMemo (PureCallMemo
-          // pattern); this insert is the pure spec the handler intercepts — discard is intentional.
+
           let _memo = parse_table_insert(table: table, key: key, value: inner)
           match inner {
             ParseExprRejected { diagnostics: diags } =>
@@ -896,24 +792,12 @@ fn parse_nonterminal_memoized_core(
   }
 }
 
-
-// --- Left-recursion detection ---
-
-// set_symbol_insert: functional set extension — new set tests item first, then delegates.
 fn set_symbol_insert(s: Set<Symbol>, item: Symbol) -> Set<Symbol> {
   Set {
     member: fn(sym) { sym == item || s.member(sym) }
   }
 }
 
-
-// 🟢 substrate catamorphism consumer — feature: GrammarExpr structural morphism substrate —
-// bind node://adhoc-b696538c-710 — first consumer of v2.std.grammar.fold_grammar_expr: the
-// nullable query is now expressed as a GrammarExprFold algebra over Bool rather than a hand-written
-// per-variant recursion. The structural recursion lives once in fold_grammar_expr; this function
-// supplies only the per-variant combine.
-// expr_is_nullable_given_set: true iff expr can match empty input given a pre-computed nullable set.
-// Nonterminal arms consult nullable_set rather than following production references.
 fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: Set<Symbol>) -> Bool {
   fold_grammar_expr(
     expr: expr,
@@ -928,7 +812,6 @@ fn expr_is_nullable_given_set(expr: GrammarExpr, nullable_set: Set<Symbol>) -> B
   )
 }
 
-
 fn compute_nullable_step(ns: Set<Symbol>, p: GrammarProduction) -> Set<Symbol> {
   if expr_is_nullable_given_set(expr: p.expression, nullable_set: ns) {
     set_symbol_insert(s: ns, item: p.name)
@@ -937,9 +820,6 @@ fn compute_nullable_step(ns: Set<Symbol>, p: GrammarProduction) -> Set<Symbol> {
   }
 }
 
-
-// compute_nullable_set: fixpoint over productions.
-// Outer fold iterates |productions| times (convergence bound); inner fold adds nullable productions.
 fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
   fold_list(
     xs: root.productions,
@@ -956,18 +836,13 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
   )
 }
 
-
-// v2 bootstrap compiler workaround: Empty literal has unknown element type in if/else context;
-// a typed wrapper anchors the type to List<Symbol> so branch unification succeeds.
 fn grammar_empty_corner_list() -> List<Symbol> {
   Empty
 }
 
-
 fn expr_corner_fold_terminal(_: Symbol) -> GrammarExprCornerFold {
   GrammarExprCornerFold { corners: Empty, nullable: false }
 }
-
 
 fn expr_corner_fold_nonterminal(name: Symbol, nullable_set: Set<Symbol>) -> GrammarExprCornerFold {
   GrammarExprCornerFold {
@@ -976,13 +851,11 @@ fn expr_corner_fold_nonterminal(name: Symbol, nullable_set: Set<Symbol>) -> Gram
   }
 }
 
-
 fn expr_corner_fold_sequence(
   left_fold: GrammarExprCornerFold,
   right_fold: GrammarExprCornerFold
 ) -> GrammarExprCornerFold {
-  // left_fold.nullable is fold_grammar_expr applied with the Bool nullable algebra over the
-  // left subtree — equivalent to expr_is_nullable_given_set(expr: left, nullable_set).
+
   GrammarExprCornerFold {
     corners: list_append(
       left: left_fold.corners,
@@ -996,7 +869,6 @@ fn expr_corner_fold_sequence(
   }
 }
 
-
 fn expr_corner_fold_choice(
   left_fold: GrammarExprCornerFold,
   right_fold: GrammarExprCornerFold
@@ -1007,16 +879,13 @@ fn expr_corner_fold_choice(
   }
 }
 
-
 fn expr_corner_fold_optional(element_fold: GrammarExprCornerFold) -> GrammarExprCornerFold {
   GrammarExprCornerFold { corners: element_fold.corners, nullable: true }
 }
 
-
 fn expr_corner_fold_repeat(element_fold: GrammarExprCornerFold) -> GrammarExprCornerFold {
   GrammarExprCornerFold { corners: element_fold.corners, nullable: true }
 }
-
 
 fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: Set<Symbol>) -> GrammarExprCornerFold {
   fold_grammar_expr(
@@ -1032,19 +901,10 @@ fn expr_corner_nullable_fold(expr: GrammarExpr, nullable_set: Set<Symbol>) -> Gr
   )
 }
 
-
-// 🟢 substrate catamorphism consumer — feature: GrammarExpr left-corner query substrate —
-// bind node://adhoc-2145db6b-69a — fold_grammar_expr consumer with GrammarExprCornerFold product
-// threading nullable alongside corners so Sequence combine matches expr_is_nullable_given_set.
-// expr_direct_left_corner_list: direct (non-transitive) left-corner nonterminals of expr.
 fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: Set<Symbol>) -> List<Symbol> {
   expr_corner_nullable_fold(expr: expr, nullable_set: nullable_set).corners
 }
 
-
-// compute_left_corner_closure: transitive closure of left-corner reachability from start symbols.
-// Outer fold iterates |productions| times (convergence bound).
-// Inner fold expands each reachable symbol by its production's direct left corners.
 fn compute_left_corner_closure(
   start: List<Symbol>,
   nullable_set: Set<Symbol>,
@@ -1079,9 +939,6 @@ fn compute_left_corner_closure(
   )
 }
 
-
-// 🟡 gated — predicate-dissolution interim — feature: GrammarRoot left-recursion validator substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived left-recursion reachability morphism over GrammarRoot productions; forbidden: duplicating left-recursion check logic outside this function.
-// Per-production or-fold rides v2.std.algebra.any (hand step fold dissolved, Level-1d).
 fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
   let nullable_set = compute_nullable_set(root: root)
   any(
@@ -1100,10 +957,6 @@ fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
   )
 }
 
-
-// 🟢 substrate catamorphism consumer — feature: GrammarExpr production-reference closure query substrate —
-// bind node://adhoc-2145db6b-69a — fold_grammar_expr consumer over Bool; does NOT follow nonterminal
-// references into their productions, so it always terminates without a visited set.
 fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool {
   fold_grammar_expr(
     expr: expr,
@@ -1123,9 +976,6 @@ fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool 
   )
 }
 
-
-// 🟡 gated — predicate-dissolution interim — feature: GrammarRoot structure validity query substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived undefined-reference scan morphism over GrammarRoot; forbidden: duplicating undefined-nonterminal check logic outside this function.
-// Per-production or-fold rides v2.std.algebra.any (hand step fold dissolved, Level-1d).
 fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
   match grammar_lookup_production(root: root, name: root.start) {
     Violates { diagnostic: _ } => true
@@ -1137,17 +987,12 @@ fn grammar_has_undefined_nonterminals(root: GrammarRoot) -> Bool {
   }
 }
 
-
-// 🟢 substrate catamorphism consumer — feature: GrammarRoot duplicate-name scan — bind
-// node://adhoc-a896516d-3f7 — scan expressed as v2.std.algebra.unique over production names;
-// the hand-written GrammarDupCheckResult accumulator coproduct dissolved (Level-1d).
 fn grammar_has_duplicate_productions(root: GrammarRoot) -> Bool {
   match unique(xs: root.productions, eq: fn(a, b) { a.name == b.name }) {
     true => false
     false => true
   }
 }
-
 
 fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<ValidatedGrammarRoot> {
   if grammar_has_undefined_nonterminals(root: root) {
@@ -1165,9 +1010,6 @@ fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<Validated
   }
 }
 
-
-// --- Diagnostic list helpers ---
-
 fn parse_diag_cons(d: Diagnostic, acc: Diagnostics) -> Diagnostics {
   match acc {
     None => Some { diagnostics: NonEmptyDiagnostics { head: d, tail: [] } }
@@ -1181,11 +1023,9 @@ fn parse_diag_cons(d: Diagnostic, acc: Diagnostics) -> Diagnostics {
   }
 }
 
-
 fn parse_diags_to_diagnostics(diags: List<Diagnostic>) -> Diagnostics {
   fold_list_right(xs: diags, empty: None, snoc: fn(acc, d) { parse_diag_cons(d: d, acc: acc) })
 }
-
 
 fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> NonEmptyDiagnostics {
   match parse_diags_to_diagnostics(diags: diags) {
@@ -1194,10 +1034,6 @@ fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> Non
   }
 }
 
-
-// --- Parse walk helpers ---
-
-// Skip tokens until a sync token is found (inclusive — returns stream starting at sync token).
 fn parse_sync_step(acc: ParseSyncState, tok: Token, sync_tokens: Set<Symbol>) -> ParseSyncState {
   match acc.found_sync {
     true => ParseSyncState { found_sync: true, result: list_snoc_item(xs: acc.result, item: tok) }
@@ -1209,7 +1045,6 @@ fn parse_sync_step(acc: ParseSyncState, tok: Token, sync_tokens: Set<Symbol>) ->
   }
 }
 
-
 fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> ParseSyncState {
   fold_list(
     xs: tokens,
@@ -1218,14 +1053,9 @@ fn parse_skip_to_sync(tokens: List<Token>, sync_tokens: Set<Symbol>) -> ParseSyn
   )
 }
 
-
-// 🟢 substrate head projection — the TokenPeek per-use carrier dissolved onto the
-// v2.std.collection.list_at_optional Optional<T> head projection (Level-1d); this wrapper
-// only pins T = Token for the bootstrap compiler's monomorphic field-access inference.
 fn parse_token_first(tokens: List<Token>) -> Optional<Token> {
   list_at_optional(xs: tokens, index: 0)
 }
-
 
 fn parse_token_second(tokens: List<Token>) -> Optional<Token> {
   match list_tail(xs: tokens) {
@@ -1234,30 +1064,14 @@ fn parse_token_second(tokens: List<Token>) -> Optional<Token> {
   }
 }
 
-
 fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
   parse_token_first(tokens: parse_tokens_drop(tokens: tokens, count: index))
 }
 
-
-
-
-// ParseThunk: single-field carrier for a deferred parse combinator. R in fold_grammar_expr<ParseThunk>.
-// Field-dispatch (thunk.apply(...)) lets the v2 lens analysis track the callable through the typed
-// 'apply' field rather than bare function-valued variable syntax (which the lens does not track).
-// One field, not 6 variants — not a GrammarExpr mirror; Class-B preserved.
 type ParseThunk {
   apply: fn(List<Token>, List<Token>, GrammarRoot, ParseTable, ParseProvenanceState) -> ParseExprResult
 }
 
-
-// 🟢 substrate catamorphism consumer — feature: GrammarExpr parse interpreter —
-// bind node://adhoc-2145db6b-69a — full dissolution: one fold_grammar_expr<ParseThunk> call
-// where ParseThunk = { apply: fn(tok_in,all_toks,root_in,table_in,prov_in)->ParseExprResult }.
-// fold_grammar_expr reduces children to ParseThunk (deferred combinators) before passing them to
-// each handler — no parsing runs during construction; only top thunk fires via .apply at the end.
-// Nonterminal arm: lazy memo via ParseTableRealization (content-addressed lookup on miss).
-// Repeat terminates via the no-progress guard length(rest) != length(acc.remaining).
 fn parse_expr(
   expr: GrammarExpr,
   tokens: List<Token>,
@@ -1411,7 +1225,6 @@ fn parse_expr(
   thunk.apply(tokens, all_tokens, root, table, prov)
 }
 
-
 fn parse_production(
   tokens: List<Token>,
   validated: ValidatedGrammarRoot,
@@ -1458,8 +1271,6 @@ fn parse_production(
   }
 }
 
-
-// Back-compat projection — tree-only callers keep Outcome<ParseTree>; span_index via parse_production.
 fn parse_production_tree(
   tokens: List<Token>,
   validated: ValidatedGrammarRoot,
@@ -1478,7 +1289,7 @@ fn parse_production_tree(
 }
 fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
   let at = port_locus(port: ^parse_stage_locus_port)
-  let ntok = length(xs: tokens.tokens)
+  let ntok = token_stream_remaining_count(stream: tokens)
   let grammar_node = grammar_to_node(grammar: grammar)
   if well_formed(n: grammar_node) {
     match grammar {
@@ -1495,7 +1306,11 @@ fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArti
         match grammar_validate_for_parse(root: root, at: at) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
           Accepted { value: validated, diagnostics: _ } =>
-            parse_production(tokens: tokens.tokens, validated: validated, production_name: root.start)
+            parse_production(
+              tokens: token_stream_remaining(stream: tokens),
+              validated: validated,
+              production_name: root.start
+            )
         }
     }
   } else {
@@ -1503,8 +1318,6 @@ fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArti
   }
 }
 
-
-// Back-compat projection — tree-only callers keep Outcome<ParseTree>; span_index via parse_module.
 fn parse(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseTree> {
   match parse_module(tokens: tokens, grammar: grammar) {
     Accepted { value: artifact, diagnostics: d } =>

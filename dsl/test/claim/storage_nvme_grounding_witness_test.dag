@@ -1,0 +1,82 @@
+module test.claim.storage_nvme_grounding
+
+import std.logic { Bool }
+import std.measure { byte_size_count, bandwidth_count }
+import extdeps.storage.types {
+  NvmeDeviceCatalogRow,
+  pcie_link_bandwidth,
+  pcie_generation_per_lane_bandwidth,
+  nvme_storage_device,
+  StorageDevice,
+  Persistent,
+  Nvme,
+  storage_device_capacity,
+  storage_device_medium,
+  storage_device_read_bandwidth,
+  storage_device_pcie_link,
+}
+import extdeps.storage.samsung { samsung_970_evo_plus_2tb_catalog }
+import extdeps.storage.western_digital { wd_black_sn850x_2tb_catalog }
+
+data sample_wd_device: StorageDevice = nvme_storage_device(
+  catalog: wd_black_sn850x_2tb_catalog,
+  persistence: Persistent,
+)
+
+test fn wd_black_sn850x_pcie_link_grounds_gen4_x4() -> Bool {
+  match wd_black_sn850x_2tb_catalog.pcie_link.generation {
+    Gen4 => true
+    Gen3 => false
+    Gen5 => false
+  }
+    && wd_black_sn850x_2tb_catalog.pcie_link.lane_count == 4
+    && bandwidth_count(pcie_link_bandwidth(link: wd_black_sn850x_2tb_catalog.pcie_link)) == (16000000000 * 128 / 130 / 8 * 4)
+}
+
+test fn samsung_970_evo_plus_pcie_link_grounds_gen3_x4() -> Bool {
+  match samsung_970_evo_plus_2tb_catalog.pcie_link.generation {
+    Gen3 => true
+    Gen4 => false
+    Gen5 => false
+  }
+    && samsung_970_evo_plus_2tb_catalog.pcie_link.lane_count == 4
+    && bandwidth_count(pcie_generation_per_lane_bandwidth(g: Gen3)) == (8000000000 * 128 / 130 / 8)
+}
+
+test fn nvme_catalog_specs_decode() -> Bool {
+  byte_size_count(wd_black_sn850x_2tb_catalog.capacity_bytes) == 2000398934016
+    && bandwidth_count(wd_black_sn850x_2tb_catalog.sequential_read) == 7300000000
+    && bandwidth_count(wd_black_sn850x_2tb_catalog.sequential_write) == 6300000000
+    && byte_size_count(samsung_970_evo_plus_2tb_catalog.capacity_bytes) == 2000398934016
+}
+
+test fn form_factor_is_m2_2280() -> Bool {
+  match wd_black_sn850x_2tb_catalog.form_factor {
+    M2_2280 => true
+    M2_2230 => false
+    M2_2242 => false
+    M2_2260 => false
+    M2_22110 => false
+    U2 => false
+    AddInCard => false
+  }
+}
+
+test fn nvme_storage_device_derives_from_catalog() -> Bool {
+  byte_size_count(storage_device_capacity(d: sample_wd_device)) == byte_size_count(wd_black_sn850x_2tb_catalog.capacity_bytes)
+    && match storage_device_medium(d: sample_wd_device) {
+      Nvme => true
+      Ssd => false
+      Hdd => false
+      NetworkAttached => false
+      EphemeralFs => false
+    }
+    && match storage_device_pcie_link(d: sample_wd_device) {
+      Present { value: link } => link.lane_count == 4
+      Absent => false
+    }
+    && match storage_device_read_bandwidth(d: sample_wd_device) {
+      Present { value: bw } => bandwidth_count(bw) == 7300000000
+      Absent => false
+    }
+}

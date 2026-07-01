@@ -1,35 +1,12 @@
-// std/bmc.dag — agnostic out-of-band BMC (baseboard management controller) vocabulary.
-//
-// The BMC is the management *device/role* on a server baseboard: a microcontroller
-// reachable out-of-band (independent of host power state and host OS) over a dedicated
-// management NIC. This module owns ONLY the cross-vendor, protocol-agnostic concepts.
-//
-// What it deliberately does NOT own (DESIGN §3 — keep each fact in one place, exclusively):
-//   - the protocol-specific cited interface operations (Redfish REST, IPMI/ipmitool) —
-//     those are distinct cited specs and live, separately, in extdeps/diagnostic/* and
-//     (for management ops) future extdeps interfaces. Redfish ≠ IPMI ≠ the BMC concept.
-//   - per-firmware cited facts (default credentials, supported protocols) — extdeps/bmc/*.
-//   - the credential-rotation *protocol* (generate + change-on-first-contact) — that is a
-//     workflow business policy, not a fact about the device (DESIGN §3(c)).
-
 module std.bmc
 
 import std.types { NonEmptyStr }
 
-// The management protocol a BMC firmware stack speaks. EXCLUSIVE tags: each names a
-// distinct cited spec interface (Redfish = DMTF REST; Ipmi = Intel out-of-band spec),
-// never a transport alias of the other.
 type BmcProtocol = Redfish | Ipmi
 
-// The firmware stack running on a baseboard's BMC. Closed enum; the stable tag is the
-// identity, and the cited facts for each (default credential, supported protocols) live
-// in extdeps/bmc/<family>.dag — the single authority for that firmware's defaults.
-// Single variant today (concrete-before-abstract, DESIGN §2/§6); extend when a second
-// firmware family (e.g. AMI MegaRAC) arrives with a real board.
 type BmcFirmwareFamily = | OpenBmc
 
-// Where a specific deployed BMC is reached out-of-band, and over which protocol.
 type BmcEndpoint {
-  host: NonEmptyStr          // BMC IP / hostname on the dedicated management network
+  host: NonEmptyStr
   protocol: BmcProtocol
 }

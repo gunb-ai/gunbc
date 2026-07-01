@@ -1,16 +1,6 @@
-// src/v2/lens/structural_resolution.dag
-//
-// Scope: structural resolution lens — binding status from InferredTree + dependency_lens.
-// Anchor: https://en.wikipedia.org/wiki/Name_resolution_(programming_languages)
-//
-// Status: per-edge classification-family ratchet — projection-only over `List<DependencyView>` via
-//   parametric `ClassifiedDependencyView<StructuralResolutionStatus>`; per-node
-//   `InferredFacts` read at classify time via `tree.facts.lookup(usage_site)`, not
-//   stored on the row (parallel-payload dissolution).
-
-
 module v2.lens.structural_resolution
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.compiler.infer {
   InferredFacts,
@@ -30,11 +20,6 @@ import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.witness { Holds, Violates, Witness }
 
-// 🟢 projection carrier: binding status is computed from
-// `dependency.kind` + `usage_site` `Witness<InferredFacts>`; not
-// authored as a parallel substrate tag. Variants are irreducible use-site
-// outcomes (`BindingResolved` / `UnboundSymbolAtUse` / lookup-miss /
-// fail-closed infer witness / out-of-scope dependency kind for this lens).
 type StructuralResolutionStatus
   = BindingResolved
   | UnboundSymbolAtUse
@@ -42,7 +27,6 @@ type StructuralResolutionStatus
   | UnresolvedInferWitness
   | OutOfScopeDependencyKind
 
-// 🟡 coproduct dissolution — feature:structural-resolution-kind-policy-axis — consumer:structural_resolution_status_for_view — dissolve-on-arrival: substrate variant-tag partition primitive replaces lens-local policy axis.
 type StructuralResolutionKindPolicy
   = ReadsBindingFacts
   | OutOfScopeForStructuralResolution
@@ -55,10 +39,6 @@ fn inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFa
   tree.facts.lookup(node)
 }
 
-// 🟡 staged — dissolve-on: resolve→infer witness bridge lands resolve Violates on fact table.
-// BindsTo status reads infer/resolve witnesses at the use site, not declaration facts.
-// BindingResolved on `Holds` means use-site infer succeeded structurally only — not that resolve
-// stamped the symbol; until inline resolve stamps, treat as staged posture not load-bearing.
 fn status_for_binding_facts(usage_site_facts: Witness<InferredFacts>) -> StructuralResolutionStatus {
   match usage_site_facts {
     Violates { diagnostic: d } =>
@@ -188,19 +168,10 @@ fn structural_resolution_classified_eq(
   )
 }
 
-// 🟡 gated — feature:T-13-lens-claim-equality-scaffold
-// dissolve-on-arrival: generated TestClaim supplies canonical
-// equality or content_hash for lens facts; multiset compare is compile-only until B2.
 fn fact_eq(a: StructuralResolutionFact, b: StructuralResolutionFact) -> Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: structural_resolution_classified_eq)
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "the resolver / InferredFacts as the binding-status authority (read at classify time, not stored on the row)",
-    dissolve_on: "binding status is read from the resolved tree by construction, not projected per-edge by a lens"
-  },
-  rationale: "Binding status is decidable from the resolved tree; a projection-only per-edge ratchet over the resolver's facts, never a second authority."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

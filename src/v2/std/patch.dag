@@ -1,37 +1,20 @@
-// src/v2/std/patch.dag
-// Scope: field-level overlay patch substrate — per-field Override/Inherit coproduct for hierarchical config layering.
-// Consumes: v2.std.algebra { Magma, Semigroup, Monoid }.
-// Status: T-4.16 follow-on — FieldPatch monoid + ConfigPatchRecord projection landed.
-// Anchor: https://en.wikipedia.org/wiki/Monoid
-
 module v2.std.patch
 
 import v2.std.algebra { Magma, Semigroup, Monoid }
 
-// 🟢 config-patch-record-projection — record-field map: Config field `name: T` → patch field `name: FieldPatch<T>`.
-// Consumers: `type *ConfigPatch = ConfigPatchRecord<*Config>`; `fn *_layer(...) = config_patch_layer(...)`.
-// PrettierOverrideOptions remains a hand extension (extra `parser` field beyond PrettierFormattingOptions).
 type ConfigPatchRecord<Config>
 
-// Per-field `apply_field_patch` fold over `Config`; expanded at call sites from the Config record shape.
-// Surface body is syntactic only — v3 lowerer expands calls (`try_lower_config_patch_layer_invocation`)
-// and rejects direct execution of the fn stub (`config_patch_layer_body_fallback_diagnostic`).
-// Call-site `base` / `patch` operands must be projectable carriers (Var or Path), not arbitrary expressions.
 fn config_patch_layer<Config>(base: Config, patch: ConfigPatchRecord<Config>) -> Config {
   base
 }
 
-// 🟢 coproduct dissolution — CP-T416-FPATCH-TERMINAL.
-// FieldPatch<T> = 1 + T: Inherit = absent/identity, Override = present payload.
 type FieldPatch<T>
   = Override { value: T }
   | Inherit
 
-
 fn field_patch_inherit<T>() -> FieldPatch<T> {
   Inherit
 }
-
 
 fn apply_field_patch<T>(base: T, patch: FieldPatch<T>) -> T {
   match patch {
@@ -40,14 +23,12 @@ fn apply_field_patch<T>(base: T, patch: FieldPatch<T>) -> T {
   }
 }
 
-
 fn compose_field_patch<T>(left: FieldPatch<T>, right: FieldPatch<T>) -> FieldPatch<T> {
   match right {
     Override { value: v } => Override { value: v }
     Inherit => left
   }
 }
-
 
 fn field_patch_monoid<T>() -> Monoid<FieldPatch<T>> {
   Monoid {

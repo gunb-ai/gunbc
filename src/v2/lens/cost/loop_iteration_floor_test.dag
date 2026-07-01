@@ -1,14 +1,3 @@
-// Status: EXECUTED Bool witness — an empty/zero-cost loop body still costs O(n).
-//
-// Pins the cost-lens iteration floor (cost.dag `compose_child_cost` IterativeCost arm).
-// Two checks together pin the CORRECT fix uniquely:
-//   (1) bug-fix: cost_lens(zero-body loop) projects LinearCost in the bound measure, NOT
-//       ConstantCost — the loop's iteration count survives a zero-cost body.
-//   (2) control: symbolic_product's absorbing zero is PRESERVED — symbolic_product(linear, 0) == 0.
-// (2) is what distinguishes the right fix (symbolic_max(child, unit) floor at the
-// IterativeCost layer) from the wrong one (making 0 the multiplicative identity
-// inside symbolic_product): BOTH make (1) green, but the identity hack makes (2) RED.
-
 module v2.test.lens_cost.loop_iteration_floor
 
 import v2.lens.cost {
@@ -32,21 +21,18 @@ import v2.std.node {
 }
 import v2.std.witness { Holds }
 
-// A zero-cost loop body: a bare Atom (base_cost_for_connective Atom => zero_cost).
 data loop_iteration_floor_body: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_iteration_floor_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-// The loop-bound measure the cardinality is linear in.
 data loop_iteration_floor_measure: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^loop_iteration_floor_measure_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-// Loop with a zero-cost body and a bound edge — the structure cost_lens folds.
 data loop_iteration_floor_input: Node = Node {
   kind: ComputationNode { behavior: Loop },
   children: [
@@ -56,7 +42,6 @@ data loop_iteration_floor_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-// (1) Bug-fix: an empty loop projects LinearCost in the bound measure, not ConstantCost.
 fn loop_iteration_floor_projects_linear() -> Bool {
   match cost_lens(n: loop_iteration_floor_input) {
     Holds { value: actual } =>
@@ -68,8 +53,6 @@ fn loop_iteration_floor_projects_linear() -> Bool {
   }
 }
 
-// (2) Control: symbolic_product keeps absorbing zero — linear * 0 == 0. The wrong fix
-// (0 as the product identity) makes this return linear, going RED here.
 fn symbolic_product_absorbs_zero() -> Bool {
   symbolic_product(
     a: linear_in_node(n: loop_iteration_floor_measure),

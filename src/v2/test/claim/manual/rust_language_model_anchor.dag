@@ -1,0 +1,16 @@
+module v2.test.manual.rust_language_model_anchor
+import v2.std.language_model { LanguageModel }
+
+import v2.extdeps.languages.rust {
+  rust_inhabitant_i32_node,
+  rust_language_model_wave1,
+  rust_mvp1_target_model_node
+}
+import v2.std.diagnostic { Outcome }
+import v2.std.node { Node }
+
+type rust_anchor_language_model = Outcome<LanguageModel>
+
+data rust_anchor_wave1: rust_anchor_language_model = rust_language_model_wave1()
+data rust_anchor_i32: Node = rust_inhabitant_i32_node()
+data rust_anchor_add_fn_target_model: Node = rust_mvp1_target_model_node()

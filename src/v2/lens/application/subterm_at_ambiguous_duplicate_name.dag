@@ -1,5 +1,3 @@
-// Status: compile-only ratchet for D1 ambiguous path rejection.
-
 module v2.test.lens_application.subterm_at_ambiguous_duplicate_name
 
 import v2.lens.application { subterm_at }

@@ -551,7 +551,7 @@ pub fn has_mock_prefix(name: String) -> bool {
     if (v1_rt::string_length(&name) < 5) {
         false
     } else {
-        (v1_rt::substring(&name, 0, 5).as_str() == "mock_".to_string().as_str())
+        (v1_rt::substring(&name, 0, 5) == "mock_".to_string())
     }
 }
 
@@ -651,7 +651,7 @@ pub fn is_type_alias_return_node(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    (authored_name_at(source_indices, n).as_str() != "Unit".to_string().as_str())
+    (authored_name_at(source_indices, n) != "Unit".to_string())
 }
 
 pub fn is_service_item(item: Rc<Node>) -> bool {

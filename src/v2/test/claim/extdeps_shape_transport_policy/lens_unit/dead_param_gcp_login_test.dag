@@ -1,0 +1,67 @@
+module v2.test.extdeps_shape_transport_policy.lens_unit.dead_param_gcp_login
+
+import v2.lens.extdeps_shape_transport_policy {
+  ExtdepsOperationInputFact,
+  ExtdepsTransportArgvFact,
+  extdeps_shape_transport_policy_dead_param_count_for_operation
+}
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_gcp_module }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+data dead_param_gcp_login_service: String = "gcloud.Auth"
+data dead_param_gcp_login_operation: String = "Login"
+
+data dead_param_gcp_login_input_facts: List<ExtdepsOperationInputFact> = [
+  ExtdepsOperationInputFact {
+    module: extdeps_gcp_module,
+    service: dead_param_gcp_login_service,
+    operation: dead_param_gcp_login_operation,
+    param_name: "update_adc"
+  }
+]
+
+data dead_param_gcp_login_argv_facts: List<ExtdepsTransportArgvFact> = [
+  ExtdepsTransportArgvFact {
+    module: extdeps_gcp_module,
+    service: dead_param_gcp_login_service,
+    operation: dead_param_gcp_login_operation,
+    transport_kind: Shell,
+    argv_index: 0,
+    argv_token: "gcloud"
+  },
+  ExtdepsTransportArgvFact {
+    module: extdeps_gcp_module,
+    service: dead_param_gcp_login_service,
+    operation: dead_param_gcp_login_operation,
+    transport_kind: Shell,
+    argv_index: 1,
+    argv_token: "auth"
+  },
+  ExtdepsTransportArgvFact {
+    module: extdeps_gcp_module,
+    service: dead_param_gcp_login_service,
+    operation: dead_param_gcp_login_operation,
+    transport_kind: Shell,
+    argv_index: 2,
+    argv_token: "login"
+  },
+  ExtdepsTransportArgvFact {
+    module: extdeps_gcp_module,
+    service: dead_param_gcp_login_service,
+    operation: dead_param_gcp_login_operation,
+    transport_kind: Shell,
+    argv_index: 3,
+    argv_token: "--update-adc"
+  }
+]
+
+test fn dead_param_gcp_login_is_red_holds() -> Bool {
+  extdeps_shape_transport_policy_dead_param_count_for_operation(
+    argv_facts: dead_param_gcp_login_argv_facts,
+    input_facts: dead_param_gcp_login_input_facts,
+    module: extdeps_gcp_module,
+    service: dead_param_gcp_login_service,
+    operation: dead_param_gcp_login_operation
+  ) == 1
+}

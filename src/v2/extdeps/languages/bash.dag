@@ -1,47 +1,6 @@
-// src/v2/extdeps/languages/bash.dag
-// Scope: Bash (POSIX.1-2017 Shell Command Language) as a v2 emit TARGET — the 19th LanguageModel
-// peer of rust/python/go/…, a TargetModel of translation rows consumed by the row-driven emit
-// (DESIGN.md §4: `emit = serialize_target ∘ translate`, one grammar read backward). This is the
-// authority that DISSOLVES the `extdeps/languages/bash/program.dag` sidecar serializer
-// (`serialize_bash`): a transport authors INTENT and `emit(intent, Bash)` renders shell the same
-// row-driven way `emit(intent, Rust)` already does — no per-language hand-rolled emitter.
-//
-// Anchor: https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
-//
-// MIGRATION SLICE 1 — fixed-token command `'git' 'rev-parse' '--show-toplevel'` (landed #5155).
-//
-// MIGRATION SLICE 2 — bound-word emit-time quoting via `token_class_emit_transforms` on
-// TargetModel (target_model.dag). Dynamic words (VarRef, Lit payloads) use BoundToken rows;
-// POSIX single-quote / double-quoted var-ref wrapping runs at emit time keyed by token class.
-//
-// MIGRATION SLICE 3 — relocate source_root_ingest gate transport to v2.workflow
-// (v2.workflow.source_root_ingest_transport); live path still serialize_bash today.
-// Row-driven emit(byte-identity) is proven by bash_emit_source_root_ingest_gate_holds;
-// emit(intent, Bash) flip for the live transport is a later slice in this arc.
-//
-// MIGRATION SLICE 4 — ShellStmt compound constructs (AndOr / Pipe / WithRedir) as translation
-// rows. Byte-identical to serialize_bash for each fixture; witnesses in bash_emit_command_test.
-//
-// MIGRATION SLICE 5a — cross Arrow→Conj: Conj-positional emitted + FormalProduction flat rhs
-// on the lhs-exact structural path (`derive_grammar_relation_row_node`); dissolves slice-4's
-// `bash_fixed_tokens_grammar_relation_row` Arrow exact-equality scaffold.
-// Bash is the first PRODUCTION consumer of the T-11-gated lhs-exact path
-// (feature:grammar-inverse-lhs-exact-selection); on parser-convergence dissolution, migrate
-// these bash FormalProduction rows together with typescript's.
-// MIGRATION SLICE 5b — If / Subshell / Heredoc + pipe|precedence brace-group keystone
-// (`Pipe { AndOr left }` must emit `{ a && b; } | c`, not flat `a && b | c`). Subshell
-// nesting AndOr is a separate recursion fixture. Witnesses in bash_emit_command_test.
-// MIGRATION SLICE 5c — Assign / EnvPrefixed / CmdSubst + Concat. Byte-identical to
-// serialize_bash for each fixture; witnesses in bash_emit_command_test.
-// MIGRATION SLICE 5d — Exit { code: Int } (LAST emit-vocab construct; host_prelude uses
-// `Exit { code: 1 }` → `exit 1`). Byte-identical to serialize_bash; witnesses in
-// bash_emit_command_test. Next slices: migrate sidecar consumers → delete program.dag.
-//
-// v2-clean (no std.render / std.unicode imports) so witnesses execute under the v1 interpreter.
-
 module v2.extdeps.languages.bash
 
-import v2.std.algebra { Empty, fold_list, list_snoc_item }
+import v2.std.algebra { Empty, FreeMonoid, fold_list, list_snoc_item }
 import v2.std.grammar {
   FormalGrammarSymbol,
   FormalProduction,
@@ -72,6 +31,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.collection { List, Map, empty_map, map_insert }
 import v2.std.diagnostic { EmitDirective }
+import v2.std.orchestration { EnvBinding, EnvSet, EnvUnset, Run }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.node {
   Atom,
@@ -85,16 +45,6 @@ import v2.std.node {
   TypeNode
 }
 import v2.std.witness { Holds, Violates, Witness }
-
-// =========================================================================
-// The emitted intent (the `translate`-side anchor).
-//
-// Conj of leaf-Atom positional children — one atom per bound-token slot (FixedToken
-// occurrences in FormalProduction.rhs are unbound and carry no emitted child).
-// lhs-exact-supported: grammar relation row selection walks FormalProduction rhs
-// against positional emitted children (`formal_production_for_lhs_exact` →
-// `derive_grammar_relation_row_node`), not Arrow exact-fixture equality.
-// =========================================================================
 
 fn bash_word_atom(id: Symbol) -> Node {
   Node {
@@ -124,7 +74,6 @@ fn bash_conj_emitted_from_tokens(tokens: List<ConcreteSyntaxToken>) -> Node {
     occurrence_id: SyntheticOccurrence
   }
 }
-
 
 fn bash_formal_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGrammarSymbol {
   match token {
@@ -226,22 +175,6 @@ fn bash_relation_translation_rules_node(
   }
 }
 
-
-// =========================================================================
-// Lexical phrases — one authority per fixed-token phrase (DESIGN.md §3).
-//
-// Each phrase is authored ONCE: the `text:` row reads LEFT-TO-RIGHT as the shell text the
-// phrase emits, and the `classes:` row names each fragment's token class in the same order.
-// The lex rule set, the concrete-token sequence, and the source-text string all PROJECT
-// from these (phrase_to_lex_rules / phrase_to_fixed_concrete_tokens / phrase_to_source_text),
-// so the three can no longer drift (DESIGN.md §2 horizontal: one concept, derive every use).
-// The byte-identity to serialize_bash is proven by execution in bash_emit_command_test.
-//
-// Bound-word phrases (bash_bound_words / bash_embedded_quote) are spelled at emit time
-// from a binding, not a literal fragment, so they are NOT LexicalPhrases yet — a
-// binding-carrying span is the migration-time extension (see lexing.dag T-6 note).
-// =========================================================================
-
 fn bash_mvp1_phrase() -> LexicalPhrase {
   phrase([
     span(text: "'git'",             class: ^bash_token_word_git),
@@ -303,13 +236,7 @@ fn bash_or_else_with_redir_phrase() -> LexicalPhrase {
   ])
 }
 
-// The canonical shell text emit must produce (POSIX single-quoted words). Byte-identical to
-// `serialize_bash(command([lit("git"), lit("rev-parse"), lit("--show-toplevel")]))`.
 data bash_mvp1_source_text: String = phrase_to_source_text(p: bash_mvp1_phrase())
-
-// =========================================================================
-// Concrete tokens — every word a FixedToken (no bound/dynamic words in slice 1).
-// =========================================================================
 
 fn bash_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_mvp1_phrase())
@@ -320,17 +247,13 @@ data bash_mvp1_emitted_command: Node = bash_conj_emitted_from_tokens(
 )
 
 fn bash_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
-  // Serialize through the single shared morphism (no parallel wire authority).
+
   concrete_syntax_token_to_node(token: token)
 }
 
 fn bash_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
-
-// =========================================================================
-// Grammar relation row: emitted intent ⇄ concrete token sequence.
-// =========================================================================
 
 fn bash_mvp1_translation_rules_node() -> Node {
   bash_relation_translation_rules_node(
@@ -359,11 +282,6 @@ fn bash_embedded_quote_translation_rules_node() -> Node {
   )
 }
 
-// =========================================================================
-// Slice 2 — bound words: VarRef double-quoted + Lit single-quoted at emit time.
-// Byte-identical to serialize_bash(command([var_ref("ROOT"), lit("ROOT")])) => "$ROOT" 'ROOT'
-// =========================================================================
-
 fn bash_bound_words_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_ROOT },
@@ -377,7 +295,6 @@ data bash_bound_words_emitted_command: Node = bash_conj_emitted_from_tokens(
 
 data bash_bound_words_source_text: String = "\"$ROOT\" 'ROOT'"
 
-// Single-word bound lit with an embedded single quote — total POSIX escaping.
 fn bash_embedded_quote_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     BoundToken {
@@ -392,12 +309,6 @@ data bash_embedded_quote_emitted_command: Node = bash_conj_emitted_from_tokens(
 )
 
 data bash_embedded_quote_source_text: String = "'a'\\''b'"
-
-// =========================================================================
-// Slice 3 — source-root-ingest gate: fixed two-word Command.
-// Byte-identical to serialize_bash(command([lit("bash"), lit("scripts/source-root-ingest-gate.sh")]))
-// modulo the sidecar's trailing newline (immaterial to `sh -c`).
-// =========================================================================
 
 fn bash_source_root_ingest_gate_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_source_root_ingest_gate_phrase())
@@ -418,17 +329,10 @@ fn bash_source_root_ingest_gate_translation_rules_node() -> Node {
   )
 }
 
-// =========================================================================
-// Slice 4 — AndOr / Pipe / WithRedir (POSIX §2.9 lists / compound commands).
-// Shared helper: bash_conj_emitted_from_tokens.
-// Each row is byte-identical to serialize_bash for the matching ShellStmt fixture.
-// =========================================================================
-
 fn bash_and_then_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_and_then_phrase())
 }
 
-// AndOr { AndThen } — `'true' && 'false'`
 data bash_and_then_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_and_then_concrete_tokens()
 )
@@ -448,7 +352,6 @@ fn bash_or_else_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_or_else_phrase())
 }
 
-// AndOr { OrElse } — `'true' || 'false'`
 data bash_or_else_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_or_else_concrete_tokens()
 )
@@ -468,7 +371,6 @@ fn bash_with_redir_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_with_redir_stderr_null_phrase())
 }
 
-// WithRedir { StderrToNull } — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null`
 data bash_with_redir_stderr_null_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_with_redir_stderr_null_concrete_tokens()
 )
@@ -488,7 +390,6 @@ fn bash_pipe_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_pipe_phrase())
 }
 
-// Pipe — `'echo' 'hi' | 'wc' '-c'`
 data bash_pipe_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_pipe_concrete_tokens()
 )
@@ -508,8 +409,6 @@ fn bash_or_else_with_redir_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_or_else_with_redir_phrase())
 }
 
-// host_prelude-shaped OrElse over WithRedir — `'git' 'rev-parse' '--show-toplevel' 2>/dev/null || 'pwd'`
-// Composes the standalone WithRedir + OrElse token classes (not a fused lex literal).
 data bash_or_else_with_redir_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_or_else_with_redir_concrete_tokens()
 )
@@ -524,16 +423,6 @@ fn bash_or_else_with_redir_translation_rules_node() -> Node {
     emitted: bash_or_else_with_redir_emitted
   )
 }
-
-// =========================================================================
-// Slice 5b — If / Subshell / Heredoc + pipe|precedence brace-group keystone.
-// Pipe binds tighter than &&: flat `'true' && 'false' | 'true'` mis-groups as
-// `'true' && ('false' | 'true')`. Correct emit wraps the AndOr operand: `{ 'true' && 'false'; } | 'true'`.
-// Authority: program.dag BraceGroup + Pipe fixture (not the sidecar's flat Pipe concat).
-//
-// Lexical phrases (same single-authority form as the slice-1..4 phrases above): each
-// span(text:, class:) pairs a fragment with its token class; the text column reads as shell.
-// =========================================================================
 
 fn bash_subshell_true_phrase() -> LexicalPhrase {
   phrase([
@@ -657,8 +546,6 @@ fn bash_heredoc_simple_translation_rules_node() -> Node {
   )
 }
 
-// Subshell nesting AndOr — recursion test only (|| has equal precedence to &&; parens
-// change bytes but not parse grouping). `'(' 'true' && 'false' ')' || 'true'`
 fn bash_subshell_and_or_nested_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_subshell_and_or_nested_phrase())
 }
@@ -678,8 +565,6 @@ fn bash_subshell_and_or_nested_translation_rules_node() -> Node {
   )
 }
 
-// Pipe { AndOr{a,&&,b}, c } — brace-group wrap is mandatory because | binds tighter than &&.
-// Correct: `{ 'true' && 'false'; } | 'true'`. Wrong flat concat: `'true' && 'false' | 'true'`.
 fn bash_pipe_and_or_brace_grouped_concrete_tokens() -> List<ConcreteSyntaxToken> {
   phrase_to_fixed_concrete_tokens(p: bash_pipe_and_or_brace_grouped_phrase())
 }
@@ -808,329 +693,6 @@ fn bash_pipe_and_or_flat_wrong_target_model() -> TargetModel {
   )
 }
 
-// =========================================================================
-// Slice 5c — Assign / EnvPrefixed / CmdSubst + Concat.
-// Byte-identical to serialize_bash for each fixture.
-// Shared operator tokens: ^bash_token_assign_name (BoundToken + binding_spellings),
-// ^bash_token_assign_eq ("="), ^bash_token_cmdsubst_open ("$(") — one row per construct,
-// not per transport variable (§2 horizontal; dissolves N×M fused-name fork).
-// =========================================================================
-
-// Assign { CmdSubst { Command } } — bash_serializer_witness / transport keystone:
-// assign(name: "OUT", value: CmdSubst { body: command([mktemp, -d]) })
-fn bash_assign_cmdsubst_mktemp_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    BoundToken { token_class: ^bash_token_assign_name, binding: ^bash_binding_var_OUT },
-    FixedToken { token_class: ^bash_token_assign_eq },
-    FixedToken { token_class: ^bash_token_cmdsubst_open },
-    FixedToken { token_class: ^bash_token_word_mktemp },
-    FixedToken { token_class: ^bash_token_word_minus_d_spaced },
-    FixedToken { token_class: ^bash_token_rparen }
-  ]
-}
-
-data bash_assign_cmdsubst_mktemp_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_assign_cmdsubst_mktemp_concrete_tokens()
-)
-
-data bash_assign_cmdsubst_mktemp_source_text: String = "OUT=$('mktemp' '-d')"
-
-fn bash_assign_cmdsubst_mktemp_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_assign_cmdsubst_mktemp,
-    lhs: ^bash_production_assign_cmdsubst_mktemp,
-    tokens: bash_assign_cmdsubst_mktemp_concrete_tokens(),
-    emitted: bash_assign_cmdsubst_mktemp_emitted
-  )
-}
-
-// Assign { Concat { VarRef, Lit } } — host_prelude GUNBC line; Concat has no separator.
-// assign(name: "GUNBC", value: Concat { parts: [var_ref("ROOT"), lit("/target/release/gunbc")] })
-fn bash_assign_concat_gunbc_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    BoundToken { token_class: ^bash_token_assign_name, binding: ^bash_binding_var_GUNBC },
-    FixedToken { token_class: ^bash_token_assign_eq },
-    BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_ROOT },
-    BoundToken {
-      token_class: ^bash_token_lit,
-      binding: ^bash_binding_lit_target_release_gunbc
-    }
-  ]
-}
-
-data bash_assign_concat_gunbc_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_assign_concat_gunbc_concrete_tokens()
-)
-
-data bash_assign_concat_gunbc_source_text: String = "GUNBC=\"$ROOT\"'/target/release/gunbc'"
-
-fn bash_assign_concat_gunbc_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_assign_concat_gunbc,
-    lhs: ^bash_production_assign_concat_gunbc,
-    tokens: bash_assign_concat_gunbc_concrete_tokens(),
-    emitted: bash_assign_concat_gunbc_emitted
-  )
-}
-
-// Discriminating — spaced lit after VarRef is wrong for Concat (word-splitting seam).
-fn bash_assign_concat_gunbc_spaced_wrong_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    BoundToken { token_class: ^bash_token_assign_name, binding: ^bash_binding_var_GUNBC },
-    FixedToken { token_class: ^bash_token_assign_eq },
-    BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_ROOT },
-    BoundToken {
-      token_class: ^bash_token_lit_spaced,
-      binding: ^bash_binding_lit_target_release_gunbc
-    }
-  ]
-}
-
-data bash_assign_concat_gunbc_spaced_wrong_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_assign_concat_gunbc_spaced_wrong_concrete_tokens()
-)
-
-data bash_assign_concat_gunbc_spaced_wrong_source_text: String = "GUNBC=\"$ROOT\" '/target/release/gunbc'"
-
-fn bash_assign_concat_gunbc_spaced_wrong_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_assign_concat_gunbc_spaced_wrong,
-    lhs: ^bash_production_assign_concat_gunbc_spaced_wrong,
-    tokens: bash_assign_concat_gunbc_spaced_wrong_concrete_tokens(),
-    emitted: bash_assign_concat_gunbc_spaced_wrong_emitted
-  )
-}
-
-// EnvPrefixed { Concat value, Command } — emit_host_transport cargo row (truncated).
-fn bash_env_prefixed_cargo_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    BoundToken {
-      token_class: ^bash_token_assign_name,
-      binding: ^bash_binding_var_CARGO_TARGET_DIR
-    },
-    FixedToken { token_class: ^bash_token_assign_eq },
-    BoundToken { token_class: ^bash_token_var_ref, binding: ^bash_binding_var_WORKDIR },
-    BoundToken { token_class: ^bash_token_lit, binding: ^bash_binding_lit_target },
-    FixedToken { token_class: ^bash_token_word_cargo_spaced },
-    FixedToken { token_class: ^bash_token_word_build_spaced },
-    FixedToken { token_class: ^bash_token_word_quiet_spaced }
-  ]
-}
-
-data bash_env_prefixed_cargo_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_env_prefixed_cargo_concrete_tokens()
-)
-
-data bash_env_prefixed_cargo_source_text: String = "CARGO_TARGET_DIR=\"$WORKDIR\"'/target' 'cargo' 'build' '--quiet'"
-
-fn bash_env_prefixed_cargo_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_env_prefixed_cargo,
-    lhs: ^bash_production_env_prefixed_cargo,
-    tokens: bash_env_prefixed_cargo_concrete_tokens(),
-    emitted: bash_env_prefixed_cargo_emitted
-  )
-}
-
-// Bound-word phrase: only the FIXED tokens carry a literal lex rule (the bound var-ref /
-// cmd-subst body spellings resolve at emit time). Authored as a `phrase` of fixed spans and
-// projected to its lex rules; T-6 binding-carrying spans (the full single-authority migration)
-// are the child lane's job.
-fn bash_assign_cmdsubst_mktemp_lex() -> LexRules {
-  phrase_to_lex_rules(p: phrase([
-    span(text: "=",       class: ^bash_token_assign_eq),
-    span(text: "$(",      class: ^bash_token_cmdsubst_open),
-    span(text: "'mktemp'", class: ^bash_token_word_mktemp),
-    span(text: " '-d'",   class: ^bash_token_word_minus_d_spaced),
-    span(text: ")",       class: ^bash_token_rparen)
-  ]))
-}
-
-fn bash_assign_cmdsubst_mktemp_target_model() -> TargetModel {
-  bash_make_bound_tokens_target_model(
-    rules: bash_assign_cmdsubst_mktemp_translation_rules_node(),
-    source_literal: ^bash_assign_cmdsubst_mktemp_source_literal,
-    production_name: ^bash_production_assign_cmdsubst_mktemp,
-    tokens: bash_assign_cmdsubst_mktemp_concrete_tokens(),
-    source_text: bash_assign_cmdsubst_mktemp_source_text,
-    lex: bash_assign_cmdsubst_mktemp_lex(),
-    binding_spellings: bash_binding_spellings()
-  )
-}
-
-fn bash_assign_concat_gunbc_lex() -> LexRules {
-  phrase_to_lex_rules(p: phrase([
-    span(text: "=", class: ^bash_token_assign_eq)
-  ]))
-}
-
-fn bash_assign_concat_gunbc_target_model() -> TargetModel {
-  bash_make_bound_tokens_target_model(
-    rules: bash_assign_concat_gunbc_translation_rules_node(),
-    source_literal: ^bash_assign_concat_gunbc_source_literal,
-    production_name: ^bash_production_assign_concat_gunbc,
-    tokens: bash_assign_concat_gunbc_concrete_tokens(),
-    source_text: bash_assign_concat_gunbc_source_text,
-    lex: bash_assign_concat_gunbc_lex(),
-    binding_spellings: bash_binding_spellings()
-  )
-}
-
-fn bash_assign_concat_gunbc_spaced_wrong_lex() -> LexRules {
-  bash_assign_concat_gunbc_lex()
-}
-
-fn bash_assign_concat_gunbc_spaced_wrong_target_model() -> TargetModel {
-  bash_make_bound_tokens_target_model(
-    rules: bash_assign_concat_gunbc_spaced_wrong_translation_rules_node(),
-    source_literal: ^bash_assign_concat_gunbc_spaced_wrong_source_literal,
-    production_name: ^bash_production_assign_concat_gunbc_spaced_wrong,
-    tokens: bash_assign_concat_gunbc_spaced_wrong_concrete_tokens(),
-    source_text: bash_assign_concat_gunbc_spaced_wrong_source_text,
-    lex: bash_assign_concat_gunbc_spaced_wrong_lex(),
-    binding_spellings: bash_binding_spellings()
-  )
-}
-
-fn bash_env_prefixed_cargo_lex() -> LexRules {
-  phrase_to_lex_rules(p: phrase([
-    span(text: "=",        class: ^bash_token_assign_eq),
-    span(text: " 'cargo'",  class: ^bash_token_word_cargo_spaced),
-    span(text: " 'build'",  class: ^bash_token_word_build_spaced),
-    span(text: " '--quiet'", class: ^bash_token_word_quiet_spaced)
-  ]))
-}
-
-fn bash_env_prefixed_cargo_target_model() -> TargetModel {
-  bash_make_bound_tokens_target_model(
-    rules: bash_env_prefixed_cargo_translation_rules_node(),
-    source_literal: ^bash_env_prefixed_cargo_source_literal,
-    production_name: ^bash_production_env_prefixed_cargo,
-    tokens: bash_env_prefixed_cargo_concrete_tokens(),
-    source_text: bash_env_prefixed_cargo_source_text,
-    lex: bash_env_prefixed_cargo_lex(),
-    binding_spellings: bash_binding_spellings()
-  )
-}
-
-// =========================================================================
-// Slice 5d — Exit { code: Int } (LAST emit-vocab construct).
-// `Exit { code: 1 }` — host_prelude OrElse failure arm; `Exit { code: 0 }` — compile-clean
-// success path. Byte-identical to serialize_bash(Exit { code: c }) => concat("exit ", to_string(c)).
-// Shared operator token: ^bash_token_kw_exit ("exit ") — one row per construct, not per code (§2).
-// =========================================================================
-
-// Exit { code: 1 } — host_prelude `|| exit 1` failure arm.
-fn bash_exit_code_1_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^bash_token_kw_exit },
-    BoundToken { token_class: ^bash_token_exit_code, binding: ^bash_binding_exit_code_1 }
-  ]
-}
-
-data bash_exit_code_1_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_exit_code_1_concrete_tokens()
-)
-
-data bash_exit_code_1_source_text: String = "exit 1"
-
-fn bash_exit_code_1_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_exit_code_1,
-    lhs: ^bash_production_exit_code_1,
-    tokens: bash_exit_code_1_concrete_tokens(),
-    emitted: bash_exit_code_1_emitted
-  )
-}
-
-// Exit { code: 0 } — dsl_compile_clean_transport success terminator.
-fn bash_exit_code_0_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^bash_token_kw_exit },
-    BoundToken { token_class: ^bash_token_exit_code, binding: ^bash_binding_exit_code_0 }
-  ]
-}
-
-data bash_exit_code_0_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_exit_code_0_concrete_tokens()
-)
-
-data bash_exit_code_0_source_text: String = "exit 0"
-
-fn bash_exit_code_0_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_exit_code_0,
-    lhs: ^bash_production_exit_code_0,
-    tokens: bash_exit_code_0_concrete_tokens(),
-    emitted: bash_exit_code_0_emitted
-  )
-}
-
-// Discriminating — exit code is a bare decimal word, not a single-quoted lit.
-fn bash_exit_code_1_quoted_wrong_concrete_tokens() -> List<ConcreteSyntaxToken> {
-  [
-    FixedToken { token_class: ^bash_token_kw_exit },
-    BoundToken { token_class: ^bash_token_lit, binding: ^bash_binding_exit_code_1 }
-  ]
-}
-
-data bash_exit_code_1_quoted_wrong_emitted: Node = bash_conj_emitted_from_tokens(
-  tokens: bash_exit_code_1_quoted_wrong_concrete_tokens()
-)
-
-data bash_exit_code_1_quoted_wrong_source_text: String = "exit '1'"
-
-fn bash_exit_code_1_quoted_wrong_translation_rules_node() -> Node {
-  bash_relation_translation_rules_node(
-    rule_name: ^bash_relation_rule_exit_code_1_quoted_wrong,
-    lhs: ^bash_production_exit_code_1_quoted_wrong,
-    tokens: bash_exit_code_1_quoted_wrong_concrete_tokens(),
-    emitted: bash_exit_code_1_quoted_wrong_emitted
-  )
-}
-
-fn bash_exit_code_lex() -> LexRules {
-  phrase_to_lex_rules(p: phrase([
-    span(text: "exit ", class: ^bash_token_kw_exit)
-  ]))
-}
-
-fn bash_exit_code_1_target_model() -> TargetModel {
-  bash_make_bound_tokens_target_model(
-    rules: bash_exit_code_1_translation_rules_node(),
-    source_literal: ^bash_exit_code_1_source_literal,
-    production_name: ^bash_production_exit_code_1,
-    tokens: bash_exit_code_1_concrete_tokens(),
-    source_text: bash_exit_code_1_source_text,
-    lex: bash_exit_code_lex(),
-    binding_spellings: bash_binding_spellings()
-  )
-}
-
-fn bash_exit_code_0_target_model() -> TargetModel {
-  bash_make_bound_tokens_target_model(
-    rules: bash_exit_code_0_translation_rules_node(),
-    source_literal: ^bash_exit_code_0_source_literal,
-    production_name: ^bash_production_exit_code_0,
-    tokens: bash_exit_code_0_concrete_tokens(),
-    source_text: bash_exit_code_0_source_text,
-    lex: bash_exit_code_lex(),
-    binding_spellings: bash_binding_spellings()
-  )
-}
-
-fn bash_exit_code_1_quoted_wrong_target_model() -> TargetModel {
-  bash_make_bound_tokens_target_model(
-    rules: bash_exit_code_1_quoted_wrong_translation_rules_node(),
-    source_literal: ^bash_exit_code_1_quoted_wrong_source_literal,
-    production_name: ^bash_production_exit_code_1_quoted_wrong,
-    tokens: bash_exit_code_1_quoted_wrong_concrete_tokens(),
-    source_text: bash_exit_code_1_quoted_wrong_source_text,
-    lex: bash_exit_code_lex(),
-    binding_spellings: bash_binding_spellings()
-  )
-}
-
 fn bash_binding_spellings() -> Map<Symbol, String> {
   let m0 = map_insert(empty_map(), ^bash_binding_var_ROOT, "ROOT")
   let m1 = map_insert(m0, ^bash_binding_lit_ROOT, "ROOT")
@@ -1145,12 +707,10 @@ fn bash_binding_spellings() -> Map<Symbol, String> {
   map_insert(m9, ^bash_binding_exit_code_0, "0")
 }
 
-// POSIX §2.2.2 — inside single quotes every character is literal; embedded `'` → `'\''`.
 fn bash_single_quote(spelling: String) -> String {
   concat("'", concat(replace(spelling, "'", "'\\''"), "'"))
 }
 
-// Layout + quoting composed (§2: not a Cartesian product enum case in std).
 fn bash_single_quote_spaced(spelling: String) -> String {
   concat(" ", bash_single_quote(spelling: spelling))
 }
@@ -1254,13 +814,6 @@ fn bash_embedded_quote_target_model_bundle() -> Node {
     serialize_source: bash_embedded_quote_serialize_source_node()
   )
 }
-
-// =========================================================================
-// Lex — each rule set PROJECTS from its LexicalPhrase (above) via phrase_to_lex_rules.
-// POSIX single-quoting + token-adjacent layout still ride inside each span's fragment
-// (interim policy, dissolves with the T-6 TokenLayout note in lexing.dag); the phrase's
-// fragment column IS the canonical source text the rules accept.
-// =========================================================================
 
 fn bash_mvp1_lex() -> LexRules {
   phrase_to_lex_rules(p: bash_mvp1_phrase())
@@ -1455,22 +1008,6 @@ fn bash_or_else_with_redir_target_model() -> TargetModel {
   )
 }
 
-// =========================================================================
-// Gap A — diagnostic-emission Bash realization: emit(EmitDirective, Bash) → `echo <msg> >&2`.
-//
-// The Bash-medium realization of the medium-agnostic `EmitDirective` (v2.std.diagnostic).
-// POSIX `sh` has no severity concept, so this transport reads ONLY `message` and is
-// severity-INVARIANT; the severity → `::error`/`::warning` annotation is the GitHub-Actions
-// layer (Phase 2, witty-wolf GHA-as-Node-gated), NOT here. Row-driven through the shared
-// grammar machinery (DESIGN.md §4: emit = serialize_target ∘ translate, one grammar read
-// backward) — NOT a hand-rolled forward emitter. Grounded by execution in
-// `v2.test.manual.emit_directive_bash`.
-//
-// `>&2` (StdoutToStderr) is a new fixed redirect token absorbed here (bash-arc parked). The
-// message is one POSIX single-quoted word (^bash_token_lit_spaced bound slot), so an embedded
-// `'` rides the same `'\''` escape as every other bound lit.
-// =========================================================================
-
 fn emit_directive_bash_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_word_echo },
@@ -1483,9 +1020,6 @@ data emit_directive_bash_emitted_command: Node = bash_conj_emitted_from_tokens(
   tokens: emit_directive_bash_concrete_tokens()
 )
 
-// Byte-identity authority — `'echo' '<msg>' >&2`, message single-quoted-with-leading-space via
-// the SAME `bash_single_quote_spaced` the emit-time transform applies (single quoting authority,
-// so authority text and emitted output cannot drift).
 fn emit_directive_bash_source_text(d: EmitDirective) -> String {
   concat("'echo'", concat(bash_single_quote_spaced(spelling: d.message), " >&2"))
 }
@@ -1506,7 +1040,6 @@ fn emit_directive_bash_translation_rules_node() -> Node {
   )
 }
 
-// One bound slot — the directive's runtime message word.
 fn emit_directive_bash_message_spellings(d: EmitDirective) -> Map<Symbol, String> {
   map_insert(empty_map(), ^emit_directive_message, d.message)
 }
@@ -1523,10 +1056,6 @@ fn emit_directive_bash_target_model(d: EmitDirective) -> TargetModel {
   )
 }
 
-// Discriminating (Gap A) — a diagnostic emitted to STDOUT (no `>&2`) is the WRONG stream; this
-// proves the `>&2` redirect in the correct realization is load-bearing, not fabricated. The
-// SAME `emit_directive_bash_emitted_command` intent through this model yields `'echo' '<msg>'`
-// (no redirect) — exercised RED in the witness against the correct `>&2` bytes.
 fn emit_directive_bash_to_stdout_wrong_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_word_echo },
@@ -1562,5 +1091,1111 @@ fn emit_directive_bash_to_stdout_wrong_target_model(d: EmitDirective) -> TargetM
     source_text: emit_directive_bash_to_stdout_wrong_source_text(d: d),
     lex: emit_directive_bash_to_stdout_wrong_lex(),
     binding_spellings: emit_directive_bash_message_spellings(d: d)
+  )
+}
+
+fn retry_eagain_seg_a() -> String {
+  "BUILD_LOG=$(mktemp)\nif ! ("
+}
+
+fn retry_eagain_seg_b() -> String {
+  ") 2>&1 | tee \"$BUILD_LOG\"; then\n  if grep -qiE '"
+}
+
+fn retry_eagain_seg_c() -> String {
+  "' \"$BUILD_LOG\"; then\n    echo \"::warning::"
+}
+
+fn retry_eagain_seg_d() -> String {
+  "\"\n    RETRY_LOG=$(mktemp)\n    if ! ( "
+}
+
+fn retry_eagain_seg_e() -> String {
+  " ) 2>&1 | tee \"$RETRY_LOG\"; then\n      if grep -qiE '"
+}
+
+fn retry_eagain_seg_f() -> String {
+  "' \"$RETRY_LOG\"; then\n        echo \"::warning::"
+}
+
+fn retry_eagain_seg_g() -> String {
+  "\"\n        "
+}
+
+fn retry_eagain_seg_h() -> String {
+  " || exit 1\n      else\n        exit 1\n      fi\n    fi\n    rm -f \"$RETRY_LOG\"\n  else\n    exit 1\n  fi\nfi\nrm -f \"$BUILD_LOG\"\n"
+}
+
+fn bash_env_binding_spelling(b: EnvBinding) -> String {
+  match b {
+    EnvSet { name: n, value: v } => concat(concat(n, "="), concat(v, " "))
+    EnvUnset { name: n } => concat("env -u ", concat(n, " "))
+  }
+}
+
+fn bash_env_prefix(env: FreeMonoid<EnvBinding>) -> String {
+  fold_list(
+    xs: env,
+    empty: "",
+    cons: fn(acc, b) { concat(acc, bash_env_binding_spelling(b: b)) }
+  )
+}
+
+fn retry_eagain_bash_lex_for(tail_text: String, tail_class: Symbol) -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: retry_eagain_seg_a(), class: ^bash_token_retry_seg_a),
+    span(text: retry_eagain_seg_b(), class: ^bash_token_retry_seg_b),
+    span(text: retry_eagain_seg_c(), class: ^bash_token_retry_seg_c),
+    span(text: retry_eagain_seg_d(), class: ^bash_token_retry_seg_d),
+    span(text: retry_eagain_seg_e(), class: ^bash_token_retry_seg_e),
+    span(text: retry_eagain_seg_f(), class: ^bash_token_retry_seg_f),
+    span(text: retry_eagain_seg_g(), class: ^bash_token_retry_seg_g),
+    span(text: tail_text, class: tail_class)
+  ]))
+}
+
+fn orch_run_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_run_rendered }
+  ]
+}
+
+data orch_run_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: orch_run_tokens()
+)
+
+fn orch_run_rendered_spelling(r: Run) -> String {
+  concat(bash_env_prefix(env: r.env), r.command)
+}
+
+fn orch_run_source_text(r: Run) -> String {
+  orch_run_rendered_spelling(r: r)
+}
+
+fn orch_run_lex(r: Run) -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: orch_run_rendered_spelling(r: r), class: ^bash_token_orch_raw)
+  ]))
+}
+
+fn orch_run_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_orch_run,
+    lhs: ^bash_production_orch_run,
+    tokens: orch_run_tokens(),
+    emitted: orch_run_emitted_command
+  )
+}
+
+fn orch_run_binding_spellings(r: Run) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^orch_run_rendered, orch_run_rendered_spelling(r: r))
+}
+
+fn orch_run_target_model(r: Run) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: orch_run_translation_rules_node(),
+    source_literal: ^bash_orch_run_source_literal,
+    production_name: ^bash_production_orch_run,
+    tokens: orch_run_tokens(),
+    source_text: orch_run_source_text(r: r),
+    lex: orch_run_lex(r: r),
+    binding_spellings: orch_run_binding_spellings(r: r)
+  )
+}
+
+fn orch_seq2_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_seq2_left },
+    FixedToken { token_class: ^bash_token_orch_seq_newline },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_seq2_right }
+  ]
+}
+
+data orch_seq2_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: orch_seq2_tokens()
+)
+
+fn orch_seq2_source_text(left: String, right: String) -> String {
+  concat(left, concat("\n", right))
+}
+
+fn orch_seq2_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "\n", class: ^bash_token_orch_seq_newline)
+  ]))
+}
+
+fn orch_seq2_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_orch_seq2,
+    lhs: ^bash_production_orch_seq2,
+    tokens: orch_seq2_tokens(),
+    emitted: orch_seq2_emitted_command
+  )
+}
+
+fn orch_seq2_binding_spellings(left: String, right: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^orch_seq2_left, left),
+    ^orch_seq2_right, right
+  )
+}
+
+fn orch_seq2_target_model(left: String, right: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: orch_seq2_translation_rules_node(),
+    source_literal: ^bash_orch_seq2_source_literal,
+    production_name: ^bash_production_orch_seq2,
+    tokens: orch_seq2_tokens(),
+    source_text: orch_seq2_source_text(left: left, right: right),
+    lex: orch_seq2_lex(),
+    binding_spellings: orch_seq2_binding_spellings(left: left, right: right)
+  )
+}
+
+fn orch_retry_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_retry_seg_a },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ1 },
+    FixedToken { token_class: ^bash_token_retry_seg_b },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_pattern1 },
+    FixedToken { token_class: ^bash_token_retry_seg_c },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_warn1 },
+    FixedToken { token_class: ^bash_token_retry_seg_d },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ2 },
+    FixedToken { token_class: ^bash_token_retry_seg_e },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_pattern2 },
+    FixedToken { token_class: ^bash_token_retry_seg_f },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_warn2 },
+    FixedToken { token_class: ^bash_token_retry_seg_g },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^orch_retry_occ3 },
+    FixedToken { token_class: ^bash_token_retry_seg_h }
+  ]
+}
+
+data orch_retry_emitted_command: Node = bash_conj_emitted_from_tokens(
+  tokens: orch_retry_tokens()
+)
+
+fn orch_retry_source_text(
+  occ1: String,
+  occ2: String,
+  occ3: String,
+  pattern1: String,
+  pattern2: String,
+  warn1: String,
+  warn2: String
+) -> String {
+  concat(retry_eagain_seg_a(),
+  concat(occ1,
+  concat(retry_eagain_seg_b(),
+  concat(pattern1,
+  concat(retry_eagain_seg_c(),
+  concat(warn1,
+  concat(retry_eagain_seg_d(),
+  concat(occ2,
+  concat(retry_eagain_seg_e(),
+  concat(pattern2,
+  concat(retry_eagain_seg_f(),
+  concat(warn2,
+  concat(retry_eagain_seg_g(),
+  concat(occ3,
+         retry_eagain_seg_h()))))))))))))))
+}
+
+fn orch_retry_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_orch_retry,
+    lhs: ^bash_production_orch_retry,
+    tokens: orch_retry_tokens(),
+    emitted: orch_retry_emitted_command
+  )
+}
+
+fn orch_retry_binding_spellings(
+  occ1: String,
+  occ2: String,
+  occ3: String,
+  pattern1: String,
+  pattern2: String,
+  warn1: String,
+  warn2: String
+) -> Map<Symbol, String> {
+  map_insert(
+  map_insert(
+  map_insert(
+  map_insert(
+  map_insert(
+  map_insert(
+  map_insert(empty_map(), ^orch_retry_occ1, occ1),
+    ^orch_retry_occ2, occ2),
+    ^orch_retry_occ3, occ3),
+    ^orch_retry_pattern1, pattern1),
+    ^orch_retry_pattern2, pattern2),
+    ^orch_retry_warn1, warn1),
+    ^orch_retry_warn2, warn2)
+}
+
+fn orch_retry_target_model(
+  occ1: String,
+  occ2: String,
+  occ3: String,
+  pattern1: String,
+  pattern2: String,
+  warn1: String,
+  warn2: String
+) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: orch_retry_translation_rules_node(),
+    source_literal: ^bash_orch_retry_source_literal,
+    production_name: ^bash_production_orch_retry,
+    tokens: orch_retry_tokens(),
+    source_text: orch_retry_source_text(
+      occ1: occ1,
+      occ2: occ2,
+      occ3: occ3,
+      pattern1: pattern1,
+      pattern2: pattern2,
+      warn1: warn1,
+      warn2: warn2
+    ),
+    lex: retry_eagain_bash_lex_for(
+      tail_text: retry_eagain_seg_h(),
+      tail_class: ^bash_token_retry_seg_h
+    ),
+    binding_spellings: orch_retry_binding_spellings(
+      occ1: occ1,
+      occ2: occ2,
+      occ3: occ3,
+      pattern1: pattern1,
+      pattern2: pattern2,
+      warn1: warn1,
+      warn2: warn2
+    )
+  )
+}
+
+fn bash_word_pass_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_pass_spelling }
+  ]
+}
+
+data bash_word_pass_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_pass_tokens()
+)
+
+fn bash_word_pass_lex(spelling: String) -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: spelling, class: ^bash_token_orch_raw)
+  ]))
+}
+
+fn bash_word_pass_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_pass,
+    lhs: ^bash_production_word_pass,
+    tokens: bash_word_pass_tokens(),
+    emitted: bash_word_pass_emitted
+  )
+}
+
+fn bash_word_pass_binding_spellings(spelling: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_pass_spelling, spelling)
+}
+
+fn bash_word_pass_target_model(spelling: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_pass_translation_rules_node(),
+    source_literal: ^bash_word_pass_source_literal,
+    production_name: ^bash_production_word_pass,
+    tokens: bash_word_pass_tokens(),
+    source_text: spelling,
+    lex: bash_word_pass_lex(spelling: spelling),
+    binding_spellings: bash_word_pass_binding_spellings(spelling: spelling)
+  )
+}
+
+fn bash_word_cmdsubst_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_cmdsubst_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_word_cmdsubst_body },
+    FixedToken { token_class: ^bash_token_cmdsubst_close }
+  ]
+}
+
+data bash_word_cmdsubst_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_word_cmdsubst_tokens()
+)
+
+fn bash_word_cmdsubst_source_text(body: String) -> String {
+  concat("$(", concat(body, ")"))
+}
+
+fn bash_word_cmdsubst_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "$(", class: ^bash_token_cmdsubst_open),
+    span(text: ")", class: ^bash_token_cmdsubst_close)
+  ]))
+}
+
+fn bash_word_cmdsubst_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_word_cmdsubst,
+    lhs: ^bash_production_word_cmdsubst,
+    tokens: bash_word_cmdsubst_tokens(),
+    emitted: bash_word_cmdsubst_emitted
+  )
+}
+
+fn bash_word_cmdsubst_binding_spellings(body: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_word_cmdsubst_body, body)
+}
+
+fn bash_word_cmdsubst_target_model(body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_word_cmdsubst_translation_rules_node(),
+    source_literal: ^bash_word_cmdsubst_source_literal,
+    production_name: ^bash_production_word_cmdsubst,
+    tokens: bash_word_cmdsubst_tokens(),
+    source_text: bash_word_cmdsubst_source_text(body: body),
+    lex: bash_word_cmdsubst_lex(),
+    binding_spellings: bash_word_cmdsubst_binding_spellings(body: body)
+  )
+}
+
+fn bash_stmt_subshell_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_subshell_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_subshell_body },
+    FixedToken { token_class: ^bash_token_subshell_close }
+  ]
+}
+
+data bash_stmt_subshell_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_subshell_tokens()
+)
+
+fn bash_stmt_subshell_source_text(body: String) -> String {
+  concat("(", concat(body, ")"))
+}
+
+fn bash_stmt_subshell_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "(", class: ^bash_token_subshell_open),
+    span(text: ")", class: ^bash_token_subshell_close)
+  ]))
+}
+
+fn bash_stmt_subshell_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_subshell,
+    lhs: ^bash_production_stmt_subshell,
+    tokens: bash_stmt_subshell_tokens(),
+    emitted: bash_stmt_subshell_emitted
+  )
+}
+
+fn bash_stmt_subshell_binding_spellings(body: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_stmt_subshell_body, body)
+}
+
+fn bash_stmt_subshell_target_model(body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_subshell_translation_rules_node(),
+    source_literal: ^bash_stmt_subshell_source_literal,
+    production_name: ^bash_production_stmt_subshell,
+    tokens: bash_stmt_subshell_tokens(),
+    source_text: bash_stmt_subshell_source_text(body: body),
+    lex: bash_stmt_subshell_lex(),
+    binding_spellings: bash_stmt_subshell_binding_spellings(body: body)
+  )
+}
+
+fn bash_stmt_exit_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_stmt_exit_kw },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_exit_code }
+  ]
+}
+
+data bash_stmt_exit_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_exit_tokens()
+)
+
+fn bash_stmt_exit_source_text(code: String) -> String {
+  concat("exit ", code)
+}
+
+fn bash_stmt_exit_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "exit ", class: ^bash_token_stmt_exit_kw)
+  ]))
+}
+
+fn bash_stmt_exit_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_exit,
+    lhs: ^bash_production_stmt_exit,
+    tokens: bash_stmt_exit_tokens(),
+    emitted: bash_stmt_exit_emitted
+  )
+}
+
+fn bash_stmt_exit_binding_spellings(code: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_stmt_exit_code, code)
+}
+
+fn bash_stmt_exit_target_model(code: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_exit_translation_rules_node(),
+    source_literal: ^bash_stmt_exit_source_literal,
+    production_name: ^bash_production_stmt_exit,
+    tokens: bash_stmt_exit_tokens(),
+    source_text: bash_stmt_exit_source_text(code: code),
+    lex: bash_stmt_exit_lex(),
+    binding_spellings: bash_stmt_exit_binding_spellings(code: code)
+  )
+}
+
+fn bash_stmt_assign_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_assign_name },
+    FixedToken { token_class: ^bash_token_assign_eq },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_assign_value }
+  ]
+}
+
+data bash_stmt_assign_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_assign_tokens()
+)
+
+fn bash_stmt_assign_source_text(name: String, value: String) -> String {
+  concat(name, concat("=", value))
+}
+
+fn bash_stmt_assign_lex(name: String, value: String) -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: name, class: ^bash_token_orch_raw),
+    span(text: "=", class: ^bash_token_assign_eq),
+    span(text: value, class: ^bash_token_orch_raw)
+  ]))
+}
+
+fn bash_stmt_assign_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_assign,
+    lhs: ^bash_production_stmt_assign,
+    tokens: bash_stmt_assign_tokens(),
+    emitted: bash_stmt_assign_emitted
+  )
+}
+
+fn bash_stmt_assign_binding_spellings(name: String, value: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_stmt_assign_name, name),
+    ^bash_stmt_assign_value, value
+  )
+}
+
+fn bash_stmt_assign_target_model(name: String, value: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_assign_translation_rules_node(),
+    source_literal: ^bash_stmt_assign_source_literal,
+    production_name: ^bash_production_stmt_assign,
+    tokens: bash_stmt_assign_tokens(),
+    source_text: bash_stmt_assign_source_text(name: name, value: value),
+    lex: bash_stmt_assign_lex(name: name, value: value),
+    binding_spellings: bash_stmt_assign_binding_spellings(name: name, value: value)
+  )
+}
+
+fn bash_stmt_andor_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_andor_left },
+    FixedToken { token_class: ^bash_token_andor_sp1 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_andor_op },
+    FixedToken { token_class: ^bash_token_andor_sp2 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_andor_right }
+  ]
+}
+
+data bash_stmt_andor_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_andor_tokens()
+)
+
+fn bash_stmt_andor_source_text(left: String, op: String, right: String) -> String {
+  concat(left, concat(" ", concat(op, concat(" ", right))))
+}
+
+fn bash_stmt_andor_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: " ", class: ^bash_token_andor_sp1),
+    span(text: " ", class: ^bash_token_andor_sp2)
+  ]))
+}
+
+fn bash_stmt_andor_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_andor,
+    lhs: ^bash_production_stmt_andor,
+    tokens: bash_stmt_andor_tokens(),
+    emitted: bash_stmt_andor_emitted
+  )
+}
+
+fn bash_stmt_andor_binding_spellings(left: String, op: String, right: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), ^bash_stmt_andor_left, left),
+      ^bash_stmt_andor_op, op
+    ),
+    ^bash_stmt_andor_right, right
+  )
+}
+
+fn bash_stmt_andor_target_model(left: String, op: String, right: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_andor_translation_rules_node(),
+    source_literal: ^bash_stmt_andor_source_literal,
+    production_name: ^bash_production_stmt_andor,
+    tokens: bash_stmt_andor_tokens(),
+    source_text: bash_stmt_andor_source_text(left: left, op: op, right: right),
+    lex: bash_stmt_andor_lex(),
+    binding_spellings: bash_stmt_andor_binding_spellings(left: left, op: op, right: right)
+  )
+}
+
+fn bash_stmt_pipe_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_pipe_left },
+    FixedToken { token_class: ^bash_token_pipe_sep },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_pipe_right }
+  ]
+}
+
+data bash_stmt_pipe_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_pipe_tokens()
+)
+
+fn bash_stmt_pipe_source_text(left: String, right: String) -> String {
+  concat(left, concat(" | ", right))
+}
+
+fn bash_stmt_pipe_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: " | ", class: ^bash_token_pipe_sep)
+  ]))
+}
+
+fn bash_stmt_pipe_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_pipe,
+    lhs: ^bash_production_stmt_pipe,
+    tokens: bash_stmt_pipe_tokens(),
+    emitted: bash_stmt_pipe_emitted
+  )
+}
+
+fn bash_stmt_pipe_binding_spellings(left: String, right: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_stmt_pipe_left, left),
+    ^bash_stmt_pipe_right, right
+  )
+}
+
+fn bash_stmt_pipe_target_model(left: String, right: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_pipe_translation_rules_node(),
+    source_literal: ^bash_stmt_pipe_source_literal,
+    production_name: ^bash_production_stmt_pipe,
+    tokens: bash_stmt_pipe_tokens(),
+    source_text: bash_stmt_pipe_source_text(left: left, right: right),
+    lex: bash_stmt_pipe_lex(),
+    binding_spellings: bash_stmt_pipe_binding_spellings(left: left, right: right)
+  )
+}
+
+fn bash_stmt_with_redir_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_with_redir_stmt },
+    FixedToken { token_class: ^bash_token_with_redir_sp },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_with_redir_redir }
+  ]
+}
+
+data bash_stmt_with_redir_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_with_redir_tokens()
+)
+
+fn bash_stmt_with_redir_source_text(stmt: String, redir: String) -> String {
+  concat(stmt, concat(" ", redir))
+}
+
+fn bash_stmt_with_redir_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: " ", class: ^bash_token_with_redir_sp)
+  ]))
+}
+
+fn bash_stmt_with_redir_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_with_redir,
+    lhs: ^bash_production_stmt_with_redir,
+    tokens: bash_stmt_with_redir_tokens(),
+    emitted: bash_stmt_with_redir_emitted
+  )
+}
+
+fn bash_stmt_with_redir_binding_spellings(stmt: String, redir: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_stmt_with_redir_stmt, stmt),
+    ^bash_stmt_with_redir_redir, redir
+  )
+}
+
+fn bash_stmt_with_redir_target_model(stmt: String, redir: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_with_redir_translation_rules_node(),
+    source_literal: ^bash_stmt_with_redir_source_literal,
+    production_name: ^bash_production_stmt_with_redir,
+    tokens: bash_stmt_with_redir_tokens(),
+    source_text: bash_stmt_with_redir_source_text(stmt: stmt, redir: redir),
+    lex: bash_stmt_with_redir_lex(),
+    binding_spellings: bash_stmt_with_redir_binding_spellings(stmt: stmt, redir: redir)
+  )
+}
+
+fn bash_stmt_env_prefixed_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_name },
+    FixedToken { token_class: ^bash_token_envp_eq },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_value },
+    FixedToken { token_class: ^bash_token_envp_sp },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_envp_command }
+  ]
+}
+
+data bash_stmt_env_prefixed_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_env_prefixed_tokens()
+)
+
+fn bash_stmt_env_prefixed_source_text(name: String, value: String, command: String) -> String {
+  concat(name, concat("=", concat(value, concat(" ", command))))
+}
+
+fn bash_stmt_env_prefixed_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "=", class: ^bash_token_envp_eq),
+    span(text: " ", class: ^bash_token_envp_sp)
+  ]))
+}
+
+fn bash_stmt_env_prefixed_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_env_prefixed,
+    lhs: ^bash_production_stmt_env_prefixed,
+    tokens: bash_stmt_env_prefixed_tokens(),
+    emitted: bash_stmt_env_prefixed_emitted
+  )
+}
+
+fn bash_stmt_env_prefixed_binding_spellings(name: String, value: String, command: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(empty_map(), ^bash_stmt_envp_name, name),
+      ^bash_stmt_envp_value, value
+    ),
+    ^bash_stmt_envp_command, command
+  )
+}
+
+fn bash_stmt_env_prefixed_target_model(name: String, value: String, command: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_env_prefixed_translation_rules_node(),
+    source_literal: ^bash_stmt_env_prefixed_source_literal,
+    production_name: ^bash_production_stmt_env_prefixed,
+    tokens: bash_stmt_env_prefixed_tokens(),
+    source_text: bash_stmt_env_prefixed_source_text(name: name, value: value, command: command),
+    lex: bash_stmt_env_prefixed_lex(),
+    binding_spellings: bash_stmt_env_prefixed_binding_spellings(name: name, value: value, command: command)
+  )
+}
+
+fn bash_stmt_if_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_if_kw },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
+    FixedToken { token_class: ^bash_token_if_then },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_body },
+    FixedToken { token_class: ^bash_token_if_fi }
+  ]
+}
+
+data bash_stmt_if_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_if_tokens()
+)
+
+fn bash_stmt_if_source_text(cond: String, body: String) -> String {
+  concat("if ", concat(cond, concat("; then ", concat(body, "; fi"))))
+}
+
+fn bash_stmt_if_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "if ", class: ^bash_token_if_kw),
+    span(text: "; then ", class: ^bash_token_if_then),
+    span(text: "; fi", class: ^bash_token_if_fi)
+  ]))
+}
+
+fn bash_stmt_if_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_if,
+    lhs: ^bash_production_stmt_if,
+    tokens: bash_stmt_if_tokens(),
+    emitted: bash_stmt_if_emitted
+  )
+}
+
+fn bash_stmt_if_binding_spellings(cond: String, body: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^bash_stmt_if_cond, cond),
+    ^bash_stmt_if_body, body
+  )
+}
+
+fn bash_stmt_if_target_model(cond: String, body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_if_translation_rules_node(),
+    source_literal: ^bash_stmt_if_source_literal,
+    production_name: ^bash_production_stmt_if,
+    tokens: bash_stmt_if_tokens(),
+    source_text: bash_stmt_if_source_text(cond: cond, body: body),
+    lex: bash_stmt_if_lex(),
+    binding_spellings: bash_stmt_if_binding_spellings(cond: cond, body: body)
+  )
+}
+
+fn bash_stmt_heredoc_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_heredoc_kw },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_path },
+    FixedToken { token_class: ^bash_token_heredoc_dlt_open },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_delim_open },
+    FixedToken { token_class: ^bash_token_heredoc_nl1 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_body },
+    FixedToken { token_class: ^bash_token_heredoc_nl2 },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_heredoc_delim_close }
+  ]
+}
+
+data bash_stmt_heredoc_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_heredoc_tokens()
+)
+
+fn bash_stmt_heredoc_source_text(path: String, delimiter: String, body: String) -> String {
+  concat("cat > ", concat(path,
+    concat(" <<'", concat(delimiter, concat("'\n", concat(body, concat("\n", delimiter)))))))
+}
+
+fn bash_stmt_heredoc_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "cat > ", class: ^bash_token_heredoc_kw),
+    span(text: " <<'", class: ^bash_token_heredoc_dlt_open),
+    span(text: "'\n", class: ^bash_token_heredoc_nl1),
+    span(text: "\n", class: ^bash_token_heredoc_nl2)
+  ]))
+}
+
+fn bash_stmt_heredoc_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_heredoc,
+    lhs: ^bash_production_stmt_heredoc,
+    tokens: bash_stmt_heredoc_tokens(),
+    emitted: bash_stmt_heredoc_emitted
+  )
+}
+
+fn bash_stmt_heredoc_binding_spellings(path: String, delimiter: String, body: String) -> Map<Symbol, String> {
+  map_insert(
+    map_insert(
+      map_insert(
+        map_insert(empty_map(), ^bash_stmt_heredoc_path, path),
+        ^bash_stmt_heredoc_delim_open, delimiter
+      ),
+      ^bash_stmt_heredoc_body, body
+    ),
+    ^bash_stmt_heredoc_delim_close, delimiter
+  )
+}
+
+fn bash_stmt_heredoc_target_model(path: String, delimiter: String, body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_heredoc_translation_rules_node(),
+    source_literal: ^bash_stmt_heredoc_source_literal,
+    production_name: ^bash_production_stmt_heredoc,
+    tokens: bash_stmt_heredoc_tokens(),
+    source_text: bash_stmt_heredoc_source_text(path: path, delimiter: delimiter, body: body),
+    lex: bash_stmt_heredoc_lex(),
+    binding_spellings: bash_stmt_heredoc_binding_spellings(path: path, delimiter: delimiter, body: body)
+  )
+}
+
+fn bash_program_set_e_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_program_set_e_kw },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_program_body }
+  ]
+}
+
+data bash_program_set_e_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_program_set_e_tokens()
+)
+
+fn bash_program_set_e_source_text(body: String) -> String {
+  concat("set -e\n", body)
+}
+
+fn bash_program_set_e_lex(body: String) -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "set -e\n", class: ^bash_token_program_set_e_kw),
+    span(text: body, class: ^bash_token_orch_raw)
+  ]))
+}
+
+fn bash_program_set_e_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_program_set_e,
+    lhs: ^bash_production_program_set_e,
+    tokens: bash_program_set_e_tokens(),
+    emitted: bash_program_set_e_emitted
+  )
+}
+
+fn bash_program_set_e_binding_spellings(body: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_program_body, body)
+}
+
+fn bash_program_set_e_target_model(body: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_program_set_e_translation_rules_node(),
+    source_literal: ^bash_program_set_e_source_literal,
+    production_name: ^bash_production_program_set_e,
+    tokens: bash_program_set_e_tokens(),
+    source_text: bash_program_set_e_source_text(body: body),
+    lex: bash_program_set_e_lex(body: body),
+    binding_spellings: bash_program_set_e_binding_spellings(body: body)
+  )
+}
+
+fn bash_stmt_negation_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_negation_kw },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_negation_inner }
+  ]
+}
+
+data bash_stmt_negation_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_stmt_negation_tokens()
+)
+
+fn bash_stmt_negation_source_text(inner: String) -> String {
+  concat("! ", inner)
+}
+
+fn bash_stmt_negation_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "! ", class: ^bash_token_negation_kw)
+  ]))
+}
+
+fn bash_stmt_negation_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_stmt_negation,
+    lhs: ^bash_production_stmt_negation,
+    tokens: bash_stmt_negation_tokens(),
+    emitted: bash_stmt_negation_emitted
+  )
+}
+
+fn bash_stmt_negation_binding_spellings(inner: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_stmt_negation_inner, inner)
+}
+
+fn bash_stmt_negation_target_model(inner: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_stmt_negation_translation_rules_node(),
+    source_literal: ^bash_stmt_negation_source_literal,
+    production_name: ^bash_production_stmt_negation,
+    tokens: bash_stmt_negation_tokens(),
+    source_text: bash_stmt_negation_source_text(inner: inner),
+    lex: bash_stmt_negation_lex(),
+    binding_spellings: bash_stmt_negation_binding_spellings(inner: inner)
+  )
+}
+
+fn bash_redir_stderr_null_phrase() -> LexicalPhrase {
+  phrase([
+    span(text: "2>/dev/null", class: ^bash_token_redir_stderr_null_freestanding)
+  ])
+}
+
+fn bash_redir_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  phrase_to_fixed_concrete_tokens(p: bash_redir_stderr_null_phrase())
+}
+
+data bash_redir_stderr_null_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_redir_stderr_null_concrete_tokens()
+)
+
+data bash_redir_stderr_null_source_text: String = phrase_to_source_text(p: bash_redir_stderr_null_phrase())
+
+fn bash_redir_stderr_null_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_redir_stderr_null,
+    lhs: ^bash_production_redir_stderr_null,
+    tokens: bash_redir_stderr_null_concrete_tokens(),
+    emitted: bash_redir_stderr_null_emitted
+  )
+}
+
+fn bash_redir_stderr_null_lex() -> LexRules {
+  phrase_to_lex_rules(p: bash_redir_stderr_null_phrase())
+}
+
+fn bash_redir_stderr_null_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_redir_stderr_null_translation_rules_node(),
+    source_literal: ^bash_redir_stderr_null_source_literal,
+    production_name: ^bash_production_redir_stderr_null,
+    tokens: bash_redir_stderr_null_concrete_tokens(),
+    source_text: bash_redir_stderr_null_source_text,
+    lex: bash_redir_stderr_null_lex()
+  )
+}
+
+fn bash_redir_stdout_and_stderr_null_phrase() -> LexicalPhrase {
+  phrase([
+    span(text: ">/dev/null 2>&1", class: ^bash_token_redir_stdout_and_stderr_null)
+  ])
+}
+
+fn bash_redir_stdout_and_stderr_null_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  phrase_to_fixed_concrete_tokens(p: bash_redir_stdout_and_stderr_null_phrase())
+}
+
+data bash_redir_stdout_and_stderr_null_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_redir_stdout_and_stderr_null_concrete_tokens()
+)
+
+data bash_redir_stdout_and_stderr_null_source_text: String = phrase_to_source_text(p: bash_redir_stdout_and_stderr_null_phrase())
+
+fn bash_redir_stdout_and_stderr_null_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_redir_stdout_and_stderr_null,
+    lhs: ^bash_production_redir_stdout_and_stderr_null,
+    tokens: bash_redir_stdout_and_stderr_null_concrete_tokens(),
+    emitted: bash_redir_stdout_and_stderr_null_emitted
+  )
+}
+
+fn bash_redir_stdout_and_stderr_null_lex() -> LexRules {
+  phrase_to_lex_rules(p: bash_redir_stdout_and_stderr_null_phrase())
+}
+
+fn bash_redir_stdout_and_stderr_null_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_redir_stdout_and_stderr_null_translation_rules_node(),
+    source_literal: ^bash_redir_stdout_and_stderr_null_source_literal,
+    production_name: ^bash_production_redir_stdout_and_stderr_null,
+    tokens: bash_redir_stdout_and_stderr_null_concrete_tokens(),
+    source_text: bash_redir_stdout_and_stderr_null_source_text,
+    lex: bash_redir_stdout_and_stderr_null_lex()
+  )
+}
+
+fn bash_redir_stdout_to_stderr_phrase() -> LexicalPhrase {
+  phrase([
+    span(text: ">&2", class: ^bash_token_redir_stdout_to_stderr_freestanding)
+  ])
+}
+
+fn bash_redir_stdout_to_stderr_concrete_tokens() -> List<ConcreteSyntaxToken> {
+  phrase_to_fixed_concrete_tokens(p: bash_redir_stdout_to_stderr_phrase())
+}
+
+data bash_redir_stdout_to_stderr_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_redir_stdout_to_stderr_concrete_tokens()
+)
+
+data bash_redir_stdout_to_stderr_source_text: String = phrase_to_source_text(p: bash_redir_stdout_to_stderr_phrase())
+
+fn bash_redir_stdout_to_stderr_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_redir_stdout_to_stderr,
+    lhs: ^bash_production_redir_stdout_to_stderr,
+    tokens: bash_redir_stdout_to_stderr_concrete_tokens(),
+    emitted: bash_redir_stdout_to_stderr_emitted
+  )
+}
+
+fn bash_redir_stdout_to_stderr_lex() -> LexRules {
+  phrase_to_lex_rules(p: bash_redir_stdout_to_stderr_phrase())
+}
+
+fn bash_redir_stdout_to_stderr_target_model() -> TargetModel {
+  bash_make_fixed_tokens_target_model(
+    rules: bash_redir_stdout_to_stderr_translation_rules_node(),
+    source_literal: ^bash_redir_stdout_to_stderr_source_literal,
+    production_name: ^bash_production_redir_stdout_to_stderr,
+    tokens: bash_redir_stdout_to_stderr_concrete_tokens(),
+    source_text: bash_redir_stdout_to_stderr_source_text,
+    lex: bash_redir_stdout_to_stderr_lex()
+  )
+}
+
+fn bash_redir_to_file_tokens() -> List<ConcreteSyntaxToken> {
+  [
+    FixedToken { token_class: ^bash_token_redir_to_file_prefix },
+    BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_redir_to_file_path }
+  ]
+}
+
+data bash_redir_to_file_emitted: Node = bash_conj_emitted_from_tokens(
+  tokens: bash_redir_to_file_tokens()
+)
+
+fn bash_redir_to_file_source_text(path: String) -> String {
+  concat("> ", path)
+}
+
+fn bash_redir_to_file_lex() -> LexRules {
+  phrase_to_lex_rules(p: phrase([
+    span(text: "> ", class: ^bash_token_redir_to_file_prefix)
+  ]))
+}
+
+fn bash_redir_to_file_translation_rules_node() -> Node {
+  bash_relation_translation_rules_node(
+    rule_name: ^bash_relation_rule_redir_to_file,
+    lhs: ^bash_production_redir_to_file,
+    tokens: bash_redir_to_file_tokens(),
+    emitted: bash_redir_to_file_emitted
+  )
+}
+
+fn bash_redir_to_file_binding_spellings(path: String) -> Map<Symbol, String> {
+  map_insert(empty_map(), ^bash_redir_to_file_path, path)
+}
+
+fn bash_redir_to_file_target_model(path: String) -> TargetModel {
+  bash_make_bound_tokens_target_model(
+    rules: bash_redir_to_file_translation_rules_node(),
+    source_literal: ^bash_redir_to_file_source_literal,
+    production_name: ^bash_production_redir_to_file,
+    tokens: bash_redir_to_file_tokens(),
+    source_text: bash_redir_to_file_source_text(path: path),
+    lex: bash_redir_to_file_lex(),
+    binding_spellings: bash_redir_to_file_binding_spellings(path: path)
   )
 }

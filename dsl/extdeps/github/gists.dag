@@ -1,19 +1,18 @@
-// extdeps/github/gists.dag -- "What is a GitHub Gist?"
-//
-// Gist resource model: files, visibility, versions.
-// Simpler than issues/PRs -- gists are standalone code snippets.
-//
-// Consumers:
-//   shared/gist_modes.dag     -- gist operations
-//   gunbc/tools/gist.dag  -- gist creation workflow
-
 module extdeps.github.gists
 
 import extdeps.github.github { GitHubUser, default_api_base }
-import std.types { Timestamp, GistId, Url, HttpMethod, AuthScheme }
+import std.types { Timestamp, GistId, NonEmptyStr, HttpMethod, AuthScheme }
 import extdeps.github.errors { GitHubErrorShape }
 
-// -- Gist model ----------------------------------------------------
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/gists/gists"
+  }
+}
 
 type GistFile {
   filename: String
@@ -30,25 +29,17 @@ type Gist {
   owner: GitHubUser
   created_at: Timestamp
   updated_at: Timestamp
-  html_url: Url
+  html_url: NonEmptyStr
 }
-
-// -- Service: REST transport wiring ------------------------------
-//
-// 🟡 dissolved — feature:github-gist-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.github.mock_corpus) now governs WHICH
-// github.Gist ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on this shape.
 
 service github.Gist {
   config {
     endpoint: default_api_base
     auth: Bearer
     auth_input: auth_token
-    // GitHub API rate limits: 5000 requests/hour for authenticated users
+
     rate_limit: { requests: 5000, per: hour, scope: core }
-    // Retry on rate limit and server errors with exponential backoff
+
     retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
   }
 
@@ -62,7 +53,7 @@ service github.Gist {
     }
     output {
       id: GistId
-      html_url: Url
+      html_url: NonEmptyStr
     }
     transport rest {
       method: POST,

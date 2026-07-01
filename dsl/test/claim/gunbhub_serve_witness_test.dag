@@ -1,13 +1,3 @@
-// dsl/test/claim/gunbhub_serve_witness_test.dag
-//
-// gunbhub M2 served render surface keystone: ServedStaticRouteTable +
-// dispatch witness (request → 200+body / 404). Bodies are compose-time
-// serialize_fragment output; XSS reject-witness runs at compose, not
-// per-request. Repo-path row is M1 placeholder (react-composed until
-// std.markdown merges).
-//
-// Run via: gunbc run --source-root dsl --entry <this> --function <fn> --claim-run
-
 module test.claim.gunbhub_serve_witness
 
 import gunbc.gunbhub_serve {
@@ -38,14 +28,8 @@ import gunbc.gunbhub_serve {
 import gunbc.gunbhub_serve_html { gunbhub_html_render_keystone_holds }
 import extdeps.http.server { http_content_type_wire_label }
 import std.markup { MarkupNode }
-import std.react_markup {
-  EmitOk,
-  EmitRejected,
-  serialize_react_markup,
-}
 import std.types { GET, POST }
 
-// Witness-only: extract ComposedOk html; pages under test are known compose-safe.
 fn witness_compose_ok_html(node: MarkupNode) -> String {
   match gunbhub_compose_body(node: node) {
     ComposedOk { html: h } => h
@@ -61,7 +45,6 @@ fn expected_readme_html() -> String {
   witness_compose_ok_html(node: gunbhub_readme_page())
 }
 
-// Host contract table: GET / and GET /{repo-path} with compose-time bodies.
 fn witness_static_table_has_two_get_routes() -> Bool {
   let table = gunbhub_served_static_route_table()
   count(xs: table.routes) == 2
@@ -88,7 +71,6 @@ fn witness_static_table_browse_row_matches_host_contract() -> Bool {
   )
 }
 
-// M1 placeholder: repo-path body is react-composed today; swap when std.markdown lands.
 fn witness_static_table_repo_path_row_is_m1_placeholder() -> Bool {
   let table = gunbhub_served_static_route_table()
   let repo_tpl = gunbhub_repo_path_template()
@@ -110,7 +92,6 @@ fn witness_static_table_repo_path_row_is_m1_placeholder() -> Bool {
   )
 }
 
-// End-to-end dispatch: served response body == static table entry.
 fn witness_browse_served_body_matches_consumer() -> Bool {
   let expected = expected_browse_html()
   match serve_gunbhub_request(
@@ -166,7 +147,6 @@ fn witness_repo_path_wrong_method_not_allowed() -> Bool {
   }
 }
 
-// Hostile javascript: href rejected before response — never reaches body.
 fn witness_hostile_compose_rejects_fail_closed() -> Bool {
   match gunbhub_compose_body(node: gunbhub_hostile_page()) {
     ComposeRejected { reason: _ } => true

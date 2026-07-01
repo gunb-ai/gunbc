@@ -1,22 +1,15 @@
-// extdeps/sql/migration.dag -- SQL migration emission target surface.
-//
-// Specs:
-//   ISO/IEC 9075 SQL overview
-//     https://www.iso.org/standard/76583.html
-//   PostgreSQL transactional DDL behavior
-//     https://www.postgresql.org/docs/current/sql-commands.html
-//   SQLite ALTER TABLE behavior
-//     https://www.sqlite.org/lang_altertable.html
-//
-// Ctrl-Migration Phase 3 authority for generated database migration artifacts.
-// This file models migration-script shape and ordering constraints; the SQL
-// transport execution config remains in extdeps.transports.sql.
-
 module extdeps.sql.migration
 
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟢 GREEN (terminal). Ctrl migration projections target exactly three dialect
-// backends today; variants are 1:1 with externally named SQL engines.
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.iso.org/standard/76583.html"
+  }
+}
+
 type SqlDialect = Postgres | Mysql | Sqlite
 
 fn sql_dialect_wire_label(dialect: SqlDialect) -> String {
@@ -27,10 +20,6 @@ fn sql_dialect_wire_label(dialect: SqlDialect) -> String {
   }
 }
 
-// Coproduct dissolution classification:
-// GREEN (terminal). Migration operations have distinct externally visible
-// schema effects and rollback constraints. Keeping them as variants preserves
-// the operation class without requiring SQL string inspection downstream.
 type SqlMigrationOperationKind
   = CreateTable
   | AlterTable
@@ -39,11 +28,7 @@ type SqlMigrationOperationKind
   | DropIndex
   | AddColumn
   | DropColumn
-  // YELLOW scaffold. This variant is only for dialect-specific DDL that cannot
-  // yet be represented by the bounded operation variants above. Consumers must
-  // carry the `dialect` field on `SqlMigrationStep`; dissolve this variant once
-  // the first ctrl migration projection identifies the missing structural
-  // operation kind and adds it here.
+
   | RawSqlStep
 
 type SqlMigrationStep {
@@ -60,9 +45,6 @@ type SqlMigrationScript {
   steps: List<SqlMigrationStep>
 }
 
-// STAGED. This target is consumed by ctrl subsystem projections before any
-// generated migration becomes authority over the current TypeScript-backed DB
-// behavior.
 type SqlMigrationEmissionTarget {
   database_name: String
   migrations: List<SqlMigrationScript>

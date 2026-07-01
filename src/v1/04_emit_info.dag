@@ -1,5 +1,3 @@
-// Emit graph info: type summaries, variant-to-enum maps, and field metadata
-
 module v1.compiler.infer_emit_info
 
 import v1.std.core {
@@ -25,10 +23,6 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   }
 }
 
-// =========================================================================
-// Types
-// =========================================================================
-
 type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 
 type TypeSummary {
@@ -41,72 +35,29 @@ type TypeSummary {
   has_fn_fields: Bool
 }
 
-// RustCorpusRepr: which container/text REALIZATION HANDLER the Rust emitter
-// selects for the WHOLE corpus. The spec is unchanged (List<e> = FreeMonoid<e>
-// at std/types.dag; String) — this names WHICH of the §2 N handlers realizes it.
-// It is a whole-CORPUS property, computed ONCE at the emit boundary
-// (rust_corpus_repr in 05_emit_rust.dag) and threaded down as an individual
-// emit-info field (like shared_types), never decided per-module: a corpus that
-// bundles any v1 seed source (src/v1) emits the HOST representation end-to-end
-// (§7 — the bootstrap seed is host: List→Vec, String, Nat/Int→i64); a pure v2
-// target keeps the faithful FreeMonoid carrier. Selecting once and threading the
-// selection makes per-module divergence UNWRITABLE (§5 construction-not-check).
-// §6-TRANSITIONAL: HostNative dissolves when src/v1 is deleted (seed→0 ⇒ no seed
-// source ⇒ rust_corpus_repr is FaithfulFreeMonoid uniformly).
 type RustCorpusRepr = HostNative | FaithfulFreeMonoid
 
-// EmitGraphInfo: the reconcile→emit boundary contract.
-//
-// Invariant: emit never calls back into infer. All data the emitter needs
-// about graph-level type structure is precomputed here during reconcile
-// (build_emit_graph_info in 04_infer.dag).
-//
-// Fields and guarantees:
-//   type_summaries    — one entry per named type definition (Conj or Disj)
-//                       in the typed module graph. Keyed by type name.
-//                       Guaranteed non-empty for modules with type definitions.
-//                       For enums, variant_name_set provides O(1) membership.
-//                       variant_to_enum and enum_variant_membership are derived
-//                       from type_summaries at the point of use (not stored).
-//   recursive_type_set — type names that participate in recursive cycles
-//                       (detected by 04_cycle.dag). Used by emit to decide
-//                       Rc wrapping (Rust) or pointer indirection (Go/C).
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
   positional_payload_variants: Set<String>
-  // Per-type sharing decision: type names that need shared-pointer
-  // wrapping (Rc in Rust). Computed from type_summaries ×
-  // recursive_type_set. The Rust emitter also adds collection types.
-  // This is the SINGLE authority for sharing decisions — build_type_rendering
-  // reads it, and direct emit sites read it for Rc-aware pattern matching
-  // and construction.
+
   shared_types: Set<String>
   ownership_index: Map<String, Set<String>>
   movable: Set<String>
   variant_to_enum: Map<String, String>
   owned_bindings: Set<String>
-  // Per-function read-only params: func_name → param names borrowable by &Rc.
-  // A param is read-only when all usage edges are Read/Projected/Threaded
-  // (no Consumed) and fan-out > 1. These can be passed by borrow (&Rc<T>).
+
   read_only_params_index: Map<String, Set<String>>
   read_only_params: Set<String>
-  // Corpus-global Rust container/text realization handler (§2 one-spec-N-handlers).
-  // Computed ONCE at the emit boundary (rust_corpus_repr) and read by the
-  // type-renderers' leaf gates (rust_seed_host_container_base / _numeric_alias /
-  // rust_named_type_base) so every module emits the SAME representation — the
-  // single authority for the host-vs-faithful selection. §6-transitional.
+
   corpus_repr: RustCorpusRepr
 }
 
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
 }
-
-// =========================================================================
-// Constructors and lookups
-// =========================================================================
 
 fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
@@ -121,16 +72,10 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
     owned_bindings: empty_set(),
     read_only_params_index: empty_map(),
     read_only_params: empty_set(),
-    // Default to the faithful v2-target carrier; emit_rust overrides to HostNative
-    // for a corpus that bundles v1 seed source (rust_corpus_repr, computed once).
+
     corpus_repr: FaithfulFreeMonoid
   }
 }
-
-
-// =========================================================================
-// Variant and lookup helpers
-// =========================================================================
 
 fn variant_has_fields(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {
   let key = concat(enum_name, "::", variant_name)
@@ -197,10 +142,6 @@ fn find_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name: S
   ) |> first
 }
 
-// =========================================================================
-// Field summary helpers
-// =========================================================================
-
 fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
   let normed = normalize_access_type_node(n: type_node)
   let is_optional = normed.return_cardinality == CardOptional
@@ -211,10 +152,6 @@ fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
 fn is_tuple_type(n: Node) -> Bool {
   n.connective == Conj && n.ident_span == none && n.children |> count == 2
 }
-
-// =========================================================================
-// Struct and enum field summary builders
-// =========================================================================
 
 fn build_struct_field_summaries(parent: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, FieldSummary> {
   let is_pair = is_tuple_type(n: parent)
@@ -287,18 +224,13 @@ fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, 
   )
 }
 
-// =========================================================================
-// Type summary builders
-// =========================================================================
-
 fn build_field_type_map(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
   fold(children, init: empty_map(), f: (acc, child) =>
     match child.inferred {
       Present { value: Resolved { node: ft } } =>
         let resolved_name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: ft))
         let ft_is_type_var = if ft.inferred != none { is_type_variable(inferred: ft.inferred.value) } else { false }
-        // Fail-closed: exclude empty names, type variables, and placeholder types.
-        // Dynamic is a compatibility placeholder that must not enter the authority surface.
+
         let key = authored_name_at(source_indices: source_indices, node: child)
         if resolved_name != "" && !ft_is_type_var && resolved_name != "Dynamic" {
           map_insert(acc, key, resolved_name)
@@ -342,6 +274,43 @@ fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> 
       has_fn_fields: has_fn
     } }
   }
+}
+
+fn type_summary_reaches_fn(name: String, summaries: Map<String, TypeSummary>, visited: Set<String>) -> Bool {
+  if set_contains(visited, name) {
+    false
+  } else {
+    match map_get(summaries, name) {
+      Present { value: s } =>
+        if s.has_fn_fields {
+          true
+        } else {
+          let v2 = set_insert(visited, name)
+          map_values(s.field_type_map) |> any(ft => type_summary_reaches_fn(name: ft, summaries: summaries, visited: v2))
+        }
+      Absent => false
+    }
+  }
+}
+
+fn close_fn_fields(summaries: Map<String, TypeSummary>) -> Map<String, TypeSummary> {
+  fold(map_keys(summaries), init: summaries, f: (acc, name) =>
+    match map_get(summaries, name) {
+      Present { value: s } =>
+        if !s.has_fn_fields && type_summary_reaches_fn(name: name, summaries: summaries, visited: empty_set()) {
+          map_insert(acc, name, TypeSummary {
+            name: s.name,
+            repr: s.repr,
+            field_summaries: s.field_summaries,
+            field_type_map: s.field_type_map,
+            variant_name_set: s.variant_name_set,
+            generic_param_names: s.generic_param_names,
+            has_fn_fields: true
+          })
+        } else { acc }
+      Absent => acc
+    }
+  )
 }
 
 fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: Map<String, NewlineIndex>) -> EmitInfoBuildState {

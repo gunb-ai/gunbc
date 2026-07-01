@@ -1,13 +1,3 @@
-// extdeps/cloud/hetzner.dag — Hetzner Cloud facts (vendor catalog authority).
-//
-// Anchor: https://docs.hetzner.com/cloud/servers/overview
-//
-// Spec: https://docs.hetzner.com/cloud/servers/overview (CAX server-type table)
-// Pricing: https://docs.hetzner.com/general/infrastructure-and-availability/price-adjustment/
-//   (GE-D9256; Germany/Finland CAX rows effective 2026-04-01, ex-VAT)
-//
-// Consumers: product.compute_fabric supply rows (cross-provider isolation witnesses).
-
 module extdeps.cloud.hetzner
 
 import extdeps.toolchain.types { Architecture }
@@ -46,8 +36,6 @@ type HetznerCloudServerCatalogRow {
   cpu_architecture: Architecture
 }
 
-// CAX41 — 16 Ampere® vCPU, 32 GiB RAM, 320 GB SSD (hetzner.com/cloud cost-optimized).
-// Hourly €0.0505 / monthly cap €31.49 — docs price-adjustment Germany/Finland 2026-04-01.
 data cax41_catalog: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow {
   server_type: Cax41,
   vcpus: hardware_thread_count(16),

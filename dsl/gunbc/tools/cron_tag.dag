@@ -1,9 +1,3 @@
-// gunbc/tools/cron_tag.dag — tag-scoped crontab idempotency (workflow policy).
-//
-// POSIX `crontab` has no tag primitive; gunbc review workflows stamp entries with
-// `# tag:{name}` and upsert by tag. That protocol is product policy — it composes
-// faithful `cron.Tab.List` + `cron.Tab.Replace` from extdeps, not a fused extdeps op.
-
 module gunbc.tools.cron_tag
 
 import extdeps.cron

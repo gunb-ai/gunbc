@@ -1,20 +1,17 @@
-// src/v2/compiler/06_translate.dag
-// Scope: Stage 5a — T-10 translate: fold_node + coercion_fold over infer-authored canonical grounding.
-// Status: W-T-11 — Shape-A MVP-1 grammar-inverse lex walk is exercised by compile-inferred
-// TestClaims for rust/python/go/cpp/typescript (test/claim/manual/mvp1_*_add_translate.dag);
-// live translate_node/coerce_grounded_node + child reattachment zip-fold;
-// authority_source_text retained on TargetModel as self-host anchor only.
-//         grammar-inverse serialize uses translate_serialize_measure (node_subtree_count +
-//         translation_rules subtree) — no fixed fuel constant.
-// Anchor: Stage 5a; Ratified Q14.
-
-
 module v2.compiler.translate
 
-
-import v2.extdeps.languages.dag { dag_surface_operator_canonicalization_member }
+import v2.extdeps.languages.dag {
+  dag_surface_operator_canonicalization_member,
+  emit_import_decl_emitted_node,
+  parse_import_block_idents,
+  parse_production_emitted_identity_optional,
+  parse_qualified_name_segments_from_capture,
+  parse_subtree_find_production_captured,
+  ParseSubtreeAbsent,
+  ParseSubtreeFound
+}
 import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.target_carriers { lossless_source }
+import v2.compiler.target_carriers { target_source_medium }
 import v2.std.compilers.target_model {
   CanonicalOperation,
   TargetBodiedArrowStatementScaffold,
@@ -164,7 +161,12 @@ import v2.std.compilers.target_model {
   target_use_site_ownership_lookup_miss_diagnostic,
   target_reference_layer_tokens_from_node,
   target_reference_layer_apply_type_emitted,
-  target_reference_layer_apply_value_expression
+  target_reference_layer_apply_value_expression,
+  import_value_from_carrier,
+  module_import_projection_from_target,
+  TargetImport,
+  TargetModuleProjection,
+  target_import_to_concrete_tokens
 }
 import v2.std.collection {
   Absent,
@@ -182,6 +184,7 @@ import v2.std.algebra {
   TailAbsent,
   TailFound,
   fold_list,
+  fold_list_node,
   is_empty,
   length,
   list_append,
@@ -193,13 +196,13 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.grammar { grammar_relation_row_reverse_parse_selection }
 type TargetNodeTree = Node
-// 🟢 coproduct dissolution
+
 type TargetBundleChildLookup
   = BundleChildMissing
   | BundleChildFound { value: Node }
   | BundleChildDuplicate
   | BundleChildInvalidEdge
-// node_subtree_count + translation_rules subtree — initial measure for grammar-inverse serialize.
+
 fn node_subtree_count(n: Node) -> Int {
   fold_node(
     n: n,
@@ -220,7 +223,7 @@ fn target_translation_rules_budget(target: TargetModel) -> Outcome<Int> {
     }
   )
 }
-// 🟡 gated — feature:sg-2-type-expr-projection-row-data — consumer:translate_serialize_measure/target_serialize_*_bounded/serialize_type_expr_*_bounded — bind node://adhoc-3bb63121-471 (W2-proper / plan G1) — dissolve-on: TargetModel acyclicity witness (grammar-relation row mutual refs + boundary-atom→signature row trees) replaces rules_budget+subtree serialize fuel and the *_bounded cycle-guard ladder; PR-T-FINISH deletes projection _go only — forbidden: mechanical zeroing of serialize-side _bounded without an occurs-check or model-acyclicity carrier.
+
 fn translate_serialize_measure(target: TargetModel, emitted: Node) -> Outcome<Int> {
   bind_outcome(
     o: target_translation_rules_budget(target: target),
@@ -261,10 +264,7 @@ fn token_sequence_serialize_measure(tokens: List<Node>, target: TargetModel) -> 
     }
   )
 }
-// 🟡 gated — feature:T-11-typed-grammar-relation-row-items — bind gunbc#4761 —
-// dissolve-on: GrammarRelationRow.tokens carries a typed row-item carrier that separates
-// concrete tokens from emitted nonterminal nodes before serialization; forbidden:
-// dispatching raw List<Node> row items without this fail-closed classifier.
+
 type TokenSequenceItemKind
   = TokenSequenceConcreteToken
   | TokenSequenceNonterminal
@@ -459,9 +459,7 @@ fn grammar_relation_row_for_emitted(rules: Node, emitted: Node) -> Outcome<Node>
       }
   }
 }
-// Bodied-arrow serialize: resolve scaffold from the translation-rules row that carries
-// grammar_relation_field_bodied_scaffold — NOT grammar_inverse exact emitted-node match
-// (producer-coerced signature slots differ from the fixture row's emitted field).
+
 fn grammar_relation_row_with_bodied_scaffold(rules: Node) -> Outcome<Node> {
   match rules.kind {
     TypeNode { connective: Conj } =>
@@ -544,8 +542,7 @@ fn grammar_inverse_bodied_arrow_validated(
     }
   )
 }
-// E-9 bodied Arrow: serialize derives signature from grammar scaffold + body from
-// value-expression projection — preserve producer IR unchanged through translate.
+
 fn translate_bodied_arrow_preserve_producer_ir(arrow: Node) -> Outcome<Node> {
   outcome_accepted(arrow)
 }
@@ -563,7 +560,7 @@ fn conj_positional_targets(parent: Node) -> Outcome<List<Node>> {
   }
 }
 fn optional_named_child_ignoring_positional(parent: Node, edge_name: Symbol) -> Outcome<Node?> {
-  // Token-sequence dispatch items may be inner-production nodes with positional edges.
+
   match parent.kind {
     TypeNode { connective: Conj } =>
       match fold(
@@ -638,9 +635,7 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
             Present { value: _ } =>
               match kind_node {
                 Present { value: _ } =>
-                  // Class + kind both present: this is a concrete token iff it decodes into a
-                  // FixedToken/BoundToken variant. Structural decode replaces the former
-                  // Symbol-equality kind check (and additionally rejects malformed payloads).
+
                   bind_outcome(
                     o: concrete_syntax_token_from_node(token: item),
                     f: fn(_) {
@@ -667,10 +662,7 @@ fn token_sequence_item_kind(item: Node) -> Outcome<TokenSequenceItemKind> {
     }
   )
 }
-// Find a serialize_source's canonical `tokens` edge (the fold_list_node named-cons token
-// sequence), if present. Folds the children directly so it is safe on either encoding —
-// a node carrying the named tokens edge (lowered) or one with legacy positional token
-// edges (returns Absent, the caller falls back to positional extraction).
+
 fn serialize_source_tokens_fold_child(serialize_source: Node) -> Optional<Node> {
   fold(
     serialize_source.children,
@@ -688,8 +680,7 @@ fn serialize_source_tokens_fold_child(serialize_source: Node) -> Optional<Node> 
     }
   )
 }
-// Walk a fold_list_node named-cons chain (Conj{Named head, Named tail} cells terminating
-// in an empty Conj) to the List of head targets. Self-contained (no decode_item convention).
+
 fn serialize_source_fold_list_targets(remaining: Int, node: Node) -> Outcome<List<Node>> {
   if remaining <= 0 {
     outcome_rejected(translate_grammar_inverse_not_realized_diagnostic(emitted: node))
@@ -720,9 +711,7 @@ fn serialize_source_fold_list_targets(remaining: Int, node: Node) -> Outcome<Lis
     }
   }
 }
-// Token-target sequence of a serialize_source, transparent over the token encoding: a
-// canonical fold_list_node named-cons tokens edge is walked as a fold_list; a legacy
-// serialize_source with positional token edges falls back to its positional targets.
+
 fn serialize_source_token_targets(serialize_source: Node) -> Outcome<List<Node>> {
   match serialize_source_tokens_fold_child(serialize_source: serialize_source) {
     Present { value: tokens_fold } =>
@@ -734,8 +723,7 @@ fn serialize_source_token_targets(serialize_source: Node) -> Outcome<List<Node>>
       conj_positional_targets(parent: serialize_source)
   }
 }
-// Token-target sequence of a grammar-relation `tokens` node (the fold_list_node spine from
-// grammar_relation_tokens_node after B5, or legacy positional-Conj token edges).
+
 fn grammar_tokens_node_targets(tokens_node: Node) -> Outcome<List<Node>> {
   bind_outcome(
     o: optional_named_child_ignoring_positional(
@@ -819,7 +807,7 @@ fn serialize_concrete_syntax_tokens_to_source(
   bind_outcome(
     o: serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens),
     f: fn(text) {
-      outcome_accepted(lossless_source(text: text))
+      target_source_medium(text: text, target: target)
     }
   )
 }
@@ -861,8 +849,6 @@ fn serialize_concrete_syntax_tokens_to_source_string(
   )
 }
 
-// Surface-decode shim (§1.5): decodes ^dag_token_plus surface token → CanonicalOperation, then
-// delegates the structural Transform projection to target_model. Keeps target_model extdep-free.
 fn translate_project_transform_in_arrow_scope(
   arrow: Node,
   body: Node,
@@ -879,9 +865,7 @@ fn translate_project_transform_in_arrow_scope(
             canonical_op: canonical_op,
             target: target
           )
-        // Lane 2c — a Transform head that does NOT canonicalize to an operator is a callee
-        // reference: project the body as a value-level call `callee(arg, ...)`, recursing through
-        // this same projector for nested calls and inline-closure arguments.
+
         Rejected { diagnostics: _ } =>
           target_project_transform_callable_apply_in_arrow_scope(
             arrow: arrow,
@@ -1124,9 +1108,7 @@ fn token_sequence_to_source(tokens: List<Node>, target: TargetModel) -> Outcome<
     }
   )
 }
-// Shape-A MVP-1 grammar-inverse serialize via token_sequence_to_source for all five
-// Shape-A targets (rust/python/go/cpp/typescript TestClaims). TargetModel.authority_source_text
-// must not substitute for validated emitted Node serialization.
+
 fn target_serialize_source_from_model_bounded(
   remaining: Int,
   target: TargetModel,
@@ -1138,6 +1120,29 @@ fn target_serialize_source_from_model_bounded(
     )
   } else if target_value_expr_arrow_has_value_expression_body(arrow: emitted) {
     target_serialize_bodied_arrow_from_model(target: target, emitted: emitted)
+  } else if is_dag_import_carrier(emitted: emitted) {
+    bind_outcome(
+      o: module_import_projection_from_target(target: target),
+      f: fn(projection) {
+        bind_outcome(
+          o: import_value_from_carrier(carrier: emitted),
+          f: fn(import_value) {
+            bind_outcome(
+              o: target_import_to_concrete_tokens(
+                import_value: import_value,
+                projection: projection
+              ),
+              f: fn(tokens) {
+                serialize_concrete_syntax_tokens_to_source_string(
+                  target: target,
+                  tokens: tokens
+                )
+              }
+            )
+          }
+        )
+      }
+    )
   } else {
     match target_type_expr_emitted_kind(node: emitted) {
       TypeExprKindAuthority { value: _ } =>
@@ -1176,7 +1181,7 @@ fn target_serialize_source_from_model(
       bind_outcome(
         o: target_serialize_source_from_model_bounded(measure, target, emitted),
         f: fn(text) {
-          outcome_accepted(lossless_source(text: text))
+          target_source_medium(text: text, target: target)
         }
       )
     }
@@ -1626,14 +1631,7 @@ fn list_head_and_tail(xs: List<Node>, node: Node) -> Outcome<TypeExprHeadTail> {
       }
   }
 }
-// 🟡 gated — feature:sg-2-type-expr-projection-row-data — owner:witty-raven-599 —
-// bind node://adhoc-3bb63121-471 (W2-proper / plan G1 completion) — dissolve-on:
-// each connective realization in translate_algebra is a DATA row on
-// TargetTypeExpressionProjection (generic row interpreter), not a per-connective algebra
-// fn; PR-T-FINISH lands traversal-fold + homing-correction only — forbidden: letting this
-// float as an untracked follow-up.
-// 🟢 TERMINAL — irreducible NodeFold states for translate_algebra row arms (Slots/Variants/
-// Positional = connective-specific accumulation; Done = leaf/subtree already projected).
+
 type TypeExprTranslateAcc
   = TypeExprTranslateSlots { slots: List<TargetTypeExprFieldSlot> }
   | TypeExprTranslateVariants { variants: List<TargetTypeExprVariantSlot> }
@@ -2058,12 +2056,6 @@ fn serialize_type_expr_record_field_label(target: TargetModel, edge: Edge) -> Ou
   }
 }
 
-// A use-site carrier's identity. Ownership attaches to CARRIERS, each asked ONCE by
-// its OWN identity: a bare-atom carrier (e.g. a scalar inhabitant `rust_inhabitant_i32`)
-// IS its own identity, so take it directly via node_atom_identity. A composite/wrapper
-// carrier presents the identity as its single positional sub-atom, so fall through to
-// type_expr_atom_binding. The wrapper-only decoder must not be asked of a bare atom —
-// it would read for a positional sub-child the carrier lacks and fail shape-closed.
 fn type_expr_carrier_identity(node: Node) -> Outcome<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: _ } } => node_atom_identity(node: node)
@@ -2787,7 +2779,6 @@ fn translate_sg_rc_bundle_edge_present(target: TargetModel, edge_name: Symbol) -
   }
 }
 
-// Accepted false => no SG-RC edges (skip consumer); true => apply catalog; Rejected => malformed/partial bundle.
 fn translate_sg_rc_bundle_apply_disposition(
   target: TargetModel,
   source_carrier: Node
@@ -2848,10 +2839,6 @@ fn translate_use_site_ownership_catalog_from_model(
   }
 }
 
-// Value-semantics (Copy) carrier set from the target bundle. Edge absent ⇒ empty
-// (a target without value-semantics modeling behaves exactly as before: every
-// carrier flows to the reference catalog). Decoded to the Atom-identity list the
-// authority lookup matches on.
 fn translate_value_semantics_carriers_from_model(target: TargetModel) -> Outcome<List<Symbol>> {
   match target_bundle_optional_child(
     target: target,
@@ -2881,8 +2868,6 @@ fn translate_apply_use_site_ownership_to_projected_type(
   )
 }
 
-// Arrow boundary ownership matches serialize_type_expr_boundary_bounded discipline:
-// SG-RC applies only when the projected wire is an atom; composite boundaries pass through.
 fn translate_apply_use_site_ownership_to_projected_boundary(
   projected: Node,
   source_for_binding: Node,
@@ -3056,10 +3041,6 @@ fn translate_outcome_is_signature_realization_miss(
   diagnostics.head.reason == ^target_function_signature_realization_lookup_miss
 }
 
-// Reconstruct the SG-1 source_carrier Node from a boundary atom's binding identity. Arrow
-// domain/codomain atoms are projected (06_translate translate_type_expression_project) with
-// the SOURCE atom identity passed through, so for the kernel Symbol return type the binding ==
-// symbol_kernel_type_atom and this Node == symbol_kernel_type_node() — the SG-1 row key.
 fn translate_boundary_source_carrier_node(binding: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: binding } },
@@ -3077,10 +3058,6 @@ fn function_boundary_site_to_ownership_use_site(
   }
 }
 
-// Consult the per-language signature realization catalog for the fn-boundary atom at `emitted`.
-// Returns Present(row) on a (source_carrier, boundary_site) hit; Absent when the model carries no
-// signature catalog OR no row matches (both fall back to the SG-2/binding_spellings path); Rejected
-// only on a genuine decode/ambiguity error.
 fn translate_target_function_signature_realization_for_boundary(
   target: TargetModel,
   emitted: Node,
@@ -3119,9 +3096,6 @@ fn translate_target_function_signature_realization_for_boundary(
   }
 }
 
-// Serialize a fn-boundary atom: emit the signature realization's signature_type_form when a row
-// matches (SG-1b authority); otherwise consult TargetUseSiteOwnershipRealization for this
-// boundary role, then serialize the emitted wire (SG-RC + SG-2; no spelling-only bypass).
 fn serialize_type_expr_boundary_atom_bounded(
   remaining: Int,
   target: TargetModel,
@@ -3172,8 +3146,6 @@ fn serialize_type_expr_boundary_atom_bounded(
   }
 }
 
-// Boundary-aware type serializer used ONLY from Arrow domain (Param) and codomain (Return) sites.
-// Atom boundaries consult signature realization; composite boundary types serialize normally.
 fn serialize_type_expr_boundary_bounded(
   remaining: Int,
   target: TargetModel,
@@ -3512,10 +3484,6 @@ fn translate_coerced_with_atom_realization_at_use_site(
   }
 }
 
-// Fold/MVP1 default coerce: binding-projection rows govern both type shell and value expr (P-RC-CONSUMER).
-// Boundary sites (return/param/struct-field) must call translate_coerced_with_atom_realization_at_use_site
-// with the matching TargetOwnershipUseSite, or use translate_apply_use_site_ownership_to_projected_type
-// for emitted type wires (value expr uses translate_apply_use_site_ownership_to_value_expression).
 fn translate_coerced_with_atom_realization(
   source: Node,
   coerced: Node,
@@ -3538,7 +3506,7 @@ fn translate_type_fold_init(node: Node) -> Outcome<Node> {
   }
 }
 fn translate_computation_fold_init(node: Node) -> Outcome<Node> {
-  // T6 / E-9: Behavior sub-DAG (Arrow.body) is internal — fold structurally, not coerce.
+
   translate_type_fold_init(node: node)
 }
 fn translate_fold_init(
@@ -3575,23 +3543,11 @@ fn translate_mvp1_coerce_from_grounding_or_evidence(
               pending: None
             )
           } else {
-            // 🟡 gated — feature:translate-mvp1-e9-structural-carry-no-grounding — consumer:
-            // translate_mvp1_coerce_from_grounding_or_evidence — bind: PR #4627 T6 bodied-arrow
-            // skeleton — owner: T6 value-expression skeleton — lane: compiler 06_translate —
-            // dissolve-on-arrival: body-scope operator/param refs ground via infer witness or
-            // bounded E-9 carrier with explicit dissolution trigger; forbidden: unconditional
-            // translate_type_fold_init when coerce_grounded_node rejects and grounding witness
-            // is present but not algebra-grounded, outside Arrow.body internal fold.
+
             translate_type_fold_init(node: node)
           }
         Rejected { diagnostics: _ } =>
-          // 🟡 gated — feature:translate-mvp1-e9-structural-carry-no-grounding — consumer:
-          // translate_mvp1_coerce_from_grounding_or_evidence — bind: PR #4627 T6 bodied-arrow
-          // skeleton — owner: T6 value-expression skeleton — lane: compiler 06_translate —
-          // dissolve-on-arrival: body-scope operator/param refs ground via infer witness or
-          // bounded E-9 carrier with explicit dissolution trigger; forbidden: unconditional
-          // translate_type_fold_init when coerce_grounded_node and canonical_grounding_for_node
-          // both reject outside Arrow.body internal fold.
+
           translate_type_fold_init(node: node)
       }
   }
@@ -3603,7 +3559,7 @@ fn translate_mvp1_fold_init(
 ) -> Outcome<Node> {
   match node.kind {
     TypeNode { connective: Arrow } =>
-      // Bodied Arrow: fold signature children through coercion; body folds structurally (E-9).
+
       if target_value_expr_arrow_has_value_expression_body(arrow: node) {
         translate_type_fold_init(node: node)
       } else {
@@ -3638,10 +3594,7 @@ fn translate_mvp1_fold_init(
     ComputationNode { behavior: _ } => translate_computation_fold_init(node: node)
   }
 }
-// Grammar-first match: does the (raw, structure-preserving) emitted node match a row in
-// the target's grammar relation? Accepted(row) => the node is grammar-fixtured and must
-// serialize via the mode-1 whole-node match (grammar_relation_row_for_emitted :536 ->
-// pre-baked tokens); Rejected => no row, fall through to the projection / mode-2 path.
+
 fn translate_grammar_relation_row_match(target: TargetModel, emitted: Node) -> Outcome<Node> {
   bind_outcome(
     o: target_bundle_child(target: target, edge_name: ^target_model_edge_translation_rules),
@@ -3666,11 +3619,7 @@ fn translate_type_expression_tree(
         }
       ),
       f: fn(n) {
-        // Grammar-first short-circuit: if the structure-preserving (raw) folded node matches
-        // a grammar relation row, return it RAW so serialize routes through the mode-1 whole-
-        // node grammar match -> pre-baked concrete tokens (the full source, e.g. the mvp1
-        // add fn). Nodes WITHOUT a grammar row fall through to the existing projection /
-        // mode-2 (SG-2) path, UNTOUCHED — they carry the type-expression projection wrapping.
+
         match translate_grammar_relation_row_match(target: target, emitted: n) {
           Accepted { value: _, diagnostics: _ } => outcome_accepted(n)
           Rejected { diagnostics: _ } =>
@@ -3785,6 +3734,102 @@ fn translate_node_mvp1_fold(
     }
   )
 }
+fn is_dag_import_production_node(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_surface_import_decl
+    Absent => false
+  }
+}
+
+fn translate_import_production_qn_node(import_node: Node) -> Outcome<Node> {
+  match parse_subtree_find_production_captured(
+    root: import_node,
+    emitted: ^dag_surface_qualified_name
+  ) {
+    ParseSubtreeAbsent =>
+      outcome_rejected(
+        translate_grammar_relation_row_not_found_diagnostic(emitted: import_node)
+      )
+    ParseSubtreeFound { captured: qn_capture } =>
+      bind_outcome(
+        o: parse_qualified_name_segments_from_capture(qn_capture: qn_capture, root: import_node),
+        f: fn(segments) {
+          outcome_accepted(
+            value: fold_list_node(
+              xs: segments,
+              item_node: fn(sym) {
+                Node {
+                  kind: TypeNode { connective: Atom { identity: sym } },
+                  children: [],
+                  occurrence_id: SyntheticOccurrence
+                }
+              }
+            )
+          )
+        }
+      )
+  }
+}
+
+fn translate_import_production_block_node(import_node: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: parse_import_block_idents(import_decl_node: import_node, root: import_node),
+    f: fn(idents) {
+      outcome_accepted(
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: fold_list(
+            xs: idents,
+            empty: Empty,
+            cons: fn(acc, sym) {
+              list_append(
+                left: acc,
+                right: [
+                  Edge {
+                    label: Positional,
+                    target: Node {
+                      kind: TypeNode { connective: Atom { identity: sym } },
+                      children: [],
+                      occurrence_id: SyntheticOccurrence
+                    }
+                  }
+                ]
+              )
+            }
+          ),
+          occurrence_id: SyntheticOccurrence
+        }
+      )
+    }
+  )
+}
+
+fn translate_import_production_to_carrier(import_node: Node) -> Outcome<Node> {
+  bind_outcome(
+    o: translate_import_production_qn_node(import_node: import_node),
+    f: fn(qn_node) {
+      bind_outcome(
+        o: translate_import_production_block_node(import_node: import_node),
+        f: fn(block_node) {
+          outcome_accepted(
+            value: emit_import_decl_emitted_node(
+              qualified_name: qn_node,
+              import_block: Present { value: block_node }
+            )
+          )
+        }
+      )
+    }
+  )
+}
+
+fn is_dag_import_carrier(emitted: Node) -> Bool {
+  match find_named_child(root: emitted, name: ^dag_surface_import_decl) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn translate_node_mvp1(
   node: Node,
   tree: InferredTree,
@@ -3792,6 +3837,8 @@ fn translate_node_mvp1(
 ) -> Outcome<Node> {
   if target_value_expr_arrow_has_value_expression_body(arrow: node) {
     translate_bodied_arrow_preserve_producer_ir(arrow: node)
+  } else if is_dag_import_production_node(node: node) {
+    translate_import_production_to_carrier(import_node: node)
   } else {
     bind_outcome(
       o: fold_node(
@@ -3802,13 +3849,7 @@ fn translate_node_mvp1(
         }
       ),
       f: fn(raw) {
-        // Grammar-first short-circuit (parity with translate_type_expression_tree :3736, the
-        // ProjectionPresent/SG-2 path): if the structure-preserving (raw) folded node matches a
-        // grammar relation row, return it RAW so serialize routes through the mode-1 whole-node
-        // grammar match -> pre-baked concrete tokens (e.g. the mvp1 add fn). Nodes WITHOUT a
-        // grammar row fall through to the existing coercing MVP1 fold, UNTOUCHED. translate_node_mvp1
-        // is gated to dissolve INTO the projection path (see translate_node mark), so this converges
-        // with the arc rather than adding a steady-state dual path.
+
         match translate_grammar_relation_row_match(target: target, emitted: raw) {
           Accepted { value: _, diagnostics: _ } => outcome_accepted(raw)
           Rejected { diagnostics: _ } =>
@@ -3832,7 +3873,7 @@ fn translate_node(
       Rejected { diagnostics: r }
   }
 }
-// 🟡 gated — coproduct-dissolution interim — feature:sg-2-mvp1-projection-absent-shim — consumer:translate_node — bind PR #3962 / docs/planning/v2-sg2-type-expression-projection-worksheet-2026-05-30.md — owner:Target Realization (SG-2) — lane:extdeps TargetModel row rollout — dissolve-on-arrival: every v2.extdeps.languages.* TargetModel bundle carries target_model_edge_type_expression_projection; delete ProjectionAbsent arm, translate_node_mvp1, and TypeExprProjectionPresence from translate_node — forbidden: steady-state dual translate paths or new ProjectionAbsent match arms outside this gate.
+
 type TypeExprProjectionPresence
   = ProjectionPresent
   | ProjectionAbsent
@@ -3885,7 +3926,6 @@ fn translate(
   translate_node(node: tree.root, tree: tree, target: target)
 }
 
-// Cross-module witness helper: translate Outcome carrier as Node (TargetNodeTree = Node in-module).
 fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<Node> {
   bind_outcome(
     o: translate(tree: tree, target: target),
@@ -3895,23 +3935,6 @@ fn translate_emitted_node(tree: InferredTree, target: TargetModel) -> Outcome<No
   )
 }
 
-// Route B — declared translate diagnostic reason sum (§3/§4: coproduct authority, not Symbol roster + predicate fan-out).
-//
-// SCAFFOLD (parallel-representation, §3 single-authority / §6 named dissolution):
-//   This coproduct is the *authority* for translate reasons, but emission sites below still mint
-//   bare `^translate_*` symbols into `Diagnostic.reason: Symbol`, and `_symbol`/`_from_symbol`/
-//   `_roster` form a hand-maintained bridge holding the sum and the wire symbols in sync. That bridge
-//   is the duplicated representation. Until it dissolves, a new emission reason can drift out of the
-//   coproduct and `_from_symbol` silently returns Absent.
-//   dissolve-on: `Diagnostic.reason` is retyped from `Symbol` to `TranslateDiagnosticReason` (the
-//   emission sites construct the variant directly, serialize projects to the wire symbol via
-//   `_symbol`, and the hand `_symbol` match collapses) — OR a roster-vs-emission lens lands that
-//   fails closed when a `^translate_*` reason literal is raised with no matching variant. Whichever
-//   lands first removes this scaffold; this marker is the §6 dissolution trigger that keeps the
-//   staged migration from ossifying as parallel representation.
-//   Partial (#5180 follow-on): `_from_symbol` and `_roster` derive by inverting `_symbol` over
-//   `translate_diagnostic_reason_variants()` (§4 one-grammar-both-directions); only `_symbol` retains
-//   the wire-symbol projection table until emission sites migrate off bare `^translate_*` literals.
 type TranslateDiagnosticReason
   = TargetBundleMalformed
   | TargetBundleDuplicateEdge
@@ -3931,9 +3954,6 @@ type TranslateDiagnosticReason
   | TargetFunctionSignatureRealizationLookupMiss
   | TargetTypeExprEmittedShapeMalformed
 
-// 🟡 gated — feature:coproduct-variant-enumeration — bind gunbc#4759 — dissolve-on-arrival: derive
-// TranslateDiagnosticReason variant list from coproduct-arm compile-time lens; delete this mirror.
-// forbidden: parallel hand-enumerated TranslateDiagnosticReason universes outside 06_translate.dag.
 fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
   [
     TargetBundleMalformed,
@@ -3978,7 +3998,7 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> Symb
   }
 }
 
-fn translate_diagnostic_reason_from_symbol_go(
+fn translate_diagnostic_reason_find_by_symbol(
   sym: Symbol,
   variants: List<TranslateDiagnosticReason>
 ) -> Optional<TranslateDiagnosticReason> {
@@ -3996,7 +4016,7 @@ fn translate_diagnostic_reason_from_symbol_go(
 }
 
 fn translate_diagnostic_reason_from_symbol(sym: Symbol) -> Optional<TranslateDiagnosticReason> {
-  translate_diagnostic_reason_from_symbol_go(
+  translate_diagnostic_reason_find_by_symbol(
     sym: sym,
     variants: translate_diagnostic_reason_variants()
   )

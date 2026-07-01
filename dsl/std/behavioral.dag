@@ -1,23 +1,15 @@
-// std/behavioral.dag -- Behavioral vocabulary for external-system modeling.
-//
-// Canonical operation behavior schema ported from the-gunbai Understanding
-// model and used by Lane 4 extdeps + interface contracts.
-
 module std.behavioral
 
-// How an operation affects the world.
+data operation_determinism_projection_activation_marker: String = "P5 SERVICE PROJECTION scaffold — std.behavioral Determinism (OperationDeterminism) currently re-declares Deterministic|NonDeterministic alongside EventuallyConsistent; honest §3 fork until projection lands. Core authority: std.determinism DeterminismAxis (two arms only). Activation (P5): project Deterministic/NonDeterministic from v2.std.determinism DeterminismFact/DeterminismClass at OperationBehavior bind time (Deterministic ⇐ every bound realization is Deterministic; NonDeterministic ⇐ ∃ NonDeterministic { source: _ }; EventuallyConsistent has no DeterminismClass/NonDetSource image — D2). Dissolves when: extdeps OperationBehavior contracts consume projected determinism from DeterminismFact without restating the core predicate; contract drift lens gates behavioral↔compiler alignment (determinism-mechanism-design P5)."
+
 type SideEffects = ReadOnly | WritesState | WritesExternal
 
-// Whether repeated invocations with equal inputs converge to one outcome.
 type Determinism = Deterministic | NonDeterministic | EventuallyConsistent
 
-// Severity used by modeled edge cases.
 type Severity = Low | Medium | High | Critical
 
-// Confidence assigned to a behavior declaration.
 type Confidence = Documented | HighConfidence | MediumConfidence | LowConfidence | Assumed
 
-// Coarse-grained prerequisite kind.
 type PrerequisiteKind = Capability | Credential | Infrastructure | Policy | Tooling | Runtime | Other
 
 type FailureMode {
@@ -39,7 +31,6 @@ type Prerequisite {
   kind: PrerequisiteKind
 }
 
-// Shared contract types used by all interface definitions.
 type CapabilityBehaviorContract {
   capability: String
   behavior: OperationBehavior
@@ -50,7 +41,6 @@ type CapabilityFailureContract {
   failures: List<FailureMode>
 }
 
-// Canonical behavior payload attached to operations and capabilities.
 type OperationBehavior {
   side_effects: SideEffects
   determinism: Determinism

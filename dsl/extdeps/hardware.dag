@@ -1,13 +1,3 @@
-// extdeps/hardware.dag — the electronic-hardware domain marker.
-//
-// "Hardware" here is electronic hardware: the physical devices/components a system
-// is built from (CPUs, GPUs, DRAM, …) — the real-world domain that the per-vendor
-// catalogs under extdeps/{cpu,memory}/ and product/compute_fabric model. It is a
-// domain TAG, not a universal framework, so it lives downstream of std (extdeps),
-// not in std. It is the type argument that specializes the generic Vendor concept:
-// a hardware maker is a `Vendor<Hardware>` (extdeps/vendor.dag).
-// Anchor: https://en.wikipedia.org/wiki/Electronic_hardware
-
 module extdeps.hardware
 
 import extdeps.external_authority { ExternalAuthority }
@@ -20,8 +10,4 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Phantom domain marker (no inhabitants of its own — same deferral shape as
-// std.ReferenceModel<T> / the Measure phantom scales). It exists only to specialize
-// `Vendor<Domain>`; a richer hardware taxonomy decomposes here when a consumer needs
-// to dispatch on it (DESIGN §6 model just-in-time).
 type Hardware

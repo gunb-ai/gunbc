@@ -1,5 +1,3 @@
-// Status: modeled claim + fixture pair.
-
 module v2.test.language_model.typescript_r3_external
 
 import v2.lens.leaf_model_verification {

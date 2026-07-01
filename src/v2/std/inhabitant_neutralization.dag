@@ -1,8 +1,3 @@
-// src/v2/std/inhabitant_neutralization.dag
-// Scope: generic cross-language inhabitant neutralization — source inhabitant -> canonical
-//   std_projection fact -> target inhabitant, via shared facts_field_std_projection DATA.
-// Status: emit-surface §3 critical path; one generic fold, no per-language arms.
-
 module v2.std.inhabitant_neutralization
 
 import v2.std.algebra { Empty, list_snoc_item }
@@ -38,7 +33,6 @@ import v2.std.passing_candidate_fold {
   OnePassingCandidate,
   PassingCandidateFold
 }
-
 
 fn inhabitant_neutralization_std_projection_missing_diagnostic(node: Node) -> Diagnostic {
   Diagnostic {
@@ -84,7 +78,6 @@ fn inhabitant_neutralization_ambiguous_target_diagnostic(
   }
 }
 
-// Locate the facts conj on an inhabitant carrier by probing for facts_field_std_projection.
 fn inhabitant_facts_node_from_inhabitant(inhabitant: Node) -> Outcome<Node> {
   fold(
     node_labeled_child_edges(node: inhabitant),
@@ -178,7 +171,6 @@ fn inhabitant_width_node(inhabitant: Node) -> Outcome<Node> {
   )
 }
 
-// Fact-alignment tiebreak: atom + width + surface_spelling vs target selection_policy inhabitant.
 fn inhabitant_aligns_with_selection_policy(candidate: Node, selection: Node) -> Bool {
   match inhabitant_type_atom_symbol(inhabitant: candidate) {
     Accepted { value: candidate_atom, diagnostics: _ } =>

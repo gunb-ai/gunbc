@@ -1,26 +1,24 @@
-// extdeps/toolchain/architecture_profile.dag — arch + ABI substrate for the §10 execution-contract layer.
-//
-// Scope: cited machine facts + CallingConvention + StackLayout — the arch-specific execution
-// substrate before format and invocation-surface composition (exec-contract §4).
-// M9: `architecture` attaches to extdeps.toolchain.types.Architecture (no parallel arch notion).
-// Per-arch cited inhabitants live in extdeps/runtime/architecture/*.dag (M3).
-//
-// Lives in extdeps/toolchain (not std) — std must not import extdeps (DESIGN §3 layer DAG).
-
 module extdeps.toolchain.architecture_profile
 
 import extdeps.toolchain.types { Architecture }
 import std.abi { ArchitecturalRegister, CallingConvention, StackLayout }
 import std.measure { BitWidth, ByteSize }
 import std.os.invocation { StableInvocationSurface }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// 🟢 TERMINAL coproduct — irreducible machine byte-order distinction (little vs big endian).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Instruction_set_architecture"
+  }
+}
+
 type Endianness = LittleEndian | BigEndian
 
 type ArchitectureProfile {
   architecture: Architecture
-  // 🟡 feature:L-8-fixed-width-words — bind os-exec-contract-layer L-8 — dissolve-on: enforced
-  // fixed-width word carriers in std.bit replace Measure<Information, One> width fields.
+
   word_width: BitWidth
   pointer_width: BitWidth
   endianness: Endianness
@@ -31,8 +29,6 @@ type ArchitectureProfile {
   stack_layout: StackLayout
 }
 
-// DeploymentTarget composes profile + invocation surface (zesty ruling §5).
-// operating_system attach is 🟡-gated on std.os.types v2 catalog flip (Option + single-variant enum).
 type DeploymentTarget {
   profile: ArchitectureProfile
   invocation: StableInvocationSurface

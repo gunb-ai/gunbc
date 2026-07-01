@@ -1,5 +1,3 @@
-//! R3 gate #60 Slice Z — v2 parser accepts literal-Nat width indices in `<…>` type args.
-
 use std::rc::Rc;
 
 use crate::helpers::{

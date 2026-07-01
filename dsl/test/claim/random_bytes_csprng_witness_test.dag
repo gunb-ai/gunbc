@@ -1,0 +1,44 @@
+module test.claim.random_bytes_csprng_witness
+
+import std.logic { Bool }
+import std.types { Int, list_length }
+import std.integer { UInt8 }
+import extdeps.entropy
+import std.encoding { Base64Variant, Standard, UrlSafe, base64_encode, base64_decode }
+
+
+
+fn getrandom_octets(count: Int) -> List<UInt8>? {
+  base64_decode(s: Urandom.ReadBytes(count: count).octets_b64, variant: Standard)
+}
+
+pattern mint_base64url_credential(byte_count: Int) -> { credential: String }
+{
+  node cred = match getrandom_octets(count: byte_count) {
+    Present { value: bs } => base64_encode(octets: bs, variant: UrlSafe)
+    Absent => ""
+  }
+  return { credential: cred }
+}
+
+test fn random_bytes_count_holds() -> Bool {
+  match getrandom_octets(count: 16) {
+    Present { value: bs } => list_length(items: bs) == 16
+    Absent => false
+  }
+}
+
+test fn random_bytes_zero_holds() -> Bool {
+  match getrandom_octets(count: 0) {
+    Present { value: bs } => list_length(items: bs) == 0
+    Absent => false
+  }
+}
+
+test fn random_bytes_base64url_mint_16_length_holds() -> Bool {
+  string_length(mint_base64url_credential(byte_count: 16).credential) == 24
+}
+
+test fn random_bytes_base64url_mint_20_length_holds() -> Bool {
+  string_length(mint_base64url_credential(byte_count: 20).credential) == 28
+}

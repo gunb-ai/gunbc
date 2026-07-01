@@ -1,0 +1,23 @@
+module test.claim.filesystem_write_closure_scale_witness
+
+import extdeps.filesystem.filesystem_io
+import std.resources { ResourceHandle }
+
+data filesystem_write_closure_scale_anchor: ResourceHandle = ResourceHandle {
+  type: "filesystem",
+  resource_id: "closure-scale-witness",
+  key: "scale",
+  cap: ""
+}
+
+func witness_filesystem_write_survives_name_collision() -> Bool {
+  let target = "/tmp/gunbc_fs_closure_scale_witness.txt"
+  let payload = "filesystem service survives the std.resources name collision\n"
+  let w = Filesystem.Write(path: target, content: payload)
+  let r = Filesystem.Read(path: target)
+  return w.success && (w.path == target) && r.success && (r.content == payload)
+}
+
+func filesystem_write_closure_scale_holds() -> Bool {
+  return witness_filesystem_write_survives_name_collision()
+}

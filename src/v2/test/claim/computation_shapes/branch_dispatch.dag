@@ -1,0 +1,111 @@
+module v2.test.computation_shapes.branch_dispatch
+
+import v2.std.node {
+  Atom,
+  Branch,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  content_hash,
+  well_formed,
+  SyntheticOccurrence
+}
+import v2.std.verification {
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  CompilesClaim,
+  EqualsClaim,
+  manual_claim_anchor
+}
+fn branch_dispatch_leaf(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+}
+
+fn branch_dispatch_arm(s: Symbol) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: branch_dispatch_leaf(s: s) }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+data branch_dispatch_arm_then: Node = branch_dispatch_arm(s: ^branch_dispatch_arm_then_sym)
+data branch_dispatch_arm_else: Node = branch_dispatch_arm(s: ^branch_dispatch_arm_else_sym)
+
+data branch_dispatch_subject: Node = Node {
+  kind: ComputationNode { behavior: Branch },
+  children: [
+    Edge { label: Positional, target: branch_dispatch_arm_then },
+    Edge { label: Positional, target: branch_dispatch_arm_else }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn branch_dispatch_pass_node() -> Node {
+  branch_dispatch_leaf(s: ^branch_dispatch_pass_sym)
+}
+
+fn branch_dispatch_fail_node() -> Node {
+  branch_dispatch_leaf(s: ^branch_dispatch_fail_sym)
+}
+
+fn branch_dispatch_bool_node(ok: Bool) -> Node {
+  if ok { branch_dispatch_pass_node() } else { branch_dispatch_fail_node() }
+}
+
+data witness_branch_dispatch_well_formed: Bool = well_formed(n: branch_dispatch_subject)
+
+data claim_branch_dispatch_well_formed: TestClaim = CompilesClaim {
+  label: "computation_shapes/branch_dispatch: Branch with two Transform arms is well-formed",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: branch_dispatch_bool_node(ok: witness_branch_dispatch_well_formed),
+  expected_value: branch_dispatch_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_branch_dispatch_equals_refl: TestClaim = EqualsClaim {
+  label: "computation_shapes/branch_dispatch: Equals reflexivity on Branch dispatch subject",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: branch_dispatch_subject,
+  rhs: branch_dispatch_subject,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data branch_dispatch_subject_rebuilt: Node = Node {
+  kind: ComputationNode { behavior: Branch },
+  children: [
+    Edge { label: Positional, target: branch_dispatch_arm_then },
+    Edge { label: Positional, target: branch_dispatch_arm_else }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data branch_dispatch_subject_arms_swapped: Node = Node {
+  kind: ComputationNode { behavior: Branch },
+  children: [
+    Edge { label: Positional, target: branch_dispatch_arm_else },
+    Edge { label: Positional, target: branch_dispatch_arm_then }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data witness_branch_dispatch_content_hash_stable: Bool = (content_hash(n: branch_dispatch_subject) == content_hash(n: branch_dispatch_subject_rebuilt)) && (content_hash(n: branch_dispatch_subject) != content_hash(n: branch_dispatch_subject_arms_swapped))
+
+data claim_branch_dispatch_content_hash_stable: TestClaim = CompilesClaim {
+  label: "computation_shapes/branch_dispatch: content_hash is stable on Branch dispatch subject",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: branch_dispatch_bool_node(ok: witness_branch_dispatch_content_hash_stable),
+  expected_value: branch_dispatch_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

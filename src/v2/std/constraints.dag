@@ -1,11 +1,4 @@
-// src/v2/std/constraints.dag
-// Scope: canonical source grounding via find_witness + UniqueOnly (T-9 solve_constraints wrapper).
-// Anchor: gunbc#4760.
-// Status: identity-MVP wiring — solve_constraints → find_witness + constraint predicate dispatch; candidate/predicate bodies are tracked 🟡 scaffolds until T-9 ground + T-25-tail land.
-
-
 module v2.std.constraints
-
 
 import v2.std.diagnostic {
   Accepted,
@@ -31,11 +24,11 @@ import v2.std.constraint_satisfaction_predicate {
 }
 import v2.std.node { Node, Symbol, well_formed }
 import v2.std.witness { StructuralPropertyWitness }
-// 🟡 coproduct dissolution — scaffold:T-9-ground · dissolve-on: richer ConstraintGraph carriers enumerate algebra inhabitants per node.
+
 type ConstraintGraph {
   root: Node
 }
-// 🟡 gated — scaffold:T-9-closedness-bridge — production CanonicalGrounding construction flows through solve_constraints; test fixtures may stage direct values until richer closedness evidence lands.
+
 type CanonicalGrounding {
   node: Node
   witness: CanonicalGroundingWitness
@@ -51,7 +44,7 @@ type CanonicalGroundingCandidateSet {
 }
 type CanonicalGroundingWitness {
   structural: StructuralPropertyWitness
-  // 🟡 coproduct dissolution — scaffold:T-9-closedness-bridge · dissolve-on: find_witness closedness authority supplies evidence distinct from structural witness.
+
   closedness: StructuralPropertyWitness
 }
 fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
@@ -68,7 +61,7 @@ fn constraints_ill_formed_root_diagnostic(graph: ConstraintGraph) -> Diagnostic 
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-// Concept-home wrapper: mechanical body is sole authority in constraint_satisfaction_predicate.dag.
+
 fn constraint_satisfaction_holds(
   source_facts: Node,
   candidate: Node,
@@ -97,7 +90,7 @@ fn canonical_grounding_candidate_set_closedness(root: Node) -> StructuralPropert
     evidence: root
   }
 }
-// 🟡 coproduct dissolution — scaffold:T-9-candidate-singleton-mvp · dissolve-on: richer ConstraintGraph carriers enumerate algebra inhabitants per node (bind gunbc#4760).
+
 fn canonical_grounding_candidates(
   policy: ConstraintSolvePolicy,
 ) -> Outcome<CanonicalGroundingCandidateSet> {

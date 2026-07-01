@@ -1,0 +1,242 @@
+module v2.test.execution.self_host_candidate_generation
+
+import v2.compiler.self_host.candidate_generation {
+  generate_translate_self_emit_candidate
+}
+import v2.compiler.translate {
+  target_serialize_source_from_model,
+  translate_diagnostic_reason_from_symbol,
+  translate_diagnostic_reason_roster,
+  translate_diagnostic_reason_symbol,
+  translate_diagnostic_reason_variants,
+  TargetBundleDuplicateEdge,
+  TargetBundleMalformed,
+  TranslateDiagnosticReason
+}
+import v2.std.collection { Absent, List, Optional, Present, optional_absent, optional_present }
+import v2.extdeps.languages.dag {
+  dag_mvp1_emitted_add_fn_node,
+  dag_mvp1_target_model
+}
+import v2.test.execution.dag_add_emit_round_trip {
+  dag_add_emitted_root,
+  dag_add_target_model
+}
+import v2.test.manual.rust_add_emit_translate {
+  rust_add_emitted_root,
+  rust_add_missing_translation_rules_target
+}
+import v2.test.manual.sg2_type_expression_projection {
+  sg2_expected_arrow_text,
+  sg2_expected_conj_text,
+  sg2_expected_type_text,
+  sg2_project_arrow_emitted,
+  sg2_project_conj_emitted,
+  sg2_project_instantiation_emitted,
+  sg2_type_expr_target
+}
+import v2.std.algebra { bag_eq, length, list_snoc_item }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+fn symbol_eq(left: Symbol, right: Symbol) -> Bool {
+  left == right
+}
+
+fn translate_diagnostic_reason_variant_symbols(variants: List<TranslateDiagnosticReason>) -> List<Symbol> {
+  fold(variants, init: [], f: fn(acc, variant) {
+    list_snoc_item(xs: acc, item: translate_diagnostic_reason_symbol(reason: variant))
+  })
+}
+
+fn translate_diagnostic_reason_from_symbol_over_variants(
+  sym: Symbol,
+  variants: List<TranslateDiagnosticReason>
+) -> Optional<TranslateDiagnosticReason> {
+  fold(variants, init: optional_absent(), f: fn(acc, variant) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if sym == translate_diagnostic_reason_symbol(reason: variant) {
+          optional_present(value: variant)
+        } else {
+          acc
+        }
+    }
+  })
+}
+
+fn translate_diagnostic_reason_variants_without_malformed() -> List<TranslateDiagnosticReason> {
+  fold(translate_diagnostic_reason_variants(), init: [], f: fn(acc, variant) {
+    match variant {
+      TargetBundleMalformed => acc
+      _ => list_snoc_item(xs: acc, item: variant)
+    }
+  })
+}
+
+fn translate_diagnostic_reason_variant_round_trips(variant: TranslateDiagnosticReason) -> Bool {
+  match translate_diagnostic_reason_from_symbol(sym: translate_diagnostic_reason_symbol(reason: variant)) {
+    Present { value: reason } => translate_diagnostic_reason_symbol(reason: reason) == translate_diagnostic_reason_symbol(reason: variant)
+    Absent => false
+  }
+}
+
+fn translate_diagnostic_reason_symbol_round_trip_holds() -> Bool {
+  fold(translate_diagnostic_reason_variants(), init: true, f: fn(acc, variant) {
+    acc && translate_diagnostic_reason_variant_round_trips(variant: variant)
+  })
+}
+
+fn translate_diagnostic_reason_roster_matches_variants() -> Bool {
+  bag_eq(
+    xs: translate_diagnostic_reason_roster(),
+    ys: translate_diagnostic_reason_variant_symbols(
+      variants: translate_diagnostic_reason_variants()
+    ),
+    eq: symbol_eq
+  )
+}
+
+fn translate_diagnostic_reason_variants_drop_malformed_perturb_red_holds() -> Bool {
+  match translate_diagnostic_reason_from_symbol_over_variants(
+    sym: translate_diagnostic_reason_symbol(reason: TargetBundleMalformed),
+    variants: translate_diagnostic_reason_variants_without_malformed()
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn witness_translate_diagnostic_reason_symbol_inverse() -> Bool {
+  translate_diagnostic_reason_symbol_round_trip_holds()
+    && translate_diagnostic_reason_roster_matches_variants()
+    && translate_diagnostic_reason_variants_drop_malformed_perturb_red_holds()
+}
+
+fn candidate_generation_dag_add_slice_accepts() -> Bool {
+  match generate_translate_self_emit_candidate(
+    resolved_module: dag_add_emitted_root,
+    dag_target: dag_add_target_model
+  ) {
+    Accepted { value: candidate, diagnostics: d } =>
+      (candidate.emitted == dag_mvp1_emitted_add_fn_node()) && (d == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn translate_error_profile_roster_nonempty() -> Bool {
+  length(xs: translate_diagnostic_reason_roster()) > 0
+}
+
+fn translate_error_profile_rust_add_malformed_bundle_known() -> Bool {
+  match target_serialize_source_from_model(
+    target: rust_add_missing_translation_rules_target,
+    emitted: rust_add_emitted_root
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
+        Present { value: TargetBundleMalformed } => true
+        Present { value: _ } => false
+        Absent => false
+      }
+  }
+}
+
+fn translate_error_profile_sg2_projected_arrow_serialize_known() -> Bool {
+  match target_serialize_source_from_model(
+    target: sg2_type_expr_target,
+    emitted: sg2_project_arrow_emitted()
+  ) {
+    Accepted { value: source, diagnostics: _ } => source.carried == sg2_expected_arrow_text
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn translate_error_profile_sg2_projected_conj_serialize_known() -> Bool {
+  match target_serialize_source_from_model(
+    target: sg2_type_expr_target,
+    emitted: sg2_project_conj_emitted()
+  ) {
+    Accepted { value: source, diagnostics: _ } => source.carried == sg2_expected_conj_text
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn translate_error_profile_sg2_projected_instantiation_serialize_known() -> Bool {
+  match target_serialize_source_from_model(
+    target: sg2_type_expr_target,
+    emitted: sg2_project_instantiation_emitted()
+  ) {
+    Accepted { value: source, diagnostics: _ } => source.carried == sg2_expected_type_text
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn translate_diagnostic_reason_from_symbol_swapped_malformed_duplicate(
+  sym: Symbol
+) -> Optional<TranslateDiagnosticReason> {
+  let malformed_sym = translate_diagnostic_reason_symbol(reason: TargetBundleMalformed)
+  let duplicate_sym = translate_diagnostic_reason_symbol(reason: TargetBundleDuplicateEdge)
+  if sym == malformed_sym {
+    optional_present(value: TargetBundleDuplicateEdge)
+  } else if sym == duplicate_sym {
+    optional_present(value: TargetBundleMalformed)
+  } else {
+    translate_diagnostic_reason_from_symbol(sym: sym)
+  }
+}
+
+fn translate_error_profile_coproduct_swap_perturb_discriminates() -> Bool {
+  match target_serialize_source_from_model(
+    target: rust_add_missing_translation_rules_target,
+    emitted: rust_add_emitted_root
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: r } =>
+      match translate_diagnostic_reason_from_symbol(sym: r.head.reason) {
+        Present { value: TargetBundleMalformed } =>
+          match translate_diagnostic_reason_from_symbol_swapped_malformed_duplicate(sym: r.head.reason) {
+            Present { value: TargetBundleDuplicateEdge } => true
+            Present { value: _ } => false
+            Absent => false
+          }
+        Present { value: _ } => false
+        Absent => false
+      }
+  }
+}
+
+test fn translate_diagnostic_reason_symbol_inverse_holds() -> Bool {
+  witness_translate_diagnostic_reason_symbol_inverse()
+}
+
+test fn candidate_generation_translate_self_emit_dag_add_slice_holds() -> Bool {
+  candidate_generation_dag_add_slice_accepts()
+}
+
+test fn translate_error_profile_roster_nonempty_holds() -> Bool {
+  translate_error_profile_roster_nonempty()
+}
+
+test fn translate_error_profile_rust_add_malformed_bundle_classified() -> Bool {
+  translate_error_profile_rust_add_malformed_bundle_known()
+}
+
+test fn translate_error_profile_sg2_projected_arrow_serialize_accepts() -> Bool {
+  translate_error_profile_sg2_projected_arrow_serialize_known()
+}
+
+test fn translate_error_profile_sg2_projected_conj_serialize_accepts() -> Bool {
+  translate_error_profile_sg2_projected_conj_serialize_known()
+}
+
+test fn translate_error_profile_sg2_projected_instantiation_serialize_accepts() -> Bool {
+  translate_error_profile_sg2_projected_instantiation_serialize_known()
+}
+
+test fn translate_error_profile_coproduct_mapping_perturb_red_holds() -> Bool {
+  translate_error_profile_coproduct_swap_perturb_discriminates()
+}

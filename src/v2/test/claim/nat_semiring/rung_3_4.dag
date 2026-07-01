@@ -1,7 +1,4 @@
-// Scope: phase1/nat_semiring rung 3–4 TestClaim rows (joint spec §5; rung-3/4 companion specs).
-
 module v2.test.nat_semiring.rung_3_4
-
 
 import v2.compiler.eval { TestClaimRun }
 import v2.std.node { Node }
@@ -24,14 +21,12 @@ import v2.test.rung_3_4_common {
   rung34_roundtrip_run
 }
 
-
 data claim_phase1_nat_semiring_module_roundtrip: TestClaim = RoundTripClaim {
   label: "fixture=phase1/nat_semiring rung=3 target=dag predicate=R3-dag-roundtrip-wave1-ready",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: phase1_nat_semiring_rung_gate_canonical_subject,
   classification: TestClassification { tier: Tier3, layer: Integration }
 }
-
 
 data claim_phase1_nat_semiring_rust_emit_equals_eval: TestClaim = EqualsClaim {
   label: "fixture=phase1/nat_semiring rung=4 target=rust predicate=R4-rust-emit-equals-eval",
@@ -41,8 +36,6 @@ data claim_phase1_nat_semiring_rust_emit_equals_eval: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier3, layer: Integration }
 }
 
-
 data run_phase1_nat_semiring_rung3_module_roundtrip: TestClaimRun<Node, RuntimeValue> = rung34_roundtrip_run(claim: claim_phase1_nat_semiring_module_roundtrip, fixture_subject: phase1_nat_semiring_rung_gate_canonical_subject)
-
 
 data run_phase1_nat_semiring_rung4_rust_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung34_emit_vs_eval_run(claim: claim_phase1_nat_semiring_rust_emit_equals_eval, fixture_subject: phase1_nat_semiring_rung_gate_canonical_subject)

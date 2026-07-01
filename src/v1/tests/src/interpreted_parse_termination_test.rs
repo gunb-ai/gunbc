@@ -1,8 +1,3 @@
-//! Regression: v2 `parse` / `parse_module` must terminate under the v2 interpreter.
-//!
-//! Bisect authority: `validate_ingest_staging_stage_bisect_test.dag` — termination witnesses plus
-//! `witness_bisect_wave1_parse_module_add_correctness_holds` (binding fidelity + truncated RED).
-
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -11,10 +6,10 @@ use v1_compiler::v1_interpreter::{self, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const BISECT_ENTRY: &str = "src/v2/compiler/manual/validate_ingest_staging_stage_bisect_test.dag";
+const BISECT_ENTRY: &str = "src/v2/test/claim/manual/validate_ingest_staging_stage_bisect_test.dag";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn bisect_sources() -> Vec<Rc<SourceFile>> {

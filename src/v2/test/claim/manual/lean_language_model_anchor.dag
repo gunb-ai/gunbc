@@ -1,0 +1,13 @@
+module v2.test.manual.lean_language_model_anchor
+import v2.std.language_model { LanguageModel }
+
+import v2.extdeps.languages.lean {
+  lean_inhabitant_int32_node,
+  lean_language_model_wave1
+}
+import v2.std.node { Node }
+
+type lean_anchor_language_model = LanguageModel
+
+data lean_anchor_wave1: lean_anchor_language_model = lean_language_model_wave1()
+data lean_anchor_int32: Node = lean_inhabitant_int32_node()

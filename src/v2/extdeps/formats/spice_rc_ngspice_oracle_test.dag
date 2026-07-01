@@ -1,10 +1,3 @@
-// Scope: ngspice oracle structural witness — spice_emit_ngspice(rc_tran_deck) matches the
-//        single golden netlist in spice_rc_tran_deck.dag. This emit-correctness claim is the
-//        gated receipt (claim_batch corpus); the former `ngspice -b` execution oracle was
-//        retired with scripts/.
-// SP-M1 closed: emitted tran deck ran `ngspice -b` exit 0 AS-EMITTED (.control run/quit trailer).
-//        RC charge curve v(n2): 0V@t=0 → 3.15V@1ms (63% of 5V, τ=RC=1ms) → 5V@10ms.
-
 module v2.test.formats.spice_rc_ngspice_oracle
 
 import v2.extdeps.formats.spice { spice_emit_ngspice }
@@ -24,7 +17,6 @@ test fn spice_rc_tran_emit_ngspice_nonempty_holds() -> Bool {
   (text != "") && (text != "* rc tran witness")
 }
 
-// SP-M1 closed-loop witness: emitted deck equals the single golden authority.
 test fn spice_rc_ngspice_op_holds() -> Bool {
   spice_emit_ngspice(netlist: spice_rc_tran_deck) == spice_rc_tran_deck_ngspice_golden
 }

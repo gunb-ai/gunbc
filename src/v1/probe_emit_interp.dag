@@ -1,31 +1,8 @@
-// EMISSION VERIFICATION PATH probe (not floor-enrolled) — answers the parent's
-// ONE FACT: can the v2 interpreter RUN 05_emit_rust.dag's full compile→emit fold
-// so that a .dag emitter change verifies BY INTERPRETATION, with no seed-mirror
-// regen + cargo round trip?
-//
-// `gunbc run` resolves the live `src/v1` + `dsl` closure and INTERPRETS it. These
-// probes drive `compile_sources(.., target: Rust)` — the same fold the seed
-// emitter compiles — over an inline source and assert a property of the emitted
-// Rust. Green here means: the emit fold is interpretation-runnable end to end
-// (lex → parse → resolve → infer → emit), so every future emitter fix is
-// checkable by running this path, not by hand-syncing the 22.7k-line Rust seed.
-//
-// Run (each returns Bool, ^claim-run prints the witness):
-//   gunbc run --source-root src/v1 --source-root dsl \
-//     --entry src/v1/probe_emit_interp.dag \
-//     --function probe_emit_fold_runs --claim-run
-//
-// The asserted properties are faithful to the CURRENT emitter (clean main) — they
-// do not depend on any in-flight seed-emit change — so the probe isolates the
-// interpreter-runs-the-fold fact from any particular emitter edit.
 module v1.probe.emit_interp
 
 import v1.compiler.compile { compile_sources, SourceFile }
 import v1.compiler.artifact { RenderTarget, Rust }
 
-// A minimal, self-contained source: one pure function over Int. Exercises the
-// whole pipeline (tokenize → parse → resolve → infer → emit) yet stays small
-// enough that the emitted signature is stable to assert against.
 fn probe_source() -> SourceFile {
   SourceFile {
     path: "src/v1/probe_add.dag",
@@ -38,21 +15,14 @@ fn probe_emitted() -> String {
   result.files |> map(f => f.content) |> join(separator: "\n")
 }
 
-// FACT 1 — the emit fold produces a non-empty Rust artifact through the
-// interpreter (it ran to completion, not a partial/aborted fold).
 fn probe_emit_fold_runs() -> Bool {
   (probe_emitted() |> length) > 0
 }
 
-// FACT 2 — the emitted artifact carries the authored function as a Rust `fn add`
-// signature. Discriminating: a wrong/partial emit (or a fold that bailed before
-// the function emitter) makes this go RED.
 fn probe_emits_fn_add() -> Bool {
   contains(probe_emitted(), "fn add")
 }
 
-// FACT 3 — the pipeline reports zero diagnostics on a well-formed source, so a
-// green emit is a true success, not a fail-open fabrication (DESIGN §5).
 fn probe_clean_source_has_no_diagnostics() -> Bool {
   let result = compile_sources(sources: [probe_source()], target: Rust)
   (result.diagnostics |> count) == 0

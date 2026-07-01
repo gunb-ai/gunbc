@@ -1,4 +1,3 @@
-
 module v2.test.std_grounding.value_carrier_laws
 
 import v2.std.collection { empty_map, map_insert }
@@ -17,10 +16,6 @@ import v2.std.value_carrier {
 }
 import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
 
-// ── Sharing law (M-A): sharing is unobservable ────────────────────────────
-// An aliased value (one allocation reachable twice) and a freshly built
-// structural twin are indistinguishable by language-level observation.
-
 test fn sharing_unobservable_list_holds() -> Bool {
   let shared = [1, 2, 3]
   let aliased = concat(shared, shared)
@@ -34,9 +29,6 @@ test fn sharing_unobservable_map_holds() -> Bool {
   alias == (empty_map() |> map_insert("k", 1))
 }
 
-// ── Identity law 2 (M-C): keyed-aggregate equality is order-independent ──
-// The same entries yield equal maps regardless of insertion order.
-
 test fn map_equality_insert_order_independent_holds() -> Bool {
   let abc = empty_map() |> map_insert("a", 1) |> map_insert("b", 2) |> map_insert("c", 3)
   let cba = empty_map() |> map_insert("c", 3) |> map_insert("b", 2) |> map_insert("a", 1)
@@ -44,19 +36,12 @@ test fn map_equality_insert_order_independent_holds() -> Bool {
   (abc == cba) && (abc == bca)
 }
 
-// Upsert is last-write-wins independent of the path taken to the same final
-// entry set (the lattice-meet grounding from std.effects).
 test fn map_equality_overwrite_path_independent_holds() -> Bool {
   let direct = empty_map() |> map_insert("a", 2)
   let overwritten = empty_map() |> map_insert("a", 1) |> map_insert("a", 2)
   direct == overwritten
 }
 
-// ── FreeMonoid representation law: association shape is unobservable ─────
-// List<T> = FreeMonoid<T>: differently associated concatenations of the same
-// element sequence are EQUAL values. This is the law that lets a carrier keep
-// concatenation as structure (no per-site flattening through the
-// free_monoid_to_vec chokepoint — the actual copy path phase-0 measured).
 test fn freemonoid_association_unobservable_holds() -> Bool {
   let left_assoc = concat(concat([1], [2]), [3])
   let right_assoc = concat([1], concat([2], [3]))
@@ -64,9 +49,6 @@ test fn freemonoid_association_unobservable_holds() -> Bool {
   (left_assoc == flat) && (right_assoc == flat)
 }
 
-// ── Identity law 1 (M-C): reference-identical ⇒ structurally equal ───────
-// By the variant-is-data shape of IdentityEvidence, ReferenceIdentical has no
-// equal:false arm; the projection makes the short-circuit explicit.
 test fn identity_law1_projection_holds() -> Bool {
   let ref_identical = identity_evidence_equal(evidence: ReferenceIdentical)
   let compared_equal = identity_evidence_equal(evidence: StructurallyCompared { equal: true })
@@ -74,7 +56,6 @@ test fn identity_law1_projection_holds() -> Bool {
   ref_identical && compared_equal && !compared_distinct
 }
 
-// ── Carrier declarations are persistent (M-A data values resolve) ────────
 test fn declared_carriers_are_persistent_holds() -> Bool {
   let map_persistent = match map_carrier.persistence {
     Persistent => true
@@ -87,7 +68,6 @@ test fn declared_carriers_are_persistent_holds() -> Bool {
   map_persistent && list_persistent
 }
 
-// ── Name-interning declarations cover all three domains (M-D resolves) ───
 test fn name_interning_covers_all_domains_holds() -> Bool {
   let t = match type_name_interning.domain {
     TypeNames => true
@@ -107,15 +87,6 @@ test fn name_interning_covers_all_domains_holds() -> Bool {
   t && v && f
 }
 
-// ── Persistence law (M-A, phase-2 swap probe): prior versions stay valid ─
-// Driscoll–Sarnak–Sleator–Tarjan 1989: a Persistent carrier leaves every
-// prior version valid after an update. `extended`/`updated` are derived FROM
-// the base values; the bases must still equal independently built structural
-// twins afterwards. The failure class a carrier swap can introduce is
-// in-place mutation observed through a shared handle — this is its witness.
-// Large-n twins (past the carriers' inline-chunk thresholds) run host-side
-// in src/v1/tests/src/value_carrier_swap_test.rs.
-
 test fn list_prior_version_survives_concat_holds() -> Bool {
   let base = [1, 2, 3]
   let extended = concat(base, [4])
@@ -129,4 +100,3 @@ test fn map_prior_version_survives_insert_holds() -> Bool {
   let update_took = updated == (empty_map() |> map_insert("k", 2))
   base_intact && update_took && !(updated == base)
 }
-

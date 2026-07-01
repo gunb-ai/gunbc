@@ -1,11 +1,3 @@
-// src/v2/lens/testgen.dag
-// Scope: Manual-anchor testgen plus filesystem-backed whole-corpus lens driver primitive.
-// Status: Manual-anchor + LBE + witness-validity + idempotent-operation + coproduct-exhaustiveness + cross-representation-equality testgen (subjects: v2.std.effects / v2.std.verification); new TestgenConcept arms = operator STOP.
-// docs/plans/testgen-oracle.md §4.3 — the CrossRepresentationEquality arm was added under the §4.3
-// dispatch (operator/planning steer), SCOPE TIGHT: only the straddles that remain UNSTRUCTURED
-// (Bool over Value::Bool; Optional/Witness over Value::Null, fenced to its own runway). The numeric
-// tower is GROUNDED (#5428) and excluded.
-
 module v2.lens.testgen
 import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
@@ -177,18 +169,13 @@ import v2.std.effects {
   sample_state,
   sample_upsert_composable
 }
-// F.2-P1: generator identity + provenance cross-ref. GeneratorId / GeneratorProvenance
-// are authored in v2.std.artifact (artifact identity is its single authority); testgen
-// only consumes them — no artifact law is duplicated here. profile_metadata stays a
-// testgen-local concept (GeneratorProfile below) and must not leak into artifact.dag.
+
 import v2.std.artifact {
   GeneratorId,
   GeneratorProvenance,
   test_claim_generated_artifact
 }
-// docs/plans/testgen-oracle.md §4.2 — CoproductExhaustiveness is STRUCTURAL: the roster of
-// missing-arm witnesses is derived from every declared coproduct (concept_index) and that
-// coproduct's own arm keys read off its Node (node_query), not a hand-list of TestClaim variants.
+
 import v2.std.concept_index {
   ConceptDecl,
   enumerate_coproduct_decls
@@ -197,9 +184,8 @@ import v2.std.node_query {
   coproduct_arm_key_list_from_node
 }
 
-// 🟢 coproduct dissolution — LB-P4-3212.
 type TypeConstructionSubject
-// 🟢 coproduct dissolution — LB-P4-3212
+
   = ConnectiveKernel { connective: Connective }
   | BehaviorValueSubject { behavior: Behavior }
 
@@ -214,42 +200,32 @@ type LensApplicabilitySubject {
 
 type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
 
-// 🟡 coproduct dissolution — T19-LBE-ACTIVATION.
 type FrozenLanguageBehaviorSnapshot {
   language: Symbol
   input_node: Node
   expected_value: Node
 }
 
-// 🟡 coproduct dissolution — T19-LBE-ACTIVATION.
 type LanguageBehaviorIoMock {
   snapshot: FrozenLanguageBehaviorSnapshot
 }
 
-// 🟡 coproduct dissolution — T19-LBE-ACTIVATION.
 type LanguageBehaviorEquivalenceSubject {
   subject: TypeConstructionSubject
   language: Symbol
 }
 
-// 🟡 coproduct dissolution — T19-REFINEMENT-PRESERVATION.
 type RefinementPreservationSubject {
   refined: Refined<List<Node>>
   original: List<Node>
 }
 
-// 🟡 coproduct dissolution — LB-P4-3212.
 type TestgenConcept
-// 🟡 coproduct dissolution — LB-P4-3212
-// RULING-1: 🟡 needs-more-work — multi-arm scheduling coproduct (seven arms) until LBE = L6 form×language coproduct shape ruled.
+
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
   | DiagnosticExhaustiveness { coproduct_type: Symbol, omitted_variant: Symbol }
-  // docs/plans/testgen-oracle.md §4.3 — cross-representation-equality straddle: the MODELED
-  // coproduct (`modeled_coproduct`, structural — a real declared Disj) and the NATIVE Value form it
-  // straddles (`native_realization`, the curated half). The witness is the EqualsClaim that the
-  // modeled form reconciles with its native realization (the grounding TARGET); it is emitted, not
-  // executed — grounding each straddle is its own runway (the §5 wall-after-grounding class).
+
   | CrossRepresentationEquality { modeled_coproduct: Symbol, native_realization: Symbol }
   | LensApplicability { subject: LensApplicabilitySubject }
   | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
@@ -259,15 +235,6 @@ type TestgenConcept
     }
   | RefinementPreservation { subject: RefinementPreservationSubject }
 
-// RULING-1: 🟡 needs-more-work — scheduling generator slot until LBE = L6 form×language coproduct shape ruled.
-// 🟡 bootstrap-limitation interim — feature:B-GENERATOR-MATCH-ARM-1 — Generator<C> record
-// destructuring via v2 `match_pattern` Value::Record arm (ctrl#1476 B3 Gap-1); dissolve-on-arrival:
-// unified record/variant runtime representation so match arms need no per-type bridge; forbidden:
-// `match generator { Generator { ... } }` failing with non-exhaustive pattern on Generator.
-// F.2-P1: every generator carries its provenance (generator identity + emitted artifact,
-// bundled in v2.std.artifact.GeneratorProvenance) and its profile metadata. Bundling
-// generator_id inside `provenance` (rather than a third flat field) keeps future provenance
-// growth a single-type edit — CLAUDE.md Cost-of-Change — and mirrors NodeArtifactProvenance.
 type Generator<C> {
   kind: TestClaimCoproductVariant
   classification: TestClassification
@@ -277,15 +244,8 @@ type Generator<C> {
   profile_metadata: GeneratorProfile
 }
 
-// F.2-P1: testgen-local generation-profile metadata. v0 carries a single profile
-// reference Symbol (precedent: leaf_model_verification build_profile / tool_profile_ref);
-// the record shape lets profile facts grow without touching Generator construction sites.
 type GeneratorProfile { profile_ref: Symbol }
 
-// F.2-P1: default generation profile applied to all scheduled generators until the
-// testgen CLI (wise-wolf-799 lane) selects a profile per invocation.
-// F.2-P1: source file the testgen generators are authored in — the artifact file_path
-// for provenance until per-claim emit paths are modeled.
 data testgen_lens_file_path: String = "src/v2/lens/testgen.dag"
 
 fn default_generator_profile() -> GeneratorProfile {
@@ -299,12 +259,6 @@ fn testgen_profile_roster_mismatch_diagnostic() -> Diagnostic {
   }
 }
 
-// F.2-P1: canonical per-anchor GeneratorId table. Identity is DERIVED from the row's
-// ClaimAnchorKey (single authority — not a coarse static category symbol), so distinct
-// anchors/obligations get distinct GeneratorIds and no two scheduled generators collide.
-// 🟡 dissolution target: replace this literal table with an anchor→Symbol compile-time lens projection when
-// .dag can project a Symbol from a ClaimAnchorKey directly (TestClaim coproduct-arm lens).
-// F.2-P1: derive a generator's identity from its ManualAnchorKey (one id per manual anchor).
 fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
   match key {
     ManualTcConjEmpty => ^gen_id_tc_conj_empty
@@ -332,11 +286,6 @@ fn generator_id_for_manual_anchor(key: ManualAnchorKey) -> GeneratorId {
   }
 }
 
-// F.2-P1: derive identity from a generated coproduct-exhaustiveness anchor — one id per
-// (coproduct type × omitted arm). DERIVED from the two structural symbols (single authority —
-// no literal table that could drift from the declared arms), so distinct (type, arm) pairs get
-// distinct GeneratorIds. The same derivation is used when stamping a generator's provenance, so
-// generator_carries_provenance round-trips (anchor → id == provenance.generator_id).
 fn generator_id_for_coproduct_arm(coproduct_type: Symbol, omitted_variant: Symbol) -> GeneratorId {
   concat(
     "gen_id_coproduct_exhaustiveness::",
@@ -344,9 +293,6 @@ fn generator_id_for_coproduct_arm(coproduct_type: Symbol, omitted_variant: Symbo
   )
 }
 
-// docs/plans/testgen-oracle.md §4.3: one id per (modeled coproduct × native realization) straddle.
-// DERIVED from the two symbols (single authority — no literal table), so distinct straddle subjects
-// get distinct GeneratorIds and the provenance round-trips (anchor → id == provenance.generator_id).
 fn generator_id_for_cross_representation_straddle(
   modeled_coproduct: Symbol,
   native_realization: Symbol
@@ -369,7 +315,6 @@ fn generator_id_for_generated_anchor(key: GeneratedAnchorKey) -> GeneratorId {
   }
 }
 
-// F.2-P1: single-authority GeneratorId derivation — the row's ClaimAnchorKey IS its identity.
 fn generator_id_for_claim_anchor(anchor: ClaimAnchorKey) -> GeneratorId {
   match anchor {
     ManualClaimAnchor { manual_anchor } => generator_id_for_manual_anchor(key: manual_anchor)
@@ -377,11 +322,6 @@ fn generator_id_for_claim_anchor(anchor: ClaimAnchorKey) -> GeneratorId {
   }
 }
 
-// F.2-P1: build a generator's provenance from its identity. The emitted artifact is a
-// refined GeneratedArtifact keyed by the same GeneratorId — the refined type makes
-// non-generated ArtifactKinds unrepresentable (Branch H §H.5 guardrail, authored in
-// v2.std.artifact). TestClaimArtifact is statically admitted, so the total constructor
-// test_claim_generated_artifact stays Outcome-free; no artifact law is re-declared here.
 fn generator_provenance(id: GeneratorId) -> GeneratorProvenance {
   GeneratorProvenance {
     generator_id: id,
@@ -389,41 +329,32 @@ fn generator_provenance(id: GeneratorId) -> GeneratorProvenance {
   }
 }
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEntry {
   path: AbsolutePath
   body: FileBody
 }
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
-// 🟢 coproduct dissolution — LB-P4-3212.
 type CorpusTraversalScope
-// 🟢 coproduct dissolution — LB-P4-3212
+
   = RecursiveCorpusWalk
   | SingleDirectoryCorpusWalk
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
-// 🟢 coproduct dissolution — LB-P4-3212.
 type CorpusTraversalOrder
-// 🟢 coproduct dissolution — LB-P4-3212
+
   = LexicalPathOrder
   | FilesystemNativeOrder
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
-// 🟢 coproduct dissolution — LB-P4-3212.
 type CorpusDuplicatePolicy
-// 🟢 coproduct dissolution — LB-P4-3212
+
   = PreserveDuplicateEntries
   | RejectDuplicatePaths
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusTraversalPolicy {
   scope: CorpusTraversalScope
   order: CorpusTraversalOrder
   duplicates: CorpusDuplicatePolicy
 }
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEnumerationRequest {
   filesystem: Filesystem
   root: AbsolutePath
@@ -432,46 +363,35 @@ type CorpusEnumerationRequest {
   traversal: CorpusTraversalPolicy
 }
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEnumerationResult = Outcome<List<CorpusEntry>>
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEnumerator = fn(CorpusEnumerationRequest) -> CorpusEnumerationResult
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEntryIngestResult = Outcome<Node>
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusEntryIngestor = fn(CorpusEntry) -> CorpusEntryIngestResult
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensReadResult<C> = Outcome<C>
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensReader<C> {
   lens: Symbol
   read: fn(Node) -> CorpusLensReadResult<C>
 }
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensObservation<C> {
   entry: CorpusEntry
   program: Node
   output: C
 }
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensDriveResult<C> = Outcome<List<CorpusLensObservation<C>>>
 
-// RULING-1: 🟡 needs-more-work — corpus lens carrier until LBE = L6 form×language coproduct shape ruled.
 type CorpusLensDriver<C> = fn(
   CorpusEnumerationRequest,
   CorpusEnumerator,
   CorpusEntryIngestor,
   CorpusLensReader<C>
 ) -> CorpusLensDriveResult<C>
-
-// RULING-1: 🟢 pretty-much-done — repeats manual claim anchor after lookup Outcome
 
 data lbe_label_conj_dag_surface: String = "generated/lbe: Conj type-node matches dag LanguageModel surface (frozen snapshot)"
 
@@ -874,7 +794,6 @@ fn algebra_law_claim_term(subject: AlgebraLawSubject, expression: Node) -> Node 
 }
 }
 
-// 🟡 gated — feature:v2-std-int-to-node-encoding — bind node://adhoc-10fda09f-f25 — dissolve-on-arrival: v2.std primitive Int → Node encoder; forbidden: silent collapse of ByteRange Int positions to a variant-tag atom. Until arrival, witness_validity_extent_node fails closed on Textual{ByteRange} via witness_validity_byte_range_unencodable_diagnostic.
 fn witness_validity_symbol_atom_node(s: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: s } },
@@ -1098,7 +1017,6 @@ fn witness_validity_diagnostic_node(d: Diagnostic) -> Outcome<Node> {
   })
 }
 
-// Consumes canonical fold_list_right (order-preserving structural output); no parallel walker.
 fn witness_validity_diagnostic_list_node(xs: FreeMonoid<Diagnostic>) -> Outcome<Node> {
   fold_list_right(
     xs: xs,
@@ -1226,9 +1144,6 @@ fn witness_validity_outcome_node(o: Outcome<StructuralPropertyWitness>) -> Outco
   }
 }
 
-// witness-validity emit helper: oracle = v2.std.find_witness::verify_witness; emits
-// RoundTripClaim whose input bundles subject + oracle outcome. Rejected only when the
-// subject encoding fails closed (e.g. unencodable Textual{ByteRange} locus).
 fn testgen_emit_witness_validity_claim(
   label: String,
   source_facts: Node,
@@ -1308,7 +1223,6 @@ type NatAlgebraLawScheduleRow {
   anchor: ManualAnchorKey
 }
 
-// 🟡 gated — record-shape bridge interim — feature:nat-law-obligation-lens-migration — dissolve-on-arrival: NatAlgebraLawObligation (std/nat) is the authoritative L7 law-subject carrier; AlgebraLawSubject is the downstream lens-local shape; migrate testgen + coverage to consume NatAlgebraLawObligation directly and delete algebra_law_subject_from_nat_obligation in that same PR; forbidden: permanent parallel NatAlgebraLawObligation⇄AlgebraLawSubject record-shape drift across std/nat and lens/testgen.
 fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> AlgebraLawSubject {
   AlgebraLawSubject {
     algebra: o.algebra,
@@ -1355,8 +1269,6 @@ fn nat_algebra_law_obligation_for_law(law: Symbol) -> Outcome<NatAlgebraLawOblig
   )
 }
 
-// 🟡 gated — feature:nat-algebra-law-anchor-projection — bind gunbc#4762
-// dissolve-on-arrival: law↔ManualAnchorKey projection is substrate-derived from NatAlgebraLawObligation schedule rows (std/nat authority + testgen compile-time lens); delete this hand-rolled Symbol→ManualAnchorKey classifier in that same PR; forbidden: permanent per-law manual-anchor table drift from nat_declared_algebra_law_obligations().
 fn testgen_manual_anchor_for_law(law: Symbol) -> Outcome<ManualAnchorKey> {
   if law == ^law_nat_add_left_identity {
     Accepted { value: ManualNatAddLeftIdentity, diagnostics: None }
@@ -1399,7 +1311,6 @@ fn nat_algebra_law_schedule_row_from_obligation(
   )
 }
 
-// 🟡 gated — derived-equality interim — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a — dissolve-on-arrival: replace nat_manual_anchor_key_eq call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent ManualAnchorKey Nat-arm equality table drift from std/verification.dag.
 fn nat_manual_anchor_key_eq(a: ManualAnchorKey, b: ManualAnchorKey) -> Bool {
   match a {
     ManualNatAddLeftIdentity =>
@@ -1655,9 +1566,6 @@ fn testgen_scheduled_algebra_law_subjects() -> Outcome<List<AlgebraLawSubject>> 
   )
 }
 
-// Structural coproduct-exhaustiveness anchor (docs/plans/testgen-oracle.md §4.2): one anchor per
-// (declared coproduct type × one of its omitted arms), both carried as the authored Symbols read
-// off the Node tree. No hand-roster of TestClaim variants survives.
 fn coproduct_exhaustiveness_anchor(coproduct_type: Symbol, omitted_variant: Symbol) -> GeneratedAnchorKey {
   GeneratedCoproductExhaustiveness { coproduct_type: coproduct_type, omitted_variant: omitted_variant }
 }
@@ -1676,9 +1584,6 @@ fn coproduct_exhaustiveness_anchor_omitted_variant(anchor: GeneratedAnchorKey) -
   }
 }
 
-// The omitted arm, as a leaf TypeNode tagged by the arm's authored key. The key is already the
-// Symbol read off the coproduct's arm edge (coproduct_arm_keys), so no discriminant projection is
-// needed — the structural arm name IS the node identity.
 fn coproduct_exhaustiveness_variant_node(omitted_variant: Symbol) -> Node {
   Node {
     kind: TypeNode {
@@ -1689,9 +1594,6 @@ fn coproduct_exhaustiveness_variant_node(omitted_variant: Symbol) -> Node {
 }
 }
 
-// The synthetic match-input witness: a node tagged by the coproduct's authored type name carrying
-// the single omitted-arm coordinate. A match over `coproduct_type` that drops `omitted_variant` is
-// non-exhaustive and must be rejected (coproduct_exhaustiveness_diagnostic).
 fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
   Node {
     kind: TypeNode {
@@ -1709,8 +1611,6 @@ fn coproduct_exhaustiveness_input(anchor: GeneratedAnchorKey) -> Node {
 }
 }
 
-// Per-claim label naming the covered coproduct type and omitted arm (was a single shared TestClaim
-// literal). Distinguishable so a structural roster of N claims reads back which arm each pins.
 fn coproduct_exhaustiveness_label(anchor: GeneratedAnchorKey) -> String {
   concat(
     "generated/diagnostic-exhaustiveness: coproduct ",
@@ -1752,8 +1652,6 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
   }
 }
 
-// One generator for a single (coproduct type × omitted arm). Provenance id is DERIVED from the
-// same anchor (generator_id_for_generated_anchor), so generator_carries_provenance round-trips.
 fn coproduct_exhaustiveness_generator(
   coproduct_type: Symbol,
   omitted_variant: Symbol
@@ -1775,8 +1673,6 @@ fn coproduct_exhaustiveness_generator(
   }
 }
 
-// All generators for one declared coproduct: one missing-arm witness per arm, with arm keys read
-// directly off the decl's own materialized Node (no re-resolve by name — single walk, collision-free).
 fn coproduct_exhaustiveness_generators_for_decl(
   decl: ConceptDecl
 ) -> List<Generator<TestgenConcept>> {
@@ -1792,10 +1688,6 @@ fn coproduct_exhaustiveness_generators_for_decl(
   )
 }
 
-// STRUCTURAL roster: every declared coproduct in the compiled corpus contributes one missing-arm
-// witness per declared arm. Adding an arm to ANY coproduct extends this roster by construction;
-// removing one shrinks it (the discriminating RED, docs/plans/testgen-oracle.md §4.2). Replaces the
-// former hand-anchored 4-variant TestClaim roster.
 fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
   fold(
     enumerate_coproduct_decls(),
@@ -1809,21 +1701,6 @@ fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<Tes
   )
 }
 
-// === Cross-representation-equality straddle (docs/plans/testgen-oracle.md §4.3) ===========
-// A modeled coproduct (e.g. Bool = True | False) is *realized* as a native runtime Value (e.g.
-// Value::Bool). When a modeled constructor builds a `Variant` while the native form is a scalar
-// `Value`, comparing the two straddles the model↔realization boundary — the §5 fail-open root the
-// numeric tower already GROUNDED (#5428). This category COVERS the *class*: for each straddle that
-// remains UNSTRUCTURED it emits the EqualsClaim that the modeled form reconciles with its native
-// realization (the grounding target). SCOPE TIGHT (operator/planning steer): ONLY Bool over
-// Value::Bool and the Value::Null sentinel (Optional/Witness), the latter fenced to its own runway —
-// `Value::Null` is the overloaded None/Absent/miss sentinel, so `present == None` is a *legitimate*
-// false and grounding it (not a blanket error arm) is separate, deeper work.
-//
-// The MODELED side is structural — `modeled_coproduct` is a real declared Disj whose arms are read
-// off the Node tree (the floor recomputes coproduct_arm_keys to exclude a vacuous pass). The
-// NATIVE-realization side is the curated half: there is no Node-tree reflection for "this coproduct
-// is realized as Value::Bool", so the straddle SET stays a tight roster, not an enumeration.
 data cross_repr_native_value_bool: Symbol = ^native_value_bool
 data cross_repr_native_value_null: Symbol = ^native_value_null
 
@@ -1851,8 +1728,6 @@ fn cross_representation_anchor_native_realization(anchor: GeneratedAnchorKey) ->
   }
 }
 
-// A leaf TypeNode tagged by a representation's authored symbol (the modeled type name on the lhs,
-// the native Value form on the rhs). The straddle witness compares these two representation nodes.
 fn cross_representation_representation_node(identity: Symbol) -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: identity } },
@@ -1874,10 +1749,6 @@ fn cross_representation_equality_label(anchor: GeneratedAnchorKey) -> String {
   )
 }
 
-// The straddle witness: an EqualsClaim that the modeled form (lhs, tagged by the coproduct type)
-// reduces to its native realization (rhs). Emitted, NOT executed in the floor — grounding each
-// straddle so the equality actually holds is its own runway; this category covers the *class* by
-// generating the witness from the model.
 fn testgen_emit_cross_representation_equality_claim(
   anchor: GeneratedAnchorKey
 ) -> Outcome<TestClaim> {
@@ -1897,8 +1768,6 @@ fn testgen_emit_cross_representation_equality_claim(
   }
 }
 
-// One generator for a single (modeled coproduct × native realization) straddle. Provenance id is
-// DERIVED from the same anchor, so generator_carries_provenance round-trips.
 fn cross_representation_equality_generator(
   modeled_coproduct: Symbol,
   native_realization: Symbol
@@ -1920,10 +1789,6 @@ fn cross_representation_equality_generator(
   }
 }
 
-// CURATED roster: the straddles that remain UNSTRUCTURED. Bool over Value::Bool, and the Value::Null
-// sentinel (Optional/Witness) fenced to its own runway. The numeric tower is GROUNDED (#5428) and
-// deliberately ABSENT. Each modeled coproduct is a real declared Disj (the floor recomputes its arm
-// keys to exclude a vacuous symbol — the structural tie).
 fn testgen_scheduled_cross_representation_equality_generators() -> List<Generator<TestgenConcept>> {
   [
     cross_representation_equality_generator(
@@ -1937,11 +1802,6 @@ fn testgen_scheduled_cross_representation_equality_generators() -> List<Generato
   ]
 }
 
-// F.2-P1 provenance integrity: a generator's identity must be the one DERIVED from its
-// own canonical anchor (single-authority — no row carries a foreign/colliding id), and it
-// must carry profile metadata. Checking against the anchor projection is the meaningful
-// property; the emitted artifact's kind/id are carried structurally by the refined
-// GeneratedArtifact + the total constructor, so they are not re-inspected here.
 fn generator_carries_provenance<C>(g: Generator<C>) -> Bool {
   g.provenance.generator_id == generator_id_for_claim_anchor(anchor: g.anchor)
     && g.profile_metadata.profile_ref == ^testgen_default_profile_ref
@@ -1955,8 +1815,6 @@ fn all_generators_carry_provenance(gens: List<Generator<TestgenConcept>>) -> Boo
   )
 }
 
-// Fail-closed: a scheduler that cannot produce its generators fails the witness rather
-// than vacuously passing — the claim is that ALL scheduled generators carry provenance.
 fn outcome_generators_carry_provenance(o: Outcome<List<Generator<TestgenConcept>>>) -> Bool {
   match o {
     Accepted { value: gens, diagnostics: d } => all_generators_carry_provenance(gens: gens)
@@ -1964,10 +1822,6 @@ fn outcome_generators_carry_provenance(o: Outcome<List<Generator<TestgenConcept>
   }
 }
 
-// F.2-P1 close criterion: every scheduled generator carries consistent provenance +
-// profile metadata. Covers ALL five scheduled producers — the three direct-List schedulers
-// (LBE + coproduct-exhaustiveness + cross-representation-equality) and the two Outcome-returning
-// schedulers (refinement-preservation + algebra-law), the latter fail-closed on Rejected.
 fn scheduled_generators_carry_provenance() -> Bool {
   all_generators_carry_provenance(gens: testgen_scheduled_language_behavior_generators())
     && all_generators_carry_provenance(gens: testgen_scheduled_coproduct_exhaustiveness_generators())
@@ -1976,8 +1830,6 @@ fn scheduled_generators_carry_provenance() -> Bool {
     && outcome_generators_carry_provenance(o: testgen_scheduled_algebra_law_generators())
 }
 
-// F.2-P2 / F.2.6 — static schedulers (always List) plus Outcome schedulers combined
-// fail-closed: any Rejected scheduler rejects the whole roster (P3 — no silent truncation).
 fn testgen_scheduled_generators_static_base() -> List<Generator<TestgenConcept>> {
   list_append(
     left: testgen_scheduled_language_behavior_generators(),
@@ -2015,7 +1867,6 @@ fn testgen_scheduled_generators_roster_holds() -> Bool {
   }
 }
 
-// 🟡 coproduct dissolution — feature:lens-testgen-shadow-ci-receipt — bind F.2-P2 / F.2.6 — dissolve-on-arrival: `TestClaimRun` evaluates `lens_testgen/shadow_ci_receipt.dag` `EqualsClaim` witnesses; delete `TestgenRunReceipt` when substrate eval owns roster facts; forbidden: permanent hand-Rust roster ratchet beside modeled witnesses.
 type TestgenRunReceipt {
   profile_ref: Symbol
   generators: List<Generator<TestgenConcept>>
@@ -2060,8 +1911,6 @@ fn generator_id_eq(left: Generator<TestgenConcept>, right: Generator<TestgenConc
   left.provenance.generator_id == right.provenance.generator_id
 }
 
-// Canonical roster equality for F.2-P2 receipts: FreeMonoid/List order is a carried fact
-// (facts-flow-forward). Authority: v2.std.algebra.zip_eq + generator_id_eq per position.
 fn testgen_generators_roster_equal_by_id(
   left: List<Generator<TestgenConcept>>,
   right: List<Generator<TestgenConcept>>
@@ -2293,11 +2142,6 @@ fn bootstrap_claim_generator_for_manual_anchor(
   }
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever {
-    undecidable_because: "complete discriminating test generation is undecidable -- there is no construction that emits a test set guaranteed to catch every wrong behavior"
-  },
-  rationale: "Test generation is honest residue: a manual-anchor plus filesystem-backed shadow driver, never a complete construction; a new TestgenConcept arm is an operator STOP."
+  class: RatchetForever
 }

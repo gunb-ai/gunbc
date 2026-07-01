@@ -1,15 +1,3 @@
-// std/realization_measurement.dag — Measured-cost model (Phase-0 keystone, v2-inheritable).
-//
-// Authority split (§3 / §7):
-//   THIS MODULE — durable model + pure roll-up lens (what v2 inherits).
-//   extdeps/realization/* — peripheral host handlers (v1 eval_expr tap today).
-//   product.compute_fabric — PerformanceReceipt observation carrier.
-//
-// Instrumentation is the dual of cache (realization-measurement-loop.md Phase 0):
-// both wrap the same fold boundary keyed by content-hash subject; cache stores
-// node→value, measurement stores node→duration. The handler is host-effect;
-// the analysis is this lens.
-
 module std.realization_measurement
 
 import std.types { ContentHash, Bool, String, List, Int }
@@ -22,34 +10,35 @@ import std.measure {
   measure_scale_fraction_ceil,
   ByteSize,
   byte_size,
+  Watt,
+  watt,
 }
 import std.realization_schedule {
   CostAccount,
   CostBasis,
+  Measured,
   cost_account_measured,
   cost_account_predicted_zero,
   cost_account_time_count,
 }
 
-// Host-effect shape: observe elapsed wall time at a cache-subject boundary.
-// NOT a state-mutation EffectShape (std.effects) — measurement is peripheral
-// realization (§3 measured⇒peripheral), keyed like cache UpsertSubject.
 type RealizationMeasureEffect
   = ObserveElapsedAtSubject {
       subject: ContentHash
       work_shape: String
     }
 
-// --- Pure roll-up lens: observations → CostAccount.time --------------------
-//
-// Scale-AGNOSTIC over `<S>`: the algebra below is pure add / max over a `Time` magnitude
-// at ANY scale (DESIGN §3 — the framework carries no scale CHOICE). A consumer pins `<S>`
-// (e.g. `Nano`) at its own boundary; nothing here names a particular scale. `<M>` is fixed
-// at `Nat` (magnitude-genericity needs `+`/`max` over `<M>`, the documented where-clause
-// substrate gap — see `std.measure.time_measure`).
-
 fn cost_account_measured_from_time<S>(time: Measure<Time, S, Nat>) -> CostAccount<S> {
   cost_account_measured(time: time)
+}
+
+fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, Nat>, space: ByteSize) -> CostAccount<S> {
+  CostAccount {
+    time: time
+    space: space
+    power: watt(count: 0)
+    basis: Measured
+  }
 }
 
 fn time_measure_list_total<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
@@ -58,42 +47,17 @@ fn time_measure_list_total<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Tim
   )
 }
 
-// --- Concurrent memory-peak sample → per-share peak (§1-C) ------------------
-//
-// A whole-system peak resident-memory observation (VmHWM) is only meaningful paired with the
-// concurrency it was sampled at: each concurrent share does a whole-tree pass, so the observed
-// concurrent peak ≈ per-share peak × concurrency. Bundling (peak, concurrency) into ONE carrier
-// keeps the observation and the divisor it derives against as a single fact (§2/§3) — a loose
-// peak with the concurrency stored elsewhere is anemic (the two can drift apart, and neither
-// reads as "a measurement"). This is the agnostic SHAPE; the measured VALUES live peripherally
-// at the consumer (gunbc.ci_floor_measurement, §3 measured⇒peripheral).
 type ConcurrentMemoryPeakSample {
   peak: ByteSize
   concurrency: Int
 }
 
-// Per-share peak: distribute the observed concurrent peak across the concurrency it was sampled
-// at. This is a per-share *demand* (expressibility-frontier §3 ②) — it must round UP, never down:
-// an under-estimated per-share peak makes ⌊budget ÷ peak⌋ too high ⇒ the spawn-width fold over-fits
-// ⇒ OOM (§5 round-toward-pessimism). So it is the lifted `measure_scale_fraction_ceil` (Memory
-// magnitude scaled by 1/concurrency, CEILED), NOT a manual unwrap→divide→re-ground round-trip — the
-// dimension stays attached through the carrier (the §3 ① wall the lifted algebra dissolves; #5470
-// landed the FLOOR pair, this completes the ceil≠floor money-pair). Fail-closed (§5): a non-positive
-// concurrency is degenerate, so the whole peak stands (a share count of 1) — the same pessimistic
-// direction the ceil op fails closed to, kept here because the op's `den` is `Nat`-positive in-domain.
 fn concurrent_memory_peak_per_share(sample: ConcurrentMemoryPeakSample) -> ByteSize {
-  // Fail-closed (§5): a non-positive concurrency is degenerate, so the share count floors to 1 and
-  // the whole peak stands (ceil(peak × 1/1) = peak) — never a divide-by-zero or a fabricated share.
+
   let shares = if sample.concurrency <= 0 { 1 } else { sample.concurrency }
   measure_scale_fraction_ceil(m: sample.peak, num: 1, den: shares)
 }
 
-// Discriminating witness (§5): the per-share peak of an N-way sample is the whole peak ÷ N, and
-// re-grounds at the same Memory carrier — goes red if the derivation drops the concurrency, aliases
-// the whole peak, or loses the magnitude. Degenerate concurrency falls closed to the whole peak.
-// The `indivisible` case pins the CEIL direction (the demand round-toward-pessimism, §5): 10 ÷ 4 =
-// 2.5 → 3, NOT 2 — a floor here would silently under-estimate per-share demand and risk OOM, so a
-// floor impl goes RED. The exact case alone cannot tell ceil from floor; this one can.
 fn witness_concurrent_memory_peak_per_share_divides() -> Bool {
   let sample = ConcurrentMemoryPeakSample { peak: byte_size(8400113664), concurrency: 4 }
   let degenerate = ConcurrentMemoryPeakSample { peak: byte_size(2100028416), concurrency: 0 }
@@ -102,14 +66,6 @@ fn witness_concurrent_memory_peak_per_share_divides() -> Bool {
     && measure_count(m: concurrent_memory_peak_per_share(sample: degenerate)) == 2100028416
     && measure_count(m: concurrent_memory_peak_per_share(sample: indivisible)) == 3
 }
-
-// --- Critical-path span roll-up (Phase 1.5b) --------------------------------
-//
-// Authority: v1.compiler.complexity — `span` is critical-path length under DAG
-// dependency structure; `cost_seq` (sequential = add) and `cost_par` (parallel =
-// CostMax) at complexity.dag:3754-3771. Do NOT fork a second span semantics here;
-// these are the concrete, scale-AGNOSTIC `Measure<Time, S, Nat>` realizations of that
-// proof vocabulary (a consumer pins `<S>`, e.g. `Nano`; the algebra names no scale).
 
 fn time_measure_is_zero<S>(d: Measure<Time, S, Nat>) -> Bool {
   measure_count(m: d) == 0
@@ -147,12 +103,10 @@ fn time_measure_list_par<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time,
   )
 }
 
-// One schedule batch (parallel runnables) → max wall time; zero identity matches cost_par.
 fn schedule_batch_critical_path<S>(batch_times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
   time_measure_list_par(times: batch_times)
 }
 
-// Schedule topology `List<List<…>>`: sequential across batches, parallel within batch.
 fn schedule_critical_path_time<S>(batch_times: List<List<Measure<Time, S, Nat>>>) -> Measure<Time, S, Nat> {
   fold(
     batch_times,
@@ -174,9 +128,6 @@ fn cost_account_measured_from_time_list<S>(times: List<Measure<Time, S, Nat>>) -
   cost_account_measured_from_time(time: time_measure_list_total(times: times))
 }
 
-// Discriminating lens: non-zero measured roll-up must differ from predicted_zero
-// and preserve the magnitude count (§5 — goes red if roll-up aliases or drops time).
-// Scale-agnostic: holds at whatever scale `<S>` the consumer supplies.
 fn witness_measured_rollup_differs_from_predicted_zero<S>(wall_time: Measure<Time, S, Nat>) -> Bool {
   if measure_count(m: wall_time) == 0 {
     false

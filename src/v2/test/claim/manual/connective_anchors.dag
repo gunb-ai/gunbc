@@ -1,0 +1,197 @@
+module v2.test.manual.connective_anchors
+
+import v2.compiler.eval { eval_diagnostic }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected,
+  diagnostics_singleton
+}
+import v2.std.verification {
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  ManualTcConjEmpty,
+  ManualTcDisjEmpty,
+  ManualTcArrowTwoConj,
+  ManualTcCardinalityEmpty,
+  ManualTcInstantiationEmpty,
+  ManualTcArrowEmpty,
+  ManualTcTransformEmpty,
+  ManualTcBranchEmpty,
+  ManualTcLoopEmpty,
+  ManualTcBindZeroChildren,
+  ManualTcConjEqualsRefl,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  ManualAnchorKey,
+  manual_claim_anchor
+}
+import v2.std.node {
+  Arrow,
+  Bind,
+  Branch,
+  Cardinality,
+  ComputationNode,
+  Conj,
+  Disj,
+  Edge,
+  Instantiation,
+  Loop,
+  Node,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence
+}
+
+data stub_empty_conj: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data stub_arrow_pair: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: [
+    Edge { label: Positional, target: stub_empty_conj },
+    Edge { label: Positional, target: stub_empty_conj }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data stub_empty_disj: Node = Node {
+  kind: TypeNode { connective: Disj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data stub_empty_cardinality: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data stub_empty_instantiation: Node = Node {
+  kind: TypeNode { connective: Instantiation },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data stub_empty_arrow: Node = Node {
+  kind: TypeNode { connective: Arrow },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data stub_empty_transform: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data stub_empty_branch: Node = Node {
+  kind: ComputationNode { behavior: Branch },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data stub_empty_loop: Node = Node {
+  kind: ComputationNode { behavior: Loop },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data stub_bind_zero_children: Node = Node {
+  kind: ComputationNode { behavior: Bind },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn arity_rejection_claim(label: String, input: Node, anchor: ManualAnchorKey) -> TestClaim {
+  DiagnosticClaim {
+    label: label,
+    anchor: manual_claim_anchor(anchor: anchor),
+    input: input,
+    expected_rejection: diagnostics_singleton(
+      d: eval_diagnostic(reason: ^eval_rejected_invalid_node, node: input)
+    ),
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
+
+data claim_conj_empty_compiles: TestClaim = CompilesClaim {
+  label: "manual/connective: empty Conj type-node is structurally inhabitable",
+  anchor: manual_claim_anchor(anchor: ManualTcConjEmpty),
+  input: stub_empty_conj,
+  expected_value: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_disj_empty_compiles: TestClaim = CompilesClaim {
+  label: "manual/connective: empty Disj type-node is structurally inhabitable",
+  anchor: manual_claim_anchor(anchor: ManualTcDisjEmpty),
+  input: stub_empty_disj,
+  expected_value: stub_empty_disj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_arrow_two_conj_compiles: TestClaim = CompilesClaim {
+  label: "manual/connective: Arrow with two positional Conj leaves (no Atom)",
+  anchor: manual_claim_anchor(anchor: ManualTcArrowTwoConj),
+  input: stub_arrow_pair,
+  expected_value: stub_arrow_pair,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_cardinality_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Cardinality type-node fails well-formedness (A1 arity)",
+  input: stub_empty_cardinality,
+  anchor: ManualTcCardinalityEmpty
+)
+
+data claim_instantiation_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Instantiation type-node fails well-formedness (A1 arity)",
+  input: stub_empty_instantiation,
+  anchor: ManualTcInstantiationEmpty
+)
+
+data claim_arrow_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Arrow type-node fails well-formedness (A1 arity)",
+  input: stub_empty_arrow,
+  anchor: ManualTcArrowEmpty
+)
+
+data claim_transform_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Transform computation-node fails well-formedness (A1 arity)",
+  input: stub_empty_transform,
+  anchor: ManualTcTransformEmpty
+)
+
+data claim_branch_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Branch computation-node fails well-formedness (A1 arity)",
+  input: stub_empty_branch,
+  anchor: ManualTcBranchEmpty
+)
+
+data claim_loop_empty_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: empty Loop computation-node fails well-formedness (A1 arity)",
+  input: stub_empty_loop,
+  anchor: ManualTcLoopEmpty
+)
+
+data claim_bind_zero_children_rejected: TestClaim = arity_rejection_claim(
+  label: "manual/connective: Bind with zero children fails well-formedness (A1 arity == 3)",
+  input: stub_bind_zero_children,
+  anchor: ManualTcBindZeroChildren
+)
+
+data claim_conj_equals_refl: TestClaim = EqualsClaim {
+  label: "manual/connective: Equals reflexivity on empty Conj stub",
+  anchor: manual_claim_anchor(anchor: ManualTcConjEqualsRefl),
+  lhs: stub_empty_conj,
+  rhs: stub_empty_conj,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

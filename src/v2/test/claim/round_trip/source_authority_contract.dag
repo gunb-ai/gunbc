@@ -1,0 +1,187 @@
+module v2.test.round_trip.source_authority_contract
+
+import extdeps.communication.fidelity_carriers { medium_section_equal }
+import extdeps.communication.medium { Lossless, Lossy, Medium }
+import v2.compiler.source_authority { deterministic_dag_source_serializer_witness }
+import v2.compiler.target_carriers { decode_fidelity_from_target, target_source_medium }
+import v2.compiler.translate { target_serialize_source_from_model }
+import v2.extdeps.languages.dag {
+  dag_mvp1_fixture_emitted_add_fn,
+  dag_mvp1_source_text,
+  dag_mvp1_target_model
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, TypeNode, SyntheticOccurrence }
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, Violates }
+
+data source_authority_contract_target_model: TargetModel = dag_mvp1_target_model()
+
+data source_authority_contract_source: Medium<String> = Medium {
+  carried: dag_mvp1_source_text,
+  fidelity: Lossy
+}
+
+data source_authority_contract_subject: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^source_authority_contract_subject_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn source_authority_contract_pass_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^source_authority_contract_pass_symbol } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn contract_target_advertises_declared_loss() -> Bool {
+  match decode_fidelity_from_target(target: source_authority_contract_target_model) {
+    Accepted { value: fidelity, diagnostics: _ } =>
+      match fidelity {
+        Lossy => true
+        Lossless => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn contract_source_medium_matches_compose_up() -> Bool {
+  match target_source_medium(
+    text: dag_mvp1_source_text,
+    target: source_authority_contract_target_model
+  ) {
+    Accepted { value: medium, diagnostics: _ } =>
+      match medium.fidelity {
+        Lossy => medium.carried == dag_mvp1_source_text
+        Lossless => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn contract_serializer_section_law_holds() -> Bool {
+  match target_serialize_source_from_model(
+    target: source_authority_contract_target_model,
+    emitted: dag_mvp1_fixture_emitted_add_fn
+  ) {
+    Accepted { value: first, diagnostics: _ } =>
+      match target_serialize_source_from_model(
+        target: source_authority_contract_target_model,
+        emitted: dag_mvp1_fixture_emitted_add_fn
+      ) {
+        Accepted { value: second, diagnostics: _ } =>
+          match deterministic_dag_source_serializer_witness(first: first, second: second) {
+            Holds { value: law } =>
+              law.canonical_section == first.carried
+                && law.declared_fidelity == first.fidelity
+                && first.fidelity == Lossy
+                && medium_section_equal(left: first, right: second)
+            Violates { diagnostic: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn contract_serializer_section_law_ignores_fidelity_mismatch() -> Bool {
+  match target_serialize_source_from_model(
+    target: source_authority_contract_target_model,
+    emitted: dag_mvp1_fixture_emitted_add_fn
+  ) {
+    Accepted { value: lossy, diagnostics: _ } => {
+      let lossless_retag = Medium { carried: lossy.carried, fidelity: Lossless }
+      match deterministic_dag_source_serializer_witness(first: lossy, second: lossless_retag) {
+        Holds { value: law } =>
+          law.canonical_section == lossy.carried && law.declared_fidelity == Lossy
+        Violates { diagnostic: _ } => false
+      }
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn contract_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
+  match target_serialize_source_from_model(
+    target: source_authority_contract_target_model,
+    emitted: dag_mvp1_fixture_emitted_add_fn
+  ) {
+    Accepted { value: lossy, diagnostics: _ } => {
+      let lossless_retag = Medium { carried: lossy.carried, fidelity: Lossless }
+      lossy != lossless_retag
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn medium_section_and_fidelity_equal<R>(left: Medium<R>, right: Medium<R>) -> Bool {
+  medium_section_equal(left: left, right: right) && left.fidelity == right.fidelity
+}
+
+fn contract_perturbed_strict_section_equal_flips_fidelity_mismatch_red() -> Bool {
+  match target_serialize_source_from_model(
+    target: source_authority_contract_target_model,
+    emitted: dag_mvp1_fixture_emitted_add_fn
+  ) {
+    Accepted { value: lossy, diagnostics: _ } => {
+      let lossless_retag = Medium { carried: lossy.carried, fidelity: Lossless }
+      medium_section_equal(left: lossy, right: lossless_retag)
+        && !medium_section_and_fidelity_equal(left: lossy, right: lossless_retag)
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data contract_carried_mismatch_probe: String = "fn add(x:Int, y:Int) -> Int { x + y }X"
+
+fn contract_serializer_section_law_violates_on_carried_mismatch() -> Bool {
+  match target_serialize_source_from_model(
+    target: source_authority_contract_target_model,
+    emitted: dag_mvp1_fixture_emitted_add_fn
+  ) {
+    Accepted { value: canonical, diagnostics: _ } => {
+      let perturbed = Medium {
+        carried: contract_carried_mismatch_probe,
+        fidelity: canonical.fidelity
+      }
+      (canonical.carried != contract_carried_mismatch_probe)
+        && !medium_section_equal(left: canonical, right: perturbed)
+        && match deterministic_dag_source_serializer_witness(
+          first: canonical,
+          second: perturbed
+        ) {
+          Violates { diagnostic: _ } => true
+          Holds { value: _ } => false
+        }
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data claim_source_authority_contract_compiles: TestClaim = CompilesClaim {
+  label: "Branch H.7.2 source-authority round-trip shape contract compiles without JSON IR authority",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: source_authority_contract_pass_node(),
+  expected_value: source_authority_contract_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_bmin_canonical_dag_source_parse_print_law: TestClaim = CompilesClaim {
+  label: "B-min canonical .dag source law: deterministic serializer plus normalized source-AST parse/print, excluding JSON IR",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: source_authority_contract_pass_node(),
+  expected_value: source_authority_contract_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}

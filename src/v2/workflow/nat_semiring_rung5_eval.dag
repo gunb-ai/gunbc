@@ -1,6 +1,4 @@
-
 module v2.test.workflow.nat_semiring_rung5_eval
-
 
 import v2.compiler.eval { TestClaimRun }
 import v2.std.algebra { is_empty }
@@ -16,7 +14,6 @@ import v2.test.workflow.testclaim_corpus_runner {
   corpus_report_tally
 }
 
-
 fn run_nat_semiring_rung5_eval() -> CorpusEvalReport {
   CorpusEvalReport {
     entries: corpus_entries_from_node_runtime_value_runs(
@@ -25,14 +22,12 @@ fn run_nat_semiring_rung5_eval() -> CorpusEvalReport {
   }
 }
 
-
 fn nat_semiring_rung5_report_has_evidence(report: CorpusEvalReport) -> Bool {
   match is_empty(xs: report.entries) {
     true => false
     false => true
   }
 }
-
 
 fn nat_semiring_rung5_gate(report: CorpusEvalReport) -> Bool {
   if nat_semiring_rung5_report_has_evidence(report: report) {

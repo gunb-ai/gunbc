@@ -1,0 +1,46 @@
+module extdeps.llm.anthropic_contracts
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.llm.llm_contracts { llm_snake_wire_contract }
+import std.serialization { CoproductWireContract, VariantEncoding, InternallyTaggedObject, StripSuffixAndSnakeCase, StripPrefixSuffixAndSnakeCase, UntaggedVariant }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/message_param.py"
+  }
+}
+
+data wire_contract: VariantEncoding = llm_snake_wire_contract
+
+data anthropic_chat_message_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicChatMessage", field: WholeDeclaration },
+  encoding: InternallyTaggedObject { tag_field: "role", naming: StripSuffixAndSnakeCase { suffix: "Message" } }
+}
+
+data anthropic_user_content_block_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicUserContentBlock", field: WholeDeclaration },
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "User", suffix: "Block" } }
+}
+
+data anthropic_assistant_content_block_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicAssistantContentBlock", field: WholeDeclaration },
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Assistant", suffix: "Block" } }
+}
+
+data anthropic_messages_200_content_block_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicMessages200ContentBlock", field: WholeDeclaration },
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Messages", suffix: "Block" } }
+}
+
+data anthropic_tool_result_content_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolResultContent", field: WholeDeclaration },
+  encoding: UntaggedVariant
+}
+
+data anthropic_tool_result_block_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolResultBlock", field: WholeDeclaration },
+  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Anthropic", suffix: "Block" } }
+}

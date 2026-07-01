@@ -1,0 +1,129 @@
+module v2.test.claim_pipeline.normalize
+
+import v2.compiler.normalize { normalize }
+
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.verification {
+  CompilesClaim,
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+data spine_normalize_module_subject: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^spine_normalize_module } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+fn spine_normalize_service_parse_tree() -> Node {
+  Node {
+    kind: TypeNode {
+      connective: Atom { identity: ^dag_c3_surface_sugar_service }
+    },
+    children: [
+      Edge {
+        label: Named { name: ^spine_normalize_service_decl },
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+}
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn spine_normalize_accepts_well_formed_sugar() -> Bool {
+  match normalize(parse_tree: spine_normalize_service_parse_tree()) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn spine_normalize_nested_service_parse_tree() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^spine_normalize_nested_field },
+        target: spine_normalize_service_parse_tree()
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn spine_normalize_child_is_service_sugar_atom(n: Node) -> Bool {
+  match n.kind {
+    TypeNode { connective: Atom { identity: id } } =>
+      id == ^dag_c3_surface_sugar_service
+    TypeNode { connective: _ } => false
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn spine_normalize_dissolves_interior_service_sugar() -> Bool {
+  match normalize(parse_tree: spine_normalize_nested_service_parse_tree()) {
+    Accepted { value: normalized, diagnostics: _ } =>
+      fold(normalized.children, init: true, f: fn(acc, e) {
+        acc && !spine_normalize_child_is_service_sugar_atom(n: e.target)
+      })
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn spine_normalize_bool_atom(b: Bool) -> Node {
+  match b {
+    true =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^spine_normalize_pass } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+}
+    false =>
+      Node {
+        kind: TypeNode { connective: Atom { identity: ^spine_normalize_fail } },
+        children: [],
+        occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+data claim_pipeline_normalize_module_compiles: TestClaim = CompilesClaim {
+  label: "claim_pipeline/normalize: v2.compiler.normalize stage module compiles",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: spine_normalize_module_subject,
+  expected_value: spine_normalize_module_subject,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_pipeline_normalize_accepts_sugar_tree: TestClaim = EqualsClaim {
+  label: "claim_pipeline/normalize: normalize accepts well-formed C3 service sugar ParseTree",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: spine_normalize_bool_atom(b: spine_normalize_accepts_well_formed_sugar()),
+  rhs: spine_normalize_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_pipeline_normalize_dissolves_interior_sugar: TestClaim = EqualsClaim {
+  label: "claim_pipeline/normalize: normalize dissolves interior C3 service sugar to Conj",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: spine_normalize_bool_atom(b: spine_normalize_dissolves_interior_service_sugar()),
+  rhs: spine_normalize_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

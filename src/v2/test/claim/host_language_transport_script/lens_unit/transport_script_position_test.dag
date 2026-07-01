@@ -1,0 +1,89 @@
+module v2.test.host_language_transport_script.lens_unit.transport_script_position
+
+import v2.lens.host_language_transport_script {
+  BareStringLiteral,
+  ComputedApplication,
+  LetBoundStringLiteral,
+  StringInterpLiteralsOnly,
+  TransportScriptPositionFact,
+  transport_script_literal_ban_holds,
+  transport_script_literal_violation_count,
+  transport_script_lens_verdict,
+}
+import std.lens_verdict { Holds, Violation, NotApplicable, Unrealized }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+data path_dsl: String = "dsl/tools/dsl_compile_clean_transport.dag"
+data path_emit: String = "dsl/tools/emit_host_transport.dag"
+data fn_clean: String = "run_clean_tree_compile"
+data fn_go: String = "run_go_mvp2_smoke"
+data fn_bad: String = "run_bad_literal_smoke"
+
+data fact_computed: TransportScriptPositionFact = TransportScriptPositionFact {
+  path: path_dsl,
+  function: fn_clean,
+  shape: ComputedApplication
+}
+
+data fact_bare_literal: TransportScriptPositionFact = TransportScriptPositionFact {
+  path: path_emit,
+  function: fn_bad,
+  shape: BareStringLiteral
+}
+
+data fact_let_bound: TransportScriptPositionFact = TransportScriptPositionFact {
+  path: path_emit,
+  function: fn_go,
+  shape: LetBoundStringLiteral
+}
+
+data fact_interp_literals: TransportScriptPositionFact = TransportScriptPositionFact {
+  path: path_emit,
+  function: fn_bad,
+  shape: StringInterpLiteralsOnly
+}
+
+fn witness_computed_green() -> Bool {
+  transport_script_literal_ban_holds(facts: [fact_computed])
+}
+
+fn witness_bare_literal_red() -> Bool {
+  !transport_script_literal_ban_holds(facts: [fact_bare_literal])
+    && transport_script_literal_violation_count(facts: [fact_bare_literal]) == 1
+}
+
+fn witness_let_bound_red() -> Bool {
+  !transport_script_literal_ban_holds(facts: [fact_let_bound])
+}
+
+fn witness_interp_literals_red() -> Bool {
+  !transport_script_literal_ban_holds(facts: [fact_interp_literals])
+}
+
+fn witness_lens_verdict_holds_on_computed() -> Bool {
+  match transport_script_lens_verdict(facts: [fact_computed]) {
+    Holds => true
+    Violation { diagnostic: _ } => false
+    NotApplicable { diagnostic: _ } => false
+    Unrealized { diagnostic: _ } => false
+  }
+}
+
+fn witness_lens_verdict_violation_on_bare_literal() -> Bool {
+  match transport_script_lens_verdict(facts: [fact_bare_literal]) {
+    Violation { diagnostic: _ } => true
+    Holds => false
+    NotApplicable { diagnostic: _ } => false
+    Unrealized { diagnostic: _ } => false
+  }
+}
+
+test fn transport_script_position_witnesses() -> Bool {
+  witness_computed_green()
+    && witness_bare_literal_red()
+    && witness_let_bound_red()
+    && witness_interp_literals_red()
+    && witness_lens_verdict_holds_on_computed()
+    && witness_lens_verdict_violation_on_bare_literal()
+}

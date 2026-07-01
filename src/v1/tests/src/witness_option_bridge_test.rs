@@ -1,9 +1,3 @@
-//! Optional surface dissolution for bootstrap map_get (B-LOOKUP-1).
-//!
-//! `Map.lookup` returns `Witness<V>` (`Holds`/`Violates`), while bootstrap
-//! `map_get` (v2.std.collection) now matches that Witness surface directly
-//! before wrapping as canonical `Present`/`Absent`.
-
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
@@ -14,7 +8,7 @@ use v1_compiler::v1_interpreter::{self, Value};
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
@@ -45,7 +39,6 @@ fn run_v4_module(entry: &str, content: &str, witness_fn: &str) -> Value {
         .unwrap_or_else(|e| panic!("run {witness_fn}: {e:?}"))
 }
 
-/// Detection: red if the deleted Witness→Some/None spelling bridge returns.
 #[test]
 fn match_pattern_does_not_bridge_witness_to_some_none() {
     let source = include_str!("../../stage0/src/v1_interpreter.rs");
@@ -63,7 +56,6 @@ fn match_pattern_does_not_bridge_witness_to_some_none() {
     );
 }
 
-/// Discriminates the Rust emitter's Optional-only lowering boundary.
 #[test]
 fn rust_emitter_lowers_present_absent_only_for_optional_parent() {
     let info = empty_emit_graph_info();
@@ -103,7 +95,6 @@ fn rust_emitter_lowers_present_absent_only_for_optional_parent() {
     );
 }
 
-/// Discriminates the Rust emitter's Witness-only lowering boundary.
 #[test]
 fn rust_emitter_lowers_holds_violates_only_for_witness_parent() {
     let info = empty_emit_graph_info();
@@ -225,7 +216,6 @@ fn mark_excluded_no_longer_pattern_match_fails() {
     let entry = "src/v2/lens/affected_set/excluded_propagation_proof.dag";
     let content = std::fs::read_to_string(workspace_root().join(entry))
         .unwrap_or_else(|e| panic!("read {entry}: {e}"));
-    // Returns Bool (true or false) — the pre-fix crash was PatternMatchFailure on Holds.
     match run_v4_module(entry, &content, "excluded_propagation_proof_claim_holds") {
         Value::Bool(_) => {}
         other => panic!("expected Bool witness from mark_excluded path, not crash; got {other:?}"),

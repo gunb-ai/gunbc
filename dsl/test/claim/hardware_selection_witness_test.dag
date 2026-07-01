@@ -1,28 +1,8 @@
-// test/claim/hardware_selection_witness.dag — by-execution witness for the hardware
-// decision-space model (product/hardware_selection.dag).
-//
-// Proves by RUNNING (DESIGN §5): the platform downclock model computes the right effective
-// rate, the integration projects a config to its FIVE axes (throughput/capacity/bandwidth/
-// power/cost), the PSU sizing computes wall draw, the realizability guard rejects a
-// physically-impossible SKU, and the ONE dominance kernel strips a Pareto-DOMINATED config
-// while keeping the genuine incomparable trade-offs on the front.
-//
-// HEADLINE (the most calibration-sensitive call in the model): at 2DPC the dual-rank
-// downclock (3200→2933) and the single-rank interleave penalty (×0.9) NEARLY cancel, so
-// 1Rx8 (lower power, fewer devices) and 2Rx8 (higher bandwidth) are INCOMPARABLE — neither
-// dominates. Drop the rank-interleave factor and 1R wins bandwidth-ties unconditionally and
-// (falsely) DOMINATES 2R everywhere; the interleave term is exactly what makes this the real
-// partial-order trade-off it physically is.
-//
-// Generic example SKUs (NOT the operator's fleet — lane scope): an 8-channel Altra-class
-// platform, REALIZABLE 16GB RDIMMs in 1Rx8 vs 2Rx8, a ~166W-draw CPU, an 80+ Gold PSU.
-
 module test.claim.hardware_selection
 
 import std.logic { Bool }
 import std.types { Int, List }
-import std.measure { byte_size, byte_size_count, bit_width, watt, watt_count, hardware_thread_count, hertz }
-import product.compute_fabric { money_micros }
+import std.measure { byte_size, byte_size_count, bit_width, watt, watt_count, hardware_thread_count, hertz, money_amount_micro }
 import product.hardware_selection { milliwatt }
 import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket }
 import extdeps.memory.types { DramModuleCatalogRow, dram_module_is_realizable, dram_module_required_die_density, dram_generation_ddr4 }
@@ -49,7 +29,6 @@ import product.hardware_selection {
   bandwidth_per_watt
 }
 
-// --- Platform: 8-channel, 2 DIMMs/channel, DDR4-3200 ceiling -------------
 data altra8: Platform = Platform {
   label: "altra-8ch-ddr4-3200",
   memory_channels: 8,
@@ -57,10 +36,6 @@ data altra8: Platform = Platform {
   max_data_rate_mts: 3200
 }
 
-// --- DRAM modules: REALIZABLE 16GB RDIMM, 1Rx8 vs 2Rx8 -------------------
-// 16GB 1Rx8 needs 16Gbit dies (128Gbit ÷ 8 devices) — the DDR4 monolithic max, so it is a
-// real part. (A 32GB 1Rx8 would need 32Gbit dies — DDR4 tops out at 16Gbit, no such part;
-// realizability_rejects_impossible_sku below proves the guard rejects exactly that.)
 data stick_16g: ByteSize = byte_size(count: 17179869184)
 
 data mod_1rx8_16g: DramModuleCatalogRow = DramModuleCatalogRow {
@@ -75,7 +50,6 @@ data mod_1rx8_16g: DramModuleCatalogRow = DramModuleCatalogRow {
   rank_count: 1
 }
 
-// 2Rx8: same 16GB part organized as two ranks of x8 — needs only 8Gbit dies, also realizable.
 data mod_2rx8_16g: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "GENERIC-16G-2RX8-3200",
   manufacturer: sk_hynix,
@@ -88,10 +62,6 @@ data mod_2rx8_16g: DramModuleCatalogRow = DramModuleCatalogRow {
   rank_count: 2
 }
 
-// A REAL 16GB 1Rx4 RDIMM (SK Hynix HMA82GR7AFR4N-VK, DDR4-2666) — used to PIN the die-density
-// divisor: built from 8 Gibit dies across 16 data chips (64/4) × 1 rank. The guard must
-// compute that real 8 Gibit exactly (RED if it divided by 72/width = 18 ECC-inclusive chips,
-// which yields a non-existent 7.11 Gibit die).
 data mod_1rx4_16g: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "HMA82GR7AFR4N-VK",
   manufacturer: sk_hynix,
@@ -104,8 +74,6 @@ data mod_1rx4_16g: DramModuleCatalogRow = DramModuleCatalogRow {
   rank_count: 1
 }
 
-// A physically IMPOSSIBLE part used only to prove the realizability guard fails closed: 32GB
-// in a single rank of x8 devices needs 32Gbit dies, which DDR4 does not have.
 data mod_1rx8_32g_impossible: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "FAKE-32G-1RX8-3200",
   manufacturer: sk_hynix,
@@ -118,19 +86,16 @@ data mod_1rx8_32g_impossible: DramModuleCatalogRow = DramModuleCatalogRow {
   rank_count: 1
 }
 
-// 🟡 calibration inputs (placeholders the operator's live data confirms): 400 mW/device,
-// €120/stick (used-market) = 120_000_000 micro-EUR.
 data mem_1rx8_2dpc: MemoryConfig = MemoryConfig {
-  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: milliwatt(count: 400), price_per_stick: money_micros(count: 120000000)
+  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
 }
 data mem_2rx8_2dpc: MemoryConfig = MemoryConfig {
-  module: mod_2rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: milliwatt(count: 400), price_per_stick: money_micros(count: 120000000)
+  module: mod_2rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 2, power_per_chip: milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
 }
 data mem_1rx8_1dpc: MemoryConfig = MemoryConfig {
-  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 1, power_per_chip: milliwatt(count: 400), price_per_stick: money_micros(count: 120000000)
+  module: mod_1rx8_16g, jedec: ddr4_generation_catalog, dimms_per_channel: 1, power_per_chip: milliwatt(count: 400), price_per_stick: money_amount_micro(count: 120000000)
 }
 
-// --- CPU: generic Altra-class, 166W measured draw (NOT its TDP) ----------
 data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   model_number: "GENERIC-ARM-64C",
   oem_listing_id: none,
@@ -143,14 +108,11 @@ data cpu_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
   tdp_watts: watt(250)
 }
 
-// 🟡 aggregate_throughput is a MEASURED relative compute index (SPECrate-style), NOT cores×GHz.
-// cpu_fast and cpu_slow are identical on draw + price and differ ONLY in measured throughput —
-// so the faster part DOMINATES the slower at equal everything-else (the §finding-1 axis).
 data cpu_fast: CpuCandidate = CpuCandidate {
-  catalog: cpu_catalog, typical_draw: watt(count: 166), price: money_micros(count: 400000000), aggregate_throughput: 700
+  catalog: cpu_catalog, typical_draw: watt(count: 166), price: money_amount_micro(count: 400000000), aggregate_throughput: 700
 }
 data cpu_slow: CpuCandidate = CpuCandidate {
-  catalog: cpu_catalog, typical_draw: watt(count: 166), price: money_micros(count: 400000000), aggregate_throughput: 400
+  catalog: cpu_catalog, typical_draw: watt(count: 166), price: money_amount_micro(count: 400000000), aggregate_throughput: 400
 }
 
 data board1: Motherboard = Motherboard {
@@ -159,63 +121,45 @@ data board1: Motherboard = Motherboard {
   memory_channels: 8,
   max_dimms_per_channel: 2,
   idle_draw: watt(count: 30),
-  price: money_micros(count: 300000000)
+  price: money_amount_micro(count: 300000000)
 }
 
 data psu_gold_550: PsuModel = PsuModel {
   label: "GENERIC-550W-GOLD",
   max_output: watt(count: 550),
   efficiency: Gold,
-  price: money_micros(count: 90000000)
+  price: money_amount_micro(count: 90000000)
 }
 
-// --- Full configs --------------------------------------------------------
 fn sys(cpu: CpuCandidate, mem: MemoryConfig) -> SystemConfig {
   SystemConfig { platform: altra8, cpu: cpu, memory: mem, board: board1, psu: psu_gold_550 }
 }
 
-data cfg_a_axes: HardwareAxes = config_axes(cfg: sys(cpu: cpu_fast, mem: mem_1rx8_2dpc))  // 256GB 1Rx8, low power
-data cfg_b_axes: HardwareAxes = config_axes(cfg: sys(cpu: cpu_fast, mem: mem_2rx8_2dpc))  // 256GB 2Rx8, higher bw + power
-data cfg_c_axes: HardwareAxes = config_axes(cfg: sys(cpu: cpu_fast, mem: mem_1rx8_1dpc))  // 128GB, half sticks
-data cfg_slow_axes: HardwareAxes = config_axes(cfg: sys(cpu: cpu_slow, mem: mem_1rx8_2dpc))  // = cfg_a but slower CPU
+data cfg_a_axes: HardwareAxes = config_axes(cfg: sys(cpu: cpu_fast, mem: mem_1rx8_2dpc))
+data cfg_b_axes: HardwareAxes = config_axes(cfg: sys(cpu: cpu_fast, mem: mem_2rx8_2dpc))
+data cfg_c_axes: HardwareAxes = config_axes(cfg: sys(cpu: cpu_fast, mem: mem_1rx8_1dpc))
+data cfg_slow_axes: HardwareAxes = config_axes(cfg: sys(cpu: cpu_slow, mem: mem_1rx8_2dpc))
 
-// === Witnesses ===========================================================
-
-// Downclock model: at 2DPC, dual-rank derates to 2933 while single-rank holds 3200.
 fn downclock_is_rank_dependent() -> Bool {
   effective_data_rate_mts(platform: altra8, dimms_per_channel: 2, rank_count: 1) == 3200
     && effective_data_rate_mts(platform: altra8, dimms_per_channel: 2, rank_count: 2) == 2933
     && effective_data_rate_mts(platform: altra8, dimms_per_channel: 1, rank_count: 2) == 3200
 }
 
-// PSU sizing: DC load = 166 (cpu) + 57 (16 sticks × 9 devices × 400mW) + 30 (board) = 253 W;
-// the 550W Gold PSU is adequate; at ~46% load read the 50%-load column (Gold = 90%), so wall
-// draw = 253 × 100 / 90 = 281 W (integer division), NOT the 290 W the 20%/100% floor gives.
 fn psu_sizing_is_computed() -> Bool {
   psu_is_adequate(cfg: sys(cpu: cpu_fast, mem: mem_1rx8_2dpc))
     && watt_count(w: wall_draw_watts(cfg: sys(cpu: cpu_fast, mem: mem_1rx8_2dpc))) == 281
 }
 
-// HEADLINE (corrected by the rank-interleave factor): at 2DPC, 1Rx8 (rate 3200 × 0.9
-// interleave = 2880) is LOWER bandwidth but LOWER power than 2Rx8 (rate 2933 × 1.0 = 2933,
-// ~2× the devices) at equal capacity / cost / throughput — so they are INCOMPARABLE, neither
-// dominating. Without the interleave term both compute identical bandwidth and 1R falsely
-// dominates; this is the single most calibration-sensitive verdict in the model.
 fn rank_tradeoff_is_incomparable() -> Bool {
   verdict_is_incomparable(v: dominates(a: cfg_a_axes, b: cfg_b_axes))
     && verdict_is_incomparable(v: dominates(a: cfg_b_axes, b: cfg_a_axes))
 }
 
-// THROUGHPUT axis (finding 1): two configs identical on RAM / bandwidth / power / cost but
-// differing in MEASURED compute throughput — the faster CPU strictly DOMINATES the slower.
-// The model was blind to this (the reason a CI node is bought) before the axis was added.
 fn higher_throughput_dominates() -> Bool {
   verdict_dominates(v: dominates(a: cfg_a_axes, b: cfg_slow_axes))
 }
 
-// Pareto front over {A, B, C, slow}: the throughput-dominated `slow` is stripped; A (1Rx8,
-// cooler), B (2Rx8, more bandwidth) and C (half capacity, cheapest) are pairwise incomparable
-// trade-offs and all survive — the partial-order gap the four-state verdict exists to keep.
 fn front_keeps_tradeoffs_strips_dominated() -> Bool {
   let pool = [cfg_a_axes, cfg_b_axes, cfg_c_axes, cfg_slow_axes]
   axes_on_front(candidate: cfg_a_axes, pool: pool)
@@ -224,9 +168,6 @@ fn front_keeps_tradeoffs_strips_dominated() -> Bool {
     && !axes_on_front(candidate: cfg_slow_axes, pool: pool)
 }
 
-// REALIZABILITY guard (finding 3): the realizable 16GB parts pass; the impossible 32GB 1Rx8
-// part is rejected (would need 32Gbit DDR4 dies, which do not exist); and the selection-time
-// config filter agrees a built config is realizable. Fail-closed: no fake SKU reaches the front.
 fn realizability_rejects_impossible_sku() -> Bool {
   dram_module_is_realizable(module: mod_1rx8_16g, jedec: ddr4_generation_catalog)
     && dram_module_is_realizable(module: mod_2rx8_16g, jedec: ddr4_generation_catalog)
@@ -234,20 +175,10 @@ fn realizability_rejects_impossible_sku() -> Bool {
     && config_is_realizable(cfg: sys(cpu: cpu_fast, mem: mem_1rx8_2dpc))
 }
 
-// DISCRIMINATING (§5 teeth): a REAL 16GB 1Rx4 RDIMM is built from 8 Gibit dies — 16 data chips
-// (64/4) × 1 rank, marketed capacity / data chips. The guard must compute that REAL per-die
-// capacity EXACTLY: 1073741824 bytes = 1 GiB (= an 8 Gibit die). This goes RED under a 72/width
-// (ECC-inclusive) divisor (17179869184/18 = 954437177 B, a die that does not exist) and GREEN
-// under the correct 64/width data-chip divisor — so it PINS the divisor, not merely that the
-// threshold rejects an impossible part (both 64 and 72 reject the 32GB fake, so that test alone
-// cannot tell them apart).
 fn real_part_computes_real_die_density() -> Bool {
   byte_size_count(b: dram_module_required_die_density(module: mod_1rx4_16g)) == 1073741824
 }
 
-// Derived decision ratios are COMPUTED, not dead spec (§5): cost/GiB is a positive,
-// non-degenerate number, and 1Rx8 A is more bandwidth-per-watt efficient than the
-// downclocked, hotter 2Rx8 B — the lower-power leg of the incomparable trade-off, read as a ratio.
 fn derived_ratios_are_computed() -> Bool {
   cost_micros_per_gib(a: cfg_a_axes) > 0
     && bandwidth_per_watt(a: cfg_a_axes) > bandwidth_per_watt(a: cfg_b_axes)

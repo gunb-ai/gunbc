@@ -1,13 +1,3 @@
-// std/markdown.dag — CommonMark-shaped markdown surface + thin consumer of std.markup.
-//
-// gunbhub builds MarkdownDocument trees structurally; try_serialize_markdown
-// adapts to std.markup.Fragment and delegates to the ONE convergent
-// serialize_fragment fold (cost-of-change = 1 with HtmlNode #4927 / React #4934).
-//
-// XSS: link [text](url) and image ![alt](url) URLs are scheme-allowlisted
-// (http/https/mailto/relative) fail-closed BEFORE escape_url — same spine as
-// std.html_markup / std.react_markup.
-
 module std.markdown
 
 import std.markup {
@@ -17,25 +7,11 @@ import std.markup {
   Attribute,
   AttributeContext,
   UrlContext,
-  MarkupSerializeResult,
-  Serialized,
-  Rejected,
-  serialize_fragment,
-  RejectedUrlScheme,
-  SafeHref,
-  RejectedHref,
-  validate_href,
+
 }
 
-// --- CommonMark consumer-facing IR ------------------------------------------
-//
-// Structural model of the block/inline shapes this consumer reduces. Parsing
-// raw markdown text is out of scope here — callers build these trees directly.
-
-// 🟢 TERMINAL coproduct at markdown-consumer scope — CommonMark heading depths.
 type HeadingLevel = H1 | H2 | H3 | H4 | H5 | H6
 
-// 🟢 TERMINAL coproduct at markdown-consumer scope — CommonMark inline shapes.
 type MarkdownInline
   = TextInline { text: String }
   | EmphasisInline { inlines: List<MarkdownInline> }
@@ -46,25 +22,15 @@ type MarkdownInline
 
 type MarkdownListItem { blocks: List<MarkdownBlock> }
 
-// 🟢 TERMINAL coproduct at markdown-consumer scope — GFM task-list checkbox state
-// (GFM spec §5.3 "Task list items (extension)"). A list item carries exactly two box
-// states and markdown has no third, so a closed 2-variant sum — NOT Optional<Bool>,
-// which would route a literal-built null through the Value::Null straddle.
 type CheckboxState = Checked | Unchecked
 
-// A GFM task-list item: its checkbox state plus the same recursive block content as an
-// ordinary list item (nested lists ride MarkdownBlock, one vocabulary not two — §3).
 type MarkdownTaskItem { state: CheckboxState, blocks: List<MarkdownBlock> }
 
-// 🟢 TERMINAL coproduct — GFM table column alignment, read off the delimiter row
-// (GFM spec §4.10 "Tables (extension)": `---` none, `:--` left, `:-:` center, `--:` right).
 type MarkdownAlignment = AlignNone | AlignLeft | AlignCenter | AlignRight
 
 type MarkdownTableCell { inlines: List<MarkdownInline> }
 type MarkdownTableRow { cells: List<MarkdownTableCell> }
 
-// 🟢 TERMINAL coproduct at markdown-consumer scope — CommonMark block shapes, plus the
-// GFM extensions (task lists §5.3, tables §4.10) and CommonMark block quotes (§5.1).
 type MarkdownBlock
   = HeadingBlock { level: HeadingLevel, inlines: List<MarkdownInline> }
   | ParagraphBlock { inlines: List<MarkdownInline> }
@@ -78,121 +44,9 @@ type MarkdownBlock
       rows: List<MarkdownTableRow>,
     }
   | BlockquoteBlock { blocks: List<MarkdownBlock> }
+  | ThematicBreak
 
 type MarkdownDocument { blocks: List<MarkdownBlock> }
-
-// --- XSS: scheme allowlist on link/image URLs -------------------------------
-
-fn markdown_url_validation(url: String) -> RejectedUrlScheme? {
-  match validate_href(url: url) {
-    SafeHref { url: _ } => Absent
-    RejectedHref { reason: r } => Present { value: r }
-  }
-}
-
-fn find_first_rejected_url_in_inlines(inlines: List<MarkdownInline>) -> RejectedUrlScheme? {
-  fold(inlines,
-    init: Absent,
-    f: (acc, inline) => match acc {
-      Present { value: r } => Present { value: r }
-      Absent => find_first_rejected_url_in_inline(inline: inline)
-    }
-  )
-}
-
-fn find_first_rejected_url_in_inline(inline: MarkdownInline) -> RejectedUrlScheme? {
-  match inline {
-    TextInline { text: _ } => Absent
-    CodeInline { text: _ } => Absent
-    ImageInline { alt: _, url } => markdown_url_validation(url: url)
-    LinkInline { inlines, url } =>
-      match markdown_url_validation(url: url) {
-        Present { value: r } => Present { value: r }
-        Absent => find_first_rejected_url_in_inlines(inlines: inlines)
-      }
-    EmphasisInline { inlines } =>
-      find_first_rejected_url_in_inlines(inlines: inlines)
-    StrongInline { inlines } =>
-      find_first_rejected_url_in_inlines(inlines: inlines)
-  }
-}
-
-fn find_first_rejected_url_in_blocks(blocks: List<MarkdownBlock>) -> RejectedUrlScheme? {
-  fold(blocks,
-    init: Absent,
-    f: (acc, block) => match acc {
-      Present { value: r } => Present { value: r }
-      Absent => find_first_rejected_url_in_block(block: block)
-    }
-  )
-}
-
-fn find_first_rejected_url_in_cells(cells: List<MarkdownTableCell>) -> RejectedUrlScheme? {
-  fold(cells,
-    init: Absent,
-    f: (acc, cell) => match acc {
-      Present { value: r } => Present { value: r }
-      Absent => find_first_rejected_url_in_inlines(inlines: cell.inlines)
-    }
-  )
-}
-
-fn find_first_rejected_url_in_rows(rows: List<MarkdownTableRow>) -> RejectedUrlScheme? {
-  fold(rows,
-    init: Absent,
-    f: (acc, row) => match acc {
-      Present { value: r } => Present { value: r }
-      Absent => find_first_rejected_url_in_cells(cells: row.cells)
-    }
-  )
-}
-
-fn find_first_rejected_url_in_block(block: MarkdownBlock) -> RejectedUrlScheme? {
-  match block {
-    CodeBlock { code: _ } => Absent
-    HeadingBlock { level: _, inlines } =>
-      find_first_rejected_url_in_inlines(inlines: inlines)
-    ParagraphBlock { inlines } =>
-      find_first_rejected_url_in_inlines(inlines: inlines)
-    UnorderedListBlock { items } =>
-      fold(items,
-        init: Absent,
-        f: (acc, item) => match acc {
-          Present { value: r } => Present { value: r }
-          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
-        }
-      )
-    OrderedListBlock { items } =>
-      fold(items,
-        init: Absent,
-        f: (acc, item) => match acc {
-          Present { value: r } => Present { value: r }
-          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
-        }
-      )
-    TaskListBlock { items } =>
-      fold(items,
-        init: Absent,
-        f: (acc, item) => match acc {
-          Present { value: r } => Present { value: r }
-          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
-        }
-      )
-    TableBlock { header, alignments: _, rows } =>
-      match find_first_rejected_url_in_cells(cells: header.cells) {
-        Present { value: r } => Present { value: r }
-        Absent => find_first_rejected_url_in_rows(rows: rows)
-      }
-    BlockquoteBlock { blocks } =>
-      find_first_rejected_url_in_blocks(blocks: blocks)
-  }
-}
-
-fn find_first_rejected_url_in_document(doc: MarkdownDocument) -> RejectedUrlScheme? {
-  find_first_rejected_url_in_blocks(blocks: doc.blocks)
-}
-
-// --- Markdown -> Fragment adapter -------------------------------------------
 
 fn heading_level_to_tag(level: HeadingLevel) -> String {
   match level {
@@ -262,9 +116,6 @@ fn markdown_list_item_to_fragment(item: MarkdownListItem) -> Fragment {
   }
 }
 
-// GFM renders a task item as a list item led by a disabled checkbox; this HTML
-// projection surfaces the box state as a leading text token (the markdown-source
-// emitter, not this fold, is the authority for the `- [x]` spelling).
 fn checkbox_label(state: CheckboxState) -> String {
   match state {
     Checked => "[x] "
@@ -366,6 +217,12 @@ fn markdown_block_to_fragment(block: MarkdownBlock) -> Fragment {
         attributes: [],
         children: markdown_blocks_to_fragments(blocks: blocks),
       }
+    ThematicBreak =>
+      Element {
+        tag: "hr",
+        attributes: [],
+        children: [],
+      }
   }
 }
 
@@ -381,17 +238,3 @@ fn markdown_document_to_fragment(doc: MarkdownDocument) -> Fragment {
   }
 }
 
-// --- thin consumer entry ------------------------------------------------------
-
-fn serialize_markdown_document(doc: MarkdownDocument) -> String {
-  serialize_fragment(frag: markdown_document_to_fragment(doc: doc))
-}
-
-fn try_serialize_markdown_document(doc: MarkdownDocument) -> MarkupSerializeResult {
-  match find_first_rejected_url_in_document(doc: doc) {
-    Present { value: _ } =>
-      Rejected { reason: "URL scheme not allowlisted for markdown link/image" }
-    Absent =>
-      Serialized { html: serialize_markdown_document(doc: doc) }
-  }
-}

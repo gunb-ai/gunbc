@@ -1,11 +1,3 @@
-// test/claim/jedec_ddr_generation_witness_test.dag — by-execution witness for cited JEDEC
-// SDRAM generation rows (extdeps/memory/jedec.dag).
-//
-// Proves by RUNNING (DESIGN §5): the generation axis is decomposed (DoubleDataRate × N),
-// per-generation monolithic die-density ceilings are cited with correct byte magnitudes,
-// dispatch selects the matching row, and the std realizability guard fail-closes on
-// generation mismatch.
-
 module test.claim.jedec_ddr_generation
 
 import std.logic { Bool }
@@ -25,8 +17,6 @@ import extdeps.memory.jedec {
 }
 import extdeps.vendor.sk_hynix { sk_hynix }
 
-// A DDR4 32GB 1Rx8 impossible part — needs 32Gbit dies, above DDR4's 16Gbit ceiling but
-// within DDR5's 64Gbit ceiling. Discriminates per-generation ceilings.
 data mod_ddr4_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "FAKE-32G-1RX8-DDR4",
   manufacturer: sk_hynix,
@@ -39,7 +29,6 @@ data mod_ddr4_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
   rank_count: 1,
 }
 
-// Same organization tagged DDR5 — realizable under JESD79-5 (64 Gbit = 8 GiB ceiling).
 data mod_ddr5_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
   part_number: "FAKE-32G-1RX8-DDR5",
   manufacturer: sk_hynix,
@@ -52,7 +41,6 @@ data mod_ddr5_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
   rank_count: 1,
 }
 
-// Generation axis is decomposed: DoubleDataRate family × cardinal generation number.
 fn generation_axis_is_decomposed() -> Bool {
   dram_generation_ddr4.signaling_family == DoubleDataRate
     && dram_generation_ddr4.generation_number == 4
@@ -79,14 +67,11 @@ fn dispatch_selects_matching_generation() -> Bool {
     )
 }
 
-// Per-generation ceiling discriminates: 32GB 1Rx8 needs 4 GiB dies — impossible DDR4,
-// realizable DDR5.
 fn per_generation_ceiling_discriminates() -> Bool {
   !dram_module_is_realizable(module: mod_ddr4_32g_1rx8, jedec: ddr4_generation_catalog)
     && dram_module_is_realizable(module: mod_ddr5_32g_1rx8, jedec: ddr5_generation_catalog)
 }
 
-// Fail-closed on generation mismatch: a DDR4 module must not pass when scored against DDR5 ceiling.
 fn generation_mismatch_fails_closed() -> Bool {
   !dram_module_is_realizable(module: mod_ddr4_32g_1rx8, jedec: ddr5_generation_catalog)
 }

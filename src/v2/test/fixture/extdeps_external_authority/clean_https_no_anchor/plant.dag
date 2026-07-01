@@ -1,5 +1,3 @@
-// Anchor-drop perturb: same module shape as clean_https without extdeps_external_authority_anchor.
-
 module extdeps.fixture.external_authority_clean_https_no_anchor
 
 import extdeps.external_authority { ExternalAuthority }

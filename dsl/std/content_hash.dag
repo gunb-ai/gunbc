@@ -1,11 +1,3 @@
-// std/content_hash.dag — Cross-module content-hash primitives (B1 re-export).
-//
-// hash_combine / atom_identity_hash are runtime primitives (v1_rt FNV-1a 64-bit);
-// this module wraps them for dsl-tree consumers that cannot import v2.std.node.
-//
-// dissolve-on: v2 cross-tree Node content_hash subsumes tagged atom hashing for
-// forward-stubbed ingress carriers (P-CF-INGRESS).
-
 module std.content_hash
 
 import std.types { ContentHash, NonEmptyStr }

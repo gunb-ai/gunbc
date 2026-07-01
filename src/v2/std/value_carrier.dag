@@ -1,56 +1,14 @@
-// src/v2/std/value_carrier.dag
-// Scope: declared structural-persistence and sharing facts for the runtime
-//   collection carriers (ctrl#1533 M-A) and name-interning facts (M-D),
-//   placed at the v2.std authority per the ctrl#1534 placement amendment
-//   (§3–4). The v2 host interpreter
-//   IMPLEMENTS these facts (ctrl#1533 phase 2); emitted Rust implements the
-//   same facts by ownership analysis (move + copy-on-write). Neither layer is
-//   the authority; this module is.
-// Status: model-first. Phase-0 receipts (gunbc PR #4653): v2 workloads make
-//   zero native mutation-primitive calls — v2 collections are closure-chain
-//   maps and FreeMonoid trees, so the host copy cost rides the
-//   free_monoid_to_vec flatten chokepoint. The carrier facts below are the
-//   "unified runtime representation" the B-LIST-FREEMONOID-1 and
-//   B-MAP-LOOKUP-OPTION-C-1 interims (v2.std.collection) dissolve against.
-// Anchors: Driscoll–Sarnak–Sleator–Tarjan, "Making Data Structures
-//   Persistent" (JCSS 1989); Okasaki, "Purely Functional Data Structures"
-//   (1998); Bagwell, "Ideal Hash Trees" (2001); Bagwell & Rompf, "RRB-Trees"
-//   (2011). Production consensus: Clojure/Scala collections; Rust im/rpds.
-
 module v2.std.value_carrier
 
 import v2.std.node { Symbol }
 
-// Structural persistence of a value carrier under update: a Persistent
-// carrier leaves every prior version valid (the new version structurally
-// shares unchanged substructure with its predecessor); an Ephemeral carrier
-// invalidates the prior version, so an immutable-value host must copy it in
-// full before updating — the quadratic-allocation term ctrl#1533 measured.
-// Distinct concept from product.compute_fabric.PersistenceKind (storage
-// durability across restarts): same word, different DAG-ancestor — this one
-// hangs off value-update semantics, not infrastructure lifecycle.
-// 🟢 terminal — decompress→map→reduce (DESIGN.md §2) — the distinction
-// is grounded in external authority (Driscoll–Sarnak–Sleator–Tarjan 1989's
-// definition of a persistent structure), not an interim of ours. Step-2: the
-// arms are mutually exclusive properties of one carrier under update, not
-// coordinates over another axis. No payloads to unify, no
-// richer named source; the carrier itself is an external structure referenced
-// by Symbol, so there is nothing here to dissolve into.
 type PersistenceKind = Ephemeral | Persistent
 
-// Symbolic work bounds in the std.primitives PrimitiveContract `work`
-// convention (n = collection size). Declared per carrier so per-primitive
-// cost facts (ctrl#1533 M-B) derive from the carrier instead of floating.
 type CarrierCost {
   update_work: String
   lookup_work: String
 }
 
-// A carrier declaration binds an abstract collection to the host structure
-// implementing it, its persistence kind, and the cost facts that persistence
-// kind grounds. The interpreter and emitted code are both implementations of
-// these declarations; disagreement about update cost resolves by reading the
-// data values below, not by reading host source.
 type CarrierDeclaration {
   collection: Symbol
   carrier: Symbol
@@ -58,8 +16,6 @@ type CarrierDeclaration {
   cost: CarrierCost
 }
 
-// Map<K,V> carrier: hash array mapped trie (Bagwell 2001), persistent per
-// Driscoll–Sarnak–Sleator–Tarjan 1989.
 data map_carrier: CarrierDeclaration = {
   collection: ^map_collection,
   carrier: ^hash_array_mapped_trie,
@@ -67,11 +23,6 @@ data map_carrier: CarrierDeclaration = {
   cost: { update_work: "log32 n", lookup_work: "log32 n" }
 }
 
-// List<T> carrier: relaxed radix balanced tree (Bagwell & Rompf 2011) or a
-// catenable structure consistent with FreeMonoid<T> (Okasaki 1998) — the
-// carrier must realize the FreeMonoid algebra without per-site flattening
-// (the free_monoid_to_vec chokepoint the phase-0 receipts identified as the
-// actual copy path on v2 workloads).
 data list_carrier: CarrierDeclaration = {
   collection: ^list_collection,
   carrier: ^relaxed_radix_balanced_tree,
@@ -79,44 +30,8 @@ data list_carrier: CarrierDeclaration = {
   cost: { update_work: "log n", lookup_work: "log n" }
 }
 
-// The sharing law: structural sharing between values is UNOBSERVABLE at the
-// language level. A value denotes its structure alone; whether two
-// structurally equal values occupy one allocation or two changes cost, never
-// meaning. This law is what makes a carrier swap behavior-preserving by
-// construction, and it is the claim the ctrl#1533 phase-2 verification must
-// keep green. Host values are thread-confined (Rc-discipline): sharing never
-// introduces concurrent observation, so the law has no hidden
-// synchronization premise.
-//
-// The law is declared as EXECUTABLE WITNESSES, not a data type
-// (v2.test.std_grounding.value_carrier_laws): a sharing-receipt type
-// would have no constructor until the phase-2 swap lands, and dead vocabulary
-// is the no-code-without-a-consumer failure mode (DESIGN.md §5). If phase 2 needs a receipt, it lands with
-// its first producer.
-
-// ── Name interning (ctrl#1533 M-D) ─────────────────────────────────────────
-// A runtime value's type name, variant name, and record field keys are drawn
-// from CLOSED, compile-time-known sets — the declared types of the resolved
-// graph (M4: closed sets are enums, not strings). The fact: those names are
-// REFERENCES into the graph's declared name set, not free strings.
-// v2.std.runtime already encodes this structurally (RuntimeFieldValue.field
-// is a Symbol; aggregate_type is a Node); the v2 host's owned-String
-// type_name and string-keyed field maps are an implementation gap, licensed
-// to close in phase 3 (intern names; store record fields positionally
-// against the type's declared field order). The positional-record layout —
-// the largest per-instance saving the phase-0 receipts identified (12.7 MB
-// of Record sharing hits, 31.8K un-interned Strings) — DERIVES from this
-// fact; it is not a hand-rolled optimization.
-
-// 🟢 terminal — decompress→map→reduce (DESIGN.md §2) — the three name
-// domains of a value representation are a closed set fixed by the value
-// model itself (a value names its type, its variant, and its fields —
-// nothing else); M4 grounds enum-not-string. No payloads
-// to unify, no richer named source.
 type NameDomain = TypeNames | VariantNames | FieldNames
 
-// One declaration per name domain: where its closed set is declared
-// (authority) and the host representation duty interning licenses.
 type NameInterningDeclaration {
   domain: NameDomain
   authority: Symbol

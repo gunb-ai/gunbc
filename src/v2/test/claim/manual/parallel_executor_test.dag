@@ -1,0 +1,184 @@
+module v2.test.manual.parallel_executor
+
+import v2.std.collection { List }
+import v2.std.dependency { ReadinessLayer }
+import v2.std.logic { Bool }
+import v2.std.verification { BoolWitness, BoolWitnessClaim, UnifiedTestClaim }
+import v2.workflow.executor {
+  ExecutorBatch,
+  ExecutorEmptyFrontier,
+  ExecutorRunBlocked,
+  ExecutorRunComplete,
+  ExecutorRunRunnable,
+  ExecutorSchedulerBlocked,
+  executor_batch_contains_node,
+  executor_batches_preserve_frontiers,
+  executor_job_for_node,
+  parallel_executor_plan_from_dependencies,
+  parallel_executor_plan_from_layers,
+  parallel_executor_step_plan_from_dependencies
+}
+import v2.workflow.scheduler {
+  SchedulerNoRunnableFrontier
+}
+import v2.test.manual.scheduler_runnable_frontier {
+  scheduler_build_node,
+  scheduler_emit_node,
+  scheduler_fixture_dependencies,
+  scheduler_fixture_dependencies_with_contains_noise,
+  scheduler_fixture_nodes,
+  scheduler_missing_prerequisite_dependencies,
+  scheduler_test_node
+}
+
+data parallel_executor_expected_first_batch: ExecutorBatch = ExecutorBatch {
+  jobs: [
+    executor_job_for_node(node: scheduler_build_node),
+    executor_job_for_node(node: scheduler_test_node)
+  ]
+}
+
+data parallel_executor_expected_second_batch: ExecutorBatch = ExecutorBatch {
+  jobs: [
+    executor_job_for_node(node: scheduler_emit_node)
+  ]
+}
+
+data parallel_executor_expected_batches: List<ExecutorBatch> = [
+  parallel_executor_expected_first_batch,
+  parallel_executor_expected_second_batch
+]
+
+fn parallel_executor_groups_independent_jobs() -> Bool {
+  match parallel_executor_plan_from_dependencies(
+    nodes: scheduler_fixture_nodes,
+    dependencies: scheduler_fixture_dependencies,
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: batches, scheduled: _ } => batches == parallel_executor_expected_batches
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
+  }
+}
+
+fn parallel_executor_projects_scheduler_scheduled_nodes() -> Bool {
+  match parallel_executor_plan_from_dependencies(
+    nodes: scheduler_fixture_nodes,
+    dependencies: scheduler_fixture_dependencies,
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: _, scheduled: scheduled } =>
+      scheduled == [
+        scheduler_build_node,
+        scheduler_test_node,
+        scheduler_emit_node
+      ]
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
+  }
+}
+
+fn parallel_executor_keeps_dependent_job_out_of_first_batch() -> Bool {
+  match parallel_executor_plan_from_dependencies(
+    nodes: scheduler_fixture_nodes,
+    dependencies: scheduler_fixture_dependencies,
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: batches, scheduled: _ } =>
+      executor_batch_contains_node(batch: parallel_executor_expected_first_batch, node: scheduler_emit_node) == false
+        && batches == parallel_executor_expected_batches
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
+  }
+}
+
+fn parallel_executor_contains_edges_do_not_serialize() -> Bool {
+  match parallel_executor_plan_from_dependencies(
+    nodes: scheduler_fixture_nodes,
+    dependencies: scheduler_fixture_dependencies_with_contains_noise,
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: batches, scheduled: _ } => batches == parallel_executor_expected_batches
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
+  }
+}
+
+fn parallel_executor_step_plan_exposes_runnable_batch_once() -> Bool {
+  match parallel_executor_step_plan_from_dependencies(
+    nodes: scheduler_fixture_nodes,
+    dependencies: scheduler_fixture_dependencies,
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: _, scheduled: _ } => false
+    ExecutorRunRunnable {
+      batch: batch,
+      scheduled: scheduled,
+      remaining: remaining
+    } =>
+      batch == parallel_executor_expected_first_batch
+        && scheduled == [scheduler_build_node, scheduler_test_node]
+        && remaining == [scheduler_emit_node]
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
+  }
+}
+
+fn parallel_executor_blocks_on_missing_prerequisite() -> Bool {
+  match parallel_executor_plan_from_dependencies(
+    nodes: [scheduler_build_node],
+    dependencies: scheduler_missing_prerequisite_dependencies,
+    scheduled: []
+  ) {
+    ExecutorRunComplete { batches: _, scheduled: _ } => false
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
+    ExecutorRunBlocked {
+      evidence: ExecutorSchedulerBlocked { evidence: SchedulerNoRunnableFrontier {} },
+      batches: batches,
+      scheduled: scheduled,
+      remaining: remaining
+    } => batches == [] && scheduled == [] && remaining == [scheduler_build_node]
+    ExecutorRunBlocked { evidence: ExecutorEmptyFrontier {}, batches: _, scheduled: _, remaining: _ } => false
+  }
+}
+
+fn parallel_executor_layers_reuse_readiness_frontiers() -> Bool {
+  let layers = [
+    ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] },
+    ReadinessLayer { ready: [scheduler_emit_node] }
+  ]
+  match parallel_executor_plan_from_layers(layers: layers) {
+    ExecutorRunComplete { batches: batches, scheduled: scheduled } =>
+      executor_batches_preserve_frontiers(batches: batches, layers: layers)
+        && scheduled == [
+          scheduler_build_node,
+          scheduler_test_node,
+          scheduler_emit_node
+        ]
+    ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => false
+    ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => false
+  }
+}
+
+data parallel_executor_batches_independent_jobs: Bool = parallel_executor_groups_independent_jobs()
+
+data parallel_executor_scheduled_nodes_match_scheduler: Bool = parallel_executor_projects_scheduler_scheduled_nodes()
+
+data parallel_executor_dependent_waits_for_prior_batch: Bool = parallel_executor_keeps_dependent_job_out_of_first_batch()
+
+data parallel_executor_contains_noise_non_blocking: Bool = parallel_executor_contains_edges_do_not_serialize()
+
+data parallel_executor_step_runnable_batch_once: Bool = parallel_executor_step_plan_exposes_runnable_batch_once()
+
+data parallel_executor_missing_prerequisite_blocks: Bool = parallel_executor_blocks_on_missing_prerequisite()
+
+data parallel_executor_layer_projection_reuses_frontiers: Bool = parallel_executor_layers_reuse_readiness_frontiers()
+
+test fn parallel_executor_claims_hold() -> Bool {
+  parallel_executor_batches_independent_jobs
+    && parallel_executor_scheduled_nodes_match_scheduler
+    && parallel_executor_dependent_waits_for_prior_batch
+    && parallel_executor_contains_noise_non_blocking
+    && parallel_executor_step_runnable_batch_once
+    && parallel_executor_missing_prerequisite_blocks
+    && parallel_executor_layer_projection_reuses_frontiers
+}

@@ -1,42 +1,21 @@
-// dsl/test/claim/roadmap_authority_test.dag — §5 by-execution proof for gunbc.roadmap_authority.
-//
-// Proves the REAL-ROADMAP transcription projects faithfully: the whole document emits, the FRAME is
-// modelled (sections + nested checkbox forests + sub-group labels + plan pointers), the 6 STATUS
-// CORRECTIONS are authored to MERGED REALITY, refs emit FROM THE BINDING, and warm-lark-306's two
-// invariants hold — (a) authored prose emits BYTE-VERBATIM including its internal markup (the §5 fence),
-// (b) a section is an ORDERED element sequence (intro prose → ◆ Milestones → sub-groups, in order).
-// Discriminating: a perturbed merged set flips a DERIVED box (the binding has teeth), prose markup is
-// asserted byte-exact (a mangle goes red), and a reversed-order adjacency is asserted ABSENT.
-//
-// The effectful drift gate (read the committed ROADMAP.md, byte-compare) is the SEPARATE RoadmapGate
-// variant, deferred until the file is fully emittable (warm-lark-306) — Filesystem.Read is a host effect
-// and cannot live in a pure witness.
-
 module test.claim.roadmap_authority
 
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_document { project_roadmap_to_markdown }
-import gunbc.roadmap_authority { roadmap_authority }
+import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 
-// The merged-PR set = current MAIN reality (the PRs that have actually landed; step-3b #5529 is NOT in
-// it — the inversion sub-rows are authored to what merged, not to the incoming PR).
-fn merged() -> List<Int> {
-  [5428, 5445, 5453, 5433, 5476, 5473, 5456, 5470, 5478, 5421, 5425, 5236,
-   5437, 5434, 5441, 5449, 5471, 5430, 5481, 5491, 5508, 5520, 5525, 5527]
-}
+fn merged() -> List<Int> { authored_merged_prs() }
 
 fn emit_with(m: List<Int>) -> String {
   serialize_markdown_source(doc: project_roadmap_to_markdown(doc: roadmap_authority(), merged: m))
 }
 fn out() -> String { emit_with(m: merged()) }
 
-// === Frame: all sections + the preamble project =============================
-
 fn witness_frame_all_sections() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "# gunbc — Roadmap")
     && string_contains(s: o, pattern: "## 0. Fail-closed lock-down")
-    && string_contains(s: o, pattern: "## 1. CI under control")
+    && string_contains(s: o, pattern: "## 1. CI as the substrate integration dogfood")
     && string_contains(s: o, pattern: "## 2. Minimal work")
     && string_contains(s: o, pattern: "## 3. Complexity budget gate")
     && string_contains(s: o, pattern: "## 4. Testgen as the bug-class oracle")
@@ -46,7 +25,6 @@ fn witness_frame_all_sections() -> Bool {
     && string_contains(s: o, pattern: "## 8. Session dashboard on `.dag` (SHELVED)")
 }
 
-// Sub-group labels render as the uniform `**{label}:**` frame (projection-owned, single authority).
 fn witness_subgroup_labels() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "**Audits (done):**")
@@ -55,86 +33,73 @@ fn witness_subgroup_labels() -> Bool {
     && string_contains(s: o, pattern: "**Meta — lock down the reasoning (§7 recursion):**")
 }
 
-// === emit-refs-from-binding (plan TASK-2, §3 single authority) ===============
-
-// A DerivableLine's `(#ref)` is GENERATED from `prs` — single (#N) and multi (#N/#M). The numeric-tower
-// row binds [5428]; the realization-vocab row binds [5445, 5453] → `(#5445/#5453)`.
 fn witness_emit_refs_from_binding() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "**numeric-tower grounding** (#5428)")
     && string_contains(s: o, pattern: "**realization-vocabulary containment guard** (#5445/#5453)")
 }
 
-// === The 6 status corrections (authored to MERGED REALITY) ===================
-
-// C1 — MEASURE ROWS (bright-stag-194): missing from the committed ROADMAP; #5470/#5478 merged → DERIVED
-// `[x]`, the FLOOR + demand-CEIL families, refs from the binding.
 fn witness_c1_measure_rows() -> Bool {
   string_contains(s: out(),
-    pattern: "- [x] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
+    pattern: "- [ ] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
+    && string_contains(s: out(), pattern: "⏳ awaiting sign-off")
 }
-// C2 — ROUND-TRIP LAW (bright-stag + quick-seal-137): its OWN `[x]` row bound to #5525/#5527 (two media),
-// DISTINCT from the medium-axis checkmark — no overclaim that the medium checkmark = round-trip-complete.
+
 fn witness_c2_roundtrip_law() -> Bool {
   let o = out()
-  string_contains(s: o, pattern: "- [x] **round-trip law (ingest∘emit = id, DecodeFidelity-bounded)** (#5525/#5527)")
-    && string_contains(s: o, pattern: "- [x] **medium axis** —")
+  string_contains(s: o, pattern: "- [ ] **round-trip law (ingest∘emit = id, DecodeFidelity-bounded)** (#5525/#5527)")
+    && string_contains(s: o, pattern: "- [ ] **medium axis** —")
     && string_contains(s: o, pattern: "per-medium round-trips are v1-seed interim")
+    && string_contains(s: o, pattern: "⏳ awaiting sign-off")
 }
-// C3 — INVERSION SUB-ROWS (warm-lark-306): slice-1/slice-2/step-3a landed → DERIVED `[x]` bound to
-// #5491/#5508/#5520 (step-3b #5529 intentionally NOT in the set — authored to merged reality).
+
 fn witness_c3_inversion_subrows() -> Bool {
   string_contains(s: out(),
-    pattern: "- [x] **PR→checkbox status + section-emit + projection layer** (#5491/#5508/#5520)")
+    pattern: "- [ ] **PR→checkbox status + section-emit + projection layer** (#5491/#5508/#5520)")
+    && string_contains(s: out(), pattern: "⏳ awaiting sign-off")
 }
-// C4 — SELF-HOST PATH-A no-overclaim (bright-stag): #5481 landed (in the spine) but §7 regen-fixpoint is
-// DEFERRED and src/v1 is NOT yet deletable — the milestone must NOT read as "self-host done".
+
 fn witness_c4_selfhost_no_overclaim() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "class-3 corpus-coherence + cargo-green seed ✓ (#5481)")
     && string_contains(s: o, pattern: "§7 regen-fixpoint deferred, #5514; src/v1 NOT yet deletable")
     && string_contains(s: o, pattern: "**TERMINAL: `src/v1` deleted**")
 }
-// C5 — edge-(b) / .dag→rust coverage wall (bright-stag): SCOPED / pending operator greenlight, NOT
-// greenlit — no status change, the rust-gate coverage row stays `[ ]`.
+
+fn witness_c4_cargo_green_landed() -> Bool {
+  string_contains(s: out(),
+    pattern: "- [ ] **emitted crate `cargo build`s green (Route-A last mile) ✓ LANDED (#5777/#5873)**")
+    && string_contains(s: out(), pattern: "⏳ awaiting sign-off")
+}
+
 fn witness_c5_rust_gate_not_greenlit() -> Bool {
   string_contains(s: out(), pattern: "- [ ] **rust-gate coverage** (shared §1)")
 }
 
-// === Invariant (a): authored prose emits BYTE-VERBATIM including its markup (the §5 fence) ===
-
-// The §2 ◆ Milestones spine is authored prose; its internal markup (bold, the ✓ glyph, and a `(#5425)`
-// that is PROSE — not a binding) passes through UNTOUCHED. A mangled fence (stripped bold/glyph, or a
-// (#5425) "helpfully" re-emitted) makes this go red.
 fn witness_a_prose_verbatim() -> Bool {
   string_contains(s: out(),
     pattern: "**◆ Milestones:** key-by-construction ✓ (#5425) → **▸ warm==cold purity proven (616/616, #5429)**")
 }
 
-// === Invariant (b): the section is an ORDERED element sequence ===============
-
-// §0 in document order: intro prose → window note → ◆ Milestones spine → Audits sub-group. The exact
-// `tail\n\nhead` adjacencies hold ONLY if order is preserved (a reorder breaks every one of them).
 fn witness_b_ordered_interleaving() -> Bool {
   let o = out()
-  string_contains(s: o, pattern: "([DESIGN §5](DESIGN.md)).\n\nThis window = a few days of STABILITY")
+  string_contains(s: o, pattern: "([DESIGN §5](DESIGN.md)).\n\n→ [audit + checklist](docs/plans/fail-closed-lockdown.md)")
+    && string_contains(s: o, pattern: "[audit + checklist](docs/plans/fail-closed-lockdown.md)\n\nThis window = a few days of STABILITY")
     && string_contains(s: o, pattern: "[fork plan](docs/plans/model-realization-fork.md) §3).\n\n**◆ Milestones:** fail-open audited")
     && string_contains(s: o, pattern: "`Value::Null` split *(deep root)*\n\n**Audits (done):**")
 }
-// Discriminating negative: if the element order were lost (sub-group hoisted before the prose), the
-// Audits label would sit immediately before the window prose — assert that adjacency is ABSENT.
+
 fn witness_b_order_discriminator() -> Bool {
   !string_contains(s: out(), pattern: "**Audits (done):**\n\nThis window = a few days of STABILITY")
 }
 
-// === Discriminating: the DERIVED box is a function of the merged set =========
-
-// numeric-tower (#5428) and measure (#5470/#5478) are DERIVED `[x]` when merged; drop those PRs and the
-// SAME lines derive `[ ]` (the box is computed from the binding, not baked) — the inversion has teeth.
-fn witness_derivation_has_teeth() -> Bool {
+fn witness_merge_perturb_does_not_flip_boxes() -> Bool {
+  let full = out()
   let dropped = emit_with(m: [5445, 5453, 5433, 5476, 5473, 5456, 5421, 5425])
-  string_contains(s: dropped, pattern: "- [ ] **numeric-tower grounding** (#5428)")
-    && string_contains(s: dropped, pattern: "- [ ] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
+  let pat = "- [ ] **numeric-tower grounding** (#5428)"
+  string_contains(s: full, pattern: pat)
+    && string_contains(s: dropped, pattern: pat)
+    && !string_contains(s: full, pattern: "- [x] **numeric-tower grounding** (#5428)")
     && !string_contains(s: dropped, pattern: "- [x] **numeric-tower grounding** (#5428)")
 }
 
@@ -146,9 +111,10 @@ test fn roadmap_authority_witnesses() -> Bool {
     && witness_c2_roundtrip_law()
     && witness_c3_inversion_subrows()
     && witness_c4_selfhost_no_overclaim()
+    && witness_c4_cargo_green_landed()
     && witness_c5_rust_gate_not_greenlit()
     && witness_a_prose_verbatim()
     && witness_b_ordered_interleaving()
     && witness_b_order_discriminator()
-    && witness_derivation_has_teeth()
+    && witness_merge_perturb_does_not_flip_boxes()
 }

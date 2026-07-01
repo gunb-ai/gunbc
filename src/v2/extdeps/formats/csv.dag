@@ -1,37 +1,27 @@
-// src/v2/extdeps/formats/csv.dag
-// Scope: RFC 4180 CSV; format slice.
-// Status: scaffold — parse/emit, numeric lexeme, unique-name profile axes.
-// Anchor: https://datatracker.ietf.org/doc/html/rfc4180
-
 module v2.extdeps.formats.csv
 
 import v2.std.grammar { GrammarSchema }
 import v2.std.collection { Optional }
 
-
 type CsvRfc4180DelimiterProfile {
   comma_field_separator: CsvRfc4180CommaFieldSep,
 }
-
 
 type CsvRfc4180QuoteProfile {
   double_quote_enclosure: CsvRfc4180DoubleQuoteEnclosure,
   doubled_quote_escape: CsvRfc4180EscapeDoubledQuote,
 }
 
-
 type CsvRfc4180LineTerminatorProfile {
   record_line_break: CsvRfc4180RecordLineBreak,
   last_record_ending_line_break_optional: CsvRfc4180LastRecordEndingLineBreakOptional,
 }
-
 
 type CsvRfc4180FieldTextProfile {
   newline_inside_quoted_field_only: CsvRfc4180NewlineInsideQuotedFieldOnly,
   unquoted_field_textdata_vs_tab: CsvRfc4180UnquotedFieldTextdataVsTab,
   empty_field_between_commas: CsvRfc4180EmptyFieldBetweenCommas,
 }
-
 
 type CsvAxisProfile {
   delimiter: CsvRfc4180DelimiterProfile,
@@ -42,18 +32,15 @@ type CsvAxisProfile {
   registered_mime: CsvRfc4180RegisteredTextCsvMime,
 }
 
-
 type CsvNumericLexemeProfile {
   numeric_interpretation_is_consumer_defined: CsvNumericInterpretationConsumerDefinedWitness,
   field_payload_remains_text_lexeme: CsvFieldPayloadRemainsTextLexemeWitness,
 }
 
-
 type CsvUniqueNameProfile {
   header_names_are_not_required_unique_by_rfc4180: CsvHeaderNamesNotRequiredUniqueByRfc4180Witness,
   duplicate_header_name_policy_is_consumer_defined: CsvDuplicateHeaderNamePolicyConsumerDefinedWitness,
 }
-
 
 type CsvRecordShapeProfile {
   records_same_field_count_rfc4180_should: CsvRfc4180RecordsShouldHaveSameFieldCountWitness,
@@ -62,13 +49,11 @@ type CsvRecordShapeProfile {
   header_width_enforcement_is_consumer_defined: CsvHeaderWidthEnforcementConsumerDefinedWitness,
 }
 
-
 type CsvDialect {
   parse_axis: CsvAxisProfile,
   emit_axis: CsvAxisProfile,
 }
 
-// 🟡 coproduct dissolution — T-4.6-P4-CsvRow.
 type CsvRow
   = CsvRowZ
   | CsvRowS { field: String, tail: CsvRow }
@@ -146,7 +131,3 @@ type CsvDocument {
   header: Optional<CsvRow>,
   records: List<CsvRow>,
 }
-
-
-// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — lex/parse pipeline-stage substrate (parse half).
-// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — emit pipeline-stage substrate (emit half).

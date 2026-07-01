@@ -1,24 +1,4 @@
-// src/v2/std/verdict.dag
-// Scope: test-run verdict algebra.
-// Anchor: one-fold homomorphism (DESIGN.md §6) — P3 commitment 6 + T-22 eval runner.
-// Status: AI-10 substrate; Verdict<S,T> + Fail.falsification per verdict-surface-contract (#3961).
-// Migration (#3961 §3.1 / Runtime/TestClaim mgr): #3958 merges `Fail { actual, falsification }`;
-// bounded follow-up collapses to `Fail { receipt: FalsificationReceipt<Subj,T> }` (no dual-actual).
-//
-// ALGEBRA: (Verdict<S,T>, verdict_combine, Pass) forms a Monoid where:
-//   Pass is the identity (bottom element of the join order).
-//   Fail absorbs (join: worst outcome wins); falsification on Fail is preserved from the left.
-//   Deferred is sticky: once Deferred, only Fail can promote.
-// Ordering: Pass < Deferred < Fail (verdict_combine is the join operation).
-// BoundedLattice top (Fail) is not representable as a concrete data constant because
-//   Fail carries actual: Outcome<T> — no payload-free top exists for general T.
-//   The ordering is structurally sound but the lattice inhabitant requires a concrete T.
-// verdict_monoid<S,T> declares the Monoid<Verdict<S,T>> inhabitant as a function (not data)
-//   because Verdict<S,T> is polymorphic and Monoid fields must resolve at S and T.
-// verdict_fold fails-closed on empty list: caller supplies the empty-case verdict.
-
 module v2.std.verdict
-
 
 import v2.std.algebra { Magma, Monoid, Semigroup, is_empty }
 import v2.std.collection { List, Optional, Absent }
@@ -26,32 +6,15 @@ import v2.std.diagnostic { Diagnostic, Outcome }
 import v2.std.nat { Nat, Succ, Zero, nat_add }
 import v2.std.test_claim_falsification { FalsificationReceipt }
 
-// 🟢 coproduct dissolution — CP-AI10-VERDICT-TERMINAL.
-// Subj: eval-subject carrier for Fail.falsification (compiler binds TestClaimEvalSubject<S>).
-// Pass: all expected behaviors confirmed.
-// Fail: a claim did not hold; actual outcome plus optional structured falsification receipt.
-// W2 single-absence rule: `falsification: Absent` means no receipt (eval-path / verdict_fail).
-// `Present { receipt }` is only for callers that populate FalsificationReceipt (e.g. emit-vs-eval
-// Host evidence). Do not encode “no receipt” as `Present { …, evidence: EvidenceNone }` on this
-// branch — EvidenceNone is a receipt-internal arm for W3 structural rows (#3961 follow-up).
-// Deferred: the evaluator could not decide (e.g. eval not yet realized);
-//           a diagnostic explains why, and the actual outcome is preserved.
 type Verdict<Subj, T>
   = Pass
   | Fail { actual: Outcome<T>, falsification: Optional<FalsificationReceipt<Subj, T>> }
   | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
 
-// Eval-path Fail without structured receipt — sole W2 encoding of missing falsification.
 fn verdict_fail<Subj, T>(actual: Outcome<T>) -> Verdict<Subj, T> {
   Fail { actual: actual, falsification: Absent }
 }
 
-// Binary combining operation for verdicts (join of the Pass < Deferred < Fail order).
-// Laws:
-//   verdict_combine(Pass, v) = v                (Pass is identity)
-//   verdict_combine(Fail{a,ff}, _) = Fail{a,ff} (Fail absorbs; left falsification kept)
-//   verdict_combine(Deferred{d,diag}, Fail{b,bf}) = Fail{b,bf}   (Fail promotes Deferred)
-//   verdict_combine(Deferred{d,diag}, _) = Deferred{d,diag} (Deferred sticky otherwise)
 fn verdict_combine<Subj, T>(a: Verdict<Subj, T>, b: Verdict<Subj, T>) -> Verdict<Subj, T> {
   match a {
     Pass => b
@@ -64,9 +27,6 @@ fn verdict_combine<Subj, T>(a: Verdict<Subj, T>, b: Verdict<Subj, T>) -> Verdict
   }
 }
 
-// Monoid<Verdict<S,T>> inhabitant: op = verdict_combine, identity = Pass.
-// Declared as a fn (not data) because Verdict<S,T> is polymorphic.
-// Mirrors the nat_additive_commutative_monoid pattern in nat.dag:57.
 fn verdict_monoid<Subj, T>() -> Monoid<Verdict<Subj, T>> {
   Monoid {
     semigroup: Semigroup { magma: Magma { op: verdict_combine } },
@@ -74,14 +34,6 @@ fn verdict_monoid<Subj, T>() -> Monoid<Verdict<Subj, T>> {
   }
 }
 
-// Tally of Verdict<S,T> populations by variant. Carries genuinely distinct
-// per-variant work (different field increments in `verdict_tally_add`),
-// so it is the canonical surface for "how many Pass / Fail / Deferred"
-// over a list — NOT per-variant `is_*` Bool predicates (which would be
-// unconditional predicate-dissolution triggers in std/ per
-// decompress→map→reduce, DESIGN.md §2). Populations are `Nat` so negative counts
-// are unrepresentable in the substrate (count invariant lives in the type,
-// not in a hand-checked predicate).
 type VerdictTally {
   pass: Nat
   fail: Nat
@@ -110,9 +62,6 @@ fn verdict_tally_total(t: VerdictTally) -> Nat {
   nat_add(a: nat_add(a: t.pass, b: t.fail), b: t.deferred)
 }
 
-// Fold a list of verdicts with the monoid identity (Pass) and verdict_combine.
-// Fail-closed on empty list: the caller supplies the empty_verdict to enforce
-// the desired policy (typically Fail with a context-specific diagnostic).
 fn verdict_fold<Subj, T>(
   rs: List<Verdict<Subj, T>>,
   empty_verdict: Verdict<Subj, T>

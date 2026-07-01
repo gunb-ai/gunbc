@@ -1,13 +1,3 @@
-// FIXTURE — planted std-layer module mixing a forbidden upward import (v2.compiler.*) with an
-// UNRESOLVABLE import. Proves the projection scans at the text/parse level (pre-resolve), exactly
-// like the deleted enumerator: the broken import does not hide the v2.compiler violation, and the
-// violation count is still 1. Read as TEXT (never module-resolved). DO NOT import.
-//
-// LOAD-BEARING for TWO gate oracles — editing either planted import silently desyncs one:
-//   * layering_imports scanner — keys on the `v2.compiler.tokenize` upward (forbidden-direction) import;
-//   * resolved_imports scanner (parse_level_pre_resolve.dag) — asserts EXACTLY ONE unresolved import,
-//     i.e. `totally.broken.unresolved.module` (declared nowhere) is the only dangling one while
-//     `v2.compiler.tokenize` resolves. Add/remove an import here and re-prove BOTH gates.
 module v2.test.fixture.layering_scan.parse_level_pre_resolve_plant
 import v2.compiler.tokenize
 import totally.broken.unresolved.module

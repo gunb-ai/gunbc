@@ -1,0 +1,22 @@
+module v2.test.manual.discriminant_intrinsic
+
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+type DiscriminantProbeShape
+  = ProbeAlpha { x: Int }
+  | ProbeBeta { y: Int }
+
+test fn discriminant_intrinsic_is_payload_blind_and_arm_sharp() -> Bool {
+  let alpha_one = ProbeAlpha { x: 1 }
+  let alpha_two = ProbeAlpha { x: 99 }
+  let beta_one = ProbeBeta { y: 1 }
+
+  let same_arm_equal = discriminant(v: alpha_one) == discriminant(v: alpha_two)
+  let cross_arm_distinct = (discriminant(v: alpha_one) == discriminant(v: beta_one)) == false
+
+  same_arm_equal && cross_arm_distinct
+}

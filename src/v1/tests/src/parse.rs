@@ -1,9 +1,3 @@
-//! Parse-level tests for the v2 compiler.
-//!
-//! Covers: syntax smoke tests, strict .dag file parse audits,
-//! tokenizer e2e, and parser e2e tests.
-//! All tests call stage0 functions directly.
-
 use std::rc::Rc;
 
 use crate::helpers::*;
@@ -12,9 +6,6 @@ use v1_compiler::v1_compiler_tokenize::{source_code_point, source_len, SourceRef
 use v1_compiler::v1_rt::{reset_text_lookup_chars_walked, take_text_lookup_chars_walked};
 use v1_compiler::v1_std_core::{build_newline_index, source_text_at, InferredNode, TokenShape};
 
-/// Median wall time over several tokenize passes, plus the token count from the last pass.
-/// Stabilizes `large_time / small_time` when the small baseline is only a few milliseconds
-/// (noisy on shared CI runners).
 fn median_tokenize_secs(source: &str) -> (f64, usize) {
     const RUNS: usize = 5;
     let mut samples = Vec::with_capacity(RUNS);
@@ -58,7 +49,6 @@ fn source_text_at_chars_walked(
     take_text_lookup_chars_walked()
 }
 
-/// Fixture with `k` named bindings separated by `pad` non-ASCII filler bytes.
 fn name_lookup_padding_fixture(k: usize, pad: usize) -> (String, Vec<Rc<SourceSpan>>) {
     let filler = "§".repeat(pad);
     let mut source = String::from("module pad_test\n");
@@ -70,7 +60,6 @@ fn name_lookup_padding_fixture(k: usize, pad: usize) -> (String, Vec<Rc<SourceSp
             source.push('\n');
         }
         let name = format!("fn_{i}");
-        // Char offsets (mirror tokenizer spans; chars_to_string is char-indexed).
         let start = source.chars().count() as i64;
         source.push_str(&name);
         let end = source.chars().count() as i64;
@@ -97,8 +86,6 @@ fn total_source_text_at_chars_walked(
     }
     take_text_lookup_chars_walked()
 }
-
-// ── Phase 0: syntax smoke tests ─────────────────────────────────────────
 
 #[test]
 fn fn_lambda_syntax() {
@@ -215,8 +202,6 @@ fn foo(item: String) -> String {
     assert_parses(source, "typecheck_match_with_itemresult");
 }
 
-// ── M1 regression: generic function syntax ──────────────────────────────
-
 #[test]
 fn parse_generic_fn() {
     let source = r#"module test
@@ -317,15 +302,12 @@ type Foo { value: String }
     assert!(result.error.is_none(), "parse error: {:?}", result.error);
 
     let module = result.module.clone().expect("module");
-    // Module ident should be Some (interned by parser)
     assert!(
         module.ident.is_some(),
         "module ident should be Some after parsing"
     );
-    // Ident should be non-zero (0 is the empty-string sentinel)
     assert_ne!(module.ident.unwrap(), 0, "module ident should be non-zero");
 
-    // Import node ident should also be populated
     let imports = module.params.clone();
     assert_eq!(imports.len(), 1);
     let import_node = imports[0].clone();
@@ -417,8 +399,6 @@ fn unicode_parses_strict() {
     assert_parses_strict("dsl/std/unicode.dag");
 }
 
-// ── Phase 0: strict parse audit (.dag files) ────────────────────────────
-
 #[test]
 fn core_parses_strict() {
     assert_parses_strict("src/v1/00_core.dag");
@@ -479,23 +459,13 @@ fn shared_primitives_parses_strict() {
     assert_parses_strict("dsl/std/primitives.dag");
 }
 
-// ── Phase 1b: tokenizer non-ASCII regression ───────────────────────────
-//
-// Tokenizer hot-path text lookup must stay flat in file size: `source_chars`
-// is precomputed once (O(n) at entry) and indexed in O(1). Regressions that
-// route per-token lookup through `v1_rt::substring` / `chars().nth(pos)` on
-// the raw `String` reintroduce O(pos) work per lookup and can make scanning
-// O(n²) on non-ASCII input. `tokenizer_text_lookup_flat_in_file_size` locks
-// the O(1) lookup contract; this test catches the composed end-to-end blow-up.
-
 #[test]
 fn tokenizer_non_ascii_performance_regression() {
     use std::time::Instant;
 
-    let source = read_v2_file("src/v1/02_parse.dag"); // largest .dag, has non-ASCII
+    let source = read_v2_file("src/v1/tests/fixtures/non_ascii_perf.dag");
     assert!(!source.is_ascii(), "test requires non-ASCII source file");
 
-    // Strip non-ASCII for comparison (replace with ASCII equivalent)
     let ascii_source: String = source
         .chars()
         .map(|c| if c.is_ascii() { c } else { '-' })
@@ -512,32 +482,27 @@ fn tokenizer_non_ascii_performance_regression() {
 
     let ratio = non_ascii_time.as_secs_f64() / ascii_time.as_secs_f64().max(0.001);
     eprintln!(
-        "tokenize 02_parse.dag: ascii={:.3}s, non-ascii={:.3}s, ratio={:.1}x",
+        "tokenize non_ascii_perf.dag: ascii={:.3}s, non-ascii={:.3}s, ratio={:.1}x",
         ascii_time.as_secs_f64(),
         non_ascii_time.as_secs_f64(),
         ratio,
     );
 
-    // Non-ASCII should be at most 3x slower than ASCII (generous margin).
-    // Before the fix, this ratio is typically 50-500x.
     assert!(
         ratio < 3.0,
         "non-ASCII tokenization is {:.1}x slower than ASCII — likely O(n²) regression in v1_rt::substring",
         ratio,
     );
 
-    // Absolute time budget: tokenizing 271KB should be well under 2s
     assert!(
         non_ascii_time.as_secs_f64() < 2.0,
-        "tokenize took {:.3}s — budget is 2s for ~270KB file",
+        "tokenize took {:.3}s — budget is 2s for ~48KB fixture",
         non_ascii_time.as_secs_f64(),
     );
 }
 
 #[test]
 fn tokenizer_text_lookup_flat_in_file_size() {
-    // Recurrence guard: each `source_code_point` does one vec-index unit of work,
-    // independent of absolute offset (no substring slow-path chars walked).
     const LOOKUPS: usize = 1_000;
     let large_source = read_v2_file("src/v1/02_parse.dag");
     let source = tokenizer_source_ref(&large_source);
@@ -561,21 +526,9 @@ fn tokenizer_text_lookup_flat_in_file_size() {
     );
 }
 
-// ── Name / span text lookup (authored_name_at → source_text_at) ─────────
-//
-// Flat-by-measurement: always-run locks assert source_text_at work is O(span
-// width), independent of file offset / file size. Tokenizer indexing is already
-// flat (`tokenizer_text_lookup_flat_in_file_size` above).
-//
-// HISTORY: these were tracked-red locks pinning the old O(offset) `substring`
-// char-walk. The char->byte offset table landed (NewlineIndex.char_codes +
-// chars_to_string, src/v1/00_core.dag), so they are flipped to assert FLAT — a
-// reintroduced char-walk now fails the guard. Spans use char offsets to mirror
-// the tokenizer (spans are char offsets; chars_to_string is char-indexed).
-
 #[test]
 fn source_text_at_lookup_flat_in_file_size() {
-    let source = read_v2_file("src/v1/02_parse.dag");
+    let source = read_v2_file("src/v1/tests/fixtures/non_ascii_perf.dag");
     assert!(
         !source.is_ascii(),
         "fixture must include non-ASCII so a reintroduced substring slow path would be caught"
@@ -603,8 +556,6 @@ fn source_text_at_lookup_flat_in_file_size() {
         source.len(),
     );
 
-    // FLAT: chars_to_string walks only the span width (4), regardless of offset.
-    // A reintroduced O(offset) char-walk would inflate tail_walked far past head.
     assert_eq!(head_walked, 800, "head span 0..4 × {LOOKUPS} lookups");
     assert_eq!(
         tail_walked, head_walked,
@@ -640,9 +591,6 @@ fn source_text_at_lookup_flat_in_file_padding() {
         "source_text_at K={K} names: small {small_len}B walked={small_walked} | large {large_len}B walked={large_walked}"
     );
 
-    // FLAT: chars_to_string walks only the name widths, independent of the
-    // surrounding filler — so 10× padding leaves the work identical. Names are
-    // "fn_0".."fn_7" (4 chars each): K*4*LOOKUPS_PER_SPAN = 8*4*50 = 1600.
     assert_eq!(
         small_walked, 1_600,
         "K={K} names × 4 chars × {LOOKUPS_PER_SPAN}"
@@ -655,12 +603,9 @@ fn source_text_at_lookup_flat_in_file_padding() {
 
 #[test]
 fn tokenizer_scales_linearly_with_file_size() {
-    // Use smallest non-trivial .dag to establish baseline
     let small_source = read_v2_file("src/v1/ownership.dag"); // ~23KB
     let large_source = read_v2_file("src/v1/02_parse.dag"); // ~271KB
 
-    // Prime allocator/code cache so `small_time` is not dominated by one-off noise
-    // (otherwise `large_time / small_time` spikes on loaded CI VMs).
     let _ = tokenize(&small_source);
     let _ = tokenize(&large_source);
 
@@ -677,9 +622,6 @@ fn tokenizer_scales_linearly_with_file_size() {
         size_ratio, time_ratio,
     );
 
-    // If tokenization is O(n), time ratio should be ≈ size ratio.
-    // Median-of-5 timings on both inputs damp noise; keep modest slack for
-    // full-suite load on shared runners. True O(n²) is ~size_ratio².
     const LINEAR_MARGIN: f64 = 3.2;
     assert!(
         time_ratio < size_ratio * LINEAR_MARGIN,
@@ -722,9 +664,6 @@ fn tokenizer_scanning_scales_linearly() {
 }
 
 #[test]
-#[ignore] // Stream D: parser uses List<Token> consumption (skip(1) on Rc<Vec<T>> is O(n)).
-          // Structural correctness is established; O(n²) runtime is a known cost of the
-          // list-based representation. Fix: runtime slice type or cursor (M4/single-emitter).
 fn parser_scales_linearly_with_token_count() {
     use std::time::Instant;
 
@@ -764,8 +703,6 @@ fn parser_scales_linearly_with_token_count() {
         token_ratio, time_ratio, token_ratio * 2.0,
     );
 }
-
-// ── Phase 2: tokenizer e2e ──────────────────────────────────────────────
 
 #[test]
 fn tokenizer_smoke() {
@@ -841,8 +778,6 @@ fn tokenize_produces_correct_kinds() {
     );
 }
 
-// ── Phase 3/4: parse-level tests ────────────────────────────────────────
-
 #[test]
 fn parser_e2e() {
     let result = parse_source("module test");
@@ -874,7 +809,7 @@ fn transform(items: List<Int>) -> List<Int> {
 }
 
 #[test]
-#[ignore] // 40s — hanging in parser; triage under PERF track
+#[ignore = "40s — hanging in parser; triage under PERF track"]
 fn parse_multiline_pipe_chain() {
     let source = "module test\nfn transform(items: List<Int>) -> List<Int> {\n  let x = items |> map(i =>\n    process(i)\n  ) |> filter(f => f != none)\n  x\n}\n";
     let result = parse_source(source);
@@ -918,13 +853,8 @@ fn gist_transitive_closure_parse() {
     }
 }
 
-// ── keyword-as-name regression (dag_non_name_keywords authority) ───────
-
-/// Keywords that ARE valid as field/type names should parse.
-/// Authority: any keyword NOT in dag_non_name_keywords (dag/syntax.dag).
 #[test]
 fn keyword_as_field_name_allowed() {
-    // Representative sample: item keywords, control flow, resource terms
     let keywords = [
         "type",
         "fn",
@@ -970,8 +900,6 @@ fn keyword_as_field_name_allowed() {
     }
 }
 
-/// Keywords that are NOT valid as names should fail to parse as field names.
-/// Authority: dag_non_name_keywords in dag/syntax.dag.
 #[test]
 fn keyword_as_field_name_forbidden() {
     let forbidden = ["true", "false", "none", "null", "acquire", "release"];

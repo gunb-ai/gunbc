@@ -1,0 +1,56 @@
+module gunbc.os_install_emit
+
+import std.logic { Bool }
+import std.types { List, String }
+import extdeps.os.ubuntu_autoinstall {
+  UbuntuAutoinstallPayload,
+  AutoinstallIdentity,
+}
+import extdeps.formats.yaml {
+  YamlValue, YamlKeyValue,
+  yaml_mapping, yaml_sequence, yaml_string, yaml_int, yaml_bool,
+  kv, serialize_yaml, empty_yaml_values
+}
+
+fn identity_entries(id: AutoinstallIdentity) -> List<YamlKeyValue> {
+  [
+    kv(key: "hostname", value: yaml_string(s: id.hostname)),
+    kv(key: "username", value: yaml_string(s: id.username)),
+    kv(key: "realname", value: yaml_string(s: id.realname)),
+    kv(key: "password", value: yaml_string(s: id.hashed_password)),
+  ]
+}
+
+fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyValue> {
+  let base = [
+    kv(key: "version", value: yaml_int(n: payload.autoinstall_version)),
+    kv(key: "locale", value: yaml_string(s: payload.locale)),
+    kv(key: "keyboard", value: yaml_mapping(entries: [
+      kv(key: "layout", value: yaml_string(s: payload.keyboard_layout)),
+    ])),
+    kv(key: "identity", value: yaml_mapping(entries: identity_entries(id: payload.identity))),
+  ]
+  let with_ssh = if payload.install_openssh_server {
+    append(base, items: [
+      kv(key: "ssh", value: yaml_mapping(entries: [
+        kv(key: "install-server", value: yaml_bool(b: true)),
+      ])),
+    ])
+  } else {
+    base
+  }
+  if payload.fully_automated {
+    append(with_ssh, items: [
+      kv(key: "interactive-sections", value: yaml_sequence(elements: empty_yaml_values)),
+    ])
+  } else {
+    with_ssh
+  }
+}
+
+fn autoinstall_user_data(payload: UbuntuAutoinstallPayload) -> String {
+  let top = yaml_mapping(entries: [
+    kv(key: "autoinstall", value: yaml_mapping(entries: autoinstall_inner_entries(payload: payload))),
+  ])
+  concat("#cloud-config\n", serialize_yaml(v: top))
+}

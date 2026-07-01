@@ -1,0 +1,76 @@
+module test.claim.layout_render_witness
+
+import std.layout {
+  Doc, DocEmpty, DocText, DocLine, DocConcat, DocNest,
+  LayoutProtocol,
+  doc_text, doc_concat, doc_nest, doc_line_of, doc_blank,
+  render
+}
+
+data flat_proto: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+data yaml_proto: LayoutProtocol = LayoutProtocol { indent_unit: "  " }
+
+fn flat_doc() -> Doc {
+  doc_concat(parts: [doc_line_of(text: "a"), doc_line_of(text: "b")])
+}
+
+fn nested_doc(levels: Int) -> Doc {
+  doc_concat(parts: [
+    doc_text(text: "root:"),
+    DocLine,
+    doc_nest(levels: levels, body: doc_concat(parts: [doc_text(text: "child"), DocLine]))
+  ])
+}
+
+fn witness_flat_lines() -> Bool {
+  render(doc: flat_doc(), proto: flat_proto) == "a\nb\n"
+}
+
+fn witness_nesting_applies_indent() -> Bool {
+  render(doc: nested_doc(levels: 1), proto: yaml_proto) == "root:\n  child\n"
+}
+
+fn witness_nest_level_discriminates() -> Bool {
+  render(doc: nested_doc(levels: 1), proto: yaml_proto) !=
+    render(doc: nested_doc(levels: 2), proto: yaml_proto)
+}
+
+fn witness_indent_unit_discriminates() -> Bool {
+  render(doc: nested_doc(levels: 1), proto: yaml_proto) !=
+    render(doc: nested_doc(levels: 1), proto: flat_proto)
+}
+
+fn witness_blank_line_carries_no_indent() -> Bool {
+  let d = doc_concat(parts: [doc_text(text: "k:"), DocLine, doc_blank(), doc_nest(levels: 3, body: doc_concat(parts: [doc_text(text: "x"), DocLine]))])
+  render(doc: d, proto: yaml_proto) == "k:\n\n      x\n"
+}
+
+fn witness_trailing_line_no_trailing_indent() -> Bool {
+  let d = doc_nest(levels: 2, body: doc_concat(parts: [doc_text(text: "deep"), DocLine]))
+  render(doc: d, proto: yaml_proto) == "    deep\n"
+}
+
+fn witness_dash_nest_alignment() -> Bool {
+  let item = doc_concat(parts: [
+    doc_text(text: "- "),
+    doc_nest(levels: 1, body: doc_concat(parts: [doc_text(text: "name: a"), DocLine, doc_text(text: "run: x"), DocLine]))
+  ])
+  render(doc: item, proto: yaml_proto) == "- name: a\n  run: x\n"
+}
+
+fn witness_render_is_format_agnostic() -> Bool {
+  let flat = render(doc: flat_doc(), proto: flat_proto)
+  let nested = render(doc: nested_doc(levels: 1), proto: yaml_proto)
+  (flat == "a\nb\n") && (nested == "root:\n  child\n")
+}
+
+test fn layout_render_keystone_holds() -> Bool {
+  witness_flat_lines() &&
+    witness_nesting_applies_indent() &&
+    witness_nest_level_discriminates() &&
+    witness_indent_unit_discriminates() &&
+    witness_blank_line_carries_no_indent() &&
+    witness_trailing_line_no_trailing_indent() &&
+    witness_dash_nest_alignment() &&
+    witness_render_is_format_agnostic()
+}

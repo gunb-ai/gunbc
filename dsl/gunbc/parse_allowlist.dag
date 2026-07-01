@@ -1,9 +1,3 @@
-// gunbc/parse_allowlist.dag — enumerated v2 parse-debt allowlist for gate-1.
-//
-// Shrink-only ratchet on v2 parser debt (1 entry remaining; the ci_emission.dag entry
-// was retired with the CI-track rework). Paying debt removes entries; growth requires
-// explicit justification.
-
 module gunbc.parse_allowlist
 
 import std.types { FilePath }

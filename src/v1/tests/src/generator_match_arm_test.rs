@@ -1,9 +1,3 @@
-//! ctrl#1476 B3 — Generator record match-arm (Gap-1) + detection test.
-//!
-//! Record-typed values (including `Generator<C>`) build as `Value::Record`. A
-//! `match` on the record type name must bind fields via the `Value::Record` arm
-//! in `match_pattern`, not only the `Value::Variant` coproduct arm.
-
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
@@ -26,7 +20,6 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
     );
 }
 
-/// Detection: red if record destructuring bypasses the `Value::Record` arm.
 #[test]
 fn record_match_pattern_includes_value_record_arm() {
     let source = include_str!("../../stage0/src/v1_interpreter.rs");

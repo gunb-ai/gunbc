@@ -1,12 +1,4 @@
-// src/v2/std/node_query.dag
-// Scope: Outcome-bearing structural queries over Node children.
-// Consumes: std/diagnostic.dag, std/node.dag.
-// Note: lives here rather than in std/node.dag because std/node.dag is a base module
-//       that carries no imports; adding Outcome here would create a circular dep
-//       (diagnostic.dag imports node.dag).
-
 module v2.std.node_query
-
 
 import v2.std.diagnostic {
   Accepted,
@@ -49,7 +41,6 @@ import v2.std.node {
   resolve_type_node
 }
 
-// R-reflect Phase 2a: pure .dag enumeration over resolved Disj Node (substrate-native).
 fn coproduct_arm_key_list_from_node(node: Node) -> List<Symbol> {
   fold(
     xs: node_labeled_child_edges(node: node),
@@ -62,11 +53,6 @@ fn coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
   coproduct_arm_key_list_from_node(node: resolve_type_node(type_name: type_name))
 }
 
-// 🟢 grounded — structural coproduct recognition: a decl node is a closed coproduct iff its
-// kind is a TypeNode whose connective is Disj. Records (Conj) also carry labeled child edges,
-// so coproduct_arm_key_list_from_node alone cannot distinguish an arm roster from a field
-// roster — this is the predicate that keeps the two apart (DESIGN.md §4). Single authority for
-// "is this a coproduct?" over the Node tree; consumed by concept_index.enumerate_coproduct_decls.
 fn node_is_coproduct(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Disj } => true
@@ -156,15 +142,10 @@ fn coproduct_arm_payload_pairs(type_name: Symbol) -> List<CoproductArmPayloadPai
   )
 }
 
-// 🟡 gated — feature:coproduct-nullary-inhabitants-bridge — bind gunbc#4872 — dissolve-on-arrival:
-// generic Symbol->inhabitant / direct compile-graph nullary construction in .dag replaces this
-// resolved-Disj intercept (snappy Q2 fallback (a)); forbidden: hand label->ctor tables.
 fn coproduct_nullary_inhabitants(type_name: Symbol) -> Outcome<List<Behavior>> {
   coproduct_nullary_inhabitants(type_name: type_name)
 }
 
-
-// 🟡 gated — predicate-dissolution interim — feature: node-positional-child-targets — bind node://adhoc-sg2-positional-child-targets — dissolve-on-arrival: substrate canonical positional-child target projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query (e.g. translate-local conj_positional_targets folds).
 fn node_positional_child_targets(node: Node) -> List<Node> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
@@ -173,7 +154,7 @@ fn node_positional_child_targets(node: Node) -> List<Node> {
     }
   })
 }
-// 🟡 gated — predicate-dissolution interim — feature: node-labeled-child-edges — bind node://adhoc-sg2-labeled-child-edges — dissolve-on-arrival: substrate canonical labeled-child edge projection on Node.children; lives in node_query (node.dag is import-free substrate root). forbidden: parallel edge-label filters outside std/node_query.
+
 fn node_labeled_child_edges(node: Node) -> List<Edge> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
@@ -183,16 +164,6 @@ fn node_labeled_child_edges(node: Node) -> List<Edge> {
   })
 }
 
-// 🟢 grounded — canonical CALL-CARRIER recognition surface. A call is a Transform whose
-// positional child[0] is a callee reference (a resolved Arrow value or an Atom symbol reference)
-// and whose positional children[1..] are the actual arguments. add / pick / loop / bind and
-// effect_io all share this uniform shape: the dispatch surface keys on the callee, NOT on the
-// Behavior family (add and effect_io are BOTH Transform, so a closed Behavior fold cannot
-// separate them — single authority (DESIGN.md §3) keeps effectfulness signature-authored, not a Behavior variant).
-// Home: node_query (structural Node-children queries). This is the named dissolution target
-// for the 05_eval interim callee Bool predicates (bind node://adhoc-9a72d4fb-8c2):
-// eval_node_is_callee_reference / eval_transform_has_callee_reference / eval_transform_callee_edge
-// dissolve into these. forbidden: parallel callee-shape predicates outside std/node_query.
 fn node_is_callee_reference(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
@@ -212,8 +183,6 @@ fn node_is_call(node: Node) -> Bool {
   }
 }
 
-// The resolved callee reference (positional child[0]). Fail-closed when `node` is not a
-// call: the dispatch surface routes on this target, so a non-call must refuse, never default.
 fn call_callee_target(node: Node) -> Outcome<Node> {
   if node_is_call(node: node) {
     match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
@@ -234,9 +203,6 @@ fn call_callee_target(node: Node) -> Outcome<Node> {
   }
 }
 
-// The call's positional actual arguments — the positional child targets after the callee at
-// index 0. Defined for call nodes (node_is_call); the dispatch surface index-binds these against
-// the callee's declared parameter order.
 fn call_argument_targets(node: Node) -> List<Node> {
   match list_tail(xs: node_positional_child_targets(node: node)) {
     TailFound { tail: args } => args
@@ -244,7 +210,6 @@ fn call_argument_targets(node: Node) -> List<Node> {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature: node-envelope-without-named-coordinate — bind node://adhoc-sg2-envelope-peel — dissolve-on-arrival: substrate canonical peel of ≤1 named coordinate from a Conj envelope edge list; forbidden: parallel edge-label Bool filters outside std/node_query.
 fn node_envelope_without_named_coordinate_go(
   root: Node,
   xs: FreeMonoid<Edge>,
@@ -284,9 +249,6 @@ fn node_envelope_without_named_coordinate_go(
   }
 }
 
-// 🟢 grounded — canonical single-named-edge-target lookup via name_occurrences uniqueness gate
-// (no parallel EdgeLabel walker). Misses and ambiguities fail closed via Outcome.
-// Conj guard rejects non-Conj roots (Atom nodes cannot have Named edges; malformed inputs fail closed).
 fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
   match root.kind {
     TypeNode { connective: Conj } =>
@@ -333,7 +295,6 @@ fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
   }
 }
 
-// 🟢 grounded — Arrow.body single-named-edge lookup; wraps std.node arrow_body_target_lookup with Outcome diagnostics.
 fn find_arrow_body_child(root: Node) -> Outcome<Node> {
   match root.kind {
     TypeNode { connective: Arrow } =>
@@ -369,7 +330,6 @@ fn node_query_domain_malformed_diagnostic(domain: Node) -> Diagnostic {
   }
 }
 
-// Lifted from compiler/03_resolve harvest_conj_named_bindings — ordered List (Map acc loses order).
 fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
   match domain.kind {
     TypeNode { connective: Conj } =>
@@ -407,9 +367,6 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
   }
 }
 
-// 🟢 grounded — Arrow positional-0 domain Conj harvest; sibling to find_arrow_body_child.
-// Order is load-bearing (05_eval index-binds args against this list). Attach: lifted from
-// compiler/03_resolve add_arrow_domain_named_params / harvest_conj_named_bindings.
 fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<Symbol>> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>

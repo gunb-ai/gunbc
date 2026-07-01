@@ -1,29 +1,20 @@
-// tools/ci_gates.dag — composed effectful CI gates (one resolve, one process).
-//
-// Gate list authority: `gunbc_ci_spec.gates` (not a parallel hardcoded sequence).
-// Production CI runs gates individually via floor_effect_gate_witness adapters;
-// this module remains for direct invocation.
-//
-// dissolve-on: v1 interpreter terminates effectful `fold` over ProcessExit (same
-// class as #5138 floor batch-2 loop). Until then, `main` sequences gates manually
-// (short-circuit on first failure) instead of `fold(spec.gates, …)`.
-
 module tools.ci_gates
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import gunbc.ci_spec {
-  gunbc_ci_spec, CiSpec, Gate,
-  RustMonolithGate, EmitHostGate, LayeringImportsGate, ResolvedImportsGate,
-  ExtdepsExternalAuthorityGate, DslCompileCleanGate, CiYamlGate,
-  SourceRootIngestGate
+  gunbc_ci_gates, CiSpec, Gate,
+  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
+  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
 }
 import tools.rust_gates_ci { run_rust_monolith_gate }
 import tools.emit_host_gate { run_emit_host_ci_gate }
 import tools.layering_imports_gate { run_layering_imports_ci_gate }
-import tools.resolved_imports_gate { run_resolved_imports_ci_gate }
 import tools.extdeps_external_authority_gate { run_extdeps_external_authority_ci_gate }
 import tools.dsl_compile_clean_gate { run_dsl_compile_clean_gate }
-import tools.ci_yaml_gate { run_ci_yaml_gate }
+import tools.generated_artifact_gate { run_generated_artifact_drift_gate }
+import tools.regen_verify_gate { run_regen_verify_gate }
+import tools.emit_determinism_gate { run_emit_determinism_gate }
 
 fn exit_ok(e: ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
@@ -34,28 +25,30 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
     RustMonolithGate => run_rust_monolith_gate()
     EmitHostGate => run_emit_host_ci_gate()
     LayeringImportsGate => run_layering_imports_ci_gate()
-    ResolvedImportsGate => run_resolved_imports_ci_gate()
     ExtdepsExternalAuthorityGate => run_extdeps_external_authority_ci_gate()
     DslCompileCleanGate => run_dsl_compile_clean_gate()
-    CiYamlGate => run_ci_yaml_gate()
+    GeneratedArtifactDriftGate => run_generated_artifact_drift_gate()
     SourceRootIngestGate => exit_failure(
       reason: "SourceRootIngestGate: run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3)"
     )
+    RegenVerifyGate => run_regen_verify_gate()
+    SelfHostRealizedComparisonGate => exit_failure(
+      reason: "SelfHostRealizedComparisonGate: run via ci_floor_plan v2.workflow.self_host_realized_comparison_gate"
+    )
+    EmitDeterminismGate => run_emit_determinism_gate()
   }
 }
 
-// Sequential short-circuit — order mirrors `gunbc_ci_spec.gates` until dissolve-on.
+fn run_gate_list(gates: List<Gate>) -> ProcessExit {
+  fold(gates, init: ExitSuccess, f: fn(acc, g) {
+    if exit_ok(e: acc) { run_spec_gate(g: g) } else { acc }
+  })
+}
+
 func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
-  let g0 = run_spec_gate(g: RustMonolithGate)
-  let g1 = if exit_ok(g0) { run_spec_gate(g: EmitHostGate) } else { g0 }
-  let g2 = if exit_ok(g1) { run_spec_gate(g: LayeringImportsGate) } else { g1 }
-  let g3 = if exit_ok(g2) { run_spec_gate(g: ResolvedImportsGate) } else { g2 }
-  let g4 = if exit_ok(g3) { run_spec_gate(g: ExtdepsExternalAuthorityGate) } else { g3 }
-  let g5 = if exit_ok(g4) { run_spec_gate(g: DslCompileCleanGate) } else { g4 }
-  let g6 = if exit_ok(g5) { run_spec_gate(g: CiYamlGate) } else { g5 }
-  if exit_ok(g6) { run_spec_gate(g: SourceRootIngestGate) } else { g6 }
+  run_gate_list(gates: spec.gates)
 }
 
 func main() -> ProcessExit {
-  run_ci_gates_sequential(spec: gunbc_ci_spec)
+  run_gate_list(gates: gunbc_ci_gates)
 }

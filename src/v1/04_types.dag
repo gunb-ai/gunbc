@@ -1,5 +1,3 @@
-// v2 type predicates, constructors, and comparisons.
-
 module v1.compiler.infer_types
 
 import std.types { SourceSpan, is_container_type, container_expected_arity, container_param_name, container_template_algebra, container_template_alias_algebra }
@@ -46,15 +44,6 @@ fn type_variable_node(id: String) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-// =========================================================================
-// Node constructors
-// =========================================================================
-
-// Extract the resolved type Node from n.inferred. Fail-closed: returns
-// error_type for any non-Resolved state. Use this at declaration and
-// post-inference sites where Resolved is the expected invariant.
-// Dissolution target: consumers that need variant-specific behavior
-// should match InferredNode? directly instead of calling this.
 fn resolved_type(n: Node) -> Node {
   match n.inferred {
     Present { value: Resolved { node: rt } } => rt
@@ -73,15 +62,6 @@ fn child_type_at(n: Node, index: Int) -> Node? {
   }
 }
 
-// =========================================================================
-// Structural collection predicates (L1 dissolution)
-//
-// After resolution, only container types retain children without connective.
-// Products have Conj, coproducts have Disj, callables use the params field,
-// tuples have Conj. These predicates derive collection-ness from node shape
-// alone — no name checks, no CollectionKind enum. Pass scrambled-name test.
-// =========================================================================
-
 fn node_is_collection(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   (n.children |> count) > 0 && n.connective == NoConnective && is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: n))
 }
@@ -98,14 +78,6 @@ fn node_is_set_collection(n: Node, source_indices: Map<String, NewlineIndex>) ->
   node_is_element_collection(n: n, source_indices: source_indices) && authored_name_at(source_indices: source_indices, node: n) == "Set"
 }
 
-// Canonical sequence/container algebra for a type node's template name, via the
-// single modeled authority (dsl/std/types.dag container_template_algebra:
-// List->FreeMonoid, Set->BooleanAlgebra, Map->PartialFunction; algebra names map
-// to themselves). Used to compare aliased spellings transparently — e.g.
-// List<T> (Container) and FreeMonoid<T> (Node) are the SAME declared type
-// (collection.dag: type List<T> = FreeMonoid<T>), but resolve keeps List
-// unexpanded as a container, so they must be reconciled at COMPARE time without
-// expanding the container (preserving the unexpanded-container invariant).
 fn canonical_template_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let nm = authored_name_at(source_indices: source_indices, node: n)
   match container_template_algebra(name: nm) {
@@ -121,8 +93,21 @@ fn is_declared_container_alias_spelling(name: String) -> Bool {
   }
 }
 
-// Carrier template after identity-preserving alias peel: authored_name_at reads
-// the brand (UserId) while n.name holds the structural head (Refined).
+fn reground_alias_carrier_identity(n: Node, source_indices: Map<String, NewlineIndex>) -> Node {
+  if n.name != "" && n.name != authored_name_at(source_indices: source_indices, node: n) && is_declared_container_alias_spelling(name: n.name) {
+    Node {
+      name: n.name, span: n.span, ident_span: Present { value: kernel_span(name: n.name) },
+      children: n.children, connective: n.connective, params: n.params, inferred: n.inferred,
+      return_cardinality: n.return_cardinality, uses: n.uses, body: n.body, transport: n.transport,
+      properties: n.properties, type_annotation: n.type_annotation,
+      is_self_recursive: n.is_self_recursive, has_non_tail_self_call: n.has_non_tail_self_call,
+      match_pattern: n.match_pattern, expr_data: n.expr_data
+    }
+  } else {
+    n
+  }
+}
+
 fn structural_carrier_template_name(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   if n.name != "" {
     canonical_template_name(n: Node {
@@ -137,10 +122,6 @@ fn structural_carrier_template_name(n: Node, source_indices: Map<String, Newline
     canonical_template_name(n: n, source_indices: source_indices)
   }
 }
-
-// =========================================================================
-// Type structure predicates (MM-2)
-// =========================================================================
 
 fn is_product_type(n: Node) -> Bool { n.connective == Conj }
 fn is_coproduct_type(n: Node) -> Bool { n.connective == Disj }
@@ -189,17 +170,6 @@ fn bare_set_node() -> Node? {
   }
 }
 
-// =========================================================================
-// Shared type construction authorities
-//
-// Single-authority builders for synthesized type nodes. All container param
-// names derive from algebra via container_param_name (fail-closed on miss).
-// These centralize type-shape knowledge that was previously inlined as
-// raw Node literals across multiple files.
-//
-// Dissolution point: Tier 3 / FF-9 (declaration-driven construction).
-// =========================================================================
-
 fn kernel_container_profile_miss_diagnostic(kind_name: String) -> ErrorNode {
   let msg = concat("missing kernel container profile: ", kind_name)
   make_error_node(
@@ -208,10 +178,6 @@ fn kernel_container_profile_miss_diagnostic(kind_name: String) -> ErrorNode {
   )
 }
 
-// Type-position sentinel when `kernel_algebra_profile` has no entry for
-// `kind_name`. Paired with `kernel_container_profile_miss_diagnostic` wherever
-// a diagnostic list is threaded; expr_data uses InternalExprError (compiler
-// invariant), not user-facing SemanticExprError.
 fn missing_kernel_container_profile_type(kind_name: String) -> Node {
   let msg = concat("missing kernel container profile: ", kind_name)
   Node {
@@ -288,27 +254,6 @@ fn make_tuple_type(first: Node, second: Node) -> Node {
     Node { name: "second", span: kernel_span(name: "second"), ident_span: Present { value: kernel_span(name: "second") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: second } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   ], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
-
-// P3.7: arity bridge deleted. type_node_arity_ok removed — arity is now
-// checked via declaration params in the type environment, not hardcoded names.
-
-// =========================================================================
-// P5.13B: Algebraic field enrichment for kernel types
-//
-// These helpers build child Nodes representing algebraic structure fields
-// (add, mul, concat, etc.) on kernel types. Called once during
-// build_type_env kernel seed to produce Conj product types with structural
-// fields, enabling Tier 0 method lookup to resolve methods from type
-// structure instead of string matching.
-//
-// The return types use bare nominal references — inference resolves
-// names via the type environment, so circular references are avoided.
-//
-// BS-2: Algebra profile data table. The mapping from kernel type name
-// to algebraic structure is DATA (kernel_algebra_profile), not code.
-// Per-profile builder functions produce the field lists; enrich_kernel_type
-// does a single lookup and dispatches to the appropriate builder.
-// =========================================================================
 
 fn algebra_value_field(name: String, type_node: Node) -> Node {
   Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: type_node } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -402,10 +347,6 @@ fn enrich_kernel_type(name: String, base: Node, source_indices: Map<String, Newl
     Absent => KernelTypeBuild { ty: base, diagnostics: [] }
   }
 }
-
-// =========================================================================
-// Structural type variable resolution (Phase C)
-// =========================================================================
 
 fn unify_template(template: AlgebraTypeTemplate, concrete: Node, receiver: Node, subst: Map<String, Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
   match template {
@@ -643,11 +584,6 @@ fn callable_inferred(n: Node) -> Node {
   } else { n }
 }
 
-
-// =========================================================================
-// Normalization
-// =========================================================================
-
 fn normalize_access_type_node(n: Node) -> Node {
   let has_structure = n.connective != NoConnective
   let unwrapped = if n.type_annotation != none && has_structure {
@@ -658,11 +594,6 @@ fn normalize_access_type_node(n: Node) -> Node {
     Absent => n
   }
 }
-
-
-// =========================================================================
-// Type shape and comparison
-// =========================================================================
 
 fn node_type_shape(n: Node, source_indices: Map<String, NewlineIndex>) -> String {
   let __is_leaf = n.connective == NoConnective && n.children |> count == 0 && n.properties |> count == 0
@@ -749,12 +680,7 @@ fn node_type_compatible(left: Node, right: Node, source_indices: Map<String, New
       && (left.children |> count == 1)) && (right.children |> count == 1)
       && (is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: left))
         || is_declared_container_alias_spelling(name: authored_name_at(source_indices: source_indices, node: right))) {
-      // Aliased sequence spellings — e.g. List<T> (Container) vs FreeMonoid<T>
-      // (Node), which collection.dag declares the SAME type (List = FreeMonoid).
-      // They canonicalize to the same template but carry different surface
-      // names. Compare element types across the two reps. Fires
-      // ONLY when the names DIFFER but canonicalize equal, so same-named and
-      // genuinely-distinct types are untouched (minimal blast radius).
+
       match left.children |> first {
         Present { value: left_ch } =>
           match right.children |> first {
@@ -934,10 +860,6 @@ fn node_type_equals_core(left: Node, right: Node, source_indices: Map<String, Ne
   }
 }
 
-// =========================================================================
-// Type dependency analysis
-// =========================================================================
-
 fn node_type_deps(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
   let n_is_type_var = if n.inferred != none { is_type_variable(inferred: n.inferred.value) } else { false }
   if n_is_type_var { return [] }
@@ -976,10 +898,6 @@ fn node_type_deps(n: Node, source_indices: Map<String, NewlineIndex>) -> List<St
   }
 }
 
-// =========================================================================
-// Literal type inference
-// =========================================================================
-
 fn infer_literal_node(lit: LiteralValue) -> Node {
   match lit {
     LitStr { value: _ } => string_type
@@ -987,14 +905,10 @@ fn infer_literal_node(lit: LiteralValue) -> Node {
     LitFloat { value: _ } => float_type
     LitBool { value: _ } => bool_type
     LitNull => with_optional_cardinality(n: unit_type)
-    // Symbol is operationally String at runtime; `^IDENT` is an opaque spelling literal.
+
     LitSymbol { value: _ } => string_type
   }
 }
-
-// =========================================================================
-// Element and unwrap utilities
-// =========================================================================
 
 fn method_receiver_element_node(receiver_type: Node, source_indices: Map<String, NewlineIndex>) -> Node {
   let normed = normalize_access_type_node(n: receiver_type)
@@ -1022,9 +936,7 @@ fn extract_optional_inner_node(n: Node) -> Node {
   if is_optional {
     with_required_cardinality(n: n)
   } else if n.name == "Optional" && n.children |> count == 1 {
-    // Applied generic Optional<T>: inner is the type argument when the coproduct
-    // Disj structure is not carried on the instantiated node (substitute_generics
-    // rebuild). Present/Absent synthesis still needs T for the value field.
+
     match n.children |> first {
       Present { value: inner } => inner
       Absent => n
@@ -1032,10 +944,6 @@ fn extract_optional_inner_node(n: Node) -> Node {
   } else { n }
 }
 
-// Convert AlgebraFieldKind to the field name string for child lookup on types.
-// Authority: algebra_field_entries in std/syntax.dag — this match must stay
-// in sync. NOTE: child lookup still goes through find_child_named (string).
-// The full structural fix requires typed child identifiers on algebra Nodes.
 fn algebra_field_kind_name(kind: AlgebraFieldKind) -> String {
   match kind {
     AlgAdd => "add"

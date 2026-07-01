@@ -1,28 +1,6 @@
-// src/v2/lens/table_decision_tree.dag
-// Scope: L1.13.c TableDecisionTree lens substrate (sub-signature of L1.13
-//        Skeleton-collapse, table-row scope). Kills function-encoded total
-//        tables over closed vocabularies that should be substrate data rows
-//        (`TotalMap<K, V>` for finite payload-free keys, `TotalPolicy<K,
-//        Context, RowTemplate>` for payload-bearing keys).
-// Anchor: docs/design-dissolution-lens.md §5 L1.13.c (status "reserved-
-//         proposed" → promoted-to-substrate (this file) via
-//         node://adhoc-086ab97b-b41 substrate-evolution 5/5).
-// Status: scaffold — carrier types + verdict shape only. Enforcement gated on
-//         (a) `v2.lens.decision_tree_shape` landing (the producer-stage record
-//         that exposes per-branch resolved identity + body-shape facts; same
-//         input L1.13.b consumes), (b) at least one Practice-11-parameterized
-//         dissolution shape landing as the migration target. Until those
-//         dependencies land, the lens's `verdict` is Unrealized for every fn
-//         in the corpus and `table_decision_tree_fact_for_fn` returns the
-//         carrier with that verdict — the substrate row exists so consumers
-//         (registry, coverage, subsumption) can
-//         reference it as a typed authority rather than a prose pointer.
-//         See L1.13.b (`decision_tree_collapse`) for the parallel sub-signature
-//         that generalizes parent L1.13 to non-`match` source forms.
-
 module v2.lens.table_decision_tree
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-
+import std.disposition { SingleAuthority }
 
 import std.lens_verdict {
   LensVerdict,
@@ -32,9 +10,7 @@ import std.lens_verdict {
 }
 import v2.std.node { Node }
 
-
 data table_decision_tree_module: String = "v2.lens.table_decision_tree"
-
 
 fn table_decision_tree_unrealized_verdict() -> LensVerdict {
   Unrealized {
@@ -45,17 +21,11 @@ fn table_decision_tree_unrealized_verdict() -> LensVerdict {
   }
 }
 
-
-// 🟢 lens fact — one row per scanned fn-locus. The decided receipt is the
-// verdict; the locus is the fn whose body was scanned (the un-derived
-// projection that should dissolve to a substrate row).
 type TableDecisionTreeFact {
   fn_locus: Node
   verdict: LensVerdict
 }
 
-
-// 🟡 gated — feature:lens-decision-tree-shape — bind node://adhoc-086ab97b-b41 — dissolves when table_decision_tree_fact_for_fn consumes v2.lens.decision_tree_shape instead of Unrealized.
 fn table_decision_tree_fact_for_fn(fn_node: Node) -> TableDecisionTreeFact {
   TableDecisionTreeFact {
     fn_locus: fn_node,
@@ -63,12 +33,6 @@ fn table_decision_tree_fact_for_fn(fn_node: Node) -> TableDecisionTreeFact {
   }
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "v2.lens.decision_tree_shape (the producer record exposing per-branch resolved identity and body shape) plus TotalMap/TotalPolicy substrate rows",
-    dissolve_on: "a fn-encoded total table over a closed vocabulary is replaced by a substrate TotalMap/TotalPolicy data row by construction"
-  },
-  rationale: "A function-encoded total table over a closed key vocabulary is a decidable shape; a scaffold gated on the decision-tree-shape producer until total tables are substrate rows."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

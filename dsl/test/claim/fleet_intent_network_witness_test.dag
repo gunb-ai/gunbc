@@ -1,0 +1,32 @@
+module test.claim.fleet_intent_network
+
+import std.logic { Bool }
+import std.types { list_length }
+import product.network_topology {
+  ContainerRunner,
+  HostLan,
+  BmcManagement,
+  network_reachability,
+}
+import gunbc.fleet_intent_network {
+  fleet_intent_network,
+  srv1_bmc_endpoint,
+  srv1_host_lan_endpoint,
+}
+
+test fn fleet_intent_network_container_to_bmc_allowed() -> Bool {
+  network_reachability(from: ContainerRunner, to: BmcManagement)
+}
+
+test fn fleet_intent_network_container_to_host_lan_denied() -> Bool {
+  network_reachability(from: ContainerRunner, to: HostLan) == false
+}
+
+test fn fleet_intent_network_topology_endpoint_count_holds() -> Bool {
+  list_length(items: fleet_intent_network.endpoints) == 8
+}
+
+test fn fleet_intent_network_srv1_addresses_holds() -> Bool {
+  srv1_host_lan_endpoint.address == "192.168.1.185"
+    && srv1_bmc_endpoint.address == "192.168.1.183"
+}

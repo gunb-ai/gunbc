@@ -1,17 +1,102 @@
-// extdeps/cloud/gcp/errors.dag -- GCP API error envelope shapes.
-//
-// Two distinct upstream wire shapes are modeled here, one per spec:
-//   GcpErrorShape       -- Google APIs canonical RPC-status envelope
-//                          (https://cloud.google.com/apis/design/errors#http_mapping)
-//   GcpOAuth2ErrorShape -- RFC 6749 §5.2 OAuth2 token-endpoint error
-//                          (https://datatracker.ietf.org/doc/html/rfc6749#section-5.2)
-
 module extdeps.cloud.gcp.errors
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/apis/design/errors#http_mapping"
+  }
+}
+
+type GcpRpcCode
+  = GcpRpcCodeOk
+  | GcpRpcCodeCancelled
+  | GcpRpcCodeUnknown
+  | GcpRpcCodeInvalidArgument
+  | GcpRpcCodeDeadlineExceeded
+  | GcpRpcCodeNotFound
+  | GcpRpcCodeAlreadyExists
+  | GcpRpcCodePermissionDenied
+  | GcpRpcCodeUnauthenticated
+  | GcpRpcCodeResourceExhausted
+  | GcpRpcCodeFailedPrecondition
+  | GcpRpcCodeAborted
+  | GcpRpcCodeOutOfRange
+  | GcpRpcCodeUnimplemented
+  | GcpRpcCodeInternal
+  | GcpRpcCodeUnavailable
+  | GcpRpcCodeDataLoss
+  | GcpRpcCodeOther { raw: NonEmptyStr }
+
+data gcp_rpc_code_ok_wire: String = "OK"
+data gcp_rpc_code_cancelled_wire: String = "CANCELLED"
+data gcp_rpc_code_unknown_wire: String = "UNKNOWN"
+data gcp_rpc_code_invalid_argument_wire: String = "INVALID_ARGUMENT"
+data gcp_rpc_code_deadline_exceeded_wire: String = "DEADLINE_EXCEEDED"
+data gcp_rpc_code_not_found_wire: String = "NOT_FOUND"
+data gcp_rpc_code_already_exists_wire: String = "ALREADY_EXISTS"
+data gcp_rpc_code_permission_denied_wire: String = "PERMISSION_DENIED"
+data gcp_rpc_code_unauthenticated_wire: String = "UNAUTHENTICATED"
+data gcp_rpc_code_resource_exhausted_wire: String = "RESOURCE_EXHAUSTED"
+data gcp_rpc_code_failed_precondition_wire: String = "FAILED_PRECONDITION"
+data gcp_rpc_code_aborted_wire: String = "ABORTED"
+data gcp_rpc_code_out_of_range_wire: String = "OUT_OF_RANGE"
+data gcp_rpc_code_unimplemented_wire: String = "UNIMPLEMENTED"
+data gcp_rpc_code_internal_wire: String = "INTERNAL"
+data gcp_rpc_code_unavailable_wire: String = "UNAVAILABLE"
+data gcp_rpc_code_data_loss_wire: String = "DATA_LOSS"
+
+fn parse_gcp_rpc_code(raw: String) -> GcpRpcCode {
+  if raw == gcp_rpc_code_ok_wire { GcpRpcCodeOk }
+  else if raw == gcp_rpc_code_cancelled_wire { GcpRpcCodeCancelled }
+  else if raw == gcp_rpc_code_unknown_wire { GcpRpcCodeUnknown }
+  else if raw == gcp_rpc_code_invalid_argument_wire { GcpRpcCodeInvalidArgument }
+  else if raw == gcp_rpc_code_deadline_exceeded_wire { GcpRpcCodeDeadlineExceeded }
+  else if raw == gcp_rpc_code_not_found_wire { GcpRpcCodeNotFound }
+  else if raw == gcp_rpc_code_already_exists_wire { GcpRpcCodeAlreadyExists }
+  else if raw == gcp_rpc_code_permission_denied_wire { GcpRpcCodePermissionDenied }
+  else if raw == gcp_rpc_code_unauthenticated_wire { GcpRpcCodeUnauthenticated }
+  else if raw == gcp_rpc_code_resource_exhausted_wire { GcpRpcCodeResourceExhausted }
+  else if raw == gcp_rpc_code_failed_precondition_wire { GcpRpcCodeFailedPrecondition }
+  else if raw == gcp_rpc_code_aborted_wire { GcpRpcCodeAborted }
+  else if raw == gcp_rpc_code_out_of_range_wire { GcpRpcCodeOutOfRange }
+  else if raw == gcp_rpc_code_unimplemented_wire { GcpRpcCodeUnimplemented }
+  else if raw == gcp_rpc_code_internal_wire { GcpRpcCodeInternal }
+  else if raw == gcp_rpc_code_unavailable_wire { GcpRpcCodeUnavailable }
+  else if raw == gcp_rpc_code_data_loss_wire { GcpRpcCodeDataLoss }
+  else { GcpRpcCodeOther { raw: raw } }
+}
+
+fn gcp_rpc_code_label(code: GcpRpcCode) -> String {
+  match code {
+    GcpRpcCodeOk => gcp_rpc_code_ok_wire
+    GcpRpcCodeCancelled => gcp_rpc_code_cancelled_wire
+    GcpRpcCodeUnknown => gcp_rpc_code_unknown_wire
+    GcpRpcCodeInvalidArgument => gcp_rpc_code_invalid_argument_wire
+    GcpRpcCodeDeadlineExceeded => gcp_rpc_code_deadline_exceeded_wire
+    GcpRpcCodeNotFound => gcp_rpc_code_not_found_wire
+    GcpRpcCodeAlreadyExists => gcp_rpc_code_already_exists_wire
+    GcpRpcCodePermissionDenied => gcp_rpc_code_permission_denied_wire
+    GcpRpcCodeUnauthenticated => gcp_rpc_code_unauthenticated_wire
+    GcpRpcCodeResourceExhausted => gcp_rpc_code_resource_exhausted_wire
+    GcpRpcCodeFailedPrecondition => gcp_rpc_code_failed_precondition_wire
+    GcpRpcCodeAborted => gcp_rpc_code_aborted_wire
+    GcpRpcCodeOutOfRange => gcp_rpc_code_out_of_range_wire
+    GcpRpcCodeUnimplemented => gcp_rpc_code_unimplemented_wire
+    GcpRpcCodeInternal => gcp_rpc_code_internal_wire
+    GcpRpcCodeUnavailable => gcp_rpc_code_unavailable_wire
+    GcpRpcCodeDataLoss => gcp_rpc_code_data_loss_wire
+    GcpRpcCodeOther { raw: r } => r
+  }
+}
 
 type GcpErrorDetails {
   code: Int
   message: String
-  status: String?
+  status: GcpRpcCode?
 }
 
 type GcpErrorShape {
@@ -28,7 +113,7 @@ data gcp_error_example: GcpErrorShape = {
   error: {
     code: 403,
     message: "Permission denied",
-    status: "PERMISSION_DENIED"
+    status: GcpRpcCodePermissionDenied
   }
 }
 

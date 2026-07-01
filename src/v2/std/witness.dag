@@ -1,15 +1,8 @@
-// src/v2/std/witness.dag
-// Scope: fail-closed proof/read carrier + unified witness taxonomy (Pass B).
-// Anchor: one-fold homomorphism (DESIGN.md §6)
-// Status: T-3 modeled; Wave-2-BC3 taxonomy extension.
-
-
 module v2.std.witness
-
 
 import v2.std.diagnostic { Diagnostic }
 import v2.std.node { Node, Symbol }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type Witness<C>
   = Holds { value: C }
   | Violates { diagnostic: Diagnostic }

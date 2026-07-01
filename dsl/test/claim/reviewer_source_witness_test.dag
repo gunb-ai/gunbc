@@ -1,8 +1,3 @@
-// dsl/test/claim/reviewer_source_witness_test.dag
-//
-// §5 discriminating proof for ctrl.review_verdict.reviewer_source — source kind
-// is structural per Reviewer arm; ProviderOther lifts to UnattributedReviewer.
-
 module test.claim.reviewer_source_witness_test
 
 import ctrl.review_verdict { reviewer_source }

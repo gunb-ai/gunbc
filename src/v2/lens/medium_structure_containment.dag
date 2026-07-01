@@ -1,64 +1,6 @@
-// src/v2/lens/medium_structure_containment.dag
-// Scope: medium-structure containment guard — the MediumStructureLeak GENERALIZATION of
-//   v2.lens.realization_vocabulary_containment's RealizationVocabularyLeak (DESIGN §5;
-//   docs/plans/emission-ingestion-inverse.md §5.1; placed on the §2 expressibility frontier
-//   per docs/plans/expressibility-frontier.md). The §5 guard catches a module *importing* a
-//   target AST it shouldn't; this catches the sin one rung earlier — a medium whose structure
-//   has leaked out of a `Node` into a raw string. The single rule (§5.1):
-//
-//     A target medium — and every sub-language embedded in it — stays a modeled `Node` from
-//     authoring through checking. A raw string is legitimate ONLY at the realization edge
-//     (the grammar-row emitter). BOTH writing target syntax as a string literal AND
-//     inspecting emitted output with string ops are the same leak.
-//
-//   Two faces of one leak (DESIGN §2-horizontal — one concept, two breadths):
-//     (a) emit-side    — a string LITERAL containing a grounded medium syntax marker (the GHA
-//                        expression delimiter `${{`) authored OUTSIDE the realization edge.
-//                        This reads AUTHORING source for a grounded token — NOT a re-ingest of
-//                        emitted output: emitted output is SUPPOSED to carry target syntax, so
-//                        flagging it there would wall the realization edge this guard protects.
-//     (b1) check-side  — a string-op (`string_contains`/`starts_with`/…) whose RECEIVER traces
-//                        (≤1 intra-fn `let` hop) to a CALL of a grounded emit fn. A
-//                        `string_contains(expected_ci_yml(), "${{ env.X }}")` check is an ad-hoc
-//                        partial RE-INGEST (§4: emission = ingestion⁻¹) — fragile, lossy,
-//                        fail-open. The receiver is identified as an emitted-medium value by
-//                        call-target PROVENANCE, NEVER by guessing from the string's contents —
-//                        else the DETECTOR becomes the heuristic it forbids. (The heavier `(b2)`
-//                        — receiver whose declared TYPE is `Medium<R>` — needs resolver type
-//                        info and is a NAMED follow-on, see roster note; not built here.)
-//
-// MECHANISM (N+M — NOT a new lens mechanism): a SIBLING of the §5 LayerImportFact sweep over a
-//   NEW host-enumerated candidate-fact stream. The host (medium_structure_project.rs) does the
-//   mechanical Node walk — marker-in-literal for (a), emit-fn-receiver for (b1) — taking the
-//   grounded policy below as parameters. This module owns ALL policy (markers, emit-fn roster,
-//   string-op set, realization-edge allowset, exception roster) and applies the edge+roster
-//   predicate; the host emits candidates, the lens filters (exactly as layering does).
-//
-// GROUNDING (§3): the per-medium marker set is the REAL upstream token, cited from the medium's
-//   spec, never an invented heuristic. v1 populates GHA-expr (`${{`, the GitHub Actions
-//   expression delimiter). CI-YAML-structure and shell-in-`run:` are NAMED rows with EMPTY
-//   marker sets: their structural tokens (YAML `:`/`-`/`|`, shell metacharacters) are
-//   ubiquitous, so a token-grep would BE the heuristic the rule forbids — a sound grounded set
-//   needs the medium modeled as a `Node` (the ① fix), so their ② is intentionally deferred.
-//
-// RATCHET — honest, fail-closed, SHRINKING (DESIGN §5; ② now → ① wall). The current leakers go
-//   RED under a pure wall, so they ride a FROZEN exception roster that only shrinks (NOT a
-//   live-grep, which would be vacuous — DESIGN §5/§6 coverage-by-illusion). A new (unrostered)
-//   non-edge leaker goes RED immediately.
-//   dissolve-on (per medium): the medium becomes a `Medium<R>` `Node` emitted via grammar rows,
-//     at which point a check is a model WALK or UNWRITABLE and the leak dissolves. For GHA-expr
-//     this is witty-wolf-587's extdeps.github.expressions (serialize_expression + interpolate):
-//     the GHA roster entries empty when (a) extdeps.github.expressions exists AND (b) ci_workflow
-//     + the runner-env witness consume serialize_expression with ZERO inline `${{ }}` strings and
-//     ZERO string-grep over emitted YAML (tracked on PR #5499; emit-side half already met there).
-//
-// Consumer (executable, §5): the live witnesses under
-//   src/v2/test/claim/medium_structure_containment/ — floor-auto-discovered `test fn`s that scan
-//   the real tree by execution (clean-tree GREEN + planted-leak RED receipt), plus the
-//   hardcoded-fact lens-unit discriminators.
-
 module v2.lens.medium_structure_containment
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 
 import v2.std.algebra {
   fold_list,
@@ -69,27 +11,27 @@ import v2.std.algebra {
   list_snoc_item
 }
 import v2.std.collection { List }
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Textual,
+  Unavailable,
+  WholeFile
+}
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
+import v2.std.witness { Holds, Violates, Witness }
 
-// ── fact / violation types ──────────────────────────────────────────────────────
-
-// Which face of the leak (DESIGN §2-horizontal).
 type MediumLeakFace
   = InlineSyntaxLiteral
   | EmittedMediumStringOp
 
-// One host-projected candidate fact (medium_structure_leak_facts): a marker-in-literal hit
-// (emit-side) or a string-op over an emitted-medium receiver (check-side). `detail` carries the
-// grounded evidence — the marker for emit-side, "op@emit_fn" for check-side — so the medium is
-// recoverable (§5.1 census) without minting a parallel medium enum.
 type MediumStructureLeakFact {
   path: String
   face: MediumLeakFace
   detail: String
 }
 
-// One violation row (the lens output).
 type MediumStructureLeak {
   path: String
   face: MediumLeakFace
@@ -100,55 +42,46 @@ data empty_medium_structure_leaks: List<MediumStructureLeak> = []
 
 data empty_medium_marker_list: List<String> = []
 
-// ── single-authority policy: grounded per-medium syntax markers (emit-side) ──────
-
-// One medium's grounded syntax-marker set. Media are ROWS (§2-horizontal): a new medium is a
-// row here, never a new lens.
 type MediumMarkers {
   medium: String
   markers: List<String>
 }
 
 data medium_syntax_markers: List<MediumMarkers> = [
-  // GitHub Actions expression language: the expression delimiter `${{ <expr> }}`, cited from
-  // GitHub Actions "Evaluate expressions in workflows and actions". The opening delimiter `${{`
-  // is the grounded structural token (its presence in a string literal is the medium leaking
-  // out of a `Node`). Dissolve-on: witty-wolf-587's extdeps.github.expressions.
+
   MediumMarkers { medium: "GitHubActionsExpression", markers: ["${{"] },
-  // CI YAML structure: DEFERRED (empty) — YAML structural tokens (":", "-", "|") are ubiquitous,
-  // so a token-grep would be the heuristic the rule forbids. Grounded detection needs YAML
-  // modeled as a `Node` (the ① fix). Named row, populated when that lands.
+
   MediumMarkers { medium: "CiYamlStructure", markers: [] },
-  // shell-in-`run:`: DEFERRED (empty) — shell metacharacters are ubiquitous; same reasoning.
-  // (The bash AST's *imported-sidecar* face is already walled by the §5 realization-vocab guard.)
-  MediumMarkers { medium: "ShellInRun", markers: [] }
+
+  MediumMarkers { medium: "ShellInRun", markers: ["#!/", ">/dev/null"] },
+
+  MediumMarkers { medium: "Html", markers: [] }
 ]
 
-// ── single-authority policy: grounded emit-fn roster (check-side, the (b1) provenance set) ──
-
-// The grounded emit fns: each returns an EMITTED MEDIUM (a serialized target string / Medium<R>)
-// — a serializer (byte authority) or a target-script builder. A string-op whose receiver is a
-// call to one of these is inspecting emitted output by string (§5.1 check-side). This hand-list
-// is itself ② residue; it dissolves under the (b2) follow-on (receiver declared-type Medium<R>,
-// via resolver structural reflection), which makes the provenance a type read, not a name list.
 data emitted_medium_emit_fns: List<String> = [
-  "expected_ci_yml",            // gunbc.ci_yaml_emit — the emitted CI workflow YAML
-  "ci_yml_drifted",             // gunbc.ci_yaml_emit — a drifted CI YAML variant
-  "serialize_yaml",             // extdeps.formats.yaml — YAML byte authority
-  "serialize_bash",             // extdeps.languages.bash.program — bash byte authority
-  "serialize_expression",       // extdeps.github.expressions — GHA-expr byte authority (witty-wolf-587)
-  "interpolate",                // extdeps.github.expressions — the `${{ }}` delimiter wrapper
-  "serialize_template",         // extdeps.github.expressions — GHA expression-template authority
-  "gunbc_ci_workflow_run",      // a CI workflow shell-script builder
-  "gunbc_ci_run_script",        // a CI run shell-script builder
-  "scheduler_invoke",           // the CI scheduler-invocation shell fragment
-  "git_fetch_script",           // a git-fetch shell-script builder
-  "ci_release_build_script",    // a release-build shell-script builder
-  "witness_layer_source_flags"  // the source-root shell flags fragment
+  "expected_ci_yml",
+  "ci_yml_drifted",
+  "serialize_yaml",
+  "serialize_bash",
+  "serialize_expression",
+  "interpolate",
+  "serialize_template",
+  "gunbc_ci_workflow_run",
+  "gunbc_ci_run_script",
+  "scheduler_invoke",
+  "git_fetch_script",
+  "ci_release_build_script",
+  "witness_layer_source_flags",
+  "fleet_converge_sh_for",
+  "expected_fleet_converge_sh",
+  "expected_githooks_pre_push_sh",
+  "toolchain_provision_shell_exec",
+  "autoinstall_user_data",
+  "install_server_dnsmasq_conf",
+  "serialize_html_source",
+  "serialize_fragment"
 ]
 
-// The grounded content-inspecting string ops (std/text). `string_length` is NOT here — it reads
-// size, not structure, so it is not a re-ingest.
 data emitted_medium_string_ops: List<String> = [
   "string_contains",
   "starts_with",
@@ -157,12 +90,6 @@ data emitted_medium_string_ops: List<String> = [
   "char_at"
 ]
 
-// ── realization edge + scan roots ────────────────────────────────────────────────
-
-// Realization-edge path PREFIXES — the only places a medium's raw syntax is legitimate: the
-// medium models / byte authorities (where serialize_* PRODUCES the target syntax), the language
-// models, and the emit fold. A `${{` literal or an emitted-medium string-op here is the edge
-// doing its job, not a leak.
 data medium_realization_edge_path_prefixes: List<String> = [
   "dsl/extdeps/github/",
   "src/v2/extdeps/github/",
@@ -172,15 +99,10 @@ data medium_realization_edge_path_prefixes: List<String> = [
   "src/v2/compiler/05_emit",
   "src/v2/compiler/06_translate",
   "src/v2/compiler/self_host/candidate_generation",
-  // This guard's OWN module: it MUST name the grounded marker (`${{`) as a string literal to
-  // detect it — that single-authority token definition is the detection vocabulary, definitionally
-  // exempt (exactly as the §5 realization-vocab guard names the forbidden module in its own vocab).
+
   "src/v2/lens/medium_structure_containment.dag"
 ]
 
-// Emit-side scan roots — consumer AUTHORING source, EXCLUDING test trees (a planted fixture
-// carries target syntax by design; it is scanned in isolation by the RED receipt). Same roots
-// as the §5 guard's consumer scan.
 data medium_emit_side_scan_roots: List<String> = [
   "dsl/std",
   "dsl/extdeps",
@@ -194,16 +116,6 @@ data medium_emit_side_scan_roots: List<String> = [
   "src/v2/lens"
 ]
 
-// Check-side scan roots — the consumer roots PLUS the test trees. UNLIKE the §5 guard (which
-// excludes tests), the check-side leak LIVES in the witnesses (the _test.dag files that grep
-// emitted medium output), so the scan MUST include test trees or it cannot see the thing it
-// exists to catch. The precision that keeps this from being noisy is the receiver-PROVENANCE
-// gate (only emitted-medium receivers), NOT excluding tests — a test doing string_contains on a
-// non-medium string is fine.
-// NOTE the test roots are scoped to `*/test/claim` (the witness/claim trees), NOT the whole
-// `*/test`: that includes the witnesses where the check-side leak lives while EXCLUDING
-// `*/test/fixture/**`, where the planted-leak RED receipt's fixture carries target syntax by
-// design (it is scanned in isolation by that receipt, never here).
 data medium_check_side_scan_roots: List<String> = [
   "dsl/std",
   "dsl/extdeps",
@@ -219,22 +131,33 @@ data medium_check_side_scan_roots: List<String> = [
   "src/v2/test/claim"
 ]
 
-// SHRINKING exception roster — the leakers that exist TODAY, frozen so a NEW unrostered leaker
-// goes RED. Each empties when its medium is modeled as a `Node` (the dissolve-on above). DO NOT
-// ADD ROWS for code authored after this guard — a new non-edge leaker is a MediumStructureLeak
-// and must model the medium, not be rostered. Reconciled by execution against the live tree at
-// merge time (the clean-tree witness must report ZERO over this roster).
 data medium_structure_exception_roster: List<String> = [
-  // emit-side (inline `${{` in a string literal):
-  "dsl/gunbc/ci_workflow.dag",          // 5 GHA expression sites — witty-wolf-587 #5499 migrates them
-  "dsl/extdeps/formats/yaml.dag",       // YAML serializer sniffs `${{` for a quoting decision (nested-medium leak)
-  // check-side (string-op over an emitted-medium value):
-  "dsl/test/claim/ci_yaml_serializer_witness_test.dag",  // ~30 greps over expected_ci_yml() / serialize_yaml()
-  "dsl/test/claim/ci_runner_seam_witness_test.dag",      // greps emitted YAML for the runner line
-  "src/v2/test/claim/ci_spec_witness_test.dag"           // greps emitted CI shell scripts
-]
 
-// ── predicate ─────────────────────────────────────────────────────────────────
+  "dsl/gunbc/ci_workflow.dag",
+  "dsl/extdeps/formats/yaml.dag",
+
+  "dsl/test/claim/ci_yaml_serializer_witness_test.dag",
+  "dsl/test/claim/ci_deploy_witness_test.dag",
+  "dsl/test/claim/ci_runner_seam_witness_test.dag",
+  "dsl/test/claim/yaml_quoting_witness_test.dag",
+  "src/v2/test/claim/ci_spec_witness_test.dag",
+
+  "dsl/gunbc/fleet_converge_emit.dag",
+  "dsl/gunbc/live_deploy/emit.dag",
+  "dsl/gunbc/live_deploy/spec.dag",
+  "dsl/gunbc/githooks_pre_push_emit.dag",
+  "dsl/gunbc/ci_spec.dag",
+  "dsl/tools/emit_host_transport.dag",
+  "dsl/tools/dsl_compile_clean_transport.dag",
+  "dsl/gunbc/assimilate/bmc_token_federation.dag",
+  "dsl/gunbc/tools/review.dag",
+  "dsl/test/claim/fleet_converge_emit_test.dag",
+  "dsl/test/claim/live_deploy/emit_test.dag",
+  "dsl/test/claim/githooks_pre_push_emit_test.dag",
+
+  "dsl/test/claim/srv3_os_install_emit_test.dag",
+  "dsl/test/claim/srv3_install_server_emit_test.dag"
+]
 
 fn char_eq(a: Char, b: Char) -> Bool {
   a == b
@@ -260,10 +183,6 @@ fn path_is_medium_realization_edge(path: String) -> Bool {
   path_has_any_prefix(prefixes: medium_realization_edge_path_prefixes, path: path)
 }
 
-// Flatten the per-medium marker table to the flat list the host scans for (single authority —
-// the table feeds both the host and the census mapping; no second representation).
-// A typed projector — calling it with the fold element pins the element type (a bare `m.markers`
-// field access cannot, as the inferencer needs the type to look the field up).
 fn marker_set(m: MediumMarkers) -> List<String> {
   m.markers
 }
@@ -280,16 +199,10 @@ fn all_medium_markers() -> List<String> {
   flatten_marker_rows(rows: medium_syntax_markers)
 }
 
-// A leak: a host-projected candidate whose path is NEITHER a realization-edge module NOR carried
-// by the (shrinking) exception roster. The host already established the candidate (marker present
-// / emitted-medium receiver); this is the edge+roster filter. Roster is an explicit parameter so
-// a witness can prove the ratchet shrinks honestly (drop a member → its live leak goes RED).
 fn is_medium_structure_leak(fact: MediumStructureLeakFact, roster: List<String>) -> Bool {
   (path_is_medium_realization_edge(path: fact.path) == false)
     && (list_contains_str(xs: roster, target: fact.path) == false)
 }
-
-// ── scan / count / holds ────────────────────────────────────────────────────────
 
 fn scan_facts_for_medium_leaks(
   facts: List<MediumStructureLeakFact>,
@@ -329,8 +242,6 @@ fn medium_structure_containment_holds(
   is_empty(xs: scan_facts_for_medium_leaks(facts: facts, roster: roster))
 }
 
-// ── canonical-roster convenience (binds the single-authority roster) ──────────────
-
 fn medium_structure_leak_count_canonical(facts: List<MediumStructureLeakFact>) -> Int {
   medium_structure_leak_count(facts: facts, roster: medium_structure_exception_roster)
 }
@@ -339,10 +250,6 @@ fn medium_structure_containment_holds_canonical(facts: List<MediumStructureLeakF
   medium_structure_containment_holds(facts: facts, roster: medium_structure_exception_roster)
 }
 
-// ── live projection (the new sibling host enumerator over the real tree) ──────────
-
-// Project candidate facts over the given roots (host Node walk), then apply the canonical-roster
-// edge+roster predicate. emit_roots feed detector (a); check_roots feed detector (b1).
 fn medium_structure_leak_count_live(
   emit_roots: List<String>,
   check_roots: List<String>
@@ -373,12 +280,48 @@ fn medium_structure_containment_clean_live(
   )
 }
 
-// Construction-justification (DESIGN §5/§6, ROADMAP §0; expressibility-frontier §2). Layered ON
-// TOP of the #5433 inert-lens import-closure backstop.
+fn medium_structure_containment_witness_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^medium_structure_containment_leak_detected,
+    at: Textual { file: ^medium_structure_containment_lens_file, extent: WholeFile },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn medium_structure_containment_witness(
+  emit_roots: List<String>,
+  check_roots: List<String>
+) -> Witness<Bool> {
+  if medium_structure_containment_clean_live(
+    emit_roots: emit_roots,
+    check_roots: check_roots
+  ) {
+    Holds { value: true }
+  } else {
+    Violates { diagnostic: medium_structure_containment_witness_diagnostic() }
+  }
+}
+
+fn medium_structure_containment_canonical_witness() -> Witness<Bool> {
+  medium_structure_containment_witness(
+    emit_roots: medium_emit_side_scan_roots,
+    check_roots: medium_check_side_scan_roots
+  )
+}
+
+fn medium_structure_check_roots_with_perturb(perturb_roots: List<String>) -> List<String> {
+  list_append(left: medium_check_side_scan_roots, right: perturb_roots)
+}
+
+fn medium_structure_containment_canonical_with_check_perturb_witness(
+  perturb_roots: List<String>
+) -> Witness<Bool> {
+  medium_structure_containment_witness(
+    emit_roots: medium_emit_side_scan_roots,
+    check_roots: medium_structure_check_roots_with_perturb(perturb_roots: perturb_roots)
+  )
+}
+
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "each medium modeled as a Medium<R> Node emitted via grammar rows (GHA-expr: witty-wolf-587's extdeps.github.expressions / serialize_expression); the §5 realization-vocab guard is the sibling for the imported-sidecar face",
-    dissolve_on: "the exception roster empties as each medium is modeled — a check becomes a model walk or unwritable, and authoring or grepping the medium's syntax as a raw string outside the realization edge is then unwritable"
-  },
-  rationale: "A medium's structure leaking out of a Node into a raw string — written as a grounded-marker literal (emit-side) or grepped over an emitted-medium value (check-side, by call-target provenance) outside the realization edge — is a decidable property; this class is ② (lens residue) ONLY because the media are not all modeled yet, a shrinking-roster ratchet that becomes a pure ① construction wall as each medium becomes a Medium<R> Node."
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

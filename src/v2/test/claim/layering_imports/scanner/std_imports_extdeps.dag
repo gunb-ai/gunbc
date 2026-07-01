@@ -1,8 +1,3 @@
-// Scope: scanner-execution receipt — the live import projection must flag a planted
-//        std-layer extdeps.* import (the dsl-tree std→extdeps form; committed fixture, read
-//        by execution). Discriminating RED control for the std→extdeps rule.
-// Status: 🟡 DRAFT-until-signed — zesty signs load-bearing witness receipts.
-
 module v2.test.layering_imports.scanner.std_imports_extdeps
 
 import v2.lens.layering_imports {

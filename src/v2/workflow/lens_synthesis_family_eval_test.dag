@@ -1,21 +1,3 @@
-// src/v2/workflow/lens_synthesis_family_eval_test.dag
-//
-// Compiler-wide synthesis-lens ADVISORY gate (discovered + run by the CI floor
-// `claim_batch` discovery — `test data` in a `*_test.dag`). The gate logic and the
-// real subject corpus live in the correctly-layered synthesis-gate modules
-// (v2.test.synthesis_gate.*, physically under src/v2/compiler/synthesis_gate/) — the
-// LENS (v2.lens.synthesis) stays a pure Node→List<Report> reader and never knows about
-// a corpus. This witness just runs the fail-closed family gate (empty roster → RED;
-// every real body must acquire; the synthetic firing control keeps it non-vacuous).
-//
-// De-vacuum status (DESIGN.md §5/§6): already DISCRIMINATING — `optimality_gap_completeness`
-// pairs a synthetic FIRING control (a realization that exceeds the lower bound → the gap fires,
-// non-empty) with the honest no-engine InformationTheoretic channel, so a lens stubbed vacuously
-// green reds. The roster is the real COMPREP wave-1 corpus (add/bind/branch/loop), not a
-// synthetic few. LOGGED RESIDUAL CAP: it is still a CURATED corpus, not the whole change-set —
-// closing that to whole-corpus is the .dag structural-reflection wall shared by lens/coverage.dag
-// and lens/testgen.dag (the documented dissolve trigger in lens_discrimination_family_eval_test.dag).
-
 module v2.test.workflow.lens_synthesis_family_eval
 
 import v2.std.logic { Bool }

@@ -1,11 +1,3 @@
-// resolved_graph_cache.rs — Content-addressed cross-process resolved-graph cache.
-//
-// Authority row: extdeps/realization/resolved_graph.dag `resolved_graph_cache_facts`.
-// Key = subject_digest over (closure module_name→file content) + content(transform):
-// the resolve transform's content, DERIVED by construction from the compiler's actual
-// realized artifact (the running executable's bytes), NOT a hand-authored version
-// string. Widen→MISS, never narrow→stale.
-
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
@@ -15,6 +7,7 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::v1_compiler_compile::SourceFile;
+use crate::v1_compiler_infer::rewire_func_env_parent_links;
 use crate::v1_compiler_infer_items::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
 use crate::v1_std_core::NewlineIndex;
@@ -22,22 +15,26 @@ use crate::v1_std_core::NewlineIndex;
 const FORMAT_VERSION: u32 = 1;
 const MAGIC: &[u8; 8] = b"gunbgrpc";
 
-// REALIZATION of the .dag cache authority, not a co-equal definition (DESIGN §3 single
-// authority). The TYPES below — `CacheRejectReason`, `CacheLookupResult`, `CacheWriteOutcome`
-// — are the v1-seed mirror of the modeled vocabulary in `dsl/std/cache_interface.dag`
-// (`CacheRejectReason`, `CacheLookupResult<T>`, `CacheWriteResult<T>`), and the
-// reuse-vs-recompute routing the CALLER does over a `CacheLookupResult`
-// (`cli_run.rs:547-552`) is a realization of the modeled `realize_route` one-door kernel
-// (`cache_interface.dag` §1.7). The .dag is THE definition; this Rust is the transient seed
-// handler of it (§7 Rust→zero). They are not literally unified only because the seed cannot
-// import a .dag type, and the realizer cannot read its own .dag declaration at key-compute
-// time without re-entering this very cache — the SAME wall-after-grounding residual the key
-// axes carry (see the `KeyInputAxis` RESIDUAL FORK note below; DESIGN §5).
-//
-// RESIDUAL FORK (named dissolution trigger — DESIGN §6 / §7): this Rust vocabulary and the
-// `.dag` authority unify when the realizer becomes a `.dag` subgraph and
-// `content(T) = content_hash(subgraph)` (v2/realize), at which point this seed mirror is
-// deleted and the routing IS `realize_route`. Until then: point UP at the .dag, never fork.
+/// Single-authority mirror of the modeled `SizeBounded` cap:
+/// `extdeps.realization.resolved_graph.resolved_graph_cache_cap_bytes`
+/// (`dsl/extdeps/realization/resolved_graph.dag`, eviction = SizeBounded). Kept
+/// in lockstep by `cap_matches_modeled_authority` in the size-bound test.
+const RESOLVED_GRAPH_CACHE_CAP_BYTES: u64 = 10_737_418_240;
+
+/// The byte ceiling the on-disk cache is held under. Defaults to the modeled
+/// cap; `GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES` overrides it (operator escape
+/// hatch / test injection). A malformed or zero override falls back to the
+/// modeled default rather than disabling the bound (fail-closed).
+pub fn resolved_graph_cache_cap_bytes() -> u64 {
+    match std::env::var("GUNBC_RESOLVED_GRAPH_CACHE_CAP_BYTES") {
+        Ok(s) => match s.trim().parse::<u64>() {
+            Ok(n) if n > 0 => n,
+            _ => RESOLVED_GRAPH_CACHE_CAP_BYTES,
+        },
+        Err(_) => RESOLVED_GRAPH_CACHE_CAP_BYTES,
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CacheRejectReason {
     ContentDigestMismatch,
@@ -63,16 +60,25 @@ struct CachePayload {
     source_indices: HashMap<String, NewlineIndex>,
 }
 
-// Seed mirror of the modeled `CacheWriteResult<T>` (`cache_interface.dag`); the `write`
-// fn's first-writer-wins decision realizes the modeled `classify_write` purity oracle —
-// `AlreadyExists` is the `WriteSkippedIdempotent` collapse (WriteOnce, same subject). Same
-// point-UP authority + v2/realize dissolution trigger as the lookup enums above.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CacheWriteOutcome {
     Written,
     AlreadyExists,
 }
 
+/// The cross-process resolved-graph disk cache is **opt-in**: it activates only
+/// when `GUNBC_RESOLVED_GRAPH_CACHE_DIR` names a directory. With it unset the
+/// cache is entirely off (`None` — no read and no write).
+///
+/// Why opt-in and not a `temp_dir()` default: under the CI floor the cache is a
+/// net loss. Every commit changes the compiler binary, which is part of the
+/// content digest, so the floor re-colds each run and is overwhelmingly a miss;
+/// and both paths buffer a whole cache file in memory (a hit `read_to_end`s the
+/// verbose-JSON file, ~11x the packed graph; a miss `to_vec`s the whole JSON),
+/// so multi-GiB entries resolved across concurrent shards OOM the runner. The
+/// cache pays its worst cost exactly where it collects ~no benefit. (#5789 made
+/// it always-on via a `temp_dir()` default; this reverts to opt-in — its IO
+/// realization must stream, not buffer, before it is safe to default on.)
 pub fn resolved_graph_cache_root_from_env() -> Option<PathBuf> {
     std::env::var_os("GUNBC_RESOLVED_GRAPH_CACHE_DIR").map(PathBuf::from)
 }
@@ -90,7 +96,6 @@ fn extract_module_path(content: &str) -> Option<String> {
     None
 }
 
-/// Content hash over the resolved import closure: sorted module_name → file content.
 pub fn closure_content_digest(sources: &[Rc<SourceFile>]) -> Hash {
     let mut pairs: Vec<(String, &str)> = sources
         .iter()
@@ -108,18 +113,6 @@ pub fn closure_content_digest(sources: &[Rc<SourceFile>]) -> Hash {
     acc
 }
 
-/// Content hash of the resolve transform itself (`content(T)`), DERIVED by construction
-/// from the compiler's actual realized artifact — the running executable's bytes. This
-/// is the toolchain input the authority row declares (`ToolchainSpec ∈ inputs_considered`;
-/// `invalidation_triggers: [ToolchainChange, ...]`). It replaces the hand-authored
-/// `RESOLVE_LOGIC_VERSION` / `KERNEL_INTERN_SEED_VERSION` strings, which were a §3 nickname
-/// for the transform's content and a §5 fail-open: a human had to remember to bump them,
-/// so the key silently drifted when resolve/normalize/infer/ownership or the kernel intern
-/// seed changed (a stale hit = a silent wrong answer). Coarse — any compiler change
-/// invalidates — but never stale: if the transform changes, the binary changes, the key
-/// changes. Hashed once per process. Fail-closed: if the artifact cannot be read we cannot
-/// guarantee a non-stale key, so we refuse loudly rather than substitute a stand-in that
-/// could serve a stale hit.
 fn transform_content_digest() -> Hash {
     static DIGEST: OnceLock<Hash> = OnceLock::new();
     DIGEST
@@ -142,49 +135,17 @@ fn transform_content_digest() -> Hash {
         .clone()
 }
 
-/// The CLOSED set of input axes the resolved-graph cache key content-addresses — the
-/// realized authority that mirrors the model row's `inputs_considered`
-/// (extdeps/realization/resolved_graph.dag). Construction, not validation
-/// (cache-key-by-construction spine): the key is a fold over ALL variants of this enum
-/// via a TOTAL materializer (`KeyInputMaterials::materialize`), so the realizer cannot
-/// express a key that omits a declared axis or keys an undeclared one —
-/// *declare-without-keying* and *key-without-declaring* are both unwritable here:
-///   - adding a variant forces a `KeyInputMaterials` field + a `materialize` match arm
-///     (exhaustiveness) AND is folded in by `derive_subject_digest` (it iterates `ALL`);
-///   - removing keying for an axis means deleting the variant, which deletes it from the
-///     set — there is no "in the set but skipped by the fold" state to drift into.
-/// This supersedes #5423's spec-only key-completeness lens for the realizer side: the
-/// invariant it validated post-hoc is now structural.
-///
-/// RESIDUAL FORK (named dissolution trigger — DESIGN §6 / §7): this Rust enum and the
-/// `.dag` model row's `inputs_considered` are still two implementations of one rule; the
-/// v1 seed structurally cannot have the realizer DERIVE its axes from the model row at
-/// key-compute time (resolving `resolved_graph.dag` to read its own declaration would
-/// re-enter this very cache → recursion). Full single authority arrives with v2/realize:
-/// the realizer becomes a `.dag` subgraph and `content(T) = content_hash(subgraph)`, so
-/// the axis set and the key are one derived fact (DESIGN open thread: model↔realization
-/// fork; cache-key-by-construction spine "v2 self-host dissolution").
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KeyInputAxis {
-    /// `UpsertSubject` — the resolved import closure's content (module_name → file content).
     ClosureSubject,
-    /// `ToolchainSpec` — `content(transform)`: the resolve transform's own content.
     TransformContent,
 }
 
 impl KeyInputAxis {
-    /// Every keyed axis, in fold order. `derive_subject_digest` folds over exactly this —
-    /// the set of keyed axes IS this slice, so it cannot diverge from the materializer.
     pub const ALL: &'static [KeyInputAxis] =
         &[KeyInputAxis::ClosureSubject, KeyInputAxis::TransformContent];
 }
 
-/// Materialized content for each `KeyInputAxis`. The materializer is total over the axis
-/// enum (exhaustive `match`), so the per-axis content is supplied BY CONSTRUCTION for
-/// every declared axis. Inputs are passed in (not read ambiently inside the fold) so the
-/// key derivation is a pure function of its axes — which makes axis-sensitivity provable
-/// by execution (a test can vary one axis and observe the key move; see
-/// resolve_cross_process_cache_test.rs).
 #[derive(Debug, Clone)]
 pub struct KeyInputMaterials {
     closure_subject: Hash,
@@ -199,8 +160,6 @@ impl KeyInputMaterials {
         }
     }
 
-    /// Total over `KeyInputAxis` — adding a variant is a compile error until it has both a
-    /// field above and an arm here, so a declared axis always has materialized content.
     fn materialize(&self, axis: KeyInputAxis) -> Hash {
         match axis {
             KeyInputAxis::ClosureSubject => self.closure_subject.clone(),
@@ -209,9 +168,6 @@ impl KeyInputMaterials {
     }
 }
 
-/// Subject digest = fold of the total materializer over the CLOSED axis set
-/// (`KeyInputAxis::ALL`). DERIVED, not hand-authored: the key content-addresses exactly
-/// the declared axes (the resolved-graph realization of `inputs_considered`).
 pub fn derive_subject_digest(materials: &KeyInputMaterials) -> Hash {
     KeyInputAxis::ALL.iter().fold(
         v1_rt::atom_identity_hash("resolved-graph-subject-v1".to_string()),
@@ -219,20 +175,12 @@ pub fn derive_subject_digest(materials: &KeyInputMaterials) -> Hash {
     )
 }
 
-/// Production key for a resolved import closure. Materializes each declared axis from the
-/// running compiler (closure content + `content(transform)`) and derives the key by
-/// construction over the closed axis set.
 pub fn subject_digest_for_closure(sources: &[Rc<SourceFile>]) -> Hash {
     let materials =
         KeyInputMaterials::new(closure_content_digest(sources), transform_content_digest());
     derive_subject_digest(&materials)
 }
 
-/// Content-hash work subject for one witness: closure cache subject × function name.
-/// Keys the eval-tap PerformanceReceipt and matches the cache-subject grain (Phase 0).
-///
-/// SCAFFOLD — dissolve-on: v2 resolved-graph subject projection subsumes this hash
-/// (`docs/plans/realization-measurement-loop.md` Phase 0 table).
 pub fn witness_work_subject_key(closure_subject_digest: &str, function: &str) -> Hash {
     v1_rt::hash_combine(
         v1_rt::atom_identity_hash(closure_subject_digest.to_string()),
@@ -315,15 +263,23 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
         Ok(p) => p,
         Err(_) => return CacheLookupResult::Miss,
     };
-    let source_indices = Rc::new(
+    let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new(
         payload
             .source_indices
             .into_iter()
             .map(|(k, v)| (k, Rc::new(v)))
             .collect(),
     );
+    let decoded = Rc::new(payload.graph);
+    let modules = rewire_func_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let graph = Rc::new(ResolvedGraph {
+        modules,
+        item_registry: decoded.item_registry.clone(),
+        diagnostics: decoded.diagnostics.clone(),
+        emit_graph_info: decoded.emit_graph_info.clone(),
+    });
     CacheLookupResult::Hit(CachedResolvedGraph {
-        graph: Rc::new(payload.graph),
+        graph,
         source_indices,
     })
 }
@@ -333,6 +289,49 @@ pub fn lookup(cache_root: &Path, subject_digest: &str) -> CacheLookupResult {
         return CacheLookupResult::RejectedHit(CacheRejectReason::BackendKeyMalformed);
     }
     read_cached_file(&artifact_path(cache_root, subject_digest), subject_digest)
+}
+
+/// Enforce the modeled `SizeBounded` eviction on the on-disk cache: if the total
+/// footprint of `*.bin` artifacts exceeds `cap_bytes`, evict oldest-by-mtime
+/// first until back under the cap. The cache is content-addressed and write-once,
+/// so every artifact is immutable and an evicted entry simply re-resolves on its
+/// next miss — making mtime-LRU a safe replacement policy. Best-effort and
+/// concurrency-tolerant: a file vanishing under a racing sweep is not an error.
+pub fn enforce_size_bound(cache_root: &Path, cap_bytes: u64) {
+    let mut artifacts: Vec<(PathBuf, u64, SystemTime)> = Vec::new();
+    let mut total: u64 = 0;
+    let mut stack = vec![cache_root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Ok(meta) = entry.metadata() else {
+                continue;
+            };
+            if meta.is_dir() {
+                stack.push(path);
+            } else if path.extension().and_then(|s| s.to_str()) == Some("bin") {
+                let mtime = meta.modified().unwrap_or(UNIX_EPOCH);
+                total += meta.len();
+                artifacts.push((path, meta.len(), mtime));
+            }
+        }
+    }
+    if total <= cap_bytes {
+        return;
+    }
+    // Oldest first; evict until under cap.
+    artifacts.sort_by(|a, b| a.2.cmp(&b.2));
+    for (path, len, _) in artifacts {
+        if total <= cap_bytes {
+            break;
+        }
+        if fs::remove_file(&path).is_ok() {
+            total = total.saturating_sub(len);
+        }
+    }
 }
 
 pub fn write(
@@ -388,7 +387,10 @@ pub fn write(
             .map_err(|e| format!("cache fsync failed: {e}"))?;
     }
     match fs::rename(&temp_path, &final_path) {
-        Ok(()) => Ok(CacheWriteOutcome::Written),
+        Ok(()) => {
+            enforce_size_bound(cache_root, resolved_graph_cache_cap_bytes());
+            Ok(CacheWriteOutcome::Written)
+        }
         Err(_) if final_path.exists() => {
             let _ = fs::remove_file(&temp_path);
             Ok(CacheWriteOutcome::AlreadyExists)
@@ -400,7 +402,6 @@ pub fn write(
     }
 }
 
-/// Write raw bytes at the cache path for a subject digest (test hook for poisoned-hit falsifier).
 pub fn write_raw_artifact_for_test(
     cache_root: &Path,
     subject_digest: &str,
@@ -440,9 +441,6 @@ pub fn build_valid_artifact_bytes(
     Ok(bytes)
 }
 
-/// Test-scoped fixture payload serde (reuses `CachePayload` — no parallel serializer).
-/// Dissolve-on: full-P5 v2 `.dag` hermetic inter-stage fixture loader (#5094 follow-up —
-/// subsumes serde + born-mark guard; delete these `_for_test` shims so the v1 seed shrinks).
 pub fn serialize_fixture_payload_for_test(
     graph: &ResolvedGraph,
     source_indices: &HashMap<String, Rc<NewlineIndex>>,
@@ -458,28 +456,29 @@ pub fn serialize_fixture_payload_for_test(
     serde_json::to_vec(&payload).map_err(|e| format!("fixture payload encode: {e}"))
 }
 
-/// Test-scoped fixture loader (inverse of `serialize_fixture_payload_for_test`).
-/// Dissolve-on: full-P5 v2 `.dag` hermetic inter-stage fixture loader (#5094 follow-up —
-/// subsumes serde + born-mark guard; delete these `_for_test` shims so the v1 seed shrinks).
 pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolvedGraph, String> {
     let payload: CachePayload =
         serde_json::from_slice(bytes).map_err(|e| format!("fixture payload decode: {e}"))?;
-    let source_indices = Rc::new(
+    let source_indices: Rc<HashMap<String, Rc<NewlineIndex>>> = Rc::new(
         payload
             .source_indices
             .into_iter()
             .map(|(k, v)| (k, Rc::new(v)))
             .collect(),
     );
+    let decoded = Rc::new(payload.graph);
+    let modules = rewire_func_env_parent_links(decoded.modules.clone(), source_indices.clone());
     Ok(CachedResolvedGraph {
-        graph: Rc::new(payload.graph),
+        graph: Rc::new(ResolvedGraph {
+            modules,
+            item_registry: decoded.item_registry.clone(),
+            diagnostics: decoded.diagnostics.clone(),
+            emit_graph_info: decoded.emit_graph_info.clone(),
+        }),
         source_indices,
     })
 }
 
-/// Guard: binding keys must resolve to their bound names in the fixture's embedded intern_table.
-/// Dissolve-on: full-P5 v2 `.dag` hermetic inter-stage fixture loader (#5094 follow-up —
-/// born-mark guard inlined in loader; delete this `_for_test` shim).
 pub fn validate_fixture_intern_table_for_test(cached: &CachedResolvedGraph) -> Result<(), String> {
     use crate::v1_std_core::intern_str;
     for m in cached.graph.modules.iter() {
@@ -492,6 +491,75 @@ pub fn validate_fixture_intern_table_for_test(cached: &CachedResolvedGraph) -> R
                     binding.name
                 ));
             }
+        }
+    }
+    Ok(())
+}
+
+pub trait AuditedRealization {
+    fn content_key(&self) -> Hash;
+
+    fn realize_cold(&self) -> Vec<u8>;
+}
+
+pub struct HiddenInputProbe<'a> {
+    pub axis: &'a str,
+    pub perturb: Box<dyn FnMut() + 'a>,
+    pub restore: Box<dyn FnMut() + 'a>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CachePurityViolation {
+    pub content_key: Hash,
+    pub unkeyed_axis: String,
+    pub warm_digest: Hash,
+    pub cold_digest: Hash,
+}
+
+impl std::fmt::Display for CachePurityViolation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "CACHE PURITY VIOLATION: under fixed content-key {key}, the realization output \
+             diverged when hidden input axis `{axis}` changed — a WARM hit serves {warm} but a \
+             fresh COLD recompute now yields {cold}. The axis `{axis}` is READ during realization \
+             yet is NOT in the content-key, so a cache hit silently serves a stale result. \
+             Fail-closed: either KEY on `{axis}` or stop reading it.",
+            key = self.content_key,
+            axis = self.unkeyed_axis,
+            warm = self.warm_digest,
+            cold = self.cold_digest,
+        )
+    }
+}
+
+impl std::error::Error for CachePurityViolation {}
+
+pub fn audit_warm_equals_cold(
+    realization: &impl AuditedRealization,
+    probes: &mut [HiddenInputProbe<'_>],
+) -> Result<(), CachePurityViolation> {
+    let baseline_key = realization.content_key();
+    let warm_digest = v1_rt::bytes_identity_hash(&realization.realize_cold());
+
+    for probe in probes.iter_mut() {
+        (probe.perturb)();
+        let perturbed_key = realization.content_key();
+        let perturbed_bytes = realization.realize_cold();
+        (probe.restore)();
+
+        if perturbed_key != baseline_key {
+            continue;
+        }
+
+        let cold_digest = v1_rt::bytes_identity_hash(&perturbed_bytes);
+        if cold_digest != warm_digest {
+            return Err(CachePurityViolation {
+                content_key: baseline_key,
+                unkeyed_axis: probe.axis.to_string(),
+                warm_digest,
+                cold_digest,
+            });
         }
     }
     Ok(())

@@ -1,84 +1,24 @@
-// src/v2/lens/structural_similarity.dag
-// Scope: L1.12.b / L1.4.b producer-stage substrate — per-decl structural-shape
-//        index (docs/design-dissolution-lens.md §10.2).
-// Status: scaffold — `TypeShape.variant_set` + `VariantShape` carriers and
-//         fail-closed `Unrealized` producer until parse/resolve walk lands.
-// Anchor: design-dissolution-lens.md §10.2 `v2.lens.structural_similarity`
-//         (unblocks L1.4.b variant-parameter-clone + L1.12.b structural-similarity).
-
 module v2.lens.structural_similarity
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
-import v2.std.collection { List, Map }
-import v2.std.nat { Nat, Zero }
-import v2.std.node { Symbol }
+import v2.std.node { Node }
+import v2.std.algebra { FreeMonoid, length }
+import v2.std.anti_unification { ChainGeneralization, anti_unify_chain, fillings_all_leaves }
+import v2.std.logic { Bool }
 
-// 🟡 gated — feature:structural-similarity-decl-identity — bind: §10.2 DeclId —
-// dissolve-on-arrival: replace Symbol handles with typed declaration identity from
-// parse/resolve (FnId | TypeId); forbidden: treating arbitrary Symbol as DeclId.
-type DeclId = Symbol
-
-// 🟡 gated — feature:structural-similarity-type-identity — bind: §10.2 TypeId —
-// dissolve-on-arrival: resolved coproduct-identity handles from 03_resolve.
-type TypeIdent = Symbol
-
-// 🟢 per-variant field-shape fact — consumed by L1.4.b (intra-coproduct) and
-// L1.12.b type-scope (C1). Field names are not authority; comparers α-rename
-// by canonical position (§10.2 / L1.4.b).
-type VariantShape {
-  field_arity: Nat
-  field_type_idents: List<TypeIdent>
+fn forest_collapses_to_generic(g: ChainGeneralization) -> Bool {
+  fillings_all_leaves(per_element: g.per_element)
 }
 
-// 🟢 type-decl structural shape — variant_set is sorted, bijection-comparable
-// (design §10.2). Consumers read `.variant_set` for pairwise VariantShape
-// comparison without re-walking declarations.
-type TypeShape {
-  variant_set: List<VariantShape>
-  total_variants: Nat
-}
-
-// 🟡 gated — feature:structural-similarity-fn-shape — bind: §10.2 FnShape —
-// dissolve-on-arrival: signature/body/catamorphism_form/token_set extraction
-// in the same parse+resolve fold pass.
-type FnShapeUnrealized {}
-
-// 🟢 structural-shape coproduct — design §10.2 StructuralShape = TypeShape | FnShape.
-type StructuralShape
-  = TypeDecl { shape: TypeShape }
-  | FnDecl { shape: FnShapeUnrealized }
-
-// 🟢 verdict — fail-closed until parse/resolve walk lands (parallel to
-// table_decision_tree.dag `Unrealized`).
-type StructuralSimilarityVerdict
-  = Unrealized
-  | Produced { index: Map<DeclId, StructuralShape> }
-
-type StructuralSimilarityFact {
-  verdict: StructuralSimilarityVerdict
-}
-
-// 🟢 empty type-shape witness — substrate authority for zero-variant closed sums.
-data structural_similarity_empty_type_shape: TypeShape = {
-  variant_set: [],
-  total_variants: Zero
-}
-
-// 🟡 gated — feature:structural-similarity-producer — bind node://adhoc-1941f9fc-580 —
-// dissolve-on-arrival: walk parsed declarations; emit TypeShape.variant_set per type
-// decl and FnShape per fn decl; forbidden: returning Unrealized once walk lands.
-fn structural_similarity_fact() -> StructuralSimilarityFact {
-  StructuralSimilarityFact {
-    verdict: Unrealized
+fn type_decls_anti_unify(decls: FreeMonoid<Node>) -> Bool {
+  if length(xs: decls) < 2 {
+    false
+  } else {
+    forest_collapses_to_generic(g: anti_unify_chain(steps: decls))
   }
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "the parse/resolve walk producing per-decl TypeShape/VariantShape facts by construction",
-    dissolve_on: "per-decl structural-shape facts are produced by the substrate walk, not by a staged lens producer"
-  },
-  rationale: "Per-decl structural shape is a decidable index; a scaffold producer-stage substrate (unblocking variant-parameter-clone and structural-similarity) until the parse/resolve walk lands."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

@@ -1,10 +1,3 @@
-// extdeps/memory/types.dag — DRAM module taxonomy (shared types, no vendor data).
-//
-// DRAM is a hardware domain model, not a universal framework, so it lives downstream
-// of std (extdeps), alongside the per-vendor catalog rows that inhabit this shape
-// (extdeps/memory/<vendor>.dag). std owns only the universal frameworks it builds on
-// (measure, types).
-
 module extdeps.memory.types
 
 import std.measure { ByteSize, BitWidth, byte_size_count, bit_width, bit_width_count }
@@ -22,25 +15,21 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// SdramSignalingFamily — the SDRAM clock/signaling technology. DoubleDataRate is the DDR
-// family (data transferred on both clock edges). A closed enum because SDR vs DDR vs LPDDR
-// are genuinely categorical signaling regimes — not a magnitude.
-// Anchor: JEDEC — "DDR" = double data rate (the signaling property the generation number
-//   qualifies: DDR4 = double-data-rate generation 4).
+type MemoryKind = Dram | Hbm | UnifiedShared
+
+type MemoryFacts {
+  capacity: ByteSize
+  memory_kind: MemoryKind
+}
+
 type SdramSignalingFamily = | DoubleDataRate
 
-// DramGeneration — decomposed SDRAM generation axis: signaling family × generation number.
-// "DDR4" is NOT an opaque enum token — it is DoubleDataRate × 4, reusing the cardinal-Int
-// pattern (like rank_count, CpuModelCatalogRow.cores) rather than minting Ddr4/Ddr5 variants
-// that re-coin the magnitude the marketing label already names (§2 failed-decomposition).
 type DramGeneration {
   signaling_family: SdramSignalingFamily
-  // generation_number — the JEDEC ordinal in "DDR<N>" (4, 5, …), as a grounded cardinal Int
-  // so derivations and cited-ceiling dispatch key on the magnitude directly.
+
   generation_number: Int
 }
 
-// Canonical DoubleDataRate generation rows — the magnitude lives once, not per-SKU enum tags.
 data dram_generation_ddr4: DramGeneration = DramGeneration {
   signaling_family: DoubleDataRate,
   generation_number: 4,
@@ -50,7 +39,6 @@ data dram_generation_ddr5: DramGeneration = DramGeneration {
   generation_number: 5,
 }
 
-// Fail-closed sentinel for uncited generations (dispatch fallback in extdeps/memory/jedec).
 data dram_generation_unknown: DramGeneration = DramGeneration {
   signaling_family: DoubleDataRate,
   generation_number: 0,
@@ -68,130 +56,48 @@ fn dram_generation_signaling_family(gen: DramGeneration) -> SdramSignalingFamily
   gen.signaling_family
 }
 
-// JedecDdrGenerationCatalogRow — the cited JEDEC standard row for one SDRAM generation.
-// extdeps/memory owns the SHAPE; the per-generation ceilings and standard ids live in
-// extdeps/memory/jedec (DESIGN §3: single authority — the spec is external, not re-coined).
 type JedecDdrGenerationCatalogRow {
   generation: DramGeneration
-  // max_monolithic_die_density — largest per-die DATA capacity a single monolithic DRAM device
-  // can have under this generation's JEDEC standard (bytes — the module taxonomy's native
-  // unit; datasheets quote density in bits but capacity_bytes and this ceiling are both bytes).
+
   max_monolithic_die_density: ByteSize
-  // jedec_standard — the cited JEDEC document id (e.g. JESD79-4 for DDR4 SDRAM).
+
   jedec_standard: NonEmptyStr
 }
 
-// DimmBuffering — the command/address path between the host and the DRAM devices.
-// Unbuffered (UDIMM) drives the DRAM directly; Registered (RDIMM) buffers the
-// command/address lines through a register; Load-Reduced (LRDIMM) additionally
-// buffers the data path. This is the buffering AXIS — electrical-loading-ceiling vs
-// latency/power — one of three independent module trade-offs (with chip width and
-// rank count). A bare `registered: Bool` could not tell RDIMM from LRDIMM (both are
-// "registered"), so the axis is a closed enum, not a flag.
-// Anchor: https://en.wikipedia.org/wiki/Registered_memory  (RDIMM vs LRDIMM)
 type DimmBuffering = Unbuffered | Registered | LoadReduced
 
-// A populated DIMM identifies itself by its catalog row — this owns the SHAPE; the
-// manufacturer is the single Vendor<Hardware> authority (extdeps/vendor/) and the
-// per-vendor rows live in extdeps/memory/<vendor>.
-// No enum of one vendor's SKUs (that would make the taxonomy a purchase
-// order). One JEDEC part is ONE catalog row regardless of how many marketplace
-// listings sell it: the row decomposes the part number into grounded axes. The two
-// numeric organization axes carry their MAGNITUDE (not an opaque enum token) so
-// derivations compute on them directly. Two DISTINCT per-rank device counts (conflating them
-// is the §2 state-space trap): PHYSICAL dram_chips_per_rank = 72 / chip_width bits (incl ECC —
-// the power divisor) vs DATA dram_data_chips_per_rank = 64 / chip_width bits (excl ECC — the
-// capacity/die-density divisor, since marketed capacity_bytes does not count ECC silicon):
-// capacity = die_density × dram_data_chips_per_rank × rank_count.
 type DramModuleCatalogRow {
   part_number: NonEmptyStr
   manufacturer: Vendor<Hardware>
-  // generation — decomposed SDRAM generation (signaling family × ordinal), not a stringly
-  // "DDR4" label or opaque enum that re-coins the magnitude.
+
   generation: DramGeneration
-  // DERIVE-TRIGGER(P-CF-DIMM-CAPACITY): capacity_bytes stays stored until die_density
-  // is confirmed live (SPD) and a `derive_capacity_bytes` fn lands in extdeps.memory with
-  // a +/- claim — then capacity = die_density × (64 / bit_width_count(chip_width)) ×
-  // rank_count (DATA chips only — marketed capacity excludes ECC silicon; see
-  // dram_data_chips_per_rank) and memory.dag's reader calls it. A PN-certain stored 16GB beats
-  // an inferred-die-density derivation today (fail-closed, §5).
+
   capacity_bytes: ByteSize
   data_rate_mts: Int
   ecc: Bool
-  // buffering — command/address path (UDIMM/RDIMM/LRDIMM). A categorical axis with no
-  // magnitude, and a Bool could not tell RDIMM from LRDIMM, so it is a closed enum.
+
   buffering: DimmBuffering
-  // chip_width — the "xN" DRAM device data width as a grounded BIT-WIDTH (x4 = 4 bits),
-  // reusing std.measure.BitWidth rather than minting a fresh enum (§2: map onto the
-  // concept that already exists). The power-vs-chipkill axis; NOT a rank count (the
-  // "...R4..." misread). Magnitude lets chips_per_rank = 72 / bit_width_count(chip_width).
+
   chip_width: BitWidth
-  // rank_count — number of independently chip-selected device sets (1/2/4): the
-  // bandwidth-interleave-vs-electrical-loading axis, as a grounded cardinal Int (like
-  // CpuModelCatalogRow.cores), so interleave/capacity derivations multiply by it.
-  // Per-vendor part-number decode rules and live-host confirmation live in
-  // extdeps/memory/<vendor> — std owns only the cardinal axis shape.
+
   rank_count: Int
 }
 
-// The JEDEC DDR memory bus WORD widths — the single authority for the 64-vs-72 distinction,
-// each a BitWidth (bits-in-parallel, the same width concept as chip_width — NOT a byte size).
-// A rank presents 64 DATA bits in parallel to the channel; ECC adds 8 check bits → a 72-bit
-// total word. Every per-rank device count AND the per-transfer byte width DERIVE from these, so
-// the 64 / 72 live here ONCE rather than as scattered literals (DESIGN §2/§3: one fact, one home;
-// this is also the data bus width product.hardware_selection's bandwidth math reads, killing the
-// duplicate raw `64` / `8 bytes` that previously appeared in two layers).
 data dram_data_word_width: BitWidth = bit_width(count: 64)
 data dram_ecc_word_width: BitWidth = bit_width(count: 72)
 
-// dram_chips_per_rank — the PHYSICAL DRAM devices in one rank: the 72-bit ECC word spread
-// across (ecc-word / device-width) devices, INCLUDING the ECC device. This is the POWER divisor
-// — an ECC chip draws power, so memory_power / devices_per_stick key on it. It is NOT the
-// capacity divisor (see dram_data_chips_per_rank below — capacity excludes ECC silicon).
-// 🟡 all current corpus parts are ECC, so the 72-bit word is exact; generalize to a per-module
-// (ecc ? 72 : 64)-bit word if a non-ECC module ever enters (its physical count is also 64/width).
 fn dram_chips_per_rank(module: DramModuleCatalogRow) -> Int {
   bit_width_count(b: dram_ecc_word_width) / bit_width_count(b: module.chip_width)
 }
 
-// dram_data_chips_per_rank — the DATA DRAM devices in one rank: the 64-bit DATA word spread
-// across (data-word / device-width) devices, EXCLUDING ECC. This is the CAPACITY / die-density
-// divisor: capacity_bytes is the MARKETED data capacity (a 16GB part is sold as 16 GiB of
-// usable memory; its ECC chips are not counted), so the per-die density implied by that
-// marketed capacity divides by data devices only. Splitting this from dram_chips_per_rank
-// avoids the §2 state-space trap of one name meaning two distinct device counts: dividing the
-// marketed capacity by the 72-bit word would compute a non-existent die density for EVERY real
-// part (a 16GB 1Rx4 → 7.11 Gibit, a die that does not exist), defeating the §5 realizability guard.
 fn dram_data_chips_per_rank(module: DramModuleCatalogRow) -> Int {
   bit_width_count(b: dram_data_word_width) / bit_width_count(b: module.chip_width)
 }
 
-// REALIZABILITY (the inverse of the DERIVE-TRIGGER(P-CF-DIMM-CAPACITY) relationship above,
-// capacity = die_density × dram_data_chips_per_rank × rank_count). A stored capacity_bytes only
-// describes a part that can PHYSICALLY exist: the per-die capacity it implies must not exceed
-// the technology's monolithic ceiling. e.g. a 32GB 1Rx8 DDR4 RDIMM would need 4 GiB (32 Gibit)
-// dies but DDR4 tops out at 2 GiB (16 Gibit) monolithic — there is no such part, so a candidate
-// matrix carrying it is silently scoring a non-existent SKU. This is the §5 fail-closed guard:
-// reject the impossible rather than emit a plausible-but-fake winner.
-//
-// Per-die capacity is carried in BYTES — the module taxonomy's native unit and the ready
-// std.measure ByteSize carrier — NOT bits. Datasheets quote die DENSITY in bits (a "16 Gibit
-// die"), but capacity_bytes is already bytes, so the per-die figure in bytes needs NO byte↔bit
-// conversion: per-die bytes = capacity_bytes / (data chips × rank), directly — the inline ×8 a
-// bit-denominated density would carry is gone. The per-generation monolithic ceiling is cited in
-// extdeps/memory/jedec (JESD79-4 DDR4 → 16 Gbit = 2 GiB; JESD79-5 DDR5 → 64 Gbit = 8 GiB).
-
-// Per-die data capacity implied by the marketed capacity: total data bytes spread across the
-// part's data dies (data chips per rank × ranks). In bytes — both sides already bytes, no ×8.
 fn dram_module_required_die_density(module: DramModuleCatalogRow) -> ByteSize {
   byte_size(count: byte_size_count(b: module.capacity_bytes) / (dram_data_chips_per_rank(module: module) * module.rank_count))
 }
 
-// A module is realizable iff (a) its generation matches the cited JEDEC row and (b) its implied
-// per-die capacity fits that generation's monolithic ceiling. Used by selection-time candidate
-// filtering (product.hardware_selection) so a Pareto front can never contain a physically
-// non-existent part. Fail-closed on generation mismatch (§5): a DDR4 module scored against a
-// DDR5 ceiling would silently pass impossible SKUs.
 fn dram_module_is_realizable(module: DramModuleCatalogRow, jedec: JedecDdrGenerationCatalogRow) -> Bool {
   if !dram_generation_eq(a: module.generation, b: jedec.generation) {
     false

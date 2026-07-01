@@ -1,5 +1,3 @@
-// Scope: IRT-1 aggregate TestClaim for affected_set_irt1_subsumption MechanicalReverification row.
-
 module v2.test.lens_affected_set.irt1_leaf_claim_suite
 
 import v2.lens.affected_set_examples {

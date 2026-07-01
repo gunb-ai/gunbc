@@ -1,23 +1,3 @@
-// extdeps/version/pep440.dag — Python PEP 440 version identification scheme.
-//
-// Fidelity — extdeps invariant (cite source + declare version; DESIGN.md §3):
-//   Spec: https://packaging.python.org/en/latest/specifications/version-specifiers/
-//   (canonical PyPA spec; PEP 440 is the historical document)
-//   Version: PEP 440 (Final, Distutils-SIG, 2014-08-22)
-//
-// Canonical public identifier grammar (PEP 440 §Public version identifiers):
-//   [N!]N(.N)*[{a|b|rc}N][.postN][.devN]
-// Local version (PEP 440 §Local version identifiers):
-//   <public>[+<local version label>]
-//
-// Scheme slice for `extdeps.version` — decomposed PEP 440 carriers, canonical
-// wire labels, and projection onto `VersionIdentity` / `VersionConstraint`.
-// Do NOT alias to `std.types.SemVer`.
-//
-// Consumers:
-//   dsl/test/claim/python_pep440_version_witness_test.dag — render witnesses
-//   (future) package metadata / dependency rows when pip/setuptools modeling lands
-
 module extdeps.version.pep440
 
 import extdeps.version { VersionConstraint, VersionIdentity }
@@ -25,22 +5,22 @@ import std.algebra { Equal, Greater, Less, Ordering }
 import std.integer { NonNegativeInt }
 import std.list { List }
 import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// -- Spec citation -------------------------------------------------
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "packaging.python.org/en/latest/specifications/version-specifiers/"
+  }
+}
 
 data pep440_spec_url: NonEmptyStr = "https://packaging.python.org/en/latest/specifications/version-specifiers/"
 data pep440_spec_label: NonEmptyStr = "PEP 440 (Final, 2014-08-22)"
 
-// PEP 440 version-specifier wire text — predicate over identities, not a version.
 type Pep440Constraint = VersionConstraint
 
-// Minimum CPython for workflows invoking python3 on PATH (typechecker rows).
 data min_python_interpreter: Pep440Constraint = ">= 3.11"
-
-// -- Public version segments ---------------------------------------
-//
-// Coproduct dissolution: `Pep440PreReleasePhase` — alpha/beta/rc are mutually
-// exclusive pre-release phases with distinct wire spellings and sort order.
 
 type Pep440PreReleasePhase
   = Pep440Alpha
@@ -52,18 +32,10 @@ type Pep440PreRelease {
   number: NonNegativeInt
 }
 
-// Local version label segment (PEP 440 §Local version identifiers): each dot-
-// separated piece is either all-ASCII-digits (numeric, compared as int) or
-// contains a letter (lexicographic, case-insensitive on wire).
 type Pep440LocalSegment
   = Pep440LocalNumeric { value: NonNegativeInt }
   | Pep440LocalLexicographic { label: NonEmptyStr }
 
-// Decomposed public version identifier. `epoch` is the implicit-0 epoch when
-// omitted on the wire. `release_segments` is the N(.N)* segment — structurally
-// non-empty via `first` + `rest` (PEP 440 requires ≥1 release integer).
-// Optional suffix segments model the PEP 440 ordering chain: pre-release,
-// post-release, developmental release.
 type Pep440ReleaseSegments {
   first: NonNegativeInt
   rest: List<NonNegativeInt>
@@ -77,37 +49,27 @@ type Pep440PublicVersion {
   dev_release: NonNegativeInt?
 }
 
-// Full version: public identifier plus optional local label (+segment...).
 type Pep440Version {
   public: Pep440PublicVersion
   local: List<Pep440LocalSegment>
 }
 
-// -- Version specifiers (PEP 440 §Version specifiers) --------------
-//
-// Dependency clauses use these operators against public versions. Wildcard
-// matching (`== 1.3.4.*`) is deferred — carriers hold a concrete public
-// version today.
-
 type Pep440SpecifierOp
-  = Pep440CompatibleRelease       // ~=
-  | Pep440VersionMatching         // ==
-  | Pep440VersionExclusion        // !=
-  | Pep440InclusiveAtLeast        // >=
-  | Pep440InclusiveAtMost         // <=
-  | Pep440ExclusiveLess           // <
-  | Pep440ExclusiveGreater        // >
-  | Pep440ArbitraryEquality       // ===
+  = Pep440CompatibleRelease
+  | Pep440VersionMatching
+  | Pep440VersionExclusion
+  | Pep440InclusiveAtLeast
+  | Pep440InclusiveAtMost
+  | Pep440ExclusiveLess
+  | Pep440ExclusiveGreater
+  | Pep440ArbitraryEquality
 
 type Pep440VersionClause {
   op: Pep440SpecifierOp
   version: Pep440PublicVersion
 }
 
-// Comma-separated specifier: candidate must satisfy every clause (logical AND).
 type Pep440VersionSpecifier = List<Pep440VersionClause>
-
-// -- Base-layer projection -----------------------------------------
 
 fn pep440_version_identity(v: Pep440Version) -> VersionIdentity {
   pep440_version_label(v: v)
@@ -117,9 +79,6 @@ fn pep440_version_specifier_constraint(spec: Pep440VersionSpecifier) -> VersionC
   pep440_version_specifier_label(spec: spec)
 }
 
-// Slice-1 ordering on structured public carriers. `VersionScheme.compare` on opaque
-// `VersionIdentity` values is gated to slice-2 (parse ingress) — installing a stub
-// comparator would violate DESIGN.md §5 fail-closed semantics.
 fn pep440_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
   if a < b { Less }
   else if a > b { Greater }
@@ -136,7 +95,7 @@ fn pep440_compare_release_segments(a: Pep440ReleaseSegments, b: Pep440ReleaseSeg
 fn pep440_compare_release_rest(a_rest: List<NonNegativeInt>, b_rest: List<NonNegativeInt>) -> Ordering {
   if a_rest.length() == 0 && b_rest.length() == 0 { Equal }
   else if a_rest.length() == 0 {
-    // PEP 440: shorter release tuples are zero-padded before comparison.
+
     if b_rest.first() == 0 {
       pep440_compare_release_rest(a_rest: a_rest, b_rest: b_rest.skip(n: 1))
     } else {
@@ -256,8 +215,6 @@ fn pep440_compare_public(a: Pep440PublicVersion, b: Pep440PublicVersion) -> Orde
     other => other
   }
 }
-
-// -- Wire labels ---------------------------------------------------
 
 fn pep440_pre_release_phase_label(phase: Pep440PreReleasePhase) -> String {
   match phase {

@@ -1,12 +1,3 @@
-// extdeps/formats/elf/hello_static_witness.dag — end-to-end decode + encode round-trip of one real static hello ELF.
-//
-// Fixture: musl-static x86-64 hello built in Alpine 3.20 (linux/amd64):
-//   cc -static -o hello 'write(1,"Hello\n",6); return 0;'
-// Bytes are the on-disk ELF-64 Ehdr (64 B) + first PT_LOAD Phdr (56 B) — verified with readelf.
-//
-// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html
-// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch5.pheader.html
-
 module extdeps.formats.elf.hello_static_witness
 
 import extdeps.formats.elf.primitives {
@@ -52,7 +43,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Real static hello — ELF-64 Ehdr (64 bytes).
 data static_hello_elf64_ehdr_bytes: List<Int> = [
   127, 69, 76, 70, 2, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   2, 0, 62, 0, 1, 0, 0, 0, 43, 16, 64, 0, 0, 0, 0, 0,
@@ -60,7 +50,6 @@ data static_hello_elf64_ehdr_bytes: List<Int> = [
   0, 0, 0, 0, 64, 0, 56, 0, 9, 0, 64, 0, 26, 0, 25, 0,
 ]
 
-// Continuation at file offset 64 — first PT_LOAD program header (56 bytes).
 data static_hello_first_phdr_bytes: List<Int> = [
   1, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
   0, 0, 64, 0, 0, 0, 0, 0, 0, 0, 64, 0, 0, 0, 0, 0,
@@ -90,9 +79,6 @@ data static_hello_elf32_class_ehdr_bytes: List<Int> = [
   64, 0, 0, 0, 0, 0, 0, 0, 56, 170, 0, 0, 0, 0, 0, 0,
   0, 0, 0, 0, 64, 0, 56, 0, 9, 0, 64, 0, 26, 0, 25, 0,
 ]
-
-// Witnesses: green-by-execution via `gunbc run --source-root dsl --entry ... --claim-run`.
-// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
 
 fn witness_format_atom_is_elf() -> Bool {
   linux_x86_64_elf_format.family == Elf

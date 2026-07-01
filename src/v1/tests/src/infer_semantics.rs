@@ -25,7 +25,6 @@ fn empty_source_indices() -> Rc<std::collections::HashMap<String, Rc<NewlineInde
     Rc::new(std::collections::HashMap::new())
 }
 
-// Test helpers: replicate deleted L1 constructor functions for test convenience.
 fn leaf_node(name: String) -> Rc<Node> {
     leaf_node_with_span(name, make_span(0, 0))
 }
@@ -173,7 +172,8 @@ fn empty_infer_scope() -> Rc<InferScope> {
     Rc::new(InferScope {
         type_env: empty_type_env(),
         func_env: Rc::new(ResolvedFuncEnv {
-            signatures: Rc::new(std::collections::HashMap::new()),
+            local: Rc::new(std::collections::HashMap::new()),
+            parents: Rc::new(vec![]),
         }),
         locals: Rc::new(std::collections::HashMap::new()),
         match_bound_names: Rc::new(std::collections::HashMap::new()),
@@ -303,10 +303,6 @@ type AccountId = Refined<String>
         "AccountId must not collapse to the shared base String"
     );
 }
-
-// ── PD-3: A3 bounded direct-call arg check (node_type_compatible) ─────────
-// Relation threads brands-distinct (authored_name_at) + alias-tolerant
-// (canonical_template_name branch). Measured at relation + call-site.
 
 #[test]
 fn pd3_brand_twins_incompatible_at_node_type_compatible() {
@@ -453,8 +449,6 @@ fn list_int_index_returns_optional_element_type() {
 
 #[test]
 fn malformed_map_index_returns_compiler_error_type() {
-    // bare_map_node() now has K/V wrapper children with TypeVariable inferred,
-    // so it's recognized as a keyed collection — key type mismatch is diagnosed
     let result = v1_compiler_infer_access::check_index_access_node(
         bare_map_node().expect("Map kernel container profile"),
         leaf_node("String".to_string()),
@@ -538,8 +532,6 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
 
 #[test]
 fn pattern_lookup_reports_error_scrutinee_structurally() {
-    // Error types carry CompilerError in inferred — pattern_subject_from_node
-    // detects this structurally and returns PatternLookupBlocked.
     use v1_compiler::v1_std_core::error_type;
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(error_type());
     let lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
@@ -550,7 +542,6 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
         0,
     );
 
-    // PatternLookupBlocked produces LookupFailed with 0 diagnostics (silent failure)
     assert!(matches!(
         lookup.status.as_ref(),
         NodeLookupStatus::LookupFailed
@@ -748,9 +739,6 @@ fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
 
 #[test]
 fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children() {
-    // After generic instantiation, Optional<T> may be a bare applied node (name Optional,
-    // one type-arg child, no Disj Present/Absent children). Present/Absent patterns in
-    // optional_present/optional_absent bodies must still resolve (adhoc-708ea66d-bb3).
     let applied_optional = applied_generic_type_node("Optional", leaf_node("Bool".to_string()));
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(applied_optional);
     let present_lookup = v1_compiler_infer_patterns::lookup_variant_in_type(
@@ -786,8 +774,6 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
 
 #[test]
 fn optional_applied_generic_lookup_rejects_wrong_variant_name() {
-    // optional_coproduct_subject must not widen: legacy Some/None names still fail on
-    // applied Optional<T> (name==Optional gate is load-bearing).
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(applied_generic_type_node(
         "Optional",
         leaf_node("Bool".to_string()),
@@ -812,7 +798,6 @@ fn optional_applied_generic_lookup_rejects_wrong_variant_name() {
 
 #[test]
 fn non_optional_applied_generic_missing_variant_still_fails() {
-    // Fallback is Optional-only: bare applied Outcome<T> must not synthesize Present.
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(applied_generic_type_node(
         "Outcome",
         leaf_node("Bool".to_string()),
@@ -986,15 +971,6 @@ fn resolve_node_uses_node_name_for_lookup() {
     assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
     assert_eq!(result.resolved.name, "User");
 }
-
-// =========================================================================
-// Higher-order method instantiation tests
-//
-// These test observable behavior through the public lookup_structural_method
-// API: given a receiver type and method name, does the method resolve, and
-// what is the result type? No peeking into Node.inferred or params —
-// the tests exercise the same contract downstream consumers use.
-// =========================================================================
 
 #[test]
 fn structural_method_lookup_resolves_all_list_collection_methods() {
@@ -1247,7 +1223,6 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
         1,
         "keys result should have one child"
     );
-    // Children are now field-style wrappers — extract type from inferred
     let elem_child = &result.result_type.children[0];
     let elem_type = resolved_type(elem_child.clone());
     assert_eq!(
@@ -1270,14 +1245,6 @@ fn structural_method_lookup_returns_none_for_unknown_type() {
         "custom types without algebra should not have structural methods"
     );
 }
-
-// =========================================================================
-// Keyed-collection access tests
-//
-// These verify that KeyedCollectionParts correctly decomposes keyed
-// collection types (Map) and that the structural predicate
-// node_is_keyed_collection distinguishes maps from element collections.
-// =========================================================================
 
 #[test]
 fn keyed_collection_parts_extracts_key_and_value() {
@@ -1303,7 +1270,6 @@ fn keyed_collection_parts_returns_none_for_element_collection() {
 
 #[test]
 fn keyed_collection_parts_returns_type_variables_for_bare_map() {
-    // bare_map_node() now has K/V wrapper children with TypeVariable inferred
     let bare = bare_map_node().expect("Map kernel container profile");
     let parts = v1_compiler_infer_access::keyed_collection_parts(bare, empty_source_indices());
     assert!(
@@ -1333,12 +1299,8 @@ fn node_is_keyed_collection_false_for_leaf() {
     assert!(!node_is_keyed_collection(leaf, empty_source_indices()));
 }
 
-// ── is_fully_resolved ─────────────────────────────────────────────────
-
 #[test]
 fn is_fully_resolved_rejects_under_parameterized_container() {
-    // leaf_node("List") creates a node named "List" with 0 children.
-    // container_expected_arity("List") = Some(1), so 0 < 1 → not fully resolved.
     let bare_list = leaf_node("List".to_string());
     assert!(!is_fully_resolved(bare_list, empty_source_indices()));
 }
@@ -1351,7 +1313,6 @@ fn is_fully_resolved_accepts_parameterized_container() {
 
 #[test]
 fn is_fully_resolved_ignores_unknown_type_names() {
-    // User-defined "Widget" with 0 children → arity is None → not under-parameterized.
     let widget = leaf_node("Widget".to_string());
     assert!(is_fully_resolved(widget, empty_source_indices()));
 }
@@ -1403,14 +1364,8 @@ fn map_index_with_wrong_key_type_reports_error() {
     );
 }
 
-// =========================================================================
-// Boundary regression tests (review feedback 2026-04-02)
-// =========================================================================
-
 #[test]
 fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
-    // Conj node with two children: one Typed, one CompilerError.
-    // Fail-closed gate must return [] — no partial output synthesis.
     let syn_span = Some(Rc::new(v1_compiler::v1_std_core::SourceSpan {
         file: "".to_string(),
         start: 0,
@@ -1451,14 +1406,6 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
     );
 }
 
-// ── List ↔ FreeMonoid alias transparency (node_type_compatible) ──────────
-// `type List<T> = FreeMonoid<T>` (collection.dag) — but List is a container
-// (kept unexpanded as Container(List)) while FreeMonoid resolves to Node(FreeMonoid),
-// so the two declared-alias spellings reach type-comparison structurally distinct.
-// node_type_compatible canonicalizes container-template names via the existing
-// container_template_algebra authority so the aliases compare transparently —
-// element types still checked (red-when-wrong below).
-
 #[test]
 fn list_and_freemonoid_compatible_same_element() {
     let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
@@ -1471,7 +1418,6 @@ fn list_and_freemonoid_compatible_same_element() {
 
 #[test]
 fn list_and_freemonoid_incompatible_different_element() {
-    // Red-when-wrong: canonicalize-at-compare must NOT collapse element types.
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let fm_string = container_node("FreeMonoid".to_string(), leaf_node("String".to_string()));
     assert!(

@@ -1,0 +1,36 @@
+module v2.test.manual.typescript_language_model_anchor
+import v2.std.language_model { LanguageModel }
+
+import v2.extdeps.languages.typescript {
+  ts_declared_inhabitants_root,
+  ts_bigint_algebra_inhabitance,
+  ts_bool_algebra_inhabitance,
+  ts_facts_bigint,
+  ts_facts_boolean,
+  ts_facts_number,
+  ts_inhabitant_bigint_node,
+  ts_inhabitant_boolean_node,
+  ts_inhabitant_number_node,
+  ts_language_model_wave1,
+  ts_model_core_inhabitance_decls,
+  ts_number_algebra_inhabitance,
+  ts_primitive_bundle_from_bool_facts,
+  ts_wave1_target_model
+}
+import v2.std.collection { List }
+import v2.std.model_core { AlgebraInhabitanceDecl, PrimitiveFactBundle }
+import v2.std.node { Node }
+
+type ts_anchor_language_model = LanguageModel
+
+data ts_anchor_wave1: ts_anchor_language_model = ts_language_model_wave1()
+data ts_anchor_number: Node = ts_inhabitant_number_node()
+data ts_anchor_bigint: Node = ts_inhabitant_bigint_node()
+data ts_anchor_boolean: Node = ts_inhabitant_boolean_node()
+data ts_anchor_inhabitants: Node = ts_declared_inhabitants_root()
+data ts_anchor_target_model: Node = ts_wave1_target_model()
+data ts_anchor_bool_primitive_bundle: PrimitiveFactBundle = ts_primitive_bundle_from_bool_facts(facts: ts_facts_boolean)
+data ts_anchor_model_core_inhabitance: List<AlgebraInhabitanceDecl> = ts_model_core_inhabitance_decls()
+data ts_anchor_number_algebra_inhabitance: AlgebraInhabitanceDecl = ts_number_algebra_inhabitance(facts: ts_facts_number)
+data ts_anchor_bigint_algebra_inhabitance: AlgebraInhabitanceDecl = ts_bigint_algebra_inhabitance(facts: ts_facts_bigint)
+data ts_anchor_bool_algebra_inhabitance: AlgebraInhabitanceDecl = ts_bool_algebra_inhabitance()

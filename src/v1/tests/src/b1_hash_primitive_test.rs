@@ -1,5 +1,3 @@
-//! B1-CANON hash primitives: runtime combine/identity behavior and domain separation.
-
 use v1_compiler::v1_compiler_runtime_rust::rt_hash_ops;
 use v1_compiler::v1_rt::{atom_identity_hash, hash_combine, is_hash_digest};
 

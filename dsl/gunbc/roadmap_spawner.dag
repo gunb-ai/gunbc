@@ -1,0 +1,219 @@
+module gunbc.roadmap_spawner
+
+import ctrl.process_algebra { ProcessNodeId }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge, Pointer,
+  Intricacy, IntricacyLow, IntricacyMedium, IntricacyHigh,
+  Volume, VolumeSmall, VolumeMedium, VolumeLarge,
+  Acceptance, PrsMerged, ManualAcceptance,
+  NodeSizing, Unsized, Sized,
+  SectionElement, Prose, Group, SectionGroup,
+  RoadmapParent, TopLevel, UnderParent, roadmap_parent,
+}
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data json_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.primitives",
+    decl_name: "to_json",
+    field: WholeDeclaration
+  }
+}
+
+fn element_nodes(e: SectionElement) -> List<RoadmapNode> {
+  match e {
+    Prose { prose: _ } => []
+    Group { group } => group.nodes
+  }
+}
+
+fn element_edges(e: SectionElement) -> List<RoadmapEdge> {
+  match e {
+    Prose { prose: _ } => []
+    Group { group } => group.edges
+  }
+}
+
+fn section_nodes(s: RoadmapSection) -> List<RoadmapNode> {
+  fold(s.elements, init: [], f: (acc, e) => concat(acc, element_nodes(e: e)))
+}
+
+fn section_edges(s: RoadmapSection) -> List<RoadmapEdge> {
+  fold(s.elements, init: [], f: (acc, e) => concat(acc, element_edges(e: e)))
+}
+
+fn doc_all_nodes(doc: RoadmapDocument) -> List<RoadmapNode> {
+  let lane_nodes = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_nodes(s: s)))
+  fold(doc.sections, init: lane_nodes, f: (acc, s) => concat(acc, section_nodes(s: s)))
+}
+
+fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
+  let lane_edges = fold(doc.lead_lanes, init: [], f: (acc, s) => concat(acc, section_edges(s: s)))
+  fold(doc.sections, init: lane_edges, f: (acc, s) => concat(acc, section_edges(s: s)))
+}
+
+fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: ProcessNodeId, merged: List<Int>) -> Bool {
+  match roadmap_parent(edges: edges, node: id) {
+    TopLevel => true
+    UnderParent { parent: pid } =>
+      any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged))
+  }
+}
+
+fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Bool {
+  match n.sizing {
+    Unsized => false
+    Sized { intricacy: _, volume: _, repo: _, acceptance: _ } =>
+      !item_is_done(item: n.line, merged: merged)
+        && node_dep_done(nodes: nodes, edges: edges, id: n.node, merged: merged)
+  }
+}
+
+fn next_spawnable(doc: RoadmapDocument, merged: List<Int>) -> List<RoadmapNode> {
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  nodes |> filter(n => node_is_spawnable(n: n, nodes: nodes, edges: edges, merged: merged))
+}
+
+fn node_is_sized(n: RoadmapNode) -> Bool {
+  match n.sizing {
+    Unsized => false
+    Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => true
+  }
+}
+
+fn node_is_upcoming(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Bool {
+  node_is_sized(n: n)
+    && !item_is_done(item: n.line, merged: merged)
+    && !node_dep_done(nodes: nodes, edges: edges, id: n.node, merged: merged)
+}
+
+fn node_is_frontier_done(n: RoadmapNode, merged: List<Int>) -> Bool {
+  node_is_sized(n: n) && item_is_done(item: n.line, merged: merged)
+}
+
+type SpawnFrontier {
+  ready: List<RoadmapNode>
+  upcoming: List<RoadmapNode>
+  done: List<RoadmapNode>
+}
+
+fn spawn_frontier(doc: RoadmapDocument, merged: List<Int>) -> SpawnFrontier {
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  SpawnFrontier {
+    ready: next_spawnable(doc: doc, merged: merged),
+    upcoming: nodes |> filter(n => node_is_upcoming(n: n, nodes: nodes, edges: edges, merged: merged)),
+    done: nodes |> filter(n => node_is_frontier_done(n: n, merged: merged)),
+  }
+}
+
+fn json_escape(s: String) -> String {
+  replace(replace(s, "\\", "\\\\"), "\"", "\\\"")
+}
+
+fn json_str(s: String) -> String {
+  concat("\"", concat(json_escape(s: s), "\""))
+}
+
+fn json_int_list(nums: List<Int>) -> String {
+  concat("[",
+    concat(
+      fold(nums, init: { s: "", first: true }, f: (acc, n) => {
+        s: if acc.first { to_string(n) } else { concat(acc.s, concat(", ", to_string(n))) },
+        first: false
+      }).s,
+      "]"
+    )
+  )
+}
+
+fn intricacy_str(i: Intricacy) -> String {
+  match i {
+    IntricacyLow => "low"
+    IntricacyMedium => "medium"
+    IntricacyHigh => "high"
+  }
+}
+
+fn volume_str(v: Volume) -> String {
+  match v {
+    VolumeSmall => "small"
+    VolumeMedium => "medium"
+    VolumeLarge => "large"
+  }
+}
+
+fn acceptance_json(a: Acceptance, line: RoadmapItem) -> String {
+  match a {
+    PrsMerged => match line {
+      DerivableLine { prs, title: _, description: _ } =>
+        concat("{\"kind\": \"prs_merged\", \"prs\": ", concat(json_int_list(nums: prs), "}"))
+      AuthoredLine { done: _, content: _ } =>
+        "{\"kind\": \"prs_merged_model_error\", \"prs\": []}"
+      PlainLine { content: _ } =>
+        "{\"kind\": \"prs_merged_model_error\", \"prs\": []}"
+    }
+    ManualAcceptance => "{\"kind\": \"manual\"}"
+  }
+}
+
+fn node_title(item: RoadmapItem) -> String {
+  match item {
+    DerivableLine { prs: _, title, description: _ } => title
+    AuthoredLine { done: _, content } => content
+    PlainLine { content } => content
+  }
+}
+
+fn node_plan_doc_json(carriers: List<Pointer>) -> String {
+  let plans = carriers |> filter(p => p.label == "plan")
+  if count(plans) > 0 {
+    fold(plans, init: "null", f: (acc, p) => if acc == "null" { json_str(s: p.path) } else { acc })
+  } else {
+    "null"
+  }
+}
+
+fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> String {
+  let parent_id_json = match roadmap_parent(edges: edges, node: n.node) {
+    TopLevel => "null"
+    UnderParent { parent: pid } => json_str(s: pid)
+  }
+  let plan_json = node_plan_doc_json(carriers: n.carriers)
+  let title = node_title(item: n.line)
+  let f1 = concat("\"node_id\": ", concat(json_str(s: n.node), concat(", \"title\": ", json_str(s: title))))
+  let f2 = concat(", \"repo\": ", concat(json_str(s: repo), concat(", \"intricacy\": ", json_str(s: intricacy_str(i: intricacy)))))
+  let f3 = concat(", \"volume\": ", concat(json_str(s: volume_str(v: volume)), concat(", \"parent_node_id\": ", parent_id_json)))
+  let f4 = concat(", \"plan_doc\": ", concat(plan_json, concat(", \"acceptance\": ", acceptance_json(a: acceptance, line: n.line))))
+  concat("{", concat(f1, concat(f2, concat(f3, concat(f4, "}")))))
+}
+
+fn join_strings(items: List<String>) -> String {
+  fold(items, init: { s: "", first: true }, f: (acc, item) => {
+    s: if acc.first { item } else { concat(acc.s, concat(", ", item)) },
+    first: false
+  }).s
+}
+
+fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {
+  let items = nodes |> map(n => match n.sizing {
+    Unsized => "{}"
+    Sized { intricacy, volume, repo, acceptance } =>
+      node_json(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges)
+  })
+  concat("[", concat(join_strings(items: items), "]"))
+}
+
+fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_commit: String) -> String {
+  let nodes = next_spawnable(doc: doc, merged: merged)
+  let edges = doc_all_edges(doc: doc)
+  concat("{",
+    concat("\"schema\": \"roadmap-spawn-request/v1\"",
+    concat(", \"anchor_commit\": ", concat(json_str(s: anchor_commit),
+    concat(", \"ready\": ", concat(ready_array_json(nodes: nodes, edges: edges), "}"))))))
+}

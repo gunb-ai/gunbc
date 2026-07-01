@@ -1,0 +1,69 @@
+module test.claim.commit_workflow_witness
+
+import gunbc.commit_workflow {
+  commit_gate_roster,
+  commit_workflow_realization_bindings,
+  commit_workflow_ci_floor_gates,
+  commit_workflow_ci_rust_job_gates,
+  commit_workflow_local_tidy_checks,
+  CommitWorkflowSurface, GithubActionsCiJob, GithubActionsRustTestsJob, GitPrePushHook,
+  CiYamlHandler, GitPrePushScriptHandler,
+  gate_lists_eq, local_tidy_lists_eq,
+  realization_artifact_path,
+  realization_handler_for_surface,
+  realization_artifact_for_surface
+}
+import gunbc.ci_spec { gunbc_ci_floor_gates, gunbc_ci_rust_job_gates }
+import gunbc.local_tidy_spec { local_tidy_checks }
+import gunbc.generated_artifact {
+  CiYamlArtifact, GithooksPrePushArtifact, artifact_path
+}
+
+fn witness_ci_spec_projects_from_roster() -> Bool {
+  gate_lists_eq(left: gunbc_ci_floor_gates, right: commit_workflow_ci_floor_gates)
+    && gate_lists_eq(left: gunbc_ci_rust_job_gates, right: commit_workflow_ci_rust_job_gates)
+}
+
+fn witness_local_tidy_spec_projects_from_roster() -> Bool {
+  local_tidy_lists_eq(left: local_tidy_checks, right: commit_workflow_local_tidy_checks)
+}
+
+fn witness_ci_jobs_share_yaml_handler() -> Bool {
+  realization_handler_for_surface(surface: GithubActionsCiJob) == CiYamlHandler
+    && realization_handler_for_surface(surface: GithubActionsRustTestsJob) == CiYamlHandler
+    && realization_artifact_for_surface(surface: GithubActionsCiJob) == CiYamlArtifact
+    && realization_artifact_for_surface(surface: GithubActionsRustTestsJob) == CiYamlArtifact
+}
+
+fn witness_pre_push_handler_binding() -> Bool {
+  realization_handler_for_surface(surface: GitPrePushHook) == GitPrePushScriptHandler
+    && realization_artifact_for_surface(surface: GitPrePushHook) == GithooksPrePushArtifact
+}
+
+fn witness_realization_bindings_match_dispatch() -> Bool {
+  fold(commit_workflow_realization_bindings, init: true, f: fn(acc, b) {
+    acc
+      && realization_handler_for_surface(surface: b.surface) == b.handler
+      && realization_artifact_for_surface(surface: b.surface) == b.artifact
+  })
+}
+
+fn witness_realization_artifact_paths() -> Bool {
+  realization_artifact_path(surface: GithubActionsCiJob) == artifact_path(a: CiYamlArtifact)
+    && realization_artifact_path(surface: GitPrePushHook) == artifact_path(a: GithooksPrePushArtifact)
+}
+
+fn witness_roster_nonempty() -> Bool {
+  length(commit_gate_roster) > 0
+    && length(commit_workflow_realization_bindings) == 3
+}
+
+test fn commit_workflow_witnesses() -> Bool {
+  witness_roster_nonempty()
+    && witness_ci_spec_projects_from_roster()
+    && witness_local_tidy_spec_projects_from_roster()
+    && witness_ci_jobs_share_yaml_handler()
+    && witness_pre_push_handler_binding()
+    && witness_realization_bindings_match_dispatch()
+    && witness_realization_artifact_paths()
+}

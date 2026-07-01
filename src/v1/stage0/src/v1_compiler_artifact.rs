@@ -127,7 +127,7 @@ pub type DagNodeId = String;
 #[serde(tag = "_variant")]
 pub enum DagInferredRecord {
     ResolvedRef {
-        node: Box<DagNodeId>,
+        node: DagNodeId,
     },
     TypeVariableRef {
         id: String,
@@ -140,7 +140,7 @@ pub enum DagInferredRecord {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagModuleRef {
-    pub module: Box<DagNodeId>,
+    pub module: DagNodeId,
     pub items: Rc<Vec<DagNodeId>>,
     pub item_registry_keys: Rc<Vec<String>>,
 }
@@ -163,3 +163,30 @@ pub struct DagArtifact {
     pub diagnostics: Rc<Vec<String>>,
     pub files: Rc<Vec<String>>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Rust;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Python;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Go;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Dag;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ServiceBinary;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Library;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Frontend;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GeneratedSupport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DirectCall;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HttpJson;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MessageQueue;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Ffi;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct FileProtocol;

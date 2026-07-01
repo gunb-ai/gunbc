@@ -1,52 +1,28 @@
-// extdeps/languages/rust/emit.dag -- Rust language facts for the v2 emitter.
-//
-// Single source of truth for Rust-specific data consumed by the emitter.
-// Imports only the shared SimpleMethodSpec carrier from std; the rest are
-// leaf data declarations.
-//
-// Ref: The Rust Reference (doc.rust-lang.org/reference)
-//      Rust Standard Library (doc.rust-lang.org/std)
-//
-// Consumers:
-//   v2/05_emit.dag       -- type mapping, keywords, container templates
-//   v2/05_emit_rust.dag  -- reserved words, runtime function tables
-
 module extdeps.languages.rust.emit
 
 import std.emit_model { SimpleMethodSpec }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// -- Keyword/operator translation ----------------------------------------
-// DAG keywords/operators -> Rust syntax.
-// Ref: Rust Reference 8.2 "Expressions"
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/reference/"
+  }
+}
+
 data rust_keywords: Map<String, String> = {
   "true": "true", "false": "false", "null": "None",
   "and": "&&", "or": "||", "not": "!",
   "div": "/"
 }
 
-// -- Container type templates --------------------------------------------
-// {0} = element type, {1} = second type (maps).
-// Ref: std::vec::Vec, std::collections::BTreeSet, std::option::Option, std::collections::HashMap
-// NOTE: Templates are BARE types. Rc-wrapping is applied by the rendering
-// layer (build_type_rendering + render_type) via rc_types, not baked into
-// templates. This prevents Rc decisions from being duplicated between
-// templates and the rc_types predicate.
 data rust_container_templates: Map<String, String> = {
   "list": "Vec<\{0\}>", "set": "std::collections::BTreeSet<\{0\}>",
   "optional": "Option<\{0\}>", "map": "HashMap<\{0\}, \{1\}>",
   "free_monoid": "Vec<\{0\}>", "partial_function": "HashMap<\{0\}, \{1\}>",
   "boolean_algebra": "bool"
 }
-
-// -- Method templates --------------------------------------------------------
-// Named-placeholder templates for simple algebra method calls.
-// Templates use {recv} (receiver) and {arg} (first argument).
-// Applied via apply_named_template in shared emit.
-//
-// Single authority: SimpleMethodSpec carries both the template and
-// wraps_result flag. Derived maps feed LanguageSpec (template only)
-// and Rust emitter (wrapping). Same pattern as HigherOrderMethodSpec.
-// The type itself lives in std.emit_model (shared by Python/Go too).
 
 data rust_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "count",     template: "(\{recv\}.len() as i64)",                                                                    wraps_result: false },
@@ -60,21 +36,17 @@ data rust_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "take",      template: "\{recv\}.iter().cloned().take(\{arg\} as usize).collect::<Vec<_>>()",                         wraps_result: true }
 ]
 
-// Derived: template map for LanguageSpec consumption (backend-neutral).
 fn rust_method_templates() -> Map<String, String> {
   rust_simple_method_specs
     |> fold(init: empty_map(), f: (acc, spec) => map_insert(acc, spec.method_name, spec.template))
 }
 
-// Derived: wraps_result map for Rust Rc-wrapping decisions.
 fn rust_method_wraps_result() -> Map<String, Bool> {
   rust_simple_method_specs
     |> filter(s => s.wraps_result)
     |> fold(init: empty_map(), f: (acc, spec) => map_insert(acc, spec.method_name, true))
 }
 
-// -- Reserved words ------------------------------------------------------
-// Ref: Rust Reference, Appendix A: Keywords
 data rust_reserved: List<String> = [
   "as", "async", "await", "break", "const", "continue", "crate",
   "dyn", "else", "enum", "extern", "false", "fn", "for", "if",
@@ -86,35 +58,24 @@ data rust_reserved: List<String> = [
   "virtual"
 ]
 
-// -- Reserved word escape ------------------------------------------------
-// Mirrors rust_reserved_words.strategy.suffix from std.languages.
 data rust_reserved_escape_suffix: String = "_"
 
-// -- String-like types ---------------------------------------------------
-// Types that render as Rust &str/.as_str() for comparison operations.
 data rust_string_types: List<String> = ["String", "Secret"]
 
-// -- Derives --------------------------------------------------------------
-// Ref: Rust derive macros. Serde required for data defs with nested
-// records (emitted via serde_json::from_value). serde is already a
-// dependency so derives are free at the margin.
 data rust_struct_derives: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]"
-// Copy variant: value-semantic types that don't need Rc wrapping.
+
 data rust_struct_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]"
 data rust_enum_derives: String = "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]"
-// Copy variant: simple enums (all-unit variants).
+
 data rust_enum_derives_copy: String = "#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]"
-// Ref: serde docs — #[serde(tag = "...")] for internally tagged enums
+
 data rust_serde_tag: String = "#[serde(tag = \"_variant\")]"
-// Ref: serde docs — #[serde(rename_all = "...")] for std.serialization.VariantNaming wire policies.
+
 data rust_serde_rename_all_snake_case: String = "#[serde(rename_all = \"snake_case\")]"
 data rust_serde_rename_all_screaming_snake_case: String = "#[serde(rename_all = \"SCREAMING_SNAKE_CASE\")]"
-// {0} = field key name. Ref: serde docs — #[serde(rename = "...")]
+
 data rust_serde_rename_template: String = "#[serde(rename = \"\{0\}\")]"
 
-// -- Item definition facts ------------------------------------------------
-// Ref: Rust Reference §6 "Items"
-// Each fact is a single language-specific token the emitter composes.
 data rust_func_keyword: String = "fn"
 data rust_async_prefix: String = "async "
 data rust_struct_keyword: String = "struct"
@@ -127,44 +88,30 @@ data rust_module_keyword: String = "mod"
 data rust_import_keyword: String = "use"
 data rust_import_from_keyword: String = ""
 
-// -- Expression syntax templates ------------------------------------------
-// {0} = params, {1} = body. Ref: Rust Reference §8.2.2 "Closure expressions"
 data rust_lambda_template: String = "|{0}| {1}"
-// {0} = message string
+
 data rust_error_expr_template: String = "panic!({0})"
-// {0} = comma-separated elements
+
 data rust_list_literal_empty: String = "Rc::new(vec![])"
 data rust_list_literal_template: String = "Rc::new(vec![{0}])"
-// {0} = left expr, {1} = right expr
+
 data rust_null_coalesce_template: String = "{0}.unwrap_or_else(|| {1})"
-// {0} = error label
+
 data rust_error_type_template: String = "compile_error!(\"{0}\")"
-// -- Type argument brackets -----------------------------------------------
+
 data rust_type_arg_open: String = "<"
 data rust_type_arg_close: String = ">"
-// -- Void type ------------------------------------------------------------
+
 data rust_void_type: String = "()"
-// -- Tuple syntax ---------------------------------------------------------
+
 data rust_tuple_empty: String = "()"
 data rust_tuple_pair_template: String = "({0}, {1})"
 data rust_tuple_multi_template: String = "({0})"
 data rust_tuple_separator: String = ", "
 
-// -- Project scaffold ----------------------------------------------------
-// Ref: Cargo Reference (doc.rust-lang.org/cargo/reference)
-// Mirrors rust_scaffold from std.languages.
 data rust_source_extension: String = ".rs"
 data rust_source_dir: String = "src/"
 data rust_visibility: String = "pub "
-
-// -- Runtime function registry --------------------------------------------
-// Single authority for DAG functions backed by v1_rt at runtime.
-// Each entry declares: the DAG-level name, the Rust bridge symbol (when
-// it differs from the DAG name), and whether the first map argument is
-// passed by reference.
-//
-// Consumers call is_rt_function / rt_bridge_name / rt_passes_by_ref
-// instead of probing three separate maps.
 
 type RuntimeFunction {
   name: String
@@ -211,17 +158,21 @@ data rt_function_registry: List<RuntimeFunction> = [
   { name: "record_source_chars_index_lookup", bridge_name: "record_source_chars_index_lookup", passes_by_ref: false, wraps_result: false },
   { name: "append",             bridge_name: "append",           passes_by_ref: false, wraps_result: true },
   { name: "contains",           bridge_name: "contains",         passes_by_ref: false, wraps_result: false },
+  { name: "starts_with",        bridge_name: "starts_with",      passes_by_ref: false, wraps_result: false },
+  { name: "ends_with",          bridge_name: "ends_with",        passes_by_ref: false, wraps_result: false },
+  { name: "trim",               bridge_name: "trim",             passes_by_ref: false, wraps_result: false },
   { name: "count",              bridge_name: "count",            passes_by_ref: false, wraps_result: false },
   { name: "clamp",              bridge_name: "clamp",            passes_by_ref: false, wraps_result: false },
   { name: "atom_identity_hash", bridge_name: "atom_identity_hash", passes_by_ref: false, wraps_result: false },
   { name: "hash_combine",       bridge_name: "hash_combine",     passes_by_ref: false, wraps_result: false },
-  // Identity hints: owned Rc args (cheap refcount bump preserves inner pointers),
-  // so emit through the normal clone path -- no all-args-by-ref borrow rule needed.
-  { name: "rc_ptr_eq",          bridge_name: "rc_ptr_eq",        passes_by_ref: false, wraps_result: false },
-  { name: "rc_vec_ptr_eq",      bridge_name: "rc_vec_ptr_eq",    passes_by_ref: false, wraps_result: false }
-]
 
-// Derived indexes from rt_function_registry — all computed, single authority.
+  { name: "rc_ptr_eq",          bridge_name: "rc_ptr_eq",        passes_by_ref: false, wraps_result: false },
+  { name: "rc_vec_ptr_eq",      bridge_name: "rc_vec_ptr_eq",    passes_by_ref: false, wraps_result: false },
+
+  { name: "is_xid_start",       bridge_name: "is_xid_start",     passes_by_ref: false, wraps_result: false },
+  { name: "is_xid_continue",    bridge_name: "is_xid_continue",  passes_by_ref: false, wraps_result: false },
+  { name: "is_emoji_ident",     bridge_name: "is_emoji_ident",   passes_by_ref: false, wraps_result: false }
+]
 
 fn rt_functions() -> Map<String, Bool> {
   rt_function_registry
@@ -260,19 +211,6 @@ fn rt_bridge_name(name: String) -> String {
 fn rt_passes_by_ref(name: String) -> Bool {
   map_contains_key(rt_ref_map_functions(), name)
 }
-
-// -- Higher-order method templates ------------------------------------------
-// Templates for algebra methods that take lambda or function-ref arguments.
-// filter, any, all, flat_map share the same structural pattern:
-//   inline case: extract lambda params/body, substitute into template
-//   fn_ref case: pass function reference through iterator adapter
-//
-// Placeholders (all named, processed by apply_named_template):
-//   {param}      — rendered lambda parameter name
-//   {body}       — rendered lambda body expression
-//   {iter}       — receiver through sharing.iter_owned
-//   {inner_iter} — body through sharing.iter_owned (flat_map only)
-//   {arg}        — rendered first argument (fn_ref case)
 
 type HigherOrderMethodSpec {
   method_name: String

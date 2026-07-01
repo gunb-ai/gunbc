@@ -140,6 +140,18 @@ pub fn contains(s: String, sub: String) -> bool {
     string_contains(&s, sub)
 }
 
+pub fn starts_with(s: String, prefix: String) -> bool {
+    s.starts_with(&*prefix)
+}
+
+pub fn ends_with(s: String, suffix: String) -> bool {
+    s.ends_with(&*suffix)
+}
+
+pub fn trim(s: String) -> String {
+    s.trim().to_string()
+}
+
 pub fn count<T>(items: Rc<Vec<T>>) -> i64 {
     items.len() as i64
 }
@@ -154,7 +166,7 @@ pub fn to_string(value: i64) -> String {
 
 /// RFC 3629 UTF-8 decode of a byte vector. Fail-closed on invalid UTF-8.
 pub fn utf8_decode_bytes(bytes: &[u8]) -> Result<String, String> {
-    String::from_utf8(bytes.to_vec()).map_err(|e| format!("invalid UTF-8 in access payload: {e}"))
+    String::from_utf8(bytes.to_vec()).map_err(|e| format!("invalid UTF-8 in access payload: {}", e))
 }
 
 pub fn clamp(val: i64, min_val: i64, max_val: i64) -> i64 {
@@ -484,6 +496,34 @@ pub fn from_code_point(cp: i64) -> String {
         .unwrap_or_default()
 }
 
+pub fn is_xid_start(cp: i64) -> bool {
+    char::from_u32(cp as u32)
+        .map(unicode_ident::is_xid_start)
+        .unwrap_or(false)
+}
+
+pub fn is_xid_continue(cp: i64) -> bool {
+    char::from_u32(cp as u32)
+        .map(unicode_ident::is_xid_continue)
+        .unwrap_or(false)
+}
+
+pub fn is_emoji_ident(cp: i64) -> bool {
+    use unicode_properties::emoji::EmojiStatus;
+    use unicode_properties::emoji::UnicodeEmoji;
+    char::from_u32(cp as u32)
+        .map(|c| {
+            matches!(
+                c.emoji_status(),
+                EmojiStatus::EmojiPresentation
+                    | EmojiStatus::EmojiPresentationAndModifierBase
+                    | EmojiStatus::EmojiPresentationAndEmojiComponent
+                    | EmojiStatus::EmojiPresentationAndModifierAndEmojiComponent
+            ) && !unicode_ident::is_xid_continue(c)
+        })
+        .unwrap_or(false)
+}
+
 const FNV1A64_OFFSET: u64 = 0xcbf29ce484222325;
 const FNV1A64_PRIME: u64 = 0x100000001b3;
 
@@ -541,4 +581,67 @@ pub fn filesystem_read(path: String) -> FilesystemReadResult {
     let content =
         std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {}: {}", path, e));
     FilesystemReadResult { content }
+}
+fn int_relu(x: i64) -> i64 {
+    if x > 0 {
+        x
+    } else {
+        0
+    }
+}
+
+/// Opcode wire authority: `extdeps.languages.simd.kernel.relu_mul_add_wire_op_codes`.
+/// Scaffold regen-sync: see `host_kernel_relu_mul_add_op_codes_scaffold_note` until feature:dag-kernel-realization-handler.
+const RELU_MUL_ADD_OP_CODES: [i64; 3] = [1, 2, 3];
+
+fn assert_relu_mul_add_op_codes(op_codes: &[i64], _handler: &str) {
+    if op_codes != RELU_MUL_ADD_OP_CODES {
+        panic!("unsupported op_codes in accelerator demo kernel");
+    }
+}
+
+/// Host bridge: `.dag` passes `std.numerical_contract.FmaContractionPolicy`; interpreter maps to 0/1 until target_model emit.
+pub fn contiguous_loop_elementwise_float_kernel(
+    op_codes: &[i64],
+    fma_contraction_policy: i64,
+    a: &[f64],
+    b: &[f64],
+    c: &[f64],
+) -> Vec<f64> {
+    assert_relu_mul_add_op_codes(op_codes, "contiguous_loop_elementwise_float_kernel");
+    assert_eq!(a.len(), b.len());
+    assert_eq!(b.len(), c.len());
+    let mut out = Vec::with_capacity(a.len());
+    for i in 0..a.len() {
+        let elem = match fma_contraction_policy {
+            0 => {
+                let prod = a[i] * b[i];
+                prod + c[i]
+            }
+            1 => a[i].mul_add(b[i], c[i]),
+            _ => panic!("unknown fma_contraction_policy"),
+        };
+        out.push(if elem > 0.0 { elem } else { 0.0 });
+    }
+    out
+}
+
+/// Integer oracle authority: `gunbc.accelerator_demo_eval` via interpreter `Int` binops (`*`/`+`).
+/// Host kernel uses `wrapping_*` to mirror release interpreter overflow semantics; demo fixtures
+/// stay in-range under `IntegerExact` — out-of-range inputs are outside the bit-exact bar.
+pub fn contiguous_loop_elementwise_kernel(
+    op_codes: &[i64],
+    a: &[i64],
+    b: &[i64],
+    c: &[i64],
+) -> Vec<i64> {
+    assert_relu_mul_add_op_codes(op_codes, "contiguous_loop_elementwise_kernel");
+    assert_eq!(a.len(), b.len());
+    assert_eq!(b.len(), c.len());
+    let mut out = Vec::with_capacity(a.len());
+    for i in 0..a.len() {
+        let tmp = a[i].wrapping_mul(b[i]).wrapping_add(c[i]);
+        out.push(int_relu(tmp));
+    }
+    out
 }

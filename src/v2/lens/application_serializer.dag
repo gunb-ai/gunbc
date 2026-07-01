@@ -1,12 +1,7 @@
-// src/v2/lens/application_serializer.dag
-// Scope: Re-emit half of the read/edit pipeline — apply_diff ∘ grammar-inverse serialize.
-// Status: DagSourcePatch + serialize_diff_as_source_patch for patch-in-error / auto-fix.
-// Anchor: apply_diff lives in v2.lens.application; canonical serialize in translate.
-// Layer note: NOT in source_authority — program_assembly imports source_authority on the
-// hot ingest path; pulling lens.application into that module inverts the layer DAG.
-
 module v2.lens.application_serializer
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import std.disposition { RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import extdeps.communication.medium { Medium }
 import v2.compiler.translate { target_serialize_source_from_model }
@@ -19,13 +14,11 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Diff, Node }
 
-// Patch-in-error carrier: canonical .dag source before/after a structural Diff.
 type DagSourcePatch {
   before: Medium<String>
   after: Medium<String>
 }
 
-// apply_diff ∘ target_serialize_source_from_model — before/after DagSource patch carrier.
 fn serialize_diff_as_source_patch(
   root: Node,
   diff: Diff,
@@ -52,11 +45,9 @@ fn serialize_diff_as_source_patch(
   )
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallNow {
-    construction: "the row-driven grammar inverse (DESIGN sec 4: emit = apply_diff . serialize, one grammar read backward) realized in v2.compiler translate"
-  },
-  rationale: "Re-emit / patch-as-source is a construction (the structural inverse of ingest over the shared grammar rows), not a validation lens; it lives beside v2.lens.application's apply_diff."
+    mechanism: RealizationDispatch,
+    authority: DeclarationRef { module_path: "v2.compiler.translate", decl_name: "target_serialize_source_from_model", field: WholeDeclaration }
+  }
 }

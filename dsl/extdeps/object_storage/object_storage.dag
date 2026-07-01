@@ -1,56 +1,41 @@
-// extdeps/object_storage/object_storage.dag — Object Storage
-//
-// Spec: https://en.wikipedia.org/wiki/Object_storage
-// Sections referenced:
-//   §"Architecture"     — objects = data + metadata + globally unique identifier;
-//                         flat namespace; no in-place partial update
-//   §"Characteristics"  — operations: create/read/delete (+ copy, list, head)
-//   §"Comparison"       — object vs file vs block storage taxonomy
-
 module extdeps.object_storage
 
 import std.types { NonEmptyStr }
 import std.measure { ByteSize }
 import std.cache_interface { ConsistencyModel, PersistenceLocality, AtomicityModel, ValueShape }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Storage architecture taxonomy (Wikipedia §"Comparison with other storage types").
-// 🟢 TERMINAL — the three canonical storage architectures; closed by the Wikipedia
-// taxonomy (file/block/object are the three named categories in the spec).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Object_storage"
+  }
+}
+
 type StorageArchitecture
   = FileStorage
   | BlockStorage
   | ObjectStorage
 
-// A flat namespace grouping objects. Called "bucket" (S3/GCS), "container"
-// (Azure Blob / OpenStack Swift), or "namespace" (MinIO).
 type ObjectContainer {
   name: NonEmptyStr
 }
 
-// A globally unique object identifier within a container.
-// In key-addressed stores this is caller-chosen.
-// In content-addressed stores it is derived from the content hash (see
-// content_addressed.dag, which specialises this concept).
 type ObjectId {
   value: NonEmptyStr
 }
 
-// A single user-defined or system metadata attribute (Wikipedia §"Object").
 type ObjectMetadataEntry {
   key: NonEmptyStr
   value: String
 }
 
-// Size and metadata — the HEAD (introspection) response shape.
 type ObjectAttributes {
   size: ByteSize
   metadata: List<ObjectMetadataEntry>
 }
 
-// The six canonical operations on an object store (Wikipedia §"Characteristics":
-// create/read/delete; copy and list are standard extensions; head is introspection).
-// 🟢 TERMINAL — closed by the REST protocol grammar shared by all object stores
-// (S3, GCS, Azure Blob, OpenStack Swift); no 7th operation is expected.
 type ObjectOperation
   = GetObject
   | PutObject
@@ -59,8 +44,6 @@ type ObjectOperation
   | ListObjects
   | CopyObject
 
-// Lookup outcome for a single object by identifier.
-// 🟢 TERMINAL — found/not-found; closed by single-object GET semantics.
 type ObjectGetResult
   = ObjectGetFound { id: ObjectId, attributes: ObjectAttributes }
   | ObjectGetNotFound

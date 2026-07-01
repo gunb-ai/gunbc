@@ -1,0 +1,29 @@
+module extdeps.runtime.errno
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/basedefs/errno.h.html"
+  }
+}
+
+type PosixErrno
+  = EAGAIN
+  | ENOMEM
+
+fn errno_number(e: PosixErrno) -> Int {
+  match e {
+    EAGAIN => 11
+    ENOMEM => 12
+  }
+}
+
+fn errno_strerror(e: PosixErrno) -> String {
+  match e {
+    EAGAIN => "Resource temporarily unavailable"
+    ENOMEM => "Cannot allocate memory"
+  }
+}

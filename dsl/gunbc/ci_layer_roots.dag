@@ -1,19 +1,22 @@
-// gunbc/ci_layer_roots.dag — single authority for CI witness layer roots (§3).
-//
-// Intentionally v2-import-free so dsl-only `gunbc compile` and transport scripts
-// can read roots without pulling the ci_workflow projection graph.
-
 module gunbc.ci_layer_roots
 
-// Single authority for CI witness layer roots (replaces triple-fork in ci.yml / transport scripts).
-// Overlay order: dsl first, then src/v2 — v2 rows win on duplicate module paths
-// (e.g. extdeps.shell without dsl/std.types) while dsl-only modules remain available.
-// TRANSITIONAL (slice 3): dsl-first so the v2 extdeps.shell overlay wins; reverts when dsl/extdeps/shell is deleted (final slice).
 data witness_layer_roots: List<String> = ["dsl", "src/v2"]
 
-// Satisfies claim_batch --roster-from-discovery scan-dir gate (unified_claim_* in dsl/test/claim;
-// find_witness homomorphism kernel anchors in src/v2/compiler/manual).
-data witness_discovery_scan_dirs: List<String> = ["dsl/test/claim", "src/v2/compiler/manual"]
+data witness_discovery_scan_dirs: List<String> = ["dsl/test/claim", "src/v2/test/claim/manual"]
+
+data witness_exclusion_substrings: List<String> = [
+  "impossible_bug",
+  "test/manual/",
+  "glob_discovery.dag",
+  "glob_discovery_law.dag",
+  "host_discovered_owned_data_manifest.dag",
+  "host_source_root_ingest_manifest.dag",
+  "program_assembly/real_ingest_test.dag",
+  "self_host/compiler_closure_emit_from_ingest_test.dag",
+  "unified_test_claim_substrate_equivalence.dag",
+  "ci_exclusion_proof_test.dag",
+  "test/claim/execution/"
+]
 
 fn witness_layer_source_flags(roots: List<String>) -> String {
   fold(roots, init: "", f: (acc, r) => concat(acc, concat(" --source-root ", r)))

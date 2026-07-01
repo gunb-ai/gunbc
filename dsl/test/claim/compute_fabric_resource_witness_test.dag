@@ -1,29 +1,28 @@
-// dsl/test/claim/compute_fabric_resource_witness_test.dag
-//
-// By-execution witnesses for thread-count + memory feasibility in satisfies().
-
 module test.claim.compute_fabric_resource_witness
 
+import std.types { Bool }
 import product.compute_fabric {
-  witness_resource_offer_rejects_insufficient_threads,
-  witness_resource_offer_rejects_insufficient_memory,
-  witness_resource_offer_admits_feasible_demand,
+  witness_need_is_only_fabric_plus_program,
+  witness_shape_is_derived_from_program,
+  witness_fabric_binds_need_to_opportunity,
+  witness_exec_and_ci_are_just_programs,
+  witness_hard_requirement_unmet_is_unmet,
+}
+import gunbc.fleet_container {
   witness_run_demand_envelope_fits_budget,
   witness_high_demand_shrinks_envelope_and_fits,
   witness_fail_open_memory_blind_demand_exceeds_budget,
   witness_unreadable_budget_uses_conservative_demand,
 }
 
-test fn compute_fabric_resource_feasibility_holds() -> Bool {
-  witness_resource_offer_rejects_insufficient_threads()
-    && witness_resource_offer_rejects_insufficient_memory()
-    && witness_resource_offer_admits_feasible_demand()
+test fn compute_fabric_connector_model_holds() -> Bool {
+  witness_need_is_only_fabric_plus_program()
+    && witness_shape_is_derived_from_program()
+    && witness_fabric_binds_need_to_opportunity()
+    && witness_exec_and_ci_are_just_programs()
+    && witness_hard_requirement_unmet_is_unmet()
 }
 
-// §1-C: the per-run demand ResourceEnvelope is DERIVED (width from the cores ∧ memory fold) and
-// fail-closed — a planted high-demand shard shrinks the derived width so the projected memory stays
-// under budget, while a memory-blind width over-commits the SAME budget (the RED control, run through
-// the same shared fit predicate). The floor never OOMs by construction, not by a post-hoc check.
 test fn ci_floor_run_demand_envelope_model_holds() -> Bool {
   witness_run_demand_envelope_fits_budget()
     && witness_high_demand_shrinks_envelope_and_fits()

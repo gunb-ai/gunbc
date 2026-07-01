@@ -1,9 +1,3 @@
-// src/v2/std/probe_selector.dag
-// Scope: ProbeSelector kernel (PS-1..7) — ONE select() for host-health + affected-tests.
-// Status: modeled 2026-06-14; ctrl ROADMAP #1612 / L-9 authority.
-// PS-3/PS-4: effective coverage carried as Int via probe_effective_coverage(prior); named
-// ChangeSpace/CoverageRegion carriers deferred until a spine consumer beyond select() earns them.
-
 module v2.std.probe_selector
 
 import v2.std.algebra {
@@ -34,9 +28,6 @@ import v2.std.verification {
   test_claim_label
 }
 
-// 🟢 coproduct dissolution — TERMINAL. Closed diagnostic-transport enumeration at the
-// probe-selector availability boundary; arms mirror cited dsl/extdeps/diagnostic/* protocols.
-// No richer carrier to dissolve into without collapsing distinct transport facts.
 type DiagnosticInterfaceKind
   = DiagnosticSsh
   | DiagnosticIpmi
@@ -49,17 +40,6 @@ type DiagnosticCapabilityFacts {
   interfaces: List<DiagnosticInterfaceKind>
 }
 
-// 🟡 P-PROBE-CF-IMPORT — v2 cannot import dsl/product/compute_fabric.
-// (a) Option<T> vs Optional<T> — RESOLVED (#4887): compute_fabric converted to kernel T? syntax;
-//     dsl/test/claim/probe_selector_compute_fabric_import_repro_test.dag passes under dual source-root.
-// (b) FreeMonoid algebra diverged fork — HELD (operator): dsl/std/algebra.dag:390 defines
-//     FreeMonoid<T> as a record typeclass (mathematical law carrier); src/v2/std/algebra.dag:76
-//     defines FreeMonoid<T> as a coproduct (Empty | Cons initial-algebra list). Under dual
-//     source-root both are in scope; the v1 interpreter loses Empty/Cons resolution in v2 modules.
-//     This is part of the algebra grounding cluster held for the operator's single-authority
-//     unification design — not a tactical rename (213 v2 importers). HostSupplyProjectionInput
-//     dissolution (→ diagnostic_capability_from_offer reading offer.supply.execution.isolation)
-//     is blocked on (b).
 type HostSupplyProjectionInput {
   identity: String
   isolation_is_vm: Bool
@@ -73,25 +53,15 @@ type SuspectedCausePrior<C> {
   hypothesis: C
 }
 
-// 🟡 gated — feature:srv1-srv2-operator-inventory + compute-fabric-fault-hypothesis-catalog —
-// bind ctrl ROADMAP #1612 PS-2 / operator srv1/srv2 inventory session (§srv1/srv2 grounding) —
-// dissolve-on-arrival: replace enum-frozen HostHealthHypothesis arms with
-// observation-sharpened catalog derived from operator inventory + compute_fabric/sensor
-// fault-hypothesis catalog (standoff→cracked-MLCC→VDDQ prior becomes catalog-derived);
-// forbidden: permanent static fault-hypothesis roster ignoring observations (PS-2 falsifier).
 type HostHealthHypothesis
   = HostHealthHypothesisReachability
   | HostHealthHypothesisStandoffCapVddq
 
-// 🟢 coproduct dissolution — TERMINAL. Closed host probe catalog discriminant for the
-// three canonical burn-in entries (`host_health_probe_canonical_entry` authority).
 type HostHealthProbeKind
   = HostHealthProbeDockerReachability
   | HostHealthProbeEdacSummary
   | HostHealthProbeEccWatchedStress
 
-// 🟢 coproduct dissolution — TERMINAL. ONE-kernel prior union routing host-health vs CI
-// selection; consumed by `probe_select`, `probe_effective_coverage`, and keystone gate.
 type ProbePrior
   = HostHealthPrior { hypothesis: HostHealthHypothesis }
   | CiAffectedPrior { affected: AffectedSet }
@@ -127,7 +97,6 @@ data probe_ci_unbounded_budget: CostBudget = CostBudget { max_cost: 1000000 }
 data host_health_hypothesis_reachability: HostHealthHypothesis = HostHealthHypothesisReachability
 data host_health_hypothesis_standoff_cap_vddq: HostHealthHypothesis = HostHealthHypothesisStandoffCapVddq
 
-// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind gunbc#4759 / R-reflect coproduct-arm reflection — dissolve-on-arrival: substrate-derived DiagnosticInterfaceKind variant equality via coproduct reflection; forbidden: parallel hand-matched DiagnosticInterfaceKind arm equality outside this query.
 fn diagnostic_interface_kind_eq(
   left: DiagnosticInterfaceKind,
   right: DiagnosticInterfaceKind
@@ -425,7 +394,6 @@ fn probe_catalog_for_prior(
   }
 }
 
-// PS-5 — ONE select kernel: max effective_coverage/cost within budget ∩ available ∩ prior.
 fn probe_select(
   prior: ProbePrior,
   budget: CostBudget,
@@ -542,7 +510,6 @@ fn diagnostic_capability_from_host_supply(
   }
 }
 
-// 🟡 P-PROBE-CF-IMPORT rows (adhoc-20b17ff7-932) — cite supply_srv{1,2}_offer / supply_hetzner_cax41_offer.
 data host_supply_srv1: HostSupplyProjectionInput = host_supply_projection_input(
   identity: "srv1",
   isolation_is_vm: false

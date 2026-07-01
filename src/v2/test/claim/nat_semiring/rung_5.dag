@@ -1,7 +1,4 @@
-// Status: six laws × rust + python + go via run_test_claim_emit_vs_eval; executable transport
-
 module v2.test.nat_semiring.rung_5
-
 
 import v2.compiler.eval { TestClaimRun }
 import v2.std.collection { List }
@@ -31,7 +28,6 @@ import v2.test.rung_5_6_common {
   rung56_emit_vs_eval_run
 }
 
-
 fn rung5_emit_law_equals_claim(label: String, law_input: Node) -> TestClaim {
   EqualsClaim {
     label: label,
@@ -41,7 +37,6 @@ fn rung5_emit_law_equals_claim(label: String, law_input: Node) -> TestClaim {
     classification: TestClassification { tier: Tier3, layer: Integration }
   }
 }
-
 
 data claim_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=add-left-identity predicate=R5-rust-emit-law-equals-eval", law_input: nat_add_left_identity_input )
 

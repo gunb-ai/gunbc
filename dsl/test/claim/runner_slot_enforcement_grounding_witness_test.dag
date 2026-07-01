@@ -1,0 +1,120 @@
+module test.claim.runner_slot_enforcement_grounding_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.measure { ByteSize, byte_size }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadObserved,
+  reconciliation_converged,
+}
+import gunbc.ci_floor_measurement {
+  RunnerSliceCapEffectiveness,
+  CapEffective,
+  CapUnbounded,
+}
+import gunbc.runner_slot_enforcement {
+  RunnerSlotEnforcement,
+  RunnerSlotEnforced,
+  RunnerSlotUnenforced,
+  RunnerSlotApplyEffect,
+  runner_slot_apply_effect,
+  reconcile_runner_slot,
+  runner_slot_evidence_from_reconciliation,
+  runner_slot_enforcement_evidence,
+  gunbc_runner_slot_enforcement_committed,
+  gunbc_runner_slot_show_effective_read,
+}
+
+fn fixture_slot() -> NonEmptyStr {
+  "actions-runner@srv1-01.service"
+}
+
+fn fixture_expected_cap() -> ByteSize {
+  byte_size(9126805504)
+}
+
+fn fixture_drift_cap() -> ByteSize {
+  byte_size(70391285350)
+}
+
+fn is_enforced(e: RunnerSlotEnforcement) -> Bool {
+  match e {
+    RunnerSlotEnforced => true
+    RunnerSlotUnenforced { reason: _ } => false
+  }
+}
+
+fn matching_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  ReadObserved { value: CapEffective { bytes: fixture_expected_cap() } }
+}
+
+fn unbounded_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  ReadObserved { value: CapUnbounded }
+}
+
+fn drift_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+  ReadObserved { value: CapEffective { bytes: fixture_drift_cap() } }
+}
+
+fn apply_fixture() -> RunnerSlotApplyEffect {
+  runner_slot_apply_effect(slot_unit: fixture_slot(), expected_cap: fixture_expected_cap())
+}
+
+fn evidence_for(read: ShowEffectiveRead<RunnerSliceCapEffectiveness>) -> RunnerSlotEnforcement {
+  runner_slot_evidence_from_reconciliation(
+    r: reconcile_runner_slot(read: read, expected_cap: fixture_expected_cap(), apply: apply_fixture())
+  )
+}
+
+fn converges_for(read: ShowEffectiveRead<RunnerSliceCapEffectiveness>) -> Bool {
+  reconciliation_converged(
+    r: reconcile_runner_slot(read: read, expected_cap: fixture_expected_cap(), apply: apply_fixture())
+  )
+}
+
+fn witness_matching_read_grounds_enforced() -> Bool {
+  is_enforced(e: evidence_for(read: matching_read()))
+}
+
+fn witness_matching_read_converges() -> Bool {
+  converges_for(read: matching_read())
+}
+
+fn witness_unbounded_read_stays_unenforced() -> Bool {
+  !is_enforced(e: evidence_for(read: unbounded_read()))
+}
+
+fn witness_unbounded_read_does_not_converge() -> Bool {
+  !converges_for(read: unbounded_read())
+}
+
+fn witness_drift_read_stays_unenforced() -> Bool {
+  !is_enforced(e: evidence_for(read: drift_read()))
+}
+
+fn witness_drift_read_does_not_converge() -> Bool {
+  !converges_for(read: drift_read())
+}
+
+fn witness_absent_read_is_fail_closed() -> Bool {
+  !is_enforced(e: gunbc_runner_slot_enforcement_committed(expected_cap: fixture_expected_cap()))
+}
+
+fn witness_committed_read_is_absent() -> Bool {
+  !is_enforced(e: runner_slot_enforcement_evidence(
+    slot_unit: fixture_slot(),
+    expected_cap: fixture_expected_cap(),
+    read: gunbc_runner_slot_show_effective_read
+  ))
+}
+
+test fn runner_slot_enforcement_grounding_holds() -> Bool {
+  witness_matching_read_grounds_enforced()
+    && witness_matching_read_converges()
+    && witness_unbounded_read_stays_unenforced()
+    && witness_unbounded_read_does_not_converge()
+    && witness_drift_read_stays_unenforced()
+    && witness_drift_read_does_not_converge()
+    && witness_absent_read_is_fail_closed()
+    && witness_committed_read_is_absent()
+}

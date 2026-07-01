@@ -1,4 +1,3 @@
-
 module v2.test.lens_structural_resolution.facts_lookup_miss
 
 import v2.compiler.infer {

@@ -1,56 +1,28 @@
-// extdeps/github/ci.dag — GitHub repository facts for Actions workflow artifacts.
-//
-// This module is the extdeps home for **where** GitHub expects workflow YAML
-// under a repository tree — not the YAML syntax model (`extdeps.github.actions`
-// in actions.dag). gunbc CI workflow YAML is emitted from `gunbc.ci_workflow`
-// via `gunbc.ci_yaml_emit` (byte-drift-gated; see dsl/tools/ci_yaml_gate.dag).
-//
-// `extdeps.github.actions.Workflow` stays a platform-only carrier (no emission-
-// policy fields). This module declares only *where* GitHub loads workflow YAML.
-//
-// Spec (workflow file location): https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
-
 module extdeps.github.ci
 
 import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Directory (repository-relative, forward slashes) where GitHub loads workflow definitions.
-// Single string authority for the tree root — do not add a parallel unconstrained
-// `path: String` carrier for the same fact (DESIGN.md §3 single authority).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
+  }
+}
+
 data github_actions_workflows_dir: String = ".github/workflows"
 
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟢 GREEN (terminal). GitHub allows exactly two filename suffixes for workflow definitions
-// under `.github/workflows/` (`.yml` / `.yaml`); variants are 1:1 with that closed surface.
-// Ledger (Patterns 1–4): (1) no per-consumer split — suffix is global to the file ref.
-// (2) variant-is-data rejected — the two suffixes are not labels on identical payloads; they
-// select distinct YAML parse entrypoints. (3) no std algebraic source. (4) not dimensional
-// beyond the single binary suffix axis already explicit in the two variants.
 type GitHubActionsWorkflowExtension
   = GitHubActionsWorkflowYml
   | GitHubActionsWorkflowYaml
 
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟡 YELLOW (scaffold). `NonEmptyStr` + nominal brand enforces non-emptiness only; GitHub
-// additionally requires a single path segment (no `/`) and stem/extension consistency
-// (no embedded `.yml`/`.yaml` suffix in the segment when extension is carried separately).
-// Named dissolution trigger: WI-2 / Slice 4 `project_github_actions` emitter asserts stem
-// segment invariant at projection boundary (#1956) OR `std` lands a validated workflow-
-// basename refinement rejecting `/` and suffix overlap with `GitHubActionsWorkflowExtension`.
 type GitHubActionsWorkflowStemSegment = NonEmptyStr where brand("GitHubActionsWorkflowStemSegment")
 
-// Filename stem (no `/`, no extension suffix — enforced at projection per YELLOW trigger).
-// Projection joins:
-//   github_actions_workflows_dir + "/" + segment + (extension → ".yml" | ".yaml")
 type GitHubActionsWorkflowStem {
   segment: GitHubActionsWorkflowStemSegment
 }
 
-// Workflow file identity: composes only with `github_actions_workflows_dir` — no
-// unconstrained repository-relative path string as a second authority.
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟢 GREEN (terminal). Product of the fixed-dir constant + stem + closed extension;
-// single structural sink for "which workflow file" under the GitHub layout rule.
 type GitHubActionsWorkflowFileRef {
   stem: GitHubActionsWorkflowStem
   extension: GitHubActionsWorkflowExtension

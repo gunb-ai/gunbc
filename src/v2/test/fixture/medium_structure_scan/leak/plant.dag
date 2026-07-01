@@ -1,44 +1,43 @@
-// FIXTURE — a planted module exercising BOTH faces of MediumStructureLeak, plus clean controls,
-// for the planted-leak RED receipt (src/v2/test/claim/medium_structure_containment/scanner/).
-// Read as TEXT by v2.lens.medium_structure_containment's host projection (parsed, never
-// resolved into the live tree). The receipt scans THIS dir in isolation and asserts the guard
-// detects EXACTLY the two planted leaks (the clean controls must NOT add to the count — the
-// discriminating proof that detection keys on the grounded marker / receiver provenance, not on
-// flagging every literal or every string-op). DO NOT import this module, DO NOT add this path to
-// the exception roster, and DO NOT place it under a clean-tree scan root.
 module v2.test.fixture.medium_structure_scan.leak_plant
 import v2.std.logic { Bool }
 import v2.std.text { String }
+import std.markup { Fragment, TextNode }
+import extdeps.languages.html_fragment { serialize_fragment }
 
-// EMIT-SIDE planted leak: a string literal carrying the grounded GHA expression delimiter `${{`
-// (GitHub Actions expression syntax) — the medium leaking out of a Node into authored source.
 fn planted_emit_side_leak() -> String {
   "HOME: ${{ runner.temp }}/cargo"
 }
 
-// A LOCAL stand-in for an emit fn (its NAME is in emitted_medium_emit_fns). The host's check-side
-// detector matches the call-target NAME, so this models an emitted-medium producer without
-// importing one — and keeps the fixture self-contained / resolvable.
 fn expected_ci_yml() -> String {
   "runs-on: linux\n"
 }
 
-// CHECK-SIDE planted leak: a string-op whose receiver traces (one intra-fn `let` hop) to a call
-// of the emit fn — inspecting emitted medium output by string. The `pattern:` is deliberately
-// marker-FREE so this contributes ONE leak (check-side), not two.
 fn planted_check_side_leak() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(s: yaml, pattern: "runs-on")
 }
 
-// CLEAN CONTROL A — a string literal with NO grounded marker → must NOT flag emit-side.
 fn clean_plain_literal() -> String {
   "HOME: /home/runner/cargo"
 }
 
-// CLEAN CONTROL B — a string-op over a NON-emit receiver (a plain param). The receiver-provenance
-// gate must hold: not an emitted-medium value → NOT a leak (a test grepping a non-medium string
-// is fine).
 fn clean_string_op_over_plain(s: String) -> Bool {
   string_contains(s: s, pattern: "runs-on")
+}
+
+fn planted_shell_emit_side_leak() -> String {
+  "#!/usr/bin/env bash"
+}
+
+fn planted_html_check_side_leak() -> Bool {
+  let html = serialize_fragment(frag: TextNode { content: "x" })
+  starts_with(s: html, prefix: "<")
+}
+
+fn ci_yml_drifted(committed: String) -> Bool {
+  committed == ""
+}
+
+fn planted_provenance_leak_markerfree() -> Bool {
+  ci_yml_drifted(committed: "git add && git commit")
 }

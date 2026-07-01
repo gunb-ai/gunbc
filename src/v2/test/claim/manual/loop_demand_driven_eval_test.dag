@@ -1,0 +1,384 @@
+module v2.test.manual.loop_demand_driven_eval
+
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  eval_with_context,
+  inputs_root_only,
+  run_test_claim,
+  test_claim_run_verdict,
+  test_claim_typed_input_node
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality {
+  RankingDimension,
+  TerminationProof,
+  structural_node_size_termination_proof
+}
+import v2.std.collection { List, Map }
+import v2.std.witness { Holds, Witness }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.machine { Byte }
+import v2.std.node {
+  Atom,
+  Arrow,
+  ComputationNode,
+  Conj,
+  Edge,
+  Loop,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence,
+}
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  Continue,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verdict { Pass }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClassification,
+  Tier1,
+  UnifiedTestClaim,
+  Unit,
+  manual_claim_anchor
+}
+
+fn loop_eval_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: SyntheticOccurrence,
+    children: []
+  }
+}
+
+fn loop_eval_byte() -> Byte {
+  Byte { bits: [true] }
+}
+
+fn loop_eval_i64() -> Node {
+  loop_eval_atom(s: ^loop_eval_i64_sym)
+}
+
+fn loop_eval_one_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: loop_eval_i64(),
+      bytes: [loop_eval_byte()]
+    }
+  }
+}
+
+fn loop_eval_lit_one() -> Node {
+  loop_eval_atom(s: ^loop_eval_lit_one_sym)
+}
+
+fn loop_eval_divergent() -> Node {
+  loop_eval_atom(s: ^loop_eval_divergent_sym)
+}
+
+fn loop_eval_measure() -> Node {
+  loop_eval_atom(s: ^loop_eval_measure_sym)
+}
+
+fn loop_eval_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^loop_eval_runtime_rejected,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn loop_eval_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if node == loop_eval_lit_one() {
+    outcome_accepted(value: loop_eval_one_value())
+  } else if node == loop_eval_measure() {
+
+    outcome_accepted(value: loop_eval_one_value())
+  } else if node == loop_eval_divergent() {
+    outcome_rejected(d: loop_eval_diagnostic(n: node))
+  } else {
+    outcome_rejected(d: loop_eval_diagnostic(n: node))
+  }
+}
+
+fn loop_eval_call_primitive(
+  _node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  outcome_rejected(d: loop_eval_diagnostic(n: _node))
+}
+
+fn loop_eval_choose_branch(
+  _node: Node,
+  _condition: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  outcome_rejected(d: loop_eval_diagnostic(n: _node))
+}
+
+fn loop_eval_step_loop_continue(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_accepted(value: Continue { value: loop_eval_one_value() })
+}
+
+fn loop_eval_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+fn loop_eval_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: loop_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: loop_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: loop_eval_choose_branch },
+    loop: LoopInterpreter { step_loop: loop_eval_step_loop_continue },
+    bind: BindInterpreter { bind_value: loop_eval_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+  }
+}
+
+fn loop_eval_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^loop_eval_allocate_literal_sym,
+    call_primitive: ^loop_eval_call_primitive_sym,
+    choose_branch: ^loop_eval_choose_branch_sym,
+    step_loop: ^loop_eval_step_loop_continue_sym,
+    bind_value: ^loop_eval_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
+  }
+}
+
+fn loop_eval_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^loop_eval_runtime_id,
+    interpretation: loop_eval_interpretation(),
+    structure_witness: loop_eval_interpretation_structure_witness()
+  )
+}
+
+fn loop_eval_loop_termination_proof() -> TerminationProof {
+  TerminationProof {
+    non_increasing: [],
+    strict: RankingDimension { measured: ^loop_eval_measure_sym }
+  }
+}
+
+fn loop_eval_node_is_loop(node: Node) -> Bool {
+  match node.kind {
+    ComputationNode { behavior: Loop } => true
+    _ => false
+  }
+}
+
+fn loop_eval_bounded_descent() -> Witness<TerminationProof> {
+  Holds { value: structural_node_size_termination_proof() }
+}
+
+fn loop_eval_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  if loop_eval_node_is_loop(node: key) {
+    Holds {
+      value: claim_inferred_facts_from_nodes(
+        resolved: key,
+        algebra: loop_eval_i64(),
+        descent: Holds { value: loop_eval_loop_termination_proof() }
+      )
+    }
+  } else {
+    Holds {
+      value: claim_inferred_facts_from_nodes(
+        resolved: key,
+        algebra: loop_eval_i64(),
+        descent: loop_eval_bounded_descent()
+      )
+    }
+  }
+}
+
+fn loop_eval_loop_node(body: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Loop },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: body },
+      Edge { label: Named { name: ^loop_bound_edge }, target: loop_eval_measure() }
+    ]
+  }
+}
+
+fn loop_eval_pick_call(callee: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    occurrence_id: SyntheticOccurrence,
+    children: [Edge { label: Positional, target: callee }]
+  }
+}
+
+fn loop_eval_arrow_with_body(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          occurrence_id: SyntheticOccurrence,
+          children: []
+        }
+      },
+      Edge { label: Positional, target: loop_eval_i64() },
+      Edge { label: Positional, target: loop_eval_i64() },
+      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+    ]
+  }
+}
+
+fn loop_eval_tree_root(call: Node, expected: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Named { name: ^loop_eval_actual }, target: call },
+      Edge { label: Named { name: ^loop_eval_expected }, target: expected }
+    ]
+  }
+}
+
+fn loop_eval_admitted_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: loop_eval_facts_lookup }
+  }
+}
+
+fn loop_eval_run(body: Node, expected: Node) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+  let arrow = loop_eval_arrow_with_body(body: body)
+  let call = loop_eval_pick_call(callee: arrow)
+  let root = loop_eval_tree_root(call: call, expected: expected)
+  let tree = loop_eval_admitted_tree(root: root)
+  outcome_accepted(
+    value: run_test_claim(
+      subject: TestClaimEvalSubject {
+        claim: CompilesClaim {
+          label: "manual/loop_demand_driven_eval: demand-driven Loop eval acceptance",
+          anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+          input: call,
+          expected_value: expected,
+          classification: TestClassification { tier: Tier1, layer: Unit }
+        },
+        context: loop_eval_context(),
+        tree: tree,
+        input: test_claim_typed_input_node(
+          evaluator_input: call,
+          evaluator_pin: ^loop_eval_pick_call_pin
+        )
+      }
+    )
+  )
+}
+
+fn loop_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+  match run {
+    Accepted { value: r, diagnostics: _ } =>
+      match test_claim_run_verdict(run: r) {
+        Pass => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_eval_divergent_body_step_loop_holds() -> Bool {
+  loop_eval_run_passes(
+    run: loop_eval_run(
+      body: loop_eval_loop_node(body: loop_eval_divergent()),
+      expected: loop_eval_lit_one()
+    )
+  )
+}
+
+fn loop_eval_lit_one_body_step_loop_holds() -> Bool {
+  loop_eval_run_passes(
+    run: loop_eval_run(
+      body: loop_eval_loop_node(body: loop_eval_lit_one()),
+      expected: loop_eval_lit_one()
+    )
+  )
+}
+
+fn loop_eval_runtime_value_eq(a: RuntimeValue, b: RuntimeValue) -> Bool {
+  a == b
+}
+
+fn loop_eval_pick_call_direct_holds() -> Bool {
+  let arrow = loop_eval_arrow_with_body(
+    body: loop_eval_loop_node(body: loop_eval_lit_one())
+  )
+  let call = loop_eval_pick_call(callee: arrow)
+  let root = loop_eval_tree_root(call: call, expected: loop_eval_lit_one())
+  let tree = loop_eval_admitted_tree(root: root)
+  match eval_with_context(
+    tree: tree,
+    context: loop_eval_context(),
+    inputs: inputs_root_only(root: call)
+  ) {
+    Accepted { value: actual, diagnostics: d } =>
+      match eval_with_context(
+        tree: tree,
+        context: loop_eval_context(),
+        inputs: inputs_root_only(root: loop_eval_lit_one())
+      ) {
+        Accepted { value: expected, diagnostics: ed } =>
+          loop_eval_runtime_value_eq(a: actual, b: expected) && (d == None) && (ed == None)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn loop_eval_arrow_lit_one_body_holds() -> Bool {
+  loop_eval_run_passes(
+    run: loop_eval_run(body: loop_eval_lit_one(), expected: loop_eval_lit_one())
+  )
+}
+
+test fn loop_demand_driven_eval_keystone_holds() -> Bool {
+  loop_eval_divergent_body_step_loop_holds()
+}

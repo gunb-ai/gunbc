@@ -1,21 +1,14 @@
-// src/v2/lens/registry.dag
-// Scope: v0 LENS_ID → v2 module_path registry (operator pin §3).
-// Status: v0 registry-backed consumer surface
-// Anchor: https://github.com/gunb-ai/gunbc/blob/main/docs/briefs/r4-lane-a-lens-interface-freeze-pin.md
-
 module v2.lens.registry
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.std.algebra { count_where, for_all }
 import v2.std.collection { List }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
-// 🟢 closed set — PREFIX-T-23-registry (`LensIdV0`).
-// 🟢 coproduct dissolution — PREFIX-T-23-registry (`LensModulePathV0`).
 type LensIdV0 = Complexity | Cost | Parallelism | EffectEnumeration | Idempotency | Provenance | UnusedParameters | StructuralResolution | TableDecisionTree
 
-// 🟢 coproduct dissolution — PREFIX-T-23-registry (`LensModulePathV0`).
 type LensModulePathV0 = Bound { path: String } | Unbound
 
 type LensRegistryEntryV0 {
@@ -23,7 +16,6 @@ type LensRegistryEntryV0 {
   module_path: LensModulePathV0
 }
 
-// P9 registry-owned-fn authority: closed v0 enumeration (feature:p9-llvm-instruction-cost-registry-owner).
 type LensOwnedFnV0 {
   fn_name: Symbol
   owner_module_path: String
@@ -33,7 +25,6 @@ data lens_owned_fn_llvm_instruction_cost: LensOwnedFnV0 = {
   owner_module_path: "v2.lens.cost"
 }
 
-// Closed registry surface for P9 receipts — exclusivity is over this list until M2 fn-def scan lands.
 data lens_owned_fn_registry_v0: List<LensOwnedFnV0> = [
   lens_owned_fn_llvm_instruction_cost
 ]
@@ -95,7 +86,6 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_table_decision_tree
 ]
 
-// 🟡 gated — derived-equality interim — bound target: exact structural equality / compiler-provided closed-sum equality — bind node://adhoc-35324347-e8a Lens-CI activation — dissolve-on-arrival: replace `lens_id_v0_eq` call sites with the substrate equality primitive and delete this helper in that same PR; forbidden: permanent per-variant equality table drift from `LensIdV0`.
 fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
   match left {
     Complexity => match right {
@@ -137,7 +127,6 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — bound target: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: replace `lens_registry_entry_bound` with the substrate-derived `LensModulePathV0.Bound` discriminant projection and delete this helper in that same PR; forbidden: permanent local variant-discriminator predicate.
 fn lens_registry_entry_bound(entry: LensRegistryEntryV0) -> Bool {
   match entry.module_path {
     Bound { path: _ } => true
@@ -175,12 +164,6 @@ fn lens_registry_ids_resolve(lens_ids: List<LensIdV0>) -> Bool {
   })
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "substrate-derived lens identity (the r4 lens-interface freeze pin)",
-    dissolve_on: "LensIdV0 to module_path is derived from the substrate, not pinned in a registry data table"
-  },
-  rationale: "The v0 LENS_ID to module_path map is a decidable lookup; an operator-pinned interim until lens identity is substrate-derived."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

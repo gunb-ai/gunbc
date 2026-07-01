@@ -1,5 +1,3 @@
-// tools/extdeps_external_authority_transport.dag — host transport for external-authority gate.
-
 module tools.extdeps_external_authority_transport
 
 import extdeps.shell
@@ -13,25 +11,25 @@ import tools.host_prelude { ensure_gunbc_built }
 data uri_witness_entry: String = "dsl/test/claim/uri_witness_test.dag"
 data uri_witness_fn: String = "uri_witnesses"
 
-data live_corpus_entry: String = "src/v2/compiler/extdeps_external_authority/corpus/live_anchored_modules_clean_test.dag"
+data live_corpus_entry: String = "src/v2/test/claim/extdeps_external_authority/corpus/live_anchored_modules_clean_test.dag"
 data live_corpus_fn: String = "corpus_live_clean_tree_holds"
 
-data anchor_drop_red_entry: String = "src/v2/compiler/extdeps_external_authority/corpus/live_clean_tree_anchor_drop_red_test.dag"
+data anchor_drop_red_entry: String = "src/v2/test/claim/extdeps_external_authority/corpus/live_clean_tree_anchor_drop_red_test.dag"
 data anchor_drop_red_fn: String = "corpus_live_clean_tree_anchor_drop_red_holds"
 
-data clean_file_entry: String = "src/v2/compiler/extdeps_external_authority/lens_unit/clean_file_anchor_live_test.dag"
+data clean_file_entry: String = "src/v2/test/claim/extdeps_external_authority/lens_unit/clean_file_anchor_live_test.dag"
 data clean_file_fn: String = "clean_file_anchor_live_is_green_holds"
 
-data clean_https_entry: String = "src/v2/compiler/extdeps_external_authority/lens_unit/clean_https_anchor_live_test.dag"
+data clean_https_entry: String = "src/v2/test/claim/extdeps_external_authority/lens_unit/clean_https_anchor_live_test.dag"
 data clean_https_fn: String = "clean_https_anchor_live_is_green_holds"
 
-data missing_red_entry: String = "src/v2/compiler/extdeps_external_authority/lens_unit/missing_anchor_red_test.dag"
+data missing_red_entry: String = "src/v2/test/claim/extdeps_external_authority/lens_unit/missing_anchor_red_test.dag"
 data missing_red_fn: String = "missing_anchor_fixture_is_red_holds"
 
-data bogus_scheme_red_entry: String = "src/v2/compiler/extdeps_external_authority/lens_unit/bogus_scheme_red_test.dag"
+data bogus_scheme_red_entry: String = "src/v2/test/claim/extdeps_external_authority/lens_unit/bogus_scheme_red_test.dag"
 data bogus_scheme_red_fn: String = "bogus_scheme_fixture_is_red_holds"
 
-data file_anchor_red_entry: String = "src/v2/compiler/extdeps_external_authority/lens_unit/file_anchor_red_test.dag"
+data file_anchor_red_entry: String = "src/v2/test/claim/extdeps_external_authority/lens_unit/file_anchor_red_test.dag"
 data file_anchor_red_fn: String = "file_anchor_fixture_is_red_holds"
 
 fn esa_source_root_flags() -> List<ShellWord> {
@@ -70,7 +68,7 @@ fn run_extdeps_external_authority_live_corpus_witness() -> Bool {
     esa_gunbc_claim_run(entry: clean_file_entry, function: clean_file_fn),
     esa_gunbc_claim_run(entry: clean_https_entry, function: clean_https_fn),
     esa_gunbc_claim_run(
-      entry: "src/v2/compiler/extdeps_external_authority/lens_unit/derived_machinery_exempt_live_test.dag",
+      entry: "src/v2/test/claim/extdeps_external_authority/lens_unit/derived_machinery_exempt_live_test.dag",
       function: "derived_machinery_exempt_modules_are_live_clean_holds"
     )
   ])

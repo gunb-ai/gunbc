@@ -1,17 +1,3 @@
-// src/v2/std/compilers/body_lowering.dag
-// Scope: surface fn-body expression → Behavior lowering (the structured-normalize emit of the
-// normalize-to-dispatch dissolution, node://adhoc-87678e9b-420). Sibling to sugar.dag: where
-// sugar.dag relabels a surface atom's connective, this reshapes a surface body expression into
-// its Behavior sub-DAG, so body_producer downstream is a thin validate+attach over the result
-// instead of index-reading fixed flat-token positions.
-// concept-DAG home: std/compilers/ (compiler-pipeline transformation models); the produced
-// carriers (ComputationNode{Transform}, Positional edges) and the Symbol type are owned by
-// node.dag — this module introduces NO new node/symbol notion, only the transformation.
-// Status: T-8 modeled — binary-infix row landed (add: a + b → Transform[+, a, b]); if/loop/let
-// rows (→ Branch/Loop/Bind) extend this table as the keyword forms migrate. Control-flow keywords
-// lower direct-to-variant; only genuine calls (infix op / fn application) carry the unresolved
-// callee slot. Operator/operand name atoms stay UNRESOLVED here (pre-resolve); resolve binds them.
-
 module v2.std.compilers.body_lowering
 
 import v2.std.algebra { list_append, list_snoc_item }
@@ -42,7 +28,6 @@ import v2.std.node {
   node_synthetic
 }
 
-
 fn body_lowering_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -51,11 +36,6 @@ fn body_lowering_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
   }
 }
 
-// A binary infix expression `left operator right` lowers to a call: the operator is the callee
-// (child[0], per the node_query call-carrier), operands are the positional args. This is exactly
-// the dispatch surface's expected Transform shape — the emit and the dispatch agree by construction.
-// Operator-agnostic: any binary operator atom flows through unchanged (its identity stays
-// unresolved here; resolve binds it).
 fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Transform },
@@ -67,13 +47,6 @@ fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
   )
 }
 
-// Control-flow keyword forms lower DIRECT to their Behavior variant (zesty (a3) ruling — their
-// home IS the coproduct; they are NOT calls and carry no callee slot). These are the emit's
-// language-agnostic production primitives over already-lowered sub-parts; the surface keyword
-// recognition + sub-part extraction (brace-region isolation) is the deferred normalize-fold wiring.
-// Each is proven byte-identical to its MVP1 table body in test/claim/manual/body_lowering_variants.dag.
-
-// if c then t else e → Branch[c, t, e].
 fn lower_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Branch },
@@ -85,7 +58,6 @@ fn lower_branch(condition: Node, then_arm: Node, else_arm: Node) -> Node {
   )
 }
 
-// loop value (bounded by measure) → Loop[value, bound@loop_bound_edge].
 fn lower_loop(value: Node, bound: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Loop },
@@ -96,7 +68,6 @@ fn lower_loop(value: Node, bound: Node) -> Node {
   )
 }
 
-// let key = value in body → Bind[key, value, body].
 fn lower_bind(key_binding: Node, value: Node, body_binding: Node) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Bind },
@@ -108,7 +79,6 @@ fn lower_bind(key_binding: Node, value: Node, body_binding: Node) -> Node {
   )
 }
 
-// match scrutinee { pat => body, ... } → Match[scrutinee, arm(pat, body), ...].
 fn lower_match(scrutinee: Node, arms: List<Node>) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Match },
@@ -121,16 +91,6 @@ fn lower_match(scrutinee: Node, arms: List<Node>) -> Node {
   )
 }
 
-// Lower the body region's atom sequence (the tokens between the brace delimiters, already
-// isolated) into a Behavior. MVP1 surface bodies are a single expression; the binary-infix form
-// is `[left, operator, right]`. A residual/unsupported shape is the malformed-body case.
-// 🟡 gated — binary-infix is the only dispatched body row; the control-flow keyword rows route to
-// the lower_branch/lower_loop/lower_bind primitives above, and brace-region isolation from the full
-// flat parse sequence is unwired —
-// feature:NORMALIZE-TO-DISPATCH-DISSOLUTION — bind:node://adhoc-87678e9b-420 — dissolve-on: the
-// normalize fold isolates the brace-delimited body atoms and routes each surface form (infix /
-// if / loop / let) to its lowering primitive here — forbidden: index-reading fixed token positions
-// to fake a richer body grammar (the dissolution's whole point is to retire flat-index reads).
 fn lower_block_body_atoms(atoms: List<Node>, witness: Node) -> Outcome<Node> {
   match list_at_optional(xs: atoms, index: 0) {
     Present { value: left } =>

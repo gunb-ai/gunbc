@@ -4,6 +4,8 @@
 use self::StringScanResult::*;
 pub use crate::extdeps_languages_dag_syntax::dag_keyword_set;
 pub use crate::std_types::SourceSpan;
+pub use crate::v1_compiler_languages::canonical_emoji_char_escape;
+pub use crate::v1_compiler_languages::EmojiCharEscape;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -248,7 +250,7 @@ pub fn tokenize_loop(
     mut fuel: i64,
 ) -> Rc<TokenizerState> {
     loop {
-        let s = skip_spaces_and_comments(source.clone(), pos, fuel.clone());
+        let s = skip_spaces(source.clone(), pos);
         if (s.pos.clone() >= source_len(source.clone())) {
             return Rc::new(TokenizerState {
                 pos: s.pos.clone(),
@@ -531,10 +533,14 @@ pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
     {
         let end = source_scan_while(source.clone(), pos.pos.clone(), is_ident_char);
         let text = source_substring(source.clone(), pos.pos.clone(), end.clone());
-        let shape = if is_keyword_text(text.clone()) {
-            TokenShape::ShKeyword
+        let shape = if is_reserved_emit_sentinel(text.clone()) {
+            TokenShape::ShUnknown
         } else {
-            TokenShape::ShIdent
+            if is_keyword_text(text.clone()) {
+                TokenShape::ShKeyword
+            } else {
+                TokenShape::ShIdent
+            }
         };
         let token = make_token(
             text.clone(),
@@ -735,13 +741,13 @@ pub fn scan_string_body(
             });
         } else {
             let ch = source_char(source.clone(), pos.clone());
-            if (ch.clone().as_str() == "\"".to_string().as_str()) {
+            if (ch.clone() == "\"".to_string()) {
                 break Rc::new(StringScanResult::ClosedString {
                     content: acc.join(&"".to_string()),
                     end_pos: pos.clone(),
                 });
             } else {
-                if (ch.clone().as_str() == "\\".to_string().as_str()) {
+                if (ch.clone() == "\\".to_string()) {
                     if ((pos.clone() + 1) < source_len(source.clone())) {
                         let escaped = source_char(source.clone(), (pos.clone() + 1));
                         {
@@ -762,7 +768,7 @@ pub fn scan_string_body(
                         });
                     }
                 } else {
-                    if (ch.clone().as_str() == "{".to_string().as_str()) {
+                    if (ch.clone() == "{".to_string()) {
                         if should_start_interpolation(source.clone(), pos.clone()) {
                             break Rc::new(StringScanResult::InterpolationStart {
                                 content: acc.join(&"".to_string()),
@@ -814,26 +820,26 @@ pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<St
             break acc.join(&"".to_string());
         } else {
             let ch = v1_rt::char_at(&source, pos.clone());
-            if ((ch.clone().as_str() == "\\".to_string().as_str())
+            if ((ch.clone() == "\\".to_string())
                 && ((pos.clone() + 1) < v1_rt::string_length(&source)))
             {
                 let next = v1_rt::char_at(&source, (pos.clone() + 1));
-                let resolved = if (next.clone().as_str() == "\"".to_string().as_str()) {
+                let resolved = if (next.clone() == "\"".to_string()) {
                     "\"".to_string()
                 } else {
-                    if (next.clone().as_str() == "\\".to_string().as_str()) {
+                    if (next.clone() == "\\".to_string()) {
                         "\\".to_string()
                     } else {
-                        if (next.clone().as_str() == "n".to_string().as_str()) {
+                        if (next.clone() == "n".to_string()) {
                             "\n".to_string()
                         } else {
-                            if (next.clone().as_str() == "t".to_string().as_str()) {
+                            if (next.clone() == "t".to_string()) {
                                 "\t".to_string()
                             } else {
-                                if (next.clone().as_str() == "{".to_string().as_str()) {
+                                if (next.clone() == "{".to_string()) {
                                     "{".to_string()
                                 } else {
-                                    if (next.clone().as_str() == "}".to_string().as_str()) {
+                                    if (next.clone() == "}".to_string()) {
                                         "}".to_string()
                                     } else {
                                         v1_rt::concat("\\".to_string(), next.clone())
@@ -894,33 +900,13 @@ pub fn replace_last(stack: Rc<Vec<i64>>, value: i64) -> Rc<Vec<i64>> {
     }
 }
 
-pub fn skip_spaces_and_comments(
-    mut source: Rc<SourceRef>,
-    mut pos: Rc<TokPos>,
-    mut fuel: i64,
-) -> Rc<TokPos> {
-    loop {
-        let p = source_skip_ws(source.clone(), pos.pos.clone());
-        if ((((p.clone() + 1) < source_len(source.clone()))
-            && (source_code_point(source.clone(), p.clone()) == 47))
-            && (source_code_point(source.clone(), (p.clone() + 1)) == 47))
-        {
-            {
-                let eol = source_scan_to_eol(source.clone(), p.clone());
-                return skip_spaces_and_comments(
-                    source.clone(),
-                    Rc::new(TokPos {
-                        pos: eol,
-                        interp_depth: pos.interp_depth.clone(),
-                    }),
-                    (fuel - 1),
-                );
-            }
-        }
-        break Rc::new(TokPos {
-            pos: p.clone(),
+pub fn skip_spaces(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<TokPos> {
+    {
+        let p = source_skip_ws(source, pos.pos.clone());
+        Rc::new(TokPos {
+            pos: p,
             interp_depth: pos.interp_depth.clone(),
-        });
+        })
     }
 }
 
@@ -929,10 +915,117 @@ pub fn is_digit(ch: i64) -> bool {
 }
 
 pub fn is_ident_start(ch: i64) -> bool {
-    ((((ch.clone() >= 97) && (ch.clone() <= 122)) || ((ch.clone() >= 65) && (ch.clone() <= 90)))
-        || (ch.clone() == 95))
+    (((ch.clone() == 95) || v1_rt::is_xid_start(ch.clone())) || v1_rt::is_emoji_ident(ch.clone()))
 }
 
 pub fn is_ident_char(ch: i64) -> bool {
-    (is_ident_start(ch.clone()) || is_digit(ch.clone()))
+    (v1_rt::is_xid_continue(ch.clone()) || v1_rt::is_emoji_ident(ch.clone()))
+}
+
+pub fn is_hex_upper_digit(ch: i64) -> bool {
+    (((ch.clone() >= 48) && (ch.clone() <= 57)) || ((ch.clone() >= 65) && (ch.clone() <= 70)))
+}
+
+pub fn all_hex_upper_in_range(mut text: String, mut pos: i64, mut end: i64) -> bool {
+    loop {
+        if (pos.clone() >= end.clone()) {
+            break true;
+        } else {
+            let ch = v1_rt::code_point(v1_rt::char_at(&text, pos.clone()));
+            if is_hex_upper_digit(ch) {
+                {
+                    let __tco_0 = (pos + 1);
+                    pos = __tco_0;
+                    continue;
+                }
+            } else {
+                break false;
+            }
+        }
+    }
+}
+
+pub fn sentinel_prefix_matches(
+    mut text: String,
+    mut prefix: String,
+    mut pos: i64,
+    mut len: i64,
+) -> bool {
+    loop {
+        if (pos.clone() >= len.clone()) {
+            break true;
+        } else {
+            if (v1_rt::code_point(v1_rt::char_at(&text, pos.clone()))
+                != v1_rt::code_point(v1_rt::char_at(&prefix, pos.clone())))
+            {
+                break false;
+            } else {
+                {
+                    let __tco_0 = (pos + 1);
+                    pos = __tco_0;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+pub fn sentinel_suffix_matches(
+    mut text: String,
+    mut suffix: String,
+    mut pos: i64,
+    mut sfx_len: i64,
+    mut text_start: i64,
+) -> bool {
+    loop {
+        if (pos.clone() >= sfx_len.clone()) {
+            break true;
+        } else {
+            if (v1_rt::code_point(v1_rt::char_at(&text, (text_start.clone() + pos.clone())))
+                != v1_rt::code_point(v1_rt::char_at(&suffix, pos.clone())))
+            {
+                break false;
+            } else {
+                {
+                    let __tco_0 = (pos + 1);
+                    pos = __tco_0;
+                    continue;
+                }
+            }
+        }
+    }
+}
+
+pub fn is_reserved_emit_sentinel(text: String) -> bool {
+    {
+        let rule = canonical_emoji_char_escape();
+        let pfx = rule.prefix.clone();
+        let sfx = rule.suffix.clone();
+        let pfx_len = v1_rt::string_length(&pfx);
+        let sfx_len = v1_rt::string_length(&sfx);
+        let n = v1_rt::string_length(&text);
+        if (n.clone() < ((pfx_len.clone() + sfx_len.clone()) + 1)) {
+            false
+        } else {
+            if !sentinel_prefix_matches(text.clone(), pfx.clone(), 0, pfx_len.clone()) {
+                false
+            } else {
+                if !sentinel_suffix_matches(
+                    text.clone(),
+                    sfx.clone(),
+                    0,
+                    sfx_len.clone(),
+                    (n.clone() - sfx_len.clone()),
+                ) {
+                    false
+                } else {
+                    all_hex_upper_in_range(
+                        text.clone(),
+                        pfx_len.clone(),
+                        (n.clone() - sfx_len.clone()),
+                    )
+                }
+            }
+        }
+    }
 }

@@ -1,13 +1,3 @@
-// v2 runtime template for Rust targets.
-//
-// Defines the Rust source text for the v1_rt runtime shim module.
-// This is the single authority for runtime intrinsic implementations.
-// The v1 V2_RUNTIME_SOURCE const in v1_runtime_shim.rs is bootstrap-only
-// legacy and should not be extended.
-//
-// The emit layer calls rust_runtime_source() and writes the result as
-// src/v1_rt.rs in the emitted crate.
-
 module v1.compiler.runtime_rust
 
 fn rt_header() -> String {
@@ -117,6 +107,9 @@ fn rt_string_ops() -> String {
     "    s.contains(&*sub)\n",
     "}\n\n",
     "pub fn contains(s: String, sub: String) -> bool { string_contains(&s, sub) }\n\n",
+    "pub fn starts_with(s: String, prefix: String) -> bool { s.starts_with(&*prefix) }\n\n",
+    "pub fn ends_with(s: String, suffix: String) -> bool { s.ends_with(&*suffix) }\n\n",
+    "pub fn trim(s: String) -> String { s.trim().to_string() }\n\n",
     "pub fn count<T>(items: Rc<Vec<T>>) -> i64 { items.len() as i64 }\n\n",
     "pub fn str_eq(a: String, b: String) -> bool { a == b }\n\n",
     "pub fn to_string(value: i64) -> String { value.to_string() }\n\n",
@@ -314,6 +307,17 @@ fn rt_unicode_ops() -> String {
     "}\n\n",
     "pub fn from_code_point(cp: i64) -> String {\n",
     "    char::from_u32(cp as u32).map(|c| c.to_string()).unwrap_or_default()\n",
+    "}\n\n",
+    "pub fn is_xid_start(cp: i64) -> bool {\n",
+    "    char::from_u32(cp as u32).map(unicode_ident::is_xid_start).unwrap_or(false)\n",
+    "}\n\n",
+    "pub fn is_xid_continue(cp: i64) -> bool {\n",
+    "    char::from_u32(cp as u32).map(unicode_ident::is_xid_continue).unwrap_or(false)\n",
+    "}\n\n",
+    "pub fn is_emoji_ident(cp: i64) -> bool {\n",
+    "    use unicode_properties::emoji::UnicodeEmoji;\n",
+    "    use unicode_properties::emoji::EmojiStatus;\n",
+    "    char::from_u32(cp as u32).map(|c| matches!(c.emoji_status(), EmojiStatus::EmojiPresentation | EmojiStatus::EmojiPresentationAndModifierBase | EmojiStatus::EmojiPresentationAndEmojiComponent | EmojiStatus::EmojiPresentationAndModifierAndEmojiComponent) && !unicode_ident::is_xid_continue(c)).unwrap_or(false)\n",
     "}\n\n")
 }
 
@@ -423,5 +427,65 @@ fn rust_runtime_source() -> String {
     rt_scanner_ops(),
     rt_unicode_ops(),
     rt_hash_ops(),
-    rt_filesystem())
+    rt_filesystem(),
+    rt_accelerator_demo_kernel())
+}
+
+fn rt_accelerator_demo_kernel() -> String {
+  concat(
+    "fn int_relu(x: i64) -> i64 \{\n",
+    "    if x > 0 \{ x \} else \{ 0 \}\n",
+    "\}\n\n",
+    "/// Opcode wire authority: `extdeps.languages.simd.kernel.relu_mul_add_wire_op_codes`.\n",
+    "/// Scaffold regen-sync: see `host_kernel_relu_mul_add_op_codes_scaffold_note` until feature:dag-kernel-realization-handler.\n",
+    "const RELU_MUL_ADD_OP_CODES: [i64; 3] = [1, 2, 3];\n\n",
+    "fn assert_relu_mul_add_op_codes(op_codes: &[i64], _handler: &str) \{\n",
+    "    if op_codes != RELU_MUL_ADD_OP_CODES \{\n",
+    "        panic!(\"unsupported op_codes in accelerator demo kernel\");\n",
+    "    \}\n",
+    "\}\n\n",
+    "/// Host bridge: `.dag` passes `std.numerical_contract.FmaContractionPolicy`; interpreter maps to 0/1 until target_model emit.\n",
+    "pub fn contiguous_loop_elementwise_float_kernel(\n",
+    "    op_codes: &[i64],\n",
+    "    fma_contraction_policy: i64,\n",
+    "    a: &[f64],\n",
+    "    b: &[f64],\n",
+    "    c: &[f64],\n",
+    ") -> Vec<f64> \{\n",
+    "    assert_relu_mul_add_op_codes(op_codes, \"contiguous_loop_elementwise_float_kernel\");\n",
+    "    assert_eq!(a.len(), b.len());\n",
+    "    assert_eq!(b.len(), c.len());\n",
+    "    let mut out = Vec::with_capacity(a.len());\n",
+    "    for i in 0..a.len() \{\n",
+    "        let elem = match fma_contraction_policy \{\n",
+    "            0 => \{\n",
+    "                let prod = a[i] * b[i];\n",
+    "                prod + c[i]\n",
+    "            \},\n",
+    "            1 => a[i].mul_add(b[i], c[i]),\n",
+    "            _ => panic!(\"unknown fma_contraction_policy\"),\n",
+    "        \};\n",
+    "        out.push(if elem > 0.0 \{ elem \} else \{ 0.0 \});\n",
+    "    \}\n",
+    "    out\n",
+    "\}\n\n",
+    "/// Integer oracle authority: `gunbc.accelerator_demo_eval` via interpreter `Int` binops (`*`/`+`).\n",
+    "/// Host kernel uses `wrapping_*` to mirror release interpreter overflow semantics; demo fixtures\n",
+    "/// stay in-range under `IntegerExact` — out-of-range inputs are outside the bit-exact bar.\n",
+    "pub fn contiguous_loop_elementwise_kernel(\n",
+    "    op_codes: &[i64],\n",
+    "    a: &[i64],\n",
+    "    b: &[i64],\n",
+    "    c: &[i64],\n",
+    ") -> Vec<i64> \{\n",
+    "    assert_relu_mul_add_op_codes(op_codes, \"contiguous_loop_elementwise_kernel\");\n",
+    "    assert_eq!(a.len(), b.len());\n",
+    "    assert_eq!(b.len(), c.len());\n",
+    "    let mut out = Vec::with_capacity(a.len());\n",
+    "    for i in 0..a.len() \{\n",
+    "        let tmp = a[i].wrapping_mul(b[i]).wrapping_add(c[i]);\n",
+    "        out.push(int_relu(tmp));\n",
+    "    \}\n",
+    "    out\n",
+    "\}\n")
 }

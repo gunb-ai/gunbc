@@ -1,7 +1,3 @@
-// src/v2/lens/visibility_test.dag — lens-unit witnesses for the visibility-leak lens (Step 3).
-// Synthetic ModuleVisibilityFact rows → the same scanning functions the live corpus path will
-// use. Auto-enrolled in the CI floor by `*_test.dag` naming.
-
 module v2.test.lens_visibility.visibility_test
 
 import v2.std.logic { Bool }
@@ -11,7 +7,6 @@ import v2.lens.visibility {
   scan_visibility_leaks, visibility_leak_count, visibility_clean
 }
 
-// Module identities (QualifiedName, single-segment for the unit fixtures).
 data mod_public_api: QualifiedName = QnCons { head: ^public_api, tail: QnEmpty }
 data mod_private_impl: QualifiedName = QnCons { head: ^private_impl, tail: QnEmpty }
 data mod_public_util: QualifiedName = QnCons { head: ^public_util, tail: QnEmpty }
@@ -19,44 +14,36 @@ data mod_unknown_dep: QualifiedName = QnCons { head: ^unknown_dep, tail: QnEmpty
 
 data no_imports: List<QualifiedName> = []
 
-// RED: a public module imports a private module → exactly one leak.
 data red_facts: List<ModuleVisibilityFact> = [
   ModuleVisibilityFact { module: mod_public_api,   public: true,  imports: [mod_private_impl] },
   ModuleVisibilityFact { module: mod_private_impl, public: false, imports: no_imports }
 ]
 
-// GREEN: a public module imports a public module → no leak.
 data green_facts: List<ModuleVisibilityFact> = [
   ModuleVisibilityFact { module: mod_public_api,  public: true, imports: [mod_public_util] },
   ModuleVisibilityFact { module: mod_public_util, public: true, imports: no_imports }
 ]
 
-// FAIL-CLOSED: a public module imports a module absent from the set → treated non-public → leak.
 data failclosed_facts: List<ModuleVisibilityFact> = [
   ModuleVisibilityFact { module: mod_public_api, public: true, imports: [mod_unknown_dep] }
 ]
 
-// A PRIVATE module may depend on anything — only public importers can leak.
 data private_importer_facts: List<ModuleVisibilityFact> = [
   ModuleVisibilityFact { module: mod_private_impl, public: false, imports: [mod_unknown_dep] }
 ]
 
-// The leak is caught (discriminating: red if the scanner misses a public→private edge).
 test fn leak_caught_public_imports_private() -> Bool {
   visibility_leak_count(facts: red_facts) == 1
 }
 
-// A clean public closure passes.
 test fn clean_public_imports_public() -> Bool {
   visibility_clean(facts: green_facts)
 }
 
-// Fail-closed: an unknown (unlabeled) import is a leak, never silently allowed.
 test fn failclosed_unknown_import_is_leak() -> Bool {
   visibility_leak_count(facts: failclosed_facts) == 1
 }
 
-// A private importer is exempt (a private module exposing private code is not a public leak).
 test fn private_importer_may_depend_on_anything() -> Bool {
   visibility_clean(facts: private_importer_facts)
 }

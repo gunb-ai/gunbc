@@ -1,0 +1,233 @@
+module v2.test.manual.derivable_coercion_nickname_triple
+
+import v2.compiler.eval { run_test_claim_assert }
+import v2.test.fixture.derivable_coercion_task_id {
+  account_id_wrong_inhabitant_node,
+  derivable_coercion_candidate_closedness,
+  task_id_api_inhabitant_node,
+  task_id_db_inhabitant_node,
+  task_id_semantic_core_node,
+  task_id_wire_inhabitant_node
+}
+import v2.std.collection { List }
+import v2.std.diagnostic {
+  Accepted,
+  None,
+  Outcome,
+  Rejected
+}
+import v2.std.exact_structural_equality_zip_fold_predicate {
+  exact_structural_equality_zip_fold
+}
+import v2.std.find_witness {
+  CandidateSet,
+  FindWitnessResult,
+  PreservationPredicate,
+  UniqueOnly,
+  find_witness,
+  find_witness_derives,
+}
+import v2.std.node { Node, Symbol }
+import v2.std.refinement_widening_predicate { refinement_widening_predicate_algebra }
+import v2.std.verdict { Fail, Pass, Deferred }
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor,
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+fn task_id_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
+  CandidateSet {
+    candidates: candidates,
+    closedness: derivable_coercion_candidate_closedness(evidence: closedness_evidence)
+  }
+}
+
+fn task_id_predicate(source: Node, target: Node, rule: Symbol) -> PreservationPredicate {
+  if rule == ^preservation_rule_refinement_widening {
+    PreservationPredicate {
+      algebra: refinement_widening_predicate_algebra(source: source, candidate: target),
+      preservation_rule: rule
+    }
+  } else {
+    PreservationPredicate {
+      algebra: source,
+      preservation_rule: rule
+    }
+  }
+}
+
+fn find_witness_sibling_accepts(source: Node, target: Node, rule: Symbol) -> Bool {
+  match find_witness(
+    source_facts: source,
+    candidates: task_id_candidate_set(
+      candidates: [target],
+      closedness_evidence: target
+    ),
+    predicate: task_id_predicate(source: source, target: target, rule: rule),
+    multiplicity_policy: UniqueOnly
+  ) {
+    Accepted { value: fw, diagnostics: _ } => fw.candidate == target
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn find_witness_sibling_rejects(source: Node, target: Node, rule: Symbol) -> Bool {
+  !find_witness_sibling_accepts(source: source, target: target, rule: rule)
+}
+
+fn find_witness_dispatch_accepts(source: Node, target: Node) -> Bool {
+  match find_witness_derives(
+    source_facts: source,
+    candidates: task_id_candidate_set(
+      candidates: [target],
+      closedness_evidence: target
+    ),
+    derivation_algebra: source,
+    multiplicity_policy: UniqueOnly
+  ) {
+    Accepted { value: fw, diagnostics: _ } => fw.candidate == target
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data witness_task_id_surfaces_distinct: Bool = (task_id_api_inhabitant_node() != task_id_db_inhabitant_node()) && (task_id_api_inhabitant_node() != task_id_wire_inhabitant_node()) && (task_id_db_inhabitant_node() != task_id_wire_inhabitant_node())
+
+data witness_task_id_shared_core_matches: Bool = exact_structural_equality_zip_fold(source_facts: task_id_semantic_core_node(), candidate: task_id_semantic_core_node())
+
+data witness_matrix_exact_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
+
+data witness_matrix_exact_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
+
+data witness_matrix_exact_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
+
+data witness_matrix_exact_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
+
+data witness_matrix_widening_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
+
+data witness_matrix_widening_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
+
+data witness_matrix_widening_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
+
+data witness_matrix_widening_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: ^preservation_rule_refinement_widening)
+
+data witness_matrix_constraint_api_to_db_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
+
+data witness_matrix_constraint_api_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
+
+data witness_matrix_constraint_db_to_wire_accepts: Bool = find_witness_sibling_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
+
+data witness_matrix_constraint_api_to_account_id_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node(), rule: ^preservation_rule_constraint_satisfaction)
+
+data witness_dispatch_api_to_db_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: task_id_db_inhabitant_node())
+
+data witness_dispatch_api_to_wire_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: task_id_wire_inhabitant_node())
+
+data witness_dispatch_db_to_wire_accepts: Bool = find_witness_dispatch_accepts(source: task_id_db_inhabitant_node(), target: task_id_wire_inhabitant_node())
+
+data witness_dispatch_api_to_account_id_accepts: Bool = find_witness_dispatch_accepts(source: task_id_api_inhabitant_node(), target: account_id_wrong_inhabitant_node())
+
+fn find_witness_dispatch_faithful_for_siblings() -> Bool {
+  witness_dispatch_api_to_db_accepts
+    && witness_dispatch_api_to_wire_accepts
+    && witness_dispatch_db_to_wire_accepts
+    && !witness_dispatch_api_to_account_id_accepts
+}
+
+fn preservation_rule_faithful_for_siblings(rule: Symbol) -> Bool {
+  if rule == ^preservation_rule_exact_structural_equality_zip_fold {
+    witness_matrix_exact_api_to_db_accepts
+      && witness_matrix_exact_api_to_wire_accepts
+      && witness_matrix_exact_db_to_wire_accepts
+      && !witness_matrix_exact_api_to_account_id_accepts
+  } else if rule == ^preservation_rule_refinement_widening {
+    witness_matrix_widening_api_to_db_accepts
+      && witness_matrix_widening_api_to_wire_accepts
+      && witness_matrix_widening_db_to_wire_accepts
+      && !witness_matrix_widening_api_to_account_id_accepts
+  } else if rule == ^preservation_rule_constraint_satisfaction {
+    witness_matrix_constraint_api_to_db_accepts
+      && witness_matrix_constraint_api_to_wire_accepts
+      && witness_matrix_constraint_db_to_wire_accepts
+      && !witness_matrix_constraint_api_to_account_id_accepts
+  } else {
+    false
+  }
+}
+
+data witness_crux_substrate_gap: Bool = !find_witness_dispatch_faithful_for_siblings()
+
+data witness_matrix_exact_api_to_api_accepts: Bool = find_witness_sibling_accepts(source: task_id_api_inhabitant_node(), target: task_id_api_inhabitant_node(), rule: ^preservation_rule_exact_structural_equality_zip_fold)
+
+fn derivable_coercion_pass_node() -> Node {
+  task_id_api_inhabitant_node()
+}
+
+fn derivable_coercion_claim_lhs(ok: Bool) -> Node {
+  if ok {
+    derivable_coercion_pass_node()
+  } else {
+    account_id_wrong_inhabitant_node()
+  }
+}
+
+data claim_task_id_surfaces_distinct: TestClaim = EqualsClaim {
+  label: "manual/derivable_coercion: API/DB/wire inhabitants have distinct SurfaceSpelling surfaces",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: derivable_coercion_claim_lhs(ok: witness_task_id_surfaces_distinct),
+  rhs: derivable_coercion_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_crux_substrate_gap: TestClaim = EqualsClaim {
+  label: "manual/derivable_coercion: CRUX — find_witness dispatch derives nickname siblings and rejects wrong-core",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: derivable_coercion_claim_lhs(ok: !witness_crux_substrate_gap),
+  rhs: derivable_coercion_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_matrix_widening_accepts_siblings_and_wrong_core: TestClaim = EqualsClaim {
+  label: "manual/derivable_coercion: CRUX — widening accepts siblings AND wrong-core (non-discriminating)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: derivable_coercion_claim_lhs(ok: witness_matrix_widening_api_to_db_accepts && witness_matrix_widening_api_to_wire_accepts && witness_matrix_widening_db_to_wire_accepts && witness_matrix_widening_api_to_account_id_accepts),
+  rhs: derivable_coercion_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+test data witness_claim_task_id_surfaces_distinct: Bool = match run_test_claim_assert(
+  claim: claim_task_id_surfaces_distinct,
+  actual: Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
+  at: task_id_api_inhabitant_node()
+) {
+  Pass => true
+  Fail { actual: _, falsification: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+test data witness_claim_crux_substrate_gap: Bool = match run_test_claim_assert(
+  claim: claim_crux_substrate_gap,
+  actual: Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
+  at: task_id_api_inhabitant_node()
+) {
+  Pass => true
+  Fail { actual: _, falsification: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+data witness_claim_matrix_widening_accepts_siblings_and_wrong_core: Bool = match run_test_claim_assert(
+  claim: claim_matrix_widening_accepts_siblings_and_wrong_core,
+  actual: Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
+  at: task_id_api_inhabitant_node()
+) {
+  Pass => true
+  Fail { actual: _, falsification: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}

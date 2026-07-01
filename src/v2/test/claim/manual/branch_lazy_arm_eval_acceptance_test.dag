@@ -1,0 +1,547 @@
+module v2.test.manual.branch_lazy_arm_eval_acceptance
+
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  empty_evaluation_environment,
+  eval_context_with_semantics,
+  inputs_root_only,
+  run_test_claim,
+  test_claim_run_verdict,
+  test_claim_typed_input_node
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality { termination_proof_witness_for_node }
+import v2.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  list_at_optional,
+  map_get,
+  map_insert
+}
+import v2.std.witness { Holds, Witness }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.machine { Byte }
+import v2.std.node {
+  Atom,
+  Arrow,
+  Bind,
+  Branch,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence,
+}
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verdict { Pass }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  UnifiedTestClaim,
+  Unit,
+  manual_claim_anchor
+}
+
+fn lazy_arm_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: SyntheticOccurrence,
+    children: []
+  }
+}
+
+fn lazy_arm_byte() -> Byte {
+  Byte { bits: [true] }
+}
+
+fn lazy_arm_bool_type() -> Node {
+  lazy_arm_atom(s: ^lazy_arm_bool_type_sym)
+}
+
+fn lazy_arm_i64() -> Node {
+  lazy_arm_atom(s: ^lazy_arm_i64_sym)
+}
+
+fn lazy_arm_bool_value(is_true: Bool) -> RuntimeValue {
+  if is_true {
+    RuntimePrimitive {
+      value: RuntimePrimitiveValue {
+        primitive_type: lazy_arm_bool_type(),
+        bytes: [lazy_arm_byte()]
+      }
+    }
+  } else {
+    RuntimePrimitive {
+      value: RuntimePrimitiveValue {
+        primitive_type: lazy_arm_bool_type(),
+        bytes: Empty
+      }
+    }
+  }
+}
+
+fn lazy_arm_one_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: lazy_arm_i64(),
+      bytes: [lazy_arm_byte()]
+    }
+  }
+}
+
+fn lazy_arm_two_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: lazy_arm_i64(),
+      bytes: [lazy_arm_byte(), lazy_arm_byte()]
+    }
+  }
+}
+
+fn lazy_arm_kw_true() -> Node {
+  lazy_arm_atom(s: ^dag_token_kw_true)
+}
+
+fn lazy_arm_kw_false() -> Node {
+  lazy_arm_atom(s: ^dag_token_kw_false)
+}
+
+fn lazy_arm_lit_one() -> Node {
+  lazy_arm_atom(s: ^lazy_arm_lit_one_sym)
+}
+
+fn lazy_arm_lit_two() -> Node {
+  lazy_arm_atom(s: ^lazy_arm_lit_two_sym)
+}
+
+fn lazy_arm_divergent() -> Node {
+  lazy_arm_atom(s: ^lazy_arm_divergent_sym)
+}
+
+fn lazy_arm_counted() -> Node {
+  lazy_arm_atom(s: ^lazy_arm_counted_sym)
+}
+
+fn lazy_arm_counted_slot_key() -> EnvironmentBindingKey {
+  EnvironmentBindingKey {
+    declaration: lazy_arm_atom(s: ^lazy_arm_counted_slot_sym)
+  }
+}
+
+fn lazy_arm_touch_key() -> EnvironmentBindingKey {
+  EnvironmentBindingKey {
+    declaration: lazy_arm_atom(s: ^lazy_arm_touch_counter_sym)
+  }
+}
+
+fn lazy_arm_binding_keys_equal(
+  a: EnvironmentBindingKey,
+  b: EnvironmentBindingKey
+) -> Bool {
+  a.declaration == b.declaration
+}
+
+fn lazy_arm_int_from_runtime(value: RuntimeValue) -> Int {
+  match value {
+    RuntimePrimitive { value: p } => count(p.bytes)
+    _ => 0
+  }
+}
+
+fn lazy_arm_touch_from_env(env: EvaluationEnvironment) -> Int {
+  match map_get(m: env.bindings, key: lazy_arm_touch_key()) {
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Present { value: v } => lazy_arm_int_from_runtime(value: v)
+        Absent => 0
+      }
+    Rejected { diagnostics: _ } => 0
+  }
+}
+
+fn lazy_arm_int_bytes(n: Int) -> RuntimeValue {
+  if n == 0 {
+    RuntimePrimitive {
+      value: RuntimePrimitiveValue {
+        primitive_type: lazy_arm_i64(),
+        bytes: Empty
+      }
+    }
+  } else if n == 1 {
+    lazy_arm_one_value()
+  } else if n == 2 {
+    lazy_arm_two_value()
+  } else {
+    lazy_arm_one_value()
+  }
+}
+
+fn lazy_arm_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^lazy_arm_runtime_rejected,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn lazy_arm_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if node == lazy_arm_lit_one() {
+    outcome_accepted(value: lazy_arm_one_value())
+  } else if node == lazy_arm_lit_two() {
+    outcome_accepted(value: lazy_arm_two_value())
+  } else if node == lazy_arm_kw_true() {
+    outcome_accepted(value: lazy_arm_bool_value(is_true: true))
+  } else if node == lazy_arm_kw_false() {
+    outcome_accepted(value: lazy_arm_bool_value(is_true: false))
+  } else if node == lazy_arm_divergent() {
+    outcome_rejected(d: lazy_arm_diagnostic(n: node))
+  } else if node == lazy_arm_counted() {
+    if lazy_arm_touch_from_env(env: env) >= 1 {
+      outcome_rejected(d: lazy_arm_diagnostic(n: node))
+    } else {
+      outcome_accepted(value: lazy_arm_one_value())
+    }
+  } else {
+    outcome_rejected(d: lazy_arm_diagnostic(n: node))
+  }
+}
+
+fn lazy_arm_runtime_bool_true(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      (p.primitive_type == lazy_arm_bool_type()) && (count(p.bytes) == 1)
+    _ => false
+  }
+}
+
+fn lazy_arm_runtime_bool_false(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      (p.primitive_type == lazy_arm_bool_type()) && (count(p.bytes) == 0)
+    _ => false
+  }
+}
+
+fn lazy_arm_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
+  match list_at_optional(xs: node.children, index: wanted) {
+    Present { value: child } =>
+      match child {
+        Edge { label: _, target: arm } => outcome_accepted(value: arm)
+      }
+    Absent => outcome_rejected(d: lazy_arm_diagnostic(n: node))
+  }
+}
+
+fn lazy_arm_choose_branch(
+  node: Node,
+  condition: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  if count(node.children) == 3 {
+    if lazy_arm_runtime_bool_true(value: condition) {
+      lazy_arm_nth_child_target(node: node, wanted: 1)
+    } else if lazy_arm_runtime_bool_false(value: condition) {
+      lazy_arm_nth_child_target(node: node, wanted: 2)
+    } else {
+      outcome_rejected(d: lazy_arm_diagnostic(n: node))
+    }
+  } else {
+    outcome_rejected(d: lazy_arm_diagnostic(n: node))
+  }
+}
+
+fn lazy_arm_call_primitive(
+  _node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  outcome_rejected(d: lazy_arm_diagnostic(n: _node))
+}
+
+fn lazy_arm_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_rejected(d: lazy_arm_diagnostic(n: node))
+}
+
+fn lazy_arm_bind_value(
+  key: EnvironmentBindingKey,
+  value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  let bound = EvaluationEnvironment {
+    bindings: map_insert(m: env.bindings, key: key, value: value)
+  }
+  let touched = if lazy_arm_binding_keys_equal(
+    a: key,
+    b: lazy_arm_counted_slot_key()
+  ) {
+    let next = lazy_arm_touch_from_env(env: bound) + 1
+    EvaluationEnvironment {
+      bindings: map_insert(
+        m: bound.bindings,
+        key: lazy_arm_touch_key(),
+        value: lazy_arm_int_bytes(n: next)
+      )
+    }
+  } else {
+    bound
+  }
+  Accepted {
+    value: touched,
+    diagnostics: None
+  }
+}
+
+fn lazy_arm_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: lazy_arm_allocate_literal },
+    transform: TransformInterpreter { call_primitive: lazy_arm_call_primitive },
+    branch: BranchInterpreter { choose_branch: lazy_arm_choose_branch },
+    loop: LoopInterpreter { step_loop: lazy_arm_step_loop },
+    bind: BindInterpreter { bind_value: lazy_arm_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+  }
+}
+
+fn lazy_arm_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^lazy_arm_allocate_literal_sym,
+    call_primitive: ^lazy_arm_call_primitive_sym,
+    choose_branch: ^lazy_arm_choose_branch_sym,
+    step_loop: ^lazy_arm_step_loop_sym,
+    bind_value: ^lazy_arm_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
+  }
+}
+
+fn lazy_arm_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^lazy_arm_runtime_id,
+    interpretation: lazy_arm_interpretation(),
+    structure_witness: lazy_arm_interpretation_structure_witness()
+  )
+}
+
+fn lazy_arm_bind_node(
+  key_decl: Node,
+  value: Node,
+  body: Node
+) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Bind },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: key_decl },
+      Edge { label: Positional, target: value },
+      Edge { label: Positional, target: body }
+    ]
+  }
+}
+
+fn lazy_arm_counted_bind_arm() -> Node {
+  lazy_arm_bind_node(
+    key_decl: lazy_arm_counted_slot_key().declaration,
+    value: lazy_arm_counted(),
+    body: lazy_arm_lit_one()
+  )
+}
+
+fn lazy_arm_branch_body(
+  condition: Node,
+  then_arm: Node,
+  else_arm: Node
+) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Branch },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: condition },
+      Edge { label: Positional, target: then_arm },
+      Edge { label: Positional, target: else_arm }
+    ]
+  }
+}
+
+fn lazy_arm_pick_call(callee: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    occurrence_id: SyntheticOccurrence,
+    children: [Edge { label: Positional, target: callee }]
+  }
+}
+
+fn lazy_arm_arrow_with_body(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          occurrence_id: SyntheticOccurrence,
+          children: []
+        }
+      },
+      Edge { label: Positional, target: lazy_arm_i64() },
+      Edge { label: Positional, target: lazy_arm_i64() },
+      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+    ]
+  }
+}
+
+fn lazy_arm_tree_root(call: Node, expected: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Named { name: ^lazy_arm_actual }, target: call },
+      Edge { label: Named { name: ^lazy_arm_expected }, target: expected }
+    ]
+  }
+}
+
+fn lazy_arm_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Holds {
+    value: claim_inferred_facts_from_nodes(
+      resolved: key,
+      algebra: lazy_arm_i64(),
+      descent: termination_proof_witness_for_node(n: key)
+    )
+  }
+}
+
+fn lazy_arm_admitted_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: lazy_arm_facts_lookup }
+  }
+}
+
+fn lazy_arm_run_branch(
+  body: Node,
+  expected: Node
+) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+  let arrow = lazy_arm_arrow_with_body(body: body)
+  let call = lazy_arm_pick_call(callee: arrow)
+  let root = lazy_arm_tree_root(call: call, expected: expected)
+  let tree = lazy_arm_admitted_tree(root: root)
+  outcome_accepted(
+    value: run_test_claim(
+      subject: TestClaimEvalSubject {
+        claim: CompilesClaim {
+          label: "manual/branch_lazy_arm: demand-driven Branch eval acceptance",
+          anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+          input: call,
+          expected_value: expected,
+          classification: TestClassification { tier: Tier1, layer: Unit }
+        },
+        context: lazy_arm_context(),
+        tree: tree,
+        input: test_claim_typed_input_node(
+          evaluator_input: call,
+          evaluator_pin: ^lazy_arm_pick_call_pin
+        )
+      }
+    )
+  )
+}
+
+fn lazy_arm_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+  match run {
+    Accepted { value: r, diagnostics: _ } =>
+      match test_claim_run_verdict(run: r) {
+        Pass => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn lazy_arm_true_then_counted_else_divergent_holds() -> Bool {
+  lazy_arm_run_passes(
+    run: lazy_arm_run_branch(
+      body: lazy_arm_branch_body(
+        condition: lazy_arm_kw_true(),
+        then_arm: lazy_arm_counted_bind_arm(),
+        else_arm: lazy_arm_divergent()
+      ),
+      expected: lazy_arm_lit_one()
+    )
+  )
+}
+
+fn lazy_arm_false_then_divergent_else_counted_holds() -> Bool {
+  lazy_arm_run_passes(
+    run: lazy_arm_run_branch(
+      body: lazy_arm_branch_body(
+        condition: lazy_arm_kw_false(),
+        then_arm: lazy_arm_divergent(),
+        else_arm: lazy_arm_counted_bind_arm()
+      ),
+      expected: lazy_arm_lit_one()
+    )
+  )
+}
+
+fn lazy_arm_counted_literal_rejects_second_touch_holds() -> Bool {
+  let env = empty_evaluation_environment()
+  match lazy_arm_allocate_literal(node: lazy_arm_counted(), env: env) {
+    Accepted { value: v, diagnostics: _ } =>
+      match lazy_arm_bind_value(key: lazy_arm_counted_slot_key(), value: v, env: env) {
+        Accepted { value: touched, diagnostics: _ } =>
+          match lazy_arm_allocate_literal(node: lazy_arm_counted(), env: touched) {
+            Rejected { diagnostics: _ } => true
+            Accepted { value: _, diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn lazy_arm_eval_acceptance_keystone_holds() -> Bool {
+  lazy_arm_true_then_counted_else_divergent_holds()
+    && lazy_arm_false_then_divergent_else_counted_holds()
+    && lazy_arm_counted_literal_rejects_second_touch_holds()
+}

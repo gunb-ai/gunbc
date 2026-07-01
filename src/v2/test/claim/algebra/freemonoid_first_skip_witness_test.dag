@@ -1,8 +1,3 @@
-// v2/test/claim/algebra/freemonoid_first_skip_witness_test.dag
-//
-// By-execution witnesses for v2.std.algebra FreeMonoid first/skip substrate fns.
-// Discriminates empty-head (HeadAbsent) from skip-then-head projection.
-
 module v2.test.claim.algebra.freemonoid_first_skip_witness
 
 import v2.std.algebra {

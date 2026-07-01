@@ -1,30 +1,13 @@
-// std/bit.dag -- Bit-level structural types.
-//
-// Machine-width names vs raw lists:
-//   Word64, Byte, … are nominal **records** wrapping `List<…>` fields — distinct
-//   from bare `List<Byte>` / `List<Bit>` in the Dag (machine vs container).
-//
-// Cardinality is **not** enforced by the substrate today: fields stay `List<…>`
-// with no lowered field refinement, and type-alias `where` on `type X = …`
-// is still skipped in the handwritten parser until alias refinements are
-// wired. So arbitrary-length lists remain representable in these fields;
-// “exactly N bits/bytes” below is **documented intent** for authors and future
-// validators — not API-level or illegal-state guarantees yet.
-
 module std.bit
 
 import std.logic { Classical }
 
-// Bit: single Classical truth value (width = 1 bit)
 type Bit = Classical
 
-// Nibble (author intent: 4 bits). Field is still List<Bit> — length not checked.
 type Nibble { bits: List<Bit> }
 
-// Byte (author intent: 8 bits). Field is still List<Bit> — length not checked.
 type Byte { bits: List<Bit> }
 
-// Machine words (author intent: 2 / 4 / 8 / 16 bytes). Fields are List<Byte> — length not checked.
 type Word16 { bytes: List<Byte> }
 type Word32 { bytes: List<Byte> }
 type Word64 { bytes: List<Byte> }

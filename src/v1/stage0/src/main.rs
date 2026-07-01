@@ -43,17 +43,11 @@ enum Commands {
         /// Target language: rust, python, go, dag, or + separated set such as rust+dag
         #[arg(long, default_value = "rust")]
         target: String,
-        /// Multi-root index policy: `strict` (default) panics on any cross-root duplicate;
-        /// `primary-precedence` keeps the first root authoritative and fills only absent paths
-        /// from later dependency-pool roots (opt-in for dual-root dsl compile-clean gate).
-        /// TRANSITIONAL: dissolve-on extdeps.shell de-fork (S2) — single module_path row;
-        /// then remove this knob and rely on strict-only (receipt: dependency_pool_index tests
-        /// for primary-precedence deleted, dsl_compile_clean witness suite green at strict).
         #[arg(long = "dependency-pool-index", default_value = "strict")]
         dependency_pool_index: String,
     },
-    /// Run repo CI from CiSpec (delegates to dsl/tools/gunbc_ci.dag)
     Ci,
+
     /// Execute a .dag program directly (interpreter)
     Run {
         /// Source root directories (searched recursively for .dag files)
@@ -156,7 +150,6 @@ fn insert_module_path(
     index.insert(module_path, path);
 }
 
-/// Index one source root. `pool_fill_only`: only insert paths absent from `index` (pool roots).
 fn index_source_root(
     root: &str,
     index: &mut HashMap<String, std::path::PathBuf>,
@@ -190,9 +183,6 @@ fn index_source_root(
     }
 }
 
-/// Build module index: scan source roots, map module_path -> file_path.
-/// Fail-closed: panics on missing roots, unreadable files, and within-root duplicates.
-/// Cross-root policy is opt-in via `pool_index` (default `Strict` preserves legacy behavior).
 fn build_module_index(
     source_roots: &[String],
     pool_index: DependencyPoolIndex,
@@ -332,7 +322,6 @@ fn main() {
             let pool_index = parse_dependency_pool_index(&dependency_pool_index);
 
             let sources = if !source_roots.is_empty() {
-                // FF-9: Import-driven resolution from source roots
                 let index = build_module_index(&source_roots, pool_index);
                 eprintln!(
                     "indexed {} modules from {} source roots",
@@ -355,6 +344,8 @@ fn main() {
                         entry_files.push((path.to_string_lossy().to_string(), content));
                     }
                 }
+                let skipped_moduleless = cli_run::moduleless_dag_entry_paths(&entry_files);
+                cli_run::report_moduleless_dag_entry_skips(&skipped_moduleless);
 
                 let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
                 let mut entry_for_queue = Vec::new();
@@ -365,12 +356,15 @@ fn main() {
                             content: content.clone(),
                         });
                         seen.insert(mod_path, source);
+                        entry_for_queue.push((path.clone(), content.clone()));
                     }
-                    entry_for_queue.push((path.clone(), content.clone()));
                 }
 
                 let mut resolved = resolve_transitively_with_seen(entry_for_queue, &index, seen);
                 for (path, content) in entry_files {
+                    if extract_module_path(&content).is_none() {
+                        continue;
+                    }
                     let already_there = resolved.iter().any(|s| s.path == path);
                     if !already_there {
                         resolved.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
@@ -548,5 +542,25 @@ fn render_one_diagnostic(
                 ))
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_module_path_none_for_moduleless_parse_fixture() {
+        let fixture =
+            "data split_brace_sample: SplitBraceSample =\nSplitBraceSample { field: \"x\" }\n";
+        assert!(extract_module_path(fixture).is_none());
+    }
+
+    #[test]
+    fn extract_module_path_some_for_module_decl() {
+        assert_eq!(
+            extract_module_path("module v1.test.fixture\n"),
+            Some("v1.test.fixture".to_string())
+        );
     }
 }

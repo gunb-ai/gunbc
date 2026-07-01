@@ -1,10 +1,6 @@
-// src/v2/lens/subsumption.dag
-// Scope: dissolution-lens subsumption ordering rows for root fixes that mechanically close leaf fixes.
-// Status: scaffold; Lens-CI host runtime accepts structural row mirrors until TestClaim execution owns these rows.
-
 module v2.lens.subsumption
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-
+import std.disposition { SingleAuthority }
 
 import v2.std.collection { List, Set }
 import v2.std.node { Symbol }
@@ -12,29 +8,23 @@ type DiffId {
   id: Symbol
 }
 
-
 type TestClaimId {
   id: Symbol
 }
-
 
 type ProducerStageId {
   id: Symbol
 }
 
-
-// 🟡 coproduct dissolution — feature:lens-subsumption-mechanical-runtime; task:node://adhoc-0a13e0b0-dff; dissolve-on:.dag TestClaim runner consumes MechanicalReverification rows.
 type SubsumptionVerification
   = MechanicalReverification { test_claim: TestClaimId }
   | ProducerStageDerivation { derivation_path: List<ProducerStageId> }
-
 
 type DissolutionSubsumption {
   root_fix: DiffId
   subsumed_fixes: Set<DiffId>
   verification: SubsumptionVerification
 }
-
 
 fn affected_set_irt1_subsumed_fixes_value() -> Set<DiffId> {
   Set {
@@ -49,9 +39,7 @@ fn affected_set_irt1_subsumed_fixes_value() -> Set<DiffId> {
   }
 }
 
-
 data affected_set_irt1_subsumed_fixes: Set<DiffId> = affected_set_irt1_subsumed_fixes_value()
-
 
 data affected_set_irt1_subsumption: DissolutionSubsumption = {
   root_fix: DiffId { id: ^affected_set_irt1_frontier_root_fix },
@@ -60,7 +48,6 @@ data affected_set_irt1_subsumption: DissolutionSubsumption = {
     test_claim: TestClaimId { id: ^affected_set_irt1_leaf_claim_suite }
   }
 }
-
 
 fn rust_language_model_emit_subsumed_fixes_value() -> Set<DiffId> {
   Set {
@@ -71,9 +58,7 @@ fn rust_language_model_emit_subsumed_fixes_value() -> Set<DiffId> {
   }
 }
 
-
 data rust_language_model_emit_subsumed_fixes: Set<DiffId> = rust_language_model_emit_subsumed_fixes_value()
-
 
 data rust_language_model_emit_subsumption: DissolutionSubsumption = {
   root_fix: DiffId { id: ^rust_language_model_emit_root_fix },
@@ -83,12 +68,6 @@ data rust_language_model_emit_subsumption: DissolutionSubsumption = {
   }
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "TestClaim execution owning the subsumption ordering rows",
-    dissolve_on: "root-fix-to-leaf-fix subsumption is executed as TestClaims, not mirrored as structural rows"
-  },
-  rationale: "Subsumption ordering (a root fix mechanically closing leaf fixes) is decidable over the rows; a scaffold accepting structural mirrors until TestClaim execution owns them."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

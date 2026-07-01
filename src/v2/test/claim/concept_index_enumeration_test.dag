@@ -1,50 +1,42 @@
-// src/v2/test/claim/concept_index_enumeration_test.dag
-// Discriminating witnesses for v2.std.concept_index.enumerate_concepts (DESIGN.md §2/§5).
-// Proves the corpus enumeration primitive produces the downstream consumer contract shape
-// (plans.namespace_index): List<QualifiedConcept> { qualified_name: String (logical, v2.-stripped),
-// concept: ConceptStruct { name: String (leaf), fields: List<FieldRef> } }.
-//
-// Green BY EXECUTION on the live import closure (not a hand-fed demo_index): the concept_index
-// module's own record types and this module's own record are enumerated, with full field
-// projection. Discriminating: a non-existent concept is absent, and the un-normalized v2.-prefixed
-// path is absent (proves the strip rule rather than an accidental substring pass).
-//
-// Note: the consolidation classifier witnesses (synonym/homonym/novel) live in the CONSUMER
-// (ctrl plans.namespace_index), which swaps its hand-fed demo_index() for enumerate_concepts()
-// post-merge; THIS file proves only the enumeration shape gunbc owns.
-
 module v2.test.claim.concept_index_enumeration
-
 
 import v2.std.logic { Bool }
 import v2.std.text { String }
 import v2.std.collection { List }
-import v2.std.concept_index { FieldRef, QualifiedConcept, enumerate_concepts }
+import v2.std.concept_index { FieldRef, QualifiedConcept, enumerate_concepts, enumerate_concepts_in }
 
-
-// A record declared in THIS module — proves enumeration covers the live corpus (and the
-// v2.test.* -> test.* logical-path normalization), with its members projected to FieldRefs.
 type ConceptIndexWitnessRecord {
   alpha: String
   beta: Bool
 }
 
+type ConceptIndexWitnessRecordPerturb {
+  alpha: String
+  beta: Int
+}
+
+data concept_index_enumeration_pool_roots: List<String> = ["src/v2/test/claim"]
 
 fn idx() -> List<QualifiedConcept> {
   enumerate_concepts()
+}
+
+fn parse_only_idx() -> List<QualifiedConcept> {
+  enumerate_concepts_in(pool_roots: concept_index_enumeration_pool_roots)
 }
 
 fn idx_has_qn(target: String) -> Bool {
   fold(idx(), init: false, f: fn(acc, qc) { acc || (qc.qualified_name == target) })
 }
 
+fn parse_only_idx_has_qn(target: String) -> Bool {
+  fold(parse_only_idx(), init: false, f: fn(acc, qc) { acc || (qc.qualified_name == target) })
+}
+
 fn fields_contains(fields: List<FieldRef>, fname: String, tname: String) -> Bool {
   fold(fields, init: false, f: fn(acc, fr) { acc || ((fr.field == fname) && (fr.type_name == tname)) })
 }
 
-// Locate a concept by its (logical) qualified name and assert its full ConceptStruct projection:
-// leaf name, field count, and a field-membership predicate (set-style, order-insensitive — the
-// consumer's structurally_equal is set equality on FieldRef pairs).
 fn concept_matches(
   target_qn: String,
   short_name: String,
@@ -63,15 +55,31 @@ fn concept_matches(
   })
 }
 
+fn parse_only_concept_matches(
+  target_qn: String,
+  short_name: String,
+  field_count: Int,
+  check: fn(List<FieldRef>) -> Bool
+) -> Bool {
+  fold(parse_only_idx(), init: false, f: fn(acc, qc) {
+    if qc.qualified_name == target_qn {
+      acc
+        || ((qc.concept.name == short_name)
+            && (qc.concept.fields.length() == field_count)
+            && check(qc.concept.fields))
+    } else {
+      acc
+    }
+  })
+}
+
 fn witness_enumeration_nonempty() -> Bool {
   idx().length() > 0
 }
 
-// FieldRef (a record in v2.std.concept_index): logical qn strips the v2. prefix, leaf name is
-// short, both members project as String fields.
 fn witness_fieldref_self_projection() -> Bool {
   concept_matches(
-    target_qn: "std.concept_index.FieldRef",
+    target_qn: "v2.std.concept_index.FieldRef",
     short_name: "FieldRef",
     field_count: 2,
     check: fn(fields) {
@@ -81,10 +89,9 @@ fn witness_fieldref_self_projection() -> Bool {
   )
 }
 
-// QualifiedConcept: a record whose member types are non-primitive (String + ConceptStruct).
 fn witness_qualified_concept_self_projection() -> Bool {
   concept_matches(
-    target_qn: "std.concept_index.QualifiedConcept",
+    target_qn: "v2.std.concept_index.QualifiedConcept",
     short_name: "QualifiedConcept",
     field_count: 2,
     check: fn(fields) {
@@ -94,10 +101,9 @@ fn witness_qualified_concept_self_projection() -> Bool {
   )
 }
 
-// This module's own record is enumerated (live corpus coverage; v2.test.* -> test.* strip).
 fn witness_local_record_enumerated() -> Bool {
   concept_matches(
-    target_qn: "test.claim.concept_index_enumeration.ConceptIndexWitnessRecord",
+    target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecord",
     short_name: "ConceptIndexWitnessRecord",
     field_count: 2,
     check: fn(fields) {
@@ -107,11 +113,51 @@ fn witness_local_record_enumerated() -> Bool {
   )
 }
 
-// Discriminating negatives: a non-existent concept is absent; the un-normalized v2.-prefixed path
-// is absent (proves the strip rule, not an accidental pass).
 fn witness_absent_concept_is_false() -> Bool {
-  (idx_has_qn(target: "std.concept_index.NoSuchConceptZZZ") == false)
-    && (idx_has_qn(target: "v2.std.concept_index.FieldRef") == false)
+  (idx_has_qn(target: "v2.std.concept_index.NoSuchConceptZZZ") == false)
+    && (idx_has_qn(target: "std.concept_index.FieldRef") == false)
+}
+
+fn witness_parse_only_extract_reflects_canonical_field_types() -> Bool {
+  parse_only_concept_matches(
+    target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecord",
+    short_name: "ConceptIndexWitnessRecord",
+    field_count: 2,
+    check: fn(fields) {
+      fields_contains(fields: fields, fname: "alpha", tname: "String")
+        && fields_contains(fields: fields, fname: "beta", tname: "Bool")
+    }
+  )
+}
+
+fn witness_parse_only_extract_reflects_perturbed_field_type() -> Bool {
+  parse_only_concept_matches(
+    target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecordPerturb",
+    short_name: "ConceptIndexWitnessRecordPerturb",
+    field_count: 2,
+    check: fn(fields) {
+      fields_contains(fields: fields, fname: "alpha", tname: "String")
+        && fields_contains(fields: fields, fname: "beta", tname: "Int")
+    }
+  )
+}
+
+fn witness_parse_only_extract_stale_field_type_red_on_canonical() -> Bool {
+  !parse_only_concept_matches(
+    target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecord",
+    short_name: "ConceptIndexWitnessRecord",
+    field_count: 2,
+    check: fn(fields) {
+      fields_contains(fields: fields, fname: "beta", tname: "Int")
+    }
+  )
+}
+
+fn witness_parse_only_extract_nonempty_in_scoped_pool() -> Bool {
+  parse_only_idx().length() > 0
+    && parse_only_idx_has_qn(
+      target: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessRecord"
+    )
 }
 
 test fn concept_index_enumeration_witnesses() -> Bool {
@@ -120,4 +166,8 @@ test fn concept_index_enumeration_witnesses() -> Bool {
     && witness_qualified_concept_self_projection()
     && witness_local_record_enumerated()
     && witness_absent_concept_is_false()
+    && witness_parse_only_extract_nonempty_in_scoped_pool()
+    && witness_parse_only_extract_reflects_canonical_field_types()
+    && witness_parse_only_extract_reflects_perturbed_field_type()
+    && witness_parse_only_extract_stale_field_type_red_on_canonical()
 }

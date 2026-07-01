@@ -1,9 +1,3 @@
-// Directed graph algebra: adjacency representation, DFS, SCC detection.
-//
-// Provides Kosaraju's algorithm for strongly connected component detection
-// on string-labeled directed graphs. Used by the complexity analyzer for
-// termination proof validation and parser mutual recursion analysis.
-
 module std.graph
 
 import std.termination {
@@ -17,15 +11,6 @@ type GraphEdge {
   callee: String
 }
 
-// Single-authority graph representation: edges are the stored fact.
-// Forward and reverse adjacency maps are derived views, not fields that can
-// drift independently.
-// M4 note: String keys are a textual identity proxy. Post-M4, vertices
-// M4 debt: String keys are textual identity proxies. Post-M4, vertices
-// should be structural Node references so SCC/cycle facts derive from
-// structure, not name equality. Currently safe because function names
-// are module-qualified from the typed IR (no collisions within a
-// compilation unit). Blocked on Map<K,V> supporting non-String keys.
 type CallGraph {
   edges: List<GraphEdge>
 }
@@ -35,33 +20,27 @@ type CallGraphAdjacencyViews {
   reverse: Map<String, List<String>>
 }
 
-// DFS accumulator for Kosaraju pass 1: finish order computation.
 type DfsFinishAcc {
   visited: Set<String>
   order: List<String>
 }
 
-// DFS accumulator for Kosaraju pass 2: component collection.
 type SccComponentAcc {
   visited: Set<String>
   members: List<String>
 }
 
-// SCC cycle detection result.
 type SccCycleAcc {
   visited: Set<String>
   has_cycle: Bool
 }
 
-// Initialize an adjacency map with empty neighbor lists for all names.
 fn seed_adjacency_map(names: List<String>) -> Map<String, List<String>> {
   names |> fold(init: empty_map(), f: (acc, name) =>
     map_insert(acc, name, [])
   )
 }
 
-// Build a call graph from ProofEdge values. Self-loops are excluded
-// (they are handled separately by cycle detection callers).
 fn build_call_graph_from_proof_edges(names: List<String>, edges: List<ProofEdge>) -> CallGraph {
   CallGraph {
     edges: edges
@@ -97,12 +76,6 @@ fn reverse_adjacency(names: List<String>, graph: CallGraph) -> Map<String, List<
   build_adjacency_views(names: names, graph: graph).reverse
 }
 
-// Kosaraju pass 1: DFS on forward graph to compute finish order.
-// REVIEW #8: Uses recursion bounded by visited set (|V| - |visited| decreases
-// each step). Termination is structural but not expressible as a fold over a
-// fixed collection. Fix: worklist-based iteration (requires repeat/while
-// primitive from ROADMAP I1/I2). Origin: graph DFS is inherently stack-based;
-// the .dag language lacks a stack-drain primitive.
 fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: DfsFinishAcc) -> DfsFinishAcc {
   if set_contains(acc.visited, node) {
     acc
@@ -119,9 +92,6 @@ fn dfs_finish_order(node: String, adjacency: Map<String, List<String>>, acc: Dfs
   }
 }
 
-// Kosaraju pass 2: DFS on reverse graph to collect component members.
-// REVIEW #9: Same visited-set-bounded recursion as dfs_finish_order.
-// Same fix direction: worklist iteration (ROADMAP I1/I2).
 fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc: SccComponentAcc) -> SccComponentAcc {
   if set_contains(acc.visited, node) {
     acc
@@ -138,8 +108,6 @@ fn dfs_collect_component(node: String, adjacency: Map<String, List<String>>, acc
   }
 }
 
-// Detect whether the graph contains a strongly connected component with
-// more than one node (Kosaraju's algorithm: 2-pass DFS).
 fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
   let adjacency = build_adjacency_views(names: names, graph: graph)
   let finish = names |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, name) =>
@@ -159,15 +127,9 @@ fn graph_has_multi_node_scc(names: List<String>, graph: CallGraph) -> Bool {
   result.has_cycle
 }
 
-// =========================================================================
-// Termination proof validation
-// =========================================================================
-
-// Check if a lexicographic proof edge is descending:
-// first Strict dimension wins; all higher dimensions must be NonIncreasing.
 fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
   match evidence |> first {
-    Absent => false  // no dimensions = no proof
+    Absent => false
     Present { value: e } =>
       match e {
         Strict => true
@@ -177,11 +139,6 @@ fn is_lexicographic_descent(evidence: List<DescentEvidence>) -> Bool {
   }
 }
 
-// Verify a termination proof: every cycle must have lexicographic descent.
-// Algorithm: the subgraph of non-descending edges must be acyclic.
-// A non-descending self-loop (caller == callee) IS a cycle.
-// CX-P: validates proof.dimensions against edge evidence — mismatched
-// evidence lengths are treated as non-descending (fail-closed).
 fn is_valid_proof(proof: TerminationProof, edges: List<ProofEdge>) -> Bool {
   let expected_dims = proof.dimensions |> count
   let non_descending = edges |> filter(e =>

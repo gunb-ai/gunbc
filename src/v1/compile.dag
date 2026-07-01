@@ -1,10 +1,8 @@
-// v2 compiler pipeline -- the full .dag-to-files transform.
-
 module v1.compiler.compile
 
 import v1.std.core {
   CompileResult, TextFile, SourceSpan, authored_name_at,
-  ErrorNode, CompilerDiagnostic, is_error_diagnostic, is_discovery_corpus_blocking_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span,
+  ErrorNode, CompilerDiagnostic, is_error_diagnostic, is_interpreter_blocking_diagnostic, diagnostic_to_message, diagnostic_to_span, make_error_node, InternalError, OwnershipViolation, no_span,
   Connective, NoConnective, Arrow, Cardinality,
   resource_use_name_at, resource_use_resource,
   param_node_name_at, param_node_type_expr, param_node_default_value, param_node_span,
@@ -41,10 +39,6 @@ import std.termination {
 import v1.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
 
-// =========================================================================
-// Types
-// =========================================================================
-
 type SourceFile {
   path: String
   content: String
@@ -76,10 +70,6 @@ type FrontendPrepared {
   tokens: List<Token>
   newline_index: NewlineIndex
 }
-
-// =========================================================================
-// Function extraction for pipeline analyses
-// =========================================================================
 
 fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
   typed.modules
@@ -123,22 +113,6 @@ fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
   )
 }
 
-// =========================================================================
-// Complexity analysis (opt-in; v2 emission gate unchanged)
-//
-// When enabled, classify_recursion_pattern / build_complexity_report can
-// surface ComplexityUnknown for non-descending self-calls (fn spin(n: n)).
-//
-// v2 does NOT fail-closed on those diagnostics today — emission gates on
-// typed_diags only (see type_errors filter below); main.rs and dag run
-// carve out ComplexityUnknown (00_core.dag is_interpreter_blocking_diagnostic,
-// cx-design.md C6). Tier-1 CX enforcement is v3 Pure Bootstrap scope.
-//
-// Default-off skips build_complexity_report (~356s full-src compile) because
-// the report is not consumed by emission. Callers that need the report or
-// CX diagnostics pass CompilePipelineOptions { analyze_complexity: true }.
-// =========================================================================
-
 type CompilePipelineOptions {
   analyze_complexity: Bool
 }
@@ -158,10 +132,6 @@ fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
     make_error_node(diagnostic: ComplexityUnknown { func_name: v.func_name, reason: v.reason, span: v.span }, module_name: v.func_name)
   )
 }
-
-// =========================================================================
-// Diagnostic collection
-// =========================================================================
 
 fn empty_artifact_plan() -> ArtifactPlan {
   ArtifactPlan { artifacts: [], boundaries: [] }
@@ -195,11 +165,6 @@ fn json_optional_string(value: String?) -> String {
   }
 }
 
-// -------------------------------------------------------------------------
-// DAG artifact v0.2.0: collect each Node once, emit NodeId ($ref) elsewhere.
-// See v1.compiler.artifact { DagArtifact, DagNodeId } and audit doc.
-// -------------------------------------------------------------------------
-
 type DagCollectAcc {
   seen: Map<String, String>
   order: List<Node>
@@ -212,30 +177,26 @@ type DagCollectPending {
   fp: String
 }
 
-// Provisional location key until v2 content_hash (see DagNodeId 🟡 gate). Collection
-// fail-closes when two distinct nodes share this key (dag_node_fingerprint mismatch).
 fn dag_node_key(node: Node) -> String {
   let anchor = dag_node_collection_anchor(node: node)
-  concat(
-    anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
-    match anchor.ident {
-      Present { value: id } => concat(":", to_string(i: id))
-      Absent => ""
-    })
+  if anchor.span.start == 0 && anchor.span.end == 0 {
+    concat(":0..0:", dag_node_surface_fingerprint(node: anchor))
+  } else {
+    concat(
+      anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
+      match anchor.ident {
+        Present { value: id } => concat(":", to_string(i: id))
+        Absent => ""
+      })
+  }
 }
 
-// Resolved on expression nodes is ordinary type inference (ExprVar, calls, etc.).
-// Only NoExprData identity shells (type/import back-links) share the declaration anchor.
-// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
-// dissolve-on: DagNode exposes a modeled identity-shell fact (or anchor walk is structurally
-// total on shells) so collection does not match expr_data × InferredNode here;
-// forbidden: permanent cross-pass is_* over Node storage shape outside canonical query surface.
 fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
   match node.expr_data {
     NoExprData =>
       match node.inferred {
         Present { value: Resolved { node: _ } } =>
-          // Type/import back-links only — never peel nodes that carry structure.
+
           node.body == none && node.transport == none
             && (node.children |> count) == 0 && (node.params |> count) == 0
         _ => false
@@ -441,7 +402,6 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
           collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: anchor.span))
         }
       } else {
-        // Authored span: provisional key may alias; first canonical record wins until v2 content_hash.
         acc
       }
     Absent => {
@@ -462,9 +422,6 @@ fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
   }
 }
 
-// Import statements (module.params) are not collected: module shell skips param walk,
-// imports serialize inline via imports[] (string names), and ref validation skips
-// module-shell params + import-statement children (T-37).
 fn dag_collect_from_module(module: TypedModule, acc: DagCollectAcc) -> DagCollectAcc {
   let acc = dag_collect_insert(node: module.module, acc: acc)
   module.items |> fold(init: acc, f: (a, item) => dag_collect_insert(node: item, acc: a))
@@ -485,7 +442,6 @@ fn dag_graph_source_indices(typed: ResolvedGraph) -> Map<String, NewlineIndex> {
   typed.modules |> fold(init: empty_map(), f: (acc, m) => map_merge(acc, m.type_env.source_indices))
 }
 
-// Only called after dag_emit_ref_errors passes (fail-closed preflight).
 fn serialize_node_ref(node: Node, key_to_id: Map<String, String>) -> String {
   match map_get(key_to_id, dag_node_key(node: node)) {
     Present { value: id } => concat("{\"$ref\": ", json_quote(s: id), "}")
@@ -550,9 +506,6 @@ fn field_value_shape_name(value: FieldValueShape) -> String {
     OptionalValue => "OptionalValue"
   }
 }
-
-// (P5.3: severity_name and error_category_name deleted -- severity and category
-//  are now strings stored in diagnostic Node properties, not enum variants.)
 
 fn var_binding_kind_name(value: VarBindingKind) -> String {
   match value {
@@ -981,24 +934,17 @@ fn serialize_param(param: Node, source_indices: Map<String, NewlineIndex>, key_t
     "}")
 }
 
-// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
-// Shape-filter on module shell (all params are import slots); not a semantic Module tag.
 fn is_module_shell_node(n: Node) -> Bool {
   n.inferred == none && n.expr_data == NoExprData && n.connective == NoConnective && n.body == none
     && n.transport == none && n.uses |> count == 0
     && n.params |> all(p => is_import_slot_node(p: p))
 }
 
-// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
 fn is_import_slot_node(n: Node) -> Bool {
   import_is_all(n: n) || (
     n.params |> count == 0 && n.ident_span != none && n.body == none && n.expr_data == NoExprData)
 }
 
-// 🟡 predicate dissolution — feature:T-37-dag-collect-identity-anchor — bind T-37 —
-// Shape-filter for import statements (import_is_all OR specific-import name children),
-// NOT a general semantic discriminator — safe here because callers gate on traversal
-// context (dag_emit_check_node_refs on collected order nodes; module.params slots).
 fn is_import_statement_node(n: Node) -> Bool {
   import_is_all(n: n) || (
     (n.children |> count) > 0 && n.body == none && n.expr_data == NoExprData
@@ -1124,7 +1070,28 @@ fn validate_boundaries(plan: ArtifactPlan) -> List<ErrorNode> {
   )
 }
 
-fn emit_from_artifact_plan(typed: ResolvedGraph, artifact_plan: ArtifactPlan) -> EmitResult {
+type EmittableGraph sole_constructor {
+  graph: ResolvedGraph
+}
+
+fn emittable_graph(resolved: ResolvedPipelineResult) -> EmittableGraph? {
+  let blocking = resolved.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
+  if blocking |> count > 0 {
+    none
+  } else {
+    match resolved.graph {
+      Present { value: typed } => Present { value: EmittableGraph { graph: typed } }
+      Absent => none
+    }
+  }
+}
+
+fn emittable_graph_from_graph(typed: ResolvedGraph) -> EmittableGraph {
+  EmittableGraph { graph: typed }
+}
+
+fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: ArtifactPlan) -> EmitResult {
+  let typed = emittable.graph
   if artifact_plan.artifacts |> count == 0 {
     return EmitResult {
       files: [],
@@ -1168,25 +1135,19 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
   let parse_results = parsed.parse_results
   let newline_indices = parsed.newline_indices
   let parse_diagnostics = collect_diagnostics(parse_results: parse_results)
-  let has_parse_errors = parse_results |> any(p => p.error != Absent)
-  if has_parse_errors {
-    FrontendResult { graph: none, diagnostics: parse_diagnostics, newline_indices: newline_indices, intern_table: parsed.intern_table }
-  } else {
-    let modules = parse_results |> map(p => p.module.value)
-    let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
-    let graph = resolve_modules(modules: modules, source_indices: source_indices)
-    FrontendResult {
-      graph: Present { value: graph },
-      diagnostics: concat(parse_diagnostics, graph.diagnostics),
-      newline_indices: newline_indices,
-      intern_table: parsed.intern_table
-    }
+  let modules = parse_results |> flat_map(p => match p.module {
+    Present { value: m } => [m]
+    Absent => []
+  })
+  let source_indices = fold(newline_indices, init: empty_map(), f: (acc, si) => map_insert(acc, si.file, si))
+  let graph = resolve_modules(modules: modules, source_indices: source_indices)
+  FrontendResult {
+    graph: Present { value: graph },
+    diagnostics: concat(parse_diagnostics, graph.diagnostics),
+    newline_indices: newline_indices,
+    intern_table: parsed.intern_table
   }
 }
-
-// =========================================================================
-// Full pipeline
-// =========================================================================
 
 fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
   let frontend = front_end_sources(sources: sources)
@@ -1224,37 +1185,11 @@ fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
   )
 }
 
-// Discovery-corpus merged resolve: same pipeline as `compile_to_resolved`, but
-// advisory-demoted typecheck diagnostics do not nil the typed graph (SCAFFOLD in
-// `00_core.dag`; consumed by `discover_owned_data_decls`).
 fn compile_to_resolved_discovery_corpus_advisory(sources: List<SourceFile>) -> ResolvedPipelineResult {
-  compile_to_resolved_with_options_gated(
-    sources: sources,
-    options: default_compile_pipeline_options(),
-    discovery_corpus_advisory_typecheck: true
-  )
-}
-
-fn is_resolved_pipeline_typecheck_blocking(diagnostic: CompilerDiagnostic, discovery_corpus_advisory_typecheck: Bool) -> Bool {
-  if !is_error_diagnostic(d: diagnostic) {
-    return false
-  }
-  if discovery_corpus_advisory_typecheck {
-    is_discovery_corpus_blocking_diagnostic(d: diagnostic)
-  } else {
-    true
-  }
+  compile_to_resolved(sources: sources)
 }
 
 fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompilePipelineOptions) -> ResolvedPipelineResult {
-  compile_to_resolved_with_options_gated(
-    sources: sources,
-    options: options,
-    discovery_corpus_advisory_typecheck: false
-  )
-}
-
-fn compile_to_resolved_with_options_gated(sources: List<SourceFile>, options: CompilePipelineOptions, discovery_corpus_advisory_typecheck: Bool) -> ResolvedPipelineResult {
   let frontend = front_end_sources(sources: sources)
   let newline_indices = frontend.newline_indices
   match frontend.graph {
@@ -1268,34 +1203,9 @@ fn compile_to_resolved_with_options_gated(sources: List<SourceFile>, options: Co
         newline_indices: newline_indices
       }
     Present { value: graph } => {
-      let graph_diags = graph.diagnostics
-      let resolve_errors = graph_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if resolve_errors |> count > 0 {
-        return ResolvedPipelineResult {
-          graph: none,
-          diagnostics: frontend.diagnostics,
-          source_indices: empty_map(),
-          complexity: empty_complexity_report(),
-          ownership: [],
-          newline_indices: newline_indices
-        }
-      }
-
       let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
       let norm_diags = norm.diagnostics
-      let norm_errors = norm_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if norm_errors |> count > 0 {
-        return ResolvedPipelineResult {
-          graph: none,
-          diagnostics: concat(frontend.diagnostics, norm_diags),
-          source_indices: source_indices,
-          complexity: empty_complexity_report(),
-          ownership: [],
-          newline_indices: newline_indices
-        }
-      }
-
       let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
       let typed_diags = typed.diagnostics
       let complexity = if options.analyze_complexity {
@@ -1309,33 +1219,8 @@ fn compile_to_resolved_with_options_gated(sources: List<SourceFile>, options: Co
         []
       }
       let all_diags = concat(typed_diags, complexity_diags)
-
-      let type_errors = typed_diags |> filter(d => is_resolved_pipeline_typecheck_blocking(diagnostic: d.diagnostic, discovery_corpus_advisory_typecheck: discovery_corpus_advisory_typecheck))
-      if type_errors |> count > 0 {
-        return ResolvedPipelineResult {
-          graph: none,
-          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags),
-          source_indices: source_indices,
-          complexity: complexity,
-          ownership: [],
-          newline_indices: newline_indices
-        }
-      }
-
       let ownership = extract_ownership_proofs(typed: typed)
       let ownership_diags = ownership_diagnostics(proofs: ownership)
-      let ownership_errors = ownership_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
-      if ownership_errors |> count > 0 {
-        return ResolvedPipelineResult {
-          graph: none,
-          diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
-          source_indices: source_indices,
-          complexity: complexity,
-          ownership: ownership,
-          newline_indices: newline_indices
-        }
-      }
-
       ResolvedPipelineResult {
         graph: typed,
         diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
@@ -1349,7 +1234,7 @@ fn compile_to_resolved_with_options_gated(sources: List<SourceFile>, options: Co
 }
 
 fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarget) -> PipelineResult {
-  match resolved.graph {
+  match emittable_graph(resolved: resolved) {
     Absent =>
       PipelineResult {
         files: [],
@@ -1359,12 +1244,13 @@ fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarg
         artifact_plan: empty_artifact_plan(),
         newline_indices: resolved.newline_indices
       }
-    Present { value: typed } => {
+    Present { value: emittable } => {
+      let typed = emittable.graph
       let artifact_plan = default_artifact_plan(
         root_modules: typed.modules |> map(m => authored_name_at(source_indices: resolved.source_indices, node: m.module)),
         target: target
       )
-      let emit_result = emit_from_artifact_plan(typed: typed, artifact_plan: artifact_plan)
+      let emit_result = emit_from_artifact_plan(emittable: emittable, artifact_plan: artifact_plan)
       let emit_files = emit_result.files
       let emit_diags = emit_result.diagnostics
       let emit_errors = emit_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))

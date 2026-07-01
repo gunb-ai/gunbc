@@ -1,24 +1,3 @@
-// v2 Go renderer -- emits Go source files from a typed module graph.
-//
-// This module contains all Go-specific rendering logic: struct types,
-// interface satisfaction (structural typing), multi-return error handling,
-// package-level organization, fmt.Errorf wrapping, goroutine-based
-// concurrency, Go-idiomatic naming (PascalCase exports, camelCase locals).
-//
-// Target-agnostic helpers (scope management, item registry, name
-// conversion, indent, service call collection) live in 05_emit.dag.
-//
-// Invariant 6: "DAG nodes are facts, rendering is separate."
-// This file IS the Go rendering. No IR changes needed.
-//
-// Go-specific semantics modeled here:
-//   - No Result type: errors are second return values
-//   - Structural typing: interfaces are satisfied implicitly
-//   - Package-level organization: one package per module
-//   - No exceptions: multi-return (value, error) pattern
-//   - Pointer receivers for mutating methods
-//   - No sum types: tagged unions use interface + type switch
-
 module v1.compiler.emit_go
 
 import v1.std.core {
@@ -136,20 +115,12 @@ import v1.compiler.emit_core_support {
   is_function_item, is_data_def_item, is_service_def_item,
   is_resource_def_item, extract_test_projections
 }
-// =========================================================================
-// Go language facts -- from std.languages spec (go_language, go_literals)
-// =========================================================================
 
-// Root module path for emitted go.mod and all generated/... import paths.
 fn go_emit_module_root() -> String { "generated" }
 
 fn go_v2rt_import_path() -> String {
   concat(go_emit_module_root(), "/v2rt")
 }
-
-// =========================================================================
-// Entry point -- Go target
-// =========================================================================
 
 fn emit_go(typed: ResolvedGraph) -> EmitResult {
   let registry = typed.item_registry
@@ -172,9 +143,6 @@ fn emit_go_v2rt_module() -> TextFile {
     content: go_runtime_source()
   }
 }
-
-// =========================================================================
-// =========================================================================
 
 fn emit_go_mod(module_name: String) -> TextFile {
   let manifest_path = match scaffold_for_target(target: Go).manifest_file {
@@ -256,10 +224,6 @@ fn emit_go_mock_prop_setup(mock_prop: Node, depth: Int, source_indices: Map<Stri
     emit_simple_expr(expr: field_init_node_value(n: mock_prop), target: Go, source_indices: source_indices))
 }
 
-// =========================================================================
-// Module emission
-// =========================================================================
-
 fn emit_go_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> TextFile {
   let m = typed_module.module
   let scope = module_emit_scope(typed_module: typed_module)
@@ -291,10 +255,6 @@ fn go_package_name(module_name: String) -> String {
     Absent => "main"
   }
 }
-
-// =========================================================================
-// Import emission
-// =========================================================================
 
 fn emit_go_imports(items: List<Node>, imports: List<Node>, source_indices: Map<String, NewlineIndex>) -> String {
   let has_services = items |> any(item => is_service_item(item: item))
@@ -331,10 +291,6 @@ fn collect_go_std_imports(has_services: Bool, has_types: Bool, has_functions: Bo
   concat(fmt_import, rt_import, net_imports)
 }
 
-// =========================================================================
-// Item dispatch
-// =========================================================================
-
 fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let env = scope.type_env
   let item_text = authored_name(env: env, node: item)
@@ -361,10 +317,6 @@ fn emit_go_typed_item(item: Node, registry: Map<String, ItemInfo>, scope: InferS
   }
 }
 
-// =========================================================================
-// Type definitions
-// =========================================================================
-
 fn emit_go_type_def_from_connective(item: Node, env: TypeEnv) -> String {
   let item_text = authored_name(env: env, node: item)
   let is_product = item.connective == Conj
@@ -374,7 +326,6 @@ fn emit_go_type_def_from_connective(item: Node, env: TypeEnv) -> String {
     emit_go_sum_from_children(name: item_text, children: item.children, env: env)
   }
 }
-
 
 fn emit_go_struct_from_children(name: String, children: List<Node>, env: TypeEnv) -> String {
   if children |> count == 0 {
@@ -432,15 +383,6 @@ fn emit_go_type_alias(name: String, base: Node, source_indices: Map<String, Newl
   concat(language_spec(target: Go).items.type_alias_keyword, " ", name, " = ", emit_node_type(n: base, target: Go, source_indices: source_indices))
 }
 
-// =========================================================================
-// Node-based type emission
-// =========================================================================
-
-
-// =========================================================================
-// Pure function (fn) emission
-// =========================================================================
-
 fn emit_go_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, registry: Map<String, ItemInfo>, scope: InferScope) -> String {
   let si = scope.type_env.source_indices
   let params_str = emit_params_shared(params: params, target: Go, source_indices: si)
@@ -459,10 +401,6 @@ fn emit_go_fn_def(name: String, params: List<Node>, inferred: Node, body: Node, 
       body_str, "\n}")
   }
 }
-
-// =========================================================================
-// Workflow function (func) emission
-// =========================================================================
 
 fn emit_go_func_def(
   name: String,
@@ -505,10 +443,6 @@ fn emit_go_typed_expr(texpr: Node, registry: Map<String, ItemInfo>, scope: Infer
   emit_unified_typed_expr(texpr: texpr, target: Go, registry: registry, scope: scope, depth: depth, fuel: fuel,
     render_pattern: pat => emit_unified_pattern(pattern: pat, target: Go, source_indices: scope.type_env.source_indices))
 }
-
-// =========================================================================
-// Service definition — Go
-// =========================================================================
 
 fn emit_go_transport_body(transport: Node, op_name: String, source_indices: Map<String, NewlineIndex>, depth: Int) -> String {
   emit_unified_transport_dispatch(
@@ -605,13 +539,9 @@ fn emit_go_local_call(op_name: String, depth: Int) -> String {
     "return ", go_export_ident(name: op_name), "(), nil")
 }
 
-// =========================================================================
-// Resource definition emission
-// =========================================================================
-
 fn emit_go_resource_def(item: Node, env: TypeEnv) -> String {
   let item_text = authored_name(env: env, node: item)
-  // After dissolution, capability children are identified by having params
+
   let cap_children = item.children |> filter(c => c.params |> count > 0)
   let methods = cap_children |> map(c => emit_go_capability_method(cap_node: c, depth: 1, env: env))
   let methods_str = methods |> join(separator: "\n")
@@ -624,14 +554,10 @@ fn emit_go_capability_method(cap_node: Node, depth: Int, env: TypeEnv) -> String
     concat(emit_ident(name: param_node_name_at(n: p, source_indices: env.source_indices), target: Go), " ", emit_node_type(n: param_node_type_expr(n: p), target: Go, source_indices: env.source_indices))
   )
   let params_str = input_params |> join(separator: ", ")
-  // After dissolution, inferred on the child node IS the output type
+
   let ret = emit_node_type(n: resolved_type(n: cap_node), target: Go, source_indices: env.source_indices)
   concat(make_indent(level: depth), go_export_ident(name: authored_name(env: env, node: cap_node)), "(", params_str, ") (", ret, ", error)")
 }
-
-// =========================================================================
-// Data definition emission
-// =========================================================================
 
 fn emit_go_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int) -> String {
   let ty_str = emit_node_type(n: type_node, target: Go, source_indices: scope.type_env.source_indices)
@@ -639,17 +565,8 @@ fn emit_go_data_def(name: String, type_node: Node, value: Node, registry: Map<St
   concat("var ", go_export_ident(name: name), " ", ty_str, " = ", val_str)
 }
 
-// =========================================================================
-// Identifier conversion -- Go target
-// =========================================================================
-
 fn go_export_ident(name: String) -> String {
-  // Go uses case-based visibility: PascalCase = exported.
-  // Ref: Go Spec "Exported identifiers".
-  // Matches on VisibilitySpec coproduct — CaseVisibility carries
-  // the export naming case, applied via shared apply_naming_case.
-  // M5: Go requires CaseVisibility. Any other variant is a data bug.
-  // Fail closed with error marker instead of silently dropping export semantics.
+
   match language_spec(target: Go).visibility {
     CaseVisibility { export_case: ec } => {
       let result = apply_naming_case(name: name, case_style: ec)
@@ -662,8 +579,3 @@ fn go_export_ident(name: String) -> String {
     _ => "__GO_VISIBILITY_SPEC_MISMATCH__"
   }
 }
-
-
-// =========================================================================
-// Utility: check if a TypedGraph has service items
-// =========================================================================

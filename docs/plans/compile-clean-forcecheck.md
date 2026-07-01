@@ -1,112 +1,67 @@
 # Plan — compile-clean gate force-check (ROADMAP §1 floor-coverage / §0 inference fail-open)
 
-**Status:** diagnosis (done, execution-proven) + **(A) partition design** + **blast-radius measured
-(10 names / 102 sites)**. Scope confirmed by parent `quick-ant-298`: **DESIGN-FIRST + MEASURE-FIRST,
-land nothing enforcing** — the tree-scoping/registry-partition *flip* is operator-gated (escalates via
-parent + bright-stag). **DESIGN §5 (fail-closed) is authority.** Work-item `adhoc-6169238c-5e2`.
-Linked from `ROADMAP.md §0` (line 31, "inference fail-open — return-type after #5293") and §1
-(floor-coverage). Sibling of [fail-closed-lockdown.md](fail-closed-lockdown.md) §3 (where the pipeline
-fails open). Adjacent: 2(i) (bright-stag `adhoc-8e5771e1-14a`) grounds `utf8_decode_bytes` as a real std
-fn — **(A) is what makes such grounding required by construction** so the leak can't recur.
+**Status:** diagnosis (done, execution-proven) + **(A) partition design** + **blast-radius measured (10 names / 102 sites)**. Scope confirmed by parent `quick-ant-298`: **DESIGN-FIRST + MEASURE-FIRST, land nothing enforcing** — the tree-scoping/registry-partition *flip* is operator-gated (escalates via parent + bright-stag). **DESIGN §5 (fail-closed) is authority.** Work-item `adhoc-6169238c-5e2`. Linked from `ROADMAP.md §0` (line 31, "inference fail-open — return-type after #5293") and §1 (floor-coverage). Sibling of [fail-closed-lockdown.md](fail-closed-lockdown.md) §3 (where the pipeline fails open). Adjacent: 2(i) (bright-stag `adhoc-8e5771e1-14a`) grounds `utf8_decode_bytes` as a real std fn — **(A) is what makes such grounding required by construction** so the leak can't recur.
 
-**Verified against the live tree 2026-06-21** — `gunbc` built from `src/v1/stage0`, probes + the
-empty-registry blast-radius compile run. Line numbers are receipts.
+**Verified against the live tree 2026-06-21** — `gunbc` built from `src/v1/stage0`, probes + the empty-registry blast-radius compile run. Line numbers are receipts.
 
 ## 0. Verdict — the brief's mechanism is wrong; the leak is a global seed allowlist
 
-The compile-clean gate (`dsl/tools/dsl_compile_clean_gate.dag` → `gunbc compile --target rust` over
-`dsl/` with `src/v2` as the import pool) is **fail-open**: `gunbc compile` on `main` returns 0
-diagnostics / EXIT 0 even though `dsl/extdeps/cloud/gcp/secret_manager.dag:71` calls
-`utf8_decode_bytes`, which is **defined nowhere in `dsl/` or `src/v2`**.
+The compile-clean gate (`dsl/tools/dsl_compile_clean_gate.dag` → `gunbc compile --target rust` over `dsl/` with `src/v2` as the import pool) is **fail-open**: `gunbc compile` on `main` returns 0 diagnostics / EXIT 0 even though `dsl/extdeps/cloud/gcp/secret_manager.dag:71` calls `utf8_decode_bytes`, which is **defined nowhere in `dsl/` or `src/v2`**.
 
-The brief framed this as "unreached fn bodies escape typecheck." **That is false** — bodies are always
-visited. The precise mechanism (execution-proven, §1 below) is two independent fail-open holes:
+The brief framed this as "unreached fn bodies escape typecheck." **That is false** — bodies are always visited. The precise mechanism (execution-proven, §1 below) is two independent fail-open holes:
 
-1. **Registry leak** — `utf8_decode_bytes` resolves because it is a hardcoded entry in the global
-   `builtin_function_registry()`, an **explicitly-marked BRIDGE scaffold**. The registry is *not scoped
-   to the tree being compiled*, so v1-seed runtime intrinsics leak into the dsl-substrate compile.
-2. **Return-type fail-open** — a function whose body's inferred type ≠ its declared return type is not
-   flagged (`#5293` closed only the record-field hole, not return types). Independent of the gate; a
-   member of ROADMAP §0's "inference fail-open (return-type after #5293)".
+1. **Registry leak** — `utf8_decode_bytes` resolves because it is a hardcoded entry in the global `builtin_function_registry()`, an **explicitly-marked BRIDGE scaffold**. The registry is *not scoped to the tree being compiled*, so v1-seed runtime intrinsics leak into the dsl-substrate compile.
+2. **Return-type fail-open** — a function whose body's inferred type ≠ its declared return type is not flagged (`#5293` closed only the record-field hole, not return types). Independent of the gate; a member of ROADMAP §0's "inference fail-open (return-type after #5293)".
 
 ## 1. Execution-proven mechanism (receipts)
 
 `gunbc` built from `src/v1/stage0`; each probe is a single-file `--source-root` compile.
 
 | Probe | Input | Result | Reading |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | undefined **variable**, uncalled fn | `fn f()->Int{ xyz }` | **1 error** "undefined variable 'xyz'" | bodies *are* visited; "unreached" hypothesis is false |
 | call to name **not** in registry | `fn f()->Int{ totally_undefined_fn_xyz(q:3) }` | **1 error** "function '…' not found in scope" | unregistered call names already fail-closed |
 | call to **registered** seed builtin | `fn f()->Int{ utf8_decode_bytes(payload:3) }` | **0 diagnostics** | registry absorbs the name → `string_type`, no def required, no arg check |
 | plain return-type mismatch | `fn f()->Int{ "a string" }` | **0 diagnostics** | declared return type unenforced |
 
 **The real on-main witness** — `dsl/extdeps/cloud/gcp/secret_manager.dag:70-72`:
+
 ```
 fn utf8_secret_from_access_payload(payload: Bytes) -> Secret {
   utf8_decode_bytes(payload: payload) as Secret
 }
 ```
-`utf8_decode_bytes` resolves via the registry; the `as Secret` cast satisfies the return type. So the
-**literal witness is hole #1 alone** (return-type enforcement would not catch it because of the cast).
+
+`utf8_decode_bytes` resolves via the registry; the `as Secret` cast satisfies the return type. So the **literal witness is hole #1 alone** (return-type enforcement would not catch it because of the cast).
 
 ## 2. The seam — `builtin_function_registry`
 
-`src/v1/04_method.dag:55-155` (Rust seed `v1_compiler_infer_method.rs:100-365`). 76 names →
-return-type `Node`s, e.g. `utf8_decode_bytes → string_type` (04_method.dag:93). Its own header is the
-indictment:
+`src/v1/04_method.dag:55-155` (Rust seed `v1_compiler_infer_method.rs:100-365`). 76 names → return-type `Node`s, e.g. `utf8_decode_bytes → string_type` (04_method.dag:93). Its own header is the indictment:
 
 > `// BRIDGE: This map_insert chain is a duplicate authority over facts that should come from .dag`
 > `// function declarations (extern fn signatures). Deletion point: when builtins are actual .dag`
 > `// definitions that the compiler loads and resolves, this registry is deleted.`
 
-So this is a known §3 fork (duplicate authority) with a **named dissolution trigger**. Two properties
-make it the fail-open:
+So this is a known §3 fork (duplicate authority) with a **named dissolution trigger**. Two properties make it the fail-open:
 
-- **Global, not tree-scoped.** The same registry is consulted whether the entry root is `src/v1` (the
-  seed, which legitimately needs `utf8_decode_bytes`/`scan_while`/… as its runtime kernel — used in
-  `05_emit_rust.dag`, `runtime_rust.dag`) or `dsl/` (the substrate, which must not depend on seed
-  intrinsics). A name in the registry resolves in *any* tree.
-- **Resolution without definition or arg-check.** A registry hit yields a fabricated return type with no
-  parameter typing and no requirement that a definition exist in the compiled closure — DESIGN §5's
-  "fabricated plausible output" anti-pattern, at the call-head resolution seam.
+- **Global, not tree-scoped.** The same registry is consulted whether the entry root is `src/v1` (the seed, which legitimately needs `utf8_decode_bytes`/`scan_while`/… as its runtime kernel — used in `05_emit_rust.dag`, `runtime_rust.dag`) or `dsl/` (the substrate, which must not depend on seed intrinsics). A name in the registry resolves in *any* tree.
+- **Resolution without definition or arg-check.** A registry hit yields a fabricated return type with no parameter typing and no requirement that a definition exist in the compiled closure — DESIGN §5's "fabricated plausible output" anti-pattern, at the call-head resolution seam.
 
-(`resolve_builtin_call_type`'s `Absent => unit_type`, 04_method.dag:166, is *not* a live leak for call
-syntax — unregistered names are caught upstream as "function not found in scope". It is a latent
-fail-open kept for non-call uses; out of scope here, noted for the audit.)
+(`resolve_builtin_call_type`'s `Absent => unit_type`, 04_method.dag:166, is *not* a live leak for call syntax — unregistered names are caught upstream as "function not found in scope". It is a latent fail-open kept for non-call uses; out of scope here, noted for the audit.)
 
 ## 3. Construction-correct direction (DESIGN §5/§3)
 
-The gate's claim is "the dsl substrate is well-typed **and self-contained**." Made *unwritable* (§5
-construction, not a post-hoc lens): **the set of resolvable builtins must be derived from the tree being
-compiled, not a global seed allowlist.** This is exactly the registry's own stated deletion point —
-builtins become real `.dag` definitions resolved through normal import/definition resolution, the global
-registry is deleted, and a substrate that neither defines nor imports `utf8_decode_bytes` fails closed
-on it ("function not found in scope", identical to probe 2). At that point the leak is dead by
-construction, not by a roster.
+The gate's claim is "the dsl substrate is well-typed **and self-contained**." Made *unwritable* (§5 construction, not a post-hoc lens): **the set of resolvable builtins must be derived from the tree being compiled, not a global seed allowlist.** This is exactly the registry's own stated deletion point — builtins become real `.dag` definitions resolved through normal import/definition resolution, the global registry is deleted, and a substrate that neither defines nor imports `utf8_decode_bytes` fails closed on it ("function not found in scope", identical to probe 2). At that point the leak is dead by construction, not by a roster.
 
-Full dissolution (76 builtins → `.dag` defs) is a large migration, out of this node's scope. The
-bounded options below are stepping stones; (A) is the one that closes the literal witness *by
-construction*.
+Full dissolution (76 builtins → `.dag` defs) is a large migration, out of this node's scope. The bounded options below are stepping stones; (A) is the one that closes the literal witness *by construction*.
 
 ## 4. Scope decision (parent-confirmed) — (A), as design + measure only
 
-Parent `quick-ant-298` confirmed: this node ships **(A)'s design + the blast-radius measurement**, and
-**lands nothing enforcing**. (B) and (C) are split out:
+Parent `quick-ant-298` confirmed: this node ships **(A)'s design + the blast-radius measurement**, and **lands nothing enforcing**. (B) and (C) are split out:
 
-- **(A) Tree-scoped builtin availability / registry partition** — the direction. Split the registry into
-  *substrate-available* builtins (real `.dag`/std defs, or the sanctioned primitive surface) and
-  *seed-only kernel* intrinsics; admit the seed-only set only when the entry root is the v1 seed itself.
-  A dsl-substrate compile then fails closed on a seed-only name. This **advances the registry's own marked
-  dissolve-on** (04_method.dag:55-62) — it is not new debt. The enforcing flip is **load-bearing**
-  (inference scope) + **changes what compiles** → operator-gated; escalates via parent + bright-stag.
-  This doc + §6's measured number is the input to that sign-off.
-- **(B) Return-type enforcement** — SEPARATE (ROADMAP §0 line 31; #5293 closed only record-field). Does
-  not close the literal witness (the `as Secret` cast satisfies the return type). Its own PR later. Flagged
-  adjacent, not bundled.
-- **(C) Grounding `utf8_decode_bytes` as a real std fn** — **2(i)'s job** (bright-stag
-  `adhoc-8e5771e1-14a`). Nuance relayed: `utf8_decode_bytes` is a *registry entry* (→ `string_type`), not
-  purely undefined — so 2(i) must define the std fn **and** delete its registry bridge row, else the
-  registry shadows the new def. (A) is what makes that grounding *required* by construction.
+- **(A) Tree-scoped builtin availability / registry partition** — the direction. Split the registry into *substrate-available* builtins (real `.dag`/std defs, or the sanctioned primitive surface) and *seed-only kernel* intrinsics; admit the seed-only set only when the entry root is the v1 seed itself. A dsl-substrate compile then fails closed on a seed-only name. This **advances the registry's own marked dissolve-on** (04_method.dag:55-62) — it is not new debt. The enforcing flip is **load-bearing** (inference scope) + **changes what compiles** → operator-gated; escalates via parent + bright-stag. This doc + §6's measured number is the input to that sign-off.
+- **(B) Return-type enforcement** — SEPARATE (ROADMAP §0 line 31; #5293 closed only record-field). Does not close the literal witness (the `as Secret` cast satisfies the return type). Its own PR later. Flagged adjacent, not bundled.
+- **(C) Grounding `utf8_decode_bytes` as a real std fn** — **2(i)'s job** (bright-stag `adhoc-8e5771e1-14a`). Nuance relayed: `utf8_decode_bytes` is a *registry entry* (→ `string_type`), not purely undefined — so 2(i) must define the std fn **and** delete its registry bridge row, else the registry shadows the new def. (A) is what makes that grounding *required* by construction.
 
 ## 5. (A) partition design
 
@@ -115,40 +70,20 @@ Parent `quick-ant-298` confirmed: this node ships **(A)'s design + the blast-rad
 1. *Is this name a host intrinsic at all?* (registry membership — today's only question).
 2. *Is this name in-scope for the tree being compiled?* (new: substrate-available vs seed-only).
 
-**Construction shape (the registry's dissolve-on, staged):** each builtin row carries an
-**availability tag** — `SubstrateAvailable` vs `SeedOnly` — instead of a flat name→type map. The
-call-head resolver admits a `SeedOnly` row **only when the compile's entry root is the v1 seed**; for a
-substrate entry root (dsl/ + v2 pool) a `SeedOnly` hit is treated as *not a builtin* → falls through to
-the existing fail-closed "function not found in scope" (probe 2). `SubstrateAvailable` rows are the
-sanctioned primitive surface and, per the dissolve-on, migrate to real `std` `.dag` defs over time;
-once a name has a real def it leaves the registry entirely and resolves through normal func-env lookup.
+**Construction shape (the registry's dissolve-on, staged):** each builtin row carries an **availability tag** — `SubstrateAvailable` vs `SeedOnly` — instead of a flat name→type map. The call-head resolver admits a `SeedOnly` row **only when the compile's entry root is the v1 seed**; for a substrate entry root (dsl/ + v2 pool) a `SeedOnly` hit is treated as *not a builtin* → falls through to the existing fail-closed "function not found in scope" (probe 2). `SubstrateAvailable` rows are the sanctioned primitive surface and, per the dissolve-on, migrate to real `std` `.dag` defs over time; once a name has a real def it leaves the registry entirely and resolves through normal func-env lookup.
 
-- *Entry-root signal*: the existing entry-vs-pool distinction (`main.rs:343-347` "entry modules = all
-  .dag in the FIRST source root; additional roots are dependency pools") already separates the compiled
-  tree from its pools. The infer scope must carry one bit — "entry root is the v1 seed" — derived from
-  whether `src/v1` is the primary `--source-root`. (Threading this into `InferScope` is the load-bearing
-  part; out of scope for this node — captured here for the enforce PR.)
-- *Why a tag, not a second map*: a second allowlist map would be a new parallel authority (§3). One row
-  per builtin with an availability field keeps single authority and reads as construction, not a lens.
-- *Non-enforcing intermediate (this node)*: the empty-registry measurement in §6 already enumerates the
-  exact leak set without any code change shipping. The enforce PR turns each `SeedOnly` substrate hit
-  into the fail-closed path behind operator sign-off.
+- *Entry-root signal*: the existing entry-vs-pool distinction (`main.rs:343-347` "entry modules = all .dag in the FIRST source root; additional roots are dependency pools") already separates the compiled tree from its pools. The infer scope must carry one bit — "entry root is the v1 seed" — derived from whether `src/v1` is the primary `--source-root`. (Threading this into `InferScope` is the load-bearing part; out of scope for this node — captured here for the enforce PR.)
+- *Why a tag, not a second map*: a second allowlist map would be a new parallel authority (§3). One row per builtin with an availability field keeps single authority and reads as construction, not a lens.
+- *Non-enforcing intermediate (this node)*: the empty-registry measurement in §6 already enumerates the exact leak set without any code change shipping. The enforce PR turns each `SeedOnly` substrate hit into the fail-closed path behind operator sign-off.
 
 ## 6. Blast radius (MEASURE-FIRST) — execution-proven, 10 names / 102 sites
 
-**Method (DESIGN §5, real consumer green-by-execution, not grep):** in a throwaway worktree off
-`origin/main`, `builtin_function_registry()` was replaced with an empty map (MEASURE-ONLY, uncommitted),
-`gunbc` rebuilt, and the **real gate compile** run —
-`gunbc compile --source-root dsl --source-root src/v2 --dependency-pool-index primary-precedence
---target rust`. Every registry name a substrate module **free-calls without a real `.dag` def** then
-surfaces as a "function 'X' not found in scope" diagnostic. (Grep over-counted ~50 — most registry names
-are invoked as *methods* and resolve via the structural method path, not the free-call registry.)
+**Method (DESIGN §5, real consumer green-by-execution, not grep):** in a throwaway worktree off `origin/main`, `builtin_function_registry()` was replaced with an empty map (MEASURE-ONLY, uncommitted), `gunbc` rebuilt, and the **real gate compile** run — `gunbc compile --source-root dsl --source-root src/v2 --dependency-pool-index primary-precedence --target rust`. Every registry name a substrate module **free-calls without a real `.dag` def** then surfaces as a "function 'X' not found in scope" diagnostic. (Grep over-counted ~50 — most registry names are invoked as *methods* and resolve via the structural method path, not the free-call registry.)
 
-Result: **102 diagnostics, all "not found in scope", 10 distinct names** (all in `dsl/`; none in
-`src/v2`):
+Result: **102 diagnostics, all "not found in scope", 10 distinct names** (all in `dsl/`; none in `src/v2`):
 
 | builtin | sites | leaf area | class |
-|---|--:|---|---|
+| --- | --: | --- | --- |
 | `string_contains` | 51 | dsl/extdeps/formats, dsl/test/claim | general string primitive |
 | `to_string` | 25 | broad (examples, extdeps/*, product, tools) | general primitive |
 | `concat` | 11 | extdeps/git, languages/go, version, product, **std** | general primitive |
@@ -160,19 +95,12 @@ Result: **102 diagnostics, all "not found in scope", 10 distinct names** (all in
 | `hash_combine` | 1 | dsl/std | hashing primitive |
 | `atom_identity_hash` | 1 | dsl/std | hashing primitive |
 
-**Reading of the number:** the (A) rollout is **small and tractable**, not a corpus-wide flag day.
-8 of the 10 (96 sites) are the accepted general-purpose primitive surface (`string_contains`,
-`to_string`, `concat`, `count`, `set_contains`, `set_insert`, `hash_combine`, `atom_identity_hash`) —
-these become `SubstrateAvailable` and are the std-grounding backlog. `filesystem_read` (5) is the
-already-known lens reflection fork. Exactly **one** name — `utf8_decode_bytes` — is a genuine domain
-leak, and it is already owned by 2(i). So (A) tags 8–9 substrate primitives + the lens-reflection
-intrinsic, and the only domain code that fails closed under (A) today is the single gcp site, which 2(i)
-is already grounding. The blast radius gates the rollout: tag the 8 primitives `SubstrateAvailable` first
-(no breakage), then flip seed-only enforcement once `utf8_decode_bytes` is grounded.
+**Reading of the number:** the (A) rollout is **small and tractable**, not a corpus-wide flag day. 8 of the 10 (96 sites) are the accepted general-purpose primitive surface (`string_contains`, `to_string`, `concat`, `count`, `set_contains`, `set_insert`, `hash_combine`, `atom_identity_hash`) — these become `SubstrateAvailable` and are the std-grounding backlog. `filesystem_read` (5) is the already-known lens reflection fork. Exactly **one** name — `utf8_decode_bytes` — is a genuine domain leak, and it is already owned by 2(i). So (A) tags 8–9 substrate primitives + the lens-reflection intrinsic, and the only domain code that fails closed under (A) today is the single gcp site, which 2(i) is already grounding. The blast radius gates the rollout: tag the 8 primitives `SubstrateAvailable` first (no breakage), then flip seed-only enforcement once `utf8_decode_bytes` is grounded.
 
 ## 7. Discriminating witness (must go RED when the behavior is wrong)
 
-The enforce PR's receipt is the same shape as §6's method: a planted substrate module that free-calls a
-`SeedOnly` builtin (`utf8_decode_bytes`) must make `gunbc compile` over the dsl pools **fail**; the
-identical module compiled with the `src/v1` seed as primary root must **pass**. Green-by-execution
-against the real `gunbc`, not a typecheck/grep. (DESIGN §5: spec-without-execution is not done.)
+The enforce PR's receipt is the same shape as §6's method: a planted substrate module that free-calls a `SeedOnly` builtin (`utf8_decode_bytes`) must make `gunbc compile` over the dsl pools **fail**; the identical module compiled with the `src/v1` seed as primary root must **pass**. Green-by-execution against the real `gunbc`, not a typecheck/grep. (DESIGN §5: spec-without-execution is not done.)
+
+## Dissolution trigger (DESIGN §6)
+
+Delete this doc when (A) lands as construction: the builtin registry carries a `SubstrateAvailable`/`SeedOnly` availability tag, a dsl-substrate compile fails closed on a seed-only name (the §7 discriminating witness green-by-execution — a planted `utf8_decode_bytes` call fails over the dsl pools and passes under the v1-seed root), and `utf8_decode_bytes` is grounded as a real std def with its registry bridge row deleted — at which point the leak is dead by construction (DESIGN §5), the registry's own marked dissolve-on (04_method.dag:55-62) has advanced, and this design+measurement doc is superseded by the wall it specified.

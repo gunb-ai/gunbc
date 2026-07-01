@@ -1,0 +1,63 @@
+module gunbc.interpreter_kernel_model
+
+import std.types { List, String, Bool, Int }
+
+type InterpreterSeamClass
+  = PureEvalAuthority
+  | PinnedHostPhysics
+
+type V1InterpreterDissolutionPhase
+  = ModelAndWitnessOnly
+  | PureEvalEmitWired
+  | HostPhysicsPinnedTerminal
+
+data interpreter_kernel_d_current_phase: V1InterpreterDissolutionPhase = ModelAndWitnessOnly
+
+data pure_eval_authority_modules: List<String> = [
+  "src/v2/compiler/05_eval.dag",
+  "src/v2/compiler/emit_host.dag",
+  "src/v2/extdeps/runtimes/v2_evaluator.dag",
+  "src/v2/std/host_transport.dag",
+  "src/v2/std/host_run.dag",
+]
+
+data pinned_host_physics_stage0_files: List<String> = [
+  "recorded_fixture.rs",
+  "resolved_graph_cache.rs",
+  "rest_transport_facts.rs",
+  "wire_value_serialize.rs",
+]
+
+data v1_interpreter_hybrid_seed_file: String = "v1_interpreter.rs"
+
+fn list_contains_string(xs: List<String>, needle: String) -> Bool {
+  any(xs, x => x == needle)
+}
+
+fn is_pure_eval_authority_module(path: String) -> Bool {
+  list_contains_string(xs: pure_eval_authority_modules, needle: path)
+}
+
+fn is_pinned_host_physics_stage0_file(basename: String) -> Bool {
+  list_contains_string(xs: pinned_host_physics_stage0_files, needle: basename)
+}
+
+fn pinned_host_physics_file_count() -> Int {
+  pinned_host_physics_stage0_files.length()
+}
+
+fn pure_eval_authority_module_count() -> Int {
+  pure_eval_authority_modules.length()
+}
+
+fn interpreter_kernel_d_phase_is_model_only() -> Bool {
+  match interpreter_kernel_d_current_phase {
+    ModelAndWitnessOnly => true
+    PureEvalEmitWired => false
+    HostPhysicsPinnedTerminal => false
+  }
+}
+
+fn v1_interpreter_not_classified_as_pinned_host_physics() -> Bool {
+  !is_pinned_host_physics_stage0_file(basename: v1_interpreter_hybrid_seed_file)
+}

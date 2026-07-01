@@ -1,35 +1,18 @@
-// dsl/test/claim/build_artifact_verification_witness_test.dag
-//
-// By-execution witnesses for tools.build_step — the construction fix for the §5 CI false-green
-// build hole (a build that exits 0 with no/stale artifact masks every downstream gate).
-//
-// These run the REAL generator (`emit_verifications` / `verifications_script` / the wired
-// `gunbc.ci_spec` rows) and assert, by SHAPE and by emitted token, that every declared
-// artifact gets BOTH conjuncts — existence (primary) THEN source-relative freshness
-// (secondary) — plus the fail-closed `exit 1` teeth. Discriminating: delete the freshness arm
-// of the generator and `-newer`/the 3-stmt shape go RED; delete the existence arm and `-x`/the
-// leading existence `If` go RED.
-//
-// Floor witnesses are HERMETIC (no wet shell), so behavior under a sabotaged filesystem (delete
-// the artifact ⇒ RED; touch a source newer + no-op build ⇒ RED; real build ⇒ green) is proven
-// by EXECUTION out-of-band against the serialized script (see the PR's manual proof), not here.
-//
-// Run: gunbc run --source-root dsl --entry <this> --function build_artifact_verification_holds --claim-run
-
 module test.claim.build_artifact_verification_witness
 
 import std.logic { Bool }
 import extdeps.languages.bash.program {
   ShellStmt, ShellWord, ShellProgram,
-  If, Assign, Command, Concat, VarRef, Lit,
+  If, Command, Concat, VarRef, Lit,
   lit, var_ref, serialize_bash
 }
 import tools.build_step { BuildArtifact, emit_verifications, verifications_script }
-import gunbc.ci_spec {
-  ci_floor_required_artifacts, ci_floor_build_verify_script, ci_build_source_roots
+import tools.build_step_transport {
+  witness_zero_byte_artifact_rejected_by_execution,
+  witness_nonempty_executable_accepted_by_execution
 }
+import gunbc.ci_spec { ci_floor_build_verify_script }
 
-// A synthetic declared artifact + the same source set the floor uses.
 fn probe_artifact() -> BuildArtifact {
   BuildArtifact {
     path: Concat { parts: [var_ref(name: "ROOT"), lit(text: "/target/release/probe_bin")] },
@@ -37,15 +20,10 @@ fn probe_artifact() -> BuildArtifact {
   }
 }
 
-fn probe_source_roots() -> List<ShellWord> {
-  [Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src")] }]
-}
-
 fn probe_stmts() -> List<ShellStmt> {
-  emit_verifications(produces: [probe_artifact()], roots: probe_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
+  emit_verifications(produces: [probe_artifact()])
 }
 
-// Serialize a single statement (no set -e) so order/identity of each emitted stmt is checkable.
 fn stmt_text(s: ShellStmt) -> String {
   serialize_bash(p: ShellProgram { set_e: false, statements: [s] })
 }
@@ -57,69 +35,40 @@ fn is_if(s: ShellStmt) -> Bool {
   }
 }
 
-fn is_assign(s: ShellStmt) -> Bool {
-  match s {
-    Assign { name: n, value: v } => true
-    _ => false
-  }
+fn witness_single_artifact_produces_two_checks() -> Bool {
+  let stmts = probe_stmts()
+  stmts.length() == 2 && is_if(s: stmts.first())
 }
 
-// SHAPE: one artifact ⇒ exactly three statements — existence `If`, freshness probe `Assign`,
-// freshness `If` — in that order. RED if either conjunct's generator arm is dropped.
-fn witness_single_artifact_shape_exists_then_fresh() -> Bool {
+fn witness_existence_check_no_mtime() -> Bool {
   let stmts = probe_stmts()
-  stmts.length() == 3
-    && is_if(s: stmts.first())
-    && is_assign(s: stmts.skip(n: 1).first())
-    && is_if(s: stmts.skip(n: 2).first())
-}
-
-// ORDER: the FIRST statement is the existence test (`-x`, not `-newer`); the LAST is the
-// freshness test (`-newer`). Existence-before-freshness is load-bearing — `find -newer` must
-// never be handed a missing artifact.
-fn witness_existence_precedes_freshness() -> Bool {
-  let stmts = probe_stmts()
-  let existence = stmt_text(s: stmts.first())            // [0] existence test
-  let probe = stmt_text(s: stmts.skip(n: 1).first())     // [1] find -newer assign
+  let existence = stmt_text(s: stmts.first())
   string_contains(s: existence, pattern: "-x")
     && !string_contains(s: existence, pattern: "-newer")
-    && string_contains(s: probe, pattern: "-newer")
-    && string_contains(s: probe, pattern: "-quit")
 }
 
-// TOKENS: the serialized verification carries both conjuncts, the declared source set + all
-// patterns (*.rs, Cargo.toml, Cargo.lock), and the fail-closed `exit 1`. Each clause is a
-// discriminating tooth; adding Cargo.toml/Cargo.lock goes RED if name_predicate_words drops them.
 fn witness_serialized_conjuncts_and_teeth() -> Bool {
-  let script = verifications_script(produces: [probe_artifact()], roots: probe_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
-  string_contains(s: script, pattern: "-x")                              // existence
-    && string_contains(s: script, pattern: "-newer")                     // freshness
-    && string_contains(s: script, pattern: "-print")
-    && string_contains(s: script, pattern: "-quit")
-    && string_contains(s: script, pattern: "'*.rs'")                     // *.rs pattern present
-    && string_contains(s: script, pattern: "Cargo.toml")                 // manifest pattern present
-    && string_contains(s: script, pattern: "Cargo.lock")                 // lockfile pattern present
-    && string_contains(s: script, pattern: "/target/release/probe_bin") // declared artifact
-    && string_contains(s: script, pattern: "/src")                       // declared source root
-    && string_contains(s: script, pattern: "exit 1")                     // fail-closed
-}
-
-// FLOOR COVERAGE: the wired `gunbc.ci_spec` bootstrap declares BOTH prebuilt release bins the
-// floor consumes (claim_executor, gunbc), and each gets the verification. 2 artifacts ⇒ 6
-// statements; both paths + the freshness probe present in the emitted script.
-fn witness_floor_covers_both_release_bins() -> Bool {
-  let stmts = emit_verifications(produces: ci_floor_required_artifacts, roots: ci_build_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
-  let script = ci_floor_build_verify_script()
-  stmts.length() == 6
-    && string_contains(s: script, pattern: "/target/release/claim_executor")
-    && string_contains(s: script, pattern: "/target/release/gunbc")
-    && string_contains(s: script, pattern: "-newer")
+  let script = verifications_script(produces: [probe_artifact()])
+  string_contains(s: script, pattern: "-x")
+    && string_contains(s: script, pattern: "-s")
+    && !string_contains(s: script, pattern: "-newer")
+    && string_contains(s: script, pattern: "/target/release/probe_bin")
     && string_contains(s: script, pattern: "exit 1")
 }
 
+fn witness_floor_covers_both_release_bins() -> Bool {
+  let script = ci_floor_build_verify_script()
+  string_contains(s: script, pattern: "--verify-build-artifacts")
+    && string_contains(s: script, pattern: "/target/release/claim_executor")
+    && string_contains(s: script, pattern: "/target/release/gunbc")
+    && !string_contains(s: script, pattern: "-newer")
+}
+
 test fn build_artifact_verification_holds() -> Bool {
-  witness_single_artifact_shape_exists_then_fresh()
-    && witness_existence_precedes_freshness()
+  witness_single_artifact_produces_two_checks()
+    && witness_existence_check_no_mtime()
     && witness_serialized_conjuncts_and_teeth()
     && witness_floor_covers_both_release_bins()
+    && witness_zero_byte_artifact_rejected_by_execution()
+    && witness_nonempty_executable_accepted_by_execution()
 }

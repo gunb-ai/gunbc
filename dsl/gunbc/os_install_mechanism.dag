@@ -1,0 +1,45 @@
+module gunbc.os_install_mechanism
+
+import std.types { List }
+import extdeps.bmc.capability {
+  BmcCapability,
+  BmcFirmwareCapabilityRow,
+  CapabilityVirtualMedia,
+  CapabilityNbdProxyVirtualMedia,
+  CapabilityFirmwareUpdate,
+  firmware_has_capability,
+  catalog_has_vm_capable_firmware,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog,
+  asrock_altrad8ud_shipped_bmc_firmware_capabilities,
+}
+
+type OsInstallMechanism
+  = VirtualMediaInstall
+  | NbdProxyVirtualMediaInstall
+  | PxeHttpInstall
+  | FirmwareUpdateThenVirtualMedia
+
+fn solve_install_mechanism(
+  current: BmcFirmwareCapabilityRow,
+  catalog: List<BmcFirmwareCapabilityRow>
+) -> OsInstallMechanism {
+  if firmware_has_capability(row: current, cap: CapabilityVirtualMedia) {
+    VirtualMediaInstall
+  } else if firmware_has_capability(row: current, cap: CapabilityNbdProxyVirtualMedia) {
+    NbdProxyVirtualMediaInstall
+  } else if firmware_has_capability(row: current, cap: CapabilityFirmwareUpdate)
+         && catalog_has_vm_capable_firmware(catalog: catalog) {
+    FirmwareUpdateThenVirtualMedia
+  } else {
+    PxeHttpInstall
+  }
+}
+
+data srv3_firmware_catalog: List<BmcFirmwareCapabilityRow> = asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog
+
+data srv3_install_mechanism: OsInstallMechanism = solve_install_mechanism(
+  current: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
+  catalog: srv3_firmware_catalog
+)

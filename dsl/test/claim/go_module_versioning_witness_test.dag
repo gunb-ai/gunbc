@@ -1,15 +1,3 @@
-// test/claim/go_module_versioning_witness_test.dag — by-execution witnesses (DESIGN §5)
-// for the Go module versioning model (extdeps.languages.go.module).
-//
-// Green-by-execution: each witness asserts a fact from the model with a
-// discriminating input. Wrong rules (incorrect suffix rendering, wrong filename,
-// incorrect MVS property count, wrong semver label) land on a different value
-// and go RED.
-//
-// Run via:
-//   gunbc run --source-root dsl --entry dsl/test/claim/go_module_versioning_witness_test.dag \
-//     --function go_module_versioning_witnesses --claim-run
-
 module test.claim.go_module_versioning_witness
 
 import std.logic { Bool }
@@ -32,38 +20,26 @@ import extdeps.languages.go.module {
   emit_host_bootstrap_toolchain,
 }
 
-// -- go.mod filename (authority: extdeps.languages.go.emit.go_manifest_file) --
-
 fn w_go_manifest_file() -> Bool {
   go_manifest_file == "go.mod"
 }
 
-// -- Major version suffix rendering (go.dev/ref/mod#major-version-suffixes) --
-
-// v0/v1 modules have no path suffix.
 fn w_major_v0_or_v1_suffix_is_empty() -> Bool {
   go_major_suffix_str(suffix: MajorV0OrV1) == ""
 }
 
-// v2 modules append "/v2".
 fn w_major_v2_suffix() -> Bool {
   go_major_suffix_str(suffix: MajorV2Plus { major: 2 }) == "/v2"
 }
 
-// v3 modules append "/v3" — distinct from v2 (discriminating: wrong major → wrong path).
 fn w_major_v3_suffix() -> Bool {
   go_major_suffix_str(suffix: MajorV2Plus { major: 3 }) == "/v3"
 }
 
-// v2 and v0/v1 suffixes are distinct (discriminating control).
 fn w_suffixes_are_distinct() -> Bool {
   go_major_suffix_str(suffix: MajorV2Plus { major: 2 }) != go_major_suffix_str(suffix: MajorV0OrV1)
 }
 
-// -- GoSemVer wire label (go_semver_label) --------------------------------
-// go.dev/ref/mod#versions: v-prefixed semver with optional prerelease/build.
-
-// Release version: v1.2.3 → "v1.2.3"
 fn w_semver_release_label() -> Bool {
   go_semver_label(v: GoSemVer {
     major: 1, minor: 2, patch: 3,
@@ -71,7 +47,6 @@ fn w_semver_release_label() -> Bool {
   }) == "v1.2.3"
 }
 
-// v0 release: v0.1.0 → "v0.1.0"
 fn w_semver_v0_label() -> Bool {
   go_semver_label(v: GoSemVer {
     major: 0, minor: 1, patch: 0,
@@ -79,7 +54,6 @@ fn w_semver_v0_label() -> Bool {
   }) == "v0.1.0"
 }
 
-// Pre-release: v1.0.0-alpha.1 → "v1.0.0-alpha.1"
 fn w_semver_prerelease_label() -> Bool {
   go_semver_label(v: GoSemVer {
     major: 1, minor: 0, patch: 0,
@@ -87,7 +61,6 @@ fn w_semver_prerelease_label() -> Bool {
   }) == "v1.0.0-alpha.1"
 }
 
-// Build metadata: v1.0.0+build.42 → "v1.0.0+build.42"
 fn w_semver_build_label() -> Bool {
   go_semver_label(v: GoSemVer {
     major: 1, minor: 0, patch: 0,
@@ -95,7 +68,6 @@ fn w_semver_build_label() -> Bool {
   }) == "v1.0.0+build.42"
 }
 
-// Prerelease + build: v2.0.0-rc.1+exp → "v2.0.0-rc.1+exp"
 fn w_semver_prerelease_and_build_label() -> Bool {
   go_semver_label(v: GoSemVer {
     major: 2, minor: 0, patch: 0,
@@ -103,7 +75,6 @@ fn w_semver_prerelease_and_build_label() -> Bool {
   }) == "v2.0.0-rc.1+exp"
 }
 
-// Distinct patch versions produce distinct labels (discriminating control).
 fn w_semver_labels_distinct() -> Bool {
   go_semver_label(v: GoSemVer {
     major: 1, minor: 2, patch: 3,
@@ -114,31 +85,19 @@ fn w_semver_labels_distinct() -> Bool {
   })
 }
 
-// -- MVS properties list -----------------------------------------------
-// go.dev/ref/mod#minimal-version-selection
-// Count by fold (no list-length builtin; fold is the kernel per DESIGN §4).
-
 fn mvs_property_count(ps: List<GoMvsProperty>) -> Int {
   fold(ps, init: 0, f: (acc, _p) => acc + 1)
 }
 
-// Three properties declared: DeterministicMinimal, ContentHashLocked, MainModuleOnly.
 fn w_go_mvs_has_three_properties() -> Bool {
   mvs_property_count(ps: go_mvs_properties) == 3
 }
-
-// -- go_semver_to_version_identity ----------------------------------------
-// Projects GoSemVer to opaque VersionIdentity; label must match go_semver_label.
 
 fn w_go_semver_to_version_identity() -> Bool {
   go_semver_to_version_identity(v: GoSemVer {
     major: 1, minor: 2, patch: 3, prerelease: none, build: none
   }) == "v1.2.3"
 }
-
-// -- go_semver_compare --------------------------------------------------------
-// Structural ordering over GoSemVer atoms (go.dev/ref/mod#versions).
-// Uses call-result as match subject (avoids record-constructor parse ambiguity).
 
 fn w_go_semver_compare_major_less() -> Bool {
   match go_semver_compare(
@@ -173,7 +132,6 @@ fn w_go_semver_compare_equal() -> Bool {
   }
 }
 
-// no-prerelease > same-version-with-prerelease (semver.org §11)
 fn w_go_semver_compare_no_pre_beats_pre() -> Bool {
   match go_semver_compare(
     a: GoSemVer { major: 1, minor: 0, patch: 0, prerelease: none, build: none },

@@ -1,8 +1,3 @@
-// tools/gunbc_ci.dag — collapsed CI consumer (`gunbc ci` subcommand).
-//
-// Run: cargo run -p v1-compiler --release --bin gunbc -- ci
-// (seed CLI subcommand delegates here — logic stays .dag authority).
-
 module tools.gunbc_ci
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }

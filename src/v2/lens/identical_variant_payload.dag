@@ -1,22 +1,6 @@
-// src/v2/lens/identical_variant_payload.dag
-// Scope: L1.4 IdenticalVariantPayload sub-signature (Carrier-clone family).
-// Catches coproduct arms whose canonical payload signatures are identical
-// within one decl (tag-not-recoverable; SG-2 / #3962 class includes nullary
-// or same-tuple arms such as ProjectionPresent | ProjectionAbsent shims).
-// Anchor: docs/design-dissolution-lens.md §5 L1.4 / §5.1 — shares
-//         `coverage_defect_carrier_clone` with parent + L1.4.b; diagnostic
-//         payload carries `CarrierCloneTrigger::IdenticalVariantPayload`.
-// Status: scaffold — carrier types + verdict shape only. Enforcement gated on
-//         (a) `v2.lens.structural_similarity` per-variant field-shape facts,
-//         (b) equivalence-class-wide payload-signature injectivity check.
-//         Until (a) lands, `identical_variant_payload_fact_for_type` returns
-//         Unrealized for every type — substrate row exists so coverage,
-//         registry consumers, and dissolution receipts reference typed
-//         authority rather than prose pointers. Does NOT block #3962 collapse.
-
 module v2.lens.identical_variant_payload
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
-
+import std.disposition { SingleAuthority }
 
 import std.lens_verdict {
   LensVerdict,
@@ -26,16 +10,12 @@ import std.lens_verdict {
 }
 import v2.std.node { Node }
 
-
-// 🟢 family discriminator — shared by L1.4 parent, L1.4.b, and this sub-signature.
 type CarrierCloneTrigger
   = WholeCarrierClone
   | VariantParameterClone
   | IdenticalVariantPayload
 
-
 data identical_variant_payload_module: String = "v2.lens.identical_variant_payload"
-
 
 fn identical_variant_payload_unrealized_verdict() -> LensVerdict {
   Unrealized {
@@ -46,15 +26,11 @@ fn identical_variant_payload_unrealized_verdict() -> LensVerdict {
   }
 }
 
-
-// 🟢 lens fact — one row per scanned type-decl locus.
 type IdenticalVariantPayloadFact {
   type_locus: Node
   verdict: LensVerdict
 }
 
-
-// 🟡 gated — feature:lens-structural-similarity — bind PR #3962 class / design-dissolution-lens.md L1.4 — dissolve-on-arrival: identical_variant_payload_fact_for_type consumes v2.lens.structural_similarity TypeShape.variant_set and runs equivalence-class payload-signature injectivity; delete Unrealized default in that same PR; forbidden: permanent scaffold returning Unrealized after producer lands.
 fn identical_variant_payload_fact_for_type(type_node: Node) -> IdenticalVariantPayloadFact {
   IdenticalVariantPayloadFact {
     type_locus: type_node,
@@ -62,12 +38,6 @@ fn identical_variant_payload_fact_for_type(type_node: Node) -> IdenticalVariantP
   }
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "v2.lens.structural_similarity per-variant field-shape facts plus the equivalence-class payload-signature injectivity check",
-    dissolve_on: "coproduct arms with tag-not-recoverable identical payloads are caught by the structural-similarity producer stage"
-  },
-  rationale: "Identical payload signatures within a decl is a decidable shape comparison; the lens is a scaffold gated on structural_similarity's producer-stage facts."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

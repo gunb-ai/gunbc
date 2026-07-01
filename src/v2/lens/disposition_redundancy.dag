@@ -1,0 +1,57 @@
+module v2.lens.disposition_redundancy
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+
+import std.disposition { Disposition, Scaffold, Terminal, SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, DeclField, WholeDeclaration, NamedField }
+import v2.std.collection { List }
+import v2.std.algebra { count_where, any }
+import v2.std.logic { Bool }
+
+fn decl_field_eq(a: DeclField, b: DeclField) -> Bool {
+  match a {
+    WholeDeclaration =>
+      match b {
+        WholeDeclaration => true
+        NamedField { field_name: _ } => false
+      }
+    NamedField { field_name: an } =>
+      match b {
+        NamedField { field_name: bn } => an == bn
+        WholeDeclaration => false
+      }
+  }
+}
+
+fn decl_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
+  a.module_path == b.module_path
+    && a.decl_name == b.decl_name
+    && decl_field_eq(a: a.field, b: b.field)
+}
+
+fn disposition_binds_present(d: Disposition, present: List<DeclarationRef>) -> Bool {
+  match d {
+    Scaffold { dissolves_to: _, bind } =>
+      any(xs: present, predicate: fn(p) { decl_ref_eq(a: p, b: bind) })
+    Terminal { reason: _ } => false
+  }
+}
+
+fn disposition_redundancy_violation_count(dispositions: List<Disposition>, present: List<DeclarationRef>) -> Int {
+  count_where(xs: dispositions, predicate: fn(d) { disposition_binds_present(d: d, present: present) })
+}
+
+fn disposition_is_terminal(d: Disposition) -> Bool {
+  match d {
+    Terminal { reason: _ } => true
+    Scaffold { dissolves_to: _, bind: _ } => false
+  }
+}
+
+fn terminal_count(dispositions: List<Disposition>) -> Int {
+  count_where(xs: dispositions, predicate: fn(d) { disposition_is_terminal(d: d) })
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}

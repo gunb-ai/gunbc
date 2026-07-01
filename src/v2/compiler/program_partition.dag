@@ -1,7 +1,3 @@
-// src/v2/compiler/program_partition.dag
-// Scope: resolve ProgramSegment against InferredTree → ProgramPartition; project emit input.
-// Status: Wave A — facts_closure_fold + boundary checks; emit_partition / emit_for_target wired.
-
 module v2.compiler.program_partition
 
 import v2.compiler.emit { emit }
@@ -59,8 +55,6 @@ import v2.std.program_segment {
 }
 import v2.std.witness { Holds, Violates }
 
-// Resolved emit slice: ambient infer output + chosen segment + boundary policy.
-// `root` is authoritative for translation; `segment` records provenance.
 type ProgramPartition {
   ambient: InferredTree
   segment: ProgramSegment
@@ -100,10 +94,6 @@ fn partition_empty_segment_diagnostic(root: Node) -> Diagnostic {
   }
 }
 
-// 🟡 gated — feature:program-partition-subtree-containment — consumer:partition_subtree_root_contained_in_ambient —
-// dissolve-on-arrival: path witness via
-// subterm_at / content_hash containment replaces structural identity-in-subtree membership; forbidden:
-// steady-state identity-only containment without path witness.
 fn partition_subtree_root_contained_in_ambient(
   ambient_root: Node,
   segment_root: Node
@@ -193,8 +183,6 @@ fn facts_closure_entries_fold(
   )
 }
 
-// Closure projection: retain ambient facts for nodes reachable from segment root.
-// Under FailClosedOnFreeRefs, reject grounding subjects that escape the segment subtree.
 fn facts_closure_fold(partition: ProgramPartition) -> Outcome<Map<Node, InferredFacts>> {
   match partition.boundary {
     AmbientContextAvailable =>
@@ -270,11 +258,6 @@ fn resolve_program_partition(
   )
 }
 
-// 🟡 gated — predicate-dissolution interim (DESIGN.md §2 — decompress→map→reduce) —
-// feature:program-partition-arrow-body-behavior-segment — consumer:partition_segment_is_ambient_arrow_body_behavior —
-// bind: design-in-language-emission-program-partition.md §6.1 — dissolve-on-arrival: segment-root behavior
-// projects through std node-kind realization rows; forbidden: steady-state ComputationNode behavior Transform
-// match in partition emit routing.
 fn partition_segment_root_is_transform_computation(root: Node) -> Bool {
   match root.kind {
     ComputationNode { behavior: Transform } => true
@@ -298,12 +281,6 @@ fn partition_segment_is_ambient_arrow_body_behavior(
   }
 }
 
-// 🟡 gated — feature:program-partition-arrow-body-behavior-emit-seam — consumer:emit_partition_arrow_body_behavior_source —
-// bind: #4741 / ROADMAP §1.5 (06_value_expression → translate_algebra dissolve) — dissolve-on-arrival: repoint
-// this seam onto translate/serialize when ComputationNode roots are admitted directly; delete
-// emit_partition_arrow_body_behavior_source and value-expression/serialize imports here — forbidden:
-// steady-state parallel body-emit path after §1.5 lands (cementation risk).
-// Wave A interim: Arrow.body Behavior segments route through value-expression projection (design §6.1 keystone).
 fn emit_partition_arrow_body_behavior_source(
   partition: ProgramPartition,
   target: TargetModel
@@ -381,7 +358,6 @@ fn emit_for_target(
   )
 }
 
-// Lens SectionRef adapter — fail-closed until section_subject consumer lands (§4.3 / api-review #4792).
 fn program_segment_from_section_unavailable() -> Outcome<ProgramSegment> {
   outcome_rejected(
     d: Diagnostic {

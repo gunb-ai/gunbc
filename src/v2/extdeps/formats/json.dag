@@ -1,15 +1,7 @@
-// src/v2/extdeps/formats/json.dag
-// Scope: JSON value grammar (RFC 8259 / ECMA-404) with unique-name object profile — declarative model only.
-// Status: parse/emit axes (gated on lex/parse/emit pipeline substrate), numeric-lexeme profile (RFC 8259 §6),
-//         unique-name profile (RFC 8259 §4 SHOULD→MUST enforcement witness).
-// Anchor: https://datatracker.ietf.org/doc/html/rfc8259 + https://ecma-international.org/publications-and-standards/standards/ecma-404/
-
 module v2.extdeps.formats.json
 
 import v2.std.grammar { GrammarSchema }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type JsonValue
   = JsonNull
   | JsonBool { value: Bool }
@@ -18,27 +10,15 @@ type JsonValue
   | JsonArray { elements: List<JsonValue> }
   | JsonObject { members: Map<String, JsonValue> }
 
-
-// ── Numeric-lexeme profile ───────────────────────────────────────────────────
-// RFC 8259 §6: number = [ minus ] int [ frac ] [ exp ]
-//              int  = zero / ( digit1-9 *DIGIT )        — no leading zeros
-//              frac = decimal-point 1*DIGIT             — 1+ digits required
-//              exp  = e [ minus / plus ] 1*DIGIT        — 1+ digits required
-
 type JsonNumberLeadingMinusOptionalPrefixWitness {}
 
-// 🟢 coproduct dissolution — T-4.6-P4-JsonNumberIntegerLexeme.
 type JsonNumberIntegerLexemeWitness
   = JsonNumberIntegerZeroWitness
   | JsonNumberIntegerNonZeroLeadingDigitWithDigitRunWitness
 
-// frac = decimal-point 1*DIGIT — the decimal point must be followed by ≥1 digit;
-// bare trailing dot (e.g. "1.") is not a valid JSON number.
 type JsonNumberFracDecimalPointSeparatorWitness {}
 type JsonNumberFracRequiresAtLeastOneDigitAfterPointWitness {}
 
-// exp = e [sign] 1*DIGIT — the exponent marker must be followed by ≥1 digit;
-// bare trailing exponent (e.g. "1e") is not a valid JSON number.
 type JsonNumberExpEOrCapitalEMarkerWitness {}
 type JsonNumberExpSignOptionalPlusOrMinusWitness {}
 type JsonNumberExpRequiresAtLeastOneDigitAfterMarkerWitness {}
@@ -53,11 +33,6 @@ type JsonNumberLexemeFacts {
   exp_requires_at_least_one_digit_after_marker: JsonNumberExpRequiresAtLeastOneDigitAfterMarkerWitness,
 }
 
-
-// ── Unique-name profile ──────────────────────────────────────────────────────
-// RFC 8259 §4: "The names within an object SHOULD be unique."
-// This profile treats the SHOULD as a MUST (parser enforcement).
-
 type JsonObjectMemberNamesUniqueWithinObjectWitness {}
 
 type JsonObjectUniqueNameProfileEnforcedAsMustWitness {}
@@ -67,15 +42,8 @@ type JsonUniqueNameProfileFacts {
   unique_name_profile_enforced_as_must: JsonObjectUniqueNameProfileEnforcedAsMustWitness,
 }
 
-
 type JsonDocument {
   grammar_schema: GrammarSchema,
   unique_names: JsonUniqueNameProfileFacts,
   value: JsonValue,
 }
-
-
-// ── Gated axes ───────────────────────────────────────────────────────────────
-// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — lex/parse pipeline-stage substrate (parse half).
-// 🟡 gated — feature:SL-3229-T4-FORMAT-T6T7 — emit pipeline-stage substrate (emit half).
-// 🟡 gated — feature: unique-name profile parse enforcement binding (JsonUniqueNameProfileFacts consumption at parse boundary) — SL-3229-JSON-UNIQUE-NAME-PARSE.

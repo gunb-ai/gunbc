@@ -1,33 +1,17 @@
-// extdeps/languages/python/types.dag -- Python coercion data.
-//
-// Declares which Python types inhabit which .dag algebraic structures.
-// Python has garbage collection, so sharing is identity (no wrapper).
-//
-// FAIL-CLOSED CONTRACT: Missing inhabitant = compile error.
-//
-// SCHEMA: Type definitions live in std/coercion.dag (shared authority).
-// This file instantiates data only — no local type families.
-//
-// Ref: Python Language Reference (docs.python.org/3/reference)
-//      PEP 484 "Type Hints", PEP 557 "Data Classes"
-//      std/algebra.dag, std/coercion.dag
-//
-// Consumers:
-//   v2/05_emit_python.dag -- coercion engine reads inhabitants
-
 module extdeps.languages.python.types
 
 import std.coercion {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax
 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-
-// =========================================================================
-// Type checkpoints
-//
-// Python has no Copy/Move distinction. All values are references to
-// objects on the GC heap. is_copy is none for all entries.
-// =========================================================================
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.python.org/3/reference"
+  }
+}
 
 data python_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Int",    target_type: "int",   default_expr: "0",      is_copy: none, literal_suffix: none },
@@ -39,16 +23,6 @@ data python_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Secret", target_type: "str",   default_expr: "\"\"",   is_copy: none, literal_suffix: none },
   { dag_name: "Json",   target_type: "dict",  default_expr: "{}",     is_copy: none, literal_suffix: none }
 ]
-
-
-// =========================================================================
-// Algebra inhabitants
-//
-// COMPARISON WITH RUST:
-//   FreeMonoid     → list (Python) vs Vec<T> (Rust)
-//   BooleanAlgebra → set (Python) vs BTreeSet<T> (Rust)
-//   PartialFunction→ dict (Python) vs HashMap<K,V> (Rust)
-// =========================================================================
 
 data python_algebra_inhabitants: List<InhabitantDecl> = [
   { algebra: "FreeMonoid",
@@ -87,41 +61,12 @@ data python_algebra_inhabitants: List<InhabitantDecl> = [
     is_copy: none }
 ]
 
-
-// =========================================================================
-// Optional: T | None (PEP 604)
-//
-// Authority: typing_optional and none_literal below. No separate optional
-// declarations — they would duplicate the existing syntax facts.
-// =========================================================================
-
-
-// =========================================================================
-// Callable: Callable[[T], U] (typing module)
-//
-// Python has no owned/shared/static distinction. GC handles everything.
-// =========================================================================
-
 data python_callable: CallableRepr = CallableRepr {
   template: "Callable[[\{params\}], \{return\}]",
   param_separator: ", ",
   return_separator: ", ",
   import_path: "from typing import Callable"
 }
-
-
-// =========================================================================
-// Sharing
-//
-// Python has GC. Sharing is structural identity — no wrapper needed.
-// The emitter knows this from the target language, not from a declared
-// SharingStrategy config surface.
-// =========================================================================
-
-
-// =========================================================================
-// Retained Python type system facts
-// =========================================================================
 
 type PythonTypeKind
   = DynamicType
@@ -150,14 +95,6 @@ data pass_statement: String = "pass"
 data type_checker: String = "mypy"
 data type_checker_strict: String = "mypy --strict"
 
-// Cast syntax: Python uses constructor calls (int(x), float(x), str(x)).
-// fail_open=true models Python's actual semantics: constructor calls are
-// always syntactically valid. Invalid casts (e.g., int("hello")) produce
-// runtime errors, not syntax errors. The emitter faithfully renders the
-// construct; the target language's runtime validates.
-// Python constructor casts: int(x), float(x), bool(x), str(x).
-// All numeric conversions are syntactically valid in Python.
-// Runtime validates (e.g., int("hello") raises ValueError).
 data python_cast_syntax: CastSyntax = {
   template: "\{type\}(\{expr\})",
   cast_rules: [

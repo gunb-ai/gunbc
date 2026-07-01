@@ -1,12 +1,6 @@
-// src/v2/lens/leaf_model_verification.dag
-// Scope: Layer B fixture generators for leaf-model verification (T-19 testgen extension, Phase 1 R1–R3-internal).
-// Status: R1 rust + R1 python + R2a rust + R2b rust (debug/release live) + R3-external rustc + R3-internal emit-coupling fixtures;
-//   python R2a + R2b (arbitrary-precision add) + R3-external CPython fixtures;
-//   typescript R2a + R2b (bigint runtime / number-lane falsification) + R3-external tsc fixtures;
-//   go R1 + R2a + R2b (int64 runtime) + R3-external build fixtures.
-
 module v2.lens.leaf_model_verification
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 
 import v2.extdeps.languages.go {
   go_facts_int,
@@ -104,8 +98,6 @@ import v2.std.leaf_model_verification {
 import v2.std.node { Node, Symbol, SyntheticOccurrence }
 import v2.std.text { String }
 
-// Fact anchor: rust.dag declares surface spelling + coercion edge for i32.
-// Fixture embeds the spelled type + literal suffix so rustc is the external authority.
 data rust_r1_happy_fixture_source: String = "pub fn r1_test() -> i32 { 0i32 }\n"
 
 data rust_r1_falsification_fixture_source: String = "pub fn r1_test() -> i32 { \"string\" }\n"
@@ -140,12 +132,10 @@ fn rust_r1_fixture_pair() -> LeafModelFixturePair {
   }
 }
 
-// Testgen port: `rust_r1_fixture`.
 fn rust_r1_fixture() -> LeafModelFixturePair {
   rust_r1_fixture_pair()
 }
 
-// Fact anchors: python.dag declares int surface spelling + encoding axis for int facts.
 data python_r1_happy_fixture_source: String = "def r1_test() -> int:\n    return 0\n"
 
 data python_r1_falsification_fixture_source: String = "def r1_test() -> i32:\n    return 0\n"
@@ -178,7 +168,6 @@ fn python_r1_fixture() -> LeafModelPythonFixturePair {
   python_r1_fixture_pair()
 }
 
-// R2a — int algebra inhabitance: ordered-ring ops on Python int (planning §7 mirror of rust R2a).
 data python_r2a_happy_fixture_source: String = "def r2a_test(a: int, b: int) -> tuple[int, bool]:\n    return (a + b, a < b)\n"
 
 data python_r2a_falsification_fixture_source: String = "def r2a_test(a: int) -> int:\n    return a.log2_exact()\n\nif __name__ == \"__main__\":\n    r2a_test(1)\n"
@@ -211,7 +200,6 @@ fn python_r2a_fixture() -> LeafModelPythonFixturePair {
   python_r2a_fixture_pair()
 }
 
-// R2b — arbitrary-precision int add beyond fixed-width (python_repr_int_arbitrary_precision).
 data python_r2b_runtime_fixture_source: String = "def r2b_test() -> int:\n    return (2**63 - 1) + 1\n\nif __name__ == \"__main__\":\n    assert r2b_test() == 2**63\n"
 
 fn python_r2b_runtime_fixture() -> LeafModelPythonFixture {
@@ -236,22 +224,12 @@ fn python_r2b_fixture() -> LeafModelPythonFixturePair {
   python_r2b_fixture_pair()
 }
 
-// --- PY-L2-CROSS-RUNTIME-DRIFT — positive cross-runtime divergence receipt ---
-// The same modeled program — exact integer add at the fixed-width boundary, `MAX + 1` — realized
-// in each target's native integer. Python's Int is arbitrary precision, so it prints the exact sum
-// (9223372036854775808). Rust `i64` and Go `int64` are fixed-width two's-complement, so the same add
-// wraps to i64::MIN (-9223372036854775808). The runner asserts the drift POSITIVELY: python_value !=
-// rust_value (and != go_value when Go is present), while rust_value == go_value (cross-runtime
-// fixed-width agreement). Rust uses `wrapping_add` so the boundary is defined behavior (no debug
-// overflow panic); Go signed overflow is defined to wrap by the language spec. Complement of the L2
-// parity lane (PR #4154), which asserts EQUALITY on the common domain.
 data python_cross_runtime_drift_python_source: String = "def add_exact(a: int, b: int) -> int:\n    return a + b\n\nif __name__ == \"__main__\":\n    print(add_exact((2 ** 63) - 1, 1))\n"
 
 data python_cross_runtime_drift_rust_source: String = "fn add_exact(a: i64, b: i64) -> i64 { a.wrapping_add(b) }\nfn main() {\n    println!(\"{}\", add_exact(i64::MAX, 1));\n}\n"
 
 data python_cross_runtime_drift_go_source: String = "package main\n\nimport (\n\t\"fmt\"\n\t\"math\"\n)\n\nfunc addExact(a int64, b int64) int64 { return a + b }\n\nfunc main() {\n\tfmt.Println(addExact(math.MaxInt64, 1))\n}\n"
 
-// Arbitrary-precision (Python) value vs fixed-width wrapped (Rust/Go) value — the modeled divergence.
 data python_cross_runtime_drift_arbitrary_precision_value: String = "9223372036854775808"
 
 data python_cross_runtime_drift_fixed_width_value: String = "-9223372036854775808"
@@ -272,18 +250,11 @@ fn python_cross_runtime_drift_probe() -> LeafModelCrossRuntimeDriftProbe {
   }
 }
 
-// --- PY-L2-CROSS-TARGET-PARITY probes (Worksheet C) — positive complement of the drift probe ---
-// Common-domain R2a: small-value integer add. The value (5) sits inside the subdomain where
-// arbitrary-precision (Python) and two's-complement (Rust/Go) realizations coincide, so all three
-// print the identical decimal payload. Same three target sources family as the drift probe, but the
-// operand stays away from the fixed-width boundary, so the outcome is PARITY not divergence.
 data python_l2_parity_r2a_python_source: String = "def add_small(a: int, b: int) -> int:\n    return a + b\n\nif __name__ == \"__main__\":\n    print(add_small(2, 3))\n"
 data python_l2_parity_r2a_rust_source: String = "fn add_small(a: i64, b: i64) -> i64 { a + b }\nfn main() {\n    println!(\"{}\", add_small(2, 3));\n}\n"
 data python_l2_parity_r2a_go_source: String = "package main\n\nimport \"fmt\"\n\nfunc addSmall(a int64, b int64) int64 { return a + b }\n\nfunc main() {\n\tfmt.Println(addSmall(2, 3))\n}\n"
 data python_l2_parity_r2a_value: String = "5"
 
-// Common-domain R3-external: Symbol nominal/value projection. All three construct a one-field
-// Symbol carrying the nominal payload "x" and print its projection, yielding the identical display.
 data python_l2_parity_r3_python_source: String = "class Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\ndef project() -> str:\n    return Symbol(\"x\").value\n\nif __name__ == \"__main__\":\n    print(project())\n"
 data python_l2_parity_r3_rust_source: String = "struct Symbol { value: String }\nfn project() -> String { Symbol { value: \"x\".to_string() }.value }\nfn main() {\n    println!(\"{}\", project());\n}\n"
 data python_l2_parity_r3_go_source: String = "package main\n\nimport \"fmt\"\n\ntype Symbol struct { value string }\n\nfunc project() string { return Symbol{ value: \"x\" }.value }\n\nfunc main() {\n\tfmt.Println(project())\n}\n"
@@ -328,7 +299,6 @@ fn python_l2_parity_probe_roster() -> List<LeafModelCrossTargetParityProbe> {
   ]
 }
 
-// R3-external — Symbol atom realization: nominal class (happy) vs ctor arity mismatch (falsification).
 data python_r3_external_happy_fixture_source: String = "class Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\ndef r3_test() -> Symbol:\n    return Symbol(\"x\")\n\nif __name__ == \"__main__\":\n    r3_test()\n"
 
 data python_r3_external_falsification_fixture_source: String = "class Symbol:\n    def __init__(self, value: str):\n        self.value = value\n\ndef r3_test() -> Symbol:\n    return Symbol(1, 2)\n\nif __name__ == \"__main__\":\n    r3_test()\n"
@@ -361,7 +331,6 @@ fn python_r3_external_fixture() -> LeafModelPythonFixturePair {
   python_r3_external_fixture_pair()
 }
 
-// R2a — ECMA number (IEEE-754) algebra inhabitance vs tsc.
 data typescript_r2a_happy_fixture_source: String = "function r2a_test(a: number, b: number): [number, boolean] { return [a + b, a < b]; }\n"
 
 data typescript_r2a_falsification_fixture_source: String = "function r2a_test(a: number): number { return a.log2_exact(); }\n"
@@ -394,7 +363,6 @@ fn typescript_r2a_fixture() -> LeafModelTypeScriptFixturePair {
   typescript_r2a_fixture_pair()
 }
 
-// R2b — bigint exact add beyond Number.MAX_SAFE_INTEGER (Node runtime) vs number-lane divergence.
 data typescript_r2b_runtime_happy_fixture_source: String = "const ok = (2n ** 63n - 1n) + 1n === 2n ** 63n;\nif (!ok) { console.error(\"r2b bigint lane failed\"); process.exit(1); }\n"
 
 data typescript_r2b_runtime_falsification_fixture_source: String = "const bigintExact = (2n ** 63n + 1n) === 2n ** 63n;\nconst numberLane = (2 ** 63 + 1) === 2 ** 63;\nif (bigintExact || !numberLane) { console.error(\"expected bigint inequality and number-lane IEEE754 false positive\"); process.exit(1); }\n"
@@ -415,7 +383,7 @@ fn typescript_r2b_runtime_fixture_pair() -> LeafModelTypeScriptRuntimeFixturePai
     happy: typescript_r2b_runtime_happy_fixture(),
     expected_happy_verdict: TargetRuntimeExerciseAccepted,
     falsification: typescript_r2b_runtime_falsification_fixture(),
-    // Divergence probe succeeds at runtime (exit 0) when bigint exact ≠ number-lane false positive.
+
     expected_falsification_verdict: TargetRuntimeExerciseAccepted
   }
 }
@@ -424,7 +392,6 @@ fn typescript_r2b_fixture() -> LeafModelTypeScriptRuntimeFixturePair {
   typescript_r2b_runtime_fixture_pair()
 }
 
-// R3-external — ECMA Symbol() factory (happy) vs `new Symbol` (not constructable).
 data typescript_r3_external_happy_fixture_source: String = "const s: symbol = Symbol(\"x\");\n"
 
 data typescript_r3_external_falsification_fixture_source: String = "const s: symbol = new Symbol(\"x\");\n"
@@ -457,7 +424,6 @@ fn typescript_r3_external_fixture() -> LeafModelTypeScriptFixturePair {
   typescript_r3_external_fixture_pair()
 }
 
-// R2a — algebra inhabitance: ordered-ring ops on i32 (design-rust-dag-leafmodel-instantiation.md §5).
 data rust_r2a_happy_fixture_source: String = "pub fn r2a_test(a: i32, b: i32) -> (i32, bool) { (a + b, a < b) }\n"
 
 data rust_r2a_falsification_fixture_source: String = "pub fn r2a_test(a: i32) -> i32 { a.log2_exact() }\n"
@@ -496,7 +462,6 @@ fn rust_r2a_fixture() -> LeafModelFixturePair {
   rust_r2a_fixture_pair()
 }
 
-// R2b — overflow semantics via runtime-parameterized add (§5: no compile-time literal overflow).
 data rust_r2b_runtime_fixture_source: String = "pub fn r2b_test(a: i32, b: i32) -> i32 { a + b }\npub fn main() { let _ = r2b_test(i32::MAX, 1); }\n"
 
 fn rust_r2b_runtime_fixture() -> LeafModelRustFixture {
@@ -542,7 +507,6 @@ fn rust_r2b_release_fixture() -> LeafModelFixturePair {
   rust_r2b_release_fixture_pair()
 }
 
-// R3-external — Symbol atom realization: nominal carrier (happy) vs alias+ctor mismatch (SG-1 E0423 class).
 data rust_r3_external_happy_fixture_source: String = "pub struct Symbol(pub String);\npub fn r3_test() -> Symbol { Symbol(\"x\".to_string()) }\n"
 
 data rust_r3_external_falsification_fixture_source: String = "pub type Symbol = String;\npub fn r3_test() -> Symbol { Symbol(\"x\") }\n"
@@ -581,7 +545,6 @@ fn rust_r3_external_fixture() -> LeafModelFixturePair {
   rust_r3_external_fixture_pair()
 }
 
-// R3-internal — Symbol TargetAtomRealization row mutation must move type + value projections together (PR #3971 §4).
 data rust_r3_internal_mutated_row: TargetAtomRealization = TargetAtomRealization {
   source_carrier: symbol_kernel_type_node(),
   target_model: rust_mvp1_target_model_staging(),
@@ -627,7 +590,6 @@ fn rust_r3_internal_fixture() -> LeafModelEmitCouplingReceipt {
   rust_r3_internal_emit_coupling_receipt()
 }
 
-// Go R1 — int surface spelling against go build.
 data go_r1_happy_fixture_source: String = "package leafmodel\n\nfunc r1() int { return 0 }\n"
 
 data go_r1_falsification_fixture_source: String = "package leafmodel\n\nfunc r1() i32 { return 0 }\n"
@@ -670,7 +632,6 @@ fn go_r1_fixture() -> LeafModelGoCompileFixturePair {
   go_r1_fixture_pair()
 }
 
-// Go R2a — int algebra operations against go build.
 data go_r2a_claim_algebra_inhabitance_fact: Node = go_r2a_algebra_inhabitance_fact_node()
 
 data go_r2a_happy_fixture_source: String = "package leafmodel\n\nfunc r2a(a int, b int) (int, bool) { return a + b, a < b }\n"
@@ -696,7 +657,6 @@ fn go_r2a_fixture() -> LeafModelGoCompileFixturePair {
   go_r2a_fixture_pair()
 }
 
-// Go R2b — typed int64 overflow truncates silently at runtime.
 data go_r2b_claim_overflow_fact: Node = go_integer_facts_node(facts: go_facts_int64)
 
 data go_r2b_happy_fixture_source: String = "package main\n\nimport \"math\"\n\nfunc main() {\n    var x int64 = math.MaxInt64\n    got := x + 1\n    want := int64(math.MinInt64)\n    if got != want {\n        panic(\"silent signed wrap: expected MinInt64\")\n    }\n}\n"
@@ -722,7 +682,6 @@ fn go_r2b_fixture() -> LeafModelGoRuntimeFixturePair {
   go_r2b_fixture_pair()
 }
 
-// Go R3-external — Symbol atom realization: built-in string carrier vs invalid conversion arity.
 data go_r3_external_happy_fixture_source: String = "package leafmodel\n\nfunc r3() string { return \"x\" }\n"
 
 data go_r3_external_falsification_fixture_source: String = "package leafmodel\n\nfunc r3() string { return string(\"x\", \"y\") }\n"
@@ -746,12 +705,6 @@ fn go_r3_external_fixture() -> LeafModelGoCompileFixturePair {
   go_r3_external_fixture_pair()
 }
 
-// --- PY-L1-STATIC-STRUCTURAL fixtures (Arbiter ruling proud-fox-405, msg_41813c03) ---
-// F1 demonstration: the falsification fixture returns a `str` from a function annotated
-// `-> int`. CPython `py_compile` ACCEPTS it and `python3` runs it with NO error
-// (the value is never used), so neither the compile nor the runtime authority catches
-// the defect — only static analysis (pyright `reportReturnType`) does. This is exactly
-// why static structural analysis is a third, distinct authority.
 data python_l1_static_happy_fixture_source: String = "def l1_test() -> int:\n    return 0\n"
 data python_l1_static_falsification_fixture_source: String = "def l1_test() -> int:\n    return \"not an int\"\n"
 
@@ -776,29 +729,9 @@ fn python_l1_static_fixture() -> LeafModelPythonStaticFixturePair {
   python_l1_static_fixture_pair()
 }
 
-// --- PY-L1-STATIC-STRUCTURAL fixture-scale roster ---
-// L1 fixture-scale: the single return-type pair above is widened to a roster of
-// distinct pyright structural diagnostic classes, each consuming the SAME shared
-// TargetStaticAnalysisInvocation / TargetStaticAnalysisVerdict carriers and the SAME
-// pyright_profile_l1 (no per-fixture tool config). Every falsification below holds the
-// same hard third-authority property as F1: CPython `py_compile` ACCEPTS it and `python3`
-// runs it with exit 0 (the defect sits in a function that is never called), so neither the
-// compile nor the runtime authority catches it — only pyright does, under the modeled
-// diagnostic rule. Each pair anchors `surface_spelling_fact: python_surface_spelling_int`
-// (every fixture annotates `-> int`). Roster membership is the single modeled authority for
-// the PY-L1 static receipt. (A shell host-runner formerly iterated this list; the
-// scripts/ runners were retired repo-wide per operator directive #4252, leaving the modeled
-// .dag claims as the receipt authority.)
-
-// reportUndefinedVariable: the dead function references a name that is never bound. pyright
-// flags it statically; py_compile accepts (names resolve at runtime) and the module runs
-// clean because the function is never invoked.
 data python_l1_static_undefined_variable_happy_fixture_source: String = "def l1_undefined_variable() -> int:\n    bound = 0\n    return bound\n"
 data python_l1_static_undefined_variable_falsification_fixture_source: String = "def l1_undefined_variable() -> int:\n    return undefined_symbol\n"
 
-// reportMissingImports: the dead function imports a module that does not exist. pyright
-// flags it statically; py_compile accepts and the module runs clean because the import is
-// inside a function that is never called (so no runtime ImportError fires).
 data python_l1_static_missing_import_happy_fixture_source: String = "def l1_missing_import() -> int:\n    import math\n    return int(math.floor(1.0))\n"
 data python_l1_static_missing_import_falsification_fixture_source: String = "def l1_missing_import() -> int:\n    import totally_not_a_real_module_xyz\n    return totally_not_a_real_module_xyz.value\n"
 
@@ -844,7 +777,6 @@ fn python_l1_static_fixture_roster() -> List<LeafModelPythonStaticFixturePair> {
   ]
 }
 
-// Worksheet B — mypy companion on the same F1 return-type sources; distinct tool/profile namespace.
 fn python_l1_static_mypy_fixture_pair() -> LeafModelPythonStaticFixturePair {
   LeafModelPythonStaticFixturePair {
     claim_id: leaf_model_claim_python_l1_static_return_type,
@@ -866,12 +798,6 @@ fn python_l1_static_mypy_fixture() -> LeafModelPythonStaticFixturePair {
   python_l1_static_mypy_fixture_pair()
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "T-22 run_target_verification -- behavioral host-exec verdicts",
-    dissolve_on: "emitted-code behavior is verified by host execution (R1-R3 fixtures run), replacing the structural pair-readiness witness"
-  },
-  rationale: "For the specific R1-R3 fixtures, emitted-code behavior is decidable by execution; the structural pair-readiness witness is the interim floor guarantee until behavioral host-exec (T-22) lands."
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

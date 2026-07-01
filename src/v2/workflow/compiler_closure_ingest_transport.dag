@@ -1,18 +1,3 @@
-// v2.workflow.compiler_closure_ingest_transport — scoped 00_compile closure manifest gate.
-//
-// SCAFFOLD — modeled ShellProgram transport (serialize_bash → shell.Exec.Run).
-// Dissolve-on: collapse to modeled ProcessExit host effects (parameterized argv for
-//   discover_source_root_ingest + gunbc claim-run legs; no shell.Exec.Run) — same
-//   dissolution target as the CI-floor *_transport.dag family (emit(intent, Bash) /
-//   v2 bash TargetModel rows). Gap-4 minimal RED witness enrolled (same-module entry until
-//   dag.dag match_arm stmt fix lands). Full-manifest gap4_probe_* follows substrate fix.
-// Emit acceptance (former shell nv2-gate third leg / compiler_closure_v2_emit_*)
-//   is intentionally NOT enrolled — dissolved to regen/measurement oracle lane;
-//   dissolve-on: add emit acceptance claim-run when N_v2 emit milestone unblocks.
-//
-// Roots: gunbc.ci_layer_roots.witness_layer_roots = [dsl, src/v2] (same as real_ingest gate).
-// Does NOT invoke scripts/v2-compiler-closure-nv2-gate.sh (deleted).
-
 module v2.workflow.compiler_closure_ingest_transport
 
 import extdeps.shell
@@ -33,7 +18,6 @@ data closure_witness_layer_roots: String = "self_host_closure_witness_layer_root
 data closure_gap4_entry: String = "src/v2/test/claim/languages/gap4_parse_tokens_remain_test.dag"
 data closure_gap4_witness: String = "gap4_match_arm_let_stmt_parses_holds"
 
-// --source-root <r> for every witness_layer_root (§3 single authority — same roots as the rest of CI).
 fn cc_source_root_flags() -> List<ShellWord> {
   fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
 }

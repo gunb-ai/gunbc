@@ -1,0 +1,103 @@
+module v2.test.emit_host_gate.target_coverage_completeness
+
+import v2.std.algebra { fold_list, is_empty }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.compilers.target_model { TargetModel, runtime_row_from_target }
+import v2.extdeps.languages.rust { rust_mvp1_target_model }
+import v2.extdeps.languages.python { python_mvp1_target_model }
+import v2.extdeps.languages.go { go_mvp1_target_model }
+import v2.extdeps.languages.typescript { ts_mvp1_target_model }
+import v2.extdeps.languages.cpp { cpp_mvp1_target_model }
+import v2.extdeps.languages.java { java_mvp1_target_model }
+
+type EmitHostTargetCoverageRow {
+  target: TargetModel
+  host_smoked: Bool
+}
+
+data emit_host_coverage_row_rust: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
+  target: rust_mvp1_target_model(),
+  host_smoked: true
+}
+
+data emit_host_coverage_row_python: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
+  target: python_mvp1_target_model(),
+  host_smoked: true
+}
+
+data emit_host_coverage_row_go: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
+  target: go_mvp1_target_model(),
+  host_smoked: true
+}
+
+data emit_host_coverage_row_typescript: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
+  target: ts_mvp1_target_model(),
+  host_smoked: true
+}
+
+data emit_host_coverage_row_cpp: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
+  target: cpp_mvp1_target_model(),
+  host_smoked: false
+}
+
+data emit_host_coverage_row_java: EmitHostTargetCoverageRow = EmitHostTargetCoverageRow {
+  target: java_mvp1_target_model(),
+  host_smoked: false
+}
+
+data emit_host_target_coverage_rows: List<EmitHostTargetCoverageRow> = [
+  emit_host_coverage_row_rust,
+  emit_host_coverage_row_python,
+  emit_host_coverage_row_go,
+  emit_host_coverage_row_typescript,
+  emit_host_coverage_row_cpp,
+  emit_host_coverage_row_java
+]
+
+fn emit_host_target_coverage_consistent(row: EmitHostTargetCoverageRow) -> Bool {
+  match runtime_row_from_target(target: row.target) {
+    Accepted { value: _, diagnostics: _ } => row.host_smoked
+    Rejected { diagnostics: _ } => !row.host_smoked
+  }
+}
+
+fn emit_host_all_targets_consistent() -> Bool {
+  fold_list(
+    xs: emit_host_target_coverage_rows,
+    empty: true,
+    cons: fn(acc, row) {
+      acc && emit_host_target_coverage_consistent(row: row)
+    }
+  )
+}
+
+data emit_host_gate_declared_smoke_count: Int = 4
+
+fn emit_host_row_is_present(row: EmitHostTargetCoverageRow) -> Bool {
+  match runtime_row_from_target(target: row.target) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn emit_host_present_target_count() -> Int {
+  fold_list(
+    xs: emit_host_target_coverage_rows,
+    empty: 0,
+    cons: fn(acc, row) {
+      if emit_host_row_is_present(row: row) { acc + 1 } else { acc }
+    }
+  )
+}
+
+test fn emit_host_target_coverage_complete() -> Bool {
+  if is_empty(xs: emit_host_target_coverage_rows) {
+    false
+  } else {
+    emit_host_all_targets_consistent()
+      && (emit_host_present_target_count() == emit_host_gate_declared_smoke_count)
+  }
+}

@@ -1,11 +1,4 @@
-// src/v2/std/refinement_widening_predicate.dag
-// Scope: mechanical refinement-widening preservation check (leaf — no extdeps import).
-// Anchor: ROADMAP.md coercion faithful widening; Pass B.
-// Status: bundle-encoded pair evidence on PreservationPredicate.algebra; axis-general registry is forward work.
-
-
 module v2.std.refinement_widening_predicate
-
 
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.integer_value_set {
@@ -110,7 +103,6 @@ fn refinement_widening_bundle_holds(
     Rejected { diagnostics: _ } => false
   }
 }
-
 
 fn refinement_widening_preservation_holds(
   source_facts: Node,

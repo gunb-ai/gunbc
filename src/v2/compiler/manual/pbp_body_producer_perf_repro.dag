@@ -1,9 +1,0 @@
-// Perf repro: trivial entry importing only body_producer (parent brief repro).
-module v2.test.manual.pbp_body_producer_perf_repro
-
-import v2.compiler.body_producer { produce_mvp1_add_arrow_with_body_from_resolved }
-import v2.std.logic { Bool }
-
-fn pbp() -> Bool {
-  true
-}

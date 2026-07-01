@@ -1,10 +1,6 @@
-// src/v2/lens/effect.dag
-// Scope: effect lens — effects derived from type-signature shape (B3 single-authority); no parallel taxonomy.
-// Status: per-edge classification-family ratchet — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<EffectClassification>`. `EffectClassification` is a single-variant signature-deferred slot: the per-edge row carries the typed dependency reference and routes the effect-kind question to the signature via `tree.facts.lookup(dependency.source)` at use-sites. The dependency kind is NOT the effect authority (B3 / single authority, §3) — re-authoring effect kinds from `DependencyKind` would be a second authority, exactly the parallel-payload defect this ratchet dissolves. Closing the signature-derived effect kind set is the #3468 BLOCKING follow-up lane.
-
-
 module v2.lens.effect
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.std.algebra { bag_eq, list_snoc_item, non_empty }
@@ -31,14 +27,7 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node { Node, Symbol }
 import v2.std.witness { Holds, Violates, Witness }
-// 🟡 signature-deferred slot. B3: the type signature is the effect
-// authority. The row carries `EffectClassification` as an empty
-// signature-deferred marker; the actual effect kind is read at use-sites
-// from `tree.facts.lookup(dependency.source)`, never re-derived from
-// `DependencyKind` (re-deriving would be a second authority — exactly
-// the parallel-payload defect this ratchet dissolves). Closing the
-// signature-derived effect kind set (decoding `InferredFacts` into a
-// closed effect-kind carrier) is the #3468 BLOCKING follow-up lane.
+
 type EffectClassification {}
 
 type EffectFact {
@@ -82,7 +71,6 @@ fn effect_first_upstream_diagnostic(
   })
 }
 
-// 🟡 gated — predicate-dissolution interim — feature:T-13-effect-signature-deferred-unresolved — dissolve-on-arrival: `InferredFacts` decodes to a closed effect-kind carrier (#3468); forbidden: parallel ad-hoc signature-deferred Bool predicates outside effect_witness.
 fn effect_signature_deferred_unresolved(fact: EffectFact) -> Bool {
   non_empty(xs: fact.dependencies)
 }
@@ -125,12 +113,6 @@ fn effect_fact_eq(a: EffectFact, b: EffectFact) -> Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: effect_classified_eq)
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "the signature-derived closed effect-kind set (#3468 BLOCKING follow-up)",
-    dissolve_on: "effect kinds are derived from the type signature by construction (single authority, B3), closing the per-edge classification ratchet"
-  },
-  rationale: "Effects are a decidable projection of type-signature shape; the lens is a per-edge ratchet until the signature-derived effect-kind set is closed (re-authoring from DependencyKind would be a second authority)."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

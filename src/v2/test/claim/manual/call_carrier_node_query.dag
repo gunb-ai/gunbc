@@ -1,0 +1,179 @@
+module v2.test.manual.call_carrier_node_query
+
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  Value,
+  node_synthetic
+}
+import v2.std.node_query {
+  call_argument_targets,
+  call_callee_target,
+  node_is_call,
+  node_is_callee_reference
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.collection { Absent, Present, list_at_optional }
+import v2.std.logic { Bool }
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+fn call_carrier_bool_node(pass: Bool) -> Node {
+  if pass {
+    node_synthetic(
+      kind: TypeNode { connective: Atom { identity: ^call_carrier_pass } },
+      children: []
+    )
+  } else {
+    node_synthetic(
+      kind: TypeNode { connective: Atom { identity: ^call_carrier_fail } },
+      children: []
+    )
+  }
+}
+
+fn call_carrier_callee_ref() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^call_carrier_callee_add } },
+    children: []
+  )
+}
+
+fn call_carrier_arg_x() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^call_carrier_arg_x } },
+    children: []
+  )
+}
+
+fn call_carrier_arg_y() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^call_carrier_arg_y } },
+    children: []
+  )
+}
+
+fn call_carrier_call_node() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: call_carrier_callee_ref() },
+      Edge { label: Positional, target: call_carrier_arg_x() },
+      Edge { label: Positional, target: call_carrier_arg_y() }
+    ]
+  )
+}
+
+fn call_carrier_value_node() -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
+}
+
+fn call_carrier_callee_free_transform() -> Node {
+  node_synthetic(
+    kind: ComputationNode { behavior: Transform },
+    children: [
+      Edge { label: Positional, target: call_carrier_value_node() },
+      Edge { label: Positional, target: call_carrier_value_node() }
+    ]
+  )
+}
+
+fn call_carrier_call_recognized() -> Bool {
+  node_is_call(node: call_carrier_call_node())
+}
+
+fn call_carrier_callee_free_not_call() -> Bool {
+  !node_is_call(node: call_carrier_callee_free_transform())
+}
+
+fn call_carrier_callee_is_reference() -> Bool {
+  node_is_callee_reference(node: call_carrier_callee_ref())
+}
+
+fn call_carrier_value_not_callee_reference() -> Bool {
+  !node_is_callee_reference(node: call_carrier_value_node())
+}
+
+fn call_carrier_callee_target_matches() -> Bool {
+  match call_callee_target(node: call_carrier_call_node()) {
+    Accepted { value: callee, diagnostics: _ } => callee == call_carrier_callee_ref()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn call_carrier_callee_target_rejects_non_call() -> Bool {
+  match call_callee_target(node: call_carrier_callee_free_transform()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn call_carrier_arguments_match() -> Bool {
+  let args = call_argument_targets(node: call_carrier_call_node())
+  let arity_two = count(args) == 2
+  let first_is_x = match list_at_optional(xs: args, index: 0) {
+    Present { value: a0 } => a0 == call_carrier_arg_x()
+    Absent => false
+  }
+  let second_is_y = match list_at_optional(xs: args, index: 1) {
+    Present { value: a1 } => a1 == call_carrier_arg_y()
+    Absent => false
+  }
+  arity_two && first_is_x && second_is_y
+}
+
+data claim_call_carrier_recognizes_call: TestClaim = EqualsClaim {
+  label: "manual/call-carrier: node_is_call recognizes Transform with callee-ref child[0]",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: call_carrier_bool_node(pass: call_carrier_call_recognized()),
+  rhs: call_carrier_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_call_carrier_callee_free_not_call: TestClaim = EqualsClaim {
+  label: "manual/call-carrier: callee-free 2-arg Transform (effect_io composed shape) is NOT a call",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: call_carrier_bool_node(pass: call_carrier_callee_free_not_call()),
+  rhs: call_carrier_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_call_carrier_callee_is_reference: TestClaim = EqualsClaim {
+  label: "manual/call-carrier: node_is_callee_reference accepts an Atom callee; rejects a Value node",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: call_carrier_bool_node(
+    pass: call_carrier_callee_is_reference() && call_carrier_value_not_callee_reference()
+  ),
+  rhs: call_carrier_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_call_carrier_callee_target_matches: TestClaim = EqualsClaim {
+  label: "manual/call-carrier: call_callee_target returns child[0] for a call, rejects a non-call",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: call_carrier_bool_node(
+    pass: call_carrier_callee_target_matches() && call_carrier_callee_target_rejects_non_call()
+  ),
+  rhs: call_carrier_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_call_carrier_arguments_match: TestClaim = EqualsClaim {
+  label: "manual/call-carrier: call_argument_targets is the positional children after the callee",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: call_carrier_bool_node(pass: call_carrier_arguments_match()),
+  rhs: call_carrier_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

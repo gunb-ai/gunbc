@@ -1,8 +1,3 @@
-// src/v2/std/occurrence_id.dag
-// Scope: per-compile occurrence identity allocator (PROV A-pivot wave-1).
-// Anchor: design-provenance-span.md §4.1; design-node-identity-channels.md (distinct id space from binding_id).
-// Status: Phase 0 model — sole mint path for OccurrenceId; Node field stamping lands Phase 1+2.
-
 module v2.std.occurrence_id
 
 import v2.std.node { OccurrenceId }
@@ -20,7 +15,6 @@ fn occurrence_id_allocator_initial() -> OccurrenceIdAllocator {
   OccurrenceIdAllocator { next_id: 0 }
 }
 
-// SOLE MINT — OccurrenceId { value: ... } constructed only here (#4615 BindingId parity).
 fn alloc_occurrence_id(alloc: OccurrenceIdAllocator) -> OccurrenceIdAllocResult {
   OccurrenceIdAllocResult {
     id: OccurrenceId { value: alloc.next_id },
@@ -32,7 +26,6 @@ fn occurrence_id_eq(left: OccurrenceId, right: OccurrenceId) -> Bool {
   left.value == right.value
 }
 
-// Wave-2: advance allocator floor when composing memoized parse cells (parse_prov_merge).
 fn occurrence_id_allocator_advance_to(
   alloc: OccurrenceIdAllocator,
   min_next: Int

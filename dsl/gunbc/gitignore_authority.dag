@@ -1,0 +1,139 @@
+module gunbc.gitignore_authority
+
+import gunbc.gitignore_model {
+  IgnoreGroup, Producer,
+  DerivableProducerKind, CitedProducerKind,
+  CargoArtifacts, CargoCacheLocal, CodegenSymlink, CoverageReport,
+  GeneratorStamp, WorkflowRuntime, TestgenOutput, RegenTempDir,
+  ClaudeCodeSession, ClaimMapOutput, OpenClawArtifact, GithubCLICache,
+  AuthSessionTranscript, PythonLocalDevScript, SupersededPlanningDir,
+  JetBrainsIDE, VSCodeIDE, VimEditor, EmacsEditor, GenericEditorBackup,
+  MacOSFinder, WindowsExplorer, Tmux, NodeJS, SecretsConvention, CPythonInterpreter,
+  Derivable, Cited,
+  CargoTargetDir, CargoTargetCodexDir, LocalCargoHome, CodegenBinSymlink,
+  TarpaulinHtmlReport, TarpaulinJsonReport, CoberturaReport, LcovReport, CoverageOutputDir,
+  JetBrainsProjectDir, VSCodeWorkspaceDir,
+  VimSwapFile, VimSwapFileAlt, EmacsBackupFile, GenericBackupFile,
+  MacOSFinderMetadata, WindowsThumbnailCache, TmuxLogFile,
+  DotEnvFile, DotEnvLocalFile, DotEnvLocalWildcard,
+  GeneratorStampFile, GunbcWorkflowDir, TestgenOutputDir, NodeModulesDir,
+  ClaudeSessionDir, RegenSourcesDir, RegenOutputDir, RegenGeneratedSourceRootDir,
+  FreshnessCheckDir, AuthTranscriptFile,
+  OpenClawControlDir, OpenClawAgentsFile, OpenClawHeartbeatFile, OpenClawIdentityFile,
+  OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
+  OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
+  PythonLocalDevScriptFile, PythonBytecodeCacheDir, PythonCompiledBytecode,
+  ClaimMapDir, ScratchProbeFile,
+  GunbcPlanningDir, ScriptsFixturesDir
+}
+
+data gitignore_authority: List<IgnoreGroup> = [
+  IgnoreGroup {
+    producer: Derivable { kind: CargoArtifacts },
+    artifacts: [CargoTargetDir, CargoTargetCodexDir]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: CargoCacheLocal },
+    artifacts: [LocalCargoHome]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: CodegenSymlink },
+    artifacts: [CodegenBinSymlink]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: CoverageReport },
+    artifacts: [TarpaulinHtmlReport, TarpaulinJsonReport, CoberturaReport, LcovReport, CoverageOutputDir]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: JetBrainsIDE, upstream: "jetbrains.com/idea" },
+    artifacts: [JetBrainsProjectDir]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: VSCodeIDE, upstream: "code.visualstudio.com" },
+    artifacts: [VSCodeWorkspaceDir]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: VimEditor, upstream: "vim.org" },
+    artifacts: [VimSwapFile, VimSwapFileAlt]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: EmacsEditor, upstream: "gnu.org/software/emacs" },
+    artifacts: [EmacsBackupFile]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: GenericEditorBackup, upstream: "cross-editor backup convention" },
+    artifacts: [GenericBackupFile]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: MacOSFinder, upstream: "developer.apple.com (Finder metadata)" },
+    artifacts: [MacOSFinderMetadata]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: WindowsExplorer, upstream: "microsoft.com (Explorer thumbnail cache)" },
+    artifacts: [WindowsThumbnailCache]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: Tmux, upstream: "github.com/tmux/tmux (pipe-pane log naming)" },
+    artifacts: [TmuxLogFile]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: SecretsConvention, upstream: "github.com/motdotla/dotenv" },
+    artifacts: [DotEnvFile, DotEnvLocalFile, DotEnvLocalWildcard]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: GeneratorStamp },
+    artifacts: [GeneratorStampFile]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: WorkflowRuntime },
+    artifacts: [GunbcWorkflowDir]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: TestgenOutput },
+    artifacts: [TestgenOutputDir]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: NodeJS, upstream: "github/gitignore/Node.gitignore" },
+    artifacts: [NodeModulesDir]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: ClaudeCodeSession },
+    artifacts: [ClaudeSessionDir]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: RegenTempDir },
+    artifacts: [RegenSourcesDir, RegenOutputDir, RegenGeneratedSourceRootDir, FreshnessCheckDir]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: AuthSessionTranscript },
+    artifacts: [AuthTranscriptFile]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: OpenClawArtifact },
+    artifacts: [
+      OpenClawControlDir, OpenClawAgentsFile, OpenClawHeartbeatFile, OpenClawIdentityFile,
+      OpenClawSoulFile, OpenClawToolsFile, OpenClawUserFile, OpenClawWorkboardFile,
+      OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile
+    ]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: GithubCLICache },
+    artifacts: [GithubCLICacheDir]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: PythonLocalDevScript },
+    artifacts: [PythonLocalDevScriptFile]
+  },
+  IgnoreGroup {
+    producer: Cited { kind: CPythonInterpreter, upstream: "python.org/peps/pep-3147" },
+    artifacts: [PythonBytecodeCacheDir, PythonCompiledBytecode]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: ClaimMapOutput },
+    artifacts: [ClaimMapDir, ScratchProbeFile]
+  },
+  IgnoreGroup {
+    producer: Derivable { kind: SupersededPlanningDir },
+    artifacts: [GunbcPlanningDir, ScriptsFixturesDir]
+  }
+]

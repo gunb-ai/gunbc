@@ -1,0 +1,390 @@
+module v2.test.manual.infer_ground_add_mvp
+
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  test_claim_cache_receipt,
+  test_claim_typed_input_node
+}
+import v2.std.verdict { Verdict, Pass, verdict_fail }
+import v2.compiler.infer {
+  infer,
+  infer_descent_not_derived_diagnostic,
+  infer_descent_witness_for_node,
+  InferredTree
+}
+import v2.compiler.resolve { ResolvedTree }
+import v2.std.collection { List, Map }
+import v2.std.diagnostic {
+  Accepted,
+  AmbiguousIntent,
+  Diagnostic,
+  NonEmptyDiagnostics,
+  NodeLocus,
+  None,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton,
+  node_locus,
+  outcome_node_eq
+}
+import v2.std.node {
+  Arrow,
+  Atom,
+  Conj,
+  Edge,
+  Hash,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.verification {
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  test_claim_expected_outcome,
+  test_claim_input,
+  manual_claim_anchor
+}
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.witness { Holds, Violates }
+
+type InferReceiptCase
+
+  = InferDiagnosticReceiptCase {
+      label: String
+      input_symbol: Symbol
+      input: Node
+      expected_rejection: NonEmptyDiagnostics
+    }
+  | InferCompilesReceiptCase {
+      label: String
+      input_symbol: Symbol
+      input: Node
+      expected_value: Node
+    }
+
+fn fixture_int_type_node(atom: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: atom } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn infer_receipt_symbol_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn infer_receipt_runtime_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: infer_receipt_symbol_node(s: ^infer_receipt_runtime_value_symbol),
+      bytes: []
+    }
+  }
+}
+
+fn infer_receipt_runtime_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^infer_receipt_extdeps,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn infer_receipt_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
+}
+
+fn infer_receipt_call_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
+}
+
+fn infer_receipt_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
+}
+
+fn infer_receipt_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  Rejected { diagnostics: diagnostics_singleton(d: infer_receipt_runtime_diagnostic(n: node)) }
+}
+
+fn infer_receipt_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+fn infer_receipt_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter {
+      allocate_literal: infer_receipt_allocate_literal
+    },
+    transform: TransformInterpreter {
+      call_primitive: infer_receipt_call_primitive
+    },
+    branch: BranchInterpreter {
+      choose_branch: infer_receipt_choose_branch
+    },
+    loop: LoopInterpreter {
+      step_loop: infer_receipt_step_loop
+    },
+    bind: BindInterpreter {
+      bind_value: infer_receipt_bind_value
+    }
+  }
+}
+
+fn infer_receipt_case_input(case: InferReceiptCase) -> Node {
+  match case {
+    InferDiagnosticReceiptCase { input: input, label: _, input_symbol: _, expected_rejection: _ } => input
+    InferCompilesReceiptCase { input: input, label: _, input_symbol: _, expected_value: _ } => input
+  }
+}
+
+fn infer_receipt_claim(case: InferReceiptCase) -> TestClaim {
+  match case {
+    InferDiagnosticReceiptCase {
+      label: label,
+      input_symbol: _,
+      input: input,
+      expected_rejection: r
+    } =>
+      DiagnosticClaim {
+        label: label,
+        anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+        input: input,
+        expected_rejection: r,
+        classification: TestClassification { tier: Tier1, layer: Unit }
+      }
+    InferCompilesReceiptCase {
+      label: label,
+      input_symbol: _,
+      input: input,
+      expected_value: v
+    } =>
+      CompilesClaim {
+        label: label,
+        anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+        input: input,
+        expected_value: v,
+        classification: TestClassification { tier: Tier1, layer: Unit }
+      }
+  }
+}
+
+fn infer_receipt_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^infer_receipt_allocate_literal_sym,
+    call_primitive: ^infer_receipt_call_primitive_sym,
+    choose_branch: ^infer_receipt_choose_branch_sym,
+    step_loop: ^infer_receipt_step_loop_sym,
+    bind_value: ^infer_receipt_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
+  }
+}
+
+fn infer_receipt_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^infer_receipt_interpretation_pin,
+    interpretation: infer_receipt_interpretation(),
+    structure_witness: infer_receipt_interpretation_structure_witness()
+  )
+}
+
+fn infer_receipt_empty_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: fn(_) {
+        Violates {
+          diagnostic: infer_descent_not_derived_diagnostic(at: node_locus(node: root))
+        }
+      }
+    }
+  }
+}
+
+fn infer_receipt_subject(case: InferReceiptCase) -> TestClaimEvalSubject<Node> {
+  let input = infer_receipt_case_input(case: case)
+  TestClaimEvalSubject {
+    claim: infer_receipt_claim(case: case),
+    context: infer_receipt_context(),
+    tree: infer_receipt_empty_tree(root: input),
+    input: test_claim_typed_input_node(
+      evaluator_input: input,
+      evaluator_pin: infer_receipt_case_pin(case: case)
+    )
+  }
+}
+
+fn infer_receipt_case_pin(case: InferReceiptCase) -> Symbol {
+  match case {
+    InferDiagnosticReceiptCase { input_symbol: sym, label: _, input: _, expected_rejection: _ } => sym
+    InferCompilesReceiptCase { input_symbol: sym, label: _, input: _, expected_value: _ } => sym
+  }
+}
+
+fn infer_outcome_node_projection(actual: Outcome<InferredTree>) -> Outcome<Node> {
+  match actual {
+    Accepted { value: tree, diagnostics: ad } =>
+      Accepted { value: tree.root, diagnostics: ad }
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn infer_add_mvp_receipt_run(
+  subject: TestClaimEvalSubject<Node>,
+) -> TestClaimRun<Node, InferredTree> {
+  let actual = anchor_infer_add_mvp()
+  TestClaimRun {
+    cache: test_claim_cache_receipt(subject: subject),
+    verdict: match test_claim_expected_outcome(c: subject.claim) {
+      Accepted { value: expected, diagnostics: _ } =>
+        match actual {
+          Accepted { value: tree, diagnostics: ad } =>
+            if outcome_node_eq(
+              a: Accepted { value: tree.root, diagnostics: ad },
+              b: expected
+            ) {
+              Pass
+            } else {
+              verdict_fail(actual: actual)
+            }
+          Rejected { diagnostics: _ } =>
+            if outcome_node_eq(
+              a: infer_outcome_node_projection(actual: actual),
+              b: expected
+            ) {
+              Pass
+            } else {
+              verdict_fail(actual: actual)
+            }
+        }
+      Rejected { diagnostics: _ } => verdict_fail(actual: actual)
+    }
+  }
+}
+
+fn infer_descent_witness_receipt_run(
+  subject: TestClaimEvalSubject<Node>,
+) -> TestClaimRun<Node, Node> {
+  let actual = infer_descent_witness_contract_node(n: subject.input.evaluator_input)
+  TestClaimRun {
+    cache: test_claim_cache_receipt(subject: subject),
+    verdict: match test_claim_expected_outcome(c: subject.claim) {
+      Accepted { value: expected, diagnostics: _ } =>
+        if outcome_node_eq(a: actual, b: expected) {
+          Pass
+        } else {
+          verdict_fail(actual: actual)
+        }
+      Rejected { diagnostics: _ } => verdict_fail(actual: actual)
+    }
+  }
+}
+
+fn fixture_add_resolved_node() -> Node {
+  fixture_add_resolved_tree()
+}
+fn fixture_add_resolved_tree() -> ResolvedTree {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge {
+        label: Named { name: ^fixture_add_name },
+        target: Node {
+          kind: TypeNode { connective: Arrow },
+          children: [
+            Edge {
+              label: Positional,
+              target: fixture_int_type_node(atom: ^fixture_add_int_atom)
+            },
+            Edge {
+              label: Positional,
+              target: fixture_int_type_node(atom: ^fixture_add_int_atom)
+            },
+            Edge {
+              label: Positional,
+              target: fixture_int_type_node(atom: ^fixture_add_body_int_atom)
+            }
+          ],
+          occurrence_id: SyntheticOccurrence
+}
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn anchor_infer_add_mvp() -> Outcome<InferredTree> {
+  infer(tree: fixture_add_resolved_tree())
+}
+
+fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
+  match infer_descent_witness_for_node(n: n) {
+    Holds { value: _ } => Accepted { value: n, diagnostics: None }
+    Violates { diagnostic: d } =>
+      Rejected { diagnostics: diagnostics_singleton(d: d) }
+  }
+}
+
+data case_infer_add_mvp_compiles: InferReceiptCase = InferCompilesReceiptCase {
+  label: "manual/infer: infer(fixture_add_resolved_tree) derives descent and accepts",
+  input_symbol: ^infer_receipt_input_infer_add_mvp,
+  input: fixture_add_resolved_tree(),
+  expected_value: fixture_add_resolved_tree()
+}
+
+data subject_infer_add_mvp_compiles: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_add_mvp_compiles)
+
+data run_infer_add_mvp_compiles: TestClaimRun<Node, InferredTree> = infer_add_mvp_receipt_run(subject: subject_infer_add_mvp_compiles)
+
+data case_infer_descent_witness_holds_atom: InferReceiptCase = InferCompilesReceiptCase {
+  label: "manual/infer: infer_descent_witness_contract_node Holds on bounded Atom TypeNode",
+  input_symbol: ^infer_receipt_input_descent_witness,
+  input: fixture_int_type_node(atom: ^fixture_add_int_atom),
+  expected_value: fixture_int_type_node(atom: ^fixture_add_int_atom)
+}
+
+data subject_infer_descent_witness_holds_atom: TestClaimEvalSubject<Node> = infer_receipt_subject(case: case_infer_descent_witness_holds_atom)
+
+data run_infer_descent_witness_holds_atom: TestClaimRun<Node, Node> = infer_descent_witness_receipt_run(subject: subject_infer_descent_witness_holds_atom)
+
+data claim_infer_add_mvp_compiles: TestClaim = infer_receipt_claim(case: case_infer_add_mvp_compiles)
+
+data claim_infer_descent_witness_holds_atom: TestClaim = infer_receipt_claim(case: case_infer_descent_witness_holds_atom)

@@ -1,33 +1,3 @@
-// product/hardware_selection.dag — the hardware decision-space: Pareto dominance over a
-// server's RAM / CPU / motherboard / PSU choices.
-//
-// LAYER: product, not std. This is a DOMAIN MODEL — a selection/optimization problem over
-// concrete component candidates — not a std primitive. It imports std/ only (the general
-// dominance kernel std.pareto, the measure carriers, the component catalog SHAPES) and is
-// consumed by tests/applications. The operator's CONCRETE fleet population (which exact
-// SKUs srv1/srv2 run) is a deployment fact that lives further out in ctrl — NOT here; the
-// example configs below are generic SKUs (mirroring compute_fabric's example_* offers).
-//
-// The shape, after exploration §4 (a generic server-memory decision model): describe a
-// PLATFORM once (channels, slots-per-channel, max speed, the signal-integrity downclock),
-// list candidate configs with their (capacity, bandwidth, power, cost), then strip the
-// Pareto-DOMINATED ones — what survives is the real decision axis. Generalized past RAM to
-// CPU / board / PSU and integrated (platform pins channels → bandwidth; CPU draw + DIMM
-// power + board → PSU sizing; perf-per-watt; cost).
-//
-// DOMINANCE IS ONE KERNEL (DESIGN §2): every candidate reduces to a `HardwareAxes` record
-// and feeds std.pareto.dominance_of_comparisons — there is no per-component dominance code.
-//
-// FAIL-CLOSED ON REAL-WORLD VALUES (DESIGN §5): this module owns the STRUCTURE (axes,
-// dominance, derivation, platform constants). Live prices, power DRAW (not TDP), and
-// perf/watt shift with the used market and workload — they are INPUTS carrying a 🟡 confirm
-// marker, never hardcoded as if grounded. The two calibration points the operator named —
-// a SKU's power coefficient (W/chip) and the board downclock thresholds — are marked 🟡.
-//
-// Authority: this module (the decision model). Component catalog SHAPES: extdeps.cpu / extdeps.memory.
-// Measure carriers: std.measure (ByteSize, Watt) + product.compute_fabric
-// (Bandwidth, MoneyMicros — reused, NOT forked) + local Milliwatt (sub-watt scale).
-
 module product.hardware_selection
 
 import std.types { Int, NonEmptyStr, Bool, List }
@@ -45,12 +15,10 @@ import std.measure {
   Watt,
   watt,
   watt_count,
-}
-import product.compute_fabric {
   Bandwidth,
-  MoneyMicros,
-  money_micros,
-  money_micros_count,
+  MoneyAmountMicro,
+  money_amount_micro,
+  money_amount_micro_count,
 }
 import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket }
 import extdeps.memory.types { DramModuleCatalogRow, dram_chips_per_rank, dram_module_is_realizable, dram_data_word_width, JedecDdrGenerationCatalogRow }
@@ -65,11 +33,6 @@ import std.pareto {
   on_pareto_front
 }
 
-// Power magnitude at MILLI scale — product-layer scale denomination for sub-watt draw.
-// std.measure keeps `Watt` at unit scale only (no PowerAmount<S> in std). A single
-// component drawing a fraction of a watt (a DRAM device ~0.4 W) rounds to nothing as an
-// Int watt, so the per-device coefficient is carried at milli scale and folds up to whole
-// `Watt`s in memory_power.
 type Milliwatt = Measure<Power, Milli, Nat>
 
 fn milliwatt(count: Nat) -> Milliwatt {
@@ -77,79 +40,28 @@ fn milliwatt(count: Nat) -> Milliwatt {
 }
 
 fn milliwatt_count(w: Milliwatt) -> Nat {
-  // Cross-module Measure alias (Measure<Power, Milli, Nat>): `.count` only peels
-  // where Measure is local, so route through the generic std.measure.measure_count
-  // accessor (same pattern as bandwidth_count below).
   measure_count(m: w)
 }
 
-// === The decision point: five grounded axes ==============================
-//
-// Every candidate config is scored on the SAME five axes — the `Cost = Time|Space|Energy`
-// pattern (DESIGN §2): one record, every config carries all of them. Three are
-// HigherIsBetter (throughput, capacity, bandwidth), two LowerIsBetter (power draw, cost).
-//
-// `throughput` is the reason a CI node is BOUGHT — how much compute work the CPU does — and
-// it is NOT derivable from the other four (memory bandwidth ≠ compute throughput; a slow
-// 128-core part and a fast 64-core part can match on RAM/bandwidth/power/cost yet differ
-// hugely on work done). Without this axis the front is blind to per-core/aggregate compute,
-// the thing customers actually pay for. It is a measured 🟡 input (see CpuCandidate), carried
-// as a dimensionless relative index (a SPECrate-style aggregate score) — deliberately NOT a
-// std.measure carrier: a benchmark score has no SI dimension to ground (it is a ratio to a
-// reference machine), so forcing a Measure would be FALSE grounding, not the anemic-leaf trap
-// (there is no hidden unit). HigherIsBetter.
 type HardwareAxes {
-  throughput: Int          // 🟡 aggregate compute (relative index; HigherIsBetter, dimensionless)
-  capacity: ByteSize       // total usable RAM
-  bandwidth: Bandwidth     // aggregate memory bandwidth (bytes/s)
-  power: Watt              // total system draw at the wall
-  cost: MoneyMicros        // total config price
+  throughput: Int
+  capacity: ByteSize
+  bandwidth: Bandwidth
+  power: Watt
+  cost: MoneyAmountMicro
 }
 
-// === Platform: the constants that pin the free choices ===================
-//
-// Describe the platform ONCE; adding EPYC/Genoa is one new Platform record, machinery
-// unchanged. `max_data_rate_mts` is the platform's 1-DIMM-per-channel ceiling; the
-// achievable rate falls under signal-integrity load (see effective_data_rate_mts).
 type Platform {
   label: NonEmptyStr
   memory_channels: Int
   slots_per_channel: Int
-  // 🟡 DDR transfer rate in MT/s — carried as a bare Int ON PURPOSE, not forked to a Measure
-  // here. The AUTHORITY for "DDR data rate" is extdeps.memory.types.DramModuleCatalogRow
-  // .data_rate_mts (also Int), which effective_data_rate_mts / memory_bandwidth min_int this
-  // ceiling against. Re-carrying ONLY the platform ceiling as a Measure while the module rate
-  // stays Int would split one concept across two representations (DESIGN §3 single authority).
-  // So it dissolves WITH the authority, not ahead of it:
-  //   feature: ddr-data-rate-measure-carrier
-  //   dissolve-on: extdeps.memory.types.DramModuleCatalogRow.data_rate_mts re-carried as a shared
-  //     std.measure rate (Measure<Frequency, Mega, Nat> — MT/s is mega-transfers/s, the Hertz
-  //     family's dimension); this field AND the 2400/2933 downclock thresholds then adopt that
-  //     same carrier in one coordinated migration (extdeps.memory owns the trigger).
   max_data_rate_mts: Int
 }
 
-// Bytes per transfer per channel = the JEDEC data bus width (extdeps.memory.dram_data_word_width,
-// 64 bits) / 8 bits-per-byte. Derived from the SINGLE data-bus-width authority that
-// extdeps.memory.dram_data_chips_per_rank also keys on — so the 64-bit bus is modeled once (as a
-// BitWidth, the same width concept as chip_width), not duplicated as a separate 8-byte constant.
 fn dram_channel_bus_bytes() -> Int {
   bit_width_count(b: dram_data_word_width) / bits_per_byte()
 }
 
-// 🟡 CALIBRATE(board-downclock-thresholds) — the signal-integrity downclock model, one of
-// the two points to confirm against a live measurement. At 1 DIMM-per-channel the bus runs
-// at the platform max. At 2DPC it downclocks; a DUAL/QUAD-rank population loads the bus
-// harder and downclocks FURTHER. These generic thresholds (a 3200 platform: 2DPC 1R→3200,
-// 2DPC 2R→2933) are placeholders the operator's live data confirms or corrects — NOT
-// grounded facts. This is exactly the cross-variable effect the model must surface: at 2DPC
-// the dual-rank downclock eats 2Rx8's bandwidth edge, so 1Rx8 nearly matches it at half the
-// power. Anchor: JEDEC DDR4 2DPC derating / mainboard QVL speed tables.
-//
-// rank_count is the extdeps.memory.types axis (a plain Int 1/2/4 — the magnitude the downclock
-// keys on directly, no enum to peel). At 1DPC the bus runs at the platform max; at 2DPC it
-// derates, FURTHER for higher rank counts (more bus load): a generic 3200 platform holds
-// 3200 for single-rank, 2933 for dual, 2400 for quad — all capped by the platform max.
 fn effective_data_rate_mts(platform: Platform, dimms_per_channel: Int, rank_count: Int) -> Int {
   if dimms_per_channel <= 1 {
     platform.max_data_rate_mts
@@ -170,28 +82,12 @@ fn min_int(a: Int, b: Int) -> Int {
   if a < b { a } else { b }
 }
 
-// === RAM: a chosen DIMM population on a platform =========================
-//
-// The module carries its own grounded axes (capacity, data rate, rank_count, chip_width,
-// buffering) — extdeps.memory.types authority. The config adds the population choice (DPC).
 type MemoryConfig {
   module: DramModuleCatalogRow
-  // jedec — the cited JEDEC generation row for module.generation (extdeps/memory/jedec
-  // authority). Carried on the config so product/ stays extdeps-free (DESIGN §3 layering);
-  // callers wire jedec_ddr_generation_catalog_row(module.generation) at the deployment edge.
   jedec: JedecDdrGenerationCatalogRow
   dimms_per_channel: Int
-  // 🟡 CALIBRATE(dram-power-coefficient) — power drawn per DRAM device at this data rate, the
-  // SECOND live-confirm point. Carried as `Milliwatt` (Power dimension at milli scale) not a
-  // bare Int: a single device draws a fraction of a watt, so an Int-watt coefficient rounds to
-  // nothing — product.hardware_selection Milliwatt denominates sub-watt power exactly as
-  // product.compute_fabric.MoneyMicros denominates sub-major money. DRAM power scales with the device COUNT, derived
-  // (not stored) from the grounded axes: chips_per_rank = 72 / chip_width-bits (18 for x4, 9
-  // for x8), × rank_count, × sticks. This per-device coefficient is a measured input.
   power_per_chip: Milliwatt
-  // 🟡 used-market price per stick (operator's live eBay data confirms). MoneyMicros from
-  // product.compute_fabric (the single money authority), not a flat `Int` with the unit baked into the field name.
-  price_per_stick: MoneyMicros
+  price_per_stick: MoneyAmountMicro
 }
 
 fn memory_stick_count(platform: Platform, cfg: MemoryConfig) -> Int {
@@ -202,32 +98,16 @@ fn memory_total_capacity(platform: Platform, cfg: MemoryConfig) -> ByteSize {
   byte_size(count: byte_size_count(b: cfg.module.capacity_bytes) * memory_stick_count(platform: platform, cfg: cfg))
 }
 
-// 🟡 CALIBRATE(rank-interleave-factor) — multi-rank bandwidth gain, as an integer percent.
-// A multi-rank DIMM lets the controller interleave accesses across ranks, hiding row-activate
-// latency the rank-bank machinery would otherwise stall on, for a real ~5–15% effective-
-// bandwidth edge over single-rank at the SAME data rate. Modeled as a percent applied to the
-// rate: ≥2 ranks → 100 (the reference), 1 rank → 90 (single-rank gives up the interleave).
-// Without this term 1R and 2R compute IDENTICAL bandwidth, so 1R (fewer devices → less power)
-// unconditionally DOMINATES 2R everywhere — a wrong answer (§5); with it, 1R-vs-2R is a
-// genuine Incomparable trade-off (1R lower power, 2R higher bandwidth). 🟡 the 90/100 split is
-// a placeholder for a live STREAM/bandwidth measurement on the target platform.
 fn rank_interleave_percent(rank_count: Int) -> Int {
   if rank_count >= 2 { 100 } else { 90 }
 }
 
-// Aggregate memory bandwidth = effective rate (MT/s) × rank-interleave factor × 8 bytes/
-// transfer × channels, in bytes/s. The effective rate folds in the platform's per-DPC/rank
-// downclock, capped by the module's own rated rate — so a faster module on a slower platform
-// is held to the platform; the interleave factor then credits multi-rank's real edge.
 fn memory_bandwidth(platform: Platform, cfg: MemoryConfig) -> Bandwidth {
   let rated = min_int(a: cfg.module.data_rate_mts, b: effective_data_rate_mts(platform: platform, dimms_per_channel: cfg.dimms_per_channel, rank_count: cfg.module.rank_count))
   let interleaved = rated * rank_interleave_percent(rank_count: cfg.module.rank_count) / 100
   Bandwidth { count: interleaved * 1000000 * dram_channel_bus_bytes() * platform.memory_channels }
 }
 
-// DRAM device count per stick, DERIVED from the grounded axes (DESIGN §2 derive-don't-store):
-// chips_per_rank (the 72/width authority now lives in extdeps.memory.types, shared with the
-// realizability derivation — no fork) × rank_count.
 fn chips_per_rank(module: DramModuleCatalogRow) -> Int {
   dram_chips_per_rank(module: module)
 }
@@ -236,70 +116,40 @@ fn devices_per_stick(module: DramModuleCatalogRow) -> Int {
   chips_per_rank(module: module) * module.rank_count
 }
 
-// DRAM power = mW/device × devices/stick × stick count, in whole watts. So a 2Rx8 stick
-// draws ~2× a 1Rx8 (twice the devices) and an x4 part more than an x8 (narrower → more
-// devices) — the device-count effect the rank/width axes were modeled to carry.
 fn memory_power(platform: Platform, cfg: MemoryConfig) -> Watt {
   let total_mw = milliwatt_count(w: cfg.power_per_chip) * devices_per_stick(module: cfg.module) * memory_stick_count(platform: platform, cfg: cfg)
   watt(count: total_mw / 1000)
 }
 
-fn memory_cost(platform: Platform, cfg: MemoryConfig) -> MoneyMicros {
-  money_micros(count: money_micros_count(m: cfg.price_per_stick) * memory_stick_count(platform: platform, cfg: cfg))
+fn memory_cost(platform: Platform, cfg: MemoryConfig) -> MoneyAmountMicro {
+  money_amount_micro(count: money_amount_micro_count(m: cfg.price_per_stick) * memory_stick_count(platform: platform, cfg: cfg))
 }
 
-// === CPU: catalog identity (hard spec) + measured draw (empirical) =======
-//
-// TDP is a hard spec on the catalog row; typical DRAW is workload-dependent and far below
-// TDP on these parts (Altra Max: 250W TDP, ~166W avg draw). So draw is a 🟡 measured input,
-// NOT the catalog tdp_watts — budgeting PSU off TDP oversizes it.
 type CpuCandidate {
   catalog: CpuModelCatalogRow
-  typical_draw: Watt           // 🟡 measured average draw under the target workload
-  price: MoneyMicros           // 🟡 used-market price (MoneyMicros — the single money authority)
-  // 🟡 MEASURED aggregate compute throughput — a relative index from a real benchmark
-  // (SPECrate-style, or builds/hour on the target CI workload), NOT synthesized from
-  // cores × GHz (that is a fabricated number — the §5 trap; per-core IPC, frequency scaling,
-  // and NUMA make cores×clock a poor proxy). Dimensionless (a ratio to a reference machine),
-  // so it is the `throughput` HardwareAxes value directly. Pending live measurement it is the
-  // confirm point that decides CPU value — the model is blind to compute without it.
+  typical_draw: Watt
+  price: MoneyAmountMicro
   aggregate_throughput: Int
 }
 
-// === Motherboard ==========================================================
-//
-// The board pins how many memory channels/DPC are even available and draws its own power
-// (chipset + VRM). socket reuses extdeps.cpu.types.CpuSocket (the LGA4926 decomposition) rather
-// than a fresh socket vocabulary.
 type Motherboard {
   label: NonEmptyStr
   socket: CpuSocket
   memory_channels: Int
   max_dimms_per_channel: Int
-  idle_draw: Watt              // 🟡 measured board-only draw
-  price: MoneyMicros           // 🟡 used-market price (MoneyMicros — the single money authority)
+  idle_draw: Watt
+  price: MoneyAmountMicro
 }
 
-// === PSU ==================================================================
-//
-// EfficiencyRating is the closed, grounded 80 PLUS certification axis — each tier is a
-// measured efficiency FLOOR, not a free percentage string (mirrors the CpuSocket exemplar:
-// decompose the marketing token into grounded structure).
-// Anchor: https://en.wikipedia.org/wiki/80_Plus
 type EfficiencyRating = Plus80 | Bronze | Silver | Gold | Platinum | Titanium
 
 type PsuModel {
   label: NonEmptyStr
-  max_output: Watt             // rated continuous DC output (hard spec)
+  max_output: Watt
   efficiency: EfficiencyRating
-  price: MoneyMicros           // 🟡 used-market price (MoneyMicros — the single money authority)
+  price: MoneyAmountMicro
 }
 
-// Efficiency floor as an integer percent at the 50%-LOAD point — chosen deliberately: a CI
-// node sized so its typical DC draw sits near half the PSU's rated output (the ~46% in the
-// witness) is read at the 50% column, NOT the 20%/100% floors (where Gold is 87%). At 50%
-// load Gold is 90%. These are the 80 PLUS (115V internal) published 50%-load floors —
-// grounded certification values, not guesses.
 fn efficiency_percent(e: EfficiencyRating) -> Int {
   match e {
     Plus80 => 80
@@ -311,11 +161,6 @@ fn efficiency_percent(e: EfficiencyRating) -> Int {
   }
 }
 
-// === Integration: a full config -> the four axes =========================
-//
-// PSU SIZING: total DC load = CPU draw + DIMM power + board idle. AC draw at the wall =
-// DC load / efficiency (the PSU's conversion loss is real power off the meter). The PSU's
-// rated output gates adequacy (see psu_is_adequate); the wall draw is the `power` axis.
 type SystemConfig {
   platform: Platform
   cpu: CpuCandidate
@@ -331,21 +176,18 @@ fn dc_load_watts(cfg: SystemConfig) -> Int {
   cpu_w + mem_w + board_w
 }
 
-// Wall draw = DC load / efficiency-fraction = DC load × 100 / efficiency_percent.
 fn wall_draw_watts(cfg: SystemConfig) -> Watt {
   watt(count: dc_load_watts(cfg: cfg) * 100 / efficiency_percent(e: cfg.psu.efficiency))
 }
 
-// A PSU is adequate iff its rated output covers the DC load (a config that browns out is
-// not a candidate at all — fail-closed; the front-stripping never sees it).
 fn psu_is_adequate(cfg: SystemConfig) -> Bool {
   dc_load_watts(cfg: cfg) <= watt_count(w: cfg.psu.max_output)
 }
 
-fn config_total_cost(cfg: SystemConfig) -> MoneyMicros {
-  let mem_cost = money_micros_count(m: memory_cost(platform: cfg.platform, cfg: cfg.memory))
-  let total = money_micros_count(m: cfg.cpu.price) + mem_cost + money_micros_count(m: cfg.board.price) + money_micros_count(m: cfg.psu.price)
-  money_micros(count: total)
+fn config_total_cost(cfg: SystemConfig) -> MoneyAmountMicro {
+  let mem_cost = money_amount_micro_count(m: memory_cost(platform: cfg.platform, cfg: cfg.memory))
+  let total = money_amount_micro_count(m: cfg.cpu.price) + mem_cost + money_amount_micro_count(m: cfg.board.price) + money_amount_micro_count(m: cfg.psu.price)
+  money_amount_micro(count: total)
 }
 
 fn config_axes(cfg: SystemConfig) -> HardwareAxes {
@@ -358,32 +200,21 @@ fn config_axes(cfg: SystemConfig) -> HardwareAxes {
   }
 }
 
-// A config is REALIZABLE iff its DIMM is a part that can physically exist (extdeps.memory owns the
-// die-density physics; jedec carries the per-generation ceiling from extdeps/memory/jedec;
-// this is the selection-time filter, fail-closed like psu_is_adequate — a non-existent SKU
-// must never reach the Pareto front, §5).
 fn config_is_realizable(cfg: SystemConfig) -> Bool {
   dram_module_is_realizable(module: cfg.memory.module, jedec: cfg.memory.jedec)
 }
 
-// === Dominance: the ONE kernel, applied =================================
-
-// Bandwidth magnitude accessor for the reused compute_fabric carrier — via the generic
-// std.measure.measure_count (a cross-module alias's `.count` only peels where Measure is
-// local). Nat ⊂ Int, so it widens to Int for the axis comparison.
 fn bandwidth_count(bw: Bandwidth) -> Int {
   measure_count(m: bw)
 }
 
-// Project the two axis-vectors to per-axis preferences and fold via std.pareto. This is the
-// only place the five axes' goals are named; every component set flows through it.
 fn axes_comparisons(a: HardwareAxes, b: HardwareAxes) -> List<AxisComparison> {
   [
     axis_comparison_int(goal: HigherIsBetter, a: a.throughput, b: b.throughput),
     axis_comparison_int(goal: HigherIsBetter, a: byte_size_count(b: a.capacity), b: byte_size_count(b: b.capacity)),
     axis_comparison_int(goal: HigherIsBetter, a: bandwidth_count(bw: a.bandwidth), b: bandwidth_count(bw: b.bandwidth)),
     axis_comparison_int(goal: LowerIsBetter, a: watt_count(w: a.power), b: watt_count(w: b.power)),
-    axis_comparison_int(goal: LowerIsBetter, a: money_micros_count(m: a.cost), b: money_micros_count(m: b.cost))
+    axis_comparison_int(goal: LowerIsBetter, a: money_amount_micro_count(m: a.cost), b: money_amount_micro_count(m: b.cost))
   ]
 }
 
@@ -391,26 +222,10 @@ fn dominates(a: HardwareAxes, b: HardwareAxes) -> DominanceVerdict {
   dominance_of_comparisons(comparisons: axes_comparisons(a: a, b: b))
 }
 
-// A config is ON the Pareto front iff no other config in the pool dominates it. The pool is
-// mapped to the verdicts of (other vs candidate) and handed to the general kernel.
 fn axes_on_front(candidate: HardwareAxes, pool: List<HardwareAxes>) -> Bool {
   on_pareto_front(verdicts: map(pool, p => dominates(a: p, b: candidate)))
 }
 
-// === Derived lenses (the cost_per_gb / gbps_per_w decision ratios) =======
-//
-// Derived, not stored (DESIGN §2 model-local/derive-global): every config already carries
-// the four axes, so the ratios fall out. Guard divide-by-zero fail-closed (0 capacity/power
-// is a degenerate config, not a 1).
-// Nat→Int widener. NOT a removable no-op: the v2 checker does NOT auto-widen Nat to Int when
-// unifying `if` branches, so a guard like `if p <= 0 { 1 } else { p }` over a Nat-typed `p`
-// (a `*_count` magnitude) fails with "if branches resolve to incompatible types: Int vs Nat"
-// (verified by execution). Routing the magnitude through `as_int` first pins a single Int
-// domain so the divide-by-zero guards below type-check.
-//   feature: v2-nat-int-branch-widening
-//   dissolve-on: the v2 checker auto-widening Nat ⊂ Int when unifying `if` branch types — then
-//     the guards read the `*_count` Nat directly and this no-op is deleted (§6: a scaffold with
-//     a named dissolution trigger, not a permanent fixture).
 fn as_int(n: Int) -> Int {
   n
 }
@@ -422,7 +237,7 @@ fn gib(bytes: Int) -> Int {
 fn cost_micros_per_gib(a: HardwareAxes) -> Int {
   let cap_gib = gib(bytes: byte_size_count(b: a.capacity))
   let denom = if cap_gib <= 0 { 1 } else { cap_gib }
-  as_int(n: money_micros_count(m: a.cost)) / denom
+  as_int(n: money_amount_micro_count(m: a.cost)) / denom
 }
 
 fn bandwidth_per_watt(a: HardwareAxes) -> Int {

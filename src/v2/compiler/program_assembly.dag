@@ -1,14 +1,3 @@
-// src/v2/compiler/program_assembly.dag
-// Scope: Stage C Lane 3 — whole source-root ingest → module roots → admitted resolved program.
-//   Wires v2.compiler.source_authority.SourceRootIngest (the source-file enumeration
-//   authority, sibling to discovery_enumeration.dag's owned-decl enumeration) through
-//   validate_module_roots + resolve_with_admission so the compile pipeline ingests MANY
-//   DagSourceReadWitness rows, not a single Source string.
-// Status: producing fold landed — module_roots_from_source_root_ingest +
-//   assemble_program_from_module_roots / assemble_program_from_ingest;
-//   compile_source_root_ingest_with_admission in 00_compile.dag.
-// Anchor: stage C multi-file ingestion (merry-crab-687 Lane 3).
-
 module v2.compiler.program_assembly
 
 import v2.compiler.name_resolve {
@@ -46,7 +35,6 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Node }
 
-
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
       roots: FreeMonoid<Node>,
@@ -56,11 +44,9 @@ type ProgramAssemblyFoldState
       diagnostics: NonEmptyDiagnostics
     }
 
-
 fn program_assembly_empty_roots() -> FreeMonoid<Node> {
   Empty
 }
-
 
 fn program_assembly_read_to_normalized_root(
   read: DagSourceReadWitness,
@@ -90,11 +76,6 @@ fn program_assembly_read_to_normalized_root(
   }
 }
 
-
-// Per-read step: tokenize → parse_module → normalize the module root, AND pair its
-// QualifiedName with the host source_root tag into the grounded index. A root whose module
-// QualifiedName cannot be projected is left out of the index (validate_module_roots rejects
-// it downstream); a Rejected parse short-circuits the whole fold.
 fn program_assembly_fold_step(
   state: ProgramAssemblyFoldState,
   read: DagSourceReadWitness,
@@ -124,8 +105,6 @@ fn program_assembly_fold_step(
   }
 }
 
-
-// Whole-ingest fold: per-read parse + grounded source-root index accumulation.
 fn program_assembly_fold_ingest(
   ingest: SourceRootIngest,
   lm: LanguageModel
@@ -142,8 +121,6 @@ fn program_assembly_fold_ingest(
   )
 }
 
-
-// Module roots from the ingest (parse leg only; index discarded). First Rejected short-circuits.
 fn module_roots_from_source_root_ingest(
   ingest: SourceRootIngest,
   lm: LanguageModel
@@ -156,8 +133,6 @@ fn module_roots_from_source_root_ingest(
   }
 }
 
-
-// Validated module roots + cross-file admission → single resolved program CoreNode.
 fn assemble_program_from_module_roots(
   roots: FreeMonoid<Node>,
   admission: Admission,
@@ -175,11 +150,6 @@ fn assemble_program_from_module_roots(
   )
 }
 
-
-// Program assembly: whole ingest → validated roots → GROUNDED admitted resolved program.
-// The grounded source-root index and active source-root set are derived from the same
-// host-tagged ingest (§4 provenance), so cross-tree import edges are admitted on filesystem
-// truth + tree-pair fundamentality rather than a QualifiedName-prefix guess.
 fn assemble_program_from_ingest(
   ingest: SourceRootIngest,
   admission: Admission,

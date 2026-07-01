@@ -1,0 +1,93 @@
+module v2.test.impossible_bug.nested_optional_flatten
+
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  node_locus,
+  None,
+  Outcome,
+  Rejected,
+  Suggested,
+  diagnostics_singleton
+}
+import v2.std.node { Edge, Named, Node, Positional, Symbol, TypeNode, Atom, Cardinality, SyntheticOccurrence }
+import v2.std.verification {
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier2,
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  manual_claim_anchor
+}
+fn atom_node(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+}
+
+data flattened_optional_input: Node = atom_node(s: ^flattened_optional_symbol)
+
+data falsification_nested_optional: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge {
+      label: Positional,
+      target: Node {
+        kind: TypeNode { connective: Cardinality },
+        children: [
+          Edge { label: Positional, target: atom_node(s: ^optional_value_symbol) },
+        ],
+        occurrence_id: SyntheticOccurrence
+}
+    },
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data falsification_optional_double_unwrap: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: atom_node(s: ^double_unwrap_symbol) },
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data claim_optional_chaining_no_double_unwrap: TestClaim = CompilesClaim {
+  label: "optional cardinality refinement keeps accessor surface single-layer",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: flattened_optional_input,
+  expected_value: flattened_optional_input,
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+data claim_optional_double_unwrap_rejected: TestClaim = DiagnosticClaim {
+  label: "optional accessor surface rejects double unwrap shape",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: falsification_optional_double_unwrap,
+  expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: ^impossible_bug_reason_double_unwrap,
+        at: node_locus(node: falsification_optional_double_unwrap),
+        correction: Suggested { node: flattened_optional_input }
+      }
+    ),
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+data claim_nested_optional_collapses: TestClaim = DiagnosticClaim {
+  label: "nested optional cardinality collapses to one refinement",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: falsification_nested_optional,
+  expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: ^impossible_bug_reason_nested_optional,
+        at: node_locus(node: falsification_nested_optional),
+        correction: Suggested { node: flattened_optional_input }
+      }
+    ),
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}

@@ -1,34 +1,12 @@
-// dsl/test/claim/markup_serializer_witness_test.dag
-//
-// By-execution witnesses for the Fragment-IR markup serializer (std/markup.dag).
-// Run via the claim-witness corpus gate: `gunbc run --source-root dsl --entry
-// <this> --function <fn> --claim-run` (v2 interpreter, returns Bool).
-//
-// Class-2 emit-correctness evidence (DRAFT until signed):
-//   * by-execution PER escaping context — text / attribute / url each escape the
-//     SAME dangerous characters DIFFERENTLY (proves the contexts are distinct);
-//   * full element-tree serialize through the ONE convergent fold;
-//   * CoC=1 — an HTML-shaped and a React-shaped reduction hit the SAME fold and
-//     emit byte-identical text;
-//   * emit->parse round-trip — escape then unescape is identity per context
-//     (the fold's escaping inverse: no information loss);
-//   * perturb-discrimination — a deliberately broken escaper diverges from the
-//     pinned-correct output, so a dropped escape rule turns a witness red.
-
 module test.claim.markup_serializer_witness
 
 import std.markup {
   Fragment, Element, TextNode,
   Attribute, AttributeContext, UrlContext,
-  serialize_fragment,
   escape_text, escape_attribute, escape_url,
   unescape_text, unescape_attribute, unescape_url
 }
-
-// -- by-execution, per escaping context -----------------------------
-// Same characters, three disciplines. `"` is safe in text, an entity in an
-// attribute, percent-encoded in a URL; a space is literal in text/attribute,
-// percent-encoded in a URL.
+import extdeps.languages.html_fragment { serialize_fragment }
 
 fn witness_text_escaping_by_execution() -> Bool {
   escape_text(s: "a <b> & c") == "a &lt;b&gt; &amp; c"
@@ -41,8 +19,6 @@ fn witness_attribute_escaping_by_execution() -> Bool {
 fn witness_url_escaping_by_execution() -> Bool {
   escape_url(s: "/p?x=a b&y=\"z\"<") == "/p?x=a%20b&amp;y=%22z%22%3C"
 }
-
-// -- the convergent fold over a full element tree --------------------
 
 fn sample_fragment() -> Fragment {
   Element {
@@ -59,12 +35,6 @@ fn witness_serialize_fragment_full() -> Bool {
   serialize_fragment(frag: sample_fragment()) ==
     "<a href=\"/x?a=1&amp;b=2\">hi &lt;b&gt; &amp; \"q\"<span>&gt;end</span></a>"
 }
-
-// -- CoC=1: one fold serves both consumers --------------------------
-// gunbhub HtmlNode (#4927) and React ReactElement (#4934) both reduce to the
-// SAME Fragment IR; serialize_fragment is the SINGLE serializer for both. Here
-// two consumer-shaped reductions of `<button class="primary">Go</button>` route
-// through the one fold and emit byte-identical text.
 
 fn html_consumer_button() -> Fragment {
   Element {
@@ -88,8 +58,6 @@ fn witness_one_fold_serves_html_and_react() -> Bool {
   (html == react) && (html == "<button class=\"primary\">Go</button>")
 }
 
-// -- emit->parse round-trip (escaping inverse, per context) ----------
-
 fn witness_round_trip_text() -> Bool {
   unescape_text(s: escape_text(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
 }
@@ -102,19 +70,9 @@ fn witness_round_trip_url() -> Bool {
   unescape_url(s: escape_url(s: "x <a> & \"q\" y")) == "x <a> & \"q\" y"
 }
 
-// Round-trip must hold for inputs that already contain a literal `%NN` — escape_url
-// encodes `%` first (-> %25) so the inverse is symmetric over arbitrary URL bodies,
-// not just %-free ones. (A naive escaper that skips % would round-trip "%3C" -> "<".)
 fn witness_round_trip_url_literal_percent() -> Bool {
   unescape_url(s: escape_url(s: "a %3C %22 %25 <b>")) == "a %3C %22 %25 <b>"
 }
-
-// -- REQ-A: URL-within-attribute composition ------------------------
-// An href value emitted inside a double-quoted attribute must neutralize the
-// closing quote (and & and <), so a URL cannot break out of the attribute. The
-// UrlContext escape composes with the attribute serializer: the `"` in a hostile
-// href becomes %22, the injected ` onmouseover=z` stays inside the value (space
-// → %20), and no new attribute is produced.
 
 fn req_a_breakout_fragment() -> Fragment {
   Element {
@@ -129,11 +87,6 @@ fn witness_url_within_attribute_composition() -> Bool {
     "<a href=\"x%22&amp;%3Cy%20onmouseover=z\"></a>"
 }
 
-// -- perturb-discrimination -----------------------------------------
-// A serializer that forgets the `<` rule. The pinned-correct output diverges
-// from the broken output, so the by-execution witnesses above go red on this
-// regression -- the discrimination the class-2 sign requires.
-
 fn escape_text_drop_lt(s: String) -> String {
   replace(replace(s, "&", "&amp;"), ">", "&gt;")
 }
@@ -143,9 +96,6 @@ fn witness_perturb_break_escape_goes_red() -> Bool {
     (escape_text(s: "a <b>") == "a &lt;b&gt;") &&
     (escape_text_drop_lt(s: "a <b>") == "a <b&gt;")
 }
-
-// -- keystone -------------------------------------------------------
-// Single corpus row ANDs every witness above (one data row, not N*M arms).
 
 test fn markup_serializer_keystone_holds() -> Bool {
   witness_text_escaping_by_execution() &&

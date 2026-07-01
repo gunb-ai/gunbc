@@ -1,10 +1,3 @@
-// src/v2/test/fixture/task_manager_demo.dag
-// Scope: T-16 TaskManager omni-emission demo — data-model + Shape-B SQL projection.
-// Status: T-16-A modeled (#3867); T-16-A+ adds Task→SqlCreateTable projection
-// (sql.dag carriers, fail-closed on unmapped domain scalars). No emit code.
-// Shape A (rust backend + react frontend `DeploymentUnit` fragments) and
-// Shape B OpenAPI / Markdown projections land in sibling slices (T-16-C/D).
-
 module v2.test.fixture.task_manager_demo
 
 import v2.extdeps.formats.sql {
@@ -45,16 +38,10 @@ import v2.extdeps.coordination {
   DeploymentUnit
 }
 
-// --- Domain ---------------------------------------------------------------
-
-// Symbol-backed opaque identifier (not a numeric alias) per operator
-// 2026-05-27 modeling decision — avoids the hollow-alias trap at the
-// domain level.
 type TaskId {
   identity: Symbol
 }
 
-// 🟢 coproduct dissolution — TaskManager workflow lifecycle.
 type TaskStatus
   = Open
   | InProgress
@@ -65,16 +52,6 @@ type Task {
   title: String,
   status: TaskStatus
 }
-
-// --- Operation arrows -----------------------------------------------------
-// The three canonical TaskManager operations. The function's Arrow
-// (argument types + return type) is the single authority for the wire
-// type; the WireContracts below reference these function identities
-// directly via `BindRef.identity` per coordination.dag's `BindRef`
-// coincidence with `std/node.dag` A1/K-1 (ratified 2026-05-15).
-// No standalone `Symbol` row alias, no parallel `response_type` field.
-// Bodies are minimal stand-ins; real handler bodies + persistence land in
-// subsequent T-16 slices.
 
 fn create_task(title: String) -> Task {
   Task {
@@ -95,15 +72,6 @@ fn update_status(id: TaskId, status: TaskStatus) -> Task {
 fn list_tasks() -> FreeMonoid<Task> {
   Empty
 }
-
-// Stand-in Symbol seed for `create_task`'s constructed `TaskId`; real id
-// minting lands with the persistence slice.
-// --- Endpoint identities --------------------------------------------------
-// --- Endpoint addresses ---------------------------------------------------
-// Minimal `NetworkAddress` instances — host spellings are placeholders; the
-// data-model demo cares about authority shape, not reachability. `port:
-// Absent` avoids requiring Succ-chain Nat literals for a value the demo
-// does not exercise.
 
 data backend_host: UriHost = UriHost {
   spelling: "backend.local",
@@ -131,8 +99,6 @@ data frontend_address: NetworkAddress = NetworkAddress {
   }
 }
 
-// --- DeploymentUnit fragments --------------------------------------------
-
 data backend_endpoint: Endpoint = Endpoint {
   identity: EndpointRef { identity: ^rust_backend_endpoint },
   address: backend_address,
@@ -146,13 +112,6 @@ data frontend_endpoint: Endpoint = Endpoint {
   language: LanguageRef { identity: ^typescript_language },
   framework: HostedByFramework { framework: FrameworkRef { identity: ^react_framework } }
 }
-
-// --- Wire contracts -------------------------------------------------------
-// One `WireContract` per TaskManager operation. `BindRef.identity` is the
-// function name itself — the Arrow declared above is the single authority
-// for argument and response types. `Http` effect facts match
-// `coordination_effect_obligation(effect: Http)` — RequestReply /
-// ImmediateSettlement / NoReplicaConvergence.
 
 data create_task_facts: WireContractFacts = WireContractFacts {
   from: EndpointRef { identity: ^react_frontend_endpoint },
@@ -202,34 +161,23 @@ data list_tasks_contract: WireContract = WireContract {
   }
 }
 
-// --- DeploymentUnit -------------------------------------------------------
-
 data task_manager_deployment: DeploymentUnit = DeploymentUnit {
   endpoints: [backend_endpoint, frontend_endpoint],
   wire_contracts: [create_task_contract, update_status_contract, list_tasks_contract]
 }
 
-// --- Shape-B SQL DDL projection (T-16-A+) ---------------------------------
-// Derives `SqlCreateTable` for the `Task` record from sql.dag carriers.
-// `TaskManagerTaskField` is the single authority for which Task record
-// fields participate in SQL projection; column spellings and scalar kinds
-// dispatch only through that coproduct. OpenAPI wiring is deferred to
-// T-16-C (calm-crane-523, post-#3869).
 data tasks_table_spelling: String = "tasks"
 
-// 🟢 coproduct dissolution — T-16-A+ Task record field SQL authority (bijection with Task { id, title, status }).
 type TaskManagerTaskField
   = TaskFieldId
   | TaskFieldTitle
   | TaskFieldStatus
 
-// 🟢 coproduct dissolution — T-16-A+ Task scalar SQL projection (closed over Task field scalar kinds).
 type TaskManagerSqlProjectableScalar
   = ProjectTaskId
   | ProjectString
   | ProjectTaskStatus
 
-// 🟢 coproduct dissolution — T-16-A+ SQL scalar dispatch (projectable vs fail-closed unmapped).
 type TaskManagerSqlScalarDispatch
   = MappedProjectable { scalar: TaskManagerSqlProjectableScalar }
   | UnmappedDomainScalar { anchor: Node }

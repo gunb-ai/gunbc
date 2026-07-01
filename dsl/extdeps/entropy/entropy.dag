@@ -1,0 +1,45 @@
+module extdeps.entropy
+
+import std.integer { UInt8 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man4/random.4.html"
+  }
+}
+
+data entropy_transport_linux_gnu_only: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.os.os",
+    decl_name: "cited_operating_system_surface",
+    field: WholeDeclaration
+  }
+}
+
+data entropy_count_bytes_unit_debt: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.measure",
+    decl_name: "ByteSize",
+    field: WholeDeclaration
+  }
+}
+
+service Urandom {
+  operation ReadBytes {
+    input { count: Int }
+    output { octets_b64: String from "stdout" }
+    readonly
+    transport shell { argv: ["sh", "-c", "head -c {count} /dev/urandom | base64 -w 0"] }
+    exit {
+      0 => Unit
+      nonzero => String "Urandom.ReadBytes: /dev/urandom or base64 failed"
+    }
+  }
+}

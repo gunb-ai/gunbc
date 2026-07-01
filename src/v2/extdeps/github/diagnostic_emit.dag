@@ -1,0 +1,32 @@
+module v2.extdeps.github.diagnostic_emit
+
+import v2.std.diagnostic { EmitDirective, DiagnosticSeverity, SeverityError, SeverityWarning }
+import extdeps.github.log_annotations {
+  gha_log_command_error,
+  gha_log_command_warning,
+  gha_message_command_prefix
+}
+import v2.extdeps.languages.bash { emit_directive_bash_target_model }
+import v2.std.compilers.target_model { TargetModel }
+
+fn gha_severity_command(severity: DiagnosticSeverity) -> String {
+  match severity {
+    SeverityError => gha_log_command_error
+    SeverityWarning => gha_log_command_warning
+  }
+}
+
+fn emit_directive_gha_message(d: EmitDirective) -> String {
+  concat(
+    gha_message_command_prefix(command: gha_severity_command(severity: d.severity)),
+    d.message
+  )
+}
+
+fn emit_directive_gha_directive(d: EmitDirective) -> EmitDirective {
+  EmitDirective { severity: d.severity, message: emit_directive_gha_message(d: d) }
+}
+
+fn emit_directive_gha_target_model(d: EmitDirective) -> TargetModel {
+  emit_directive_bash_target_model(d: emit_directive_gha_directive(d: d))
+}

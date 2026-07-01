@@ -1,12 +1,3 @@
-// Scope: lens-unit discriminators for v2.lens.realization_vocabulary_containment over
-//        HARDCODED LayerImportFact rows (no live tree). The §5 discriminating set:
-//          (1) a fresh NON-edge module importing the sidecar AST  → RED (count 1);
-//          (2) a realization-edge module importing it             → clean (count 0);
-//          (3) a rostered consumer importing it                   → clean (count 0);
-//          (4) the same rostered consumer with the member REMOVED → RED  (count 1)
-//              — proves the ratchet shrinks honestly (de-roster ⇒ its import goes red);
-//          (5) a non-vocabulary import from a non-edge module     → clean (count 0).
-
 module v2.test.realization_vocabulary_containment.lens_unit.discriminators
 
 import v2.lens.layering_imports { LayerImportFact }
@@ -21,7 +12,6 @@ import v2.std.text { String }
 
 data sidecar_module: String = "extdeps.languages.bash.program"
 
-// (1) fresh non-edge importer → RED under the canonical roster.
 data fresh_leak_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
@@ -34,7 +24,6 @@ test fn fresh_non_edge_import_is_leak_holds() -> Bool {
   realization_vocab_leak_count_canonical(facts: fresh_leak_facts) == 1
 }
 
-// (2) realization-edge module (extdeps/languages/**) → NOT a leak (the allowset).
 data edge_import_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixExtdeps,
@@ -47,7 +36,6 @@ test fn realization_edge_import_is_not_leak_holds() -> Bool {
   realization_vocab_leak_count_canonical(facts: edge_import_facts) == 0
 }
 
-// (3) a rostered consumer (host_prelude) → NOT a leak while rostered.
 data rostered_import_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
@@ -60,8 +48,6 @@ test fn rostered_consumer_import_is_not_leak_holds() -> Bool {
   realization_vocab_leak_count_canonical(facts: rostered_import_facts) == 0
 }
 
-// (4) the SAME rostered consumer, but the roster with host_prelude REMOVED → RED.
-// Proves the roster is load-bearing: de-rostering a still-importing consumer goes red.
 data roster_without_host_prelude: List<String> = [
   "dsl/gunbc/ci_spec.dag",
   "dsl/gunbc/ci_yaml_validate.dag",
@@ -69,7 +55,6 @@ data roster_without_host_prelude: List<String> = [
   "dsl/tools/dsl_compile_clean_transport.dag",
   "dsl/tools/emit_host_transport.dag",
   "dsl/tools/layering_imports_transport.dag",
-  "dsl/tools/resolved_imports_transport.dag",
   "src/v2/workflow/compiler_closure_ingest_transport.dag",
   "src/v2/workflow/source_root_ingest_transport.dag"
 ]
@@ -81,7 +66,6 @@ test fn de_rostered_consumer_import_is_leak_holds() -> Bool {
   ) == 1
 }
 
-// (5) negative control: a non-edge module importing a NON-vocabulary module → clean.
 data non_vocab_import_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,

@@ -1,54 +1,27 @@
-// extdeps/llm/anthropic.dag — Anthropic Messages API protocol (types + wire contracts).
-//
-// Handlers (REST + Claude CLI): `anthropic_rest.dag` (`module extdeps.llm.anthropic_rest`).
-// Cross-provider facts: `llm.dag` (`module extdeps.llm.llm`).
-// Error envelope: `anthropic_errors.dag`.
-//
 module extdeps.llm.anthropic
 
-import extdeps.llm.llm { llm_snake_wire_contract }
-import std.serialization { CoproductWireContract, VariantEncoding }
 import std.types { NonEmptyStr }
-
-// Wire contract: Anthropic API returns enum values as snake_case strings.
-data wire_contract: VariantEncoding = llm_snake_wire_contract
-
-data anthropic_chat_message_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicChatMessage",
-  encoding: InternallyTaggedObject { tag_field: "role", naming: StripSuffixAndSnakeCase { suffix: "Message" } }
+import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration, NamedField }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+import extdeps.llm.anthropic_contracts {
+  wire_contract,
+  anthropic_chat_message_wire_contract,
+  anthropic_user_content_block_wire_contract,
+  anthropic_assistant_content_block_wire_contract,
+  anthropic_messages_200_content_block_wire_contract,
+  anthropic_tool_result_content_wire_contract,
+  anthropic_tool_result_block_wire_contract
 }
 
-data anthropic_user_content_block_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicUserContentBlock",
-  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "User", suffix: "Block" } }
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/plain_text_source_param.py"
+  }
 }
-
-data anthropic_assistant_content_block_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicAssistantContentBlock",
-  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Assistant", suffix: "Block" } }
-}
-
-data anthropic_messages_200_content_block_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicMessages200ContentBlock",
-  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Messages", suffix: "Block" } }
-}
-
-// Tool-result nested content: REST wire is either a scalar JSON string or a JSON
-// array of typed content blocks (Messages API `tool_result.content`).
-data anthropic_tool_result_content_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicToolResultContent",
-  encoding: UntaggedVariant
-}
-
-// Nested blocks inside `ToolResultBlocks`: each row is a flat `{"type": ...}` object
-// (same tagging discipline as user message content blocks; distinct carrier so shared
-// provider-local nested blocks; not a cross-provider carrier).
-data anthropic_tool_result_block_wire_contract: CoproductWireContract = {
-  coproduct: "AnthropicToolResultBlock",
-  encoding: InternallyTaggedObject { tag_field: "type", naming: StripPrefixSuffixAndSnakeCase { prefix: "Anthropic", suffix: "Block" } }
-}
-
-// -- Models --------------------------------------------------------
 
 type AnthropicModel
   = ClaudeHaiku4_5
@@ -68,11 +41,6 @@ data models: List<AnthropicModelSpec> = [
   { model: ClaudeOpus4_6, model_id: "claude-opus-4-6-20251101", context_window: 200000, max_output_tokens: 64000 }
 ]
 
-// -- Anthropic content blocks (provider-specific) ---------------------
-// Tool-use / tool-result surfaces are Anthropic-specific. `ImageSource`
-// models Anthropic Messages API image `source` shapes (base64 / url; file deferred).
-
-// Anthropic Messages image `source` base64 media types (extensible registry).
 type AnthropicImageMediaType
   = ImageJpeg
   | ImagePng
@@ -103,72 +71,33 @@ fn anthropic_image_media_type_label(kind: AnthropicImageMediaType) -> String {
   }
 }
 
-// 🟡 SCAFFOLD provider-domain coproduct for Anthropic Messages image `source`
-// (base64/url arms emittable via `llm.Anthropic.Messages`; dissolve on
-// `structural_coverage_gap_anthropic_messages_file_image_beta_header`).
 type ImageSource
   = Base64Image { media_type: AnthropicImageMediaType, data: String }
   | UrlImage { url: String }
 
-// 🟢 TERMINAL provider-domain coproduct for tool-result content. Anthropic accepts
-// either a scalar JSON string (`ToolResultText`) or a JSON array of nested blocks
-// (`ToolResultBlocks`), matching Messages API `tool_result.content`. Tuple carriers
-// pair with `anthropic_tool_result_content_wire_contract: UntaggedVariant` so serde
-// untagged emission maps directly (string vs block array) without an extra object
-// wrapper around the array arm.
-//
-// Nested block shapes use `AnthropicToolResultBlock` (below).
 type AnthropicToolResultContent
   = ToolResultText(String)
   | ToolResultBlocks(List<AnthropicToolResultBlock>)
 
-// Tool-result nested content blocks (provider-side carrier). Mirrors the union
-// accepted inside `tool_result.content` arrays per Anthropic Messages API /
-// generated SDK (`TextBlockParam | ImageBlockParam | DocumentBlockParam |
-// SearchResultBlockParam | ToolReferenceBlockParam`).
-//
-// Singleton wire tag: nested `search_result.content[]` rows and plaintext document
-// `source.type` both require the JSON string `"text"` (illegal states
-// unrepresentable at the substrate boundary).
 type AnthropicToolResultWireTextTag
   = Text {}
 
-// Singleton: `PlainTextSourceParam.media_type` is the literal `"text/plain"` on the wire
-// (illegal states unrepresentable — https://github.com/anthropics/anthropic-sdk-python/blob/main/src/anthropic/types/plain_text_source_param.py).
 type AnthropicPlainTextDocumentMediaType
   = TextPlain {}
 
-// Nested `search_result.content[]` rows per platform schema (each object carries
-// wire `type: "text"` alongside `text` — https://platform.claude.com/docs/en/build-with-claude/search-results).
 type AnthropicToolResultTextBlock {
   type: AnthropicToolResultWireTextTag
   text: String
 }
 
-// Optional `citations` object on `search_result` blocks (`enabled: Bool`).
 type AnthropicSearchResultCitationsConfig {
   enabled: Bool
 }
 
-// 🟡 SCAFFOLD — nested `document` / `search_result` payloads are not full OpenAPI
-// parity vs platform docs; honest residue on
-// `structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads`.
-//
-// Dissolution trigger: promote to 🟢 TERMINAL when those residual rows are deleted or
-// rewritten to explicit terminal closure on this authority **and** the five-arm
-// `tool_result.content[]` discriminator surface is closed against the tracked public
-// API / generated SDK (no remaining extension-only gap on this coproduct).
-//
-// Maintenance trigger (not dissolution): Anthropic adds a *sixth* top-level block kind
-// beyond the five modeled arms → fold the new wire tag under
-// `anthropic_tool_result_block_wire_contract` here, or escalate if the contract becomes
-// non-additive.
 type AnthropicToolResultBlock
   = AnthropicTextBlock { text: String }
   | AnthropicImageBlock { source: ImageSource }
-  // Plaintext `source` only — not full DocumentBlockParam (extra document sources,
-  // title/context/citations/cache_control, …). Tracked under
-  // `structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads`.
+
   | AnthropicDocumentBlock { source: AnthropicToolResultPlainTextDocumentSource }
   | AnthropicSearchResultBlock {
       source: String
@@ -179,50 +108,50 @@ type AnthropicToolResultBlock
     }
   | AnthropicToolReferenceBlock { tool_name: String }
 
-// Honest residue: nested tool-result **payload** fidelity vs generated SDK /
-// OpenAPI (per-arm coordinates, not the five-way discriminator). Paid rows on
-// `rest_request_wire_serde_alignment_receipt` cover coproduct discriminators +
-// untagged `tool_result.content` dispatch — not every nested field on each arm.
-// SDK witness (Stainless): `anthropic-sdk-python` `tool_result_block_param.Content`
-// arms `TextBlockParam` / `ImageBlockParam` / `ToolReferenceBlockParam` carry optional
-// `cache_control: CacheControlEphemeralParam`; `TextBlockParam` also carries optional
-// `citations`; `CacheControlEphemeralParam` includes optional `ttl` literal (`5m`|`1h`)
-// beyond our stringly `CacheControl.type` carrier — enumerate each omission below.
-data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<String> = [
-  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicTextBlock|missing:cache_control|missing:citations|sdk:https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/text_block_param.py|trigger:model TextBlockParam cache_control + citations structurally on nested tool_result text rows",
-  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicImageBlock|missing:cache_control|sdk:https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/image_block_param.py|trigger:model ImageBlockParam cache_control on nested tool_result image rows",
-  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicToolReferenceBlock|missing:cache_control|sdk:https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/tool_reference_block_param.py|trigger:model ToolReferenceBlockParam cache_control on nested tool_result tool_reference rows",
-  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock|carrier:CacheControl|missing:ttl_literal_5m_1h|sdk:https://raw.githubusercontent.com/anthropics/anthropic-sdk-python/main/src/anthropic/types/cache_control_ephemeral_param.py|trigger:align nested-block CacheControlBreakpoint carrier with CacheControlEphemeralParam (ttl) wherever cache_control appears on tool_result nested arms",
-  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicDocumentBlock|residue:plaintext_document_source_only|missing:non_text_document_sources|missing:title_context_citations_cache_control|spec:https://platform.claude.com/docs/en/build-with-claude/citations|trigger:model DocumentBlockParam document sources and citation-facing coordinates structurally",
-  "closure:anthropic_tool_result_nested_wire_payload|AnthropicToolResultBlock.AnthropicSearchResultBlock|external_spec_watch:search_result_block_optional_fields|trigger:citations.cache_control_shape_drift_or_additional_optional_keys_from_OpenAPI"
+data structural_coverage_gap_anthropic_tool_result_nested_block_wire_payloads: List<Disposition> = [
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "cache_control" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicTextBlock", field: NamedField { field_name: "citations" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicImageBlock", field: NamedField { field_name: "cache_control" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicToolReferenceBlock", field: NamedField { field_name: "cache_control" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "CacheControl", field: NamedField { field_name: "ttl" } }
+  },
+  Scaffold {
+    dissolves_to: SingleAuthority,
+    bind: DeclarationRef { module_path: "extdeps.llm.anthropic", decl_name: "AnthropicDocumentBlock", field: WholeDeclaration }
+  },
+  Terminal {
+    reason: "external_spec_watch: AnthropicSearchResultBlock optional fields track upstream Anthropic OpenAPI; no local construction dissolves this, re-justified by advisory if upstream drifts"
+  }
 ]
 
-// Inline plaintext document source for tool-result document blocks (`source.type`
-// is the fixed `"text"` wire slot — same singleton as nested search-result text rows).
 type AnthropicToolResultPlainTextDocumentSource {
   type: AnthropicToolResultWireTextTag
   media_type: AnthropicPlainTextDocumentMediaType
   data: String
 }
 
-// 🟢 TERMINAL provider-domain coproduct for user-message content. `UserTextBlock`
-// and `UserToolResultBlock` are role-legal Anthropic Messages content rows; the
-// wire `type` keys are emitter/transport obligations, not caller-authored model
-// state. Tool-result content is optional on the wire and, when present, is the
-// explicit `AnthropicToolResultContent` coproduct above.
 type AnthropicUserContentBlock
   = UserTextBlock { text: String }
   | UserToolResultBlock { tool_use_id: String, content: AnthropicToolResultContent?, is_error: Bool? }
 
-// 🟢 TERMINAL provider-domain coproduct for assistant-message content.
-// Assistants can emit text or tool-use requests; tool results are user rows.
 type AnthropicAssistantContentBlock
   = AssistantTextBlock { text: String }
   | AssistantToolUseBlock { id: String, name: String, input: Json }
 
-// -- System prompt -------------------------------------------------
-
-// Anthropic API cache control: wire shape requires {"type": "ephemeral"}.
 type CacheControlType
   = CacheEphemeral {}
 
@@ -243,8 +172,6 @@ type SystemPrompt {
   cache_control: CacheControl?
 }
 
-// -- Extended thinking ---------------------------------------------
-
 type ThinkingMode = Enabled | Disabled
 
 type ThinkingConfig {
@@ -252,15 +179,11 @@ type ThinkingConfig {
   budget_tokens: Int?
 }
 
-// -- Tool definitions ----------------------------------------------
-
 type AnthropicToolDefinition {
   name: String
   description: String
   input_schema: Json
 }
-
-// -- API versioning ------------------------------------------------
 
 type AnthropicApiVersion {
   version: String
@@ -272,19 +195,10 @@ data current_api_version: AnthropicApiVersion = {
   header: "anthropic-version"
 }
 
-// Messages API conversation row: the outer variant is the role discriminator,
-// so role-specific content legality is structural. User rows can carry text or
-// tool results; assistant rows can carry text or tool-use requests.
-// 🟢 TERMINAL provider-domain coproduct for the modeled Messages row roles.
-// Q4.5 P1 closure (#808 / #856 Substrate escalation).
 type AnthropicChatMessage
   = UserMessage { content: List<AnthropicUserContentBlock> }
   | AssistantMessage { content: List<AnthropicAssistantContentBlock> }
 
-// Narrow 200-OK wire slice for Messages (text-only `content[0]` path).
-// Tool-use / image assistant rows remain outside this carrier.
-// 🟢 TERMINAL response citation coproduct. Each citation variant carries only
-// the documented coordinates for that wire tag.
 type AnthropicMessages200Citation
   = CharLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_char_index: Int, end_char_index: Int }
   | PageLocation { cited_text: String, document_index: Int, document_title: String?, file_id: String?, start_page_number: Int, end_page_number: Int }
@@ -292,15 +206,6 @@ type AnthropicMessages200Citation
   | WebSearchResultLocation { cited_text: String, encrypted_index: String, title: String?, url: String }
   | SearchResultLocation { cited_text: String, source: String, title: String?, search_result_index: Int, start_block_index: Int, end_block_index: Int }
 
-// 🟡 SCAFFOLD provider-domain coproduct for Anthropic Messages 200 `content[]`
-// response rows. The outer wire shape is already stable and `type`-tagged, so
-// these arms belong as a coproduct instead of optional coordinates on a text
-// record. Scaffold triggers (also tracked in
-// `structural_coverage_gap_anthropic_messages_200_residual` below):
-// `MessagesWebSearchToolResultBlock.content` remains `Json` until the
-// web-search result/error payload gains a structural payload coproduct, and
-// `AnthropicMessages200Body.content/0/text` output projection needs
-// variant-aware typed REST response-path support.
 type AnthropicMessages200ContentBlock
   = MessagesTextBlock { text: String, citations: List<AnthropicMessages200Citation>? }
   | MessagesThinkingBlock { thinking: String, signature: String }
@@ -309,17 +214,8 @@ type AnthropicMessages200ContentBlock
   | MessagesServerToolUseBlock { id: String, name: AnthropicServerToolName, input: Json, caller: Json? }
   | MessagesWebSearchToolResultBlock { tool_use_id: String, content: Json, caller: Json? }
 
-// 🟡 SCAFFOLD provider-domain enum for Anthropic `server_tool_use.name`
-// values mirrored from Anthropic's generated OpenAPI SDK schema. Scaffold
-// trigger: retire or extend this row when Anthropic publishes additional
-// `server_tool_use.name` values; per-tool input payload typing remains tracked
-// by `server_tool_input_payloads_unmodeled`.
 type AnthropicServerToolName = WebSearch | WebFetch | CodeExecution | BashCodeExecution | TextEditorCodeExecution | ToolSearchToolRegex | ToolSearchToolBm25 | Advisor
 
-// 🟢 TERMINAL provider-domain enum for Anthropic Messages 200 `usage.service_tier`.
-// Dissolution receipt: the field is a closed API string domain, not free-form
-// metadata; fact placement would duplicate the usage field authority, algebraic
-// form has no operator surface, and dimensional split has no independent axes.
 type AnthropicMessages200ServiceTier = Standard | Priority | Batch
 
 type AnthropicMessages200Usage {
@@ -330,21 +226,11 @@ type AnthropicMessages200Usage {
   service_tier: AnthropicMessages200ServiceTier?
 }
 
-// Anthropic Messages 200 response role. The API currently returns only
-// "assistant"; keep the slot typed and let the module wire_contract serialize
-// the unit variant as the required snake-case string.
 type AnthropicMessages200Role
   = Assistant {}
 
-// 🟢 TERMINAL provider-domain coproduct for Anthropic Messages `stop_reason`
-// wire values. Dissolution receipt: fact placement fails because every value is
-// the same response-field fact consumed at `stop_reason`; variant-is-data would
-// demote Anthropic's closed API enum into free-form text; algebraic form has no
-// std operation/ref target; dimensional split has no independent axes beyond the
-// documented reason-token domain.
 type AnthropicStopReason = EndTurn | MaxTokens | StopSequence | ToolUse | PauseTurn | Refusal | ModelContextWindowExceeded
 
-// Message object envelope `type` — Anthropic returns only "message" today.
 type AnthropicMessagesObjectType
   = MessagesObjectMessage {}
 
@@ -356,9 +242,6 @@ fn anthropic_messages_object_type_label(kind: AnthropicMessagesObjectType) -> St
   }
 }
 
-// Message object envelope for POST /v1/messages 200 responses per Anthropic docs
-// (https://docs.anthropic.com/en/api/messages): `id`, `type`, `role`, `content`,
-// `model`, `stop_reason`, optional `stop_sequence`, `usage`.
 type AnthropicMessages200Body {
   id: String
   type: AnthropicMessagesObjectType
@@ -371,33 +254,125 @@ type AnthropicMessages200Body {
   container: Json?
 }
 
-data structural_coverage_gap_anthropic_messages_200_residual: List<String> = [
-  "closure:anthropic_messages_200_residual|AnthropicMessages200Body|json_pending:container|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content|AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.caller|json_pending:web_search_tool_result_payload|trigger:container-management response surface plus web search result/error payload coproduct plus typed caller carrier for web search tool result",
-  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesToolUseBlock|residue:client_tool_name_input_and_optional_caller_payloads_not_bound_to_declared_tool_schema|trigger:tool_use response block references declared AnthropicToolDefinition through typed caller carrier and input payload schema",
-  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock.MessagesServerToolUseBlock|residue:server_tool_input_and_optional_caller_payloads_unmodeled|trigger:fold server_tool_use name and input into a server-tool-use coproduct keyed by AnthropicServerToolName",
-  "closure:anthropic_messages_200_residual|AnthropicServerToolName|external_spec_watch:server_tool_use_name_set|trigger:Anthropic publishes additional server_tool_use.name values beyond the generated SDK literal set",
-  "closure:anthropic_messages_200_residual|AnthropicMessages200ContentBlock|variant_pending:web_fetch_tool_result|variant_pending:code_execution_tool_result|variant_pending:bash_code_execution_tool_result|variant_pending:text_editor_code_execution_tool_result|variant_pending:tool_search_tool_result|variant_pending:advisor_tool_result|variant_pending:mcp_tool_use|variant_pending:mcp_tool_result|variant_pending:container_upload|trigger:Anthropic beta/server-tool content-block surface modeled structurally",
-  "closure:anthropic_messages_200_residual|llm.Anthropic.Messages.output.content|blocked:variant_aware_typed_rest_response_projection|path:content/0/text|requires_arm:AnthropicMessages200ContentBlock.MessagesTextBlock|trigger:structural projection metadata carrier lands"
+data structural_coverage_gap_anthropic_messages_200_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "AnthropicMessages200Body" },
+      JsonPending { field: "container" },
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.content" },
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesWebSearchToolResultBlock.caller" },
+      JsonPending { field: "web_search_tool_result_payload" }
+    ],
+    trigger: "container-management response surface plus web search result/error payload coproduct plus typed caller carrier for web search tool result"
+  },
+  {
+    facts: [
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesToolUseBlock" },
+      Residue { description: "client_tool_name_input_and_optional_caller_payloads_not_bound_to_declared_tool_schema" }
+    ],
+    trigger: "tool_use response block references declared AnthropicToolDefinition through typed caller carrier and input payload schema"
+  },
+  {
+    facts: [
+      Subject { path: "AnthropicMessages200ContentBlock.MessagesServerToolUseBlock" },
+      Residue { description: "server_tool_input_and_optional_caller_payloads_unmodeled" }
+    ],
+    trigger: "fold server_tool_use name and input into a server-tool-use coproduct keyed by AnthropicServerToolName"
+  },
+  {
+    facts: [
+      Subject { path: "AnthropicServerToolName" },
+      ExternalSpecWatch { item: "server_tool_use_name_set" }
+    ],
+    trigger: "Anthropic publishes additional server_tool_use.name values beyond the generated SDK literal set"
+  },
+  {
+    facts: [
+      Subject { path: "AnthropicMessages200ContentBlock" },
+      VariantPending { variant: "web_fetch_tool_result" },
+      VariantPending { variant: "code_execution_tool_result" },
+      VariantPending { variant: "bash_code_execution_tool_result" },
+      VariantPending { variant: "text_editor_code_execution_tool_result" },
+      VariantPending { variant: "tool_search_tool_result" },
+      VariantPending { variant: "advisor_tool_result" },
+      VariantPending { variant: "mcp_tool_use" },
+      VariantPending { variant: "mcp_tool_result" },
+      VariantPending { variant: "container_upload" }
+    ],
+    trigger: "Anthropic beta/server-tool content-block surface modeled structurally"
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages.output.content" },
+      Blocked { reason: "variant_aware_typed_rest_response_projection" },
+      PathRef { path: "content/0/text" },
+      RequiresArm { arm: "AnthropicMessages200ContentBlock.MessagesTextBlock" }
+    ],
+    trigger: "structural projection metadata carrier lands"
+  }
 ]
 
-// Request wire: Messages API expects string `role` + flat `content[]` objects
-// keyed by `type` (https://docs.anthropic.com/en/api/messages). These rows are
-// now source-level `CoproductWireContract` authorities above; the v2 Rust
-// emitter consumes them directly for serde attributes. Nested tool-result
-// `content` uses `anthropic_tool_result_content_wire_contract` +
-// `anthropic_tool_result_block_wire_contract` (paid below).
-data rest_request_wire_serde_alignment_receipt: List<String> = [
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicChatMessage|paid:role_internally_tagged_object_user_assistant",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock|paid:type_internally_tagged_object_text_tool_result",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicAssistantContentBlock|paid:type_internally_tagged_object_text_tool_use",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicUserContentBlock.UserToolResultBlock.content|paid:tool_result_content_untagged_scalar_or_block_array",
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicToolResultBlock|paid:type_internally_tagged_object_tool_result_nested_blocks"
+data rest_request_wire_serde_alignment_receipt: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicChatMessage" },
+      Paid { item: "role_internally_tagged_object_user_assistant" }
+    ],
+    trigger: none
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicUserContentBlock" },
+      Paid { item: "type_internally_tagged_object_text_tool_result" }
+    ],
+    trigger: none
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicAssistantContentBlock" },
+      Paid { item: "type_internally_tagged_object_text_tool_use" }
+    ],
+    trigger: none
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicUserContentBlock.UserToolResultBlock.content" },
+      Paid { item: "tool_result_content_untagged_scalar_or_block_array" }
+    ],
+    trigger: none
+  },
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicToolResultBlock" },
+      Paid { item: "type_internally_tagged_object_tool_result_nested_blocks" }
+    ],
+    trigger: none
+  }
 ]
 
-data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<String> = [
-  "closure:anthropic_messages_file_image|ImageSource|variant_pending:FileImage|residue:file_source_requires_anthropic_beta_on_messages_transport|trigger:add FileImage arm and emit anthropic-beta files-api-2025-04-14 when REST transport binds beta header on FileImage presence"
+data structural_coverage_gap_anthropic_messages_file_image_beta_header: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "ImageSource" },
+      VariantPending { variant: "FileImage" },
+      Residue { description: "file_source_requires_anthropic_beta_on_messages_transport" }
+    ],
+    trigger: "add FileImage arm and emit anthropic-beta files-api-2025-04-14 when REST transport binds beta header on FileImage presence"
+  }
 ]
 
-data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<String> = [
-  "closure:rest_request_wire_serde_alignment|llm.Anthropic.Messages|AnthropicMessages200ContentBlock|residue:messages_200_content_block_internally_tagged_object_unproved|trigger:generated response enum serde/emitter ratchet consumes the type-tagged AnthropicMessages200ContentBlock wire contract"
+data structural_coverage_gap_anthropic_messages_200_content_block_wire_shape: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "llm.Anthropic.Messages" },
+      Subject { path: "AnthropicMessages200ContentBlock" },
+      Residue { description: "messages_200_content_block_internally_tagged_object_unproved" }
+    ],
+    trigger: "generated response enum serde/emitter ratchet consumes the type-tagged AnthropicMessages200ContentBlock wire contract"
+  }
 ]

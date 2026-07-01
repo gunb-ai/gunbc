@@ -1,11 +1,3 @@
-// dsl/test/claim/html_markup_xss_witness_test.dag
-//
-// By-execution witnesses for std.html_markup href/src scheme allowlisting.
-// std.markup escape_url is character-escaping only; the HTML consumer must
-// scheme-allowlist (http/https/mailto/relative) fail-closed before escape_url.
-//
-// Run via: gunbc run --source-root dsl --entry <this> --function <fn> --claim-run
-
 module test.claim.html_markup_xss_witness
 
 import std.markup {
@@ -14,18 +6,21 @@ import std.markup {
   MarkupNode,
   ElementNode,
   TextNode,
+}
+import extdeps.uri_validation {
+  validate_href,
   SafeHref,
   RejectedHref,
   DangerousScheme,
   SchemeNotAllowlisted,
   JavascriptScheme,
   DataScheme,
-  validate_href,
-  Serialized,
-  Rejected,
+
 }
-import std.html_markup {
-  try_serialize_html_node,
+import extdeps.languages.html {
+  try_serialize_html_source,
+  EmitOk,
+  EmitRejected,
 }
 
 fn witness_javascript_href_rejects() -> Bool {
@@ -56,8 +51,6 @@ fn witness_protocol_relative_rejects() -> Bool {
   }
 }
 
-// Mixed-case scheme spellings bypass DangerousScheme classification (no to_lower
-// in v2) but the positive allowlist still fail-closes as SchemeNotAllowlisted.
 fn witness_mixed_case_javascript_rejects_fail_closed() -> Bool {
   match validate_href(url: "JaVaScRiPt:alert(1)") {
     RejectedHref { reason: SchemeNotAllowlisted } => true
@@ -102,14 +95,12 @@ fn javascript_link_node() -> MarkupNode {
 }
 
 fn witness_unsafe_href_blocks_serialization() -> Bool {
-  match try_serialize_html_node(node: javascript_link_node()) {
-    Rejected { reason: _ } => true
-    Serialized { html: _ } => false
+  match try_serialize_html_source(node: javascript_link_node()) {
+    EmitRejected { reason: _ } => true
+    EmitOk { html: _ } => false
   }
 }
 
-// Perturb-discrimination: escape_url alone does NOT block javascript: — the
-// consumer allowlist must reject it. Proves char-escape is insufficient.
 fn witness_escape_url_passes_javascript_scheme() -> Bool {
   escape_url(s: "javascript:alert(1)") == "javascript:alert(1)"
 }

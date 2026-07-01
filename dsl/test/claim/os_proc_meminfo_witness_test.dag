@@ -1,0 +1,31 @@
+module test.claim.os_proc_meminfo_witness
+
+import extdeps.os.proc_meminfo {
+  ProcMeminfo,
+  MemoryMetric,
+  meminfo_field_names,
+}
+import std.measure { Kibibyte, measure_count }
+import std.types { NonEmptyStr }
+
+test fn proc_meminfo_witnesses() -> Bool {
+  let info = ProcMeminfo {
+    mem_total: Kibibyte { count: 8012272 },
+    mem_free: Kibibyte { count: 4048136 },
+    mem_available: Kibibyte { count: 6144000 },
+    buffers: Kibibyte { count: 256000 },
+    cached: Kibibyte { count: 2048136 },
+    swap_total: Kibibyte { count: 2097152 },
+    swap_free: Kibibyte { count: 2097152 },
+    all_metrics: [],
+  }
+
+  let metric = MemoryMetric {
+    key: "MemTotal" as NonEmptyStr,
+    value: Kibibyte { count: 8012272 },
+  }
+
+  measure_count(m: info.mem_total) > 0
+    && measure_count(m: info.mem_available) <= measure_count(m: info.mem_total)
+    && measure_count(m: metric.value) > 0
+}

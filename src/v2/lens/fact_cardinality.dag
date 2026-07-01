@@ -1,28 +1,11 @@
-// src/v2/lens/fact_cardinality.dag
-// Scope: fact-cardinality lens — cross-tree named-declaration coexistence census + ratchet.
-// DESIGN.md §3 single-authority enforcement:
-//   - COEXISTENCE (ratchet): `{rel_path}:{decl_name}` in BOTH `dsl/` and `src/v2/` — dual
-//     authority regardless of body hash; only goes DOWN via genuine consolidation.
-//   - DIVERGENCE (drift signal): same key in both trees with distinct normalized hashes —
-//     higher severity; byte-sync does NOT clear coexistence debt.
-// Status: 🟡 M1 — host census bridge + lens-unit synthetic facts + corpus witnesses.
-// Consumer: claim_batch discovery over src/v2/compiler/fact_cardinality.
-// Hand-Rust scaffold receipt (DESIGN.md §7): `fact_cardinality_census.rs` is bootstrap
-//   text-scan census only — shrink target is delete that module once Node-tree decl
-//   projection + substrate `content_hash` own the census in this lens.
-// Dissolve-on: Node-tree decl projection replaces text-scan body hash (substrate content_hash).
-
 module v2.lens.fact_cardinality
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-// 🟡 gated — coproduct-dissolution interim — feature:fact-cardinality-tree-coproduct —
-// bind PR-1 fact-cardinality lens — dissolve-on-arrival: closed `FactCardinalityTree`
-// replaces any stringly tree labels at the bridge boundary; forbidden: `"foo"` tree
-// tags in synthetic or corpus facts outside {Dsl, V2}.
 type FactCardinalityTree
   = Dsl
   | V2
@@ -33,10 +16,6 @@ type FactCardinalityDeclFact {
   content_hash: String
 }
 
-// Coexistence ratchet baseline — dual-authority keys in BOTH trees (any hash).
-// Only moves DOWN when one authority is deleted / consolidated; gate RED if count grows.
-// reducible collapsed: dsl/std/reducible.dag is now the sole authority (src/v2/std/reducible.dag deleted).
-// measure collapsed: dsl/std/measure.dag is now the sole authority (src/v2/std/measure.dag deleted; -3: Quantity, Scale, Measure).
 data fact_cardinality_cross_tree_coexistence_baseline: Int = 43
 
 fn fact_cardinality_cross_tree_coexistence(
@@ -47,7 +26,6 @@ fn fact_cardinality_cross_tree_coexistence(
     && left.tree != right.tree
 }
 
-// Divergence — distinct body hashes across trees (drifted fork; higher severity).
 fn fact_cardinality_cross_tree_diverged_fork(
   left: FactCardinalityDeclFact,
   right: FactCardinalityDeclFact
@@ -56,7 +34,6 @@ fn fact_cardinality_cross_tree_diverged_fork(
     && left.content_hash != right.content_hash
 }
 
-// Alias retained for lens-unit witnesses authored before diverged_fork rename.
 fn fact_cardinality_cross_tree_variant_mismatch(
   left: FactCardinalityDeclFact,
   right: FactCardinalityDeclFact
@@ -68,7 +45,6 @@ fn fact_cardinality_coexistence_ratchet_holds(live_count: Int, baseline: Int) ->
   live_count <= baseline
 }
 
-// Host census bridge (reads live dsl/ + src/v2/ trees; no cross-resolve).
 fn fact_cardinality_live_cross_tree_coexistence_count() -> Int {
   fact_cardinality_cross_tree_coexistence_count()
 }
@@ -92,12 +68,6 @@ fn fact_cardinality_live_coexistence_ratchet_holds() -> Bool {
   )
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "per-concept single-authority consolidation (the Route-C de-fork) plus substrate content_hash census",
-    dissolve_on: "the cross-tree coexistence ratchet reaches 0 as each duplicated concept is consolidated to one authority"
-  },
-  rationale: "Same-key-in-both-trees coexistence is a decidable census; the lens is a shrinking ratchet until per-concept single authority dissolves the duplication."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

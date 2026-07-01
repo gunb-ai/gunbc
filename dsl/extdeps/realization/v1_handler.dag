@@ -1,18 +1,15 @@
-// extdeps/realization/v1_handler.dag — v1 interpreter realization handler binding (§3).
-//
-// Dispatch constants for peripheral realization handlers: these bind the std interface
-// (RealizationMeasureEffect shape) to host-effect implementations. §3 requires
-// dispatch to live in extdeps/, never in std/ (the interface must be agnostic).
-//
-// SCAFFOLD — v1 bootstrap seed handler (Rust shrinking toward zero, §7).
-// dissolve-on: delete when v2 eval fold subsumes RealizationMeasureEffect.ObserveElapsedAtSubject.
-//
-// Authority: this module, cited in tests. Do NOT fork or duplicate.
-
 module extdeps.realization.v1_handler
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 import std.types { String }
 
-// v1 eval_expr measurement handler ID — pins the v1 interpreter's self-time tap.
-// Identity: "host:v1-interpreter.eval_expr_self_time" (the realization's dispatch key).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/realization"
+  }
+}
+
 data v1_eval_expr_measure_handler_id: String = "host:v1-interpreter.eval_expr_self_time"

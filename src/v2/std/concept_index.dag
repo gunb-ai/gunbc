@@ -1,118 +1,75 @@
-// src/v2/std/concept_index.dag
-// Scope: corpus-level enumeration of declared concepts (the "concept index").
-//        Where v2.std.node.resolve_type_node reads ONE concept BY NAME, this enumerates
-//        EVERY declared concept across the compiled corpus — the substrate primitive a
-//        namespace/concept index DFS (DESIGN.md §2 "DFS the concept DAG first") and the
-//        consolidation/DISPOSE authority (DESIGN.md §3 single-authority dedup) both build on.
-//
-// This is a WHOLE-CORPUS LENS in the SAME host-fed family as v2.lens.layering_imports and
-// v2.lens.resolved_imports (DESIGN.md §6 — a lens is a pure reader over the Node tree). It is
-// NOT a parallel "enumeration bridge" abstraction: it conforms to the family's fact-source +
-// pure-fold convention exactly —
-//   - the FACT type is `ConceptDecl` (cf. layering_imports' `LayerImportFact`);
-//   - the SOURCE is the host-fed enumerator `concept_decl_facts_live() -> List<ConceptDecl>`
-//     (mirrors `layer_import_facts_live`): a compile-time host scan, NOT runtime reflection, so it
-//     is in-bounds; it does NO index-contract shaping;
-//   - the LENS proper is the pure folds below (`field_refs_from_node`, `concept_from_decl`,
-//     `enumerate_concepts`), exactly as layering_imports' `scan_facts_for_violations` /
-//     `*_clean_holds` fold over their fact list.
-// The whole-corpus lens family is host-fed for ONE reason — v2 has no corpus-as-node handle yet;
-// layering_imports hits the SAME wall and host-scans for its source too. apply_lens
-// (v2.lens.application) is section-scoped (Declaration/Node only) — there is no Module/Program
-// SectionRef variant and no corpus Node to apply over — so a section-scoped lens is NOT a nearer
-// path here; this lens converges onto apply_lens over the corpus-node once that handle exists
-// (the dissolution trigger gunbc#5364, below — NOT gunbc#4863, which is this bridge's ORIGIN PR,
-// not its trigger).
-//
-// Source/projection split (DESIGN.md §3 single authority + §6 lens-not-Rust):
-//   - SOURCE (host boundary, irreducible today — v2 has no corpus-as-node handle):
-//     the host-fed enumerator `concept_decl_facts_live()` materializes each decl as a substrate
-//     `Node` (the same currency resolve_type_node returns, just plural + any-connective). It does
-//     NO index-contract shaping.
-//   - PROJECTION (here, in the model): ConceptStruct / FieldRef are shaped from each decl `node`
-//     by COMPOSING the existing public node_query readers (coproduct_arm_list_from_node /
-//     coproduct_arm_payload_pair_from_arm — they fold Conj records and Disj coproducts into
-//     (field, type) pairs identically). The contract shape is single-authority in .dag.
-// Consumes: std/collection.dag, std/text.dag, std/node.dag, std/node_query.dag, std/algebra.dag.
-// Single authority (DESIGN.md §3): QualifiedConcept / ConceptStruct / FieldRef are minted HERE,
-//        in gunbc std, and consumed downstream (e.g. ctrl plans.namespace_index). Do NOT fork a
-//        parallel concept-index carrier in a consumer — import this one.
-
 module v2.std.concept_index
-
 
 import v2.std.algebra { Empty, list_snoc_item }
 import v2.std.collection { List }
-import v2.std.node { Node }
-import v2.std.node_query { CoproductArm, coproduct_arm_list_from_node, coproduct_arm_payload_pair_from_arm, node_is_coproduct }
+import v2.std.node { Conj, Disj, Node, TypeNode }
+import v2.std.node_query {
+  CoproductArm,
+  coproduct_arm_list_from_node,
+  coproduct_arm_payload_pair_from_arm,
+  edge_field_type_name,
+  named_edge_sort_key,
+  node_is_coproduct,
+  node_labeled_child_edges
+}
 import v2.std.text { String }
 
-
-// One declared field (record field, or coproduct arm projected as field/payload): the field's
-// name and the authored name of its type. The substrate projection a structural-equality /
-// homonym guard compares — NOT a raw Node, so two concepts compare field-by-field.
 type FieldRef {
   field: String
   type_name: String
 }
 
-// A single declared concept's substrate projection: its authored (unqualified) name and the
-// ordered field projection of its definition. "ConceptStruct" rather than a bare Node so the
-// index row carries a comparable structural surface (DESIGN.md §3 nickname/homonym detection,
-// e.g. CpuArchitecture vs TargetArchitecture byte-identical enums) without re-resolving.
 type ConceptStruct {
   name: String
   fields: List<FieldRef>
 }
 
-// One row of the concept index: a concept located by its dotted module-qualified name
-// (e.g. "std.node.Connective"), so two same-named concepts in different modules are distinct
-// rows under DESIGN.md §3. qualified_name is a dotted String to satisfy the downstream consumer
-// contract (plans.namespace_index); the structured carrier is v2.std.qualified_name.QualifiedName.
 type QualifiedConcept {
   qualified_name: String
   concept: ConceptStruct
 }
 
-// The SOURCE bridge's per-decl row: the logical qualified name, the leaf name, and the
-// materialized substrate `Node` of the declaration. Shaping into the index contract above is
-// the .dag projection below, NOT the bridge.
 type ConceptDecl {
   qualified_name: String
   name: String
   node: Node
 }
 
+type ConceptByName {
+  name: String
+  concepts: List<QualifiedConcept>
+}
 
-// 🟡 gated — feature:coproduct-reflection-bridge
-// origin: gunbc#4863 (R-reflect Phase-2a) — the PR that INTRODUCED this bridge + resolve_type_node.
-//   It is NOT the dissolve trigger (a scaffold cannot be dissolved by its own birth PR); it is
-//   recorded only as provenance. #4863 delivered per-node enumeration (node_query), NOT a
-//   corpus-as-node handle.
-// dissolve-on-arrival: gunbc#5364 — v2 self-host gains compile-graph access — a corpus-as-node
-//   handle (the point at which v2.std.value_carrier's
-//   `^resolved_graph_declared_types/_variants/_fields` authorities become a LIVE accessor rather
-//   than aspirational symbol refs). Then this host-fed SOURCE is
-//   replaced by a pure .dag walk over the resolved graph (one walk over every module's items), and
-//   the whole-corpus lens family (this, layering_imports, resolved_imports) converges onto
-//   apply_lens (v2.lens.application) over that corpus Node. Same unmet trigger as sibling
-//   v2.std.node.resolve_type_node.
-// forbidden: parallel corpus enumeration in Rust outside this intercept, or any
-//   ConceptStruct/FieldRef shaping in Rust (projection is .dag, below).
-//
-// SOURCE: materializes every TypeItem in the compiled corpus as { qualified_name, name, node }.
 fn concept_decl_facts_live() -> List<ConceptDecl> {
   concept_decl_facts_live()
 }
 
-// PROJECTION: a decl's field list, projected from its materialized node by composing the public
-// node_query readers (connective-agnostic — folds a Conj record's field edges and a Disj
-// coproduct's arm edges into (field, type) pairs identically). No node_query contract change.
-fn field_refs_from_node(node: Node) -> List<FieldRef> {
-  fold(coproduct_arm_list_from_node(node: node), init: Empty, f: fn(acc, arm) {
-    let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
-    list_snoc_item(xs: acc, item: FieldRef { field: pair.label, type_name: pair.payload_type_name })
+fn concept_decl_facts(pool_roots: List<String>) -> List<ConceptDecl> {
+  concept_decl_facts(pool_roots: pool_roots)
+}
+
+fn field_refs_from_conj_node(node: Node) -> List<FieldRef> {
+  fold(node_labeled_child_edges(node: node), init: Empty, f: fn(acc, e) {
+    list_snoc_item(
+      xs: acc,
+      item: FieldRef {
+        field: named_edge_sort_key(e: e),
+        type_name: edge_field_type_name(target: e.target)
+      }
+    )
   })
+}
+
+fn field_refs_from_node(node: Node) -> List<FieldRef> {
+  match node.kind {
+    TypeNode { connective: Conj } => field_refs_from_conj_node(node: node)
+    TypeNode { connective: Disj } =>
+      fold(coproduct_arm_list_from_node(node: node), init: Empty, f: fn(acc, arm) {
+        let pair = coproduct_arm_payload_pair_from_arm(arm: arm)
+        list_snoc_item(xs: acc, item: FieldRef { field: pair.label, type_name: pair.payload_type_name })
+      })
+    _ => Empty
+  }
 }
 
 fn concept_from_decl(decl: ConceptDecl) -> QualifiedConcept {
@@ -125,20 +82,50 @@ fn concept_from_decl(decl: ConceptDecl) -> QualifiedConcept {
   }
 }
 
-// The concept index: every declared concept, projected to the consumer contract. Total — a
-// corpus with no concepts yields the empty list.
-fn enumerate_concepts() -> List<QualifiedConcept> {
-  fold(concept_decl_facts_live(), init: Empty, f: fn(acc, decl) {
+fn enumerate_concepts_from_decls(decls: List<ConceptDecl>) -> List<QualifiedConcept> {
+  fold(decls, init: Empty, f: fn(acc, decl) {
     list_snoc_item(xs: acc, item: concept_from_decl(decl: decl))
   })
 }
 
-// Every declared CLOSED COPRODUCT (Disj) across the compiled corpus, as its raw ConceptDecl
-// (qualified name + leaf name + materialized Node). The structural source for arbitrary
-// coproduct-exhaustiveness testgen (docs/plans/testgen-oracle.md §4.2): instead of a hand-roster
-// of which coproduct's arms to cover, enumerate EVERY coproduct and derive its arm keys from the
-// node itself. Records (Conj) are filtered out via node_is_coproduct — single authority for the
-// coproduct predicate. Total — a corpus with no coproducts yields the empty list.
+fn enumerate_concepts() -> List<QualifiedConcept> {
+  enumerate_concepts_from_decls(decls: concept_decl_facts_live())
+}
+
+fn enumerate_concepts_in(pool_roots: List<String>) -> List<QualifiedConcept> {
+  enumerate_concepts_from_decls(decls: concept_decl_facts(pool_roots: pool_roots))
+}
+
+fn list_contains_name_index(acc: List<ConceptByName>, name: String) -> Bool {
+  fold(acc, init: false, f: fn(found, row) { found || (row.name == name) })
+}
+
+fn append_to_name_bucket(acc: List<ConceptByName>, qc: QualifiedConcept) -> List<ConceptByName> {
+  fold(acc, init: Empty, f: fn(done, row) {
+    if row.name == qc.concept.name {
+      list_snoc_item(
+        xs: done,
+        item: ConceptByName {
+          name: row.name,
+          concepts: list_snoc_item(xs: row.concepts, item: qc)
+        }
+      )
+    } else {
+      list_snoc_item(xs: done, item: row)
+    }
+  })
+}
+
+fn build_concept_name_index(idx: List<QualifiedConcept>) -> List<ConceptByName> {
+  fold(idx, init: Empty, f: fn(acc, qc) {
+    if list_contains_name_index(acc: acc, name: qc.concept.name) {
+      append_to_name_bucket(acc: acc, qc: qc)
+    } else {
+      list_snoc_item(xs: acc, item: ConceptByName { name: qc.concept.name, concepts: [qc] })
+    }
+  })
+}
+
 fn enumerate_coproduct_decls() -> List<ConceptDecl> {
   fold(concept_decl_facts_live(), init: Empty, f: fn(acc, decl) {
     if node_is_coproduct(node: decl.node) {

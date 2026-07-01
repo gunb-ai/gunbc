@@ -1,76 +1,96 @@
-// dsl/test/claim/roadmap_emit_test.dag — §5 proof for gunbc.roadmap_emit (slice-2 step 2).
-//
-// Proves BY EXECUTION that project_roadmap_to_markdown ∘ serialize_markdown_source produces the right
-// ROADMAP bytes: a DerivableLine whose PR merged renders `- [x]` (DERIVED, the inversion), an
-// AuthoredLine renders its AUTHORED box + verbatim content, a child node nests one indent level, and a
-// plan-doc carrier renders as a link. Discriminating: flip the merged set and the derived `[x]` becomes
-// `[ ]`.
-
 module test.claim.roadmap_emit
 
 import extdeps.languages.markdown { serialize_markdown_source }
 import gunbc.roadmap_emit { project_roadmap_section }
-import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, PlanDocCarrier, NoCarrier, PlanDoc, SectionElement, section_group }
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine }
+import gunbc.roadmap_model { RoadmapNode, RoadmapEdge, Pointer, NodeSizing, Unsized, SectionElement, section_group }
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, Signoff, Unsigned, SignedOff }
 import ctrl.process_algebra { ProcessNodeId }
 
 data parent_id: ProcessNodeId = "invert-hand-maintained"
 data child_id: ProcessNodeId = "pr-checkbox-status"
 
-// An AuthoredLine — its `content` is verbatim (the bold lives IN the String, the §5 fence), so the
-// emitter applies no markup of its own; only the carrier link is appended.
 fn parent_node() -> RoadmapNode {
   RoadmapNode {
     node: parent_id,
     line: AuthoredLine { done: false, content: "**invert hand-maintained**" },
-    carrier: PlanDoc { path: "docs/plans/invert-hand-maintained.md" },
+    carriers: [Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
   }
 }
 
-// A DerivableLine on #5491 — box DERIVED from the merged set, emit bolds the structural title.
 fn child_node() -> RoadmapNode {
   RoadmapNode {
     node: child_id,
-    line: DerivableLine { prs: [5491], title: "PR-checkbox status", description: "" },
-    carrier: NoCarrier,
+    line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn signed_child_node() -> RoadmapNode {
+  RoadmapNode {
+    node: child_id,
+    line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: SignedOff { by: "operator", works: true, scope_equivalent: true, as_expected: true },
   }
 }
 
 fn nodes() -> List<RoadmapNode> { [parent_node(), child_node()] }
 fn edges() -> List<RoadmapEdge> { [RoadmapEdge { child: child_id, parent: parent_id }] }
-// One unlabelled sub-group (the slice-2 single-list section is now a Group with an empty label).
+
 fn elements() -> List<SectionElement> { [section_group(label: "", nodes: nodes(), edges: edges())] }
 
-fn emit(merged: List<Int>) -> String {
+fn emit_nodes(nodes: List<RoadmapNode>, merged: List<Int>) -> String {
   serialize_markdown_source(doc: project_roadmap_section(
-    title: "6. Expansion", elements: elements(), merged: merged,
+    title: "6. Expansion", elements: [section_group(label: "", nodes: nodes, edges: edges())], merged: merged,
   ))
 }
 
-// The H2 heading renders.
+fn emit(merged: List<Int>) -> String {
+  emit_nodes(nodes: nodes(), merged: merged)
+}
+
 fn witness_heading() -> Bool {
   string_contains(s: emit(merged: [5491]), pattern: "## 6. Expansion")
 }
-// The AuthoredLine parent renders its AUTHORED [ ] box + verbatim content + the plan-doc link.
+
 fn witness_parent_authored_box_and_link() -> Bool {
   let out = emit(merged: [5491])
   string_contains(s: out, pattern: "- [ ] **invert hand-maintained**")
     && string_contains(s: out, pattern: "[plan](docs/plans/invert-hand-maintained.md)")
 }
-// The DerivableLine child whose PR #5491 IS merged renders a DERIVED `[x]`, nested one indent.
-fn witness_child_derived_checked_when_merged() -> Bool {
-  string_contains(s: emit(merged: [5491]), pattern: "[x] **PR-checkbox status**")
+
+fn witness_child_merged_unsigned_awaiting_signoff() -> Bool {
+  let out = emit(merged: [5491])
+  string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
+    && string_contains(s: out, pattern: "⏳ awaiting sign-off")
+    && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
-// Discriminating: when #5491 is NOT in the merged set, the SAME child derives `[ ]` (not hand-set).
+
+fn witness_child_signed_checked() -> Bool {
+  let out = emit_nodes(nodes: [parent_node(), signed_child_node()], merged: [])
+  string_contains(s: out, pattern: "[x] **PR-checkbox status**")
+    && string_contains(s: out, pattern: "✓ signed off: operator")
+}
+
 fn witness_child_derived_unchecked_when_unmerged() -> Bool {
   let out = emit(merged: [])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
+    && !string_contains(s: out, pattern: "⏳ awaiting sign-off")
 }
 
 test fn roadmap_emit_witnesses() -> Bool {
   witness_heading()
     && witness_parent_authored_box_and_link()
-    && witness_child_derived_checked_when_merged()
+    && witness_child_merged_unsigned_awaiting_signoff()
+    && witness_child_signed_checked()
     && witness_child_derived_unchecked_when_unmerged()
 }

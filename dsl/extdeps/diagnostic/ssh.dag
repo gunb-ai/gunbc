@@ -1,11 +1,6 @@
-// extdeps/diagnostic/ssh.dag — OpenSSH session transport (in-band observe + probe run).
-// Anchor: https://datatracker.ietf.org/doc/html/rfc4253
-//
-// PS-0 observe/control boundary for host health workflows.
-
 module extdeps.diagnostic.ssh
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, String, Int, Bool }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -17,13 +12,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// 🟡 dissolved — feature:diagnostic-ssh-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) now governs
-// WHICH diagnostic.ssh.Session ops are hermetically realizable, and the fixture store owns the
-// payloads (§3). forbidden: reintroducing mock_response constants for Hermetic dispatch on these
-// shapes.
-service diagnostic.ssh.Session {
+type SshSessionExecResult {
+  exit_code: Int
+  success: Bool
+  stdout: String
+  stderr: String
+}
+
+service ssh.Session {
   operation Exec {
     input { host: NonEmptyStr, command: NonEmptyStr }
     output {
@@ -50,5 +46,15 @@ service diagnostic.ssh.Session {
       0 => Unit
       nonzero => String "ssh unreachable"
     }
+  }
+}
+
+fn ssh_session_exec(host: NonEmptyStr, command: NonEmptyStr) -> SshSessionExecResult {
+  let result = ssh.Session.Exec(host: host, command: command)
+  SshSessionExecResult {
+    exit_code: result.exit_code,
+    success: result.success,
+    stdout: result.stdout,
+    stderr: result.stderr,
   }
 }

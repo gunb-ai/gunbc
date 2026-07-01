@@ -1,11 +1,3 @@
-// Cut 4 thesis proof — compile(Eval) yields EvalResult{value:Medium<Node>} for a representable
-// runtime value (uniform Medium<R> codomain through the real compile entry).
-//
-// GREEN: bool_primitive_facts literal → EvalResult with Lossless Medium<Node> carrying projected primitive Node.
-// RED: unit literal → ^eval_rejected_runtime_value_node_unrepresentable (not fabricated EvalResult).
-//
-// Run: claim_batch --source-root src/v2 --entry src/v2/test/claim/compiler/compile_eval_thesis_proof_test.dag --function compile_eval_thesis_proof_holds --claim-run
-
 module v2.test.claim.compiler.compile_eval_thesis_proof
 
 import v2.compiler.eval { eval_diagnostic }

@@ -1,14 +1,3 @@
-// Status: EXECUTED Bool witness — all-zero Disj arms still cost at least O(1).
-//
-// Pins the cost-lens AlternativeCost floor (cost.dag `compose_child_cost` AlternativeCost arm).
-// Two checks together pin the CORRECT fix uniquely:
-//   (1) bug-fix: cost_lens(Disj([Atom, Atom])) projects unit_cost(), NOT zero_cost() —
-//       selecting between alternatives has a non-trivial cost even when every branch body is free.
-//   (2) control: symbolic_max's zero-absorption is PRESERVED — symbolic_max(0, 0) == 0.
-// (2) is what distinguishes the right fix (symbolic_max(child, unit) floor at the
-// AlternativeCost layer) from the wrong one (removing zero-absorption inside symbolic_max):
-// BOTH make (1) green, but the wrong fix makes (2) RED.
-
 module v2.test.lens_cost.disj_alternative_floor
 
 import v2.lens.cost {
@@ -29,7 +18,6 @@ import v2.std.node {
 }
 import v2.std.witness { Holds }
 
-// Two zero-cost Disj arms (Atom base cost = zero_cost).
 data disj_floor_arm_a: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^disj_floor_arm_a_atom } },
   children: [],
@@ -42,7 +30,6 @@ data disj_floor_arm_b: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-// Disj with two zero-cost arms — the structure cost_lens folds.
 data disj_floor_input: Node = Node {
   kind: TypeNode { connective: Disj },
   children: [
@@ -52,7 +39,6 @@ data disj_floor_input: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-// (1) Bug-fix: a Disj over zero-cost branches projects unit_cost(), not zero_cost().
 fn disj_floor_projects_unit() -> Bool {
   match cost_lens(n: disj_floor_input) {
     Holds { value: actual } => actual == unit_cost()
@@ -60,8 +46,6 @@ fn disj_floor_projects_unit() -> Bool {
   }
 }
 
-// (2) Control: symbolic_max keeps absorbing zero — max(0, 0) == 0. The wrong fix
-// (removing zero-absorption inside symbolic_max) makes this return unit_cost(), going RED here.
 fn symbolic_max_absorbs_zero() -> Bool {
   symbolic_max(a: zero_cost(), b: zero_cost()) == zero_cost()
 }

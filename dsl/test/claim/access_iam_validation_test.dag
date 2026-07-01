@@ -1,19 +1,8 @@
-// test/claim/access_iam_validation_test.dag — prove AWS IAM's ABAC "context" DECOMPOSES into
-// attribute-carrying S/A/O + grounded coordinates, inhabiting std.access with NO opaque `C`.
-//
-// The IAM statement modeled: "Allow s3:GetObject IF the request is from the internal network
-// (aws:SourceIp internal-CIDR) AND the key prefix matches (s3:prefix) AND MFA is present
-// (aws:MultiFactorAuthPresent)."  Each former "condition key" is decided from a grounded field:
-//   aws:SourceIp (internal CIDR)     → request's NetworkLocality (Lan/Loopback vs Internet)  [grounded]
-//   s3:prefix                        → S3Action.prefix                                        [action parameter]
-//   aws:MultiFactorAuthPresent       → IamPrincipal.mfa_present                               [a subject claim]
-// No condition map, no context dimension — the std generics carry it by being instantiated richly.
-
 module test.claim.access_iam_validation
 
 import std.types { NonEmptyStr, Bool }
 import std.access { AccessRequest, AccessDecision, Permit, Deny, AccessPolicy }
-import product.compute_fabric {
+import product.network_topology {
   NetworkLocality, Loopback, Lan, Internet, WslNat, WslBridged, DockerBridge, TailscaleOverlay
 }
 
@@ -25,23 +14,17 @@ fn decision_is_deny(d: AccessDecision) -> Bool {
   match d { Deny => true  Permit => false }
 }
 
-// The SUBJECT as it acts: identity + the grounded facts of how it is connecting. The IP-range
-// condition (aws:SourceIp = internal CIDR) decomposes to the request's NetworkLocality — the
-// "is this from an internal address" predicate IS a network-locality fact (grounded, reused).
 type IamPrincipal {
   arn: NonEmptyStr
-  source_locality: NetworkLocality   // reuses product.compute_fabric's grounded channel enum
-  mfa_present: Bool                  // aws:MultiFactorAuthPresent — a subject claim
+  source_locality: NetworkLocality
+  mfa_present: Bool
 }
 
-// The ACTION carries its parameters. s3:prefix is an action argument, not opaque context.
 type S3Action {
-  operation: NonEmptyStr   // e.g. "s3:GetObject"
-  prefix: NonEmptyStr      // the requested key prefix (the s3:prefix condition key)
+  operation: NonEmptyStr
+  prefix: NonEmptyStr
 }
 
-// Internet is the only external locality; everything else (loopback, LAN, WSL, docker bridge,
-// tailnet overlay) is an internal/private origin — the grounded form of an aws:SourceIp allowlist.
 fn locality_is_internal(l: NetworkLocality) -> Bool {
   match l {
     Internet => false
@@ -54,7 +37,6 @@ fn locality_is_internal(l: NetworkLocality) -> Bool {
   }
 }
 
-// One IAM statement decided ENTIRELY from grounded S/A fields — no opaque condition map.
 fn iam_decide(request: AccessRequest<IamPrincipal, S3Action, NonEmptyStr>) -> AccessDecision {
   if locality_is_internal(l: request.subject.source_locality)
      && request.action.prefix == "reports/"
@@ -65,12 +47,10 @@ fn iam_decide(request: AccessRequest<IamPrincipal, S3Action, NonEmptyStr>) -> Ac
   }
 }
 
-// AWS IAM (ABAC) inhabits the std abstraction — same AccessPolicy<S,A,O> as POSIX/RBAC, no C added.
 data iam_access_policy: AccessPolicy<IamPrincipal, S3Action, NonEmptyStr> = {
   decide: iam_decide
 }
 
-// Internal network + matching prefix + MFA → Permit (all three grounded conditions satisfied).
 test fn iam_internal_prefix_mfa_permits() -> Bool {
   decision_is_permit(d: iam_decide(request: {
     subject: { arn: "arn:aws:iam::1:user/alice", source_locality: Lan, mfa_present: true },
@@ -79,7 +59,6 @@ test fn iam_internal_prefix_mfa_permits() -> Bool {
   }))
 }
 
-// aws:SourceIp DECOMPOSED: a request from the Internet (outside the internal CIDR) → Deny.
 test fn iam_external_source_denies() -> Bool {
   decision_is_deny(d: iam_decide(request: {
     subject: { arn: "arn:aws:iam::1:user/alice", source_locality: Internet, mfa_present: true },
@@ -88,7 +67,6 @@ test fn iam_external_source_denies() -> Bool {
   }))
 }
 
-// s3:prefix DECOMPOSED: a non-matching action prefix → Deny.
 test fn iam_wrong_prefix_denies() -> Bool {
   decision_is_deny(d: iam_decide(request: {
     subject: { arn: "arn:aws:iam::1:user/alice", source_locality: Lan, mfa_present: true },
@@ -97,7 +75,6 @@ test fn iam_wrong_prefix_denies() -> Bool {
   }))
 }
 
-// aws:MultiFactorAuthPresent DECOMPOSED: no MFA → Deny.
 test fn iam_no_mfa_denies() -> Bool {
   decision_is_deny(d: iam_decide(request: {
     subject: { arn: "arn:aws:iam::1:user/alice", source_locality: Lan, mfa_present: false },

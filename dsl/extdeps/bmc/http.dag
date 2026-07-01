@@ -1,22 +1,6 @@
-// extdeps/bmc/http.dag — DMTF Redfish REST transport (curl argv bindings).
-//
-// Anchor: https://www.dmtf.org/standards/redfish
-//
-// Interface shapes and grounding projections live in extdeps/bmc/{types,redfish}.dag
-// (git.dag pattern: types + projections co-located; transport in this file).
-//
-// Service name is 2-segment (`redfish.Http`) so it is callable from a fn — a 3-segment
-// `diagnostic.redfish.Http` could not be referenced as a call path.
-//
-// 🟡 dissolved — feature:diagnostic-redfish-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) governs
-// WHICH redfish.Http ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
-
 module extdeps.bmc.http
 
-import std.types { NonEmptyStr }
+import std.types { NonEmptyStr, Secret }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -29,14 +13,22 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 service redfish.Http {
-  // Authenticated read of the system resource (power state, manufacturer, etc.) — the
-  // minimal "first contact" that proves the BMC is reachable AND the credentials work.
-  // Read-only / safe. `-k` accepts the BMC's self-signed cert (standard for OOB mgmt).
-  // NOTE: the password rides the curl argv here, acceptable ONLY because first contact
-  // uses the PUBLISHED factory default; a rotated Secret must use GetSystemWithNetrc
-  // (password never on argv) once rotation has happened.
+
+  operation GetServiceRoot {
+    input { bmc_host: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: ["curl", "-sS", "-k", "https://{bmc_host}/redfish/v1"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish service root GET failed"
+    }
+  }
+
   operation GetSystem {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -48,8 +40,6 @@ service redfish.Http {
     }
   }
 
-  // Authenticated read via netrc file — REQUIRED for rotated BMC secrets (password must
-  // not appear on curl argv). netrc_file path comes from BMC_NETRC_FILE (0600 file).
   operation GetSystemWithNetrc {
     input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
@@ -63,8 +53,6 @@ service redfish.Http {
     }
   }
 
-  // Chassis sensor collection — OpenBMC ALTRAD8UD exposes power/temp under Sensors/{name}
-  // (Chassis Power/Thermal are empty on Redfish 1.15 for this board).
   operation GetChassisSensors {
     input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
@@ -78,10 +66,8 @@ service redfish.Http {
     }
   }
 
-  // Chassis Power — PowerControl members (PowerConsumedWatts, PowerLimitWatts).
-  // Shape authority: extdeps/bmc/types.dag (RedfishPowerSubsystem).
   operation GetPower {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -93,10 +79,8 @@ service redfish.Http {
     }
   }
 
-  // Chassis Thermal — temperature sensor readings.
-  // Shape authority: extdeps/bmc/types.dag (RedfishThermalSubsystem).
   operation GetThermal {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: NonEmptyStr }
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -105,6 +89,42 @@ service redfish.Http {
     exit {
       0 => Unit
       nonzero => String "redfish thermal GET failed"
+    }
+  }
+
+  operation SetAccountPassword {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, account_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "PATCH", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/AccountService/Accounts/{account_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish account password PATCH failed"
+    }
+  }
+
+  operation SetBootSourceOverride {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "PATCH", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/Systems/{system_id}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish boot source override PATCH failed"
+    }
+  }
+
+  operation ResetSystem {
+    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    transport shell {
+      argv: ["curl", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "POST", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/Systems/{system_id}/Actions/ComputerSystem.Reset"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "redfish system reset POST failed"
     }
   }
 }

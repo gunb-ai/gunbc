@@ -1,33 +1,7 @@
-// dsl/test/claim/filesystem_write_witness.dag
-//
-// By-execution witnesses for the LIVE filesystem WRITE effect
-// (extdeps/filesystem/filesystem_io.dag, dispatched by dispatch_file in
-// v1_interpreter.rs). Run via the v2 interpreter:
-//   gunbc run --source-root dsl --entry dsl/test/claim/filesystem_write_witness.dag \
-//     --function filesystem_write_keystone_holds --claim-run
-//
-// Hermetic replay (Phase 2): record wet capture, then replay without live I/O:
-//   claim_batch --source-root . --source-root dsl \
-//     --entry dsl/test/claim/filesystem_write_witness.dag \
-//     --function filesystem_write_keystone_holds --record --fixture-store /tmp/fixtures
-//   claim_batch ... --hermetic --fixture-store /tmp/fixtures
-//
-// These are EFFECTFUL witnesses (`func`, not `fn`): they actually write to and
-// read from /tmp, proving the interpreter executes the host effect live —
-// mirroring git.Core's shell transport. The discriminators:
-//   * round-trip: write payload -> read it back -> bytes match (a silent no-op
-//     write would make the read-back diverge);
-//   * receipt: WriteResult.success is true and bytes_written equals |payload|
-//     (a fabricated receipt would not count the real bytes);
-//   * negative: reading an absent path returns success = false (a fail-open
-//     mock would return success — DESIGN.md §5).
-
 module test.claim.filesystem_write_witness
 
 import extdeps.filesystem.filesystem_io
 
-// Write a payload, read it straight back; the read-back must equal what we wrote
-// and the receipt must report a successful write of the exact byte count.
 func witness_write_then_read_roundtrip() -> Bool {
   let target = "/tmp/gunbc_fs_write_witness.txt"
   let payload = "hello from the v2 file transport\n"
@@ -36,8 +10,6 @@ func witness_write_then_read_roundtrip() -> Bool {
   return w.success && (w.bytes_written == 33) && (w.path == target) && r.success && (r.content == payload)
 }
 
-// A second write to the SAME path TRUNCATES to the new content — the read-back
-// is exactly the second payload, never the first appended to it.
 func witness_write_truncates() -> Bool {
   let target = "/tmp/gunbc_fs_write_witness_trunc.txt"
   let first = Filesystem.Write(path: target, content: "AAAAAAAAAA")
@@ -46,14 +18,11 @@ func witness_write_truncates() -> Bool {
   return first.success && second.success && (second.bytes_written == 2) && (r.content == "bb")
 }
 
-// Negative: reading a path that does not exist fails closed — success is false
-// and the content is empty (the read genuinely hit the host filesystem).
 func witness_read_absent_fails_closed() -> Bool {
   let r = Filesystem.Read(path: "/tmp/gunbc_fs_witness_absent_should_not_exist_42")
   return !r.success && (r.content == "")
 }
 
-// Keystone: one corpus row ANDs every witness above.
 func filesystem_write_keystone_holds() -> Bool {
   return witness_write_then_read_roundtrip() &&
     witness_write_truncates() &&

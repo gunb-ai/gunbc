@@ -1,62 +1,30 @@
-// std/symbols.dag -- DAG-modeled visual vocabulary for the codebase.
-//
-// Agnostic glyph/symbol concepts only (DESIGN.md §3). Encoding-tier glyph
-// realization tables and ANSI escape mappings live in extdeps/render/*;
-// dispatch that selects a terminal encoding tier lives there too.
-//
-// Composable symbol system with three encoding tiers (Emoji, Unicode, ASCII)
-// and semantic colors.  Follows the same SubDag compositional pattern as the
-// language module: encoding tiers are a SubDag, individual symbols are SubDags
-// with config + encoding atoms + resolve.
-//
-// The Rust SymbolSet/Symbol/SymbolId types in core/ir/src/symbols.rs
-// will eventually be generated from these definitions.
-
 module std.symbols
-
-// --- Semantic color ---
-//
-// Meaning-based color that maps to ANSI/CSS/CI representations.
-// Per-target escape sequences live in extdeps/render/ansi.dag.
 
 type SemanticColor = Default | Success | Warning | Error | Info | Dim | Active | Accent
 
-// --- Encoding tier ---
-//
-// Project interface: ordered richness (Emoji > Unicode > Ascii).
-// Not an external authority — tier dispatch contract lives in std; cited
-// repertoire per tier is anchored in extdeps/render/glyphs.dag.
-
 type Tier = Emoji | Unicode | Ascii
 
-// --- Symbol identity ---
-//
-// What concept a symbol represents.  Grouped by domain.
-//
-// Each variant is a semantic role -- the visual encoding depends on tier.
-// Mirrors TypeId -- identifies a symbol by its meaning.
-
 type SymbolId
-  // Node lifecycle
+
   = NodePending
   | NodeRunning
   | NodeCompleted
   | NodeFailed
   | NodeSkipped
   | NodeIntercepted
-  // Edge states
+
   | EdgeIdle
   | EdgeFlowing
   | EdgeDone
   | EdgeDead
-  // DAG phases
+
   | DagNotStarted
   | DagRunning
   | DagCompleted
   | DagFailed
-  // Structural
+
   | BoundaryMarker
-  // Spinners (braille dot animation, 10 frames)
+
   | Spinner0
   | Spinner1
   | Spinner2
@@ -67,21 +35,28 @@ type SymbolId
   | Spinner7
   | Spinner8
   | Spinner9
-  // Status indicators (general purpose)
+
   | StatusSuccess
   | StatusFailure
   | StatusWarning
   | StatusInfo
-  // Data type indicators
+
   | DataList
   | DataMap
   | DataSecret
   | DataUrl
   | DataTimer
-  // Connectors (layout)
+
   | ConnectorHorizontal
   | ConnectorVertical
   | ConnectorTeeDown
   | ConnectorTeeUp
   | ConnectorCornerBottomLeft
   | ConnectorCornerTopLeft
+
+  | BoxHorizontal
+  | BoxVertical
+  | BoxCornerTopLeft
+  | BoxCornerTopRight
+  | BoxCornerBottomLeft
+  | BoxCornerBottomRight

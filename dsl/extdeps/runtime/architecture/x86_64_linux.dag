@@ -1,12 +1,3 @@
-// extdeps/runtime/architecture/x86_64_linux.dag — x86-64 Linux architecture profile (cited facts).
-//
-// Scope: Slice-1 inhabitant of extdeps.toolchain.architecture_profile.ArchitectureProfile — Architecture::X86_64
-// with cited machine facts, sysv_amd64 syscall convention, and downward stack.
-//
-// Anchor: https://refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf (§3.2.2 stack; §3.4.1 alignment)
-// Anchor: https://github.com/torvalds/linux/blob/v6.8/arch/x86/include/asm/page_types.h (PAGE_SIZE 4096)
-// Anchor: https://github.com/torvalds/linux/blob/v6.8/arch/x86/entry/entry_64.S
-
 module extdeps.runtime.architecture.x86_64_linux
 
 import extdeps.runtime.abi.sysv_amd64 {
@@ -68,8 +59,6 @@ data x86_64_linux_deployment_target: DeploymentTarget = {
   invocation: SyscallAbiSurface { abi: linux_x86_64_syscall_abi },
 }
 
-// Witnesses: typed+reviewed via `gunbc run --source-root dsl --claim-run` (PR receipt).
-// 🟡 consumer:dsl-rooted-claim-run-gate — not CI-enrolled until dsl corpus gate lands.
 fn witness_architecture_is_x86_64() -> Bool {
   x86_64_linux_architecture_profile.architecture == X86_64
 }

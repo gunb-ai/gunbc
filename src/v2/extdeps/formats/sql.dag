@@ -1,14 +1,21 @@
-// src/v2/extdeps/formats/sql.dag
-// Scope: ISO/IEC 9075 SQL relational/DDL surface; Shape-B checked format — T-4.6 dsl extdeps port (migration.dag) + ISO spec.
-// Status: DDL/relational facts + numeric lexeme (wave-1 bundles) landed; parse/emit axes + identifier/unique-name profile gated (SL-3229-T4-FORMAT-T6T7, SL-3229-SQL-IDENTIFIER-UNIQUENESS). Transport execution config (`SqlStatementKind`, `SqlParameterStyle`, `SqlTransactionMode`, `SqlTransportConfig`) remains sole authority in `dsl/extdeps/transports/sql.dag` until the v2 port retires the v3 split (#3224 single-authority ruling).
-// Anchor: https://www.iso.org/standard/76583.html
-
 module v2.extdeps.formats.sql
 
-
 import v2.std.grammar { GrammarSchema }
-import v2.std.algebra { fold_list, list_append }
-import v2.std.collection { List, Map, Optional }
+import v2.std.algebra { Empty, fold_list, list_append, list_snoc_item }
+import v2.std.collection { Absent, List, Map, Optional, Present }
+import v2.std.diagnostic {
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  ShortCircuit,
+  StageDiagnosticPolicy,
+  Unavailable,
+  append_outcome_value,
+  bind_outcome,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
 import v2.std.nat { Nat }
 import v2.std.cardinality { NonZeroNat }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -21,22 +28,16 @@ import v2.std.model_core {
 }
 import v2.std.witness { Holds, Violates }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-SqlDialect.
 type SqlDialect
   = SqlDialectIso9075
   | SqlDialectPostgreSql
   | SqlDialectSqlite
   | SqlDialectMySql
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-SqlIdentifier.
 type SqlIdentifier
   = SqlRegularIdentifier { name: String }
   | SqlDelimitedIdentifier { name: String }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-SqlDataType.
 type SqlDataType
   = SqlTypeBoolean
   | SqlTypeSmallInt
@@ -53,17 +54,13 @@ type SqlDataType
   | SqlTypeTimestamp
   | SqlTypeTimestampWithTimeZone
 
-
 type SqlColumnConstraints {
   not_null: Bool,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-SqlColumnDefault.
 type SqlColumnDefault
   = SqlColumnDefaultAbsent
   | SqlColumnDefaultLiteral { literal: String }
-
 
 type SqlColumnDefinition {
   name: SqlIdentifier,
@@ -72,8 +69,6 @@ type SqlColumnDefinition {
   column_default: SqlColumnDefault,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-SqlTableConstraint.
 type SqlTableConstraint
   = SqlTableUnique { columns: List<SqlIdentifier> }
   | SqlTableForeignKey {
@@ -82,7 +77,6 @@ type SqlTableConstraint
       referenced_columns: List<SqlIdentifier>,
     }
 
-
 type SqlTableDefinition {
   name: SqlIdentifier,
   columns: List<SqlColumnDefinition>,
@@ -90,8 +84,6 @@ type SqlTableDefinition {
   table_constraints: List<SqlTableConstraint>,
 }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-SqlSchemaOperation.
 type SqlSchemaOperation
   = SqlCreateTable { table: SqlTableDefinition }
   | SqlDropTable { table_name: SqlIdentifier }
@@ -107,7 +99,6 @@ type SqlSchemaOperation
   | SqlAlterTableRaw { table_name: SqlIdentifier, alteration: String }
   | SqlRawStep { statement: String }
 
-
 type SqlMigrationStep {
   name: String,
   operation: SqlSchemaOperation,
@@ -115,13 +106,11 @@ type SqlMigrationStep {
   reversible: Bool,
 }
 
-
 type SqlMigrationScript {
   migration_id: String,
   wraps_transaction: Bool,
   steps: List<SqlMigrationStep>,
 }
-
 
 type SqlMigrationEmissionTarget {
   grammar_schema: GrammarSchema,
@@ -129,34 +118,19 @@ type SqlMigrationEmissionTarget {
   migrations: List<SqlMigrationScript>,
 }
 
-
-// ISO/IEC 9075 §6 specifies SMALLINT/INTEGER/BIGINT as signed exact numeric
-// types with implementation-defined precision, and REAL/DOUBLE PRECISION as
-// approximate numerics with implementation-defined precision and encoding.
-// Width and IEEE-754 binding are therefore implementation facts, not spec
-// facts, and are deliberately not carried on these records.
-
 type SqlIntegerPrimitiveFacts {
   surface_spelling: Symbol
 }
 
-
 type SqlFloatPrimitiveFacts {
   surface_spelling: Symbol
 }
-
 
 type SqlNonNumericPrimitiveFacts {
   surface_spelling: Symbol
   representation: Symbol
 }
 
-
-// ISO/IEC 9075 surface spellings.
-// Representation identities — ISO/IEC 9075 §4 semantics (boolean three-valued,
-// datetime, character large object). Approximate-numeric and exact-numeric
-// representations are NOT bound (implementation-defined per ISO §6).
-// Signedness — ISO/IEC 9075 §6 specifies SMALLINT/INTEGER/BIGINT as signed.
 data sql_facts_smallint: SqlIntegerPrimitiveFacts = SqlIntegerPrimitiveFacts {
   surface_spelling: ^sql_surface_spelling_smallint,
 }
@@ -207,8 +181,6 @@ data sql_facts_timestamp_with_time_zone: SqlNonNumericPrimitiveFacts = SqlNonNum
   representation: ^sql_repr_timestamp_with_time_zone,
 }
 
-
-// 🟡 needs-more-work — feature:sql-primitive-bundle-catalog-derivation — scaffold:T-4.6-sql-primitive-fact-bundles · dissolve-on: substrate gains coproduct-variant enumeration so the constant-arm subset of SqlDataType derives a homomorphism into List<PrimitiveFactBundle> and the three hand-enumerated catalogs below collapse into that derivation (single-authority over the SqlDataType constant arms; same gap on src/v2/extdeps/languages/rust.dag's per-category facts catalogs).
 data sql_integer_facts_catalog: List<SqlIntegerPrimitiveFacts> = [
   sql_facts_smallint,
   sql_facts_integer,
@@ -228,7 +200,6 @@ data sql_nonnumeric_facts_catalog: List<SqlNonNumericPrimitiveFacts> = [
   sql_facts_timestamp,
   sql_facts_timestamp_with_time_zone,
 ]
-
 
 fn sql_inhabitant_atom(id: Symbol) -> Node {
   Node {
@@ -354,10 +325,6 @@ fn sql_primitive_bundle_from_nonnumeric_facts(
   }
 }
 
-// fold_list is a left fold, so cons-prepend folds reverse input order.
-// reverse + cons-prepend recovers the input order — this is the order-preserving
-// idiom for List<T> in v2 substrate today; list_append is canonical in
-// std/algebra, while list_map remains local here.
 fn sql_list_reverse<T>(xs: List<T>) -> List<T> {
   fold_list(
     xs: xs,
@@ -409,4 +376,181 @@ fn sql_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
     ),
     right: sql_primitive_bundles_from_nonnumeric_catalog()
   )
+}
+
+data sql_serialize_oracle_dissolution_trigger: String = "🟡 dissolve-on: sql_serialize_* hand serializer family — byte-identical cross-check oracle for the grammar-inverse fold pilot (parallel to bash serialize_stmt / extdeps/languages/* authority_source_text convention). DISSOLVES WHEN SQL ingest is wired over the same grammar rows and the fold proves ingest ∘ emit = id (round-trip grounded over shared productions); until then witnesses compare emit() output to this oracle, not the other way around"
+
+fn sql_serialize_identifier(id: SqlIdentifier) -> String {
+  match id {
+    SqlRegularIdentifier { name: n } => n
+    SqlDelimitedIdentifier { name: n } =>
+      concat("\"", concat(replace(n, "\"", "\"\""), "\""))
+  }
+}
+
+fn sql_join_strings(separator: String, parts: List<String>) -> String {
+  fold(parts, init: "", f: (acc, part) => {
+    if acc == "" { part } else { concat(acc, concat(separator, part)) }
+  })
+}
+
+data sql_serialize_diagnostic_anchor: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn sql_serialize_unsupported_operation_diagnostic(variant: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: variant,
+    at: node_locus(node: sql_serialize_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn sql_serialize_unsupported_data_type_diagnostic(variant: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: variant,
+    at: node_locus(node: sql_serialize_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+data sql_serialize_policy: StageDiagnosticPolicy = StageDiagnosticPolicy {
+  accumulation: ShortCircuit
+}
+
+fn sql_serialize_data_type(dt: SqlDataType) -> Outcome<String> {
+  match dt {
+    SqlTypeBoolean => outcome_accepted(value: "BOOLEAN")
+    SqlTypeSmallInt => outcome_accepted(value: "SMALLINT")
+    SqlTypeInteger => outcome_accepted(value: "INTEGER")
+    SqlTypeBigInt => outcome_accepted(value: "BIGINT")
+    SqlTypeReal => outcome_accepted(value: "REAL")
+    SqlTypeDoublePrecision => outcome_accepted(value: "DOUBLE PRECISION")
+    SqlTypeNumeric { precision: _, scale: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_numeric))
+    SqlTypeCharacter { length: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_character))
+    SqlTypeCharacterVarying { length: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_data_type_diagnostic(variant: ^sql_serialize_type_character_varying))
+    SqlTypeCharacterLargeObject => outcome_accepted(value: "TEXT")
+    SqlTypeDate => outcome_accepted(value: "DATE")
+    SqlTypeTime => outcome_accepted(value: "TIME")
+    SqlTypeTimestamp => outcome_accepted(value: "TIMESTAMP")
+    SqlTypeTimestampWithTimeZone => outcome_accepted(value: "TIMESTAMP WITH TIME ZONE")
+  }
+}
+
+fn sql_serialize_column_definition(col: SqlColumnDefinition) -> Outcome<String> {
+  bind_outcome(
+    o: sql_serialize_data_type(dt: col.data_type),
+    f: fn(type_spelling) {
+      outcome_accepted(value: concat(
+        sql_serialize_identifier(id: col.name),
+        concat(
+          " ",
+          concat(
+            type_spelling,
+            sql_serialize_column_constraints(c: col.constraints)
+          )
+        )
+      ))
+    }
+  )
+}
+
+fn sql_serialize_column_definition_strings(cols: List<SqlColumnDefinition>) -> Outcome<List<String>> {
+  fold(
+    cols,
+    init: outcome_accepted(value: Empty),
+    f: fn(acc, col) {
+      append_outcome_value(
+        acc: acc,
+        child: sql_serialize_column_definition(col: col),
+        policy: sql_serialize_policy
+      )
+    }
+  )
+}
+
+fn sql_serialize_column_definitions(cols: List<SqlColumnDefinition>) -> Outcome<String> {
+  bind_outcome(
+    o: sql_serialize_column_definition_strings(cols: cols),
+    f: fn(parts) {
+      outcome_accepted(value: sql_join_strings(separator: ", ", parts: parts))
+    }
+  )
+}
+
+fn sql_serialize_column_constraints(c: SqlColumnConstraints) -> String {
+  if c.not_null { " NOT NULL" } else { "" }
+}
+
+fn sql_serialize_identifier_list(ids: List<SqlIdentifier>) -> String {
+  sql_join_strings(
+    separator: ", ",
+    parts: sql_list_map(xs: ids, f: sql_serialize_identifier)
+  )
+}
+
+fn sql_serialize_primary_key_clause(pk: Optional<List<SqlIdentifier>>) -> String {
+  match pk {
+    Absent => ""
+    Present { value: cols } =>
+      concat(
+        ", PRIMARY KEY (",
+        concat(
+          sql_serialize_identifier_list(ids: cols),
+          ")"
+        )
+      )
+  }
+}
+
+fn sql_serialize_table_definition(table: SqlTableDefinition) -> Outcome<String> {
+  bind_outcome(
+    o: sql_serialize_column_definitions(cols: table.columns),
+    f: fn(column_defs) {
+      outcome_accepted(value: concat(
+        "CREATE TABLE ",
+        concat(
+          sql_serialize_identifier(id: table.name),
+          concat(
+            " (",
+            concat(
+              column_defs,
+              concat(
+                sql_serialize_primary_key_clause(pk: table.primary_key),
+                ");"
+              )
+            )
+          )
+        )
+      ))
+    }
+  )
+}
+
+fn sql_serialize_schema_operation(op: SqlSchemaOperation) -> Outcome<String> {
+  match op {
+    SqlCreateTable { table: t } =>
+      sql_serialize_table_definition(table: t)
+    SqlRawStep { statement: s } =>
+      outcome_accepted(value: s)
+    SqlDropTable { table_name: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_table))
+    SqlAddColumn { table_name: _, column: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_add_column))
+    SqlDropColumn { table_name: _, column_name: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_column))
+    SqlAlterTableConstraint { table_name: _, constraint: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_alter_table_constraint))
+    SqlCreateIndex { index_name: _, table_name: _, columns: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_create_index))
+    SqlDropIndex { index_name: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_drop_index))
+    SqlAlterTableRaw { table_name: _, alteration: _ } =>
+      outcome_rejected(d: sql_serialize_unsupported_operation_diagnostic(variant: ^sql_serialize_op_alter_table_raw))
+  }
 }

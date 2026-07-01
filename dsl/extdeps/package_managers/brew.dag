@@ -1,52 +1,27 @@
-// extdeps/package_managers/brew.dag — Homebrew package manager (macOS).
-//
-// Spec: https://docs.brew.sh/
-// Version: Homebrew 4.x+
-//
-// This is a STUB. Homebrew is the de facto package manager on macOS
-// dev machines. When a CLI tool can be installed via brew, that path
-// is declared in CliTool.installable_via with the formula name.
-//
-// What we actually depend on from brew:
-//   - The `brew install FORMULA` command
-//   - The `/opt/homebrew/bin/` install prefix (Apple Silicon)
-//   - The fact that homebrew puts binaries on PATH automatically
-//   - Specific formulae listed below (rust, coreutils, ...)
-//
-// What we do NOT currently depend on:
-//   - Custom taps (third-party repositories)
-//   - Cask installation (GUI applications)
-//   - Bottles vs source builds
-//   - Brew services (background daemons)
-//   - Bundle (Brewfile) workflows
-//
-// Future: When we model brew operations programmatically, this file
-// gains service declarations like extdeps/rust/cargo.dag.
-
 module extdeps.brew
 
 import std.types { NonEmptyStr, FilePath }
 
-// ── Brew install prefixes ───────────────────────────────────────────
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Apple Silicon (M1+) — most modern macOS dev machines.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.brew.sh/"
+  }
+}
+
 data brew_prefix_apple_silicon: FilePath = "/opt/homebrew"
 data brew_bin_apple_silicon: FilePath = "/opt/homebrew/bin"
 
-// Intel macOS — legacy but still in use.
 data brew_prefix_intel: FilePath = "/usr/local"
 data brew_bin_intel: FilePath = "/usr/local/bin"
 
-// ── Formulae we know about ─────────────────────────────────────────
-
-// The Homebrew formulae that install tools gunbc actually uses.
-// Adding a new tool that ships via brew = add its formula here.
-data formula_rust: NonEmptyStr = "rust"               // installs cargo, rustc
-data formula_coreutils: NonEmptyStr = "coreutils"     // GNU coreutils as g-prefixed binaries
-data formula_diffutils: NonEmptyStr = "diffutils"     // GNU diff as gdiff
-data formula_grep: NonEmptyStr = "grep"               // GNU grep as ggrep
-
-// ── Spec citations ──────────────────────────────────────────────────
+data formula_rust: NonEmptyStr = "rust"               
+data formula_coreutils: NonEmptyStr = "coreutils"     
+data formula_diffutils: NonEmptyStr = "diffutils"     
+data formula_grep: NonEmptyStr = "grep"               
 
 data brew_install_url: NonEmptyStr = "https://brew.sh"
 data brew_docs: NonEmptyStr = "https://docs.brew.sh/"

@@ -1,0 +1,91 @@
+module extdeps.uri_validation
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri {
+  Uri, Https,
+  UriScheme, Http, File, Ftp, Javascript, Data, Vbscript, Mailto,
+  ParsedHrefScheme, HrefScheme, RelativeHref, UnknownHref,
+  parse_href_scheme,
+}
+import std.markup {
+  MarkupNode, MarkupAttr, ElementNode, TextNode,
+  attr_is_url_attr,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "url.spec.whatwg.org/"
+  }
+}
+
+type DangerousUrlScheme
+  = JavascriptScheme
+  | DataScheme
+  | VbscriptScheme
+
+type RejectedUrlScheme
+  = DangerousScheme { scheme: DangerousUrlScheme }
+  | SchemeNotAllowlisted
+
+type HrefValidation
+  = SafeHref { url: String }
+  | RejectedHref { reason: RejectedUrlScheme }
+
+fn validate_href(url: String) -> HrefValidation {
+  match parse_href_scheme(url: url) {
+    RelativeHref => SafeHref { url: url }
+    HrefScheme { scheme } =>
+      match scheme {
+        Http => SafeHref { url: url }
+        Https => SafeHref { url: url }
+        Mailto => SafeHref { url: url }
+        Javascript => RejectedHref { reason: DangerousScheme { scheme: JavascriptScheme } }
+        Data => RejectedHref { reason: DangerousScheme { scheme: DataScheme } }
+        Vbscript => RejectedHref { reason: DangerousScheme { scheme: VbscriptScheme } }
+        File => RejectedHref { reason: SchemeNotAllowlisted }
+        Ftp => RejectedHref { reason: SchemeNotAllowlisted }
+      }
+    UnknownHref => RejectedHref { reason: SchemeNotAllowlisted }
+  }
+}
+
+type RejectedUrl {
+  url: String
+  reason: RejectedUrlScheme
+}
+
+fn find_first_rejected_url(node: MarkupNode) -> RejectedUrl? {
+  match node {
+    TextNode { text: _ } => Absent
+    ElementNode { tag: _, attrs, children } => {
+      let from_attr = fold(attrs,
+        init: Absent,
+        f: (acc, a) => match acc {
+          Present { value: r } => Present { value: r }
+          Absent =>
+            if attr_is_url_attr(name: a.name) {
+              match validate_href(url: a.value) {
+                SafeHref { url: _ } => Absent
+                RejectedHref { reason: rs } =>
+                  Present { value: RejectedUrl { url: a.value, reason: rs } }
+              }
+            } else {
+              Absent
+            }
+        }
+      )
+      match from_attr {
+        Present { value: r } => Present { value: r }
+        Absent =>
+          fold(children,
+            init: Absent,
+            f: (acc, c) => match acc {
+              Present { value: r } => Present { value: r }
+              Absent => find_first_rejected_url(node: c)
+            }
+          )
+      }
+    }
+  }
+}

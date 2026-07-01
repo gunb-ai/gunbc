@@ -1,25 +1,3 @@
-// Capability witness: does the language enforce NOMINAL TYPE DISTINCTNESS?
-//
-// Question asked of the existing v2 compiler (gunbc): if two DISTINCT type
-// declarations share the SAME structural shape, and a value of one is passed
-// where the other is expected, does the compiler REJECT the cross-type call?
-//
-// UserId and AccountId are two distinct nominal record declarations with an
-// identical field shape ({ raw: Int }). Disjointness rides DECLARATION IDENTITY
-// (per MODELING / project ledger: a brand desugars to a FRESH nominal type;
-// two distinct declarations are disjoint even when structurally identical).
-//
-// `lookup` expects a UserId. `main` constructs an AccountId and passes it where
-// a UserId is required -- the cross-type call.
-//
-// EXPECTED VERDICT: REJECTED (type error) if nominal distinctness is enforced.
-//   The structurally-identical twin in twin.dag FLIPS this to ACCEPTED, proving
-//   this witness exercises the real capability (a discriminating input).
-//
-// Sanity check (frontend parse + typecheck only; the full distinctness verdict
-// routes through the not-yet-landed v2-route / candidate-B bridge):
-//   gunbc compile --source-root dsl/examples/nominal_distinctness_witness \
-//                 --source-root dsl/std --output-dir /tmp/witness_out --target dag
 module examples.nominal_distinctness_witness
 
 type UserId {
@@ -36,6 +14,5 @@ fn lookup(id: UserId) -> Int {
 
 fn main() -> Int {
   let acct = AccountId { raw: 7 }
-  // Cross-type call: AccountId passed where UserId is expected.
   lookup(id: acct)
 }

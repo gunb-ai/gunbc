@@ -1,0 +1,79 @@
+module v2.test.complexity_gate.subject_complexity_budget_roster
+
+import v2.lens.complexity {
+  ComplexityBound,
+  ConstantComplexity,
+  linear_complexity,
+  unknown_complexity
+}
+import v2.lens.cost { SizeVariable }
+import v2.std.cardinality { loop_bound_measure, loop_bound_witness_for_node }
+import v2.std.collection { List }
+import v2.std.diagnostic { Outcome }
+import v2.std.node { Node }
+import v2.std.witness { Holds, Violates }
+import v2.test.complexity_gate.source_bridged_add_subject_producer {
+  source_bridged_add_arrow_with_body
+}
+import v2.test.complexity_gate.source_bridged_bind_subject_producer {
+  source_bridged_bind_arrow_with_body
+}
+import v2.test.complexity_gate.source_bridged_branch_subject_producer {
+  source_bridged_pick_if_arrow_with_body
+}
+import v2.test.complexity_gate.source_bridged_loop_subject_producer {
+  source_bridged_loop_arrow_with_body
+}
+
+type LensSubjectComplexityBudgetRow {
+  subject_producer: fn() -> Outcome<Node>
+  declared_budget: fn(Node) -> ComplexityBound
+}
+
+fn complexity_declared_budget_for_row(
+  row: LensSubjectComplexityBudgetRow,
+  body: Node
+) -> ComplexityBound {
+  row.declared_budget(body: body)
+}
+
+fn complexity_declared_budget_constant(_body: Node) -> ComplexityBound {
+  ConstantComplexity
+}
+
+fn complexity_declared_budget_loop_linear(body: Node) -> ComplexityBound {
+  match loop_bound_witness_for_node(n: body) {
+    Holds { value: bound } =>
+      linear_complexity(
+        size_var: SizeVariable { source: loop_bound_measure(bound: bound) }
+      )
+    Violates { diagnostic: _ } => unknown_complexity()
+  }
+}
+
+data complexity_budget_row_source_bridged_add: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
+  subject_producer: source_bridged_add_arrow_with_body,
+  declared_budget: complexity_declared_budget_constant
+}
+
+data complexity_budget_row_source_bridged_bind: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
+  subject_producer: source_bridged_bind_arrow_with_body,
+  declared_budget: complexity_declared_budget_constant
+}
+
+data complexity_budget_row_source_bridged_branch: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
+  subject_producer: source_bridged_pick_if_arrow_with_body,
+  declared_budget: complexity_declared_budget_constant
+}
+
+data complexity_budget_row_source_bridged_loop: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
+  subject_producer: source_bridged_loop_arrow_with_body,
+  declared_budget: complexity_declared_budget_loop_linear
+}
+
+data complexity_subject_budget_rows: List<LensSubjectComplexityBudgetRow> = [
+  complexity_budget_row_source_bridged_add,
+  complexity_budget_row_source_bridged_bind,
+  complexity_budget_row_source_bridged_branch,
+  complexity_budget_row_source_bridged_loop
+]

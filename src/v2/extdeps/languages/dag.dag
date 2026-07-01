@@ -1,9 +1,3 @@
-// src/v2/extdeps/languages/dag.dag
-//
-// Scope: gunbc `.dag` LanguageModel (typed lex + grammar model; Shape A).
-// Status: T-6 lex walk realized; T-7 grammar walk realized; modeled LM wired; wave-1 productions declared as `FormalProduction` flat rhs (`dag_wave1_formal_productions`); `GrammarExpr`/`GrammarRoot` below remain operational parse scaffold until CP-1b convergence.
-// Anchor: docs/v3-spec.md
-
 module v2.extdeps.languages.dag
 import v2.std.model_core { wave1_void }
 import v2.std.language_model { LanguageModel }
@@ -60,7 +54,6 @@ import v2.std.grammar {
 }
 import v2.std.witness { Holds, Violates, Witness }
 import v2.std.compilers.lexing {
-  BlockCommentTextChar,
   CharClassPattern,
   CharPattern,
   ChoicePattern,
@@ -73,7 +66,6 @@ import v2.std.compilers.lexing {
   LexRule,
   LexRuleSet,
   LexRules,
-  LineCommentTextChar,
   LiteralPattern,
   ModeledLexRules,
   OneOrMorePattern,
@@ -127,7 +119,11 @@ import v2.std.compilers.target_model {
   TargetValueExpressionProjection,
   grammar_relation_row_attach_bodied_scaffold,
   target_operator_realizations_catalog_node,
-  value_expr_projection_bundle_node, target_model_emit_transforms_empty}
+  value_expr_projection_bundle_node, target_model_emit_transforms_empty,
+  Prepend,
+  BlockEvaluationMode,
+  ValueProducing,
+  derive_bodied_arrow_scaffold}
 import v2.std.logic { Bool }
 import v2.std.algebra { Cons, Empty, fold_list, for_all, list_append, list_snoc_item }
 import v2.std.diagnostic {
@@ -155,24 +151,22 @@ import v2.extdeps.languages.fidelity {
   FidelityDisposition,
   Modeled
 }
-// RTADD / ctrl#1489 — MVP-1 add keystone target model (mirror rust_mvp1_target_model).
+
 data dag_mvp1_source_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 
-// COMPREP wave-2 M0-B1 — Bool if-then-else body keystone (design-comprep-m0-branch-mapping.md).
 data dag_mvp1_pick_source_text: String = "fn one_or_two() -> Int { if true then 1 else 2 }"
 data dag_mvp1_pick_false_source_text: String = "fn one_or_two() -> Int { if false then 1 else 2 }"
 
-// COMPREP wave-2 M0-Loop — loop expression body keystone.
 data dag_mvp1_loop_source_text: String = "fn one() -> Int { loop 1 }"
 data dag_mvp1_loop_wrong_value_source_text: String = "fn one() -> Int { loop 2 }"
-// COMPREP wave-2 M0-Bind — let-in expression body keystone.
+
 data dag_mvp1_bind_source_text: String = "fn one() -> Int { let x = 1 in x }"
 data dag_mvp1_bind_wrong_value_source_text: String = "fn one() -> Int { let x = 2 in x }"
-// COMPREP wave-2 M0-Match — Bool match expression body keystone.
+
 data dag_mvp1_match_source_text: String = "fn one_or_two() -> Int { match true { true => 1, false => 2 } }"
-// COMPREP wave-2 M0-Record — record construct body keystone.
+
 data dag_mvp1_rec_source_text: String = "fn mk() -> Rec { Rec { v: 9 } }"
-// COMPREP wave-2 M0-FieldAccess — field access body keystone.
+
 data dag_mvp1_field_access_source_text: String = "fn get(r: Rec) -> Int { r.v }"
 
 fn dag_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -313,8 +307,6 @@ fn dag_mvp1_field_access_concrete_tokens() -> List<ConcreteSyntaxToken> {
   ]
 }
 
-
-
 fn dag_surface_operator_canonicalization_miss_diagnostic(surface_token: Symbol) -> Diagnostic {
   Diagnostic {
     reason: ^dag_surface_operator_canonicalization_miss,
@@ -323,8 +315,6 @@ fn dag_surface_operator_canonicalization_miss_diagnostic(surface_token: Symbol) 
   }
 }
 
-
-// Wave-1 surface infix operator → substrate CanonicalOperation rows (design-value-emit-schema.md §7 Q-V1).
 fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcome<CanonicalOperation> {
   if surface_token == ^dag_token_plus {
     outcome_accepted(canonical_operation_op_add())
@@ -335,7 +325,6 @@ fn dag_surface_operator_canonicalization_member(surface_token: Symbol) -> Outcom
   }
 }
 
-// shell: `lm` reserved for PR-T-FINISH translate_algebra §1.5 model-derived table; wave-1 delegates to _member.
 fn dag_surface_operator_canonicalization_lookup(
   lm: LanguageModel,
   surface_token: Symbol
@@ -428,36 +417,11 @@ fn dag_whitespace_trivia_rule() -> LexRule {
   }
 }
 
-fn dag_line_comment_trivia_rule() -> LexRule {
-  TriviaRule {
-    pattern: SequencePattern {
-      left: LiteralPattern { text: "//" },
-      right: RepeatPattern { element: CharClassPattern { class: LineCommentTextChar } }
-    }
-  }
-}
-
-fn dag_block_comment_trivia_rule() -> LexRule {
-  TriviaRule {
-    pattern: DelimitedPattern {
-      open: LiteralPattern { text: "/*" },
-      body: ChoicePattern {
-        left: CharClassPattern { class: BlockCommentTextChar },
-        right: CharPattern { char: 42 }
-      },
-      close: LiteralPattern { text: "*/" }
-    }
-  }
-}
-
 fn dag_wave1_lex_rules() -> LexRuleSet {
-  // Rule order is load-bearing: lex_try_rules prefers the later rule on equal-length
-  // matches, so ident must precede keywords and specific literals that must win ties.
+
   LexRuleSet {
     rules: [
       dag_whitespace_trivia_rule(),
-      dag_line_comment_trivia_rule(),
-      dag_block_comment_trivia_rule(),
       dag_string_literal_lex_rule(),
       dag_int_literal_lex_rule(),
       dag_ident_lex_rule(),
@@ -536,10 +500,6 @@ fn dag_positional_edge(target: Node) -> Edge {
   }
 }
 
-// T-11: self-emission constructs the typed ConcreteSyntaxToken carrier and projects it through
-// the single shared serializer (v2.std.compilers.target_model.concrete_syntax_token_to_node). The Conj wire
-// node is returned so the result still composes with nonterminal sub-trees in heterogeneous
-// grammar-row token lists.
 fn emit_fixed_token(token_class: Symbol) -> Node {
   concrete_syntax_token_to_node(token: FixedToken { token_class: token_class })
 }
@@ -578,7 +538,6 @@ fn emit_grammar_relation_row(
 }
 }
 
-// Canonical CFG: flat FormalProduction rhs (choice/optional/repeat as multi-rule expansions).
 fn dag_wave1_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
@@ -620,16 +579,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
         grammar_formal_terminal(identity: ^dag_token_gt)
       ]
     ),
-    // STALE — comma-MANDATORY (DESIGN §3/§6; paired with dag_grammar_comma_list_expr
-    // above). Every dag_production_comma_*_list / _suffix production below requires an
-    // inter-item comma. The v1-mirrored TRUTH is comma-OPTIONAL (parse_field_list_acc):
-    // see dag_grammar_comma_list_expr, the operational grammar parse_module actually
-    // walks. These flat-BNF rows were intentionally NOT hand-doubled to optional — that
-    // would grow §2 parallel-ledger debt for a consistency nothing enforces (zero
-    // consumers outside this file). CP-1b convergence MUST land on comma-OPTIONAL and
-    // never re-impose mandatory commas. EXECUTABLE BACKSTOP: a mandatory-comma
-    // regression goes RED by execution in
-    // src/v2/test/claim/languages/dag_comma_optional_list_test.dag (two-newline-fields).
+
     grammar_formal_production(
       lhs: ^dag_production_comma_ident_list,
       rhs: [
@@ -1287,8 +1237,7 @@ fn dag_wave1_formal_productions() -> List<FormalProduction> {
         grammar_formal_nonterminal_occurrence(identity: ^dag_production_expr)
       ]
     ),
-    // Gap-4: match arm body = brace-less stmt_seq (≥1 stmt; unified suffix with fn_body).
-    // Engine: parse_match_arm_stmt_body in 02_parse.dag (mirror v1 parse_match_arm_stmts).
+
     grammar_formal_production(
       lhs: ^dag_production_match_arm,
       rhs: [
@@ -1858,16 +1807,13 @@ fn dag_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   grammar_expr_terminal(token_class: token_class)
 }
 
-
 fn dag_grammar_terminal_bound(token_class: Symbol, binding: Symbol) -> GrammarExpr {
   grammar_expr_terminal_bound(token_class: token_class, binding: binding)
 }
 
-
 fn dag_grammar_terminal_lexeme(token_class: Symbol) -> GrammarExpr {
   grammar_expr_terminal_lexeme(token_class: token_class)
 }
-
 
 fn dag_grammar_terminal_from_concrete_token(token: ConcreteSyntaxToken) -> GrammarExpr {
   formal_grammar_symbol_to_grammar_expr(
@@ -1895,28 +1841,6 @@ fn dag_grammar_repeat(element: GrammarExpr) -> GrammarExpr {
   Repeat { element: element }
 }
 
-// item (comma? item)* comma? — the inter-item comma is OPTIONAL, mirroring the v1
-// single authority parse_field_list_acc (src/v1/stage0/src/v1_compiler_parse.rs): v1
-// skip_newlines + eat(ExpectComma) tolerating EatUnchanged, i.e. items separate on a
-// comma OR bare juxtaposition (newlines are whitespace), uniformly across list sites
-// (field decls, param lists, generic/type-arg lists). v2 had FORKED to a mandatory
-// comma; that fork left every newline-separated multi-field record body unparseable
-// (parse_g0_tokens_remain). This is a strict superset — comma-separated lists still
-// parse. (v1 forbids commas only on positional-variant payloads, which have no v2
-// wave1 production at all, so no comma_list site needs the strict policy.)
-//
-// CP-1b RESOLUTION DIRECTION (DESIGN §3/§6 — the dissolution trigger, not just a note):
-// comma-OPTIONAL is the v1-mirrored TRUTH and lives HERE (the operational GrammarExpr
-// scaffold that parse_module actually walks). The parallel formal flat-BNF productions
-// dag_production_comma_*_list* in dag_wave1_formal_productions are STALE — still
-// comma-MANDATORY — and were deliberately NOT hand-doubled to optional (doing so would
-// grow §2 parallel-ledger debt to satisfy a consistency nothing enforces; those
-// productions have zero consumers outside this file). CP-1b convergence MUST land on
-// comma-OPTIONAL and must NOT re-impose the stale mandatory formal (that would silently
-// revert this fix). EXECUTABLE BACKSTOP: the floor witnesses in
-// src/v2/test/claim/languages/dag_comma_optional_list_test.dag (two-newline-fields
-// Accepts) go RED by execution if mandatory commas are ever reintroduced — a witness
-// that fails the build, stronger than a marker someone must read.
 fn dag_grammar_comma_list_expr(item: GrammarExpr) -> GrammarExpr {
   dag_grammar_sequence(
     left: item,
@@ -2038,7 +1962,7 @@ fn dag_grammar_import_block_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_lbrace),
     right: dag_grammar_sequence(
-      left: dag_grammar_comma_list_expr(item: dag_grammar_terminal(token_class: ^dag_token_ident)),
+      left: dag_grammar_comma_list_expr(item: dag_grammar_terminal_lexeme(token_class: ^dag_token_ident)),
       right: dag_grammar_terminal(token_class: ^dag_token_rbrace)
     )
   )
@@ -2120,9 +2044,6 @@ fn dag_grammar_expr_expr() -> GrammarExpr {
   )
 }
 
-// Binary operator set matches the lex token declarations above; both live in
-// this file, so enumeration is the current canonical authority. Gate on a
-// future precedence table substrate when/if that lands.
 fn dag_grammar_multiplicative_op_choice() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_star),
@@ -2338,10 +2259,6 @@ fn dag_grammar_primary_ident_suffix_expr() -> GrammarExpr {
   )
 }
 
-// `^IDENT` opaque Symbol literal — mirrors v1's parse_caret_expr ShIdent arm
-// (src/v1/stage0/src/v1_compiler_parse.rs), where `^` is a standalone token the
-// parser combines with the following ident into a symbol literal. The `^(Expr)`
-// discriminant-sugar form is added separately.
 fn dag_grammar_caret_symbol_expr() -> GrammarExpr {
   dag_grammar_sequence(
     left: dag_grammar_terminal(token_class: ^dag_token_caret),
@@ -2493,9 +2410,6 @@ fn dag_grammar_constructor_pattern_expr() -> GrammarExpr {
   )
 }
 
-// Pattern forms cover observed src/v2 branches: nullary constructors,
-// record-field patterns, keyword/literal patterns, and positional constructor
-// payloads such as Composable(inner).
 fn dag_grammar_pattern_expr() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_constructor_pattern_expr(),
@@ -3089,7 +3003,6 @@ fn dag_wave1_grammar() -> ParseGrammar {
   ModeledGrammar { root: dag_wave1_grammar_root() }
 }
 
-// wave-1 void LM canonical prelude atoms (TASKS T-8 / CP-1b bucket C).
 fn dag_language_model_surface_prelude_atoms() -> Set<Symbol> {
   Set {
     member: fn(sym) {
@@ -3122,7 +3035,6 @@ fn dag_language_model_mvp1_binding_canonical(sym: Symbol) -> Bool {
     || sym == ^dag_binding_mvp1_pick_lit_two
 }
 
-
 fn dag_language_model_wave1_canonical_symbols() -> Set<Symbol> {
   Set {
     member: fn(sym) {
@@ -3153,7 +3065,6 @@ fn dag_language_model_wave1() -> LanguageModel {
   }
 }
 
-// compile-anchor empty prelude; same language_identity as wave1_void (TASKS T-8 / CP-1b bucket C).
 fn dag_language_model_surface_empty_prelude() -> LanguageModel {
   LanguageModel {
     lex: dag_wave1_lex(),
@@ -3175,7 +3086,6 @@ fn dag_wave1_lex_token_symbol(sym: Symbol) -> Bool {
   )
 }
 
-// sync_tokens: declaration-start keywords used for error recovery in Repeat walks.
 fn dag_wave1_sync_tokens() -> Set<Symbol> {
   Set {
     member: fn(sym) {
@@ -3188,43 +3098,34 @@ fn dag_wave1_sync_tokens() -> Set<Symbol> {
   }
 }
 
-// Pipeline-facing LM that wires the full modeled grammar — use this for T-7/T-8+ pipeline calls.
 fn dag_language_model_wave1_modeled() -> LanguageModel {
   dag_language_model_wave1()
 }
 
-// C5 ingest/emit fidelity disposition for the .dag surface trivia.
-// Trivia rules (whitespace, line comments, block comments) are stripped by the lexer;
-// a round-trip over trivia-bearing source produces trivia-free canonical output.
-// These are DeclaredNormalized, not silent losses — reviewable, not hidden.
-// 🟢 coproduct dissolution · all three trivia variants are terminal: each is exactly one LexRule
-//    mapped to DeclaredNormalized; no additional variants possible under the wave-1 trivia model.
 type DagTriviaNormalization
   = DagWhitespaceDeclaredNormalized
-  | DagLineCommentDeclaredNormalized
-  | DagBlockCommentDeclaredNormalized
+  | DagLineCommentFailClosed
+  | DagBlockCommentFailClosed
 
 fn dag_whitespace_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
   DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized }
 }
 
 fn dag_line_comment_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
-  DeclaredNormalized { feature: DagLineCommentDeclaredNormalized }
+  FailClosed { feature: DagLineCommentFailClosed }
 }
 
 fn dag_block_comment_fidelity() -> FidelityDisposition<DagTriviaNormalization> {
-  DeclaredNormalized { feature: DagBlockCommentDeclaredNormalized }
+  FailClosed { feature: DagBlockCommentFailClosed }
 }
-
-// #g-bidir Q-G2 — FidelityDisposition wire encoding for ^target_model_edge_fidelity_quotient.
 
 fn dag_trivia_normalization_feature_node(feature: DagTriviaNormalization) -> Node {
   match feature {
     DagWhitespaceDeclaredNormalized =>
       dag_grammar_atom(id: ^dag_trivia_feature_whitespace)
-    DagLineCommentDeclaredNormalized =>
+    DagLineCommentFailClosed =>
       dag_grammar_atom(id: ^dag_trivia_feature_line_comment)
-    DagBlockCommentDeclaredNormalized =>
+    DagBlockCommentFailClosed =>
       dag_grammar_atom(id: ^dag_trivia_feature_block_comment)
   }
 }
@@ -3289,17 +3190,78 @@ fn dag_mvp1_fidelity_quotient_node() -> Node {
   }
 }
 
-// 🟢 coproduct dissolution — module-header metadata edge names are fixed facts declared
-// alongside ^dag_surface_module_header / ^dag_surface_module_header_qualified_name; Named
-// edges bearing these symbols are structural header metadata, not declared exports.
+fn dag_mvp1_fidelity_quotient_all_modeled_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_fidelity_quotient_field_whitespace,
+        target: dag_fidelity_disposition_node(disposition: Modeled)
+      ),
+      dag_named_edge(
+        name: ^dag_fidelity_quotient_field_line_comment,
+        target: dag_fidelity_disposition_node(disposition: Modeled)
+      ),
+      dag_named_edge(
+        name: ^dag_fidelity_quotient_field_block_comment,
+        target: dag_fidelity_disposition_node(disposition: Modeled)
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_target_model_bundle_with_fidelity_quotient(quotient: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^target_model_edge_selection_policy,
+        target: dag_mvp1_selection_policy_node()
+      ),
+      dag_named_edge(
+        name: ^target_model_edge_declared_inhabitants,
+        target: dag_mvp1_declared_inhabitants_root()
+      ),
+      dag_named_edge(
+        name: ^target_model_edge_translation_rules,
+        target: dag_mvp1_translation_rules_node()
+      ),
+      dag_named_edge(
+        name: ^target_model_edge_serialize_source,
+        target: dag_mvp1_serialize_source_node()
+      ),
+      dag_named_edge(
+        name: ^target_model_edge_fidelity_quotient,
+        target: quotient
+      )
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn dag_mvp1_target_model_with_fidelity_quotient(quotient: Node) -> TargetModel {
+  TargetModel {
+    bundle: dag_mvp1_target_model_bundle_with_fidelity_quotient(quotient: quotient),
+    lex: dag_wave1_lex(),
+    binding_spellings: dag_mvp1_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: dag_mvp1_source_text,
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn dag_mvp1_target_model_lossless_fidelity_quotient() -> TargetModel {
+  dag_mvp1_target_model_with_fidelity_quotient(
+    quotient: dag_mvp1_fidelity_quotient_all_modeled_node()
+  )
+}
+
 fn dag_surface_module_header_metadata_edge(name: Symbol) -> Bool {
   (name == ^dag_surface_module_header)
     || (name == ^dag_surface_module_header_qualified_name)
 }
 
-// Parse-shaped module roots carry QN segments as StampLexeme atoms inside production
-// captures (^dag_surface_module_header / ^dag_surface_qualified_name). Resolve must
-// preserve these subtrees unread (same role as emit-shaped metadata Named edges).
 fn dag_resolve_preserve_module_metadata_subtree(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: id } =>
@@ -3332,13 +3294,6 @@ fn dag_node_is_module_root_conj(n: Node) -> Bool {
       }
   }
 }
-
-// Caller-facing entry point for holders of a module header Node (emit or parse output): extracts
-// the declared QualifiedName by walking ^dag_surface_module_header_qualified_name to the fold_list_node
-// sub-node (emit-shaped roots), or the ^dag_surface_qualified_name parse capture (operational parse
-// roots), then delegating segment materialization to qualified_name_from_node / StampLexeme atoms.
-// 🟡 traverse-dissolution interim — feature: traverse-node-outcome-algebra — bind diagnostic.dag Ratified-Q4 — dissolve-on: same Q4 gate as qualified_name_from_node; the nested Rejected/Accepted propagation inherits the same carrier threading constraint; forbidden: re-inlining the ladder after Q4 resolves.
-// --- dag_mvp1_target_model (RTADD / ctrl#1489; mirror rust_mvp1_target_model) ---
 
 fn dag_inhabitant_atom(id: Symbol) -> Node {
   Node {
@@ -3384,7 +3339,6 @@ data dag_mvp1_fixture_emitted_add_fn: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 fn dag_mvp1_pick_zip_fold_closure_edges() -> List<Edge> {
   [
     dag_named_edge(
@@ -3408,7 +3362,6 @@ fn dag_mvp1_pick_declared_inhabitants_root() -> Node {
   }
 }
 
-
 fn dag_mvp1_bind_zip_fold_closure_edges() -> List<Edge> {
   [
     dag_named_edge(
@@ -3431,7 +3384,6 @@ fn dag_mvp1_bind_declared_inhabitants_root() -> Node {
     occurrence_id: SyntheticOccurrence
   }
 }
-
 
 fn dag_mvp1_loop_zip_fold_closure_edges() -> List<Edge> {
   [
@@ -3646,7 +3598,6 @@ fn dag_formal_grammar_symbol_from_token(token: ConcreteSyntaxToken) -> FormalGra
   }
 }
 
-// #g-bidir G.1 — FormalProduction rhs preserves BoundToken bindings (bidir slot bijection).
 fn dag_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
@@ -3718,11 +3669,6 @@ fn dag_grammar_production_mvp1_fn_pick() -> GrammarProduction {
   }
 }
 
-// 🟡 narrow approximation — companion to dag_grammar_pick_arm_literal_binding: loop-body
-// literal-binding whitelist for `loop <lit>` positions. Hard-lists the two mvp1 pick-lit
-// bindings the emit round-trip re-ingests as idents. WHY stopgap: no value_expression grammar
-// production exists in dag.dag yet. dissolve-on: replace with the value_expression production
-// when it lands in dag.dag (same debt as pick-arm terminal + binding whitelist).
 fn dag_grammar_loop_body_literal_binding(binding: Symbol) -> Bool {
   (binding == ^dag_binding_mvp1_pick_lit_one) || (binding == ^dag_binding_mvp1_pick_lit_two)
 }
@@ -3733,13 +3679,14 @@ fn dag_grammar_terminal_for_mvp1_loop_token(token: ConcreteSyntaxToken) -> Gramm
     dag_grammar_terminal(token_class: ^dag_token_kw_loop)
   } else {
     match token {
+      FixedToken { token_class: _ } =>
+        dag_grammar_terminal_from_concrete_token(token: token)
       BoundToken { token_class: c, binding: b } =>
         if (c == ^dag_token_ident) && dag_grammar_loop_body_literal_binding(binding: b) {
           dag_grammar_pick_arm_literal_terminal()
         } else {
           dag_grammar_terminal_from_concrete_token(token: token)
         }
-      _ => dag_grammar_terminal_from_concrete_token(token: token)
     }
   }
 }
@@ -3809,13 +3756,6 @@ fn dag_grammar_pick_condition_terminal() -> GrammarExpr {
   )
 }
 
-// 🟡 narrow approximation of arm=value_expression. Branch/pick arms ARE value-expressions
-// (a literal, a variable, or a computation), so the arm grammar position should be the
-// value_expression production. WHY stopgap: no value_expression grammar production exists in
-// dag.dag today, so this widens the arm terminal to int_literal|ident — canonical source text
-// lexes 1/2 as int_literal, and emit round-trip re-ingests binding-ref idents at the same
-// positions (§2 pick target model). dissolve-on: replace with the value_expression production
-// when it lands in dag.dag.
 fn dag_grammar_pick_arm_literal_terminal() -> GrammarExpr {
   dag_grammar_choice(
     left: dag_grammar_terminal(token_class: ^dag_token_int_literal),
@@ -3823,12 +3763,6 @@ fn dag_grammar_pick_arm_literal_terminal() -> GrammarExpr {
   )
 }
 
-// 🟡 narrow approximation — companion to dag_grammar_pick_arm_literal_terminal above: the pick-arm
-// literal-binding whitelist. It hard-lists the two mvp1 pick-lit bindings (pick_lit_one/_two) that the
-// emit round-trip re-ingests as idents at the arm positions. WHY stopgap: same as the terminal — no
-// value_expression grammar production exists in dag.dag yet, so accepted arm bindings are enumerated
-// rather than derived from that production. dissolve-on: replace with the value_expression production
-// when it lands in dag.dag (both the terminal widening and this binding whitelist go away together).
 fn dag_grammar_pick_arm_literal_binding(binding: Symbol) -> Bool {
   (binding == ^dag_binding_mvp1_pick_lit_one)
     || (binding == ^dag_binding_mvp1_pick_lit_two)
@@ -3840,13 +3774,14 @@ fn dag_grammar_terminal_for_mvp1_pick_token(token: ConcreteSyntaxToken) -> Gramm
     dag_grammar_pick_condition_terminal()
   } else {
     match token {
+      FixedToken { token_class: _ } =>
+        dag_grammar_terminal_from_concrete_token(token: token)
       BoundToken { token_class: c, binding: b } =>
         if (c == ^dag_token_ident) && dag_grammar_pick_arm_literal_binding(binding: b) {
           dag_grammar_pick_arm_literal_terminal()
         } else {
           dag_grammar_terminal_from_concrete_token(token: token)
         }
-      _ => dag_grammar_terminal_from_concrete_token(token: token)
     }
   }
 }
@@ -3887,13 +3822,14 @@ fn dag_grammar_terminal_for_mvp1_match_token(token: ConcreteSyntaxToken) -> Gram
     dag_grammar_pick_condition_terminal()
   } else {
     match token {
+      FixedToken { token_class: _ } =>
+        dag_grammar_terminal(token_class: cls)
       BoundToken { token_class: c, binding: b } =>
         if (c == ^dag_token_ident) && dag_grammar_match_arm_literal_binding(binding: b) {
           dag_grammar_pick_arm_literal_terminal()
         } else {
           dag_grammar_terminal(token_class: cls)
         }
-      _ => dag_grammar_terminal(token_class: cls)
     }
   }
 }
@@ -3924,11 +3860,6 @@ fn dag_grammar_sequence_from_token_classes_match() -> GrammarExpr {
   }
 }
 
-// 🟡 narrow approximation — companion to dag_grammar_pick_arm_literal_binding: record-field
-// literal-binding whitelist for `Rec { field: <lit> }` positions. Hard-lists the mvp1 rec-lit
-// binding the emit round-trip re-ingests as an ident. WHY stopgap: no value_expression grammar
-// production exists in dag.dag yet. dissolve-on: replace with the value_expression production
-// when it lands in dag.dag (same debt as pick-arm terminal + binding whitelist).
 fn dag_grammar_rec_field_literal_binding(binding: Symbol) -> Bool {
   (binding == ^dag_binding_mvp1_rec_lit_nine)
 }
@@ -3936,13 +3867,14 @@ fn dag_grammar_rec_field_literal_binding(binding: Symbol) -> Bool {
 fn dag_grammar_terminal_for_mvp1_rec_token(token: ConcreteSyntaxToken) -> GrammarExpr {
   let cls = concrete_syntax_token_class(token: token)
   match token {
+    FixedToken { token_class: _ } =>
+      dag_grammar_terminal(token_class: cls)
     BoundToken { token_class: c, binding: b } =>
       if (c == ^dag_token_ident) && dag_grammar_rec_field_literal_binding(binding: b) {
         dag_grammar_pick_arm_literal_terminal()
       } else {
         dag_grammar_terminal(token_class: cls)
       }
-    _ => dag_grammar_terminal(token_class: cls)
   }
 }
 
@@ -4002,7 +3934,6 @@ fn dag_grammar_sequence_from_token_classes_field_access() -> GrammarExpr {
   }
 }
 
-// Grammar-inverse type-decl — wave-1 free-ident productions; rows derived at emit (no fixture rows).
 fn dag_type_decl_structural_formal_productions() -> List<FormalProduction> {
   [
     grammar_formal_production(
@@ -4067,13 +3998,10 @@ fn dag_type_decl_productions_only_translation_rules() -> Node {
 }
 
 fn dag_type_decl_structural_lex_rules() -> LexRuleSet {
-  // T-6 interim: layout baked into literal spellings (rust_wave1_lex_rules pattern) so
-  // serialize_concrete_syntax_tokens_to_source yields spaced type-decl surface text.
+
   LexRuleSet {
     rules: [
       dag_whitespace_trivia_rule(),
-      dag_line_comment_trivia_rule(),
-      dag_block_comment_trivia_rule(),
       dag_string_literal_lex_rule(),
       dag_int_literal_lex_rule(),
       dag_literal_lex_rule(token_class: ^dag_token_kw_type, text: "type "),
@@ -4206,7 +4134,6 @@ fn dag_mvp1_int_type_binding() -> Symbol {
   ^dag_binding_type_int
 }
 
-
 fn dag_mvp1_captured_flat_atom_binding_miss_diagnostic(_flat_index: Int) -> Diagnostic {
   Diagnostic {
     reason: ^dag_mvp1_captured_flat_atom_binding_miss,
@@ -4215,8 +4142,6 @@ fn dag_mvp1_captured_flat_atom_binding_miss_diagnostic(_flat_index: Int) -> Diag
   }
 }
 
-
-// Relocated from body_producer (deleted in #4689); dissolves with COMPREP-WAVE1-BODY-BRIDGE scaffold.
 fn dag_mvp1_node_is_ident_atom(node: Node) -> Bool {
   match dag_mvp1_binding_branded_atom_identity(node: node) {
     Present { value: _ } => true
@@ -4228,9 +4153,6 @@ fn dag_mvp1_node_is_ident_atom(node: Node) -> Bool {
   }
 }
 
-
-// Parse-stage binding fidelity: atoms stamped with per-identifier binding carry the binding
-// Symbol as their Atom identity (not the collapsed dag_token_ident token class).
 fn dag_mvp1_binding_branded_atom_identity(node: Node) -> Optional<Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
@@ -4241,7 +4163,6 @@ fn dag_mvp1_binding_branded_atom_identity(node: Node) -> Optional<Symbol> {
     _ => Absent
   }
 }
-
 
 fn dag_mvp1_captured_flat_atom_binding_for_ident(
   flat_index: Int,
@@ -4264,13 +4185,6 @@ fn dag_mvp1_captured_flat_atom_binding_for_ident(
   }
 }
 
-// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
-// consumer:dag_mvp1_pick_captured_flat_atom_binding_for_ident (via
-// produce_mvp1_pick_if_arrow_signature_from_resolved in 03_body_producer) —
-// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: binding_id-branded resolved atoms replace
-// pick flat-index table (index 5 codomain); owner/lane: Mgr-§2 (sharp-ibex-851) —
-// trigger: structured fn-body normalize output lands; forbidden: permanent untagged
-// flat-index binding lookup in extdeps for pick/if-then-else.
 fn dag_mvp1_pick_captured_flat_atom_binding_for_ident(
   flat_index: Int,
   ident_atom: Node
@@ -4372,11 +4286,6 @@ data dag_mvp1_loop_arrow_with_body_fixture: Node = dag_mvp1_loop_arrow_with_body
 data dag_mvp1_loop_arrow_with_body_wrong_value_fixture: Node = dag_mvp1_loop_arrow_with_body_wrong_value_node()
 data dag_mvp1_fixture_emitted_loop_fn: Node = dag_mvp1_loop_arrow_with_body_fixture
 
-// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
-// consumer:dag_mvp1_loop_captured_flat_atom_binding_for_ident (via
-// produce_mvp1_loop_arrow_with_body_from_resolved; executed by comprep_loop_eval_by_execution
-// keystone) — dissolve-on: binding_id-branded resolved atoms replace loop flat-index table;
-// owner/lane: Mgr-§2 (crisp-crane-18).
 fn dag_mvp1_loop_captured_flat_atom_binding_for_ident(
   flat_index: Int,
   ident_atom: Node
@@ -4995,13 +4904,14 @@ fn dag_grammar_terminal_for_mvp1_bind_token(token: ConcreteSyntaxToken) -> Gramm
     dag_grammar_terminal(token_class: ^dag_token_kw_in)
   } else {
     match token {
+      FixedToken { token_class: _ } =>
+        dag_grammar_terminal_from_concrete_token(token: token)
       BoundToken { token_class: c, binding: b } =>
         if (c == ^dag_token_ident) && dag_grammar_bind_value_literal_binding(binding: b) {
           dag_grammar_pick_arm_literal_terminal()
         } else {
           dag_grammar_terminal_from_concrete_token(token: token)
         }
-      _ => dag_grammar_terminal_from_concrete_token(token: token)
     }
   }
 }
@@ -5040,11 +4950,6 @@ fn dag_grammar_production_mvp1_fn_bind() -> GrammarProduction {
   }
 }
 
-// 🟡 gated — COMPREP wave-2 hard-coded bridge scaffold — feature:COMPREP-WAVE2-BODY-BRIDGE —
-// consumer:dag_mvp1_bind_captured_flat_atom_binding_for_ident (via
-// produce_mvp1_bind_arrow_with_body_from_resolved; executed by comprep_bind_eval_by_execution
-// keystone) — dissolve-on: binding_id-branded resolved atoms replace bind flat-index table;
-// owner/lane: Mgr-§2 (crisp-crane-18).
 fn dag_mvp1_bind_captured_flat_atom_binding_for_ident(
   flat_index: Int,
   ident_atom: Node
@@ -5110,7 +5015,8 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       open: ^dag_token_lbrace,
       close: ^dag_token_rbrace,
       separator: ^dag_token_comma,
-      assign: ^dag_token_colon
+      assign: ^dag_token_colon,
+      record_literal_names_type: Prepend
     },
     field_access_form: TargetFieldAccessShape {
       dot: ^dag_token_dot
@@ -5121,8 +5027,13 @@ fn dag_value_expression_projection() -> TargetValueExpressionProjection {
       close: ^dag_token_rbrace,
       fat_arrow: ^dag_token_fat_arrow,
       arm_separator: ^dag_token_comma
-    }
+    },
+    block_evaluation_mode: dag_block_evaluation_mode()
   }
+}
+
+fn dag_block_evaluation_mode() -> BlockEvaluationMode {
+  ValueProducing
 }
 
 fn dag_operator_realizations_catalog_node() -> Node {
@@ -5146,10 +5057,11 @@ fn dag_mvp1_pick_statement_suffix_tokens() -> List<ConcreteSyntaxToken> {
 }
 
 fn dag_mvp1_pick_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
-  TargetBodiedArrowStatementScaffold {
-    prefix: dag_mvp1_pick_statement_prefix_tokens(),
-    suffix: dag_mvp1_pick_statement_suffix_tokens()
-  }
+  derive_bodied_arrow_scaffold(
+    signature_with_open: dag_mvp1_pick_statement_prefix_tokens(),
+    block_close: dag_mvp1_pick_statement_suffix_tokens(),
+    mode: dag_block_evaluation_mode()
+  )
 }
 
 fn dag_mvp1_pick_grammar_relation_row_node() -> Node {
@@ -5288,10 +5200,11 @@ fn dag_mvp1_bind_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
 }
 
 fn dag_mvp1_bind_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
-  TargetBodiedArrowStatementScaffold {
-    prefix: dag_mvp1_bind_statement_prefix_tokens(),
-    suffix: dag_mvp1_pick_statement_suffix_tokens()
-  }
+  derive_bodied_arrow_scaffold(
+    signature_with_open: dag_mvp1_bind_statement_prefix_tokens(),
+    block_close: dag_mvp1_pick_statement_suffix_tokens(),
+    mode: dag_block_evaluation_mode()
+  )
 }
 
 fn dag_mvp1_bind_grammar_relation_row_node() -> Node {
@@ -5430,10 +5343,11 @@ fn dag_mvp1_loop_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
 }
 
 fn dag_mvp1_loop_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
-  TargetBodiedArrowStatementScaffold {
-    prefix: dag_mvp1_loop_statement_prefix_tokens(),
-    suffix: dag_mvp1_pick_statement_suffix_tokens()
-  }
+  derive_bodied_arrow_scaffold(
+    signature_with_open: dag_mvp1_loop_statement_prefix_tokens(),
+    block_close: dag_mvp1_pick_statement_suffix_tokens(),
+    mode: dag_block_evaluation_mode()
+  )
 }
 
 fn dag_mvp1_loop_grammar_relation_row_node() -> Node {
@@ -5694,10 +5608,11 @@ fn dag_mvp1_rec_statement_prefix_tokens() -> List<ConcreteSyntaxToken> {
 }
 
 fn dag_mvp1_rec_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
-  TargetBodiedArrowStatementScaffold {
-    prefix: dag_mvp1_rec_statement_prefix_tokens(),
-    suffix: dag_mvp1_pick_statement_suffix_tokens()
-  }
+  derive_bodied_arrow_scaffold(
+    signature_with_open: dag_mvp1_rec_statement_prefix_tokens(),
+    block_close: dag_mvp1_pick_statement_suffix_tokens(),
+    mode: dag_block_evaluation_mode()
+  )
 }
 
 fn dag_mvp1_rec_grammar_relation_row_node() -> Node {
@@ -5838,10 +5753,11 @@ fn dag_mvp1_field_access_statement_prefix_tokens() -> List<ConcreteSyntaxToken> 
 }
 
 fn dag_mvp1_field_access_bodied_arrow_statement_scaffold() -> TargetBodiedArrowStatementScaffold {
-  TargetBodiedArrowStatementScaffold {
-    prefix: dag_mvp1_field_access_statement_prefix_tokens(),
-    suffix: dag_mvp1_pick_statement_suffix_tokens()
-  }
+  derive_bodied_arrow_scaffold(
+    signature_with_open: dag_mvp1_field_access_statement_prefix_tokens(),
+    block_close: dag_mvp1_pick_statement_suffix_tokens(),
+    mode: dag_block_evaluation_mode()
+  )
 }
 
 fn dag_mvp1_field_access_grammar_relation_row_node() -> Node {
@@ -5977,7 +5893,6 @@ fn dag_mvp1_target_model() -> TargetModel {
   }
 }
 
-// T-36 / rung-3 RoundTripClaim precondition receipt — wave-1 lex/grammar/C5 trivia axes.
 fn dag_round_trip_atom(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
@@ -5988,7 +5903,6 @@ fn dag_round_trip_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature: t36-roundtrip-readiness-receipt-node — dissolve-on-arrival: typed DagRoundTripWave1Readiness receipt replaces Node/Atom axis witnesses in claim input; eval authority is dag_round_trip_wave1_authorities_ready only; forbidden: eval reading embedded ready atoms.
 fn dag_round_trip_bool_node(pass: Bool) -> Node {
   if pass {
     dag_round_trip_atom(s: ^dag_round_trip_axis_ready)
@@ -5997,7 +5911,6 @@ fn dag_round_trip_bool_node(pass: Bool) -> Node {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature: t36-roundtrip-lex-readiness — dissolve-on-arrival: typed DagRoundTripWave1Readiness receipt replaces conjunctive dag_wave1_lex_token_symbol Bool; forbidden: parallel wave-1 lex readiness classifier outside this authority cluster.
 fn dag_round_trip_lex_ready() -> Bool {
   dag_wave1_lex_token_symbol(sym: ^dag_token_kw_module) &&
   dag_wave1_lex_token_symbol(sym: ^dag_token_kw_import) &&
@@ -6014,7 +5927,6 @@ fn dag_round_trip_lex_ready() -> Bool {
   dag_wave1_lex_token_symbol(sym: ^dag_token_arrow)
 }
 
-// 🟡 gated — predicate-dissolution interim — feature: t36-roundtrip-grammar-readiness — dissolve-on-arrival: typed DagRoundTripWave1Readiness receipt replaces conjunctive grammar_carries_symbol Bool; forbidden: parallel wave-1 grammar readiness classifier outside this authority cluster.
 fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module) &&
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module_header) &&
@@ -6023,19 +5935,17 @@ fn dag_round_trip_grammar_ready(lm: LanguageModel) -> Bool {
   grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_fn_decl)
 }
 
-// 🟡 gated — predicate-dissolution interim — feature: t36-roundtrip-c5-fidelity-readiness — bind dag.dag C5 DagTriviaNormalization — dissolve-on-arrival: substrate FidelityDisposition projection over DagTriviaNormalization replaces hand DeclaredNormalized arm equality; forbidden: parallel per-trivia Bool classifiers outside fidelity.dag / dag_whitespace_fidelity producers.
-fn dag_round_trip_normalization_declared() -> Bool {
+fn dag_round_trip_trivia_fidelity_resolved() -> Bool {
   dag_whitespace_fidelity() == DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized } &&
-  dag_line_comment_fidelity() == DeclaredNormalized { feature: DagLineCommentDeclaredNormalized } &&
-  dag_block_comment_fidelity() == DeclaredNormalized { feature: DagBlockCommentDeclaredNormalized }
+  dag_line_comment_fidelity() == FailClosed { feature: DagLineCommentFailClosed } &&
+  dag_block_comment_fidelity() == FailClosed { feature: DagBlockCommentFailClosed }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature: t36-roundtrip-wave1-authorities-ready — bind 05_eval.dag RoundTripClaim — dissolve-on-arrival: typed DagRoundTripWave1Readiness substrate receipt replaces Bool conjunctive eval gate; eval re-derives lex/grammar/C5 from dag.dag only; forbidden: eval reading embedded ready atoms in claim input.
 fn dag_round_trip_wave1_authorities_ready() -> Bool {
   let lm = dag_language_model_wave1_modeled()
   dag_round_trip_lex_ready() &&
   dag_round_trip_grammar_ready(lm: lm) &&
-  dag_round_trip_normalization_declared()
+  dag_round_trip_trivia_fidelity_resolved()
 }
 
 fn parse_production_emitted_identity_optional(node: Node) -> Optional<Symbol> {
@@ -6129,7 +6039,7 @@ fn parse_qn_repeat_suffix_ident(sequence_capture: Node, root: Node) -> Outcome<S
 }
 
 fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<Symbol>> {
-  // List<T> aliases FreeMonoid<T>; the checker does not unfold aliases for variant matching.
+
   if is_empty_conj_root(n: repeat_capture) {
     outcome_accepted(value: Empty)
   } else {
@@ -6189,6 +6099,76 @@ fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> O
                     diagnostics: tail_diag
                   )
               }
+          }
+      }
+  }
+}
+
+fn parse_comma_ident_list_items(
+  comma_list_capture: Node,
+  root: Node
+) -> Outcome<List<Symbol>> {
+  match find_named_child(root: comma_list_capture, name: ^grammar_sequence_left_node_projection) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: head_node, diagnostics: _ } =>
+      match parse_qn_lexeme_segment(sym_node: head_node, root: root) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: head_sym, diagnostics: head_diag } =>
+          match find_named_child(
+            root: comma_list_capture,
+            name: ^grammar_sequence_right_node_projection
+          ) {
+            Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+            Accepted { value: outer_right, diagnostics: _ } =>
+              match find_named_child(
+                root: outer_right,
+                name: ^grammar_sequence_left_node_projection
+              ) {
+                Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+                Accepted { value: repeat_node, diagnostics: _ } =>
+                  match parse_qn_repeat_suffixes(repeat_capture: repeat_node, root: root) {
+                    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+                    Accepted { value: suffixes, diagnostics: tail_diag } =>
+                      outcome_accepted(
+                        value: list_append(
+                          left: Cons { head: head_sym, tail: Empty },
+                          right: suffixes
+                        ),
+                        diagnostics: tail_diag
+                      )
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn parse_import_block_idents(
+  import_decl_node: Node,
+  root: Node
+) -> Outcome<List<Symbol>> {
+  match parse_subtree_find_production_captured(
+    root: import_decl_node,
+    emitted: ^dag_surface_import_block
+  ) {
+    ParseSubtreeAbsent => outcome_accepted(value: Empty)
+    ParseSubtreeFound { captured: block_capture } =>
+      match find_named_child(
+        root: block_capture,
+        name: ^grammar_sequence_right_node_projection
+      ) {
+        Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+        Accepted { value: inner_seq, diagnostics: _ } =>
+          match find_named_child(
+            root: inner_seq,
+            name: ^grammar_sequence_left_node_projection
+          ) {
+            Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+            Accepted { value: comma_list_capture, diagnostics: _ } =>
+              parse_comma_ident_list_items(
+                comma_list_capture: comma_list_capture,
+                root: root
+              )
           }
       }
   }

@@ -1,0 +1,3 @@
+module test.fixture.external_authority_shadow_masked
+
+import extdeps.external_authority { ExternalAuthority }

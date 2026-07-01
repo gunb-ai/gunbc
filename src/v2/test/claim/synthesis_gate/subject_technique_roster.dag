@@ -1,0 +1,50 @@
+module v2.test.synthesis_gate.subject_technique_roster
+
+import v2.lens.synthesis { DecisionTree, LowerBoundTechnique }
+import v2.std.collection { List }
+import v2.std.diagnostic { Outcome }
+import v2.std.node { Node }
+import v2.test.complexity_gate.source_bridged_add_subject_producer {
+  source_bridged_add_arrow_with_body
+}
+import v2.test.complexity_gate.source_bridged_bind_subject_producer {
+  source_bridged_bind_arrow_with_body
+}
+import v2.test.complexity_gate.source_bridged_branch_subject_producer {
+  source_bridged_pick_if_arrow_with_body
+}
+import v2.test.complexity_gate.source_bridged_loop_subject_producer {
+  source_bridged_loop_arrow_with_body
+}
+
+type SynthesisSubjectRow {
+  subject_producer: fn() -> Outcome<Node>
+  declared_technique: LowerBoundTechnique
+}
+
+data synthesis_subject_row_add: SynthesisSubjectRow = SynthesisSubjectRow {
+  subject_producer: source_bridged_add_arrow_with_body,
+  declared_technique: DecisionTree
+}
+
+data synthesis_subject_row_bind: SynthesisSubjectRow = SynthesisSubjectRow {
+  subject_producer: source_bridged_bind_arrow_with_body,
+  declared_technique: DecisionTree
+}
+
+data synthesis_subject_row_branch: SynthesisSubjectRow = SynthesisSubjectRow {
+  subject_producer: source_bridged_pick_if_arrow_with_body,
+  declared_technique: DecisionTree
+}
+
+data synthesis_subject_row_loop: SynthesisSubjectRow = SynthesisSubjectRow {
+  subject_producer: source_bridged_loop_arrow_with_body,
+  declared_technique: DecisionTree
+}
+
+data synthesis_subject_rows: List<SynthesisSubjectRow> = [
+  synthesis_subject_row_add,
+  synthesis_subject_row_bind,
+  synthesis_subject_row_branch,
+  synthesis_subject_row_loop
+]

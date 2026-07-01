@@ -1,10 +1,6 @@
-// src/v2/lens/edit_locus.dag
-// Scope: git diff name-only paths → substrate Node edit_locus for affected_set.
-// Status: Wave-1 — file-level NodeArtifactProvenance is the modeled path→Node authority;
-//   EditLocusRead/PathRegex remains as a compatibility shim until Q-Regex-Primitive.
-
 module v2.lens.edit_locus
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredTree }
 import v2.lens.affected_set { AffectedSetReading, affected_set_reading }
@@ -24,30 +20,19 @@ import v2.std.node { Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
 
-
-// RULING-1: 🟢 pretty-much-done — single repo-path carrier (String = Artifact.file_path authority).
-// Git `name-only` paths and artifact provenance paths share `RepoPath`; no Symbol/String bridge.
 type RepoPath = String
 
-// RULING-1: 🟢 pretty-much-done — structural mirror of `git diff --name-only`.
 type GitDiffNameOnly {
   changed_paths: List<RepoPath>
 }
 
-// RULING-1: 🟡 needs-more-work — path-regex pattern id until Q-Regex-Primitive.
-// Match semantics live in EditLocusRead until regex substrate lands.
 type PathRegex = Symbol
 
-// RULING-1: 🟢 pretty-much-done — canonical Wave-0 authority: path-regex pattern → edit_locus Node.
 type EditLocusBinding {
   pattern: PathRegex
   locus: Node
 }
 
-// 🟡 gated — predicate-dissolution interim —
-// feature: Q-Regex-Primitive — bind: gunbc#3560 — dissolve-on-arrival: replace
-// injected `path_regex_matches` with substrate regex primitive; forbidden: hand-maintained
-// path-regex in workflow YAML (Gate #103).
 type EditLocusRead {
   path_regex_matches: fn(RepoPath, PathRegex) -> Bool
 }
@@ -63,7 +48,6 @@ fn edit_locus_no_match_diagnostic() -> Diagnostic {
   }
 }
 
-
 fn edit_locus_ambiguous_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^edit_locus_reason_ambiguous,
@@ -76,14 +60,9 @@ fn edit_locus_ambiguous_diagnostic() -> Diagnostic {
   }
 }
 
-
-// occurrence_id is excluded from structural equality.
-// Deep canonical compare — parity with source_authority.dag source_authority_node_equal —
-// so loci dedup is not split by minted ids at any depth.
 fn node_eq(left: Node, right: Node) -> Bool {
   exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
-
 
 fn push_locus_if_absent(acc: FreeMonoid<Node>, locus: Node) -> FreeMonoid<Node> {
   if count_equal(xs: acc, item: locus, eq: node_eq) == 0 {
@@ -92,7 +71,6 @@ fn push_locus_if_absent(acc: FreeMonoid<Node>, locus: Node) -> FreeMonoid<Node> 
     acc
   }
 }
-
 
 fn loci_from_bindings_for_path(
   read: EditLocusRead,
@@ -117,7 +95,6 @@ fn loci_from_bindings_for_path(
   }
 }
 
-
 fn loci_from_provenance_for_path(
   changed: RepoPath,
   provenance: FreeMonoid<NodeArtifactProvenance>,
@@ -136,7 +113,6 @@ fn loci_from_provenance_for_path(
   )
 }
 
-
 fn collect_edit_loci(
   read: EditLocusRead,
   git_diff: GitDiffNameOnly,
@@ -150,7 +126,6 @@ fn collect_edit_loci(
   )
 }
 
-
 fn collect_edit_loci_from_provenance(
   git_diff: GitDiffNameOnly,
   provenance: FreeMonoid<NodeArtifactProvenance>
@@ -161,7 +136,6 @@ fn collect_edit_loci_from_provenance(
     acc: Empty
   )
 }
-
 
 fn collect_edit_loci_on_paths(
   read: EditLocusRead,
@@ -187,7 +161,6 @@ fn collect_edit_loci_on_paths(
   }
 }
 
-
 fn collect_edit_loci_from_provenance_on_paths(
   changed_paths: FreeMonoid<RepoPath>,
   provenance: FreeMonoid<NodeArtifactProvenance>,
@@ -206,7 +179,6 @@ fn collect_edit_loci_from_provenance_on_paths(
   )
 }
 
-
 fn resolve_edit_locus_from_loci(loci: FreeMonoid<Node>) -> Witness<Node> {
   match length(xs: loci) {
     0 =>
@@ -223,7 +195,6 @@ fn resolve_edit_locus_from_loci(loci: FreeMonoid<Node>) -> Witness<Node> {
   }
 }
 
-
 fn resolve_edit_locus(
   read: EditLocusRead,
   git_diff: GitDiffNameOnly,
@@ -238,7 +209,6 @@ fn resolve_edit_locus(
   )
 }
 
-
 fn resolve_edit_locus_from_provenance(
   git_diff: GitDiffNameOnly,
   provenance: FreeMonoid<NodeArtifactProvenance>
@@ -250,7 +220,6 @@ fn resolve_edit_locus_from_provenance(
     )
   )
 }
-
 
 fn affected_set_reading_from_git_diff(
   edit_read: EditLocusRead,
@@ -270,7 +239,6 @@ fn affected_set_reading_from_git_diff(
   }
 }
 
-
 fn affected_set_reading_from_git_diff_provenance(
   graph: InferredTree,
   git_diff: GitDiffNameOnly,
@@ -287,12 +255,6 @@ fn affected_set_reading_from_git_diff_provenance(
   }
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "NodeArtifactProvenance -- the modeled path-to-Node authority",
-    dissolve_on: "the EditLocusRead/PathRegex shim is replaced once Q-Regex-Primitive lands and provenance owns the path-to-Node mapping"
-  },
-  rationale: "Diff path to substrate Node edit_locus is decidable; the lens is a compatibility shim over NodeArtifactProvenance until the regex primitive lands."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

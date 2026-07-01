@@ -1,24 +1,3 @@
-//! Resolved-type owned `data` decl discovery for Consolidation #4553 glob discovery.
-//!
-//! Host boundary: filesystem glob + per-entry resolve (fail-closed) + expose neutral
-//! `OwnedDataDeclRecord` facts. Membership filtering and transport projection live in
-//! modeled `.dag` witnesses (`glob_discovery.dag`).
-//!
-//! Usage:
-//!   discover_owned_data --source-root src/v2 \
-//!       [--scan-dir src/v2/test/claim] \
-//!       [--exclude-subpath impossible_bug] \
-//!       [--format json|transport-tsv] \
-//!       [--emit-dag-manifest target/v2-discovered-owned-data-manifest.dag] \
-//!       [--max-resolves 1]
-//!
-//! `--max-resolves N` is the CI latency ratchet: discovery batches all entry
-//! closures into collision-free merged resolves (1 expected); exceeding N means
-//! a top-level decl-name collision forced a split — rename the colliding decl
-//! rather than raising N.
-//!
-//! Exit codes: 0 = success; 1 = discovery/resolve failure; 2 = usage error.
-
 #![allow(clippy::disallowed_macros)]
 
 use std::path::PathBuf;
@@ -42,11 +21,6 @@ fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
     let mut scan_dir = "src/v2/test/claim".to_string();
-    // glob_discovery.dag imports the ephemeral manifest this binary emits; exclude to keep discovery acyclic.
-    // unified_test_claim_substrate_equivalence.dag imports glob_discovery — also a manifest consumer, not corpus.
-    // (The discovery types moved to v2.compiler.discovery_enumeration — outside this scan_dir —
-    // so the prior "discovery_types.dag" exclude is dead and removed; its `unified_claim_arm_*`
-    // pins are no longer under the scan path and cannot pollute the discovered set.)
     let mut exclude_subpaths: Vec<String> = vec![
         "impossible_bug".to_string(),
         "glob_discovery.dag".to_string(),

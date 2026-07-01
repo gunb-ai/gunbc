@@ -1,0 +1,48 @@
+module extdeps.observability
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Out-of-band_management"
+  }
+}
+
+type ObservabilityChannel =
+    InBand
+  | OutOfBand
+
+type ObservationClass =
+    ProcessorInventory
+  | MemoryInventory
+  | PowerState
+  | PowerDraw
+  | Thermal
+  | StorageInventory
+  | NetworkInventory
+
+type ObservationRoutingOutcome =
+    RoutedTo { channel: ObservabilityChannel }
+  | ChannelCannotObserve { channel: ObservabilityChannel, class: ObservationClass }
+
+fn route_observation(channel: ObservabilityChannel, class: ObservationClass) -> ObservationRoutingOutcome {
+  match channel {
+    InBand => RoutedTo { channel: channel }
+    OutOfBand =>
+      match class {
+        ProcessorInventory => RoutedTo { channel: channel }
+        MemoryInventory => RoutedTo { channel: channel }
+        PowerState => RoutedTo { channel: channel }
+        PowerDraw => RoutedTo { channel: channel }
+        Thermal => RoutedTo { channel: channel }
+        StorageInventory => out_of_band_inventory_blind_pending_firmware_visibility_derivation(channel: channel, class: class)
+        NetworkInventory => out_of_band_inventory_blind_pending_firmware_visibility_derivation(channel: channel, class: class)
+      }
+  }
+}
+
+fn out_of_band_inventory_blind_pending_firmware_visibility_derivation(channel: ObservabilityChannel, class: ObservationClass) -> ObservationRoutingOutcome {
+  ChannelCannotObserve { channel: channel, class: class }
+}

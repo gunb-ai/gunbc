@@ -1,16 +1,3 @@
-// Discriminating witnesses for the lifted measure algebra (std.measure):
-//   measure_scale_fraction_floor : Measure × num/den → Measure  (capacity, floors)
-//   measure_fit_count_floor      : Measure ÷ Measure → count    (fit, floors)
-//   measure_scale_fraction_ceil  : Measure × num/den → Measure  (demand, ceils)
-// These are the §3 ① wall ops from docs/plans/expressibility-frontier.md that dissolve the
-// spawn-width unwrap→raw-arith→rewrap fork (std.realization_width / std.realization_measurement).
-// The witnesses pin the two properties no type can carry: the ROUNDING direction (§3 ② residue —
-// the ceil≠floor money-pair: scale_fraction floors but scale_fraction_ceil ceils on the SAME
-// inputs, so a swapped impl goes RED) and the fail-closed zero-divisor behavior (§5, OPPOSITE
-// directions: floor→zero, ceil→the un-divided whole). Genericity over <Q,S> is proven by
-// exercising the SAME ops on two distinct Quantities (Memory via ByteSize, Frequency via Hertz).
-//
-// Run: gunbc run --source-root dsl --entry dsl/test/claim/measure_lifted_algebra_test.dag --function measure_lifted_algebra_witnesses --claim-run
 module test.claim.measure_lifted_algebra
 
 import std.measure {
@@ -24,38 +11,30 @@ import std.measure {
 }
 import std.logic { Bool }
 
-// scale-fraction is EXACT when it divides evenly: 10 × 4/5 = 8 (the spawn-width 0.8 case).
 fn scale_fraction_exact_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_floor(m: byte_size(10), num: 4, den: 5)) == 8
 }
 
-// scale-fraction FLOORS, it does not round/ceil: 7 × 1/2 = 3.5 → 3 (round/ceil would be 4 → RED).
 fn scale_fraction_floors_not_rounds_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_floor(m: byte_size(7), num: 1, den: 2)) == 3
 }
 
-// scale-fraction fail-closed (§5): a zero denominator yields the zero magnitude, never a divide.
 fn scale_fraction_zero_den_is_zero_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_floor(m: byte_size(100), num: 4, den: 0)) == 0
 }
 
-// fit-count is EXACT when it divides evenly: 10 ÷ 5 = 2.
 fn fit_count_exact_holds() -> Bool {
   measure_fit_count_floor(capacity: byte_size(10), each: byte_size(5)) == 2
 }
 
-// fit-count FLOORS: 7 ÷ 2 = 3.5 → 3 (the "how many whole shards fit" semantics; ceil would be 4).
 fn fit_count_floors_not_rounds_holds() -> Bool {
   measure_fit_count_floor(capacity: byte_size(7), each: byte_size(2)) == 3
 }
 
-// fit-count fail-closed (§5): a zero divisor yields 0, never a divide-by-zero.
 fn fit_count_zero_divisor_is_zero_holds() -> Bool {
   measure_fit_count_floor(capacity: byte_size(7), each: byte_size(0)) == 0
 }
 
-// Genericity over <Q,S>: the SAME ops apply to a different Quantity (Frequency / Hertz), proving
-// the authority is single, not re-coined per alias (DESIGN §2 horizontal).
 fn scale_fraction_generic_over_quantity_holds() -> Bool {
   hertz_count(h: measure_scale_fraction_floor(m: hertz(9), num: 2, den: 4)) == 4
 }
@@ -64,34 +43,23 @@ fn fit_count_generic_over_quantity_holds() -> Bool {
   measure_fit_count_floor(capacity: hertz(9), each: hertz(4)) == 2
 }
 
-// --- demand CEIL (the ceil≠floor money-pair) --------------------------------
-// scale-fraction-ceil is EXACT when it divides evenly: 8 × 1/4 = 2 (the committed per-share peak
-// 8.4e9 ÷ 4 is exact, so the live consumer value is unchanged — ceil only bites on a remainder).
 fn scale_fraction_ceil_exact_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_ceil(m: byte_size(8), num: 1, den: 4)) == 2
 }
 
-// THE money-pair discriminator: the SAME inputs the FLOOR op rounds DOWN to 3, the CEIL op rounds
-// UP to 4 (7 × 1/2 = 3.5). A swapped-direction impl goes RED on exactly this pair.
 fn scale_fraction_ceil_rounds_up_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_ceil(m: byte_size(7), num: 1, den: 2)) == 4
     && byte_size_count(b: measure_scale_fraction_floor(m: byte_size(7), num: 1, den: 2)) == 3
 }
 
-// ceil rounds a sub-divisor remainder up to 1, never down to 0 (10 ÷ 4 = 2.5 → 3; the per-share
-// demand case — a remainder must NOT vanish or the fold over-fits ⇒ OOM, §5).
 fn scale_fraction_ceil_remainder_to_one_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_ceil(m: byte_size(10), num: 1, den: 4)) == 3
 }
 
-// ceil fail-closed (§5) is the OPPOSITE direction from floor: a zero denominator yields the
-// UN-divided whole magnitude count×num (pessimistic demand on one share), NOT zero.
 fn scale_fraction_ceil_zero_den_is_whole_holds() -> Bool {
   byte_size_count(b: measure_scale_fraction_ceil(m: byte_size(100), num: 4, den: 0)) == 400
 }
 
-// Genericity over <Q,S>: the CEIL op too applies unchanged to Frequency / Hertz (9 × 1/2 = 5,
-// ceil; the FLOOR op gives 4 on the same inputs — single authority, not re-coined per alias).
 fn scale_fraction_ceil_generic_over_quantity_holds() -> Bool {
   hertz_count(h: measure_scale_fraction_ceil(m: hertz(9), num: 1, den: 2)) == 5
 }

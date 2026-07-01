@@ -1,26 +1,6 @@
-// src/v2/lens/mock_totality.dag
-// Scope: TOTALITY lens — a published mock corpus vs. a consumer that must handle EVERY member.
-// Anchor: DESIGN.md §4 (pure reader, stores nothing) / §5 (fail-closed) / §6 (gate, not illusion).
-//
-// The operator's layering contract has three parts: a layer PUBLISHES a mock corpus as a
-// closed structural fact (`extdeps.*.mock_corpus` in dsl/), an adjacent layer's CONSUMER
-// materializes ANY published case impl-blind, and THIS lens enforces the consumer is TOTAL —
-// it fail-closes (§5) the moment a published member is left unhandled.
-//
-// Why a lens and not the compiler: a `match` over a closed coproduct is already totality-checked
-// by the substrate, but the published corpus is DECLARED DATA (a `data List`), not a type — the
-// compiler cannot see that a corpus row has no handler. A consumer matches on an open key (the
-// operation `Symbol`) with a fail-closed `_` arm; this lens is what makes "you added a published
-// case but not its handler" a LOUD error instead of a silent fall-through.
-//
-// §3 reuse, not fork: the missing-member set is computed by `missing_coverage` / `Coverage<C>`
-// from `v2.lens.coverage`. mock_totality_lens is the CI-gating consumer (see the
-// discriminating RED-on-omission witness under src/v2/test/lens_mock_totality/), dissolving the
-// §6 "machinery exists but nothing gates on it" illusion for that kernel rather than minting
-// a third missing-set implementation beside it.
-
 module v2.lens.mock_totality
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SubstrateMandatoryTag }
 
 import v2.lens.coverage { Coverage, missing_coverage }
 import v2.std.collection { List }
@@ -40,12 +20,6 @@ import v2.std.diagnostic {
 }
 import v2.std.node { Symbol }
 
-// A consumer materializes a published case impl-blind: it `Accepted` the cases it handles and
-// fail-closes (`Rejected`) on a case it has no handler for. `mock_unhandled_rejection` is the
-// canonical fail-closed arm a consumer returns for such a case (§5). The consumer is run by the
-// gate WITNESS (where the per-case verdict collapses to a `Bool` predicate) — the lens itself
-// stays a pure list reader, because v2 does not yet admit a higher-order `fn(C) -> Outcome<M>`
-// parameter (see the `Outcome<R>` algebra-fn deferral noted in v2.std.node).
 fn mock_unhandled_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^mock_totality_unhandled_member,
@@ -58,10 +32,6 @@ fn mock_unhandled_rejection<M>() -> Outcome<M> {
   Rejected { diagnostics: diagnostics_singleton(d: mock_unhandled_diagnostic()) }
 }
 
-// The lens reading: every published member the consumer FAILED to materialize (expected − handled),
-// computed by the SAME missing-set machinery (`missing_coverage` / `Coverage<C>`) from
-// `v2.lens.coverage` — reused, not forked (§3). `handled` is the subset of `published` the consumer
-// accepted; the witness produces it by running the consumer over the corpus.
 fn mock_totality_missing<C>(
   published: List<C>,
   handled: List<C>,
@@ -70,9 +40,6 @@ fn mock_totality_missing<C>(
   missing_coverage(expected: published, actual: handled, eq: eq)
 }
 
-// The TOTALITY lens. Accepts (returns the published corpus) iff the consumer handled every
-// published member; fail-closes (§5) with a located diagnostic the moment one is left unhandled.
-// Pure reader over the substrate facts — stores nothing (§4).
 fn mock_totality_lens<C>(
   published: List<C>,
   handled: List<C>,
@@ -85,12 +52,6 @@ fn mock_totality_lens<C>(
   }
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "corpus-as-type: the substrate totality-checking a consumer against a published corpus expressed as a closed type",
-    dissolve_on: "an unhandled published corpus member becomes a compile error by construction (today the corpus is declared data, not a type)"
-  },
-  rationale: "A match over a closed coproduct is already totality-checked by the substrate, but a published corpus is declared data the compiler cannot see is unhandled; the lens covers exactly that gap until corpus-as-type."
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

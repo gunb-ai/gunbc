@@ -1,70 +1,52 @@
-// gunbc/roadmap_emit.dag — project the roadmap work-model to Markdown (slice-2 step 2).
-//
-// SCAFFOLD (DESIGN §7 self-host / plan §6): the ROADMAP-specific projection in the SAME shape as
-// ci.yml's `expected_ci_yml = serialize_yaml(project_workflow_to_yaml(...))` — here
-// `expected_roadmap_md = serialize_markdown_source(project_roadmap_to_markdown(...))`, a dsl
-// serializer fold on the v1 seed. The generic Markdown medium is deep-newt's
-// `std.markdown` + `extdeps.languages.markdown.serialize_markdown_source` (row-driven). This module
-// owns ONLY the roadmap→Markdown projection; the medium is not re-modeled here.
-// dissolution-trigger: the eventual v2 Markdown TargetModel (one grammar both ways, §4) supersedes
-//   the dsl serializer fold — at which point `project_roadmap_to_markdown` emits v2 Nodes and this
-//   composition retires, exactly as `serialize_yaml`/`ci_yaml_emit` will.
-//
-// The checkbox cell is where the DONE-authority decision lands (plan §6.1): a DerivableLine's box
-// is DERIVED from the merged-PR set (the inversion — generated, not hand-toggled); an AuthoredLine's
-// box is the AUTHORED one (honest un-derivable residue). So the generated ROADMAP cannot carry
-// a stale checkbox on a PR-bound line.
-
 module gunbc.roadmap_emit
 
 import std.markdown {
   MarkdownDocument, MarkdownBlock, MarkdownInline, HeadingBlock, ParagraphBlock, TaskListBlock,
+  UnorderedListBlock, MarkdownListItem,
   MarkdownTaskItem, StrongInline, TextInline, LinkInline, H2, Checked, Unchecked,
 }
 import gunbc.roadmap_model {
-  RoadmapNode, RoadmapEdge, PlanDocCarrier, NoCarrier, PlanDoc,
+  RoadmapNode, RoadmapEdge, Pointer,
   RoadmapParent, TopLevel, UnderParent, roadmap_parent, is_top_level,
   SectionElement, Prose, Group, SectionProse, SectionGroup,
 }
-// Completion is a Bool here (§2: roadmap_status carries no 2-variant enum restating it). The ONLY
-// checkbox-state type in the project is std.markdown's GFM glyph `CheckboxState = Checked | Unchecked`;
-// this module maps the Bool onto that glyph in `task_item_with` below. The completion concept (Bool,
-// roadmap_status) and the render-glyph concept (std.markdown.CheckboxState) stay distinct (§3).
-// `RoadmapItem` is the closed line sum (DerivableLine | AuthoredLine) — emit dispatches the inline
-// rendering on its arm (derived title vs verbatim authored content).
-import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, item_is_done }
+
+import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done, signoff_accepts, signoff_by }
 import ctrl.process_algebra { ProcessNodeId }
 
-// Bounded nesting depth — the roadmap forest is shallow (sections → items → sub-items). Explicit fuel
-// gives the recursion its strict-descent evidence (DESIGN §4 bounded-and-forward); a tree deeper than
-// this truncates, which is loud (a missing deep item is visible drift), not silent corruption.
 fn roadmap_max_depth() -> Int { 8 }
 
-// === The checkbox cell — DONE-authority (plan §6.1) ==========================
-
-// Whether a line's box SHOULD read done — the DONE-authority decision (plan §6.1), delegated whole to
-// `roadmap_status.item_is_done` (DerivableLine → derived from the merged set; AuthoredLine → authored).
-// Kept as a Bool so the markdown glyph lands in `MarkdownTaskItem.state` field position below.
 fn node_is_done(rn: RoadmapNode, merged: List<Int>) -> Bool {
+  signoff_accepts(s: rn.signoff)
+}
+
+fn node_evidence_present(rn: RoadmapNode, merged: List<Int>) -> Bool {
   item_is_done(item: rn.line, merged: merged)
 }
 
-// === Inline content — line arm + optional plan-doc link ======================
-
-fn carrier_inlines(carrier: PlanDocCarrier) -> List<MarkdownInline> {
-  match carrier {
-    NoCarrier => []
-    PlanDoc { path } => [
-      TextInline { text: " " },
-      LinkInline { inlines: [TextInline { text: "plan" }], url: path },
-    ]
+fn signoff_suffix_inlines(rn: RoadmapNode, merged: List<Int>) -> List<MarkdownInline> {
+  if signoff_accepts(s: rn.signoff) {
+    [TextInline { text: concat(" — ✓ signed off: ", signoff_by(s: rn.signoff)) }]
+  } else {
+    if node_evidence_present(rn: rn, merged: merged) {
+      [TextInline { text: " — ⏳ awaiting sign-off" }]
+    } else {
+      []
+    }
   }
 }
 
-// The `(#ref)` annotation, EMITTED FROM THE BINDING (plan TASK-2 emit-refs-from-binding, §3 single
-// authority): a DerivableLine's `prs` is the one source of both the derived box AND its rendered refs,
-// so the `(#5445/#5453)` annotation is generated here, never hand-kept in prose. An empty binding emits
-// no annotation. Mentions keep their refs in AuthoredLine prose (no binding to emit from).
+fn pointer_inlines(p: Pointer) -> List<MarkdownInline> {
+  [
+    TextInline { text: " " },
+    LinkInline { inlines: [TextInline { text: p.label }], url: p.path },
+  ]
+}
+
+fn carriers_inlines(carriers: List<Pointer>) -> List<MarkdownInline> {
+  fold(carriers, init: [], f: (acc, p) => concat(acc, pointer_inlines(p: p)))
+}
+
 fn refs_text(prs: List<Int>) -> String {
   fold(prs, init: "", f: (acc, p) =>
     if acc == "" { concat("#", to_string(p)) } else { concat(acc, concat("/#", to_string(p))) })
@@ -72,37 +54,38 @@ fn refs_text(prs: List<Int>) -> String {
 fn refs_inlines(prs: List<Int>) -> List<MarkdownInline> {
   if count(prs) == 0 { [] } else { [TextInline { text: concat(" (", concat(refs_text(prs: prs), ")")) }] }
 }
-// The fenced prose tail of a DerivableLine (verbatim, refs-free — the refs emit from `prs` above). A
-// leading space separates it from the title/refs; empty renders nothing.
+
 fn desc_inlines(description: String) -> List<MarkdownInline> {
   if description == "" { [] } else { [TextInline { text: concat(" ", description) }] }
 }
 
-// Render the line body by arm (the fold's payoff): a DerivableLine is a BOLD title (emit applies the
-// markup) + its `(#ref)` annotation derived from `prs` + an optional fenced description tail; an
-// AuthoredLine is its `content` String emitted VERBATIM as a single text inline (the §5 DecodeFidelity
-// fence — any bold/refs/links live in the String, so opaque prose round-trips byte-exact).
 fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
   match line {
     DerivableLine { prs, title, description } =>
       concat(
-        concat([StrongInline { inlines: [TextInline { text: title }] }], refs_inlines(prs: prs)),
+        concat([TextInline { text: title }], refs_inlines(prs: prs)),
         desc_inlines(description: description),
       )
     AuthoredLine { done: _, content } => [TextInline { text: content }]
+    PlainLine { content } => [TextInline { text: content }]
+  }
+}
+
+fn node_is_plain(rn: RoadmapNode) -> Bool {
+  match rn.line {
+    PlainLine { content: _ } => true
+    DerivableLine { prs: _, title: _, description: _ } => false
+    AuthoredLine { done: _, content: _ } => false
   }
 }
 
 fn node_inlines(rn: RoadmapNode) -> List<MarkdownInline> {
   concat(
     line_inlines(line: rn.line),
-    carrier_inlines(carrier: rn.carrier),
+    carriers_inlines(carriers: rn.carriers),
   )
 }
 
-// === The forest projection ===================================================
-
-// Direct children of `parent`: nodes whose decomposition parent is `parent`.
 fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: ProcessNodeId) -> List<RoadmapNode> {
   nodes |> filter(n => match roadmap_parent(edges: edges, node: n.node) {
     UnderParent { parent: p } => p == parent
@@ -110,11 +93,6 @@ fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: Proce
   })
 }
 
-// Build a task item from its done-flag + blocks. The glyph (`Checked`/`Unchecked`) sits DIRECTLY in
-// `state:` field position in each branch — a bare nullary markdown constructor only resolves where its
-// type (`MarkdownTaskItem.state`) is the expected type pushed onto it; it does NOT resolve through an
-// `if`/match-arm into the field, nor inside a match-arm body (read there as a variable). Both branches
-// build the same record type, so they unify cleanly.
 fn task_item_with(done: Bool, blocks: List<MarkdownBlock>) -> MarkdownTaskItem {
   if done {
     MarkdownTaskItem { state: Checked, blocks: blocks }
@@ -123,41 +101,59 @@ fn task_item_with(done: Bool, blocks: List<MarkdownBlock>) -> MarkdownTaskItem {
   }
 }
 
-// Map a roadmap node to a task item, nesting its children one indent level (fuel-bounded, §4). The
-// status box is the DONE-authority decision (plan §6.1): DerivableLine → derived from the merged set,
-// AuthoredLine → authored.
+fn plain_item_for(rn: RoadmapNode) -> MarkdownListItem {
+  MarkdownListItem { blocks: [ParagraphBlock { inlines: node_inlines(rn: rn) }] }
+}
+
 fn task_item_for(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkdownTaskItem {
-  let para = ParagraphBlock { inlines: node_inlines(rn: rn) }
+  let para = ParagraphBlock { inlines: concat(node_inlines(rn: rn), signoff_suffix_inlines(rn: rn, merged: merged)) }
   let kids = if fuel > 0 { children_of(nodes: nodes, edges: edges, parent: rn.node) } else { [] }
   let blocks = if count(kids) > 0 {
-    [para, TaskListBlock { items: kids |> map(k => task_item_for(rn: k, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1)) }]
+    concat([para], nodes_to_blocks(items: kids, nodes: nodes, edges: edges, merged: merged, fuel: fuel - 1))
   } else {
     [para]
   }
   task_item_with(done: node_is_done(rn: rn, merged: merged), blocks: blocks)
 }
 
-// === The section projection ==================================================
-
-// One checkbox sub-group's blocks: an optional `**{label}:**` heading-paragraph (the UNIFORM frame the
-// projection owns — §3 single authority, see roadmap_model.SectionGroup) followed by a task list of its
-// top-level nodes (each nesting its children as the indentation = dependency forest). An empty label
-// emits the bare list with no preceding label paragraph.
-fn group_blocks(g: SectionGroup, merged: List<Int>) -> List<MarkdownBlock> {
-  let tops = g.nodes |> filter(n => is_top_level(edges: g.edges, node: n.node))
-  let list = TaskListBlock { items: tops |> map(n => task_item_for(rn: n, nodes: g.nodes, edges: g.edges, merged: merged, fuel: roadmap_max_depth())) }
-  if g.label == "" {
-    [list]
+fn flush_run(acc: { blocks: List<MarkdownBlock>, mode: Int, tbuf: List<MarkdownTaskItem>, pbuf: List<MarkdownListItem> }) -> List<MarkdownBlock> {
+  if acc.mode == 1 {
+    concat(acc.blocks, [TaskListBlock { items: acc.tbuf }])
   } else {
-    [
-      ParagraphBlock { inlines: [StrongInline { inlines: [TextInline { text: concat(g.label, ":") }] }] },
-      list,
-    ]
+    if acc.mode == 2 {
+      concat(acc.blocks, [UnorderedListBlock { items: acc.pbuf }])
+    } else {
+      acc.blocks
+    }
   }
 }
 
-// One section element's blocks: authored prose emitted VERBATIM as a single-TextInline paragraph (the
-// §5 fence — markup inside the String passes through untouched), or a checkbox sub-group.
+fn nodes_to_blocks(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> List<MarkdownBlock> {
+  let acc = fold(items, init: { blocks: [], mode: 0, tbuf: [], pbuf: [] }, f: (a, rn) => {
+    if node_is_plain(rn: rn) {
+      let flushed = if a.mode == 1 { concat(a.blocks, [TaskListBlock { items: a.tbuf }]) } else { a.blocks }
+      { blocks: flushed, mode: 2, tbuf: [], pbuf: concat(a.pbuf, [plain_item_for(rn: rn)]) }
+    } else {
+      let flushed = if a.mode == 2 { concat(a.blocks, [UnorderedListBlock { items: a.pbuf }]) } else { a.blocks }
+      { blocks: flushed, mode: 1, tbuf: concat(a.tbuf, [task_item_for(rn: rn, nodes: nodes, edges: edges, merged: merged, fuel: fuel)]), pbuf: [] }
+    }
+  })
+  flush_run(acc: acc)
+}
+
+fn group_blocks(g: SectionGroup, merged: List<Int>) -> List<MarkdownBlock> {
+  let tops = g.nodes |> filter(n => is_top_level(edges: g.edges, node: n.node))
+  let list_blocks = nodes_to_blocks(items: tops, nodes: g.nodes, edges: g.edges, merged: merged, fuel: roadmap_max_depth())
+  if g.label == "" {
+    list_blocks
+  } else {
+    concat(
+      [ParagraphBlock { inlines: [StrongInline { inlines: [TextInline { text: concat(g.label, ":") }] }] }],
+      list_blocks,
+    )
+  }
+}
+
 fn element_blocks(e: SectionElement, merged: List<Int>) -> List<MarkdownBlock> {
   match e {
     Prose { prose } => [ParagraphBlock { inlines: [TextInline { text: prose.content }] }]
@@ -165,9 +161,6 @@ fn element_blocks(e: SectionElement, merged: List<Int>) -> List<MarkdownBlock> {
   }
 }
 
-// One ROADMAP section: an H2 heading + its ordered element sequence (intro prose, the `◆ Milestones`
-// spine, then one-or-more labelled checkbox sub-groups — interleaved IN DOCUMENT ORDER). A pure fold
-// over `elements` preserving order; the whole-document projection maps this over sections.
 fn project_roadmap_section(title: String, elements: List<SectionElement>, merged: List<Int>) -> MarkdownDocument {
   MarkdownDocument {
     blocks: fold(elements,

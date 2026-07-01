@@ -1,119 +1,65 @@
-// gunbc/roadmap_model.dag — the work-DAG authority model for a ROADMAP line (slice-2 step 1).
-//
-// The ROADMAP's own claim: "checkboxes are authoritative for progress … a task's real state is its
-// branch/PR + the carrier marks." So the real authority is the WORK GRAPH + the substrate; the
-// markdown is a hand-kept copy (a §2/§3 dual representation). Slice-2 inverts it — emit each line
-// from its work node. This file is step 1: what a roadmap line *is* in `.dag`, grounded on the
-// authorities that already exist (DFS-before-mint, §2/§3 — do NOT re-coin the work graph).
-//
-// A roadmap line is a PROJECTION of a work node, composed from three existing authorities + the two
-// presentation fields the work graph does not carry:
-//   - IDENTITY + DEPENDENCY structure ← `ctrl.process_algebra` (`ProcessNodeId` + the
-//     `DecomposeProcessNode { parent, children }` decomposition; the indentation edge IS that
-//     parent/child relation). Referenced, never re-coined — the ProcessGraph stays the single
-//     authority for work structure.
-//   - STATUS-source ← `gunbc.roadmap_status.RoadmapItem` (DerivableLine #N | AuthoredLine), the
-//     slice-1 model folded one layer down — row 1 of this authority, widened here from "status of a
-//     line" to "the line is a projection of a work node".
-//   - TITLE + plan-doc CARRIER ← the line's presentation surface, host-fed (like the live PR set);
-//     `ProcessNodeFacts` carries neither (Phase-1 identity is the map key), so they are new fields,
-//     not a fork of the work graph.
-//
-// Pure modeling: every function takes its host-fed inputs (the decomposition edges, the existing-doc
-// set, the merged-PR set) as PARAMETERS — no live bridge is wired here. The emitter (step 2) and the
-// `roadmap_gate` (step 3, the `ci_yaml_gate` clone) supply them.
-//
-// Open (for the step-1 checkpoint): the work graph carries its OWN done-signal, `ProcessCloseState`
-// (ProcessOpen | ProcessClosed). It and the PR-grounded `RoadmapItem` binding are two groundings of
-// "done" that must agree (a node closes iff its completing PR merges). Slice-1/the parent chose the
-// PR-grounded one (it ties the box to the artifact's real authority, and carries the §5 derivable /
-// hand-checked boundary that close-state lacks). Reconciling the two is a bridge, flagged not built.
-
 module gunbc.roadmap_model
 
 import ctrl.process_algebra { ProcessNodeId }
-import gunbc.roadmap_status { RoadmapItem, DriftVerdict, status_drift }
+import gunbc.roadmap_status { RoadmapItem, DriftVerdict, Signoff, signoff_accepts, signoff_drift }
 
-// The plan-doc pointer a line carries (`[plan](path)`), or none. A line may legitimately have no
-// pointer; the path is repo-root-relative.
-type PlanDocCarrier
-  = NoCarrier
-  | PlanDoc { path: String }
+type Pointer { label: String, path: String }
 
-// A roadmap line as a work-node projection. `line` reuses the slice-1 model WHOLE (the `RoadmapItem`
-// closed sum: a DerivableLine's title + binding, or an AuthoredLine's verbatim content) — no field is
-// re-coined; `node` binds it to the work graph (identity + deps live in the ProcessGraph, keyed by
-// this id); `carrier` is the plan-doc pointer. The COMMITTED box is not stored here — it is host-fed
-// from the committed ROADMAP file at drift-check time (a DerivableLine derives its box, an AuthoredLine
-// carries its own), so the node holds only the authority, never a copy of the rendered box.
+type Intricacy
+  = IntricacyLow
+  | IntricacyMedium
+  | IntricacyHigh
+
+type Volume
+  = VolumeSmall
+  | VolumeMedium
+  | VolumeLarge
+
+type Acceptance
+  = PrsMerged
+  | ManualAcceptance
+
+type NodeSizing
+  = Unsized
+  | Sized { intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance }
+
 type RoadmapNode {
   node: ProcessNodeId
   line: RoadmapItem
-  carrier: PlanDocCarrier
+  carriers: List<Pointer>
+  sizing: NodeSizing
+  owner: String
+  signoff: Signoff
 }
 
-// One indentation/dependency edge, a PROJECTION of the `ctrl.process_algebra` decomposition
-// (parent → child); the ProcessGraph is the single authority, this is its rendered view, never a
-// hand-kept second copy.
 type RoadmapEdge {
   child: ProcessNodeId
   parent: ProcessNodeId
 }
 
-// === Section content: the frame-is-the-win element sequence ==================
-//
-// A real ROADMAP `##` section is NOT a single flat checkbox list (what the slice-2 RoadmapSection
-// assumed): it interleaves authored INTRO prose (the section rationale, the `◆ Milestones` spine, a
-// `→ [plan](…)` pointer) with one-or-MORE labelled checkbox SUB-GROUPS (`**Audits (done):**`,
-// `**In-scope this window:**`). `SectionElement` is that ordered sequence — the frame-is-the-win
-// faithful model of the section: model the FRAME (sub-group boxes + their bindings), FENCE the prose.
-//
-// - `SectionProse` carries authored prose VERBATIM (the §5 DecodeFidelity fence): an opaque String
-//   emitted as a paragraph, ALL markup (bold/links/refs/code-spans) living inside it. It is NOT modelled
-//   into medium constructs — fake-modelling prose is the forbidden over-reach (plan §5).
-// - `SectionGroup` is one checkbox list: an authored `label` + its node/edge forest (the EXISTING line
-//   model, reused whole). The label is SEMANTIC TEXT, not literal markup: every real sub-group renders as
-//   the UNIFORM `**{label}:**` frame, so the bold+colon is a rendering convention the projection owns
-//   (single authority, §3) — not the `**…:**` repeated in every String. An empty `label` is the bare
-//   unlabelled `[ ]`-list that opens a section (no label paragraph emitted).
 type SectionProse { content: String }
 type SectionGroup { label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdge> }
 
-// The ordered content of a section: authored prose, or a checkbox sub-group. A closed sum so the
-// emitter dispatches the two renderings (a verbatim paragraph vs a task list) — no Optional straddle.
 type SectionElement
   = Prose { prose: SectionProse }
   | Group { group: SectionGroup }
 
-// Typed constructors so an element literal in list position carries its declared SectionElement type
-// (a bare inline payload arm is read as a Product, cf. roadmap_parent above).
 fn section_prose(content: String) -> SectionElement { Prose { prose: SectionProse { content: content } } }
 fn section_group(label: String, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> SectionElement {
   Group { group: SectionGroup { label: label, nodes: nodes, edges: edges } }
 }
 
-// === Dependency projection: the indentation edge ============================
-
-// Where a roadmap line sits in the forest. A closed domain sum, NOT `ProcessNodeId?` — the Optional
-// of a branded primitive is a raw-nullable that `match` can't branch (the Value::Null model↔realization
-// fork, DESIGN open thread), so a two-named-variant sum is the §5 "return a closed sum" move.
 type RoadmapParent
   = TopLevel
   | UnderParent { parent: ProcessNodeId }
 
-// Typed constructors so the `if`-branches below unify as RoadmapParent (a bare inline arm with a
-// payload is read as a Product in if-branch position; a function call carries its declared type).
 fn under_parent(p: ProcessNodeId) -> RoadmapParent { UnderParent { parent: p } }
 fn top_level() -> RoadmapParent { TopLevel }
 
-// This edge's parent if it points at `node`, else TopLevel.
 fn edge_parent_for(e: RoadmapEdge, node: ProcessNodeId) -> RoadmapParent {
   if e.child == node { under_parent(p: e.parent) } else { top_level() }
 }
 
-// The node a line is indented under, looked up from the decomposition edges. TopLevel = a section
-// root. First matching edge wins (keep-first fold); the work graph forbids two parents, so a
-// duplicate is malformed anyway.
 fn roadmap_parent(edges: List<RoadmapEdge>, node: ProcessNodeId) -> RoadmapParent {
   fold(edges, init: TopLevel, f: (acc, e) => match acc {
     UnderParent { parent: p } => UnderParent { parent: p }
@@ -121,7 +67,6 @@ fn roadmap_parent(edges: List<RoadmapEdge>, node: ProcessNodeId) -> RoadmapParen
   })
 }
 
-// True iff the node sits at the top level (no parent edge) — the roots of the roadmap forest.
 fn is_top_level(edges: List<RoadmapEdge>, node: ProcessNodeId) -> Bool {
   match roadmap_parent(edges: edges, node: node) {
     TopLevel => true
@@ -129,29 +74,18 @@ fn is_top_level(edges: List<RoadmapEdge>, node: ProcessNodeId) -> Bool {
   }
 }
 
-// === Carrier projection: a dangling link is unwritable ======================
-
-// A carrier resolves iff its target is among the existing docs. The emitter refuses to emit an
-// unresolved carrier, so a dangling link cannot be written (plan §2 — the construction wall for
-// dangling links). NoCarrier trivially resolves (a pointer-less line is honest, not dangling).
-fn carrier_resolves(carrier: PlanDocCarrier, existing_docs: List<String>) -> Bool {
-  match carrier {
-    NoCarrier => true
-    PlanDoc { path } => existing_docs |> any(d => d == path)
-  }
+fn pointer_resolves(p: Pointer, existing_docs: List<String>) -> Bool {
+  existing_docs |> any(d => d == p.path)
 }
 
-// A node is carrier-clean iff its plan-doc pointer resolves. A false here is the emit error a
-// generated doc-index turns the orphan/dangling class into (plan §2/§6 step 5).
 fn node_carrier_clean(rn: RoadmapNode, existing_docs: List<String>) -> Bool {
-  carrier_resolves(carrier: rn.carrier, existing_docs: existing_docs)
+  all(rn.carriers, p => pointer_resolves(p: p, existing_docs: existing_docs))
 }
 
-// === Status projection: reuse slice-1 over the embedded entry ================
-
-// The node's status drift, routed through the slice-1 authority over its embedded line — NOT a
-// second drift rule (§3). An AuthoredLine is Underivable (honest residue), only a DerivableLine can
-// drift. `committed_box` is host-fed (the box observed in the committed ROADMAP file).
 fn node_status_drift(rn: RoadmapNode, committed_box: Bool, merged: List<Int>) -> DriftVerdict {
-  status_drift(item: rn.line, committed_box: committed_box, merged: merged)
+  signoff_drift(s: rn.signoff, committed_box: committed_box)
+}
+
+fn node_closed(rn: RoadmapNode) -> Bool {
+  signoff_accepts(s: rn.signoff)
 }

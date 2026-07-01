@@ -1,5 +1,3 @@
-// std/os.dag — derive OperatingSystemSurface from distribution catalog rows (projection only).
-
 module std.os
 
 import std.os.types {

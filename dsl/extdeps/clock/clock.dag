@@ -1,21 +1,16 @@
-// extdeps/clock/clock.dag -- Wall-clock observation (POSIX date utility).
-//
-// Spec: POSIX.1 date utility — https://pubs.opengroup.org/onlinepubs/9699919799/utilities/date.html
-//
-// Host-effect peer of extdeps/filesystem/filesystem_io.dag: a read-only service
-// whose operations the v1 interpreter dispatches live via the `shell` transport.
-// `Clock.Now()` returns ISO 8601 Timestamp for DAG consumers. `Clock.UnixSecs()`
-// returns epoch seconds for fixture `recorded_at` / freshness (bootstrap wet
-// path — cannot route through the fixture seam without circular lookup).
-//
-// 🟡 dissolved — feature:clock-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch
-// --fixture-store (recorded wet via --record); forbidden: reintroducing mock_response
-// constants for Hermetic dispatch on this shape.
-
 module extdeps.clock
 
 import std.types { Timestamp }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/date.html"
+  }
+}
 
 service Clock {
   operation Now {
@@ -29,7 +24,6 @@ service Clock {
     }
   }
 
-  // Epoch-second observation for fixture infrastructure (recorded_at / freshness).
   operation UnixSecs {
     input {}
     output { unix_secs: String from "stdout" }

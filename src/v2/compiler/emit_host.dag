@@ -1,14 +1,4 @@
-// src/v2/compiler/emit_host.dag
-// Scope: T-38 / rung-4 host harness — emit + host execute + eval compare (compiler orchestration).
-// Status: T-22 runtime_row on TargetModel — generic row-lookup in run_emit_host / runtime_value_parse
-//   (gunbc#4750). Substrate host bodies stay fail-closed; executable boundary:
-//   `dsl/tools/emit_host_gate.dag` (gunbc run). Eval intercept for in-corpus emit-vs-eval
-//   awaits T-22 Realization wiring.
-// Layer: compiler/ (imports emit/eval; std/ carries host_run + falsification receipts only).
-// Authority: docs/planning/compiler-spine-runtime-rung34-min-runner-interface-2026-05-30.md §4.2 (A1–A4).
-
 module v2.compiler.emit_host
-
 
 import v2.compiler.emit { emit }
 import v2.compiler.eval {
@@ -69,8 +59,6 @@ import v2.std.verification {
   CompilesClaim
 }
 import v2.std.witness { Holds, Violates }
-
-
 
 fn emit_host_transport_not_wired_diagnostic() -> Diagnostic {
   Diagnostic {
@@ -140,12 +128,10 @@ fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<Ru
   )
 }
 
-// Decode SignedI32Le stdout carrier — substrate stub; eval intercept reads primitive bytes.
 fn runtime_value_signed_i32_le_as_int(value: RuntimeValue) -> Outcome<Int> {
   outcome_rejected(d: emit_host_run_unsupported_target_diagnostic())
 }
 
-// B3 omni-emission — one generic primitive; executable boundary is `dsl/tools/emit_host_gate.dag`.
 fn run_host_process(
   row: EmitHostRuntimeRow,
   target: TargetModel,
@@ -209,8 +195,6 @@ fn run_test_claim_emit_vs_eval_verdict(
   }
 }
 
-// claim_input_root: lhs / CompilesClaim input (evaluator_input — FACTS FLOW FORWARD).
-// expected_eval_root: rhs / expected_value (matches run_test_claim_runtime_assert).
 fn run_test_claim_emit_vs_eval_for_claim(
   subject: TestClaimEvalSubject<Node>,
   target: TargetModel,

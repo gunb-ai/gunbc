@@ -1,9 +1,4 @@
-// src/v2/std/host_run.dag
-// Scope: emit-host run receipts (W2 / joint runner spec §4.2).
-// Status: Host arm of ExecutionEvidence; falsification lives in test_claim_falsification.dag.
-
 module v2.std.host_run
-
 
 import v2.std.collection { List }
 import v2.std.diagnostic {
@@ -18,7 +13,6 @@ import v2.std.compilers.target_model { TargetModel }
 import v2.std.text { String }
 import v2.std.witness { Witness, Holds, Violates }
 
-
 type ByteString = List<Byte>
 
 type BuildLog {
@@ -29,18 +23,14 @@ type ExitOk {
   code: Int
 }
 
-// Named carrier (not a type alias): v2 compile rejects `type X = Outcome<Witness<…>>`.
 type HostExit {
   outcome: Outcome<Witness<ExitOk>>
 }
 
-// Phase-typed logical-run stdout: only constructible when exit Holds (P2 host-process boundary).
 type HostRunStdout {
   bytes: ByteString
 }
 
-// Success-only logical-run carrier: `Outcome<HostLogicalRun>` carries reject/diagnostic arms;
-// the accepted payload is only `HostRunStdout` (no nested `Witness` — illegal Violates unrepresentable).
 type HostLogicalRun {
   stdout: HostRunStdout
 }

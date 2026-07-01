@@ -16,9 +16,9 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
-pub enum Result<ok, err> {
-    Ok { value: Box<ok> },
-    Err { value: Box<err> },
+pub enum Result<Ok, Err> {
+    Ok { value: Ok },
+    Err { value: Err },
 }
 
 #[derive(
@@ -29,3 +29,8 @@ pub enum DivError {
     DivideByZero,
     Overflow,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DivideByZero;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Overflow;

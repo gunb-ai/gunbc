@@ -1,21 +1,3 @@
-// src/v2/extdeps/languages/ecmascript.dag
-// Scope: ECMAScript ES2022 (ECMA-262 13th Edition) primitive fact-bundles + T-11 MVP-1 grammar-data target model.
-// Owns: EcmascriptSingletonKind, EcmascriptScalar, EcmascriptCost,
-//   EcmascriptGrammarRelationRow, LanguageModel, EcmascriptNumberPrimitiveFacts,
-//   EcmascriptBigIntPrimitiveFacts, EcmascriptBooleanPrimitiveFacts, EcmascriptStringPrimitiveFacts,
-//   EcmascriptSingletonPrimitiveFacts, ecmascript_language_model_wave1 (+ supporting fns).
-// Consumes: v2.std.model_core, v2.std.collection, v2.std.node, v2.std.logic, v2.std.algebra,
-//   v2.std.compilers.lexing, v2.std.grammar, v2.std.compilers.target_model, v2.std.witness, v2.std.text.
-// Status: T-4.17 ecmascript slice (NEW) — ECMA-262 ES2022 primitives; ModelCore inhabitance for
-//   number/bigint/boolean; string inhabitance deferred; laws/effects/partiality empty (wave-2b);
-//   🟡 gated feature:T-6-token-layout-trivia-policy + feature:ecmascript-wave2a-decimal-int-literal
-//   (decimal `0` | [1-9][0-9]* only; not 0b/0o/0x/numeric-separators); canonical_symbols via catalog
-//   + wave-1 lex/grammar/MVP; bool canonical-B decl-ref — 🟡 E-6(b) staging. NO TypeScript type
-//   annotations — base ES surface only; `typescript.dag` is the TS surface authority.
-// Anchor: https://tc39.es/ecma262/2022/ (ECMA-262, 13th Edition, June 2022).
-// Ledger: CP-3229-GREEN-TERMINAL, SL-T11-GRAMMAR-FROM-TOKEN-ROW.
-// 🟡
-
 module v2.extdeps.languages.ecmascript
 import v2.std.language_model { LanguageModel }
 
@@ -102,88 +84,59 @@ import v2.std.algebra {
 }
 import v2.std.text { String }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL. ES2022 §4.4: Undefined and Null types each have
-// a sole inhabitant (`undefined`, `null`); they are primitive value types in §6.1.
 type EcmascriptSingletonKind
   = UndefinedT | NullT
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL. ECMA-262 §6.1 primitive value types,
-// in spec order: Undefined, Null, Boolean, String, Symbol, Number, BigInt. All seven are
-// declared variants of the closed coproduct (Undefined/Null collapse into Singleton). Symbol
-// (§6.1.5) carries a wave-1 fact-bundle alongside the others; wave-2b deepening (algebra
-// inhabitance / unique-identity laws) is deferred, parallel to `python.dag` deferring Complex
-// laws while still declaring `ComplexScalar` in `PythonScalar`.
 type EcmascriptScalar
   = NumberScalar | BigIntScalar | BooleanScalar | StringScalar | SymbolScalar | Singleton { kind: EcmascriptSingletonKind }
 
-// 🟢 grounded.
 type EcmascriptCost {
   operation_cost: Int
   allocation_cost: Int
 }
 
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
-
-// 🟢 grounded.
 type EcmascriptGrammarRelationRow {
   production: FormalProduction
   emitted: Node
   tokens: List<ConcreteSyntaxToken>
 }
 
-// 🟢 dissolved — the per-language `EcmascriptLanguageModel` type fork is gone; the constructor
-// `ecmascript_language_model_wave1` inhabits the single authority `v2.std.language_model` `LanguageModel`
-// (lex/grammar/core). LexRules/Grammar are projections, not parallel authorities.
-
-// 🟢 grounded. ECMA-262 §6.1.6.1 Number type — IEEE 754-2019 binary64.
 type EcmascriptNumberPrimitiveFacts {
   surface_spelling: Symbol
   machine_representation: Symbol
   std_projection: Symbol
 }
 
-// 🟢 grounded. ECMA-262 §6.1.6.2 BigInt type — arbitrary-precision signed integers.
 type EcmascriptBigIntPrimitiveFacts {
   surface_spelling: Symbol
   encoding: Symbol
   std_projection: Symbol
 }
 
-// 🟢 grounded. ECMA-262 §6.1.3 Boolean type — two inhabitants `true`, `false`.
 type EcmascriptBooleanPrimitiveFacts {
   surface_spelling: Symbol
   encoding: Symbol
   std_projection: Symbol
 }
 
-// 🟢 grounded. ECMA-262 §6.1.4 String type — finite ordered sequence of 16-bit unsigned
-// integer code units (UTF-16, no enforced well-formedness).
 type EcmascriptStringPrimitiveFacts {
   surface_spelling: Symbol
   encoding: Symbol
   std_projection: Symbol
 }
 
-// 🟢 grounded. ECMA-262 §6.1.5 Symbol type — unique, immutable, non-String property keys.
-// Wave-1 fact-bundle only; wave-2b algebra inhabitance (unique-identity equivalence laws)
-// is deferred, parallel to `python.dag` Complex deferring algebra laws while still landing
-// a primitive-fact bundle.
 type EcmascriptSymbolPrimitiveFacts {
   surface_spelling: Symbol
   encoding: Symbol
   std_projection: Symbol
 }
 
-// 🟢 grounded.
 type EcmascriptSingletonPrimitiveFacts {
   surface_spelling: Symbol
   kind: EcmascriptSingletonKind
   std_projection: Symbol
 }
-// Layout-baked composite tokens (🟡 feature:T-6-token-layout-trivia-policy — see lex header).
-// 🟡 gated — feature:ecmascript-formal-epsilon-shim-terminal — bind gunbc#4761 / CP-1b —
-// dissolve-on: std/grammar canonical epsilon carrier; empty FormalProduction.rhs lowers
-// without fabricated parse-only token_class.
+
 data ecmascript_mvp1_source_text: String = "function add(x, y) { return x + y; }"
 
 fn ecmascript_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -270,7 +223,6 @@ data ecmascript_singleton_facts_catalog: List<EcmascriptSingletonPrimitiveFacts>
   ecmascript_facts_null
 ]
 
-// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1)
 data ecmascript_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn ecmascript_inhabitant_atom(id: Symbol) -> Node {
@@ -851,11 +803,9 @@ fn ecmascript_mvp1_emitted_add_fn_node() -> Node {
 }
 
 fn ecmascript_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
-  // T-11: serialize through the single shared morphism (no parallel wire authority).
+
   concrete_syntax_token_to_node(token: token)
 }
-
-
 
 fn ecmascript_mvp1_serialize_source_children() -> List<Edge> {
   list_append(
@@ -883,8 +833,6 @@ fn ecmascript_mvp1_serialize_source_node() -> Node {
 }
 }
 
-// --- FormalProduction authority (flat rhs) + GrammarExpr operational shim (parse.dag) ---
-
 fn ecmascript_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   fold_list(
     xs: ecmascript_mvp1_concrete_tokens(),
@@ -898,24 +846,16 @@ fn ecmascript_formal_rhs_from_token_classes() -> List<FormalGrammarSymbol> {
   )
 }
 
-// 🟡 gated — feature:ecmascript-formal-symbol-to-grammar-expr-shim — bind gunbc#4761 / CP-1b —
-// interim FormalGrammarSymbol → GrammarExpr projection for operational parse lowering only;
-// dissolve-on: std/grammar substrate projects FormalGrammarSymbol to GrammarExpr directly.
 fn ecmascript_formal_symbol_to_grammar_expr(sym: FormalGrammarSymbol) -> GrammarExpr {
   formal_grammar_symbol_to_grammar_expr(sym: sym)
 }
 
-// 🟡 gated — feature:ecmascript-formal-epsilon-grammar-expr-shim — bind gunbc#4761 / CP-1b —
-// dissolve-on: std/grammar epsilon projection replaces Optional+sentinel terminal shim.
 fn ecmascript_formal_epsilon_grammar_expr() -> GrammarExpr {
   Optional {
     element: Terminal { token_class: ^ecmascript_formal_epsilon_shim_terminal, stamp: StampClass }
   }
 }
 
-// 🟡 gated — feature:ecmascript-formal-rhs-to-expr-shim-fold — bind gunbc#4761 / CP-1b —
-// interim fold carrier for FormalProduction.rhs → GrammarExpr Sequence lowering only;
-// dissolve-on: std/grammar substrate fold_non_empty_right (or equivalent) replaces this coproduct.
 type EcmascriptFormalRhsToExprState
   = EcmascriptFormalRhsToExprUninitialized
   | EcmascriptFormalRhsToExprReady { expr: GrammarExpr }
@@ -941,9 +881,6 @@ fn ecmascript_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> Gram
   }
 }
 
-// 🟡 gated — feature:ecmascript-formal-alt-choice-shim-fold — bind gunbc#4761 / CP-1b —
-// interim fold carrier for multi-alt FormalProduction lhs → GrammarExpr Choice lowering only;
-// dissolve-on: std/grammar substrate fold_non_empty_right (or equivalent) replaces this coproduct.
 type EcmascriptFormalAltChoiceState
   = EcmascriptFormalAltChoiceUninitialized
   | EcmascriptFormalAltChoiceReady { expr: GrammarExpr }
@@ -1046,7 +983,6 @@ fn ecmascript_mvp1_grammar_relation_row() -> EcmascriptGrammarRelationRow {
   }
 }
 
-
 fn ecmascript_grammar_relation_row_node(row: EcmascriptGrammarRelationRow) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1132,10 +1068,6 @@ fn ecmascript_ident_lex_rule() -> LexRule {
   }
 }
 
-// 🟡 predicate dissolution — feature:ecmascript-wave2a-decimal-int-literal — bind gunbc#4761 —
-// dissolve-on: std LexCharClass carries NonZeroDigitChar (or full ES2022 NumericLiteral LexPattern).
-// 🟡 gated — feature:ecmascript-wave2a-decimal-int-literal — ASCII 49–57 ladder until
-// `NonZeroDigitChar` lands on v2.std.compilers.lexing; consumed only by ecmascript_decimal_int_literal_pattern.
 fn ecmascript_nonzero_digit_char_pattern() -> LexPattern {
   ChoicePattern {
     left: CharPattern { char: 49 },
@@ -1164,10 +1096,6 @@ fn ecmascript_nonzero_digit_char_pattern() -> LexPattern {
   }
 }
 
-// 🟡 gated — feature:ecmascript-wave2a-decimal-int-literal — decimal subset `0` | [1-9][0-9]* only;
-// wave-2a fixture uses 0/1. Does not model 0b/0o/0x bases, NumericLiteralSeparator (`_`), nor
-// the `n` BigIntLiteral suffix per ES2022 §12.8.3. Dissolves when T-6/T-7 lands the full
-// NumericLiteral LexPattern.
 fn ecmascript_decimal_int_literal_pattern() -> LexPattern {
   ChoicePattern {
     left: LiteralPattern { text: "0" },
@@ -1185,11 +1113,6 @@ fn ecmascript_int_literal_lex_rule() -> LexRule {
   }
 }
 
-// 🟡 gated — feature:T-6-token-layout-trivia-policy — layout/whitespace/insignificant-trivia is
-// baked into LiteralPattern.text below (e.g. ") { ", "; }") instead of ES2022 §12.2
-// WhiteSpace/LineTerminator/Comment trivia carriers. Dissolves when T-6 supplies
-// TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout
-// (https://tc39.es/ecma262/2022/#sec-white-space).
 fn ecmascript_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -1233,9 +1156,7 @@ fn ecmascript_wave1_grammar_root() -> GrammarRoot {
     start: ^ecmascript_production_fn_decl,
     productions: [
       ecmascript_grammar_production_mvp1_fn_add(),
-      // FunctionDeclaration (ES2022 §15.2): `function` BindingIdentifier `(` FormalParameters `)` Block.
-      // MVP-1 monomorphizes FormalParameters to a single binding identifier — wider arity is wave-2a
-      // extension after T-6/T-7 lex/grammar substrate broadens.
+
       ecmascript_formal_productions_to_grammar_production(
         head: grammar_formal_production(
           lhs: ^ecmascript_production_fn_decl,
@@ -1251,8 +1172,7 @@ fn ecmascript_wave1_grammar_root() -> GrammarRoot {
         alts: Empty,
         emitted: ^ecmascript_surface_fn_item
       ),
-      // Block (ES2022 §14.2): `{` StatementList `}` — layout baked into the closing composite token.
-      // Left-biased Choice: longer/recursive block alt must precede single-stmt alt.
+
       ecmascript_formal_productions_to_grammar_production(
         head: grammar_formal_production(
           lhs: ^ecmascript_production_block,
@@ -1286,9 +1206,7 @@ fn ecmascript_wave1_grammar_root() -> GrammarRoot {
         ],
         emitted: ^ecmascript_surface_stmt
       ),
-      // LexicalDeclaration (ES2022 §14.3.1): `let` BindingIdentifier `=` AssignmentExpression `;`.
-      // MVP carries plain `Identifier = AssignmentExpression` form; `let` keyword and semicolon
-      // emission are layout-baked.
+
       ecmascript_formal_productions_to_grammar_production(
         head: grammar_formal_production(
           lhs: ^ecmascript_production_assign_stmt,
@@ -1303,7 +1221,7 @@ fn ecmascript_wave1_grammar_root() -> GrammarRoot {
         alts: Empty,
         emitted: ^ecmascript_surface_assign_stmt
       ),
-      // IfStatement (ES2022 §14.6) head: `if (` Expression `) {` Statement `}` — single-body MVP.
+
       ecmascript_formal_productions_to_grammar_production(
         head: grammar_formal_production(
           lhs: ^ecmascript_production_if_stmt,
@@ -1317,7 +1235,7 @@ fn ecmascript_wave1_grammar_root() -> GrammarRoot {
         alts: Empty,
         emitted: ^ecmascript_surface_if_stmt
       ),
-      // ReturnStatement (ES2022 §14.10): `return` Expression `;` — layout alts cover outer/inner.
+
       ecmascript_formal_productions_to_grammar_production(
         head: grammar_formal_production(
           lhs: ^ecmascript_production_return_stmt,
@@ -1357,7 +1275,7 @@ fn ecmascript_wave1_grammar_root() -> GrammarRoot {
         alts: Empty,
         emitted: ^ecmascript_surface_comparison
       ),
-      // Left-biased Choice: consuming alt before empty tail alt.
+
       ecmascript_formal_productions_to_grammar_production(
         head: grammar_formal_production(
           lhs: ^ecmascript_production_comparison_tail,
@@ -1380,7 +1298,7 @@ fn ecmascript_wave1_grammar_root() -> GrammarRoot {
         alts: Empty,
         emitted: ^ecmascript_surface_additive
       ),
-      // Left-biased Choice: consuming alt before empty tail alt.
+
       ecmascript_formal_productions_to_grammar_production(
         head: grammar_formal_production(
           lhs: ^ecmascript_production_additive_tail,

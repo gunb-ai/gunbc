@@ -1,56 +1,29 @@
 # The expressibility frontier — what a modeling discipline can gate, and what stays review
 
-> Methodology doc. Generalizes DESIGN §5's decidability trichotomy (wall / ratchet / undecidable) from
-> *one class* into a **frame for any modeling discipline**: locate each instance on a frontier between
-> "expressible → gate by construction" and "known-inexpressible → permanent review." Two disciplines
-> instantiate it today — **anemic modeling** and **algorithmic complexity** — and they share a shape.
-> DESIGN refs: §1 (displaced cost), §2 (decomposition leaf-side), §5 (fail-closed; "never" trap;
-> construction over validation), §6 (lenses as residue; the purity trap), §7 (recursion).
+> Methodology doc. Generalizes DESIGN §5's decidability trichotomy (wall / ratchet / undecidable) from *one class* into a **frame for any modeling discipline**: locate each instance on a frontier between "expressible → gate by construction" and "known-inexpressible → permanent review." Two disciplines instantiate it today — **anemic modeling** and **algorithmic complexity** — and they share a shape. DESIGN refs: §1 (displaced cost), §2 (decomposition leaf-side), §5 (fail-closed; "never" trap; construction over validation), §6 (lenses as residue; the purity trap), §7 (recursion).
 
 ## 1. The pattern
 
-A *modeling discipline* is a property we want every program to have — "measures aren't unwrapped to do
-arithmetic," "no super-linear hidden cost," "no nicknamed concept." For each, the instinct is "gate it
-so review doesn't have to." But you cannot gate a discipline uniformly: its instances spread across a
-**range**, from ones you can make *unwritable* to ones that are *provably not mechanically decidable at
-all*. The job, before building any enforcement, is to **locate each instance on that range** — because
-mispricing the location is itself the failure mode (§4).
+A *modeling discipline* is a property we want every program to have — "measures aren't unwrapped to do arithmetic," "no super-linear hidden cost," "no nicknamed concept." For each, the instinct is "gate it so review doesn't have to." But you cannot gate a discipline uniformly: its instances spread across a **range**, from ones you can make *unwritable* to ones that are *provably not mechanically decidable at all*. The job, before building any enforcement, is to **locate each instance on that range** — because mispricing the location is itself the failure mode (§4).
 
-This is not new machinery; it is DESIGN §5's trichotomy turned from a property of *one* class into a
-*method* applied to *every* discipline.
+This is not new machinery; it is DESIGN §5's trichotomy turned from a property of *one* class into a *method* applied to *every* discipline.
 
 ### 1.1 Why these are one family — the lens schema
 
-Step back from enforcement and ask what every discipline *is*. Each names a **preferred form** — the
-§1-*minimal* representation along one axis — and flags a program point sitting *away* from it. The gap is
-never free: it is a **displaced cost** (§1), time the author saved now that someone pays later, at
-interest. The disciplines differ only in *which* of §1's three times the gap is billed to:
+Step back from enforcement and ask what every discipline *is*. Each names a **preferred form** — the §1-*minimal* representation along one axis — and flags a program point sitting *away* from it. The gap is never free: it is a **displaced cost** (§1), time the author saved now that someone pays later, at interest. The disciplines differ only in *which* of §1's three times the gap is billed to:
 
-- **complexity** → the **cost** axis (time-to-run): preferred = budget-dominated; the deviation runs too
-  long (perf bugs later).
-- **anemic modeling / nicknaming / under-decomposition** → the **complexity** axis (time-to-change):
-  preferred = grounded + single-authority; the deviation cheaped out on upfront modeling and bills every
-  consumer plus the eventual de-fork.
-- **discrimination / cache-purity / effect-leak** → the **safety** axis (time-to-recover): preferred =
-  fails closed; the deviation lets a wrong answer pass silently.
+- **complexity** → the **cost** axis (time-to-run): preferred = budget-dominated; the deviation runs too long (perf bugs later).
+- **anemic modeling / nicknaming / under-decomposition** → the **complexity** axis (time-to-change): preferred = grounded + single-authority; the deviation cheaped out on upfront modeling and bills every consumer plus the eventual de-fork.
+- **discrimination / cache-purity / effect-leak** → the **safety** axis (time-to-recover): preferred = fails closed; the deviation lets a wrong answer pass silently.
 
-So the lenses are not independent inventions — they are **§1 projected onto each of its three costs**,
-each a "distance from the preferred (minimal) form" detector. That is the broader pattern: a lens is the
-schema
+So the lenses are not independent inventions — they are **§1 projected onto each of its three costs**, each a "distance from the preferred (minimal) form" detector. That is the broader pattern: a lens is the schema
 
-> ⟨ **preferred form** · **deviation witness** · **which §1-cost the gap displaces** · **where on the
-> frontier (§2) it is enforceable** · **the drag-to-preferred fix** ⟩
+> ⟨ **preferred form** · **deviation witness** · **which §1-cost the gap displaces** · **where on the frontier (§2) it is enforceable** · **the drag-to-preferred fix** ⟩
 
-and the *frontier* (§2 below) is just the schema's fourth field. Two payoffs fall out, both about
-*authoring* lenses, not running them:
+and the *frontier* (§2 below) is just the schema's fourth field. Two payoffs fall out, both about *authoring* lenses, not running them:
 
-1. **Adding a lens is filling the schema, not inventing machinery.** A proposed lens that cannot name its
-   preferred form or its §1-axis is incoherent — it cannot say what it *prefers*. The schema is the
-   intake form.
-2. **Two lenses on the same ⟨axis, preferred form⟩ are a meta-fork** — §3 single-authority turned on the
-   lens *corpus itself* (a nickname *between lenses*). The schema makes it a forced question — "is
-   `unused_parameters` just `subsumption` along the same axis?" — instead of a coincidence noticed years
-   later.
+1. **Adding a lens is filling the schema, not inventing machinery.** A proposed lens that cannot name its preferred form or its §1-axis is incoherent — it cannot say what it *prefers*. The schema is the intake form.
+2. **Two lenses on the same ⟨axis, preferred form⟩ are a meta-fork** — §3 single-authority turned on the lens *corpus itself* (a nickname *between lenses*). The schema makes it a forced question — "is `unused_parameters` just `subsumption` along the same axis?" — instead of a coincidence noticed years later.
 
 ## 2. The frontier — three regions by decidability of membership
 
@@ -62,19 +35,8 @@ and the *frontier* (§2 below) is just the schema's fourth field. Two payoffs fa
 
 Two laws govern the frontier:
 
-- **Decidability is the boundary between ① ② and ③.** Region ③ is permanent: by Rice / by missing
-  domain knowledge, no wall and no *complete* lens exists, ever. Pretending otherwise is the §5 **"never"
-  trap** — a ratchet masquerading as a wall.
-- **Presentability of the fix is a property of the region, not the discipline.** A lens can *present the
-  alternative* (not just flag) exactly when the corrected form is **determined** — the RHS of an equation
-  you already proved — rather than **searched**. That is a ② phenomenon; it never reaches into ③.
-  Within ②, presentability has two flavors: a **single determined rewrite** (one safe RHS — `a+b ⇒
-  measure_add`), or a **surfaced choice** (≥2 determined-but-safety-distinct RHSs, where picking is a
-  §5 decision the anemic form *hid*). The lens presents the set and forces intent; it does not auto-pick.
-  Division is the canonical case — `byte_size(count ÷ n)` buried whether to **ceil** (a per-shard
-  *demand*: under-estimate ⇒ over-fit ⇒ OOM) or **floor** (a fit *count*: over-estimate ⇒ OOM): opposite
-  directions, *both* fail-closed. So "present alternatives" is literal — the round-trip hid a safety
-  decision, not merely a redundancy.
+- **Decidability is the boundary between ① ② and ③.** Region ③ is permanent: by Rice / by missing domain knowledge, no wall and no *complete* lens exists, ever. Pretending otherwise is the §5 **"never" trap** — a ratchet masquerading as a wall.
+- **Presentability of the fix is a property of the region, not the discipline.** A lens can *present the alternative* (not just flag) exactly when the corrected form is **determined** — the RHS of an equation you already proved — rather than **searched**. That is a ② phenomenon; it never reaches into ③. Within ②, presentability has two flavors: a **single determined rewrite** (one safe RHS — `a+b ⇒ measure_add`), or a **surfaced choice** (≥2 determined-but-safety-distinct RHSs, where picking is a §5 decision the anemic form *hid*). The lens presents the set and forces intent; it does not auto-pick. Division is the canonical case — `byte_size(count ÷ n)` buried whether to **ceil** (a per-shard *demand*: under-estimate ⇒ over-fit ⇒ OOM) or **floor** (a fit *count*: over-estimate ⇒ OOM): opposite directions, *both* fail-closed. So "present alternatives" is literal — the round-trip hid a safety decision, not merely a redundancy.
 
 ## 3. The two instances, side by side
 
@@ -86,49 +48,32 @@ This is the pattern the frontier names — the same three regions, in two unrela
 | **② Lens-residue** | the round-trip at the **grounding seam** you can't fence (host `Int` → `ByteSize`); a pure reader flags a constructor whose magnitude derives from a projector — **and presents the exact `op_T`** (the op→op_T table is finite). Lifted algebra (`+`,`max`) is one determined rewrite; once the operation is typed (①), the only residue is the **rounding direction** — a §5 "round toward pessimism" choice no type can pick, splitting three ways: *demand* ceils, *capacity* floors, *fit-count* floors. The lens surfaces it and forces intent | the cost-budget lens over the corpus where construction isn't available yet — flags, but the *cheaper algorithm* is **searched**, so it cannot present it |
 | **③ Inexpressible** | *leaf under-decomposition* — "`LGA4926`" should be a record; needs **domain knowledge**, undecidable ⇒ stays review (DESIGN's parked §2 open thread) | *optimality* — "is this the minimal cost?" is undecidable (**Rice**); *synthesis* — "produce a faster version" has no constructive patch ⇒ permanent ratchet/review |
 
-The reading: anemic-modeling and complexity are not analogous by coincidence — they are **two samples of
-one structure**. Each has a constructive core (①), a detectable-but-not-yet-walled middle (②), and an
-undecidable tail (③) that is honestly review-bound forever. The win in each is the **same move**: drag
-instances leftward — review → lens → construction — and *stop* at the decidability boundary.
+The reading: anemic-modeling and complexity are not analogous by coincidence — they are **two samples of one structure**. Each has a constructive core (①), a detectable-but-not-yet-walled middle (②), and an undecidable tail (③) that is honestly review-bound forever. The win in each is the **same move**: drag instances leftward — review → lens → construction — and *stop* at the decidability boundary.
 
 ## 4. The methodology (and its two failure modes)
 
-For any discipline D we propose to enforce: **partition D's instances into ① ② ③ *before* building
-enforcement.** The partition is the deliverable; the gate is downstream of it.
+For any discipline D we propose to enforce: **partition D's instances into ① ② ③ *before* building enforcement.** The partition is the deliverable; the gate is downstream of it.
 
 The two ways to get the partition wrong are exactly DESIGN's two named traps:
 
-- **Region ③ priced as ①** → the **"never" trap** (§5): a ratchet sold as a wall. You build a "gate"
-  that can never be complete (optimality, leaf-decomposition), then either it silently lets things
-  through (coverage-by-illusion) or it grows without bound chasing completeness (the **purity trap**,
-  §6 — the economic twin). Tell: the gate's success criterion contains "never" over an undecidable set.
-- **Region ① or ② left in ③** → **coverage-by-illusion** (§6): a decidable, walkable class left to
-  review because nobody located it. The round-trip homomorphism sat in review for exactly this reason
-  until it was placed in ①.
+- **Region ③ priced as ①** → the **"never" trap** (§5): a ratchet sold as a wall. You build a "gate" that can never be complete (optimality, leaf-decomposition), then either it silently lets things through (coverage-by-illusion) or it grows without bound chasing completeness (the **purity trap**, §6 — the economic twin). Tell: the gate's success criterion contains "never" over an undecidable set.
+- **Region ① or ② left in ③** → **coverage-by-illusion** (§6): a decidable, walkable class left to review because nobody located it. The round-trip homomorphism sat in review for exactly this reason until it was placed in ①.
 
-The value is denominated in §1's displaced cost: each leftward move (review→lens→construction) is a pain
-someone stops paying. The frontier tells you **how far left a given instance can possibly go** — so you
-neither over-invest (purity trap) nor under-invest (coverage-by-illusion).
+The value is denominated in §1's displaced cost: each leftward move (review→lens→construction) is a pain someone stops paying. The frontier tells you **how far left a given instance can possibly go** — so you neither over-invest (purity trap) nor under-invest (coverage-by-illusion).
 
 ## 5. Why now / consumers
 
 This frame is the decision procedure *under* the lockdown work, not a new lane beside it:
 
-- **§0 (what to lock down)** — for each fail-open class, the frontier says whether to build a wall, a
-  lens, or accept review. It is why "cache trustworthy" can be construction but "complexity-budget
-  completeness" is residue.
-- **§2 (decomposition)** — region ③'s anemic-modeling row *is* the parked "can a lens diagnose the
-  leaf-side of §2?" question; the frontier answers it honestly: the **round-trip** sub-case is ①/②, the
-  **leaf-under-decomposition** sub-case is ③. Not "yes" or "no" — *which part*.
+- **§0 (what to lock down)** — for each fail-open class, the frontier says whether to build a wall, a lens, or accept review. It is why "cache trustworthy" can be construction but "complexity-budget completeness" is residue.
+- **§2 (decomposition)** — region ③'s anemic-modeling row *is* the parked "can a lens diagnose the leaf-side of §2?" question; the frontier answers it honestly: the **round-trip** sub-case is ①/②, the **leaf-under-decomposition** sub-case is ③. Not "yes" or "no" — *which part*.
 - **§3 (complexity)** — the complexity column above; budget-dominance is gateable, optimality is not.
-- **§5/§6 (wall vs lens)** — the frame *is* the rule for choosing, generalized past the cases §5
-  enumerates.
+- **§5/§6 (wall vs lens)** — the frame *is* the rule for choosing, generalized past the cases §5 enumerates.
 
 ## 6. Open (the §7 recursion)
 
-Can the partition itself be mechanized — a check that, given a proposed discipline + gate, classifies
-the gate's target as ①/②/③ and **fails closed if a gate claims ① over an undecidable set**? That would
-turn the "never"-trap detector into a wall. Likely region ③ on itself (deciding decidability is
-undecidable in general) — so honest residue, but a *high-value* residue: it is the lint that catches a
-ratchet wearing a wall's badge. First mechanizable shard: flag any gate whose pass-condition quantifies
-"never / for all" over a set the gate enumerates by search rather than by construction.
+Can the partition itself be mechanized — a check that, given a proposed discipline + gate, classifies the gate's target as ①/②/③ and **fails closed if a gate claims ① over an undecidable set**? That would turn the "never"-trap detector into a wall. Likely region ③ on itself (deciding decidability is undecidable in general) — so honest residue, but a *high-value* residue: it is the lint that catches a ratchet wearing a wall's badge. First mechanizable shard: flag any gate whose pass-condition quantifies "never / for all" over a set the gate enumerates by search rather than by construction.
+
+## Dissolution trigger (DESIGN §6)
+
+Delete this doc when the frontier partition stops being a standalone methodology held beside DESIGN — either the wall/lens/review trichotomy-as-method is absorbed into DESIGN §5 itself (the authority doc carries it, so a parallel methodology doc becomes the §6 parallel-ledger violation), or §6's open question is answered by a landed gate-classifier lens that mechanizes the ①/②/③ partition and fails closed on a ① claimed over an undecidable set — at which point the executable check supersedes the prose and this doc dissolves into its witness.

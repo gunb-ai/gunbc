@@ -1,11 +1,3 @@
-// Scope: B1 unit-modeling lens — THE inversion witness. A NOVEL unit field with
-//        an UNRECOGNIZED name (`throughput`) typed as a bare kernel `Int` is NOW
-//        FLAGGED — the token-keyed predecessor would have silently MISSED it (the
-//        false-negative the flag-by-default inversion exists to kill). Since
-//        `throughput` has no known carrier in the hint map, the flag is the
-//        BLOCKED-PENDING-CARRIER class (escalate the upstream carrier gate; no
-//        fix-suggestion) — proving the two-class diagnostic for novel quantities.
-
 module v2.test.lens_unit_modeling.novel_unit_flagged
 
 import v2.lens.unit_modeling { unit_modeling_gate }
@@ -37,8 +29,6 @@ data int_leaf_target_novel: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-// `throughput` is a genuine quantity but NOT in the carrier-hint map and NOT a
-// label/coordinate — so default-flag fires, in the blocked-pending class.
 data novel_unit_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [

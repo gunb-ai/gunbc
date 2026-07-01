@@ -1,8 +1,3 @@
-//! `int_pow_bounded` / `ceil_log`: invalid or overflowing `Int` bridges must not
-//! wrap or panic (PR #726 — P3 fail-closed vs raw i64 `*` / `+`).
-//! Degenerate bases (`0`, `1`, `-1`) must not deep-recurse when exponent is capped but large
-//! (P4 — Codex #726).
-
 use v1_compiler::std_induction::{ceil_log, int_pow_bounded};
 
 #[test]
@@ -26,15 +21,11 @@ fn int_pow_bounded_overflow_is_none() {
 
 #[test]
 fn int_pow_bounded_exponent_above_peano_materialization_cap_is_none() {
-    // P4: `int_pow_bounded` rejects exp > 256 (M9 / `std.termination` literal-bridge ceiling)
-    // so huge `work_exponent` cannot force O(exp) stack recursion before fail-closed `none`.
     assert_eq!(int_pow_bounded(2, 257), None);
 }
 
 #[test]
 fn int_pow_bounded_degenerate_bases_do_not_deep_recurse_at_cap_exponent() {
-    // With exp capped at 256, these would still be 256 stack frames without fast paths;
-    // overflow never trips for base 0/1/-1. Closed-form results (Codex degenerate-base finding).
     assert_eq!(int_pow_bounded(1, 256), Some(1));
     assert_eq!(int_pow_bounded(0, 256), Some(0));
     assert_eq!(int_pow_bounded(-1, 256), Some(1));
@@ -45,6 +36,5 @@ fn int_pow_bounded_degenerate_bases_do_not_deep_recurse_at_cap_exponent() {
 fn ceil_log_overflow_or_invalid_is_none() {
     assert_eq!(ceil_log(1, 10), None);
     assert_eq!(ceil_log(2, 0), None);
-    // Would require ~2^62 iterations without intermediate overflow; `power * base` hits none first.
     assert_eq!(ceil_log(2, i64::MAX), None);
 }

@@ -1,31 +1,12 @@
-// src/v2/std/execution_mode.dag
-// Scope: effect/service execution mode — hermetic replay vs live dispatch vs record-capture.
-//
-// 🟡 HONEST TRANSIENT (node://adhoc-7e32be31-47c) — feature:execution-mode-tree-unification.
-// This faithfully mirrors v1's sole ExecutionMode authority (src/v1/stage0/src/v1_interpreter.rs
-// :1113): the variant set (Hermetic | Wet | Record) and the predicate semantics are kept
-// BYTE-IDENTICAL to v1's, so when the two trees can share a single ExecutionMode authority this
-// folds onto v1's by a trivial merge, never a reconciliation. It is NOT a new concept and NOT a
-// "DryRunMode" nickname — dry-run IS Hermetic. The duplication exists only because v2.std and
-// dsl/v1 cannot import each other today: the SAME cross-tree v2.std/dsl.std non-unification wall
-// the M5 step-2 deferral hit (see effect_io_pure_store_lookup's scaffold in
-// v2/extdeps/runtimes/v2_effect_io_pure.dag). dissolve-on-arrival: cross-tree imports resolve by
-// module OR v2.std and dsl.std unify, at which point this v2 mirror folds onto the single
-// ExecutionMode authority. forbidden: drifting the v2 variant set/semantics from v1's (that turns
-// an honest transient into a silent fork).
-
 module v2.std.execution_mode
 
 import v2.std.logic { Bool }
 
-// Mirror of v1 ExecutionMode: Hermetic replays fixtures (or modeled mock responses), no live I/O;
-// Wet dispatches live transports; Record is wet capture into the fixture store.
 type ExecutionMode
   = Hermetic
   | Wet
   | Record
 
-// v1 ExecutionMode::is_hermetic — true only for Hermetic (replay-only, no live effect).
 fn execution_mode_is_hermetic(mode: ExecutionMode) -> Bool {
   match mode {
     Hermetic => true
@@ -34,7 +15,6 @@ fn execution_mode_is_hermetic(mode: ExecutionMode) -> Bool {
   }
 }
 
-// v1 ExecutionMode::is_record — true only for Record (wet capture into the fixture store).
 fn execution_mode_is_record(mode: ExecutionMode) -> Bool {
   match mode {
     Hermetic => false
@@ -43,7 +23,6 @@ fn execution_mode_is_record(mode: ExecutionMode) -> Bool {
   }
 }
 
-// v1 ExecutionMode::is_wet_dispatch — Wet | Record both dispatch live transports.
 fn execution_mode_is_wet_dispatch(mode: ExecutionMode) -> Bool {
   match mode {
     Hermetic => false

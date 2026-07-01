@@ -1,8 +1,3 @@
-// extdeps/boot/linux_x86_boot.dag — Linux x86 direct-kernel boot image (Slice-0).
-//
-// Anchor: Documentation/arch/x86/boot.rst (Linux kernel boot protocol).
-// Concept attach: x86_64_linux ArchitectureProfile + ELF EntryPoint.
-
 module extdeps.boot.linux_x86_boot
 
 import extdeps.boot.freestanding_payload {
@@ -12,6 +7,16 @@ import extdeps.boot.freestanding_payload {
   PrebuiltPayload,
 }
 import std.types { NonEmptyStr }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.kernel.org/doc/html/latest/arch/x86/boot.html"
+  }
+}
 
 type LinuxX86BootImage {
   kernel_digest: NonEmptyStr,
@@ -23,13 +28,6 @@ type BootImageOutcome
   = BootImageAccepted { value: LinuxX86BootImage }
   | BootImageRejected { reason: BootImageRejectReason }
 
-// Coproduct ledger — **🟢 GREEN**
-// `HollowInitNotEmitProof` is the terminal reject arm (produced when init is
-// `HollowPrebuiltInit`). **🟡 YELLOW (scaffold)** — `BootImageRejectUnspecified`
-// reserved for v2 loader ≥2-arms constraint; never produced by
-// `accept_linux_x86_boot_image` until a second real reject reason lands.
-// dissolve-on: delete `BootImageRejectUnspecified` when a second reject reason
-// is modeled (e.g. invalid kernel placement) or unary-sum loader closes.
 type BootImageRejectReason
   = HollowInitNotEmitProof
   | BootImageRejectUnspecified

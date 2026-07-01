@@ -1,18 +1,8 @@
-// src/v2/compiler/self_host.dag
-// Scope: SINGLE AUTHORITY for the self-host fixed point (DESIGN.md §7). Owns (a) the fixed-point
-//   relation — bit-identical merkle-digest equality between consecutive emitted compiler stages
-//   (self_host_fixed_point_digests_match over v2.std.node.content_hash); (b) the Stage-A structural
-//   pre-check (stage_emission_equality over find_witness); (c) the whole-compiler runner shape,
-//   which stays fail-closed until execution substrate + candidate generation land (stage C).
-//   No self-host facts live elsewhere — bin/main.dag carries only the trampoline one-liner.
-// Status: Stage A realized — stage_emission_equality is a real executed structural-equality body.
-//   self_host_fixed_point_digests_match is the realized fixed-point predicate (de-risked on fixture
-//   stages in self_host/fixed_point_test.dag). self_host_fixed_point_validate stays fail-closed
-//   (stage C) and will consume digests_match once the v2 pipeline emits real stages over its source.
-//   Route B candidate-generation entry lives in self_host/candidate_generation.dag.
-
 module v2.compiler.self_host
 
+import extdeps.communication.medium { Lossless, Medium }
+import extdeps.filesystem.filesystem_io
+import v2.std.algebra { filter, fold_list }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.diagnostic {
@@ -24,7 +14,8 @@ import v2.std.diagnostic {
   port_locus,
   Rejected,
   Unavailable,
-  diagnostics_singleton
+  diagnostics_singleton,
+  outcome_accepted
 }
 import v2.std.find_witness {
   CandidateSet,
@@ -32,7 +23,8 @@ import v2.std.find_witness {
   UniqueOnly,
   find_witness,
 }
-import v2.std.node { content_hash, Node, Symbol }
+import v2.std.node { combine_hash, byte_limb_hash_peano_digest, Hash, Node, Symbol, symbol_identity_digest }
+import v2.std.text { String, string_is_empty }
 import v2.std.witness {
   Holds,
   StructuralPropertyWitness,
@@ -40,51 +32,47 @@ import v2.std.witness {
   Witness
 }
 
-
 type CoreNode = Node
 
-
 type SourceModels {
-  model_corpus: List<CoreNode>
+  stage1_committed_seed_source: Medium<String>
+  stage2_regen_emitted_source: Medium<String>
 }
 
+data self_host_equality_authority: Symbol = ^canonical_emitted_bytes
+
+type SelfHostStageEmission {
+  node: CoreNode
+  source: Medium<String>
+  digest: Hash
+}
+
+type SelfHostFixpointEqual {
+  over: Symbol
+  stage1: SelfHostStageEmission
+  stage2: SelfHostStageEmission
+}
 
 type StructurallyEqual {
   left: CoreNode
   right: CoreNode
 }
 
-
 type BootstrapRoundtripEqual {
   produced_stage: CoreNode
   expected_stage: CoreNode
 }
 
-
-type FixedPointEqual {
-  emitted_stage: CoreNode
-  reference_stage: CoreNode
-}
-
-
-// 🟢 Stage A realized (design-self-host-fixed-point.md §5/§7) — stage_emission_equality
-// consumes find_witness over the landed exact structural-equality zip-fold preservation rule.
 type StageEmissionEquality = Witness<StructurallyEqual>
-
 
 type BootstrapRoundtripCheck = Witness<BootstrapRoundtripEqual>
 
-
-type FixedPointCheck = Witness<FixedPointEqual>
-
+type FixedPointCheck = Witness<SelfHostFixpointEqual>
 
 type PromotionWitness {
   candidate_bootstrap_roundtrip_sub_check: BootstrapRoundtripCheck
   candidate_fixed_point_sub_check: FixedPointCheck
 }
-
-
-
 
 fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
   Diagnostic {
@@ -94,53 +82,139 @@ fn self_host_runner_not_realized_diagnostic() -> Diagnostic {
   }
 }
 
+fn self_host_fixpoint_digest_mismatch_diagnostic(
+  stage1: SelfHostStageEmission,
+  stage2: SelfHostStageEmission
+) -> Diagnostic {
+  Diagnostic {
+    reason: ^self_host_fixpoint_digest_mismatch,
+    at: node_locus(node: stage2.node),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
 
-// 🟡 scaffold shape — all sub-checks return Violates; not yet called from self_host_fixed_point_validate
-// (the main entry point returns fail-closed directly until execution substrate lands).
+fn source_text_code_unit_digest(text: String) -> Hash {
+  fold_list(
+    xs: text,
+    empty: symbol_identity_digest(sym: ^source_text_code_unit_digest_nil),
+    cons: fn(acc, ch) {
+      combine_hash(a: acc, b: byte_limb_hash_peano_digest(limb: ch))
+    }
+  )
+}
+
+fn canonical_emitted_bytes_digest(source: Medium<String>) -> Hash {
+  combine_hash(
+    a: symbol_identity_digest(sym: ^canonical_emitted_bytes),
+    b: source_text_code_unit_digest(text: source.carried)
+  )
+}
+
+fn self_host_stage_emission(
+  node: CoreNode,
+  source: Medium<String>
+) -> SelfHostStageEmission {
+  SelfHostStageEmission {
+    node: node,
+    source: source,
+    digest: canonical_emitted_bytes_digest(source: source)
+  }
+}
+
+fn self_host_fixpoint_equal(
+  stage1: SelfHostStageEmission,
+  stage2: SelfHostStageEmission
+) -> SelfHostFixpointEqual {
+  SelfHostFixpointEqual {
+    over: self_host_equality_authority,
+    stage1: stage1,
+    stage2: stage2
+  }
+}
+
+fn self_host_snake_closes(
+  stage1: SelfHostStageEmission,
+  stage2: SelfHostStageEmission
+) -> Bool {
+  stage1.digest == stage2.digest
+}
+
+fn self_host_fixpoint_witness(
+  stage1: SelfHostStageEmission,
+  stage2: SelfHostStageEmission
+) -> FixedPointCheck {
+  if self_host_snake_closes(stage1: stage1, stage2: stage2) {
+    Holds {
+      value: self_host_fixpoint_equal(stage1: stage1, stage2: stage2)
+    }
+  } else {
+    Violates {
+      diagnostic: self_host_fixpoint_digest_mismatch_diagnostic(
+        stage1: stage1,
+        stage2: stage2
+      )
+    }
+  }
+}
+
+fn source_models_regen_byte_pair_ready(models: SourceModels) -> Bool {
+  !string_is_empty(s: models.stage1_committed_seed_source.carried)
+    && !string_is_empty(s: models.stage2_regen_emitted_source.carried)
+}
+
+fn bootstrap_roundtrip_check(
+  produced_stage: CoreNode,
+  expected_stage: CoreNode
+) -> BootstrapRoundtripCheck {
+  match stage_emission_equality(
+    emitted_candidate: produced_stage,
+    reference_stage1: expected_stage
+  ) {
+    Holds { value: eq } =>
+      Holds {
+        value: BootstrapRoundtripEqual {
+          produced_stage: eq.right,
+          expected_stage: eq.left
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn fixed_point_scaffold(
+  stage1_node: CoreNode,
+  stage2_node: CoreNode,
+  source_models: SourceModels
+) -> FixedPointCheck {
+  self_host_fixpoint_witness(
+    stage1: self_host_stage_emission(
+      node: stage1_node,
+      source: source_models.stage1_committed_seed_source
+    ),
+    stage2: self_host_stage_emission(
+      node: stage2_node,
+      source: source_models.stage2_regen_emitted_source
+    )
+  )
+}
+
 fn candidate_promotion_witness(
   stage1_candidate: CoreNode,
-  reference_stage1: CoreNode
+  reference_stage1: CoreNode,
+  source_models: SourceModels
 ) -> PromotionWitness {
   PromotionWitness {
-    candidate_bootstrap_roundtrip_sub_check: bootstrap_roundtrip_scaffold(
+    candidate_bootstrap_roundtrip_sub_check: bootstrap_roundtrip_check(
       produced_stage: stage1_candidate,
       expected_stage: reference_stage1
     ),
     candidate_fixed_point_sub_check: fixed_point_scaffold(
-      emitted_stage: stage1_candidate,
-      reference_stage: reference_stage1
+      stage1_node: reference_stage1,
+      stage2_node: stage1_candidate,
+      source_models: source_models
     )
   }
 }
-
-
-fn bootstrap_roundtrip_scaffold(
-  produced_stage: CoreNode,
-  expected_stage: CoreNode
-) -> BootstrapRoundtripCheck {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^bootstrap_roundtrip_not_realized,
-      at: node_locus(node: expected_stage),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
-}
-
-
-fn fixed_point_scaffold(
-  emitted_stage: CoreNode,
-  reference_stage: CoreNode
-) -> FixedPointCheck {
-  Violates {
-    diagnostic: Diagnostic {
-      reason: ^fixed_point_not_realized,
-      at: node_locus(node: reference_stage),
-      correction: Unavailable { reason: ExternalContractUnknown }
-    }
-  }
-}
-
 
 fn stage_emission_closedness(reference_stage1: CoreNode) -> StructuralPropertyWitness {
   StructuralPropertyWitness {
@@ -149,27 +223,23 @@ fn stage_emission_closedness(reference_stage1: CoreNode) -> StructuralPropertyWi
   }
 }
 
-
-// 🟢 The self-host fixed-point relation (DESIGN.md §7): two consecutive emitted compiler stages
-// are a fixed point exactly when their canonical merkle digests are bit-identical. content_hash
-// (v2.std.node, 🟢 B1 merkle fold over the canonical Node form) IS the digest — no nicknamed
-// "rust digest"; the operand is the emitted stage Node, the digest is its content_hash. This is
-// the single authority for "iteration N matches iteration N+1"; self_host_fixed_point_validate
-// (fail-closed until stage C) consumes it once candidate generation emits real stage1/stage2.
 fn self_host_fixed_point_digests_match(
-  emitted_stage1: CoreNode,
-  emitted_stage2: CoreNode
+  stage1_node: CoreNode,
+  stage2_node: CoreNode,
+  source_models: SourceModels
 ) -> Bool {
-  content_hash(n: emitted_stage1) == content_hash(n: emitted_stage2)
+  self_host_snake_closes(
+    stage1: self_host_stage_emission(
+      node: stage1_node,
+      source: source_models.stage1_committed_seed_source
+    ),
+    stage2: self_host_stage_emission(
+      node: stage2_node,
+      source: source_models.stage2_regen_emitted_source
+    )
+  )
 }
 
-
-// Stage A: the structural-equality body is realized.
-// The emitted candidate is searched against the reference stage through the landed exact
-// structural-equality zip-fold preservation rule. A match yields Holds carrying the
-// StructurallyEqual witness; a divergent candidate yields Violates with the located
-// find_witness diagnostic (design §3 commitment 3 — divergence is a located diagnostic).
-// self_host_fixed_point_validate stays fail-closed for the whole-compiler path (stage C).
 fn stage_emission_equality(
   emitted_candidate: CoreNode,
   reference_stage1: CoreNode
@@ -198,13 +268,81 @@ fn stage_emission_equality(
   }
 }
 
+fn boundary_tag_bytes(filename: String, content: String) -> String {
+  concat(filename, concat("\n", content))
+}
+
+fn read_roster_manifest(manifest_path: String) -> List<String> {
+  let raw = filesystem_read(path: manifest_path).content
+  filter(xs: raw.split("\n"), predicate: fn(s) { !string_is_empty(s: s) })
+}
+
+fn fold_side_bytes(root: String, roster: List<String>) -> String {
+  fold_list(
+    xs: roster,
+    empty: "",
+    cons: fn(acc, filename) {
+      let path = concat(root, concat("/", filename))
+      let content = filesystem_read(path: path).content
+      concat(acc, boundary_tag_bytes(filename: filename, content: content))
+    }
+  )
+}
+
+fn source_models_from_roster_and_roots(
+  committed_root: String,
+  emitted_root: String,
+  roster: List<String>
+) -> SourceModels {
+  SourceModels {
+    stage1_committed_seed_source: Medium {
+      carried: fold_side_bytes(root: committed_root, roster: roster),
+      fidelity: Lossless
+    },
+    stage2_regen_emitted_source: Medium {
+      carried: fold_side_bytes(root: emitted_root, roster: roster),
+      fidelity: Lossless
+    }
+  }
+}
+
+fn source_models_from_manifest_and_roots(
+  committed_root: String,
+  emitted_root: String,
+  manifest_path: String
+) -> SourceModels {
+  source_models_from_roster_and_roots(
+    committed_root: committed_root,
+    emitted_root: emitted_root,
+    roster: read_roster_manifest(manifest_path: manifest_path)
+  )
+}
 
 fn self_host_fixed_point_validate(
   stage1_candidate: CoreNode,
   source_models: SourceModels,
   reference_stage1: CoreNode
 ) -> Outcome<PromotionWitness> {
-  Rejected {
-    diagnostics: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic())
+  if !source_models_regen_byte_pair_ready(models: source_models) {
+    Rejected {
+      diagnostics: diagnostics_singleton(d: self_host_runner_not_realized_diagnostic())
+    }
+  } else {
+    match fixed_point_scaffold(
+      stage1_node: reference_stage1,
+      stage2_node: stage1_candidate,
+      source_models: source_models
+    ) {
+      Holds { value: _ } =>
+        outcome_accepted(
+          value: candidate_promotion_witness(
+            stage1_candidate: stage1_candidate,
+            reference_stage1: reference_stage1,
+            source_models: source_models
+          )
+        )
+      Violates { diagnostic: d } =>
+        Rejected { diagnostics: diagnostics_singleton(d: d) }
+    }
   }
 }

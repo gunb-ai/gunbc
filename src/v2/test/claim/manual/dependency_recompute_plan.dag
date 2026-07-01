@@ -1,0 +1,143 @@
+module v2.test.manual.dependency_recompute_plan
+
+import v2.std.change {
+  AffectedDependency,
+  AffectedSet,
+  AffectedSetProduced,
+  Change,
+  ChangeSet,
+  DependencyDependent,
+  NodeChanged,
+  RecomputePlan
+}
+import v2.std.dependency {
+  DependencyView,
+  ProjectionDependsOn,
+  VerifiedBy,
+  topological_layers
+}
+import v2.std.diagnostic { Accepted, None }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
+data refinement_subject_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^refinement_subject_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data refinement_new_field_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^refinement_new_field_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data refinement_after_node: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^refinement_new_field_symbol },
+      target: refinement_new_field_node
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data testclaim_lens_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^testclaim_lens_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data boundary_test_lens_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^boundary_test_lens_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data target_test_projection_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^target_test_projection_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data dependency_projection_subgraph: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^testclaim_lens_symbol },
+      target: testclaim_lens_node
+    },
+    Edge {
+      label: Named { name: ^boundary_test_lens_symbol },
+      target: boundary_test_lens_node
+    },
+    Edge {
+      label: Named { name: ^target_test_projection_symbol },
+      target: target_test_projection_node
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data refinement_change_path: Path = Path {
+  steps: [^refinement_change_path_symbol]
+}
+
+data refinement_change: Change = Change {
+  kind: NodeChanged,
+  subject: refinement_after_node,
+  at: refinement_change_path
+}
+
+data refinement_change_set: ChangeSet = ChangeSet {
+  changes: [refinement_change]
+}
+
+data testclaim_dependency: DependencyView = DependencyView {
+  source: refinement_after_node,
+  dependent: testclaim_lens_node,
+  kind: VerifiedBy,
+  usage_site: testclaim_lens_node
+}
+
+data boundary_dependency: DependencyView = DependencyView {
+  source: refinement_after_node,
+  dependent: boundary_test_lens_node,
+  kind: VerifiedBy,
+  usage_site: boundary_test_lens_node
+}
+
+data target_projection_dependency: DependencyView = DependencyView {
+  source: boundary_test_lens_node,
+  dependent: target_test_projection_node,
+  kind: ProjectionDependsOn,
+  usage_site: target_test_projection_node
+}
+
+data refinement_affected_set: AffectedSet = AffectedSetProduced {
+  changes: refinement_change_set,
+  affected: [
+    AffectedDependency {
+      change: refinement_change,
+      dependency: testclaim_dependency,
+      target: DependencyDependent
+    },
+    AffectedDependency {
+      change: refinement_change,
+      dependency: boundary_dependency,
+      target: DependencyDependent
+    },
+    AffectedDependency {
+      change: refinement_change,
+      dependency: target_projection_dependency,
+      target: DependencyDependent
+    }
+  ],
+  exclusions: [],
+  restricted_to: [ProjectionDependsOn, VerifiedBy]
+}
+
+data refinement_recompute_plan: RecomputePlan = RecomputePlan {
+  affected: refinement_affected_set,
+  layers: topological_layers(graph_node: dependency_projection_subgraph),
+  diagnostic: Accepted { value: ^dependency_recompute_ok, diagnostics: None }
+}

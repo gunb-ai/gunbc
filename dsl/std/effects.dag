@@ -1,73 +1,11 @@
-// std/effects.dag -- Effect algebra for operation composition.
-//
-// An operation's effect on external state determines whether it is
-// idempotent, whether it composes safely with other operations, and
-// what verification the compiler generates.
-//
-// DESIGN PRINCIPLE:
-//   Idempotency is not a flag. It is a DERIVED PROPERTY of the
-//   effect's algebraic structure. An operation whose effect forms
-//   a lattice meet on the target state is idempotent by construction.
-//   The compiler doesn't ask "did you mark this idempotent?" — it
-//   checks "does this effect inhabit a lattice?"
-//
-// EXTERNAL AUTHORITY:
-//   - Lattice theory: Birkhoff (1940)
-//     Lattice = set with meet ∧ and join ∨, both idempotent,
-//     commutative, associative, with absorption.
-//     meet(a, a) = a is the idempotency law.
-//   - Effect algebras: Foulis, Bennett (1994)
-//     Compositional effects with partial combination.
-//   - Idempotent semirings: used in dataflow analysis, routing
-//     algebras, tropical geometry.
-//
-// RELATIONSHIP TO std/algebra.dag:
-//   Lattice<T> is declared in algebra.dag. This file applies the
-//   lattice structure to operation effects — the "T" is the state
-//   space that the operation modifies.
-//
-// RELATIONSHIP TO std/behavioral.dag:
-//   behavioral.dag declares OperationBehavior with idempotent: Bool.
-//   That flag dissolves when this algebra is wired: idempotency is
-//   derived from EffectShape, not declared.
-//
-// CONSUMERS:
-//   - Compiler: compose effects through workflows, prove idempotency
-//   - Test generation: emit f(f(x)) == f(x) tests for idempotent ops
-//   - Diagnostics: show the composition chain when idempotency breaks
-
 module std.effects
 
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, String, List }
 import std.realization_schedule { string_list_eq }
 import std.http_path {
   PathTemplate,
-  PathTemplateParseResult, ParsedPathTemplate, MalformedPathTemplate,
-  parse_path_template, has_path_params, last_path_param
+  has_path_params, last_path_param
 }
-
-// =========================================================================
-// Effect shapes: how an operation modifies external state
-// =========================================================================
-
-// The fundamental classification of an operation's effect.
-//
-// Each shape corresponds to an algebraic structure on the state space:
-//
-//   ReadEffect:      identity function on state (trivially idempotent)
-//   UpsertEffect:    lattice meet on Map<K, V> — sets key to value
-//                    meet(state, {k: v}) applied twice = applied once
-//   DeleteEffect:    lattice meet with bottom on key — removes key
-//                    meet(state, {k: ⊥}) applied twice = applied once
-//   CreateEffect:    monoid append when create-always (PostAlways) — NOT idempotent
-//                    create-if-absent (proven KeySource) — lattice meet, idempotent
-//   AppendEffect:    monoid append on ordered collection
-//                    NOT idempotent (appends duplicates)
-//
-// The state model determines the algebra:
-//   Map<K, V> with upsert/delete → BoundedLattice (idempotent)
-//   Set<T> with insert/remove    → BoundedLattice (idempotent)
-//   List<T> with append          → FreeMonoid (NOT idempotent)
 
 type EffectShape
   = ReadEffect
@@ -76,43 +14,20 @@ type EffectShape
   | CreateEffect { cause: CreateCause }
   | AppendEffect
 
-// Why a create-shaped effect was derived. PostAlways = fail-closed create-always
-// (no proven resource identity). CreateIfAbsent = guarded create with proven KeySource.
 type CreateCause
   = PostAlways
   | CreateIfAbsent { key_source: KeySource }
-
-// Where the idempotency key comes from.
-//
-// The key is what makes upsert/delete convergent: operating on the
-// same key with the same value produces the same state regardless
-// of how many times you apply it.
-//
-// PathParam:     key extracted from URL/path template ({id}, {name})
-// InputField:    key is a declared input field of the operation
-// CompositeKey:  key is a tuple of multiple fields
 
 type KeySource
   = PathParam { param: String }
   | InputField { field: String }
   | CompositeKey { fields: List<String> }
 
-// =========================================================================
-// Effect evidence: the idempotency proof
-// =========================================================================
-
-// Per-operation evidence of idempotency.
-//
-// Analogous to DescentEvidence in termination proofs:
-//   termination: "this argument is structurally smaller"
-//   idempotency: "this effect forms a lattice on the target state"
-
 type IdempotencyEvidence
   = LatticeEffect { shape: EffectShape }
   | IdentityEffect
   | NonIdempotent { shape: EffectShape, reason: String }
 
-// Whether an effect is idempotent — derived from its shape.
 fn is_idempotent_effect(shape: EffectShape) -> Bool {
   match shape {
     ReadEffect => true
@@ -127,8 +42,6 @@ fn is_idempotent_effect(shape: EffectShape) -> Bool {
   }
 }
 
-// dissolve-on: derived structural == on KeySource (closed coproduct equality) replaces this
-// hand-rolled predicate; interim owner: increment-1 create_double_init_collapsible identity.
 fn key_source_eq(left: KeySource, right: KeySource) -> Bool {
   match left {
     PathParam { param: pa } => match right {
@@ -146,9 +59,6 @@ fn key_source_eq(left: KeySource, right: KeySource) -> Bool {
   }
 }
 
-// Increment-1 membership: is this shape in the create-if-absent dedup-eligible class?
-// Pairwise Share collapse (same identity) is create_double_init_collapsible, not this predicate.
-// dissolve-on: increment-2 Share/dedup classifier surface replaces both interim predicates.
 fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
   match shape {
     CreateEffect { cause: cause } =>
@@ -160,8 +70,6 @@ fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
   }
 }
 
-// Pairwise Share collapse for increment-1 create-if-absent double-init dedup.
-// dissolve-on: increment-2 Share/dedup classifier surface replaces both interim predicates.
 fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
   match a {
     CreateEffect { cause: cause_a } =>
@@ -181,38 +89,16 @@ fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
   }
 }
 
-// =========================================================================
-// Effect composition: workflows compose effects
-// =========================================================================
-
-// Composed effect of a sequence of operations.
-//
-// A workflow is idempotent iff all its constituent effects are
-// idempotent. This is because lattice meets compose:
-//   meet_a ∘ meet_b applied twice = meet_a ∘ meet_b applied once
-//   (each individual meet is idempotent, and the composition of
-//   idempotent functions on orthogonal keys is idempotent)
-//
-// Non-idempotent effects poison the composition:
-//   meet_a ∘ append_b applied twice ≠ applied once
-//   (the append duplicates on the second application)
-
-// Per-operation effect entry in a workflow.
 type OperationEffect {
   operation_name: String
   shape: EffectShape
   evidence: IdempotencyEvidence
 }
 
-// Workflow-level idempotency judgment — a sum, not a Bool × optional
-// label product. The old `ComposedEffect { idempotent, breaking_operation }`
-// shape admitted contradictory states (e.g. idempotent true with a named
-// breaker). R3 F5: only these two arms exist; `compose_effects` returns them.
 type CompositionVerdict
   = IdempotentComposition
   | BrokenBy { first_breaker: OperationEffect }
 
-// Compose a list of operation effects into a workflow-level verdict.
 fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
   let non_idempotent = effects |> filter(e =>
     match e.evidence {
@@ -226,53 +112,6 @@ fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
   }
 }
 
-// =========================================================================
-// Effect derivation from transport facts
-// =========================================================================
-
-// The compiler derives EffectShape from facts it already has on
-// the service operation:
-//
-// | HTTP method | Key in path? | Derived shape        | Idempotent? |
-// |-------------|-------------|----------------------|-------------|
-// | GET         | —           | ReadEffect           | Yes         |
-// | PUT         | Yes ({id})  | UpsertEffect(PathParam) | Yes      |
-// | PUT         | No          | UpsertEffect(InputField) | Yes*    |
-// | DELETE      | Yes ({id})  | DeleteEffect(PathParam) | Yes      |
-// | POST        | Yes ({id})  | UpsertEffect(PathParam) | Yes      |
-// | POST        | No          | CreateEffect         | No          |
-// | PATCH       | Yes ({id})  | UpsertEffect(PathParam) | Yes      |
-//
-// * PUT without path key: the upsert key must come from an input
-//   field. The compiler looks for a field marked as identity/key.
-//
-// For shell transport:
-//   readonly operations → ReadEffect
-//   operations with idempotent flag → derive from command semantics
-//
-// The derivation replaces the manual `idempotent: Bool` on
-// OperationBehavior. The flag dissolves.
-
-// -------------------------------------------------------------------------
-// Modifier roles after v1 derivation lands
-// -------------------------------------------------------------------------
-// Three modifiers survive with distinct roles after this PR:
-//   idempotent on REST ops:
-//     - DISSOLVED where derivation Agrees (1 site: AccessVersion — GET)
-//     - KEPT where derivation is DerivationUnknown because POST always
-//       derives CreateEffect (fail-closed — no proven resource identity)
-//       (4 sites: AddVersion, GenerateAccessToken, Refresh, Exchange)
-//   readonly on REST GETs:
-//     - ASSERTABLE-REDUNDANT (check_modifier_vs_derivation returns Agrees)
-//     - Deletion deferred to v2 once derivation has wider track record
-//   readonly on shell/file/cron/cargo/git/gunbc ops:
-//     - LOAD-BEARING declaration, not a REST method proxy
-//     - INPUT to future derive_shell_effect_shape (out of scope for v1)
-
-// =========================================================================
-// Effect derivation implementation
-// =========================================================================
-
 type DerivedOpEffect {
   operation_name: String
   method: HttpMethod
@@ -280,12 +119,6 @@ type DerivedOpEffect {
   shape: EffectShape
 }
 
-// 🟡 SCAFFOLD. This coproduct remains as the v2 bridge result carrier while
-// surface parsing failures are still reported through local parser helpers.
-// `derive_op_effect` itself is structural: it consumes typed HttpMethod and
-// PathTemplate carriers and only constructs the successful derived effect.
-// Dissolution trigger: callers move to the shared compiler diagnostic/result
-// carrier and this local v2 bridge result can collapse away.
 type DeriveOpEffectResult
   = DerivedEffect { effect: DerivedOpEffect }
   | MalformedPathInput {
@@ -296,17 +129,6 @@ type DeriveOpEffectResult
       reason: String
     }
 
-// Fail-closed derivation: only classifies effects the model can prove.
-//
-// POST always derives CreateEffect — the table cannot distinguish
-// parent-scoped paths (POST /projects/{id}/secrets creates a CHILD)
-// from resource-identity paths without a structural subject-key witness.
-// This is conservative: declared `idempotent` modifiers on POST ops
-// surface as DerivationUnknown, not as false proofs.
-//
-// PUT/PATCH/DELETE require a proven path key. Without one, the
-// derivation returns CreateEffect (non-idempotent) rather than
-// fabricating an empty InputField key.
 fn derive_effect_shape(
   method: HttpMethod,
   path: PathTemplate
@@ -347,10 +169,6 @@ fn derive_op_effect(
     shape: shape
   } }
 }
-
-// =========================================================================
-// Modifier falsification
-// =========================================================================
 
 type ModifierAgreement
   = Agrees
@@ -406,10 +224,6 @@ fn check_modifier_vs_derivation(
   }
 }
 
-// =========================================================================
-// Test obligation generation
-// =========================================================================
-
 type IdempotencyTestObligation {
   operation_name: String
   effect_shape: EffectShape
@@ -429,36 +243,8 @@ fn generate_idempotency_obligations(
          })
 }
 
-// =========================================================================
-// Workflow-level effect concerns
-// =========================================================================
-
 type WorkflowEffectConcern {
   workflow_name: String
   create_op: String
   reason: String
 }
-
-// =========================================================================
-// Relationship to verification (KF-3)
-// =========================================================================
-
-// For operations proven idempotent, the compiler generates:
-//
-//   test "{operation} is idempotent" {
-//     let state1 = run(operation, input: test_input)
-//     let state2 = run(operation, input: test_input)
-//     assert state1 == state2
-//   }
-//
-// For workflows proven idempotent:
-//
-//   test "{workflow} is idempotent" {
-//     let state1 = run(workflow, config: test_config)
-//     let state2 = run(workflow, config: test_config)
-//     assert state1 == state2
-//   }
-//
-// These tests verify the MODEL against reality. The compile-time
-// proof says "if your model is right, this is idempotent." The
-// generated test says "and your model IS right."

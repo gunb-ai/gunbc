@@ -1,20 +1,3 @@
-// tools/layering_imports_transport.dag — host transport for the layering-imports gate.
-//
-// The deleted scripts/layering-imports-scan.sh enumerator is retired. Import enumeration
-// now lives in the single-authority projection v2.lens.layering_imports.layer_import_facts_live
-// (v1 handler: src/v1/stage0/src/layering_imports_project.rs, REUSING the resolver's own
-// extract_import_paths + collect_dag_files_tolerant). So this transport no longer scans —
-// it only runs the gunbc Bool witnesses that call that projection:
-//   * clean_tree (over the live std/extdeps roots) must hold;
-//   * the four scanner-execution receipts (over committed fixtures under
-//     src/v2/test/fixture/layering_scan) must detect their planted violation — the
-//     by-execution oracle that the projection == the deleted shell enumerator.
-// Source roots come from witness_layer_roots (§3 single authority); there is no manifest
-// overlay, no mktemp, no bash <script> any more.
-//
-// dissolve-on: emit(intent, Bash) makes this gunbc-claim shell program a Node tree the
-//   emitter serializes (matches v2.lens.host_language_transport_script).
-
 module tools.layering_imports_transport
 
 import extdeps.shell
@@ -31,13 +14,10 @@ data scanner_dir: String = "src/v2/test/claim/layering_imports/scanner/"
 data clean_tree_entry: String = "src/v2/test/claim/layering_imports/clean_tree_test.dag"
 data clean_tree_function: String = "clean_tree_no_wrong_direction_imports_holds"
 
-// --source-root <r> for every witness_layer_root (§3 single authority — same roots as the
-// rest of CI, NOT a hardcoded "src/v2").
 fn source_root_flags() -> List<ShellWord> {
   fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
 }
 
-// "$GUNBC" run <source-root flags> --entry <e> --function <f> --claim-run
 fn gunbc_claim_run(entry: String, function: String) -> ShellStmt {
   command(words: concat(
     concat([var_ref(name: "GUNBC"), lit(text: "run")], source_root_flags()),
@@ -45,9 +25,6 @@ fn gunbc_claim_run(entry: String, function: String) -> ShellStmt {
   ))
 }
 
-// One ShellProgram: ensure gunbc built, then the given claim-runs (set -e — any failing
-// claim fails the gate). The script: argument is a computed serialize_bash application, so
-// v2.lens.host_language_transport_script reads it as ComputedApplication (no literal blob).
 fn run_claims(stmts: List<ShellStmt>) -> Bool {
   let prog = ShellProgram {
     set_e: true,
@@ -57,21 +34,14 @@ fn run_claims(stmts: List<ShellStmt>) -> Bool {
   result.success
 }
 
-// Green pass: the live import projection over std/extdeps must hold.
 fn run_clean_tree_gate() -> Bool {
   run_claims(stmts: [gunbc_claim_run(entry: clean_tree_entry, function: clean_tree_function)])
 }
 
-// Scanner-execution receipt entry+function for one fixture scenario.
 fn scanner_claim(scenario: String, function: String) -> ShellStmt {
   gunbc_claim_run(entry: concat(scanner_dir, concat(scenario, ".dag")), function: function)
 }
 
-// All five scanner-execution detection receipts (coverage_domain_equivalence roster) —
-// each asserts the projection flags exactly one violation AND clean_tree goes RED on that
-// fixture set. This is the equivalence-by-execution oracle for the deleted enumerator.
-// std_imports_extdeps covers the std→extdeps import-arrow rule (DESIGN §3); the other four
-// cover the v2.compiler.* forms.
 fn run_scanner_perturb_receipts() -> Bool {
   run_claims(stmts: [
     scanner_claim(scenario: "std_v4_prefix", function: "scanner_std_v4_prefix_detects_holds"),

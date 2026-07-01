@@ -1,9 +1,3 @@
-//! v2 R2 generic instantiation — fold_list/fold_list_right cons|snoc callbacks bind T
-//! from xs: FreeMonoid<T> (dep-graph-2026-06-12 §4a / tidy-stag-172).
-//!
-//! Executes the v2 witness through the real v2 compile+interpret pipeline (same path as
-//! `gunbc run --source-root src/v2` claim runners).
-
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -12,11 +6,11 @@ use v1_compiler::v1_interpreter::{self, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const CERT_ENTRY: &str = "src/v2/compiler/manual/fold_list_generic_instantiation.dag";
+const CERT_ENTRY: &str = "src/v2/test/claim/fold_list_generic_instantiation.dag";
 const WITNESS_FN: &str = "fold_list_generic_instantiation_holds";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn cert_source_pairs() -> &'static Vec<(String, String)> {

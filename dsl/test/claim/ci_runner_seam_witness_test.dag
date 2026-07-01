@@ -1,11 +1,7 @@
-// dsl/test/claim/ci_runner_seam_witness_test.dag
-//
-// Phase 3a seam: ci.yml runs-on derives from compute_fabric ComputeOffer → RunnerSpec.
-
 module test.claim.ci_runner_seam_witness
 
-import gunbc.ci_fleet { gunbc_ci_fleet_offer, gunbc_ci_runner_spec }
-import gunbc.runner_spec_from_offer { runner_spec_from_offer }
+import gunbc.ci_fleet { gunbc_ci_fleet_offer }
+import gunbc.runner_spec_from_offer { runner_spec_from_offer, gunbc_ci_runner_spec }
 import gunbc.ci_workflow { ci_workflow }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import extdeps.github.actions { SelfHosted }

@@ -1,86 +1,8 @@
-// std.methods — minimal method-declaration registry.
-//
-// 🟡 TRANSITIONAL. Today's methods (`count`, `join`, `split`, `length`,
-// …) are STRING fields inside per-profile `AlgebraFieldTemplate`
-// records in `dsl/std/algebra.dag`, not standalone declarations
-// `DeclarationRef` can target. This registry elevates the unique
-// method-name set into top-level `data` bindings so
-// `MethodTemplateContract.dag_method: MethodRef` (refined from bare
-// `DeclarationRef` per #1175 substrate gap) has a real authority
-// target.
-//
-// Scope:
-//   - Full union of unique method names across the seven
-//     `dsl/std/algebra.dag` per-profile template lists
-//     (`ordered_ring_templates`, `approximate_field_templates`,
-//     `boolean_algebra_templates`, `boolean_algebra_collection_templates`,
-//     `free_monoid_scalar_templates`, `free_monoid_collection_templates`,
-//     `partial_function_templates`). 64 names from algebra. The registry
-//     IS the closed-system namespace authority for every
-//     algebra-template method name; not a demand-shaped subset for the
-//     first Grounding consumer.
-//   - Emit-disambiguation aliases. The per-target flat emit tables
-//     (`*_simple_method_specs` in `dsl/extdeps/languages/*/emit.dag`) key
-//     by bare method-name. Where one algebra method renders differently per
-//     profile, the emit table splits the name (e.g. `string_contains`,
-//     rendered `{arg} in {recv}` / `strings.Contains({recv}, {arg})`, vs
-//     `contains`). The algebra authority does NOT split: `dsl/std/algebra.dag`
-//     declares `contains` once on `free_monoid_scalar_templates` (String
-//     substring test) and once on `*_collection_templates` /
-//     `boolean_algebra_*` (membership), the algebra-profile coordinate
-//     carrying the disambiguation. Those emit aliases get a `MethodRef` row
-//     key here as additional `MethodDeclaration` bindings; they collapse
-//     back into algebra-profile-keyed dispatch when the emit tables migrate
-//     onto the registry-backed rows (#1133 / #1549 R3).
-//   - Flat name-only namespace:
-//     `join` / `length` / `contains` / `map` / `fold` / etc. each
-//     appear once, regardless of how many algebra profiles inhabit
-//     them. Algebra/profile-specific semantics stay in the existing
-//     `AlgebraFieldTemplate` records and the §6a `MethodContract`
-//     `(algebra_id, method_id)` cost/complexity coordinate; method
-//     identity is not owning-algebra identity.
-//   - Identity-only: each `MethodDeclaration` carries `name: String`
-//     and nothing else. No parameter lists, return types, size
-//     effects, cost shapes, profile fields, or render-template facts.
-//     Those live in `AlgebraFieldTemplate` (signature/cost) and
-//     per-target extdeps tables (templates).
-//
-// Dissolution: when method declarations grow first-class signature/
-// cost fields and the `AlgebraFieldTemplate` string-name pattern
-// retires, this registry's String-name field can refine to a typed
-// namespace identifier and the per-method `data` bindings can absorb
-// the per-method facts the templates currently carry.
-//
-// Drift trigger: a new method name added to any algebra template
-// list in `dsl/std/algebra.dag` MUST also land here as a new
-// `data <name>_method: MethodDeclaration` binding. The acceptance
-// test `method_registry_covers_all_algebra_template_names` enforces
-// this fail-closed by enumerating unique names and asserting each
-// resolves to a `MethodDeclaration` decl in the bootstrap Dag.
-
 module std.methods
 
-// 🟡 TRANSITIONAL. Identity-only method-name carrier. The decl name
-// is a `String` today; refines to a typed namespace identifier
-// (`KindName`-style) once the substrate exposes namespace-typed
-// declaration ids. See module docs above for dissolution path.
-//
-// Layering note: this file lives at `dsl/std/methods.dag` and keeps
-// its method-name carrier identity-only (`name: String`) rather than
-// carrying a heavier typed declaration reference, so the dsl-only std
-// tree stays free of spec-pipeline imports. The typed
-// `MethodRef { decl: DeclarationRef }` reference shape is not modeled
-// here for that reason.
 type MethodDeclaration {
   name: String
 }
-
-// ---------------------------------------------------------------------------
-// Method-name registry. One `data` binding per unique method name carried by
-// the seven per-profile algebra template lists in `dsl/std/algebra.dag`.
-// Sorted alphabetically. Each binding is a `MethodDeclaration`
-// with the `name` field matching the string used in algebra templates.
-// ---------------------------------------------------------------------------
 
 data add_method: MethodDeclaration = { name: "add" }
 data all_method: MethodDeclaration = { name: "all" }

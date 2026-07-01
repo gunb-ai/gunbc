@@ -1,8 +1,3 @@
-// src/v2/compiler/05_eval.dag
-// Scope: primary evaluation path over inferred tree/input subgraphs and TestClaim runner substrate.
-// Status: T-22 eval and TestClaim runner consume decomposed runtime interpretation algebra. Local control terminalization, runtime-value conformance, behavior dispatch, Outcome accumulation, and fold progress sentinels are staged below with explicit dissolution targets.
-// CompilesClaim: run_test_claim_runtime_assert compares actual to expected_value through runtime evaluation (tighter than legacy AssertKind Compiles, which Pass'd on any Accepted).
-
 module v2.compiler.eval
 
 import v2.compiler.infer {
@@ -178,7 +173,6 @@ import v2.extdeps.runtimes.v2_evaluator {
   v2_evaluator_runtime_wave1
 }
 
-// P2/P3: registered triple — runtime_identity, registry semantics_digest, structure witness (derived fn-ref symbols).
 type InterpretationCacheAuthority {
   runtime_identity: Symbol,
   interpretation: InterpretationAlgebra,
@@ -186,12 +180,11 @@ type InterpretationCacheAuthority {
   structure_witness: InterpretationStructureWitness
 }
 
-// RULING-1: pretty-much-done — eval input root remains arbitrary-node shaped for IRT-3; runtime interpretation lives in eval.
 type Inputs {
   root: Node
-  // Host row: `claim_input_root` in `root`; rhs eval pin carried for `run_emit_host` (emit_host.dag).
+
   expected_eval_root: Optional<Node>
-  // W3 claim runner pin carrier (Atom identity Symbol); eval still uses `root` / `expected_eval_root` Nodes.
+
   host_claim_pin: Optional<Node>
 }
 
@@ -223,8 +216,6 @@ fn inputs_for_emit_host(
   }
 }
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: Node-projectable InterpretationAlgebra; forbidden: literal EvalContext outside eval_context_with_semantics / eval_context_v4_evaluator_wave1.
-// Wave-2 effect-IO: declare-per-claim bundle + inject-per-run handler binding (design-v2-runtime-architecture.md §4.3, §7 Q-R3).
 type EffectIoEvalBundle {
   backend: EffectIoResourceBackend
   store: EffectIoFixtureStore
@@ -237,9 +228,6 @@ type EffectIoYieldOutcome {
   value: RuntimeValue
 }
 
-// 🟡 gated — feature:eval-with-context-only — consumer-internal run bundle selector; Absent is the
-// default for legacy eval(tree, interpretation, inputs) callers. dissolve-on-arrival: eval() removed
-// in favor of eval_with_context() as the sole entry (EffectIoEvalAbsent arm deleted with it).
 type EffectIoEvalContext
   = EffectIoEvalAbsent
   | EffectIoEvalPresent { bundle: EffectIoEvalBundle }
@@ -253,7 +241,6 @@ fn eval_context_effect_io(context: EvalContext) -> EffectIoEvalContext {
   context.effect_io
 }
 
-// P2/P3: semantics_digest is registry-only; structure_witness Symbols name each interpreter fn ref (co-located with algebra literals).
 fn eval_context_with_semantics(
   runtime_identity: Symbol,
   interpretation: InterpretationAlgebra,
@@ -274,7 +261,6 @@ fn eval_context_with_semantics(
   }
 }
 
-// Declare-per-claim + inject-per-run: fixture store and handler binding co-constructed at run start.
 fn eval_context_with_effect_io(
   runtime_identity: Symbol,
   interpretation: InterpretationAlgebra,
@@ -305,7 +291,6 @@ fn eval_context_with_effect_io(
   }
 }
 
-// Closed registry entry: v2_evaluator_runtime_id <-> v2_evaluator_interpretation_wave1 only.
 fn eval_context_v4_evaluator_wave1() -> EvalContext {
   eval_context_with_semantics(
     runtime_identity: ^v2_evaluator_runtime_id,
@@ -314,9 +299,6 @@ fn eval_context_v4_evaluator_wave1() -> EvalContext {
   )
 }
 
-// Closed registry: structural == on InterpretationAlgebra compares named top-level fn refs
-// (not runtime closure identity). Receipt: v2_evaluator_runtime_anchor interpretation-eq witnesses.
-// 🟡 gated — dissolve-on: Node-projectable InterpretationAlgebra registry keys.
 fn interpretation_structure_witness_slots_digest(w: InterpretationStructureWitness) -> Hash {
   combine_hash(
     a: combine_hash(
@@ -343,7 +325,6 @@ fn interpretation_structure_witness_digest(
   )
 }
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — consumer: interpretation_algebra_executed_slots_digest / test_claim_interpretation_cache_digest_authority — bind gunbc#4758 — dissolve-on: content_hash(Node) of interpreter fn body replaces fn-ref equality in interpretation_*_executed_digest; forbidden: permanent untagged hand-rolled registry-symbol slot digests in 05_eval.
 fn interpretation_value_interpreter_executed_digest(v: ValueInterpreter) -> Hash {
   if v.allocate_literal == v2_eval_wave1_allocate_literal {
     test_claim_symbol_digest(sym: ^v2_eval_wave1_allocate_literal_sym)
@@ -386,7 +367,6 @@ fn interpretation_bind_interpreter_executed_digest(b: BindInterpreter) -> Hash {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature:T22-EVAL-CACHE-HASHES — consumer: interpretation_algebra_executed_structure_digest — bind gunbc#4758 — dissolve-on: content_hash(Node) of interpreter fn body replaces fn-ref equality in interpretation_*_slot_coherent / interpretation_structure_witness_coherent; forbidden: permanent untagged Bool registry-membership predicates in 05_eval.
 fn interpretation_value_interpreter_slot_coherent(v: ValueInterpreter, witness_sym: Symbol) -> Bool {
   if v.allocate_literal == v2_eval_wave1_allocate_literal {
     test_claim_symbol_digest(sym: ^v2_eval_wave1_allocate_literal_sym) == test_claim_symbol_digest(sym: witness_sym)
@@ -510,13 +490,11 @@ fn eval_context_interpretation(context: EvalContext) -> InterpretationAlgebra {
   context.cache_authority.interpretation
 }
 
-// RULING-1: needs-more-work — typed-input bridge until TestClaim input projection lands; cache digests derive from evaluator_input at the cache-key boundary (monomorphic digest fns per T), not a parallel stored digest field.
 type TestClaimTypedInput<T> {
   evaluator_input: T
   evaluator_pin: Symbol
 }
 
-// RULING-1: needs-more-work — bridge subject for current TestClaim execution rows.
 type TestClaimEvalSubject<T> {
   claim: TestClaim
   context: EvalContext
@@ -524,7 +502,6 @@ type TestClaimEvalSubject<T> {
   input: TestClaimTypedInput<T>
 }
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: single content_hash(TestClaim eval_subject Node) replaces partial digests; claim_hash + interpretation_hash are derived at the boundary via test_claim_cache_key_* (not stored fields).
 type TestClaimCacheKey<T> {
   eval_subject: TestClaimEvalSubject<T>
 }
@@ -537,24 +514,15 @@ fn test_claim_cache_key_interpretation_hash_node(key: TestClaimCacheKey<Node>) -
   test_claim_cache_interpretation_hash_node(subject: key.eval_subject)
 }
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — bind IRT-4 — receipt carries derived partial digests (tree/facts, registered interpretation authority, evaluator pin / Node input).
 type TestClaimCacheReceipt<T> {
   key: TestClaimCacheKey<T>
 }
 
-// RULING-1: needs-more-work — executable corpus runner will replace Wave-0 run rows.
 type TestClaimRun<S, A> {
   cache: TestClaimCacheReceipt<S>
   verdict: Verdict<TestClaimEvalSubject<S>, A>
 }
 
-// Canonical projection: a TestClaimRun's claim is the claim of its cached
-// eval subject. Single-authority accessor so consumers (e.g. corpus
-// rosters / runners) never carry a parallel claim field beside a run.
-// Stepped typed accessors — each preserves the generic at the parameter
-// boundary so the chained projection from TestClaimRun<S,A> down to the
-// TestClaim resolves cleanly (v2 inference does not currently propagate
-// generics through chained field access without re-quoting the type).
 fn test_claim_cache_key_claim<T>(key: TestClaimCacheKey<T>) -> TestClaim {
   key.eval_subject.claim
 }
@@ -579,13 +547,11 @@ type EvalFoldState {
   value: Outcome<RuntimeValue>
 }
 
-// 🟢 coproduct dissolution — EvalFoldState carries one explicit progress authority for child-fold completion.
 type EvalProgress
   = AwaitingChildren { processed: Int }
   | ReadyToInterpret
   | Interpreted
 
-// 🟡 gated — feature:T22-EVAL-CACHE-HASHES — dissolve-on: content_hash(Node) of interpreter fn body replaces per-slot unregistered sentinel; interim slot tag + witness fold when slot_coherent is false.
 fn test_claim_typed_input_node(evaluator_input: Node, evaluator_pin: Symbol) -> TestClaimTypedInput<Node> {
   TestClaimTypedInput {
     evaluator_input: evaluator_input,
@@ -611,7 +577,6 @@ fn test_claim_evaluation_nodes_digest(c: TestClaim) -> Hash {
   )
 }
 
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: content_hash(Node projection of Diagnostic / Correction / Locus / TestClaim) replaces hand-rolled coproduct digest folds below.
 fn no_correction_reason_digest(reason: NoCorrectionReason) -> Hash {
   match reason {
     UserInputBoundary =>
@@ -638,7 +603,6 @@ fn correction_verdict_digest(c: Correction) -> Hash {
   }
 }
 
-// ByteRange offsets use O(log |i|) base-256 `byte_offset_cache_key` (not Peano on |i|); ineligible offsets fail-closed at the cache boundary.
 fn byte_offset_cache_key_extent_component(key: ByteOffsetCacheKey) -> Hash {
   match key {
     ByteOffsetCacheEligible { digest: digest } => digest
@@ -694,7 +658,6 @@ fn locus_cache_digest(at: Locus) -> Hash {
   }
 }
 
-// Canonical diagnostic digest for cache keys: locus + reason + correction (aligned with diagnostic_eq).
 fn diagnostic_cache_digest(d: Diagnostic) -> Hash {
   combine_hash(
     a: locus_cache_digest(at: d.at),
@@ -750,7 +713,6 @@ fn test_claim_claim_body_cache_digest(c: TestClaim) -> Hash {
   }
 }
 
-// IRT-4 claim_hash: assertion-shape variant tag, evaluation-node frontier, and diagnostic authority.
 fn test_claim_claim_hash_digest(c: TestClaim) -> Hash {
   combine_hash(
     a: test_claim_variant_cache_digest(c: c),
@@ -854,7 +816,6 @@ fn inferred_tree_digest(tree: InferredTree) -> Hash {
   )
 }
 
-// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: single content_hash(TestClaim eval_subject) replaces InterpretationCacheDigestAuthority; interim fail-closed registered vs ineligible cache key component (not a bare Hash sentinel).
 type InterpretationCacheDigestAuthority
   = InterpretationCacheRegistered {
       runtime_identity: Symbol,
@@ -969,10 +930,6 @@ fn test_claim_cache_receipt(subject: TestClaimEvalSubject<Node>) -> TestClaimCac
   test_claim_cache_receipt_node(subject: subject)
 }
 
-// StructuralEqualsClaim: lhs admitted well-formed but structurally != rhs. An honest
-// value mismatch (the model produced the wrong receipt), distinct from a harness rejection.
-// Fail-closed (P3/P5): a fixed-arity wave-1 callee invoked with MORE actuals than the
-// callee's declared signature admits. The extras must refuse, never be silently dropped.
 fn eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -1303,7 +1260,6 @@ fn eval_bind_arrow_params(
   )
 }
 
-// True iff `args` has an actual at index `wanted`. Used to fail closed on excess actuals.
 fn eval_actual_present(args: List<RuntimeValue>, wanted: Int, node: Node) -> Bool {
   match list_nth(
     xs: args,
@@ -1323,12 +1279,6 @@ fn eval_transform_callee_edge(node: Node) -> Outcome<Edge> {
   )
 }
 
-// 🟡 gated — predicate-dissolution interim — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_has_callee_reference
-// (executed by comprep_eval_by_execution keystone) —
-// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's callee path consumes the canonical
-// node_query dispatch surface (Node-projectable connective dispatch) instead of inline
-// Node.kind/TypeNode shape matches; owner/lane: Mgr-RUNTIME — trigger: the source-driven
-// callee-dispatch wave lands; forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
 fn eval_node_is_arrow(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Arrow } => true
@@ -1344,7 +1294,6 @@ fn eval_node_is_callee_reference(node: Node) -> Bool {
   }
 }
 
-// Exact-arity gate (P3/P5): true iff `node` has NO child at index `wanted`.
 fn eval_child_absent(node: Node, wanted: Int) -> Bool {
   match eval_nth_child(
     node: node,
@@ -1356,36 +1305,24 @@ fn eval_child_absent(node: Node, wanted: Int) -> Bool {
   }
 }
 
-// 🟡 gated — COMPREP wave-1 callee admission interim — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node Arrow
-// exact-arity arm (executed by comprep_eval_by_execution keystone excess-signature red) —
-// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's callee path consumes the canonical
-// node_query dispatch surface (Arrow.body + declared arity) instead of hand-rolled child-index
-// absence checks; owner/lane: Mgr-RUNTIME — trigger: the resolve→body_producer bridge lands;
-// forbidden: permanent untagged Bool callee-admission predicates in 05_eval.
 fn eval_arrow_admits_callee_dispatch(arrow: Node) -> Bool {
-  // Wave-1 Arrow is [domain, codomain, codomain] positional + named body — reject positional-3+.
+
   match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 3) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
-// 🟡 gated — COMPREP wave-1 callee admission interim — feature:COMPREP-WAVE1-EVAL — consumer:eval_transform_node Transform-body
-// exact-arity arm (executed by comprep_eval_by_execution keystone excess-body red) —
-// bind:node://adhoc-9a72d4fb-8c2 — dissolve-on: eval's callee path consumes the canonical
-// node_query dispatch surface instead of hand-rolled child-index absence checks;
-// owner/lane: Mgr-RUNTIME — trigger: the resolve→body_producer bridge lands; forbidden:
-// permanent untagged Bool callee-admission predicates in 05_eval.
 fn eval_transform_body_admits_dispatch(body: Node) -> Bool {
   match body.kind {
     ComputationNode { behavior: Transform } =>
-      // Wave-1 Transform body is [operator, operand, operand] — reject positional-3+.
+
       match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
         Present { value: _ } => false
         Absent => true
       }
     ComputationNode { behavior: Branch } =>
-      // COMPREP wave-2 M0-B1 if-then-else: [cond, then, else] — reject positional-3+.
+
       match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
         Present { value: _ } => false
         Absent =>
@@ -1395,7 +1332,7 @@ fn eval_transform_body_admits_dispatch(body: Node) -> Bool {
           }
       }
     ComputationNode { behavior: Bind } =>
-      // Demand-driven Bind: [key, value, body] — reject positional-3+.
+
       match list_at_optional(xs: node_positional_child_targets(node: body), index: 3) {
         Present { value: _ } => false
         Absent =>
@@ -1405,7 +1342,7 @@ fn eval_transform_body_admits_dispatch(body: Node) -> Bool {
           }
       }
     ComputationNode { behavior: Loop } =>
-      // Demand-driven Loop: [body] — reject positional-1+.
+
       match list_at_optional(xs: node_positional_child_targets(node: body), index: 1) {
         Present { value: _ } => false
         Absent =>
@@ -1437,15 +1374,6 @@ fn eval_transform_has_callee_reference(node: Node) -> Bool {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
-// consumer:eval_edge_is_runtime_argument (executed by
-// comprep_eval_lazy_arm_branch_suppression_holds keystone) —
-// bind:node://adhoc-e80d87aa-297 — dissolve-on: demand-driven Branch/Loop traversal lands
-// (eval_runtime_node dispatches control nodes directly, bypassing fold_node; unchosen arms
-// do not execute); current shape is channel suppression only — arm bodies still execute
-// during fold_node's bottom-up catamorphism, their outcomes are dropped from child_values;
-// owner/lane: Mgr-RUNTIME Mgr-§2 — trigger: demand-driven carrier (sharp-ibex-851) lands;
-// forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
 fn eval_node_is_branch(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Branch } => true
@@ -1453,15 +1381,6 @@ fn eval_node_is_branch(node: Node) -> Bool {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature:EVAL-BRANCH-CHANNEL-SUPPRESSION —
-// consumer:eval_edge_is_runtime_argument (executed by
-// comprep_eval_lazy_arm_loop_suppression_holds keystone) —
-// bind:node://adhoc-e80d87aa-297 — dissolve-on: demand-driven Branch/Loop traversal lands
-// (eval_runtime_node dispatches control nodes directly, bypassing fold_node; loop body folds
-// zero times per iteration); current shape is channel suppression only — loop children still
-// execute during fold_node's bottom-up catamorphism, their outcomes are dropped from child_values;
-// owner/lane: Mgr-RUNTIME Mgr-§2 — trigger: demand-driven carrier (sharp-ibex-851) lands;
-// forbidden: permanent untagged Bool substrate-shape predicates in 05_eval.
 fn eval_node_is_loop(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Loop } => true
@@ -1469,8 +1388,6 @@ fn eval_node_is_loop(node: Node) -> Bool {
   }
 }
 
-// Canonical roundtrip Transform input (declare-per-claim locator/payload leaves; wave-1 gate pairs
-// this callee-free 2-argument Transform with EffectIoEvalPresent — never with EffectIoEvalAbsent).
 fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
   Node {
     kind: ComputationNode { behavior: Transform },
@@ -1482,10 +1399,6 @@ fn effect_io_roundtrip_transform(locator: Node, payload: Node) -> Node {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim —
-// feature:V4-EFFECTS-IO — consumer:eval_with_context effect-IO roundtrip arm —
-// dissolve-on-arrival: EffectIoRoundtrip behavior variant or declared roundtrip carrier replaces
-// callee-free 2-arg Transform shape match; forbidden: permanent untagged Bool roundtrip predicates in 05_eval.
 fn eval_node_is_effect_io_roundtrip(node: Node, effect_io: EffectIoEvalContext) -> Bool {
   match effect_io {
     EffectIoEvalAbsent => false
@@ -1523,8 +1436,6 @@ fn eval_bundle_with_receipt_appended(
   }
 }
 
-// Eval yields a typed EffectRequest to the inject-per-run handler binding; handler-returns-value resumes the fold (Q-R2).
-// Appends each yield to receipt_log (design §4.4 replay surface).
 fn eval_yield_effect_request(
   bundle: EffectIoEvalBundle,
   request: EffectRequest
@@ -1550,8 +1461,6 @@ fn eval_effect_io_roundtrip_args_present(args: List<RuntimeValue>) -> Bool {
     && eval_actual_present(args: args, wanted: 1, node: symbol_atom_node(sym: ^effect_io_roundtrip_marker))
 }
 
-// ReadResource→WriteResource round-trip observed by eval: yield write, apply store, rebind handlers, yield read, resume with value.
-// Exported for direct-orchestration witnesses (bypasses fold when isolating handler resume).
 fn eval_effect_io_roundtrip(
   bundle: EffectIoEvalBundle,
   args: List<RuntimeValue>,
@@ -1653,7 +1562,7 @@ fn eval_transform_node(
         match effect_io {
           EffectIoEvalPresent { bundle: b } =>
             eval_effect_io_roundtrip(bundle: b, args: args, node: node)
-          // Totality arm only: eval_node_is_effect_io_roundtrip is false when Absent (defensive).
+
           EffectIoEvalAbsent =>
             outcome_rejected(
               d: eval_diagnostic(reason: ^eval_rejected_effect_io_unbound, node: node)
@@ -1812,6 +1721,16 @@ fn eval_bind_node_eval(
   effect_io: EffectIoEvalContext
 ) -> Outcome<RuntimeValue> {
   match interpreter {
+    ValueRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    TransformRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    BranchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    LoopRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
+    MatchRuntimeInterpreter { interpreter: _ } =>
+      outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
     BindRuntimeInterpreter { interpreter: bind } =>
       bind_outcome(
         o: eval_bind_key(node: node),
@@ -1853,7 +1772,6 @@ fn eval_bind_node_eval(
           )
         }
       )
-    _ => outcome_rejected(d: eval_diagnostic(reason: ^eval_rejected_type_node, node: node))
   }
 }
 
@@ -2407,12 +2325,6 @@ fn eval_fold_step(
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature:COMPREP-EVAL-CONTROL-DISPATCH — consumer:eval_runtime_node
-// (demand-driven spine gate before data-flow fold) — bind: lazy-arm ruling adhoc-edb982e2-4a4;
-// dissolve-on: eval_runtime_node routes via Node-projectable control-transfer dispatch surface
-// instead of inline ComputationNode { behavior: Branch|Loop|Bind } shape match; owner/lane:
-// Mgr-§2 (sharp-ibex-851) — trigger: control-transfer dispatch registry lands; forbidden:
-// permanent untagged Bool control-transfer predicates in 05_eval.
 fn eval_runtime_node_is_control_transfer(node: Node) -> Bool {
   match node.kind {
     ComputationNode { behavior: Branch } => true
@@ -2484,16 +2396,6 @@ fn eval_runtime_control_node(
   )
 }
 
-// 🟡 gated — feature:COMPREP-EVAL-NESTED-ARG-CONTROL — consumer:eval_runtime_node_via_data_flow_fold
-// (data-flow / Transform positional-arg descent) — bind: lazy-arm ruling adhoc-edb982e2-4a4;
-// #4738 covers spine-reached control dispatch only (eval_runtime_control_node). This fold path
-// still eager-evaluates Branch/Bind/Loop children used as expression-position args (unconditional
-// fold_node / eval_fold_step descent; untaken arms execute; taken arm may double-eval when
-// eval_branch_node_eval re-runs the chosen arm after fold completion).
-// dissolve-on: follow-on carrier comprep/eval-nested-arg-control-lazy (Mgr-§2 lane) with nested-arg
-// witness; gunbc#4737 channel-suppression dissolves on THAT carrier (composes until then), NOT on
-// #4738; forbidden: spine acceptance witness claiming coverage of expression-position control;
-// owner/lane: Mgr-§2 (sharp-ibex-851); trigger: nested-arg discriminating witness RED.
 fn eval_runtime_node_via_data_flow_fold(
   node: Node,
   tree: InferredTree,
@@ -2603,8 +2505,6 @@ fn eval_node(tree: InferredTree, inputs: Inputs) -> Outcome<Node> {
   )
 }
 
-// Wave-1 witness receipt (IRT-3): structural admission for TypeNode/Conj claim inputs — runtime
-// eval rejects TypeNode (eval_interpret_node); well-formed admission is the eval frontier here.
 fn eval_round_trip_claim_input_for_verdict(input: Node) -> Outcome<Node> {
   if well_formed(n: input) {
     Accepted { value: input, diagnostics: None }
@@ -2617,9 +2517,6 @@ fn eval_round_trip_claim_input_for_verdict(input: Node) -> Outcome<Node> {
   }
 }
 
-// Wave-1 readiness receipt: Pass requires admitted input plus dag_round_trip_wave1_authorities_ready
-// re-derived from dag.dag (P2); does not compare actual to embedded ready atoms in input.
-// Emit→ingest fidelity is W1b / T-36 follow-up, not this verdict.
 fn run_test_claim_round_trip_verdict(
   actual: Outcome<Node>,
   at: Node
@@ -2671,11 +2568,6 @@ fn run_test_claim_assert(
   run_test_claim_assert_decided(claim: claim, actual: actual, at: at)
 }
 
-// StructuralEqualsClaim verdict (runtime A=RuntimeValue, mirroring the round-trip bridge).
-// `actual` is the structurally-admitted lhs (well-formed → Accepted{lhs}; malformed →
-// Rejected). Equal to rhs → Pass; well-formed but unequal → honest mismatch Fail
-// (`eval_structural_equals_mismatch`); malformed → invalid-node Fail. No runtime eval of
-// the receipt nodes — that is what wrongly rejected these claims as `eval_rejected_type_node`.
 fn run_test_claim_structural_equals_verdict(
   actual: Outcome<Node>,
   rhs: Node,
@@ -2780,9 +2672,7 @@ fn run_test_claim_runtime_assert(
         verdict_fail(actual: actual)
       }
     }
-    // Unreachable in practice: `run_test_claim` routes StructuralEqualsClaim to the
-    // structural verdict and never calls the runtime assert for it. Present only so this
-    // match stays exhaustive over the TestClaim coproduct; mirrors EqualsClaim defensively.
+
     StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } => {
       let expected = eval(tree: tree, interpretation: interpretation, inputs: inputs_root_only(root: rhs))
       if accepted_runtime_value_outcome_eq(a: actual, b: expected) {
@@ -2817,8 +2707,6 @@ fn run_test_claim_runtime_assert(
   }
 }
 
-// Fail-closed: any Deferred or Fail in the list blocks Pass; [] is Fail (no fabricated Pass).
-// Empty-case policy: Fail with eval_empty_verdict_list diagnostic (context-specific at-node).
 fn aggregate_verdicts<S, T>(
   rs: List<Verdict<TestClaimEvalSubject<S>, T>>,
   at: Node
@@ -2848,10 +2736,7 @@ fn run_test_claim(
           at: at
         )
       }
-    // StructuralEqualsClaim: admit lhs structurally (well-formed, NO runtime eval — the
-    // value-evaluator legitimately rejects type/receipt nodes) and compare to rhs by
-    // node-equality. A real difference reads as an honest mismatch
-    // (`eval_structural_equals_mismatch`), NOT a `eval_rejected_type_node` rejection.
+
     StructuralEqualsClaim { rhs: rhs, label: _, anchor: _, lhs: _, classification: _ } =>
       TestClaimRun {
         cache: test_claim_cache_receipt_node(subject: subject),

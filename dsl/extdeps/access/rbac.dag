@@ -1,24 +1,9 @@
-// extdeps/access/rbac.dag -- "What is (NIST) Role-Based Access Control?"
-//
-// Permissions are assigned to roles, roles to users; a senior role inherits a junior role's
-// permissions (role hierarchy); a session activates a subset of a user's roles. Faithful model
-// of Core + Hierarchical RBAC, keeping the standard's relation names (UA, PA, RH, PRMS = OPS×OBS).
-//
-// Source: ANSI INCITS 359-2004, "Role Based Access Control" (Ferraiolo, Sandhu, Gavrila, Kuhn,
-//   Chandramouli) — the NIST RBAC standard.
-//   https://csrc.nist.gov/projects/role-based-access-control
-//
-// One of several access-control systems in extdeps/access; the std abstraction is derived from
-// their commonality and validated against each (DESIGN §3), not re-coined from one.
-
 module extdeps.access.rbac
 
 import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-// External-authority anchor (promotes the Source citation above to the structured carrier
-// that v2.lens.extdeps_external_authority gates on — DESIGN §3).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -26,42 +11,35 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// PRMS ⊆ OPS × OBS — a permission is an operation on an object.
 type Permission {
-  operation: NonEmptyStr   // OPS, e.g. "read", "write", "approve"
-  object: NonEmptyStr      // OBS, e.g. a resource name
+  operation: NonEmptyStr
+  object: NonEmptyStr
 }
 
-// UA ⊆ USERS × ROLES — a user is assigned a role.
 type UserAssignment {
   user: NonEmptyStr
   role: NonEmptyStr
 }
 
-// PA ⊆ PRMS × ROLES — a permission is assigned to a role.
 type PermissionAssignment {
   permission: Permission
   role: NonEmptyStr
 }
 
-// RH ⊆ ROLES × ROLES (a partial order): `senior` inherits the permissions of `junior`.
 type RoleInheritance {
   senior: NonEmptyStr
   junior: NonEmptyStr
 }
 
-// SESSIONS / session_roles — a session activates a subset of a user's authorized roles.
 type Session {
   user: NonEmptyStr
   active_roles: List<NonEmptyStr>
 }
 
-// A full Core+Hierarchical RBAC policy. (Constrained RBAC adds SSD/DSD separation-of-duty
-// constraints — omitted here; this is the assignment core the std abstraction is derived from.)
 type RbacPolicy {
   users: List<NonEmptyStr>
   roles: List<NonEmptyStr>
-  user_assignments: List<UserAssignment>          // UA
-  permission_assignments: List<PermissionAssignment>  // PA
-  role_hierarchy: List<RoleInheritance>           // RH
+  user_assignments: List<UserAssignment>
+  permission_assignments: List<PermissionAssignment>
+  role_hierarchy: List<RoleInheritance>
 }

@@ -1,31 +1,20 @@
-// src/v2/extdeps/formatters/google_java_format.dag
-// Scope: google-java-format style selection model — no user-configurable algorithm options.
-// Status: T-4.16 scaffold — style toggle grounded in google-java-format README.
-// Anchor: https://github.com/google/google-java-format
-
 module v2.extdeps.formatters.google_java_format
 
 import v2.std.patch { ConfigPatchRecord, config_patch_layer }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoogleJavaFormatStyle
   = GoogleJavaFormatGoogle
   | GoogleJavaFormatAosp
-
 
 type GoogleJavaFormatConfig {
   style: GoogleJavaFormatStyle,
 }
 
-
 data google_java_format_defaults: GoogleJavaFormatConfig = GoogleJavaFormatConfig {
   style: GoogleJavaFormatGoogle,
 }
 
-
 type GoogleJavaFormatConfigPatch = ConfigPatchRecord<GoogleJavaFormatConfig>
-
 
 fn google_java_format_layer(base: GoogleJavaFormatConfig, patch: GoogleJavaFormatConfigPatch) -> GoogleJavaFormatConfig {
   config_patch_layer(base: base, patch: patch)

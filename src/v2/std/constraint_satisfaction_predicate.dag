@@ -1,10 +1,4 @@
-// src/v2/std/constraint_satisfaction_predicate.dag
-// Scope: mechanical constraint-satisfaction preservation check.
-// Status: T-25-tail predicate prover.
-
-
 module v2.std.constraint_satisfaction_predicate
-
 
 import v2.std.node { Node, well_formed }
 fn constraint_satisfaction_preservation_holds(

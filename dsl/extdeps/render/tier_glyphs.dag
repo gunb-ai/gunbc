@@ -1,29 +1,31 @@
-// extdeps/render/tier_glyphs.dag — Total Tier→glyph product (one field per variant).
-//
-// Each field is a distinct encoding authority (ascii_glyph / unicode_glyph / emoji_glyph).
-// Illegal states (missing/duplicate tier) are unrepresentable.
-
 module extdeps.render.tier_glyphs
 
-import extdeps.render.ascii_glyph { AsciiGlyph, ascii_glyph_text }
-import extdeps.render.emoji_glyph { EmojiGlyph, emoji_glyph_text }
-import extdeps.render.unicode_glyph { UnicodeGlyph, unicode_glyph_text }
+import extdeps.render.glyph { Glyph, glyph_text }
 import std.symbols { Tier }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-type TierGlyphs {
-  ascii: AsciiGlyph
-  unicode: UnicodeGlyph
-  emoji: EmojiGlyph
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.unicode.org/versions/latest/"
+  }
 }
 
-fn glyphs_for_tiers(emoji: EmojiGlyph, unicode: UnicodeGlyph, ascii: AsciiGlyph) -> TierGlyphs {
+type TierGlyphs {
+  ascii: Glyph
+  unicode: Glyph
+  emoji: Glyph
+}
+
+fn glyphs_for_tiers(emoji: Glyph, unicode: Glyph, ascii: Glyph) -> TierGlyphs {
   { emoji: emoji, unicode: unicode, ascii: ascii }
 }
 
 fn glyph_at(glyphs: TierGlyphs, tier: Tier) -> String {
   match tier {
-    Emoji   => emoji_glyph_text(g: glyphs.emoji)
-    Unicode => unicode_glyph_text(g: glyphs.unicode)
-    Ascii   => ascii_glyph_text(g: glyphs.ascii)
+    Emoji   => glyph_text(g: glyphs.emoji)
+    Unicode => glyph_text(g: glyphs.unicode)
+    Ascii   => glyph_text(g: glyphs.ascii)
   }
 }

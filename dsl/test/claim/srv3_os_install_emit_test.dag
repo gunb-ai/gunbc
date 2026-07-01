@@ -1,0 +1,34 @@
+module test.claim.srv3_os_install_emit
+
+import std.logic { Bool }
+import gunbc.os_install_emit { autoinstall_user_data }
+import gunbc.os_install { srv3_ubuntu_autoinstall }
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+}
+
+test fn srv3_user_data_is_cloud_config_autoinstall() -> Bool {
+  let ud = autoinstall_user_data(payload: srv3_ubuntu_autoinstall)
+  string_contains(s: ud, pattern: "#cloud-config")
+    && string_contains(s: ud, pattern: "autoinstall:")
+    && string_contains(s: ud, pattern: "  version: 1")
+    && string_contains(s: ud, pattern: "  interactive-sections: []")
+}
+
+test fn srv3_user_data_hostname_projects_fleet_identity() -> Bool {
+  let ud = autoinstall_user_data(payload: srv3_ubuntu_autoinstall)
+  string_contains(s: ud, pattern: concat("    hostname: ", operator_host_srv3))
+    && !string_contains(s: ud, pattern: concat("hostname: ", operator_host_srv1))
+    && !string_contains(s: ud, pattern: concat("hostname: ", operator_host_srv2))
+}
+
+test fn srv3_user_data_enables_remote_access_and_locale() -> Bool {
+  let ud = autoinstall_user_data(payload: srv3_ubuntu_autoinstall)
+  string_contains(s: ud, pattern: "  ssh:")
+    && string_contains(s: ud, pattern: "    install-server: true")
+    && string_contains(s: ud, pattern: "  locale: en_US.UTF-8")
+    && string_contains(s: ud, pattern: "    layout: us")
+    && string_contains(s: ud, pattern: "    username: ubuntu")
+}

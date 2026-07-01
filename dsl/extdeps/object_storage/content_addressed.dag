@@ -1,34 +1,22 @@
-// extdeps/object_storage/content_addressed.dag — Content-Addressed Storage (CAS)
-//
-// Spec: https://en.wikipedia.org/wiki/Object_storage#Content-addressable_storage
-// Secondary: https://en.wikipedia.org/wiki/Content-addressable_storage
-// Sections referenced:
-//   §"Content-addressable storage" — identifier = hash(content); same content →
-//     same identifier; read-time hash verification; write-once per identifier
-//
-// CAS is a specialisation of object storage where the object identifier is the
-// content hash. Inhabitants: git (SHA-1/SHA-256), IPFS (multihash), Perkeep,
-// BuildBuddy remote CAS. The CAS invariant — identifier = ContentHash(content) —
-// is expressed via KeyDerivationClass.ContentAddressedByValue from std.cache_interface
-// (no re-mint of the key-derivation authority).
-
 module extdeps.object_storage.content_addressed
 
 import std.types { ContentHash }
 import std.cache_interface { KeyDerivationClass, CacheWriteSemantics }
 import extdeps.object_storage { ObjectContainer }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// A CAS object identifier: the content hash IS the address.
-// ContentHash is the Realization carrier; hash derivation is never hand-rolled.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Object_storage#Content-addressable_storage"
+  }
+}
+
 type CasObjectId {
   hash: ContentHash
 }
 
-// Addressing configuration for a CAS store.
-// CAS invariant: key_derivation must be ContentAddressedByValue;
-// write_mode must be WriteOnce (same hash → same content; no overwrite).
-// These are recorded as facts (not enforced by the type system at this layer —
-// parametric where-clause constraints are a future substrate-feature gate).
 type CasAddressingConfig {
   container: ObjectContainer
   key_derivation: KeyDerivationClass

@@ -1,0 +1,127 @@
+module v2.test.name_resolve.malformed_imported_root
+
+import v2.compiler.name_resolve {
+  AdmissionAccepted,
+  AdmissionRejected,
+  AdmissionState,
+  Import,
+  ImportVisible,
+  admit_import_entry
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_named_edge
+}
+import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
+import v2.std.collection { empty_map }
+import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+fn malformed_pass_node() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^malformed_pass_sym } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+}
+fn malformed_fail_node() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^malformed_fail_sym } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+}
+fn malformed_claim_input(ok: Bool) -> Node {
+  if ok { malformed_pass_node() } else { malformed_fail_node() }
+}
+
+fn malformed_qn_node() -> Node {
+  fold_list_node(
+    xs: Cons { head: ^malformed_seg, tail: Empty },
+    item_node: fn(sym) {
+      Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+    }
+  )
+}
+
+fn malformed_root_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: malformed_qn_node()
+      ),
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^malformed_child_sym } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+}
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn malformed_entry_name() -> QualifiedName {
+  QnCons { head: ^malformed_seg, tail: QnEmpty }
+}
+
+fn roots_with_malformed_entry() -> FreeMonoid<Node> {
+  Cons {
+    head: malformed_root_node(),
+    tail: Empty
+  }
+}
+
+fn import_edge_for_malformed() -> Import {
+  Import { target: malformed_entry_name(), visibility: ImportVisible }
+}
+
+fn initial_admission_state() -> AdmissionState {
+  AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
+}
+
+fn admit_result_is_rejected(state: AdmissionState) -> Bool {
+  match state {
+    AdmissionAccepted { bindings: _, origins: _ } => false
+    AdmissionRejected { diagnostics: _ } => true
+  }
+}
+
+fn witness_malformed_root_is_rejected_holds() -> Bool {
+  let roots = roots_with_malformed_entry()
+  admit_result_is_rejected(
+    state: admit_import_entry(
+      roots: roots,
+      import_edge: import_edge_for_malformed(),
+      state: initial_admission_state(),
+      subject_qn: malformed_entry_name(),
+      index: source_root_index_empty(),
+      active_roots: Empty
+    )
+  )
+}
+
+data witness_malformed_root_is_rejected: Bool = witness_malformed_root_is_rejected_holds()
+
+data claim_admit_malformed_root_is_rejected: TestClaim = CompilesClaim {
+  label: "name_resolve/admit_import_entry: malformed module root is rejected",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: malformed_claim_input(ok: witness_malformed_root_is_rejected),
+  expected_value: malformed_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

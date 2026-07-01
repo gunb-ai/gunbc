@@ -1,24 +1,3 @@
-// std/realization.dag — Realization meta-process (DESIGN.md §2 horizontal).
-//
-// The HOW of computation reified as a content-addressed plan: execution order
-// (schedule), placement, materialization, cost, and evidence — observable via
-// lenses independently of the WHAT (the pure Node DAG).
-//
-// Layer split (§3):
-//   std/realization.dag           — independence classifier + schedule/measurement/width re-exports
-//   std/realization_schedule.dag  — schedule arm + lens (dsl-tree witnesses)
-//   std/realization_width.dag     — peripheral host spawn-width fold (Phase 1)
-//   extdeps/realization/*           — placement/materialization handlers (follow-on)
-//   workflow/*                    — policy (which Objective for prod vs dev)
-//
-// Dissolution triggers (named):
-//   - v2/test/claim/realization_schedule_witness.dag enrolls in CI discovery when
-//     v2 self-compile-clean closes the Empty-in-generic sequence_outcome gap.
-//   - cache_interface.dag agnostic shape; cited Materialization rows in extdeps/cache/* and extdeps/realization/*
-//   - RealizedStep / Placement / Materialization re-introduced (increment 3: reconcile→Share);
-//     their ContentHash intent + licensed_by return in increment 4 (cross-tree content-hash)
-//   - target digest → content_hash(subgraph) when dsl/v2 cross-tree Node import lands
-
 module std.realization
 
 import std.types { Bool, String, List }
@@ -72,13 +51,17 @@ import std.realization_width {
   witness_unreadable_budget_falls_back_conservative,
   witness_safety_fraction_is_load_bearing,
   witness_subunit_budget_admits_one,
+  process_bounded_job_count,
+  process_memory_aware_spawn_width,
+  process_memory_aware_width_value,
+  witness_pids_term_binds_below_cores_and_memory,
+  witness_memory_term_still_binds_under_three_term_fold,
+  witness_unreadable_pids_budget_falls_back_conservative,
+  witness_subunit_pids_budget_admits_one,
 }
-
-// --- Independence classifier (fail-closed) ------------------------------------
 
 type Independence = Independent | Dependent | Unknown
 
-// Compare effect keys for upsert/delete; unmatched arms stay Unknown (fail-closed).
 fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Independence {
   match left {
     ReadEffect => match right {
@@ -111,20 +94,16 @@ fn independence_from_effect_shapes(left: EffectShape, right: EffectShape) -> Ind
   }
 }
 
-// --- Materialization arm (increment 3: reconcile → Share) ----------------------
-//
-// A RealizedStep is one node's realization: WHERE it runs (placement), HOW its
-// result is materialized (recompute / memoize / share), and its cost. The intent
-// digest (ContentHash) + licensed_by return in increment 4 when cross-tree Node
-// content-hashing lands (trim marker above); for now the step carries its source
-// EffectShape so reconcile can key the Share collapse on KeySource identity.
+type Placement
+  = LocalInProcess
+  | LocalFilesystem
+  | RemoteNetwork
+  | LocalAccelerator
 
-type Placement = LocalInProcess | LocalFilesystem | RemoteNetwork
+data local_accelerator_placement_dissolution_trigger: String = "dissolve-on: execution lane wires device identity from extdeps.gpu.AcceleratorFacts at the product/demo placement site; std keeps LocalAccelerator as placement-kind only (no device_model nickname on substrate — DESIGN §3)."
 
 type Materialization = Recompute | Memoize | Share
 
-// `<S>` is the consumer-pinned time scale of the carried cost ledger (CostAccount<S>);
-// reconcile never inspects the scale — it only threads it (DESIGN §3: framework agnostic).
 type RealizedStep<S> {
   shape: EffectShape
   placement: Placement
@@ -132,8 +111,6 @@ type RealizedStep<S> {
   cost: CostAccount<S>
 }
 
-// Mark every accumulator step whose effect is the same-KeySource create-if-absent
-// twin of `s` as Share (s collapses INTO the shared materialization; not appended).
 fn mark_collapsible_share<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> List<RealizedStep<S>> {
   acc |> map(e =>
     if create_double_init_collapsible(a: e.shape, b: s.shape) {
@@ -149,17 +126,11 @@ fn mark_collapsible_share<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> 
   )
 }
 
-// Does `s` have a same-KeySource create-if-absent twin already in `acc`?
 fn has_collapsible_peer<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> Bool {
   let peers = acc |> filter(e => create_double_init_collapsible(a: e.shape, b: s.shape))
   !((peers |> length) == 0)
 }
 
-// Collapse same-KeySource create-if-absent steps into one shared materialization.
-// Two steps with KeySource-equal CreateIfAbsent effects reconcile to ONE step whose
-// materialization is Share; distinct identities (or non-create effects) stay separate.
-// The collapse decision is create_double_init_collapsible (std.effects, KeySource-keyed) —
-// reconcile only consumes it, never re-derives KeySource equality (§3 single authority).
 fn reconcile<S>(steps: List<RealizedStep<S>>) -> List<RealizedStep<S>> {
   steps |> fold(init: [], f: (acc, s) =>
     if has_collapsible_peer(acc: acc, s: s) {

@@ -1,0 +1,24 @@
+module v2.test.extdeps_shape_transport_policy.lens_unit.module_path_rename
+
+import v2.lens.extdeps_shape_transport_policy {
+  extdeps_live_module_dead_param_count_for_operation,
+  extdeps_module_identity_resolves
+}
+import v2.lens.extdeps_shape_transport_policy.module_refs {
+  bogus_extdeps_module,
+  extdeps_cargo_build_module
+}
+import v2.std.logic { Bool }
+
+test fn module_path_rename_resolves_by_qn_not_filepath_holds() -> Bool {
+  extdeps_module_identity_resolves(module: extdeps_cargo_build_module)
+    && extdeps_live_module_dead_param_count_for_operation(
+      module: extdeps_cargo_build_module,
+      service: "cargo.Build",
+      operation: "Clippy"
+    ) == 0
+}
+
+test fn module_path_rename_unknown_qn_does_not_resolve_holds() -> Bool {
+  !extdeps_module_identity_resolves(module: bogus_extdeps_module)
+}

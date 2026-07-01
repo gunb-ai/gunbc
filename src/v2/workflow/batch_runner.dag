@@ -1,12 +1,3 @@
-// Scope: near-term CI dogfood — the v2.workflow.executor .dag is the batching
-// AUTHORITY for running the v2 claim suite in parallel batches. The host
-// transport (src/v1/stage0/src/bin/claim_executor.rs) consumes the batches this
-// module projects; it does NOT re-derive grouping/ordering. Adding a dependency
-// here (or a node) re-batches the suite with zero host change.
-// Each suite node maps to one real (entry, function) claim witness. The executor
-// orders them by dependency frontier: `bre_core_node` gates the two derived
-// claims, so batch 1 = [core] runs before batch 2 = [a, b].
-
 module v2.test.workflow.batch_runner
 
 import v2.std.algebra { fold_list_right, length, list_snoc_item }
@@ -23,14 +14,12 @@ import v2.workflow.executor {
   parallel_executor_plan_from_dependencies
 }
 
-// Host-readable leaf: a single claim witness the host transport runs.
 type ClaimRef {
   entry: String
   function: String
 }
 
 data bre_suite_entry: String = "src/v2/workflow/affected_set_ci_runner_test.dag"
-
 
 data bre_core_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^bre_core_symbol } },
@@ -47,8 +36,6 @@ data bre_b_node: Node = Node {
   children: []
 }
 
-// The two derived claims data-depend on the core claim, so the executor places
-// them in a later readiness layer (a second batch).
 data bre_core_to_a_dependency: DependencyView = DependencyView {
   source: bre_core_node,
   dependent: bre_a_node,
@@ -74,20 +61,12 @@ data bre_suite_dependencies: List<DependencyView> = [
   bre_core_to_b_dependency
 ]
 
-// node -> real (entry, function) witness. This is the only place the suite's
-// A ClaimRef with an empty `entry` is the unrunnable sentinel: it carries no
-// resolvable witness, so the host transport (claim_executor) rejects it and
-// fails closed. Used for any suite node without a binding and for non-complete
-// plan states — making "missing mapping" and "not complete" loud, never silent.
 data bre_unmapped_function: String = "__batch_runner_unmapped_or_incomplete__"
 
 fn bre_unrunnable_sentinel() -> ClaimRef {
   ClaimRef { entry: "", function: bre_unmapped_function }
 }
 
-// Closed node->witness binding. The mapping is TOTAL over the suite's three
-// nodes; any other node is structurally unmapped and projects to the unrunnable
-// sentinel (host fails closed) rather than silently aliasing to a real claim.
 fn bre_claim_ref_for_node(node: Node) -> ClaimRef {
   if node == bre_core_node {
     ClaimRef { entry: bre_suite_entry, function: "ci_runner_narrow_selection_holds" }
@@ -110,9 +89,6 @@ fn bre_refs_for_batch(batch: ExecutorBatch) -> List<ClaimRef> {
   })
 }
 
-// Top-level host entry: the executor-decided batches projected to runnable
-// (entry, function) refs. Outer list = batches in execution order; inner list =
-// claims runnable in parallel within that batch.
 fn bre_claim_batches() -> List<List<ClaimRef>> {
   match parallel_executor_plan_from_dependencies(
     nodes: bre_suite_nodes,
@@ -123,25 +99,12 @@ fn bre_claim_batches() -> List<List<ClaimRef>> {
       fold(batches, init: [], f: fn(acc, batch) {
         list_snoc_item(xs: acc, item: bre_refs_for_batch(batch: batch))
       })
-    // A non-complete plan is NOT an empty (vacuously-passing) run. Project a
-    // single unrunnable-sentinel batch so the host fails closed instead of
-    // exiting 0 on zero claims. The suite is statically satisfiable, so these
-    // arms are unreachable today — but they must never silently mean success.
+
     ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[bre_unrunnable_sentinel()]]
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[bre_unrunnable_sentinel()]]
   }
 }
 
-// ── batching-AUTHORITY witnesses (MODEL semantics; host: claim_batch, uniform perturb) ──
-// The `.dag` IS the batching authority: `parallel_executor_plan_from_dependencies` (in
-// `v2.workflow.executor`) decides grouping/ordering, and claim_executor merely runs the plan
-// it returns (no Rust mirror — claim_executor.rs only parses List<List<ClaimRef>>). So "the
-// dependency input drives the batch count" is a MODEL property, provable as a pure `.dag`
-// witness with no host re-resolve: empty deps collapse the suite to one batch, the suite's
-// real deps yield two, an empty suite yields none. These replace the former inline-python
-// "empty the dep list and re-run the host" perturb in scripts/v2-batch-executor-gate.sh —
-// absorbing a model property into Rust would undermodel the dogfood. claim_batch's uniform
-// witness-body->`false` perturb keeps each one red-under-mutation (a hardcoded `true` fails).
 fn bre_empty_deps_yields_one_batch() -> Bool {
   match parallel_executor_plan_from_dependencies(
     nodes: bre_suite_nodes,
@@ -166,11 +129,6 @@ fn bre_full_deps_yields_two_batches() -> Bool {
   }
 }
 
-// Degenerate, MODEL side: an empty suite projects zero batches (empty in, zero out).
-// This pins the planner; the HOST side (claim_executor must REJECT a zero-batch plan,
-// never vacuously pass on zero claims) is exercised separately by driving
-// `bre_degenerate_empty_plan` through claim_executor in the gate — see that function
-// and scripts/v2-batch-executor-gate.sh. Both halves are run by a real consumer.
 fn bre_empty_suite_yields_no_batches() -> Bool {
   match parallel_executor_plan_from_dependencies(
     nodes: [],
@@ -183,17 +141,10 @@ fn bre_empty_suite_yields_no_batches() -> Bool {
   }
 }
 
-// Degenerate, HOST side: a deliberately EMPTY plan (zero batches). The gate runs this
-// through `claim_executor --plan-function bre_degenerate_empty_plan` and REQUIRES a
-// non-zero exit — exercising the orchestration fail-closed guard (a zero-batch plan is
-// never a successful run) through a real `.dag` consumer, with no temp-tree mutation and
 fn bre_degenerate_empty_plan() -> List<List<ClaimRef>> {
   []
 }
 
-// ── claim_batch roster transport for the authority witnesses ──
-// One TSV line per row, `label\tentry\tfunction`, consumed by `claim_batch` exactly as the
-// probe-selector keystone gate does. Authority lives here in the `.dag`, not in shell.
 type BatchExecutorAuthorityRow {
   label: String
   entry: String

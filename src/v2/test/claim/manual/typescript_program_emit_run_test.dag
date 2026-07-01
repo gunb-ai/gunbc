@@ -1,0 +1,31 @@
+module v2.test.manual.typescript_program_emit_run
+
+import v2.std.diagnostic { Accepted, Rejected }
+import extdeps.communication.medium { Medium }
+import v2.std.compilers.target_model {
+  char_kernel_type_node,
+  target_atom_realization_lookup_in_catalog
+}
+import v2.extdeps.languages.typescript { ts_target_atom_realization_catalog }
+import v2.test.manual.typescript_add_emit_translate { anchor_typescript_add_emit_accepts }
+
+fn ts_program_emit_add_source() -> String {
+  match anchor_typescript_add_emit_accepts() {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "TS_ADD_EMIT_REJECTED"
+  }
+}
+
+test fn ts_program_emit_add_source_holds() -> Bool {
+  ts_program_emit_add_source() == "function add(x: number, y: number): number { return x + y; }"
+}
+
+test fn ts_atom_catalog_realizes_char_to_string_holds() -> Bool {
+  match target_atom_realization_lookup_in_catalog(
+    catalog: ts_target_atom_realization_catalog,
+    source_carrier: char_kernel_type_node()
+  ) {
+    Accepted { value: row, diagnostics: _ } => row.display_name == ^char_kernel_type_atom
+    Rejected { diagnostics: _ } => false
+  }
+}

@@ -1,60 +1,47 @@
-// extdeps/git/versioning.dag — Git release version scheme.
-//
-// Spec: https://git-scm.com/docs/BreakingChanges.html
-// Anchor: Git project release numbering since Git 2.0 — major.minor.patch
-// triples where major increments only on deliberate breaking releases
-// (multi-year cadence: Git 1.6.0, Git 2.0, future Git 3.0). NOT SemVer:
-// Git does not follow semver.org semantics for its own releases.
-//
-// Layer-2 ecosystem model on extdeps.version (VersionIdentity + VersionScheme).
-// Layer-3 constraint grounding: min_git_version (GitVersionConstraint).
-
 module extdeps.git.versioning
 
-import std.types { Url }
+import std.types { NonEmptyStr }
 import std.integer { NonNegativeInt }
 import std.algebra { Ordering, Equal, Greater }
 import std.nat { nat_compare }
 import extdeps.version { VersionIdentity, VersionScheme, VersionConstraint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Git release triple since the Git 2.0 numbering policy.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/BreakingChanges.html"
+  }
+}
+
 type GitReleaseVersion {
   major: NonNegativeInt
   minor: NonNegativeInt
   patch: NonNegativeInt
 }
 
-// Platform suffix on `git version` stdout (e.g. "2.43.0.windows.1").
 type GitVersionPlatformSuffix
   = GitVersionPlain
   | GitVersionWindows { build: NonNegativeInt }
 
-// Parsed shape of `git version` release component + optional platform suffix.
 type GitCliReportedVersion {
   git_release: GitReleaseVersion
   suffix: GitVersionPlatformSuffix
 }
 
-// First Git 2.x breaking release — anchor for modern numbering policy.
 data git_2_0_release: GitReleaseVersion = {
   major: 2,
   minor: 0,
   patch: 0
 }
 
-// Spec citation for the release-numbering policy.
-data git_release_versioning_spec_url: Url = "https://git-scm.com/docs/BreakingChanges.html"
+data git_release_versioning_spec_url: NonEmptyStr = "https://git-scm.com/docs/BreakingChanges.html"
 
-// Git release constraint wire text — predicate over identities, not a version.
-// Distinct use site from generic VersionConstraint (§3 distinct facts).
 type GitVersionConstraint = VersionConstraint where brand("GitVersionConstraint")
 
-// Minimum git for the Git 2.0 numbering policy anchor (BreakingChanges doc).
-// Worktree modeling in extdeps/git/git.dag needs 2.5+ at runtime; this row
-// is the honest policy floor, not a per-feature matrix.
 data min_git_version: GitVersionConstraint = ">= 2.0.0"
 
-// Canonical wire label for a GitReleaseVersion (git version / release tag core).
 fn git_release_version_label(v: GitReleaseVersion) -> String {
   concat(
     to_string(v.major),
@@ -62,12 +49,10 @@ fn git_release_version_label(v: GitReleaseVersion) -> String {
   )
 }
 
-// Projects GitReleaseVersion to the opaque VersionIdentity surface.
 fn git_release_to_version_identity(v: GitReleaseVersion) -> VersionIdentity {
   git_release_version_label(v: v)
 }
 
-// Total order on Git release triples: major, then minor, then patch.
 fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Ordering {
   match nat_compare(a: a.major, b: b.major) {
     Equal => match nat_compare(a: a.minor, b: b.minor) {
@@ -78,11 +63,6 @@ fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Or
   }
 }
 
-// VersionIdentity ingress for extdeps.version.VersionScheme.
-// Equality case is correct; full ordering requires parse ingress.
-// Scaffold: dissolve-on: parse_git_release_version lands — replace body with:
-//   (a, b) => git_release_version_compare(
-//     a: parse_git_release_version(a), b: parse_git_release_version(b))
 fn git_release_compare_identity(a: VersionIdentity, b: VersionIdentity) -> Ordering {
   if a == b { Equal } else { Greater }
 }

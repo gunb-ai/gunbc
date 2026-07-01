@@ -1,7 +1,4 @@
-// Status: acyclic law helpers consumed by glob_discovery + substrate_equivalence.
-
 module v2.test.workflow.glob_discovery_law
-
 
 import v2.std.algebra { Cons, Empty, fold_list, length, list_append }
 import v2.std.collection { List }
@@ -17,18 +14,15 @@ import v2.compiler.discovery_enumeration {
   unified_claim_arm_node_corpus_module
 }
 
-
 fn resolved_decl_is_bool_witness_claim_arm(d: ResolvedDeclRef) -> Bool {
   (d.module == unified_claim_arm_bool_witness_claim_module)
     && (d.name == ^unified_claim_arm_bool_witness_claim)
 }
 
-
 fn resolved_decl_is_node_corpus_arm(d: ResolvedDeclRef) -> Bool {
   (d.module == unified_claim_arm_node_corpus_module)
     && (d.name == ^unified_claim_arm_node_corpus)
 }
-
 
 fn owned_decl_is_bool_witness_claim_arm(r: OwnedDataDeclRecord) -> Bool {
   match r.initializer {
@@ -38,7 +32,6 @@ fn owned_decl_is_bool_witness_claim_arm(r: OwnedDataDeclRecord) -> Bool {
   }
 }
 
-
 fn owned_decl_is_node_corpus_arm(r: OwnedDataDeclRecord) -> Bool {
   match r.initializer {
     OwnedNodeCorpusInit => true
@@ -46,7 +39,6 @@ fn owned_decl_is_node_corpus_arm(r: OwnedDataDeclRecord) -> Bool {
     OwnedOtherInit { resolved: _ } => false
   }
 }
-
 
 fn owned_other_init_is_illegal_unified_claim_arm(r: OwnedDataDeclRecord) -> Bool {
   match r.initializer {
@@ -57,12 +49,10 @@ fn owned_other_init_is_illegal_unified_claim_arm(r: OwnedDataDeclRecord) -> Bool
   }
 }
 
-
 fn is_unified_test_claim_arm(r: OwnedDataDeclRecord) -> Bool {
   owned_decl_is_bool_witness_claim_arm(r: r)
     || owned_decl_is_node_corpus_arm(r: r)
 }
-
 
 fn filter_unified_test_claim_decls(xs: List<OwnedDataDeclRecord>) -> List<OwnedDataDeclRecord> {
   fold_list(
@@ -78,11 +68,9 @@ fn filter_unified_test_claim_decls(xs: List<OwnedDataDeclRecord>) -> List<OwnedD
   )
 }
 
-
 fn discovery_filtered_decl_count(xs: List<OwnedDataDeclRecord>) -> Int {
   length(xs: filter_unified_test_claim_decls(xs: xs))
 }
-
 
 fn bool_witness_claim_record_has_complete_transport(r: OwnedDataDeclRecord) -> Bool {
   match r.initializer {
@@ -93,11 +81,9 @@ fn bool_witness_claim_record_has_complete_transport(r: OwnedDataDeclRecord) -> B
   }
 }
 
-
 fn discovery_smoke_set_is_nonempty(xs: List<OwnedDataDeclRecord>) -> Bool {
   discovery_filtered_decl_count(xs: xs) > 0
 }
-
 
 fn filter_bool_witness_claim_decls(xs: List<OwnedDataDeclRecord>) -> List<OwnedDataDeclRecord> {
   fold_list(
@@ -113,11 +99,9 @@ fn filter_bool_witness_claim_decls(xs: List<OwnedDataDeclRecord>) -> List<OwnedD
   )
 }
 
-
 fn discovered_bool_witness_claim_count(xs: List<OwnedDataDeclRecord>) -> Int {
   length(xs: filter_bool_witness_claim_decls(xs: xs))
 }
-
 
 fn filter_bool_witness_claim_arms_with_complete_transport(
   xs: List<OwnedDataDeclRecord>
@@ -135,7 +119,6 @@ fn filter_bool_witness_claim_arms_with_complete_transport(
     }
   )
 }
-
 
 fn discovered_contains_bool_witness_decl_by_name(
   xs: List<OwnedDataDeclRecord>,

@@ -1,11 +1,16 @@
-// extdeps/container/oci/linux.dag — Linux platform config (runtime-spec config-linux.md).
-//
-// Spec: https://github.com/opencontainers/runtime-spec/blob/main/config-linux.md
-// Version: runtime-spec v1.2.0
-
 module extdeps.container.oci.linux
 
 import std.types { Bool, FilePath }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/opencontainers/runtime-spec/blob/main/config-linux.md"
+  }
+}
 
 type LinuxNamespaceType
   = LinuxNsPid

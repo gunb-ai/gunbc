@@ -1,0 +1,385 @@
+module v2.test.manual.bind_demand_driven_eval
+
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  run_test_claim,
+  test_claim_run_verdict,
+  test_claim_typed_input_node
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.cardinality { termination_proof_witness_for_node }
+import v2.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  map_get,
+  map_insert
+}
+import v2.std.witness { Holds, Witness }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.logic { Bool }
+import v2.std.machine { Byte }
+import v2.std.node {
+  Atom,
+  Arrow,
+  Bind,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence,
+}
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verdict { Pass }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClassification,
+  Tier1,
+  UnifiedTestClaim,
+  Unit,
+  manual_claim_anchor
+}
+
+fn bind_eval_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: SyntheticOccurrence,
+    children: []
+  }
+}
+
+fn bind_eval_byte() -> Byte {
+  Byte { bits: [true] }
+}
+
+fn bind_eval_i64() -> Node {
+  bind_eval_atom(s: ^bind_eval_i64_sym)
+}
+
+fn bind_eval_one_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: bind_eval_i64(),
+      bytes: [bind_eval_byte()]
+    }
+  }
+}
+
+fn bind_eval_lit_one() -> Node {
+  bind_eval_atom(s: ^bind_eval_lit_one_sym)
+}
+
+fn bind_eval_divergent() -> Node {
+  bind_eval_atom(s: ^bind_eval_divergent_sym)
+}
+
+fn bind_eval_counted() -> Node {
+  bind_eval_atom(s: ^bind_eval_counted_sym)
+}
+
+fn bind_eval_counted_slot_key() -> EnvironmentBindingKey {
+  EnvironmentBindingKey {
+    declaration: bind_eval_atom(s: ^bind_eval_counted_slot_sym)
+  }
+}
+
+fn bind_eval_touch_key() -> EnvironmentBindingKey {
+  EnvironmentBindingKey {
+    declaration: bind_eval_atom(s: ^bind_eval_touch_counter_sym)
+  }
+}
+
+fn bind_eval_int_from_runtime(value: RuntimeValue) -> Int {
+  match value {
+    RuntimePrimitive { value: p } => count(p.bytes)
+    _ => 0
+  }
+}
+
+fn bind_eval_touch_from_env(env: EvaluationEnvironment, key: EnvironmentBindingKey) -> Int {
+  match map_get(m: env.bindings, key: key) {
+    Accepted { value: opt, diagnostics: _ } =>
+      match opt {
+        Present { value: v } => bind_eval_int_from_runtime(value: v)
+        Absent => 0
+      }
+    Rejected { diagnostics: _ } => 0
+  }
+}
+
+fn bind_eval_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^bind_eval_runtime_rejected,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn bind_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if node == bind_eval_lit_one() {
+    outcome_accepted(value: bind_eval_one_value())
+  } else if node == bind_eval_divergent() {
+    outcome_rejected(d: bind_eval_diagnostic(n: node))
+  } else if node == bind_eval_counted() {
+    if bind_eval_touch_from_env(env: env, key: bind_eval_touch_key()) >= 1 {
+      outcome_rejected(d: bind_eval_diagnostic(n: node))
+    } else {
+      outcome_accepted(value: bind_eval_one_value())
+    }
+  } else {
+    outcome_rejected(d: bind_eval_diagnostic(n: node))
+  }
+}
+
+fn bind_eval_call_primitive(
+  _node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  outcome_rejected(d: bind_eval_diagnostic(n: _node))
+}
+
+fn bind_eval_choose_branch(
+  _node: Node,
+  _condition: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  outcome_rejected(d: bind_eval_diagnostic(n: _node))
+}
+
+fn bind_eval_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_rejected(d: bind_eval_diagnostic(n: node))
+}
+
+fn bind_eval_bind_value(
+  key: EnvironmentBindingKey,
+  value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  let bound = EvaluationEnvironment {
+    bindings: map_insert(m: env.bindings, key: key, value: value)
+  }
+  let touched = if key.declaration == bind_eval_counted_slot_key().declaration {
+    let next = bind_eval_touch_from_env(env: bound, key: bind_eval_touch_key()) + 1
+    EvaluationEnvironment {
+      bindings: map_insert(
+        m: bound.bindings,
+        key: bind_eval_touch_key(),
+        value: RuntimePrimitive {
+          value: RuntimePrimitiveValue {
+            primitive_type: bind_eval_i64(),
+            bytes: if next == 1 { [bind_eval_byte()] } else { [bind_eval_byte(), bind_eval_byte()] }
+          }
+        }
+      )
+    }
+  } else {
+    bound
+  }
+  Accepted { value: touched, diagnostics: None }
+}
+
+fn bind_eval_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: bind_eval_allocate_literal },
+    transform: TransformInterpreter { call_primitive: bind_eval_call_primitive },
+    branch: BranchInterpreter { choose_branch: bind_eval_choose_branch },
+    loop: LoopInterpreter { step_loop: bind_eval_step_loop },
+    bind: BindInterpreter { bind_value: bind_eval_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+  }
+}
+
+fn bind_eval_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^bind_eval_allocate_literal_sym,
+    call_primitive: ^bind_eval_call_primitive_sym,
+    choose_branch: ^bind_eval_choose_branch_sym,
+    step_loop: ^bind_eval_step_loop_sym,
+    bind_value: ^bind_eval_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
+  }
+}
+
+fn bind_eval_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^bind_eval_runtime_id,
+    interpretation: bind_eval_interpretation(),
+    structure_witness: bind_eval_interpretation_structure_witness()
+  )
+}
+
+fn bind_eval_bind_node(value: Node, body: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Bind },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: bind_eval_counted_slot_key().declaration },
+      Edge { label: Positional, target: value },
+      Edge { label: Positional, target: body }
+    ]
+  }
+}
+
+fn bind_eval_pick_call(callee: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    occurrence_id: SyntheticOccurrence,
+    children: [Edge { label: Positional, target: callee }]
+  }
+}
+
+fn bind_eval_arrow_with_body(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Arrow },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Conj },
+          occurrence_id: SyntheticOccurrence,
+          children: []
+        }
+      },
+      Edge { label: Positional, target: bind_eval_i64() },
+      Edge { label: Positional, target: bind_eval_i64() },
+      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+    ]
+  }
+}
+
+fn bind_eval_tree_root(call: Node, expected: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Named { name: ^bind_eval_actual }, target: call },
+      Edge { label: Named { name: ^bind_eval_expected }, target: expected }
+    ]
+  }
+}
+
+fn bind_eval_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Holds {
+    value: claim_inferred_facts_from_nodes(
+      resolved: key,
+      algebra: bind_eval_i64(),
+      descent: termination_proof_witness_for_node(n: key)
+    )
+  }
+}
+
+fn bind_eval_admitted_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map { lookup: bind_eval_facts_lookup }
+  }
+}
+
+fn bind_eval_run(body: Node, expected: Node) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+  let arrow = bind_eval_arrow_with_body(body: body)
+  let call = bind_eval_pick_call(callee: arrow)
+  let root = bind_eval_tree_root(call: call, expected: expected)
+  let tree = bind_eval_admitted_tree(root: root)
+  outcome_accepted(
+    value: run_test_claim(
+      subject: TestClaimEvalSubject {
+        claim: CompilesClaim {
+          label: "manual/bind_demand_driven_eval: demand-driven Bind eval acceptance",
+          anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+          input: call,
+          expected_value: expected,
+          classification: TestClassification { tier: Tier1, layer: Unit }
+        },
+        context: bind_eval_context(),
+        tree: tree,
+        input: test_claim_typed_input_node(
+          evaluator_input: call,
+          evaluator_pin: ^bind_eval_pick_call_pin
+        )
+      }
+    )
+  )
+}
+
+fn bind_eval_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+  match run {
+    Accepted { value: r, diagnostics: _ } =>
+      match test_claim_run_verdict(run: r) {
+        Pass => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn bind_eval_counted_value_body_holds() -> Bool {
+  bind_eval_run_passes(
+    run: bind_eval_run(
+      body: bind_eval_bind_node(
+        value: bind_eval_counted(),
+        body: bind_eval_lit_one()
+      ),
+      expected: bind_eval_lit_one()
+    )
+  )
+}
+
+fn bind_eval_divergent_value_rejects_holds() -> Bool {
+  match bind_eval_run(
+    body: bind_eval_bind_node(
+      value: bind_eval_divergent(),
+      body: bind_eval_lit_one()
+    ),
+    expected: bind_eval_lit_one()
+  ) {
+    Accepted { value: r, diagnostics: _ } =>
+      match test_claim_run_verdict(run: r) {
+        Pass => false
+        _ => true
+      }
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn bind_demand_driven_eval_keystone_holds() -> Bool {
+  bind_eval_counted_value_body_holds() && bind_eval_divergent_value_rejects_holds()
+}

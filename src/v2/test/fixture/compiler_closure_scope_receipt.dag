@@ -1,16 +1,10 @@
-// Scalar scope receipt for the 00_compile parse-level import closure.
-// Path-level exclusion authority: pipeline.rs `scoped_closure_excludes_known_non_closure_module`.
-// Regenerate count: discover_source_root_ingest --source-root src/v2 --entry src/v2/compiler/00_compile.dag
-
 module v2.test.fixture.compiler_closure_scope_receipt
 
 import v2.std.logic { Bool }
 
-
 data compiler_closure_scoped_module_count: Int = 65
 
 data compiler_closure_excluded_module_path: String = "src/v2/lens/affected_set/closure_deep_chain.dag"
-
 
 fn scoped_closure_scope_scalar_receipt_holds() -> Bool {
   compiler_closure_scoped_module_count == 65

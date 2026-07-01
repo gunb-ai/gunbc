@@ -1,0 +1,51 @@
+module gunbc.roadmap_style
+
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data css_rule_props_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_style",
+    decl_name: "css_rule",
+    field: WholeDeclaration
+  }
+}
+
+fn css_rule(selector: String, props: String) -> String {
+  join([selector, " { ", props, " }"], "")
+}
+
+fn roadmap_css() -> String {
+  join([
+    css_rule(selector: "*", props: "box-sizing: border-box; margin: 0; padding: 0"),
+    css_rule(selector: "body", props: "font-family: system-ui, sans-serif; font-size: 14px; line-height: 1.5; color: #1a1a1a; background: #fafafa"),
+    css_rule(selector: "header", props: "padding: 12px 24px; border-bottom: 1px solid #e0e0e0; background: #fff"),
+    css_rule(selector: "h1", props: "font-size: 18px; font-weight: 600"),
+    css_rule(selector: "h2", props: "font-size: 15px; font-weight: 600; margin: 16px 0 8px"),
+    css_rule(selector: "h3.group-label", props: "font-size: 13px; font-weight: 600; color: #555; margin: 12px 0 4px"),
+    css_rule(selector: ".roadmap", props: "padding: 16px 24px; max-width: 960px"),
+    css_rule(selector: ".roadmap-section", props: "margin-bottom: 24px"),
+    css_rule(selector: "ul", props: "list-style: none; padding-left: 16px"),
+    css_rule(selector: "li.node", props: "padding: 2px 0"),
+    css_rule(selector: ".status", props: "display: inline-block; width: 52px; font-size: 11px; font-weight: 600; border-radius: 3px; padding: 1px 4px; text-align: center; margin-right: 6px"),
+    css_rule(selector: ".status-open", props: "background: #fff3cd; color: #856404"),
+    css_rule(selector: ".status-review", props: "background: #cfe2ff; color: #084298"),
+    css_rule(selector: ".status-done", props: "background: #d1e7dd; color: #0a3622"),
+    css_rule(selector: ".title", props: "margin-right: 8px"),
+    css_rule(selector: ".owner", props: "font-size: 11px; color: #888; margin-right: 6px"),
+    css_rule(selector: ".sizing", props: "font-size: 11px; color: #888; margin-right: 6px; font-style: italic"),
+    css_rule(selector: "a", props: "color: #0969da; text-decoration: none"),
+    css_rule(selector: "a:hover", props: "text-decoration: underline"),
+    css_rule(selector: "code", props: "background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 12px"),
+    css_rule(selector: ".prose", props: "color: #555; font-size: 13px; margin-bottom: 8px"),
+    css_rule(selector: ".depth-limit", props: "color: #999; font-style: italic; font-size: 12px"),
+    css_rule(selector: ".daily-workspace", props: "padding: 16px 24px; max-width: 960px"),
+    css_rule(selector: ".roadmap-frontier", props: "display: flex; flex-direction: column; gap: 20px"),
+    css_rule(selector: ".frontier-bucket", props: "border: 1px solid #e0e0e0; border-radius: 6px; padding: 12px 16px; background: #fff"),
+    css_rule(selector: ".frontier-bucket h2", props: "font-size: 14px; font-weight: 600; margin: 0 0 8px; text-transform: uppercase; letter-spacing: 0.04em"),
+    css_rule(selector: ".frontier-ready h2", props: "color: #856404"),
+    css_rule(selector: ".frontier-upcoming h2", props: "color: #084298"),
+    css_rule(selector: ".frontier-done h2", props: "color: #0a3622"),
+  ], "\n")
+}

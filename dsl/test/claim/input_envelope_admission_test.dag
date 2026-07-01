@@ -1,0 +1,99 @@
+module test.claim.input_envelope_admission
+
+import gunbc.ci_input_envelope {
+  InputSizeAxis,
+  WitnessCount,
+  SourceNodeCount,
+  CorpusNodeCount,
+  InputBound,
+  InputEnvelope,
+  BoundedInput,
+  EnvelopeUnknown,
+  AdmissionVerdict,
+  Admitted,
+  RefusedOverEnvelope,
+  RefusedUndeclared,
+  input_admitted,
+  gunbc_ci_corpus_envelope,
+}
+import std.measure { Measure }
+
+data test_envelope: InputEnvelope = BoundedInput {
+  bounds: [
+    InputBound { axis: WitnessCount, max: Measure { count: 100 } },
+    InputBound { axis: SourceNodeCount, max: Measure { count: 10000 } },
+  ]
+}
+
+test fn admitted_when_actual_at_envelope() -> Bool {
+  let actual = [
+    InputBound { axis: WitnessCount, max: Measure { count: 100 } },
+    InputBound { axis: SourceNodeCount, max: Measure { count: 10000 } },
+  ]
+  match input_admitted(envelope: test_envelope, actual: actual) {
+    Admitted => true
+    RefusedOverEnvelope { axis: _ } => false
+    RefusedUndeclared => false
+  }
+}
+
+test fn refused_when_actual_over_envelope() -> Bool {
+  let actual = [
+    InputBound { axis: WitnessCount, max: Measure { count: 101 } },
+    InputBound { axis: SourceNodeCount, max: Measure { count: 10000 } },
+  ]
+  match input_admitted(envelope: test_envelope, actual: actual) {
+    RefusedOverEnvelope { axis: a } => a == WitnessCount
+    Admitted => false
+    RefusedUndeclared => false
+  }
+}
+
+test fn refused_when_actual_axis_not_declared() -> Bool {
+  let actual = [
+    InputBound { axis: CorpusNodeCount, max: Measure { count: 1 } },
+  ]
+  match input_admitted(envelope: test_envelope, actual: actual) {
+    RefusedOverEnvelope { axis: a } => a == CorpusNodeCount
+    Admitted => false
+    RefusedUndeclared => false
+  }
+}
+
+test fn refused_undeclared_when_envelope_unknown() -> Bool {
+  let actual = [
+    InputBound { axis: WitnessCount, max: Measure { count: 1 } },
+  ]
+  match input_admitted(envelope: EnvelopeUnknown, actual: actual) {
+    RefusedUndeclared => true
+    Admitted => false
+    RefusedOverEnvelope { axis: _ } => false
+  }
+}
+
+test fn red_on_revert_bound_change() -> Bool {
+  let at_limit = [
+    InputBound { axis: WitnessCount, max: Measure { count: 100 } },
+  ]
+  let one_over = [
+    InputBound { axis: WitnessCount, max: Measure { count: 101 } },
+  ]
+  let at_admitted = match input_admitted(envelope: test_envelope, actual: at_limit) {
+    Admitted => true
+    RefusedOverEnvelope { axis: _ } => false
+    RefusedUndeclared => false
+  }
+  let over_refused = match input_admitted(envelope: test_envelope, actual: one_over) {
+    RefusedOverEnvelope { axis: _ } => true
+    Admitted => false
+    RefusedUndeclared => false
+  }
+  at_admitted && over_refused
+}
+
+test fn ci_corpus_envelope_is_bounded() -> Bool {
+  match gunbc_ci_corpus_envelope {
+    BoundedInput { bounds: b } => b.length() > 0
+    EnvelopeUnknown => false
+  }
+}

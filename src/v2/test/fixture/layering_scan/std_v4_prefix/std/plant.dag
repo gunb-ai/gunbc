@@ -1,6 +1,2 @@
-// FIXTURE — planted std-layer module with a forbidden upward import (v2.compiler.* prefix).
-// Read as TEXT by v2.lens.layering_imports.layer_import_facts_live (never module-resolved);
-// the by-execution oracle that the projection detects what the deleted
-// scripts/layering-imports-scan.sh enumerator detected. DO NOT import this module.
 module v2.test.fixture.layering_scan.std_v4_prefix_plant
 import v2.compiler.tokenize

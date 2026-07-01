@@ -1,11 +1,14 @@
-// extdeps/github/log_annotations.dag — GitHub Actions stdout log commands.
-//
-// Split from actions.dag so CI runners can import annotation rendering without
-// the full workflow syntax model (which transitively imports cron).
-//
-// Spec: https://docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions
-
 module extdeps.github.log_annotations
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions"
+  }
+}
 
 type LogAnnotation
   = AnnotationError { message: String, file: String?, line: Int?, col: Int? }
@@ -17,9 +20,21 @@ type LogAnnotation
   | AddMask { value: String }
   | StopCommands { token: String }
 
-data annotation_error_prefix: String = "::error "
-data annotation_warning_prefix: String = "::warning "
-data annotation_notice_prefix: String = "::notice "
+data gha_log_command_error: String = "error"
+data gha_log_command_warning: String = "warning"
+data gha_log_command_notice: String = "notice"
+
+fn gha_param_command_prefix(command: String) -> String {
+  concat("::", concat(command, " "))
+}
+
+fn gha_message_command_prefix(command: String) -> String {
+  concat("::", concat(command, "::"))
+}
+
+data annotation_error_prefix: String = gha_param_command_prefix(command: gha_log_command_error)
+data annotation_warning_prefix: String = gha_param_command_prefix(command: gha_log_command_warning)
+data annotation_notice_prefix: String = gha_param_command_prefix(command: gha_log_command_notice)
 data annotation_group_prefix: String = "::group::"
 data annotation_endgroup: String = "::endgroup::"
 data annotation_set_output_prefix: String = "::set-output name="
@@ -27,21 +42,10 @@ data annotation_add_mask_prefix: String = "::add-mask::"
 data annotation_stop_commands_prefix: String = "::stop-commands::"
 
 fn shell_single_quote(s: String) -> String {
-  // POSIX sh: wrap in single quotes; internal ' → '\'' (end quote, escaped quote, resume).
+
   concat("'", replace(s, "'", "'\\''"), "'")
 }
 
-// Safe `printf '%s\n' …` for sh -c: one line, no word-split on spaces.
 fn emit_line_shell(line: String) -> String {
   concat("printf '%s\\n' ", shell_single_quote(s: line))
 }
-
-// `render_log_annotation` (a hand-rolled forward emitter — `match` → `concat("::error::", …)`)
-// was DELETED here (Gap A, PR #5505). It was dead (only re-exported via actions.dag, never
-// called), and dissolving dead code into rows would be §5 specification-without-execution
-// (DESIGN.md §5) — so it is removed as a dead scaffold, not migrated. The medium-agnostic
-// emission intent now lives in `v2.std.diagnostic` (`EmitDirective` / `DiagnosticSeverity`);
-// its Bash realization (`emit(EmitDirective, Bash)`) is in `v2.extdeps.languages.bash`. The
-// GitHub-Actions severity realization (`::error`/`::warning` over this annotation model) lands
-// with the GHA-as-Node arc; the `LogAnnotation` type + prefix data below are kept as that
-// model's grounded carrier.

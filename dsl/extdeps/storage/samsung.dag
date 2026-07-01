@@ -1,0 +1,32 @@
+module extdeps.storage.samsung
+
+import std.measure { ByteSize, byte_size, bandwidth }
+import std.types { NonEmptyStr }
+import extdeps.storage.types { NvmeDeviceCatalogRow, PcieLink }
+import extdeps.vendor.samsung { samsung }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Samsung_970_EVO"
+  }
+}
+
+fn samsung_970_evo_plus(part_number: NonEmptyStr, capacity_bytes: ByteSize) -> NvmeDeviceCatalogRow {
+  NvmeDeviceCatalogRow {
+    part_number: part_number,
+    manufacturer: samsung,
+    capacity_bytes: capacity_bytes,
+    pcie_link: PcieLink { generation: Gen3, lane_count: 4 },
+    form_factor: M2_2280,
+    sequential_read: bandwidth(3500000000),
+    sequential_write: bandwidth(3300000000),
+  }
+}
+
+data samsung_970_evo_plus_2tb_catalog: NvmeDeviceCatalogRow = samsung_970_evo_plus(
+  part_number: "MZ-V7S2T0BW",
+  capacity_bytes: byte_size(2000398934016),
+)

@@ -1,12 +1,3 @@
-// v2 method helpers -- builtin call type inference and type constructors.
-//
-// Intrinsic/bridge method classification was deleted 2026-03-28 (48 string
-// branches replaced by algebra registry + Tier 0 lookup_structural_method).
-// What remains: builtin_function_registry for free-function call syntax and
-// type constructor helpers used by inference.
-//
-// Dependency: v1.compiler.infer_types (Node constructors)
-
 module v1.compiler.infer_method
 
 import std.types { SourceSpan }
@@ -22,15 +13,6 @@ import v1.std.core {
 import v1.compiler.infer_types {
   make_container_type, make_map_type
 }
-
-// =========================================================================
-// Builtin call type inference
-//
-// Method classification (intrinsic/bridge) and method return type inference
-// were deleted 2026-03-28. Methods resolve structurally through Tier 0
-// lookup_structural_method; return types come from algebra fields +
-// AlgebraTypeVariable instantiation (M2 Phase C).
-// =========================================================================
 
 fn type_variable_node(id: String) -> Node {
   Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: id } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -52,14 +34,6 @@ fn witness_of_element(element: Node) -> Node {
   make_container_type(kind_name: "Witness", element: element).ty
 }
 
-// Builtin function return type registry.
-//
-// BRIDGE: This map_insert chain is a duplicate authority over facts that
-// should come from .dag function declarations (extern fn signatures).
-// Deletion point: when builtins are actual .dag definitions that the
-// compiler loads and resolves, this registry is deleted. See review
-// feedback on BuiltinReturnKind — the proper model is definition nodes,
-// not a return-type proxy enum.
 fn seed_node_map(key: String, value: Node) -> Map<String, Node> {
   map_insert(empty_map(), key, value)
 }
@@ -90,11 +64,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "chars_to_string", string_type)
   let m = map_insert(m, "record_source_chars_index_lookup", unit_type)
   let m = map_insert(m, "to_string", string_type)
-  // `discriminant(v)` reifies a coproduct/record value's own constructor name as a Symbol
-  // (interned string). One intrinsic dissolves every hand-written `fn ..._discriminant(v) ->
-  // Symbol { match v { Ctor{..} => ctor_tag ... } }` bridge that shadows a coproduct's arm-set
-  // with a parallel `data ctor_tag: Symbol` vocabulary. Symbol is operationally a String
-  // (Value::Str at runtime; the `data X: Symbol = X` idiom resolves to its interned name).
+
   let m = map_insert(m, "discriminant", string_type)
   let m = map_insert(m, "concat", string_type)
   let m = map_insert(m, "map_insert", map_of_type_variables())
@@ -107,7 +77,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "map_contains_key", bool_type)
   let m = map_insert(m, "map_has", bool_type)
   let m = map_insert(m, "map_is_empty", bool_type)
-  // Sound identity hints (substitute_generics short-circuit): true => structurally equal.
+
   let m = map_insert(m, "rc_ptr_eq", bool_type)
   let m = map_insert(m, "rc_vec_ptr_eq", bool_type)
   let m = map_insert(m, "emit_map_has", bool_type)
@@ -123,7 +93,10 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "atom_identity_hash", hash_type)
   let m = map_insert(m, "string_contains", bool_type)
   let m = map_insert(m, "filesystem_read", type_variable_node(id: "filesystem_read_result"))
+  let m = map_insert(m, "contiguous_loop_elementwise_kernel", list_of_type_variable(id: "collection_element"))
+  let m = map_insert(m, "contiguous_loop_elementwise_float_kernel", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "extdeps_dead_param_count_for_operation", int_type)
+  let m = map_insert(m, "shell_materialize_argv_for_operation", list_of_element(element: string_type))
   let m = map_insert(m, "extdeps_dead_param_count_for_path", int_type)
   let m = map_insert(m, "extdeps_embedded_policy_literal_count_for_path", int_type)
   let m = map_insert(m, "extdeps_qualified_name_resolves_in_derived_module_set", bool_type)
@@ -138,23 +111,53 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "extdeps_external_authority_scheme_identity_for_qualified_name", string_type)
   let m = map_insert(m, "extdeps_external_authority_locator_for_qualified_name", string_type)
   let m = map_insert(m, "extdeps_derived_extdeps_modules", list_of_type_variable(id: "extdeps_derived_extdeps_module_elem"))
+  let m = map_insert(m, "extdeps_external_authority_backfill_entries", list_of_type_variable(id: "extdeps_external_authority_backfill_entry_elem"))
   let m = map_insert(m, "extdeps_external_authority_is_backfill_pending_for_qualified_name", bool_type)
   let m = map_insert(m, "extdeps_external_authority_is_machinery_exempt_for_qualified_name", bool_type)
   let m = map_insert(m, "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name", bool_type)
   let m = map_insert(m, "extdeps_external_authority_live_clean_tree_holds", bool_type)
+  let m = map_insert(m, "extdeps_external_authority_anchor_shadow_masked_for_qualified_name", bool_type)
+  let m = map_insert(m, "extdeps_external_authority_live_shadow_mask_holds", bool_type)
   let m = map_insert(m, "extdeps_external_authority_live_roster_module_count", int_type)
+  let m = map_insert(m, "doc_graph_orphan_count", int_type)
+  let m = map_insert(m, "doc_graph_dangling_link_count", int_type)
+  let m = map_insert(m, "doc_graph_doc_count", int_type)
+  let m = map_insert(m, "inert_carrier_count", int_type)
+  let m = map_insert(m, "inert_carrier_unrostered_count", int_type)
+  let m = map_insert(m, "inert_carrier_stale_roster_count", int_type)
+  let m = map_insert(m, "inert_carrier_declared_count", int_type)
+  let m = map_insert(m, "inert_lens_unreached_module_count", int_type)
+  let m = map_insert(m, "inert_lens_top_level_module_count", int_type)
+  let m = map_insert(m, "non_fold_residue_count", int_type)
+  let m = map_insert(m, "non_fold_residue_unrostered_count", int_type)
+  let m = map_insert(m, "non_fold_residue_stale_roster_count", int_type)
+  let m = map_insert(m, "non_fold_residue_coproduct_universe_count", int_type)
+  let m = map_insert(m, "complexity_linearity_syntactic_finding_count", int_type)
+  let m = map_insert(m, "complexity_linearity_syntactic_wildcard_finding_count", int_type)
+  let m = map_insert(m, "complexity_linearity_syntactic_site_fired", bool_type)
+  let m = map_insert(m, "census_corpus_roots_follow_layer_authority", bool_type)
   let m = map_insert(m, "transport_script_literal_violation_count_for_path", int_type)
+  let m = map_insert(m, "layer_import_facts", list_of_type_variable(id: "layer_import_fact_elem"))
+  let m = map_insert(m, "import_resolution_facts", list_of_type_variable(id: "import_resolution_fact_elem"))
+  let m = map_insert(m, "module_declaration_facts", list_of_type_variable(id: "module_declaration_fact_elem"))
+  let m = map_insert(m, "concept_decl_facts", list_of_type_variable(id: "concept_decl_elem"))
+  let m = map_insert(m, "medium_structure_leak_facts", list_of_type_variable(id: "medium_structure_leak_fact_elem"))
+  let m = map_insert(m, "fact_cardinality_cross_tree_coexistence_count", int_type)
+  let m = map_insert(m, "fact_cardinality_cross_tree_diverged_fork_count", int_type)
+  let m = map_insert(m, "fact_cardinality_cross_tree_is_coexistence", bool_type)
+  let m = map_insert(m, "fact_cardinality_cross_tree_is_diverged_fork", bool_type)
   let m = map_insert(m, "languages_consumer_census_data_decl_count", int_type)
   let m = map_insert(m, "languages_consumer_census_per_language_row_count", int_type)
   let m = map_insert(m, "languages_consumer_census_format_row_count", int_type)
   let m = map_insert(m, "languages_consumer_census_external_consumer_count", int_type)
   let m = map_insert(m, "languages_consumer_census_is_composition_only", bool_type)
   let m = map_insert(m, "languages_consumer_census_has_external_consumer", bool_type)
+  let m = map_insert(m, "is_xid_start", bool_type)
+  let m = map_insert(m, "is_xid_continue", bool_type)
+  let m = map_insert(m, "is_emoji_ident", bool_type)
   m
 }
 
-// NOTE: builtin_function_registry() constructs the map on each call in .dag
-// source. The stage0 Rust caches it via thread_local! to avoid O(N×M) rebuild.
 fn infer_builtin_call_type(name: String) -> Node? {
   map_get(builtin_function_registry(), name)
 }

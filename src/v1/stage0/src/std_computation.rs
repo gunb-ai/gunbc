@@ -233,7 +233,7 @@ pub fn algebra_profile_to_dimension(profile: AlgebraProfile) -> Option<Iteration
 }
 
 pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension> {
-    if (type_name.clone().as_str() == "Node".to_string().as_str()) {
+    if (type_name.clone() == "Node".to_string()) {
         Some(IterationDimension::TreeDescent)
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), type_name.clone()) {
@@ -242,3 +242,16 @@ pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension>
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Fold;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Descend;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Repeat;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct TreeDescent;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CollectionFold;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ArithmeticRepeat;

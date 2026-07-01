@@ -1,35 +1,17 @@
-// extdeps/filesystem/filesystem_io.dag -- Live filesystem read/write effects.
-//
-// Spec: POSIX.1-2017 write(2) / read(2)
-//       https://pubs.opengroup.org/onlinepubs/9699919799/functions/write.html
-//       https://pubs.opengroup.org/onlinepubs/9699919799/functions/read.html
-//
-// The host-effect peer of git.Core (shell) and the REST transports: a service
-// whose operations the v2 interpreter EXECUTES live via the `file` transport
-// (extdeps/transports/file.dag). `Filesystem.Write(path:, content:)` commits
-// bytes to a POSIX pathname and returns its receipt; `Filesystem.Read(path:)`
-// pulls them back. The interpreter selects the direction from the operation's
-// static signature: an operation with a `content` input WRITES, one without
-// READS (see dispatch_file in v1_interpreter.rs).
-//
-// The write receipt -- the WriteResult of the ROADMAP "Runnable v2 program with
-// I/O" item -- is the `Write` operation's output product:
-//   { success: Bool, bytes_written: Int, path: String, error: String }
-// realized field-by-field from the host write, exactly as a shell operation's
-// output record is realized from captured stdout/exit. Like shell, a failed
-// effect does NOT throw: the op returns its record with `success = false` and
-// the OS error in `error`, so the caller branches on `result.success`.
-//
-// 🟡 dissolved — feature:filesystem-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch
-// --fixture-store (recorded wet via --record); forbidden: reintroducing mock_response
-// constants for Hermetic dispatch on this shape.
-
 module extdeps.filesystem.filesystem_io
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/write.html"
+  }
+}
+
 service Filesystem {
-  // Commit `content` to the file at `path`, creating or truncating it.
-  // Returns the WriteResult receipt (success / bytes_written / path / error).
+
   operation Write {
     input { path: String, content: String }
     output {
@@ -41,8 +23,6 @@ service Filesystem {
     transport file { path: "{path}" }
   }
 
-  // Read the file at `path` back into a String. `success` is false (and
-  // `error` carries the OS text) when the path is missing or unreadable.
   operation Read {
     input { path: String }
     output {

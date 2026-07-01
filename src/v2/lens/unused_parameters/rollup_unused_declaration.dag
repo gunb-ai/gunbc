@@ -1,6 +1,3 @@
-//   Composition: `unused_parameters_fact = rollup_unused ∘ use_classification_fact`.
-
-
 module v2.test.lens_unused_parameters.rollup_unused_declaration
 
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -32,9 +29,6 @@ data rollup_function: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-// `Contains` edge positions `rollup_parameter` as a declaration candidate
-// (function-parameter position, v3 lens contract). No BindsTo edge with
-// `source == rollup_parameter` ⇒ roll-up reports the parameter as unused.
 data rollup_contains_dependency: DependencyView = DependencyView {
   source: rollup_function,
   dependent: rollup_parameter,

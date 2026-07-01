@@ -1,35 +1,17 @@
-// src/v2/lens/visibility.dag — visibility-leak lens over the module import graph (Step 3).
-//
-// Flags the §5 leak the publication realization must never commit: a PUBLIC module that imports
-// a module which is not public. That is the import-graph realization of access.dag's leak rule
-// (`effective_public`): a node is publishable only if it is public AND every dependency it
-// exposes is too. This lens enumerates the offending edges as located findings (fail-closed:
-// every leak is an explicit `VisibilityLeak`, an empty list is clean).
-//
-// Status: 🟡 STAGED (pure core). The LIVE corpus witness — "0 leaks in the real tree" — needs live
-// `ModuleVisibilityFact`s built from the resolved program: module identity from `module` decls
-// (QualifiedName), `public` from `access.is_public` over the module's grants, and `imports` from
-// `v2.std.dependency.dependency_lens(root)` filtered to `ModuleDependsOn`. That bridge is a Rust
-// seed / corpus-as-node handle (cf. the extdeps_shape_transport_policy lens, whose `filesystem_read`
-// path was withdrawn for `*_for_qualified_name` seed builtins) — the dissolution trigger for this
-// scaffold. Until it lands, the lens is exercised by synthetic lens-unit witnesses (visibility_test.dag).
-
 module v2.lens.visibility
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.std.logic { Bool }
 import v2.std.algebra { length, list_snoc_item }
 import v2.std.qualified_name { QualifiedName, qualified_name_eq }
 
-// A module's visibility + its direct imports — keyed on QualifiedName (the `module` identity),
-// never a filepath. `public` is `access.is_public` over the module's grants (bound at the live edge).
 type ModuleVisibilityFact {
   module: QualifiedName
   public: Bool
   imports: List<QualifiedName>
 }
 
-// A located leak: a public module exposes a non-public dependency.
 type VisibilityLeak {
   importer: QualifiedName
   imported: QualifiedName
@@ -37,8 +19,6 @@ type VisibilityLeak {
 
 data no_visibility_leaks: List<VisibilityLeak> = []
 
-// Is `qn` a public module per the fact set? Fail-closed (DESIGN §5): a module ABSENT from the
-// set is treated as NON-public, so an unknown import is a leak, never silently allowed.
 fn module_is_public(facts: List<ModuleVisibilityFact>, qn: QualifiedName) -> Bool {
   fold(facts, init: false, f: fn(acc, fct) {
     if acc { true }
@@ -48,9 +28,6 @@ fn module_is_public(facts: List<ModuleVisibilityFact>, qn: QualifiedName) -> Boo
   })
 }
 
-// Leaks contributed by one module: only a PUBLIC module can leak, and then every import that is
-// not public is one leak. (Direct imports suffice: a public→public→private chain is caught when
-// the middle module is itself scanned, so transitive closure is unnecessary.)
 fn scan_module_imports(fct: ModuleVisibilityFact, all_facts: List<ModuleVisibilityFact>) -> List<VisibilityLeak> {
   if fct.public {
     fold(fct.imports, init: no_visibility_leaks, f: fn(acc, imp) {
@@ -62,7 +39,6 @@ fn scan_module_imports(fct: ModuleVisibilityFact, all_facts: List<ModuleVisibili
   }
 }
 
-// All leaks across the module set.
 fn scan_visibility_leaks(facts: List<ModuleVisibilityFact>) -> List<VisibilityLeak> {
   fold(facts, init: no_visibility_leaks, f: fn(acc, fct) {
     fold(scan_module_imports(fct: fct, all_facts: facts), init: acc, f: fn(a2, leak) {
@@ -75,17 +51,10 @@ fn visibility_leak_count(facts: List<ModuleVisibilityFact>) -> Int {
   length(xs: scan_visibility_leaks(facts: facts))
 }
 
-// Top-level verdict: the module set has no visibility leaks.
 fn visibility_clean(facts: List<ModuleVisibilityFact>) -> Bool {
   visibility_leak_count(facts: facts) == 0
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "access-checked publication by construction (access.dag's effective_public) plus the live ModuleVisibilityFact bridge",
-    dissolve_on: "a public module exposing a non-public import is unpublishable by construction (effective_public), not flagged by an import-graph lens"
-  },
-  rationale: "A public module importing a non-public module is a decidable import-graph property; the realization of access.dag's effective_public leak rule, staged on the live ModuleVisibilityFact bridge."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

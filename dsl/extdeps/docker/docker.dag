@@ -1,50 +1,22 @@
-// extdeps/docker/docker.dag -- "What is Docker?" (the container-runtime surface
-// we consume: images, mounts).
-//
-// Spec: https://docs.docker.com/engine/storage/ (mounts) and
-//       https://docs.docker.com/reference/cli/docker/image/ (images)
-// Version: Docker Engine 24.x+
-//
-// Facts about Docker's data model, not how we invoke it. CLI encodings
-// ("-v host:ctr:ro", "--mount type=bind,...", "256m" size strings) are
-// boundary syntax: parsed into these facts at ingress, re-encoded at
-// egress, never stored (units discipline -- quantities are bare standard
-// units; product/compute_fabric.dag models the hardware the runtime sits on).
-//
-// Consumers:
-//   gunb-ai/ctrl plans/models/session_contract -- session bind mounts
-
 module extdeps.docker
 
 import std.types { FilePath, NonEmptyStr, ContentHash }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// -- Images ----------------------------------------------------------
-
-type DockerImage {
-  repository: NonEmptyStr   // e.g. "ctrl-session"
-  tag: NonEmptyStr          // e.g. "latest"
-  digest: ContentHash?           // Some("sha256:...") when pinned; None when by-tag only
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/engine/storage/"
+  }
 }
 
-// -- Mounts ----------------------------------------------------------
-// Docker's three mount kinds. A bind mount maps a host path into the
-// container; a volume mount attaches a daemon-managed named volume; a
-// tmpfs mount is container-private memory-backed scratch.
-//
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟢 GREEN (terminal). Docker's `--mount type=` surface is a closed,
-// daemon-defined taxonomy of exactly these three kinds; the variants are
-// the irreducible distinction at the docker-CLI boundary, with genuinely
-// distinct payloads (a host path / a named volume / a memory size).
-// Ledger (Patterns 1–5): (1) fact-placement rejected — all three flow to
-// the same consumer (the container runtime), no per-consumer split.
-// (2) variant-is-data rejected — not one shape with a label; payloads
-// differ structurally (host_path vs volume name vs size_bytes).
-// (3) no std algebraic source — these are runtime config, not ops over a
-// std type. (4) not dimensional — the kinds do not factor into orthogonal
-// axes; readonly is already an explicit field, not a hidden dimension.
-// (5) not a parameterized family — no separately-declared set is being
-// enumerated. The closed docker mount-kind set is the source.
+type DockerImage {
+  repository: NonEmptyStr
+  tag: NonEmptyStr
+  digest: ContentHash?
+}
+
 type DockerMount
   = BindMount { host_path: FilePath, container_path: FilePath, readonly: Bool }
   | VolumeMount { volume: NonEmptyStr, container_path: FilePath, readonly: Bool }

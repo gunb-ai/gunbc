@@ -1,15 +1,3 @@
-// Scope: lens-unit discriminators for v2.lens.medium_structure_containment over HARDCODED
-//        MediumStructureLeakFact rows (no live tree). These exercise the edge+roster PREDICATE
-//        (the host already established candidacy — marker-in-literal / emitted-medium receiver —
-//        which the planted-leak receipt covers by execution). The discriminating set:
-//          (1) a fresh NON-edge emit-side candidate           → RED (count 1);
-//          (2) a realization-edge candidate                   → clean (count 0);
-//          (3) a rostered consumer candidate                  → clean (count 0);
-//          (4) the same rostered consumer, member REMOVED     → RED  (count 1)
-//              — proves the ratchet shrinks honestly (de-roster ⇒ its live leak goes red);
-//          (5) a fresh NON-edge CHECK-SIDE candidate          → RED (count 1)
-//              — proves both faces flow through the one predicate.
-
 module v2.test.medium_structure_containment.lens_unit.discriminators
 
 import v2.lens.medium_structure_containment {
@@ -24,7 +12,6 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-// (1) fresh non-edge emit-side candidate → RED under the canonical roster.
 data fresh_emit_leak_facts: List<MediumStructureLeakFact> = [
   MediumStructureLeakFact {
     path: "dsl/tools/_perturb_fresh_consumer.dag",
@@ -37,7 +24,6 @@ test fn fresh_non_edge_emit_leak_is_flagged_holds() -> Bool {
   medium_structure_leak_count_canonical(facts: fresh_emit_leak_facts) == 1
 }
 
-// (2) realization-edge module (the GHA-expr byte authority's home) → NOT a leak.
 data edge_facts: List<MediumStructureLeakFact> = [
   MediumStructureLeakFact {
     path: "dsl/extdeps/github/expressions.dag",
@@ -50,7 +36,6 @@ test fn realization_edge_is_not_leak_holds() -> Bool {
   medium_structure_leak_count_canonical(facts: edge_facts) == 0
 }
 
-// (3) a rostered consumer (ci_workflow) → NOT a leak while rostered.
 data rostered_facts: List<MediumStructureLeakFact> = [
   MediumStructureLeakFact {
     path: "dsl/gunbc/ci_workflow.dag",
@@ -63,8 +48,6 @@ test fn rostered_consumer_is_not_leak_holds() -> Bool {
   medium_structure_leak_count_canonical(facts: rostered_facts) == 0
 }
 
-// (4) the SAME rostered consumer, but the roster with ci_workflow REMOVED → RED.
-// Proves the roster is load-bearing: de-rostering a still-leaking consumer goes red.
 data roster_without_ci_workflow: List<String> = [
   "dsl/extdeps/formats/yaml.dag",
   "dsl/test/claim/ci_yaml_serializer_witness_test.dag",
@@ -79,7 +62,6 @@ test fn de_rostered_consumer_is_leak_holds() -> Bool {
   ) == 1
 }
 
-// (5) a fresh NON-edge CHECK-SIDE candidate → RED — both faces share the one predicate.
 data fresh_check_leak_facts: List<MediumStructureLeakFact> = [
   MediumStructureLeakFact {
     path: "src/v2/workflow/_perturb_fresh.dag",

@@ -1,11 +1,3 @@
-// By-execution witnesses for `tools.emit_host_gate` fixture modeling.
-// Run via:
-//   gunbc run --source-root dsl --entry dsl/test/claim/emit_host_gate_witness.dag \
-//     --function emit_host_gate_witnesses --claim-run
-//
-// Pure witnesses (fixture pins + byte-count contract). Host execution proof is
-// `tools.emit_host_gate` `main` (shell transports, not fabricated Bool).
-
 module test.claim.emit_host_gate_witness
 
 import std.measure { byte_size_count }
@@ -46,7 +38,6 @@ fn w_ts_byte_count_is_four() -> Bool {
   byte_size_count(ts_signed_i32_le_byte_count) == 4
 }
 
-// Conjunction keystone — CI runs with --claim-run (false → exit 1).
 test fn emit_host_gate_witnesses() -> Bool {
   w_rust_fixture_nonempty() &&
   w_python_fixture_nonempty() &&

@@ -1,8 +1,3 @@
-// extdeps/diagnostic/ipmi.dag — IPMI/ipmitool out-of-band BMC (sensor / SDR / SEL).
-// Anchor: https://www.intel.com/content/www/us/en/products/docs/servers/ipmi/ipmi-second-gen-interface-spec-v2-rev1-1.html
-//
-// argv grounded in ipmitool(8) sensor/sdr/sel subcommands.
-
 module extdeps.diagnostic.ipmi
 
 import std.types { NonEmptyStr }
@@ -17,12 +12,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// 🟡 dissolved — feature:diagnostic-ipmi-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.diagnostic.mock_corpus) now governs
-// WHICH diagnostic.ipmi.Tool ops are hermetically realizable, and the fixture store owns the
-// payloads (§3). forbidden: reintroducing mock_response constants for Hermetic dispatch on these
-// shapes.
 service diagnostic.ipmi.Tool {
   operation SensorList {
     input { bmc_host: NonEmptyStr }

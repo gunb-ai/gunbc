@@ -1,0 +1,70 @@
+module v2.test.manual.infer_algebra_ref_grounding_anchor
+
+import v2.compiler.infer {
+  InferredFacts,
+  algebra_ref_is_grounded,
+  canonical_grounding_from_inferred_facts,
+}
+import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.constraints {
+  CanonicalGrounding,
+  CanonicalGroundingWitness
+}
+import v2.std.diagnostic { Outcome, Rejected }
+import v2.std.node { Atom, Conj, ComputationNode, Node, Symbol, TypeNode, Value, SyntheticOccurrence }
+import v2.std.witness { Holds, StructuralPropertyWitness, Witness }
+fn anchor_atom_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn anchor_conj_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn anchor_computation_node() -> Node {
+  Node {
+    kind: ComputationNode { behavior: Value },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+data algebra_ref_bare_atom_is_ungrounded: Bool = !algebra_ref_is_grounded(algebra: anchor_atom_node(s: ^anchor_algebra_ungrounded_sym))
+
+data algebra_ref_conj_is_grounded: Bool = algebra_ref_is_grounded(algebra: anchor_conj_node())
+
+data algebra_ref_computation_node_is_ungrounded: Bool = !algebra_ref_is_grounded(algebra: anchor_computation_node())
+
+fn anchor_inferred_facts_bare_atom_algebra() -> InferredFacts {
+  InferredFacts {
+    grounding: CanonicalGrounding {
+      node: anchor_atom_node(s: ^anchor_resolved_type_sym),
+      witness: CanonicalGroundingWitness {
+        structural: StructuralPropertyWitness {
+          property: ^constraint_property_being_canonical,
+          evidence: anchor_atom_node(s: ^anchor_algebra_ungrounded_sym)
+        },
+        closedness: StructuralPropertyWitness {
+          property: ^constraint_property_candidate_set_closedness,
+          evidence: anchor_atom_node(s: ^anchor_resolved_type_sym)
+        }
+      }
+    },
+    descent: Holds {
+      value: TerminationProof {
+        non_increasing: [],
+        strict: RankingDimension { measured: ^anchor_descent_dim_sym }
+      }
+    }
+  }
+}
+
+data anchor_canonical_grounding_rejects_bare_atom: Outcome<CanonicalGrounding> = canonical_grounding_from_inferred_facts(node: anchor_atom_node(s: ^anchor_resolved_type_sym), facts: anchor_inferred_facts_bare_atom_algebra())

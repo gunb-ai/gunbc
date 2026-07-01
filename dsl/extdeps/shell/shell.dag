@@ -1,27 +1,16 @@
-// extdeps/shell/shell.dag -- Host shell utilities (POSIX utilities + bash-compatible Exec).
-//
-// find, printenv: POSIX.1 utilities.
-// which: common extension (not POSIX; POSIX uses `command -v`).
-// Exec: `sh -c` — POSIX subprocess. (Formerly `sh -lc`; login shell dropped CI PATH.)
-//
-// These are facts about the host OS, not about any specific
-// external service.
-//
-// Consumers:
-//   tools/bootstrap.dag     -- find directories
-//   tools/clippy.dag        -- which command
-//   tools/deps.dag          -- run install scripts, check commands
-
 module extdeps.shell
 
 import std.types { FilePath, NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// 🟡 dissolved — feature:shell-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); extdeps.shell.mock_corpus (whole-tree loaded by M4.1) governs WHICH
-// shell.* ops are hermetically realizable, and the fixture store owns the payloads (§3). forbidden:
-// reintroducing mock_response constants for Hermetic dispatch on these shapes. (shell.Env already
-// dissolved its mock earlier — same target end-state.)
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  }
+}
+
 service shell.Find {
   operation ListDirs {
     input { path: FilePath, max_depth: Int = 1, min_depth: Int = 1 }
@@ -45,9 +34,7 @@ service shell.Env {
       0 => Unit
       1 => Unit "Variable not set"
     }
-    // 🟡 dissolved — feature:env-mock-response — dissolve-on-arrival: Phase-2-hermetic
-    // RecordedFixture replay from claim_batch --fixture-store; forbidden: reintroducing
-    // mock_response for Hermetic dispatch on this shape.
+
   }
 }
 
@@ -67,19 +54,14 @@ service shell.Which {
 service shell.Exec {
   operation Run {
     input { script: String }
-    // exit_code is the actual subprocess exit code (0 = success, 1, 2, ...).
-    // success is the convenience bool (exit_code == 0). Workflows that
-    // need tri-state semantics (grep: 0=match, 1=no-match, 2=error;
-    // diff: 0=same, 1=different, 2=error) match on exit_code, not success.
+
     output {
       exit_code: Int from "exit_code"
       success: Bool from "exit_success"
       stdout: String from "stdout"
       stderr: String from "stderr"
     }
-    // Use `sh -c` (not `-lc`): login shells reset PATH on CI runners and break
-    // nested floor gates when the parent process already inherited GITHUB_ENV
-    // (cargo/rustup). `-c` preserves the interpreter's environment.
+
     transport shell { argv: ["sh", "-c", "{script}"] }
     exit {
       0 => Unit
@@ -91,7 +73,7 @@ service shell.Exec {
     input { command: String }
     output { exists: Bool from "exit_success" }
     readonly
-    // `-l`: login-shell flag (bash/zsh); not POSIX sh — see file header.
+
     transport shell { argv: ["sh", "-c", "{command}"] }
     exit {
       0 => Unit

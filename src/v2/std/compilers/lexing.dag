@@ -1,12 +1,7 @@
-// src/v2/std/compilers/lexing.dag
-// Scope: canonical lexical model shared by compiler stages and target-language specs.
-// Anchor: https://en.wikipedia.org/wiki/Lexical_analysis + gunbc#4761.
-// Status: T-6 lexical data carriers; lexer implementation remains in v2.compiler.tokenize.
-
 module v2.std.compilers.lexing
 
-import v2.std.algebra { Empty, fold_list, list_snoc_item }
-import v2.std.collection { List }
+import v2.std.algebra { Empty, fold_list, length, list_snoc_item, skip }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional, optional_absent, optional_present }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Node, Symbol, SyntheticOccurrence, TypeNode }
 import v2.std.node_shape { stamp_node_shape_synthetic, type_shape }
@@ -14,7 +9,6 @@ import v2.std.text { Char, String }
 
 type Lexeme = String
 
-// 🟡 coproduct dissolution — feature:t6-lex-char-class-morphism — consumer:v2.compiler.tokenize.char_in_class — bind gunbc#4761 — dissolve-on-arrival: substrate-derived LexCharClass membership morphism replaces per-arm character-range predicates; forbidden: adding LexCharClass arms without the morphism consumer.
 type LexCharClass
   = WhitespaceChar
   | DigitChar
@@ -25,8 +19,6 @@ type LexCharClass
   | LineCommentTextChar
   | BlockCommentTextChar
 
-
-// 🟡 coproduct dissolution — feature:CP-1b-bidirectional-grammar-carrier — consumer:v2.compiler.tokenize.lex_match_pattern/v2.std.compilers.target_model.lex_rules_literal_for_class — bind docs/design-bidirectional-coercion.md §4 + docs/planning/v2-g-bidir-emit-ingest-unification-scoping-worksheet-2026-06-10.md Phase G — dissolve-on-arrival: LexPattern projects from ConcreteSyntaxSchema alongside grammar projection; forbidden: treating LexPattern as a second concrete-syntax authority or adding parallel lexical and grammar production algebras without explicit structural justification.
 type LexPattern
   = EmptyPattern
   | LiteralPattern { text: String }
@@ -40,75 +32,35 @@ type LexPattern
   | OneOrMorePattern { element: LexPattern }
   | DelimitedPattern { open: LexPattern, body: LexPattern, close: LexPattern }
 
-
-// 🟡 coproduct dissolution — feature:t6-lex-rule-morphism — consumer:v2.compiler.tokenize.lex_try_rule/std.lexing.lex_rule_token_class_member — bind gunbc#4761 — dissolve-on-arrival: substrate-derived LexRule fold/projection covers token/trivia rule consumers; forbidden: duplicating LexRule arm matches outside this std query and tokenizer walk.
 type LexRule
   = TokenRule { token_class: Symbol, pattern: LexPattern }
   | TriviaRule { pattern: LexPattern }
 
-
-// Maximal munch: compiler tokenization selects the accepting rule with the longest lexeme;
-// equal-length ties prefer the later rule (specific literals/keywords after ident).
 type LexRuleSet {
   rules: List<LexRule>
 }
 
-
-// 🟡 coproduct dissolution — feature:t6-lex-rules-language-projection — consumer:v2.compiler.tokenize.tokenize/v2.compiler.target_carriers.TargetModel.lex — bind gunbc#4761 — dissolve-on-arrival: LanguageModel lexical projection carries explicit non-empty rule-set or void-language evidence, replacing VoidLexRules staging; forbidden: treating VoidLexRules as an unbounded default.
 type LexRules
   = VoidLexRules
   | ModeledLexRules { root: LexRuleSet }
 
-
-// ── LexicalPhrase: the single authority for a fixed-token phrase ───────────
-// A fixed-token phrase (one with a literal spelling — no emit-time bound words) was
-// historically authored THREE times that could silently disagree: a LexRuleSet of
-// (token_class, literal-text) rules, a parallel ConcreteSyntaxToken sequence repeating
-// the same token classes, and a whole-phrase source-text string equal to the rule texts
-// concatenated. LexicalPhrase collapses those into one carrier (§2 horizontal — one
-// concept, derive every use): an ordered list of (token_class, fragment) spans whose
-// fragments concatenate, in order, to the source text.
-//
-// Authored as a `phrase([...])` of self-contained `span(text:, class:)` rows — each row pairs a
-// fragment with its token class in one place (no cross-list join), and reading the `text:` column
-// top-to-bottom spells the sentence. The lex rule set, the source text, and (in target_model,
-// which knows ConcreteSyntaxToken) the concrete-token sequence all PROJECT from this one value,
-// so the concat == source_text identity holds by construction and the three can no longer drift
-// (§5: the redundancy is removed, not merely checked). Span order is the only positional authority
-// (list order); a wrong order or fragment is caught by execution — the per-phrase emit witnesses
-// go RED on a wrong source text or token-class sequence.
-//
-// 🟡 layout-in-fragments interim — feature:t6-token-layout — bind gunbc#4761 (T-6 TokenLayout/
-// TriviaPolicy) — dissolve-on-arrival: `fragment` splits into (lexeme, trivia) once T-6
-// supplies a TriviaPolicy so inter-token layout is interleaved structurally rather than baked
-// into each span's text; forbidden: a second whole-phrase source-text authority alongside
-// `phrase_to_source_text`. Bound-word phrases (emit-time spelling resolved from a binding) are
-// NOT yet expressible — a binding-carrying span is the migration-time extension, not this PR.
 type TokenSpan {
   token_class: Symbol
   fragment: String
 }
 
-
 type LexicalPhrase {
   spans: List<TokenSpan>
 }
 
-
-// span: one self-contained (text, class) row. `text` is the literal fragment, `class` its token
-// class — paired in one place so authoring needs no cross-list index.
 fn span(text: String, class: Symbol) -> TokenSpan {
   TokenSpan { token_class: class, fragment: text }
 }
-
 
 fn phrase(spans: List<TokenSpan>) -> LexicalPhrase {
   LexicalPhrase { spans: spans }
 }
 
-
-// Projection 1 — the fixed-token LexRuleSet: each span is a TokenRule over a LiteralPattern
-// of its fragment, in source order (maximal-munch order preserved from `spans`).
 fn phrase_to_lex_rule_set(p: LexicalPhrase) -> LexRuleSet {
   LexRuleSet {
     rules: fold_list(
@@ -127,13 +79,10 @@ fn phrase_to_lex_rule_set(p: LexicalPhrase) -> LexRuleSet {
   }
 }
 
-
 fn phrase_to_lex_rules(p: LexicalPhrase) -> LexRules {
   ModeledLexRules { root: phrase_to_lex_rule_set(p: p) }
 }
 
-
-// Projection 2 — the source text: the fragments concatenated in order.
 fn phrase_to_source_text(p: LexicalPhrase) -> String {
   fold_list(
     xs: p.spans,
@@ -141,7 +90,6 @@ fn phrase_to_source_text(p: LexicalPhrase) -> String {
     cons: fn(acc, s) { concat(acc, s.fragment) }
   )
 }
-
 
 type Token {
   class: Symbol
@@ -151,20 +99,53 @@ type Token {
   end: Int
 }
 
-
 type TokenStream {
-  tokens: List<Token>
+  all: List<Token>
+  pos: Int
 }
 
+fn token_stream_new(all: List<Token>) -> TokenStream {
+  TokenStream { all: all, pos: 0 }
+}
 
-// 🟡 gated — predicate-dissolution interim — feature:lex-rule-token-class-query — bound task: gunbc#4761 (owner/lane: std lexing substrate follow-up) — dissolve-on-arrival: first PR landing substrate-derived LexRule token_class projection + TokenRule discriminant query deletes this hand-written arm match and routes lex_rule_set_token_class_member through that query in the same commit train; forbidden: duplicating LexRule arm matches outside this std query or laundering through local folds.
+fn token_stream_empty() -> TokenStream {
+  TokenStream { all: Empty, pos: 0 }
+}
+
+fn token_stream_position(stream: TokenStream) -> Int {
+  stream.pos
+}
+
+fn token_stream_all(stream: TokenStream) -> List<Token> {
+  stream.all
+}
+
+fn token_stream_remaining_count(stream: TokenStream) -> Int {
+  length(xs: stream.all) - stream.pos
+}
+
+fn token_stream_remaining(stream: TokenStream) -> List<Token> {
+  skip(xs: stream.all, n: stream.pos)
+}
+
+fn token_stream_first(stream: TokenStream) -> Optional<Token> {
+  list_at_optional(xs: stream.all, index: stream.pos)
+}
+
+fn token_stream_get(stream: TokenStream, offset: Int) -> Optional<Token> {
+  list_at_optional(xs: stream.all, index: stream.pos + offset)
+}
+
+fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
+  TokenStream { all: stream.all, pos: stream.pos + n }
+}
+
 fn lex_rule_token_class_member(rule: LexRule, token_class: Symbol) -> Bool {
   match rule {
     TokenRule { token_class: c, pattern: _ } => c == token_class
     TriviaRule { pattern: _ } => false
   }
 }
-
 
 fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bool {
   fold_list(
@@ -176,11 +157,6 @@ fn lex_rule_set_token_class_member(rules: LexRuleSet, token_class: Symbol) -> Bo
   )
 }
 
-
-// LexPatternFold<R>: algebra for fold_lex_pattern<R>. One handler per LexPattern variant.
-// Leaf handlers receive the raw payload; recursive handlers receive already-reduced R values
-// (EAGER catamorphism — children are reduced before the handler fires, same as fold_grammar_expr).
-// empty is a direct R value (not fn) because EmptyPattern has no payload.
 type LexPatternFold<R> {
   empty:       R
   literal:     fn(String) -> R
@@ -195,10 +171,6 @@ type LexPatternFold<R> {
   delimited:   fn(R, R, R) -> R
 }
 
-
-// fold_lex_pattern<R>: EAGER catamorphism over LexPattern. Subterms are reduced to R before
-// the handler fires. Terminates by structural descent on the finite LexPattern tree.
-// Concept home: std/compilers/lexing (fold lives with the type it folds — same as fold_grammar_expr/std/grammar).
 fn fold_lex_pattern<R>(pattern: LexPattern, algebra: LexPatternFold<R>) -> R {
   match pattern {
     EmptyPattern =>
@@ -236,13 +208,9 @@ fn fold_lex_pattern<R>(pattern: LexPattern, algebra: LexPatternFold<R>) -> R {
   }
 }
 
-
 fn lex_empty_node() -> Node {
   stamp_node_shape_synthetic(shape: type_shape(connective: Conj, children: []))
 }
-
-
-
 
 fn lex_void_lex_rules_evidence_node() -> Node {
   Node {
@@ -252,9 +220,6 @@ fn lex_void_lex_rules_evidence_node() -> Node {
   }
 }
 
-
-// 🟡 gated — feature:t6-lex-rules-node-projection — consumer:v2.std.language_model.language_model_to_node —
-// dissolve-on: ModeledLexRules projects LexRuleSet fold to named Conj edges; VoidLexRules maps to void evidence node.
 fn lex_rules_to_node(rules: LexRules) -> Node {
   match rules {
     VoidLexRules => lex_void_lex_rules_evidence_node()
@@ -262,8 +227,6 @@ fn lex_rules_to_node(rules: LexRules) -> Node {
   }
 }
 
-// 🟡 gated — feature:t8-lexeme-intern-bridge — bind lane-3a.2 StampLexeme / STD_LEXING_BRIDGE_FNS —
-// dissolve-on: substrate Lexeme→Symbol interning carrier in std (host v1 intercept retires to zero).
 fn symbol_intern_lexeme(lexeme: Lexeme) -> Symbol {
   symbol_intern_lexeme(lexeme: lexeme)
 }

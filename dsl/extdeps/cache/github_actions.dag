@@ -1,16 +1,16 @@
-// extdeps/cache/github_actions.dag — GitHub Actions cache catalog (cited facts).
-//
-// Spec: https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows
-
 module extdeps.cache.github_actions
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, HandAuthored }
+import extdeps.cache.types {
+  CacheInterfaceCatalogFacts,
+  HandAuthored,
+  UpsertSubject,
+  FilePaths,
+}
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   OpaqueStringEncoding,
-  UpsertSubject,
-  FilePaths,
   PrefixFallback,
+  OverwriteAllowed,
   WriteThenCommit,
   MissThenCreate,
   TarArchive,
@@ -26,6 +26,16 @@ import std.cache_interface {
   Repo,
 }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows"
+  }
+}
+
 data gha_actions_cache_id: CacheInterfaceId = "gha_actions_cache"
 
 data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
@@ -33,9 +43,7 @@ data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "github-actions-cache-api"
   transport_encoding: OpaqueStringEncoding
   key_derivation: {
-    // HAND-AUTHORED key string (GHA cache key): invalidation is the author bumping the key,
-    // so its components are CITED/authored, not derived — exempt from key_completeness. The
-    // §6 genuinely-unstructurable carve-out, made explicit by the HandAuthored variant.
+
     key_inputs: HandAuthored { cited_inputs: [UpsertSubject, FilePaths] }
     overwritable: true
     prefix_fallback_allowed: true
@@ -52,7 +60,7 @@ data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
         "runner-scoped",
       ]
     }
-    write_semantics: WriteThenCommit
+    write_semantics: OverwriteAllowed
     miss_semantics: MissThenCreate
   }
   placement: {

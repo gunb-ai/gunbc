@@ -2,11 +2,15 @@
 // Source module: extdeps.version.semver
 
 use self::SemVerIdentifier::*;
+pub use crate::extdeps_external_authority::ExternalAuthority;
+use crate::extdeps_uri::UriScheme::Https;
+pub use crate::extdeps_uri::{Uri, UriScheme};
 pub use crate::extdeps_version::{VersionConstraint, VersionIdentity, VersionScheme};
 pub use crate::std_algebra::Ordering;
 use crate::std_algebra::Ordering::{Equal, Greater, Less};
 pub use crate::std_integer::NonNegativeInt;
 pub use crate::std_nat::nat_compare;
+pub use crate::std_types::List;
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
@@ -17,6 +21,20 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
+    thread_local! {
+            static CACHED: Rc<ExternalAuthority> = {
+                Rc::new(ExternalAuthority {
+        uri: Rc::new(Uri {
+        scheme: UriScheme::Https,
+        locator: "semver.org/".to_string(),
+    }),
+    })
+            };
+        }
+    CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
+}
+
 pub type SemVerIdentity = NonEmptyStr;
 
 pub type SemVerConstraint = NonEmptyStr;
@@ -24,15 +42,15 @@ pub type SemVerConstraint = NonEmptyStr;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum SemVerIdentifier {
-    SemVerNumericIdentifier { value: Box<NonNegativeInt> },
+    SemVerNumericIdentifier { value: NonNegativeInt },
     SemVerAlphanumericIdentifier { label: NonEmptyStr },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SemVerVersion {
-    pub major: Box<NonNegativeInt>,
-    pub minor: Box<NonNegativeInt>,
-    pub patch: Box<NonNegativeInt>,
+    pub major: NonNegativeInt,
+    pub minor: NonNegativeInt,
+    pub patch: NonNegativeInt,
     pub pre_release: Rc<Vec<Rc<SemVerIdentifier>>>,
     pub build: Rc<Vec<Rc<SemVerIdentifier>>>,
 }
@@ -71,32 +89,25 @@ pub fn semver_compare_identifiers(
     mut b: Rc<Vec<Rc<SemVerIdentifier>>>,
 ) -> Ordering {
     loop {
-        if ((v1_rt::length(a.clone()) == 0) && (v1_rt::length(b.clone()) == 0)) {
+        if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
             break Ordering::Equal;
         } else {
-            if (v1_rt::length(a.clone()) == 0) {
+            if ((a.clone().len() as i64) == 0) {
                 break Ordering::Less;
             } else {
-                if (v1_rt::length(b.clone()) == 0) {
+                if ((b.clone().len() as i64) == 0) {
                     break Ordering::Greater;
                 } else {
-                    match semver_compare_identifier(
-                        a.clone().first().cloned(),
-                        b.clone().first().cloned(),
-                    ) {
-                        Ordering::Equal => {
-                            let __tco_0 =
-                                Rc::new(a.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-                            let __tco_1 =
-                                Rc::new(b.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
-                            a = __tco_0;
-                            b = __tco_1;
-                            continue;
-                        }
-                        other => {
-                            break other.clone();
-                        }
-                    }
+                    match semver_compare_identifier(a.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 0 of semver_compare_identifier (empty Optional at runtime)"), b.clone().first().cloned().expect("fail-closed: an optional value flowed into non-optional parameter 1 of semver_compare_identifier (empty Optional at runtime)")) {
+    Ordering::Equal => { {
+                        let __tco_0 = Rc::new(a.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+let __tco_1 = Rc::new(b.iter().cloned().skip(1 as usize).collect::<Vec<_>>());
+a = __tco_0;
+b = __tco_1;
+continue;
+} },
+    other => { break other.clone(); },
+}
                 }
             }
         }
@@ -107,13 +118,13 @@ pub fn semver_compare_pre_release(
     a: Rc<Vec<Rc<SemVerIdentifier>>>,
     b: Rc<Vec<Rc<SemVerIdentifier>>>,
 ) -> Ordering {
-    if ((v1_rt::length(a.clone()) == 0) && (v1_rt::length(b.clone()) == 0)) {
+    if (((a.clone().len() as i64) == 0) && ((b.clone().len() as i64) == 0)) {
         Ordering::Equal
     } else {
-        if (v1_rt::length(a.clone()) == 0) {
+        if ((a.clone().len() as i64) == 0) {
             Ordering::Greater
         } else {
-            if (v1_rt::length(b.clone()) == 0) {
+            if ((b.clone().len() as i64) == 0) {
                 Ordering::Less
             } else {
                 semver_compare_identifiers(a.clone(), b.clone())
@@ -141,16 +152,14 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
     }
 }
 
-pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> Rc<FreeMonoid<Nat>> {
+pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> String {
     match (*id).clone() {
-        SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => {
-            crate::v2_std_text::host_string_text_from_rust_host(format!("{}", v.clone()))
-        }
+        SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => format!("{}", v.clone()),
         SemVerIdentifier::SemVerAlphanumericIdentifier { label: s, .. } => s.clone(),
     }
 }
 
-pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> Rc<FreeMonoid<Nat>> {
+pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> String {
     Rc::new({
         let mut __result = Vec::new();
         for id in ids.iter().cloned() {
@@ -161,26 +170,19 @@ pub fn semver_identifiers_label(ids: Rc<Vec<Rc<SemVerIdentifier>>>) -> Rc<FreeMo
     .join(&".".to_string())
 }
 
-pub fn semver_version_label(v: Rc<SemVerVersion>) -> Rc<FreeMonoid<Nat>> {
+pub fn semver_version_label(v: Rc<SemVerVersion>) -> String {
     {
         let core = v1_rt::concat(
-            crate::v2_std_text::host_string_text_from_rust_host((v.major.clone()).to_string()),
+            (v.major.clone()).to_string(),
             v1_rt::concat(
                 ".".to_string(),
                 v1_rt::concat(
-                    crate::v2_std_text::host_string_text_from_rust_host(
-                        (v.minor.clone()).to_string(),
-                    ),
-                    v1_rt::concat(
-                        ".".to_string(),
-                        crate::v2_std_text::host_string_text_from_rust_host(
-                            (v.patch.clone()).to_string(),
-                        ),
-                    ),
+                    (v.minor.clone()).to_string(),
+                    v1_rt::concat(".".to_string(), (v.patch.clone()).to_string()),
                 ),
             ),
         );
-        let with_pre = if (v1_rt::length(v.pre_release.clone()) == 0) {
+        let with_pre = if ((v.pre_release.clone().len() as i64) == 0) {
             core
         } else {
             v1_rt::concat(
@@ -191,7 +193,7 @@ pub fn semver_version_label(v: Rc<SemVerVersion>) -> Rc<FreeMonoid<Nat>> {
                 ),
             )
         };
-        if (v1_rt::length(v.build.clone()) == 0) {
+        if ((v.build.clone().len() as i64) == 0) {
             with_pre
         } else {
             v1_rt::concat(
@@ -220,9 +222,11 @@ pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {
 
 pub fn semver_scheme() -> Rc<VersionScheme> {
     thread_local! {
-        static CACHED: Rc<VersionScheme> = {
-            semver_identity_compare
-        };
-    }
+            static CACHED: Rc<VersionScheme> = {
+                Rc::new(VersionScheme {
+        compare: Rc::new(semver_identity_compare),
+    })
+            };
+        }
     CACHED.with(|c: &Rc<VersionScheme>| c.clone())
 }

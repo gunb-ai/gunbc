@@ -1,26 +1,16 @@
-// extdeps/github/github.dag -- "What is GitHub?"
-//
-// Core resource model: repositories, users, auth, pagination.
-// Complements extdeps/api/github_ops.dag (which covers rate limits and tiers).
-// REST-transport bindings of these resources live in sibling service files
-// (pulls.dag, gists.dag, actions_runs.dag) -- co-located since services/ was
-// merged into extdeps/. REST is one realization handler; the `gh` CLI and
-// GraphQL are others not yet bound.
-//
-// Consumers:
-//   extdeps/github/issues.dag        -- issue resource model
-//   extdeps/github/pull_requests.dag -- PR resource model
-//   extdeps/github/gists.dag         -- gist resource model
-
 module extdeps.github.github
 
-import std.serialization { VariantEncoding, StringVariant, VariantNaming, AsAuthored }
-import std.types { Timestamp, Url }
+import std.types { NonEmptyStr, Timestamp }
 
-// Wire contract: GitHub API returns enum values as plain strings ("User", "Bot").
-data wire_contract: VariantEncoding = StringVariant { naming: AsAuthored }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// -- Users ---------------------------------------------------------
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest"
+  }
+}
 
 type UserType = User | Bot | Organization
 
@@ -30,8 +20,6 @@ type GitHubUser {
   type: UserType
 }
 
-// -- Repositories --------------------------------------------------
-
 type Repository {
   owner: String
   name: String
@@ -39,8 +27,6 @@ type Repository {
   private: Bool
   default_branch: String
 }
-
-// -- Authentication ------------------------------------------------
 
 type GitHubAuthToken {
   token: Secret
@@ -55,22 +41,15 @@ type GitHubScope
   | ScopeReadOrg
   | ScopeReadUser
 
-// -- Pagination ----------------------------------------------------
-// GitHub uses Link-header cursor-based pagination.
-
 type Pagination {
   per_page: Int
   cursor: String?
   has_next: Bool
 }
 
-// -- Permissions ---------------------------------------------------
-
 type GitHubPermission = PermRead | PermWrite | PermAdmin
 
-// -- Constants -----------------------------------------------------
-
-data default_api_base: Url = "https://api.github.com"
+data default_api_base: NonEmptyStr = "https://api.github.com"
 
 data default_per_page: Int = 30
 

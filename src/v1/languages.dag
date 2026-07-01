@@ -1,12 +1,3 @@
-// Compiler-local language-spec projection.
-//
-// Imports shared types from `dsl/std/languages.dag` (the single authority for
-// language facts) and adds compiler-specific types (SerializationSpec,
-// TestConventions, SharingStrategy, IndexingSemantics, AnnotationRequirements)
-// that the emitter needs but that are not (yet) in std.
-//
-// Accessor functions route RenderTarget → concrete extdep data.
-
 module v1.compiler.languages
 
 import v1.compiler.artifact { RenderTarget, Rust, Python, Go, Dag }
@@ -22,10 +13,6 @@ import std.syntax {
   BodyKind, ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
   ServiceBody, ResourceBody
 }
-// NamingCase: mirrors std.languages.NamingCase (single authority).
-// Cannot import directly — std/languages.dag contains CommentSyntax
-// with String? fields the bootstrap compiler doesn't yet emit correctly.
-// Import from std.languages once bootstrap handles optional string fields.
 
 import extdeps.languages.rust.syntax { rust_operators, rust_item_forms }
 import extdeps.languages.python.syntax { python_operators, python_item_forms }
@@ -144,7 +131,6 @@ type TestConventions {
   async_decorator: String?
 }
 
-
 type ImportTrigger
   = TypeUsageTrigger { type_name: String }
   | TraitImplTrigger { trait_name: String }
@@ -158,18 +144,16 @@ type ImportRule {
 }
 
 type SharingStrategy {
-  needs_sharing: Bool // Rust: true (ownership), Python/Go: false (GC)
+  needs_sharing: Bool
   wrap_template: String
-  // Clone templates: {0}=value, {1}=field (for field_clone).
-  // In GC'd languages these are identity — no ownership transfer needed.
+
   clone_value: String
   deref_clone: String
   field_clone: String
   iter_owned: String
   clone_suffix: String
-  // Borrow templates: {0}=type (param) or {0}=expr (arg).
-  // Rust: "&{0}" wraps both types and expressions. GC languages: identity (no borrows needed).
-  borrow_param_template: String // wraps param type: Rust "&Rc<T>", Go/Python identity
+
+  borrow_param_template: String
   borrow_arg_template: String
 }
 
@@ -199,14 +183,6 @@ type ServiceFieldTemplates {
   file_ctor: String
 }
 
-
-// -- Block syntax: structural formatting facts per target language -----------
-// Two authorities:
-//   Language spec — block delimiters, statement terminators, significant
-//     whitespace. These are correctness requirements (Python).
-//   Style spec — indent unit, readability conventions. These are readability
-//     requirements (correctness during bootstrap; optional post-bootstrap
-//     via gofmt/rustfmt).
 type BlockSyntax {
   block_open: String
   block_close: String
@@ -280,8 +256,6 @@ fn service_self_param(spec: LanguageSpec) -> String {
   }
 }
 
-// TODO: receiver_template on LanguageSpec — Go receiver syntax "(c *Name) "
-// is hardcoded here. Phase 5: move to a data-driven rendering template.
 fn service_receiver_str(spec: LanguageSpec, service_name: String) -> String {
   match spec.service_method {
     SelfInParams { self_param: _ } => ""
@@ -303,8 +277,6 @@ fn service_methods_inside_class(spec: LanguageSpec) -> Bool {
   }
 }
 
-// TODO: return_template on LanguageSpec — error tuple format "(T, error)"
-// is hardcoded here. Phase 5: move to fully data-driven rendering.
 fn service_return_str(spec: LanguageSpec, ret_type: String) -> String {
   match spec.service_return {
     ArrowReturn => concat(spec.items.return_arrow, ret_type)
@@ -312,15 +284,6 @@ fn service_return_str(spec: LanguageSpec, ret_type: String) -> String {
   }
 }
 
-// Item definition facts — individual tokens the emitter composes.
-// Not templates: each field is one language fact.
-//
-// RELATION TO SyntaxSpec: SyntaxSpec.ItemForm.keyword is the PARSING
-// keyword (what to recognize). ItemKeywords.*_keyword is the EMISSION
-// keyword (what to produce). For same-language compilation (Rust→Rust)
-// these are identical. For cross-language (.dag→Rust) they differ
-// (parse "fn", emit "fn"/"def"/"func"). When each target language has
-// a full SyntaxSpec, ItemKeywords should derive from it (single authority).
 type ItemKeywords {
   func_keyword: String
   async_prefix: String
@@ -335,10 +298,6 @@ type ItemKeywords {
   import_from_keyword: String
 }
 
-// Look up an emission keyword by item kind from a SyntaxSpec's item_forms.
-// Fails closed with an error marker if no matching ItemForm exists.
-// M5: "No fallbacks that fabricate" — missing item form is a data bug
-// that should cause visible compilation failure, not silent "" emission.
 fn item_keyword_for_kind(forms: List<ItemForm>, kind: ItemFormKind) -> String {
   let matching = forms |> filter(f => f.kind == kind)
   match matching |> first {
@@ -374,8 +333,7 @@ type LanguageSpec {
   void_type: String
   tuple_syntax: TupleSyntax
   string_interp: StringInterpSyntax
-  // Callable type rendering: non-null overrides CallableRepr.template entirely.
-  // Rust: "Rc<dyn Fn({params}) -> {return}>". Others: null (use CallableRepr).
+
   callable_type_template: String?
   naming_case: NamingCase
   async_call_prefix: String
@@ -385,6 +343,7 @@ type LanguageSpec {
   record_lit: RecordLitSyntax
   service_method: ServiceMethodStrategy
   service_return: ServiceReturnStrategy
+  char_sanitization: CharSanitization
 }
 
 type TupleSyntax {
@@ -408,11 +367,6 @@ type RecordLitSyntax {
   anon_field_indent: String
 }
 
-// String interpolation — three structurally different models:
-//   FormatArgs: format function + positional args (Rust format!, Go fmt.Sprintf)
-//   InlineExpr: inline interpolation (Python f-strings)
-// C-1: dissolves `match target` in emit_simple_string_interp.
-// InterpStyle: FormatArgs carries its placeholder; InlineExpr has none.
 type InterpStyle
   = FormatArgs { placeholder: String }
   | InlineExpr
@@ -429,10 +383,18 @@ type StringInterpSyntax {
   escape_pairs: List<EscapePair>
 }
 
-// =========================================================================
-// SyntaxSpec — unified with std.syntax (single authority)
-// ItemForm, OperatorSpec, SyntaxSpec, BodyKind imported above.
-// =========================================================================
+type EmojiCharEscape {
+  prefix: String
+  suffix: String
+}
+
+fn canonical_emoji_char_escape() -> EmojiCharEscape {
+  EmojiCharEscape { prefix: "_Eu", suffix: "_" }
+}
+
+type CharSanitization
+  = NoCharSanitization
+  | EmojiEscape
 
 fn rust_spec() -> LanguageSpec {
   LanguageSpec {
@@ -574,7 +536,8 @@ fn rust_spec() -> LanguageSpec {
       anon_field_indent: "    "
     },
     service_method: SelfInParams { self_param: "&self" },
-    service_return: ArrowReturn
+    service_return: ArrowReturn,
+    char_sanitization: EmojiEscape
   }
 }
 
@@ -718,7 +681,8 @@ fn python_spec() -> LanguageSpec {
       anon_field_indent: "    "
     },
     service_method: SelfInParams { self_param: "self" },
-    service_return: ArrowReturn
+    service_return: ArrowReturn,
+    char_sanitization: EmojiEscape
   }
 }
 
@@ -862,7 +826,8 @@ fn go_spec() -> LanguageSpec {
       anon_field_indent: "\t"
     },
     service_method: ExternalReceiver { var_name: "c" },
-    service_return: ErrorTupleReturn { error_type: "error" }
+    service_return: ErrorTupleReturn { error_type: "error" },
+    char_sanitization: EmojiEscape
   }
 }
 
@@ -1006,7 +971,8 @@ fn dag_spec() -> LanguageSpec {
       anon_field_indent: "    "
     },
     service_method: SelfInParams { self_param: "" },
-    service_return: ArrowReturn
+    service_return: ArrowReturn,
+    char_sanitization: NoCharSanitization
   }
 }
 
@@ -1091,8 +1057,6 @@ fn expression_semantics_for_target(target: RenderTarget) -> ExpressionSemantics 
   language_spec_for_target(target: target).expression_semantics
 }
 
-// Apply sharing wrap template to a type string.
-// Rust: "Rc<{0}>" → "Rc<MyType>", Python/Go: "{0}" → "MyType"
 fn wrap_shared_type(target: RenderTarget, inner: String) -> String {
   let tmpl = sharing_for_target(target: target).wrap_template
   replace(tmpl, "{0}", inner)

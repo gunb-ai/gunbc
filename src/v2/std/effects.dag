@@ -1,76 +1,47 @@
-// src/v2/std/effects.dag
-// Scope: v2 effect algebra — idempotent/breaking partition (terminal carriers).
-// Status: T-19 idempotent-operation generator authority; full OperationEffect port = TASKS T-8.
-
 module v2.std.effects
-
 
 import v2.std.node { Atom, Conj, ComputationNode, Edge, Named, Node, Symbol, Transform, TypeNode, SyntheticOccurrence }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type IdempotentShape
   = ReadEffect
   | UpsertEffect { key_source: KeySource }
   | DeleteEffect { key_source: KeySource }
   | CreateIfAbsentEffect { key_source: KeySource }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type BreakingShape
   = CreateEffect { cause: BreakingCreateCause }
   | AppendEffect
 
-
-// 🟡 interim — parallel subset of CreateCause breaking variants (forbidden: drift between
-// the two coproducts). dissolve-on: increment-2 (≤1 release) — refinement witness
-// BreakingCreateCause ⊆ CreateCause; single CreateCause + router exhaustiveness alternative.
 type BreakingCreateCause
   = PostAlways
   | KeylessFallback { method: Symbol }
 
-
-// Derivation/classifier input — wider than BreakingCreateCause; routes via effect_shape_for_create_cause.
 type CreateCause
   = PostAlways
   | KeylessFallback { method: Symbol }
   | CreateIfAbsent { key_source: KeySource }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type KeySource
   = PathParam { param: Symbol }
   | InputField { field: Symbol }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type EffectShape
   = IsIdempotent(IdempotentShape)
   | IsBreaking(BreakingShape)
-
 
 type IdempotentOperationRef {
   callable: Symbol
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ComposableIdempotentOperationSubject
   = ReadIdempotentSample { operation: IdempotentOperationRef }
   | UpsertIdempotentSample { operation: IdempotentOperationRef, key_source: KeySource }
   | DeleteIdempotentSample { operation: IdempotentOperationRef, key_source: KeySource }
   | CreateIfAbsentIdempotentSample { operation: IdempotentOperationRef, key_source: KeySource }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type IdempotentOperationSubject
   = Composable(ComposableIdempotentOperationSubject)
   | LabelOnlyIdempotentInhabitance { shape: IdempotentShape, label: Symbol }
-
-
-
-
-
 
 data sample_state: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^sample_state_value } },
@@ -78,79 +49,60 @@ data sample_state: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data sample_read_operation: IdempotentOperationRef = IdempotentOperationRef {
   callable: ^sample_get_callable
 }
-
 
 data sample_upsert_operation: IdempotentOperationRef = IdempotentOperationRef {
   callable: ^sample_upsert_callable
 }
 
-
 data sample_delete_operation: IdempotentOperationRef = IdempotentOperationRef {
   callable: ^sample_delete_callable
 }
-
 
 data sample_create_if_absent_operation: IdempotentOperationRef = IdempotentOperationRef {
   callable: ^sample_create_if_absent_callable
 }
 
-
 data sample_upsert_key_source: KeySource = InputField { field: ^sample_path_key_slug }
-
 
 data sample_delete_key_source: KeySource = InputField { field: ^sample_path_key_slug }
 
-
 data sample_create_if_absent_key_source: KeySource = InputField { field: ^sample_path_key_slug }
-
 
 data sample_read_composable: ComposableIdempotentOperationSubject = ReadIdempotentSample {
   operation: sample_read_operation
 }
-
 
 data sample_upsert_composable: ComposableIdempotentOperationSubject = UpsertIdempotentSample {
   operation: sample_upsert_operation,
   key_source: sample_upsert_key_source
 }
 
-
 data sample_delete_composable: ComposableIdempotentOperationSubject = DeleteIdempotentSample {
   operation: sample_delete_operation,
   key_source: sample_delete_key_source
 }
-
 
 data sample_create_if_absent_composable: ComposableIdempotentOperationSubject = CreateIfAbsentIdempotentSample {
   operation: sample_create_if_absent_operation,
   key_source: sample_create_if_absent_key_source
 }
 
-
 data sample_read_subject: IdempotentOperationSubject = Composable(sample_read_composable)
-
 
 data sample_upsert_subject: IdempotentOperationSubject = Composable(sample_upsert_composable)
 
-
 data sample_delete_subject: IdempotentOperationSubject = Composable(sample_delete_composable)
 
-
 data sample_create_if_absent_subject: IdempotentOperationSubject = Composable(sample_create_if_absent_composable)
-
 
 data sample_label_only_subject: IdempotentOperationSubject = LabelOnlyIdempotentInhabitance {
   shape: ReadEffect,
   label: ^sample_label_only_callable
 }
 
-
-// Create-if-absent is idempotent (lattice meet: insert only when key absent).
-// PostAlways / KeylessFallback remain breaking CreateEffect carriers.
 fn effect_shape_for_create_cause(cause: CreateCause) -> EffectShape {
   match cause {
     CreateIfAbsent { key_source: key_source } =>
@@ -162,9 +114,6 @@ fn effect_shape_for_create_cause(cause: CreateCause) -> EffectShape {
   }
 }
 
-
-// dissolve-on: derived structural == on KeySource (closed coproduct equality) replaces this
-// hand-rolled predicate; interim owner: increment-1 create_double_init_collapsible identity.
 fn key_source_eq(a: KeySource, b: KeySource) -> Bool {
   match a {
     PathParam { param: pa } => match b {
@@ -178,10 +127,6 @@ fn key_source_eq(a: KeySource, b: KeySource) -> Bool {
   }
 }
 
-
-// Increment-1 membership: is this shape in the create-if-absent dedup-eligible class?
-// Pairwise Share collapse (same identity) is create_double_init_collapsible, not this predicate.
-// dissolve-on: increment-2 Share/dedup classifier surface replaces both interim predicates.
 fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
   match shape {
     IsIdempotent(CreateIfAbsentEffect { key_source: key_source }) => true
@@ -193,7 +138,6 @@ fn create_effect_is_dedupable(shape: EffectShape) -> Bool {
     IsBreaking(AppendEffect) => false
   }
 }
-
 
 fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
   match a {
@@ -217,26 +161,21 @@ fn create_double_init_collapsible(a: EffectShape, b: EffectShape) -> Bool {
   }
 }
 
-
 data sample_create_if_absent_key_b: KeySource = InputField { field: ^sample_alt_path_key_slug }
-
 
 fn create_if_absent_shape(key_source: KeySource) -> EffectShape {
   effect_shape_for_create_cause(cause: CreateIfAbsent { key_source: key_source })
 }
 
-
 fn create_always_shape() -> EffectShape {
   effect_shape_for_create_cause(cause: PostAlways)
 }
-
 
 fn atom_node(s: Symbol) -> Node {
   Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn key_source_node(key_source: KeySource) -> Node {
   match key_source {
@@ -272,7 +211,6 @@ fn key_source_node(key_source: KeySource) -> Node {
 }
   }
 }
-
 
 fn idempotent_shape_node(shape: IdempotentShape) -> Node {
   match shape {
@@ -325,7 +263,6 @@ fn idempotent_shape_node(shape: IdempotentShape) -> Node {
   }
 }
 
-
 fn classified_idempotent_effect_node(shape: IdempotentShape) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -343,7 +280,6 @@ fn classified_idempotent_effect_node(shape: IdempotentShape) -> Node {
 }
 }
 
-
 fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -356,7 +292,6 @@ fn idempotent_operation_ref_node(operation: IdempotentOperationRef) -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn idempotent_operation_apply_node(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
   Node {
@@ -375,11 +310,9 @@ fn idempotent_operation_apply_node(state: Node, subject: ComposableIdempotentOpe
 }
 }
 
-
 fn idempotent_operation_apply_once(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
   idempotent_operation_apply_node(state: state, subject: subject)
 }
-
 
 fn idempotent_operation_apply_twice(state: Node, subject: ComposableIdempotentOperationSubject) -> Node {
   idempotent_operation_apply_node(
@@ -387,7 +320,6 @@ fn idempotent_operation_apply_twice(state: Node, subject: ComposableIdempotentOp
     subject: subject
   )
 }
-
 
 fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubject) -> Node {
   match subject {
@@ -456,7 +388,6 @@ fn idempotent_operation_witness_node(subject: ComposableIdempotentOperationSubje
   }
 }
 
-
 data witness_create_if_absent_cause_is_idempotent: Bool = match effect_shape_for_create_cause(
   cause: CreateIfAbsent { key_source: sample_create_if_absent_key_source }
 ) {
@@ -468,7 +399,6 @@ data witness_create_if_absent_cause_is_idempotent: Bool = match effect_shape_for
   IsIdempotent(UpsertEffect { key_source: key_source }) => false
   IsIdempotent(DeleteEffect { key_source: key_source }) => false
 }
-
 
 data witness_post_always_cause_is_breaking: Bool = match effect_shape_for_create_cause(cause: PostAlways) {
   IsBreaking(CreateEffect { cause: PostAlways }) => true

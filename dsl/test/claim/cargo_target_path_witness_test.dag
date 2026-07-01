@@ -1,14 +1,3 @@
-// test/claim/cargo_target_path_witness.dag — by-execution witness that EXERCISES the
-// extdeps.cargo target→file derivation rule and the RustEdition authority.
-//
-// DESIGN §5 green-by-execution: `cargo_target_source_path`, `rust_module_candidate_paths`,
-// `rust_edition_str`, and `default_rust_edition` are not spec-without-execution — this witness
-// folds each over discriminating inputs and asserts the exact rendered path / token. A wrong
-// rule (Lib not landing on src/lib.rs, the package-named Bin not collapsing to src/main.rs, the
-// {mod}.rs vs {mod}/mod.rs pair, or an edition token drift) lands on a different string and goes
-// red. This is the real in-tree consumer the rule's header names; until the parked content-unit
-// gate folds over it too, this witness keeps the rule honest.
-
 module test.claim.cargo_target_path
 
 import std.logic { Bool }
@@ -31,10 +20,6 @@ import extdeps.cargo {
   default_rust_edition
 }
 
-// Local path renderer (segments joined with "/"). Each `seg` is a branded `PathSegment`; it
-// widens to `String` in `concat`'s argument position, so both `if` branches return `String` and
-// the fold's accumulator stays `String` (never a bare branded `seg`, which would force a
-// brand-vs-String join the checker does not compute an LUB for).
 fn render(parts: FilePathParts) -> String {
   fold(parts.segments, init: "", f: fn(acc, seg) {
     if acc == "" { concat(acc, seg) } else { concat(acc, concat("/", seg)) }
@@ -45,20 +30,16 @@ fn render_target(target: CargoTarget, package_name: String) -> String {
   render(parts: cargo_target_source_path(target: target, package_name: package_name))
 }
 
-// The two module candidates rendered + joined by ";" (so a single String equality discriminates
-// both the membership and the order of the {mod}.rs vs {mod}/mod.rs pair).
 fn render_candidates(stem: String) -> String {
   fold(rust_module_candidate_paths(stem: stem), init: "", f: fn(acc, parts) {
     if acc == "" { render(parts: parts) } else { concat(acc, concat(";", render(parts: parts))) }
   })
 }
 
-// Lib → src/lib.rs.
 fn lib_lands_on_src_lib() -> Bool {
   render_target(target: Lib, package_name: "v1-compiler") == "src/lib.rs"
 }
 
-// The package-named bin collapses to src/main.rs; any other bin lands under src/bin/.
 fn package_bin_collapses_to_main() -> Bool {
   render_target(target: Bin { name: "v1-compiler" }, package_name: "v1-compiler") == "src/main.rs"
 }
@@ -67,19 +48,16 @@ fn other_bin_lands_under_src_bin() -> Bool {
   render_target(target: Bin { name: "helper" }, package_name: "v1-compiler") == "src/bin/helper.rs"
 }
 
-// Test / example / bench targets land in their conventional directories.
 fn test_example_bench_dirs() -> Bool {
   render_target(target: CargoTest { name: "integration" }, package_name: "v1-compiler") == "tests/integration.rs"
     && render_target(target: Example { name: "demo" }, package_name: "v1-compiler") == "examples/demo.rs"
     && render_target(target: Bench { name: "throughput" }, package_name: "v1-compiler") == "benches/throughput.rs"
 }
 
-// A module stem resolves to exactly the two candidates, in order.
 fn module_stem_two_candidates() -> Bool {
   render_candidates(stem: "parser") == "src/parser.rs;src/parser/mod.rs"
 }
 
-// Every edition renders its canonical manifest token, and the default is 2021.
 fn edition_tokens_render() -> Bool {
   rust_edition_str(edition: Edition2015) == "2015"
     && rust_edition_str(edition: Edition2018) == "2018"

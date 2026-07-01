@@ -1,0 +1,26 @@
+module v2.test.fact_cardinality.lens_unit.synthetic_fork_red
+
+import v2.lens.fact_cardinality {
+  FactCardinalityDeclFact,
+  fact_cardinality_cross_tree_diverged_fork
+}
+import v2.std.logic { Bool }
+
+data synthetic_fork_dsl: FactCardinalityDeclFact = FactCardinalityDeclFact {
+  rel_path_decl_key: "std/algebra.dag:FreeMonoid",
+  tree: Dsl,
+  content_hash: "dsl_free_monoid_record"
+}
+
+data synthetic_fork_v2: FactCardinalityDeclFact = FactCardinalityDeclFact {
+  rel_path_decl_key: "std/algebra.dag:FreeMonoid",
+  tree: V2,
+  content_hash: "v2_free_monoid_coproduct"
+}
+
+test fn synthetic_fork_red_holds() -> Bool {
+  fact_cardinality_cross_tree_diverged_fork(
+    left: synthetic_fork_dsl,
+    right: synthetic_fork_v2
+  )
+}

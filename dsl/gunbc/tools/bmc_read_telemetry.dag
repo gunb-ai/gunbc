@@ -1,15 +1,3 @@
-// gunbc/tools/bmc_read_telemetry.dag — runnable: poll BMC Redfish telemetry (read-only).
-//
-// Reaches the BMC at $BMC_HOST using rotated credentials from $BMC_NETRC_FILE (0600
-// netrc — password MUST NOT ride curl argv). GETs Systems/system + Chassis sensors.
-//
-// Run (management network; BMC IP from ctrl operator_fleet):
-//   BMC_HOST=<srvN-bmc-ip> BMC_NETRC_FILE=~/.bmc-netrc gunbc run --source-root dsl \
-//     --entry dsl/gunbc/tools/bmc_read_telemetry.dag --function bmc_read_telemetry
-//
-// OpenBMC ALTRAD8UD: Chassis Power/Thermal are empty; sensor collection carries power/temp.
-// Factory first-contact (unrotated) remains gunbc.tools.bmc_first_contact.
-
 module gunbc.tools.bmc_read_telemetry
 
 import extdeps.shell

@@ -1,0 +1,31 @@
+module v2.test.fact_cardinality.lens_unit.synthetic_unified_green
+
+import v2.lens.fact_cardinality {
+  FactCardinalityDeclFact,
+  fact_cardinality_cross_tree_coexistence,
+  fact_cardinality_cross_tree_variant_mismatch
+}
+import v2.std.logic { Bool }
+
+data synthetic_unified_dsl: FactCardinalityDeclFact = FactCardinalityDeclFact {
+  rel_path_decl_key: "std/algebra.dag:Lattice",
+  tree: Dsl,
+  content_hash: "7e31b580ce38306e"
+}
+
+data synthetic_unified_v2: FactCardinalityDeclFact = FactCardinalityDeclFact {
+  rel_path_decl_key: "std/algebra.dag:Lattice",
+  tree: V2,
+  content_hash: "7e31b580ce38306e"
+}
+
+test fn synthetic_unified_green_holds() -> Bool {
+  fact_cardinality_cross_tree_coexistence(
+    left: synthetic_unified_dsl,
+    right: synthetic_unified_v2
+  )
+    && !fact_cardinality_cross_tree_variant_mismatch(
+      left: synthetic_unified_dsl,
+      right: synthetic_unified_v2
+    )
+}

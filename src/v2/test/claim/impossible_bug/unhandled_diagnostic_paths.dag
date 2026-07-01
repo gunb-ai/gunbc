@@ -1,0 +1,111 @@
+module v2.test.impossible_bug.unhandled_diagnostic_paths
+
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  node_locus,
+  None,
+  Outcome,
+  Rejected,
+  Suggested,
+  diagnostics_singleton
+}
+import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
+import v2.std.verification {
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier2,
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  manual_claim_anchor
+}
+fn atom_node(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+}
+
+fn safety_subject(op: Symbol, witness: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^operation_field }, target: atom_node(s: op) },
+      Edge { label: Named { name: ^witness_field }, target: atom_node(s: witness) },
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+data total_division_input: Node = safety_subject(op: ^total_division_symbol, witness: ^proven_nonzero_divisor_symbol)
+
+data checked_index_input: Node = safety_subject(op: ^checked_index_symbol, witness: ^proven_index_in_range_symbol)
+
+data total_unwrap_input: Node = safety_subject(op: ^total_unwrap_symbol, witness: ^proven_optional_present_symbol)
+
+data falsification_division_by_zero_unhandled: Node = safety_subject(op: ^unchecked_division_symbol, witness: ^force_unwrap_symbol)
+
+data falsification_oob_index_unhandled: Node = safety_subject(op: ^unchecked_index_symbol, witness: ^force_unwrap_symbol)
+
+data falsification_force_unwrap_survives: Node = atom_node(s: ^force_unwrap_symbol)
+
+data claim_division_by_zero_total_or_proven_safe: TestClaim = CompilesClaim {
+  label: "division uses total form when nonzero proof is present",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: total_division_input,
+  expected_value: total_division_input,
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+data claim_oob_index_total_or_proven_safe: TestClaim = CompilesClaim {
+  label: "indexing uses total form when range proof is present",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: checked_index_input,
+  expected_value: checked_index_input,
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+data claim_unproven_division_rejected: TestClaim = DiagnosticClaim {
+  label: "unproven divisor cannot lower as partial division",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: falsification_division_by_zero_unhandled,
+  expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: ^impossible_bug_reason_unhandled_division,
+        at: node_locus(node: falsification_division_by_zero_unhandled),
+        correction: Suggested { node: total_division_input }
+      }
+    ),
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+data claim_unproven_oob_index_rejected: TestClaim = DiagnosticClaim {
+  label: "unproven index cannot lower as partial lookup",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: falsification_oob_index_unhandled,
+  expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: ^impossible_bug_reason_unhandled_index,
+        at: node_locus(node: falsification_oob_index_unhandled),
+        correction: Suggested { node: checked_index_input }
+      }
+    ),
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}
+
+data claim_force_unwrap_count_zero: TestClaim = DiagnosticClaim {
+  label: "force unwrap does not survive outside user input boundary",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: falsification_force_unwrap_survives,
+  expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: ^impossible_bug_reason_force_unwrap,
+        at: node_locus(node: falsification_force_unwrap_survives),
+        correction: Suggested { node: total_unwrap_input }
+      }
+    ),
+  classification: TestClassification { tier: Tier2, layer: Unit }
+}

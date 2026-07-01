@@ -1,0 +1,24 @@
+module gunbc.plans.md_helpers
+
+import std.markdown {
+  MarkdownBlock, MarkdownListItem, MarkdownTaskItem,
+  MarkdownTableCell, MarkdownTableRow,
+  HeadingBlock, ParagraphBlock, UnorderedListBlock, OrderedListBlock,
+  TaskListBlock, BlockquoteBlock,
+  TextInline, H2, H3, CheckboxState, Unchecked, ThematicBreak,
+}
+
+fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
+fn h3(text: String) -> MarkdownBlock { HeadingBlock { level: H3, inlines: [TextInline { text: text }] } }
+fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
+fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
+fn li_blocks(blocks: List<MarkdownBlock>) -> MarkdownListItem { MarkdownListItem { blocks: blocks } }
+fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
+fn ol(items: List<MarkdownListItem>) -> MarkdownBlock { OrderedListBlock { items: items } }
+fn cell(text: String) -> MarkdownTableCell { MarkdownTableCell { inlines: [TextInline { text: text }] } }
+fn row(cells: List<MarkdownTableCell>) -> MarkdownTableRow { MarkdownTableRow { cells: cells } }
+fn quote(blocks: List<MarkdownBlock>) -> MarkdownBlock { BlockquoteBlock { blocks: blocks } }
+fn tasks(items: List<MarkdownTaskItem>) -> MarkdownBlock { TaskListBlock { items: items } }
+fn todo(text: String) -> MarkdownTaskItem { MarkdownTaskItem { state: Unchecked, blocks: [p(text: text)] } }
+fn task(state: CheckboxState, text: String) -> MarkdownTaskItem { MarkdownTaskItem { state: state, blocks: [p(text: text)] } }
+fn hr() -> MarkdownBlock { ThematicBreak }

@@ -1,17 +1,8 @@
-// std/cache_interface.dag — Elastic cache interface (Worksheet B / exploration §4.0f cases 9–19).
-//
-// Authority: agnostic interface shape + projection helpers (projection-only; no cited rows).
-// Cited vendor catalog rows + product dispatch live in extdeps/cache/* (§3).
-// Composition: compute via ExecutionReceiptRef<T> digest only — MUST NOT import compute_fabric.
-//
-// CacheInterfaceFacts rows are first authority in extdeps; CacheStoreView is a derived projection only.
-
 module std.cache_interface
 
 import std.types { NonEmptyStr, ContentHash, Bool, Int, LogicalTime }
 import std.measure { Nano, ByteSize }
-// NanosecondDuration scale CHOICE imported from its timing-authority home (std.verification,
-// DESIGN §3), not re-coined here: cache read-latency costs are the consumer's nanosecond facts.
+
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
 import std.pareto {
   AxisComparison,
@@ -26,30 +17,16 @@ import std.realization_schedule {
 }
 import std.cache_identity { CacheInterfaceId, ArtifactKindId, ExecutionReceiptDigest, resolved_graph_artifact_kind, parse_table_artifact_kind }
 
-// --- §1.6 dimension enums + branded carriers ---------------------------------
-//
-// Worksheet B §1.6 dimension axes (case 16 orthogonal grid; no CacheKind):
-// 🟡 STAGED on ValueShape, PersistenceLocality, EvictionPolicy, AtomicityModel, AuthScope,
-// ReadLatencyClass, ConsistencyModel, CacheLookupSemantics, CacheWriteSemantics,
-// CacheMissSemantics, KeyDerivationClass, InputSurface, VisibilityScope, InvalidationTrigger.
-// feature:cache-interface-substrate-landed
-// consumer: cache-layer planner (plan_cache_layers) + ci harness cache projection
-// dissolve-on-arrival: cost-aware reach binds Phase-0 measured recompute cost
-
 type StorageSurface = NonEmptyStr where brand("StorageSurface")
 
-// 🟡 STAGED — §1.6 axis (gate: header above).
 type ValueShape = RawBytes | StructuredArtifact | TarArchive | FileTree
 
-// 🟡 STAGED — §1.6 axis (gate: header above). Cache-store placement only — compute
-// demand uses ComputeArtifactLocality (Worksheet A).
 type PersistenceLocality
   = InProcess
   | PerRunnerFilesystem
   | PerHostFilesystem
   | CrossHostNetwork
 
-// 🟡 STAGED — §1.6 axis (gate: header above).
 type EvictionPolicy
   = Ttl { days: Int }
   | Lru
@@ -57,29 +34,19 @@ type EvictionPolicy
   | Never
   | Manual
 
-// 🟡 STAGED — §1.6 axis (gate: header above).
 type AtomicityModel = PerFile | WriteThenRename | WriteThenCommit | TwoPhase
-// 🟡 STAGED — §1.6 axis (gate: header above).
+
 type AuthScope = None | FilesystemPerms | ApiKey | NetworkAcl
-// 🟡 STAGED — §1.6 axis (gate: header above).
+
 type ReadLatencyClass = InProcessNs | LocalDiskUs | LanMs | WanTensMs
-// 🟡 STAGED — §1.6 axis (gate: header above).
+
 type ConsistencyModel = Strong | Eventual | ReadYourWrites
 
-// 🟢 TERMINAL — value (de)serialization faithfulness at the transport-encoding boundary.
-// M5 gap surface (docs/plans/m5-fixture-store-consolidation.md §2): the StructuredArtifact <->
-// backend-encoding round-trip must be faithful or fail loud. Maps recorded_fixture.rs
-// UnreplayableValue (record side) and DeserializationMismatch / UnknownTag (replay side) — the
-// hermetic-fixture FixtureError cases that today have no typed kernel home (collapsed in step 3).
 type TransportFaithfulnessReason
-  = ValueKindNotSerializable   // UnreplayableValue: Closure/Fn/Map/Set cannot be faithfully recorded
-  | EncodingMalformed          // DeserializationMismatch: stored bytes ill-formed for the encoding
-  | UnknownEncodedTag          // UnknownTag: tag outside the closed value vocabulary
+  = ValueKindNotSerializable
+  | EncodingMalformed
+  | UnknownEncodedTag
 
-// 🟢 TERMINAL — typed cache reject reasons (case 15); no prose NonEmptyStr authority.
-// FreshnessExpired + TransportFaithfulnessFailure are M5 gap surfaces: a present-but-too-stale hit
-// (recorded_fixture.rs Expired, eviction: Ttl) is a LOUD refusal, not a silent evicted-Miss (§5); a
-// hit whose stored payload cannot be faithfully decoded is refused, never fabricated.
 type CacheRejectReason
   = SubjectDigestMismatch
   | ContentDigestMismatch
@@ -90,80 +57,45 @@ type CacheRejectReason
   | FreshnessExpired
   | TransportFaithfulnessFailure { reason: TransportFaithfulnessReason }
 
-// --- §1.3 lookup / write / miss semantics ------------------------------------
-
-// 🟡 STAGED — §1.3 semantics axis (gate: header above).
 type CacheLookupSemantics
   = ExactKeyOnly
   | PrefixFallback { ordered_prefixes: List<NonEmptyStr> }
   | NativeInternalLookup
   | ContentAddressLookup
 
-// Worksheet B §1.6 — orthogonal axes; homonymous spellings (e.g. WriteThenCommit) are
-// distinct variants in separate coproducts, not one fact mirrored twice. Per-row pairing
-// is vendor-specific (BuildBuddy: WriteOnce write + WriteThenCommit atomicity = no
-// overwrite vs CAS upload-commit visibility).
-// 🟡 STAGED — §1.3 semantics axis (gate: header above).
 type CacheWriteSemantics
   = WriteOnce
   | OverwriteAllowed
-  | WriteThenCommit
-  | WriteThenRename
   | ProviderInternal
 
-// 🟡 STAGED — §1.3 semantics axis (gate: header above).
 type CacheMissSemantics
   = MissThenCreate
   | MissIsDiagnostic
   | ProviderNativeFallback
 
-// Cross-store L1→L2→L3 fallback is composition — not a field on CacheInterfaceFacts.
-// Ordered nearest→farthest (InProcess → runner/host filesystem → network CAS).
-// Empty layers = fail-closed recompute-only (recompute is the implicit terminal).
 type CacheLayerPlan {
   layers: List<CacheInterfaceId>
 }
 
-// Deployment declares which catalog backends are reachable; planner emits wiring.
 type CacheDeploymentBackends {
   available: List<CacheInterfaceId>
 }
 
-// --- §1.4 KeyDerivationFacts -------------------------------------------------
-
-// 🟡 STAGED — §1.4 key derivation axis (gate: header above).
 type KeyDerivationClass
   = ContentAddressedByValue
   | HandAuthoredString
   | NativeInternalHash
 
-// 🟡 STAGED — §1.4 key derivation axis (gate: header above). Agnostic inputs only;
-// rustc/toolchain axes live in extdeps.cache.types.CatalogInputSurface.
-type InputSurface
-  = UpsertSubject
-  | FilePaths
-
-// 🟡 STAGED — §1.4 key derivation axis (gate: header above).
 type VisibilityScope = Repo | Org | Network | World
 
-// 🟡 STAGED — §1.4 key derivation axis (gate: header above).
 type InvalidationTrigger
   = TtlExpiry
   | ManualPurge
   | ToolchainChange
   | DependencyChange
 
-// Agnostic key-derivation projection. The key-input CLASS and the inputs LIST are NOT
-// fields here: they would be a hand-authorable copy of the extdeps authority
-// (CatalogKeyInputs) — the §3 fork PR #5423 false-greened, reintroducible one layer down
-// via an anonymous record literal. The class+inputs live solely in the extdeps sum
-// (ContentAddressed derives them; cited rows carry them); this projection keeps only the
-// downstream facts a planner consumes, plus the explicit "vendor axes were omitted" flag.
 type KeyDerivationFacts {
-  // True when cited catalog rows include vendor-only axes (rustc/toolchain) not
-  // representable in InputSurface; the agnostic projection omits them. Derived by the
-  // projection from the extdeps sum's inputs (catalog_has_vendor_only_key_inputs), never
-  // hand-authored as a divergent list.
+
   vendor_only_key_inputs_omitted: Bool
   overwritable: Bool
   prefix_fallback_allowed: Bool
@@ -172,9 +104,6 @@ type KeyDerivationFacts {
   invalidation_triggers: List<InvalidationTrigger>
 }
 
-// --- §1.1 authority rows + evidence ------------------------------------------
-
-// 🟢 TERMINAL — vendor evidence carriers (case 19).
 type CacheRowEvidence
   = VendorCitation { source: NonEmptyStr, url: NonEmptyStr }
   | RunnerObserved { receipt: NonEmptyStr, observed_at: LogicalTime }
@@ -186,8 +115,6 @@ type CacheEvidence {
   evidence: CacheRowEvidence
 }
 
-// 🟢 TERMINAL — per-row transport encoding authority (case 12 / 14); agnostic variants only.
-// Vendor-specific encodings (sccache/cargo) live in extdeps.cache.types.CatalogProviderKeyEncoding.
 type ProviderKeyEncoding
   = OpaqueStringEncoding
   | CasContentEncoding
@@ -197,7 +124,7 @@ type CacheInterfaceFacts {
   identity: CacheInterfaceId
   backing_surface: StorageSurface
   transport_encoding: ProviderKeyEncoding
-  // True when cited catalog encoding is not 1:1 in ProviderKeyEncoding (e.g. cargo fingerprint → CAS).
+
   vendor_transport_encoding_collapsed: Bool
   key_derivation: KeyDerivationFacts
   lookup_semantics: CacheLookupSemantics
@@ -217,14 +144,11 @@ type CacheStoreView {
   facts: CacheInterfaceFacts
 }
 
-// --- §1.2 identity vs transport ----------------------------------------------
-
 type ArtifactIdentity<T> {
   subject_digest: ContentHash
   artifact_kind: ArtifactKindId
 }
 
-// 🟢 TERMINAL — backend-specific transport carriers (agnostic variants only).
 type ProviderKey
   = OpaqueStringKey { key: NonEmptyStr }
   | CasContentDigest { digest: ContentHash }
@@ -234,27 +158,20 @@ type BackendCacheKey {
   key: ProviderKey
 }
 
-// Semantic binding only — transport projection lives in extdeps.cache.cache (case 17).
 type CacheKeyProjection<T> {
   artifact: ArtifactIdentity<T>
   backend: CacheInterfaceFacts
 }
 
-// --- §1.5 producer composition (Option A — no compute_fabric import) ---------
-
-// Neutral digest ref to compute_fabric ExecutionReceipt<T> — producer discriminant
-// lives only on ProducerReceipt<T> (no parallel ProducerKind on this ref).
 type ExecutionReceiptRef<T> {
   receipt_digest: ExecutionReceiptDigest
 }
 
-// 🟢 TERMINAL — sole producer discriminant; ExecutionReceiptRef is digest-only.
 type ProducerReceipt<T>
   = InternalExecution { receipt: ExecutionReceiptRef<T> }
   | VendorArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
   | RunnerObservedArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
 
-// Hit receipts: backend_key is supplied by extdeps.cache.cache transport projection.
 type CachedArtifactReceipt<T> {
   artifact: ArtifactIdentity<T>
   backend_key: BackendCacheKey
@@ -262,76 +179,29 @@ type CachedArtifactReceipt<T> {
   content_digest: ContentHash
 }
 
-// 🟢 TERMINAL — lookup outcome (case 15 RejectedHit uses CacheRejectReason).
 type CacheLookupResult<T>
   = Hit { receipt: CachedArtifactReceipt<T> }
   | Miss
   | RejectedHit { reason: CacheRejectReason }
 
-// 🟢 TERMINAL — write-side reject reasons. WriteOnceConflict is the cache-purity oracle
-// (recorded_fixture.rs ResponseDrift): an existing WriteOnce key offered DIFFERENT content for the
-// same subject_digest — the byte-identical-vs-cold purity falsifier. Backend-level rejects are
-// composed from the shared CacheRejectReason (no re-listing — §3 single authority).
 type CacheWriteRejectReason
   = WriteOnceConflict
   | WriteUnfaithful { reason: TransportFaithfulnessReason }
   | BackendWriteRejected { backend_reason: CacheRejectReason }
 
-// 🟢 TERMINAL — write outcome (no silent overwrite, §5). A fresh subject is Written; an existing
-// WriteOnce key offered the SAME content is the idempotent no-op (the double-init Share collapse,
-// cf. realization.dag Materialization = Share); an existing key offered DIFFERENT content fails
-// closed (WriteRejected { WriteOnceConflict }). Splitting committed / idempotent / rejected keeps
-// the write state-space named, never a Bool conflating "present" with "I just wrote it".
-// WriteSkippedIdempotent's receipt.content_digest equals the existing key's BY CONSTRUCTION — that
-// equality is enforced at the write fold that constructs this variant (step 3, where a real
-// consumer compares the offered content against the stored hit before collapsing to idempotent),
-// not by this declaration. It is a comment-level invariant here, like CachedArtifactReceipt's other
-// digest correspondences, until the fold lands.
 type CacheWriteResult<T>
   = Written { receipt: CachedArtifactReceipt<T> }
   | WriteSkippedIdempotent { receipt: CachedArtifactReceipt<T> }
   | WriteRejected { reason: CacheWriteRejectReason }
 
-// No per-question Bool readers are minted over these coproducts (predicate-dissolution rule):
-// classifying a variant is what `match` already does at a consumer. The handler MIGRATIONS that
-// fold these at the load-bearing seams (recorded_fixture.rs FixtureError collapse / v2 05_eval)
-// remain held for operator sign-off. What IS born here is the §1.7 `realize` kernel below — the
-// SINGLE eliminator these coproducts were declared to be folded by, with its own green-by-execution
-// consumer (test.claim.realize_kernel). `realize` is the fold; the handler migrations route through
-// it rather than re-deciding (§2 one-kernel/N-handlers), so this is the fold arriving WITH its
-// consumer, not a stray std predicate.
-
-// --- §1.7 realize — the one-door cache kernel (ROADMAP §2 P2) -----------------
-//
-// `realize(subject)` is the SOLE cache entry: every hand-rolled cache (resolved_graph_cache.rs,
-// the v2.compiler.parse ParseTable, pure_call_memo, sccache) becomes a HANDLER routed through
-// this decision, never a fork (DESIGN §2 one-kernel/N-handlers; §6's own ParseTable example). The
-// kernel is the eliminator the lookup/write coproducts above were born to be folded by: it turns a
-// backend's CacheLookupResult into a Reuse-vs-Recompute ROUTE, and an offered write into a
-// CacheWriteResult, with §5 fail-closed baked in — a refused or under-keyed hit is NEVER served;
-// the worst case is Recompute (always correct), never a stale payload.
-//
-// Why a route and not the value: materializing the cached value is the backend HANDLER's effect
-// (deserialize bytes / read the in-process map). The kernel owns only the PURE decision — which is
-// exactly the seam where mis-keying would serve a stale hit — so the route is testable
-// green-by-execution with no host effect, and the §5 discriminating tooth lives in std, not a
-// handler. The Rust realizer (cli_run.rs:547-552, resolved-graph) and the v1_interpreter
-// ParseTableMemo are realizations of THIS decision; they unify with it at v2/realize.
-
-// Why a hit was not reused — the Recompute cause, kept named (no Option/Bool conflation, §5).
 type RecomputeReason
-  = SubjectAbsent                              // Miss: no entry for this subject
-  | HitRefused { reason: CacheRejectReason }   // a hit existed but failed verification — surfaced, never silent
+  = SubjectAbsent
+  | HitRefused { reason: CacheRejectReason }
 
-// The realize decision: reuse a verified hit (the §2 win — recompute is redundant) or recompute.
 type RealizeRoute<T>
   = Reuse { receipt: CachedArtifactReceipt<T> }
   | Recompute { reason: RecomputeReason }
 
-// The one door, read side. A verified Hit reuses; a Miss recomputes; a RejectedHit recomputes AND
-// surfaces the reject reason (observability) — it is never served (§5 fail-closed). This is the
-// single authority every realizer routes through; a realizer that decided reuse-vs-recompute itself
-// would be the fork this kernel dissolves.
 fn realize_route<T>(lookup: CacheLookupResult<T>) -> RealizeRoute<T> {
   match lookup {
     Hit { receipt } => Reuse { receipt: receipt }
@@ -340,19 +210,6 @@ fn realize_route<T>(lookup: CacheLookupResult<T>) -> RealizeRoute<T> {
   }
 }
 
-// No `realize_route_reuses`-style Bool reader is minted over RealizeRoute (predicate-dissolution
-// rule, §6): the reuse-vs-recompute question is answered by `match` at the consumer. The §2
-// "minimal work" predicate a scheduler/planner will consume is born WITH that caller (P3 reach /
-// cache-layer planner), not as a stray std reader awaiting one.
-
-// The one door, write side — the purity oracle. Classify an offered write against the backend's
-// CURRENT state for the SAME subject: a fresh subject is Written; an existing key offered the SAME
-// content is the idempotent no-op (the double-init Share collapse, cf. realization.dag); an existing
-// key offered DIFFERENT content for the same subject FAILS CLOSED (WriteOnceConflict — the
-// byte-identical-warm-vs-cold falsifier: equal inputs that produced unequal output means the
-// transform was impure or the key under-specified, §5). A prior RejectedHit composes the backend
-// reason. WriteSkippedIdempotent's receipt.content_digest == offered BY CONSTRUCTION — this fold
-// only reaches that variant on the equality branch.
 fn classify_write<T>(
   existing: CacheLookupResult<T>,
   offered_content: ContentHash,
@@ -371,9 +228,6 @@ fn classify_write<T>(
   }
 }
 
-// --- §1.8 cache-layer planner (catalog-parameterized; rows live in extdeps/cache/*) ---
-
-// Locality rank — nearer stores probe first (L1 in-process → L2 host → L3 WAN).
 fn persistence_locality_rank(locality: PersistenceLocality) -> Int {
   match locality {
     InProcess => 0
@@ -392,8 +246,6 @@ fn read_latency_rank(latency: ReadLatencyClass) -> Int {
   }
 }
 
-// Representative fetch-cost for read_latency axis. Carrier stays NanosecondDuration;
-// unwrap only at Pareto comparison boundary (hardware_selection / CostAccount pattern).
 fn read_latency_cost(facts: CacheInterfaceFacts) -> NanosecondDuration {
   match facts.read_latency {
     InProcessNs => nanosecond_duration(count: 1)
@@ -458,8 +310,6 @@ fn cache_reach_dominates(a: CacheReachCandidate, b: CacheReachCandidate) -> Domi
   dominance_of_comparisons(comparisons: cache_reach_comparisons(a: a, b: b))
 }
 
-// Layer is worth probing when measured recompute exceeds representative fetch cost
-// (recompute path does not dominate the probe on fetch+saved axes at cheap grain).
 fn cache_layer_cost_justified(
   id: CacheInterfaceId,
   catalog: List<CacheInterfaceFacts>,
@@ -552,17 +402,12 @@ fn cache_layer_ids_respect_locality(
   }
 }
 
-// Cost-aware reach: measured recompute vs read_latency fetch cost (Phase 0 CostAccount).
-// dissolve-on: resolved_graph_cache re-key consumes this fold; p(miss) term when probe lands.
 fn cache_layer_plan_respects_locality_order(
   plan: CacheLayerPlan,
   catalog: List<CacheInterfaceFacts>,
 ) -> Bool {
   cache_layer_ids_respect_locality(layers: plan.layers, catalog: catalog, last_rank: -1)
 }
-
-// --- §1.9 projection + view helpers ------------------------------------------
-
 
 fn cache_store_view(facts: CacheInterfaceFacts) -> CacheStoreView {
   CacheStoreView { facts: facts }

@@ -1,7 +1,3 @@
-// src/v2/std/rust_leaf_model_claim.dag
-// Scope: M=rust.dag instantiation of LeafModelClaim (PR #3971 design-rust-dag-leafmodel-instantiation.md).
-// Status: substrate implementation of DFS-ratified §1–§2 closed coproducts.
-
 module v2.std.rust_leaf_model_claim
 
 import v2.std.grammar { GrammarProduction }
@@ -12,8 +8,6 @@ import v2.std.model_core { AlgebraInhabitanceDecl }
 import v2.std.node { Node, Symbol }
 import v2.std.runtime { RuntimeOutcome }
 
-// Phase-1 primitive subject axis (extension via modeling escalation only).
-// `{}` on single-arm coproducts only (v2 export); multi-arm nullary variants export bare (cf. verdict.dag Pass).
 type RustPrimitive
   = RustPrimitiveI32 {}
 
@@ -23,14 +17,11 @@ type AlgebraCarrier
 data rust_leaf_phase1_primitive_i32: RustPrimitive = RustPrimitiveI32 {}
 data rust_leaf_phase1_algebra_carrier_ordered_ring: AlgebraCarrier = AlgebraCarrierOrderedRing {}
 
-// 🟡 gated — feature:rust-leaf-model-claim-subject — bind docs/planning/v2-leaf-model-verification-2026-05-30.md §7 Phase-1 —
-// dissolve-on-arrival: modeling-escalation-only extension arms beyond Phase-1 inventory; forbidden: worker-initiative coproduct growth.
 type RustClaimSubject
   = RustPrimitiveTypeSubject { primitive: RustPrimitive }
   | RustAlgebraInhabitanceSubject { inhabitance_decl: AlgebraInhabitanceDecl }
   | RustAtomRealizationSubject { atom: Node }
-  // 🟡 gated — feature:rust-atom-realization-form-phase1 — bind docs/planning/v2-leaf-model-verification-2026-05-30.md §7 R3-external —
-  // dissolve-on-arrival: AtomRealizationForm coproduct replaces declared_type_form/exercised_value_form Symbol pair; forbidden: closed Symbol pairs without a bounded dissolution receipt on this sub-shape.
+
   | RustAtomRealizationProjectionMismatchSubject {
       atom: Node
       declared_type_form: Symbol
@@ -40,8 +31,6 @@ type RustClaimSubject
   | RustGrammarProductionSubject { production: GrammarProduction }
   | RustLexRuleSubject { rule: LexRule }
 
-// 🟡 gated — feature:rustc-error-code-leaf-model-phase1 — bind docs/planning/v2-leaf-model-verification-2026-05-30.md Phase 2 —
-// dissolve-on-arrival: full RustcErrorCode coproduct owned by rust.dag leaf-model authority; forbidden: string-keyed parallel error tables.
 type Rustc_ErrorCode_Phase1
   = E0107
   | E0308
@@ -53,8 +42,6 @@ data rust_leaf_phase1_err_e0308: Rustc_ErrorCode_Phase1 = E0308
 data rust_leaf_phase1_err_e0423: Rustc_ErrorCode_Phase1 = E0423
 data rust_leaf_phase1_err_e0599: Rustc_ErrorCode_Phase1 = E0599
 
-// 🟡 gated — feature:rust-leaf-model-claim-expectation — bind docs/planning/v2-leaf-model-verification-2026-05-30.md §7 Phase-1 —
-// dissolve-on-arrival: modeling-escalation-only extension arms beyond Phase-1 inventory; forbidden: parallel expectation vocab outside this coproduct.
 type RustClaimExpectation
   = RustcAcceptsExpectation { invocation_form: TargetInvocation }
   | RustcRejectsExpectation {

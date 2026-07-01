@@ -1,7 +1,3 @@
-// src/v2/extdeps/runtimes/v2_evaluator.dag
-// Scope: Concrete v2 evaluator runtime fact-bundle.
-// Status: Option-C concrete runtime extdep; std/runtime.dag owns abstract carriers; RuntimeTarget wiring staged.
-
 module v2.extdeps.runtimes.v2_evaluator
 
 import v2.std.collection { List, Map, map_insert }
@@ -77,8 +73,6 @@ fn v2_eval_wave1_unit_type_node() -> Node {
 }
 }
 
-// 🟡 gated — wave-1 compile(Eval) thesis pins — dissolve-on: T-22 literal semantics
-// inhabit wave1_model_core primitives without per-node identity pins.
 data v2_eval_wave1_bool_literal_pin: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^v2_eval_wave1_bool_literal_symbol } },
   children: [],
@@ -220,11 +214,6 @@ fn v2_eval_wave1_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> O
   Accepted { value: Return { value: value }, diagnostics: None }
 }
 
-// 🟡 gated — wave-1 interim — feature: faithful RuntimeValue-to-EvaluationFrame reification —
-// dissolve-on-arrival: T-22 or T-8 providing RuntimeValue→Node reification (runtime_value_node_projection
-// returns non-Unrepresentable) or EvaluationFrame gains a RuntimeValue result slot.
-// Wave-1: Continue/Return reject until value reification is modeled — type-only projection into
-// frame.current would fabricate a successful frame missing the value fact.
 fn v2_eval_wave1_transfer(control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
   match control {
     Continue { value: v } =>
@@ -287,7 +276,6 @@ fn v2_evaluator_value_representation_wave1() -> ValueRepresentationModel {
   }
 }
 
-// 🟡 needs-more-work — feature:T-22-evaluator-semantics — dissolve-on: ModelCore carries inhabited primitives and T-22 eval consumes fully typed interpretation; Wave-1 hooks realized (T-34), richer primitive semantics gated on T-22.
 fn v2_evaluator_interpretation_wave1() -> InterpretationAlgebra {
   InterpretationAlgebra {
     value: ValueInterpreter {

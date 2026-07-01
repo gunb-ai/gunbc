@@ -27,7 +27,7 @@ pub fn compute_in_graph_deps(
                     let local = Rc::new({
                         let mut __result = Vec::new();
                         for d in deps.clone().iter().cloned() {
-                            if ((d.clone().as_str() != name.clone().as_str())
+                            if ((d.clone() != name.clone())
                                 && v1_rt::set_contains(&name_set, d.clone()))
                             {
                                 __result.push(d);
@@ -250,7 +250,7 @@ pub fn detect_type_cycles_kahn(
                     Some(deps) => {
                         let mut __found = false;
                         for d in deps.clone().iter().cloned() {
-                            if (d.clone().as_str() == name.clone().as_str()) {
+                            if (d.clone() == name.clone()) {
                                 __found = true;
                                 break;
                             }

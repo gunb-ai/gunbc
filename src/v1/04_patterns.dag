@@ -1,5 +1,3 @@
-// Pattern matching and variant lookup -- read-only type checks for
-
 module v1.compiler.infer_patterns
 
 import std.types { SourceSpan }
@@ -28,10 +26,6 @@ import v1.compiler.infer_env {
   lookup_type, lookup_type_by_name
 }
 
-// =========================================================================
-// Types
-// =========================================================================
-
 fn is_witness_type_name(name: String) -> Bool {
   name == "Witness" || name == "witness"
 }
@@ -57,13 +51,6 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   }
 }
 
-// =========================================================================
-// Variant lookup
-// =========================================================================
-
-// Synthesize the canonical `Present { value: T }` variant node for cardinality
-// Optional pattern matching. Optional is represented by `return_cardinality`;
-// it has no explicit `Present` child in the v2 type node.
 fn synthesize_optional_present_variant(scrut: Node) -> Node {
   let inner = extract_optional_inner_node(n: scrut)
   let value_field = Node { name: "value", span: scrut.span, ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -87,9 +74,7 @@ fn synthesize_witness_violates_variant(scrut: Node) -> Node {
 }
 
 fn pattern_subject_from_node(n: Node) -> PatternSubject {
-  // Structural check: CompilerError in inferred means error sentinel.
-  // Dynamic/Error name checks dissolved — no .dag source declares these types,
-  // and error_type uses name: "" with CompilerError in inferred.
+
   let is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   if is_error {
     PatternLookupBlocked
@@ -168,15 +153,11 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
           node_lookup_resolved(node: synthesize_witness_violates_variant(scrut: scrut_node))
         } else {
           let scrut_name = authored_name_at(source_indices: source_indices, node: scrut_node)
-          // Optional<T> coproduct: after generic instantiation the applied type may be a
-          // bare `Optional` node carrying only the type arg (no Disj children). Synthesize
-          // Present/Absent the same way cardinality-optionals do once direct child lookup fails.
+
           let optional_coproduct_subject = scrut_name == "Optional"
             && (variant_name == "Present" || variant_name == "Absent")
           let direct_match = find_child_named(n: scrut_node, name: variant_name, source_indices: source_indices)
-          // Record / generic-record destructuring: `LocusAnchor { at: x }` against
-          // `LocusAnchor<A>` (Conj) — requires brace syntax (field_binding_count > 0).
-          // Bare `LocusAnchor` without `{…}` must not match; direct_match on sum variants still wins.
+
           let record_destructure = field_binding_count > 0
             && scrut_node.connective == Conj
             && scrut_name == variant_name
@@ -213,10 +194,6 @@ fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_n
       }
   }
 }
-
-// =========================================================================
-// Match exhaustiveness checking
-// =========================================================================
 
 fn check_match_exhaustiveness(
   scrutinee_type: Node,

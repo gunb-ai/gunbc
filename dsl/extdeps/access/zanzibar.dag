@@ -1,25 +1,9 @@
-// extdeps/access/zanzibar.dag -- "What is Zanzibar?"
-//
-// Google's global authorization system: a relation-tuple data model plus a per-namespace
-// userset-rewrite configuration. Faithful model of the data model + config language in the
-// paper (§2), keeping its real names.
-//
-// Source: Ruoming Pang, Ramón Cáceres, Mike Burrows, et al., "Zanzibar: Google's Consistent,
-//   Global Authorization System," 2019 USENIX Annual Technical Conference (USENIX ATC '19).
-//   https://www.usenix.org/conference/atc19/presentation/pang
-//
-// One of several access-control systems modeled in extdeps/access so the std/ access
-// abstraction can be DERIVED from their commonality and validated against each (DESIGN §3),
-// not re-coined from any single one.
-
 module extdeps.access.zanzibar
 
 import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-// External-authority anchor (promotes the Source citation above to the structured carrier
-// that v2.lens.extdeps_external_authority gates on — DESIGN §3).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -27,36 +11,26 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// ⟨object⟩ ::= ⟨namespace⟩ ':' ⟨object id⟩          (e.g. "doc:readme")
 type Object {
   namespace: NonEmptyStr
   id: NonEmptyStr
 }
 
-// ⟨userset⟩ ::= ⟨object⟩ '#' ⟨relation⟩             (e.g. "group:eng#member")
 type Userset {
   object: Object
   relation: NonEmptyStr
 }
 
-// ⟨user⟩ ::= ⟨user id⟩ | ⟨userset⟩
 type User
   = UserId { id: NonEmptyStr }
   | UsersetUser { userset: Userset }
 
-// ⟨tuple⟩ ::= ⟨object⟩ '#' ⟨relation⟩ '@' ⟨user⟩    (e.g. "doc:readme#viewer@group:eng#member")
 type RelationTuple {
   object: Object
   relation: NonEmptyStr
   user: User
 }
 
-// Userset rewrite rules (§2.3) — a namespace relation's config. Leaf rules:
-//   This             -- `_this`: tuples stored directly for this object#relation
-//   ComputedUserset  -- another relation on the SAME object (e.g. editor implies viewer)
-//   TupleToUserset   -- follow `tupleset` to other objects, then `computed` relation there
-//                       (e.g. "viewer of the parent folder" — inheritance)
-// combined by Union / Intersection / Exclusion.
 type UsersetRewrite
   = This
   | ComputedUserset { relation: NonEmptyStr }
@@ -70,19 +44,15 @@ type RelationConfig {
   rewrite: UsersetRewrite
 }
 
-// A namespace configuration: its relations and their rewrite rules (§2.3).
 type NamespaceConfig {
   namespace: NonEmptyStr
   relations: List<RelationConfig>
 }
 
-// Zookie (§2.2): opaque consistency token (a snapshot timestamp) for read-after-write.
 type Zookie {
   token: NonEmptyStr
 }
 
-// The Check decision (§2.4.1): is `user` related to `object` via `relation`, evaluated at a
-// consistency snapshot? Modeled as the request shape (the boolean answer is the dependent fact).
 type CheckRequest {
   object: Object
   relation: NonEmptyStr

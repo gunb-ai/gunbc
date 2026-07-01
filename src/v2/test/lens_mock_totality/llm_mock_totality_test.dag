@@ -1,22 +1,3 @@
-// src/v2/test/lens_mock_totality/llm_mock_totality_test.dag
-// Scope: §5 PROOF that v2.lens.mock_totality GATES by execution over the llm layer's published
-//        mock corpus — GREEN when the consumer is total, RED when a member is omitted.
-// Status: discoverable `test fn` witness — the CI floor gates it via
-//         `claim_batch --roster-from-discovery` (whole src/v2 scanned for `test fn` in
-//         `*_test.dag`). Mirrors the M4.0 filesystem witness exactly (#5188).
-//
-// The llm layer spans four services (OpenAI / Anthropic / Codex / Gemini) across three realization
-// homes — the published corpus is a flat List spanning all six mocked ops, so this single totality
-// witness covers the whole layer.
-//
-// The two witnesses are a discriminating pair (DESIGN.md §5: a real consumer GREEN by execution
-// PLUS a discriminating input that goes RED when the behaviour is wrong):
-//   - the REAL consumer handles every published case  → lens Accepts  → `..._is_total_holds`.
-//   - a consumer with `llm.Gemini.CliPrompt` deliberately OMITTED → lens Rejects →
-//     `..._omitted_member_is_red`.
-// The second is the teeth: it goes GREEN only because the lens FAIL-CLOSES on the unhandled
-// member — a vacuous lens that always accepted would flip it RED.
-
 module v2.test.lens_mock_totality.llm_mock_totality
 
 import v2.lens.mock_totality { mock_unhandled_rejection }

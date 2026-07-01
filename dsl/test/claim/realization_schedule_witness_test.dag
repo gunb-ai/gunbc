@@ -1,11 +1,3 @@
-// dsl/test/claim/realization_schedule_witness.dag
-//
-// §5 discriminating proof for std.realization schedule lens — executed in the dsl tree.
-// Synthetic RealizationPlan (no v2 ci_floor_plan import): lens GREEN on correct topology,
-// RED when batch-0/1 are swapped (corpus-before-compile).
-//
-// Run: gunbc run --source-root dsl --entry <this> --function realization_schedule_witnesses --claim-run
-
 module test.claim.realization_schedule_witness
 
 import std.realization_schedule {
@@ -14,6 +6,7 @@ import std.realization_schedule {
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
+  runnable_resource_profile_negligible,
   schedule_lens_verdict_for_ci_floor,
   cost_account_predicted_zero,
 }
@@ -25,15 +18,16 @@ data gate_entry: String = "dsl/tools/floor_effect_gate_witness.dag"
 
 fn synthetic_correct_schedule() -> List<List<Runnable>> {
   [
-    [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn }],
+    [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
     [
       RunnableDiscoveryBatch {
         source_roots: ["dsl"]
         scan_dirs: []
         explicit_entries: []
         skip_unaffected_node_frontier: false
+        profile: runnable_resource_profile_negligible()
       },
-      RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes" }
+      RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes", profile: runnable_resource_profile_negligible() }
     ]
   ]
 }
@@ -47,7 +41,6 @@ fn synthetic_correct_plan() -> RealizationPlan {
   }
 }
 
-// Discriminating RED: swap batch-0 and batch-1 — compile gate no longer first.
 fn perturbed_schedule_wrong_order(correct: List<List<Runnable>>) -> List<List<Runnable>> {
   [
     correct.skip(n: 1).first(),

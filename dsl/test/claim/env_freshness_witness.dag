@@ -1,18 +1,3 @@
-// dsl/test/claim/env_freshness_witness.dag
-//
-// By-execution witnesses for shell.Env.Get routed through the RecordedFixture seam.
-// Hermetic replay (Phase 2):
-//   claim_batch --source-root . --source-root dsl \
-//     --entry dsl/test/claim/env_freshness_witness.dag \
-//     --function env_freshness_keystone_holds --record --fixture-store /tmp/env-fixtures
-//   claim_batch ... --hermetic --fixture-store /tmp/env-fixtures
-//
-// Discriminators:
-//   * wet: shell.Env.Get returns PATH (witness below).
-// Hermetic replay + backdated recorded_at fail-closed: proven by execution in
-// v1-compiler-tests `interp_recorded_fixture_test` (env_get_record_then_hermetic_replay_holds,
-// hermetic_env_fixture_staleness_fails_closed, env_hermetic_without_fixture_store_fails_closed).
-
 module test.claim.env_freshness_witness
 
 import extdeps.shell

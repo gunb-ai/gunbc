@@ -1,16 +1,7 @@
-// src/v2/std/passing_candidate_fold.dag
-// Scope: fail-closed unique-candidate enumeration fold state.
-// Authority: shared by find_witness candidate selection and name-resolve module-root lookup.
-// Status: extracted from duplicate declarations in find_witness.dag and 03_name_resolve.dag.
-
-
 module v2.std.passing_candidate_fold
-
 
 import v2.std.node { Node }
 
-
-// 🟢 coproduct dissolution — fail-closed unique candidate selection fold state.
 type PassingCandidateFold
   = NoPassingCandidate
   | OnePassingCandidate { candidate: Node }

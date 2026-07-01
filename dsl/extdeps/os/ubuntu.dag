@@ -1,6 +1,3 @@
-// extdeps/os/ubuntu.dag — Ubuntu distribution catalog (cited facts).
-// Scope: Noble Numbat 24.04 LTS.
-
 module extdeps.os.ubuntu
 
 import std.os.types {
@@ -21,7 +18,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Anchor: https://documentation.ubuntu.com/release-notes/24.04/
 data noble_numbat_2404_catalog: UbuntuDistributionCatalogRow = UbuntuDistributionCatalogRow {
   distribution: NobleNumbat2404Lts,
   release_label: "24.04 LTS (Noble Numbat)",

@@ -1,0 +1,50 @@
+module extdeps.formats.dnsmasq
+
+import std.types { Int, String, List }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+import std.layout {
+  Doc,
+  LayoutProtocol,
+  doc_concat, doc_line_of,
+  render
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "thekelleys.org.uk/dnsmasq/docs/dnsmasq.conf.example"
+  }
+}
+
+type DnsmasqDirective =
+    DnsmasqComment { text: String }
+  | DnsmasqPort { value: Int }
+  | DnsmasqDhcpRangeProxy { network_address: String }
+  | DnsmasqDhcpMatchSet { tag: String, option: String, value: String }
+  | DnsmasqDhcpOptionForceTag { tag: String, option: String, value: String }
+  | DnsmasqDhcpBootTag { tag: String, target: String }
+
+data dnsmasq_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+fn dnsmasq_directive_line(d: DnsmasqDirective) -> String {
+  match d {
+    DnsmasqComment { text: t } => concat("# ", t)
+    DnsmasqPort { value: v } => concat("port=", to_string(v))
+    DnsmasqDhcpRangeProxy { network_address: n } => concat(concat("dhcp-range=", n), ",proxy")
+    DnsmasqDhcpMatchSet { tag: tag, option: option, value: value } =>
+      concat(concat(concat("dhcp-match=set:", tag), concat(",", option)), concat(",", value))
+    DnsmasqDhcpOptionForceTag { tag: tag, option: option, value: value } =>
+      concat(concat(concat("dhcp-option-force=tag:", tag), concat(",", option)), concat(",", value))
+    DnsmasqDhcpBootTag { tag: tag, target: target } =>
+      concat(concat("dhcp-boot=tag:", tag), concat(",", target))
+  }
+}
+
+fn dnsmasq_to_doc(directives: List<DnsmasqDirective>) -> Doc {
+  doc_concat(parts: map(directives, d => doc_line_of(text: dnsmasq_directive_line(d: d))))
+}
+
+fn serialize_dnsmasq(directives: List<DnsmasqDirective>) -> String {
+  render(doc: dnsmasq_to_doc(directives: directives), proto: dnsmasq_protocol)
+}

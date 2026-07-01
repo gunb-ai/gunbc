@@ -1,46 +1,10 @@
-// std/stack.dag -- Persistent LIFO stack (cons list).
-//
-// Stack<T> is a free monoid over T with reversed orientation:
-// the natural O(1) operation is prepend (push), not append.
-// This is the cons-list representation — mathematically equivalent
-// to List (both are FreeMonoid<T>), but with different cost profiles:
-//
-//   Operation        Stack (cons-list)    List (array)
-//   ──────────────   ─────────────────    ────────────
-//   push (prepend)   O(1)                 O(n)
-//   peek (first)     O(1)                 O(1)
-//   pop (rest)       O(1)                 O(n)
-//   concat           O(n)                 O(1) amortized
-//   index            O(n)                 O(1)
-//   size             O(n)                 O(1)
-//   fold             O(n)                 O(n)
-//
-// Use Stack when you need LIFO push/pop (call stacks, undo history,
-// parsing state, depth-first traversal).
-// Use List when you need indexed access or append.
-//
-// DECIDABILITY:
-//   Stack is inductively defined. Every Stack is finite because:
-//   - Empty has 0 elements
-//   - Push { top, rest } has 1 + |rest| elements
-//   There is no constructor for infinite stacks.
-//   fold_stack is bounded by |stack| — same as fold on List.
-
 module std.stack
 
 import std.algebra { FreeMonoid }
 
-// =========================================================================
-// Stack type — recursive coproduct
-// =========================================================================
-
 type Stack<T>
   = Empty
   | Push { top: T, rest: Stack<T> }
-
-// =========================================================================
-// Core operations — all O(1)
-// =========================================================================
 
 fn stack_push<T>(stack: Stack<T>, value: T) -> Stack<T> {
   Push { top: value, rest: stack }
@@ -67,10 +31,6 @@ fn stack_is_empty<T>(stack: Stack<T>) -> Bool {
   }
 }
 
-// =========================================================================
-// Derived operations — O(n)
-// =========================================================================
-
 fn stack_size<T>(stack: Stack<T>) -> Int {
   match stack {
     Empty => 0
@@ -89,37 +49,9 @@ fn list_to_stack<T>(items: List<T>) -> Stack<T> {
   fold(items, Empty, fn(stack, item) { stack_push(stack: stack, value: item) })
 }
 
-// =========================================================================
-// fold_stack — the bounded iteration primitive for Stack
-//
-// Process each element top-to-bottom. Bounded by |stack|.
-// This is the Stack analogue of fold on List.
-//
-// Cost: O(|stack| × per_element_cost)
-// =========================================================================
-
 fn fold_stack<T, B>(stack: Stack<T>, init: B, f: fn(B, T) -> B) -> B {
   match stack {
     Empty => init
     Push { top: t, rest: r } => fold_stack(stack: r, init: f(init, t), f: f)
   }
 }
-
-// =========================================================================
-// Algebraic relationship to FreeMonoid
-//
-// Stack<T> and List<T> are both free monoids over T. The difference
-// is orientation: Stack's O(1) operation is prepend (push to front),
-// while List's O(1) operation is append (add to end).
-//
-// The FreeMonoid homomorphism Stack<T> → List<T> is stack_to_list.
-// The reverse is list_to_stack. Both preserve sequence content but
-// may reverse element order depending on construction.
-//
-// Mapping (Stack operation → FreeMonoid concept):
-//   stack_push   = prepend (NOT append — reversed orientation)
-//   stack_peek   = first
-//   stack_pop    = rest (tail)
-//   fold_stack   = catamorphism (right fold from top)
-//   Empty        = identity element
-// =========================================================================

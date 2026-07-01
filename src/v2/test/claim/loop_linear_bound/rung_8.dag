@@ -1,0 +1,34 @@
+module v2.test.loop_linear_bound.rung_8
+
+import v2.compiler.eval { TestClaimRun, run_test_claim, test_claim_input }
+import v2.std.collection { List }
+import v2.std.node { Node }
+import v2.std.runtime { RuntimeValue }
+import v2.std.verification { TestClaim }
+import v2.test.computation_shapes.loop_linear_bound {
+  claim_loop_linear_bound_content_hash_stable,
+  claim_loop_linear_bound_equals_refl,
+  claim_loop_linear_bound_well_formed
+}
+import v2.test.rung_3_4_common { rung34_test_claim_subject }
+
+fn rung8_tier1_eval_run(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim(
+    subject: rung34_test_claim_subject(
+      claim: claim,
+      evaluator_input: test_claim_input(c: claim)
+    )
+  )
+}
+
+data run_claim_loop_linear_bound_well_formed: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_loop_linear_bound_well_formed)
+
+data run_claim_loop_linear_bound_equals_refl: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_loop_linear_bound_equals_refl)
+
+data run_claim_loop_linear_bound_content_hash_stable: TestClaimRun<Node, RuntimeValue> = rung8_tier1_eval_run(claim: claim_loop_linear_bound_content_hash_stable)
+
+data phase4_loop_linear_bound_rung8_runtime_value_rows: List<TestClaimRun<Node, RuntimeValue>> = [
+  run_claim_loop_linear_bound_well_formed,
+  run_claim_loop_linear_bound_equals_refl,
+  run_claim_loop_linear_bound_content_hash_stable
+]

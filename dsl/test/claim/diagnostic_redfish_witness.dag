@@ -1,27 +1,8 @@
-// dsl/test/claim/diagnostic_redfish_witness.dag
-//
-// By-execution witnesses for redfish.Http.GetChassisSensors routed through the RecordedFixture seam.
-// The WET consumer for the diagnostic breadth-roll: proves a dissolved diagnostic-layer op still
-// executes live after inline mock_response removal. Uses the 2-segment `redfish.Http` call path
-// (callable from fn — cf. extdeps/bmc/http.dag; 3-segment diagnostic.*.Session services are not).
-//
-// Hermetic replay (Phase 2):
-//   claim_batch --source-root . --source-root dsl \
-//     --entry dsl/test/claim/diagnostic_redfish_witness.dag \
-//     --function diagnostic_redfish_keystone_holds --record --fixture-store /tmp/diag-fixtures
-//   claim_batch ... --hermetic --fixture-store /tmp/diag-fixtures
-//
-// Discriminators:
-//   * wet: curl to a closed loopback BMC completes with success=false (deterministic host fact).
-// Hermetic replay + fixtureless fail-closed: proven by execution in
-// v1-compiler-tests `interp_recorded_fixture_test`.
-
 module test.claim.diagnostic_redfish_witness
 
 import extdeps.bmc.http
 import std.types { NonEmptyStr }
 
-// Loopback BMC with no listener — curl exits nonzero on HTTPS connect failure.
 data closed_loopback_bmc_host: NonEmptyStr = "127.0.0.1"
 data closed_loopback_chassis_id: NonEmptyStr = "Self"
 data closed_loopback_netrc_file: NonEmptyStr = "/dev/null"

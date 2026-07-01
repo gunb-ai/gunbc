@@ -1,20 +1,14 @@
-// dsl/test/claim/gunbhub_react_browse_witness_test.dag
-//
-// gunbhub R1 browse-page receipt: structurally compose a repo-browse page as a
-// ReactMarkupNode tree and serialize through canonical std.markup.Fragment.
-// Page composition authority: gunbc.gunbhub_serve (M2 serve surface).
-
 module test.claim.gunbhub_react_browse_witness
 
 import gunbc.gunbhub_serve { gunbhub_browse_page }
-import std.react_markup {
+import extdeps.languages.html {
   EmitOk,
   EmitRejected,
-  serialize_react_markup,
+  try_serialize_html_source,
 }
 
 fn browse_page_html() -> String {
-  match serialize_react_markup(node: gunbhub_browse_page()) {
+  match try_serialize_html_source(node: gunbhub_browse_page()) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
@@ -24,7 +18,7 @@ data gunbhub_browse_html: String = browse_page_html()
 
 fn gunbhub_browse_page_serializes_holds() -> Bool {
   gunbhub_browse_html ==
-    "<div><h1>gunbc</h1><ul><li><a>dsl</a></li><li><a>src</a></li><li><a>ROADMAP.md</a></li></ul></div>"
+    "<html><head><title>gunbc</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Browse</a></nav></header><main><ul><li><a href=\"/dsl\">dsl</a></li><li><a href=\"/src\">src</a></li><li><a href=\"/ROADMAP.md\">ROADMAP.md</a></li></ul></main></body></html>"
 }
 
 test fn gunbhub_browse_keystone_holds() -> Bool {

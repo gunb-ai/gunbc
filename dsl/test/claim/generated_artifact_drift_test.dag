@@ -1,0 +1,123 @@
+
+module test.claim.generated_artifact_drift
+
+import gunbc.generated_artifact {
+  GeneratedArtifact, CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, RunnerDeployArtifact, FleetConvergeArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
+  CommitPolicy, CommitRequired, NotCommitted,
+  generated_artifact_registry,
+  committed_generated_artifacts, artifact_path, artifact_commit_policy, artifact_is_committed, registry_contains
+}
+import gunbc.generated_artifact_emit { artifact_generate, artifact_extra_valid }
+import gunbc.os_install { srv3_autoinstall_spec, fleet_autoinstall_specs, srv3_install_server_spec, fleet_install_server_specs }
+import gunbc.gitignore_emit { path_is_ignored }
+import gunbc.plan_registry { all_plans }
+import gunbc.plans.idea_machine { idea_machine_plan }
+
+data perturb: String = "\n# gunbc-generated-artifact-drift-receipt-perturb"
+
+fn artifact_drifted(a: GeneratedArtifact, committed: String) -> Bool {
+  !(committed == artifact_generate(a: a))
+}
+
+fn witness_per_artifact_red_receipts() -> Bool {
+  count(committed_generated_artifacts()) > 0
+    && all(committed_generated_artifacts(), a =>
+         !artifact_drifted(a: a, committed: artifact_generate(a: a))
+           && artifact_drifted(a: a, committed: concat(artifact_generate(a: a), perturb)))
+}
+
+fn witness_all_known_committed() -> Bool {
+  artifact_is_committed(a: CiYamlArtifact)
+    && artifact_is_committed(a: GitignoreArtifact)
+    && artifact_is_committed(a: RoadmapArtifact)
+    && artifact_is_committed(a: DesignArtifact)
+    && artifact_is_committed(a: GithooksPrePushArtifact)
+    && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
+    && artifact_is_committed(a: FleetConvergeArtifact)
+    && !artifact_is_committed(a: RunnerDeployArtifact)
+    && !artifact_is_committed(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
+    && !artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
+    && !path_is_ignored(path: ".github/workflows/ci.yml")
+    && !path_is_ignored(path: ".gitignore")
+    && !path_is_ignored(path: "ROADMAP.md")
+    && !path_is_ignored(path: "DESIGN.md")
+    && !path_is_ignored(path: ".githooks/pre-push")
+    && !path_is_ignored(path: ".github/fleet-converge.sh")
+    && !path_is_ignored(path: "docs/plans/idea-machine.md")
+}
+
+fn witness_ignored_paths_excluded() -> Bool {
+  path_is_ignored(path: "target/release/gunbc")
+    && path_is_ignored(path: "foo/.DS_Store")
+    && path_is_ignored(path: "src/scratch.swp")
+    && path_is_ignored(path: "node_modules/pkg/index.js")
+    && path_is_ignored(path: ".github/fleet-runner-deploy.manifest")
+    && path_is_ignored(path: "provisioning/srv3/user-data")
+    && path_is_ignored(path: "provisioning/srv3/dnsmasq.conf")
+}
+
+fn witness_registry_complete() -> Bool {
+  count(generated_artifact_registry) == (7 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+    && registry_contains(a: CiYamlArtifact)
+    && registry_contains(a: GitignoreArtifact)
+    && registry_contains(a: RoadmapArtifact)
+    && registry_contains(a: DesignArtifact)
+    && registry_contains(a: GithooksPrePushArtifact)
+    && registry_contains(a: RunnerDeployArtifact)
+    && registry_contains(a: FleetConvergeArtifact)
+    && registry_contains(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
+    && registry_contains(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
+    && registry_contains(a: PlanArtifact { plan: idea_machine_plan })
+    && artifact_is_committed(a: CiYamlArtifact)
+    && artifact_is_committed(a: GitignoreArtifact)
+    && artifact_is_committed(a: RoadmapArtifact)
+    && artifact_is_committed(a: DesignArtifact)
+    && artifact_is_committed(a: GithooksPrePushArtifact)
+    && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
+    && artifact_is_committed(a: FleetConvergeArtifact)
+    && !artifact_is_committed(a: RunnerDeployArtifact)
+    && !artifact_is_committed(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
+    && !artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
+}
+
+fn consumer_is(a: GeneratedArtifact, expected: RepoConsumer) -> Bool {
+  match artifact_commit_policy(a: a) {
+    CommitRequired { consumer } => match consumer {
+      GitProtocol => match expected { GitProtocol => true  _ => false }
+      GithubActionsWorkflow => match expected { GithubActionsWorkflow => true  _ => false }
+      ProjectDocumentation => match expected { ProjectDocumentation => true  _ => false }
+      HostReconciler => match expected { HostReconciler => true  _ => false }
+    }
+    NotCommitted => false
+  }
+}
+
+fn witness_commit_policy_reasons() -> Bool {
+  consumer_is(a: GitignoreArtifact, expected: GitProtocol)
+    && consumer_is(a: GithooksPrePushArtifact, expected: GitProtocol)
+    && consumer_is(a: CiYamlArtifact, expected: GithubActionsWorkflow)
+    && consumer_is(a: RoadmapArtifact, expected: ProjectDocumentation)
+    && consumer_is(a: DesignArtifact, expected: ProjectDocumentation)
+    && consumer_is(a: PlanArtifact { plan: idea_machine_plan }, expected: ProjectDocumentation)
+    && consumer_is(a: FleetConvergeArtifact, expected: HostReconciler)
+    && match artifact_commit_policy(a: RunnerDeployArtifact) { NotCommitted => true  _ => false }
+    && match artifact_commit_policy(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec }) { NotCommitted => true  _ => false }
+    && match artifact_commit_policy(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec }) { NotCommitted => true  _ => false }
+}
+
+fn witness_extra_validation_wired() -> Bool {
+  artifact_extra_valid(a: GitignoreArtifact)
+    && artifact_extra_valid(a: RoadmapArtifact)
+    && artifact_extra_valid(a: DesignArtifact)
+    && artifact_extra_valid(a: CiYamlArtifact)
+}
+
+test fn generated_artifact_drift_witnesses() -> Bool {
+  witness_per_artifact_red_receipts()
+    && witness_all_known_committed()
+    && witness_ignored_paths_excluded()
+    && witness_registry_complete()
+    && witness_commit_policy_reasons()
+    && witness_extra_validation_wired()
+}

@@ -1,6 +1,3 @@
-// Scope: ProbeSelector keystone claims — ONE select kernel + availability conditioning.
-// Discovered as `test fn` witnesses by the CI floor (claim_executor discovery batch).
-
 module v2.test.workflow.probe_selector_ci_runner
 
 import v2.std.algebra { length }

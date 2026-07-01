@@ -1,87 +1,40 @@
 # The inert-layer lens — modeled but unreached
 
-> A lens that reports declared concepts (carriers, fns, whole modules) that are **modeled but unreached
-> from any live run-root** — DESIGN §6's "the machinery exists but nothing gates on it," made
-> *observable* and eventually fail-closed. The dangerous subset, and the reason for the lens, is the
-> **load-bearing-but-unwired** layer: a richly-structured carrier that *looks* like it drives behavior
-> and drives none. DESIGN refs: §3 (single authority — generalizes the #5433 inert-lens backstop, does
-> not fork it), §5 (fail-closed; construction over validation), §6 (lens as residue; coverage-by-illusion),
-> §7 (recursion — the compiler's own dead model is a substrate fact).
+> A lens that reports declared concepts (carriers, fns, whole modules) that are **modeled but unreached from any live run-root** — DESIGN §6's "the machinery exists but nothing gates on it," made *observable* and eventually fail-closed. The dangerous subset, and the reason for the lens, is the **load-bearing-but-unwired** layer: a richly-structured carrier that *looks* like it drives behavior and drives none. DESIGN refs: §3 (single authority — generalizes the #5433 inert-lens backstop, does not fork it), §5 (fail-closed; construction over validation), §6 (lens as residue; coverage-by-illusion), §7 (recursion — the compiler's own dead model is a substrate fact).
 
 ## 1. The definition (why reference-count is not enough)
 
-A declared concept is **inert** iff it is **not reachable from a live run-root** over the reference
-graph. The subtlety that makes this a real lens and not a grep:
+A declared concept is **inert** iff it is **not reachable from a live run-root** over the reference graph. The subtlety that makes this a real lens and not a grep:
 
-- **Reference-count overstates liveness.** A carrier with N>0 consumers can still be inert if all N
-  consumers are themselves inert — a self-referencing cluster. Measured example: `RealizationObjective`
-  and `ComputeOffer` each have 4 consumer files, but `RealizationObjective` is **live** (`ci_floor_plan`,
-  a run-root, imports `realization_width`→it) while the work-demand cluster around `ComputeOffer` reaches
-  nothing that runs. Same count, opposite verdict. **Reachability, not count.**
-- **Run-roots ≠ test-roots.** The existing #5433 backstop seeds reachability from *discovered test
-  witnesses* — it answers "is this lens **covered**?". Inert-layer detection must seed from the *run*
-  roots — what actually executes in production: the CI floor plan, the compiler pipeline driver, the emit
-  entry. A module reached only by tests but by nothing that runs is *inert in production yet covered* — a
-  distinct, also-interesting state. The lens reports both, labeled.
+- **Reference-count overstates liveness.** A carrier with N>0 consumers can still be inert if all N consumers are themselves inert — a self-referencing cluster. Measured example: `RealizationObjective` and `ComputeOffer` each have 4 consumer files, but `RealizationObjective` is **live** (`ci_floor_plan`, a run-root, imports `realization_width`→it) while the work-demand cluster around `ComputeOffer` reaches nothing that runs. Same count, opposite verdict. **Reachability, not count.**
+- **Run-roots ≠ test-roots.** The existing #5433 backstop seeds reachability from *discovered test witnesses* — it answers "is this lens **covered**?". Inert-layer detection must seed from the *run* roots — what actually executes in production: the CI floor plan, the compiler pipeline driver, the emit entry. A module reached only by tests but by nothing that runs is *inert in production yet covered* — a distinct, also-interesting state. The lens reports both, labeled.
 
 So: **inert = declared ∧ ¬reachable(run-roots)**. Decidable (graph reachability), a pure Node read.
 
 ### 1.1 The rules — what is a hard wall, and what only looks like one
 
-Four cases decide whether this is a *rule* or a *vibe*. Each lands in a different frontier region
-([expressibility-frontier](expressibility-frontier.md)); the design discipline is to keep them apart.
+Four cases decide whether this is a *rule* or a *vibe*. Each lands in a different frontier region ([expressibility-frontier](expressibility-frontier.md)); the design discipline is to keep them apart.
 
-- **Does a test consumer count? — NO, for the *live* verdict; it is a separate, labeled state.** Run
-  reachability from each root set independently: run-roots (executed entries) → "inert in production?";
-  test-roots (witnesses) → "covered?". A concept reachable from tests but not from run-roots is
-  **"tested but unrun"** — its own bucket (a test can pin dead code alive). Report it; **wall only on
-  run-root-inert.** Decidable per root set → ①.
+- **Does a test consumer count? — NO, for the *live* verdict; it is a separate, labeled state.** Run reachability from each root set independently: run-roots (executed entries) → "inert in production?"; test-roots (witnesses) → "covered?". A concept reachable from tests but not from run-roots is **"tested but unrun"** — its own bucket (a test can pin dead code alive). Report it; **wall only on run-root-inert.** Decidable per root set → ①.
+- **One consumer, but that consumer is dead? — you never count local consumers.** The verdict is *membership in the complement of the reachable set*, a fixpoint from the roots over the whole tree. A node alive only through a dead consumer is simply not in the reachable set → inert. "Inspect the entire tree" is exactly right: global reachability, not per-node degree. This is the case reference-count gets wrong (§1). Decidable → ①.
+- **Dead arms / fields (one honest reading of "should be 10, has 1") — decidable, a sharper wall.** A reachable carrier can still have *arms never constructed* or *fields never read*. Arm-level reachability is decidable (an arm appears in some reached construction or it doesn't), and the *match* side is already CoproductExhaustiveness (§4 testgen). So "a 6-arm coproduct where 3 arms are never built" is a wall, not a guess → ①.
+- **One consumer, but it *should* be ten call-sites? — this is NOT inertness, and forcing it into this rule breaks the wall.** "Should be ten" needs the set of sites that *ought* to consume the concept — not derivable from the concept alone (③ undecidable directly, by Rice). But its **dual is decidable**: the sites that should have consumed an authority and didn't are the ones that *rolled their own equivalent* — a §3 nickname / §2 anemic pattern. So under-consumption is detected **as redundancy**, by the anemic / nicknaming lens, *not* by counting expected consumers.
 
-- **One consumer, but that consumer is dead? — you never count local consumers.** The verdict is
-  *membership in the complement of the reachable set*, a fixpoint from the roots over the whole tree. A
-  node alive only through a dead consumer is simply not in the reachable set → inert. "Inspect the entire
-  tree" is exactly right: global reachability, not per-node degree. This is the case reference-count gets
-  wrong (§1). Decidable → ①.
-
-- **Dead arms / fields (one honest reading of "should be 10, has 1") — decidable, a sharper wall.** A
-  reachable carrier can still have *arms never constructed* or *fields never read*. Arm-level
-  reachability is decidable (an arm appears in some reached construction or it doesn't), and the *match*
-  side is already CoproductExhaustiveness (§4 testgen). So "a 6-arm coproduct where 3 arms are never
-  built" is a wall, not a guess → ①.
-
-- **One consumer, but it *should* be ten call-sites? — this is NOT inertness, and forcing it into this
-  rule breaks the wall.** "Should be ten" needs the set of sites that *ought* to consume the concept —
-  not derivable from the concept alone (③ undecidable directly, by Rice). But its **dual is decidable**:
-  the sites that should have consumed an authority and didn't are the ones that *rolled their own
-  equivalent* — a §3 nickname / §2 anemic pattern. So under-consumption is detected **as redundancy**, by
-  the anemic / nicknaming lens, *not* by counting expected consumers.
-
-**The framing rule: inertness (0 reachable) is a wall; under-wiring (too few) is a hand-rolled fork —
-keep them separate.** Fusing them is the trap: you would try to make "should be N" a hard gate, fail by
-Rice, and either fire falsely or abandon the whole rule.
+**The framing rule: inertness (0 reachable) is a wall; under-wiring (too few) is a hand-rolled fork — keep them separate.** Fusing them is the trap: you would try to make "should be N" a hard gate, fail by Rice, and either fire falsely or abandon the whole rule.
 
 So the hard rule is exactly the **0-reachability** one, and it is a wall on three conditions:
-1. **the run-root set is enumerable** — it is (the floor plan, the compiler/emit drivers, the CLI bins:
-   things with a `main` or a discovered entry). A fuzzy root set is a fuzzy wall — pin it.
-2. **reflective / host-bridge consumption counts as an edge** — `concept_index` is host-fed and the floor
-   discovers witnesses by marker scan, not import; a carrier consumed only through such a bridge is
-   *live* and would false-positive a pure import walk. The roots must include the bridge entry points.
-3. **a named, shrinking exception roster** for carriers deliberately modeled ahead of their consumer (the
-   realization loop is model-first by design) — each entry names its dissolve-on PR; the roster empties
-   as the loop wires them, and the lens flips advisory → wall when it does (the #5433 / realization-vocab
-   shape).
+
+1. **the run-root set is enumerable** — it is (the floor plan, the compiler/emit drivers, the CLI bins: things with a `main` or a discovered entry). A fuzzy root set is a fuzzy wall — pin it.
+2. **reflective / host-bridge consumption counts as an edge** — `concept_index` is host-fed and the floor discovers witnesses by marker scan, not import; a carrier consumed only through such a bridge is *live* and would false-positive a pure import walk. The roots must include the bridge entry points.
+3. **a named, shrinking exception roster** for carriers deliberately modeled ahead of their consumer (the realization loop is model-first by design) — each entry names its dissolve-on PR; the roster empties as the loop wires them, and the lens flips advisory → wall when it does (the #5433 / realization-vocab shape).
 
 The rule, stated once:
 
-> A declared concept must be **reachable from a live run-root** (over static **and** reflective edges),
-> be on the **exception roster** with a dissolve-on, or be **deleted**. Test-only reachability is a
-> separate "unrun" bucket — reported, not gated. **Under-consumption is out of scope** — it is the
-> redundancy lens, not this one.
+> A declared concept must be **reachable from a live run-root** (over static **and** reflective edges), be on the **exception roster** with a dissolve-on, or be **deleted**. Test-only reachability is a separate "unrun" bucket — reported, not gated. **Under-consumption is out of scope** — it is the redundancy lens, not this one.
 
 ## 2. The census (the discriminating witnesses the lens must reproduce)
 
-Measured 2026-06-21 over `dsl/**` + `src/v2/**`, reachability cross-checked against run-roots
-(`ci_floor_plan`, `scheduler`, the v1 run path). This is what the lens must independently re-derive:
+Measured 2026-06-21 over `dsl/**` + `src/v2/**`, reachability cross-checked against run-roots (`ci_floor_plan`, `scheduler`, the v1 run path). This is what the lens must independently re-derive:
 
 **Fully inert (0 live consumers), load-bearing — the target class:**
 
@@ -105,49 +58,22 @@ Measured 2026-06-21 over `dsl/**` + `src/v2/**`, reachability cross-checked agai
 | --- | --- |
 | `RealizationObjective` · `realization_width` · `HardwareThreadCount` (11) · `AxisGoal` | `ci_floor_plan` → `realization_width.width_fold_objective_goals` / `memory_aware_spawn_width` — the memory-aware width landed; the *schedule/width* arm of realization is live |
 
-The reading: the **schedule/width** arm of the realization layer is now wired; the **cache-plan** arm and
-the **work-demand / sharding / receipt-digest** arm are the inert load-bearing layers. Exactly the
-realization-loop thesis ("shape-complete but input-starved"), now with names.
+The reading: the **schedule/width** arm of the realization layer is now wired; the **cache-plan** arm and the **work-demand / sharding / receipt-digest** arm are the inert load-bearing layers. Exactly the realization-loop thesis ("shape-complete but input-starved"), now with names.
 
 ## 3. Two tiers (what's buildable now vs gated)
 
-**Tier 1 — module-level, buildable now (reuse #5433).** `inert_lens_modules` (`cli_run.rs:2558`) already
-computes module-import transitive closure from seed roots and reports unreached `v2.lens.*` modules. The
-inert-*layer* lens is the **same machinery with two generalizations**: (a) widen the output filter from
-`is_top_level_lens_module` to *all* modules; (b) seed from the **run-roots** (floor plan + pipeline +
-emit), not only discovered witnesses. Output: unreached *files/layers*. Reuses the existing BFS over
-`module_to_path` + `path_imports`; no new host machinery.
+**Tier 1 — module-level, buildable now (reuse #5433).** `inert_lens_modules` (`cli_run.rs:2558`) already computes module-import transitive closure from seed roots and reports unreached `v2.lens.*` modules. The inert-*layer* lens is the **same machinery with two generalizations**: (a) widen the output filter from `is_top_level_lens_module` to *all* modules; (b) seed from the **run-roots** (floor plan + pipeline + emit), not only discovered witnesses. Output: unreached *files/layers*. Reuses the existing BFS over `module_to_path` + `path_imports`; no new host machinery.
 
-**Tier 2 — symbol-level, gated.** Within reached modules, which declared carriers/fns have zero live
-consumers (the §2 census above is symbol-level). This needs **whole-corpus reference (`BindsTo`)
-enumeration**, which does *not* exist today — `dependency_lens` is per-declaration, `concept_index`
-enumerates *declarations* but not *reference sites*. So Tier 2 is host-fed today (a
-`enumerate_all_binds_to_edges()` bridge beside `concept_decl_facts_live()`) and becomes a pure `.dag`
-walk on the **same dissolution trigger as `concept_index`** (gunbc#5364 — v2 self-host gains
-compile-graph access). Until then Tier 2 is host-fed, Tier 1 is pure.
+**Tier 2 — symbol-level, gated.** Within reached modules, which declared carriers/fns have zero live consumers (the §2 census above is symbol-level). This needs **whole-corpus reference (`BindsTo`) enumeration**, which does *not* exist today — `dependency_lens` is per-declaration, `concept_index` enumerates *declarations* but not *reference sites*. So Tier 2 is host-fed today (a `enumerate_all_binds_to_edges()` bridge beside `concept_decl_facts_live()`) and becomes a pure `.dag` walk on the **same dissolution trigger as `concept_index`** (gunbc#5364 — v2 self-host gains compile-graph access). Until then Tier 2 is host-fed, Tier 1 is pure.
 
 ## 4. The load-bearing ranking (the advisory half)
 
-"Inert" is decidable; **"load-bearing" is a heuristic** — so the lens *decides* inertness and *ranks*
-apparent load-bearingness, never gates on the ranking. Rank an inert concept by structural richness:
-coproduct arm-count + record field-count + fn return-type richness, plus name signals
-(`Plan`/`Account`/`Receipt`/`Schedule`/`Demand`/`Policy`). A 6-arm `ParallelismShape` with 0 consumers
-ranks far above an unused 1-line helper. This is the operator's exact ask — "ones that *seem* load-bearing
-but are unwired" — surfaced as the ranked head of the inert list.
+"Inert" is decidable; **"load-bearing" is a heuristic** — so the lens *decides* inertness and *ranks* apparent load-bearingness, never gates on the ranking. Rank an inert concept by structural richness: coproduct arm-count + record field-count + fn return-type richness, plus name signals (`Plan`/`Account`/`Receipt`/`Schedule`/`Demand`/`Policy`). A 6-arm `ParallelismShape` with 0 consumers ranks far above an unused 1-line helper. This is the operator's exact ask — "ones that *seem* load-bearing but are unwired" — surfaced as the ranked head of the inert list.
 
 ## 5. Frontier placement (per [expressibility-frontier](expressibility-frontier.md))
 
-- **Inertness is a ① wall candidate.** Reachability is decidable; an inert load-bearing carrier should
-  eventually **fail closed** exactly as #5433 does for lenses ("an inert lens is a lie" → "an inert
-  load-bearing carrier is a lie"). The honest path: ship as a ② *observing* lens first (a ranked report,
-  no gate), promote to a ① wall once the corpus is clean enough that a new inert load-bearing carrier is
-  a genuine defect rather than expected staged-ahead modeling.
-- **The "staged-ahead" exception is the catch.** Much of the inert set is *deliberately* modeled before
-  its consumer (the realization loop is built model-first by design). So a blanket wall would fight the
-  project's own just-in-time-after-modeling discipline. The resolution is the #5433 pattern: a
-  **named, shrinking exception roster** (carriers modeled ahead of a tracked consumer-PR) that empties as
-  the realization loop wires them — the same ratchet-during-migration → wall-when-empty shape as the
-  realization-vocabulary guard. Each roster entry names its dissolve-on (the PR that wires it).
+- **Inertness is a ① wall candidate.** Reachability is decidable; an inert load-bearing carrier should eventually **fail closed** exactly as #5433 does for lenses ("an inert lens is a lie" → "an inert load-bearing carrier is a lie"). The honest path: ship as a ② *observing* lens first (a ranked report, no gate), promote to a ① wall once the corpus is clean enough that a new inert load-bearing carrier is a genuine defect rather than expected staged-ahead modeling.
+- **The "staged-ahead" exception is the catch.** Much of the inert set is *deliberately* modeled before its consumer (the realization loop is built model-first by design). So a blanket wall would fight the project's own just-in-time-after-modeling discipline. The resolution is the #5433 pattern: a **named, shrinking exception roster** (carriers modeled ahead of a tracked consumer-PR) that empties as the realization loop wires them — the same ratchet-during-migration → wall-when-empty shape as the realization-vocabulary guard. Each roster entry names its dissolve-on (the PR that wires it).
 - **The ranking is the ② residue**, permanently advisory (judging "load-bearing" needs domain knowledge).
 
 ## 6. Reuse map (do not fork — §3)
@@ -157,28 +83,19 @@ but are unwired" — surfaced as the ranked head of the inert list.
 | transitive reachability BFS | `inert_lens_modules` | `cli_run.rs:2558-2606` |
 | enumerate all declared concepts | `concept_index.enumerate_concepts()` | `concept_index.dag:130` |
 | use vs structural edge classification | `unused_parameters` `UseRelation` (`BindsTo` = the use authority) | `unused_parameters.dag:22` |
-| import/reference edge-walk | `layering_imports` projection | `layering_imports.dag` + `layering_imports_project.rs` |
+| import/reference edge-walk | `layering_imports` projection | `layering_imports.dag` + `cli_run.rs:layer_import_facts` |
 | run-roots | floor gates + corpus + pipeline/emit entries | `ci_floor_plan.dag:83`, `cli_run.rs:run_discovery_corpus` |
 
 ## 7. Wiring + dissolution
 
-- Tier 1 lands as `v2.lens.inert_layer` + a floor witness; runs over the corpus, **reports** (advisory)
-  first, ranked, with the exception roster.
+- Tier 1 lands as `v2.lens.inert_layer` + a floor witness; runs over the corpus, **reports** (advisory) first, ranked, with the exception roster.
 - Promote to fail-closed once the roster is small and stable (per §5 above).
-- **Load-bearing seed caveat:** Tier 1 touches `cli_run.rs` (the #5433 closure) — a DESIGN-named
-  load-bearing file → **escalate before editing**; prefer extending `inert_lens_modules` behind a flag to
-  forking it.
-- **Dissolution:** the lens itself never dissolves (inertness is a standing property); its *exception
-  roster* dissolves to empty as the realization loop wires each carrier, at which point the lens flips
-  from advisory ② to fail-closed ① wall.
+- **Load-bearing seed caveat:** Tier 1 touches `cli_run.rs` (the #5433 closure) — a DESIGN-named load-bearing file → **escalate before editing**; prefer extending `inert_lens_modules` behind a flag to forking it.
+- **Dissolution:** the lens itself never dissolves (inertness is a standing property); its *exception roster* dissolves to empty as the realization loop wires each carrier, at which point the lens flips from advisory ② to fail-closed ① wall.
 
 ## 8. Generalization — one rule, N substrates (code · docs · lenses)
 
-Reachability-completeness is **not specific to code** — it is a §2-horizontal "one concept, every
-breadth": *every declared node in a graph must be reachable from a root, on an exception roster, or
-deleted.* It already runs over the **lens** graph (#5433). It applies unchanged to the **doc** graph —
-and the doc instance is the **cheapest wall of all** (pure link reachability — no reflective edges
-*needed for the dangling half*, and far simpler than the code substrate):
+Reachability-completeness is **not specific to code** — it is a §2-horizontal "one concept, every breadth": *every declared node in a graph must be reachable from a root, on an exception roster, or deleted.* It already runs over the **lens** graph (#5433). It applies unchanged to the **doc** graph — and the doc instance is the **cheapest wall of all** (pure link reachability — no reflective edges *needed for the dangling half*, and far simpler than the code substrate):
 
 | substrate | nodes | edges | roots | inert = | dangling = |
 | --- | --- | --- | --- | --- | --- |
@@ -187,53 +104,22 @@ and the doc instance is the **cheapest wall of all** (pure link reachability —
 | lenses | `v2.lens.*` | module imports | discovered witnesses | inert lens (#5433) | — |
 
 The same three conditions (§1.1) decide the doc wall:
-1. **enumerable roots** — `ROADMAP.md` + `DESIGN.md` for *plan* docs; **runbooks need their own root** (an
-   operational index), or they false-positive (a runbook is not a roadmap item). Pin the root per doc
-   *kind*.
-2. **reflective edges count** — a doc referenced only from a `.dag` comment (`bind: docs/...`, the
-   CLAUDE.md open thread) is *consumed* but invisible to a markdown-link walk; include those refs.
-3. **exception roster** — best expressed as a **PR-local rule**: a PR that adds `docs/plans/X.md` must add
-   its inbound link in the same PR. That is the doc-graph analog of "an inert lens is a lie" — and this PR
-   honors it (it adds this doc *and* its ROADMAP line).
 
-**Live census (2026-06-21) — the doc instance's discriminating witnesses:** 18 docs, 13 reachable,
-**5 orphans** — `compile-clean-forcecheck.md`, `inert-layer-lens.md` (this very doc, before its ROADMAP
-line landed — the self-demonstrating case), `m4-universal-hermetic-corpus.md`,
-`m5-fixture-store-consolidation.md`, `runbooks/bmc-redfish-operator-access.md` (likely a legitimate
-runbook-root case, not a roadmap orphan) — and **1 dangling link**: `ROADMAP.md`'s rust-gate-coverage
-bullet linked `docs/plans/expensive-test-cause-table.md`, a #5463 forward-reference never written (the
-Pop-A/Pop-B content already lives in `ci-selection-vs-scheduling.md`, so a new doc would §2/§3-duplicate
-it). **Repointed in this PR** to the doc that holds the content. The wall would have blocked all six.
-(Methodology note: the *first* census run reported this ref as 2× — it had read a stale local `ROADMAP`
-behind main's terse pass; the lens must run against the live tree, the same discipline it enforces.)
+1. **enumerable roots** — `ROADMAP.md` + `DESIGN.md` for *plan* docs; **runbooks need their own root** (an operational index), or they false-positive (a runbook is not a roadmap item). Pin the root per doc *kind*.
+2. **reflective edges count** — a doc referenced only from a `.dag` comment (`bind: docs/...`, the CLAUDE.md open thread) is *consumed* but invisible to a markdown-link walk; include those refs.
+3. **exception roster** — best expressed as a **PR-local rule**: a PR that adds `docs/plans/X.md` must add its inbound link in the same PR. That is the doc-graph analog of "an inert lens is a lie" — and this PR honors it (it adds this doc *and* its ROADMAP line).
 
-**LANDED — the doc-graph wall is live (gunbc#5484), with one premise correction.** The "no host
-bridges" claim above holds **only for the dangling half**. The *orphan* half is `universe ∖ reachable`,
-and the universe is `docs/**/*.md` — which requires filesystem **enumeration**, and there is no
-list-dir host effect in `.dag` today (`std/filesystem` exposes only `Read`/`Write`). So the orphan
-half is host-fed: `src/v1/stage0/src/doc_reachability_project.rs` walks the tree and exposes two scalar
-verdicts (`doc_graph_orphan_count` / `doc_graph_dangling_link_count`) through the same additive
-corpus-gate builtin seam as `extdeps_external_authority_live_clean_tree_holds` / `fact_cardinality_*`
-(it does **not** touch `cli_run.rs`'s #5433 closure). The reachability primitive is the **same BFS
-shape** as `inert_lens_modules` re-expressed over doc nodes — the §3-single-authority doc *instance* of
-the one rule, not a forked concept. The dangling half alone *is* expressible in pure `.dag`
-(`filesystem_read` BFS from roots). **DISSOLUTION TRIGGER:** when `.dag` gains list-dir / compile-graph
-access (gunbc#5364, the Tier-2 note), the dir-walk + BFS fold into a pure `.dag` reader and the Rust
-census deletes. Re-derived against the **live** tree at landing: **22 docs, 22 reachable, 0 orphans, 0
-dangling** — clean, because this PR added the five missing inbound links + a `docs/runbooks/README.md`
-index root (the runbook-kind root) and linked the runbook from it. Witness:
-`dsl/test/claim/doc_reachability_witness_test.dag` (floor-discovered `test fn`s, fail-closed, RED on
-revert); RED/GREEN controls over a synthetic graph in the project module's unit tests.
+**Live census (2026-06-21) — the doc instance's discriminating witnesses:** 18 docs, 13 reachable, **5 orphans** — `compile-clean-forcecheck.md`, `inert-layer-lens.md` (this very doc, before its ROADMAP line landed — the self-demonstrating case), `m4-universal-hermetic-corpus.md`, `m5-fixture-store-consolidation.md`, `runbooks/bmc-redfish-operator-access.md` (likely a legitimate runbook-root case, not a roadmap orphan) — and **1 dangling link**: `ROADMAP.md`'s rust-gate-coverage bullet linked `docs/plans/expensive-test-cause-table.md`, a #5463 forward-reference never written (the Pop-A/Pop-B content already lives in `ci-selection-vs-scheduling.md`, so a new doc would §2/§3-duplicate it). **Repointed in this PR** to the doc that holds the content. The wall would have blocked all six. (Methodology note: the *first* census run reported this ref as 2× — it had read a stale local `ROADMAP` behind main's terse pass; the lens must run against the live tree, the same discipline it enforces.)
+
+**LANDED — the doc-graph wall is live (gunbc#5484), with one premise correction.** The "no host bridges" claim above holds **only for the dangling half**. The *orphan* half is `universe ∖ reachable`, and the universe is `docs/**/*.md` — which requires filesystem **enumeration**, and there is no list-dir host effect in `.dag` today (`std/filesystem` exposes only `Read`/`Write`). So the orphan half is host-fed: `src/v1/stage0/src/doc_reachability_project.rs` walks the tree and exposes two scalar verdicts (`doc_graph_orphan_count` / `doc_graph_dangling_link_count`) through the same additive corpus-gate builtin seam as `extdeps_external_authority_live_clean_tree_holds` / `fact_cardinality_*` (it does **not** touch `cli_run.rs`'s #5433 closure). The reachability primitive is the **same BFS shape** as `inert_lens_modules` re-expressed over doc nodes — the §3-single-authority doc *instance* of the one rule, not a forked concept. The dangling half alone *is* expressible in pure `.dag` (`filesystem_read` BFS from roots). **DISSOLUTION TRIGGER:** when `.dag` gains list-dir / compile-graph access (gunbc#5364, the Tier-2 note), the dir-walk + BFS fold into a pure `.dag` reader and the Rust census deletes. Re-derived against the **live** tree at landing: **22 docs, 22 reachable, 0 orphans, 0 dangling** — clean, because this PR added the five missing inbound links + a `docs/runbooks/README.md` index root (the runbook-kind root) and linked the runbook from it. Witness: `dsl/test/claim/doc_reachability_witness_test.dag` (floor-discovered `test fn`s, fail-closed, RED on revert); RED/GREEN controls over a synthetic graph in the project module's unit tests.
 
 ## 9. Open
 
-- Confirm the run-root set (is `scheduler.dag` the sole runtime, or also the v1 `claim_executor` path?
-  the digest census touched both).
-- Decide Tier-1-now vs wait for Tier-2's host bridge so the first landing is symbol-granular (the census
-  shows the interesting cases are symbol-level — `execution_receipt_digest`, `CacheLayerPlan` — so a
-  module-only first cut may under-deliver; weigh against Tier 1's zero-new-machinery cost).
-- **Doc-graph next steps (post gunbc#5484):** (a) fold the dangling half into a pure `.dag`
-  `filesystem_read` BFS now (no new host effect needed), leaving only the orphan-half enumeration
-  host-fed until gunbc#5364; (b) the **code** Tier-1/Tier-2 instances (the original target class —
-  `CacheLayerPlan`, `WorkDemand`, `execution_receipt_digest`) remain unbuilt; the doc instance is the
-  cheapest, not the substantive one.
+- **LANDED — the code symbol-level inert-CARRIER instance (Lane 7, this PR).** `v2.lens.inert_carrier` over `src/v1/stage0/src/inert_carrier_project.rs` flags a *type carrier* that is **defined + self-tested + zero real consumer** (DESIGN §5 coverage-by-illusion). The landing took the **coverage-by-illusion** reading of §1 rather than run-root reachability: a carrier is inert iff it is self-tested (named in a `*_test.dag`) AND used by zero non-test code outside its own declaration block. The `self-tested` gate is the key — it filters from "every staged-ahead carrier" (the model-first discipline this whole doc defends) down to the precise §5 trap (a green test, no production consumer), yielding a small, high-confidence set (8 carriers: AccessPolicy, CargoDependency, CargoPackage, FilePermissions, FloorWitnessRow, GitCliReportedVersion, ReactHookSite, SecretValue) rather than the hundreds a raw reachability sweep returns. (Seeded at 9; `RbacPolicy` then dissolved off the roster the moment a real consumer landed — `extdeps/bmc/access.dag`'s `redfish_rbac_policy` — exactly the stale-roster ratchet doing its job.) Fail-closed floor witness (`src/v2/lens/inert_carrier_test.dag`), named shrinking roster + stale-roster ratchet, discriminating synthetic RED/GREEN host controls. This is the Tier-2-host-fed path of §3 (not the cli_run.rs Tier-1 closure); DISSOLUTION at gunbc#5364. The run-root-reachability variant below (CacheLayerPlan/WorkDemand — NOT self-tested, so out of this instance's scope) remains the next, distinct cut.
+- Confirm the run-root set (is `scheduler.dag` the sole runtime, or also the v1 `claim_executor` path? the digest census touched both).
+- Decide Tier-1-now vs wait for Tier-2's host bridge so the first landing is symbol-granular (the census shows the interesting cases are symbol-level — `execution_receipt_digest`, `CacheLayerPlan` — so a module-only first cut may under-deliver; weigh against Tier 1's zero-new-machinery cost).
+- **Doc-graph next steps (post gunbc#5484):** (a) fold the dangling half into a pure `.dag` `filesystem_read` BFS now (no new host effect needed), leaving only the orphan-half enumeration host-fed until gunbc#5364; (b) the **code** Tier-1/Tier-2 instances (the original target class — `CacheLayerPlan`, `WorkDemand`, `execution_receipt_digest`) remain unbuilt; the doc instance is the cheapest, not the substantive one.
+
+## Dissolution trigger (DESIGN §6)
+
+Delete this doc when the inert-layer lens family it specifies is fully built and self-describing in the carriers: the still-unbuilt code Tier-1/Tier-2 target class (`v2.lens.inert_layer` over the run-roots, covering `CacheLayerPlan` / `WorkDemand` / `execution_receipt_digest`) has landed as fail-closed floor witnesses alongside the already-live doc-graph (gunbc#5484) and inert-carrier (Lane 7) instances — at which point the rule "reachable from a run-root, on the exception roster, or deleted" is enforced by execution across all three substrates and this design prose is superseded by the lenses themselves (the lens never dissolves; this doc does, per DESIGN §6's mark-on-carrier-is-authority).

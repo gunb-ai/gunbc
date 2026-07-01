@@ -1,18 +1,9 @@
-// config/codegen_paths.dag -- Single source of truth for codegen output paths.
-//
-// WorkspaceLayout in core/ir derives its codegen directory constants from
-// the data declarations below. No other .rs file should hardcode these paths.
-
 module config.codegen_paths
-
-// -- Codegen output directories and stamp file --
 
 data codegen_out_dir: String = "target/codegen"
 data bin_dir: String = "target/codegen/bin"
 data lib_dir: String = "target/codegen/lib"
 data stamp_file: String = "target/codegen/.codegen-stamp"
-
-// -- Source roots that contain generated code --
 
 data generated_roots: List<String> = [
   "core/ir/src",
@@ -20,8 +11,6 @@ data generated_roots: List<String> = [
   "gunbc-app/src",
   "generated"
 ]
-
-// -- Path templates for per-module codegen artefacts --
 
 data path_templates: List<String> = [
   "target/codegen/\{module\}.json",

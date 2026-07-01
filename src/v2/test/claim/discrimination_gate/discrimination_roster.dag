@@ -1,0 +1,152 @@
+module v2.test.discrimination_gate.discrimination_roster
+
+import v2.lens.discrimination { unit_is_discriminating }
+import v2.std.algebra { fold_list, is_empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.diagnostic {
+  Diagnostic,
+  Textual,
+  Unavailable,
+  UserInputBoundary,
+  WholeFile,
+  diagnostics_singleton
+}
+import v2.std.verification {
+  DiagnosticClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.test.impossible_bug.suboptimal_complexity {
+  claim_within_structural_bound_passes,
+  claim_overcost_against_structural_bound_violates,
+  within_bound_input
+}
+import v2.test.impossible_bug.nested_optional_flatten {
+  claim_optional_chaining_no_double_unwrap,
+  claim_optional_double_unwrap_rejected
+}
+import v2.test.impossible_bug.transport_type_drift {
+  claim_shared_declaration_compiles_both_sides,
+  claim_target_contract_drift_impossible
+}
+import v2.test.impossible_bug.idempotency_contract {
+  claim_idempotent_inhabitant_passes,
+  claim_repeated_append_in_idempotent_position_caught
+}
+import v2.test.impossible_bug.unenumerated_effects {
+  claim_explicit_reread_passes,
+  claim_redundant_read_caught
+}
+import v2.test.impossible_bug.unhandled_diagnostic_paths {
+  claim_division_by_zero_total_or_proven_safe,
+  claim_unproven_division_rejected
+}
+
+data unit_suboptimal_complexity: List<TestClaim> = [
+  claim_within_structural_bound_passes,
+  claim_overcost_against_structural_bound_violates
+]
+
+data unit_nested_optional_flatten: List<TestClaim> = [
+  claim_optional_chaining_no_double_unwrap,
+  claim_optional_double_unwrap_rejected
+]
+
+data unit_transport_type_drift: List<TestClaim> = [
+  claim_shared_declaration_compiles_both_sides,
+  claim_target_contract_drift_impossible
+]
+
+data unit_idempotency_contract: List<TestClaim> = [
+  claim_idempotent_inhabitant_passes,
+  claim_repeated_append_in_idempotent_position_caught
+]
+
+data unit_unenumerated_effects: List<TestClaim> = [
+  claim_explicit_reread_passes,
+  claim_redundant_read_caught
+]
+
+data unit_unhandled_diagnostic_paths: List<TestClaim> = [
+  claim_division_by_zero_total_or_proven_safe,
+  claim_unproven_division_rejected
+]
+
+fn discrimination_subject_rows() -> List<List<TestClaim>> {
+  [
+    unit_suboptimal_complexity,
+    unit_nested_optional_flatten,
+    unit_transport_type_drift,
+    unit_idempotency_contract,
+    unit_unenumerated_effects,
+    unit_unhandled_diagnostic_paths
+  ]
+}
+
+data all_positive_control_unit: List<TestClaim> = [
+  claim_within_structural_bound_passes
+]
+
+fn negative_control_correctly_rejected() -> Bool {
+  !unit_is_discriminating(unit: all_positive_control_unit)
+}
+
+data non_perturbed_red_over_green_input: TestClaim = DiagnosticClaim {
+  label: "non-perturbation control: red asserted over the SAME input the positive accepts",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: within_bound_input,
+  expected_rejection: diagnostics_singleton(
+    d: Diagnostic {
+      reason: ^discrimination_control_non_perturbed_reason,
+      at: Textual { file: ^discrimination_gate_virtual_file, extent: WholeFile },
+      correction: Unavailable { reason: UserInputBoundary }
+    }
+  ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data non_perturbed_control_unit: List<TestClaim> = [
+  claim_within_structural_bound_passes,
+  non_perturbed_red_over_green_input
+]
+
+fn non_perturbed_control_correctly_rejected() -> Bool {
+  !unit_is_discriminating(unit: non_perturbed_control_unit)
+}
+
+data mixed_input_non_perturbed_control_unit: List<TestClaim> = [
+  claim_within_structural_bound_passes,
+  claim_optional_chaining_no_double_unwrap,
+  non_perturbed_red_over_green_input
+]
+
+fn mixed_input_non_perturbed_control_correctly_rejected() -> Bool {
+  !unit_is_discriminating(unit: mixed_input_non_perturbed_control_unit)
+}
+
+fn all_rows_discriminating(rows: List<List<TestClaim>>) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: true,
+    cons: fn(acc, unit) {
+      acc && unit_is_discriminating(unit: unit)
+    }
+  )
+}
+
+fn discrimination_family_gate() -> Bool {
+  let rows = discrimination_subject_rows()
+  if is_empty(xs: rows) {
+    false
+  } else {
+    all_rows_discriminating(rows: rows)
+      && negative_control_correctly_rejected()
+      && non_perturbed_control_correctly_rejected()
+      && mixed_input_non_perturbed_control_correctly_rejected()
+  }
+}

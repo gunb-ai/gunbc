@@ -1,0 +1,221 @@
+module gunbc.tools.bmc_onboard
+
+import extdeps.bmc.http
+import extdeps.filesystem.filesystem_io
+import extdeps.entropy
+import extdeps.cloud.gcp.secret_manager
+import extdeps.cloud.gcp.gcp { GcpProjectId }
+import extdeps.shell
+import gunbc.bmc_onboarding {
+  new_altra_onboarding_plan,
+  BmcCredentialProbeResult,
+  FactoryCredentialActive,
+  RotatedCredentialActive,
+  CredentialStateUnknown,
+}
+import std.credentials { Stored }
+import std.types { NonEmptyStr, Secret, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.logic { Bool }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
+data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"
+
+data bmc_onboard_secret_on_disk_debt: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.filesystem.filesystem_io",
+    decl_name: "Filesystem",
+    field: WholeDeclaration
+  }
+}
+
+data srv3_gcp_project: GcpProjectId = "gunbai-secrets"
+
+data bmc_credential_bytes: ByteSize = byte_size(20)
+
+data bmc_redfish_json_concat_debt: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.primitives",
+    decl_name: "to_json_contract",
+    field: WholeDeclaration
+  }
+}
+
+fn netrc_content(host: String, account: String, password: String) -> String {
+  concat("machine ", concat(host, concat(" login ", concat(account, concat(" password ", concat(password, "\n"))))))
+}
+
+fn account_password_body(new_password: String) -> String {
+  concat("{\"Password\": \"", concat(new_password, "\"}"))
+}
+
+fn boot_override_body(target: String, enabled: String) -> String {
+  concat("{\"Boot\": {\"BootSourceOverrideTarget\": \"",
+    concat(target, concat("\", \"BootSourceOverrideEnabled\": \"", concat(enabled, "\"}}"))))
+}
+
+fn reset_body(reset_type: String) -> String {
+  concat("{\"ResetType\": \"", concat(reset_type, "\"}"))
+}
+
+fn gcp_secret_full_name(project: String, secret_id: String) -> String {
+  concat("projects/", concat(project, concat("/secrets/", secret_id)))
+}
+
+fn onboarding_secret_id() -> NonEmptyStr {
+  match new_altra_onboarding_plan.rotated_credential {
+    Stored { secret_name: sn } => sn
+    Chained { steps: _ } => "bmc-srv3-admin" as NonEmptyStr
+  }
+}
+
+fn mint_bmc_credential() -> Secret {
+  Urandom.ReadBytes(count: byte_size_count(b: bmc_credential_bytes) as Int).octets_b64 as Secret
+}
+
+fn write_netrc(host: String, account: String, password: String) -> Bool {
+  Filesystem.Write(path: bmc_onboard_netrc_path, content: netrc_content(host: host, account: account, password: password)).success
+}
+
+func bmc_rotate_credential(new_credential: Secret) -> ProcessExit
+  uses net: Network
+{
+  let plan = new_altra_onboarding_plan
+  let host = plan.bmc.host
+  let account = plan.factory_login.username
+
+  if write_netrc(host: host, account: account, password: plan.factory_login.published_password) == false {
+    return exit_failure(reason: "rotate: netrc write failed")
+  }
+
+  let body = Filesystem.Write(
+    path: bmc_onboard_pwbody_path,
+    content: account_password_body(new_password: new_credential as String)
+  )
+  if body.success == false {
+    return exit_failure(reason: concat("rotate: password body write failed: ", body.error))
+  }
+
+  rot = redfish.Http.SetAccountPassword(
+    bmc_host: host,
+    netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+    account_id: account,
+    request_body_file: bmc_onboard_pwbody_path as NonEmptyStr
+  )
+  if rot.success == false {
+    return exit_failure(reason: rot.body)
+  }
+
+  verify = redfish.Http.GetSystem(bmc_host: host, username: account, password: new_credential)
+  return if verify.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("rotate: reauth with new credential rejected: ", verify.body))
+  }
+}
+
+func bmc_store_and_rotate(credential: Secret) -> ProcessExit
+  uses net: Network
+{
+  let payload_b64 = credential as String
+  let secret_id = onboarding_secret_id()
+
+  auth = shell.GCloud.AuthPrintAccessToken()
+  stored = gcp.SecretManager.AddVersion(
+    access_token: auth.access_token,
+    secret_name: gcp_secret_full_name(project: srv3_gcp_project, secret_id: secret_id),
+    payload_b64: payload_b64
+  )
+  readback = gcp.SecretManager.AccessVersion(
+    access_token: auth.access_token,
+    project_id: srv3_gcp_project,
+    secret: secret_id,
+    version: "latest"
+  )
+  if readback.data_b64 != payload_b64 {
+    return exit_failure(reason: concat("store: GCP durability read-back mismatch — refusing to rotate (would lock out srv3); stored version ", stored.name))
+  }
+
+  return bmc_rotate_credential(new_credential: credential)
+}
+
+func bmc_assimilate_srv3_credential() -> ProcessExit
+  uses net: Network
+{
+  let plan = new_altra_onboarding_plan
+  let host = plan.bmc.host
+  let account = plan.factory_login.username
+
+  root_resp = redfish.Http.GetServiceRoot(bmc_host: host)
+  if root_resp.success == false {
+    return exit_failure(reason: concat("acquire: service root unreachable: ", root_resp.body))
+  }
+  acq = redfish.Http.GetSystem(
+    bmc_host: host,
+    username: account,
+    password: plan.factory_login.published_password as Secret
+  )
+  if acq.success == false {
+    return exit_failure(reason: concat("acquire: factory login failed: ", acq.body))
+  }
+
+  return bmc_store_and_rotate(credential: mint_bmc_credential())
+}
+
+func bmc_probe_credential_phase() -> BmcCredentialProbeResult
+  uses net: Network
+{
+  let plan = new_altra_onboarding_plan
+  let host = plan.bmc.host
+  let account = plan.factory_login.username
+
+  factory_check = redfish.Http.GetSystem(
+    bmc_host: host,
+    username: account,
+    password: plan.factory_login.published_password as Secret
+  )
+  if factory_check.success {
+    return FactoryCredentialActive
+  }
+
+  auth = shell.GCloud.AuthPrintAccessToken()
+  secret_resp = gcp.SecretManager.AccessVersion(
+    access_token: auth.access_token,
+    project_id: srv3_gcp_project,
+    secret: onboarding_secret_id(),
+    version: "latest"
+  )
+  rotated_verify = redfish.Http.GetSystem(
+    bmc_host: host,
+    username: account,
+    password: secret_resp.data_b64 as Secret
+  )
+  return if rotated_verify.success {
+    RotatedCredentialActive
+  } else {
+    CredentialStateUnknown { reason: "stored credential rejected by BMC" }
+  }
+}
+
+func bmc_converge_credential_idempotent() -> ProcessExit
+  uses net: Network
+{
+  root_resp = redfish.Http.GetServiceRoot(bmc_host: new_altra_onboarding_plan.bmc.host)
+  if root_resp.success == false {
+    return exit_failure(reason: concat("credential converge: BMC unreachable: ", root_resp.body))
+  }
+
+  probe = bmc_probe_credential_phase()
+  match probe {
+    FactoryCredentialActive => return bmc_store_and_rotate(credential: mint_bmc_credential())
+    RotatedCredentialActive => return ExitSuccess
+    CredentialStateUnknown { reason: r } =>
+      return exit_failure(reason: concat("credential converge: unknown phase: ", r))
+  }
+}

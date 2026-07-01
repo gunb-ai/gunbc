@@ -1,9 +1,4 @@
-// Scope: L1 Python runtime execution receipts for fixture=phase1/nat_semiring (release-minimum).
-// Status: substrate claim labels (correctness-ladder L1 vocabulary; TestgenTier::Tier3 per
-//   Authority: v2-python-rca-manager-worksheets Worksheet B (PY-L1-L2-RUNTIME-FIXTURE-EXECUTION).
-
 module v2.test.nat_semiring.rung_l1_python_runtime
-
 
 import v2.std.collection { List }
 import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
@@ -97,7 +92,4 @@ data phase1_nat_semiring_l1_python_runtime_claim_rows: List<TestClaim> = [
   claim_phase1_nat_semiring_l1_python_runtime_mul_associativity_exec
 ]
 
-
-// Aggregate fixture subject retained for host transports that can only report the whole
-// emitted Python fixture tree until per-law emitted entrypoints land.
 data phase1_nat_semiring_l1_python_runtime_fixture_receipt_subject: Node = phase1_nat_semiring_l1_python_runtime_fixture_subject

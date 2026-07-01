@@ -97,8 +97,8 @@ pub fn is_inductive_field(
     {
         let mut __found = false;
         for f in inductive_fields_for(env, type_name).iter().cloned() {
-            if ((f.variant_name.clone().as_str() == variant_name.clone().as_str())
-                && (f.field_name.clone().as_str() == field_name.clone().as_str()))
+            if ((f.variant_name.clone() == variant_name.clone())
+                && (f.field_name.clone() == field_name.clone()))
             {
                 __found = true;
                 break;

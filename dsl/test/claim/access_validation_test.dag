@@ -1,20 +1,3 @@
-// test/claim/access_validation_test.dag — validate std.access by mapping real extdeps systems into it.
-// Each system gets a `decide` of type AccessPolicy.decide; executed witnesses confirm the shape
-// actually answers each system's authorization question. Where a system strains the shape, the
-// strain is recorded (the "see if anything breaks" findings).
-//
-// FINDINGS so far:
-//  * POSIX (DAC) fits cleanly: the ACL is attached to the OBJECT, so `decide` is a pure fn of the
-//    request — it inhabits AccessPolicy<S,A,O> directly (see posix_access_policy).
-//  * RBAC has a GLOBAL policy, not an object-attached ACL — so `decide` is fn(policy, request).
-//    To inhabit AccessPolicy<S,A,O> (which is fn(request)->decision) the policy must be CURRIED in
-//    (a closure). That's a real strain: the abstraction's `decide` assumes the policy is already
-//    bound. Recorded; the currying is mechanical, not a break.
-//  * Zanzibar fuses action + subject-grouping into one `relation` (maps; the two coincide).
-//  * AWS IAM (ABAC) does NOT need a context dimension — its conditions decompose into attribute-
-//    carrying S/A/O + grounded coordinates (aws:SourceIp → NetworkLocality, s3:prefix → action
-//    parameter). Proven with no opaque `C` in test.claim.access_iam_validation.
-
 module test.claim.access_validation
 
 import std.types { NonEmptyStr, Bool, Int }
@@ -29,8 +12,6 @@ fn decision_is_permit(d: AccessDecision) -> Bool {
 fn decision_is_deny(d: AccessDecision) -> Bool {
   match d { Deny => true  Permit => false }
 }
-
-// ============================ POSIX (DAC) ============================
 
 type PosixSubject {
   uid: Int
@@ -50,7 +31,6 @@ fn posix_bit(bits: PermissionBits, action: PosixAction) -> Bool {
   }
 }
 
-// POSIX class resolution: owner class if uid matches; else group class if gid matches; else other.
 fn posix_class_bits(perms: FilePermissions, subject: PosixSubject) -> PermissionBits {
   if subject.uid == perms.ownership.uid {
     perms.mode.owner
@@ -71,12 +51,10 @@ fn posix_decide(request: AccessRequest<PosixSubject, PosixAction, FilePermission
   }
 }
 
-// POSIX inhabits the std abstraction directly (ACL attached to the object).
 data posix_access_policy: AccessPolicy<PosixSubject, PosixAction, FilePermissions> = {
   decide: posix_decide
 }
 
-// A file owned by uid 1000 / gid 1000: owner rw-, group r--, other ---.
 data sample_file: FilePermissions = {
   ownership: { uid: 1000, gid: 1000 },
   mode: {
@@ -113,8 +91,6 @@ test fn posix_other_cannot_read() -> Bool {
   }))
 }
 
-// ============================ RBAC ============================
-
 fn permission_eq(a: Permission, b: Permission) -> Bool {
   a.operation == b.operation && a.object == b.object
 }
@@ -125,8 +101,6 @@ fn user_has_role(policy: RbacPolicy, user: NonEmptyStr, role: NonEmptyStr) -> Bo
   })
 }
 
-// Core RBAC: a user has a permission if some role they hold has it. (Role hierarchy RH is a
-// transitive fold over role_hierarchy — a marked extension, not exercised here.)
 fn rbac_user_has_permission(policy: RbacPolicy, user: NonEmptyStr, perm: Permission) -> Bool {
   fold(policy.permission_assignments, init: false, f: fn(acc, pa) {
     if acc { true }

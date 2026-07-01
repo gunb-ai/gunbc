@@ -1,27 +1,7 @@
-// extdeps/realization/hermetic_fixture.dag — the hermetic fixture store as TWO
-// content-addressed-cache handlers of ONE kernel (DESIGN.md §2 horizontal / §3 single authority).
-//
-// The fixture store is forked across the two seeds:
-//   - v1 RecordedFixture (src/v1/stage0/src/recorded_fixture.rs): on-disk
-//     `{root}/{op_slug}/{input_hash}.json`, keyed by content_hash(inputs), value-verified on read.
-//   - v2 EffectIoFixtureStore (src/v2/extdeps/runtimes/v2_effect_io_pure.dag): in-process
-//     `Map<Symbol, RuntimeValue>`, keyed by a degenerate Symbol pin (today fail-open).
-//
-// They are not two concepts — they are ONE artifact kind (a wet-captured effect response,
-// keyed by the content hash of the operation inputs) realized at two placements. This file
-// cites both as `CacheInterfaceCatalogFacts` rows (parallel to parse_table_memo.dag /
-// resolved_graph.dag), so the shared kernel (std.cache_interface) sees the fork as a
-// key_derivation divergence on ONE artifact-kind family — the §3 census the M5 fold rewiring
-// then closes (v1/v2 lookup folds return std.cache_interface.CacheLookupResult).
-//
-// MODEL-FIRST SPIKE (node://adhoc-3efc6449-ec5): these rows + the witness are additive and
-// touch no load-bearing fold. The load-bearing bridge (v1 eval_service_call, v2 05_eval
-// effect dispatch, recorded_fixture.rs) is escalated separately — see
-// docs/plans/m5-fixture-store-consolidation.md.
-//
-// Authority: this module, cited in tests. Do NOT fork or duplicate.
-
 module extdeps.realization.hermetic_fixture
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
 import std.cache_identity { CacheInterfaceId }
@@ -50,22 +30,22 @@ import std.cache_interface {
   Repo,
 }
 
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/realization"
+  }
+}
+
 data hermetic_fixture_file_store_id: CacheInterfaceId = "hermetic_fixture_file_store"
 data hermetic_fixture_in_process_id: CacheInterfaceId = "hermetic_fixture_in_process"
 
-// --- Handler 1: v1 RecordedFixture (on-disk, content-addressed reference) -----------
-//
-// recorded_fixture.rs: input_hash = content_hash_service_inputs(op, inputs); the store
-// keeps the faithful `inputs` and verifies them on lookup (collision safety →
-// content_verified_on_read). WriteOnce: a re-record returning a different response for the
-// same input_hash is ResponseDrift, the cache-purity oracle. Ttl: FIXTURE_FRESHNESS_SECS
-// (30 days) → expiry is a loud fail-closed refusal, not a silent miss (MissIsDiagnostic).
 data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
   identity: hermetic_fixture_file_store_id
   backing_surface: "gunbc-recorded-fixture-on-disk"
   transport_encoding: CasContentEncoding
   key_derivation: {
-    // OUR content-addressed cache: inputs DERIVED from invalidation_triggers (no toolchain).
+
     key_inputs: ContentAddressed
     overwritable: false
     prefix_fallback_allowed: false
@@ -105,23 +85,12 @@ data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
   ]
 }
 
-// --- Handler 2: v2 EffectIoFixtureStore (in-process; CONVERGED key derivation) --------
-//
-// v2_effect_io_pure.dag: Map<Hash, RuntimeValue>. CONVERGED (node://adhoc-7e32be31-47c): the
-// locator identity is now content_hash(runtime_value_node_projection(arg)) — the SAME content
-// digest authority the v1 on-disk handler keys on — so this handler is ContentAddressedByValue +
-// content_verified_on_read (the content-addressed key IS the read verification: a hit means the
-// reified-input digests matched). The key-derivation fork the M5 design called out is GONE; the
-// remaining differences (InProcess locality, Never eviction, OverwriteAllowed) are genuine
-// placement facts, not the fork. Proven BY EXECUTION in effect_io_handler_claims_test.dag
-// (effect_io_pure_value_derived_key_discriminates_holds — distinct resources → distinct keys, RED
-// if reverted to the constant pin) and asserted in hermetic_fixture_realization_test.dag.
 data hermetic_fixture_in_process_facts: CacheInterfaceCatalogFacts = {
   identity: hermetic_fixture_in_process_id
   backing_surface: "gunbc-effect-io-fixture-in-memory"
   transport_encoding: CasContentEncoding
   key_derivation: {
-    // OUR content-addressed cache: inputs DERIVED from invalidation_triggers (no toolchain).
+
     key_inputs: ContentAddressed
     overwritable: true
     prefix_fallback_allowed: false

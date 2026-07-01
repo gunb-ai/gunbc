@@ -1,7 +1,3 @@
-// extdeps/cache/sccache.dag — sccache local-disk cache catalog (cited facts).
-//
-// Spec: https://github.com/mozilla/sccache/blob/main/docs/Configuration.md
-
 module extdeps.cache.sccache
 
 import extdeps.cache.types {
@@ -14,6 +10,7 @@ import extdeps.cache.types {
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
   NativeInternalLookup,
+  OverwriteAllowed,
   WriteThenRename,
   MissThenCreate,
   RawBytes,
@@ -28,15 +25,30 @@ import std.cache_interface {
   Org,
 }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/mozilla/sccache/blob/main/docs/Configuration.md"
+  }
+}
+
 data sccache_local_id: CacheInterfaceId = "sccache_local"
+
+data sccache_fatal_error_log_fragment: String = "sccache: encountered fatal error"
+
+data sccache_rustc_wrapper_exit_254_log_fragment: String = "(exit status: 254)"
+
+data sccache_failed_to_execute_compile_log_fragment: String = "sccache: error: failed to execute compile"
 
 data sccache_local_facts: CacheInterfaceCatalogFacts = {
   identity: sccache_local_id
   backing_surface: "sccache-local-disk"
   transport_encoding: SccacheInternalEncoding
   key_derivation: {
-    // EXTERNAL vendor cache: sccache computes its own hash over the rustc invocation +
-    // toolchain — CITED observation, not derived. key_completeness validates the citation.
+
     key_inputs: NativeInternal { cited_inputs: [RustcInvocation, ToolchainSpec] }
     overwritable: true
     prefix_fallback_allowed: false
@@ -46,13 +58,13 @@ data sccache_local_facts: CacheInterfaceCatalogFacts = {
   }
   io: {
     lookup_semantics: NativeInternalLookup
-    write_semantics: WriteThenRename
+    write_semantics: OverwriteAllowed
     miss_semantics: MissThenCreate
   }
   placement: {
     value_shape: RawBytes
     locality: PerHostFilesystem
-    // sccache max cache size is operator-configured (sccache.conf), not a fixed substrate fact.
+
     eviction: Lru
     atomicity: WriteThenRename
     auth: FilesystemPerms

@@ -1,38 +1,7 @@
-// std/serialization.dag -- Wire format contracts for external APIs.
-//
-// Types declare how their values appear on the wire (JSON responses).
-// Modules declare a wire_contract that applies to all types within.
-// The emitter reads the contract and generates target-language
-// serialization attributes (e.g., serde for Rust).
-//
-// Without a wire_contract, enums use internal tagging ({"_variant": "Name"}).
-// With StringVariant, enums serialize as plain strings ("Name" or "name").
-
 module std.serialization
 
-// Declaration reference for source-level wire contracts. Today this is the
-// authored declaration name; the v3 DeclarationRef carrier can replace this
-// alias when v2 retires.
-type DeclarationRef = String
+import std.decl_ref { DeclarationRef }
 
-// How enum variant names map to wire strings.
-//
-// Dissolution receipt for this coproduct extension:
-// - Classification: retained domain vocabulary, not an emitter-local heuristic.
-// - Not dissolved into free strings: the variants are the provider wire naming
-//   policies authored in source rows and consumed by emitters.
-// - Not dissolved into per-provider side tables: provider-specific affixes stay
-//   row data on the exact contract that needs them.
-// - Removal trigger: when declaration references and wire schemas are fully
-//   data-native, these variants may move unchanged into that schema authority;
-//   until then, this coproduct is the single source-level naming policy surface.
-// AsAuthored: variant name as-is (User → "User", Bot → "Bot").
-// SnakeCase: variant name lowercased with underscores (EndTurn → "end_turn").
-// ScreamingSnakeCase: variant name uppercased with underscores (ChangesRequested → "CHANGES_REQUESTED").
-// StripPrefixAndSnakeCase / StripSuffixAndSnakeCase /
-// StripPrefixSuffixAndSnakeCase: remove at least one authored affix, then
-// snake_case the result. These handle provider-domain variants whose source
-// names carry role context that is not part of the wire discriminant.
 type VariantNaming
   = AsAuthored
   | SnakeCase
@@ -41,37 +10,19 @@ type VariantNaming
   | StripSuffixAndSnakeCase { suffix: String }
   | StripPrefixSuffixAndSnakeCase { prefix: String, suffix: String }
 
-// How enum variants appear on the wire.
-// StringVariant: plain strings — the common REST API pattern.
-// TaggedVariant: internally tagged objects ({"_variant": "Name"}) — .dag default.
-// InternallyTaggedObject: serde-style internally tagged payload objects with an
-// explicit discriminator field ({"type": "text", ...}).
-// UntaggedVariant: serde-style untagged alternatives. Use only when the wire
-// shape is determined by payload JSON shape rather than a discriminator field
-// (for example string-or-array provider request fields).
 type VariantEncoding
   = StringVariant { naming: VariantNaming }
   | InternallyTaggedObject { tag_field: String, naming: VariantNaming }
   | UntaggedVariant
   | TaggedVariant
 
-// Declaration-level override. Selection order is:
-//   1. CoproductWireContract for the exact coproduct declaration.
-//   2. Module-local `data wire_contract: VariantEncoding` fallback/default.
-//   3. Emitter default.
 type CoproductWireContract {
   coproduct: DeclarationRef
   encoding: VariantEncoding
 }
 
-// Module-level wire contract. Declared as:
-//   data wire_contract: WireContract = { variant_encoding: StringVariant { naming: AsAuthored } }
 type WireContract {
   variant_encoding: VariantEncoding
 }
 
-// Wire format for response bodies.
-// Json: parse with serde_json (default for REST).
-// Text: read as raw string (diffs, plain-text APIs).
-// Declared on transport: response_format: Text
 type WireFormat = Json | Text

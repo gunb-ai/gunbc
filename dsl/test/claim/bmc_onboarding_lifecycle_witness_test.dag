@@ -1,0 +1,218 @@
+module test.claim.bmc_onboarding_lifecycle
+
+import std.logic { Bool }
+import std.types { Int }
+import std.credentials { Stored, Chained }
+import std.os.types { UbuntuOs, WindowsOs, MacosOs, NobleNumbat2404Lts }
+import gunbc.bmc_onboarding {
+  BmcOnboardingPhase,
+  FactoryDefault,
+  CredentialsRotated,
+  OsInstalled,
+  FabricJoined,
+  BmcCredentialPosture,
+  FactoryPublished,
+  RotatedSecretManaged,
+  KeylessFederated,
+  bmc_onboarding_next_phase,
+  bmc_onboarding_prev_phase,
+  BmcLifecycleState,
+  BmcRecoverableInvariant,
+  bmc_recoverable_quotient,
+  bmc_onboard_to_steady,
+  bmc_decom_to_factory,
+  bmc_factory_state,
+  bmc_install_step,
+  bmc_transition_roundtrips_on_quotient,
+  bmc_full_state_is_lossy_after_roundtrip,
+  bmc_phase_credential_posture,
+  bmc_lifecycle_is_monotone_hardening,
+  bmc_lifecycle_length,
+  bmc_plan_steady_state_phase,
+  bmc_plan_steady_state_posture,
+  new_altra_onboarding_plan,
+  BmcCredentialProbeResult,
+  FactoryCredentialActive,
+  RotatedCredentialActive,
+  CredentialStateUnknown,
+  bmc_credential_probe_to_phase,
+}
+import extdeps.bmc.types { BootTargetPxe, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
+import gunbc.assimilate.bmc_token_federation { emit_bmc_token_smoke_workflow_yaml }
+import extdeps.communication.medium { Lossless, Lossy }
+
+fn phase_tag(p: BmcOnboardingPhase) -> Int {
+  match p {
+    FactoryDefault => 0
+    CredentialsRotated => 1
+    OsInstalled => 2
+    FabricJoined => 3
+  }
+}
+
+fn next_tag(p: BmcOnboardingPhase) -> Int {
+  match bmc_onboarding_next_phase(phase: p) {
+    Present { value: q } => phase_tag(p: q)
+    Absent => -1
+  }
+}
+
+test fn bmc_onboarding_lifecycle_is_linear_dag() -> Bool {
+  next_tag(p: FactoryDefault) == 1
+    && next_tag(p: CredentialsRotated) == 2
+    && next_tag(p: OsInstalled) == 3
+    && next_tag(p: FabricJoined) == -1
+}
+
+fn posture_tag(p: BmcCredentialPosture) -> Int {
+  match p {
+    FactoryPublished => 0
+    RotatedSecretManaged => 1
+    KeylessFederated => 2
+  }
+}
+
+fn posture_is_keyless(p: BmcCredentialPosture) -> Bool {
+  match p {
+    FactoryPublished => false
+    RotatedSecretManaged => false
+    KeylessFederated => true
+  }
+}
+
+test fn bmc_credential_posture_hardens_to_keyless_steady_state() -> Bool {
+  posture_tag(p: bmc_phase_credential_posture(phase: FactoryDefault)) == 0
+    && posture_tag(p: bmc_phase_credential_posture(phase: CredentialsRotated)) == 1
+    && posture_tag(p: bmc_phase_credential_posture(phase: OsInstalled)) == 1
+    && posture_tag(p: bmc_phase_credential_posture(phase: FabricJoined)) == 2
+    && !posture_is_keyless(p: bmc_phase_credential_posture(phase: FactoryDefault))
+    && !posture_is_keyless(p: bmc_phase_credential_posture(phase: OsInstalled))
+    && posture_is_keyless(p: bmc_phase_credential_posture(phase: FabricJoined))
+}
+
+test fn bmc_lifecycle_fold_is_complete_and_monotone() -> Bool {
+  bmc_lifecycle_length() == 4
+    && bmc_lifecycle_is_monotone_hardening()
+}
+
+test fn bmc_plan_steady_state_is_keyless_wif() -> Bool {
+  let steady = bmc_plan_steady_state_phase(plan: new_altra_onboarding_plan)
+  (steady == FabricJoined)
+    && posture_is_keyless(p: bmc_plan_steady_state_posture(plan: new_altra_onboarding_plan))
+    && !string_contains(s: emit_bmc_token_smoke_workflow_yaml(), pattern: "credentials_json")
+    && string_contains(s: emit_bmc_token_smoke_workflow_yaml(), pattern: "id-token: write")
+}
+
+fn prev_next_is_identity(p: BmcOnboardingPhase) -> Bool {
+  match bmc_onboarding_next_phase(phase: p) {
+    Present { value: nxt } =>
+      match bmc_onboarding_prev_phase(phase: nxt) {
+        Present { value: back } => back == p
+        Absent => false
+      }
+    Absent => true
+  }
+}
+
+fn next_prev_is_identity(p: BmcOnboardingPhase) -> Bool {
+  match bmc_onboarding_prev_phase(phase: p) {
+    Present { value: prv } =>
+      match bmc_onboarding_next_phase(phase: prv) {
+        Present { value: fwd } => fwd == p
+        Absent => false
+      }
+    Absent => true
+  }
+}
+
+test fn bmc_decom_is_two_sided_inverse_on_phase_ladder() -> Bool {
+  prev_next_is_identity(p: FactoryDefault)
+    && prev_next_is_identity(p: CredentialsRotated)
+    && prev_next_is_identity(p: OsInstalled)
+    && prev_next_is_identity(p: FabricJoined)
+    && next_prev_is_identity(p: FactoryDefault)
+    && next_prev_is_identity(p: CredentialsRotated)
+    && next_prev_is_identity(p: OsInstalled)
+    && next_prev_is_identity(p: FabricJoined)
+}
+
+test fn bmc_onboard_then_decom_recovers_factory_phase() -> Bool {
+  let decom_after_install = bmc_decom_to_factory(phase: bmc_onboard_to_steady(phase: FactoryDefault))
+  let install_after_decom = bmc_onboard_to_steady(phase: bmc_decom_to_factory(phase: FabricJoined))
+  (decom_after_install == FactoryDefault) && (install_after_decom == FabricJoined)
+}
+
+fn factory_at(p: BmcOnboardingPhase) -> BmcLifecycleState {
+  match p {
+    FactoryDefault => bmc_factory_state()
+    CredentialsRotated => bmc_install_step(s: bmc_factory_state())
+    OsInstalled => bmc_install_step(s: bmc_install_step(s: bmc_factory_state()))
+    FabricJoined => bmc_install_step(s: bmc_install_step(s: bmc_install_step(s: bmc_factory_state())))
+  }
+}
+
+test fn bmc_decom_roundtrips_canonical_on_named_quotient() -> Bool {
+  bmc_transition_roundtrips_on_quotient(s: factory_at(p: FactoryDefault))
+    && bmc_transition_roundtrips_on_quotient(s: factory_at(p: CredentialsRotated))
+    && bmc_transition_roundtrips_on_quotient(s: factory_at(p: OsInstalled))
+}
+
+fn decom_step_broken(s: BmcLifecycleState) -> BmcLifecycleState {
+  match bmc_onboarding_prev_phase(phase: s.phase) {
+    Present { value: prv } => BmcLifecycleState {
+      phase: prv,
+      credential: bmc_phase_credential_posture(phase: prv),
+      secret_epoch: s.secret_epoch,
+      boot_cleared: s.boot_cleared
+    }
+    Absent => s
+  }
+}
+
+fn transition_does_not_roundtrip_on_quotient(s: BmcLifecycleState) -> Bool {
+  let recovered = bmc_recoverable_quotient(s: decom_step_broken(s: bmc_install_step(s: s)))
+  let original = bmc_recoverable_quotient(s: s)
+  !(recovered == original)
+}
+
+test fn bmc_decom_does_not_roundtrip_when_inverse_is_wrong() -> Bool {
+  transition_does_not_roundtrip_on_quotient(s: factory_at(p: CredentialsRotated))
+}
+
+test fn new_altra_plan_starts_factory_default_at_192() -> Bool {
+  new_altra_onboarding_plan.bmc.host == "192.168.1.192"
+    && phase_tag(p: new_altra_onboarding_plan.start_phase) == 0
+    && match new_altra_onboarding_plan.rotated_credential {
+      Stored { secret_name: s } => s == "bmc-srv3-admin"
+      Chained { steps: _ } => false
+    }
+    && match new_altra_onboarding_plan.os_target {
+      UbuntuOs { distro: d } =>
+        match d {
+          NobleNumbat2404Lts => true
+        }
+      WindowsOs { distro: _ } => false
+      MacosOs { distro: _ } => false
+    }
+    && redfish_boot_target_wire(t: new_altra_onboarding_plan.os_install_boot_target) == "Pxe"
+    && redfish_boot_target_wire(t: BootTargetPxe) == "Pxe"
+    && redfish_account_role_wire(role: new_altra_onboarding_plan.rotated_account_role) == "Administrator"
+    && redfish_account_role_wire(role: AccountRoleAdministrator) == "Administrator"
+}
+
+test fn credential_probe_maps_to_correct_phase() -> Bool {
+  match bmc_credential_probe_to_phase(probe: FactoryCredentialActive) {
+    Present { value: FactoryDefault } => true
+    Present { value: _ } => false
+    Absent => false
+  }
+    && match bmc_credential_probe_to_phase(probe: RotatedCredentialActive) {
+      Present { value: CredentialsRotated } => true
+      Present { value: _ } => false
+      Absent => false
+    }
+    && match bmc_credential_probe_to_phase(probe: CredentialStateUnknown { reason: "test" }) {
+      Absent => true
+      Present { value: _ } => false
+    }
+}

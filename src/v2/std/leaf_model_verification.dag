@@ -1,11 +1,3 @@
-// src/v2/std/leaf_model_verification.dag
-// Scope: Leaf-model verification carriers — claim / falsification / fixture / report.
-// Status: Phase 1 substrate.
-// Authority: leaf model owns FACTS (stable fact_id in extdeps); this module owns OBLIGA shape.
-// Co-authored with Modeling DFS (proud-pike-680) — consume Verdict<Subj,T> from verdict.dag (PR #3961).
-// R1 rustc slice: concrete fixture-pair + compile verdict carriers (PR #3972).
-// R1 python slice: concrete fixture-pair + exec verdict carriers (W2.6 / PR #3938 §11.4).
-
 module v2.std.leaf_model_verification
 
 import v2.std.collection { List }
@@ -15,7 +7,6 @@ import v2.std.node { Node, Symbol }
 import v2.std.text { String }
 import v2.std.verdict { Verdict, verdict_combine }
 
-// Layer A boundary: OBLIGA rows reference model facts structurally (Node projection of declared bindings).
 type LeafModelClaim<M, Subject, Expectation> {
   model: M
   fact_id: Node
@@ -24,22 +15,15 @@ type LeafModelClaim<M, Subject, Expectation> {
   falsification_case: FalsificationCase<Subject, Expectation>
 }
 
-// REQUIRED paired probe — claim without falsification is not verifiable (planning doc §5).
 type FalsificationCase<Subject, Expectation> {
   subject_variant: Subject
   expected_failure_mode: Expectation
 }
 
-// 🟡 gated — feature:leaf-model-fixture-runner — bind gunbc#4762 —
-// dissolve-on: testgen emits LeafModelFixture rows and runner exercises target toolchain;
-// forbidden: parallel fixture vocabulary outside this carrier.
 type TargetArtifact {
   source_text: String
 }
 
-// 🟡 gated — feature:leaf-model-fixture-runner — bind gunbc#4762 —
-// dissolve-on: TargetToolchain / TargetEdition / TargetBuildProfile / TargetOverflowDispositionField coproducts replace these Symbol scaffolds;
-// forbidden: parallel invocation vocab outside this carrier.
 type TargetInvocation {
   toolchain: Symbol
   edition: Symbol
@@ -70,45 +54,24 @@ type LeafModelVerificationTotals {
   not_checked: Nat
 }
 
-// 🟡 gated — feature:leaf-model-verification-report — dissolve-on: runner fold over report.claims.
 type LeafModelVerificationReport<M> {
   model: M
   claims: List<LeafModelClaimVerdictRow>
 }
 
-// --- PR #3972 R1 rustc compile slice (happy/falsification fixtures + boundary runner) ---
-
-// 🟢 coproduct dissolution — CP-LMV-TARGET-COMPILE-VERDICT-PHASE1 (Phase 1 R1 rustc gate; widen per target).
 type TargetCompileVerdict
   = TargetCompileAccepted
   | TargetCompileRejected { diagnostic_code: Symbol }
 
-// Phase 1 python CPython boundary — py_compile and python3 exec are distinct authorities.
 type TargetPythonExerciseVerdict
   = TargetPythonExerciseAccepted
   | TargetPythonCompileRejected { diagnostic_code: Symbol }
   | TargetPythonExecRejected { diagnostic_code: Symbol }
 
-// 🟢 coproduct dissolution — CP-LMV-TARGET-RUNTIME-EXERCISE-VERDICT-PHASE1 (generalizes Go + TypeScript R2b runtime;
-// dissolved CP-LMV-TARGET-TYPESCRIPT-RUNTIME-VERDICT-PHASE1 and CP-LMV-TARGET-GO-RUNTIME-VERDICT-PHASE1 on main).
-// dissolve-on-arrival: fold into LeafModelFixture<C>.expected_verdict once T-22 run_target_verification lands.
 type TargetRuntimeExerciseVerdict
   = TargetRuntimeExerciseAccepted
   | TargetRuntimeExerciseRejected { diagnostic_code: Symbol }
 
-// --- PY-L1-STATIC-STRUCTURAL: shared cross-target static-analysis carriers ---
-// Arbiter ruling (Modeling DFS, proud-fox-405, msg_41813c03): static structural
-// analysis by a third-party type checker is a SHARED cross-target authority — one
-// carrier pair reused by pyright/mypy now and tsc --noEmit later — DISTINCT from
-// BOTH CPython compile (TargetPythonCompileRejected) and runtime exec
-// (TargetPythonExecRejected). Three authorities, never collapsed. Per-tool profiles
-// and diagnostic-code Symbols live in extdeps/typecheckers/*; these carriers
-// reference the tool profile / diagnostic by Symbol only (no shared cross-tool
-// diagnostic namespace). host_run stays runtime stdout/exit; no static facts there.
-
-// Whether a static-analysis finding blocks a rung or is advisory evidence only
-// (fail-closed: BlockingForRung + advisory-only finding on the falsification path = MISS).
-// 🟢 terminal — CP-PYL1-STATIC-ANALYSIS-ROLE-TERMINAL (dissolution analysis: PR #4158 review).
 type TargetStaticAnalysisRole
   = Advisory
   | BlockingForRung
@@ -119,20 +82,14 @@ type TargetStaticAnalysisInvocation {
   analysis_role: TargetStaticAnalysisRole
 }
 
-// Accepted (no finding) / Rejected (blocking) / Advisory (non-blocking evidence); the
-// richer per-tool detail is carried by tool_id + diagnostic_code. Never a compile/runtime
-// verdict and never an L2 behavioral-parity claim.
-// 🟢 terminal — CP-PYL1-STATIC-ANALYSIS-VERDICT-TERMINAL (dissolution analysis: PR #4158 review).
 type TargetStaticAnalysisVerdict
   = StaticAnalysisAccepted
   | StaticAnalysisRejected { tool_id: Symbol, diagnostic_code: Symbol }
   | StaticAnalysisAdvisory { tool_id: Symbol, diagnostic_code: Symbol }
 
-// 🟢 coproduct dissolution — CP-LMV-TARGET-TYPESCRIPT-COMPILE-VERDICT-PHASE1 (Phase 1 tsc gate; widen per target).
 type TargetTypeScriptCompileVerdict
   = TargetTypeScriptCompileAccepted
   | TargetTypeScriptCompileRejected { diagnostic_code: Symbol }
-
 
 type LeafModelClaimId = Symbol
 
@@ -160,37 +117,9 @@ data leaf_model_claim_python_cross_runtime_drift_arbitrary_precision: LeafModelC
 data leaf_model_claim_python_l2_cross_target_parity_r2a_add: LeafModelClaimId = leaf_model_claim_python_l2_cross_target_parity_r2a_add
 data leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection: LeafModelClaimId = leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection
 
-// --- PY-L2-CROSS-RUNTIME-DRIFT: positive cross-runtime divergence receipt ---
-// Complement of the L2 cross-target PARITY lane (PR #4154,
-// `run_cross_target_mvp2_python_parity_transport`), which proves runtime-value EQUALITY on the
-// common domain (R2a add/order, R3 symbol projection). This carrier proves the COMPLEMENT
-// obligation named in the Python RCA worksheet (Worksheet C): the SAME modeled program — exact
-// integer add at the fixed-width boundary — DIVERGES across runtimes. Python realizes Int as
-// arbitrary precision (the correct sum); Rust `i64` / Go `int64` realize it as fixed-width
-// two's-complement with defined wraparound. That divergence is a MODELED fact, not a bug: the
-// receipt asserts it POSITIVELY, so the verification system demonstrably DETECTS drift instead of
-// silently treating fixed-width wraparound as parity. The expected divergence is anchored to
-// `ValueDiff<String>` (the host_run divergence carrier) — `expected` is the arbitrary-precision
-// value, `actual` is the fixed-width wrapped value — so the receipt references a modeled value
-// pair, never a script-local literal. Go is a corroborating fixed-width witness (rust == go);
-// the runner asserts it only when the Go toolchain is present.
-//
-// FACTS FLOW FORWARD (DESIGN.md §3): the drift is not asserted as a bare value pair — the
-// MODELED CAUSE travels with it. The three `*_fact` fields anchor the divergence to the extdeps
-// language representation facts that JUSTIFY it: Python int is `python_repr_int_arbitrary_precision`
-// (so the sum is exact) while Rust and Go integers are `rust_repr_integer_twos_complement` /
-// `go_repr_twos_complement_integer` (so the same add wraps at the fixed-width boundary). The
-// `TestClaim` asserts these anchors, so the receipt carries the reason for the drift, not just its
-// observed values — that is what makes this carrier reusable authority rather than a literal pair.
-//
-// 🟡 gated — feature:leaf-model-cross-runtime-drift — dissolve-on: the modeled `TestClaim` runner
-// exercises `src/v2/extdeps/language_model/python_cross_runtime_drift.dag` directly (retiring the
-// boundary host-process bridge `scripts/v2-leaf-model-python-cross-runtime-drift-verify.sh` +
-// `v2_leaf_model_python_cross_runtime_drift_test.rs`, shrinking `EXPECTED_HAND_AUTHORED_TEST` by 1);
-// forbidden: a parallel drift-probe vocabulary outside this carrier — extend it, don't fork it.
 type LeafModelCrossRuntimeDriftProbe {
   claim_id: LeafModelClaimId
-  // Modeled cause of the divergence (extdeps representation facts) — Facts Flow Forward.
+
   arbitrary_precision_fact: Symbol
   fixed_width_rust_fact: Symbol
   fixed_width_go_fact: Symbol
@@ -200,32 +129,9 @@ type LeafModelCrossRuntimeDriftProbe {
   expected_divergence: ValueDiff<String>
 }
 
-// --- PY-L2-CROSS-TARGET-PARITY: positive cross-target behavioral PARITY receipt ---
-// The exact COMPLEMENT of LeafModelCrossRuntimeDriftProbe. Drift proves the same modeled program
-// DIVERGES at the fixed-width boundary; this proves the same modeled program AGREES on the common
-// domain — the subset where arbitrary-precision and two's-complement realizations coincide (small
-// integer add) and where external Symbol projection displays the same nominal payload (R3). This is
-// the L2 release-minimum parity receipt named in the Python RCA Worksheet C: it asserts runtime-value
-// EQUALITY across Python, Rust, and Go, so the verification system demonstrably DISTINGUISHES parity
-// (common domain) from drift (boundary) rather than collapsing them.
-//
-// FACTS FLOW FORWARD (DESIGN.md §3): parity is not a bare value equality — the MODELED CAUSE
-// travels with it. The three `*_fact` fields anchor the agreement to the extdeps facts that JUSTIFY
-// it: for R2a the integer representation facts (arbitrary-precision == two's-complement ON THE COMMON
-// SUBDOMAIN), for R3 the atom-realization facts (same nominal Symbol payload). `expected_parity`
-// reuses ValueDiff<String> as the host_run value pair (expected = Python payload, actual = Rust/Go
-// payload); PARITY is the positive property that the two sides are EQUAL — the structural mirror of
-// the drift probe's `expected != actual`. R2b arbitrary precision is intentionally NOT a parity row
-// (it is the drift complement); order's boolean surface-formatting differs per language and is
-// likewise excluded from the numeric parity payload.
-//
-// 🟡 gated — feature:leaf-model-cross-target-parity — dissolve-on: the modeled `TestClaim` runner
-// executes the three target sources directly and binds the observed stdout to `expected_parity.actual`
-// (today host execution is harness-blocked, same as the drift probe and the cross-runtime-drift
-// runner); forbidden: a parallel parity vocabulary outside this carrier — extend it, don't fork it.
 type LeafModelCrossTargetParityProbe {
   claim_id: LeafModelClaimId
-  // Modeled cause of the agreement (extdeps facts) — Facts Flow Forward.
+
   python_fact: Symbol
   rust_fact: Symbol
   go_fact: Symbol
@@ -240,22 +146,16 @@ type LeafModelRustCrateType = Symbol
 data leaf_model_rust_crate_type_lib: LeafModelRustCrateType = leaf_model_rust_crate_type_lib
 data leaf_model_rust_crate_type_bin: LeafModelRustCrateType = leaf_model_rust_crate_type_bin
 
-// 🟡 gated — feature:leaf-model-r1-rustc-bridge — bind PR #3972 Phase 1 R1 —
-// dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
-// forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once Layer B generator lands
-// (docs/planning/v2-leaf-model-verification-2026-05-30.md §9 DFS gate).
 type LeafModelRustFixture {
   source: String
   crate_type: LeafModelRustCrateType
 }
 
-// 🟡 gated — feature:leaf-model-r1-rustc-bridge — dissolve-on-arrival: nested under LeafModelFixture<C>.falsification_artifact
 type LeafModelFalsificationCase {
   fixture: LeafModelRustFixture
   expected_verdict: TargetCompileVerdict
 }
 
-// 🟡 gated — feature:leaf-model-r1-rustc-bridge — dissolve-on-arrival: R1 row becomes LeafModelFixture<LeafModelClaim<...>>
 type LeafModelFixturePair {
   claim_id: LeafModelClaimId
   surface_spelling_fact: Symbol
@@ -265,7 +165,6 @@ type LeafModelFixturePair {
   falsification: LeafModelFalsificationCase
 }
 
-// Phase 1 R3-internal — row mutation must change both type and value emit projections (not rustc).
 type LeafModelEmitCouplingReceipt {
   claim_id: LeafModelClaimId
   atom_realization_fact: Symbol
@@ -275,9 +174,6 @@ type LeafModelEmitCouplingReceipt {
   mutated_value_emit_kind: Symbol
 }
 
-// 🟡 gated — feature:leaf-model-r1-python-bridge — bind W2.6 / PR #3938 §11.4 —
-// dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
-// forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once Layer B generator lands.
 type LeafModelPythonFixture {
   source: String
 }
@@ -296,8 +192,6 @@ type LeafModelPythonFixturePair {
   falsification: LeafModelPythonFalsificationCase
 }
 
-// 🟡 gated — feature:leaf-model-go-bridge — bind docs/planning/v2-go-leaf-model-verification-worksheet-2026-06-01 —
-// dissolve-on-arrival: fold into LeafModelFixture<C> once T-22 modeled run_target_verification consumes Go rows.
 type LeafModelGoBuildFixture {
   source: String
 }
@@ -332,25 +226,11 @@ type LeafModelGoRuntimeFixturePair {
   falsification: LeafModelGoRuntimeFalsificationCase
 }
 
-// PY-L1-STATIC-STRUCTURAL fixture carriers. Polarity AND role are STRUCTURAL, not prose:
-//  - the two cases are distinct types so illegal fixture states are unrepresentable —
-//    a happy case can only mean StaticAnalysisAccepted, a falsification case can only mean
-//    a blocking StaticAnalysisRejected. Neither carries a free TargetStaticAnalysisVerdict.
-//  - neither case stores a free TargetStaticAnalysisInvocation: storing one would let a
-//    blocking fixture be built with analysis_role: Advisory. Instead each case carries only
-//    the artifact + the per-tool PROFILE reference (tool_profile_ref → an extdeps profile
-//    row, e.g. pyright_profile_l1_id — distinct from the verdict's tool_id), and the
-//    invocation is CONSTRUCTED with analysis_role: BlockingForRung by the accessor fns
-//    below. So the BlockingForRung role and the profile/tool distinction are guaranteed by
-//    construction, not accepted as free fields.
 type LeafModelPythonStaticHappyCase {
   artifact: TargetArtifact
   tool_profile_ref: Symbol
 }
 
-// A falsification case carries the artifact, the profile reference, and the blocking-rejection
-// detail (tool + diagnostic). Its verdict is StaticAnalysisRejected { tool_id, diagnostic_code }
-// and its invocation role is BlockingForRung, both by construction (accessor fns below).
 type LeafModelPythonStaticFalsificationCase {
   artifact: TargetArtifact
   tool_profile_ref: Symbol
@@ -365,8 +245,6 @@ type LeafModelPythonStaticFixturePair {
   falsification: LeafModelPythonStaticFalsificationCase
 }
 
-// Single-authority construction of each case's BlockingForRung invocation — the role is
-// baked in here, never stored as a free field on the case.
 fn leaf_model_python_static_happy_invocation(
   c: LeafModelPythonStaticHappyCase
 ) -> TargetStaticAnalysisInvocation {
@@ -387,7 +265,6 @@ fn leaf_model_python_static_falsification_invocation(
   }
 }
 
-// Single-authority reconstruction of each case's expected verdict from its typed shape.
 fn leaf_model_python_static_happy_verdict(
   c: LeafModelPythonStaticHappyCase
 ) -> TargetStaticAnalysisVerdict {
@@ -400,21 +277,15 @@ fn leaf_model_python_static_falsification_verdict(
   StaticAnalysisRejected { tool_id: c.tool_id, diagnostic_code: c.diagnostic_code }
 }
 
-// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — bind PR #4157 Phase 1 MW-D3 alpha lane —
-// dissolve-on-arrival: fold into LeafModelFixture<C> (TargetArtifact + TargetInvocation + Verdict);
-// forbidden: parallel fixture vocabulary outside LeafModelFixture<C> once Layer B generator lands
-// (docs/planning/v2-leaf-model-verification-2026-05-30.md §9; T-22 run_target_verification).
 type LeafModelTypeScriptFixture {
   source: String
 }
 
-// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — dissolve-on-arrival: nested under LeafModelFixture<C>.falsification_artifact
 type LeafModelTypeScriptFalsificationCase {
   fixture: LeafModelTypeScriptFixture
   expected_verdict: TargetTypeScriptCompileVerdict
 }
 
-// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — dissolve-on-arrival: R2a/R3-external rows become LeafModelFixture<LeafModelClaim<...>>
 type LeafModelTypeScriptFixturePair {
   claim_id: LeafModelClaimId
   surface_spelling_fact: Symbol
@@ -424,12 +295,10 @@ type LeafModelTypeScriptFixturePair {
   falsification: LeafModelTypeScriptFalsificationCase
 }
 
-// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — dissolve-on-arrival: R2b Node runtime rows fold into LeafModelFixture<C>
 type LeafModelTypeScriptRuntimeFixture {
   source: String
 }
 
-// 🟡 gated — feature:leaf-model-r2-r3-typescript-bridge — dissolve-on-arrival: R2b bigint-vs-number divergence probe under LeafModelFixture<C>
 type LeafModelTypeScriptRuntimeFixturePair {
   claim_id: LeafModelClaimId
   surface_spelling_fact: Symbol
@@ -446,8 +315,6 @@ type LeafModelVerificationRunReceipt {
   falsification_verdict: Verdict<LeafModelClaimId, TargetCompileVerdict>
 }
 
-// 🟡 gated — feature:leaf-model-runtime-exercise-bridge — bind go_r2b + T-22 runtime receipts —
-// dissolve-on-arrival: generalize or fold when run_target_verification consumes runtime verdict slots.
 type LeafModelRuntimeVerificationRunReceipt {
   claim_id: LeafModelClaimId
   happy_verdict: Verdict<LeafModelClaimId, TargetRuntimeExerciseVerdict>

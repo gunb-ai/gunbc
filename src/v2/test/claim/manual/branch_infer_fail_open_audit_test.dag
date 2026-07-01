@@ -1,0 +1,45 @@
+module v2.test.manual.branch_infer_fail_open_audit
+
+import v2.compiler.infer { infer }
+import v2.extdeps.languages.dag {
+  dag_mvp1_pick_if_body_fixture,
+  dag_mvp1_pick_if_body_from_arms,
+  dag_mvp1_type_atom_node
+}
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+fn branch_infer_fail_open_audit_body() -> Node {
+  dag_mvp1_pick_if_body_from_arms(
+    condition: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true),
+    then_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one),
+    else_arm: dag_mvp1_type_atom_node(identity: ^dag_token_ident)
+  )
+}
+
+test fn branch_infer_fail_open_audit_rejects_holds() -> Bool {
+  match infer(tree: branch_infer_fail_open_audit_body()) {
+    Accepted { value: _, diagnostics: d } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn branch_infer_fail_open_audit_silent_accept_holds() -> Bool {
+  match infer(tree: branch_infer_fail_open_audit_body()) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_infer_fail_open_audit_literal_arm_accepts_holds() -> Bool {
+  match infer(tree: dag_mvp1_pick_if_body_fixture) {
+    Accepted { value: _, diagnostics: d } => d == None
+    Rejected { diagnostics: _ } => false
+  }
+}

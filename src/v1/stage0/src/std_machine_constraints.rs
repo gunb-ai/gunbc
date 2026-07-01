@@ -11,4 +11,11 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub type PointerWidth = PointerWidth;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MachineWidth<Bits>(pub std::marker::PhantomData<Bits>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PointerWidth(pub std::marker::PhantomData<()>);
+
+pub type Compose<Algebra, MachineConstraint> =
+    std::marker::PhantomData<(Algebra, MachineConstraint)>;

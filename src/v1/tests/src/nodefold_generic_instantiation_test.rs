@@ -1,6 +1,3 @@
-//! v2 R2 generic instantiation — items (b) NodeFold A,R binding and (c) chained field access.
-//! dep-graph-2026-06-12 §4a / tidy-stag-172.
-
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -9,11 +6,11 @@ use v1_compiler::v1_interpreter::{self, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
-const NODEFOLD_CERT: &str = "src/v2/compiler/manual/nodefold_topdown_inline_algebra.dag";
-const CHAINED_CERT: &str = "src/v2/compiler/manual/chained_generic_field_access.dag";
+const NODEFOLD_CERT: &str = "src/v2/test/claim/manual/nodefold_topdown_inline_algebra.dag";
+const CHAINED_CERT: &str = "src/v2/test/claim/manual/chained_generic_field_access.dag";
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn cert_sources(entry: &str) -> Vec<Rc<SourceFile>> {

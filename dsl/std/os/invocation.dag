@@ -1,8 +1,3 @@
-// std/os/invocation.dag — open invocation-surface model for the §10 execution-contract layer.
-// Scope: the stable contract a binary binds to, modeled OPEN over invocation paradigms.
-// Slice 1: SyscallAbi (Linux). Slice 2: LibraryApiBoundary (Windows/macOS).
-// Anchor: per-inhabitant spec URLs live with the inhabiting data (extdeps/runtime/*).
-
 module std.os.invocation
 
 import std.abi { CallingConvention }
@@ -19,21 +14,15 @@ type SyscallAbi {
   convention: CallingConvention
 }
 
-// Exported API symbol at a library boundary (module names the originating DLL/dylib).
 type ApiEntry {
   symbol: NonEmptyStr
   module: NonEmptyStr
 }
 
-// Stable contract when apps bind to a library's exported API (not raw syscall numbers).
-// Per-export `ApiEntry.module` names the originating DLL/dylib — no parallel library tag.
 type LibraryApiBoundary {
   exports: List<ApiEntry>
 }
 
-// 🟡 feature:stable-invocation-surface-paradigms consumer:exec-contract-layer — open keystone
-// coproduct; Slice 1–2 ship SyscallAbiSurface + LibraryApiBoundarySurface arms. Dissolve-on: add
-// CapabilityInvocation / ImportResolution arms when cited inhabitants exist.
 type StableInvocationSurface
   = SyscallAbiSurface { abi: SyscallAbi }
   | LibraryApiBoundarySurface { boundary: LibraryApiBoundary }

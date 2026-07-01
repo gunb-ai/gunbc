@@ -1,10 +1,3 @@
-//! Regenerate v2 stage0 Rust from the v2 `.dag` authorities.
-//!
-//! This mirrors v3's `regen_bootstrap` operational shape: without flags it
-//! writes the generated stage0 files, and with `--verify` it fails if the
-//! committed stage0 seed differs from a fresh self-compile. The committed
-//! `src/v1/stage0/src/*.rs` files remain the fresh-checkout bootstrap seed.
-
 use std::collections::{BTreeSet, HashMap};
 use std::env;
 use std::fs;
@@ -24,10 +17,13 @@ const BOOTSTRAP_TIMING_RECEIPT_ENV: &str = "GUNBC_BOOTSTRAP_TIMING_RECEIPT";
 const DEFAULT_BOOTSTRAP_TIMING_RECEIPT: &str =
     "target/bootstrap_timing/v1_regen_stage0_receipt.json";
 
+// Registry authority: gunbc.stage0_emit_model.generated_stage0_files.
+// Dissolve-on: regen_stage0 reads emitted gunbc_stage0_emit_model.rs roster.
 const GENERATED_STAGE0_FILES: &[&str] = &[
     "compiler_tests.rs",
     "extdeps_cargo.rs",
     "extdeps_cargo_version.rs",
+    "extdeps_external_authority.rs",
     "extdeps_languages_dag_emit.rs",
     "extdeps_languages_dag_syntax.rs",
     "extdeps_languages_dag_types.rs",
@@ -40,6 +36,8 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_languages_rust_emit.rs",
     "extdeps_languages_rust_syntax.rs",
     "extdeps_languages_rust_types.rs",
+    "extdeps_uri.rs",
+    "extdeps_uri_path.rs",
     "extdeps_version.rs",
     "extdeps_version_semver.rs",
     "lib.rs",
@@ -48,6 +46,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "std_coercion.rs",
     "std_computation.rs",
     "std_constructors.rs",
+    "std_decl_ref.rs",
     "std_effects.rs",
     "std_emit_model.rs",
     "std_error_primitives.rs",
@@ -105,108 +104,31 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_tokenize.rs",
     "v1_compiler_trace.rs",
     "v1_compiler_workspace_members.rs",
+    "v1_probe_emit_interp.rs",
     "v1_rt.rs",
     "v1_std_core.rs",
+    "v1_test_non_ascii_perf_fixture.rs",
+    "wt_a.rs",
+    "wt_b.rs",
+    "wt_common.rs",
 ];
 
-// =========================================================================
-// CARRIER MARK -- HAND-SYNCED MIRROR, NOT a regen fixpoint (class-3 splice).
-//
-// The committed stage0 seed is a HAND-SYNCED MIRROR of the .dag authority, NOT a
-// clean-regen fixpoint. `regen_stage0 --verify` is therefore EXPECTED to differ
-// from the committed seed today: a faithful full regen wires every emitted module,
-// including the std-tower modules that are DELIBERATELY UNWIRED in lib.rs here
-// (std_measure / std_algebra / std_realization_schedule / std_machine_constraints
-// / std_integer / extdeps_version_semver / extdeps_cargo_version), and that wiring
-// surfaces ~150 latent emitter-completeness gaps (std numeric/measure-tower generic
-// emission). Those modules stay UNWIRED here exactly as on main.
-//
-// The class-3 emitter mirror (v1_compiler_emit_rust.rs / v1_compiler_infer.rs /
-// v1_compiler_infer_emit_info.rs) was landed by overlay-3-committed: faithful regen
-// of the class-3 .dag for those three modules, spliced onto the committed seed,
-// with two local drifts hand-resolved (cargo header inlined to avoid importing the
-// unwired extdeps_cargo_version orphan; wire policy passed by value, Rc clone, at
-// wire_value_serialize.rs). Every other module is byte-identical to committed.
-//
-// LANE (deferred): regen-fixpoint emitter-self-host (~150-gap) -- wire-all-emitted-
-//   modules so a clean regen reproduces the committed seed bit-identically (the §7
-//   reproduce-fixpoint that licenses deleting src/v1).
-// PROVENANCE (#5514 verbatim deferral): "regen-write still emits a non-building seed
-//   from ~150 emitter-completeness gaps, the clean green regen fixpoint is deferred,
-//   converges with the Route-A emitter self-host".
-// DISSOLUTION TRIGGER: §7 fixpoint convergence with the Route-A emitter self-host --
-//   when wire-all-emitted-modules -> regen-equals-committed is in reach; a fresh
-//   work-item gets dispatched THEN. (breadcrumb: node://adhoc-80af9ff8-40f)
-//
-// INVARIANCE CAVEAT (quick-seal, verbatim): class-3 host-vs-faithful SELECTION is
-// representation-invariant on the v1-bundled HOST seed at this tip -- CONTROL B
-// (gate-isolated revert) builds green, CONTROL A errors are the wire policy confound
-// not representation; the selection's behavioral discriminating-proof is OWED by the
-// deferred faithful target, where the selection actually fires.
-// =========================================================================
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
-    "cache_purity_oracle.rs",
     "cli_run.rs",
+    "complexity_linearity_audit_project.rs",
+    "decl_facts_project.rs",
     "coproduct_reflection.rs",
-    "doc_reachability_project.rs",
-    "medium_structure_project.rs",
-    "extdeps_shape_transport_policy_project.rs",
-    "fact_cardinality_census.rs",
-    "import_resolution_project.rs",
-    "languages_consumer_census.rs",
-    "layering_imports_project.rs",
-    "module_path_index.rs",
     "recorded_fixture.rs",
     "resolved_graph_cache.rs",
     "rest_transport_facts.rs",
-    "transport_script_position_project.rs",
     "wire_value_serialize.rs",
     "v1_compiler_dag_collect.rs",
     "v1_compiler_dag_collect_support.rs",
     "v1_interpreter.rs",
 ];
 
-const BOOTSTRAP_DAG_COLLECT_USE: &str = r#"pub use crate::v1_compiler_dag_collect::{
-    collect_dag_nodes, dag_collect_from_module, dag_collect_insert, dag_collect_inferred,
-    dag_collect_match_pattern, dag_collect_node_tree, dag_collect_nodes_list,
-    dag_collect_optional_node, dag_node_collection_anchor, dag_node_fingerprint,
-    dag_node_is_resolved_identity_shell, dag_node_key,
-};
-
-"#;
-
-const BOOTSTRAP_DAG_COLLECT_SUPPORT_USE: &str = r#"pub use crate::v1_compiler_dag_collect_support::{
-    connective_name, dag_node_key_collision_error, dag_node_surface_fingerprint, expr_data_variant,
-    inferred_fingerprint, json_quote, DagCollectAcc,
-};
-
-"#;
-
-/// Symbols delegated to `v1_compiler_dag_collect`; fresh codegen must not retain local `pub fn`.
-const DELEGATED_DAG_COLLECT_SYMBOLS: &[&str] = &[
-    "collect_dag_nodes",
-    "dag_collect_from_module",
-    "dag_collect_insert",
-    "dag_collect_inferred",
-    "dag_collect_match_pattern",
-    "dag_collect_node_tree",
-    "dag_collect_nodes_list",
-    "dag_collect_optional_node",
-    "dag_node_collection_anchor",
-    "dag_node_fingerprint",
-    "dag_node_is_resolved_identity_shell",
-    "dag_node_key",
-];
-
-/// Symbols delegated to `v1_compiler_dag_collect_support`.
-const DELEGATED_DAG_COLLECT_SUPPORT_SYMBOLS: &[&str] = &[
-    "connective_name",
-    "dag_node_key_collision_error",
-    "dag_node_surface_fingerprint",
-    "expr_data_variant",
-    "inferred_fingerprint",
-    "json_quote",
-];
+/// Hand-maintained stage0 support living in subdirectories (not flat `.rs` files).
+const HAND_MAINTAINED_STAGE0_DIRS: &[&str] = &["module_path_index"];
 
 fn main() -> ExitCode {
     match run() {
@@ -218,27 +140,188 @@ fn main() -> ExitCode {
     }
 }
 
+struct VerifyFinishInput<'a> {
+    receipt_path: &'a Path,
+    workspace: &'a Path,
+    manifest_dir: &'a Path,
+    stage0_src: &'a Path,
+    fresh_dir: &'a Path,
+    verify_only: bool,
+    generated_file_count: usize,
+    emitted_file_count: usize,
+    phases: &'a mut Vec<BootstrapTimingPhase>,
+    run_started: Instant,
+    preserve_fresh_dir: bool,
+}
+
+fn finish_verify_checks(input: VerifyFinishInput<'_>) -> Result<(), String> {
+    let VerifyFinishInput {
+        receipt_path,
+        workspace,
+        manifest_dir,
+        stage0_src,
+        fresh_dir,
+        verify_only,
+        generated_file_count,
+        emitted_file_count,
+        phases,
+        run_started,
+        preserve_fresh_dir,
+    } = input;
+    let fresh_src = fresh_dir.join("src");
+    let verify_result = time_phase(phases, "verify_stage0_matches", || {
+        verify_stage0_matches(stage0_src, &fresh_src)
+    });
+    if let Err(message) = verify_result {
+        let changed_generated_files = changed_registered_outputs(&fresh_src, stage0_src)?;
+        write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+            path: receipt_path,
+            workspace,
+            manifest_dir,
+            verify_only,
+            status: "failed_stage0_stale",
+            generated_file_count,
+            emitted_file_count,
+            phases: std::mem::take(phases),
+            elapsed_ms: elapsed_ms(run_started),
+            changed_generated_files,
+        })?;
+        if !preserve_fresh_dir {
+            let _ = fs::remove_dir_all(fresh_dir);
+        }
+        return Err(message);
+    }
+    if let Err(message) = time_phase(phases, "verify_stage0_split_crate_boundaries", || {
+        verify_stage0_split_crate_boundaries(workspace)
+    }) {
+        write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+            path: receipt_path,
+            workspace,
+            manifest_dir,
+            verify_only,
+            status: "failed_stage0_split_crate_stale",
+            generated_file_count,
+            emitted_file_count,
+            phases: std::mem::take(phases),
+            elapsed_ms: elapsed_ms(run_started),
+            changed_generated_files: Vec::new(),
+        })?;
+        if !preserve_fresh_dir {
+            let _ = fs::remove_dir_all(fresh_dir);
+        }
+        return Err(message);
+    }
+    if let Err(message) = time_phase(phases, "verify_workspace_members", || {
+        verify_workspace_members(workspace)
+    }) {
+        write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+            path: receipt_path,
+            workspace,
+            manifest_dir,
+            verify_only,
+            status: "failed_workspace_members_stale",
+            generated_file_count,
+            emitted_file_count,
+            phases: std::mem::take(phases),
+            elapsed_ms: elapsed_ms(run_started),
+            changed_generated_files: Vec::new(),
+        })?;
+        if !preserve_fresh_dir {
+            let _ = fs::remove_dir_all(fresh_dir);
+        }
+        return Err(message);
+    }
+    write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
+        path: receipt_path,
+        workspace,
+        manifest_dir,
+        verify_only,
+        status: if preserve_fresh_dir {
+            "completed_emit_fresh_verify"
+        } else {
+            "completed"
+        },
+        generated_file_count,
+        emitted_file_count,
+        phases: std::mem::take(phases),
+        elapsed_ms: elapsed_ms(run_started),
+        changed_generated_files: Vec::new(),
+    })?;
+    if !preserve_fresh_dir {
+        let _ = fs::remove_dir_all(fresh_dir);
+    }
+    if preserve_fresh_dir {
+        println!(
+            "regen_stage0 --emit-fresh --verify: committed stage0 matches fresh self-compile; artifacts at {}",
+            fresh_dir.display()
+        );
+    } else {
+        println!("regen_stage0 --verify: committed stage0 matches fresh self-compile.");
+    }
+    Ok(())
+}
+
 fn run() -> Result<(), String> {
     let run_started = Instant::now();
     let args: Vec<String> = env::args().skip(1).collect();
-    let verify_only = match args.as_slice() {
-        [] => false,
-        [flag] if flag == "--verify" => true,
-        unexpected => {
-            return Err(format!(
-                "regen_stage0: unexpected arguments: {unexpected:?}\n\
-                 Usage: regen_stage0 [--verify]\n\
-                 Omit flags to write stage0; pass exactly `--verify` to check without writing."
-            ));
+    // `--emit-fresh <dir>` runs the assembly phases (emit closure + copy hand-
+    // maintained periphery + patches + rustfmt) into a STABLE, caller-named dir and
+    // STOPS -- no copy-back into the committed seed, no temp cleanup. It is the
+    // non-destructive re-baseline harness for the deferred regen-fixpoint lane
+    // (carrier mark above): a faithful full regen WIRES every emitted module
+    // (including the std-tower modules unwired in the committed lib.rs), so the
+    // assembled crate is the "REAL" emitted seed whose emitter-completeness gaps
+    // surface as cargo errors. Build it to measure them; the committed seed is
+    // never touched.
+    let mut emit_fresh: Option<PathBuf> = None;
+    let mut write_manifest: Option<PathBuf> = None;
+    let mut verify_only = false;
+    let mut index = 0usize;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--verify" => {
+                verify_only = true;
+                index += 1;
+            }
+            "--emit-fresh" => {
+                let dir = args
+                    .get(index + 1)
+                    .ok_or_else(|| "regen_stage0: --emit-fresh requires <dir>".to_string())?;
+                emit_fresh = Some(PathBuf::from(dir));
+                index += 2;
+            }
+            "--write-manifest" => {
+                let path = args
+                    .get(index + 1)
+                    .ok_or_else(|| "regen_stage0: --write-manifest requires <path>".to_string())?;
+                write_manifest = Some(PathBuf::from(path));
+                index += 2;
+            }
+            unexpected => {
+                return Err(format!(
+                    "regen_stage0: unexpected argument: {unexpected:?}\n\
+                     Usage: regen_stage0 [--verify | --emit-fresh <dir> [--write-manifest <path>] [--verify]]\n\
+                     Omit flags to write stage0; pass `--verify` to check without writing;\n\
+                     pass `--emit-fresh <dir>` to assemble the faithful emitted crate into <dir> and stop;\n\
+                     add `--write-manifest <path>` to also write the GENERATED_STAGE0_FILES roster there;\n\
+                     combine `--emit-fresh` with `--verify` to leave the assembled crate in place after checking."
+                ));
+            }
         }
-    };
+    }
+    if write_manifest.is_some() && emit_fresh.is_none() {
+        return Err("regen_stage0: --write-manifest requires --emit-fresh".to_string());
+    }
 
     assert_registry_is_partitioned()?;
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let workspace = workspace_root(&manifest_dir)?;
     let receipt_path = bootstrap_timing_receipt_path(&workspace);
     let stage0_src = manifest_dir.join("src");
-    let fresh_dir = temp_dir("v2-regen-stage0-fresh");
+    let fresh_dir = match &emit_fresh {
+        Some(dir) => dir.clone(),
+        None => temp_dir("v2-regen-stage0-fresh"),
+    };
     let _ = fs::remove_dir_all(&fresh_dir);
     fs::create_dir_all(fresh_dir.join("src"))
         .map_err(|e| format!("create {}: {e}", fresh_dir.display()))?;
@@ -251,17 +334,11 @@ fn run() -> Result<(), String> {
     time_phase(&mut phases, "copy_hand_maintained_support", || {
         copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))
     })?;
-    time_phase(&mut phases, "patch_bootstrap_dag_collect", || {
-        patch_bootstrap_dag_collect(&fresh_dir.join("src"))
-    })?;
-    time_phase(&mut phases, "patch_languages_consumer_census_mod", || {
-        patch_languages_consumer_census_mod(&fresh_dir.join("src"))
+    time_phase(&mut phases, "patch_complexity_linearity_audit_mod", || {
+        patch_complexity_linearity_audit_mod(&fresh_dir.join("src"))
     })?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
-    })?;
-    time_phase(&mut phases, "patch_cargo_toml_for_generated_crate", || {
-        patch_cargo_toml_for_generated_crate(&fresh_dir)
     })?;
     time_phase(&mut phases, "rustfmt_generated_crate", || {
         rustfmt_generated_crate(&fresh_dir)
@@ -270,81 +347,65 @@ fn run() -> Result<(), String> {
         assert_output_set_matches_registry(&stage0_src, &fresh_dir.join("src"))
     })?;
 
-    if verify_only {
-        let verify_result = time_phase(&mut phases, "verify_stage0_matches", || {
-            verify_stage0_matches(&stage0_src, &fresh_dir.join("src"))
-        });
-        if let Err(message) = verify_result {
-            let changed_generated_files =
-                changed_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
-            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
-                path: &receipt_path,
-                workspace: &workspace,
-                manifest_dir: &manifest_dir,
-                verify_only,
-                status: "failed_stage0_stale",
-                generated_file_count: GENERATED_STAGE0_FILES.len(),
-                emitted_file_count: emitted.len(),
-                phases,
-                elapsed_ms: elapsed_ms(run_started),
-                changed_generated_files,
-            })?;
-            let _ = fs::remove_dir_all(&fresh_dir);
-            return Err(message);
+    if emit_fresh.is_some() {
+        if let Some(manifest_path) = &write_manifest {
+            let content = GENERATED_STAGE0_FILES.join("\n");
+            fs::write(manifest_path, content)
+                .map_err(|e| format!("write roster manifest {}: {e}", manifest_path.display()))?;
+            println!(
+                "regen_stage0 --write-manifest: wrote {} file entries to {}",
+                GENERATED_STAGE0_FILES.len(),
+                manifest_path.display()
+            );
         }
-        if let Err(message) =
-            time_phase(&mut phases, "verify_stage0_split_crate_boundaries", || {
-                verify_stage0_split_crate_boundaries(&workspace)
-            })
-        {
-            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
-                path: &receipt_path,
+        if verify_only {
+            return finish_verify_checks(VerifyFinishInput {
+                receipt_path: &receipt_path,
                 workspace: &workspace,
                 manifest_dir: &manifest_dir,
+                stage0_src: &stage0_src,
+                fresh_dir: &fresh_dir,
                 verify_only,
-                status: "failed_stage0_split_crate_stale",
                 generated_file_count: GENERATED_STAGE0_FILES.len(),
                 emitted_file_count: emitted.len(),
-                phases,
-                elapsed_ms: elapsed_ms(run_started),
-                changed_generated_files: Vec::new(),
-            })?;
-            let _ = fs::remove_dir_all(&fresh_dir);
-            return Err(message);
-        }
-        if let Err(message) = time_phase(&mut phases, "verify_workspace_members", || {
-            verify_workspace_members(&workspace)
-        }) {
-            write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
-                path: &receipt_path,
-                workspace: &workspace,
-                manifest_dir: &manifest_dir,
-                verify_only,
-                status: "failed_workspace_members_stale",
-                generated_file_count: GENERATED_STAGE0_FILES.len(),
-                emitted_file_count: emitted.len(),
-                phases,
-                elapsed_ms: elapsed_ms(run_started),
-                changed_generated_files: Vec::new(),
-            })?;
-            let _ = fs::remove_dir_all(&fresh_dir);
-            return Err(message);
+                phases: &mut phases,
+                run_started,
+                preserve_fresh_dir: true,
+            });
         }
         write_bootstrap_timing_receipt(BootstrapTimingReceiptInput {
             path: &receipt_path,
             workspace: &workspace,
             manifest_dir: &manifest_dir,
             verify_only,
-            status: "completed",
+            status: "completed_emit_fresh",
             generated_file_count: GENERATED_STAGE0_FILES.len(),
             emitted_file_count: emitted.len(),
             phases,
             elapsed_ms: elapsed_ms(run_started),
             changed_generated_files: Vec::new(),
         })?;
-        let _ = fs::remove_dir_all(&fresh_dir);
-        println!("regen_stage0 --verify: committed stage0 matches fresh self-compile.");
+        println!(
+            "regen_stage0 --emit-fresh: assembled faithful emitted crate at {}",
+            fresh_dir.display()
+        );
         return Ok(());
+    }
+
+    if verify_only {
+        return finish_verify_checks(VerifyFinishInput {
+            receipt_path: &receipt_path,
+            workspace: &workspace,
+            manifest_dir: &manifest_dir,
+            stage0_src: &stage0_src,
+            fresh_dir: &fresh_dir,
+            verify_only,
+            generated_file_count: GENERATED_STAGE0_FILES.len(),
+            emitted_file_count: emitted.len(),
+            phases: &mut phases,
+            run_started,
+            preserve_fresh_dir: false,
+        });
     }
 
     let changed_generated_files = changed_registered_outputs(&fresh_dir.join("src"), &stage0_src)?;
@@ -748,197 +809,50 @@ fn copy_hand_maintained_support(stage0_src: &Path, dest_src: &Path) -> Result<()
                 .map_err(|e| format!("copy {}: {e}", source.display()))?;
         }
     }
+    for dir_name in HAND_MAINTAINED_STAGE0_DIRS {
+        let source = stage0_src.join(dir_name);
+        if source.is_dir() {
+            copy_dir_recursive(&source, &dest_src.join(dir_name))?;
+        }
+    }
     Ok(())
 }
 
-/// Delegate DAG collect + identity-key helpers to hand-maintained bootstrap module.
-fn patch_bootstrap_dag_collect(src_dir: &Path) -> Result<(), String> {
-    let lib_path = src_dir.join("lib.rs");
-    let mut lib_text =
-        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
-    if !lib_text.contains("pub mod v1_compiler_dag_collect;") {
-        // Insert after complexity so `cargo fmt` order matches committed lib.rs.
-        lib_text = lib_text.replace(
-            "pub mod v1_compiler_complexity;\n",
-            "pub mod v1_compiler_complexity;\npub mod v1_compiler_dag_collect;\n",
-        );
+fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
+    fs::create_dir_all(dest).map_err(|e| format!("create {}: {e}", dest.display()))?;
+    for entry in fs::read_dir(source).map_err(|e| format!("read dir {}: {e}", source.display()))? {
+        let entry = entry.map_err(|e| format!("read dir entry in {}: {e}", source.display()))?;
+        let src_path = entry.path();
+        let dst_path = dest.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path).map_err(|e| {
+                format!("copy {} -> {}: {e}", src_path.display(), dst_path.display())
+            })?;
+        }
     }
-    if !lib_text.contains("pub mod v1_compiler_dag_collect_support;") {
-        lib_text = lib_text.replace(
-            "pub mod v1_compiler_dag_collect;\n",
-            "pub mod v1_compiler_dag_collect;\npub mod v1_compiler_dag_collect_support;\n",
-        );
-    }
-    fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
-
-    let compile_path = src_dir.join("v1_compiler_compile.rs");
-    let text = fs::read_to_string(&compile_path)
-        .map_err(|e| format!("read {}: {e}", compile_path.display()))?;
-    let DagCollectPatch { compile_text, .. } = patch_bootstrap_dag_collect_text(&text)?;
-    fs::write(&compile_path, compile_text)
-        .map_err(|e| format!("write {}: {e}", compile_path.display()))?;
-    // `v1_compiler_dag_collect_support.rs` is hand-maintained bootstrap seed
-    // (recursive fingerprint ahead of compile.dag); copy_hand_maintained_support
-    // already placed the committed module — do not overwrite with codegen.
     Ok(())
 }
 
-/// Declare the hand-maintained `languages_consumer_census` module in the
-/// generated `lib.rs`.
-///
-/// `languages_consumer_census.rs` is a hand-maintained v1 seed module (the v2
-/// authority is the lens `src/v2/lens/languages_consumer_census.dag`); it is
-/// copied into the fresh crate by `copy_hand_maintained_support` and consumed by
-/// `v1_interpreter.rs`. Unlike its sibling lens/projection modules, it is
-/// uniquely absent from the emitter's `all_module_files`, so
-/// `emit_lib_rs_from_files` (src/v1/05_emit_rust.dag) does not write a
-/// `pub mod languages_consumer_census;` for it and the fresh crate fails to
-/// resolve `crate::languages_consumer_census::*`. Inject the declaration here,
-/// mirroring `patch_bootstrap_dag_collect`.
-///
-/// DISSOLUTION: remove this patch once 05_emit_rust.dag's `all_module_files`
-/// (or its `hand_maintained_mods` emission path) includes
-/// `languages_consumer_census`, so the emitter declares it directly (single
-/// authority — the §3 parallel-ledger note on `HAND_MAINTAINED_STAGE0_FILES`).
-fn patch_languages_consumer_census_mod(src_dir: &Path) -> Result<(), String> {
+fn patch_complexity_linearity_audit_mod(src_dir: &Path) -> Result<(), String> {
     let lib_path = src_dir.join("lib.rs");
     let mut lib_text =
         fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
-    if !lib_text.contains("pub mod languages_consumer_census;") {
-        // Insert after import_resolution_project so `cargo fmt` module order
-        // matches the committed lib.rs (emitter emits mods in sorted order).
+    if !lib_text.contains("pub mod complexity_linearity_audit_project;") {
         lib_text = lib_text.replace(
-            "pub mod import_resolution_project;\n",
-            "pub mod import_resolution_project;\npub mod languages_consumer_census;\n",
+            "pub mod cli_run;\n",
+            "pub mod cli_run;\npub mod complexity_linearity_audit_project;\n",
+        );
+    }
+    if !lib_text.contains("pub mod decl_facts_project;") {
+        lib_text = lib_text.replace(
+            "pub mod complexity_linearity_audit_project;\n",
+            "pub mod complexity_linearity_audit_project;\npub mod decl_facts_project;\n",
         );
     }
     fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
     Ok(())
-}
-
-fn assert_no_local_delegated_fns(text: &str) -> Result<(), String> {
-    let mut duplicates = Vec::new();
-    for symbol in DELEGATED_DAG_COLLECT_SYMBOLS {
-        // Use `(` so `dag_node_key` does not match `dag_node_key_collision_error`.
-        let marker = format!("pub fn {symbol}(");
-        if text.contains(&marker) {
-            duplicates.push(*symbol);
-        }
-    }
-    if duplicates.is_empty() {
-        for symbol in DELEGATED_DAG_COLLECT_SUPPORT_SYMBOLS {
-            let marker = format!("pub fn {symbol}(");
-            if text.contains(&marker) {
-                duplicates.push(*symbol);
-            }
-        }
-        if text.contains("pub struct DagCollectAcc") {
-            duplicates.push("DagCollectAcc");
-        }
-    }
-    if duplicates.is_empty() {
-        Ok(())
-    } else {
-        Err(format!(
-            "patch_bootstrap_dag_collect: delegated symbol(s) still defined locally after patch: {}",
-            duplicates.join(", ")
-        ))
-    }
-}
-
-struct DagCollectPatch {
-    compile_text: String,
-    #[cfg_attr(not(test), allow(dead_code))]
-    support_text: String,
-}
-
-/// Patch in-memory compile.rs text (for unit tests).
-fn patch_bootstrap_dag_collect_text(text: &str) -> Result<DagCollectPatch, String> {
-    if text.contains("pub use crate::v1_compiler_dag_collect") {
-        return Err(
-            "patch_bootstrap_dag_collect_text: compile.rs already contains dag collect delegation"
-                .to_string(),
-        );
-    }
-
-    let json_quote_start = "pub fn json_quote";
-    let json_list_start = "pub fn json_list";
-    let acc_start =
-        "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct DagCollectAcc";
-    let missing_ref_start = "pub fn dag_node_missing_ref_error";
-    let pending_start =
-        "#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]\npub struct DagCollectPending";
-    let fingerprint_start = "pub fn dag_node_fingerprint";
-    let collision_start = "pub fn dag_node_key_collision_error";
-    let collect_start = "pub fn dag_collect_nodes_list";
-    let build_key_start = "pub fn build_dag_key_to_id";
-    let connective_start = "pub fn connective_name";
-    let cardinality_start = "pub fn cardinality_name";
-    let fingerprint_helpers_start = "pub fn inferred_fingerprint";
-    let acc_end = if text.contains(pending_start) {
-        pending_start
-    } else {
-        fingerprint_helpers_start
-    };
-
-    let support_text = render_dag_collect_support(
-        extract_between(text, json_quote_start, json_list_start)?,
-        extract_between(text, acc_start, acc_end)?,
-        extract_between(text, fingerprint_helpers_start, fingerprint_start)?,
-        extract_between(text, collision_start, missing_ref_start)?,
-        extract_between(text, connective_start, cardinality_start)?,
-    );
-
-    let mut patched = strip_between(text, json_quote_start, json_list_start)?;
-    patched = strip_between(&patched, acc_start, missing_ref_start)?;
-    patched = strip_between(&patched, collect_start, build_key_start)?;
-    patched = strip_between(&patched, connective_start, cardinality_start)?;
-
-    let insert_before = "pub fn dag_node_missing_ref_error";
-    if !patched.contains(insert_before) {
-        return Err(
-            "patch_bootstrap_dag_collect_text: missing dag_node_missing_ref_error anchor"
-                .to_string(),
-        );
-    }
-    patched = patched.replace(
-        insert_before,
-        &format!("{BOOTSTRAP_DAG_COLLECT_SUPPORT_USE}{BOOTSTRAP_DAG_COLLECT_USE}{insert_before}"),
-    );
-    assert_no_local_delegated_fns(&patched)?;
-    Ok(DagCollectPatch {
-        compile_text: patched,
-        support_text,
-    })
-}
-
-fn render_dag_collect_support(
-    json_quote: &str,
-    acc: &str,
-    fingerprint_helpers: &str,
-    collision_error: &str,
-    connective_name: &str,
-) -> String {
-    format!(
-        "{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n{}\n",
-        "// Generated by v1 compiler -- do not edit.",
-        "// Source module: v1.compiler.compile (DAG collect support surface).",
-        "",
-        "use crate::v1_compiler_emit::escape_json_string;",
-        "use crate::v1_rt;",
-        "use crate::v1_std_core::{make_error_node, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, Node, SourceSpan};",
-        "use std::collections::HashMap;",
-        "use std::rc::Rc;",
-        "",
-        [
-            json_quote.trim_end(),
-            acc.trim_end(),
-            fingerprint_helpers.trim_end(),
-            collision_error.trim_end(),
-            connective_name.trim_end(),
-        ]
-        .join("\n\n")
-    )
 }
 
 fn assert_bootstrap_emit_core_support(src_dir: &Path) -> Result<(), String> {
@@ -967,57 +881,6 @@ fn assert_bootstrap_emit_core_support(src_dir: &Path) -> Result<(), String> {
         }
     }
     Ok(())
-}
-
-fn extract_between<'a>(
-    text: &'a str,
-    start_marker: &str,
-    end_marker: &str,
-) -> Result<&'a str, String> {
-    let start_idx = text
-        .find(start_marker)
-        .ok_or_else(|| format!("extract_between: missing start `{start_marker}`"))?;
-    let end_idx = text
-        .find(end_marker)
-        .ok_or_else(|| format!("extract_between: missing end `{end_marker}`"))?;
-    if end_idx <= start_idx {
-        return Err(format!(
-            "extract_between: `{end_marker}` must follow `{start_marker}`"
-        ));
-    }
-    Ok(&text[start_idx..end_idx])
-}
-
-fn strip_between(text: &str, start_marker: &str, end_marker: &str) -> Result<String, String> {
-    let start_idx = text
-        .find(start_marker)
-        .ok_or_else(|| format!("strip_between: missing start `{start_marker}`"))?;
-    let end_idx = text
-        .find(end_marker)
-        .ok_or_else(|| format!("strip_between: missing end `{end_marker}`"))?;
-    if end_idx <= start_idx {
-        return Err(format!(
-            "strip_between: `{end_marker}` must follow `{start_marker}`"
-        ));
-    }
-    Ok(format!("{}{}", &text[..start_idx], &text[end_idx..]))
-}
-
-fn patch_cargo_toml_for_generated_crate(dir: &Path) -> Result<(), String> {
-    let cargo_toml = dir.join("Cargo.toml");
-    if !cargo_toml.exists() {
-        return Ok(());
-    }
-    let contents = fs::read_to_string(&cargo_toml)
-        .map_err(|e| format!("read {}: {e}", cargo_toml.display()))?;
-    if contents.contains("ureq") {
-        return Ok(());
-    }
-    let patched = contents.replace(
-        "\n[dependencies]\n",
-        "\n[dependencies]\nureq = { version = \"2\", features = [\"json\"] }\n",
-    );
-    fs::write(&cargo_toml, patched).map_err(|e| format!("write {}: {e}", cargo_toml.display()))
 }
 
 fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
@@ -1057,11 +920,6 @@ fn rustfmt_workspace(manifest_dir: &Path) -> Result<(), String> {
     }
 }
 
-// Stage0 split-crate wrapper files (Cargo.toml + lib.rs for each split crate)
-// are modeled and emitted by the `.dag` authority
-// `v1.compiler.stage0_crates`. `regen_stage0` keeps only its writer/verifier
-// role: it calls the generated emitter and resolves each emitted relative path
-// against the workspace root. Paths and contents are NOT authored here.
 fn stage0_split_crate_boundaries(workspace: &Path) -> Vec<(PathBuf, String)> {
     v1_compiler::v1_compiler_stage0_crates::stage0_crate_boundary_files()
         .iter()
@@ -1098,16 +956,6 @@ fn write_stage0_split_crate_boundaries(workspace: &Path) -> Result<(), String> {
     Ok(())
 }
 
-// Top-level `[workspace] members` membership authority.
-//
-// The generated stage0 crate entries inside the top-level `Cargo.toml` members
-// array are owned by the `.dag` authority `v1.compiler.workspace_members`,
-// which derives them from the same `stage0_crate_plan` that emits each crate's
-// `Cargo.toml`/`lib.rs`. `regen_stage0` keeps only the transport: it locates
-// the model-owned sentinel comment lines and rewrites the lines between them.
-// Marker text and region body are NOT authored here -- they come from the
-// model, so the hand-authored members and the rest of the manifest are
-// untouched.
 const WORKSPACE_MEMBERS_REGEN_HINT: &str =
     "Run `cargo run -p v1-compiler --bin regen_stage0` to regenerate.";
 
@@ -1119,11 +967,6 @@ fn workspace_members_markers_and_region() -> (String, String, String) {
     )
 }
 
-// Split the top-level Cargo.toml around the model-owned members region.
-// Returns `(prefix, body, suffix)` where `prefix` runs through the newline that
-// ends the BEGIN-marker line, `body` is the current bytes between the markers,
-// and `suffix` starts at the END marker. Reconstructing `prefix + body + suffix`
-// is the identity, so write and verify share this one locator.
 fn locate_workspace_members_region<'a>(
     content: &'a str,
     begin_marker: &str,
@@ -1518,174 +1361,5 @@ mod tests {
             .expect("clock before unix epoch")
             .as_nanos();
         env::temp_dir().join(format!("regen-stage0-test-{label}-{unique}"))
-    }
-
-    #[test]
-    fn patch_bootstrap_dag_collect_strips_all_delegated_symbols() {
-        let emitted = r#"
-pub fn json_quote(s: String) -> String {
-    s
-}
-
-pub fn json_list(items: ()) -> String {
-    "[]".to_string()
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DagCollectAcc {
-    pub seen: (),
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DagCollectPending {
-    pub anchor: (),
-    pub key: String,
-    pub fp: String,
-}
-
-pub fn dag_node_key(node: ()) -> String {
-    "k".to_string()
-}
-
-pub fn dag_node_is_resolved_identity_shell(node: ()) -> bool {
-    false
-}
-
-pub fn dag_node_collection_anchor(node: ()) -> () {
-    node
-}
-
-pub fn inferred_fingerprint(value: Option<()>) -> String {
-    "none".to_string()
-}
-
-pub fn expr_data_variant(data: ()) -> String {
-    "NoExprData".to_string()
-}
-
-pub fn dag_node_surface_fingerprint(node: ()) -> String {
-    "surface".to_string()
-}
-
-pub fn dag_node_fingerprint(node: ()) -> String {
-    "fp".to_string()
-}
-
-pub fn dag_node_key_collision_error(key: String, span: ()) -> () {
-    ()
-}
-
-pub fn dag_node_missing_ref_error(node: ()) -> () {
-    ()
-}
-
-pub fn dag_collect_nodes_list(nodes: (), acc: ()) -> () {
-    acc
-}
-
-pub fn collect_dag_nodes(typed: ()) -> () {
-    ()
-}
-
-pub fn build_dag_key_to_id(order: ()) -> () {
-    ()
-}
-
-pub fn connective_name(value: ()) -> String {
-    "NoConnective".to_string()
-}
-
-pub fn cardinality_name(value: ()) -> String {
-    "Required".to_string()
-}
-"#;
-        let patched = patch_bootstrap_dag_collect_text(emitted).expect("patch emitted compile.rs");
-        assert!(
-            !patched
-                .compile_text
-                .contains("pub struct DagCollectPending"),
-            "DagCollectPending helper struct must be stripped from generated compile.rs"
-        );
-        for symbol in DELEGATED_DAG_COLLECT_SYMBOLS {
-            assert!(
-                !patched.compile_text.contains(&format!("pub fn {symbol}(")),
-                "local definition remained for {symbol}"
-            );
-        }
-        for symbol in DELEGATED_DAG_COLLECT_SUPPORT_SYMBOLS {
-            assert!(
-                !patched.compile_text.contains(&format!("pub fn {symbol}(")),
-                "local support definition remained for {symbol}"
-            );
-            assert!(
-                patched.support_text.contains(&format!("pub fn {symbol}(")),
-                "support definition missing for {symbol}"
-            );
-        }
-        assert!(!patched.compile_text.contains("pub struct DagCollectAcc"));
-        assert!(patched.support_text.contains("pub struct DagCollectAcc"));
-        assert!(patched
-            .compile_text
-            .contains("pub use crate::v1_compiler_dag_collect"));
-        assert!(patched
-            .compile_text
-            .contains("pub use crate::v1_compiler_dag_collect_support"));
-    }
-
-    #[test]
-    fn patch_bootstrap_dag_collect_support_does_not_require_pending() {
-        let emitted = r#"
-pub fn json_quote(s: String) -> String {
-    s
-}
-
-pub fn json_list(items: ()) -> String {
-    "[]".to_string()
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DagCollectAcc {
-    pub seen: (),
-}
-
-pub fn inferred_fingerprint(value: Option<()>) -> String {
-    "none".to_string()
-}
-
-pub fn dag_node_fingerprint(node: ()) -> String {
-    "fp".to_string()
-}
-
-pub fn dag_node_key_collision_error(key: String, span: ()) -> () {
-    ()
-}
-
-pub fn dag_node_missing_ref_error(node: ()) -> () {
-    ()
-}
-
-pub fn dag_collect_nodes_list(nodes: (), acc: ()) -> () {
-    acc
-}
-
-pub fn build_dag_key_to_id(order: ()) -> () {
-    ()
-}
-
-pub fn connective_name(value: ()) -> String {
-    "NoConnective".to_string()
-}
-
-pub fn cardinality_name(value: ()) -> String {
-    "Required".to_string()
-}
-"#;
-        let patched = patch_bootstrap_dag_collect_text(emitted).expect("patch emitted compile.rs");
-        assert!(patched.support_text.contains("pub struct DagCollectAcc"));
-        assert!(patched.support_text.contains("pub fn inferred_fingerprint"));
-        assert!(!patched.compile_text.contains("pub struct DagCollectAcc"));
-        assert!(patched
-            .compile_text
-            .contains("pub use crate::v1_compiler_dag_collect_support"));
     }
 }

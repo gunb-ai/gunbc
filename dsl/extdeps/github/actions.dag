@@ -1,16 +1,3 @@
-// extdeps/github/actions.dag -- GitHub Actions platform model.
-//
-// Models the GitHub Actions CI/CD platform as external dependency facts:
-// workflows, jobs, steps, runners, logging annotations, artifacts, and
-// matrix strategies. These are platform constraints -- what GH Actions
-// provides and requires -- not repository CI orchestration logic. (The gunbc CI
-// gate/projection model that once consumed this carrier was retired in the CI-track rework.)
-//
-// Spec: https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
-//
-// Related extdeps:
-//   extdeps/github/ci.dag — repository workflow path facts (complements this syntax model)
-
 module extdeps.github.actions
 
 import extdeps.cron.schedule_model { CronSchedule }
@@ -26,15 +13,15 @@ import extdeps.github.log_annotations {
 }
 import extdeps.formats.yaml { YamlValue, YamlKeyValue }
 import std.types { NonEmptyStr, SecretName, Unit }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// §3 layering — ordered env/with/outputs on Workflow / Job / Step:
-// 🟡 SCAFFOLD. Fields use `List<YamlKeyValue>` from `extdeps.formats.yaml` so emit
-// preserves YAML key order (std Map is an unordered HAMT — see yaml.dag:11-12). The
-// YAML value carrier binding the GitHub Actions syntax model is a known layer inversion
-// (yaml.dag:5-8 documents the parallel fork; this module is the upward leak site).
-// Dissolution trigger: `std` gains an ordered key/value pair primitive (reused by
-// TOML/JSON emitters); `actions.dag` migrates to that type and format projectors
-// consume it only at the extdeps/formats seam.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
+  }
+}
 
 type GitHubActionsRuntime {
   oidc_request_url_env: NonEmptyStr
@@ -46,19 +33,12 @@ data github_actions_runtime: GitHubActionsRuntime = {
   oidc_request_token_env: "ACTIONS_ID_TOKEN_REQUEST_TOKEN"
 }
 
-// -- Workflows --------------------------------------------------------
-// A workflow is the top-level unit: trigger + jobs.
-// `concurrency` is workflow-scoped (YAML `concurrency:`); `none` = block absent.
-// Actions accepts a scalar group string or a mapping (`group` + optional `cancel-in-progress`);
-// both are modeled — no fabricated booleans when the mapping omits `cancel-in-progress`.
-
 type Workflow {
   name: String
   on: List<WorkflowTrigger>
   concurrency: ConcurrencySpec?
   jobs: List<Job>
-  // `none` models an absent top-level `env:` block in Actions YAML (no fabricated keys).
-  // Ordered key/value pairs (YAML key order is semantic; std Map is unordered).
+
   env: List<YamlKeyValue>?
   permissions: WorkflowPermissions?
 }
@@ -68,12 +48,10 @@ type WorkflowPermissions {
   pull_requests: PermissionLevel?
   issues: PermissionLevel?
   actions: PermissionLevel?
+  id_token: PermissionLevel?
 }
 
 type PermissionLevel = PermRead | PermWrite | PermNone
-
-// -- Triggers ---------------------------------------------------------
-// Events that cause a workflow to run.
 
 type WorkflowTrigger
   = Push { branches: List<String>, paths: List<String> }
@@ -99,52 +77,12 @@ type DispatchInput {
 
 type DispatchInputType = InputString | InputBoolean | InputChoice | InputEnvironment
 
-// -- Secrets ----------------------------------------------------------
-// Opaque-at-rest secret reference scoped by step / job / workflow.
-// Resolution happens at workflow-execution time via the provider's
-// secret store (GitHub Secrets); the substrate carries only the
-// typed identifier (`SecretName` from std.types -- already cross-provider
-// with anthropic/openai providers) and the workflow-scope binding.
-// The scope discriminator IS GitHub-Actions-specific (not all providers
-// distinguish step-vs-job-vs-workflow secret scopes), which is why the
-// carrier folds into actions.dag rather than std.
-//
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟡 SCAFFOLD. The three-way step/job/workflow scope split mirrors the
-// existing placement sites (`Step.env`, `Job.env`, `Workflow.env`) named
-// in the dissolution trigger below: once `WorkflowSecret` attaches at
-// those sites in Slice 3, scope becomes structural (a `WorkflowSecret`
-// living inside `Step.env` is step-scoped by placement; the explicit
-// `SecretScope` field duplicates that placement fact). Dissolution
-// trigger is therefore the SAME Slice 3 wiring that attaches the
-// carrier -- at that point `SecretScope` and the `scope` field on
-// `WorkflowSecret` collapse into the placement structure and the
-// coproduct can be dropped.
-//
-// Structural-consumer dissolution trigger:
-// `WorkflowSecret` is a Slice 1 carrier introduction; structural attachment
-// to consumer sites (`Step.env`, `Job.env`, `Workflow.env`) is the **next**
-// shape change after today's GitHub-faithful optional plain-text maps
-// (`Map<String, String>?` everywhere — `none` = absent `env:` at workflow,
-// job, and step scopes; no fabricated keys). Slice 3 upgrades those maps to a
-// sum type that includes `WorkflowSecret` (`ci_workflow_modeled_as_dag` demo,
-// tracked at #1956), consuming Slices 1+2. Until that wiring lands, the carrier
-// is intentionally unattached -- promoting the env-shape change in Slice 1
-// would expand the migration cascade beyond the brief's authorized 2-fixture scope.
-
 type SecretScope = StepScope | JobScope | WorkflowScope
 
-// `name` is enforced as `SecretName` (the cross-provider authority in
-// `std.types`), not a free type parameter -- the brief's `WorkflowSecret<Name>`
-// shape collapses to the concrete binding once the cross-provider grep
-// confirmed `SecretName` already exists at std.
 type WorkflowSecret {
   name: SecretName
   scope: SecretScope
 }
-
-// -- Jobs -------------------------------------------------------------
-// A job runs on a runner, has steps, and may depend on other jobs.
 
 type Job {
   id: String
@@ -152,9 +90,9 @@ type Job {
   runner: RunnerSpec
   steps: List<Step>
   needs: List<String>
-  // `none` models an absent `env:` block in Actions YAML (no fabricated keys).
+
   env: List<YamlKeyValue>?
-  // Job outputs: ordered name -> expression pairs.
+
   outputs: List<YamlKeyValue>?
   if_condition: String?
   strategy: MatrixStrategy?
@@ -163,76 +101,33 @@ type Job {
   concurrency: ConcurrencySpec?
 }
 
-// YAML `concurrency:` is either a scalar group expression or a mapping.
-// See https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#concurrency
-// and https://docs.github.com/en/actions/using-jobs/using-concurrency (mapping keys
-// `group`, `cancel-in-progress`, `queue`; expression-valued cancel-in-progress).
-
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟡 YELLOW (scaffold). Literal bool vs opaque `${{ }}` expression string mirrors GitHub's
-// surface union; richer source is a typed Actions boolean-expression carrier when/if
-// modeled structurally in this repo.
-// Named dissolution trigger: typed workflow-boolean expression substrate lands AND
-// `gunbc/ci_emission.dag` projection consumes it for `cancel-in-progress` mapping values.
 type CancelInProgressSpec
   = CancelInProgressBool { value: Bool }
   | CancelInProgressExpression { expression: String }
 
-// When YAML fixes `queue: max`, GitHub rejects `cancel-in-progress: true` (literal bool).
-// This sum therefore excludes literal `true` while still modeling omitted key, literal
-// `false`, and opaque `${{ }}` (expression truth remains runtime — see 🟡 below).
-//
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟢 GREEN (terminal). `QueueMaxCancelInProgressFalse` is 1:1 with YAML `cancel-in-progress: false`.
-// 🟡 YELLOW (scaffold). `QueueMaxCancelInProgressExpression` mirrors expression-valued mapping;
-// GitHub may still reject at runtime if the expression evaluates to true with `queue: max`.
-// Named dissolution trigger: same as `CancelInProgressSpec` — typed boolean-expression substrate
-// plus `gunbc/ci_emission.dag` consumption for mapping values.
 type CancelInProgressWhenQueueMax
   = QueueMaxCancelInProgressFalse
   | QueueMaxCancelInProgressExpression { expression: String }
 
-// 🟡 YELLOW (scaffold). Scalar vs mapping mirrors GitHub's top-level `concurrency:` grammar
-// split. Mapping is split into two arms so `queue: max` + literal `cancel-in-progress: true`
-// is **unrepresentable** (GitHub validation rejects that product — docs:
-// https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#concurrency ).
-// Named dissolution trigger: GitHub adds documented concurrency mapping fields beyond
-// `group` / `cancel-in-progress` / `queue` OR emitter needs single-axis dimensional dispatch.
 type ConcurrencySpec
   = ConcurrencyScalar { group: String }
   | ConcurrencyMappingQueueMax {
       group: String
-      // `none` when YAML omits `cancel-in-progress:` (do not invent `false`).
+
       cancel_in_progress: CancelInProgressWhenQueueMax?
     }
   | ConcurrencyMappingQueueNotMax {
       group: String
-      // `none` when YAML omits `cancel-in-progress:` (do not invent `false`).
+
       cancel_in_progress: CancelInProgressSpec?
-      // `none` when YAML omits `queue:` (GitHub default single-queue semantics).
-      // `some(Unit)` when YAML sets explicit `queue: single` (marker only — no payload).
+
       explicit_single: Unit?
     }
 
-// -- Runners ----------------------------------------------------------
-// The execution environment for a job.
-
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟢 GREEN (terminal). `HostedRunner` + `RunnerLabel` are a closed scaffold set aligned with
-// GitHub's documented hosted runner images for this repo's first-draft model.
-// Ledger (patterns 1–4): no cheaper dissolution for the label enum itself — expanding the
-// closed set is a deliberate taxonomy change when GitHub documents new hosted targets.
-// 🟡 YELLOW (scaffold). `SelfHosted` carries arbitrary label strings as GitHub accepts for
-// self-hosted runner label matching; dissolution: typed runner-label substrate OR emission
-// narrows to a closed vocabulary where the compiler owns runner topology.
-// 🟡 YELLOW (scaffold). `RunsOnExpression` mirrors GitHub's expression-valued `runs-on:` form;
-// the opaque string is faithful YAML surface syntax, not a typed Actions expression carrier.
-// Named dissolution trigger: typed Actions string-expression substrate for `runs-on:` AND
-// `gunbc/ci_emission.dag` projection consumes it for emitted workflow YAML.
 type RunnerSpec
   = HostedRunner { label: RunnerLabel }
   | SelfHosted { labels: List<String> }
-  // `runs-on:` as an expression (e.g. `${{ vars.CI_RUNNER || 'ubuntu-latest' }}`).
+
   | RunsOnExpression { expression: String }
 
 type RunnerLabel
@@ -242,9 +137,6 @@ type RunnerLabel
   | MacosLatest
   | Macos14
   | WindowsLatest
-
-// -- Steps ------------------------------------------------------------
-// Each step either runs a shell command or uses a published action.
 
 type Step
   = RunStep {
@@ -262,7 +154,7 @@ type Step
       name: String?,
       id: String?,
       uses: ActionRef,
-      // `none` models omitted `with:` or YAML `with: {}` (no fabricated action inputs).
+
       with: List<YamlKeyValue>?,
       env: List<YamlKeyValue>?,
       if_condition: String?,
@@ -278,21 +170,12 @@ type ActionRef {
   ref: String
 }
 
-// -- Logging annotations ----------------------------------------------
-// Workflow commands that the runner interprets from stdout.
-// Authority: extdeps/github/log_annotations.dag (imported above).
-
-// -- Artifacts --------------------------------------------------------
-// Upload/download operations for build artifacts.
-// Spec: https://docs.github.com/en/actions/using-workflows/storing-workflow-data-as-artifacts
-
 type ArtifactOp
   = Upload { name: String, path: String, retention_days: Int?, if_no_files_found: MissingFilesBehavior }
   | Download { name: String, path: String? }
 
 type MissingFilesBehavior = Warn | ErrorOut | Ignore
 
-// Standard action refs for artifact operations.
 data upload_artifact_action: ActionRef = ActionRef {
   owner: "actions", repo: "upload-artifact", ref: "v2"
 }
@@ -300,9 +183,6 @@ data upload_artifact_action: ActionRef = ActionRef {
 data download_artifact_action: ActionRef = ActionRef {
   owner: "actions", repo: "download-artifact", ref: "v2"
 }
-
-// -- Matrix strategy --------------------------------------------------
-// Parameterized job execution across multiple configurations.
 
 type MatrixStrategy {
   dimensions: Map<String, List<String>>
@@ -312,9 +192,6 @@ type MatrixStrategy {
   max_parallel: Int?
 }
 
-// -- Check conclusions ------------------------------------------------
-// Terminal states for a workflow run, job, or step.
-
 type CheckConclusion
   = Success
   | Failure
@@ -322,9 +199,6 @@ type CheckConclusion
   | Skipped
   | TimedOut
   | ActionRequired
-
-// -- Common action refs -----------------------------------------------
-// Well-known actions referenced by CI workflows.
 
 data checkout_action: ActionRef = ActionRef {
   owner: "actions", repo: "checkout", ref: "v5"
@@ -338,7 +212,9 @@ data cache_action: ActionRef = ActionRef {
   owner: "actions", repo: "cache", ref: "v5"
 }
 
-// -- Platform constants -----------------------------------------------
+data google_auth_action: ActionRef = ActionRef {
+  owner: "google-github-actions", repo: "auth", ref: "v2"
+}
 
 data max_job_timeout_minutes: Int = 360
 

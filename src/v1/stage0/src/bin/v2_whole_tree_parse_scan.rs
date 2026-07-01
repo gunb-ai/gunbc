@@ -1,15 +1,3 @@
-//! Whole-tree v2 parse regression scanner (host transport).
-//!
-//! Loads v2 `tokenize` + `parse_module` once via the interpreter harness, then
-//! scans each `.dag` under the source root(s). Faster than per-file `gunbc run`
-//! because the resolved graph is built once.
-//!
-//! Usage:
-//!   v2_whole_tree_parse_scan --source-root dsl --source-root src/v2 \
-//!       [--scan-dir src/v2] [--exclude-subpath host_source_root_ingest_manifest.dag]
-//!
-//! Exit codes: 0 = all parsed; 1 = first parse reject (printed); 2 = usage/setup error.
-
 #![allow(clippy::disallowed_macros)]
 
 use std::process::ExitCode;

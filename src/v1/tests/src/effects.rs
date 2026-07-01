@@ -2,11 +2,12 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
+use v1_compiler::extdeps_uri_path::{parse_path_template, PathTemplateParseResult};
 use v1_compiler::rest_transport_facts::{
     collect_rest_transport_operations, DeclaredRestTransportOp,
 };
 use v1_compiler::std_effects::*;
-use v1_compiler::std_http_path::{has_path_params, last_path_param, parse_path_template};
+use v1_compiler::std_http_path::{has_path_params, last_path_param};
 use v1_compiler::std_types::HttpMethod;
 use v1_compiler::v1_compiler_parse::parse;
 use v1_compiler::v1_compiler_tokenize::tokenize;
@@ -78,10 +79,6 @@ fn is_delete(shape: &EffectShape) -> bool {
     matches!(shape, EffectShape::DeleteEffect { .. })
 }
 
-// =========================================================================
-// Path template parsing
-// =========================================================================
-
 #[test]
 fn parse_simple_path() {
     let t = parse_ok("/repos/{owner}/{repo}/pulls");
@@ -150,10 +147,6 @@ fn parse_path_rejects_multiple_params_in_one_segment() {
     ));
 }
 
-// =========================================================================
-// Effect derivation (typed structural inputs)
-// =========================================================================
-
 #[test]
 fn get_derives_read_effect() {
     let op = derive("List", method_ok("GET"), "/repos/{owner}/{repo}/pulls");
@@ -162,7 +155,6 @@ fn get_derives_read_effect() {
 
 #[test]
 fn post_always_derives_create_effect() {
-    // POST with parent-scoped path key — still CreateEffect (fail-closed)
     let op = derive(
         "CreateSecret",
         method_ok("POST"),
@@ -233,21 +225,6 @@ fn method_and_path_string_failures_remain_at_surface_parsers() {
     ));
 }
 
-// =========================================================================
-// REST ops in scope derive an EffectShape
-//
-// Extdep REST rows come from `v1_compiler::rest_transport_facts` (parsed AST +
-// shared transport accessors). Tests parse a fixed file list, then resolve the
-// tracked subset by **(service, operation_name)** — never by operation name
-// alone (extdeps reuse names like `Get` / `List` across services).
-//
-// Durable identity for comparisons / uniqueness is the full fingerprint
-// `(service, operation_name, method, path)` on `DeclaredRestTransportOp`.
-// `derive_op_effect` / `DerivedOpEffect` do not carry service today; tests that
-// correlate back to extdep rows pair tracked `RestOp` sources with derived
-// effects, or match obligations by **name + effect_shape** (not name alone).
-// =========================================================================
-
 const GITHUB_PULLS: &str = "github.Pulls";
 
 type RestOp = DeclaredRestTransportOp;
@@ -316,8 +293,6 @@ fn all_parsed_extdep_rest_ops() -> Vec<RestOp> {
 
 fn tracked_extdep_rest_ops() -> Vec<RestOp> {
     let parsed = all_parsed_extdep_rest_ops();
-    // Allowlisted (qualified service, operation) pairs — resolved against the
-    // parsed closure by both fields; never keyed by operation name alone.
     const TRACKED: &[(&str, &str)] = &[
         ("github.Pulls", "List"),
         ("github.Pulls", "Get"),
@@ -368,10 +343,6 @@ fn rest_ops_have_derived_effects() {
         );
     }
 }
-
-// =========================================================================
-// R3 F5 — `CompositionVerdict` (illegal `Bool × String?` product dissolved)
-// =========================================================================
 
 fn op_lattice_read(name: &str) -> Rc<OperationEffect> {
     Rc::new(OperationEffect {
@@ -429,10 +400,6 @@ fn r3_f5_compose_effects_broken_by_first_non_idempotent_evidence() {
     }
 }
 
-// =========================================================================
-// Obligation generation
-// =========================================================================
-
 #[test]
 fn obligation_count_matches_idempotent_ops() {
     let derived: Vec<Rc<DerivedOpEffect>> = tracked_extdep_rest_ops()
@@ -467,10 +434,6 @@ fn every_idempotent_effect_has_obligation() {
     }
 }
 
-// =========================================================================
-// GitHub readonly-on-GET falsification (5 sites)
-// =========================================================================
-
 #[test]
 fn github_readonly_gets_agree() {
     let readonly_gets = [
@@ -503,13 +466,8 @@ fn github_readonly_gets_agree() {
     }
 }
 
-// =========================================================================
-// GCP idempotent falsification (5 sites)
-// =========================================================================
-
 #[test]
 fn gcp_idempotent_sites_classified() {
-    // AccessVersion: GET → ReadEffect → idempotent, declared idempotent → Agrees
     let access = derive(
         "AccessVersion",
         method_ok("GET"),
@@ -520,9 +478,6 @@ fn gcp_idempotent_sites_classified() {
         matches!(*access_check.agreement, ModifierAgreement::Agrees),
         "AccessVersion: expected Agrees"
     );
-
-    // All 4 POST ops: derivation is fail-closed → CreateEffect → non-idempotent.
-    // Declared idempotent → DerivationUnknown (can't prove from method+path alone).
 
     let add = derive(
         "AddVersion",
@@ -584,14 +539,8 @@ fn gcp_idempotent_sites_classified() {
     );
 }
 
-// =========================================================================
-// POST ops with parent-scoped paths derive CreateEffect, not UpsertEffect
-// =========================================================================
-
 #[test]
 fn post_with_parent_path_derives_create_not_upsert() {
-    // These were the reviewer's counterexamples: POST to parent-scoped paths
-    // should NOT derive UpsertEffect.
     let create_secret = derive(
         "CreateSecret",
         method_ok("POST"),

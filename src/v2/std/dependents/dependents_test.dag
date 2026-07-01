@@ -4,17 +4,14 @@ import v2.std.logic { Bool }
 import v2.std.occurrence_id { alloc_occurrence_id, occurrence_id_allocator_initial }
 import v2.std.dependents { Untracked, Tracked, no_dependents }
 
-// arity-0 via absence (the "null" state) -> unused
 test fn dependents_untracked_is_unused() -> Bool {
   no_dependents(d: Untracked)
 }
 
-// arity-0 via empty (== 0) -> unused
 test fn dependents_empty_is_unused() -> Bool {
   no_dependents(d: Tracked { uses: [] })
 }
 
-// arity >= 1 -> live (not unused). Mint the use-site id via the sole-mint path.
 test fn dependents_with_use_is_live() -> Bool {
   match no_dependents(d: Tracked { uses: [alloc_occurrence_id(alloc: occurrence_id_allocator_initial()).id] }) {
     true => false

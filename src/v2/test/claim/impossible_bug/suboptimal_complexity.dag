@@ -1,0 +1,90 @@
+module v2.test.impossible_bug.suboptimal_complexity
+
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  node_locus,
+  NonEmptyDiagnostics,
+  None,
+  Outcome,
+  Rejected,
+  Suggested,
+  diagnostics_singleton
+}
+import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
+import v2.std.verification {
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  CompilesClaim,
+  DiagnosticClaim,
+  EqualsClaim,
+  RoundTripClaim,
+  manual_claim_anchor
+}
+fn atom_node(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+}
+
+fn complexity_contract(body: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^complexity_bound_field }, target: atom_node(s: ^complexity_contract_symbol) },
+      Edge { label: Named { name: ^complexity_body_field }, target: body },
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn expected_complexity_rejection(input: Node, reason: Symbol, correction: Node) -> NonEmptyDiagnostics {
+  diagnostics_singleton(
+    d: Diagnostic {
+      reason: reason,
+      at: node_locus(node: input),
+      correction: Suggested { node: correction }
+    }
+  )
+}
+
+data within_bound_input: Node = complexity_contract(body: atom_node(s: ^complexity_body_linear_symbol))
+
+data falsification_overcost_against_structural_bound: Node = complexity_contract(body: atom_node(s: ^complexity_body_quadratic_symbol))
+
+data claim_within_structural_bound_passes: TestClaim = CompilesClaim {
+  label: "complexity bound accepts lens-derived in-bound body",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: within_bound_input,
+  expected_value: within_bound_input,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_overcost_against_structural_bound_violates: TestClaim = DiagnosticClaim {
+  label: "complexity bound rejects lens-derived over-cost body",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: falsification_overcost_against_structural_bound,
+  expected_rejection: expected_complexity_rejection(
+    input: falsification_overcost_against_structural_bound,
+    reason: ^impossible_bug_reason_suboptimal_complexity,
+    correction: within_bound_input
+  ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data falsification_cost_contradicts_inhabitance: Node = complexity_contract(body: atom_node(s: ^complexity_body_contradictory_inhabitant_symbol))
+
+data claim_cost_contradicts_inhabitance_caught: TestClaim = DiagnosticClaim {
+  label: "complexity inhabitance rejects contradictory body cost",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: falsification_cost_contradicts_inhabitance,
+  expected_rejection: expected_complexity_rejection(
+    input: falsification_cost_contradicts_inhabitance,
+    reason: ^impossible_bug_reason_suboptimal_inhabitance,
+    correction: within_bound_input
+  ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

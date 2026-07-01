@@ -1,0 +1,42 @@
+module v2.test.manual.language_model_dissolution
+
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.model_core { model_core_first_primitive_substrate, wave1_void }
+import v2.std.compilers.lexing { lex_rules_to_node, VoidLexRules }
+import v2.std.grammar { grammar_to_node, VoidGrammar }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.swift { swift_language_model_wave1 }
+import v2.extdeps.languages.go { go_language_model_wave1 }
+
+fn void_core_node() -> Node {
+  model_core_first_primitive_substrate(core: wave1_void())
+}
+
+fn void_lex_node() -> Node {
+  lex_rules_to_node(rules: VoidLexRules)
+}
+
+fn void_grammar_node() -> Node {
+  grammar_to_node(grammar: VoidGrammar)
+}
+
+test fn dag_subset_core_is_canonical_void() -> Bool {
+  model_core_first_primitive_substrate(core: dag_language_model_wave1().core) == void_core_node()
+}
+
+test fn swift_subset_lex_is_canonical_void() -> Bool {
+  lex_rules_to_node(rules: swift_language_model_wave1().lex) == void_lex_node()
+}
+
+test fn swift_subset_grammar_is_canonical_void() -> Bool {
+  grammar_to_node(grammar: swift_language_model_wave1().grammar) == void_grammar_node()
+}
+
+test fn go_full_shape_core_is_not_void() -> Bool {
+  !(model_core_first_primitive_substrate(core: go_language_model_wave1().core) == void_core_node())
+}
+
+test fn go_full_shape_grammar_is_not_void() -> Bool {
+  !(grammar_to_node(grammar: go_language_model_wave1().grammar) == void_grammar_node())
+}

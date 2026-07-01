@@ -1,22 +1,16 @@
-// extdeps/git/git.dag -- "What is Git?"
-//
-// Core Git object model: commits, branches, refs, diffs, merge strategies,
-// and the shell-transport binding of git's operations (co-located since the
-// services/ tree was merged into extdeps/, commit 55dd577e8c). The operations
-// below model git's *interface shape*; `transport shell` is one realization
-// handler (libgit2 / the GitHub compare API are others not yet bound).
-//
-// Consumers:
-//   gunbc/tools/gist.dag           -- branch name
-//   shared/gist_modes.dag             -- git operations
-//   extdeps/github/pull_requests.dag -- PR branch refs
-//   tools/build.dag                -- branch detection
-
 module extdeps.git
 
-import std.types { CommitSha, Email, FilePath, GitRef, Timestamp, Url }
+import std.types { CommitSha, Email, FilePath, GitRef, NonEmptyStr, Timestamp }
 
-// -- Object model --------------------------------------------------
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs"
+  }
+}
 
 type ObjectType = BlobObj | TreeObj | CommitObj | TagObj
 
@@ -26,8 +20,6 @@ type GitAuthor {
   timestamp: Timestamp
 }
 
-// -- Refs ----------------------------------------------------------
-
 type GitBranch {
   name: String
   upstream: String?
@@ -36,29 +28,10 @@ type GitBranch {
 
 type GitRemote {
   name: String
-  url: Url
+  url: NonEmptyStr
   fetch_refspec: String
 }
 
-// -- Worktrees -------------------------------------------------------
-// A worktree is a checkout of the repository at a path: the main
-// worktree plus zero or more linked worktrees (`git worktree add`),
-// all sharing one object store and refs. Each non-bare worktree has
-// exactly one checked-out HEAD; a branch may be checked out in at
-// most one worktree at a time.
-
-// Coproduct dissolution classification (DESIGN.md §2 decompress->map->reduce):
-// 🟢 GREEN (terminal). Git's worktree HEAD is exactly one of two
-// irreducible states — checked out on a branch, or detached at a commit —
-// and `git worktree list` reports precisely this distinction. The
-// variants carry structurally distinct payloads (a branch ref vs a bare
-// sha). Ledger (Patterns 1–5): (1) fact-placement rejected — both states
-// feed the same consumer (a worktree's checkout), no per-consumer split.
-// (2) variant-is-data rejected — GitBranch and CommitSha are different
-// shapes, not a label over one payload. (3) no std algebraic source.
-// (4) not dimensional — on-branch/detached is a single binary state, not
-// a factoring of orthogonal axes. (5) not a parameterized family. Git's
-// own HEAD-state dichotomy is the source.
 type GitWorktreeHead
   = WorktreeOnBranch { branch: GitBranch }
   | WorktreeDetached { sha: CommitSha }
@@ -66,11 +39,9 @@ type GitWorktreeHead
 type GitWorktree {
   path: FilePath
   head: GitWorktreeHead
-  is_main: Bool             // the original checkout vs a linked worktree
-  locked: Bool              // `git worktree lock` -- protected from prune
+  is_main: Bool
+  locked: Bool
 }
-
-// -- Diff model ----------------------------------------------------
 
 type DiffStat {
   files_changed: Int
@@ -90,25 +61,30 @@ type DiffHunk {
   lines: List<DiffLine>
 }
 
-// -- Constants -----------------------------------------------------
-
 data default_remote: String = "origin"
 
 data default_branch_names: List<String> = ["main", "master"]
 
-// -- Service: shell transport wiring -----------------------------
-
-// 🟡 dissolved — feature:git-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.git.mock_corpus) now governs WHICH
-// git.Core ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service git.Core {
   operation CurrentBranch {
     input {}
     output { branch: String from "stdout" }
     readonly
     transport shell { argv: ["git", "rev-parse", "--abbrev-ref", "HEAD"] }
+    exit {
+      0 => Unit
+      128 => String "Not a git repository"
+    }
+  }
+
+  operation HeadCommit {
+    input {}
+    output {
+      sha: CommitSha from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "rev-parse", "HEAD"] }
     exit {
       0 => Unit
       128 => String "Not a git repository"
@@ -148,10 +124,6 @@ service git.Core {
     }
   }
 
-  // Name-only diff projection — git's two faithful diff modes. Both are git
-  // primitives; the *policy* of which mode and which base (e.g. "origin/main")
-  // belongs to the workflow consumer, NOT to this model (tools.rust_gates_ci
-  // composes DiffNameOnlyMerge directly).
   operation DiffNameOnly {
     input { base: GitRef, head: GitRef = "HEAD" }
     output {
@@ -166,8 +138,6 @@ service git.Core {
     }
   }
 
-  // Three-dot (merge-base) name-only diff: paths changed on `head` since it
-  // diverged from `base`. A documented git primitive (`git diff A...B`).
   operation DiffNameOnlyMerge {
     input { base: GitRef, head: GitRef = "HEAD" }
     output {

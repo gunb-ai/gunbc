@@ -1,22 +1,3 @@
-// src/v2/test/lens_mock_totality/diagnostic_mock_totality_test.dag
-// Scope: §5 PROOF that v2.lens.mock_totality GATES by execution over the diagnostic layer's
-//        published mock corpus — GREEN when the consumer is total, RED when a member is omitted.
-// Status: discoverable `test fn` witness — the CI floor gates it via
-//         `claim_batch --roster-from-discovery` (whole src/v2 scanned for `test fn` in
-//         `*_test.dag`). Mirrors the M4.0 filesystem / breadth-roll shell pilot (#5238).
-//
-// The diagnostic layer is the MULTI-SERVICE shape (diagnostic.ssh.Session / redfish.Http /
-// diagnostic.edac.RasMcCtl / diagnostic.ipmi.Tool — eleven published ops total) — the published
-// corpus is a flat List spanning all of them, so this single totality witness covers the whole
-// layer.
-//
-// The two witnesses are a discriminating pair (DESIGN.md §5: a real consumer GREEN by execution
-// PLUS a discriminating input that goes RED when the behaviour is wrong):
-//   - the REAL consumer handles every published case  → lens Accepts  → `..._is_total_holds`.
-//   - a consumer with `SelList` deliberately OMITTED → lens Rejects → `..._omitted_member_is_red`.
-// The second is the teeth: it goes GREEN only because the lens FAIL-CLOSES on the unhandled
-// member — a vacuous lens that always accepted would flip it RED.
-
 module v2.test.lens_mock_totality.diagnostic_mock_totality
 
 import v2.lens.mock_totality { mock_unhandled_rejection }
@@ -42,9 +23,9 @@ type MaterializedDiagnosticMock {
 data diagnostic_red_omit_keys: List<String> = ["diagnostic.ipmi.Tool.SelList"]
 
 fn materialize_diagnostic_mock(case: PublishedMockCase) -> Outcome<MaterializedDiagnosticMock> {
-  if case.operation_key == "diagnostic.ssh.Session.Exec" {
+  if case.operation_key == "ssh.Session.Exec" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_exec })
-  } else if case.operation_key == "diagnostic.ssh.Session.Reachability" {
+  } else if case.operation_key == "ssh.Session.Reachability" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_ssh_reachability })
   } else if case.operation_key == "redfish.Http.GetSystem" {
     outcome_accepted(value: MaterializedDiagnosticMock { tag: ^materialized_redfish_get_system })

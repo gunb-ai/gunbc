@@ -1,8 +1,3 @@
-// src/v2/std/node_shape.dag
-// Scope: NodeShape authoring + stamp boundary (PROV A-pivot lifecycle).
-// Anchor: design-node-identity-channels.md — occurrence_id excluded from equality; fixtures
-// author NodeShape; pipeline consumes stamped Node only.
-
 module v2.std.node_shape
 
 import v2.std.algebra { Empty, fold_list, list_snoc_item }

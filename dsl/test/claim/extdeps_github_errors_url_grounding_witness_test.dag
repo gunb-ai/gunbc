@@ -1,16 +1,9 @@
-// By-execution witness: GitHubErrorShape.documentation_url grounded on std.types.Url.
-// Discriminating: goes RED if the field reverts to bare String.
-//
-// Run via:
-//   gunbc run --source-root dsl --entry dsl/test/claim/extdeps_github_errors_url_grounding_witness_test.dag \
-//     --function extdeps_github_errors_url_grounding_witnesses --claim-run
-
 module test.claim.extdeps_github_errors_url_grounding_witness
 
 import extdeps.github.errors { GitHubErrorShape, github_error_example }
-import std.types { Url }
+import std.types { NonEmptyStr }
 
-data sample_docs_url: Url = "https://docs.github.com/rest"
+data sample_docs_url: NonEmptyStr = "https://docs.github.com/rest"
 
 fn w_github_error_shape_documentation_url_grounded() -> Bool {
   let row = GitHubErrorShape {

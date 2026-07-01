@@ -1,10 +1,7 @@
-// .dag syntax specification — instance #1 of SyntaxSpec.
-//
-// This file declares the grammar of the .dag language as data.
-// The parser reads this spec; adding a new item type = one entry here.
-// Future language frontends (Python, Go source) provide their own SyntaxSpec.
-
 module extdeps.languages.dag.syntax
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 import std.syntax {
   ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
@@ -17,10 +14,12 @@ import std.syntax {
   LiteralValue, LitBool, LitNull
 }
 
-// Item forms: keyword -> structural components + body kind.
-// The parser dispatches on keyword text, looks up the form,
-// then parses the shared prefix (name, type params, params, return, uses)
-// and delegates to the appropriate body parser.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/languages/dag"
+  }
+}
 
 data dag_item_forms: List<ItemForm> = [
   ItemForm { kind: TypeAliasForm, keyword: "type", has_type_params: true, has_params: false,
@@ -49,19 +48,12 @@ data dag_item_forms: List<ItemForm> = [
     has_uses: false, body_kind: BlockBody }
 ]
 
-// Literal keywords: keyword text -> LiteralValue.
-// The parser checks this map before expression keywords.
-
 data dag_keyword_literals: Map<String, LiteralValue> = {
   "true": LitBool { value: true },
   "false": LitBool { value: false },
   "none": LitNull,
   "null": LitNull
 }
-
-// Keyword lookup map — the single authority for what strings are keywords.
-// Map<String, Bool> used as a set: O(1) lookup per identifier token.
-// The tokenizer and parser both derive from this map.
 
 data dag_keyword_set: Map<String, Bool> = {
   "module": true, "import": true, "type": true, "fn": true, "func": true,
@@ -75,28 +67,10 @@ data dag_keyword_set: Map<String, Bool> = {
   "idempotent": true, "readonly": true, "hermetic": true
 }
 
-// Keywords that cannot be used as identifiers (field names, type names).
-// Includes literal keywords (true/false/none/null) and resource lifecycle
-// keywords (acquire/release). The parser derives from this set — no local
-// enumeration needed in 02_parse.dag.
-//
-// `inhabits` is intentionally **not** in `dag_keyword_set`: it must tokenize as
-// an ordinary identifier so it can spell a declared type name, a sum variant,
-// or a record field without a dedicated keyword token. The v3 compiler
-// recognizes `type <Name> inhabits <Ty> = ...` structurally (token order),
-// not via global keyword reservation (see `parse_parser_body.txt`).
-
 data dag_non_name_keywords: Map<String, Bool> = {
   "true": true, "false": true, "none": true, "null": true,
   "acquire": true, "release": true
 }
-
-// External .dag operator precedence authority.
-// This table models external .dag syntax reality, not the current v3-supported
-// tokenizer/parser/operator subset.
-// || < && < ?? < cmp < add < mul < |> < .
-// |> and . have binding power entries but their binop field is unused
-// (the expression loop handles them as pipe/field-access, not binary ops).
 
 data dag_operators: List<OperatorSpec> = [
   OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: Or, algebra_field: none },
@@ -116,13 +90,6 @@ data dag_operators: List<OperatorSpec> = [
   OperatorSpec { symbol: "|>", left_bp: 17, right_bp: 18, binop: none, algebra_field: none },
   OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none, algebra_field: none }
 ]
-
-// Current v3 capability projection.
-// v3 tokenizer/parser/operator validation consumes these explicit supported
-// symbols, then reads precedence/binop facts from `dag_operators`. This avoids
-// duplicating operator semantics while still fencing current v3 capability.
-// It intentionally excludes external `dag_operators` rows that v3 does not
-// parse end-to-end yet, including `??` and `%`.
 
 data v3_supported_dag_operators: Map<String, Bool> = {
   "||": true, "&&": true,

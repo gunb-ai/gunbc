@@ -1,14 +1,3 @@
-// Scope: B1 unit-modeling lens — COORDINATE exemption witness. A bare `Int`
-//        field named `index` is a COORDINATE — addition is meaningless (index 2 +
-//        index 3 is not position 5) — so it is NOT a unit-bearing quantity and is
-//        exempt under the inverted predicate. Proves the categorical exemption
-//        (one of the two closed non-additive kinds) does not over-flag a
-//        legitimate bare Int.
-// Note: exact-Symbol exemption recognizes the BARE marker `index` — the correct
-//        fail-closed primitive (substring would unsoundly exempt reindex_count).
-//        COMPOUND forms (matrix_index) safely false-positive-flag and clear in
-//        phase-2 by acquiring the Index brand-type — see name_is_exempt.
-
 module v2.test.lens_unit_modeling.coordinate_index_not_flagged
 
 import v2.lens.unit_modeling { unit_modeling_gate }

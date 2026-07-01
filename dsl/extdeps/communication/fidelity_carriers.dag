@@ -1,0 +1,36 @@
+module extdeps.communication.fidelity_carriers
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy, Medium }
+import std.types { List }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Means_of_communication"
+  }
+}
+
+fn decode_fidelity_merge(left: DecodeFidelity, right: DecodeFidelity) -> DecodeFidelity {
+  match left {
+    Lossy => Lossy
+    Lossless => right
+  }
+}
+
+fn decode_fidelity_from_step_fidelities(steps: List<DecodeFidelity>) -> DecodeFidelity {
+  fold(
+    steps,
+    init: Lossless,
+    f: (acc, step) => decode_fidelity_merge(left: acc, right: step)
+  )
+}
+
+fn source_medium_carried<R>(carried: R, fidelity: DecodeFidelity) -> Medium<R> {
+  Medium { carried: carried, fidelity: fidelity }
+}
+
+fn medium_section_equal<R>(left: Medium<R>, right: Medium<R>) -> Bool {
+  left.carried == right.carried
+}

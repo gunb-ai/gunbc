@@ -1,59 +1,19 @@
-// std/pareto.dag — Pareto dominance: the partial order on multi-axis decision points.
-//
-// A decision among candidates (RAM kits, CPUs, boards, PSUs, …) is rarely a single
-// number to maximize — it spans several axes at once (more capacity, more bandwidth,
-// less cost, less power). The honest comparison is therefore a PARTIAL order, not a
-// total one: candidate A may beat B on one axis and lose on another, so neither
-// dominates. This module models that partial order ONCE as a component-agnostic
-// kernel; every candidate set reduces to a `List<AxisComparison>` and feeds the same
-// fold (DESIGN §2 horizontal — one concept across every component; §6 — one fold).
-//
-// Authority: this module owns the dominance concept. The value-comparison primitive it
-// composes over is `std.algebra.Ordering` (Less | Equal | Greater) — not re-coined here.
-// Anchor: https://en.wikipedia.org/wiki/Pareto_efficiency  (Pareto dominance / front)
-
 module std.pareto
 
 import std.types { Int, List }
 import std.logic { Bool }
 import std.algebra { Ordering }
 
-// === The verdict =========================================================
-//
-// A total order (std.algebra.Ordering) has THREE outcomes. A partial order needs a
-// FOURTH — Incomparable — for the crossing case where each candidate wins some axis
-// and loses another. Folding Incomparable into Equivalent is the state-space-conflation
-// trap (DESIGN §5): a genuinely undominated alternative would masquerade as a tie, and
-// Pareto-front stripping (which discards only what is strictly dominated) would then
-// wrongly drop a real option. So FOUR named variants, never three.
-//   Dominates    — at least as good on every axis, strictly better on ≥1
-//   Dominated    — the mirror (the other candidate dominates this one)
-//   Equivalent   — identical preference on every axis
-//   Incomparable — better on some axis, worse on another (the partial-order gap)
 type DominanceVerdict = Dominates | Dominated | Equivalent | Incomparable
 
-// Per-axis preference direction. An axis is not inherently "bigger is better":
-// capacity / bandwidth / throughput-per-watt reward LARGER values, while cost /
-// power-draw / latency reward SMALLER ones. The axis carries its own goal so the one
-// dominance kernel serves both kinds — the call site never flips signs by hand.
 type AxisGoal = HigherIsBetter | LowerIsBetter
 
-// One candidate's standing vs another on a SINGLE axis: the goal-relative preference,
-// distinct from the raw value Ordering. "Better" means preferred — whether that meant a
-// larger value (HigherIsBetter) or a smaller one (LowerIsBetter). This derived concept
-// is what lets dominance be goal-agnostic downstream.
 type AxisComparison = Better | Same | Worse
 
-// === Per-axis: value Ordering + goal -> preference =======================
-
-// Total order on plain Int. std has no free `compare -> Ordering` yet (Ordering appears
-// only as an OrderedRing typeclass field, std/algebra.dag), so this is the minimal Int
-// producer the projection needs — not a second comparison authority.
 fn compare_int(a: Int, b: Int) -> Ordering {
   if a < b { Less } else { if a > b { Greater } else { Equal } }
 }
 
-// Compose a raw value Ordering with the axis goal into a preference.
 fn axis_comparison(goal: AxisGoal, value_order: Ordering) -> AxisComparison {
   match goal {
     HigherIsBetter => match value_order {
@@ -69,20 +29,10 @@ fn axis_comparison(goal: AxisGoal, value_order: Ordering) -> AxisComparison {
   }
 }
 
-// Convenience: compare two Int magnitudes on one axis directly. The domain layer
-// projects each axis value to its grounded Measure magnitude (bytes count, watts,
-// money micros) and pairs it with the axis goal — same dimension on both sides, so the
-// Int comparison is the natural total order on that one axis, not a lossy surrogate.
 fn axis_comparison_int(goal: AxisGoal, a: Int, b: Int) -> AxisComparison {
   axis_comparison(goal: goal, value_order: compare_int(a: a, b: b))
 }
 
-// === The kernel: per-axis preferences -> verdict =========================
-//
-// Folding the per-axis preferences needs exactly two bits: did THIS candidate beat the
-// other on some axis, and did it lose on some axis. The pair of bits maps 1:1 onto the
-// four-state verdict — this record IS the partial-order state, named so the fold step is
-// a pure update.
 type DominanceTally { saw_better: Bool, saw_worse: Bool }
 
 fn tally_step(acc: DominanceTally, cmp: AxisComparison) -> DominanceTally {
@@ -101,11 +51,6 @@ fn tally_verdict(t: DominanceTally) -> DominanceVerdict {
   }
 }
 
-// THE dominance kernel. Fold a candidate's per-axis preferences (this-relative-to-other)
-// into the dominance verdict. Component-agnostic: DRAM, CPU, board and PSU candidate sets
-// all reduce to a `List<AxisComparison>` and feed this one fold (DESIGN §2 horizontal /
-// §6 one fold). An empty axis list yields Equivalent — correct: with nothing to compare,
-// no candidate dominates.
 fn dominance_of_comparisons(comparisons: List<AxisComparison>) -> DominanceVerdict {
   tally_verdict(
     t: fold(
@@ -115,8 +60,6 @@ fn dominance_of_comparisons(comparisons: List<AxisComparison>) -> DominanceVerdi
     )
   )
 }
-
-// === Verdict predicates ==================================================
 
 fn verdict_dominates(v: DominanceVerdict) -> Bool {
   match v {
@@ -145,8 +88,6 @@ fn verdict_is_equivalent(v: DominanceVerdict) -> Bool {
   }
 }
 
-// The partial-order gap — the whole reason DominanceVerdict has four states and not
-// three. A consumer that needs "is this a real trade-off, not a tie" reads exactly this.
 fn verdict_is_incomparable(v: DominanceVerdict) -> Bool {
   match v {
     Incomparable => true
@@ -156,18 +97,10 @@ fn verdict_is_incomparable(v: DominanceVerdict) -> Bool {
   }
 }
 
-// === Pareto-front stripping (general, type-agnostic) =====================
-
-// A candidate is OFF the Pareto front iff some other candidate strictly dominates it.
-// The domain layer maps its candidate pool to the verdicts of (other vs candidate) and
-// calls this — keeping the general kernel free of any concrete candidate type or
-// higher-order plumbing. A candidate compared against itself yields Equivalent (not
-// Dominates), so a pool that includes the candidate does not falsely strip it.
 fn any_dominates(verdicts: List<DominanceVerdict>) -> Bool {
   fold(verdicts, init: false, f: (acc, v) => acc || verdict_dominates(v: v))
 }
 
-// On-the-front is the negation: no other candidate dominates this one.
 fn on_pareto_front(verdicts: List<DominanceVerdict>) -> Bool {
   !any_dominates(verdicts: verdicts)
 }

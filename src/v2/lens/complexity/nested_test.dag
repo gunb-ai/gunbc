@@ -1,4 +1,3 @@
-
 module v2.test.lens_complexity.nested
 
 import v2.lens.complexity {
@@ -103,8 +102,6 @@ fn nested_actual_complexity() -> Witness<ComplexityBound> {
   complexity_lens(n: nested_input)
 }
 
-// By-execution gate: nested Cardinality folds to a product cost over the two
-// distinct size variables. A flattened single-variable fold goes RED.
 test fn nested_cost_projection_holds() -> Bool {
   match nested_actual_cost() {
     Holds { value: actual } => actual == nested_claim.expected_cost
@@ -112,8 +109,6 @@ test fn nested_cost_projection_holds() -> Bool {
   }
 }
 
-// By-execution gate: the asymptotic projection of the product cost is the
-// declared multidimensional quadratic bound (degree 2, both variables).
 test fn nested_complexity_projection_holds() -> Bool {
   match nested_actual_complexity() {
     Holds { value: actual } => actual == nested_claim.expected_complexity

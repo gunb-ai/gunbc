@@ -1,23 +1,24 @@
-// gunbc/ci_spec.dag — CI intent as data (gates, diff policy, transport scripts).
-
 module gunbc.ci_spec
 
+import gunbc.ci_gate {
+  Gate,
+  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
+  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
+}
 import gunbc.ci_layer_roots {
   witness_layer_roots,
   witness_layer_source_flags
 }
-import tools.build_step { BuildArtifact, verifications_script }
-import extdeps.languages.bash.program { ShellWord, Concat, lit, var_ref }
-
-type Gate
-  = RustMonolithGate
-  | EmitHostGate
-  | LayeringImportsGate
-  | ResolvedImportsGate
-  | ExtdepsExternalAuthorityGate
-  | DslCompileCleanGate
-  | CiYamlGate
-  | SourceRootIngestGate
+import gunbc.commit_workflow {
+  commit_gate_roster,
+  project_ci_floor_gates,
+  project_ci_rust_job_gates
+}
+import tools.build_step { BuildArtifact }
+import extdeps.languages.bash.program { Concat, lit, var_ref }
+import gunbc.ci_failure_class { infra_retry_grep_alternation }
+import gunbc.ci_deploy_access { RunnerHostAccess, ci_deploy_srv1_runner_access }
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -27,39 +28,53 @@ type DiffPolicy {
   mode: DiffMode
 }
 
+type DeployStage {
+  id: String
+  step_name: String
+  entry: String
+  function: String
+  needs: List<String>
+  access: RunnerHostAccess
+}
+
 type CiSpec {
   gates: List<Gate>
   diff_policy: DiffPolicy
   notice_title: String
+  deploy_stages: List<DeployStage>
 }
 
-// 🟡 SCAFFOLD — feature:gate-coproduct-inhabitant-bridge — bind gunbc#4872 —
-// dissolve-on-arrival: generic Symbol→inhabitant replaces exhaustive match roster;
-// roster completeness is witness-checked in src/v2/test/claim/ci_spec_witness_test.dag.
-data gunbc_ci_gates: List<Gate> = [
-  RustMonolithGate,
-  EmitHostGate,
-  LayeringImportsGate,
-  ResolvedImportsGate,
-  ExtdepsExternalAuthorityGate,
-  DslCompileCleanGate,
-  CiYamlGate,
-  SourceRootIngestGate
-]
+data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
+
+data gunbc_ci_rust_job_gates: List<Gate> = project_ci_rust_job_gates(roster: commit_gate_roster)
+
+data gunbc_ci_gates: List<Gate> = concat(gunbc_ci_floor_gates, gunbc_ci_rust_job_gates)
+
+data live_deploy_apply_entry: String = "dsl/gunbc/live_deploy/apply.dag"
+data live_deploy_apply_srv1_wet_function: String = "live_deploy_apply_srv1_wet"
+
+data gunbc_ci_deploy_srv1_stage: DeployStage = {
+  id: "deploy_dashboard_srv1",
+  step_name: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)",
+  entry: live_deploy_apply_entry,
+  function: live_deploy_apply_srv1_wet_function,
+  needs: ["ci"],
+  access: ci_deploy_srv1_runner_access,
+}
+
+data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
 
 data gunbc_ci_spec: CiSpec = {
-  gates: gunbc_ci_gates,
+  gates: gunbc_ci_floor_gates,
   diff_policy: {
     base: "origin/main",
     head: "HEAD",
     mode: DiffMergeBase
   },
-  notice_title: "v2 claim corpus"
+  notice_title: "v2 claim corpus",
+  deploy_stages: gunbc_ci_deploy_stages,
 }
 
-// Unify v1-compiler feature set across CI cargo invocations. v1-compiler-tests enables
-// text_lookup_work_counter; building gunbc/claim_executor without it forces a second full
-// v1-compiler compile when rust gates run clippy --all-targets (~49% CI wall-time prong).
 data ci_release_features: String = "text_lookup_work_counter"
 
 fn ci_repo_root_shell() -> String {
@@ -69,16 +84,13 @@ fn ci_repo_root_shell() -> String {
 fn ci_release_build_line() -> String {
   concat(
     concat(
-      "cargo build -p v1-compiler --release --features ",
+      "\"$CARGO_HOME/bin/cargo\" build -p v1-compiler --release --features ",
       ci_release_features
     ),
     " --bins"
   )
 }
 
-// Two-tier cold retry on fleet EAGAIN (#4978 / #5138): first CARGO_BUILD_JOBS=1 with
-// sccache (populate daemon when it works); if sccache still cannot spawn rustc, drop
-// RUSTC_WRAPPER and compile direct. Workflow policy — NOT generic shell transport.
 fn ci_cargo_eagain_retry_core(command: String) -> String {
   concat(
     concat(
@@ -88,7 +100,7 @@ fn ci_cargo_eagain_retry_core(command: String) -> String {
     concat(
       concat(
         concat(
-          "  if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error' \"$BUILD_LOG\"; then\n",
+          concat(concat("  if grep -qiE '", infra_retry_grep_alternation()), "' \"$BUILD_LOG\"; then\n"),
           "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
         ),
         concat(
@@ -99,7 +111,7 @@ fn ci_cargo_eagain_retry_core(command: String) -> String {
       concat(
         concat(
           concat(
-            "      if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache:' \"$RETRY_LOG\"; then\n",
+            concat(concat("      if grep -qiE '", infra_retry_grep_alternation()), "' \"$RETRY_LOG\"; then\n"),
             "        echo \"::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER\"\n"
           ),
           concat("        env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 ", concat(command, " || exit 1\n"))
@@ -120,12 +132,10 @@ fn ci_cargo_eagain_retry_core(command: String) -> String {
   )
 }
 
-// ci.yml workflow step (runs under bash — pipefail is available).
 fn ci_cargo_eagain_retry_script(command: String) -> String {
   concat("set -o pipefail\n", ci_cargo_eagain_retry_core(command: command))
 }
 
-// claim_executor / shell.Exec path (`sh -c` — delegate to bash for pipefail).
 fn ci_cargo_eagain_retry_shell_exec(command: String) -> String {
   concat(
     concat("bash -o pipefail <<'__GUNBC_CI_RETRY__'\n", ci_cargo_eagain_retry_core(command: command)),
@@ -133,11 +143,6 @@ fn ci_cargo_eagain_retry_shell_exec(command: String) -> String {
   )
 }
 
-// The artifacts the release bootstrap build MUST produce — the prebuilt release bins the floor
-// then consumes WITHOUT a rebuild: `claim_executor` (the scheduler/executor the floor runs) and
-// `gunbc` (the compiler the host gates invoke via tools.host_prelude). `cargo build … --bins`
-// (ci_release_build_line) produces both; declaring them here is the single authority the
-// verification generator derives the exists+freshness checks from (DESIGN §3/§5).
 fn ci_release_artifact(name: String) -> BuildArtifact {
   BuildArtifact {
     path: Concat { parts: [var_ref(name: "ROOT"), lit(text: concat("/target/release/", name))] },
@@ -150,30 +155,20 @@ data ci_floor_required_artifacts: List<BuildArtifact> = [
   ci_release_artifact(name: "gunbc")
 ]
 
-// Source packages whose `.rs` files and manifests determine the `claim_executor`/`gunbc` build
-// outputs. `stage0` is the binary package; `stage0_core` and `stage0_emit_core` are the generated
-// crates it depends on. `src/v1/tests/` (v1-compiler-tests) is intentionally excluded — it is a
-// test-only workspace member not in `claim_executor`/`gunbc`'s dep graph; touching a test helper
-// does not trigger a rebuild, so scanning it produces a freshness false-positive against a
-// legitimately-cached binary (DESIGN §5: the check must not fire for a correct no-rebuild).
-fn ci_build_source_roots() -> List<ShellWord> {
-  [
-    Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src/v1/stage0")] },
-    Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src/v1/stage0_core")] },
-    Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src/v1/stage0_emit_core")] }
-  ]
+fn artifact_shell_path(a: BuildArtifact) -> String {
+  concat(concat("\"$ROOT/target/release/", a.name), "\"")
 }
 
-// Derived verification: existence (primary) then source-relative freshness (secondary) for each
-// declared artifact, appended after the build so a non-zero verification exit fails the step.
 fn ci_floor_build_verify_script() -> String {
-  verifications_script(produces: ci_floor_required_artifacts, roots: ci_build_source_roots(), patterns: ["*.rs", "Cargo.toml", "Cargo.lock"])
+  let bin = claim_executor_bin_shell()
+  let paths = fold(
+    ci_floor_required_artifacts,
+    init: "",
+    f: (acc, a) => concat(acc, concat(" ", artifact_shell_path(a: a)))
+  )
+  concat(concat(concat(bin, " --verify-build-artifacts"), paths), "\n")
 }
 
-// Release bootstrap build + declared-artifact verification + sccache stats (ci.yml workflow
-// step). Success is DERIVED, not exit-code-only: the build can exit 0 with no/stale artifact
-// (sccache false cache-hit) — `ci_floor_build_verify_script` makes that fail closed before the
-// floor runs a phantom binary (DESIGN §5).
 fn ci_release_build_script() -> String {
   concat(
     concat("ROOT=", ci_repo_root_shell(), "\n"),
@@ -185,26 +180,6 @@ fn ci_release_build_script() -> String {
       )
     )
   )
-}
-
-// Rust-monolith gate argv lines (workflow policy lives here, not in dispatch_shell).
-fn ci_rust_gate_fmt_command() -> String {
-  "cargo fmt --all --check"
-}
-
-fn ci_rust_gate_clippy_command() -> String {
-  "cargo clippy --all-targets -- -D warnings"
-}
-
-fn ci_rust_gate_test_command() -> String {
-  // Two name filters passed to libtest after `--` (a test runs if its name
-  // contains EITHER): the recorded-fixture purity suite + the resolve_expr_types
-  // redundant-re-traversal structural guard (the #5146-class O(2^depth) regression
-  // guard). The rest of v1-compiler-tests carries pre-existing reds, so CI pins the
-  // known-green subset. The `--` is required: `cargo test` accepts a single
-  // positional TESTNAME, so a second bare filter errors ("unexpected argument");
-  // multiple substring filters must follow `--` to reach the test binary.
-  "cargo test -p v1-compiler-tests -- interp_recorded_fixture wet_hermetic resolve_expr_types_retraversal"
 }
 
 fn claim_executor_bin_shell() -> String {
@@ -225,20 +200,6 @@ fn git_fetch_script(policy: DiffPolicy) -> String {
   )
 }
 
-// `claim_executor` takes ONLY `--source-root` (to resolve the plan) — it has no
-// `--scan-dir` flag and hard-errors on any unknown argument. Scan dirs are carried
-// SOLELY by the plan (`ci_floor_plan` discovery batch `scan_dirs` from
-// `gunbc.ci_layer_roots.witness_discovery_scan_dirs` → `RunnableDiscoveryBatch.
-// scan_dirs`), the single authority for that derivation (DESIGN §3); emitting them
-// on the argv too would be a redundant, fail-closed mis-wire (DESIGN §5).
-//
-// Layer roots: `gunbc.ci_layer_roots.witness_layer_roots` (§3 single authority).
-
-// The dependency-ordered scheduler plan (the single floor topology, DESIGN §3) and
-// the host entry the executor evaluates. The scheduler — NOT a flat claim_batch +
-// gates pair — is the default CI runtime: both the discovery corpus and the gates
-// are scheduler plan nodes (`src/v2/workflow/ci_floor_plan.dag`), run dependency-ordered
-// and parallel-where-independent, fail-closed (DESIGN §4/§5).
 data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
 data floor_plan_function: String = "gunbc_ci_floor_batches"
 
@@ -268,3 +229,40 @@ fn gunbc_ci_run_script(spec: CiSpec) -> String {
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
   gunbc_ci_run_script(spec: spec)
 }
+
+fn gunbc_ci_rust_gate_invoke() -> String {
+  ci_cargo_eagain_retry_script(
+    command: concat(
+      concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags(roots: witness_layer_roots)),
+      " --entry dsl/tools/rust_gates_ci.dag --function main"
+    )
+  )
+}
+
+fn gunbc_ci_rust_job_run() -> String {
+  concat(
+    concat(ci_release_build_script(), "\n"),
+    concat(
+      concat(git_fetch_script(policy: gunbc_ci_spec.diff_policy), "\n"),
+      gunbc_ci_rust_gate_invoke()
+    )
+  )
+}
+
+fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
+  concat(
+    concat(
+      concat(
+        concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags(roots: witness_layer_roots)),
+        concat(" --entry ", stage.entry)
+      ),
+      concat(" --function ", stage.function)
+    ),
+    "\n"
+  )
+}
+
+fn gunbc_ci_deploy_run_script(stage: DeployStage) -> String {
+  concat(concat(ci_release_build_script(), "\n"), gunbc_ci_deploy_invoke(stage: stage))
+}
+

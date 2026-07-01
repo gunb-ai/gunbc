@@ -1,0 +1,124 @@
+module v2.test.manual.model_core_wave1_anchor
+
+import v2.std.algebra { length }
+import v2.std.logic {
+  Bool,
+  bool_encoding_fact_node,
+  bool_node,
+  bool_primitive_facts,
+  bool_primitive_facts_node,
+  bool_width_fact_node
+}
+import v2.std.model_core {
+  ModelCoreFactAxisEncoding,
+  ModelCoreFactAxisSignedness,
+  ModelCoreFactAxisWidth,
+  ModelCoreWave1BoolBoundedLatticeIdentities,
+  ModelCoreWave1BoolComplementBounds,
+  ModelCoreWave1BoolComplementInvolution,
+  ModelCoreWave1BoolDistributivity,
+  model_core_wave1_bool_fact_lookup,
+  model_core_wave1_bool_inhabitance,
+  model_core_wave1_bool_law_obligation,
+  model_core_wave1_bool_primitive_bundle,
+  wave1_model_core,
+  wave1_void
+}
+import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.std.witness { Holds, Violates }
+fn model_core_wave1_payload_fail_node() -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: ^model_core_wave1_payload_fail_atom } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn wave1_model_core_bool_width_fact_holds() -> Bool {
+  match model_core_wave1_bool_fact_lookup(
+    facts: bool_primitive_facts,
+    axis: discriminant(v: ModelCoreFactAxisWidth {})
+  ) {
+    Holds { value } => value == bool_width_fact_node(width: bool_primitive_facts.width)
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn wave1_model_core_bool_encoding_fact_holds() -> Bool {
+  match model_core_wave1_bool_fact_lookup(
+    facts: bool_primitive_facts,
+    axis: discriminant(v: ModelCoreFactAxisEncoding {})
+  ) {
+    Holds { value } => value == bool_encoding_fact_node(encoding: bool_primitive_facts.encoding)
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn wave1_model_core_bool_unbound_axes_fail_closed() -> Bool {
+  match model_core_wave1_bool_fact_lookup(
+    facts: bool_primitive_facts,
+    axis: discriminant(v: ModelCoreFactAxisSignedness {})
+  ) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+fn wave1_model_core_primitives_contract() -> Bool {
+  wave1_model_core().primitives == [model_core_wave1_bool_primitive_bundle()] &&
+  model_core_wave1_bool_primitive_bundle().substrate_carrier ==
+    bool_primitive_facts_node(facts: bool_primitive_facts) &&
+  wave1_model_core_bool_width_fact_holds() &&
+  wave1_model_core_bool_encoding_fact_holds() &&
+  wave1_model_core_bool_unbound_axes_fail_closed()
+}
+
+fn wave1_model_core_inhabitance_contract() -> Bool {
+  wave1_model_core().inhabitance == [model_core_wave1_bool_inhabitance()]
+}
+
+fn wave1_model_core_laws_contract() -> Bool {
+  wave1_model_core().laws == [
+    model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolBoundedLatticeIdentities),
+    model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolDistributivity),
+    model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementInvolution),
+    model_core_wave1_bool_law_obligation(key: ModelCoreWave1BoolComplementBounds),
+  ]
+}
+
+fn wave1_model_core_payload_contract_holds() -> Bool {
+  let core = wave1_model_core()
+  (wave1_void() == core) &&
+  (length(xs: core.primitives) == 1) &&
+  (length(xs: core.inhabitance) == 1) &&
+  (length(xs: core.laws) == 4) &&
+  (length(xs: core.partiality.operations) == 0) &&
+  wave1_model_core_primitives_contract() &&
+  wave1_model_core_inhabitance_contract() &&
+  wave1_model_core_laws_contract()
+}
+
+fn wave1_model_core_payload_claim_input(ok: Bool) -> Node {
+  if ok {
+    bool_node()
+  } else {
+    model_core_wave1_payload_fail_node()
+  }
+}
+
+data claim_model_core_wave1_payload_contract: TestClaim = CompilesClaim {
+  label: "T-33 ModelCore wave1 payload is Bool primitive + BooleanAlgebra inhabitance + three law obligations",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: wave1_model_core_payload_claim_input(ok: wave1_model_core_payload_contract_holds()),
+  expected_value: bool_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

@@ -1,8 +1,3 @@
-// Scope: PY-L1-STATIC-STRUCTURAL — pyright (Worksheet A) and mypy (Worksheet B) static
-//   structural authorities alongside CPython compile and runtime exec
-// Authority: Modeling DFS Arbiter ruling proud-fox-405 (msg_41813c03).
-// Fixtures: src/v2/lens/leaf_model_verification.dag (python_l1_static_* / python_l1_static_mypy_*).
-
 module v2.test.language_model.python_l1_static
 
 import v2.lens.leaf_model_verification {
@@ -48,9 +43,6 @@ fn python_l1_static_claim_bool_atom(b: Bool) -> Node {
   }
 }
 
-// The fixture pair binds the L1 static claim id and the int surface-spelling fact; both
-// cases construct BlockingForRung invocations (fail-closed for the rung) carrying the
-// pyright PROFILE reference (pyright_profile_l1_id, distinct from the verdict tool_id).
 fn python_l1_static_fixture_pair_wired() -> Bool {
   python_l1_static_fixture().claim_id == leaf_model_claim_python_l1_static_return_type
     && python_l1_static_fixture().surface_spelling_fact == ^python_surface_spelling_int
@@ -74,9 +66,6 @@ data claim_python_l1_static_fixture_pair_wired: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-// Polarity is structural: the happy case's reconstructed verdict can only be
-// StaticAnalysisAccepted and the falsification case's can only be a blocking
-// StaticAnalysisRejected carrying pyright tool_id + reportReturnType diagnostic.
 fn python_l1_static_expected_verdicts_wired() -> Bool {
   match leaf_model_python_static_happy_verdict(c: python_l1_static_fixture().happy) {
     StaticAnalysisAccepted => true
@@ -99,11 +88,6 @@ data claim_python_l1_static_expected_verdicts_wired: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-// --- Fixture-scale roster claims (PY-L1 widening) ---
-// The same wiring + polarity invariants the return-type pair proves above are asserted for
-// each additional roster fixture, parameterized over the pair so the structural guarantees
-// (BlockingForRung role, profile ref distinct from tool id, int surface anchor) are checked
-// once per diagnostic class. Each pair consumes the SAME shared static-analysis carriers.
 fn python_l1_static_roster_pair_wired(
   p: LeafModelPythonStaticFixturePair,
   expected_claim_id: Symbol
@@ -122,9 +106,6 @@ fn python_l1_static_roster_pair_wired(
     && leaf_model_python_static_falsification_invocation(c: p.falsification).tool_profile_ref == ^pyright_profile_l1_id
 }
 
-// Polarity is structural per pair: happy reconstructs to StaticAnalysisAccepted, the
-// falsification to a blocking StaticAnalysisRejected carrying pyright tool_id + the
-// pair's modeled diagnostic code.
 fn python_l1_static_roster_pair_verdicts_wired(
   p: LeafModelPythonStaticFixturePair,
   expected_diag_code: Symbol
@@ -186,7 +167,6 @@ data claim_python_l1_static_missing_import_verdicts_wired: TestClaim = EqualsCla
   classification: TestClassification { tier: Tier1, layer: Boundary }
 }
 
-// Worksheet B — same claim id and shared fixture sources; distinct mypy profile/tool namespace.
 fn python_l1_static_mypy_fixture_pair_wired() -> Bool {
   python_l1_static_mypy_fixture().claim_id == leaf_model_claim_python_l1_static_return_type
     && python_l1_static_mypy_fixture().surface_spelling_fact == ^python_surface_spelling_int

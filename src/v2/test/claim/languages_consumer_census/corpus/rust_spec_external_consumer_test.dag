@@ -1,0 +1,11 @@
+module v2.test.languages_consumer_census.corpus.rust_spec_external_consumer
+
+import v2.lens.languages_consumer_census { languages_consumer_census_live_has_external_consumer }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data rust_spec_decl: String = "rust_spec"
+
+test fn corpus_rust_spec_has_external_consumer() -> Bool {
+  languages_consumer_census_live_has_external_consumer(decl_name: rust_spec_decl)
+}

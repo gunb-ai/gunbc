@@ -1,105 +1,28 @@
-// ctrl/pr_digests.dag — PR digest helpers (status / conflicts / merge-readiness / URL extraction).
-//
-// Current authority (consumer-side): ctrl/scripts/session-dashboard/{pr_attached_urls,
-// pr_ci_digest, pr_conflict_digest, pr_merge_ready_digest, pr_rest_fallback}.mjs
-//
-// STAGED → AUTHORITY trigger (single event, per single-authority/boundary
-// discipline — DESIGN.md §3): the
-// ctrl PR cut-over deleting ONLY WHOLE .mjs files whose ENTIRE function
-// set is fully modeled in this brief's narrowed scope. Per single-
-// authority discipline, the unit of authority is the .mjs FILE, not
-// a function body — partial-file cut-over (keep the .mjs, delete some
-// functions) would leave TS and .dag as co-authorities and violate
-// single-authority discipline. With the narrowed service surface, only TWO files
-// qualify:
-//   - pr_attached_urls.mjs        (extract_attached_urls fully covers)
-//   - pr_rest_fallback.mjs        (classify_rest_fallback fully covers)
-// The remaining 3 (pr_ci_digest.mjs, pr_conflict_digest.mjs,
-// pr_merge_ready_digest.mjs) stay TS-authoritative as WHOLE FILES
-// because at least one of their functions is unmodeled here (CI /
-// conflict / mergeability branches). They become cut-over-eligible
-// only when a follow-up Phase 1.5 PR models the remaining functions
-// and a dedicated ctrl-side cut-over PR fires for those files. The
-// gunbc-side render_pr_summary_line and merge_readiness_verdict in
-// the modeled service are net-additive .dag-only authority (no
-// 1-to-1 .mjs replacement); their existence does NOT mark any .mjs
-// file as cut-over-eligible on its own. Operator BLOCKING fixes
-// 2026-05-12 at worker brief :47 + :50.
-// Trio convergence below is the gating precondition that authorizes
-// cut-over dispatch — it is NOT itself the authority flip:
-//   (a) digest source-fact authority (consuming dsl/extdeps/github/pulls.dag PullRequest
-//       as fetched source-of-record; if a narrow GitHub-domain digest-summary record
-//       is needed, lands at dsl/extdeps/github/pull_digest.dag importing pulls.dag —
-//       NOT as new fields on PullRequest itself per Director/Emission-Targets ratification
-//       2026-05-12),
-//   (b) gunbc-owned render projection over dsl/std/render.dag (proposed
-//       name dsl/gunbc/digest_render.dag); any Markdown-specific wrapper
-//       is a separate authority decision, not assumed live,
-//   (c) named parity-harness gate green
-
 module ctrl.pr_digests
 
 import extdeps.github.pulls { PullRequest, PullReview, ReviewComment }
 import extdeps.github.errors { GitHubErrorShape }
-import std.types { Url }
+import std.types { NonEmptyStr }
 
-// Anchor: verdict is a ctrl-side aggregate over existing GitHub pull
-// source facts (`PullRequest.state`, `draft`, `merged_at`, and each
-// `PullReview.state` string from `github.Pulls.ListReviews`); it does not
-// declare new extdeps fields.
-//
-// 🟡 STAGED — coproduct dissolution status (`dsl/ctrl/README.md`
-// §Practice-4 receipts). Mechanical classification marker
-// for coproduct dissolution status (not prose-only).
-// Named trigger: follow-up Phase 1.5 + extdeps carriers when CI/conflict
-// mergeability reasons must join this verdict (worker brief
-// `docs/briefs/r4-ctrl-migration-pr-digests-worker.md`); ctrl cut-over PR for
-// `pr_merge_ready_digest.mjs` once fully modeled. `Ready` / `NotReady` reasons
-// stay drawn only from existing `PullRequest` / `PullReview` fields until then.
 type MergeReadinessVerdict
   = Ready
   | NotReady { first_reason: String, more_reasons: List<String> }
 
-// Anchor: attaches to `std.types.Url`; URLs are extracted from text fields on
-// `PullRequest`, `PullReview`, and `ReviewComment` carriers in
-// `extdeps.github.pulls` (`ListReviews` / `ListComments` outputs).
 type AttachedUrl {
-  url: Url
+  url: NonEmptyStr
   container: AttachedUrlContainer
   context: AttachedUrlTextContext
 }
 
-// 🟡 STAGED — coproduct dissolution status (`dsl/ctrl/README.md`
-// §Practice-4 receipts). Mechanical classification marker.
-// Variants align to imported body carriers: `PullRequest.body`, each
-// `PullReview.body`, each `ReviewComment.body` from `github.Pulls.ListReviews` /
-// `github.Pulls.ListComments` respectively.
-// Named trigger: extdeps `pulls.dag` gains list output for **issue-level** PR
-// conversation comments (`ListIssueComments` or equivalent); then add
-// `IssueCommentBody` (or equivalent) only in this file (cost-of-change 1).
-// Line-level review comments are **in scope** today via `ReviewComment`.
 type AttachedUrlContainer
   = PrBody
   | PullReviewBody
   | ReviewCommentBody
 
-// 🟡 STAGED — coproduct dissolution status, YELLOW scaffold
-// (`dsl/ctrl/README.md` §Practice-4 receipts). Mechanical classification marker.
-// Named trigger: richer Markdown context (e.g. fenced blocks) is modeled
-// structurally and consumers migrate off the `Prose` / `InlineCode` split.
 type AttachedUrlTextContext
   = Prose
   | InlineCode
 
-// 🟢 TERMINAL — coproduct dissolution status, GREEN terminal
-// (`dsl/ctrl/README.md` §Practice-4 receipts). Mechanical classification marker.
-// Ledger (dissolution patterns 1–4 at this declaration): (1) fact placement —
-// not cheaper than this sum (single ctrl classifier returning this coproduct).
-// (2) variant-as-data — three arms are semantically distinct failure classes for
-// GraphQL-vs-REST fallback, not relabelings of one fact. (3) numeric/parametric
-// merge — N/A. (4) scatter — N/A (one consumer). Dissolution when ctrl emission
-// consumes richer `GitHubErrorShape` evidence and this enum grows or retires;
-// until then add variants only in this file.
 type RestFallbackReason
   = GraphqlIncomplete
   | GraphqlRateLimited

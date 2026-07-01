@@ -4,6 +4,7 @@
 use self::VariantEncoding::*;
 use self::VariantNaming::*;
 use self::WireFormat::*;
+pub use crate::std_decl_ref::DeclarationRef;
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
@@ -13,24 +14,15 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub type DeclarationRef = Rc<FreeMonoid<Nat>>;
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum VariantNaming {
     AsAuthored,
     SnakeCase,
     ScreamingSnakeCase,
-    StripPrefixAndSnakeCase {
-        prefix: Rc<FreeMonoid<Nat>>,
-    },
-    StripSuffixAndSnakeCase {
-        suffix: Rc<FreeMonoid<Nat>>,
-    },
-    StripPrefixSuffixAndSnakeCase {
-        prefix: Rc<FreeMonoid<Nat>>,
-        suffix: Rc<FreeMonoid<Nat>>,
-    },
+    StripPrefixAndSnakeCase { prefix: String },
+    StripSuffixAndSnakeCase { suffix: String },
+    StripPrefixSuffixAndSnakeCase { prefix: String, suffix: String },
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -40,7 +32,7 @@ pub enum VariantEncoding {
         naming: Rc<VariantNaming>,
     },
     InternallyTaggedObject {
-        tag_field: Rc<FreeMonoid<Nat>>,
+        tag_field: String,
         naming: Rc<VariantNaming>,
     },
     UntaggedVariant,
@@ -59,7 +51,7 @@ impl VariantEncoding {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CoproductWireContract {
-    pub coproduct: Box<DeclarationRef>,
+    pub coproduct: Rc<DeclarationRef>,
     pub encoding: Rc<VariantEncoding>,
 }
 
@@ -77,5 +69,7 @@ pub enum WireFormat {
     Text,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Json;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Text;

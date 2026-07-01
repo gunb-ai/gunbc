@@ -1,47 +1,13 @@
-// std/filesystem/types.dag — filesystem entry taxonomy (OS-agnostic reduction).
-//
-// The thin, dependency-free taxonomy home, mirroring std/os/types.dag: the std
-// layer holds the OS-AGNOSTIC shape every consumer reasons about, NOT anchored
-// to any single filesystem. std.os.types.FileSystemSemantics (`Posix | Ntfs |
-// Apfs | …`) is itself a coproduct OVER filesystems; EntryKind is the matching
-// discipline for "what a path points to." Each filesystem's CITED native
-// taxonomy + its mapping into these kinds lives down-layer, keyed to
-// FileSystemSemantics:
-//
-//   extdeps/filesystem/posix.dag  — IEEE Std 1003.1-2017 st_mode S_IF* (7 native
-//                                   types: REG/DIR/LNK/IFO/SOCK/CHR/BLK)
-//   extdeps/filesystem/ntfs.dag   — [MS-FSCC] attributes + reparse tags (no
-//                                   fifo/socket/device-as-files; adds junctions)
-//
-// The reduction is real, not a POSIX rename: NTFS has no S_IFSOCK/S_IFIFO/
-// S_IFCHR/S_IFBLK entries and adds the mount-point junction, so the agnostic
-// `Other` is the genuine "exists but none of the above" across both.
-//
-// This is a thin module (zero imports) on purpose — the carrier module
-// std.filesystem (FileEntry + readability policy + std.encoding) imports these
-// kinds, so the taxonomy stays usable without dragging the encoding-heavy
-// carrier into a consumer that only needs the kinds (e.g. the per-fs
-// realizations and their by-execution witnesses).
-//
-// DISSOLUTION TRIGGER (named, per §6): when the live probe path needs to
-// classify by reading a real stat/attribute result, the (FileSystemSemantics,
-// native-type) → EntryKind dispatch graduates into a hub module
-// (extdeps/filesystem/filesystem.dag), mirroring extdeps/os/os.dag's
-// product→surface dispatch. Until a runtime probe consumes it, the per-fs
-// mapping functions are the realization and no hub is minted.
-
 module std.filesystem.types
 
-// "What can a path point to?" — the agnostic kinds (see per-fs realizations).
 type EntryKind
-  = RegularFile                    // a data container (every fs)
-  | Directory                      // a namespace container (every fs)
-  | Symlink                        // path indirection (posix S_IFLNK / ntfs symlink reparse)
-  | Missing                        // probe absence (ENOENT-class; orthogonal to storage layout)
-  | Other                          // exists but none of the above — fs-specific special
+  = RegularFile
+  | Directory
+  | Symlink
+  | Missing
+  | Other
 
-// "What does a symlink resolve to?" (only meaningful when kind = Symlink)
 type SymlinkTarget
   = TargetFile
   | TargetDir
-  | Broken                         // dangling symlink
+  | Broken

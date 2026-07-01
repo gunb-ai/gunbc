@@ -1,0 +1,117 @@
+module product.budget_tree
+
+import std.measure { ByteSize, byte_size, measure_add, measure_le, Memory, One }
+import extdeps.accounting.budget {
+  Appropriation, LineItem, BudgetBalance, Surplus, Balanced, Deficit,
+  line_items_total, within_appropriation, budget_balance,
+  BudgetingMethod, ZeroBased,
+  AdmissionState, admit_all
+}
+
+type BudgetPriority = Guaranteed | Burstable | BestEffort
+
+type BudgetClaim {
+  item: LineItem<Memory, One>
+  priority: BudgetPriority
+}
+
+type BudgetNode {
+  name: String
+  appropriation: Appropriation<Memory, One>
+  claims: List<BudgetClaim>
+  children: List<BudgetNode>
+}
+
+data budget_tree_method: BudgetingMethod = ZeroBased
+
+fn claim_items(claims: List<BudgetClaim>) -> List<LineItem<Memory, One>> {
+  map(claims, c => c.item)
+}
+
+fn child_as_line_item(child: BudgetNode) -> LineItem<Memory, One> {
+  LineItem { purpose: child.name, amount: child.appropriation.ceiling }
+}
+
+fn node_commitments(node: BudgetNode) -> List<LineItem<Memory, One>> {
+  concat(claim_items(claims: node.claims), map(node.children, child_as_line_item))
+}
+
+fn node_balance(node: BudgetNode) -> BudgetBalance {
+  budget_balance(appropriation: node.appropriation, items: node_commitments(node: node))
+}
+
+fn node_conserves_local(node: BudgetNode) -> Bool {
+  within_appropriation(appropriation: node.appropriation, items: node_commitments(node: node))
+}
+
+fn node_conserves(node: BudgetNode) -> Bool {
+  node_conserves_local(node: node) && all(node.children, c => node_conserves(node: c))
+}
+
+type BudgetChild =
+    BudgetChildFound { node: BudgetNode }
+  | BudgetChildMissing
+
+fn budget_child_named(node: BudgetNode, name: String) -> BudgetChild {
+  fold(node.children, init: BudgetChildMissing, f: fn(acc, c) {
+    match acc {
+      BudgetChildFound { node: found } => BudgetChildFound { node: found }
+      BudgetChildMissing => if c.name == name { BudgetChildFound { node: c } } else { BudgetChildMissing }
+    }
+  })
+}
+
+fn admit_claims(node: BudgetNode) -> AdmissionState<Memory, One> {
+  admit_all(appropriation: node.appropriation, candidates: claim_items(claims: node.claims))
+}
+
+type Reconciliation =
+    AllSatisfied { realized: List<BudgetClaim> }
+  | Evicted { kept: List<BudgetClaim>, evicted: List<BudgetClaim> }
+  | GuaranteedShortfall { shortfall: ByteSize }
+
+fn claims_of_priority(claims: List<BudgetClaim>, p: BudgetPriority) -> List<BudgetClaim> {
+  filter(claims, c => c.priority == p)
+}
+
+fn ordered_by_priority(claims: List<BudgetClaim>) -> List<BudgetClaim> {
+  concat(
+    claims_of_priority(claims: claims, p: Guaranteed),
+    concat(
+      claims_of_priority(claims: claims, p: Burstable),
+      claims_of_priority(claims: claims, p: BestEffort)
+    )
+  )
+}
+
+type AdmitState {
+  used: ByteSize
+  kept: List<BudgetClaim>
+  evicted: List<BudgetClaim>
+}
+
+fn reconcile(node: BudgetNode, actual: ByteSize) -> Reconciliation {
+  let ordered = ordered_by_priority(claims: node.claims)
+  let final_state = fold(
+    ordered,
+    init: AdmitState { used: byte_size(count: 0), kept: [], evicted: [] },
+    f: (st, c) =>
+      if measure_le(a: measure_add(a: st.used, b: c.item.amount), b: actual) {
+        AdmitState {
+          used: measure_add(a: st.used, b: c.item.amount),
+          kept: concat(st.kept, [c]),
+          evicted: st.evicted
+        }
+      } else {
+        AdmitState { used: st.used, kept: st.kept, evicted: concat(st.evicted, [c]) }
+      }
+  )
+  let evicted_guaranteed = claims_of_priority(claims: final_state.evicted, p: Guaranteed)
+  return if evicted_guaranteed.length() > 0 {
+    GuaranteedShortfall { shortfall: line_items_total(items: claim_items(claims: evicted_guaranteed)) }
+  } else if final_state.evicted.length() > 0 {
+    Evicted { kept: final_state.kept, evicted: final_state.evicted }
+  } else {
+    AllSatisfied { realized: final_state.kept }
+  }
+}

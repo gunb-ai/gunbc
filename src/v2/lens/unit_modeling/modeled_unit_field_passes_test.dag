@@ -1,10 +1,3 @@
-// Scope: B1 unit-modeling lens — PASS/clean witness. The SAME unit-token field
-//        (`ram_bytes`) attached to a carrier (`ByteSize`, i.e. NOT a bare kernel
-//        `Int` leaf) MUST pass (gate Accepted). Pairs with
-//        flat_scalar_unit_leaf_flagged.dag — identical field name, only the leaf
-//        type differs — proving the lens discriminates on the resolved type, so
-//        it neither rubber-stamps nor false-positives a correctly-modeled field.
-
 module v2.test.lens_unit_modeling.modeled_unit_field_passes
 
 import v2.lens.unit_modeling { unit_modeling_gate }
@@ -30,16 +23,12 @@ import v2.std.verification {
   manual_claim_anchor
 }
 
-// A field target whose resolved type is the `ByteSize` carrier — NOT the bare
-// kernel `Int` binding. `edge_field_type_name` returns `^ByteSize`, which is not
-// `^dag_binding_type_int`, so the leaf is correctly modeled and not a violation.
 data bytesize_carrier_target: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^ByteSize } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-// Same `ram_bytes` field name as the flag witness — but attached to a carrier.
 data modeled_unit_field_input: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [

@@ -1,7 +1,4 @@
-// Status: wedge — evaluate manual_corpus_node_subject_rows into CorpusEvalReport.
-
 module v2.test.workflow.testclaim_corpus_runner
-
 
 import v2.compiler.eval {
   TestClaimEvalSubject,
@@ -41,11 +38,10 @@ import v2.std.verification {
 import v2.test.manual.manual_corpus_roster {
   manual_corpus_node_subject_rows
 }
-// `UnifiedTestClaim` remains a descriptor-only registration row in `std.verification`.
+
 type BoolWitnessRun
   = BoolWitnessRuntimeVerdict { witness: BoolWitness, result: Bool }
   | BoolWitnessQueuedForHostTransport { witness: BoolWitness }
-
 
 type UnifiedClaimRun
   = NodeCorpusRun { run: TestClaimRun<Node, RuntimeValue> }
@@ -53,22 +49,18 @@ type UnifiedClaimRun
   | NodeCorpusEmitVsEvalDeferredRun { claim: TestClaim, target: TargetModel }
   | BoolWitnessRunReceipt { run: BoolWitnessRun }
 
-
 type CorpusEvalEntry {
   run: UnifiedClaimRun
 }
-
 
 type CorpusEvalReport {
   entries: List<CorpusEvalEntry>
 }
 
-
 type TestClaimSubjectRosterUnsupportedRow {
   subject_family: Symbol
   reason: Symbol
 }
-
 
 type TestClaimSubjectRosterFamilyReceipt {
   subject_family: Symbol
@@ -89,7 +81,6 @@ data testclaim_subject_roster_unsupported_rows: List<TestClaimSubjectRosterUnsup
   }
 ]
 
-
 fn corpus_entry_label(e: CorpusEvalEntry) -> String {
   match e.run {
     NodeCorpusRun { run: node_run } =>
@@ -103,11 +94,9 @@ fn corpus_entry_label(e: CorpusEvalEntry) -> String {
   }
 }
 
-
 fn verdict_tally_add_deferred_row(t: VerdictTally) -> VerdictTally {
   VerdictTally { pass: t.pass, fail: t.fail, deferred: Succ { prev: t.deferred } }
 }
-
 
 fn bool_witness_run_witness(run: BoolWitnessRun) -> BoolWitness {
   match run {
@@ -117,7 +106,6 @@ fn bool_witness_run_witness(run: BoolWitnessRun) -> BoolWitness {
       witness
   }
 }
-
 
 fn unified_bool_witness_run_tally(t: VerdictTally, run: BoolWitnessRun) -> VerdictTally {
   match run {
@@ -130,11 +118,9 @@ fn unified_bool_witness_run_tally(t: VerdictTally, run: BoolWitnessRun) -> Verdi
   }
 }
 
-
 fn queued_bool_witness_run(witness: BoolWitness) -> BoolWitnessRun {
   BoolWitnessQueuedForHostTransport { witness: witness }
 }
-
 
 fn corpus_report_tally_add_unified_run(t: VerdictTally, run: UnifiedClaimRun) -> VerdictTally {
   match run {
@@ -149,38 +135,31 @@ fn corpus_report_tally_add_unified_run(t: VerdictTally, run: UnifiedClaimRun) ->
   }
 }
 
-
 fn corpus_report_tally(r: CorpusEvalReport) -> VerdictTally {
   fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
     corpus_report_tally_add_unified_run(t: acc, run: e.run)
   })
 }
 
-
 fn corpus_report_pass_count(r: CorpusEvalReport) -> Nat {
   corpus_report_tally(r: r).pass
 }
-
 
 fn corpus_report_fail_count(r: CorpusEvalReport) -> Nat {
   corpus_report_tally(r: r).fail
 }
 
-
 fn corpus_report_deferred_count(r: CorpusEvalReport) -> Nat {
   corpus_report_tally(r: r).deferred
 }
-
 
 fn corpus_report_total(r: CorpusEvalReport) -> Nat {
   verdict_tally_total(t: corpus_report_tally(r: r))
 }
 
-
 fn list_length_nat<T>(xs: List<T>) -> Nat {
   fold(xs, init: Zero, f: fn(acc, _) { Succ { prev: acc } })
 }
-
 
 fn nat_eq(a: Nat, b: Nat) -> Bool {
   match nat_compare(a: a, b: b) {
@@ -190,13 +169,11 @@ fn nat_eq(a: Nat, b: Nat) -> Bool {
   }
 }
 
-
 fn corpus_entry_from_node_runtime_value_run(
   run: TestClaimRun<Node, RuntimeValue>
 ) -> CorpusEvalEntry {
   CorpusEvalEntry { run: NodeCorpusRun { run: run } }
 }
-
 
 fn corpus_entries_from_node_runtime_value_runs(
   runs: List<TestClaimRun<Node, RuntimeValue>>
@@ -204,13 +181,11 @@ fn corpus_entries_from_node_runtime_value_runs(
   map(runs, fn(run) { corpus_entry_from_node_runtime_value_run(run: run) })
 }
 
-
 fn run_node_runtime_value_subjects(
   subjects: List<TestClaimEvalSubject<Node>>
 ) -> List<TestClaimRun<Node, RuntimeValue>> {
   map(subjects, fn(subject) { run_test_claim(subject: subject) })
 }
-
 
 fn node_corpus_claim_from_subject(subject: TestClaimEvalSubject<Node>) -> UnifiedTestClaim {
   NodeCorpus {
@@ -219,23 +194,19 @@ fn node_corpus_claim_from_subject(subject: TestClaimEvalSubject<Node>) -> Unifie
   }
 }
 
-
 fn manual_node_corpus_unified_claims() -> List<UnifiedTestClaim> {
   map(manual_corpus_node_subject_rows, fn(subject) { node_corpus_claim_from_subject(subject: subject) })
 }
 
-
 fn unified_corpus_eval_pilot_claims() -> List<UnifiedTestClaim> {
   manual_node_corpus_unified_claims()
 }
-
 
 fn corpus_entry_from_queued_bool_witness(witness: BoolWitness) -> CorpusEvalEntry {
   CorpusEvalEntry {
     run: BoolWitnessRunReceipt { run: queued_bool_witness_run(witness: witness) }
   }
 }
-
 
 fn manual_node_corpus_unified_claim_projection_holds() -> Bool {
   fold(
@@ -245,11 +216,9 @@ fn manual_node_corpus_unified_claim_projection_holds() -> Bool {
   )
 }
 
-
 fn corpus_entry_from_unresolved_node_corpus_claim(claim: TestClaim) -> CorpusEvalEntry {
   CorpusEvalEntry { run: NodeCorpusUnresolvedRun { claim: claim } }
 }
-
 
 fn corpus_entry_from_emit_vs_eval_deferred_node_corpus_claim(
   claim: TestClaim,
@@ -259,7 +228,6 @@ fn corpus_entry_from_emit_vs_eval_deferred_node_corpus_claim(
     run: NodeCorpusEmitVsEvalDeferredRun { claim: claim, target: target }
   }
 }
-
 
 fn run_node_corpus_eval_only_entry(c: UnifiedTestClaim) -> CorpusEvalEntry {
   match c {
@@ -288,7 +256,6 @@ fn run_node_corpus_eval_only_entry(c: UnifiedTestClaim) -> CorpusEvalEntry {
   }
 }
 
-
 fn manual_node_corpus_claims_all_resolve() -> Bool {
   fold(
     manual_node_corpus_unified_claims(),
@@ -309,7 +276,6 @@ fn manual_node_corpus_claims_all_resolve() -> Bool {
   )
 }
 
-
 fn run_unified_corpus_eval_entry(c: UnifiedTestClaim) -> CorpusEvalEntry {
   match c {
     BoolWitnessClaim { witness: w } =>
@@ -324,18 +290,15 @@ fn run_unified_corpus_eval_entry(c: UnifiedTestClaim) -> CorpusEvalEntry {
   }
 }
 
-
 fn run_unified_corpus_eval(claims: List<UnifiedTestClaim>) -> CorpusEvalReport {
   CorpusEvalReport {
     entries: map(claims, fn(c) { run_unified_corpus_eval_entry(c: c) })
   }
 }
 
-
 fn run_unified_corpus_eval_pilot() -> CorpusEvalReport {
   run_unified_corpus_eval(claims: unified_corpus_eval_pilot_claims())
 }
-
 
 fn unified_corpus_eval_manual_node_slice_holds() -> Bool {
   fold(
@@ -355,14 +318,12 @@ fn unified_corpus_eval_manual_node_slice_holds() -> Bool {
   )
 }
 
-
 fn unified_corpus_eval_pilot_equivalence_holds() -> Bool {
   let pilot = run_unified_corpus_eval_pilot()
   manual_node_corpus_claims_all_resolve()
     && unified_corpus_eval_manual_node_slice_holds()
     && (length(xs: pilot.entries) == length(xs: unified_corpus_eval_pilot_claims()))
 }
-
 
 fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
   CorpusEvalReport {
@@ -371,7 +332,6 @@ fn run_manual_testclaim_corpus_eval() -> CorpusEvalReport {
     )
   }
 }
-
 
 fn manual_testclaim_subject_roster_family_receipt() -> TestClaimSubjectRosterFamilyReceipt {
   let runs = run_node_runtime_value_subjects(subjects: manual_corpus_node_subject_rows)
@@ -387,12 +347,10 @@ fn manual_testclaim_subject_roster_family_receipt() -> TestClaimSubjectRosterFam
   }
 }
 
-
 fn manual_testclaim_subject_roster_family_receipt_holds() -> Bool {
   let receipt = manual_testclaim_subject_roster_family_receipt()
   receipt.report.entries == corpus_entries_from_node_runtime_value_runs(runs: receipt.runs)
 }
-
 
 data witness_manual_testclaim_subject_roster_family_receipt: Bool = manual_testclaim_subject_roster_family_receipt_holds()
 data witness_manual_node_corpus_unified_claim_projection: Bool = manual_node_corpus_unified_claim_projection_holds()

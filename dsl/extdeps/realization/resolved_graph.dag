@@ -1,9 +1,7 @@
-// extdeps/realization/resolved_graph.dag — gunbc resolved-graph per-host cache (operator facts).
-//
-// Realization handler for v1 resolved_graph_cache.rs; cited rows graduate from
-// std.cache_interface per realization.dag dissolution trigger.
-
 module extdeps.realization.resolved_graph
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
 import std.cache_identity { CacheInterfaceId }
@@ -26,7 +24,13 @@ import std.cache_interface {
 }
 import std.measure { ByteSize, byte_size }
 
-// Operator deployment default — not a substrate literal (§3 business-policy).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/realization"
+  }
+}
+
 data resolved_graph_cache_cap_bytes: ByteSize = byte_size(count: 10737418240)
 
 data resolved_graph_cache_id: CacheInterfaceId = "resolved_graph_cache"
@@ -36,14 +40,7 @@ data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "gunbc-resolved-graph-per-host-cache"
   transport_encoding: CasContentEncoding
   key_derivation: {
-    // OUR content-addressed cache: the inputs are DERIVED from invalidation_triggers, not
-    // authored. Because invalidation_triggers promises ToolchainChange, the derived input
-    // set is [UpsertSubject, ToolchainSpec] (content_addressed_inputs) — the transform is
-    // keyed BY CONSTRUCTION, and declaring ToolchainChange WITHOUT keying the toolchain (or
-    // vice versa) is UNWRITABLE: there is no inputs field to author out of agreement. This
-    // dissolves the model side of the model↔realizer fork PR #5423 false-greened (a
-    // spec-only lens over a hand-authored list). The realizer (resolved_graph_cache.rs)
-    // folds the same set; the two Rust/.dag impls unify at v2/realize (subgraph-hash).
+
     key_inputs: ContentAddressed
     overwritable: false
     prefix_fallback_allowed: false

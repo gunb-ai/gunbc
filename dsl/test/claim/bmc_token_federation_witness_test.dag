@@ -1,0 +1,75 @@
+module test.claim.bmc_token_federation_witness
+
+import std.logic { Bool }
+import gunbc.assimilate.bmc_token_federation {
+  SecretAccessBinding,
+  bmc_assimilator_bindings,
+  bmc_assimilator_sa_member,
+  bmc_srv3_secret_name,
+  bmc_secrets_project_id,
+  bmc_assimilator_allowed_roles,
+  bmc_role_allowed,
+  bmc_wif_provider_resource,
+  bmc_wif_principal_set,
+  bmc_wif_attribute_condition,
+  emit_bmc_token_smoke_workflow_yaml
+}
+import extdeps.cloud.gcp.iam {
+  role_secretmanager_secret_accessor,
+  role_secretmanager_secret_version_adder
+}
+
+fn binding_is_scoped(b: SecretAccessBinding) -> Bool {
+  b.member == bmc_assimilator_sa_member()
+    && b.secret == bmc_srv3_secret_name
+    && b.project == bmc_secrets_project_id
+    && bmc_role_allowed(role: b.role)
+}
+
+test fn bmc_assimilator_least_privilege_two_scoped_roles() -> Bool {
+  bmc_assimilator_bindings.length() == 2
+    && fold(bmc_assimilator_bindings, init: true, f: (acc, b) => acc && binding_is_scoped(b: b))
+    && fold(bmc_assimilator_bindings, init: false, f: (acc, b) => acc || b.role == role_secretmanager_secret_accessor)
+    && fold(bmc_assimilator_bindings, init: false, f: (acc, b) => acc || b.role == role_secretmanager_secret_version_adder)
+}
+
+test fn bmc_assimilator_roles_within_closed_allowlist() -> Bool {
+  bmc_assimilator_allowed_roles.length() == 2
+    && fold(bmc_assimilator_bindings, init: true, f: (acc, b) => acc && bmc_role_allowed(role: b.role))
+}
+
+test fn bmc_allowlist_excludes_lockout_roles() -> Bool {
+  !bmc_role_allowed(role: "roles/secretmanager.secretVersionManager")
+    && !bmc_role_allowed(role: "roles/secretmanager.secretVersionDestroyer")
+    && !bmc_role_allowed(role: "roles/secretmanager.admin")
+    && !bmc_role_allowed(role: "roles/owner")
+    && bmc_role_allowed(role: role_secretmanager_secret_accessor)
+    && bmc_role_allowed(role: role_secretmanager_secret_version_adder)
+}
+
+test fn bmc_wif_provider_resource_is_well_formed() -> Bool {
+  let r = bmc_wif_provider_resource()
+  string_contains(s: r, pattern: "projects/582015116396/locations/global/workloadIdentityPools/")
+    && string_contains(s: r, pattern: "/providers/github-oidc")
+}
+
+test fn bmc_wif_principal_set_pins_repo() -> Bool {
+  string_contains(s: bmc_wif_principal_set(), pattern: "principalSet://iam.googleapis.com/")
+    && string_contains(s: bmc_wif_principal_set(), pattern: "/attribute.repository/gunb-ai/gunbc")
+    && string_contains(s: bmc_wif_attribute_condition(), pattern: "assertion.repository == 'gunb-ai/gunbc'")
+}
+
+test fn bmc_smoke_workflow_is_keyless_with_id_token_write() -> Bool {
+  let y = emit_bmc_token_smoke_workflow_yaml()
+  string_contains(s: y, pattern: "id-token: write")
+    && string_contains(s: y, pattern: "google-github-actions/auth@v2")
+    && string_contains(s: y, pattern: "workload_identity_provider:")
+    && string_contains(s: y, pattern: "service_account: bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com")
+    && string_contains(s: y, pattern: "gcloud auth print-access-token")
+}
+
+test fn bmc_smoke_workflow_carries_no_pasted_key() -> Bool {
+  let y = emit_bmc_token_smoke_workflow_yaml()
+  !string_contains(s: y, pattern: "credentials_json")
+    && !string_contains(s: y, pattern: "service_account_key")
+}

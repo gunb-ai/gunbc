@@ -1,22 +1,3 @@
-// v2 stage0 crate-boundary authority -- .dag model of the split crates.
-//
-// This module is the .dag-authored successor to the hand-written
-// `render_stage0_*` constants and renderers in
-// `src/v1/stage0/src/bin/regen_stage0.rs`. It declares, as data, which
-// generated stage0 modules form each split support crate, that crate's
-// Cargo dependencies, and whether it carries the root `NonEmpty*` wrappers --
-// then emits the exact `Cargo.toml` and `lib.rs` wrapper files `regen_stage0`
-// writes and verifies. The wrapper bodies themselves are emitted from the
-// existing single source `v1.compiler.emit_rust.emit_non_empty_wrappers`.
-//
-// Authority migration only: the emitted bytes are byte-for-byte identical to
-// the files PR #4429 rendered from Rust. `regen_stage0` keeps its
-// writer/verifier role but sources the wrapper contents from here.
-//
-// The semantic module bodies still live in the generated stage0 seed; this
-// module never copies them -- it only references them by `#[path]` include or
-// `pub use` re-export.
-
 module v1.compiler.stage0_crates
 
 import v1.std.core { TextFile }
@@ -24,23 +5,10 @@ import v1.compiler.emit_rust { emit_non_empty_wrappers, emit_cargo_dep }
 import extdeps.cargo { CargoDependency, CargoFeature, RegistryDep, LocalPathDep }
 import extdeps.cargo_version { render_cargo_package_header_prefix }
 
-// =========================================================================
-// Crate-boundary model
-// =========================================================================
-
-// Which split crate, and therefore which lib.rs shape, a spec describes.
 type Stage0CrateKind
   = CoreCrate
   | EmitCoreCrate
 
-// Dependencies reuse the canonical `extdeps.cargo.CargoDependency` model
-// (name + source: registry version or local path) -- no local dep type.
-
-// One split support crate.
-//
-// `modules` are generated stage0 module stems (file name without `.rs`).
-// For a CoreCrate they become `#[path]` includes; for an EmitCoreCrate they
-// become re-export wrapper modules sourced from `v1-stage0-core`.
 type Stage0CrateSpec {
   package_name: String
   crate_dir: String
@@ -48,13 +16,9 @@ type Stage0CrateSpec {
   header_doc: String
   modules: List<String>
   dependencies: List<CargoDependency>
-  // Optional `[features]` entries for split crates whose generated modules use
-  // `#[cfg(feature = ...)]` (e.g. v1_rt's text_lookup_work_counter gate).
+
   features: List<CargoFeature>
-  // Whether this crate defines the `NonEmpty*` newtype wrappers at its lib
-  // root. The wrapper bodies are NOT modeled here -- they are emitted from the
-  // single source `v1.compiler.emit_rust.emit_non_empty_wrappers`, the same
-  // function that produces them for the monolithic stage0 lib.
+
   carries_non_empty_wrappers: Bool
 }
 
@@ -62,18 +26,6 @@ type Stage0CratePlan {
   crates: List<Stage0CrateSpec>
 }
 
-// =========================================================================
-// Shared literal fragments
-// =========================================================================
-
-// The crate-level `#![allow(...)]` block both wrapper libs open with.
-//
-// This is the same lint set `emit_lib_rs_from_files` puts on the monolith lib,
-// but it is NOT shared with that inline literal: the monolith's output is
-// rustfmt'd before its freshness compare, so it can emit the single-line form;
-// the split-crate wrappers are compared raw by `verify_stage0_split_crate_boundaries`,
-// so this must be the rustfmt-stable multi-line form. One helper cannot satisfy
-// both verify paths byte-for-byte.
 fn stage0_crate_allow_block() -> String {
   [
     "#![allow(",
@@ -116,13 +68,6 @@ fn stage0_emit_core_header_doc() -> String {
   ] |> join(separator: "\n")
 }
 
-// =========================================================================
-// Manifest emission
-// =========================================================================
-
-// Registry deps delegate to the existing single source `emit_cargo_dep`
-// (same renderer the compiler uses for its own Cargo manifests). The path-dep
-// form, which `emit_cargo_dep` does not cover, is rendered here.
 fn render_stage0_crate_dep(dep: CargoDependency) -> String {
   match dep.source {
     RegistryDep { version: version, features: features } =>
@@ -165,12 +110,6 @@ fn emit_stage0_crate_manifest(spec: Stage0CrateSpec) -> TextFile {
   TextFile { path: concat(spec.crate_dir, "/Cargo.toml"), content: content }
 }
 
-// =========================================================================
-// lib.rs emission
-// =========================================================================
-
-// CoreCrate: `#[path]`-include each module, then carry the root wrappers.
-// The wrapper bodies come from emit_rust's single source, not copied here.
 fn render_stage0_core_lib(spec: Stage0CrateSpec) -> String {
   let includes = spec.modules
     |> map(m => concat("#[path = \"../../stage0/src/", m, ".rs\"]\npub mod ", m, ";"))
@@ -187,8 +126,6 @@ fn render_stage0_core_lib(spec: Stage0CrateSpec) -> String {
   }
 }
 
-// EmitCoreCrate: re-export each module from v1-stage0-core, import the root
-// shims, then include and glob-re-export the generated emit-core support.
 fn render_stage0_emit_core_lib(spec: Stage0CrateSpec) -> String {
   let reexports = spec.modules
     |> map(m => concat("pub mod ", m, " {\n    pub use v1_stage0_core::", m, "::*;\n}"))
@@ -211,10 +148,6 @@ fn emit_stage0_crate_lib(spec: Stage0CrateSpec) -> TextFile {
   TextFile { path: concat(spec.crate_dir, "/src/lib.rs"), content: content }
 }
 
-// =========================================================================
-// Plan -- the existing #4429 crates, modeled as data
-// =========================================================================
-
 fn stage0_crate_plan() -> Stage0CratePlan {
   Stage0CratePlan {
     crates: [
@@ -224,6 +157,7 @@ fn stage0_crate_plan() -> Stage0CratePlan {
         kind: CoreCrate,
         header_doc: stage0_core_header_doc(),
         modules: [
+          "extdeps_external_authority",
           "extdeps_languages_dag_emit",
           "extdeps_languages_dag_syntax",
           "extdeps_languages_dag_types",
@@ -236,9 +170,11 @@ fn stage0_crate_plan() -> Stage0CratePlan {
           "extdeps_languages_rust_emit",
           "extdeps_languages_rust_syntax",
           "extdeps_languages_rust_types",
+          "extdeps_uri",
           "std_algebra",
           "std_coercion",
           "std_computation",
+          "std_decl_ref",
           "std_effects",
           "std_emit_model",
           "std_error_primitives",
@@ -246,7 +182,13 @@ fn stage0_crate_plan() -> Stage0CratePlan {
           "std_http_path",
           "std_induction",
           "std_iteration",
+          "std_lens_verdict",
+          "std_magnitude",
+          "std_measure",
+          "std_nat",
           "std_node",
+          "std_pareto",
+          "std_realization_schedule",
           "std_syntax",
           "std_termination",
           "std_types",
@@ -264,7 +206,9 @@ fn stage0_crate_plan() -> Stage0CratePlan {
         dependencies: [
           CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
           CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
-          CargoDependency { name: "serde_json", source: RegistryDep { version: "1", features: [] } }
+          CargoDependency { name: "serde_json", source: RegistryDep { version: "1", features: [] } },
+          CargoDependency { name: "unicode-ident", source: RegistryDep { version: "1", features: [] } },
+          CargoDependency { name: "unicode-properties", source: RegistryDep { version: "0.1", features: ["emoji"] } }
         ],
         features: [
           CargoFeature { name: "text_lookup_work_counter", dependencies: [] }
@@ -297,10 +241,6 @@ fn stage0_crate_plan() -> Stage0CratePlan {
   }
 }
 
-// =========================================================================
-// Boundary file set -- what regen_stage0 writes and verifies
-// =========================================================================
-
 fn emit_stage0_crate_boundary_files(plan: Stage0CratePlan) -> List<TextFile> {
   plan.crates |> flat_map(spec => [
     emit_stage0_crate_manifest(spec),
@@ -308,7 +248,6 @@ fn emit_stage0_crate_boundary_files(plan: Stage0CratePlan) -> List<TextFile> {
   ])
 }
 
-// Nullary entry point regen_stage0 calls.
 fn stage0_crate_boundary_files() -> List<TextFile> {
   emit_stage0_crate_boundary_files(stage0_crate_plan())
 }

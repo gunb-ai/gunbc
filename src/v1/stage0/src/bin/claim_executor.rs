@@ -1,72 +1,39 @@
-//! Batch claim executor: the host transport for the v2.workflow.executor .dag.
-//!
-//! The `.dag` is the batching AUTHORITY. A plan function (default
-//! `bre_claim_batches` in `src/v2/workflow/batch_runner.dag`; the CI floor uses
-//! `gunbc_ci_floor_batches` in `src/v2/workflow/ci_floor_plan.dag`, spec-derived
-//! from `gunbc.ci_spec`) folds the
-//! dependency frontier through `v2.workflow.executor` and returns
-//! `List<List<Runnable>>` — the outer list is batches in execution order, the
-//! inner list is the runnables (a `SingleClaim` witness/gate, or the whole
-//! `DiscoveryBatch` corpus) runnable in parallel within that batch. This binary
-//! evaluates that plan, walks the returned value, and RUNS it: batch by batch
-//! (respecting the executor's ordering), nodes within a batch concurrently.
-//!
-//! It does NOT decide grouping or ordering — add a node or a dependency in the
-//! `.dag` and the batches change with zero edit here. That is the dogfood: the
-//! `.dag` earns CI authority by being consumed to drive real behavior, not by
-//! mirroring a hand-written schedule.
-//!
-//! Like `claim_batch`/`regen_stage0`, this is a hand-written CLI bin — NOT routed
-//! through the generated `main.rs`/emit stage — reusing the same resolve/run
-//! primitives as `gunbc run` (`cli_run::resolve_entry_graph`,
-//! `cli_run::run_value`, `cli_run::run_claim`).
-//!
-//! Usage:
-//!   claim_executor --source-root <dir> [--source-root <dir> ...] \
-//!                  --plan-entry <file.dag> [--plan-function <fn>]
-//!
-//! Exit codes: 0 = every claim in every batch passed; 1 = any claim failed,
-//! returned non-Bool, raised a runtime error, or a resolve/plan eval failed;
-//! 2 = usage error.
-
-// Binary entrypoint: reports results directly on stdout/stderr.
 #![allow(clippy::disallowed_macros)]
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::rc::Rc;
 use std::thread;
+use std::time::Instant;
 
+#[cfg(test)]
+use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
-    make_eval_context, resolve_entry_graph, run_claim, run_discovery_corpus_with_options,
-    run_value, ClaimOutcome, DiscoveryCorpusOptions,
+    compute_histogram_data, compute_witness_timing_rows, make_eval_context, resolve_entry_graph,
+    run_claim, run_discovery_corpus_with_options, run_value, top_n_slowest_witnesses, ClaimOutcome,
+    DiscoveryCorpusOptions, DiscoverySummary, HistogramData, TimingPercentiles, WitnessTimingRow,
+    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
-use v1_compiler::v1_interpreter::{run_in_context_with_args, ExecutionMode, InterpContext, Value};
+use v1_compiler::v1_interpreter::{
+    color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
+};
 
-/// One runnable plan node, projected from the plan value. A `SingleClaim` is one
-/// `(entry, function)` Bool witness (the demo suite + the floor's per-gate
-/// nodes); a `DiscoveryBatch` is the whole `--roster-from-discovery` corpus as a
-/// single node — it REUSES `cli_run::run_discovery_corpus` (the shared roster
-/// authority), it does NOT re-coin the ~199-row roster as explicit plan nodes
-/// (that would duplicate the discovery scan — DESIGN §3 — and cost a cold
-/// resolve per row).
-///
-/// 🟡 SCAFFOLD — feature:floor-discovery-batch-node — owner:merry-owl —
-/// dissolve-on: the "actually correct" floor model lands (per-job typed verdicts
-/// reified into .dag / affected-set→scheduler-frontier fusion). Until then this
-/// coproduct is the pragmatic interim that lets the WHOLE floor (gates + corpus)
-/// run dependency-ordered through one host. See merry-owl's lane.
 #[derive(Clone)]
 enum Runnable {
     SingleClaim {
         entry: String,
         function: String,
+        use_walk_memo: bool,
     },
     DiscoveryBatch {
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
         explicit_entries: Vec<(String, String)>,
         skip_unaffected_node_frontier: bool,
+        exclude_substrings: Vec<String>,
+        discovery_scope_dirs: Vec<String>,
+        spawn_width_cap: usize,
     },
 }
 
@@ -80,9 +47,6 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
     }
 }
 
-/// Walk the std `List` representation (the `FreeMonoid` Cons/Empty coproduct)
-/// into a borrowed Vec of element values. `gunbc` renders `List<T>` as
-/// `Cons { head, tail } | Empty`, not `Value::List`.
 fn free_monoid_elems<'a>(value: &'a Value, ctx: &InterpContext) -> Result<Vec<&'a Value>, String> {
     let mut out = Vec::new();
     let mut cur = value;
@@ -104,8 +68,6 @@ fn free_monoid_elems<'a>(value: &'a Value, ctx: &InterpContext) -> Result<Vec<&'
             Value::Variant { variant_name, .. } if ctx.sym_eq(*variant_name, "Empty") => {
                 return Ok(out);
             }
-            // Tolerate an eager `Value::List` too, in case the representation
-            // ever changes; keeps the walker honest rather than silently wrong.
             Value::List(items) => {
                 out.extend(items.iter());
                 return Ok(out);
@@ -120,7 +82,6 @@ fn free_monoid_elems<'a>(value: &'a Value, ctx: &InterpContext) -> Result<Vec<&'
     }
 }
 
-/// Read a `List<String>` (FreeMonoid Cons/Empty) into a `Vec<String>`.
 fn str_list_from_value(value: &Value, ctx: &InterpContext) -> Result<Vec<String>, String> {
     let mut out = Vec::new();
     for elem in free_monoid_elems(value, ctx)? {
@@ -137,9 +98,8 @@ fn str_list_from_value(value: &Value, ctx: &InterpContext) -> Result<Vec<String>
     Ok(out)
 }
 
-/// Read a required String record/variant field.
 fn str_field(
-    fields: &std::collections::HashMap<v1_compiler::v1_interpreter::Symbol, Value>,
+    fields: &[(v1_compiler::v1_interpreter::Symbol, Value)],
     name: &str,
     owner: &str,
     ctx: &InterpContext,
@@ -156,29 +116,38 @@ fn str_field(
     }
 }
 
-/// Project one plan element into a `Runnable`. Accepts (fail-closed on anything
-/// else):
-///   - a bare `ClaimRef { entry, function }` record (back-compat: the demo suite
-///     and any SingleClaim authored as a record) → `SingleClaim`;
-///   - a `RunnableSingleClaim { entry, function }` variant → `SingleClaim`;
-///   - a `RunnableDiscoveryBatch { source_roots, scan_dirs }` variant → the
-///     discovery-corpus node.
 fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, String> {
     match value {
         Value::Record { type_name, fields } if ctx.sym_eq(*type_name, "ClaimRef") => {
             Ok(Runnable::SingleClaim {
                 entry: str_field(fields, "entry", "ClaimRef", ctx)?,
                 function: str_field(fields, "function", "ClaimRef", ctx)?,
+                use_walk_memo: false,
             })
         }
         Value::Variant {
             variant_name,
             fields,
             ..
-        } if ctx.sym_eq(*variant_name, "RunnableSingleClaim") => Ok(Runnable::SingleClaim {
-            entry: str_field(fields, "entry", "RunnableSingleClaim", ctx)?,
-            function: str_field(fields, "function", "RunnableSingleClaim", ctx)?,
-        }),
+        } if ctx.sym_eq(*variant_name, "RunnableSingleClaim") => {
+            let entry = str_field(fields, "entry", "RunnableSingleClaim", ctx)?;
+            let function = str_field(fields, "function", "RunnableSingleClaim", ctx)?;
+            let use_walk_memo = match ctx.field(fields, "profile") {
+                Some(Value::Record { fields: pf, .. })
+                | Some(Value::Variant { fields: pf, .. }) => {
+                    matches!(
+                        ctx.field(pf, "heavy_whole_tree_resolve"),
+                        Some(Value::Bool(true))
+                    )
+                }
+                _ => false,
+            };
+            Ok(Runnable::SingleClaim {
+                entry,
+                function,
+                use_walk_memo,
+            })
+        }
         Value::Variant {
             variant_name,
             fields,
@@ -194,8 +163,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 Some(v) => str_list_from_value(v, ctx)?,
                 None => return Err("RunnableDiscoveryBatch missing field `scan_dirs`".to_string()),
             };
-            // explicit_entries: a List of records with `entry`/`function` String
-            // fields (the CiSpec witness_entries appended to the discovery roster).
             let explicit_entries = match ctx.field(fields, "explicit_entries") {
                 Some(v) => {
                     let mut out = Vec::new();
@@ -232,11 +199,28 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                     },
                     None => false,
                 };
+            let exclude_substrings = match ctx.field(fields, "exclude_substrings") {
+                Some(v) => str_list_from_value(v, ctx)?,
+                // Field absent means the plan author specified no exclusions — default is empty,
+                // not the Rust constant (the model is the sole authority on the plan path).
+                None => Vec::new(),
+            };
+            let discovery_scope_dirs = match ctx.field(fields, "discovery_scope_dirs") {
+                Some(v) => str_list_from_value(v, ctx)?,
+                None => Vec::new(),
+            };
+            let spawn_width_cap = match ctx.field(fields, "spawn_width_cap") {
+                Some(Value::Int(n)) => (*n).max(0) as usize,
+                Some(_) | None => 0,
+            };
             Ok(Runnable::DiscoveryBatch {
                 source_roots,
                 scan_dirs,
                 explicit_entries,
                 skip_unaffected_node_frontier,
+                exclude_substrings,
+                discovery_scope_dirs,
+                spawn_width_cap,
             })
         }
         other => Err(format!(
@@ -246,7 +230,6 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
     }
 }
 
-/// Parse the plan value `List<List<Runnable>>` into ordered batches.
 fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnable>>, String> {
     let mut batches = Vec::new();
     for batch_val in free_monoid_elems(plan, ctx)? {
@@ -259,98 +242,527 @@ fn batches_from_plan(plan: &Value, ctx: &InterpContext) -> Result<Vec<Vec<Runnab
     Ok(batches)
 }
 
-/// Result of running one claim, in a thread-safe (Send) form. The resolved graph
-/// is `Rc`-based (`!Send`), so each claim resolves and runs entirely within its
-/// own thread and reports back only this plain summary.
 struct ClaimResult {
     function: String,
     ok: bool,
     detail: String,
+    /// Wall-clock eval time for this single claim (0 for discovery aggregate).
+    wall_nanos: u128,
+    /// Resolve time charged to this result; non-zero only on the first claim in a
+    /// SharedClaims group (the group resolves once, cost attributed to first claim).
+    resolve_nanos: u128,
+    /// For discovery batch nodes: sum of per-file resolve times (serial sum, not wall).
+    corpus_resolve_nanos: u128,
+    /// For discovery batch nodes: sum of per-witness eval times (serial sum, not wall).
+    corpus_eval_nanos: u128,
+    /// Number of discovery witnesses (non-zero only for discovery batch nodes).
+    corpus_witnesses: usize,
 }
 
-fn run_one_runnable(
-    source_roots: Vec<String>,
-    runnable: Runnable,
-    spawn_width: usize,
-) -> ClaimResult {
-    match runnable {
-        Runnable::SingleClaim { entry, function } => {
-            run_single_claim(&source_roots, entry, function)
-        }
-        Runnable::DiscoveryBatch {
-            source_roots: roots,
-            scan_dirs,
-            explicit_entries,
-            skip_unaffected_node_frontier,
-        } => run_discovery_batch_node(
-            roots,
-            scan_dirs,
-            explicit_entries,
-            skip_unaffected_node_frontier,
-            spawn_width,
-        ),
-    }
+/// A batch is partitioned into resolve-groups before scheduling. SingleClaims that share one
+/// `entry` collapse into a single `SharedClaims` group: the entry's import closure is resolved
+/// (and typechecked) EXACTLY ONCE and every claim runs on that one shared interpreter context,
+/// instead of each claim re-resolving the identical graph on its own thread. This is the floor's
+/// dominant footprint win — batch-2's gate witnesses all live in one file
+/// (`dsl/tools/floor_effect_gate_witness.dag`, ~0.9 GiB / 106 modules per resolve), so the
+/// per-thread-resolve scheme held that graph ~6x concurrently (~4.5 GiB of pure duplication,
+/// roughly half the self-RSS). Resolve is a pure function of `(source_roots, entry)`, so sharing
+/// the graph across same-entry claims is semantically identical — correctness by construction
+/// (DESIGN §2: duplicated work removed; §4: realization may share what the pure spec models apart).
+enum BatchUnit {
+    SharedClaims {
+        entry: String,
+        functions: Vec<String>,
+        use_walk_memo: bool,
+    },
+    UnrunnableSentinel {
+        function: String,
+    },
+    Discovery {
+        source_roots: Vec<String>,
+        scan_dirs: Vec<String>,
+        explicit_entries: Vec<(String, String)>,
+        skip_unaffected_node_frontier: bool,
+        exclude_substrings: Vec<String>,
+        discovery_scope_dirs: Vec<String>,
+        spawn_width_cap: usize,
+    },
 }
 
-fn run_single_claim(source_roots: &[String], entry: String, function: String) -> ClaimResult {
-    // Fail-closed sentinel: the plan projects an empty-`entry` ClaimRef for any
-    // unmapped suite node or non-complete executor plan (see batch_runner.dag).
-    // It carries no resolvable witness, so it is a hard error — never a vacuous
-    // pass.
-    if entry.is_empty() {
-        return ClaimResult {
-            function,
-            ok: false,
-            detail: "unrunnable sentinel (unmapped node or non-complete plan) — failing closed"
-                .to_string(),
-        };
-    }
-    let (graph, source_indices) = match resolve_entry_graph(source_roots, &entry) {
-        Ok(pair) => pair,
-        Err(msg) => {
-            return ClaimResult {
-                function,
-                ok: false,
-                detail: format!("resolve failed for {}: {}", entry, msg),
+/// Partition a batch's runnables into resolve-groups, preserving first-appearance order so the
+/// PASS/FAIL log stays stable. SingleClaims with a non-empty `entry` coalesce by `entry`;
+/// empty-entry sentinels and DiscoveryBatch nodes stay their own units (each resolves apart).
+fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
+    let mut units: Vec<BatchUnit> = Vec::new();
+    let mut entry_to_unit: std::collections::HashMap<String, usize> =
+        std::collections::HashMap::new();
+    for runnable in batch {
+        match runnable {
+            Runnable::SingleClaim {
+                entry, function, ..
+            } if entry.is_empty() => {
+                units.push(BatchUnit::UnrunnableSentinel {
+                    function: function.clone(),
+                });
             }
+            Runnable::SingleClaim {
+                entry,
+                function,
+                use_walk_memo,
+            } => {
+                if let Some(&idx) = entry_to_unit.get(entry) {
+                    if let BatchUnit::SharedClaims {
+                        functions,
+                        use_walk_memo: existing_memo,
+                        ..
+                    } = &mut units[idx]
+                    {
+                        functions.push(function.clone());
+                        // A memo claim (heavy whole-tree resolve) may merge into a
+                        // group created from a non-memo claim first; OR here so the
+                        // group gets the memo path if any member is heavy.
+                        *existing_memo |= use_walk_memo;
+                    }
+                } else {
+                    entry_to_unit.insert(entry.clone(), units.len());
+                    units.push(BatchUnit::SharedClaims {
+                        entry: entry.clone(),
+                        functions: vec![function.clone()],
+                        use_walk_memo: *use_walk_memo,
+                    });
+                }
+            }
+            Runnable::DiscoveryBatch {
+                source_roots,
+                scan_dirs,
+                explicit_entries,
+                skip_unaffected_node_frontier,
+                exclude_substrings,
+                discovery_scope_dirs,
+                spawn_width_cap,
+            } => units.push(BatchUnit::Discovery {
+                source_roots: source_roots.clone(),
+                scan_dirs: scan_dirs.clone(),
+                explicit_entries: explicit_entries.clone(),
+                skip_unaffected_node_frontier: *skip_unaffected_node_frontier,
+                exclude_substrings: exclude_substrings.clone(),
+                discovery_scope_dirs: discovery_scope_dirs.clone(),
+                spawn_width_cap: *spawn_width_cap,
+            }),
         }
-    };
-    // Context scoped to this claim's graph: its `data` cache drops with it.
-    // Effectful gate transports (shell.Exec, Filesystem.*) require Wet dispatch.
-    let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
-    match run_claim(&ctx, &function) {
+    }
+    units
+}
+
+fn claim_result_for_outcome(
+    function: String,
+    outcome: ClaimOutcome,
+    wall_nanos: u128,
+    resolve_nanos: u128,
+) -> ClaimResult {
+    match outcome {
         ClaimOutcome::Pass => ClaimResult {
             function,
             ok: true,
             detail: String::new(),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
         ClaimOutcome::Fail => ClaimResult {
             function,
             ok: false,
             detail: "returned Bool(false)".to_string(),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
         ClaimOutcome::NotBool { got } => ClaimResult {
             function,
             ok: false,
             detail: format!("returned `{}`, not Bool", got),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
         ClaimOutcome::RuntimeError { message } => ClaimResult {
             function,
             ok: false,
             detail: format!("runtime error: {}", message),
+            wall_nanos,
+            resolve_nanos,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
     }
 }
 
-/// Run the whole discovery corpus as one plan node, reusing the shared roster +
-/// run loop (`cli_run::run_discovery_corpus`). Fail-closed: an empty roster, a
-/// resolve failure, or any failing witness fails the node.
+fn run_batch_unit(
+    source_roots: Vec<String>,
+    unit: BatchUnit,
+    spawn_width: usize,
+) -> Vec<ClaimResult> {
+    match unit {
+        BatchUnit::UnrunnableSentinel { function } => vec![ClaimResult {
+            function,
+            ok: false,
+            detail: "unrunnable sentinel (unmapped node or non-complete plan) — failing closed"
+                .to_string(),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+        }],
+        BatchUnit::Discovery {
+            source_roots: roots,
+            scan_dirs,
+            explicit_entries,
+            skip_unaffected_node_frontier,
+            exclude_substrings,
+            discovery_scope_dirs,
+            spawn_width_cap,
+        } => vec![run_discovery_batch_node(
+            roots,
+            scan_dirs,
+            explicit_entries,
+            skip_unaffected_node_frontier,
+            exclude_substrings,
+            discovery_scope_dirs,
+            spawn_width,
+            spawn_width_cap,
+        )],
+        BatchUnit::SharedClaims {
+            entry, functions, ..
+        } => run_shared_entry_claims(&source_roots, &entry, &functions),
+    }
+}
+
+fn run_shared_entry_claims(
+    source_roots: &[String],
+    entry: &str,
+    functions: &[String],
+) -> Vec<ClaimResult> {
+    let resolve_start = Instant::now();
+    let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
+        Ok(pair) => pair,
+        Err(msg) => {
+            return functions
+                .iter()
+                .map(|function| ClaimResult {
+                    function: function.clone(),
+                    ok: false,
+                    detail: format!("resolve failed for {}: {}", entry, msg),
+                    wall_nanos: 0,
+                    resolve_nanos: 0,
+                    corpus_resolve_nanos: 0,
+                    corpus_eval_nanos: 0,
+                    corpus_witnesses: 0,
+                })
+                .collect();
+        }
+    };
+    let resolve_nanos = resolve_start.elapsed().as_nanos();
+    let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+    let mut first = true;
+    functions
+        .iter()
+        .map(|function| {
+            let claim_start = Instant::now();
+            let outcome = run_claim(&ctx, function);
+            let wall_nanos = claim_start.elapsed().as_nanos();
+            let rn = if first {
+                first = false;
+                resolve_nanos
+            } else {
+                0
+            };
+            claim_result_for_outcome(function.clone(), outcome, wall_nanos, rn)
+        })
+        .collect()
+}
+
+/// Run claims whose entry-graph is already resolved and cached in `memo`, resolving on first miss.
+/// Runs on the main thread so `InterpContext` (which contains `Rc` fields) never crosses thread
+/// boundaries. Subsequent callers for the same entry share the cached context — resolve runs once.
+fn run_memo_shared_claims(
+    source_roots: &[String],
+    entry: &str,
+    functions: &[String],
+    memo: &mut std::collections::HashMap<String, InterpContext>,
+) -> Vec<ClaimResult> {
+    let resolve_start = Instant::now();
+    let mut fresh_resolve = false;
+    if !memo.contains_key(entry) {
+        let (graph, source_indices) = match resolve_entry_graph(source_roots, entry) {
+            Ok(pair) => pair,
+            Err(msg) => {
+                return functions
+                    .iter()
+                    .map(|function| ClaimResult {
+                        function: function.clone(),
+                        ok: false,
+                        detail: format!("resolve failed for {}: {}", entry, msg),
+                        wall_nanos: 0,
+                        resolve_nanos: 0,
+                        corpus_resolve_nanos: 0,
+                        corpus_eval_nanos: 0,
+                        corpus_witnesses: 0,
+                    })
+                    .collect();
+            }
+        };
+        memo.insert(
+            entry.to_string(),
+            make_eval_context(&graph, source_indices, ExecutionMode::Wet),
+        );
+        fresh_resolve = true;
+    }
+    let resolve_nanos = if fresh_resolve {
+        resolve_start.elapsed().as_nanos()
+    } else {
+        0
+    };
+    let ctx = memo.get(entry).expect("memo populated above");
+    let mut first = fresh_resolve;
+    functions
+        .iter()
+        .map(|function| {
+            let claim_start = Instant::now();
+            let outcome = run_claim(ctx, function);
+            let wall_nanos = claim_start.elapsed().as_nanos();
+            let rn = if first {
+                first = false;
+                resolve_nanos
+            } else {
+                0
+            };
+            claim_result_for_outcome(function.clone(), outcome, wall_nanos, rn)
+        })
+        .collect()
+}
+
+/// The medium's `Viewport.width` for boxed output. The seed sources the runtime value from the host
+/// (`COLUMNS` when present) and passes it into the `.dag` render model; the model owns how width
+/// shapes the box. Conservative 88-col default fits common CI-log and chat viewers; clamped so a
+/// hostile `COLUMNS` cannot produce a degenerate box.
+fn histogram_output_width() -> i64 {
+    std::env::var("COLUMNS")
+        .ok()
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .filter(|w| *w >= 48)
+        .unwrap_or(88)
+        .min(120)
+}
+
+fn clamp_nanos_to_i64(n: u128) -> i64 {
+    i64::try_from(n).unwrap_or(i64::MAX)
+}
+
+/// Render the timing histogram boxes through `dsl/gunbc/ci_render.dag` (`render_percentile_box`),
+/// the single authority for boxed-Frame width. The seed only supplies measured data + the host
+/// viewport width; all layout (borders, padding, duration formatting) lives in `.dag`.
+fn render_timing_histogram(
+    source_roots: &[String],
+    data: &HistogramData,
+) -> Result<String, String> {
+    let entry = "dsl/gunbc/ci_render.dag";
+    let (graph, indices) = resolve_entry_graph(source_roots, entry)
+        .map_err(|m| format!("resolve failed for {entry}:\n{m}"))?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let width = histogram_output_width();
+    let color = color_enabled();
+
+    let render_box = |title: &str, p: &TimingPercentiles| -> Result<String, String> {
+        let value = run_in_context_with_args(
+            &ctx,
+            "render_percentile_box",
+            &[
+                (Some("title".to_string()), Value::Str(title.to_string())),
+                (
+                    Some("p50".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p50)),
+                ),
+                (
+                    Some("p90".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p90)),
+                ),
+                (
+                    Some("p95".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p95)),
+                ),
+                (
+                    Some("p99".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p99)),
+                ),
+                (
+                    Some("p100".to_string()),
+                    Value::Int(clamp_nanos_to_i64(p.p100)),
+                ),
+                (Some("width".to_string()), Value::Int(width)),
+                (Some("color".to_string()), Value::Bool(color)),
+            ],
+            false,
+        )
+        .map_err(|e| format!("render_percentile_box eval failed: {e}"))?;
+        match value {
+            Value::Str(s) => Ok(s),
+            other => Err(format!(
+                "render_percentile_box returned non-string: {other}"
+            )),
+        }
+    };
+
+    let mut out = String::new();
+    out.push_str(&format!(
+        "Total witnesses: {} (included in histogram); {} skipped (no entry-resolve timing)\n",
+        data.included, data.skipped
+    ));
+    out.push_str(
+        "Note: Resolve times are per-entry-amortized (witnesses in an entry share its resolve cost); eval times are per-witness.\n\n",
+    );
+    out.push_str(&render_box("TOTAL TIME (Resolve + Eval)", &data.total)?);
+    out.push('\n');
+    out.push_str(&render_box("RESOLVE TIME", &data.resolve)?);
+    out.push('\n');
+    out.push_str(&render_box("EVAL TIME", &data.eval)?);
+    Ok(out)
+}
+
+fn slowest_witness_attribution_n() -> usize {
+    std::env::var("GUNBC_FLOOR_SLOWEST_N")
+        .ok()
+        .and_then(|v| v.trim().parse::<usize>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N)
+}
+
+fn str_list_value(lines: &[String]) -> Value {
+    Value::List(Rc::new(
+        lines
+            .iter()
+            .cloned()
+            .map(Value::Str)
+            .collect::<Vec<_>>()
+            .into(),
+    ))
+}
+
+/// Render the top-N slowest witnesses through `dsl/gunbc/ci_render.dag`.
+fn render_slowest_witnesses(
+    source_roots: &[String],
+    rows: &[WitnessTimingRow],
+) -> Result<String, String> {
+    if rows.is_empty() {
+        return Ok(String::new());
+    }
+    let entry = "dsl/gunbc/ci_render.dag";
+    let (graph, indices) = resolve_entry_graph(source_roots, entry)
+        .map_err(|m| format!("resolve failed for {entry}:\n{m}"))?;
+    let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
+    let width = histogram_output_width();
+    let color = color_enabled();
+
+    let mut body_lines: Vec<String> = Vec::with_capacity(rows.len());
+    for (i, row) in rows.iter().enumerate() {
+        let line = run_in_context_with_args(
+            &ctx,
+            "slowest_witness_row",
+            &[
+                (Some("rank".to_string()), Value::Int((i + 1) as i64)),
+                (
+                    Some("function".to_string()),
+                    Value::Str(row.function.clone()),
+                ),
+                (Some("entry".to_string()), Value::Str(row.entry.clone())),
+                (
+                    Some("eval_ns".to_string()),
+                    Value::Int(clamp_nanos_to_i64(row.eval_nanos)),
+                ),
+                (
+                    Some("resolve_ns".to_string()),
+                    Value::Int(clamp_nanos_to_i64(row.resolve_nanos)),
+                ),
+                (
+                    Some("total_ns".to_string()),
+                    Value::Int(clamp_nanos_to_i64(row.total_nanos)),
+                ),
+            ],
+            false,
+        )
+        .map_err(|e| format!("slowest_witness_row eval failed: {e}"))?;
+        match line {
+            Value::Str(s) => body_lines.push(s),
+            other => return Err(format!("slowest_witness_row returned non-string: {other}")),
+        }
+    }
+
+    let value = run_in_context_with_args(
+        &ctx,
+        "render_slowest_witnesses_box",
+        &[
+            (Some("body".to_string()), str_list_value(&body_lines)),
+            (Some("width".to_string()), Value::Int(width)),
+            (Some("color".to_string()), Value::Bool(color)),
+        ],
+        false,
+    )
+    .map_err(|e| format!("render_slowest_witnesses_box eval failed: {e}"))?;
+    match value {
+        Value::Str(s) => Ok(s),
+        other => Err(format!(
+            "render_slowest_witnesses_box returned non-string: {other}"
+        )),
+    }
+}
+
+fn emit_slowest_witness_attribution(source_roots: &[String], summary: &DiscoverySummary) {
+    match compute_witness_timing_rows(summary) {
+        Ok(rows) => {
+            let n = slowest_witness_attribution_n().min(rows.len());
+            if n == 0 {
+                return;
+            }
+            let top = top_n_slowest_witnesses(&rows, n);
+            match render_slowest_witnesses(source_roots, &top) {
+                Ok(boxed) => {
+                    eprintln!("{boxed}");
+                    let tail_eval_ms: u128 =
+                        top.iter().map(|r| r.eval_nanos).sum::<u128>() / 1_000_000;
+                    let total_eval_ms = summary.total_measured_nanos / 1_000_000;
+                    let pct = if total_eval_ms == 0 {
+                        0.0
+                    } else {
+                        100.0 * tail_eval_ms as f64 / total_eval_ms as f64
+                    };
+                    eprintln!(
+                        "[attribution] top-{n} slowest witnesses: eval serial-sum {tail_eval_ms}ms ({pct:.1}% of corpus eval)"
+                    );
+                }
+                Err(e) => eprintln!("[attribution] render failed (timings unaffected): {e}"),
+            }
+        }
+        Err(msg) => eprintln!("{msg}"),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
     scan_dirs: Vec<String>,
     explicit_entries: Vec<(String, String)>,
     skip_unaffected_node_frontier: bool,
+    exclude_substrings: Vec<String>,
+    discovery_scope_dirs: Vec<String>,
     spawn_width: usize,
+    spawn_width_cap: usize,
 ) -> ClaimResult {
     let label = format!(
         "discovery-corpus[{} root(s)+{} explicit, width={}]",
@@ -358,10 +770,6 @@ fn run_discovery_batch_node(
         explicit_entries.len(),
         spawn_width.max(1),
     );
-    // CI floor discovery still dispatches Wet: many roster witnesses (e.g.
-    // dsl_compile_clean_witnesses) shell out via shell.Exec.Run and need live
-    // transport shape. claim_batch CLI default is Hermetic (P3c); executor flip
-    // waits on full-corpus wet==hermetic equivalence, not just mock_totality.
     match run_discovery_corpus_with_options(
         &source_roots,
         &scan_dirs,
@@ -371,6 +779,9 @@ fn run_discovery_batch_node(
         DiscoveryCorpusOptions {
             skip_unaffected_node_frontier,
             explicit_roster_only: false,
+            exclude_substrings,
+            discovery_scope_dirs,
+            spawn_width_cap,
         },
     ) {
         Ok(summary) if summary.failures.is_empty() => {
@@ -382,10 +793,23 @@ fn run_discovery_batch_node(
                 summary.total_measured_nanos as f64 / 1.0e6,
                 summary.total_measured_nanos,
             );
+            match compute_histogram_data(&summary) {
+                Ok(data) => match render_timing_histogram(&source_roots, &data) {
+                    Ok(histogram) => eprintln!("{histogram}"),
+                    Err(e) => eprintln!("[histogram] render failed (timings unaffected): {e}"),
+                },
+                Err(msg) => eprintln!("{msg}"),
+            }
+            emit_slowest_witness_attribution(&source_roots, &summary);
             ClaimResult {
                 function: format!("{label} ({} witnesses)", summary.total),
                 ok: true,
                 detail: String::new(),
+                wall_nanos: 0,
+                resolve_nanos: 0,
+                corpus_resolve_nanos: summary.total_resolve_nanos,
+                corpus_eval_nanos: summary.total_measured_nanos,
+                corpus_witnesses: summary.total,
             }
         }
         Ok(summary) => ClaimResult {
@@ -397,18 +821,25 @@ fn run_discovery_batch_node(
                 summary.total,
                 summary.failures.join("; ")
             ),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: summary.total_resolve_nanos,
+            corpus_eval_nanos: summary.total_measured_nanos,
+            corpus_witnesses: summary.total,
         },
         Err(msg) => ClaimResult {
             function: label,
             ok: false,
             detail: format!("discovery corpus failed: {msg}"),
+            wall_nanos: 0,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
         },
     }
 }
 
-/// Evaluate the executor-decided plan into ordered batches. The `.dag` is the
-/// batching authority: this reads the `List<List<Runnable>>` the plan function
-/// returns and parses it — it never groups or orders anything itself.
 fn eval_plan(
     source_roots: &[String],
     plan_entry: &str,
@@ -425,17 +856,18 @@ fn eval_plan(
     })?;
     let batches = batches_from_plan(&plan_value, &plan_ctx)
         .map_err(|msg| format!("malformed plan value: {}", msg))?;
-    // Plan graph/value are `Rc`-based (`!Send`); drop before spawning claim threads.
     drop(plan_value);
     drop(plan_graph);
     Ok(batches)
 }
 
-/// Companion naming: `gunbc_ci_floor_batches` → `gunbc_ci_floor_spawn_width`.
 fn spawn_width_function_name(plan_function: &str) -> Option<String> {
-    plan_function
-        .strip_suffix("_batches")
-        .map(|prefix| format!("{prefix}_spawn_width"))
+    match plan_function {
+        "gunbc_ci_floor_batches" => Some("gunbc_ci_plan_spawn_width".to_string()),
+        other => other
+            .strip_suffix("_batches")
+            .map(|prefix| format!("{prefix}_plan_spawn_width")),
+    }
 }
 
 fn hardware_thread_count_from_value(value: &Value, ctx: &InterpContext) -> Result<usize, String> {
@@ -455,19 +887,7 @@ fn hardware_thread_count_from_value(value: &Value, ctx: &InterpContext) -> Resul
     }
 }
 
-/// Live host memory budget in bytes — the guaranteed slice this floor process may use before the
-/// OOM-killer fires. This is the §1-C / DESIGN §3 "read, don't commit" half: the cgroup budget is
-/// authored by an EXTERNAL system (the host/scheduler), so the host realizer reads it LIVE here,
-/// while OUR per-shard memory peak is the committed measured fact in `gunbc.ci_floor_measurement`.
-/// Reading it live (not a committed constant) is what sees the per-host cgroup drift and
-/// multi-tenant pressure.
-///
-/// Source order: cgroup v2 unified `memory.max` walked leaf→root and reduced by `min` (the
-/// EFFECTIVE limit is the tightest ancestor cap), then `/proc/meminfo` `MemAvailable`/`MemTotal`
-/// as a fallback for hosts with no cgroup cap. `None` when nothing is readable → the `.dag` fold
-/// falls back to the conservative committed width (fail-closed: never OOM, never fabricated).
 fn read_host_memory_budget_bytes() -> Option<u64> {
-    // cgroup v2 unified hierarchy: `/proc/self/cgroup` is a single `0::/<rel>` line.
     if let Ok(self_cg) = fs::read_to_string("/proc/self/cgroup") {
         if let Some(rel) = self_cg
             .lines()
@@ -495,8 +915,6 @@ fn read_host_memory_budget_bytes() -> Option<u64> {
             }
         }
     }
-    // Fallback (no cgroup cap): /proc/meminfo. MemAvailable is volatile/multi-tenant, so it is the
-    // fallback only — a transient dip should not collapse width when a real cgroup cap exists.
     if let Ok(meminfo) = fs::read_to_string("/proc/meminfo") {
         for key in ["MemAvailable", "MemTotal"] {
             if let Some(kb) = meminfo
@@ -512,10 +930,6 @@ fn read_host_memory_budget_bytes() -> Option<u64> {
     None
 }
 
-/// Evaluate peripheral spawn width from the `.dag` plan entry (host never decides width — it
-/// READS the live memory budget and threads it into the pure `.dag` fold). §1-C: the width fn
-/// takes a `memory_budget_bytes: Int` arg; we bind it by name to the live host budget. A `0`
-/// budget (unreadable) maps to the fold's conservative committed fallback (fail-closed, no OOM).
 fn eval_spawn_width(
     source_roots: &[String],
     plan_entry: &str,
@@ -534,7 +948,6 @@ fn eval_spawn_width(
         ),
         b => eprintln!("claim_executor: live memory budget {b} bytes (cgroup memory.max / meminfo)"),
     }
-    // i64 is the `.dag` Int carrier; clamp the (always-small) byte count into range defensively.
     let budget_arg = i64::try_from(budget_bytes).unwrap_or(i64::MAX);
     let width_value = run_in_context_with_args(
         &plan_ctx,
@@ -554,38 +967,11 @@ fn eval_spawn_width(
     hardware_thread_count_from_value(&width_value, &plan_ctx)
 }
 
-/// Outcome of walking the executor-decided batches: whether any claim failed and
-/// how many batches actually started executing (the walk halts at a failed batch,
-/// so `batches_run < batches.len()` witnesses that the halt fired).
 struct WalkOutcome {
     any_failed: bool,
     batches_run: usize,
 }
 
-/// Run batch by batch (executor ordering). A batch is one scheduler readiness layer:
-/// every node in it is mutually independent, so the whole layer runs concurrently. The
-/// batch boundary is a barrier — batch N+1 starts only after every claim in batch N has
-/// reported, and a failed batch halts the walk before its dependents. Batch MEMBERSHIP
-/// and ORDER are the `.dag` plan's; this only walks them.
-///
-/// Per-node resource demand decides each node's INTERNAL width: a `DiscoveryBatch` shards
-/// up to the budgeted `spawn_width` (the `.dag` width authority), while a `SingleClaim` is
-/// one resolve thread and ignores it (`run_single_claim` takes no width). So `spawn_width`
-/// is handed to every node unchanged — the heavy discovery corpus gets the full memory-
-/// budgeted width regardless of how many cheap gates share its layer. The `.dag` plan
-/// guarantees no two heavy resolves share a readiness layer (resource-dependency edges
-/// serialize them — `gunbc_ci_floor_plan_fits_memory_budget`), so the concurrent memory
-/// peak stays under the fleet budget.
-///
-/// This replaces the prior even split (`width / chunk.len()`), which starved the corpus to
-/// `width = 1` whenever it was chunked with cheap gates that did not consume any of the
-/// width they were handed — the 1000s serial tentpole.
-/// Process high-water-mark RSS in bytes, read from `/proc/self/status` (`VmHWM`;
-/// linux best-effort, `None` elsewhere). `VmHWM` is the PEAK resident set over the
-/// process lifetime — at the floor's parallel batch this is the CONCURRENT peak at
-/// the run's `spawn_width`, the quantity a memory budget must bound. Emitted as a
-/// MEASURED fact so the §1-C memory-aware width derivation keys on it instead of a
-/// hand-grounded literal (realization-measurement-loop.md Phase 0).
 fn peak_rss_bytes() -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     let line = status.lines().find(|l| l.starts_with("VmHWM"))?;
@@ -593,49 +979,460 @@ fn peak_rss_bytes() -> Option<u64> {
     Some(kb.saturating_mul(1024))
 }
 
+/// The cgroup directory whose `memory.max` is the TIGHTEST along the `/proc/self/cgroup`
+/// leaf→root walk — the EFFECTIVE budget the OOM-killer enforces (the same ancestor
+/// `read_host_memory_budget_bytes` reduces to by `min`, returned here so the peak can be
+/// read at the SAME level the budget binds). `None` when `/proc/self/cgroup` is unreadable
+/// or no ancestor sets a numeric cap.
+fn binding_cap_cgroup_dir() -> Option<std::path::PathBuf> {
+    let self_cg = fs::read_to_string("/proc/self/cgroup").ok()?;
+    let rel = self_cg
+        .lines()
+        .find_map(|l| l.strip_prefix("0::"))
+        .map(|p| p.trim().trim_start_matches('/').to_string())?;
+    let root = Path::new("/sys/fs/cgroup");
+    let mut dir = root.join(&rel);
+    let mut best: Option<(u64, std::path::PathBuf)> = None;
+    loop {
+        if let Ok(s) = fs::read_to_string(dir.join("memory.max")) {
+            let s = s.trim();
+            if s != "max" {
+                if let Ok(v) = s.parse::<u64>() {
+                    let take = best.as_ref().map(|(cur, _)| v < *cur).unwrap_or(true);
+                    if take {
+                        best = Some((v, dir.clone()));
+                    }
+                }
+            }
+        }
+        if dir == root || !dir.pop() {
+            break;
+        }
+    }
+    best.map(|(_, d)| d)
+}
+
+/// The process's own deepest (leaf) cgroup from `/proc/self/cgroup`. On the ephemeral GitHub
+/// runners this is `actions-runner@srv1-NN.service` — fresh per job — so its hierarchical cgroup-v2
+/// `memory.peak` isolates ONE job's whole-tree footprint. We read the peak HERE, not at a shared
+/// parent slice, so the placement divisor is per-job and not an aggregate over co-resident runners
+/// (measured 2026-06-22: the runner units run `MemoryMax=infinity`, so there is NO binding numeric
+/// cap and `binding_cap_cgroup_dir` returns `None` on the real fleet; the leaf is always present).
+fn leaf_cgroup_dir() -> Option<std::path::PathBuf> {
+    let self_cg = fs::read_to_string("/proc/self/cgroup").ok()?;
+    let rel = self_cg
+        .lines()
+        .find_map(|l| l.strip_prefix("0::"))
+        .map(|p| p.trim().trim_start_matches('/').to_string())?;
+    Some(Path::new("/sys/fs/cgroup").join(rel))
+}
+
+/// Total physical RAM in bytes (`/proc/meminfo` `MemTotal`, kB→bytes) — the EFFECTIVE memory budget
+/// when the cgroup is uncapped, which is the real CI fleet (runner units `MemoryMax=infinity`, so
+/// the OOM bound is physical RAM, not a cgroup `memory.max`).
+fn mem_total_bytes() -> Option<u64> {
+    let s = fs::read_to_string("/proc/meminfo").ok()?;
+    let line = s.lines().find(|l| l.starts_with("MemTotal"))?;
+    let kb: u64 = line.split_whitespace().nth(1)?.parse().ok()?;
+    Some(kb.saturating_mul(1024))
+}
+
+/// One read of the whole-tree job footprint and its budget context, taken in a single cgroup walk so
+/// a consumer (placement divisor, compile-jobs derive) can parse usage AND budget from one emitted
+/// line without re-walking. `cap_bytes` is the tightest numeric `memory.max` on the leaf→root walk
+/// (`None` = uncapped / RAM-bound); `host_ram` is the physical-RAM budget that binds when uncapped;
+/// `sccache_under_leaf` classifies the sccache server's cgroup as a descendant (already counted in
+/// `leaf_peak`) vs a sibling (must be subtracted as `host_fixed_overhead`) — the "accounted exactly
+/// once" decision, read from paths rather than guessed.
+struct CgroupMeasurement {
+    leaf_peak: u64,
+    leaf_rel: String,
+    cap_bytes: Option<u64>,
+    host_ram: Option<u64>,
+    pids_current: u64,
+    pids_max: String,
+    sccache_rel: Option<String>,
+    sccache_under_leaf: bool,
+}
+
+fn cgroup_job_measurement() -> Option<CgroupMeasurement> {
+    let leaf = leaf_cgroup_dir()?;
+    let leaf_peak = fs::read_to_string(leaf.join("memory.peak"))
+        .ok()?
+        .trim()
+        .parse::<u64>()
+        .ok()?;
+    let leaf_rel = leaf
+        .strip_prefix("/sys/fs/cgroup")
+        .map(|p| format!("/{}", p.to_string_lossy().trim_start_matches('/')))
+        .unwrap_or_else(|_| leaf.to_string_lossy().into_owned());
+    let cap_bytes = binding_cap_cgroup_dir()
+        .and_then(|d| fs::read_to_string(d.join("memory.max")).ok())
+        .and_then(|s| s.trim().parse::<u64>().ok());
+    let pids_current = fs::read_to_string(leaf.join("pids.current"))
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+        .unwrap_or(0);
+    let pids_max = fs::read_to_string(leaf.join("pids.max"))
+        .ok()
+        .map(|s| s.trim().to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+    let sccache_rel = sccache_server_cgroup_rel();
+    // Descendant iff sccache's cgroup is the leaf or strictly under it — a PATH-COMPONENT prefix,
+    // not a bare string prefix, so a sibling like `<leaf>-other.service` is NOT misclassified as a
+    // descendant (that would under-count host overhead — the fail-OPEN direction). When the leaf is
+    // the cgroup root (`leaf_r` empty — e.g. a single-cgroup container) everything is a descendant.
+    // On the real fleet the leaf is the runner-service cgroup and sccache is a sibling service
+    // cgroup, so this is `false` (subtract as host_fixed_overhead).
+    let leaf_r = leaf_rel.trim_start_matches('/').to_string();
+    let sccache_under_leaf = sccache_rel
+        .as_deref()
+        .map(|r| {
+            let r = r.trim_start_matches('/');
+            leaf_r.is_empty() || r == leaf_r || r.starts_with(&format!("{leaf_r}/"))
+        })
+        .unwrap_or(false);
+    Some(CgroupMeasurement {
+        leaf_peak,
+        leaf_rel,
+        cap_bytes,
+        host_ram: mem_total_bytes(),
+        pids_current,
+        pids_max,
+        sccache_rel,
+        sccache_under_leaf,
+    })
+}
+
+/// Verify each declared release artifact exists, is executable, and is non-empty — failing CLOSED
+/// (exit 1) with the GitHub-Actions `::error::` annotation on the first violation. This is the
+/// in-binary home of what was previously inline `[ -x ]` / `[ -s ]` shell in the generated ci.yml
+/// (DESIGN §5 fail-open guard: an sccache-served truncated/empty cached artifact after a
+/// `successful` build). The artifact paths are authored by the .dag spec and passed positionally.
+fn verify_build_artifacts(paths: &[String]) -> Result<ExitCode, ExitCode> {
+    use std::os::unix::fs::PermissionsExt;
+    if paths.is_empty() {
+        eprintln!("claim_executor: --verify-build-artifacts requires at least one artifact path");
+        return Err(ExitCode::from(2));
+    }
+    for path in paths {
+        let name = std::path::Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path.as_str());
+        match std::fs::metadata(path) {
+            Ok(meta) => {
+                let executable = meta.permissions().mode() & 0o111 != 0;
+                if !meta.is_file() || !executable {
+                    eprintln!(
+                        "::error::build verification: declared artifact '{name}' absent or not \
+                         executable after a 'successful' build (sccache/cache corruption — DESIGN \
+                         §5 fail-open); failing closed: {path}"
+                    );
+                    return Err(ExitCode::from(1));
+                }
+                if meta.len() == 0 {
+                    eprintln!(
+                        "::error::build verification: declared artifact '{name}' is zero-byte after \
+                         a 'successful' build (sccache served a truncated/empty cached artifact — \
+                         DESIGN §5 fail-open); failing closed: {path}"
+                    );
+                    return Err(ExitCode::from(1));
+                }
+            }
+            Err(_) => {
+                eprintln!(
+                    "::error::build verification: declared artifact '{name}' absent or not \
+                     executable after a 'successful' build (sccache/cache corruption — DESIGN §5 \
+                     fail-open); failing closed: {path}"
+                );
+                return Err(ExitCode::from(1));
+            }
+        }
+    }
+    eprintln!(
+        "claim_executor: build-artifact verification passed ({} declared release binar{} present \
+         + non-empty)",
+        paths.len(),
+        if paths.len() == 1 { "y" } else { "ies" }
+    );
+    Ok(ExitCode::SUCCESS)
+}
+
+/// Single authority for the one-line whole-tree cgroup measurement, shared by the floor run and the
+/// standalone `--measure-cgroup-peak` mode so the `ci` and `rust_tests` jobs report an
+/// identically-shaped line. `context` distinguishes the call site.
+fn emit_cgroup_measurement(context: &str) {
+    match cgroup_job_measurement() {
+        Some(m) => {
+            let cap = match m.cap_bytes {
+                Some(b) => format!("{b} bytes"),
+                None => "uncapped(RAM-bound)".to_string(),
+            };
+            let host_ram = m
+                .host_ram
+                .map(|b| format!("{b} bytes"))
+                .unwrap_or_else(|| "unknown".to_string());
+            let sccache = match (&m.sccache_rel, m.sccache_under_leaf) {
+                (Some(r), true) => format!("{r} (descendant: counted in memory.peak)"),
+                (Some(r), false) => format!("{r} (sibling: subtract as host_fixed_overhead)"),
+                (None, _) => "not-found (treat as fixed host overhead)".to_string(),
+            };
+            eprintln!(
+                "[measurement] cgroup peak: {peak} bytes (memory.peak @ {rel}) memory.max={cap} host_ram={host_ram} pids.current={pc} pids.max={pm} sccache-server-cgroup={sccache} context={context}",
+                peak = m.leaf_peak,
+                rel = m.leaf_rel,
+                pc = m.pids_current,
+                pm = m.pids_max
+            );
+        }
+        None => eprintln!(
+            "[measurement] cgroup peak: unavailable (no leaf cgroup or memory.peak unreadable; kernel < 5.19?) context={context}"
+        ),
+    }
+}
+
+/// Best-effort cgroup-v2 relative path of the sccache SERVER daemon (a `sccache` comm), scanned
+/// from `/proc`. Emitted beside the binding-cap ancestor path so the analysis can classify the
+/// "accounted exactly once" case: a path UNDER the ancestor → sccache is inside `memory.peak`
+/// (don't subtract); a SIBLING path → subtract it as `host_fixed_overhead`. Returns `None` when
+/// no sccache server process is found (then it's fixed host overhead by default, fail-closed).
+fn sccache_server_cgroup_rel() -> Option<String> {
+    for entry in fs::read_dir("/proc").ok()?.flatten() {
+        let p = entry.path();
+        let Some(name) = p.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+        if !name.bytes().all(|b| b.is_ascii_digit()) {
+            continue;
+        }
+        if fs::read_to_string(p.join("comm"))
+            .unwrap_or_default()
+            .trim()
+            != "sccache"
+        {
+            continue;
+        }
+        if let Some(rel) = fs::read_to_string(p.join("cgroup")).ok().and_then(|cg| {
+            cg.lines()
+                .find_map(|l| l.strip_prefix("0::"))
+                .map(|s| s.trim().to_string())
+        }) {
+            return Some(rel);
+        }
+    }
+    None
+}
+
+/// Per-batch timing record collected during run_walk for Gantt emission.
+struct BatchRecord {
+    batch_index: usize,
+    wall_nanos: u128,
+    /// Flattened results from all units in this batch (order: unit by unit).
+    results: Vec<ClaimResult>,
+}
+
+/// Emit a fractal Gantt tree to stderr when GUNBC_FLOOR_GANTT=1.
+fn emit_gantt(batch_records: &[BatchRecord], total_wall_nanos: u128) {
+    let gantt_enabled = std::env::var("GUNBC_FLOOR_GANTT")
+        .map(|v| v == "1")
+        .unwrap_or(false);
+    if !gantt_enabled {
+        return;
+    }
+    let total_ms = total_wall_nanos / 1_000_000;
+    eprintln!("[gantt] claim_executor wall: {}ms", total_ms);
+    for rec in batch_records {
+        let batch_ms = rec.wall_nanos / 1_000_000;
+        let pct = if total_ms == 0 {
+            0.0
+        } else {
+            100.0 * batch_ms as f64 / total_ms as f64
+        };
+        eprintln!(
+            "[gantt]   batch {} wall: {}ms ({:.1}%)",
+            rec.batch_index + 1,
+            batch_ms,
+            pct,
+        );
+        for result in &rec.results {
+            let batch_pct = |ns: u128| -> f64 {
+                if rec.wall_nanos == 0 {
+                    0.0
+                } else {
+                    100.0 * ns as f64 / rec.wall_nanos as f64
+                }
+            };
+            if result.corpus_witnesses > 0 {
+                // Discovery batch: show serial-sum breakdown.
+                let corpus_resolve_ms = result.corpus_resolve_nanos / 1_000_000;
+                let corpus_eval_ms = result.corpus_eval_nanos / 1_000_000;
+                eprintln!(
+                    "[gantt]     {} ({} witnesses)",
+                    result.function, result.corpus_witnesses
+                );
+                eprintln!(
+                    "[gantt]       resolve (serial sum): {}ms  ({:.1}% of batch wall)",
+                    corpus_resolve_ms,
+                    batch_pct(result.corpus_resolve_nanos),
+                );
+                eprintln!(
+                    "[gantt]       eval    (serial sum): {}ms  ({:.1}% of batch wall)",
+                    corpus_eval_ms,
+                    batch_pct(result.corpus_eval_nanos),
+                );
+            } else {
+                // Single claim: show resolve (if charged) + eval.
+                if result.resolve_nanos > 0 {
+                    let resolve_ms = result.resolve_nanos / 1_000_000;
+                    eprintln!(
+                        "[gantt]     resolve (entry): {}ms  ({:.1}% of batch wall)",
+                        resolve_ms,
+                        batch_pct(result.resolve_nanos),
+                    );
+                }
+                let wall_ms = result.wall_nanos / 1_000_000;
+                let ok = if result.ok { "PASS" } else { "FAIL" };
+                eprintln!(
+                    "[gantt]     {}: {}ms  [{ok}]  ({:.1}% of batch wall)",
+                    result.function,
+                    wall_ms,
+                    batch_pct(result.wall_nanos),
+                );
+            }
+        }
+    }
+}
+
 fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usize) -> WalkOutcome {
     let width = spawn_width.max(1);
     let mut any_failed = false;
     let mut batches_run = 0usize;
+    let walk_start = Instant::now();
+    let mut batch_records: Vec<BatchRecord> = Vec::new();
+    // Cross-batch resolve memo: SharedClaims whose runnable does a heavy whole-tree resolve
+    // run on the main thread and share a single resolved InterpContext per entry across all batches.
+    // Rc<ResolvedGraph> is !Send so these units cannot run on spawned threads; they
+    // run sequentially here after the spawned (non-memo) threads in each batch are joined.
+    // Key invariant: source_roots is constant for the lifetime of a run_walk call, so
+    // keying the memo by entry alone is sufficient — a given entry always resolves against
+    // the same source_roots here. If this function ever accepts multiple source_root sets,
+    // the key must become (source_roots_hash, entry).
+    let mut walk_memo: std::collections::HashMap<String, InterpContext> =
+        std::collections::HashMap::new();
     for (bi, batch) in batches.iter().enumerate() {
         batches_run = bi + 1;
+        let units = group_batch_units(batch);
         eprintln!(
-            "claim_executor: batch {} — {} node(s), spawn_width={}",
+            "claim_executor: batch {} — {} node(s) in {} resolve-group(s), spawn_width={}",
             bi + 1,
             batch.len(),
+            units.len(),
             width
         );
-        let handles: Vec<_> = batch
-            .iter()
-            .map(|runnable| {
+        let batch_start = Instant::now();
+        // Partition units: memo units stay on the main thread; others spawn.
+        // A unit goes to the memo path if (a) its profile declares heavy whole-tree
+        // resolve, or (b) its entry is already in walk_memo from a prior batch — in
+        // which case re-resolving would be redundant regardless of profile.
+        let mut memo_units: Vec<BatchUnit> = Vec::new();
+        let mut thread_units: Vec<BatchUnit> = Vec::new();
+        for unit in units {
+            match &unit {
+                BatchUnit::SharedClaims {
+                    use_walk_memo: true,
+                    ..
+                } => memo_units.push(unit),
+                BatchUnit::SharedClaims { entry, .. } if walk_memo.contains_key(entry) => {
+                    memo_units.push(unit)
+                }
+                _ => thread_units.push(unit),
+            }
+        }
+        // Bracket the parallel walk in a host-effect group: the `[file]`/`[rest]`/
+        // `[shell]` trace lines stream to stderr from the worker threads INSIDE the
+        // group, while the scannable PASS/FAIL summary is deferred to AFTER the group
+        // closes (below) so it stays outside the collapsed section. GitHub Actions
+        // renders this as a collapsible `::group::`; a plain terminal as a header.
+        // Threads can't interleave group markers (one open/close on the main thread
+        // spans the whole batch), so it is sound under `spawn_width > 1`.
+        let grouped = v1_compiler::v1_interpreter::host_trace_grouping_active();
+        if grouped {
+            v1_compiler::v1_interpreter::group_begin(&format!("batch {} host-effects", bi + 1));
+        }
+        let handles: Vec<_> = thread_units
+            .into_iter()
+            .map(|unit| {
                 let roots = source_roots.to_vec();
-                let runnable = runnable.clone();
-                thread::spawn(move || run_one_runnable(roots, runnable, width))
+                thread::spawn(move || run_batch_unit(roots, unit, width))
             })
             .collect();
+        // Run memo units on the main thread while spawned threads are working.
+        let mut memo_results: Vec<ClaimResult> = Vec::new();
+        for unit in memo_units {
+            if let BatchUnit::SharedClaims {
+                entry, functions, ..
+            } = unit
+            {
+                let results =
+                    run_memo_shared_claims(source_roots, &entry, &functions, &mut walk_memo);
+                memo_results.extend(results);
+            }
+        }
+        // Collect all results before printing any PASS/FAIL — the prints must land
+        // after `group_end`, and a thread panic still has to close the group.
+        let mut batch_results: Vec<ClaimResult> = memo_results;
+        let mut thread_panicked = false;
         for handle in handles {
             match handle.join() {
-                Ok(result) => {
-                    if result.ok {
-                        println!("PASS [batch {}] {}", bi + 1, result.function);
-                    } else {
-                        println!(
-                            "FAIL [batch {}] {} ({})",
+                Ok(results) => batch_results.extend(results),
+                Err(_) => thread_panicked = true,
+            }
+        }
+        if grouped {
+            v1_compiler::v1_interpreter::group_end();
+        }
+        for result in &batch_results {
+            if result.ok {
+                println!(
+                    "{}",
+                    paint(
+                        &format!("✓ PASS [batch {}] {}", bi + 1, result.function),
+                        sgr::SUCCESS
+                    )
+                );
+            } else {
+                println!(
+                    "{}",
+                    paint(
+                        &format!(
+                            "✗ FAIL [batch {}] {} ({})",
                             bi + 1,
                             result.function,
                             result.detail
-                        );
-                        any_failed = true;
-                    }
-                }
-                Err(_) => {
-                    println!("FAIL [batch {}] <claim thread panicked>", bi + 1);
-                    any_failed = true;
-                }
+                        ),
+                        sgr::ERROR
+                    )
+                );
+                any_failed = true;
             }
         }
-        // Fail closed at the barrier: if a gating batch failed, do not run the
-        // dependent batches that the executor placed behind it.
+        if thread_panicked {
+            println!(
+                "{}",
+                paint(
+                    &format!("✗ FAIL [batch {}] <claim thread panicked>", bi + 1),
+                    sgr::ERROR
+                )
+            );
+            any_failed = true;
+        }
+        let batch_wall_nanos = batch_start.elapsed().as_nanos();
+        batch_records.push(BatchRecord {
+            batch_index: bi,
+            wall_nanos: batch_wall_nanos,
+            results: batch_results,
+        });
         if any_failed {
             eprintln!(
                 "claim_executor: batch {} had failures — stopping before dependent batches",
@@ -644,14 +1441,14 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
             break;
         }
     }
+    let total_wall_nanos = walk_start.elapsed().as_nanos();
+    emit_gantt(&batch_records, total_wall_nanos);
     WalkOutcome {
         any_failed,
         batches_run,
     }
 }
 
-/// Map a repo-relative entry path onto the temp copy of `source_root` (same scheme
-/// as `ci-claim-gate`): strip the root prefix and rejoin under the temp `src` dir.
 fn remap_entry_for_temp(source_root: &str, temp_src: &Path, entry: &str) -> PathBuf {
     let prefix = format!("{source_root}/");
     if let Some(suffix) = entry.strip_prefix(&prefix) {
@@ -683,12 +1480,8 @@ fn copy_dir_all(from: &Path, to: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Rewrite a witness function's body to `{ false }` in place (same brace-matched
-/// transform `ci-claim-gate` uses) so the planted witness evaluates false.
 fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> {
     let text = fs::read_to_string(path).map_err(|e| format!("read {}: {e}", path.display()))?;
-    // Match both `fn NAME(` and `func NAME(` (effectful gates are `func`). Prefer
-    // whichever appears; `func ` ends in `c ` so it won't be confused with `fn `.
     let needle_fn = format!("fn {function}(");
     let needle_func = format!("func {function}(");
     let start = match (text.find(&needle_func), text.find(&needle_fn)) {
@@ -723,14 +1516,6 @@ fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> 
     fs::write(path, out).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
-/// `--perturb-check` receipt for the executor's run-loop WALK (CI orchestration).
-///
-/// Reads the `.dag`-decided plan (structure/ordering is the model's — see the
-/// `bre_*_yields_*_batches` witnesses in batch_runner.dag), plants the batch-1
-/// gating witness body -> `false` in a temp copy, and re-walks. The receipt
-/// asserts BOTH halves of the walk-halt: the run fails closed (exit != 0) AND the
-/// walk stops before the dependent batches (only batch 1 executed). This tests
-/// ONLY the run-loop walk — it derives no grouping or ordering itself.
 fn run_perturb_check(
     source_roots: &[String],
     plan_entry: &str,
@@ -743,7 +1528,6 @@ fn run_perturb_check(
             return Err(ExitCode::from(2));
         }
     };
-    // The walk-halt is only observable with a dependent batch behind the gate.
     if batches.len() < 2 {
         eprintln!(
             "claim_executor: --perturb-check needs a plan with >= 2 batches to witness the \
@@ -752,13 +1536,10 @@ fn run_perturb_check(
         );
         return Err(ExitCode::from(2));
     }
-    // The gating node must be a SingleClaim with a plantable witness body; a
-    // DiscoveryBatch in batch 1 has no single function to perturb (the floor plan
-    // places compile-clean — a SingleClaim — at batch 1 precisely so this holds).
     let (gating_entry, gating_function) = match batches[0].first() {
-        Some(Runnable::SingleClaim { entry, function }) if !entry.is_empty() => {
-            (entry.clone(), function.clone())
-        }
+        Some(Runnable::SingleClaim {
+            entry, function, ..
+        }) if !entry.is_empty() => (entry.clone(), function.clone()),
         _ => {
             eprintln!(
                 "claim_executor: --perturb-check: batch 1 has no plantable SingleClaim gating node"
@@ -776,7 +1557,6 @@ fn run_perturb_check(
         return Err(ExitCode::from(2));
     }
 
-    // Plant the gating (batch-1) witness body -> false in the temp tree.
     let gating_path = remap_entry_for_temp(primary, &temp_src, &gating_entry);
     if let Err(e) = perturb_function_to_false(&gating_path, &gating_function) {
         let _ = fs::remove_dir_all(&tmp);
@@ -784,11 +1564,6 @@ fn run_perturb_check(
         return Err(ExitCode::from(2));
     }
 
-    // Remap every node's entry onto the temp tree (pure path rewrite; batch
-    // membership and order are unchanged — that is the .dag plan's), then re-walk.
-    // Only the gating witness body differs from the green run. The walk halts at
-    // batch 1 (planted false), so batch-2 DiscoveryBatch nodes never execute, but
-    // we remap their source_roots too so the perturb tree is self-consistent.
     let temp_root = temp_src.to_string_lossy().into_owned();
     let remap_root = |root: &str| -> String {
         if root == primary.as_str() {
@@ -803,7 +1578,11 @@ fn run_perturb_check(
             batch
                 .iter()
                 .map(|r| match r {
-                    Runnable::SingleClaim { entry, function } => Runnable::SingleClaim {
+                    Runnable::SingleClaim {
+                        entry,
+                        function,
+                        use_walk_memo,
+                    } => Runnable::SingleClaim {
                         entry: if entry.is_empty() {
                             entry.clone()
                         } else {
@@ -812,17 +1591,24 @@ fn run_perturb_check(
                                 .into_owned()
                         },
                         function: function.clone(),
+                        use_walk_memo: *use_walk_memo,
                     },
                     Runnable::DiscoveryBatch {
                         source_roots: roots,
                         scan_dirs,
                         explicit_entries,
                         skip_unaffected_node_frontier,
+                        exclude_substrings,
+                        discovery_scope_dirs,
+                        spawn_width_cap,
                     } => Runnable::DiscoveryBatch {
                         source_roots: roots.iter().map(|r| remap_root(r)).collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
                         explicit_entries: explicit_entries.clone(),
                         skip_unaffected_node_frontier: *skip_unaffected_node_frontier,
+                        exclude_substrings: exclude_substrings.clone(),
+                        discovery_scope_dirs: discovery_scope_dirs.clone(),
+                        spawn_width_cap: *spawn_width_cap,
                     },
                 })
                 .collect()
@@ -836,8 +1622,6 @@ fn run_perturb_check(
     let outcome = run_walk(&[temp_root], &remapped, 1);
     let _ = fs::remove_dir_all(&tmp);
 
-    // Receipt: the planted gating failure must fail the run closed AND halt the
-    // walk before batch 2 (exactly one batch executed).
     if outcome.any_failed && outcome.batches_run == 1 {
         eprintln!(
             "claim_executor: --perturb-check OK: gating batch-1 false -> run failed closed AND \
@@ -864,10 +1648,23 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut plan_function = "bre_claim_batches".to_string();
     let mut notice_title: Option<String> = None;
     let mut perturb_check = false;
+    let mut measure_cgroup_peak = false;
+    let mut verify_artifacts: Vec<String> = Vec::new();
+    let mut verify_artifacts_mode = false;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
+            "--verify-build-artifacts" => {
+                // All remaining positional args are declared release-artifact paths to verify.
+                verify_artifacts_mode = true;
+                i += 1;
+                while i < args.len() {
+                    verify_artifacts.push(args[i].clone());
+                    i += 1;
+                }
+                break;
+            }
             "--source-root" => {
                 i += 1;
                 source_roots.push(require_value(&args, i, "--source-root")?);
@@ -885,12 +1682,33 @@ fn run() -> Result<ExitCode, ExitCode> {
                 notice_title = Some(require_value(&args, i, "--notice-title")?);
             }
             "--perturb-check" => perturb_check = true,
+            "--measure-cgroup-peak" => measure_cgroup_peak = true,
             other => {
                 eprintln!("claim_executor: unknown argument: {}", other);
                 return Err(ExitCode::from(2));
             }
         }
         i += 1;
+    }
+
+    // Build-artifact verification (no plan run): the floor's bootstrap `cargo build` is followed by
+    // this check so a `successful` build that nonetheless produced a missing/zero-byte binary
+    // (sccache serving a truncated/empty cached artifact — DESIGN §5 fail-open) fails CLOSED before
+    // the floor runs. The LOGIC lives here (the floor binary) instead of inline shell in ci.yml; the
+    // declared artifact paths are still authored by the .dag spec and passed as positional args.
+    // Short-circuits before the plan-arg requirements so it needs no `--plan-entry`.
+    if verify_artifacts_mode {
+        return verify_build_artifacts(&verify_artifacts);
+    }
+
+    // Standalone whole-tree cgroup measurement (no plan run): the `rust_tests` job invokes this
+    // after its gate to emit ITS leaf cgroup peak (a separate ephemeral runner cgroup from the `ci`
+    // job's), reusing the same single-authority walk/emit. Short-circuits before the plan-arg
+    // requirements so it needs no `--source-root`/`--plan-entry`.
+    if measure_cgroup_peak {
+        let job = std::env::var("GITHUB_JOB").unwrap_or_else(|_| "standalone".to_string());
+        emit_cgroup_measurement(&format!("job={job} (--measure-cgroup-peak)"));
+        return Ok(ExitCode::SUCCESS);
     }
 
     if source_roots.is_empty() {
@@ -905,13 +1723,19 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     };
 
-    // --perturb-check: the run-loop walk-halt receipt (CI orchestration), kept
-    // entirely separate from the green dogfood run below.
+    // Install the host-effect trace policy from the .dag authority once, before
+    // discovery threads spawn, so `[file] read` / `[rest]` / `[hermetic:mock]` etc.
+    // are funnelled per `gunbc.output_policy` instead of flooding the floor log.
+    v1_compiler::cli_run::install_output_policy(&source_roots);
+    // Install the per-target group-marker syntax (GitHub Actions `::group::` vs a
+    // plain-terminal header) from the .dag authority, so the parallel walk folds each
+    // batch's host-effect traces into a collapsible group.
+    v1_compiler::cli_run::install_group_syntax(&source_roots);
+
     if perturb_check {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
     }
 
-    // 1. Evaluate the executor-decided plan (the `.dag` is the batching authority).
     let batches = match eval_plan(&source_roots, &plan_entry, &plan_function) {
         Ok(b) => b,
         Err(msg) => {
@@ -928,9 +1752,6 @@ fn run() -> Result<ExitCode, ExitCode> {
         plan_function
     );
 
-    // Fail closed on a zero-batch plan: an empty run is never a successful run.
-    // A non-complete executor state is projected as a sentinel batch (not []),
-    // but guard here too so no plan shape can become a vacuous exit-0.
     if batches.is_empty() {
         eprintln!("claim_executor: executor plan produced 0 batches — failing closed");
         return Err(ExitCode::from(1));
@@ -952,22 +1773,27 @@ fn run() -> Result<ExitCode, ExitCode> {
             .unwrap_or("<serial>")
     );
 
-    // 2. Run batch by batch (executor ordering), claims within a batch in parallel.
     let outcome = run_walk(&source_roots, &batches, spawn_width);
-    // [measurement] memory instrument (Phase-0 keystone): the process high-water RSS
-    // is the CONCURRENT peak across the whole floor run at this spawn_width — the
-    // number a memory budget must bound. Per-shard peak ≈ this ÷ effective
-    // concurrency; a width=1 run measures one shard's peak directly. Emitting it
-    // (paired with spawn_width) is what lets §1-C derive width from a MEASURED peak
-    // rather than the hand-grounded literal #5419 deleted as unwired.
     match peak_rss_bytes() {
-        Some(bytes) => eprintln!(
-            "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
-        ),
+        Some(bytes) => {
+            eprintln!(
+                "[measurement] floor peak RSS: {bytes} bytes (VmHWM) at spawn_width={spawn_width}"
+            );
+            let width = spawn_width.max(1) as u64;
+            let per_shard = bytes.div_ceil(width);
+            eprintln!(
+                "[calibration] max-per-shard-peak-rss: {per_shard} bytes at spawn_width={spawn_width}"
+            );
+        }
         None => eprintln!(
             "[measurement] floor peak RSS: unavailable (no /proc/self/status) at spawn_width={spawn_width}"
         ),
     }
+    // [measurement] WHOLE-TREE cgroup peak — the SOUND placement divisor input (SELF-RSS above omits
+    // child rustc/sccache PIDs; cgroup-v2 `memory.peak` at the leaf job cgroup is hierarchical and
+    // captures them). Single authority `emit_cgroup_measurement` so the `ci` and `rust_tests` jobs
+    // report an identically-shaped line. Runtime-harmless read-only.
+    emit_cgroup_measurement(&format!("floor spawn_width={spawn_width}"));
     if outcome.any_failed {
         Ok(ExitCode::from(1))
     } else {
@@ -979,5 +1805,323 @@ fn main() -> ExitCode {
     match run() {
         Ok(code) => code,
         Err(code) => code,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn single(entry: &str, function: &str) -> Runnable {
+        Runnable::SingleClaim {
+            entry: entry.to_string(),
+            function: function.to_string(),
+            use_walk_memo: false,
+        }
+    }
+
+    fn discovery() -> Runnable {
+        Runnable::DiscoveryBatch {
+            source_roots: vec!["src/v2".to_string()],
+            scan_dirs: vec![],
+            explicit_entries: vec![],
+            skip_unaffected_node_frontier: true,
+            exclude_substrings: vec![],
+            discovery_scope_dirs: vec![],
+            spawn_width_cap: 0,
+        }
+    }
+
+    /// Flatten the grouped units back to the (entry, function) claims they will execute, in the
+    /// order each unit runs them. `Discovery` contributes no SingleClaim pairs; an empty-entry
+    /// sentinel surfaces as `("", function)`. This is the verdict-preservation oracle: grouping is
+    /// only allowed to change scheduling, never which claims run.
+    fn executed_claims(units: &[BatchUnit]) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for unit in units {
+            match unit {
+                BatchUnit::SharedClaims {
+                    entry, functions, ..
+                } => {
+                    for f in functions {
+                        out.push((entry.clone(), f.clone()));
+                    }
+                }
+                BatchUnit::UnrunnableSentinel { function } => {
+                    out.push((String::new(), function.clone()));
+                }
+                BatchUnit::Discovery { .. } => {}
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn same_entry_claims_coalesce_into_one_resolve_group() {
+        // The floor's batch-2 shape: many gate witnesses share one file. They must collapse to a
+        // single resolve-group (one resolve) carrying every function, in input order.
+        let batch = vec![
+            single("gate.dag", "rust_gate"),
+            single("gate.dag", "emit_gate"),
+            single("gate.dag", "layering_gate"),
+        ];
+        let units = group_batch_units(&batch);
+        assert_eq!(
+            units.len(),
+            1,
+            "three same-entry claims => one resolve-group"
+        );
+        match &units[0] {
+            BatchUnit::SharedClaims {
+                entry, functions, ..
+            } => {
+                assert_eq!(entry, "gate.dag");
+                assert_eq!(functions, &["rust_gate", "emit_gate", "layering_gate"]);
+            }
+            _ => panic!("expected a SharedClaims unit"),
+        }
+    }
+
+    #[test]
+    fn grouping_preserves_every_claim_exactly_once() {
+        // Verdict preservation: no claim dropped, duplicated, or invented — grouping only reorders
+        // by coalescing same-entry claims (keeping their relative order). Mixed entries interleave.
+        let batch = vec![
+            single("a.dag", "a1"),
+            single("b.dag", "b1"),
+            single("a.dag", "a2"),
+            discovery(),
+            single("b.dag", "b2"),
+            single("", "__unmapped__"),
+        ];
+        let units = group_batch_units(&batch);
+
+        // a.dag coalesces (a1 before a2), b.dag coalesces (b1 before b2), discovery + sentinel stay.
+        let mut got = executed_claims(&units);
+        let mut want = vec![
+            ("a.dag".to_string(), "a1".to_string()),
+            ("a.dag".to_string(), "a2".to_string()),
+            ("b.dag".to_string(), "b1".to_string()),
+            ("b.dag".to_string(), "b2".to_string()),
+            (String::new(), "__unmapped__".to_string()),
+        ];
+        got.sort();
+        want.sort();
+        assert_eq!(got, want, "exact same claim set runs after grouping");
+
+        // Same-entry relative order is preserved within each coalesced group.
+        let a = units
+            .iter()
+            .find_map(|u| match u {
+                BatchUnit::SharedClaims {
+                    entry, functions, ..
+                } if entry == "a.dag" => Some(functions),
+                _ => None,
+            })
+            .expect("a.dag group present");
+        assert_eq!(a, &["a1", "a2"]);
+    }
+
+    #[test]
+    fn empty_entry_sentinel_is_its_own_failing_unit() {
+        // The unmapped-node sentinel (empty entry) must never coalesce into a real resolve-group;
+        // it is a stand-alone fail-closed unit so a non-complete plan stays red (DESIGN §5).
+        let batch = vec![single("", "__gunbc_ci_floor_unmapped__")];
+        let units = group_batch_units(&batch);
+        assert_eq!(units.len(), 1);
+        match &units[0] {
+            BatchUnit::UnrunnableSentinel { function } => {
+                assert_eq!(function, "__gunbc_ci_floor_unmapped__");
+            }
+            _ => panic!("empty-entry claim must be an UnrunnableSentinel, not a resolve-group"),
+        }
+
+        // And it fails closed when run.
+        let unit = units.into_iter().next().unwrap();
+        let results = run_batch_unit(vec!["src/v2".to_string()], unit, 1);
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].ok, "unmapped sentinel must fail closed");
+    }
+
+    #[test]
+    fn discovery_batch_stays_an_isolated_unit() {
+        // A discovery corpus node never merges with SingleClaims — it keeps its own shard-parallel
+        // resolve path.
+        let batch = vec![
+            single("gate.dag", "g1"),
+            discovery(),
+            single("gate.dag", "g2"),
+        ];
+        let units = group_batch_units(&batch);
+        assert_eq!(units.len(), 2, "gate group + discovery");
+        assert!(units
+            .iter()
+            .any(|u| matches!(u, BatchUnit::Discovery { .. })));
+        let gate = units
+            .iter()
+            .find_map(|u| match u {
+                BatchUnit::SharedClaims {
+                    entry, functions, ..
+                } if entry == "gate.dag" => Some(functions),
+                _ => None,
+            })
+            .expect("gate group present");
+        assert_eq!(gate, &["g1", "g2"], "both gate claims kept in one group");
+    }
+
+    // --- build-artifact verification teeth (DESIGN §5 fail-open guard) ---
+
+    fn write_exec(dir: &std::path::Path, name: &str, bytes: &[u8]) -> String {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join(name);
+        std::fs::write(&p, bytes).expect("write artifact");
+        let mut perms = std::fs::metadata(&p).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&p, perms).expect("chmod");
+        p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn verify_build_artifacts_accepts_nonempty_executables() {
+        let dir = std::env::temp_dir().join(format!("cev-ok-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = write_exec(&dir, "claim_executor", b"\x7fELF-not-really-but-nonempty");
+        let b = write_exec(&dir, "gunbc", b"binary");
+        let r = verify_build_artifacts(&[a, b]);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            matches!(r, Ok(c) if c == ExitCode::SUCCESS),
+            "real bins pass"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_zero_byte() {
+        let dir = std::env::temp_dir().join(format!("cev-zero-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let a = write_exec(&dir, "claim_executor", b"ok");
+        let b = write_exec(&dir, "gunbc", b""); // sccache served a truncated/empty cached artifact
+        let r = verify_build_artifacts(&[a, b]);
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(1)),
+            "zero-byte artifact fails closed"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_missing() {
+        let missing = std::env::temp_dir()
+            .join(format!("cev-missing-{}/gunbc", std::process::id()))
+            .to_string_lossy()
+            .into_owned();
+        let r = verify_build_artifacts(&[missing]);
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(1)),
+            "absent artifact fails closed"
+        );
+    }
+
+    #[test]
+    fn verify_build_artifacts_reds_on_empty_arglist() {
+        let r = verify_build_artifacts(&[]);
+        assert!(
+            matches!(r, Err(c) if c == ExitCode::from(2)),
+            "no declared artifacts is a usage error, fail closed"
+        );
+    }
+
+    /// Warm==cold purity oracle for the cross-batch resolve memo (DESIGN §5).
+    ///
+    /// Proves that `run_memo_shared_claims` (warm path: 2nd+ calls share the cached
+    /// `InterpContext`) produces byte-identical `(function, ok, detail)` results vs
+    /// `run_shared_entry_claims` (cold path: fresh resolve each time). Goes RED if
+    /// the shared `InterpContext` has interior mutability that contaminates results
+    /// across claims — the failure mode the declaration-validity lenses cannot catch.
+    #[test]
+    fn memo_warm_cold_results_are_identical() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dsl").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dsl/test/claim/runnable_resource_profile_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let functions: &[String] = &[
+            "witness_negligible_profile_is_not_heavy".to_string(),
+            "witness_substantial_memory_forbids_corpus_co_residence".to_string(),
+        ];
+
+        // Cold path: two independent resolves, one function each.
+        let cold: Vec<(String, bool, String)> = functions
+            .iter()
+            .flat_map(|f| {
+                run_shared_entry_claims(&source_roots, &entry, std::slice::from_ref(f))
+                    .into_iter()
+                    .map(|r| (r.function, r.ok, r.detail))
+            })
+            .collect();
+
+        // Warm path: single memo, first call resolves fresh, second hits the cache.
+        let mut memo = std::collections::HashMap::new();
+        let warm: Vec<(String, bool, String)> = functions
+            .iter()
+            .flat_map(|f| {
+                run_memo_shared_claims(&source_roots, &entry, std::slice::from_ref(f), &mut memo)
+                    .into_iter()
+                    .map(|r| (r.function, r.ok, r.detail))
+            })
+            .collect();
+
+        assert_eq!(
+            warm, cold,
+            "memo warm path must be byte-identical to cold path — shared InterpContext is pure"
+        );
+    }
+
+    /// Resolve-count oracle: proves the memo fires resolve_entry_graph exactly once
+    /// per distinct entry per walk (DESIGN §2 — no redundant resolve).
+    ///
+    /// Goes RED if the memo is bypassed: both calls would have resolve_nanos > 0,
+    /// meaning resolve_entry_graph fired twice for the same entry instead of once.
+    #[test]
+    fn memo_deduplicates_resolve_count() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("src/v2").to_string_lossy().into_owned(),
+            root.join("dsl").to_string_lossy().into_owned(),
+        ];
+        let entry = root
+            .join("dsl/test/claim/runnable_resource_profile_witness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+
+        let mut memo = std::collections::HashMap::new();
+
+        // First call for this entry: must resolve (resolve_nanos > 0).
+        let first = run_memo_shared_claims(
+            &source_roots,
+            &entry,
+            &["witness_negligible_profile_is_not_heavy".to_string()],
+            &mut memo,
+        );
+        assert!(
+            first[0].resolve_nanos > 0,
+            "first call must pay the resolve cost (resolve_entry_graph fires)"
+        );
+
+        // Second call for the same entry: must cache-hit (resolve_nanos == 0).
+        let second = run_memo_shared_claims(
+            &source_roots,
+            &entry,
+            &["witness_substantial_memory_forbids_corpus_co_residence".to_string()],
+            &mut memo,
+        );
+        assert_eq!(
+            second[0].resolve_nanos, 0,
+            "second call must cache-hit — resolve_entry_graph must NOT fire again"
+        );
     }
 }

@@ -1,20 +1,6 @@
-// src/v2/lens/layering_imports.dag
-// Scope: cross-layer import-direction lens (layer DAG dependency-direction, DESIGN.md §3 —
-//        "imports point toward std"). Two forbidden directions:
-//          (1) std/ and extdeps/ must not import v2.compiler.* (toward the compiler);
-//          (2) std/ must not import extdeps AT ALL (std is the ROOT of the layer DAG —
-//              `std ← extdeps ← compiler ← workflow`; a std→extdeps edge is the import arrow
-//              inverted). Rule (2) is what let `dsl/std/credentials.dag import extdeps.shell`
-//              pass undetected before this lens was tightened.
-//        Rule (2) is scoped to the dsl-tree `extdeps`/`extdeps.*` module form today. The
-//        `v2.extdeps.*` form is DEFERRED (🟡 dissolve-on: the pre-existing src/v2/std →
-//        v2.extdeps.* importers — qualified_name.from_module_node,
-//        grounding.terminal_gate_test — are migrated; widen `is_std_importing_extdeps` to also
-//        match the `v2.extdeps`/`v2.extdeps.*` form then).
-// Consumer: tools.layering_imports_gate → tools.layering_imports_transport host scan.
-
 module v2.lens.layering_imports
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.std.algebra {
   fold_list,
@@ -34,8 +20,6 @@ import v2.std.layer {
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 
-// One import line fact from host enumeration (path relative to repo root).
-// layer: LayerPrefix — §3 single authority; LayerLabel dissolved into LayerPrefix.
 type LayerImportFact {
   layer: LayerPrefix
   path: String
@@ -60,10 +44,6 @@ fn is_forbidden_compiler_import(module: String) -> Bool {
     || is_prefix_of(prefix: forbidden_compiler_prefix, xs: module, eq: char_eq)
 }
 
-// std/ is the ROOT of the layer DAG — it must never import extdeps (the import arrow points
-// TOWARD std, DESIGN.md §3). dsl-tree form only (`extdeps`/`extdeps.*`); the `v2.extdeps.*`
-// form is deferred per the header dissolution trigger. is_prefix_of("extdeps.", "v2.extdeps.x")
-// is false (the v2 form starts "v2."), so this cleanly excludes the deferred src/v2/std cases.
 data forbidden_std_extdeps_prefix: String = "extdeps."
 data forbidden_std_extdeps_exact: String = "extdeps"
 
@@ -118,13 +98,6 @@ fn layering_imports_violation_count(facts: List<LayerImportFact>) -> Int {
   length(xs: scan_facts_for_violations(facts: facts))
 }
 
-// Parse-bridge: structural projection of import facts over the live `.dag` tree. REUSES
-// the resolver's own `extract_import_paths` + `collect_dag_files_tolerant` (single
-// authority) — the replacement for the deleted `scripts/layering-imports-scan.sh`
-// enumerator. Layer<->root tagging is workflow POLICY: the caller passes the std-layer
-// roots and the extdeps-layer roots separately (DESIGN §3 (c)), not baked here.
-// dissolve-on: emit(intent, Bash) / v2 self-host folds this projection over its own
-//   parsed module Node-set (the v1 handler is layering_imports_project.rs).
 fn layer_import_facts_live(
   std_roots: List<String>,
   extdeps_roots: List<String>
@@ -132,12 +105,6 @@ fn layer_import_facts_live(
   layer_import_facts(std_roots: std_roots, extdeps_roots: extdeps_roots)
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "resolver/substrate rejection of a forbidden layer-DAG edge by construction (std <- extdeps <- compiler <- workflow)",
-    dissolve_on: "an import pointing against the layer arrow becomes unresolvable by construction, not flagged by a host scan over LayerImportFact"
-  },
-  rationale: "Cross-layer import direction is a decidable graph property; the lens is interim until the resolver forbids the inverted edge by construction."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

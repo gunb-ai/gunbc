@@ -1,8 +1,3 @@
-// dsl/test/claim/lens_verdict_witness_test.dag
-//
-// §5 discriminating proof for std.lens_verdict — each predicate has a GREEN
-// arm (correct verdict) and a RED control (wrong verdict must not satisfy it).
-
 module test.claim.lens_verdict_witness
 
 import std.lens_verdict {
@@ -36,7 +31,6 @@ fn sample_holds() -> LensVerdict {
   Holds
 }
 
-// Pair 1 — fail_closed: only Unrealized is fail-closed.
 fn witness_fail_closed_green_on_unrealized() -> Bool {
   match sample_unrealized() {
     Unrealized { diagnostic: _ } => true
@@ -51,7 +45,6 @@ fn witness_fail_closed_red_on_holds() -> Bool {
   }
 }
 
-// Pair 2 — is_violation: only Violation is a violation.
 fn witness_is_violation_green_on_violation() -> Bool {
   match sample_violation() {
     Violation { diagnostic: _ } => true
@@ -66,7 +59,6 @@ fn witness_is_violation_red_on_holds() -> Bool {
   }
 }
 
-// Pair 3 — locus: projects diagnostic.at; perturbed module discriminates.
 fn witness_locus_green_on_violation() -> Bool {
   match sample_violation() {
     Violation { diagnostic: d } => match d.at {

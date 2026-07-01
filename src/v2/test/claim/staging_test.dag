@@ -1,7 +1,3 @@
-// Witnesses for v2.std.staging — green by execution.
-// then_outcome: composes same-typed and DIFFERENT-typed stages (Int -> Bool -> Int),
-//   including composing its own output, and a builder that captures config.
-// cached_stage: a HIT returns the cached value and SKIPS the stage; a MISS runs it.
 module v2.test.claim.staging
 
 import v2.std.integer { Int }
@@ -12,8 +8,7 @@ import v2.std.staging { then_outcome, cached_stage, CacheProbe, Hit, Miss }
 fn s_double(n: Int) -> Outcome<Int> { outcome_accepted(value: n * 2) }
 fn s_inc(n: Int) -> Outcome<Int> { outcome_accepted(value: n + 1) }
 fn s_is_pos(n: Int) -> Outcome<Bool> { outcome_accepted(value: n > 0) }
-// consume the native bool with `if` (NOT `match True/False` — that would straddle the
-// Bool model<->realization fork: `n > 0` yields a native bool, not the Bool coproduct).
+
 fn s_bool_to_int(b: Bool) -> Outcome<Int> {
   if b { outcome_accepted(value: 1) } else { outcome_accepted(value: 0) }
 }
@@ -25,21 +20,17 @@ fn acc_int(o: Outcome<Int>, dflt: Int) -> Int {
   }
 }
 
-// same-type composition: (3 * 2) + 1 = 7
 test fn then_outcome_homogeneous() -> Bool {
   let stage = then_outcome(f: s_double, g: s_inc)
   acc_int(o: stage(3), dflt: 0) == 7
 }
 
-// heterogeneous: Int -> Bool -> Int, and then_outcome fed its own closure output.
-// 3 -> *2 -> 6 -> (>0) -> True -> 1
 test fn then_outcome_heterogeneous() -> Bool {
   let s1 = then_outcome(f: s_double, g: s_is_pos)
   let s2 = then_outcome(f: s1, g: s_bool_to_int)
   acc_int(o: s2(3), dflt: 99) == 1
 }
 
-// builder that RETURNS a closure CAPTURING a variable (k). (1+5)*2 = 12.
 fn make_adder(k: Int) -> fn(Int) -> Outcome<Int> {
   fn(n) { outcome_accepted(value: n + k) }
 }
@@ -49,19 +40,14 @@ test fn then_outcome_builder_capture() -> Bool {
   acc_int(o: stage(1), dflt: 0) == 12
 }
 
-// --- cached_stage witnesses ---
-// A lookup that always HITs with 42, and one that always MISSes.
 fn lookup_always_42(n: Int) -> CacheProbe<Int> { Hit { value: 42 } }
 fn lookup_never(n: Int) -> CacheProbe<Int> { Miss }
 
-// HIT: the cached value (42) is returned and s_double (5*2=10) is NOT run.
-// Discriminating: 42 != 10, so a HIT is provably distinct from re-running the stage.
 test fn cached_stage_hit_skips_stage() -> Bool {
   let staged = cached_stage(lookup: lookup_always_42, stage: s_double)
   acc_int(o: staged(5), dflt: 0) == 42
 }
 
-// MISS: the stage runs — s_double(5) = 10.
 test fn cached_stage_miss_runs_stage() -> Bool {
   let staged = cached_stage(lookup: lookup_never, stage: s_double)
   acc_int(o: staged(5), dflt: 0) == 10

@@ -1,8 +1,3 @@
-// src/v2/std/bounded_lattice_completeness.dag
-// Scope: BoundedLattice instance completeness — consumes find_named_child (node_query authority).
-// Status: SG-6 cycle-breaker (algebra cannot import node_query; node_query imports algebra).
-// §1-tail A4 fuel-delete: SG-6 gather/gate rows live here (fold_node owns traversal); not Practice-12 fuel.
-
 module v2.std.bounded_lattice_completeness
 
 import v2.std.algebra {
@@ -99,8 +94,6 @@ fn bounded_lattice_instance_completeness(instance: Node) -> BoundedLatticeInstan
   }
 }
 
-// SG-6 infer gate — consumer-site rejection + fold_node gather of partial instances.
-
 fn infer_bounded_lattice_partial_instance_diagnostic(
   at: Locus,
   missing: BoundedLatticeMissingWitness,
@@ -142,8 +135,6 @@ fn infer_bounded_lattice_completeness_rejects(
   }
 }
 
-// SG-6: consumer-site gate only — partial declarations are tagged, not rejected here.
-// infer_bounded_lattice_instance_gate is exported for anchor/unit probes, not infer_node_facts.
 fn infer_bounded_lattice_instance_gate(instance: Node) -> Outcome<Node> {
   infer_bounded_lattice_completeness_rejects(
     instance: instance,
@@ -151,7 +142,6 @@ fn infer_bounded_lattice_instance_gate(instance: Node) -> Outcome<Node> {
   )
 }
 
-// Algebra-use edges only — module/containment declaration siblings are not consumption.
 fn infer_edge_consumes_bounded_lattice_partial(edge: Edge, partials: List<Node>) -> Bool {
   if any(xs: partials, predicate: fn(p) { edge.target == p }) {
     match edge.label {

@@ -1,5 +1,3 @@
-// Scope: canonical QualifiedName identities for extdeps_external_authority witnesses.
-
 module v2.lens.extdeps_external_authority.module_refs
 
 import v2.std.collection { List }
@@ -55,13 +53,19 @@ data extdeps_fixture_file_anchor_module: QualifiedName = QnCons {
   }
 }
 
-// Anchor-machinery modules: RFC/header-grounded (uri) or self-anchoring (external_authority).
+data extdeps_fixture_shadow_masked_module: QualifiedName = QnCons {
+  head: ^test,
+  tail: QnCons {
+    head: ^fixture,
+    tail: QnCons { head: ^external_authority_shadow_masked, tail: QnEmpty }
+  }
+}
+
 data extdeps_external_authority_anchor_machinery_exempt_modules: List<QualifiedName> = [
   extdeps_uri_module,
   extdeps_external_authority_module
 ]
 
-// RED perturb fixtures excluded from live clean-tree roster (would false-RED the gate).
 data extdeps_external_authority_clean_tree_roster_exclusions: List<QualifiedName> = [
   extdeps_fixture_bogus_scheme_module,
   extdeps_fixture_missing_anchor_module,

@@ -1,15 +1,3 @@
-// test/claim/pareto_dominance_witness.dag — by-execution witness for the std.pareto kernel.
-//
-// Proves the component-agnostic dominance kernel (std/pareto.dag) by RUNNING it
-// (DESIGN §5 — green-by-execution, not typecheck-only). Each fn returns Bool; the
-// aggregate `pareto_dominance_holds` ANDs them. The discriminating case is
-// `incomparable_is_not_a_tie`: a candidate better-on-one-axis / worse-on-another must
-// resolve to Incomparable, NOT Equivalent — the state-space distinction that keeps a
-// real trade-off off the chopping block during front-stripping.
-//
-// Axes used: capacity (HigherIsBetter) and cost (LowerIsBetter) — the two-axis shape a
-// real RAM/CPU/board/PSU decision specializes; the kernel itself is N-axis.
-
 module test.claim.pareto_dominance
 
 import std.logic { Bool }
@@ -29,7 +17,6 @@ import std.pareto {
   on_pareto_front
 }
 
-// A vs B on (capacity↑, cost↓). a=(cap, cost).
 fn compare_axes(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> List<AxisComparison> {
   [
     axis_comparison_int(goal: HigherIsBetter, a: a_cap, b: b_cap),
@@ -41,34 +28,25 @@ fn verdict_of(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> DominanceVerd
   dominance_of_comparisons(comparisons: compare_axes(a_cap: a_cap, a_cost: a_cost, b_cap: b_cap, b_cost: b_cost))
 }
 
-// More capacity AND less cost -> strictly dominates.
 fn dominates_when_better_on_all_axes() -> Bool {
   verdict_dominates(v: verdict_of(a_cap: 64, a_cost: 100, b_cap: 32, b_cost: 200))
 }
 
-// The mirror is Dominated.
 fn dominated_is_the_mirror() -> Bool {
   verdict_is_dominated(v: verdict_of(a_cap: 32, a_cost: 200, b_cap: 64, b_cost: 100))
 }
 
-// Identical on every axis -> Equivalent (a true tie).
 fn equivalent_when_identical() -> Bool {
   verdict_is_equivalent(v: verdict_of(a_cap: 48, a_cost: 150, b_cap: 48, b_cost: 150))
 }
 
-// DISCRIMINATING: more capacity but also more cost -> Incomparable, and explicitly
-// NOT Equivalent. This is the §5 state-space distinction; if the kernel collapsed the
-// fourth state this assertion goes red.
 fn incomparable_is_not_a_tie() -> Bool {
   let v = verdict_of(a_cap: 64, a_cost: 200, b_cap: 32, b_cost: 100)
   verdict_is_incomparable(v: v) && !verdict_is_equivalent(v: v)
 }
 
-// Front-stripping: a candidate is OFF the front iff some pool member dominates it.
-// Pool = {dominator, peer}: the dominator strictly beats X, so X is stripped.
 fn dominated_candidate_is_off_front() -> Bool {
-  // X = (32, 200). Pool verdicts are (other vs X):
-  //   dominator (64,100) vs X -> Dominates ; peer (16, 100) vs X -> Incomparable.
+
   let pool = [
     verdict_of(a_cap: 64, a_cost: 100, b_cap: 32, b_cost: 200),
     verdict_of(a_cap: 16, a_cost: 100, b_cap: 32, b_cost: 200)
@@ -76,11 +54,8 @@ fn dominated_candidate_is_off_front() -> Bool {
   any_dominates(verdicts: pool) && !on_pareto_front(verdicts: pool)
 }
 
-// DISCRIMINATING: a candidate nobody dominates STAYS on the front (only incomparable
-// and dominated peers in the pool). If `on_pareto_front` were inverted this goes red.
 fn undominated_candidate_stays_on_front() -> Bool {
-  // X = (64, 100). Pool verdicts (other vs X):
-  //   (32, 50) vs X -> Incomparable ; (32, 200) vs X -> Dominated (X dominates it).
+
   let pool = [
     verdict_of(a_cap: 32, a_cost: 50, b_cap: 64, b_cost: 100),
     verdict_of(a_cap: 32, a_cost: 200, b_cap: 64, b_cost: 100)

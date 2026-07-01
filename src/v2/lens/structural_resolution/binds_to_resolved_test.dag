@@ -1,4 +1,3 @@
-
 module v2.test.lens_structural_resolution.binds_to_resolved
 
 import v2.compiler.infer { InferredFacts, InferredTree }
@@ -33,7 +32,6 @@ fn sr_claim_atom(s: Symbol) -> Node {
 }
 }
 
-// Atom reference (NoEdges); declaration container carries the BindsTo edge (P6 / node discipline).
 data sr_use: Node = sr_claim_atom(s: ^sr_use_symbol)
 
 data sr_decl: Node = Node {

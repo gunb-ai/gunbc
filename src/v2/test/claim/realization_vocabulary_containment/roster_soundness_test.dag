@@ -1,19 +1,3 @@
-// Scope: REVERSE roster-soundness witness for the realization-vocabulary containment guard —
-//        the shrinking-ratchet integrity check (DESIGN §5/§6). The forward clean_tree witness
-//        proves every live non-edge sidecar importer is rostered; THIS proves the converse —
-//        every `realization_vocab_exception_roster` ENTRY still names a LIVE non-edge importer
-//        of the bash-AST sidecar. A STALE entry (a consumer migrated off serialize_bash by
-//        warm-badger-46, or a deleted/renamed path) keeps a DEAD excuse: it lies about the
-//        ratchet "shrinking" AND silently EXCUSES a future re-leak at that path (§5 fail-open).
-//
-//        Run BY EXECUTION over the real consumer-source tree via the SAME independent live
-//        import-fact scan the forward gate uses (`layer_import_facts_live`). The roster is a
-//        PARAMETER so the discriminating control appends a planted-stale entry to the REAL
-//        roster and watches soundness flip RED, while the live side stays the independent host
-//        enumeration — the `budget_roster_completeness` discriminating pattern. The control is
-//        NOT a string-vs-its-own-substring tautology: the planted entry is checked against the
-//        REAL live scan, which contains no such path.
-
 module v2.test.realization_vocabulary_containment.roster_soundness
 
 import v2.lens.realization_vocabulary_containment {
@@ -29,15 +13,8 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-// A path that is NOT a live non-edge importer of the sidecar (no such file imports the sidecar):
-// planting it as a roster entry must make soundness RED against the independent live scan.
 data planted_stale_roster_entry: String = "dsl/tools/_stale_migrated_off_consumer.dag"
 
-// Discriminating control (planted-stale → RED, asserted true-when-correct so discovery-safe):
-// appending a planted-stale entry to the REAL roster makes the soundness fold reject, because
-// the independent live scan has no importer at that path. This is the non-vacuity tooth — a
-// roster that "matched anything", or a live scan that returned every path, would let the
-// planted entry pass and flip this RED.
 test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> Bool {
   realization_vocab_roster_sound(
     roster: list_append(
@@ -50,9 +27,6 @@ test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> Bool {
   ) == false
 }
 
-// By-execution gate: the REAL frozen roster must be SOUND against the independent live scan —
-// every entry still names a live non-edge sidecar importer (zero stale entries) — AND the
-// planted-stale control must be detected (non-vacuity bundled in, true-when-correct).
 test fn realization_vocab_roster_soundness_holds() -> Bool {
   realization_vocab_roster_sound_live(scan_roots: realization_vocab_consumer_scan_roots)
     && (realization_vocab_roster_stale_count_live(scan_roots: realization_vocab_consumer_scan_roots) == 0)

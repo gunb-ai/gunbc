@@ -1,10 +1,3 @@
-// v2 compiler test harness template for Rust stage0.
-//
-// Defines the Rust source text for the compiler_tests module.
-// This is the single authority for the stage0 test harness.
-// The emit layer calls compiler_tests_source() and writes the result
-// as src/compiler_tests.rs in the emitted crate.
-
 module v1.compiler.compiler_tests_rust
 
 import v1.compiler.artifact { RenderTarget, Rust, Python, Go }
@@ -1036,7 +1029,7 @@ fn ct_profile_full_pipeline_test() -> String {
     "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
     "                );\n",
     "                let t = Instant::now();\n",
-    "                let emit_result = crate::v1_compiler_compile::emit_from_artifact_plan(typed.clone(), artifact_plan);\n",
+    "                let emit_result = crate::v1_compiler_compile::emit_from_artifact_plan(crate::v1_compiler_compile::emittable_graph_from_graph(typed.clone()), artifact_plan);\n",
     "                let emit_elapsed = t.elapsed();\n",
     "                let emitted_files = emit_result.files.len();\n",
     "                let emitted_bytes: usize = emit_result.files.iter().map(|f| f.content.len()).sum();\n",
@@ -1249,6 +1242,141 @@ fn ct_module_footer() -> String {
   "}\n"
 }
 
+fn ct_sole_constructor_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn sole_constructor_violation_outside_module() {\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(8 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"module_a.dag\".to_string(),\n",
+    "                    content: \"module module_a\\ntype Sealed sole_constructor { x: String }\\nfn make_sealed(v: String) -> Sealed { Sealed { x: v } }\\n\".to_string(),\n",
+    "                });\n",
+    "                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"module_b.dag\".to_string(),\n",
+    "                    content: \"module module_b\\nimport module_a { Sealed }\\nfn bad_ctor(v: String) -> Sealed { Sealed { x: v } }\\n\".to_string(),\n",
+    "                });\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(\n",
+    "                    std::rc::Rc::new(vec![module_a, module_b]),\n",
+    "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                );\n",
+    "                let sole_ctor_errors: Vec<_> = result.diagnostics.iter()\n",
+    "                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::SoleConstructorViolation { .. }))\n",
+    "                    .collect();\n",
+    "                assert!(\n",
+    "                    !sole_ctor_errors.is_empty(),\n",
+    "                    \"expected SoleConstructorViolation for cross-module construction, got diagnostics: {:?}\",\n",
+    "                    result.diagnostics\n",
+    "                );\n",
+    "                let in_module_b = sole_ctor_errors.iter().any(|e| e.module_name == \"module_b\");\n",
+    "                assert!(\n",
+    "                    in_module_b,\n",
+    "                    \"SoleConstructorViolation should be reported in module_b, got: {:?}\",\n",
+    "                    sole_ctor_errors\n",
+    "                );\n",
+    "                let all_errors_in_a: Vec<_> = result.diagnostics.iter()\n",
+    "                    .filter(|d| {\n",
+    "                        d.module_name == \"module_a\" &&\n",
+    "                        matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::SoleConstructorViolation { .. })\n",
+    "                    })\n",
+    "                    .collect();\n",
+    "                assert!(\n",
+    "                    all_errors_in_a.is_empty(),\n",
+    "                    \"module_a's own construction should be allowed, got violations: {:?}\",\n",
+    "                    all_errors_in_a\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"sole_constructor_violation_outside_module test panicked\");\n",
+    "    }\n\n")
+}
+
+fn ct_sole_constructor_fieldless_witness_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn sole_constructor_fieldless_newtype_witness() {\n",
+    "        // Discriminating witness: a field-less (empty-body) sole_constructor record.\n",
+    "        // EmittableGraph is Conj (multi-field) so the phantom property is inert there.\n",
+    "        // A field-less type has connective==NoConnective and children==[], so the\n",
+    "        // phantom property flips __is_leaf false and breaks node_type_equals_core.\n",
+    "        // This test proves whether that mis-classification occurs.\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(8 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let module_a = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"module_a.dag\".to_string(),\n",
+    "                    content: \"module module_a\\ntype FieldlessFoo sole_constructor { }\\nfn make_fieldless() -> FieldlessFoo { FieldlessFoo { } }\\nfn identity(f: FieldlessFoo) -> FieldlessFoo { f }\\n\".to_string(),\n",
+    "                });\n",
+    "                let module_b = std::rc::Rc::new(crate::v1_compiler_compile::SourceFile {\n",
+    "                    path: \"module_b.dag\".to_string(),\n",
+    "                    content: \"module module_b\\nimport module_a { FieldlessFoo }\\nfn bad_ctor() -> FieldlessFoo { FieldlessFoo { } }\\n\".to_string(),\n",
+    "                });\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(\n",
+    "                    std::rc::Rc::new(vec![module_a, module_b]),\n",
+    "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                );\n",
+    "                let sole_ctor_errors: Vec<_> = result.diagnostics.iter()\n",
+    "                    .filter(|d| matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::SoleConstructorViolation { .. }))\n",
+    "                    .collect();\n",
+    "                let violation_in_b = sole_ctor_errors.iter().any(|e| e.module_name == \"module_b\");\n",
+    "                assert!(\n",
+    "                    violation_in_b,\n",
+    "                    \"FieldlessFoo: expected SoleConstructorViolation in module_b, got: {:?}\",\n",
+    "                    result.diagnostics\n",
+    "                );\n",
+    "                let type_mismatch_in_a: Vec<_> = result.diagnostics.iter()\n",
+    "                    .filter(|d| {\n",
+    "                        d.module_name == \"module_a\" &&\n",
+    "                        matches!(*d.diagnostic, crate::v1_std_core::CompilerDiagnostic::TypeMismatch { .. })\n",
+    "                    })\n",
+    "                    .collect();\n",
+    "                assert!(\n",
+    "                    type_mismatch_in_a.is_empty(),\n",
+    "                    \"FieldlessFoo: TypeMismatch in module_a identity fn -- leaf mis-classified by phantom property, got: {:?}\",\n",
+    "                    type_mismatch_in_a\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"sole_constructor_fieldless_newtype_witness panicked\");\n",
+    "    }\n\n")
+}
+
+fn ct_contracts_sidecar_witness_test() -> String {
+  concat(
+    "    #[test]\n",
+    "    fn contracts_sidecar_wired_into_emit_scope() {\n",
+    "        // Discriminating witness: AnthropicChatMessage is declared in\n",
+    "        // extdeps.llm.anthropic; its tag = \"role\" wire_contract lives in the\n",
+    "        // anthropic_contracts.dag sidecar. This proves contracts_items_for_module\n",
+    "        // and the wire_contract alias-resolution scope merge the sidecar into the\n",
+    "        // emitted module -- red if the sidecar wiring or alias scope regresses.\n",
+    "        let result = std::thread::Builder::new()\n",
+    "            .stack_size(64 * 1024 * 1024)\n",
+    "            .spawn(|| {\n",
+    "                let entry_pairs = discover_dag_files(\"dsl/extdeps/llm\");\n",
+    "                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &[\"dsl\"]));\n",
+    "                let result = crate::v1_compiler_compile::compile_sources(\n",
+    "                    sources,\n",
+    "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",
+    "                );\n",
+    "                let anthropic_file = result.files.iter()\n",
+    "                    .find(|f| f.path.ends_with(\"extdeps_llm_anthropic.rs\"))\n",
+    "                    .expect(\"emitted file for extdeps.llm.anthropic not found in source closure\");\n",
+    "                assert!(\n",
+    "                    anthropic_file.content.contains(\"#[serde(tag = \\\"role\\\"\"),\n",
+    "                    \"AnthropicChatMessage serde tag = role must be present in emitted Rust (contracts_items_for_module merged into emit scope); missing from: {}\",\n",
+    "                    anthropic_file.path\n",
+    "                );\n",
+    "            })\n",
+    "            .expect(\"failed to spawn thread\")\n",
+    "            .join();\n",
+    "        result.expect(\"contracts_sidecar_wired_into_emit_scope panicked\");\n",
+    "    }\n\n")
+}
+
 fn compiler_tests_source() -> String {
   concat(
     ct_module_header(),
@@ -1258,6 +1386,9 @@ fn compiler_tests_source() -> String {
     ct_tokenizer_tests(),
     ct_parse_tests(),
     ct_pipeline_test(),
+    ct_sole_constructor_test(),
+    ct_sole_constructor_fieldless_witness_test(),
+    ct_contracts_sidecar_witness_test(),
     ct_self_parse_all_test(),
     ct_self_resolve_test(),
     ct_self_compile_test(),

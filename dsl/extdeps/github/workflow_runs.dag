@@ -1,0 +1,151 @@
+module extdeps.github.workflow_runs
+
+import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
+import extdeps.github.errors { GitHubErrorShape }
+import std.types { CommitSha, NonEmptyStr, Timestamp }
+import std.credentials { EnvVar }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.github.workflow_runs_contracts {
+  workflow_run_status_wire_contract,
+  workflow_run_conclusion_wire_contract
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/actions/workflow-runs"
+  }
+}
+
+type WorkflowRunStatus
+  = Queued
+  | InProgress
+  | Completed
+  | Waiting
+  | Requested
+  | Pending
+
+type WorkflowRunConclusion
+  = Success
+  | Failure
+  | Cancelled
+  | Neutral
+  | Skipped
+  | TimedOut
+  | ActionRequired
+  | StartupFailure
+
+data dissolve_on_conclusion_authority_consolidation: List<String> = [
+  "closure:unify_run_and_check_conclusions|WorkflowRunConclusion (workflow runs REST API) and CheckConclusion (checks REST API, extdeps.github.actions) share 7 of 8 variants: WorkflowRunConclusion adds StartupFailure, CheckConclusion adds Stale. These are genuinely different API shapes today; dissolve when a shared conclusion authority is grounded that subsumes both (GitHub API evolution or a typed union representation)|trigger:GitHub API unifies conclusion values across both APIs, or std gains a tagged-union type allowing a shared core with API-specific extensions"
+]
+
+type WorkflowRun {
+  id: Int
+  name: String?
+  head_sha: CommitSha
+  status: WorkflowRunStatus
+  conclusion: WorkflowRunConclusion?
+  workflow_id: Int
+  run_number: Int
+  html_url: NonEmptyStr
+  created_at: Timestamp
+  updated_at: Timestamp
+}
+
+type WorkflowRunList {
+  total_count: Int
+  workflow_runs: List<WorkflowRun>
+}
+
+fn parse_workflow_run_status(raw: String) -> WorkflowRunStatus? {
+  match raw {
+    "queued" => Present { value: Queued }
+    "in_progress" => Present { value: InProgress }
+    "completed" => Present { value: Completed }
+    "waiting" => Present { value: Waiting }
+    "requested" => Present { value: Requested }
+    "pending" => Present { value: Pending }
+    _ => none
+  }
+}
+
+fn workflow_run_status_wire_label(status: WorkflowRunStatus) -> String {
+  match status {
+    Queued => "queued"
+    InProgress => "in_progress"
+    Completed => "completed"
+    Waiting => "waiting"
+    Requested => "requested"
+    Pending => "pending"
+  }
+}
+
+fn parse_workflow_run_conclusion(raw: String) -> WorkflowRunConclusion? {
+  match raw {
+    "success" => Present { value: Success }
+    "failure" => Present { value: Failure }
+    "cancelled" => Present { value: Cancelled }
+    "neutral" => Present { value: Neutral }
+    "skipped" => Present { value: Skipped }
+    "timed_out" => Present { value: TimedOut }
+    "action_required" => Present { value: ActionRequired }
+    "startup_failure" => Present { value: StartupFailure }
+    _ => none
+  }
+}
+
+fn workflow_run_conclusion_wire_label(conclusion: WorkflowRunConclusion) -> String {
+  match conclusion {
+    Success => "success"
+    Failure => "failure"
+    Cancelled => "cancelled"
+    Neutral => "neutral"
+    Skipped => "skipped"
+    TimedOut => "timed_out"
+    ActionRequired => "action_required"
+    StartupFailure => "startup_failure"
+  }
+}
+
+data structural_coverage_gap_workflow_run_codec_hand_rolled: List<String> = [
+  "closure:consolidate_variant_string_mapping|parse_workflow_run_status/workflow_run_status_wire_label and parse_workflow_run_conclusion/workflow_run_conclusion_wire_label hand-roll the SnakeCase mapping already declared in the wire contracts. Dissolve when the codec-from-contract bridge derives decode and encode from CoproductWireContract rows directly."
+]
+
+service github.WorkflowRuns {
+  config {
+    endpoint: default_api_base
+    auth: Bearer
+    auth_source: EnvVar { name: "GITHUB_TOKEN" }
+
+    rate_limit: { requests: 5000, per: hour, scope: core }
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
+  }
+
+  operation ListForRef {
+    input {
+      auth_token: Secret
+      owner: String
+      repo: String
+      head_sha: CommitSha
+      per_page: Int = default_per_page
+    }
+    output {
+      runs: WorkflowRunList
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/repos/\{owner\}/\{repo\}/actions/runs",
+      query: { head_sha: head_sha, per_page: per_page }
+    }
+    response {
+      200 => WorkflowRunList
+      401 => GitHubErrorShape
+      403 => GitHubErrorShape
+      404 => GitHubErrorShape
+      500 => GitHubErrorShape
+    }
+  }
+}

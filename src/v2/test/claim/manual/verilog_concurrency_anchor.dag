@@ -1,0 +1,59 @@
+module v2.test.manual.verilog_concurrency_anchor
+
+import v2.extdeps.languages.verilog {
+  AlwaysBlock,
+  AlwaysBlockSensitivity,
+  AnsiModuleItem,
+  AttributeInstanceClause,
+  ContinuousAssign,
+  DelayClause,
+  DriveStrengthClause,
+  EdgeTrigger,
+  ModuleKeyword,
+  ModuleParameterPortList,
+  NetAssignment,
+  SensitivityItem,
+  VerilogCost,
+  VerilogModule
+}
+import v2.std.nat { Nat }
+import v2.std.node { Symbol }
+
+type verilog_anchor_module = VerilogModule
+data verilog_anchor_comb_assign: NetAssignment = NetAssignment {
+  lhs_lexeme: "wire_out",
+  rhs_lexeme: "wire_in & enable"
+}
+data verilog_anchor_continuous_assign: ContinuousAssign = ContinuousAssign {
+  drive_strength: NoDriveStrength,
+  delay: NoDelay,
+  assignments: [verilog_anchor_comb_assign]
+}
+data verilog_anchor_posedge_clk: SensitivityItem = SensitivityItem {
+  trigger: PosEdge,
+  event_expression_lexeme: "clk"
+}
+data verilog_anchor_posedge_always: AlwaysBlock = AlwaysBlock {
+  sensitivity: ExplicitEventList { items: [verilog_anchor_posedge_clk] },
+  body_lexeme: "q <= d;"
+}
+data verilog_anchor_cost: VerilogCost = VerilogCost {
+  gate_cost: 1,
+  area_cost: 1
+}
+data verilog_anchor_module_wave0: verilog_anchor_module = NoPortListModule {
+  attributes: NoAttributeInstances,
+  module_keyword: ModuleKw,
+  name: ^verilog_anchor_q,
+  parameter_port_list: NoModuleParameterPortList,
+  items: [
+    ContinuousAssignItem {
+      attributes: NoAttributeInstances,
+      assign: verilog_anchor_continuous_assign
+    },
+    AlwaysBlockItem {
+      attributes: NoAttributeInstances,
+      always_block: verilog_anchor_posedge_always
+    }
+  ]
+}

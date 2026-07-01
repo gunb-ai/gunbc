@@ -1,11 +1,3 @@
-// src/v2/bin/main.dag
-// Scope: v2 bin entry — sole authority for the 1-line main.rs include! trampoline
-//   (DESIGN.md §7 self-hosting; closed-system invariant).
-// Status: scaffold — the trampoline one-liner is the only fact here. Self-host fixed-point
-//   modeling (emitted-stage operands, the merkle-digest relation) lives in v2.compiler.self_host
-//   (single authority); this file no longer carries digest operand placeholders.
-
 module v2.bin.main
-
 
 data main_rs_trampoline_authority: String = "include!(\"v2_main_generated.rs\");"

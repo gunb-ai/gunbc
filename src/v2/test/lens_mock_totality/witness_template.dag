@@ -1,10 +1,3 @@
-// src/v2/test/lens_mock_totality/witness_template.dag
-// Scope: §2 horizontal dedup for per-layer mock_totality witnesses — ONE parameterized
-//        cascade-minus-one omit-consumer instead of hand-rolling a second materialize_*_omits_*
-//        cascade per layer. The REAL consumer keeps its corpus-keyed operation_key lookup; the RED
-//        arm derives omit-handles from total-handles MINUS a configurable omit-key set.
-// Anchor: DESIGN.md §2 (derive-global) / §5 (discriminating RED-on-omission teeth preserved).
-
 module v2.test.lens_mock_totality.witness_template
 
 import v2.lens.mock_totality { mock_totality_lens }
@@ -26,7 +19,6 @@ fn operation_key_in_omit_set(case: PublishedMockCase, omit_keys: List<String>) -
   contains(xs: omit_keys, item: case.operation_key, eq: string_eq)
 }
 
-// Cascade-minus-one omit consumer: total handles MINUS the configured omit-key set.
 fn omit_consumer_handles(
   case: PublishedMockCase,
   omit_keys: List<String>,
@@ -39,7 +31,6 @@ fn omit_consumer_handles(
   }
 }
 
-// Collapse a per-case materialization verdict to the Bool predicate the lens witness runs.
 fn outcome_accepted_p<M>(outcome: Outcome<M>) -> Bool {
   match outcome {
     Accepted { value: _, diagnostics: _ } => true
@@ -54,7 +45,6 @@ fn mock_totality_handled_by(
   filter(xs: published, predicate: consumer_handles)
 }
 
-// GREEN by execution: the real consumer is TOTAL over the published corpus → lens Accepts.
 fn mock_totality_green_holds(
   published: List<PublishedMockCase>,
   consumer_handles: fn(PublishedMockCase) -> Bool
@@ -69,7 +59,6 @@ fn mock_totality_green_holds(
   }
 }
 
-// RED-on-omission by execution: omit a published member → the lens MUST fail-close.
 fn mock_totality_red_on_omission_holds(
   published: List<PublishedMockCase>,
   consumer_handles: fn(PublishedMockCase) -> Bool

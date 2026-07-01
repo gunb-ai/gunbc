@@ -1,0 +1,137 @@
+module gunbc.os_install
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, List }
+import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
+import extdeps.toolchain.types { Architecture, Aarch64 }
+import extdeps.uri { Uri, Https }
+import extdeps.provisioning.network_boot {
+  NetworkBootChain,
+  UefiHttpBoot,
+  DhcpBootDirection,
+  NativeDhcpBootOptions,
+  ProxyDhcp,
+}
+import extdeps.os.ubuntu_autoinstall {
+  UbuntuAutoinstallPayload,
+  AutoinstallIdentity,
+  NoCloudNet,
+}
+import gunbc.fleet_intent_network { operator_host_srv3, operator_lan_segment }
+import product.placement_supply { HostIdentity }
+import product.network_topology { NetworkSegment }
+import extdeps.bmc.types {
+  RedfishBootSourceOverrideTarget,
+  BootTargetPxe,
+  RedfishBootSourceOverrideEnabled,
+  BootOverrideOnce,
+  RedfishResetType,
+  ResetForceRestart,
+}
+
+type NetworkBootDelivery {
+  chain: NetworkBootChain
+  autoinstall: UbuntuAutoinstallPayload
+}
+
+type LanInstallInfraSurvey {
+  existing_dhcp_configurable: Bool
+  dedicated_install_server_present: Bool
+}
+
+fn survey_implied_dhcp_direction(survey: LanInstallInfraSurvey) -> DhcpBootDirection {
+  if survey.existing_dhcp_configurable {
+    NativeDhcpBootOptions
+  } else {
+    ProxyDhcp
+  }
+}
+
+type Srv3OsInstallPlan {
+  os_target: OperatingSystemProduct
+  host_architecture: Architecture
+  lan_survey: LanInstallInfraSurvey
+  network_boot_delivery: NetworkBootDelivery
+  bmc_boot_target: RedfishBootSourceOverrideTarget
+  bmc_boot_enabled: RedfishBootSourceOverrideEnabled
+  post_stage_reset: RedfishResetType
+}
+
+data srv3_lan_install_survey: LanInstallInfraSurvey = LanInstallInfraSurvey {
+  existing_dhcp_configurable: false,
+  dedicated_install_server_present: false,
+}
+
+data srv3_network_boot_chain: NetworkBootChain = NetworkBootChain {
+  boot_mode: UefiHttpBoot,
+  dhcp_direction: survey_implied_dhcp_direction(survey: srv3_lan_install_survey),
+  image_http_root: Uri {
+    scheme: Https,
+    locator: "install.srv3.lan/ubuntu-24.04/",
+  },
+}
+
+
+data srv3_autoinstall_bootstrap_password_hash: NonEmptyStr = "$6$exDY1mhS4KUYCE/2$zmn9ToZwTKLhCw.b4/b.ZRTIZM30JZ4QrOQ2aOXJ8yk96xpcCof0kxKwuX1kqLG/ygbJ1f8wxED22bTL4F46P0"
+
+data srv3_autoinstall_identity: AutoinstallIdentity = AutoinstallIdentity {
+  hostname: operator_host_srv3,
+  username: "ubuntu",
+  realname: "gunbc fleet node srv3",
+  hashed_password: srv3_autoinstall_bootstrap_password_hash,
+}
+
+data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+  autoinstall_version: 1,
+  delivery: NoCloudNet {
+    seed_url: Uri {
+      scheme: Https,
+      locator: "install.srv3.lan/ubuntu-24.04/autoinstall/",
+    },
+  },
+  fully_automated: true,
+  target_distribution: NobleNumbat2404Lts,
+  identity: srv3_autoinstall_identity,
+  locale: "en_US.UTF-8",
+  keyboard_layout: "us",
+  install_openssh_server: true,
+}
+
+data srv3_os_install_plan: Srv3OsInstallPlan = Srv3OsInstallPlan {
+  os_target: UbuntuOs { distro: NobleNumbat2404Lts },
+  host_architecture: Aarch64,
+  lan_survey: srv3_lan_install_survey,
+  network_boot_delivery: NetworkBootDelivery {
+    chain: srv3_network_boot_chain,
+    autoinstall: srv3_ubuntu_autoinstall,
+  },
+  bmc_boot_target: BootTargetPxe,
+  bmc_boot_enabled: BootOverrideOnce,
+  post_stage_reset: ResetForceRestart,
+}
+
+type HostAutoinstall {
+  host: HostIdentity
+  payload: UbuntuAutoinstallPayload
+}
+
+data srv3_autoinstall_spec: HostAutoinstall = HostAutoinstall {
+  host: operator_host_srv3,
+  payload: srv3_ubuntu_autoinstall,
+}
+
+data fleet_autoinstall_specs: List<HostAutoinstall> = [srv3_autoinstall_spec]
+
+type InstallServerSpec {
+  host: HostIdentity
+  plan: Srv3OsInstallPlan
+  serving_segment: NetworkSegment
+}
+
+data srv3_install_server_spec: InstallServerSpec = InstallServerSpec {
+  host: operator_host_srv3,
+  plan: srv3_os_install_plan,
+  serving_segment: operator_lan_segment,
+}
+
+data fleet_install_server_specs: List<InstallServerSpec> = [srv3_install_server_spec]

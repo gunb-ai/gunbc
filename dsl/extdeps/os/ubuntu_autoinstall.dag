@@ -1,0 +1,36 @@
+module extdeps.os.ubuntu_autoinstall
+
+import std.logic { Bool }
+import std.types { Int, NonEmptyStr }
+import std.os.types { UbuntuDistribution }
+import extdeps.uri { Uri, Https }
+import extdeps.external_authority { ExternalAuthority }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-reference.html"
+  }
+}
+
+type AutoinstallDeliveryMethod =
+    NoCloudNet { seed_url: Uri }
+  | NoCloudLocal
+
+type AutoinstallIdentity {
+  hostname: NonEmptyStr
+  username: NonEmptyStr
+  realname: NonEmptyStr
+  hashed_password: NonEmptyStr
+}
+
+type UbuntuAutoinstallPayload {
+  autoinstall_version: Int
+  delivery: AutoinstallDeliveryMethod
+  fully_automated: Bool
+  target_distribution: UbuntuDistribution
+  identity: AutoinstallIdentity
+  locale: NonEmptyStr
+  keyboard_layout: NonEmptyStr
+  install_openssh_server: Bool
+}

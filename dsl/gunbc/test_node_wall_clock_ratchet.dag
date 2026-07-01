@@ -1,16 +1,3 @@
-// gunbc/test_node_wall_clock_ratchet.dag — **Interim** Phase-0 per-test wall-clock
-// warn policy (libtest name tokens) for shell/JQ consumption. Canonical R3 gate **#102**
-// (`slow_test_exemptions_dissolved`) pass target: derive policy from modeled
-// `TestNodeCostDimension` / timing facts — this table is a bridge until that wiring lands.
-//
-// CI `scripts/check-test-timeout.sh` projects this modeled `List` into the
-// JSONL lines consumed by `jq` (same `{"test":...,"policy":"warn"}` shape as
-// the retired hand-only manifest). Single edit surface: add/remove rows here.
-//
-// Phase-0 convergence: `TestNodeCostDimension.budget_time` / `measured_time` use
-// `NanosecondDuration` (std.verification, its timing-authority home); this table names libtest tokens until every
-// slow test is either sped up or modeled with explicit budget/measured facts.
-
 module gunbc.test_node_wall_clock_ratchet
 
 import std.list { List }

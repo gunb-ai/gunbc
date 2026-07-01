@@ -1,60 +1,17 @@
-// src/v2/lens/common/construction_justification.dag
-// Single authority (§3) for the AUTHORING-TIME construction-justification rule (DESIGN §5/§6,
-// ROADMAP §0). DESIGN §6: "construction first" — before adding ANY lens you must justify why
-// the bad-state class cannot be made unwritable by CONSTRUCTION (single authority / realization
-// derived from model); convert what can be converted, and reserve a lens for the genuinely
-// unstructurable residue (§6: a lens is *validation* — it concedes the bad state is writable).
-//
-// This module models the §5 decidability trichotomy ONCE so every lens records its judgment on
-// its own carrier (no parallel ledger — DESIGN §3/§6: the mark on the carrier is the authority).
-// The three classes are DESIGN §5's, which docs/plans/expressibility-frontier.md §2 generalizes
-// into a frontier of regions ①Wall / ②Lens-residue / ③Inexpressible. We reuse those names — this
-// is NOT a parallel taxonomy:
-//   - WallNow            ≡ frontier ① Wall          (decidable AND grounded: a single authority
-//                          already makes the bad state unwritable / the value total-by-construction
-//                          — a thing in this class should be CONSTRUCTION, not a validation lens).
-//   - WallAfterGrounding ⊆ frontier ② Lens-residue  (decidable, but not yet unwritable — waiting on
-//                          its single authority; an interim lens that NAMES the authority that will
-//                          turn it into a wall and the trigger that dissolves it).
-//   - RatchetForever     ≡ frontier ③ Inexpressible (undecidable — by Rice or by missing domain
-//                          knowledge; a permanent residue mechanism / honest review, never a wall —
-//                          the §5 "never" trap is pricing this region as ①).
-//
-// LAYERING (DESIGN §6, the §7 recursion — do NOT confuse the two checks):
-//   - The #5433 inert-lens backstop (discover_floor_corpus_rows) is the EXECUTABLE corpus check:
-//     every lens is wired-or-deleted. It runs over the corpus and is the floor guarantee.
-//   - THIS rule is the AUTHORING-TIME judgment layered ON TOP of it: the *correctness* of a class
-//     + rationale is the unstructurable human residue, but the REQUIREMENT to have RECORDED a
-//     justification is itself structurable — so a fail-closed presence check (sibling to the
-//     #5433 backstop) makes the missing-justification state unwritable. The judgment does not, and
-//     cannot, replace the corpus check; it reinforces it.
-
 module v2.lens.common.construction_justification
 
-import v2.std.text { String }
+import std.disposition { ConstructionMechanism }
 
-// DESIGN §5 decidability trichotomy / expressibility-frontier §2 regions. The class a lens's
-// target bad-state belongs to — the answer to "why is this a lens (validation) and not
-// construction?".
+import std.decl_ref { DeclarationRef }
+
 type ConstructionClass
-  // ① Wall — decidable and grounded NOW. A lens here is a category error: the bad state is (or
-  // can be) made unwritable by a single authority, or the value is total-by-construction.
-  // `construction` names that authority / total-computation. Recorded honestly when a module
-  // filed under `v2.lens.*` is actually a construction, not a validation (a §3 home question).
-  = WallNow { construction: String }
-  // ② Lens-residue — decidable, but the construction is not built yet. `grounding_authority`
-  // names the single authority that will turn this into a wall; `dissolve_on` is the trigger that
-  // deletes the lens. An interim, SHRINKING residue.
-  | WallAfterGrounding { grounding_authority: String, dissolve_on: String }
-  // ③ Inexpressible — undecidable (Rice) or needs domain knowledge. `undecidable_because` states
-  // which. A permanent residue / honest review — never a wall.
-  | RatchetForever { undecidable_because: String }
 
-// A lens's recorded construction-justification. `class` is the structurable §5 bucket;
-// `rationale` is the human, unstructurable judgment (DESIGN §6 residue) — why construction is not
-// (yet) available for this lens's bad-state class. The presence-check enforces that this decl
-// exists and is well-typed; it does NOT (cannot) verify the rationale is correct.
+  = WallNow { mechanism: ConstructionMechanism, authority: DeclarationRef }
+
+  | WallAfterGrounding { dissolves_to: ConstructionMechanism }
+
+  | RatchetForever
+
 type ConstructionJustification {
   class: ConstructionClass
-  rationale: String
 }

@@ -1,0 +1,57 @@
+module v2.test.intent_linearity.lens_unit.runtime_axis
+
+import v2.lens.intent_linearity {
+  chain_has_lowerable_cost,
+  chain_has_runtime_lowering_candidate,
+  chain_is_redundant,
+  level_is_linear
+}
+import v2.std.node {
+  Cardinality,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  node_synthetic
+}
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+fn transform_leaf() -> Node {
+  node_synthetic(kind: ComputationNode { behavior: Transform }, children: [])
+}
+fn cardinality_over(child: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Cardinality },
+    children: [ Edge { label: Positional, target: child } ]
+  )
+}
+
+data nested_loop: Node = cardinality_over(child: cardinality_over(child: transform_leaf()))
+data flat_loop: Node = cardinality_over(child: transform_leaf())
+
+data nested_chain: List<Node> = [ nested_loop ]
+data flat_chain: List<Node> = [ flat_loop ]
+
+test fn nested_loop_cost_is_lowerable() -> Bool {
+  chain_has_lowerable_cost(steps: nested_chain)
+}
+test fn flat_loop_cost_not_lowerable() -> Bool {
+  !chain_has_lowerable_cost(steps: flat_chain)
+}
+
+test fn nested_loop_is_runtime_candidate() -> Bool {
+  chain_has_runtime_lowering_candidate(steps: nested_chain)
+}
+test fn flat_loop_not_runtime_candidate() -> Bool {
+  !chain_has_runtime_lowering_candidate(steps: flat_chain)
+}
+
+test fn nested_loop_not_changetime_redundant() -> Bool {
+  !chain_is_redundant(steps: nested_chain)
+}
+test fn flat_loop_is_linear() -> Bool {
+  level_is_linear(level: flat_chain)
+}

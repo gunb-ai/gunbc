@@ -1,10 +1,3 @@
-// wire_value_serialize.rs — Runtime REST wire serialization for interpreter values.
-// Hand-maintained; survives stage0 regeneration.
-//
-// Single authority: applies the same `RustEnumWireSerde` policy that emit derives
-// from modeled `CoproductWireContract` / `VariantEncoding` rows. The interpreter
-// must not carry its own variant-encoding heuristics.
-
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -19,7 +12,6 @@ use crate::v1_std_core::{module_imports, NewlineIndex};
 
 type WireResult<T> = Result<T, String>;
 
-/// Resolve the wire policy for a coproduct type name across the loaded graph.
 pub fn resolve_coproduct_wire_policy(
     coproduct_name: &str,
     modules: &[Rc<TypedModule>],
@@ -46,7 +38,6 @@ pub fn resolve_coproduct_wire_policy(
     } else if matches.len() == 1 {
         Some(matches[0].clone())
     } else {
-        // Same coproduct contract must not be declared twice with different encodings.
         let first = &matches[0];
         if matches.iter().all(|m| m == first) {
             Some(first.clone())
@@ -60,7 +51,6 @@ fn resolve_sym(ctx: &InterpContext, sym: crate::v1_interpreter::Symbol) -> Strin
     ctx.resolve(sym)
 }
 
-/// Serialize an interpreter `Value` to JSON for REST request bodies, honoring modeled wire contracts.
 pub fn value_to_wire_json(val: &Value, ctx: &InterpContext) -> WireResult<serde_json::Value> {
     match val {
         Value::Variant {
@@ -132,7 +122,7 @@ pub fn value_to_wire_json(val: &Value, ctx: &InterpContext) -> WireResult<serde_
 fn serialize_variant_to_wire_json(
     type_name: &str,
     variant_name: &str,
-    fields: &HashMap<crate::v1_interpreter::Symbol, Value>,
+    fields: &[(crate::v1_interpreter::Symbol, Value)],
     ctx: &InterpContext,
 ) -> WireResult<serde_json::Value> {
     let policy = resolve_coproduct_wire_policy(
@@ -149,9 +139,6 @@ fn serialize_variant_to_wire_json(
             .unwrap_or_else(|| format!("wire policy error for coproduct {type_name}")));
     }
 
-    // HAND-SYNCED MIRROR drift fix: the class-3 emit_rust splice takes the wire
-    // policy by value (Rc<RustEnumWireSerde>), so pass policy.clone() (cheap Rc
-    // clone) instead of &policy. See the carrier mark in v1_compiler_emit_rust.rs.
     if policy_is_untagged(policy.clone()) {
         return serialize_untagged_variant(fields, ctx);
     }
@@ -178,7 +165,6 @@ fn serialize_variant_to_wire_json(
         return Ok(serde_json::Value::Object(obj));
     }
 
-    // TaggedVariant default: {"_variant": "Name", ...fields}
     let tag_key = policy_serde_tag_field(policy.clone()).unwrap_or_else(|| "_variant".to_string());
     let default_tag = if policy.enum_attr == rust_serde_tag_attr() {
         variant_name.to_string()
@@ -198,11 +184,12 @@ fn serialize_variant_to_wire_json(
 }
 
 fn serialize_untagged_variant(
-    fields: &HashMap<crate::v1_interpreter::Symbol, Value>,
+    fields: &[(crate::v1_interpreter::Symbol, Value)],
     ctx: &InterpContext,
 ) -> WireResult<serde_json::Value> {
     let mut values: Vec<serde_json::Value> = fields
-        .values()
+        .iter()
+        .map(|(_, v)| v)
         .filter(|v| !matches!(v, Value::Null))
         .map(|v| value_to_wire_json(v, ctx))
         .collect::<Result<Vec<_>, _>>()?;

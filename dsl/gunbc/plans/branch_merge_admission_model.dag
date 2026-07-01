@@ -1,0 +1,171 @@
+module gunbc.plans.branch_merge_admission_model
+
+import gunbc.plan { Plan, HasTrigger }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, cell, row, quote }
+
+fn status_block() -> MarkdownBlock {
+  quote(blocks: [
+    p(text: "**Status: design sketch (checkpoint 0)** — model frame for operator review BEFORE any substrate edit. Design-first; NO enforcement flip in this doc. Authored as a .dag Plan and NOT yet enrolled as a generated docs/plans md (no PlanArtifact, no plan_registry entry, no roadmap node) — enrollment is checkpoint 1, mirroring the gunbc.plans.commit_workflow deferral; until then this module is reviewable from its own source. DESIGN refs: §1 (reduce convention to necessity — a merge policy is a substrate fact, not a GitHub setting bolted on the side), §2 (Realization — one RepoStandard authority, N transport handlers), §3 (single authority; the merge step currently punted to the operator's repo-admin half is the layer-inversion tell), §5 (construction over validation; the decidability trichotomy), §6 (priced in displaced cost, not elegance). Companion: this MODELS the options that gunbc.plans.ci_merge_freshness names as a decision record, and is the merge-side complement to gunbc.plans.ci_process_end_to_end (which is CI performance, not admission). Do NOT disturb the frozen carriers gunbc.commit_workflow (#5940) or the #5924 pre-push emit."),
+  ])
+}
+
+fn section_0() -> List<MarkdownBlock> {
+  [
+    h2(text: "0. Grounded today — receipts from the live repo"),
+    p(text: "This is not speculative. The stale-green class reddened main at least three times (gunbc.plans.ci_merge_freshness records #5429/#5445/#5453; the recent case is #5933, reddened by #5943 removing a field on a base #5933's CI never saw). The probe below reads the actual gunb-ai/gunbc settings via the GitHub API and shows the gap is live config, not lore:"),
+    TableBlock {
+      header: row(cells: [cell(text: "Live setting (read 2026-06-29)"), cell(text: "Value"), cell(text: "Consequence")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [
+          cell(text: "Default-branch ruleset required check"),
+          cell(text: "only context ci"),
+          cell(text: "the floor is the one required gate"),
+        ]),
+        row(cells: [
+          cell(text: "strict_required_status_checks_policy"),
+          cell(text: "false"),
+          cell(text: "the SMOKING GUN: GitHub's require-up-to-date-before-merge is OFF, so a stale-base PR merges green and reds main"),
+        ]),
+        row(cells: [
+          cell(text: "merge_queue rule"),
+          cell(text: "absent"),
+          cell(text: "no atomic test-then-fast-forward exists"),
+        ]),
+        row(cells: [
+          cell(text: "pull_request rule (required approvals)"),
+          cell(text: "absent"),
+          cell(text: "the 2-approval bar is dashboard convention, enforced nowhere in config"),
+        ]),
+        row(cells: [
+          cell(text: "allow_squash_merge / allow_merge_commit / allow_rebase_merge"),
+          cell(text: "true / true / true"),
+          cell(text: "our documented squash-only standard is convention; all three methods are allowed — a standard-vs-reality fork"),
+        ]),
+      ],
+    },
+    p(text: "Two facts fall out: (i) the freshness hole is one boolean (strict policy false) plus a missing merge-queue rule; (ii) the squash-only standard lives in policy prose, not in enforced config — exactly the standard-vs-reality drift a modeled RepoStandard would catch."),
+  ]
+}
+
+fn section_1() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. The invariant, and why it breaks under squash-merge"),
+    p(text: "The property the operator wants is: a PR that goes into main green keeps main green. It holds if and only if green was computed on the exact tree that becomes main, atomically with the merge. Squash-merge is the reason that is not automatic: the merged tree is the squash of the PR diff applied to CURRENT main AT MERGE TIME, producing one new commit. So the tree that becomes main is constructed at merge against whatever main is then — never the base the PR's CI ran against, and never re-validated."),
+    p(text: "Squash-merge must be honored, not worked around: the model treats the merge result as squash-onto-current-main, so admissibility is a predicate over the pair (the receipt's recorded base, current main), not over the PR head in isolation."),
+    p(text: "Green goes stale two ways — and the second is the operator's sharpening, missed by every up-to-date check:"),
+    ul(items: [
+      li(text: "Stale base-tree — main advanced after the PR's last CI run (the #5933 case; a per-PR gate, CI or local, can never see this because the skew lives only on the merged result of two PRs touching different files)."),
+      li(text: "Stale gate-roster — the test CRITERIA themselves changed. Green computed against gate-roster version N says nothing once the roster is N+1. An up-to-date-base check is blind to this; it only compares trees."),
+    ]),
+  ]
+}
+
+fn section_2() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. §3 spine — three facts, one authority, reuse not re-coin"),
+    p(text: "The same separation gunbc.commit_workflow already applies to the CI/pre-push side, extended to the merge step: (a) interface shape = the RepoStandard (desired settings + admission rule); (b) transport = the GitHub Rulesets API and PATCH /repos, one realization handler of N; (c) business policy = the admission predicate. The merge step is the one fact currently OUTSIDE the model (ci_merge_freshness calls it the operator's repo-admin half) — pulling it in dissolves the inversion."),
+    p(text: "DFS of the concept DAG first: almost everything is already modeled. Reuse, do not mint a nickname:"),
+    TableBlock {
+      header: row(cells: [cell(text: "Concept"), cell(text: "Existing authority to reuse")]),
+      alignments: [AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "Pull request (number, head, base, merged_at)"), cell(text: "extdeps.github.pulls.PullRequest")]),
+        row(cells: [cell(text: "Git branch / ref"), cell(text: "extdeps.git.GitBranch")]),
+        row(cells: [cell(text: "Mergeable / merge-state"), cell(text: "extdeps.github.mergeable_state.MergeableState, extdeps.github.merge_state.MergeStateStatus")]),
+        row(cells: [cell(text: "Content hash / commit sha"), cell(text: "std.types.ContentHash, std.types.CommitSha")]),
+        row(cells: [cell(text: "Provider / commit consumer"), cell(text: "gunbc.generated_artifact.RepoConsumer (GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler)")]),
+        row(cells: [cell(text: "Diff base / merge-base / two-dot"), cell(text: "gunbc.ci_spec.DiffPolicy, gunbc.ci_spec.DiffMode")]),
+        row(cells: [cell(text: "Process exit / pass-fail"), cell(text: "std.process.ProcessExit")]),
+        row(cells: [cell(text: "Check conclusion"), cell(text: "extdeps.github.checks.CheckConclusion")]),
+        row(cells: [cell(text: "Gate roster (the criteria)"), cell(text: "gunbc.commit_workflow.commit_gate_roster")]),
+        row(cells: [cell(text: "Enforcement-deferred status"), cell(text: "gunbc.ci_failure_class.MergeGatingStatus (GatingComputedDeferred, GatingEnforced)")]),
+      ],
+    },
+    p(text: "Genuinely-new (a real gap; the inventory found NO repo-settings/branch-protection model in dsl/): MergeStrategy, RepoStandard, MergeAdmissionReceipt, AdmissionPolicy. Minting these grows net concepts only where no authority existed — not a failed decomposition."),
+  ]
+}
+
+fn section_3() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. Model sketch — the merge-admission authority"),
+    p(text: "Single authority the drift gate and the reconciler both derive from:"),
+    ul(items: [
+      li(text: "MergeStrategy = SquashMerge | MergeCommit | RebaseMerge. The gunbc standard is SquashMerge; the model records it so the squash semantics of §1 are an explicit fact, not an assumption."),
+      li(text: "RepoStandard — the desired state: default_branch, allowed_strategies (a List of MergeStrategy; gunbc = SquashMerge only), required_checks (projected from commit_gate_roster — no second roster), require_up_to_date (the strict policy boolean), merge_queue_required, and branch_name_convention (the session-slash-id rule)."),
+      li(text: "MergeAdmissionReceipt — the green-receipt as a content-addressed claim: pr_number, head_sha (CommitSha), base_tree_hash (ContentHash of the base the CI ran against), gate_roster_hash (ContentHash of commit_gate_roster at run time), and conclusion (CheckConclusion)."),
+    ]),
+    h3(text: "3.1 The admission predicate — green-stays-green by construction (§5)"),
+    p(text: "A receipt is admissible against current main if and only if all three hold: base_tree_hash equals current main's tree hash, AND gate_roster_hash equals the current commit_gate_roster hash, AND conclusion is Success. A stale receipt — stale tree OR stale criteria — is structurally inadmissible, so the bad merge is UNWRITABLE, not flagged after the fact. This is the §5 wall, not a post-hoc check: it makes green-stays-green DECIDABLE (both hashes are computable now; this is wall-now, not a forever-ratchet). The gate_roster_hash term is what closes the operator's criteria-changed case that an up-to-date-base check cannot."),
+  ]
+}
+
+fn section_4() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. The simulation — before/after green-to-red as DATA, options COMPUTED"),
+    p(text: "Per the operator: encode the situation and let a witness compute which policies survive, rather than argue in prose. The scenario is two events as data: PR-X earns a receipt against base B0 with roster R0 (green); then PR-Y lands removing a field, advancing main to B1 (roster still R0). A separate scenario isolates the criteria case: main tree unchanged (B0) but roster advances R0 to R1. A witness (a test fn in a _test.dag, floor-enrolled by naming) runs each candidate AdmissionPolicy over both scenarios and asserts which are total — admit nothing that reds main:"),
+    TableBlock {
+      header: row(cells: [cell(text: "AdmissionPolicy"), cell(text: "catches stale base-tree"), cell(text: "catches stale roster (criteria changed)"), cell(text: "green-stays-green total"), cell(text: "cost")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "PerPrGateOnly (today)"), cell(text: "no"), cell(text: "no"), cell(text: "NO — admits PR-X, reds main (the #5933 bug)"), cell(text: "none")]),
+        row(cells: [cell(text: "RequireUpToDateBase (strict policy true)"), cell(text: "yes"), cell(text: "no"), cell(text: "PARTIAL — misses the roster-only scenario"), cell(text: "re-stales every open PR on each main move")]),
+        row(cells: [cell(text: "KeyedReceipt (base_tree_hash + gate_roster_hash)"), cell(text: "yes"), cell(text: "yes"), cell(text: "YES — by construction"), cell(text: "re-validate, scopeable to the affected-set")]),
+        row(cells: [cell(text: "MergeQueueAtomic (test-then-fast-forward)"), cell(text: "yes"), cell(text: "yes"), cell(text: "YES"), cell(text: "retires the manual-parallel-merge policy")]),
+      ],
+    },
+    p(text: "The witness makes the table executable and discriminating: PerPrGateOnly goes RED on the scenario (proving the test has teeth), and only the bottom two are total. The KeyedReceipt re-validation reuses the existing v2.lens.affected_set machinery, evaluated against the post-merge tree instead of the PR base — the project-native cheaper variant of a full merge queue."),
+  ]
+}
+
+fn section_5() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. Realization — GitHub API hookup, and why it is idempotent"),
+    p(text: "Probed read-only on 2026-06-29. The legacy branch-protection API is dead to our integration (403 not accessible); the modern Rulesets API — which supersedes it and is where merge-queue config also lives — reads fine. So the handler targets rulesets, not branch protection:"),
+    TableBlock {
+      header: row(cells: [cell(text: "Setting"), cell(text: "Read endpoint"), cell(text: "Idempotent write"), cell(text: "Token today")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "Merge methods, auto-merge, delete-branch"), cell(text: "GET /repos/OWNER/REPO"), cell(text: "PATCH /repos/OWNER/REPO (set booleans)"), cell(text: "read confirmed")]),
+        row(cells: [cell(text: "Branch protection (legacy)"), cell(text: "GET .../branches/main/protection"), cell(text: "PUT"), cell(text: "403 — unusable")]),
+        row(cells: [cell(text: "Required checks, strict policy, merge queue (Rulesets)"), cell(text: "GET .../rulesets and .../rulesets/ID"), cell(text: "PUT .../rulesets/ID (full replace)"), cell(text: "read confirmed")]),
+      ],
+    },
+    p(text: "Idempotency is by construction: a ruleset is one declarative JSON object describing desired state, and PUT is full-replace. So the loop is the same Realization shape as gunbc generated_artifact_drift_gate, with the rulesets API as the host-effect handler instead of the filesystem: modeled RepoStandard projects desired ruleset JSON; GET reads actual; the diff IS the drift gate (RED on mismatch); PUT reconciles; a re-PUT is a no-op. PATCH /repos for merge-methods is likewise idempotent. The reconciler binds as a RepoConsumer.HostReconciler handler — one transport of N, not a workflow fork."),
+    p(text: "Two handlers, split by permission: (a) drift-detect (read-only) needs only the reads confirmed above, so the WALL can be built and witnessed now; (b) auto-reconcile (PUT/PATCH) needs an administration-write grant on the integration (the legacy 403 implies we lack it today) — a one-line operator action, modeled as a deferred handler exactly like the enforcement flip."),
+  ]
+}
+
+fn section_6() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. Sequencing, decidability, and the purity-trap guards"),
+    ul(items: [
+      li(text: "Checkpoint 0 (this sketch) — operator review; no substrate edit; frozen carriers untouched."),
+      li(text: "Checkpoint 1 — land the model (MergeStrategy, RepoStandard, MergeAdmissionReceipt, AdmissionPolicy) + the simulation witness, additive. The witness is the executable proof; nothing gates yet."),
+      li(text: "Checkpoint 2 — the read-only drift gate over live RepoStandard (squash-only standard vs the all-three-allowed reality; strict-policy-false; missing merge-queue). This is the wall buildable TODAY (reads confirmed)."),
+      li(text: "Checkpoint 3 — enforcement: flip admission to gating. STAYS BLOCKED behind the gunbc.ci_failure_class prerequisites (the clustering-reclassification consumer is UNBUILT, and cap-recovery slack) — owned by the CI-failure-classifier lane, NOT this doc. Auto-reconcile (write) additionally needs the administration-write grant."),
+    ]),
+    p(text: "Decidability: admission is wall-now (both hashes computable); the read-only drift gate is wall-now; only the enforcement flip is wall-after-grounding (decidable, waiting on the named prerequisites). Nothing here is a forever-ratchet — avoid pricing it as never (§5 trap)."),
+    p(text: "Purity-trap guards (§6, priced in displaced cost): no speculative providers — GitHub is the one handler, a second provider is one RepoConsumer row plus one handler arm. No second roster — required_checks projects from commit_gate_roster. Squash-merge is honored, so the model must never assume a merge-commit tree. This SUPERSEDES the option enumeration in ci_merge_freshness by modeling it; that doc stays the decision record and is cited, not duplicated."),
+  ]
+}
+
+fn branch_merge_admission_model_body() -> List<MarkdownBlock> {
+  concat([status_block()],
+    concat(section_0(),
+      concat(section_1(),
+        concat(section_2(),
+          concat(section_3(),
+            concat(section_4(),
+              concat(section_5(), section_6())))))))
+}
+
+data branch_merge_admission_model_plan: Plan = Plan {
+  slug: "branch-merge-admission-model",
+  title: "[SKETCH] Branch & merge-admission model — green-stays-green by construction + repo-standard drift gate",
+  body: branch_merge_admission_model_body(),
+  dissolution: HasTrigger {
+    text: "Delete when the merge-admission authority is landed and witnessed: RepoStandard is the single source for the repo settings, the KeyedReceipt admission predicate is in force (a stale base-tree OR stale gate-roster receipt is unwritable), and the read-only RepoStandard drift gate runs over the live GitHub config — at which point stale-green and standard-vs-reality drift are unwritable by construction and this sketch is redundant."
+  }
+}

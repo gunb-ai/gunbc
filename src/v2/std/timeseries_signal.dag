@@ -1,14 +1,3 @@
-// src/v2/std/timeseries_signal.dag
-//
-// Scope: CANONICAL S1 — analog passive stream substrate + R/L/C map/fold step operators.
-// Gauge-dependent AbsolutePotential vs gauge-free PotentialDifference (torsor pair);
-// passive topology substrate; Resistor=map (v=R·i), Capacitor/Inductor=fold over dt.
-// Anchor: SPICE3 passive element topology (format-agnostic std carriers; spice projection
-//         lives in v2.extdeps.formats.spice_passive_projection).
-// reuse receipt: v2.std.algebra {fold_list}, v2.std.integer {int_add,int_mul,int_div};
-//             std.measure {Measure, Quantity, Scale} — domain aliases below.
-// Status: S1 canonical + Measure remodel (tidy-heron-718 / post-#4929 GATE1).
-
 module v2.std.timeseries_signal
 
 import v2.std.algebra { Cons, Empty, fold_list, fold_list_right }
@@ -32,12 +21,6 @@ import v2.std.nat { Nat }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
-// --- SPICE domain aliases (compute_fabric pattern; reuse-attach to #4929 Quantity members) ---
-//
-// 🟡 born-mark — feature:spice-dimensional-product-algebra — typed Ohm*Ampere->Volt and
-// Scale-exponent compose (µΩ·µA is pico-volts, not micro-volts) is a separate consumer
-// lane; S1 computes products on `.count` with Measure types as dimensional tags only.
-
 type Voltage = Measure<ElectricPotential, Micro, Int>
 type Current = Measure<ElectricCurrent, Micro, Int>
 type ResistanceMicro = Measure<Resistance, Micro, Int>
@@ -45,7 +28,7 @@ type CapacitanceMicro = Measure<Capacitance, Micro, Int>
 type InductanceMicro = Measure<Inductance, Micro, Int>
 type ChargeMicro = Measure<ElectricCharge, Micro, Int>
 type FluxMicro = Measure<MagneticFlux, Micro, Int>
-// 🟡 INTERIM — dissolve-on: GATE5 shared time-affine Duration type (still-wren/smart-hawk).
+
 type DurationMicro = Measure<Time, Micro, Int>
 
 fn voltage(n: Int) -> Voltage {
@@ -112,35 +95,23 @@ fn duration_micro_count(t: DurationMicro) -> Int {
   t.count
 }
 
-// --- Affine voltage torsor (two distinct types) -----------------------------
-//
-// AbsolutePotential is meaningful only against an explicit reference node.
-// PotentialDifference is gauge-free. Adding two absolutes is ill-typed by
-// construction (no binary add across AbsolutePotential). Magnitudes are signed
-// Int via Voltage/Current — unified with step-operator representation (no Float).
-
-// 🟢 coproduct dissolution — reference node for gauge-dependent potential samples.
 type PotentialReference
   = GroundReference
   | NodeReference { name: Symbol }
 
-// 🟢 grounded — gauge-dependent absolute potential sample.
 type AbsolutePotential {
   reference: PotentialReference
   magnitude: Voltage
 }
 
-// 🟢 grounded — gauge-free potential difference (torsor vector).
 type PotentialDifference {
   magnitude: Voltage
 }
 
-// 🟢 grounded — branch current sample at this slice.
 type BranchCurrent {
   magnitude: Current
 }
 
-// 🟢 grounded — format-agnostic approximate voltage lexical carrier.
 type ApproxVoltageUnit {}
 
 type ApproxVoltage {
@@ -148,7 +119,6 @@ type ApproxVoltage {
   unit: ApproxVoltageUnit
 }
 
-// 🟢 grounded — approximate carrier bridge to AbsolutePotential reference.
 type NamedAffineVoltage {
   reference: PotentialReference
   approx: ApproxVoltage
@@ -158,11 +128,6 @@ data timeseries_witness_approx_zero: ApproxVoltage = ApproxVoltage {
   magnitude_lexeme: "0",
   unit: ApproxVoltageUnit {}
 }
-
-// --- passive element topology (format-agnostic) ------------------------------
-//
-// decompress→map→reduce (DESIGN.md §2): one parameterized topology carrier; R/L/C arms differ only by tag.
-// Format-specific projection (e.g. spice Component) lives in extdeps/.
 
 type PassiveElementValue {
   lexeme: String
@@ -247,14 +212,8 @@ fn branch_current_of_magnitude(magnitude: Current) -> BranchCurrent {
   }
 }
 
-// --- Map/fold step operators (Form-B fold + Measure-attached magnitudes) -----
-//
-// Form-B: capacitor accumulates charge then derives v = Q/C; inductor accumulates
-// flux then derives i = Φ/L. Products computed on `.count`; Measure types tag dims.
-
 data timeseries_passive_fold_step_locus: Symbol = ^timeseries_passive_fold_step
 
-// 🟢 TERMINAL at S1 — declares map/fold/solve decomposition; SolveStep uninhabited until S2.
 type CircuitPrimitiveKind
   = MapStep
   | FoldStep
@@ -294,8 +253,6 @@ fn time_series_append(
   )
 }
 
-// --- MAP: Resistor (stateless v = R·i) --------------------------------------
-
 type ResistorRating {
   microohms: ResistanceMicro
 }
@@ -320,8 +277,6 @@ fn resistor_map_voltage(
     }
   }
 }
-
-// --- FOLD: Capacitor (Form-B: Q += i·dt; v = Q/C) --------------------------
 
 type CapacitorRating {
   microfarads: CapacitanceMicro
@@ -393,8 +348,6 @@ fn fold_capacitor_transient(
     }
   )
 }
-
-// --- FOLD: Inductor (Form-B: Φ += v·dt; i = Φ/L) ---------------------------
 
 type InductorRating {
   microhenries: InductanceMicro

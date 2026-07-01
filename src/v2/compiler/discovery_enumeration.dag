@@ -1,60 +1,16 @@
-// src/v2/compiler/discovery_enumeration.dag
-// Scope: PROMOTED home for the whole-tree discovery-enumeration shape — the neutral
-//   owned-decl transport record + its discovery receipt. Relocated from
-//   v2.test.workflow.discovery_types (Consolidation #4553 host/modeled split) to the
-//   compiler/source-authority layer so the discovery lane AND the future diff→provenance
-//   producer share ONE enumeration authority (one walk, not two).
-// Status: types only for owned-decl enumeration — producing folds for the parallel
-//   source-file enumeration live in source_authority.dag (SourceRootIngest) and
-//   program_assembly.dag (module_roots_from_source_root_ingest / assemble_program_from_ingest).
-//   Membership filtering for owned decls stays in the discovery lane's glob_discovery_law.
-// Authority: attach the ingest carrier to the discovery concept family, don't fork it
-//   (snappy-crab-849 ruling 2026-06-13: promotion approved, one enumeration authority,
-//   attach-don't-mint, home = compiler/source-authority layer).
-//
-// Concept-DAG DFS (DESIGN.md §6 — DFS the concept DAG before choosing a home):
-//   The concept is "whole-tree enumeration → per-item resolved record → scalar OOM-guard
-//   receipt." DFS from v2/std/: std/algebra (FreeMonoid/fold) carries the *traversal*, not
-//   the *domain shape*; std/node (Symbol) and std/text (String) carry the leaf scalars.
-//   No std concept owns "enumerate the source tree's owned decls" — that is a COMPILER
-//   ingest concern, not a language primitive, so it does NOT belong in v2/std/. The nearest
-//   existing peer is v2.compiler.source_authority (whole-`.dag`-tree ingest →
-//   DagSourceReadWitness / NodeArtifactProvenance / coverage receipt): the SAME
-//   "enumerate ingest → resolved per-item record → scalar receipt" shape. So this attaches
-//   as a sibling at v2.compiler (next to source_authority.dag), NOT as a new std vocabulary
-//   and NOT forked under test/claim. The producer (diff→NodeArtifactProvenance, a later
-//   lane) reuses this shared shape rather than minting a parallel enumerator — that is the
-//   "one walk, not two" the ruling requires.
-//
-// Consumers (all migrated to this home in the same PR — no two-live-enumerators window):
-//   - v2.test.workflow.glob_discovery_law          (decl-classification laws)
-//   - v2.test.workflow.host_discovered_owned_data_manifest  (compile stub + overlay)
-//   - v2.test.workflow.host_source_root_ingest_manifest     (compile stub + overlay)
-//   - host emitter src/v1/stage0/src/cli_run.rs (emit_dag_manifest import line) + the serde
-//     mirror struct OwnedDataDeclRecord in the same file.
-
 module v2.compiler.discovery_enumeration
-
 
 import v2.std.node { Symbol }
 import v2.std.text { String }
-
 
 type ResolvedDeclRef {
   module: String
   name: Symbol
 }
 
-
-// Closed unified-claim arm authority pins — filters compare host facts to these symbols.
 data unified_claim_arm_bool_witness_claim_module: String = "v2.std.verification"
 data unified_claim_arm_node_corpus_module: String = "v2.std.verification"
 
-
-// 🟢 coproduct dissolution — Consolidation #4553 host/modeled boundary; dedicated arms
-// (OwnedBoolWitnessClaimInit, OwnedNodeCorpusInit) are sole unified-claim membership authority;
-// OwnedOtherInit must not carry BoolWitnessClaim/NodeCorpus resolved refs (host fail-closed +
-// glob_discovery law rejects illegal state).
 type OwnedDataDeclInitializer
   = OwnedBoolWitnessClaimInit {
       witness_entry: String
@@ -63,7 +19,6 @@ type OwnedDataDeclInitializer
   | OwnedNodeCorpusInit
   | OwnedOtherInit { resolved: ResolvedDeclRef }
 
-
 type OwnedDataDeclRecord {
   entry: String
   module: String
@@ -71,9 +26,6 @@ type OwnedDataDeclRecord {
   initializer: OwnedDataDeclInitializer
 }
 
-
-// Host-computed discovery receipt — standing gates read scalars instead of folding
-// large inline manifest lists (Consolidation #4553 OOM guard).
 type OwnedDataDiscoveryReceipt {
   unified_claim_arm_count: Int
   bool_witness_claim_arm_count: Int

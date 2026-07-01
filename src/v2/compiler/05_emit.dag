@@ -1,12 +1,4 @@
-// src/v2/compiler/05_emit.dag
-// Scope: Stage 5b — T-10 emit surface: grammar-inverse serialize_target ∘ translate.
-// Status: T-11 — emit = serialize_target ∘ translate; serialize delegates to
-// target_serialize_source_from_model grammar-inverse lex walk (no string templates).
-// Anchor: Stage 5b + Ratified Q11.
-
-
 module v2.compiler.emit
-
 
 import extdeps.communication.medium { Medium }
 import v2.compiler.infer { InferredTree }

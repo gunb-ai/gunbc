@@ -1,0 +1,77 @@
+module examples.gunbhub_serve_program
+
+import gunbc.gunbhub_serve {
+  GunbhubServeRequest,
+  GunbhubPageSource,
+  ReactPage,
+  Served,
+  RenderRejectedBeforeServe,
+  RouteNotFound,
+  MethodNotAllowed,
+  gunbhub_hostile_page,
+  serve_gunbhub_request,
+  serve_gunbhub_page_source,
+}
+import extdeps.languages.html {
+  try_serialize_html_source,
+  EmitOk,
+  EmitRejected,
+}
+import std.process { ProcessExit, ExitSuccess, ExitFailure, exit_code_general_error }
+import std.types { GET }
+
+fn wa_unknown_path_is_not_found() -> Bool {
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: GET, path: "/unknown/nonexistent" }
+  ) {
+    RouteNotFound => true
+    Served { response: _ } => false
+    RenderRejectedBeforeServe { reason: _ } => false
+    MethodNotAllowed => false
+  }
+}
+
+fn wb_unsafe_href_is_rejected() -> Bool {
+  match try_serialize_html_source(node: gunbhub_hostile_page()) {
+    EmitRejected { reason: _ } => true
+    EmitOk { html: _ } => false
+  }
+}
+
+fn wb_unsafe_href_rejected_before_serve() -> Bool {
+  match serve_gunbhub_page_source(
+    source: ReactPage { node: gunbhub_hostile_page() }
+  ) {
+    RenderRejectedBeforeServe { reason: _ } => true
+    Served { response: _ } => false
+    RouteNotFound => false
+    MethodNotAllowed => false
+  }
+}
+
+fn browse_root_serves_200() -> Bool {
+  match serve_gunbhub_request(
+    req: GunbhubServeRequest { method: GET, path: "/" }
+  ) {
+    Served { response: r } => r.status == 200 && r.body != ""
+    RouteNotFound => false
+    RenderRejectedBeforeServe { reason: _ } => false
+    MethodNotAllowed => false
+  }
+}
+
+
+func main() -> ProcessExit {
+  if wa_unknown_path_is_not_found()
+    && wb_unsafe_href_is_rejected()
+    && wb_unsafe_href_rejected_before_serve()
+    && browse_root_serves_200()
+  {
+    ExitSuccess
+  } else {
+    ExitFailure {
+      code: exit_code_general_error,
+      reason: "gunbhub serve program assertion failed",
+    }
+  }
+}

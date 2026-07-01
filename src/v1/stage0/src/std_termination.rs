@@ -68,8 +68,9 @@ pub fn descent_evidence_bounded_lattice() -> Rc<BoundedLattice<DescentEvidence>>
             Rc::new(BoundedLattice {
                 meet: Rc::new(descent_evidence_lattice_meet),
                 join: Rc::new(descent_evidence_lattice_join),
-                top: Box::new(DescentEvidence::Strict),
-                bottom: Box::new(DescentEvidence::DescentUnknown),
+                top: DescentEvidence::Strict,
+                bottom: DescentEvidence::DescentUnknown,
+                _phantom: std::marker::PhantomData,
             })
         };
     }
@@ -256,3 +257,10 @@ pub struct ProofEdge {
     pub callee: String,
     pub evidence: Rc<Vec<DescentEvidence>>,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Strict;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct NonIncreasing;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DescentUnknown;

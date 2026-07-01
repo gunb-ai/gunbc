@@ -1,0 +1,107 @@
+module gunbc.runner_slot_enforcement
+
+import std.types { NonEmptyStr, String, Bool }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadObserved,
+  ReadAbsent,
+  Grounding,
+  Grounds,
+  DoesNotGround,
+  Reconciliation,
+  Converged,
+  NotConverged,
+  reconcile_grounded,
+}
+import gunbc.ci_floor_measurement {
+  RunnerSliceCapEffectiveness,
+  CapEffective,
+  CapUnbounded,
+}
+
+
+type RunnerSlotEnforcement
+  = RunnerSlotEnforced
+  | RunnerSlotUnenforced { reason: String }
+
+type RunnerSlotApplyEffect {
+  slot_unit: NonEmptyStr
+  target_memory_max: ByteSize
+}
+
+fn runner_slot_apply_effect(slot_unit: NonEmptyStr, expected_cap: ByteSize) -> RunnerSlotApplyEffect {
+  RunnerSlotApplyEffect {
+    slot_unit: slot_unit,
+    target_memory_max: expected_cap,
+  }
+}
+
+fn ground_runner_slot_from_read(effective: RunnerSliceCapEffectiveness, expected_cap: ByteSize) -> Grounding<RunnerSlotEnforcement> {
+  match effective {
+    CapUnbounded =>
+      DoesNotGround { reason: "per-slot MemoryMax reads infinity (uncapped): the inert-cap OOM-reboot vector (two concurrent heavy jobs exceed the shared runner slice); refuse to ground RunnerSlotEnforced" }
+    CapEffective { bytes: b } =>
+      if byte_size_count(b: b) == byte_size_count(b: expected_cap) {
+        Grounds { evidence: RunnerSlotEnforced }
+      } else {
+        DoesNotGround { reason: "effective per-slot MemoryMax does not equal the emitted per_runner_memory_cap (disk!=live drift): refuse to ground enforcement until the live cap matches the model" }
+      }
+  }
+}
+
+fn reconcile_runner_slot(
+  read: ShowEffectiveRead<RunnerSliceCapEffectiveness>,
+  expected_cap: ByteSize,
+  apply: RunnerSlotApplyEffect
+) -> Reconciliation<RunnerSlotApplyEffect, RunnerSlotEnforcement> {
+  match read {
+    ReadAbsent { reason: why } =>
+      reconcile_grounded(
+        apply_effect: apply,
+        show_read: read,
+        grounding: DoesNotGround { reason: why }
+      )
+    ReadObserved { value: observed } =>
+      reconcile_grounded(
+        apply_effect: apply,
+        show_read: read,
+        grounding: ground_runner_slot_from_read(effective: observed, expected_cap: expected_cap)
+      )
+  }
+}
+
+fn runner_slot_evidence_from_reconciliation(r: Reconciliation<RunnerSlotApplyEffect, RunnerSlotEnforcement>) -> RunnerSlotEnforcement {
+  match r {
+    Converged { evidence: e, applied: _ } => e
+    NotConverged { reason: why, applied: _ } => RunnerSlotUnenforced { reason: why }
+  }
+}
+
+fn runner_slot_enforcement_evidence(
+  slot_unit: NonEmptyStr,
+  expected_cap: ByteSize,
+  read: ShowEffectiveRead<RunnerSliceCapEffectiveness>
+) -> RunnerSlotEnforcement {
+  runner_slot_evidence_from_reconciliation(
+    r: reconcile_runner_slot(
+      read: read,
+      expected_cap: expected_cap,
+      apply: runner_slot_apply_effect(slot_unit: slot_unit, expected_cap: expected_cap)
+    )
+  )
+}
+
+data gunbc_runner_slot_show_effective_read: ShowEffectiveRead<RunnerSliceCapEffectiveness> = ReadAbsent {
+  reason: "no live systemctl show -p MemoryMax / cgroup memory.max read has run on the fleet runner slots yet; pure .dag model, the live verify-effective read is threaded in at the apply increment (committed posture is fail-closed: RunnerSlotUnenforced)"
+}
+
+data gunbc_runner_slot_unit_placeholder: NonEmptyStr = "system-actions-runner.slice"
+
+fn gunbc_runner_slot_enforcement_committed(expected_cap: ByteSize) -> RunnerSlotEnforcement {
+  runner_slot_enforcement_evidence(
+    slot_unit: gunbc_runner_slot_unit_placeholder,
+    expected_cap: expected_cap,
+    read: gunbc_runner_slot_show_effective_read
+  )
+}

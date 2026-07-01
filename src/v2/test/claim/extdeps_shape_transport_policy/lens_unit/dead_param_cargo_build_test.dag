@@ -1,0 +1,65 @@
+module v2.test.extdeps_shape_transport_policy.lens_unit.dead_param_cargo_build
+
+import v2.lens.extdeps_shape_transport_policy {
+  ExtdepsOperationInputFact,
+  ExtdepsTransportArgvFact,
+  extdeps_shape_transport_policy_dead_param_count_for_operation
+}
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_cargo_build_module }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+data dead_param_cargo_build_service: String = "cargo.Build"
+data dead_param_cargo_build_operation: String = "Build"
+
+data dead_param_cargo_build_input_facts: List<ExtdepsOperationInputFact> = [
+  ExtdepsOperationInputFact {
+    module: extdeps_cargo_build_module,
+    service: dead_param_cargo_build_service,
+    operation: dead_param_cargo_build_operation,
+    param_name: "all_targets"
+  },
+  ExtdepsOperationInputFact {
+    module: extdeps_cargo_build_module,
+    service: dead_param_cargo_build_service,
+    operation: dead_param_cargo_build_operation,
+    param_name: "env"
+  }
+]
+
+data dead_param_cargo_build_argv_facts: List<ExtdepsTransportArgvFact> = [
+  ExtdepsTransportArgvFact {
+    module: extdeps_cargo_build_module,
+    service: dead_param_cargo_build_service,
+    operation: dead_param_cargo_build_operation,
+    transport_kind: Shell,
+    argv_index: 0,
+    argv_token: "cargo"
+  },
+  ExtdepsTransportArgvFact {
+    module: extdeps_cargo_build_module,
+    service: dead_param_cargo_build_service,
+    operation: dead_param_cargo_build_operation,
+    transport_kind: Shell,
+    argv_index: 1,
+    argv_token: "build"
+  },
+  ExtdepsTransportArgvFact {
+    module: extdeps_cargo_build_module,
+    service: dead_param_cargo_build_service,
+    operation: dead_param_cargo_build_operation,
+    transport_kind: Shell,
+    argv_index: 2,
+    argv_token: "--all-targets"
+  }
+]
+
+test fn dead_param_cargo_build_is_red_holds() -> Bool {
+  extdeps_shape_transport_policy_dead_param_count_for_operation(
+    argv_facts: dead_param_cargo_build_argv_facts,
+    input_facts: dead_param_cargo_build_input_facts,
+    module: extdeps_cargo_build_module,
+    service: dead_param_cargo_build_service,
+    operation: dead_param_cargo_build_operation
+  ) == 1
+}

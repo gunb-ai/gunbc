@@ -1,0 +1,63 @@
+module extdeps.gpu.types
+
+import std.types { Int, NonEmptyStr, String, List }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.memory.types { MemoryFacts }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.vendor.amd { amd }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities"
+  }
+}
+
+type GpuRuntime = Cuda | Rocm | Metal | OpenCl
+
+type GpuComputeCapability {
+  vendor: Vendor<Hardware>
+  major: Int
+  minor: Int
+}
+
+type UnsubstantiatedGpuCapabilityLabel { vendor: Vendor<Hardware> }
+
+type GpuCapabilityLabelOutcome
+  = GpuCapabilityLabelOk { label: String }
+  | GpuCapabilityLabelRejected { reason: UnsubstantiatedGpuCapabilityLabel }
+
+fn gpu_compute_capability_sm_label(cap: GpuComputeCapability) -> GpuCapabilityLabelOutcome {
+  if cap.vendor == nvidia {
+    GpuCapabilityLabelOk {
+      label: concat("sm_", concat(to_string(cap.major), concat("_", to_string(cap.minor))))
+    }
+  } else {
+    if cap.vendor == amd {
+      GpuCapabilityLabelOk {
+        label: concat("gfx", concat(to_string(cap.major), to_string(cap.minor)))
+      }
+    } else {
+      GpuCapabilityLabelRejected {
+        reason: UnsubstantiatedGpuCapabilityLabel { vendor: cap.vendor }
+      }
+    }
+  }
+}
+
+type GpuFacts {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+  compute_capability: GpuComputeCapability?
+  memory: MemoryFacts
+  supported_runtimes: List<GpuRuntime>
+}
+
+type AcceleratorFacts {
+  vendor: Vendor<Hardware>
+  model: NonEmptyStr
+}

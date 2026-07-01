@@ -1,13 +1,3 @@
-// dsl/test/claim/gcp_oauth_access_token_witness.dag
-//
-// §5 by-execution witnesses for gunbc.auth.credentials.gcp_oauth_access_token(strategy).
-// NOT discovery-roster enrolled (`test fn` would dispatch Wet in CI — no gcloud on runners).
-// Hermetic replay via committed fixtures under dsl/test/fixture/gcp_oauth_access_token_store/
-// (v1-compiler-tests `gcp_oauth_access_token_materializer_holds` → claim_batch --hermetic).
-//
-// Symbolic teeth: prove dispatch routes to the correct leaf materializer (relational),
-// never re-stating fixture token bytes — sole authority is the fixture JSON store.
-
 module test.claim.gcp_oauth_access_token_witness
 
 import extdeps.cloud.gcp.gcp { AdcRefresh, GcloudCli, GcpOAuth2AccessTokenStrategy }
@@ -21,14 +11,12 @@ import std.types { FilePath, Secret }
 
 data witness_adc_path: FilePath = "/tmp/gunbc_gcp_oauth_witness_adc.json"
 
-// Literal-built optional null must not crash Present/Absent match (§5 execution gate).
 data null_adc_path: FilePath? = none
 
 fn secret_eq(a: Secret, b: Secret) -> Bool {
   (a as String) == (b as String)
 }
 
-// GREEN: each strategy's dispatch equals invoking that strategy's leaf directly.
 fn witness_gcloud_cli_routes_to_gcloud_leaf() -> Bool {
   secret_eq(
     a: gcp_oauth_access_token(strategy: GcloudCli).token,
@@ -59,8 +47,6 @@ fn witness_adc_refresh_null_optional_routes_to_adc_leaf() -> Bool {
   )
 }
 
-// Distinguishability — without this the routing asserts are vacuous if both leaves returned
-// the same token. Explicit where the old duplicated literals only implied it.
 fn witness_leaves_are_distinguishable() -> Bool {
   !secret_eq(
     a: gcp_oauth_access_token_via_gcloud().token,
@@ -68,7 +54,6 @@ fn witness_leaves_are_distinguishable() -> Bool {
   )
 }
 
-// Perturbation: swapped match arms — must route to the opposite leaf.
 pattern gcp_oauth_access_token_dispatch_swapped(strategy: GcpOAuth2AccessTokenStrategy) -> { token: Secret }
 {
   node result = match strategy {
@@ -78,7 +63,6 @@ pattern gcp_oauth_access_token_dispatch_swapped(strategy: GcpOAuth2AccessTokenSt
   return { token: result.token }
 }
 
-// RED — swapped dispatch hits the WRONG leaf, so it must EQUAL the other leaf.
 fn witness_swapped_gcloud_hits_adc_leaf() -> Bool {
   secret_eq(
     a: gcp_oauth_access_token_dispatch_swapped(strategy: GcloudCli).token,

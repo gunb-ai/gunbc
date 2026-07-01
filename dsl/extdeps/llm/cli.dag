@@ -1,31 +1,15 @@
-// extdeps/llm/cli.dag — non-Anthropic CLI LLM backends (shell transport).
-//
-// Spec: https://github.com/openai/codex (Codex CLI)
-// Spec: https://github.com/google-gemini/gemini-cli (Gemini CLI)
-//
-// Anthropic (Claude Code CLI) lives on `llm.Anthropic.CliPrompt` in
-// `anthropic_rest.dag` — one interface for REST + shell, not a forked `llm.Claude`.
-//
-// HONEST-MODELING DEBT (DESIGN.md §3, #5059 pattern): Gemini `CliPrompt` fuses
-// `--output-format text` and `--approval-mode plan` as argv literals. The grammar
-// supports `{var}` interpolation but not omitting flags when a value would disable
-// them — parameterize when conditional argv lands (A1 transport-shape de-fusion).
-//
-// Consumers:
-//   gunbc/tools/review_codex.dag — Codex CLI PR review workflow
-
 module extdeps.llm.cli
 
-// -- Codex CLI --------------------------------------------------------
-//
-// Codex reads prompt from stdin, executes in a working directory,
-// writes structured output. Uses OpenAI auth (OPENAI_API_KEY env var).
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// 🟡 dissolved — feature:llm-codex-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.llm.mock_corpus) now governs WHICH
-// llm.Codex ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openai/codex"
+  }
+}
+
 service llm.Codex {
   operation Review {
     input {
@@ -56,15 +40,6 @@ service llm.Codex {
   }
 }
 
-// -- Gemini CLI -------------------------------------------------------
-//
-// Gemini accepts prompt as a positional argument. Uses Google auth.
-
-// 🟡 dissolved — feature:llm-gemini-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.llm.mock_corpus) now governs WHICH
-// llm.Gemini ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service llm.Gemini {
   operation CliPrompt {
     input {

@@ -1,9 +1,4 @@
-// src/v2/extdeps/posix.dag
-// Scope: POSIX process substrate — command invocation, lifecycle, wait/capture.
-// Status: modeled 2026-05-16; moved from generic process home to POSIX home 2026-05-21.
-
 module v2.extdeps.posix
-
 
 import v2.extdeps.file_system { AbsolutePath, Filesystem, PosixByteString }
 import v2.std.algebra { FreeMonoid }
@@ -13,9 +8,6 @@ import v2.std.machine { Byte }
 import v2.std.node { Symbol }
 import v2.std.refinement { Refined, Validation, refine }
 
-
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_types.h.html + https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/signal.h.html
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/_exit.html
 type ProcessId {
   refined: Refined<Int>
 }
@@ -36,7 +28,7 @@ fn exit_code_admits(value: Int) -> Bool {
 }
 
 fn signal_num_admits(value: Int) -> Bool {
-  // POSIX specifies positive signal numbers; support beyond positivity is platform-defined.
+
   value > 0
 }
 
@@ -79,8 +71,6 @@ fn make_signal_num(value: Int, at: Locus) -> Outcome<SignalNum> {
   }
 }
 
-
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html
 type PosixArgument {
   bytes: PosixByteString
 }
@@ -100,9 +90,6 @@ type Command {
   env: Map<PosixEnvironmentName, PosixEnvironmentValue>
 }
 
-
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html + https://pubs.opengroup.org/onlinepubs/9799919799/basedefs/sys_wait.h.html
-// 🟡 coproduct dissolution — OS-1.
 type Termination
   = Exited { code: ExitCode }
   | Signaled { signal: SignalNum }
@@ -111,8 +98,6 @@ type TerminatedProcessState {
   termination: Termination
 }
 
-
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html
 type ProcessIdentity {
   id: ProcessId
   command: Command
@@ -135,13 +120,10 @@ type WaitedTerminatedProcess {
   output: CapturedOutputPipes
 }
 
-// 🟡 coproduct dissolution — OS-1.
 type CaptureSource
   = Live { resources: ProcessResources, process: RunningProcess }
   | Waited { waited: WaitedProcess }
 
-
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/fork.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/exec.html + https://pubs.opengroup.org/onlinepubs/9799919799/functions/waitpid.html
 type ProcessTable
 
 type ProcessResources {
@@ -151,7 +133,6 @@ type ProcessResources {
 
 type CapturedByteStream = FreeMonoid<Byte>
 
-// Anchor: https://pubs.opengroup.org/onlinepubs/9799919799/functions/pipe.html
 type CapturedOutputPipes {
   stdout: CapturedByteStream
   stderr: CapturedByteStream

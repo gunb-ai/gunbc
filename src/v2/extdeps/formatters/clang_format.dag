@@ -1,8 +1,3 @@
-// src/v2/extdeps/formatters/clang_format.dag
-// Scope: clang-format configuration model — option space grounded in clang-format 23.0.0git.
-// Status: T-4.16 scaffold — full top-level option space grounded in clang-format 23.0.0git style reference.
-// Anchor: https://clang.llvm.org/docs/ClangFormatStyleOptions.html
-
 module v2.extdeps.formatters.clang_format
 
 import v2.std.diagnostic { Outcome }
@@ -14,8 +9,6 @@ import v2.std.refinement {
   non_negative_int_authoritative_literal,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatStyle
   = ClangFormatStyleLLVM
   | ClangFormatStyleGoogle
@@ -27,13 +20,10 @@ type ClangFormatStyle
   | ClangFormatStyleInheritParentConfig
   | ClangFormatStyleInheritParentConfigPath { path: String }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatArrayInitializerAlignmentStyle
   = ClangFormatArrayAlignNone
   | ClangFormatArrayAlignLeft
   | ClangFormatArrayAlignRight
-
 
 type ClangFormatAlignConsecutiveStyle {
   enabled: Bool,
@@ -46,7 +36,6 @@ type ClangFormatAlignConsecutiveStyle {
   pad_operators: Bool,
 }
 
-
 type ClangFormatShortCaseStatementsAlignmentStyle {
   enabled: Bool,
   across_empty_lines: Bool,
@@ -55,51 +44,38 @@ type ClangFormatShortCaseStatementsAlignmentStyle {
   align_case_colons: Bool,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatEscapedNewlineAlignmentStyle
   = ClangFormatEscapedNewlineDontAlign
   | ClangFormatEscapedNewlineLeft
   | ClangFormatEscapedNewlineLeftWithLastLine
   | ClangFormatEscapedNewlineRight
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatOperandAlignmentStyle
   = ClangFormatOperandDontAlign
   | ClangFormatOperandAlign
   | ClangFormatOperandAlignAfterOperator
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatTrailingCommentsAlignmentKind
   = ClangFormatTrailingCommentsLeave
   | ClangFormatTrailingCommentsAlways
   | ClangFormatTrailingCommentsNever
 
-
 type ClangFormatTrailingCommentsAlignmentStyle {
   kind: ClangFormatTrailingCommentsAlignmentKind,
-  over_empty_lines: Outcome<NonNegativeInt>, // 🟡 gated: formatter-cross-field-constraints — must be ≤ max_empty_lines_to_keep
+  over_empty_lines: Outcome<NonNegativeInt>,
   align_pp_and_not_pp: Bool,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBreakBeforeNoexceptSpecifierStyle
   = ClangFormatNoexceptNever
   | ClangFormatNoexceptOnlyWithParen
   | ClangFormatNoexceptAlways
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatShortBlockStyle
   = ClangFormatShortBlockNever
   | ClangFormatShortBlockEmpty
   | ClangFormatShortBlockAlways
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatShortFunctionStyle
   = ClangFormatShortFunctionNone
   | ClangFormatShortFunctionInlineOnly
@@ -107,38 +83,28 @@ type ClangFormatShortFunctionStyle
   | ClangFormatShortFunctionInline
   | ClangFormatShortFunctionAll
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatShortIfStyle
   = ClangFormatShortIfNever
   | ClangFormatShortIfWithoutElse
   | ClangFormatShortIfOnlyFirstIf
   | ClangFormatShortIfAllIfsAndElse
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatShortLambdaStyle
   = ClangFormatShortLambdaNone
   | ClangFormatShortLambdaEmpty
   | ClangFormatShortLambdaInline
   | ClangFormatShortLambdaAll
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatShortRecordStyle
   = ClangFormatShortRecordNever
   | ClangFormatShortRecordEmptyAndAttached
   | ClangFormatShortRecordEmpty
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatDefinitionReturnTypeBreakingStyle
   = ClangFormatDefinitionReturnTypeNone
   | ClangFormatDefinitionReturnTypeAll
   | ClangFormatDefinitionReturnTypeTopLevel
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatReturnTypeBreakingStyle
   = ClangFormatReturnTypeNone
   | ClangFormatReturnTypeAutomatic
@@ -148,28 +114,21 @@ type ClangFormatReturnTypeBreakingStyle
   | ClangFormatReturnTypeAllDefinitions
   | ClangFormatReturnTypeTopLevelDefinitions
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBinPackParametersStyle
   = ClangFormatBinPackParametersBinPack
   | ClangFormatBinPackParametersOnePerLine
   | ClangFormatBinPackParametersAlwaysOnePerLine
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBitFieldColonSpacingStyle
   = ClangFormatBitFieldColonBoth
   | ClangFormatBitFieldColonNone
   | ClangFormatBitFieldColonBefore
   | ClangFormatBitFieldColonAfter
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBraceWrappingAfterControlStatementStyle
   = ClangFormatBraceWrapAfterControlNever
   | ClangFormatBraceWrapAfterControlMultiLine
   | ClangFormatBraceWrapAfterControlAlways
-
 
 type ClangFormatBraceWrappingFlags {
   after_case_label: Bool,
@@ -192,23 +151,17 @@ type ClangFormatBraceWrappingFlags {
   split_empty_namespace: Bool,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatAttributeBreakingStyle
   = ClangFormatAttributeBreakAlways
   | ClangFormatAttributeBreakLeave
   | ClangFormatAttributeBreakLeaveAll
   | ClangFormatAttributeBreakNever
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBinaryOperatorStyle
   = ClangFormatBinaryOperatorNone
   | ClangFormatBinaryOperatorNonAssignment
   | ClangFormatBinaryOperatorAll
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBraceBreakingStyle
   = ClangFormatBraceAttach
   | ClangFormatBraceLinux
@@ -220,22 +173,16 @@ type ClangFormatBraceBreakingStyle
   | ClangFormatBraceWebKit
   | ClangFormatBraceCustom
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBreakBeforeConceptDeclarationsStyle
   = ClangFormatConceptBreakNever
   | ClangFormatConceptBreakAllowed
   | ClangFormatConceptBreakAlways
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBreakBeforeInlineASMColonStyle
   = ClangFormatInlineAsmColonNever
   | ClangFormatInlineAsmColonOnlyMultiline
   | ClangFormatInlineAsmColonAlways
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBreakBeforeReturnTypeStyle
   = ClangFormatBeforeReturnTypeNone
   | ClangFormatBeforeReturnTypeAll
@@ -243,12 +190,9 @@ type ClangFormatBreakBeforeReturnTypeStyle
   | ClangFormatBeforeReturnTypeAllDefinitions
   | ClangFormatBeforeReturnTypeTopLevelDefinitions
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBreakBinaryOperationsStyle
   = ClangFormatBreakBinaryNever
   | ClangFormatBreakBinaryOnePerLine
-
 
 type ClangFormatBinaryOperationBreakRule {
   operators: List<String>,
@@ -256,119 +200,90 @@ type ClangFormatBinaryOperationBreakRule {
   min_chain_length: Outcome<NonNegativeInt>,
 }
 
-
 type ClangFormatBreakBinaryOperationsOptions {
   default_style: ClangFormatBreakBinaryOperationsStyle,
   per_operator: List<ClangFormatBinaryOperationBreakRule>,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBreakConstructorInitializersStyle
   = ClangFormatConstructorInitializersBeforeColon
   | ClangFormatConstructorInitializersBeforeComma
   | ClangFormatConstructorInitializersAfterColon
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBreakInheritanceListStyle
   = ClangFormatInheritanceBeforeColon
   | ClangFormatInheritanceBeforeComma
   | ClangFormatInheritanceAfterColon
   | ClangFormatInheritanceAfterComma
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBreakTemplateDeclarationsStyle
   = ClangFormatTemplateDeclarationsLeave
   | ClangFormatTemplateDeclarationsNo
   | ClangFormatTemplateDeclarationsMultiLine
   | ClangFormatTemplateDeclarationsYes
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBracedListStyle
   = ClangFormatBracedListBlock
   | ClangFormatBracedListFunctionCall
   | ClangFormatBracedListAlignFirstComment
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatEmptyLineAfterAccessModifierStyle
   = ClangFormatEmptyLineAfterAccessNever
   | ClangFormatEmptyLineAfterAccessLeave
   | ClangFormatEmptyLineAfterAccessAlways
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatEmptyLineBeforeAccessModifierStyle
   = ClangFormatEmptyLineBeforeAccessNever
   | ClangFormatEmptyLineBeforeAccessLeave
   | ClangFormatEmptyLineBeforeAccessLogicalBlock
   | ClangFormatEmptyLineBeforeAccessAlways
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatEnumTrailingCommaStyle
   = ClangFormatEnumTrailingCommaLeave
   | ClangFormatEnumTrailingCommaInsert
   | ClangFormatEnumTrailingCommaRemove
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatIncludeBlocksStyle
   = ClangFormatIncludeBlocksPreserve
   | ClangFormatIncludeBlocksMerge
   | ClangFormatIncludeBlocksRegroup
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatIndentExternBlockStyle
   = ClangFormatIndentExternAfterExternBlock
   | ClangFormatIndentExternNoIndent
   | ClangFormatIndentExternIndent
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatIndentGotoLabelStyle
   = ClangFormatIndentGotoNoIndent
   | ClangFormatIndentGotoOuterIndent
   | ClangFormatIndentGotoInnerIndent
   | ClangFormatIndentGotoHalfIndent
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatPPDirectiveIndentStyle
   = ClangFormatPPDirectiveIndentNone
   | ClangFormatPPDirectiveIndentAfterHash
   | ClangFormatPPDirectiveIndentBeforeHash
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatTrailingCommaStyle
   = ClangFormatTrailingCommaNone
   | ClangFormatTrailingCommaWrapped
 
-
 type ClangFormatIntegerLiteralSeparatorStyle {
-  binary: Int // upstream: int8_t — any negative disables separators (not ≥-1)
+  binary: Int
   binary_min_digits_insert: Outcome<NonNegativeInt>,
   binary_max_digits_remove: Outcome<NonNegativeInt>,
-  decimal: Int // upstream: int8_t — any negative disables separators (not ≥-1)
+  decimal: Int
   decimal_min_digits_insert: Outcome<NonNegativeInt>,
   decimal_max_digits_remove: Outcome<NonNegativeInt>,
-  hex: Int // upstream: int8_t — any negative disables separators (not ≥-1)
+  hex: Int
   hex_min_digits_insert: Outcome<NonNegativeInt>,
   hex_max_digits_remove: Outcome<NonNegativeInt>,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatJavaScriptQuoteStyle
   = ClangFormatJavaScriptQuoteLeave
   | ClangFormatJavaScriptQuoteSingle
   | ClangFormatJavaScriptQuoteDouble
-
 
 type ClangFormatKeepEmptyLinesStyle {
   at_end_of_file: Bool,
@@ -376,14 +291,10 @@ type ClangFormatKeepEmptyLinesStyle {
   at_start_of_file: Bool,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatLambdaBodyIndentationKind
   = ClangFormatLambdaBodySignature
   | ClangFormatLambdaBodyOuterScope
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatLanguageKind
   = ClangFormatLanguageNone
   | ClangFormatLanguageC
@@ -398,34 +309,25 @@ type ClangFormatLanguageKind
   | ClangFormatLanguageTextProto
   | ClangFormatLanguageVerilog
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatLineEndingStyle
   = ClangFormatLineEndingLF
   | ClangFormatLineEndingCRLF
   | ClangFormatLineEndingDeriveLF
   | ClangFormatLineEndingDeriveCRLF
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatMainIncludeCharDiscriminator
   = ClangFormatMainIncludeQuote
   | ClangFormatMainIncludeAny
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatNamespaceIndentationKind
   = ClangFormatNamespaceIndentNone
   | ClangFormatNamespaceIndentInner
   | ClangFormatNamespaceIndentAll
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatNumericLiteralComponentStyle
   = ClangFormatNumericLiteralLeave
   | ClangFormatNumericLiteralUpper
   | ClangFormatNumericLiteralLower
-
 
 type ClangFormatNumericLiteralCaseStyle {
   exponent_letter: ClangFormatNumericLiteralComponentStyle,
@@ -434,21 +336,15 @@ type ClangFormatNumericLiteralCaseStyle {
   suffix: ClangFormatNumericLiteralComponentStyle,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatBinPackStyle
   = ClangFormatBinPackAuto
   | ClangFormatBinPackAlways
   | ClangFormatBinPackNever
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatPackArgumentsStyle
   = ClangFormatPackArgumentsBinPack
   | ClangFormatPackArgumentsOnePerLine
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatPackConstructorInitializersStyle
   = ClangFormatPackConstructorNever
   | ClangFormatPackConstructorBinPack
@@ -456,45 +352,33 @@ type ClangFormatPackConstructorInitializersStyle
   | ClangFormatPackConstructorNextLine
   | ClangFormatPackConstructorNextLineOnly
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatPointerAlignmentStyle
   = ClangFormatPointerLeft
   | ClangFormatPointerRight
   | ClangFormatPointerMiddle
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatQualifierAlignmentStyle
   = ClangFormatQualifierLeave
   | ClangFormatQualifierLeft
   | ClangFormatQualifierRight
   | ClangFormatQualifierCustom
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatReferenceAlignmentStyle
   = ClangFormatReferencePointer
   | ClangFormatReferenceLeft
   | ClangFormatReferenceRight
   | ClangFormatReferenceMiddle
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatReflowCommentsStyle
   = ClangFormatReflowCommentsNever
   | ClangFormatReflowCommentsIndentOnly
   | ClangFormatReflowCommentsAlways
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatRemoveParenthesesStyle
   = ClangFormatRemoveParenthesesLeave
   | ClangFormatRemoveParenthesesMultipleParentheses
   | ClangFormatRemoveParenthesesReturnStatement
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatRequiresClausePositionStyle
   = ClangFormatRequiresClauseOwnLine
   | ClangFormatRequiresClauseOwnLineWithBrace
@@ -502,19 +386,14 @@ type ClangFormatRequiresClausePositionStyle
   | ClangFormatRequiresClauseWithFollowing
   | ClangFormatRequiresClauseSingleLine
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatRequiresExpressionIndentationKind
   = ClangFormatRequiresExpressionOuterScope
   | ClangFormatRequiresExpressionKeyword
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatSeparateDefinitionStyle
   = ClangFormatSeparateDefinitionLeave
   | ClangFormatSeparateDefinitionAlways
   | ClangFormatSeparateDefinitionNever
-
 
 type ClangFormatSortIncludesOptions {
   enabled: Bool,
@@ -522,29 +401,21 @@ type ClangFormatSortIncludesOptions {
   ignore_extension: Bool,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatSortJavaStaticImportOptions
   = ClangFormatSortJavaStaticBefore
   | ClangFormatSortJavaStaticAfter
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatSortUsingDeclarationsOptions
   = ClangFormatSortUsingNever
   | ClangFormatSortUsingLexicographic
   | ClangFormatSortUsingLexicographicNumeric
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatSpaceAroundPointerQualifiersStyle
   = ClangFormatSpaceAroundPointerQualifiersDefault
   | ClangFormatSpaceAroundPointerQualifiersBefore
   | ClangFormatSpaceAroundPointerQualifiersAfter
   | ClangFormatSpaceAroundPointerQualifiersBoth
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatSpaceBeforeParensStyle
   = ClangFormatSpaceBeforeParensNever
   | ClangFormatSpaceBeforeParensControlStatements
@@ -552,7 +423,6 @@ type ClangFormatSpaceBeforeParensStyle
   | ClangFormatSpaceBeforeParensNonEmptyParentheses
   | ClangFormatSpaceBeforeParensAlways
   | ClangFormatSpaceBeforeParensCustomStyle
-
 
 type ClangFormatSpaceBeforeParensCustom {
   after_control_statements: Bool,
@@ -568,32 +438,24 @@ type ClangFormatSpaceBeforeParensCustom {
   before_non_empty_parentheses: Bool,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatSpaceInEmptyBracesStyle
   = ClangFormatSpaceInEmptyBracesAlways
   | ClangFormatSpaceInEmptyBracesBlock
   | ClangFormatSpaceInEmptyBracesNever
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatSpacesInAnglesStyle
   = ClangFormatSpacesInAnglesNever
   | ClangFormatSpacesInAnglesAlways
   | ClangFormatSpacesInAnglesLeave
 
-
 type ClangFormatSpacesInLineComment {
   minimum: Outcome<NonNegativeInt>,
-  maximum: Outcome<AtLeastMinusOneInt>, // 🟡 gated: formatter-cross-field-constraints — must be ≥ minimum unless -1
+  maximum: Outcome<AtLeastMinusOneInt>,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatSpacesInParensStyle
   = ClangFormatSpacesInParensNever
   | ClangFormatSpacesInParensCustomStyle
-
 
 type ClangFormatSpacesInParensCustom {
   except_double_parentheses: Bool,
@@ -603,8 +465,6 @@ type ClangFormatSpacesInParensCustom {
   other: Bool,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatLanguageStandard
   = ClangFormatStandardCpp03
   | ClangFormatStandardCpp11
@@ -616,15 +476,11 @@ type ClangFormatLanguageStandard
   | ClangFormatStandardLatest
   | ClangFormatStandardAuto
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatDAGArgStyle
   = ClangFormatDAGArgDontBreak
   | ClangFormatDAGArgBreakElements
   | ClangFormatDAGArgBreakAll
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatUseTabStyle
   = ClangFormatUseTabNever
   | ClangFormatUseTabForIndentation
@@ -632,17 +488,13 @@ type ClangFormatUseTabStyle
   | ClangFormatUseTabAlignWithSpaces
   | ClangFormatUseTabAlways
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type ClangFormatWrapNamespaceBodyWithEmptyLinesStyle
   = ClangFormatWrapNamespaceBodyWithEmptyLinesNever
   | ClangFormatWrapNamespaceBodyWithEmptyLinesAlways
   | ClangFormatWrapNamespaceBodyWithEmptyLinesLeave
 
-
-// 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: encode annotated formatter field dependencies as config-level refinements once dependent record predicates are available; forbidden: collapsing dependent fields into lossy enums or omitting companion fields required by the upstream formatter schema.
 type ClangFormatConfig {
-  access_modifier_offset: Int // upstream: Integer — LLVM default -2 is not a schema floor (ClangFormatStyleOptions#accessmodifieroffset)
+  access_modifier_offset: Int
   align_after_open_bracket: Bool
   align_array_of_structures: ClangFormatArrayInitializerAlignmentStyle
   align_consecutive_assignments: ClangFormatAlignConsecutiveStyle
@@ -681,7 +533,7 @@ type ClangFormatConfig {
   bin_pack_long_braced_list: Bool
   bin_pack_parameters: ClangFormatBinPackParametersStyle
   bit_field_colon_spacing: ClangFormatBitFieldColonSpacingStyle
-  braced_initializer_indent_width: Int // upstream: negative/unset falls back to ContinuationIndentWidth
+  braced_initializer_indent_width: Int
   brace_wrapping: ClangFormatBraceWrappingFlags
   break_adjacent_string_literals: Bool
   break_after_attributes: ClangFormatAttributeBreakingStyle
@@ -784,7 +636,7 @@ type ClangFormatConfig {
   pointer_alignment: ClangFormatPointerAlignmentStyle
   pp_indent_width: Outcome<AtLeastMinusOneInt>
   qualifier_alignment: ClangFormatQualifierAlignmentStyle
-  qualifier_order: List<String> // 🟡 gated: formatter-cross-field-constraints — operative only when qualifier_alignment = ClangFormatQualifierCustom
+  qualifier_order: List<String>
   reference_alignment: ClangFormatReferenceAlignmentStyle
   reflow_comments: ClangFormatReflowCommentsStyle
   remove_braces_llvm: Bool
@@ -836,7 +688,6 @@ type ClangFormatConfig {
   verilog_break_between_instance_ports: Bool
   wrap_namespace_body_with_empty_lines: ClangFormatWrapNamespaceBodyWithEmptyLinesStyle
 }
-
 
 data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   access_modifier_offset: -2,
@@ -1034,9 +885,7 @@ data clang_format_defaults: ClangFormatConfig = ClangFormatConfig {
   wrap_namespace_body_with_empty_lines: ClangFormatWrapNamespaceBodyWithEmptyLinesNever,
 }
 
-
 type ClangFormatConfigPatch = ConfigPatchRecord<ClangFormatConfig>
-
 
 fn clang_format_layer(base: ClangFormatConfig, patch: ClangFormatConfigPatch) -> ClangFormatConfig {
   config_patch_layer(base: base, patch: patch)

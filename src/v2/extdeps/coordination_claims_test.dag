@@ -1,12 +1,4 @@
-// Scope: v2.extdeps.coordination WIRECONTRACT-OBLIGATION-TABLE-T4.8 as
-// discriminating claim-run witnesses, routed through v2 (`dag run --claim-run`).
-// The executable receipt is the in-file claim witness, run in-process by the
-// claim_batch binary (the witnesses ARE the coverage).
-// Importing v2.extdeps.coordination forces v2 to tokenize/parse/infer it, so the
-// parse-surface fact rides every witness below.
-
 module v2.test.extdeps.coordination_claims
-
 
 import v2.std.logic { Bool }
 import v2.extdeps.coordination {
@@ -26,8 +18,6 @@ import v2.extdeps.coordination {
   coordination_effect_obligation
 }
 
-
-
 import v2.std.verification {
   BoolWitness,
   BoolWitnessClaim,
@@ -37,8 +27,6 @@ fn coord_not(b: Bool) -> Bool {
   b == false
 }
 
-
-// ExchangePattern arm probes (one per variant; a wrong stored variant fails its probe).
 fn exchange_is_request_reply(e: ExchangePattern) -> Bool {
   match e {
     RequestReply => true
@@ -67,8 +55,6 @@ fn exchange_is_publish_subscribe(e: ExchangePattern) -> Bool {
   }
 }
 
-
-// SettlementGuarantee<RequiredSettleBound> arm probes.
 fn settlement_is_immediate(s: SettlementGuarantee<RequiredSettleBound>) -> Bool {
   match s {
     ImmediateSettlement => true
@@ -83,10 +69,6 @@ fn settlement_is_within(s: SettlementGuarantee<RequiredSettleBound>) -> Bool {
   }
 }
 
-
-// Receipt A1 (obligation exchange table is arm-sharp): every CoordinationEffectKind maps to
-// its own ExchangePattern AND the table is not a constant — Http's exchange is NOT Queue's.
-// Discriminates: mutate any arm's required_exchange in coordination.dag → this goes red.
 test fn coordination_obligation_exchange_arm_sharp_holds() -> Bool {
   exchange_is_request_reply(e: coordination_effect_obligation(effect: Http).required_exchange)
     && exchange_is_fire_and_forget(e: coordination_effect_obligation(effect: Queue).required_exchange)
@@ -95,10 +77,6 @@ test fn coordination_obligation_exchange_arm_sharp_holds() -> Bool {
     && coord_not(b: exchange_is_fire_and_forget(e: coordination_effect_obligation(effect: Http).required_exchange))
 }
 
-
-// Receipt A2 (obligation settlement discriminant is arm-sharp): Http settles immediately,
-// the async effects (Queue/Stream/PubSub) settle-within; the negative arms pin that the
-// discriminant tracks the effect, not a constant.
 test fn coordination_obligation_settlement_arm_sharp_holds() -> Bool {
   settlement_is_immediate(s: coordination_effect_obligation(effect: Http).required_settlement)
     && settlement_is_within(s: coordination_effect_obligation(effect: Queue).required_settlement)

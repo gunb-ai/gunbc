@@ -1,13 +1,3 @@
-// Scope: B1 unit-modeling lens — electrical / two-class witness. Under the
-//        inverted predicate a GATE-N-pending electrical field (`tdp_watts`) typed
-//        as a bare kernel `Int` IS FLAGGED (a quantity is a quantity regardless of
-//        whether its carrier exists yet — exempting it would reintroduce the
-//        false-negative the inversion kills). Because Power has no carrier in the
-//        hint map, the flag is the BLOCKED-PENDING-CARRIER class — the honest
-//        reconciliation is to escalate the upstream carrier gate (M12 / Practice
-//        13), not to suppress the flag. Proves the blocked-pending diagnostic
-//        class the §4 census drains-pending-substrate from.
-
 module v2.test.lens_unit_modeling.electrical_blocked_pending_flagged
 
 import v2.lens.unit_modeling { unit_modeling_gate }

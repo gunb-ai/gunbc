@@ -1,12 +1,5 @@
-// src/v2/extdeps/languages/fidelity.dag
-// Scope: C5 ingest/emit fidelity disposition carrier (target-realization-side).
-// Status: shared extdeps-language carrier for llvm_ir / lean / machine_code.
-// Fidelity taxonomy: Modeled | Declared-normalized | Fail-closed.
-
 module v2.extdeps.languages.fidelity
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FidelityDisposition<Feature>
   = Modeled
   | DeclaredNormalized { feature: Feature }

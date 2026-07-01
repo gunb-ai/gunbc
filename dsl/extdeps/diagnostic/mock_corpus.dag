@@ -1,39 +1,17 @@
-// dsl/extdeps/diagnostic/mock_corpus.dag
-// Scope: the diagnostic layer's PUBLISHED mock corpus as a closed, declared structural fact.
-// Anchor: DESIGN.md §3 (single authority) / §6 (model-just-in-time, mark the carrier).
-//
-// SINGLE authority for WHICH diagnostic.* / redfish.Http operations are hermetically realizable.
-// Read by BOTH the compile-time M2 mock_totality_lens (src/v2/lens/mock_totality.dag, via the
-// per-layer witness) AND the v1 runtime's eval_service_call (the M4 hermetic-realization fold) —
-// one model, not two. The v1 runtime loads the dsl/ tree, so this corpus lives in dsl/ for the
-// runtime to reach the SAME model the lens reads. Modeled on the M4.0 filesystem pilot
-// (dsl/extdeps/filesystem/mock_corpus.dag, #5188).
-//
-// Per-SERVICE governance: eval_service_call splits an operation_key on its last `.`, so each of
-// diagnostic.ssh.Session / redfish.Http / diagnostic.edac.RasMcCtl / diagnostic.ipmi.Tool is
-// governed independently. Every op that today carries an inline mock_response IS published below,
-// so no governed service's sibling is silently fail-closed.
-//
-// Rows inhabit std.hermetic_replay.PublishedMockCase. The operation set authority remains the
-// service decls under dsl/extdeps/diagnostic/{ssh,edac,ipmi}.dag and
-// dsl/extdeps/bmc/http.dag (redfish.Http); per-case payloads live in the Phase-2
-// RecordedFixture store ONLY — rows carry the structural key (service, operation,
-// operation_key, case_id).
-
 module extdeps.diagnostic.mock_corpus
 
 import std.hermetic_replay { PublishedMockCase }
 
 data diagnostic_ssh_session_mock_case_exec: PublishedMockCase = PublishedMockCase {
-  operation_key: "diagnostic.ssh.Session.Exec",
-  service: "diagnostic.ssh.Session",
+  operation_key: "ssh.Session.Exec",
+  service: "ssh.Session",
   operation: "Exec",
   case_id: 0
 }
 
 data diagnostic_ssh_session_mock_case_reachability: PublishedMockCase = PublishedMockCase {
-  operation_key: "diagnostic.ssh.Session.Reachability",
-  service: "diagnostic.ssh.Session",
+  operation_key: "ssh.Session.Reachability",
+  service: "ssh.Session",
   operation: "Reachability",
   case_id: 0
 }
@@ -101,15 +79,6 @@ data diagnostic_ipmi_tool_mock_case_sel_list: PublishedMockCase = PublishedMockC
   case_id: 0
 }
 
-// 🟡 gated — feature:diagnostic-mock-corpus-from-service-decl — bind node://adhoc-49ce4678-496
-// dissolve-on-arrival: project this corpus directly from the diagnostic service operation sets
-// in dsl/extdeps/diagnostic/{ssh,edac,ipmi}.dag and dsl/extdeps/bmc/http.dag (the SINGLE
-// authority for WHICH operations exist), joined with the Phase-2 RecordedFixture store (the authority for WHICH
-// recorded cases exist per operation), once a v2 lens can read a service decl's operation nodes
-// and the fixture store's keys; this declared list then deletes in the same PR. forbidden: a row
-// carrying a response VALUE (exit_code/stdout/success/body/reachable) — that would fork the
-// payload authority, now owned by the fixture store (§3); rows mirror the structural key ONLY,
-// and grow when a published operation/case is added upstream.
 data diagnostic_published_mock_corpus: List<PublishedMockCase> = [
   diagnostic_ssh_session_mock_case_exec,
   diagnostic_ssh_session_mock_case_reachability,

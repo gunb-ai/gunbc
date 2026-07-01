@@ -1,10 +1,3 @@
-// Carrier witnesses for the Measure<Q, S, M> magnitude generalization (GATE0 Nat +
-// GATE1 signed Int). Proves by execution that the 3-param carrier round-trips its
-// param-dependent `count` field for BOTH magnitude rungs — through the single-hop
-// alias projection (ByteSize), a direct record literal (signed electrical Int), and
-// a two-hop alias chain (MoneyMicros -> MoneyAmount<Micro> -> Measure) — and that a
-// signed electrical magnitude (negative count) is representable, the whole reason the
-// magnitude axis was generalized off the hardwired `Nat`.
 module test.claim.measure_magnitude_carrier
 
 import std.measure {
@@ -16,21 +9,16 @@ import std.measure {
   Micro,
   celsius,
   celsius_count,
-}
-import product.compute_fabric {
-  money_micros,
-  money_micros_count,
+  money_amount_micro,
+  money_amount_micro_count,
 }
 import std.types { Int }
 import std.logic { Bool }
 
-// GATE0 — M=Nat through the ByteSize alias (Measure<Memory, One, Nat>).
 test fn measure_nat_magnitude_roundtrip_holds() -> Bool {
   byte_size_count(byte_size(42)) == 42
 }
 
-// GATE1 — M=Int (signed) over an electrical Quantity. Microvolts are signed:
-// a negative potential must round-trip through the param-dependent count field.
 fn signed_microvolts(n: Int) -> Measure<ElectricPotential, Micro, Int> {
   Measure { count: n }
 }
@@ -43,16 +31,10 @@ test fn measure_signed_magnitude_roundtrip_holds() -> Bool {
   signed_microvolts_count(signed_microvolts(-5)) == -5
 }
 
-// GATE1 — absolute Celsius (Redfish inlet sensors): sub-zero readings must be representable.
 test fn celsius_subzero_absolute_roundtrip_holds() -> Bool {
   celsius_count(celsius(-12)) == -12
 }
 
-// Two-hop alias chain — the `<M>`-carrying `count` field read multi-hop through
-// product.compute_fabric.MoneyMicros (= MoneyAmount<Micro> = Measure<Currency, Micro, Nat>).
-// Substantiates the "two-hop alias chains round-trip" claim in measure.dag (G3 + multi-hop landed
-// gunbc#4885): both `money_micros` (multi-hop record literal) and `money_micros_count`
-// (multi-hop `.count`) resolve + evaluate on the v2 interpreter.
 test fn measure_two_hop_alias_count_roundtrip_holds() -> Bool {
-  money_micros_count(money_micros(99)) == 99
+  money_amount_micro_count(money_amount_micro(99)) == 99
 }

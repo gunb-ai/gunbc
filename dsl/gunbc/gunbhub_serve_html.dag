@@ -1,16 +1,14 @@
-// gunbc/gunbhub_serve_html.dag — Html consumer arm for gunbhub serve.
-
 module gunbc.gunbhub_serve_html
 
 import std.markup {
   MarkupNode,
-  Serialized,
-  Rejected,
   ElementNode,
   TextNode,
 }
-import std.html_markup {
-  try_serialize_html_node,
+import extdeps.languages.html {
+  try_serialize_html_source,
+  EmitOk,
+  EmitRejected,
 }
 
 fn sample_html_page() -> MarkupNode {
@@ -22,9 +20,9 @@ fn sample_html_page() -> MarkupNode {
 }
 
 fn witness_html_consumer_serializes() -> Bool {
-  match try_serialize_html_node(node: sample_html_page()) {
-    Serialized { html: h } => h == "<p>gunbhub</p>"
-    Rejected { reason: _ } => false
+  match try_serialize_html_source(node: sample_html_page()) {
+    EmitOk { html: h } => h == "<p>gunbhub</p>"
+    EmitRejected { reason: _ } => false
   }
 }
 

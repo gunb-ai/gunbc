@@ -1,12 +1,3 @@
-// Scope: unit witnesses for the v2 dag LanguageModel `^IDENT` opaque Symbol
-//   literal — lex + grammar (gap 1 of the N_v2 self-host front-end). Mirrors v1's
-//   parse_caret_expr ShIdent arm (src/v1/stage0/src/v1_compiler_parse.rs): `^` is a
-//   standalone token the parser combines with the following ident.
-// Anchor: DESIGN.md §5/§7 — green-by-execution consumer for the caret lex+grammar
-//   rows in v2.extdeps.languages.dag; UNIT-level (no host manifest, FIX-A-independent).
-// Discriminating control included: a genuinely-unrecognized char (backtick) must
-//   STILL Reject tokenize_lex_e1_unrecognized_char (no fail-open of the lexer).
-
 module v2.test.languages.dag_caret_symbol_lex
 
 import v2.compiler.tokenize { tokenize }
@@ -15,7 +6,6 @@ import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 
-// `^foo` tokenizes — the caret lex row recognizes the sigil.
 test fn caret_lex_accepts_symbol_literal_holds() -> Bool {
   match tokenize(text: "^foo", file: ^probe, rules: dag_language_model_wave1().lex) {
     Accepted { value: _, diagnostics: _ } => true
@@ -23,8 +13,6 @@ test fn caret_lex_accepts_symbol_literal_holds() -> Bool {
   }
 }
 
-// A tiny module using `^foo` as a primary expression parses — the caret grammar
-// alternative (primary_expr -> caret ident) accepts the symbol literal.
 test fn caret_parse_accepts_symbol_literal_holds() -> Bool {
   let lm = dag_language_model_wave1()
   match tokenize(text: "module probe.t\nfn f() -> Int { ^foo }\n", file: ^probe, rules: lm.lex) {
@@ -37,8 +25,6 @@ test fn caret_parse_accepts_symbol_literal_holds() -> Bool {
   }
 }
 
-// NO-FAIL-OPEN CONTROL — the lexer gained EXACTLY the caret token, not a permissive
-// catch-all: a backtick (in no lex rule) must still Reject as unrecognized.
 test fn caret_lex_rejects_unknown_char_control_holds() -> Bool {
   match tokenize(text: "`bad", file: ^probe, rules: dag_language_model_wave1().lex) {
     Accepted { value: _, diagnostics: _ } => false

@@ -1,0 +1,236 @@
+module v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence
+
+import v2.std.algebra { any, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.text { String }
+import v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_module_refs {
+witness_clean_gist_create_lens_unit_module,
+  witness_clean_git_diff_lens_unit_module,
+  witness_dead_param_cargo_build_lens_unit_module,
+  witness_dead_param_cargo_clippy_corpus_module,
+  witness_dead_param_cargo_clippy_lens_unit_module,
+  witness_dead_param_cargo_doc_corpus_module,
+  witness_dead_param_cargo_fmt_corpus_module,
+  witness_dead_param_gcp_login_corpus_module,
+  witness_dead_param_gcp_login_lens_unit_module,
+  witness_embedded_policy_corpus_module,
+  witness_embedded_policy_lens_unit_module,
+  witness_gist_create_corpus_module,
+  witness_git_policy_leak_corpus_module,
+  witness_policy_leak_cargo_build_corpus_module,
+  witness_policy_leak_cargo_build_lens_unit_module,
+  witness_policy_leak_cargo_doc_corpus_module,
+  witness_policy_leak_cargo_doc_lens_unit_module,
+  witness_policy_leak_cargo_fmt_corpus_module,
+  witness_policy_leak_cargo_fmt_lens_unit_module,
+  witness_transport_fusion_gcp_oauth_corpus_module,
+  witness_transport_fusion_gcp_oauth_lens_unit_module
+}
+
+data violation_kind_policy_leak: String = "policy leak in argv"
+data violation_kind_transport_fusion: String = "transport fusion fork"
+data violation_kind_dead_param: String = "dead param in argv"
+data violation_kind_embedded_policy: String = "embedded policy literal in data"
+
+data violation_kinds: List<String> = [
+  violation_kind_policy_leak,
+  violation_kind_transport_fusion,
+  violation_kind_dead_param,
+  violation_kind_embedded_policy
+]
+
+type ExtdepsShapeTransportPolicyReceiptRow {
+  label: String
+  violation_kind: String
+  entry: QualifiedName
+  function: String
+}
+
+data receipt_policy_leak_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit cargo_build policy leak",
+  violation_kind: violation_kind_policy_leak,
+  entry: witness_policy_leak_cargo_build_lens_unit_module,
+  function: "policy_leak_cargo_build_is_red_holds"
+}
+
+data receipt_policy_leak_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus cargo_build de-fused (regression guard)",
+  violation_kind: violation_kind_policy_leak,
+  entry: witness_policy_leak_cargo_build_corpus_module,
+  function: "corpus_cargo_build_defused_holds"
+}
+
+data receipt_policy_leak_cargo_fmt_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit cargo fmt policy leak",
+  violation_kind: violation_kind_policy_leak,
+  entry: witness_policy_leak_cargo_fmt_lens_unit_module,
+  function: "policy_leak_cargo_fmt_is_red_holds"
+}
+
+data receipt_policy_leak_cargo_doc_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit cargo doc policy leak",
+  violation_kind: violation_kind_policy_leak,
+  entry: witness_policy_leak_cargo_doc_lens_unit_module,
+  function: "policy_leak_cargo_doc_is_red_holds"
+}
+
+data receipt_policy_leak_cargo_fmt_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus cargo fmt de-fused (regression guard)",
+  violation_kind: violation_kind_policy_leak,
+  entry: witness_policy_leak_cargo_fmt_corpus_module,
+  function: "corpus_cargo_fmt_defused_holds"
+}
+
+data receipt_policy_leak_cargo_doc_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus cargo doc de-fused (regression guard)",
+  violation_kind: violation_kind_policy_leak,
+  entry: witness_policy_leak_cargo_doc_corpus_module,
+  function: "corpus_cargo_doc_defused_holds"
+}
+
+data receipt_git_policy_leak_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus git ChangedFiles de-fused (regression guard)",
+  violation_kind: violation_kind_policy_leak,
+  entry: witness_git_policy_leak_corpus_module,
+  function: "corpus_git_policy_leak_defused_holds"
+}
+
+data receipt_clean_git_diff: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit clean git diff",
+  violation_kind: violation_kind_policy_leak,
+  entry: witness_clean_git_diff_lens_unit_module,
+  function: "clean_git_diff_is_green_holds"
+}
+
+data receipt_clean_gist_create: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit clean gist create",
+  violation_kind: violation_kind_policy_leak,
+  entry: witness_clean_gist_create_lens_unit_module,
+  function: "clean_gist_create_is_green_holds"
+}
+
+data receipt_gist_create_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus gist create de-fused (regression guard)",
+  violation_kind: violation_kind_policy_leak,
+  entry: witness_gist_create_corpus_module,
+  function: "corpus_gist_create_defused_holds"
+}
+
+data receipt_transport_fusion_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit gcp oauth fusion",
+  violation_kind: violation_kind_transport_fusion,
+  entry: witness_transport_fusion_gcp_oauth_lens_unit_module,
+  function: "transport_fusion_gcp_oauth_is_red_holds"
+}
+
+data receipt_transport_fusion_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus gcp oauth de-fused (regression guard)",
+  violation_kind: violation_kind_transport_fusion,
+  entry: witness_transport_fusion_gcp_oauth_corpus_module,
+  function: "corpus_gcp_oauth_defused_holds"
+}
+
+data receipt_dead_param_cargo_build_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit cargo_build dead param",
+  violation_kind: violation_kind_dead_param,
+  entry: witness_dead_param_cargo_build_lens_unit_module,
+  function: "dead_param_cargo_build_is_red_holds"
+}
+
+data receipt_dead_param_gcp_login_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit gcp login dead param",
+  violation_kind: violation_kind_dead_param,
+  entry: witness_dead_param_gcp_login_lens_unit_module,
+  function: "dead_param_gcp_login_is_red_holds"
+}
+
+data receipt_dead_param_cargo_clippy_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit cargo clippy dead param",
+  violation_kind: violation_kind_dead_param,
+  entry: witness_dead_param_cargo_clippy_lens_unit_module,
+  function: "dead_param_cargo_clippy_is_red_holds"
+}
+
+data receipt_dead_param_cargo_clippy_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus cargo clippy dead param de-fused (regression guard)",
+  violation_kind: violation_kind_dead_param,
+  entry: witness_dead_param_cargo_clippy_corpus_module,
+  function: "corpus_cargo_clippy_dead_param_defused_holds"
+}
+
+data receipt_dead_param_cargo_fmt_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus cargo fmt dead param de-fused (regression guard)",
+  violation_kind: violation_kind_dead_param,
+  entry: witness_dead_param_cargo_fmt_corpus_module,
+  function: "corpus_cargo_fmt_dead_param_defused_holds"
+}
+
+data receipt_dead_param_cargo_doc_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus cargo doc dead param de-fused (regression guard)",
+  violation_kind: violation_kind_dead_param,
+  entry: witness_dead_param_cargo_doc_corpus_module,
+  function: "corpus_cargo_doc_dead_param_defused_holds"
+}
+
+data receipt_dead_param_gcp_login_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus gcp login dead param de-fused (regression guard)",
+  violation_kind: violation_kind_dead_param,
+  entry: witness_dead_param_gcp_login_corpus_module,
+  function: "corpus_gcp_login_dead_param_defused_holds"
+}
+
+data receipt_embedded_policy_lens_unit: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "lens-unit runtime/local embedded policy literal",
+  violation_kind: violation_kind_embedded_policy,
+  entry: witness_embedded_policy_lens_unit_module,
+  function: "embedded_policy_literal_local_is_red_holds"
+}
+
+data receipt_embedded_policy_corpus: ExtdepsShapeTransportPolicyReceiptRow = ExtdepsShapeTransportPolicyReceiptRow {
+  label: "corpus runtime/local embedded policy de-fused (regression guard)",
+  violation_kind: violation_kind_embedded_policy,
+  entry: witness_embedded_policy_corpus_module,
+  function: "corpus_runtime_local_embedded_policy_defused_holds"
+}
+
+data extdeps_shape_transport_policy_receipt_rows: List<ExtdepsShapeTransportPolicyReceiptRow> = [
+  receipt_policy_leak_lens_unit,
+  receipt_policy_leak_corpus,
+  receipt_policy_leak_cargo_fmt_lens_unit,
+  receipt_policy_leak_cargo_doc_lens_unit,
+  receipt_policy_leak_cargo_fmt_corpus,
+  receipt_policy_leak_cargo_doc_corpus,
+  receipt_git_policy_leak_corpus,
+  receipt_clean_git_diff,
+  receipt_clean_gist_create,
+  receipt_gist_create_corpus,
+  receipt_transport_fusion_lens_unit,
+  receipt_transport_fusion_corpus,
+  receipt_dead_param_cargo_build_lens_unit,
+  receipt_dead_param_gcp_login_lens_unit,
+  receipt_dead_param_cargo_clippy_lens_unit,
+  receipt_dead_param_cargo_clippy_corpus,
+  receipt_dead_param_cargo_fmt_corpus,
+  receipt_dead_param_cargo_doc_corpus,
+  receipt_dead_param_gcp_login_corpus,
+  receipt_embedded_policy_lens_unit,
+  receipt_embedded_policy_corpus
+]
+
+fn rows_cover_kind(kind: String) -> Bool {
+  any(
+    xs: extdeps_shape_transport_policy_receipt_rows,
+    predicate: fn(row) { row.violation_kind == kind }
+  )
+}
+
+fn coverage_domain_equivalence_argument_holds() -> Bool {
+  rows_cover_kind(kind: violation_kind_policy_leak)
+    && rows_cover_kind(kind: violation_kind_transport_fusion)
+    && rows_cover_kind(kind: violation_kind_dead_param)
+    && rows_cover_kind(kind: violation_kind_embedded_policy)
+    && length(xs: violation_kinds) == 4
+    && length(xs: extdeps_shape_transport_policy_receipt_rows) == 21
+}

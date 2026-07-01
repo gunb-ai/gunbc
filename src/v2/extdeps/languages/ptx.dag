@@ -1,15 +1,4 @@
-// src/v2/extdeps/languages/ptx.dag
-// Scope: NVIDIA PTX ISA 8.5 SIMT structural classifiers (param/shared state, registers, thread hierarchy).
-// Consumes: std/nat.dag (Nat); std/cardinality.dag (PositiveUpperBoundedNat).
-// Status: import v2.std.nat Nat; v2.std.cardinality PositiveUpperBoundedNat.
-// Anchor: https://docs.nvidia.com/cuda/pdf/ptx_isa_8.5.pdf — TOC https://docs.nvidia.com/cuda/parallel-thread-execution/index.html
-// Ledger: CP-3229-GREEN-TERMINAL, SL-3229-PTX-DIM3.
-// 🟡
-
 module v2.extdeps.languages.ptx
-
-
-
 
 import v2.std.grammar {
   StampClass,
@@ -36,22 +25,14 @@ import v2.std.nat { Nat }
 import v2.std.cardinality { PositiveUpperBoundedNat }
 import v2.std.node { Symbol }
 
-
-
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ParamScope
   = ParamEntry
   | ParamFunc
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type SharedScope
   = SharedCta
   | SharedCluster
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type StateSpace
   = Reg
   | SReg
@@ -62,31 +43,23 @@ type StateSpace
   | Shared { scope: SharedScope }
   | Tex
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type BarrierScope
   = Cta
   | Cluster
   | Gpu
   | System
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ThreadAxis
   = X
   | Y
   | Z
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ThreadCoordSource
   = ThreadInCta
   | CtaInCluster
   | ClusterInGrid
   | CtaInGrid
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type BitsWidth
   = Bits8
   | Bits16
@@ -94,23 +67,17 @@ type BitsWidth
   | Bits64
   | Bits128
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type IntegerWidth
   = Bits8
   | Bits16
   | Bits32
   | Bits64
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FloatWidth
   = Bits16
   | Bits32
   | Bits64
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type RegisterScalarKind
   = Bits
   | Unsigned
@@ -118,8 +85,6 @@ type RegisterScalarKind
   | Float
   | Predicate
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type RegisterStateSpace
   = ResReg
   | ResConst
@@ -128,8 +93,6 @@ type RegisterStateSpace
   | ResParam { scope: ParamScope }
   | ResShared { scope: SharedScope }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type RegisterScalar
   = BitsScalar { width: BitsWidth, state_space: RegisterStateSpace }
   | UnsignedScalar { width: IntegerWidth, state_space: RegisterStateSpace }
@@ -137,30 +100,22 @@ type RegisterScalar
   | FloatScalar { width: FloatWidth, state_space: RegisterStateSpace }
   | PredicateScalar
 
-
-// 🟢 grounded.
 type Dim3 {
   x: PositiveUpperBoundedNat
   y: PositiveUpperBoundedNat
   z: PositiveUpperBoundedNat
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ThreadHierarchyShape
   = FlatLaunch { grid_dim: Dim3, block_dim: Dim3 }
   | ImplicitClusterLaunch { grid_dim: Dim3, block_dim: Dim3 }
   | ExplicitClusterLaunch { cluster_grid_dim: Dim3, cluster_dim: Dim3, block_dim: Dim3 }
 
-
-// 🟢 grounded.
 type ThreadCoord {
   source: ThreadCoordSource
   axis: ThreadAxis
 }
 
-
-// 🟢 grounded.
 type PtxCost {
   instruction_cost: Nat
   occupancy_cost: Nat
@@ -169,16 +124,13 @@ fn ptx_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
 
-
 fn ptx_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-
 fn ptx_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
   Sequence { left: left, right: right }
 }
-
 
 fn ptx_identifier_pattern() -> LexPattern {
   SequencePattern {
@@ -186,7 +138,6 @@ fn ptx_identifier_pattern() -> LexPattern {
     right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
-
 
 fn ptx_wave1_lex() -> LexRules {
   ModeledLexRules {
@@ -203,7 +154,6 @@ fn ptx_wave1_lex() -> LexRules {
     }
   }
 }
-
 
 fn ptx_entry_kernel_expr() -> GrammarExpr {
   ptx_grammar_sequence(
@@ -224,7 +174,6 @@ fn ptx_entry_kernel_expr() -> GrammarExpr {
   )
 }
 
-
 fn ptx_wave1_grammar() -> ParseGrammar {
   let start = GrammarProduction {
     name: ^ptx_production_entry_kernel,
@@ -240,7 +189,6 @@ fn ptx_wave1_grammar() -> ParseGrammar {
   }
 }
 
-
 fn ptx_entry_kernel_formal_production() -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: ^ptx_production_entry_kernel),
@@ -255,14 +203,12 @@ fn ptx_entry_kernel_formal_production() -> FormalProduction {
   }
 }
 
-
 fn ptx_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: ptx_wave1_lex(),
     grammar: ptx_wave1_grammar()
   }
 }
-
 
 fn ptx_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {

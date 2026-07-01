@@ -1,30 +1,3 @@
-// ctrl/process_algebra.dag -- staged process decomposition algebra.
-//
-// Status: 🟡 STAGED. This file models the ctrl/ decomposition algebra as
-// substrate, but it is not runtime authority until the cut-over trio lands:
-// emission target consumes it, parity tests match ctrl PRs #1192/#1193/#1195/
-// #1197 behavior, and the ctrl TypeScript implementation is deleted or made
-// generated-only.
-//
-// DFS receipt (DESIGN.md §2/§6 — DFS the concept DAG, reuse before inventing):
-// - Reuses `std.types.Timestamp` / `NonEmptyStr` for time and actor identity.
-// - Reuses `std.algebra.FreeMonoid` for append-only event-log shape.
-// - Reuses `std.effects.OperationEffect` for layer-local per-operation
-//   external effect facts instead of importing v3 workflow carriers or
-//   claiming blanket monotonicity.
-// - Does not define `Witness`; `v3.std.dimensions.Witness<C>` remains the
-//   analysis proof carrier. This file's human intent record is `Attestation`.
-// - Does not define a bidirectional Lens; `v3.std.lens.Lens<C>` remains the
-//   analysis carrier for future structural receipts.
-// - Keeps workflow phase / run-key facts in `gunbc.workflow.types` orthogonal
-//   to process decomposition mode.
-//
-// Current ctrl runtime authority until cut-over:
-// - ctrl/lib/dag_schema.mjs
-// - ctrl/lib/dag_writes.mjs
-// - ctrl/scripts/session-dashboard/dag_api.mjs
-// - ctrl PRs #1192/#1193/#1195/#1197.
-
 module ctrl.process_algebra
 
 import std.algebra { FreeMonoid }
@@ -36,91 +9,31 @@ type ProcessSessionId = NonEmptyStr where brand("ProcessSessionId")
 type ProcessRuleName = NonEmptyStr where brand("ProcessRuleName")
 type ProcessEventPosition = Int where range(min: 0), brand("ProcessEventPosition")
 
-// 🟢 TERMINAL coproduct at Phase-1 scope — declared process decomposition
-// modes, mirroring ctrl PR #1192's non-null mode values.
-//
-// Decomposition receipt (DESIGN.md §2):
-// - Classification: 🟢 TERMINAL for declared modes. Leaf, Composite, and
-//   Bucket are durable graph-shape coordinates.
-// - Dissolution pattern rejected: undeclared/cutoff state is not a declared
-//   mode; closure snapshots carry it as `ProcessModeMissing` so declared-mode
-//   consumers cannot accept a transitional missing declaration as real data.
-// - Trigger: none for declared modes. New ctrl declaration modes must extend
-//   this sum here first.
 type DeclaredProcessNodeMode
   = Leaf
   | Composite
   | Bucket
 
-// 🟡 STAGED coproduct — evidence channels attached to a human-authored
-// attestation. Kept distinct from `v3.std.dimensions.Witness<C>`.
-//
-// Decomposition receipt (DESIGN.md §2):
-// - Classification: 🟡 STAGED. The three arms are real current evidence
-//   classes, but the target set can tighten only after emission/parity work
-//   proves which receipts ctrl actually consumes.
-// - Dissolution pattern: fact-placement. Structural lens results should move
-//   to typed `Lens<C>` / `Witness<C>` references once cross-namespace typed
-//   declaration refs are available; integration-test and prose receipts remain
-//   separate human/process facts.
-// - Trigger: ctrl cut-over parity names the exact structural lens and test
-//   receipt carriers; string-name receipt fields are replaced by typed refs.
 type AttestationEvidence
   = StructuralLensReceipt { lens_name: NonEmptyStr }
   | IntegrationTestReceipt { test_name: NonEmptyStr, passed: Bool }
   | ProseReceipt { text: NonEmptyStr }
 
-// 🟡 STAGED record — human/process intent attached to an operation. This is
-// not a proof carrier and does not compete with `Witness<C>`.
-//
-// Dissolution trigger: when ctrl audit-event emission lands, `author` and
-// `evidence` are populated by emitted audit events rather than handwritten API
-// payloads. Event time is owned by `ProcessEvent.timestamp`, not duplicated here.
 type Attestation {
   author: ProcessSessionId
   text: NonEmptyStr
   evidence: List<AttestationEvidence>
 }
 
-// 🟢 TERMINAL record — a non-empty list of process nodes. Used where the
-// substrate fact says at least one node exists, so an empty `List` cannot
-// contradict the enclosing state.
-//
-// Dissolution trigger: replace with a shared `NonEmptyList<ProcessNodeId>` when
-// that carrier is available in `dsl/std`.
 type NonEmptyProcessNodeIds {
   first: ProcessNodeId
   rest: List<ProcessNodeId>
 }
 
-// 🟢 TERMINAL coproduct at Phase-1 scope — explicit closure guard results
-// matching ctrl PR #1195. This is fail-closed: every known refusal has a
-// distinct inhabitant, including the undeclared post-cutoff and bucket-drain
-// cases.
-//
-// Decomposition receipt (DESIGN.md §2):
-// - Classification: 🟢 TERMINAL for this guard surface. Each variant maps to
-//   a distinct ctrl close guard branch and HTTP/audit behavior.
-// - Dissolution pattern rejected: these are not data fields on one refusal;
-//   callers branch differently on not-found, idempotent close, undeclared
-//   mode, undrained bucket, and open children.
-// - Trigger: none for the Phase-1 guard vocabulary. New ctrl guard reasons
-//   must extend this sum here first.
 type ProcessClosureDecision
   = CanClose
   | CloseRefused(ProcessClosureRefusal)
 
-// 🟢 TERMINAL coproduct at Phase-1 scope — refusal reasons are kept separate
-// from success so no optional-reason product can represent contradictory
-// states.
-//
-// Decomposition receipt (DESIGN.md §2):
-// - Classification: 🟢 TERMINAL. The five refusal variants preserve the
-//   ctrl `canCloseNode` reason codes without stringly matching.
-// - Dissolution pattern rejected: dimensional collapse would hide separate
-//   repair actions (declare mode, drain bucket, close children, ignore
-//   already-closed, fix missing node).
-// - Trigger: none for PR #1195 parity; future reason codes extend here.
 type ProcessClosureRefusal
   = ProcessNodeNotFound
   | ProcessAlreadyClosed
@@ -128,31 +41,12 @@ type ProcessClosureRefusal
   | ProcessBucketNotDrained
   | ProcessCompositeHasOpenChildren { open_children: NonEmptyProcessNodeIds }
 
-// 🟢 TERMINAL coproduct — closure eligibility effect per operation. This
-// replaces the rejected blanket monotonicity claim with typed per-operation
-// behavior.
-//
-// Decomposition receipt (DESIGN.md §2):
-// - Classification: 🟢 TERMINAL. Improve/retract/neutral/override are the
-//   irreducible closure-eligibility deltas needed by downstream consumers.
-// - Dissolution pattern rejected: a Bool or monotonicity tag would collapse
-//   operator override and ordinary improvement/retraction into one axis.
-// - Trigger: none; operation-specific payloads below carry the detailed cause.
 type ClosureEligibilityEffect
   = ClosureImproves
   | ClosureRetracts
   | ClosureNeutral
   | ClosureOverride
 
-// 🟡 STAGED record — a typed effect summary is projected per operation. The
-// `external_effect` field reuses the layer-local `std.effects.OperationEffect`
-// authority instead of importing v3 workflow carriers into `dsl/std`. This row
-// is reserved for the future generated effect projection; it is not an authored
-// sibling field on `ProcessOperation` arms.
-//
-// Dissolution trigger: when ctrl HTTP/SQL/audit emission consumes this file,
-// operation effect rows are generated from each `ProcessOperation` arm and
-// validated against emitted behavior.
 type ProcessOperationEffect {
   closure_effect: ClosureEligibilityEffect
   external_effect: OperationEffect
@@ -169,19 +63,6 @@ type RegressionAttestation {
   attestation: Attestation
 }
 
-// 🟢 TERMINAL coproduct at Phase-1 scope — friendly ctrl operations are closed
-// and structurally distinct. Reopen/regress are explicit so closure decisions
-// are not assumed monotonic.
-//
-// Decomposition receipt (DESIGN.md §2):
-// - Classification: 🟢 TERMINAL for the decomposition-algebra operation
-//   vocabulary. Each arm has distinct payload and closure effect.
-// - Dissolution pattern rejected: variants are not values of a single generic
-//   mutation; declare, decompose, drain, close, refused-close, replan,
-//   escalate, pause, reopen, regress, and override have different repair paths
-//   and audit payloads.
-// - Trigger: none for Phase 1. Adding a ctrl operation must extend this one
-//   file before REST/SQL/CLI projections can expose it.
 type ProcessOperation
   = DeclareProcessNode {
       node: ProcessNodeId
@@ -233,86 +114,28 @@ type ProcessOperation
       attestation: Attestation
     }
 
-// 🟡 STAGED record — append-only event row for replay-as-truth. `position`
-// is a monotone sequence witness by convention until a shared MonotonicSeq
-// carrier lands.
-//
-// Dissolution trigger: replace `ProcessEventPosition` with a shared monotonic
-// sequence substrate once one exists; then reuse this row as the concrete
-// `TimestampedEvent<T>` specialization for process operations.
 type ProcessEvent {
   position: ProcessEventPosition
   timestamp: Timestamp
   operation: ProcessOperation
 }
 
-// 🟡 STAGED alias — append-only operation history. This uses `FreeMonoid`
-// rather than a process-local log algebra.
-//
-// Dissolution trigger: when a generic `EventLog<T>` primitive lands, this
-// becomes `type ProcessEventLog = EventLog<ProcessOperation>`; until then the
-// concrete process log names the same FreeMonoid structure directly.
 type ProcessEventLog = FreeMonoid<ProcessEvent>
 
-// 🟢 TERMINAL coproduct at Phase-1 scope — bucket drain state. Avoids using
-// `Timestamp?` for a state that callers branch on structurally.
-//
-// Decomposition receipt (DESIGN.md §2):
-// - Classification: 🟢 TERMINAL. Drained and not-drained are the two states
-//   the ctrl closure guard distinguishes for buckets.
-// - Dissolution pattern rejected: nullable timestamp would reintroduce the
-//   optional-product shape this file avoids for guard decisions.
-// - Trigger: none for PR #1195 parity; richer drain receipts extend the
-//   drained arm payload.
 type BucketDrainState
   = BucketNotDrained
   | BucketDrained { drained_at: Timestamp }
 
-// 🟢 TERMINAL coproduct at Phase-1 scope — process closure state. Avoids
-// `closed_at: Timestamp?` beside every mode state.
-//
-// Decomposition receipt (DESIGN.md §2):
-// - Classification: 🟢 TERMINAL. Open and closed are disjoint lifecycle
-//   states for the close guard.
-// - Dissolution pattern rejected: nullable timestamp permits code to treat
-//   "missing close timestamp" as data absence instead of an explicit open
-//   state.
-// - Trigger: none for PR #1195 parity; richer close receipts extend the
-//   closed arm payload.
 type ProcessCloseState
   = ProcessOpen
   | ProcessClosed { closed_at: Timestamp }
 
-// 🟢 TERMINAL coproduct at Phase-1 scope — declaration and mode-specific closure
-// facts for existing process nodes. The declared mode and its closure facts live
-// in the same arm, so the snapshot cannot say "declared leaf" while storing
-// bucket facts.
-//
-// Decomposition receipt (DESIGN.md §2):
-// - Classification: 🟢 TERMINAL for the closure guard snapshot. Missing
-//   declaration and declared-mode facts have different repair paths, and each
-//   declared mode owns only the facts needed for its closure rule.
-// - Dissolution pattern rejected: nullable sibling fields collapse distinct
-//   repair paths and admit contradictory states. Separate `mode` plus fact
-//   fields can represent impossible combinations; this carrier cannot.
-// - Dissolution pattern applied: fact placement. The missing-declaration state
-//   is stored as declaration absence, not as a fourth declared mode.
-// - Trigger: none for PR #1195 parity; richer declaration provenance or new
-//   mode-specific closure facts extend the corresponding arm here.
 type ProcessNodeDeclarationState
   = ProcessModeMissing
   | ProcessLeafDeclared
   | ProcessCompositeDeclared { open_children: List<ProcessNodeId> }
   | ProcessBucketDeclared { drain: BucketDrainState }
 
-// 🟡 STAGED node facts for closure projection. Identity is carried by the
-// `ProcessGraph.nodes` map key below, not by this closure-fact row, so mode/close
-// facts cannot treat ProcessNodeId as another mutable sibling field. Missing
-// mode declaration is represented as declaration absence, not by storing a
-// fourth mode here.
-//
-// Dissolution trigger: when `state(log: ProcessEventLog)` is emitted, this
-// snapshot is generated from the event log and no longer hand-authored.
 type ProcessNodeFacts {
   declaration: ProcessNodeDeclarationState
   close: ProcessCloseState
@@ -321,11 +144,3 @@ type ProcessNodeFacts {
 type ProcessGraph {
   nodes: Map<ProcessNodeId, ProcessNodeFacts>
 }
-
-// Projection surfaces intentionally remain comments in this Phase-1 substrate:
-// current_process_mode(ProcessGraph, ProcessNodeId) -> ProcessNodeDeclarationState,
-// process_operation_effect(ProcessOperation) -> ProcessOperationEffect, and
-// can_close_process_node(ProcessGraph, ProcessNodeId, Timestamp) ->
-// ProcessClosureDecision. They become declared functions in the PR that also
-// lands an emission/parity consumer, so this file does not introduce unused host
-// boundaries.

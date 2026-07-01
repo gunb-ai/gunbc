@@ -1,30 +1,13 @@
-// gunbc/digest_render.dag -- PR digest render/projection for ctrl migration catalog #8.
-//
-// Phase-3 receipt: this module is gunbc-owned rendering/projection over the
-// existing GitHub source facts in `dsl/extdeps/github/pulls.dag` plus shared
-// structured-text primitives from `dsl/std/render.dag`.
-//
-// Placement discipline:
-//   - extdeps.github.pulls owns provider source facts (`PullRequest`,
-//     `PullReview`, `PullRequestRef`).
-//   - this module owns repo-specific digest rendering.
-//   - no field is added to `PullRequest`; derived digest views stay here.
-//
-// Trio anchor: catalog #8 PR digests, paired with Phase 1.5
-// `dsl/ctrl/pr_digests.dag` modeling and the named parity harness.
-
 module gunbc.digest_render
 
 import extdeps.github.pulls { PullRequest, PullReview, PullRequestState, ReviewState, Open }
 import std.render { kv_pair, list_block }
-import std.types { Url }
-
-// -- Derived digest projection -----------------------------------------
+import std.types { NonEmptyStr }
 
 type PullRequestDigestSubject {
   number: Int
   title: String
-  url: Url
+  url: NonEmptyStr
   state: PullRequestState
   draft: Bool
   head_sha: String
@@ -34,20 +17,6 @@ type PullRequestDigestSubject {
 type DigestReadinessProjection
   = DigestOpenForReview
   | DigestNotReady { first_reason: String, more_reasons: List<String> }
-
-// Practice-4 receipt -- GREEN terminal for the narrowed catalog #8 Phase-3
-// digest-render surface. Ledger:
-//   - classification: current-PR render projection only, over `PullRequest`
-//     facts already owned by `extdeps.github.pulls`.
-//   - dissolution pattern: closed two-arm coproduct (`DigestOpenForReview` vs
-//     structurally nonempty `DigestNotReady`) because this projection does not
-//     claim CI/conflict/current-review authority.
-//   - non-authority receipt: review states remain raw rendered history below
-//     because `PullReview` is a flat review-event carrier, not an authoritative
-//     current-review-decision model.
-//   - extension trigger: a future CI/conflict/mergeability or current-review
-//     source-fact landing extends this module or a sibling projection, not
-//     `PullRequest`.
 
 type PullRequestDigestView {
   subject: PullRequestDigestSubject
@@ -117,8 +86,6 @@ fn project_pull_request_digest(pr: PullRequest, reviews: List<PullReview>) -> Pu
   }
 }
 
-// -- Rendering ----------------------------------------------------------
-
 fn render_readiness(readiness: DigestReadinessProjection) -> String {
   match readiness {
     DigestOpenForReview => "open for review"
@@ -150,7 +117,7 @@ fn render_pull_request_digest_line(view: PullRequestDigestView) -> String {
 fn render_pull_request_digest_block(view: PullRequestDigestView) -> String {
   let entries = [
     kv_pair(key: "PR", sep: ": ", value: "#\{view.subject.number\} \{view.subject.title\}"),
-    kv_pair(key: "URL", sep: ": ", value: view.subject.url as String),
+    kv_pair(key: "URL", sep: ": ", value: view.subject.url),
     kv_pair(key: "Base", sep: ": ", value: view.subject.base_ref),
     kv_pair(key: "Head", sep: ": ", value: view.subject.head_sha),
     kv_pair(key: "State", sep: ": ", value: render_pull_request_state(state: view.subject.state)),

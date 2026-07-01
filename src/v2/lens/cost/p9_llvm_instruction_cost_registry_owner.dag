@@ -1,7 +1,3 @@
-// Scope: B1 structural receipt — exactly one LensOwnedFnV0 registry row equals the canonical
-//   llvm_instruction_cost authority (fn_name + owner_module_path on the same row).
-// Corpus scan for shadow fn defs: v2_p9_llvm_instruction_cost_single_owner_test.rs (P9 receipt);
-
 module v2.test.lens_cost.p9_llvm_instruction_cost_registry_owner
 
 import v2.lens.registry {

@@ -1,5 +1,3 @@
-// SCC-aware function signature resolution.
-
 module v1.compiler.infer_sigs
 
 import v1.std.core {
@@ -14,10 +12,6 @@ import v1.std.core {
 import v1.compiler.infer_types { emit_map_has }
 import std.induction { SubValueRelation }
 
-// =========================================================================
-// Types
-// =========================================================================
-
 type ResolvedFuncSig {
   name: String
   params: List<Node>
@@ -28,7 +22,8 @@ type ResolvedFuncSig {
 }
 
 type ResolvedFuncEnv {
-  signatures: Map<String, ResolvedFuncSig>
+  local: Map<String, ResolvedFuncSig>
+  parents: List<ResolvedFuncEnv>
 }
 
 type ResolveFuncSigsResult {
@@ -46,9 +41,27 @@ type CallEdge {
   callee: String
 }
 
-// =========================================================================
-// Call graph construction
-// =========================================================================
+fn lookup_in_parent_chain(parents: List<ResolvedFuncEnv>, name: String) -> ResolvedFuncSig? {
+  match parents |> last {
+    Absent => Absent
+    Present { value: tail_parent } =>
+      match lookup_resolved_sig(env: tail_parent, name: name) {
+        Present { value: sig } => Present { value: sig }
+        Absent =>
+          lookup_in_parent_chain(
+            parents: parents |> take(n: (parents |> count) - 1),
+            name: name
+          )
+      }
+  }
+}
+
+fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? {
+  match map_get(env.local, name) {
+    Present { value: sig } => Present { value: sig }
+    Absent => lookup_in_parent_chain(parents: env.parents, name: name)
+  }
+}
 
 fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
   flat_map(items, item =>
@@ -87,24 +100,8 @@ fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, 
   }
 }
 
-// =========================================================================
-// Signature resolution
-// =========================================================================
-
 fn build_name_set(names: List<String>) -> Map<String, Bool> {
   fold(names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
-}
-
-fn collect_parent_resolved_sigs(declared_sigs: Map<String, DeclaredFuncSig>, local_func_set: Map<String, Bool>) -> Map<String, ResolvedFuncSig> {
-  fold(map_values(declared_sigs), init: empty_map(), f: (acc, dsig) =>
-    if emit_map_has(m: local_func_set, key: dsig.name) {
-      acc
-    } else if dsig.inferred != none {
-      map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
-    } else {
-      acc
-    }
-  )
 }
 
 fn declared_to_resolved(dsig: DeclaredFuncSig) -> ResolvedFuncSig {
@@ -127,6 +124,7 @@ fn topo_resolve_loop(
     local_func_set: Map<String, Bool>,
     module_name: String,
     diagnostics: List<ErrorNode>,
+    parent_envs: List<ResolvedFuncEnv>,
     fuel: Int
 ) -> ResolveFuncSigsResult {
   if remaining |> count == 0 {
@@ -136,7 +134,7 @@ fn topo_resolve_loop(
       } else { acc }
     )
     return ResolveFuncSigsResult {
-      func_env: ResolvedFuncEnv { signatures: all_resolved },
+      func_env: ResolvedFuncEnv { local: all_resolved, parents: parent_envs },
       diagnostics: diagnostics
     }
   }
@@ -167,7 +165,7 @@ fn topo_resolve_loop(
       } else { acc }
     )
     return ResolveFuncSigsResult {
-      func_env: ResolvedFuncEnv { signatures: all_resolved },
+      func_env: ResolvedFuncEnv { local: all_resolved, parents: parent_envs },
       diagnostics: concat(diagnostics, cycle_accum.diagnostics)
     }
   }
@@ -195,12 +193,14 @@ fn topo_resolve_loop(
     local_func_set: local_func_set,
     module_name: module_name,
     diagnostics: ready_accum.diagnostics,
+    parent_envs: parent_envs,
     fuel: fuel - 1
   )
 }
 
 fn resolve_func_sigs(
     declared_sigs: Map<String, DeclaredFuncSig>,
+    parent_envs: List<ResolvedFuncEnv>,
     items: List<Node>,
     module_name: String,
     source_indices: Map<String, NewlineIndex>
@@ -210,15 +210,15 @@ fn resolve_func_sigs(
     |> map(item => authored_name_at(source_indices: source_indices, node: item))
   let local_func_set = build_name_set(names: local_func_names)
   let call_edges = collect_func_call_edges(items: items, local_func_set: local_func_set, source_indices: source_indices)
-  let parent_resolved = collect_parent_resolved_sigs(declared_sigs: declared_sigs, local_func_set: local_func_set)
   topo_resolve_loop(
     remaining: local_func_names,
-    resolved: parent_resolved,
+    resolved: empty_map(),
     declared_sigs: declared_sigs,
     call_edges: call_edges,
     local_func_set: local_func_set,
     module_name: module_name,
     diagnostics: [],
+    parent_envs: parent_envs,
     fuel: local_func_names |> count
   )
 }

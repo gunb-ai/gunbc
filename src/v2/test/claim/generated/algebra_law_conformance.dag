@@ -1,0 +1,165 @@
+module v2.test.generated.algebra_law_conformance
+
+import v2.lens.testgen {
+  testgen_emit_algebra_law_claim
+}
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.nat {
+  Nat,
+  Succ,
+  Zero,
+  nat_add,
+  nat_mul
+}
+import v2.std.verification {
+  TestClaim,
+  TestClassification,
+  ManualNatAddAssociativity,
+  ManualNatAddLeftIdentity,
+  ManualNatMulAnnihilator,
+  Tier1,
+  Unit
+}
+import v2.std.diagnostic { Outcome }
+fn algebra_law_generated_atom(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+}
+
+fn algebra_law_generated_nat_value(value: Nat) -> Node {
+  match value {
+    Zero => algebra_law_generated_atom(s: ^algebra_law_generated_nat_zero_constructor)
+    Succ { prev: p } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: ^algebra_law_generated_nat_succ_constructor) },
+          Edge { label: Named { name: ^algebra_law_generated_nat_prev_field }, target: algebra_law_generated_nat_value(value: p) },
+        ],
+        occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+fn algebra_law_generated_binary(operation: Symbol, left: Node, right: Node, result: Nat) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Named { name: ^algebra_law_generated_operation_field }, target: algebra_law_generated_atom(s: operation) },
+      Edge { label: Named { name: ^algebra_law_generated_left_field }, target: left },
+      Edge { label: Named { name: ^algebra_law_generated_right_field }, target: right },
+      Edge { label: Named { name: ^algebra_law_generated_result_field }, target: algebra_law_generated_nat_value(value: result) },
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn t19_generated_nat_zero_value() -> Nat {
+  Zero
+}
+
+fn t19_generated_nat_one_value() -> Nat {
+  Succ { prev: t19_generated_nat_zero_value() }
+}
+
+fn t19_generated_nat_two_value() -> Nat {
+  Succ { prev: t19_generated_nat_one_value() }
+}
+
+fn t19_generated_nat_three_value() -> Nat {
+  Succ { prev: t19_generated_nat_two_value() }
+}
+
+fn t19_generated_nat_zero() -> Node {
+  algebra_law_generated_nat_value(value: t19_generated_nat_zero_value())
+}
+
+fn t19_generated_nat_one() -> Node {
+  algebra_law_generated_nat_value(value: t19_generated_nat_one_value())
+}
+
+fn t19_generated_nat_two() -> Node {
+  algebra_law_generated_nat_value(value: t19_generated_nat_two_value())
+}
+
+fn t19_generated_nat_three() -> Node {
+  algebra_law_generated_nat_value(value: t19_generated_nat_three_value())
+}
+
+fn t19_generated_nat_add(left: Node, right: Node, result: Nat) -> Node {
+  algebra_law_generated_binary(operation: ^algebra_law_generated_nat_add_application, left: left, right: right, result: result)
+}
+
+fn t19_generated_nat_mul(left: Node, right: Node, result: Nat) -> Node {
+  algebra_law_generated_binary(operation: ^algebra_law_generated_nat_mul_application, left: left, right: right, result: result)
+}
+
+data generated_nat_add_left_identity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
+  anchor: ManualNatAddLeftIdentity,
+  label: "generated/algebra_law: Nat addition left identity",
+  lhs: t19_generated_nat_add(
+    left: t19_generated_nat_zero(),
+    right: t19_generated_nat_one(),
+    result: nat_add(a: t19_generated_nat_zero_value(), b: t19_generated_nat_one_value())
+  ),
+  rhs: t19_generated_nat_one(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+)
+
+data generated_nat_add_associativity_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
+  anchor: ManualNatAddAssociativity,
+  label: "generated/algebra_law: Nat addition associativity",
+  lhs: t19_generated_nat_add(
+    left: t19_generated_nat_add(
+      left: t19_generated_nat_one(),
+      right: t19_generated_nat_two(),
+      result: nat_add(a: t19_generated_nat_one_value(), b: t19_generated_nat_two_value())
+    ),
+    right: t19_generated_nat_three(),
+    result: nat_add(
+      a: nat_add(a: t19_generated_nat_one_value(), b: t19_generated_nat_two_value()),
+      b: t19_generated_nat_three_value()
+    )
+  ),
+  rhs: t19_generated_nat_add(
+    left: t19_generated_nat_one(),
+    right: t19_generated_nat_add(
+      left: t19_generated_nat_two(),
+      right: t19_generated_nat_three(),
+      result: nat_add(a: t19_generated_nat_two_value(), b: t19_generated_nat_three_value())
+    ),
+    result: nat_add(
+      a: t19_generated_nat_one_value(),
+      b: nat_add(a: t19_generated_nat_two_value(), b: t19_generated_nat_three_value())
+    )
+  ),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+)
+
+data generated_nat_mul_annihilator_claim: Outcome<TestClaim> = testgen_emit_algebra_law_claim(
+  anchor: ManualNatMulAnnihilator,
+  label: "generated/algebra_law: Nat multiplication annihilator",
+  lhs: t19_generated_nat_mul(
+    left: t19_generated_nat_zero(),
+    right: t19_generated_nat_three(),
+    result: nat_mul(a: t19_generated_nat_zero_value(), b: t19_generated_nat_three_value())
+  ),
+  rhs: t19_generated_nat_zero(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+)
+
+fn generated_algebra_law_claim_rows() -> List<Outcome<TestClaim>> {
+  [
+    generated_nat_add_left_identity_claim,
+    generated_nat_add_associativity_claim,
+    generated_nat_mul_annihilator_claim,
+  ]
+}
+
+fn generated_algebra_law_sample_count_is_three() -> Bool {
+  length(xs: generated_algebra_law_claim_rows()) == 3
+}

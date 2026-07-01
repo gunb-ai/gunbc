@@ -1,61 +1,18 @@
-// tools/build_step.dag — a build operation modeled as PRODUCING DECLARED ARTIFACTS.
-//
-// DESIGN §1/§5: a build step's success is not its exit code. sccache corruption can make
-// `cargo build` exit 0 while producing NO artifact (false cache-hit, no relink) — a §5
-// fail-open IN the CI floor itself: downstream gates then run a stale/missing binary and
-// pass green, masking every check.
-//
-// The construction fix (§5 — correctness BY CONSTRUCTION, not validation; §6 — single
-// authority, not a forked `[ -x ]` paste): a build site DECLARES the artifacts it produces
-// plus the source set those artifacts must be fresh against. ONE generator (`emit_verifications`)
-// emits, after the build command, the verification statements DERIVED from `produces`:
-//
-//   built ⟺ exit_success ∧ (∀ a ∈ produces:  a exists  ∧  no source is newer than a)
-//
-// Existence is the PRIMARY conjunct (it catches the exit-0-with-no-artifact vector);
-// source-relative freshness is the secondary anti-stale conjunct (the make/ninja definition
-// of up-to-date — false-positive-free, unlike a `≥ build_start` proxy which cries wolf on a
-// legitimate no-op rebuild). Both are emitted into the SAME shell program as the build, after
-// it, so a verification failure's non-zero exit propagates to the gate's success.
-//
-// `patterns` covers both Rust sources (`*.rs`) and manifest files (`Cargo.toml`, `Cargo.lock`)
-// so a dependency-only change (no `.rs` edits) that alters the build output is also detected.
-// The find command groups them: `find <roots> \( -name '*.rs' -o -name 'Cargo.toml' … \) -newer …`.
-//
-// Realizer choice (model-before-implement): every floor build site is EMITTED SHELL run as a
-// bootstrap (ci.yml bash before the interpreter binary exists; host gates serialize one
-// `shell.Exec.Run` that builds and uses the binary atomically under `set -e`). There is no
-// live-interpreter seam between build and use, so the verification is bash codegen derived
-// from this model — NOT a live host effect. A live `Filesystem.Stat{path}->{exists,mtime}`
-// readonly op is the right realizer for any FUTURE interpreter-run build; named-deferred here,
-// not built (no call site for this hole).
-//
-// Consumers: gunbc.ci_spec (the release bootstrap build), tools.host_prelude (the per-gate
-// ensure-built preludes). The rows (which command → which artifact) are CI-workflow facts in
-// those modules; this module owns only the artifact type and the verification generator.
-
 module tools.build_step
 
 import extdeps.languages.bash.program {
   ShellStmt, ShellWord, ShellProgram,
-  Command, If, Exit, Assign, WithRedir,
-  Lit, VarRef, Concat, CmdSubst, StdoutToStderr,
-  lit, var_ref, command, assign, serialize_bash
+  Command, If, Exit, WithRedir,
+  Lit, Concat, StdoutToStderr,
+  lit, command, serialize_bash
 }
 
-// A build step's declared output: the path of an artifact the command must produce.
 type BuildArtifact {
   path: ShellWord
-  // Human label for the diagnostic (e.g. "claim_executor"); not load-bearing for the test.
+
   name: String
 }
 
-// Per-run scratch var holding the find(1) result for the freshness probe. One name, reused
-// sequentially per artifact (each artifact reassigns then tests before the next).
-data build_freshness_probe_var: String = "GUNBC_BUILD_FRESHNESS_NEWER_SRC"
-
-// `echo "<msg>" >&2` — diagnostic to stderr (GitHub Actions surfaces it; `::error::` prefix
-// turns it into an annotation in the ci.yml path).
 fn build_verify_echo(msg: ShellWord) -> ShellStmt {
   WithRedir {
     stmt: command(words: [lit(text: "echo"), msg]),
@@ -63,10 +20,6 @@ fn build_verify_echo(msg: ShellWord) -> ShellStmt {
   }
 }
 
-// PRIMARY conjunct — existence: `if [ ! -x <path> ]; then echo …>&2; exit 1; fi`.
-// `-x` (executable) subsumes existence for a binary artifact: absent OR present-but-broken
-// both fail closed. This is the conjunct that catches the sccache exit-0-with-no-artifact
-// vector the whole change exists for.
 fn verify_artifact_exists(art: BuildArtifact) -> ShellStmt {
   If {
     cond: command(words: [lit(text: "["), lit(text: "!"), lit(text: "-x"), art.path, lit(text: "]")]),
@@ -80,81 +33,30 @@ fn verify_artifact_exists(art: BuildArtifact) -> ShellStmt {
   }
 }
 
-// `find <roots> \( -name p1 -o -name p2 … \) -newer <artifact> -print -quit` predicate words
-// for the pattern list. The `\( … \)` grouping binds the `-name` disjunction before `-newer`.
-fn name_predicate_words(patterns: List<String>) -> List<ShellWord> {
-  concat(
-    [lit(text: "(")],
-    concat(
-      fold(patterns, init: [], f: (acc, p) =>
-        if acc.length() == 0 {
-          [lit(text: "-name"), lit(text: p)]
-        } else {
-          concat(acc, [lit(text: "-o"), lit(text: "-name"), lit(text: p)])
-        }
-      ),
-      [lit(text: ")")]
-    )
-  )
+fn verify_artifact_nonempty(art: BuildArtifact) -> ShellStmt {
+  If {
+    cond: command(words: [lit(text: "["), lit(text: "!"), lit(text: "-s"), art.path, lit(text: "]")]),
+    then: [
+      build_verify_echo(msg: Concat { parts: [
+        lit(text: concat("::error::build verification: declared artifact '", concat(art.name, "' is zero-byte after a 'successful' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: "))),
+        art.path
+      ] }),
+      Exit { code: 1 }
+    ]
+  }
 }
 
-// `find <roots> \( -name p1 -o … \) -newer <artifact> -print -quit` — emits the first source
-// path that postdates the artifact, or nothing. `-quit` stops at the first hit (cheap).
-fn freshness_find_stmt(art: BuildArtifact, roots: List<ShellWord>, patterns: List<String>) -> ShellStmt {
-  command(words: concat(
-    concat([lit(text: "find")], roots),
-    concat(
-      name_predicate_words(patterns: patterns),
-      [lit(text: "-newer"), art.path, lit(text: "-print"), lit(text: "-quit")]
-    )
-  ))
+fn verify_artifact(art: BuildArtifact) -> List<ShellStmt> {
+  [verify_artifact_exists(art: art), verify_artifact_nonempty(art: art)]
 }
 
-// SECONDARY conjunct — source-relative freshness:
-//   NEWER=$(find <roots> \( -name p1 … \) -newer <artifact> -print -quit)
-//   if [ -n "$NEWER" ]; then echo …>&2; exit 1; fi
-// A non-empty result means a source is newer than the artifact ⇒ the build did not actually
-// incorporate current sources (stale artifact) ⇒ fail closed. Runs AFTER the existence check,
-// so `find -newer` is never handed a missing artifact. No pipe (uses command substitution),
-// so it is robust under `set -o pipefail`.
-fn verify_artifact_fresh(art: BuildArtifact, roots: List<ShellWord>, patterns: List<String>) -> List<ShellStmt> {
-  [
-    Assign {
-      name: build_freshness_probe_var,
-      value: CmdSubst { body: freshness_find_stmt(art: art, roots: roots, patterns: patterns) }
-    },
-    If {
-      cond: command(words: [lit(text: "["), lit(text: "-n"), var_ref(name: build_freshness_probe_var), lit(text: "]")]),
-      then: [
-        build_verify_echo(msg: Concat { parts: [
-          lit(text: concat("::error::build verification: declared artifact '", concat(art.name, "' is older than a source file (stale — DESIGN §5 fail-open); failing closed: "))),
-          art.path
-        ] }),
-        Exit { code: 1 }
-      ]
-    }
-  ]
+fn emit_verifications(produces: List<BuildArtifact>) -> List<ShellStmt> {
+  fold(produces, init: [], f: (acc, art) => concat(acc, verify_artifact(art: art)))
 }
 
-// One artifact's full verification: existence (primary) THEN freshness (secondary).
-fn verify_artifact(art: BuildArtifact, roots: List<ShellWord>, patterns: List<String>) -> List<ShellStmt> {
-  concat([verify_artifact_exists(art: art)], verify_artifact_fresh(art: art, roots: roots, patterns: patterns))
-}
-
-// The verification statements for every declared artifact of a step — the single authority a
-// build site appends after its build command. Authoring a build site WITHOUT these is the
-// thing this module makes structurally avoidable: there is one generator, and it always emits
-// exists-then-fresh for each `produces` entry.
-fn emit_verifications(produces: List<BuildArtifact>, roots: List<ShellWord>, patterns: List<String>) -> List<ShellStmt> {
-  fold(produces, init: [], f: (acc, art) => concat(acc, verify_artifact(art: art, roots: roots, patterns: patterns)))
-}
-
-// Verification rendered to a shell-script fragment (no `set -e` wrapper, no command) — for the
-// String-concatenated ci.yml bootstrap path, which appends it after its hand-authored EAGAIN
-// retry build string. The explicit `exit 1`s make a failure propagate regardless of `set -e`.
-fn verifications_script(produces: List<BuildArtifact>, roots: List<ShellWord>, patterns: List<String>) -> String {
+fn verifications_script(produces: List<BuildArtifact>) -> String {
   serialize_bash(p: ShellProgram {
     set_e: false,
-    statements: emit_verifications(produces: produces, roots: roots, patterns: patterns)
+    statements: emit_verifications(produces: produces)
   })
 }

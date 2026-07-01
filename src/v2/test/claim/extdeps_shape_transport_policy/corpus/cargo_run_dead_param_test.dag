@@ -1,0 +1,18 @@
+module v2.test.extdeps_shape_transport_policy.corpus.cargo_run_dead_param
+
+import v2.lens.extdeps_shape_transport_policy {
+  extdeps_live_module_dead_param_count_for_operation
+}
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_cargo_build_module }
+import v2.std.logic { Bool }
+
+data cargo_run_service: String = "cargo.Build"
+data cargo_run_operation: String = "Run"
+
+test fn corpus_cargo_run_dead_param_defused_holds() -> Bool {
+  extdeps_live_module_dead_param_count_for_operation(
+    module: extdeps_cargo_build_module,
+    service: cargo_run_service,
+    operation: cargo_run_operation
+  ) == 0
+}

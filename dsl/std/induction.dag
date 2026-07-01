@@ -1,66 +1,3 @@
-// std/induction.dag -- Inductive type structure and structural recursion.
-//
-// Every .dag type with recursive fields is an inductive type. Its
-// structure contains all the information needed for termination proofs
-// and complexity bounds. This file models the type-level facts from
-// which complexity analysis is DERIVED — no heuristic pattern-matching,
-// no hand-maintained accessor tables.
-//
-// EXTERNAL AUTHORITY:
-//   - Initial algebras of endofunctors: Lambek (1968)
-//     https://en.wikipedia.org/wiki/Initial_algebra
-//     An inductive type is the initial algebra of its signature functor.
-//     The type definition IS the functor; the constructors are the algebra.
-//   - Catamorphisms: Meijer, Fokkinga, Paterson (1991) "Bananas" paper
-//     https://en.wikipedia.org/wiki/Catamorphism
-//     Every initial algebra has a unique fold (catamorphism). A function
-//     that recurses only on sub-terms of its inductive argument IS a
-//     catamorphism. Termination is guaranteed by well-foundedness.
-//   - Size-change termination: Lee, Jones, Ben-Amram (2001)
-//     https://en.wikipedia.org/wiki/Size-change_termination_principle
-//     Termination is decidable when each call either strictly decreases
-//     or preserves a well-founded measure. SubValueRelation models the
-//     size-change graph edges.
-//   - Well-founded induction: Floyd (1967), Turing (1949)
-//     https://en.wikipedia.org/wiki/Well-founded_relation
-//     Every inductive type has a natural well-founded ordering: the
-//     sub-term relation. The size measure (constructor count) maps to ℕ.
-//   - Structural induction / primitive recursion:
-//     https://en.wikipedia.org/wiki/Structural_induction
-//     Recursion on sub-terms of an inductively defined structure is
-//     guaranteed to terminate. InductiveField models the sub-term positions.
-//   - Master theorem: Bentley, Haken, Saxe (1980); CLRS Theorem 4.1
-//     https://en.wikipedia.org/wiki/Master_theorem_(analysis_of_algorithms)
-//     For recurrences T(n) = a·T(n/b) + O(n^d), the asymptotic bound
-//     is determined by comparing log_b(a) with d.
-//   - Asymptotic notation: Knuth (1976) "Big Omicron and big Omega"
-//     https://en.wikipedia.org/wiki/Big_O_notation
-//     O(f(n)) denotes the class of functions bounded above by c·f(n)
-//     for sufficiently large n.
-//
-// RELATIONSHIP TO std/termination.dag:
-//   termination.dag defines DescentEvidence and RankingDimension as
-//   abstract proof components. This file defines the TYPE-LEVEL facts
-//   that PRODUCE ranking dimensions and descent evidence. A
-//   RankingDimension is a consequence of an InductiveField; a
-//   DescentEvidence is a consequence of a SubValueRelation.
-//
-// RELATIONSHIP TO std/computation.dag:
-//   computation.dag defines CallPattern → LoweringTarget. This file's
-//   SubValueRelation produces the CallPattern for a self-call.
-//
-// RELATIONSHIP TO std/iteration.dag:
-//   iteration.dag defines descend (tree catamorphism) and fold (list
-//   catamorphism). This file proves WHICH recursive functions are
-//   catamorphisms — i.e., which functions structurally recurse on
-//   sub-terms of an inductive type.
-//
-// DESIGN PRINCIPLE:
-//   Descent is a TYPE-LEVEL fact. The type definition `children: List<Node>`
-//   IS the descent fact. The complexity analyzer should never need to know
-//   about specific accessor functions. It reads from the type that certain
-//   fields carry recursive sub-structure.
-
 module std.induction
 
 import std.termination {
@@ -83,64 +20,19 @@ import std.computation {
   tree_size_bound
 }
 
-
-
-// =========================================================================
-// RecursionShape — how a field references its parent type
-// =========================================================================
-
-// The .dag type system has these ways a field can reference its parent
-// type. These correspond to positions in the signature functor of the
-// initial algebra (Lambek 1968):
-//
-//   DirectRecursion:     F(X) = ... × X × ...
-//   ListRecursion:       F(X) = ... × List(X) × ...   (free monoid functor)
-//   OptionalRecursion:   F(X) = ... × (1 + X) × ...   (maybe functor)
-//   SetRecursion:        F(X) = ... × Set(X) × ...    (powerset functor)
-//   MapValueRecursion:   F(X) = ... × Map(K, X) × ... (partial function functor)
-//
-// These enumerate the container types in the .dag language. Adding a new
-// container type to the language adds one variant here.
-//
-// 🟢 TERMINAL at E-I inductive-shape scope. Pure functor-shape partition for
-// recursive field wrappers; no name-like payloads.
-
 type RecursionShape
-  = DirectRecursion       // field_type == parent_type
-  | ListRecursion         // field_type == List<parent_type>
-  | OptionalRecursion     // field_type == parent_type?
-  | SetRecursion          // field_type == Set<parent_type>
-  | MapValueRecursion     // field_type == Map<K, parent_type>
-
-
-// =========================================================================
-// InductiveField — one recursive position in a type definition
-// =========================================================================
-
-// An InductiveField is one position in the signature functor of an
-// inductive type. It records:
-//   - WHICH type is inductive (type_name)
-//   - WHICH constructor contains the recursion (variant_name, "" for records)
-//   - WHICH field carries the recursive reference (field_name)
-//   - HOW the reference is wrapped (shape)
-//
-// For type Node { children: List<Node>, body: Node?, name: String }:
-//   InductiveField { type_name: "Node", variant_name: "", field_name: "children", shape: ListRecursion }
-//   InductiveField { type_name: "Node", variant_name: "", field_name: "body", shape: OptionalRecursion }
-//   (name: String produces no InductiveField — it's not recursive)
-//
-// For type MyList<T> = Nil | Cons { head: T, tail: MyList<T> }:
-//   InductiveField { type_name: "MyList", variant_name: "Cons", field_name: "tail", shape: DirectRecursion }
-//
-// 🟡 SCAFFOLD. Type/variant/field identities are `String` bridges until reflected
-// declarations supply structural references; `RecursionShape` is terminal.
+  = DirectRecursion
+  | ListRecursion
+  | OptionalRecursion
+  | SetRecursion
+  | MapValueRecursion
 
 type InductiveField {
-  type_name: String         // type that owns this field ("Node", "InferredNode")
-  variant_name: String      // "" for records, variant name for sum types
-  field_name: String        // "children", "body", "node"
-  shape: RecursionShape     // how field references recursive structure
-  element_type: String      // type of the element (== type_name for self-referential, different for cross-type)
+  type_name: String
+  variant_name: String
+  field_name: String
+  shape: RecursionShape
+  element_type: String
 }
 
 fn recursion_shape_eq(a: RecursionShape, b: RecursionShape) -> Bool {
@@ -161,82 +53,9 @@ fn inductive_field_eq(a: InductiveField, b: InductiveField) -> Bool {
     a.element_type == b.element_type
 }
 
-
-// =========================================================================
-// InductiveField → RankingDimension
-// =========================================================================
-
-// Every inductive type has a natural size measure: the number of
-// constructors in a value. All recursion shapes produce TreeSize
-// because they all measure structural depth.
-
 fn inductive_field_to_dimension(field: InductiveField, param: String) -> RankingDimension {
   TreeSize { param: param }
 }
-
-
-// =========================================================================
-// ShrinkFactor — imported from std.computation (moved to avoid circular dep)
-
-
-// =========================================================================
-// SubValueRelation — call-site descent evidence
-// =========================================================================
-
-// At each self-call site, each argument either:
-//   - Is obtained by deconstructing through a recursive field (StrictSubValue)
-//   - Is an element from iterating over a recursive list field (IteratedSubValue)
-//   - Is the same value, no descent (PreservedValue)
-//   - Cannot be classified by the analyzer (SubValueUnknown — fail-closed)
-//
-// SubValueUnknown is categorically different from PreservedValue:
-//   PreservedValue = the argument IS the parameter (no descent, bounded by Forever)
-//   SubValueUnknown = the analyzer cannot determine the relationship (hard error)
-//
-// 🟡 MIXED. Structural descent via `InductiveField` and proof-grade `ShrinkFactor`
-// (`std.computation`); `ArithmeticDescent` names a parameter; `SubValueUnknown` is the fail-closed sink
-// and lattice bottom; `NonIncreasingValue` / `StrictAxisErased` / `MixedTop` close the lattice so
-// meet/join over the seven lawful inhabitants are projection-sound merge helpers only — not a
-// `std/algebra` inhabitance (option-(A) split, 2026-05-21; see Inc-split below).
-// The split satisfies:
-//   - codex #15942 join-projection-safety FULLY: `join(PreservedValue, StrictSubValue{f}) = MixedTop`,
-//     `proj(MixedTop) = NonIncreasing`, never fabricates Strict from a non-strict join operand.
-//   - codex #15892 meet-monotonicity WITHIN the strict cone: `meet(StrictAxisErased, Strict_f) = Strict_f`,
-//     both project to Strict — no strengthening.
-//   - `meet(MixedTop, X)` drops to `NonIncreasingValue` (not X) so meet never strengthens
-//     `proj(meet)` above `proj(MixedTop)` = NonIncreasing when X is strict-style. MixedTop remains
-//     join-⊤ only (`join(MixedTop, a) = MixedTop`). See `meet_mixed_top_drops_to_non_increasing`.
-//
-// Lattice ordering (top → bottom):
-//   MixedTop                                                      -- ⊤ (axis-erased OR non-strict)
-//      |
-//      +-- StrictAxisErased                                        -- top-of-strict-only joins
-//      |       |
-//      |       +-- StrictSubValue{f,fac} | IteratedSubValue{f} | ArithmeticDescent{p,fac}
-//      |           (pairwise incomparable strict-structural witnesses)
-//      |
-//      +-- PreservedValue                                          -- specific non-strict witness
-//      |
-//   NonIncreasingValue                                             -- weakest structural (≥ ⊥)
-//      |
-//   SubValueUnknown                                                -- ⊥
-//
-// Inc-split rationale: a single `IncomparableValue` top could not simultaneously satisfy
-// (i) meet-monotonicity (`proj(Inc) ≥ proj(StrictSubValue) = Strict` so `meet(Inc, Strict_f)`
-// returning `Strict_f` does not strengthen Inc's evidence — codex review #15892) AND
-// (ii) join-soundness (`proj(Inc) ≤ proj(PreservedValue) = NonIncreasing` because
-// `join(PreservedValue, StrictSubValue{f})` could reach Inc — codex review #15942). The split:
-//   - `StrictAxisErased` covers joins of distinct strict-style witnesses only (Strict / Iter /
-//     Arith) — proj = Strict. meet(SAE, Strict_f) = Strict_f, proj(Strict_f) = Strict =
-//     proj(SAE) — no strengthening.
-//   - `MixedTop` covers joins that span the strict/non-strict boundary (e.g. PreservedValue
-//     joined with a strict witness, or SAE joined with PreservedValue) — proj = NonIncreasing.
-//     join(PreservedValue, Strict_f) = MixedTop, proj(MixedTop) = NonIncreasing = proj(Preserved)
-//     — no fabrication beyond the weakest operand's evidence.
-//
-// PreservedValue and the strict-structural witnesses are pairwise incomparable; their meet
-// is `NonIncreasingValue` (both witness at least non-increase) and their join is `MixedTop`
-// (no common stronger claim survives the strict/non-strict boundary).
 
 type SubValueRelation
   = StrictSubValue { field: InductiveField, factor: ShrinkFactor }
@@ -247,22 +66,6 @@ type SubValueRelation
   | StrictAxisErased
   | MixedTop
   | SubValueUnknown
-
-
-// =========================================================================
-// ShrinkFactor is now on LoweringTarget directly (no wrapper needed).
-
-
-// =========================================================================
-// SubValueRelation → DescentEvidence
-// =========================================================================
-
-// `ShrinkFactor` has no raw `Int` rate fields — only `UnitShrink` and carriers into
-// `PositiveDescentAmount` / `ProportionalDivisor` (`std.computation` / `std.termination`).
-// Non-positive steps and divisors < 2 are therefore not representable here; producers
-// that still see `Int` validate upstream and fail closed to `SubValueUnknown` instead of
-// minting `ArithmeticDescent` / `StrictSubValue`. Evidence mapping matches on `factor`
-// so `Strict` is issued only alongside an exhaustively-known proof-grade shrink shape.
 
 fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
   match relation {
@@ -281,30 +84,14 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
       }
     PreservedValue                           => NonIncreasing
     NonIncreasingValue                       => NonIncreasing
-    // StrictAxisErased is the join of distinct strict-style witnesses (StrictSubValue /
-    // IteratedSubValue / ArithmeticDescent) where every operand witnesses strict descent
-    // along *some* axis — the join cannot pin a single axis, but the "strict descent
-    // occurred" claim is sound because every join operand projects to Strict.
+
     StrictAxisErased                         => Strict
-    // MixedTop covers joins crossing the strict/non-strict boundary (e.g. PreservedValue
-    // ∨ StrictSubValue, or any join involving NonIncreasingValue with a strict-side
-    // structural). The weakest operand projects to NonIncreasing, so MixedTop must
-    // project to NonIncreasing or weaker to satisfy join-projection safety. NonIncreasing
-    // is the honest claim — at least one branch witnessed non-increase but the others may
-    // not have witnessed strict.
+
     MixedTop                                 => NonIncreasing
     SubValueUnknown                          => DescentUnknown
   }
 }
 
-
-// =========================================================================
-// SubValueRelation merge helpers
-// =========================================================================
-
-// Structural equality on shrink rates (P2 single authority for cost-relevant
-// merge): `ConstantShrink` / `ProportionalShrink` compared via canonical `Int`
-// measures from `std.computation` / `std.termination`.
 fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
   match a {
     UnitShrink =>
@@ -324,27 +111,6 @@ fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
   }
 }
 
-// Lawful Lattice<SubValueRelation> meet/join.
-//
-// Partial order (read bottom → top):
-//   SubValueUnknown                                                 -- ⊥
-//   < NonIncreasingValue
-//   < { StrictSubValue{f,fac} | IteratedSubValue{f} | ArithmeticDescent{p,fac} | PreservedValue }
-//   < { StrictAxisErased (above strict witnesses only — NOT above PreservedValue) }
-//   < MixedTop                                                       -- ⊤
-//
-// StrictAxisErased dominates the three strict-style structural witnesses (Strict / Iter / Arith)
-// and is incomparable with PreservedValue. MixedTop dominates everything — both StrictAxisErased
-// and PreservedValue. This split makes:
-//   - meet(StrictAxisErased, Strict_f) = Strict_f, proj(Strict_f)=Strict matches proj(SAE)=Strict
-//     → meet-monotonicity holds within the strict cone.
-//   - join(PreservedValue, Strict_f) = MixedTop (crosses the strict/non-strict boundary),
-//     proj(MixedTop)=NonIncreasing matches proj(Preserved)=NonIncreasing → join-projection
-//     safety satisfied.
-
-// Reflexive equality used to decide whether two inhabitants are the same lattice
-// element. Lattice idempotence routes through this — every variant, including the
-// non-parameterised ones, must self-equal.
 fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
   match a {
     StrictSubValue { field: fa, factor: fac_a } =>
@@ -372,21 +138,6 @@ fn sub_value_structural_eq(a: SubValueRelation, b: SubValueRelation) -> Bool {
   }
 }
 
-// `is_strict_style_structural` distinguishes "strict-side" inhabitants (whose evidence
-// projection is `Strict`) from the non-strict PreservedValue / NonIncreasingValue. Used by
-// join to decide whether two operands meet under StrictAxisErased or escalate to MixedTop.
-//
-// 🟡 PREDICATE-DISSOLUTION DISPOSITION (DESIGN.md §2/§3): this is a hand-rolled boolean projection of
-// `sub_value_to_evidence(r) == Strict` over the lattice carrier. Dissolution trigger:
-// when the substrate gains derived-predicate-from-projection (a `derive_from`-style
-// reflected helper that lets `is_strict_style_structural(r) := sub_value_to_evidence(r) == Strict`
-// be generated from the evidence-projection definition rather than re-stated), this
-// helper retires and the join/compose call sites read the derived form directly. Until
-// then, the by-hand match keeps the carrier's strict-cone classification co-located with
-// the lattice operations that need it (DESIGN.md §6: pure functions over data + free functions
-// — derive the predicate from `sub_value_to_evidence` is the homomorphism, but the
-// substrate cannot yet express that derivation). P5 (ROADMAP.md:390): same engineering slice
-// as stage0 Rc<T>-aware merge-helper surfacing — not a `BoundedLattice` data witness.
 fn is_strict_style_structural(r: SubValueRelation) -> Bool {
   match r {
     StrictSubValue { field: _, factor: _ } => true
@@ -397,15 +148,6 @@ fn is_strict_style_structural(r: SubValueRelation) -> Bool {
   }
 }
 
-// Classify a relation by lattice level. Levels are total but elements within a level may
-// be incomparable (the level-2 structural witnesses are pairwise incomparable; StrictAxisErased
-// and PreservedValue are incomparable at level 3-shape but the lattice meet/join encodes that
-// directly rather than via the level number).
-//   4 = MixedTop (⊤)
-//   3 = StrictAxisErased (above strict-style witnesses only)
-//   2 = StrictSubValue / IteratedSubValue / ArithmeticDescent / PreservedValue (specific)
-//   1 = NonIncreasingValue
-//   0 = SubValueUnknown (⊥)
 fn sub_value_level(r: SubValueRelation) -> Int {
   match r {
     MixedTop => 4
@@ -419,25 +161,20 @@ fn sub_value_level(r: SubValueRelation) -> Int {
   }
 }
 
-// Projection-sound meet over the 7 lawful inhabitants plus the ⊥ sink. Not a GLB when MixedTop
-// is involved — see merge-helper properties below. Encodes the Hasse diagram in the file header.
-// The strict-cone (StrictAxisErased over strict witnesses) lets meet(SAE, Strict_f) return
-// Strict_f without strengthening evidence; mixed pairs and any pair with MixedTop drop to
-// NonIncreasingValue.
 fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   if sub_value_structural_eq(a: a, b: b) { a }
   else {
     let la = sub_value_level(r: a)
     let lb = sub_value_level(r: b)
-    // SubValueUnknown absorbs.
+
     if la == 0 || lb == 0 { SubValueUnknown }
     else {
-      // MixedTop (level 4) is join-⊤ only; meet with MixedTop drops to NonIncreasingValue.
+
       if la == 4 || lb == 4 { NonIncreasingValue }
       else {
-          // StrictAxisErased (level 3) dominates strict-style structurals only.
+
           if la == 3 {
-            // a = StrictAxisErased; b is level 1 or 2 (not 0/3/4 here).
+
             if is_strict_style_structural(r: b) { b }
             else { NonIncreasingValue }
           }
@@ -447,8 +184,7 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
               else { NonIncreasingValue }
             }
             else {
-              // Both lawful at level 1 or 2 and not structurally equal — meet drops to
-              // NonIncreasingValue (every structural inhabitant ≥ NonIncreasingValue).
+
               NonIncreasingValue
             }
           }
@@ -457,33 +193,25 @@ fn meet_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-// Join (least upper bound) over the 7-lawful-inhabitant lattice plus the ⊥ sink.
-// All-strict joins land at StrictAxisErased; any join crossing the strict/non-strict
-// boundary or involving MixedTop lands at MixedTop. This is the split that makes
-// proj(join_result) ≤ proj(each operand) for the non-strict cases — codex review #15942.
 fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation {
   if sub_value_structural_eq(a: a, b: b) { a }
   else {
     let la = sub_value_level(r: a)
     let lb = sub_value_level(r: b)
-    // SubValueUnknown is identity (bottom).
+
     if la == 0 { b }
     else {
       if lb == 0 { a }
       else {
-        // MixedTop absorbs (lattice ⊤).
+
         if la == 4 || lb == 4 { MixedTop }
         else {
-          // NonIncreasingValue is below every lawful inhabitant ≥ level 2; join yields the other.
+
           if la == 1 { b }
           else {
             if lb == 1 { a }
             else {
-              // Both operands at level 2 or 3, distinct. Decide by strict-style classification:
-              //   - both strict-style → StrictAxisErased (sound: every operand projects to Strict)
-              //   - one strict-style, one non-strict → MixedTop (mixed; proj=NonIncreasing)
-              //   - both non-strict (only Preserved is non-strict at this level — and structural_eq
-              //     would have short-circuited) → unreachable; fall through to MixedTop for safety
+
               if is_strict_style_structural(r: a) && is_strict_style_structural(r: b) {
                 StrictAxisErased
               } else { MixedTop }
@@ -495,79 +223,19 @@ fn join_sub_value(a: SubValueRelation, b: SubValueRelation) -> SubValueRelation 
   }
 }
 
-// SubValueRelation merge helpers — `meet_sub_value` / `join_sub_value` are the sole authority.
-// No `BoundedLattice` / `std/algebra` data witness is intended (A-tight #3551; ROADMAP.md:390
-// row retargeted — dissolution is merge-helper surfacing, not lattice inhabitance).
-// Meet is NOT GLB for MixedTop: projection-soundness requires meet-monotonicity, so
-// meet(MixedTop, X) saturates at NonIncreasingValue while MixedTop remains join-⊤.
-// Operational properties verified by case analysis over `sub_value_level` +
-// `sub_value_structural_eq`:
-//   - Idempotence: meet(a, a) = a; join(a, a) = a — `sub_value_structural_eq` short-circuit
-//     handles parameterised structural witnesses; non-parametric variants are caught by
-//     the level-match arms.
-//   - Commutativity: `meet` / `join` use only `sub_value_level` and `sub_value_structural_eq`,
-//     both symmetric in their arguments.
-//   - Associativity: take the lower level (meet) or higher level (join), falling to
-//     `NonIncreasingValue` (meet of pairwise-incomparable structurals or any pair involving
-//     MixedTop) or to `StrictAxisErased` / `MixedTop` (join of strict-style-only / mixed
-//     structurals respectively) when arguments are at the structural level and not identical.
-//   - Absorption (qualified): `meet(a, join(a, b)) = a` only when `join(a, b) ≠ MixedTop`
-//     (e.g. all-strict joins → StrictAxisErased, or `b ≤ a` so join returns `a`). When
-//     `join(a, b) = MixedTop` (strict/non-strict boundary), `meet(a, MixedTop) =
-//     NonIncreasingValue` — not `a` — by design for projection-soundness.
-//   - Meet bottom: meet(⊥, a) = ⊥ — `SubValueUnknown` at level 0.
-//   - Join top: join(⊤, a) = ⊤ — `MixedTop` at level 4 (meet does NOT use ⊤ as identity).
-//
-// Operator-direct (PATH-2-FULL → option (A) split, ratified 2026-05-21): the two top inhabitants
-// `StrictAxisErased` and `MixedTop` resolve the codex #15892 vs #15942 contradiction that a
-// single `IncomparableValue` top could not satisfy. See file header for the Inc-split rationale.
-//
-// 🟡 P5 STAGE0-GENERATOR-GAP. No typed `std/algebra` witness — intentional after A-tight.
-// Dissolution (ROADMAP.md:390): stage0 Rc<T>-aware emission for merge-helper canonical
-// surfaces (`meet_sub_value` / `join_sub_value` on this projection-sound pair), or direct
-// free-function calls. Until then, the functions above are the sole authority.
-
-
-// =========================================================================
-// SubValueRelation composition — authority for provenance threading
-// =========================================================================
-
-// Compose a provenance relation with a field access. When a binding has
-// known provenance (not SubValueUnknown) and the accessed field is
-// inductive (recursive), the result is StrictSubValue — a structural
-// sub-value one level deeper.
-//
-// This is the single authority for provenance composition through field
-// access, pattern destructuring, and let-binding classification.
-// Consumers (inference, descent analysis) call this instead of
-// fabricating StrictSubValue locally.
 fn compose_sub_value(base: SubValueRelation, field: InductiveField) -> SubValueRelation {
   match base {
     SubValueUnknown => SubValueUnknown
-    // Composing a field access on top of a known non-strict base still descends one level
-    // structurally — the access witness is `StrictSubValue` regardless of the base witness.
+
     _ => StrictSubValue { field: field, factor: UnitShrink }
   }
 }
 
-// Compose two sub-value relations across a function call boundary.
-// If the caller passes arg_rel to the callee, and the callee's output
-// has callee_rel relative to that param, the composed result is the
-// output's relation to the caller's recursive param.
-//
-// PreservedValue is the identity element (callee returns its param
-// unchanged). SubValueUnknown is absorbing. Structural composed with
-// structural produces StrictSubValue — descending into a child of a
-// child is still descent, with the outer field as authority.
-// IteratedSubValue only survives composition with PreservedValue
-// (identity), because cross-composition cannot verify that the outer
-// field's shape supports iteration (ListRecursion vs OptionalRecursion).
 fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRelation) -> SubValueRelation {
   match callee_rel {
     PreservedValue => arg_rel
     SubValueUnknown => SubValueUnknown
-    // Lawful non-structural callees flow at lattice level — the callee already
-    // lacks a structural witness, so the composed result cannot strengthen one.
+
     NonIncreasingValue =>
       match arg_rel {
         SubValueUnknown => SubValueUnknown
@@ -576,25 +244,21 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
     StrictAxisErased =>
       match arg_rel {
         SubValueUnknown => SubValueUnknown
-        // Preserved arg + strict-axis-erased callee = strict-axis-erased composed.
+
         PreservedValue => StrictAxisErased
-        // Strict-style caller-side witnesses on the SAME composition path: keep at
-        // axis-erased (cannot identify which axis since the callee's axis is erased).
+
         StrictSubValue { field: _, factor: _ } => StrictAxisErased
         IteratedSubValue { field: _ } => StrictAxisErased
         ArithmeticDescent { param: _, factor: _ } => StrictAxisErased
         StrictAxisErased => StrictAxisErased
-        // Non-strict caller-side relations cannot be strengthened by a strict-axis-erased
-        // callee — flow at the caller-side lattice level (codex review #16089 fix).
+
         NonIncreasingValue => NonIncreasingValue
         MixedTop => MixedTop
       }
     MixedTop =>
       match arg_rel {
         SubValueUnknown => SubValueUnknown
-        // MixedTop projects to NonIncreasing — any caller-side arg composed with it
-        // cannot exceed NonIncreasing evidence. Flow at min(caller, MixedTop) by
-        // returning the caller-side inhabitant when it is at NonIncreasing or lower.
+
         NonIncreasingValue => NonIncreasingValue
         _ => MixedTop
       }
@@ -613,10 +277,7 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
       match arg_rel {
         PreservedValue => callee_rel
         SubValueUnknown => SubValueUnknown
-        // Conservative: StrictSubValue, not IteratedSubValue. The outer
-        // field may be OptionalRecursion (not iterable). Iteration evidence
-        // is only valid at the site that observes the list, not through
-        // cross-call composition.
+
         StrictSubValue { field: f, factor: _ } => StrictSubValue { field: f, factor: UnitShrink }
         IteratedSubValue { field: f } => StrictSubValue { field: f, factor: UnitShrink }
         ArithmeticDescent { param: _, factor: _ } => SubValueUnknown
@@ -628,31 +289,15 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
       match arg_rel {
         PreservedValue => ArithmeticDescent { param: p, factor: f }
         SubValueUnknown => SubValueUnknown
-        // Lawful non-structural inhabitants on the arg side cannot strengthen back
-        // to `ArithmeticDescent`; flow at lattice level.
+
         NonIncreasingValue => NonIncreasingValue
         StrictAxisErased => StrictAxisErased
         MixedTop => MixedTop
-        // Cross-axis structural composition (caller-side structural witness on a
-        // different dimension than the callee's arithmetic dimension) preserves the
-        // prior fail-closed posture.
+
         _ => SubValueUnknown
       }
   }
 }
-
-
-// =========================================================================
-// SubValueRelation → CallPattern
-// =========================================================================
-
-// Bridge to computation.dag's CallPattern. LOSSY for `StrictSubValue` /
-// `IteratedSubValue` (drops `ShrinkFactor`, collapses into `ChildAccessorCall`).
-// `ArithmeticDescent` maps shrink factors structurally — no Int round-trip.
-// CX-L3 reads SubValueRelation directly and does NOT use this bridge.
-// This exists only for the computation.dag integration path and will
-// be retired when computation.dag accepts SubValueRelation natively.
-// SubValueUnknown → none (fail-closed through the bridge).
 
 fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
   match relation {
@@ -667,25 +312,13 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
         UnitShrink => Present { value: ArithmeticSubtractCall { steps: OneStep, ring_param: p } }
       }
     PreservedValue                            => Present { value: SameArgumentCall }
-    // Non-structural lawful inhabitants have no specific call pattern to project.
-    // Same fail-closed posture as `SubValueUnknown` for downstream consumers.
+
     NonIncreasingValue                        => none
     StrictAxisErased                          => none
     MixedTop                                  => none
     SubValueUnknown                           => none
   }
 }
-
-
-// =========================================================================
-// SubValueRelation → BoundedLoweringTarget (lossless)
-// =========================================================================
-
-// Direct bridge to LoweringTarget that preserves ShrinkFactor. Unlike
-// sub_value_to_call_pattern which drops factor, this function carries
-// the factor through so downstream cost analysis can distinguish O(n)
-// from O(log n) via ProportionalShrink.
-// SubValueUnknown → none (fail-closed).
 
 fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
   match relation {
@@ -717,8 +350,7 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
         evidence: NonIncreasing,
         factor: none
       }}
-    // NonIncreasingValue lowers like PreservedValue: we know non-increase but cannot
-    // project a specific shrink target. Forever-bounded Repeat with NonIncreasing evidence.
+
     NonIncreasingValue =>
       Present { value: LoweringTarget {
         primitive: Repeat,
@@ -726,39 +358,13 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
         evidence: NonIncreasing,
         factor: none
       }}
-    // StrictAxisErased evidence-projects to `Strict` (strict descent along some axis,
-    // axis erased — see `sub_value_to_evidence`). The lowering target has no usable axis
-    // for a finite `bound`, so the honest projection is `none` — same posture as
-    // `sub_value_to_call_pattern(StrictAxisErased) = none`.
+
     StrictAxisErased => none
-    // MixedTop evidence-projects to `NonIncreasing` (sound for joins that crossed the
-    // strict / non-strict boundary). The lowering target has no usable axis here either —
-    // mixed-origin joins cannot project a specific shrink target.
+
     MixedTop => none
     SubValueUnknown => none
   }
 }
-
-
-// =========================================================================
-// PolynomialExponent — exact representation of asymptotic exponents
-// =========================================================================
-
-// Polynomial exponents in complexity bounds:
-//   IntegerExpZero: O(1) in n (degree 0).
-//   IntegerExpPos: O(n^k) for k ≥ 1 via `PositiveDescentAmount` (same Peano family as termination).
-//   FractionExp: n^(p/r) with strictly positive Peano numerators/roots (typ. p=1).
-//   LogBasedExp: n^(log_b(a)) with divisor witness b ≥ 2 and positive Peano argument a.
-//
-// `cost_poly` / `master_theorem` are the typed bridges from `Int` literals; invalid or
-// oversized degrees fail closed (`ErrorBound` / `none`) — matches `std.termination` caps.
-//
-// 🟢 TERMINAL coproduct at E-I exponent scope — negative roots, bases < 2, and non-positive
-// log arguments are not representable as inhabitants (only via the `Int` bridges above).
-//
-// E-P note (api-review): exponents intentionally reuse termination Peano carriers for now;
-// a later lane can swap degree/root/base slots to `std.types` bounded refinements once
-// refinement lowering is uniform across consumers (same story as `std.termination`).
 
 type PolynomialExponent
   = IntegerExpZero
@@ -770,66 +376,20 @@ fn poly_exp_degree_one() -> PolynomialExponent {
   IntegerExpPos { degree: OneStep }
 }
 
-
-// =========================================================================
-// AtomicCost — one indivisible cost factor on a single parameter
-// =========================================================================
-
-// A cost factor tied to a single size parameter. These are the atoms
-// from which composite bounds are built.
-//
-// 🟡 MIXED. Exponents are terminal (`PolynomialExponent`); `param: String` is the current
-// symbolic size-parameter bridge (mirrors `RankingDimension` string slots).
-
 type AtomicCost
-  = PolyCost { param: String, exponent: PolynomialExponent }  // O(n^e)
-  | LogCost { param: String }                                  // O(log n)
-
-
-// =========================================================================
-// CostBound — asymptotic bound algebra (Big-O)
-// =========================================================================
-
-// The output of structural descent analysis.  Most slots use `AtomicCost` only;
-// `SumBound` is the v3 E-I pre-flight case that carries `List<CostBound>`
-// (same structural pattern as `FieldValue` in substrate — indirection through
-// `List`, not an extra anonymous recursive .dag connective).
-//
-// Kernel invariant: `SumBound` is the only `CostBound`→`CostBound` recursion — a named
-// alternative-max stack (E-I), not open-ended anonymous substrate recursion like `Node` trees.
-//
-// CostBound is the authority for structurally-proven bounds derived from
-// the induction model. complexity.dag's CostExpr/SizeExpr is a transitional
-// working representation that will converge to CostBound as the sole
-// cost algebra (see CX lane in ROADMAP.md).
-//
-// Composite bounds are represented in sum-of-products normal form:
-//   O((V+E) · log V) = SumOfProductsBound { [[Poly(V,1), Log(V)], [Poly(E,1), Log(V)]] }
-//
-// That SOP path (and `ProductBound` / `AtomicCost`) needs no `CostBound`→`CostBound`
-// self-edge; `SumBound` below is the **sole** deliberate `CostBound` self-reference
-// (see kernel invariant above — not anonymous substrate recursion like `Node`).
-//
-// 🟡 MIXED. SOP / product shapes are structural lists of `AtomicCost`; `SumBound` stacks
-// alternatives; string-named atoms inherit scaffold from `AtomicCost`; `ErrorBound` is fail-closed.
+  = PolyCost { param: String, exponent: PolynomialExponent }
+  | LogCost { param: String }
 
 type CostBound
-  = ConstantBound                                // O(1)
-  | AtomicBound { cost: AtomicCost }             // O(n^k) or O(log n)
-  | ProductBound { factors: List<AtomicCost> }   // O(f1 · f2 · ...)
-  | SumOfProductsBound { terms: List<List<AtomicCost>> }  // O(Σ(Π fi))
-  // SumBound: structural alternative stack only here; per-term terminal receipts/ledgers land with E-I consumers (lane 1+).
-  // O(max terms) requires ≥1 alternative — empty `terms` is ill-formed; `sum_bound` maps that to `ErrorBound` (P3 fail-closed).
-  | SumBound { terms: List<CostBound> }         // O(max terms) / structural alternative stack (E-I: List<CostBound>)
-  | ForeverBound                                 // O(2^63-1) — repeat(max_int)
-  | ErrorBound                                   // fail-closed: invalid/unresolvable
+  = ConstantBound
+  | AtomicBound { cost: AtomicCost }
+  | ProductBound { factors: List<AtomicCost> }
+  | SumOfProductsBound { terms: List<List<AtomicCost>> }
 
+  | SumBound { terms: List<CostBound> }
+  | ForeverBound
+  | ErrorBound
 
-// =========================================================================
-// Named bound constructors
-// =========================================================================
-
-// P3: empty alternative stack has no max/merge semantics — fail closed (Codex #726 schedule review).
 fn sum_bound(terms: List<CostBound>) -> CostBound {
   match terms |> first {
     Absent => ErrorBound
@@ -837,9 +397,6 @@ fn sum_bound(terms: List<CostBound>) -> CostBound {
   }
 }
 
-// E-6: minimal destructor for `SumBound` — first match arm that *observes* the self-edge
-// variant so the coproduct is not constructor-only. Full dominance / cost comparison on
-// `List<CostBound>` remains deferred to lane consumers; this predicate is the intake hook.
 fn cost_bound_is_sum_bound(b: CostBound) -> Bool {
   match b {
     SumBound { terms: _ } => true
@@ -893,41 +450,12 @@ fn cost_graph_linear(v_param: String, e_param: String) -> CostBound {
   ] }
 }
 
-
-// =========================================================================
-// RecurrenceForm — structure of a divide-and-conquer recurrence
-// =========================================================================
-
-// T(n) = a·T(n/b) + O(n^d)
-//   a: branching factor (self-calls per execution path)
-//   b: division factor (each sub-problem is n/b of the original)
-//   d: exponent of per-level non-recursive work (≥ 0; `master_theorem` rejects d < 0 → ErrorBound)
-//
-// P4 / P3 (cost-algebra boundary): `work_exponent` stays typed as `Int` while recurrence inputs
-// are a bootstrap scaffold, but **`bounded_int_pow_exponent`** is the single authority gate:
-// `master_theorem` and `int_pow_bounded` route raw exponents through it **before** any `b^d`
-// recursion — same closed `[0, peano_literal_materialization_cap()]` as `std.termination`.
-// Oversized / negative → `none` / `ErrorBound` (no raw `*` on the power path; see `int_mul_checked`).
-//
-// 🟡 SCAFFOLD. Master-theorem input bundles a symbolic `param: String` with `Int` recurrence
-// coefficients; structural parameter refs dissolve with reflected function params.
-
 type RecurrenceForm {
   param: String
   branches: Int
   divisor: Int
   work_exponent: Int
 }
-
-
-// =========================================================================
-// Master theorem — recurrence → CostBound
-// =========================================================================
-
-// P3: `Int` is realized as i64 in v2 — raw `*` / `+` can wrap or debug-panic.
-// These helpers return `none` on overflow so `master_theorem` / `ceil_log` stay
-// fail-closed (same posture as `cost_poly` / `positive_descent_amount_from_positive_int`).
-// Bounds are i64::MIN / i64::MAX; `/` matches signed truncating division (Rust `Int`).
 
 fn int_add_checked(a: Int, b: Int) -> Int? {
   if b > 0 {
@@ -972,10 +500,6 @@ fn int_mul_checked(a: Int, b: Int) -> Int? {
   }
 }
 
-// P4 / E-I (numeric boundary): sole gate from raw `Int` exponents / recurrence work degree into
-// `int_pow_bounded`'s recursive core. Upper bound is `peano_literal_materialization_cap()` from
-// `std.termination` (P2 single authority — Codex #726). Reject **before** any power recursion; do not
-// hand `exp` to the recursive `int_pow_bounded` body until it passes here (PR #726: fail before materialization).
 fn bounded_int_pow_exponent(k: Int) -> Int? {
   if k < 0 { none }
   else {
@@ -984,12 +508,6 @@ fn bounded_int_pow_exponent(k: Int) -> Int? {
   }
 }
 
-// b^exp for exp ≥ 0 (exp = 0 → Some { value: 1 }). Out-of-range exp → none via
-// `bounded_int_pow_exponent` — no silent plausible wrong output (P3; same posture as `ceil_log` / `cost_poly`).
-//
-// P4 (degenerate bases): for `base ∈ {0, 1, -1}`, `int_mul_checked` may never overflow, so the
-// recursive path would still walk `e` stack frames. Short-circuit those bases **before** recursion
-// (Codex #726: bounded forward execution on the exported helper, not only `base ≥ 2` call sites).
 fn int_pow_bounded(base: Int, exp: Int) -> Int? {
   match bounded_int_pow_exponent(k: exp) {
     Absent => none
@@ -1005,9 +523,7 @@ fn int_pow_bounded(base: Int, exp: Int) -> Int? {
               if half + half == e { Present { value: 1 } } else { Present { value: 0 - 1 } }
             }
             else {
-              // `e` is the validated value of `exp`, but keep the recursive
-              // argument syntactically tied to the original parameter so the
-              // v2 complexity analyzer can see the arithmetic descent.
+
               match int_pow_bounded(base: base, exp: exp - 1) {
                 Present { value: prev } =>
                   match int_mul_checked(a: base, b: prev) {
@@ -1023,14 +539,11 @@ fn int_pow_bounded(base: Int, exp: Int) -> Int? {
   }
 }
 
-// Smallest k with base^k >= argument. Requires base ≥ 2 and argument ≥ 1 so each
-// iteration strictly increases `power` (P4 decidability); invalid inputs → none.
 fn ceil_log(base: Int, argument: Int) -> Int? {
   if base < 2 || argument < 1 { none }
   else { ceil_log_iter(base: base, argument: argument, k: 0, power: 1) }
 }
 
-// Pre: base ≥ 2, argument ≥ 1. Overflow in `power * base` or `k + 1` → none.
 fn ceil_log_iter(base: Int, argument: Int, k: Int, power: Int) -> Int? {
   if power >= argument { Present { value: k } }
   else {
@@ -1051,8 +564,7 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
   let b = form.divisor
   let d = form.work_exponent
   let n = form.param
-  // Fail-closed: invalid inputs produce ErrorBound, not fabricated O(1).
-  // P4: `bounded_int_pow_exponent` rejects `work_exponent` outside [0, peano_literal_materialization_cap()] before `int_pow_bounded`.
+
   if a < 1 || b < 2 { ErrorBound }
   else {
     match bounded_int_pow_exponent(k: d) {
@@ -1062,14 +574,14 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
           Absent => ErrorBound
           Present { value: b_to_d } =>
             if a < b_to_d {
-              // Case 3: per-level work dominates → O(n^d)
+
               match d_ok {
                 0 => ConstantBound
                 _ => cost_poly(param: n, degree: d_ok)
               }
             } else {
               if a == b_to_d {
-                // Case 2: balanced → O(n^d · log n)
+
                 match d_ok {
                   0 => cost_log(param: n)
                   _ =>
@@ -1080,8 +592,7 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
                     }
                 }
               } else {
-                // Case 1: sub-problem work dominates → O(n^(log_b(a)))
-                // Exact representation via LogBasedExp — no approximation
+
                 match proportional_divisor_from_int_at_least_two(k: b) {
                   Present { value: baseW } =>
                     match positive_descent_amount_from_positive_int(k: a) {
@@ -1098,13 +609,6 @@ fn master_theorem(form: RecurrenceForm) -> CostBound {
   }
 }
 
-
-// =========================================================================
-// Structural recursion → CostBound (catamorphism)
-// =========================================================================
-
-// Visits every sub-term exactly once. O(n^k) for k-nested traversals.
-
 fn catamorphism_bound(param: String, nesting_depth: Int) -> CostBound {
   if nesting_depth < 0 { ErrorBound }
   else {
@@ -1113,13 +617,6 @@ fn catamorphism_bound(param: String, nesting_depth: Int) -> CostBound {
   }
 }
 
-
-// =========================================================================
-// Combined derivation: descent facts → CostBound
-// =========================================================================
-
-// P3: align with `master_theorem` — invalid `branches` / `work_exponent` must not yield a
-// plausible `cost_linear` / `ForeverBound` (OpenAI-pro #726 manual review on `derive_bound`).
 fn derive_bound(param: String, branches: Int, factor: ShrinkFactor, work_exponent: Int) -> CostBound {
   if branches < 1 { ErrorBound }
   else {
@@ -1127,33 +624,24 @@ fn derive_bound(param: String, branches: Int, factor: ShrinkFactor, work_exponen
       Absent => ErrorBound
       Present { value: _ } =>
         match factor {
-          // Structural recursion: each step removes one constructor
+
           UnitShrink =>
             if branches <= 1 { cost_linear(param: param) }
             else {
-              // Multi-branch with unit shrink: T(n) = k·T(n-1) + O(1) = O(k^n).
-              // In .dag, bounded by repeat(Forever).
+
               ForeverBound
             }
-          // Constant shrink: similar to unit but with larger steps
+
           ConstantShrink { steps: _ } =>
             if branches <= 1 { cost_linear(param: param) }
             else { ForeverBound }
-          // Proportional shrink: divide-and-conquer → Master theorem
+
           ProportionalShrink { divisor: d } =>
             master_theorem(form: RecurrenceForm { param: param, branches: branches, divisor: proportional_divisor_to_int(d: d), work_exponent: work_exponent })
         }
     }
   }
 }
-
-
-// =========================================================================
-// Algorithm complexity specifications
-// =========================================================================
-
-// --- Structural recursion (catamorphisms) ---
-// https://en.wikipedia.org/wiki/Tree_traversal
 
 fn tree_traversal_bound() -> CostBound {
   catamorphism_bound(param: "tree", nesting_depth: 1)
@@ -1163,63 +651,43 @@ fn nested_iteration_bound() -> CostBound {
   catamorphism_bound(param: "items", nesting_depth: 2)
 }
 
-// https://en.wikipedia.org/wiki/Fold_(higher-order_function)
 fn linear_scan_bound() -> CostBound {
   catamorphism_bound(param: "xs", nesting_depth: 1)
 }
 
-// --- Divide-and-conquer (Master theorem) ---
-// https://en.wikipedia.org/wiki/Divide-and-conquer_algorithm
-
-// https://en.wikipedia.org/wiki/Binary_search
 fn binary_search_bound() -> CostBound {
   derive_bound(param: "xs", branches: 1, factor: ProportionalShrink { divisor: DivideByTwo }, work_exponent: 0)
 }
 
-// https://en.wikipedia.org/wiki/Merge_sort
 fn mergesort_bound() -> CostBound {
   derive_bound(param: "xs", branches: 2, factor: ProportionalShrink { divisor: DivideByTwo }, work_exponent: 1)
 }
 
-// https://en.wikipedia.org/wiki/Karatsuba_algorithm
-// a=3, b=2, d=1 → O(n^(log_2(3))) ≈ O(n^1.585) — exact via LogBasedExp
 fn karatsuba_bound() -> CostBound {
   derive_bound(param: "digits", branches: 3, factor: ProportionalShrink { divisor: DivideByTwo }, work_exponent: 1)
 }
 
-// https://en.wikipedia.org/wiki/Strassen_algorithm
-// a=7, b=2, d=2 → O(n^(log_2(7))) ≈ O(n^2.807) — exact via LogBasedExp
 fn strassen_bound() -> CostBound {
   derive_bound(param: "n", branches: 7, factor: ProportionalShrink { divisor: DivideByTwo }, work_exponent: 2)
 }
 
-// --- Root complexity ---
-
-// https://en.wikipedia.org/wiki/Trial_division
 fn trial_division_bound() -> CostBound { cost_sqrt(param: "n") }
 fn cube_root_bound() -> CostBound { cost_cbrt(param: "n") }
-// https://en.wikipedia.org/wiki/Nth_root
+
 fn kth_root_bound(k: Int) -> CostBound { cost_root(param: "n", k: k) }
 
-// --- Graph algorithms (multi-parameter) ---
-// https://en.wikipedia.org/wiki/Graph_traversal
-
-// https://en.wikipedia.org/wiki/Breadth-first_search
-// https://en.wikipedia.org/wiki/Depth-first_search
 fn bfs_dfs_bound() -> CostBound {
   cost_graph_linear(v_param: "V", e_param: "E")
 }
 
-// https://en.wikipedia.org/wiki/Dijkstra%27s_algorithm
 fn dijkstra_bound() -> CostBound {
-  // O((V+E) · log V) in sum-of-products: O(V·log V + E·log V)
+
   SumOfProductsBound { terms: [
     [PolyCost { param: "V", exponent: poly_exp_degree_one() }, LogCost { param: "V" }],
     [PolyCost { param: "E", exponent: poly_exp_degree_one() }, LogCost { param: "V" }]
   ] }
 }
 
-// https://en.wikipedia.org/wiki/Bellman%E2%80%93Ford_algorithm
 fn bellman_ford_bound() -> CostBound {
   ProductBound { factors: [
     PolyCost { param: "V", exponent: poly_exp_degree_one() },
@@ -1227,14 +695,6 @@ fn bellman_ford_bound() -> CostBound {
   ] }
 }
 
-// https://en.wikipedia.org/wiki/Floyd%E2%80%93Warshall_algorithm
 fn floyd_warshall_bound() -> CostBound {
   cost_poly(param: "V", degree: 3)
 }
-
-
-// Cost ordering is intentionally not provided here.
-// A correct dominance relation on CostBound requires structural comparison
-// (e.g., ConstantBound < AtomicBound(LogCost) < AtomicBound(PolyCost(n^1))),
-// not a lossy Int surrogate. When the bridge (Phase 1) needs cost comparison,
-// it should pattern-match on the CostBound variants directly.

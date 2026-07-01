@@ -1,8 +1,3 @@
-// Scope: B1 unit-modeling lens — FAIL/flag witness for the Information/BitWidth
-//        token. A pointer/word-width field (`pointer_width`) typed as a bare
-//        kernel `Int` MUST be flagged: width is an Information quantity carried
-//        by BitWidth = Measure<Information,One> (measure.dag:192), and the
-
 module v2.test.lens_unit_modeling.bitwidth_flat_scalar_flagged
 
 import v2.lens.unit_modeling { unit_modeling_gate }

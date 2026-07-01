@@ -1,34 +1,9 @@
-// tools/dsl_compile_clean_transport.dag — shell transport for whole-tree dsl/ compile-clean.
-//
-// Host runs `gunbc compile` over the live dsl/ tree (GREEN) with witness_layer_roots as the
-// dependency pool (§3 single authority: dsl first, src/v2 second) and
-// `--dependency-pool-index primary-precedence` (primary root authoritative; pool fills absent
-// paths only — NOT global last-wins). gunbc indexes every .dag under all --source-root flags
-// into the module pool, but only compiles entry modules from
-// the FIRST root (load_sources / Compile in cli_run.rs); later roots are import pools only —
-// adding src/v2 does NOT cold-compile the whole v2 tree, only modules pulled by dsl imports.
-//
-// Also runs:
-//   * perturb RED receipt — planted bad module fails typecheck against the live pools;
-//   * cross-tree GREEN receipt — planted dsl module importing v2.* resolves and compiles;
-//   * dsl-shell primary-precedence receipt — regression guard: last-wins would silently pick
-//     v2 extdeps.shell overlay (no shell.Env) and fail typecheck (§5); not a celebration of
-//     dual authority. dissolve-on: extdeps.shell de-fork (S2) unifies the module_path row.
-//
-// 🟡 gated — feature:CP-GATE-PRIMARY-PRECEDENCE-KNOB — owner: extdeps.shell de-fork (S2 slice).
-// dissolve-on: single extdeps.shell authority (delete dsl row or v2 overlay); drop
-// primary-precedence opt-in and this receipt; strict-only cross-root panic restored.
-// Receipt: run_dsl_shell_primary_precedence_receipt deleted + CI floor green without knob.
-//
-// Both transports are modeled off hand-written `let script = "..."` blobs onto structured
-// `ShellProgram`s rendered by `serialize_bash` (extdeps.languages.bash.program). The shared
-// ROOT/GUNBC/ensure-built prelude is a single `ensure_gunbc_built()` (DRY, §2). Proven green by
-// execution (each gate runs the real compile).
-
 module tools.dsl_compile_clean_transport
 
 import extdeps.shell
 import gunbc.ci_layer_roots { witness_layer_roots }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
   Command, Assign, If, Subshell, AndOr, WithRedir, Heredoc, Exit,
@@ -38,7 +13,6 @@ import extdeps.languages.bash.program {
 }
 import tools.host_prelude { ensure_gunbc_built }
 
-// --source-root <r> for every witness_layer_root (§3 — same roots as the rest of CI).
 fn dcc_source_root_flags() -> List<ShellWord> {
   fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
 }
@@ -47,7 +21,6 @@ fn dcc_pool_index_flags() -> List<ShellWord> {
   [lit(text: "--dependency-pool-index"), lit(text: "primary-precedence")]
 }
 
-// set -e; <prelude>; cd "$ROOT"; OUT=$(mktemp -d); "$GUNBC" compile <witness roots> ... ; rm -rf "$OUT"
 fn clean_tree_compile_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
   let gunbc = var_ref(name: "GUNBC")
@@ -61,7 +34,7 @@ fn clean_tree_compile_program() -> ShellProgram {
         [gunbc, lit(text: "compile")],
         concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
           lit(text: "--output-dir"), out,
-          lit(text: "--target"), lit(text: "rust")
+          lit(text: "--target"), lit(text: "dag")
         ]))
       )),
       command(words: [lit(text: "rm"), lit(text: "-rf"), out])
@@ -74,19 +47,12 @@ fn run_clean_tree_compile() -> Bool {
   result.success
 }
 
-// The planted module whose legacy Some/None on a builtin T? must fail typecheck.
 data perturb_module_source: String = "module test.perturb_compile_clean_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}"
 
-// Planted dsl module that imports v2.* — must compile when pools include src/v2.
 data cross_tree_green_module_source: String = "module test.perturb_compile_clean_cross_tree_green\nimport v2.std.logic { Bool }\nfn probe() -> Bool { True }"
 
-// Discriminating primary-precedence receipt: proves dsl extdeps.shell row is selected when
-// shell.Env is required — last-wins on extdeps.shell would misresolve (§5 silent-wrong-answer).
 data dsl_shell_primary_module_source: String = "module test.perturb_compile_clean_dsl_shell_primary\nimport extdeps.shell\nfn probe() -> String? {\n  shell.Env.Get(name: \"PATH\")\n}"
 
-// RED receipt: plant the fresh-name unimported bad module; resolve against witness_layer_roots
-// as dependency pools — no cp -r + cold whole-tree rebuild. Compile MUST fail (if it succeeds
-// → exit 1).
 fn compile_clean_perturb_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
   let gunbc = var_ref(name: "GUNBC")
@@ -107,7 +73,7 @@ fn compile_clean_perturb_program() -> ShellProgram {
             [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
             concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
               lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
-              lit(text: "--target"), lit(text: "rust")
+              lit(text: "--target"), lit(text: "dag")
             ]))
           )),
           redir: StdoutAndStderrToNull
@@ -128,8 +94,49 @@ fn run_perturb_optional_skew_red_receipt() -> Bool {
   result.success
 }
 
-// GREEN receipt: planted dsl module imports v2.std.logic; first --source-root is TMP (entry
-// tree), witness_layer_roots are dependency pools — compile must succeed (set -e).
+data unresolved_import_perturb_source: String = "module test.perturb_compile_clean_unresolved_import\nimport totally.nonexistent.module { Foo }\nfn probe() -> Int { 42 }"
+
+fn compile_clean_unresolved_import_perturb_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  let tmp = var_ref(name: "TMP")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      command(words: [lit(text: "cd"), root]),
+      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      Heredoc {
+        path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_unresolved_import.dag")] },
+        delimiter: "PERTURB_UNRESOLVED",
+        body: unresolved_import_perturb_source
+      },
+      If {
+        cond: WithRedir {
+          stmt: command(words: concat(
+            [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
+            concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
+              lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
+              lit(text: "--target"), lit(text: "dag")
+            ]))
+          )),
+          redir: StdoutAndStderrToNull
+        },
+        then: [
+          command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
+          Exit { code: 1 }
+        ]
+      },
+      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
+      Exit { code: 0 }
+    ])
+  }
+}
+
+fn run_perturb_unresolved_import_red_receipt() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: compile_clean_unresolved_import_perturb_program()))
+  result.success
+}
+
 fn compile_cross_tree_green_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
   let gunbc = var_ref(name: "GUNBC")
@@ -150,7 +157,7 @@ fn compile_cross_tree_green_program() -> ShellProgram {
         [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
         concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
           lit(text: "--output-dir"), out,
-          lit(text: "--target"), lit(text: "rust")
+          lit(text: "--target"), lit(text: "dag")
         ]))
       )),
       command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
@@ -164,8 +171,6 @@ fn run_cross_tree_import_green_receipt() -> Bool {
   result.success
 }
 
-// GREEN receipt: primary root entry calls shell.Env (dsl-only service); pools supply v2 paths
-// absent from dsl — extdeps.shell must stay on the dsl row, not the v2 overlay.
 fn compile_dsl_shell_primary_precedence_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
   let gunbc = var_ref(name: "GUNBC")
@@ -186,7 +191,7 @@ fn compile_dsl_shell_primary_precedence_program() -> ShellProgram {
         [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
         concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
           lit(text: "--output-dir"), out,
-          lit(text: "--target"), lit(text: "rust")
+          lit(text: "--target"), lit(text: "dag")
         ]))
       )),
       command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
@@ -198,4 +203,87 @@ fn compile_dsl_shell_primary_precedence_program() -> ShellProgram {
 fn run_dsl_shell_primary_precedence_receipt() -> Bool {
   let result = shell.Exec.Run(script: serialize_bash(p: compile_dsl_shell_primary_precedence_program()))
   result.success
+}
+
+data dcc_transport_invocation_substring_witness_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.lens.medium_structure_containment",
+    decl_name: "medium_structure_containment_holds",
+    field: WholeDeclaration
+  }
+}
+
+data dcc_gunbc_var_marker: String = "\"$GUNBC\""
+data dcc_compile_marker: String = "'compile'"
+data dcc_target_dag_marker: String = "'--target' 'dag'"
+data dcc_source_root_marker: String = "'--source-root'"
+data dcc_witness_root_dsl_marker: String = "'dsl'"
+data dcc_witness_root_v2_marker: String = "'src/v2'"
+data dcc_pool_index_marker: String = "'--dependency-pool-index' 'primary-precedence'"
+
+data clean_tree_compile_invocation_marker: String = "'compile' '--source-root' 'dsl'"
+data perturb_red_transport_marker: String = "_perturb_compile_clean_red.dag"
+data unresolved_import_transport_marker: String = "_perturb_compile_clean_unresolved_import.dag"
+data cross_tree_green_transport_marker: String = "_perturb_compile_clean_cross_tree_green.dag"
+data dsl_shell_primary_transport_marker: String = "_perturb_compile_clean_dsl_shell_primary.dag"
+data perturb_tmp_compile_invocation_marker: String = "'compile' '--source-root' \"$TMP\""
+
+fn shell_serializes_dcc_common_compile_invocation(script: String) -> Bool {
+  script != ""
+    && string_contains(s: script, pattern: dcc_gunbc_var_marker)
+    && string_contains(s: script, pattern: dcc_compile_marker)
+    && string_contains(s: script, pattern: dcc_target_dag_marker)
+    && string_contains(s: script, pattern: dcc_source_root_marker)
+    && string_contains(s: script, pattern: dcc_witness_root_dsl_marker)
+    && string_contains(s: script, pattern: dcc_witness_root_v2_marker)
+    && string_contains(s: script, pattern: dcc_pool_index_marker)
+}
+
+fn shell_program_serializes_dcc_invocation(p: ShellProgram, program_marker: String) -> Bool {
+  let script = serialize_bash(p: p)
+  shell_serializes_dcc_common_compile_invocation(script: script)
+    && string_contains(s: script, pattern: program_marker)
+}
+
+fn shell_program_serializes_perturb_dcc_invocation(p: ShellProgram, program_marker: String) -> Bool {
+  let script = serialize_bash(p: p)
+  shell_serializes_dcc_common_compile_invocation(script: script)
+    && string_contains(s: script, pattern: perturb_tmp_compile_invocation_marker)
+    && string_contains(s: script, pattern: program_marker)
+}
+
+fn red_empty_shell_program_fails_dcc_invocation_check() -> Bool {
+  !shell_program_serializes_dcc_invocation(
+    p: ShellProgram { set_e: true, statements: [] },
+    program_marker: "IMPOSSIBLE_DCC_TRANSPORT_SENTINEL"
+  )
+}
+
+fn dsl_compile_clean_transport_programs_serialize_compile_invocations() -> Bool {
+  clean_tree_transport_serializes_dcc_invocation()
+    && perturb_red_transport_serializes_dcc_invocation()
+    && unresolved_import_transport_serializes_dcc_invocation()
+    && cross_tree_green_transport_serializes_dcc_invocation()
+    && dsl_shell_primary_transport_serializes_dcc_invocation()
+}
+
+fn clean_tree_transport_serializes_dcc_invocation() -> Bool {
+  shell_program_serializes_dcc_invocation(p: clean_tree_compile_program(), program_marker: clean_tree_compile_invocation_marker)
+}
+
+fn perturb_red_transport_serializes_dcc_invocation() -> Bool {
+  shell_program_serializes_perturb_dcc_invocation(p: compile_clean_perturb_program(), program_marker: perturb_red_transport_marker)
+}
+
+fn unresolved_import_transport_serializes_dcc_invocation() -> Bool {
+  shell_program_serializes_perturb_dcc_invocation(p: compile_clean_unresolved_import_perturb_program(), program_marker: unresolved_import_transport_marker)
+}
+
+fn cross_tree_green_transport_serializes_dcc_invocation() -> Bool {
+  shell_program_serializes_perturb_dcc_invocation(p: compile_cross_tree_green_program(), program_marker: cross_tree_green_transport_marker)
+}
+
+fn dsl_shell_primary_transport_serializes_dcc_invocation() -> Bool {
+  shell_program_serializes_perturb_dcc_invocation(p: compile_dsl_shell_primary_precedence_program(), program_marker: dsl_shell_primary_transport_marker)
 }

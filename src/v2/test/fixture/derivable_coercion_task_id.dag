@@ -1,9 +1,3 @@
-// src/v2/test/fixture/derivable_coercion_task_id.dag
-// Scope: DERIVABLE-COERCION demo — one concept (opaque Symbol-backed TaskId) as API+DB+wire
-//   nickname triple; shared semantic core (encoding+carrier), distinct SurfaceSpelling per layer.
-// Anchor: task_manager_demo.dag TaskId { identity: Symbol }; thesis nickname-tax payoff.
-// Status: fixture authority for find_witness/coercion_fold consumers — zero hand translators.
-
 module v2.test.fixture.derivable_coercion_task_id
 
 import v2.std.model_core {
@@ -12,15 +6,6 @@ import v2.std.model_core {
 }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 import v2.std.witness { StructuralPropertyWitness }
-
-// Layer nicknames — distinct surface spellings (API TaskId, DB TEXT/CLOB, wire string).
-
-// Shared semantic core — Encoding carries the coercion-relevant (representation, carrier) core.
-// Follow-up: carrier deserves its own declared ModelCore core axis; until then this demo keeps
-// representation+carrier together inside the existing Encoding fact value.
-
-// Wrong-concept discriminator — numeric encoding (AccountId-style hollow int alias).
-
 
 fn task_id_inhabitant_atom(id: Symbol) -> Node {
   Node {
@@ -83,17 +68,14 @@ fn task_id_layer_inhabitant(surface_nickname: Symbol) -> Node {
 }
 }
 
-// API layer — domain `TaskId { identity: Symbol }`.
 fn task_id_api_inhabitant_node() -> Node {
   task_id_layer_inhabitant(surface_nickname: ^task_id_nickname_api)
 }
 
-// DB layer — SQL TEXT/CLOB column type for `tasks.id`.
 fn task_id_db_inhabitant_node() -> Node {
   task_id_layer_inhabitant(surface_nickname: ^task_id_nickname_db)
 }
 
-// Wire layer — OpenAPI `type: string` task-id field.
 fn task_id_wire_inhabitant_node() -> Node {
   task_id_layer_inhabitant(surface_nickname: ^task_id_nickname_wire)
 }

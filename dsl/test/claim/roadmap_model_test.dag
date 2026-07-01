@@ -1,17 +1,3 @@
-// dsl/test/claim/roadmap_model_test.dag
-//
-// §5 discriminating proof for gunbc.roadmap_model — the work-DAG authority model for a ROADMAP line
-// (slice-2 step 1). Proven BY EXECUTION over the projection folds, not by typecheck or grep.
-//
-// Three projections, each with a discriminating red/green pair:
-//   - dependency: roadmap_parent returns the decomposition parent; a top-level node has none.
-//   - carrier: a resolving plan-doc is clean; a DANGLING pointer is caught (the unwritable class).
-//   - status: node_status_drift routes through the slice-1 authority — a DerivableLine can drift,
-//     an AuthoredLine is honest residue (never drift).
-//
-// Run: gunbc run --source-root dsl --entry dsl/test/claim/roadmap_model_test.dag \
-//        --function roadmap_model_witnesses --claim-run
-
 module test.claim.roadmap_model
 
 import ctrl.process_algebra { ProcessNodeId }
@@ -20,13 +6,15 @@ import gunbc.roadmap_status {
   DriftVerdict, Drifted, Clean, Underivable,
 }
 import gunbc.roadmap_model {
-  PlanDocCarrier, NoCarrier, PlanDoc,
+  Pointer,
   RoadmapNode, RoadmapEdge,
   RoadmapParent, TopLevel, UnderParent,
+  NodeSizing, Unsized,
   roadmap_parent, is_top_level,
-  carrier_resolves, node_carrier_clean,
+  node_carrier_clean,
   node_status_drift,
 }
+import gunbc.roadmap_status { Signoff, Unsigned }
 
 data parent_node: ProcessNodeId = "invert-hand-maintained"
 data child_node: ProcessNodeId = "pr-checkbox-status"
@@ -43,78 +31,81 @@ fn verdict_is_underivable(v: DriftVerdict) -> Bool {
   match v { Underivable => true  Drifted => false  Clean => false }
 }
 
-// === Dependency projection ====================================================
-
-// A child node resolves to its decomposition parent (the indentation edge).
 fn witness_child_has_parent() -> Bool {
   match roadmap_parent(edges: edges(), node: child_node) {
     UnderParent { parent: p } => p == parent_node
     TopLevel => false
   }
 }
-// A node with no edge is top-level.
+
 fn witness_orphan_is_top_level() -> Bool {
   is_top_level(edges: edges(), node: orphan_node)
 }
-// The parent node itself is top-level here (it is no one's child).
+
 fn witness_parent_is_top_level() -> Bool {
   is_top_level(edges: edges(), node: parent_node)
 }
-
-// === Carrier projection: dangling is unwritable ===============================
 
 data existing_docs: List<String> = [
   "docs/plans/invert-hand-maintained.md",
   "DESIGN.md",
 ]
 
-fn node_with_carrier(c: PlanDocCarrier) -> RoadmapNode {
+fn node_with_carriers(cs: List<Pointer>) -> RoadmapNode {
   RoadmapNode {
     node: child_node,
     line: AuthoredLine { done: false, content: "PR→checkbox status" },
-    carrier: c,
+    carriers: cs,
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
   }
 }
 
-// A pointer to an existing doc resolves.
 fn witness_resolving_carrier_clean() -> Bool {
   node_carrier_clean(
-    rn: node_with_carrier(c: PlanDoc { path: "docs/plans/invert-hand-maintained.md" }),
+    rn: node_with_carriers(cs: [Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }]),
     existing_docs: existing_docs,
   )
 }
-// A DANGLING pointer (no such doc) is caught — the unwritable class.
+
 fn witness_dangling_carrier_caught() -> Bool {
   !node_carrier_clean(
-    rn: node_with_carrier(c: PlanDoc { path: "docs/plans/does-not-exist.md" }),
+    rn: node_with_carriers(cs: [Pointer { label: "plan", path: "docs/plans/does-not-exist.md" }]),
     existing_docs: existing_docs,
   )
 }
-// A pointer-less line is honest, not dangling.
+
 fn witness_no_carrier_clean() -> Bool {
-  node_carrier_clean(rn: node_with_carrier(c: NoCarrier), existing_docs: existing_docs)
+  node_carrier_clean(rn: node_with_carriers(cs: []), existing_docs: existing_docs)
 }
 
-// === Status projection: routes through the slice-1 authority ==================
-
-// A node whose embedded line is a DerivableLine on its (merged) PR but committed `[ ]` -> Drifted (the
-// stale-checkbox class), proving the model reuses slice-1's drift authority over the embedded line.
 fn witness_node_status_drifts() -> Bool {
   let rn = RoadmapNode {
     node: child_node,
     line: DerivableLine { prs: [5491], title: "stale", description: "" },
-    carrier: NoCarrier,
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
   }
-  verdict_is_drifted(v: node_status_drift(rn: rn, committed_box: false, merged: [5491]))
+  verdict_is_drifted(v: node_status_drift(rn: rn, committed_box: true, merged: [5491]))
 }
-// An AuthoredLine node is Underivable even when its mentioned PR is merged (the soundness boundary).
-fn witness_node_authored_underivable() -> Bool {
+
+fn witness_node_unsigned_box_clean() -> Bool {
   let rn = RoadmapNode {
     node: child_node,
     line: AuthoredLine { done: false, content: "partial evidence" },
-    carrier: NoCarrier,
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
   }
-  verdict_is_underivable(v: node_status_drift(rn: rn, committed_box: false, merged: [5491]))
+  match node_status_drift(rn: rn, committed_box: false, merged: [5491]) {
+    Clean => true
+    Drifted => false
+    Underivable => false
+  }
 }
 
 test fn roadmap_model_witnesses() -> Bool {
@@ -125,5 +116,5 @@ test fn roadmap_model_witnesses() -> Bool {
     && witness_dangling_carrier_caught()
     && witness_no_carrier_clean()
     && witness_node_status_drifts()
-    && witness_node_authored_underivable()
+    && witness_node_unsigned_box_clean()
 }

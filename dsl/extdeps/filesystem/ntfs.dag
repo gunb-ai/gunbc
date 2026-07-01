@@ -1,31 +1,22 @@
-// extdeps/filesystem/ntfs.dag — NTFS file-type taxonomy, cited.
-//
-// Upstream: [MS-FSCC] File System Control Codes, Microsoft Open Specifications
-//   — file attributes (FILE_ATTRIBUTE_*) and reparse-point tags (IO_REPARSE_TAG_*).
-//   https://learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/
-//
-// The cited NATIVE taxonomy for the Ntfs arm of std.os.types.FileSystemSemantics,
-// reduced into the OS-agnostic std.filesystem.EntryKind. This realization is why
-// EntryKind is NOT "POSIX renamed": NTFS has no S_IFIFO/S_IFSOCK/S_IFCHR/S_IFBLK
-// FILE entries (those live in the NT object namespace, not the volume), and it
-// adds the mount-point junction — a reparse construct with no POSIX equivalent.
-
 module extdeps.filesystem.ntfs
 
 import std.filesystem.types { EntryKind }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// NTFS native entry types as observed via file attributes + reparse tags.
-// Real spec names (the FILE_ATTRIBUTE_* / IO_REPARSE_TAG_* constants).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/"
+  }
+}
+
 type NtfsEntryType
-  = NormalFile                     // no FILE_ATTRIBUTE_DIRECTORY, no reparse point
-  | NtfsDirectory                  // FILE_ATTRIBUTE_DIRECTORY
-  | SymlinkReparse                 // FILE_ATTRIBUTE_REPARSE_POINT + IO_REPARSE_TAG_SYMLINK
-  | MountPointReparse              // FILE_ATTRIBUTE_REPARSE_POINT + IO_REPARSE_TAG_MOUNT_POINT (junction)
+  = NormalFile
+  | NtfsDirectory
+  | SymlinkReparse
+  | MountPointReparse
 
-// Reduce the NTFS native type into the agnostic EntryKind.
-//   - A symlink reparse is the genuine path-indirection → Symlink.
-//   - A mount-point junction is a distinct NTFS reparse construct (not a POSIX
-//     symlink: different resolution semantics) → Other, NOT nicknamed Symlink.
 fn ntfs_entry_kind(t: NtfsEntryType) -> EntryKind {
   match t {
     NormalFile         => RegularFile

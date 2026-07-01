@@ -1,31 +1,22 @@
-// extdeps/languages/go/emit.dag -- Go language facts for the v2 emitter.
-//
-// Single source of truth for Go-specific data consumed by the emitter.
-// Imports only the shared SimpleMethodSpec carrier from std; the rest are
-// leaf data declarations.
-//
-// Ref: The Go Programming Language Specification (go.dev/ref/spec)
-//      Go Standard Library (pkg.go.dev/std)
-//
-// Consumers:
-//   v2/05_emit.dag -- type mapping, keywords, container templates
-
 module extdeps.languages.go.emit
 
 import std.emit_model { SimpleMethodSpec }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// -- Keyword/operator translation ----------------------------------------
-// DAG keywords/operators -> Go syntax.
-// Ref: Go Spec, Operators and punctuation
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "go.dev/ref/spec"
+  }
+}
+
 data go_keywords: Map<String, String> = {
   "true": "true", "false": "false", "null": "nil",
   "and": "&&", "or": "||", "not": "!",
   "div": "/"
 }
 
-// -- Container type templates --------------------------------------------
-// {0} = element type, {1} = second type (maps).
-// Ref: Go Spec, Composite literals
 data go_container_templates: Map<String, String> = {
   "list": "[]\{0\}", "set": "map[\{0\}]struct{}",
   "optional": "*\{0\}", "map": "map[\{0\}]\{1\}",
@@ -33,8 +24,6 @@ data go_container_templates: Map<String, String> = {
   "boolean_algebra": "bool"
 }
 
-// -- Reserved words ------------------------------------------------------
-// Ref: Go Spec "Keywords" + predeclared identifiers
 data go_reserved: List<String> = [
   "break", "case", "chan", "const", "continue",
   "default", "defer", "else", "fallthrough", "for",
@@ -50,14 +39,8 @@ data go_reserved: List<String> = [
   "real", "recover"
 ]
 
-// -- Reserved word escape ------------------------------------------------
-// Ref: Go Spec -- Go uses no raw identifier escape; underscore suffix by convention.
-// Mirrors go_reserved_words.strategy from std.languages (NoEscape, but
-// the emitter appends "_" for keywords that clash with identifiers).
 data go_reserved_escape_suffix: String = "_"
 
-// -- Item definition facts ------------------------------------------------
-// Ref: Go Specification "Declarations and scope"
 data go_func_keyword: String = "func"
 data go_async_prefix: String = ""
 data go_struct_keyword: String = "struct"
@@ -70,27 +53,11 @@ data go_module_keyword: String = "package"
 data go_import_keyword: String = "import"
 data go_import_from_keyword: String = ""
 
-// -- Project scaffold ----------------------------------------------------
-// Ref: Go modules reference (go.dev/ref/mod)
 data go_manifest_file: String = "go.mod"
 data go_source_extension: String = ".go"
 
-// -- String-like types ------------------------------------------------------
-// Types that use string comparison/indexing semantics in Go.
 data go_string_types: List<String> = ["String", "Secret"]
 
-// -- Method templates -------------------------------------------------------
-// Named-placeholder templates for algebra method calls.
-// \{recv\} = pre-emitted receiver, \{arg\} = pre-emitted first argument.
-// Ref: Go standard library + v2rt runtime helpers.
-//
-// Single authority: `go_simple_method_specs` carries the flat-templatable
-// (unary `{recv}`/`{arg}`) methods the emitter renders by template.
-// `map`/`fold`/`concat` are deliberately NOT here — they are binary+
-// (`fold(coll, init, f)` per dsl/std/algebra.dag) and route through the runtime
-// bridge, which forwards every argument (a flat one-arg template would drop
-// fold's accumulator/callback). `go_method_templates_flat()` derives the emit
-// map from this list. Mirrors #5039's Rust slice.
 data go_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "count",            template: "len(\{recv\})",                          wraps_result: false },
   { method_name: "join",             template: "strings.Join(\{recv\}, \{arg\})",        wraps_result: false },
@@ -106,15 +73,11 @@ data go_simple_method_specs: List<SimpleMethodSpec> = [
   { method_name: "append",           template: "append(\{recv\}, \{arg\})",              wraps_result: false }
 ]
 
-// Derived: the flat templatable map the emitter reads (single authority above).
-// `map`/`fold`/`concat` are absent → they route via the runtime bridge (correct
-// argument forwarding).
 fn go_method_templates_flat() -> Map<String, String> {
   go_simple_method_specs
     |> fold(init: empty_map(), f: (acc, spec) => map_insert(acc, spec.method_name, spec.template))
 }
 
-// -- Expression syntax templates ------------------------------------------
 data go_lambda_template: String = "func({0}) interface\{\} \{ {1} \}"
 data go_error_expr_template: String = "panic({0})"
 data go_list_literal_empty: String = "[]interface\{\}\{\}"

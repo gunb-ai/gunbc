@@ -1,7 +1,3 @@
-// extdeps/formats/elf/segments.dag — ELF-64 program header decode (Slice 1: PT_LOAD subset).
-//
-// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch5.pheader.html
-
 module extdeps.formats.elf.segments
 
 import extdeps.formats.elf.primitives {

@@ -1,8 +1,3 @@
-//   Contains       ⇒ IsStructuralComposition
-//   DataDependsOn  ⇒ IsNonUseDependency
-//   GeneratedFrom  ⇒ RequiresResolutionWitness (fail-closed)
-
-
 module v2.test.lens_unused_parameters.non_use_edges
 
 import v2.compiler.infer { InferredFacts, InferredTree }

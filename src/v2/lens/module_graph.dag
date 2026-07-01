@@ -1,0 +1,148 @@
+module v2.lens.module_graph
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+import v2.std.algebra { FreeMonoid, fold_list, length, contains, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+type ModuleDeclarationFact {
+  module: String
+  path: String
+}
+
+type ImportResolutionFact {
+  path: String
+  import_module: String
+  target_declared: Bool
+}
+
+fn import_resolution_facts_live(
+  pool_roots: List<String>,
+  importer_roots: List<String>,
+  exclude_substrings: List<String>
+) -> List<ImportResolutionFact> {
+  import_resolution_facts(
+    pool_roots: pool_roots,
+    importer_roots: importer_roots,
+    exclude_substrings: exclude_substrings
+  )
+}
+
+fn module_declaration_facts_live(pool_roots: List<String>) -> List<ModuleDeclarationFact> {
+  module_declaration_facts(pool_roots: pool_roots)
+}
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+data no_paths: FreeMonoid<String> = []
+
+fn add_unseen(acc: FreeMonoid<String>, item: String) -> FreeMonoid<String> {
+  if contains(xs: acc, item: item, eq: string_eq) {
+    acc
+  } else {
+    list_snoc_item(xs: acc, item: item)
+  }
+}
+
+fn union_unseen(acc: FreeMonoid<String>, more: FreeMonoid<String>) -> FreeMonoid<String> {
+  fold_list(xs: more, empty: acc, cons: fn(a, x) { add_unseen(acc: a, item: x) })
+}
+
+fn paths_of_module(name: String, nodes: List<ModuleDeclarationFact>) -> FreeMonoid<String> {
+  fold_list(
+    xs: nodes,
+    empty: no_paths,
+    cons: fn(acc, node) {
+      if string_eq(a: node.module, b: name) {
+        add_unseen(acc: acc, item: node.path)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn imported_paths_of(
+  importer: String,
+  edges: List<ImportResolutionFact>,
+  nodes: List<ModuleDeclarationFact>
+) -> FreeMonoid<String> {
+  fold_list(
+    xs: edges,
+    empty: no_paths,
+    cons: fn(acc, edge) {
+      if string_eq(a: edge.path, b: importer) {
+        union_unseen(acc: acc, more: paths_of_module(name: edge.import_module, nodes: nodes))
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn expand_once(
+  reached: FreeMonoid<String>,
+  edges: List<ImportResolutionFact>,
+  nodes: List<ModuleDeclarationFact>
+) -> FreeMonoid<String> {
+  fold_list(
+    xs: reached,
+    empty: reached,
+    cons: fn(acc, importer) {
+      union_unseen(acc: acc, more: imported_paths_of(importer: importer, edges: edges, nodes: nodes))
+    }
+  )
+}
+
+fn close_to_fixpoint(
+  reached: FreeMonoid<String>,
+  edges: List<ImportResolutionFact>,
+  nodes: List<ModuleDeclarationFact>,
+  fuel: Int
+) -> FreeMonoid<String> {
+  if fuel <= 0 {
+    reached
+  } else {
+    let next = expand_once(reached: reached, edges: edges, nodes: nodes)
+    if length(xs: next) == length(xs: reached) {
+      reached
+    } else {
+      close_to_fixpoint(reached: next, edges: edges, nodes: nodes, fuel: fuel - 1)
+    }
+  }
+}
+
+fn import_closure(
+  entry_path: String,
+  edges: List<ImportResolutionFact>,
+  nodes: List<ModuleDeclarationFact>
+) -> FreeMonoid<String> {
+  close_to_fixpoint(
+    reached: list_snoc_item(xs: no_paths, item: entry_path),
+    edges: edges,
+    nodes: nodes,
+    fuel: length(xs: nodes)
+  )
+}
+
+data module_graph_exclude_substrings: List<String> = []
+
+fn import_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMonoid<String> {
+  import_closure(
+    entry_path: entry_path,
+    edges: import_resolution_facts_live(
+      pool_roots: pool_roots,
+      importer_roots: pool_roots,
+      exclude_substrings: module_graph_exclude_substrings
+    ),
+    nodes: module_declaration_facts_live(pool_roots: pool_roots)
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}

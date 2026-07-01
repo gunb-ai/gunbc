@@ -1,10 +1,7 @@
-// extdeps/cache/types.dag — cited cache catalog types (vendor extensions to std shape).
-//
-// std.cache_interface owns the agnostic interface shape; vendor-specific encoding
-// variants, input surfaces, and transport keys live here (§3 — dispatch lives in
-// extdeps/, not std/).
-
 module extdeps.cache.types
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
 import extdeps.cache.catalog_io { CacheInterfaceCatalogIoSemantics }
 import extdeps.cache.catalog_placement { CacheInterfaceCatalogPlacement }
@@ -24,8 +21,6 @@ import std.cache_interface {
   CacheEvidence,
   OpaqueStringEncoding,
   CasContentEncoding,
-  UpsertSubject,
-  FilePaths,
   OpaqueStringKey,
   CasContentDigest,
   ArtifactIdentity,
@@ -34,14 +29,19 @@ import std.cache_interface {
 import std.types { ContentHash, NonEmptyStr, Bool }
 import std.list { List }
 
-// Vendor-specific §1.4 input surfaces (rustc/cargo/rustup toolchain axes).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/cache"
+  }
+}
+
 type CatalogInputSurface
   = UpsertSubject
   | FilePaths
   | RustcInvocation
   | ToolchainSpec
 
-// Vendor-specific §1.2 transport encodings (sccache/cargo realization handlers).
 type CatalogProviderKeyEncoding
   = OpaqueStringEncoding
   | CasContentEncoding
@@ -59,21 +59,6 @@ type CatalogBackendCacheKey {
   key: CatalogProviderKey
 }
 
-// Cache key inputs — single authority for WHAT the key content-addresses, replacing the
-// forked pair (a hand-authored `classification` tag + a hand-authored `inputs_considered`
-// list that had to be kept in agreement, the §3 fork PR #5423 false-greened). The variant
-// IS the key-derivation class, and it determines the inputs BY CONSTRUCTION:
-//   - ContentAddressed — OUR caches: we author the key (content-address by value), so the
-//     inputs are DERIVED from invalidation_triggers (`content_addressed_inputs`). There is
-//     NO authorable inputs field — declaring an input you don't key, or keying one you don't
-//     declare, is UNWRITABLE (the §0 model↔realization fork dissolved at the model side).
-//   - NativeInternal — EXTERNAL vendor caches (cargo/rustup/sccache): the vendor computes
-//     its own internal hash, so the inputs are a CITED observation of what it keys (§3
-//     "model what the API returns"), not something we construct. Cited, anchored.
-//   - HandAuthored — an authored key string (gha_actions_cache): invalidation is the author
-//     bumping the string; its components are likewise cited, not derived.
-// NativeInternal/HandAuthored are the §6 genuinely-unstructurable carve-out, made explicit
-// in the TYPE: a citation we validate (key_completeness lens), not a construction we own.
 type CatalogKeyInputs
   = ContentAddressed
   | NativeInternal { cited_inputs: List<CatalogInputSurface> }
@@ -97,13 +82,6 @@ fn invalidation_triggers_on_toolchain_change(triggers: List<InvalidationTrigger>
   })
 }
 
-// Inputs a content-addressed-by-value cache keys, DERIVED from its invalidation triggers:
-// always the upsert subject's content; plus the transform (ToolchainSpec) iff it promises to
-// invalidate on toolchain change. DependencyChange needs no extra axis — for a CAV cache the
-// dependencies are PART of the subject content (the resolved closure), so UpsertSubject
-// already covers them; ManualPurge/TtlExpiry are not content inputs. This is the realizer's
-// keyed-axis set expressed at the model layer (resolved_graph_cache.rs folds the same set;
-// the two are unified at v2/realize — see CatalogKeyInputs header / DESIGN model↔realization).
 fn content_addressed_inputs(triggers: List<InvalidationTrigger>) -> List<CatalogInputSurface> {
   if invalidation_triggers_on_toolchain_change(triggers: triggers) {
     [UpsertSubject, ToolchainSpec]
@@ -112,8 +90,6 @@ fn content_addressed_inputs(triggers: List<InvalidationTrigger>) -> List<Catalog
   }
 }
 
-// The single inputs_considered authority: DERIVED for our content-addressed caches, the
-// CITED list for external ones. No row hand-authors inputs for a content-addressed cache.
 fn catalog_inputs_considered(kd: CatalogKeyDerivationFacts) -> List<CatalogInputSurface> {
   match kd.key_inputs {
     ContentAddressed => content_addressed_inputs(triggers: kd.invalidation_triggers)
@@ -122,8 +98,6 @@ fn catalog_inputs_considered(kd: CatalogKeyDerivationFacts) -> List<CatalogInput
   }
 }
 
-// Project the sum back onto the standalone KeyDerivationClass tag (git/object_storage still
-// consume the bare enum). The variant IS the class — this is a total, lossless projection.
 fn catalog_key_derivation_classification(kd: CatalogKeyDerivationFacts) -> KeyDerivationClass {
   match kd.key_inputs {
     ContentAddressed => ContentAddressedByValue
@@ -132,7 +106,6 @@ fn catalog_key_derivation_classification(kd: CatalogKeyDerivationFacts) -> KeyDe
   }
 }
 
-// Cited vendor + realization catalog row (full enum surface for extdeps dispatch).
 type CacheInterfaceCatalogFacts {
   identity: CacheInterfaceId
   backing_surface: StorageSurface

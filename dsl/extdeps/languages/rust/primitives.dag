@@ -1,117 +1,16 @@
-// extdeps/languages/rust/primitives.dag -- Structural target-primitive
-// declarations for the Rust target.
-//
-// PILOT SCOPE (T-Ground-Pilot): {i8, i16, i32, i64, i128, u8, u16, u32, u64,
-// u128, f32, f64, bool, ()} only. No containers, no coercion paths.
-//
-// T-Int128 SLICE B1 / B2 (RESOLVED 2026-05-06): both signed `i128` and
-// unsigned `u128` rows are present. The prior B2 deferral of `u128`
-// (because `u128::MAX` exceeded the host `i128` representation used by
-// `IntervalInt::ExactInterval` for range-fact storage) was closed by R3
-// Phase A widening the host repr to arbitrary-precision `BigInt`
-// (commit `e7ba022c6`) under Director Path A RATIFIED at
-// gunbc#1739 #issuecomment-4392731264; the `u128` row landed in Phase B-1
-// (commit `59511503e`).
-//
-// FOLLOW-ON DEFERRAL: `isize` / `usize` rows remain deferred to a separate
-// substrate-fact-introduction follow-on (named cascade — `IntSize` /
-// `UIntSize` kernel integer carriers in `dsl/std/integer.dag`). Director-
-// level scope; not bundled with this brief per Mgr disposition Path 1
-// at gunbc#1761 #issuecomment-4393235461.
-//
-// PURPOSE: Each declaration says "Rust target type T is a target primitive
-// inhabiting algebra A over carrier C." Selection by algebra-homomorphism
-// match — the toy grounding-inhabitance engine reproduced
-// today's name-keyed table-lookup routing on the pilot set, validating
-// the target-grounding-proposal.md thesis that "the mapping should fall
-// out from the algebra, not from a hand-maintained table."
-//
-// CONSUMER BOUNDARY (HONEST STATE): the engine does NOT yet read this
-// .dag file directly. It mirrors the structural facts authored here as
-// Rust constants, with this file as the documented authority. Wiring the
-// engine to consume .dag declarations as parsed-data is T-Ground-Engine's
-// production-walker job; until then the grounding-inhabitance mirror must
-// be kept in sync by hand when declarations here change. The duplication
-// is bounded — pilot scope is 12 rows (10 IntegerPrimitive + 2
-// NonIntegerPrimitive `target_name` entries). Multiset parity was
-// additionally ratcheted by the grounding-engine validator
-// (`validate_rust_grounding_primitives_target_name_multiset_matches_mirror`).
-// Parallel-existence, deletable as a unit when T-Ground-Engine lands and
-// removes both this file's parallel-existence status and the pilot crate
-// together.
-//
-// LANES:
-//   This file is parallel-existence. Dissolution of
-//   dsl/extdeps/languages/rust/types.dag (TypeCheckpoint name-keyed table
-//   + InhabitantDecl algebra-keyed fallback) is T-Ground-Dissolve scope,
-//   not Pilot.
-//
-// SOURCE AUTHORITY:
-//   Rust Reference §Types — https://doc.rust-lang.org/reference/types.html
-//     §3.4 Numeric types         (i8/i16/i32/i64, u8/u16/u32/u64)
-//     §3.5 Boolean type          (bool)
-//     §3.7 Tuple types           (() as the empty tuple / unit)
-//   This is language-level grounding (Rust Reference, not stdlib) — the
-//   two-authority discipline (language reference vs stdlib) starts here.
-//
-// SUBSTRATE-GAP FLAGS (DB-11 will sharpen):
-//   1. `IntegerOverflow` carries two's-complement-wrap as a closed-enum
-//      value field on the `IntegerPrimitive` variant. Post-DB-11 this
-//      becomes a where-clause refinement on the algebra carrier (e.g.
-//      OrderedRing<Word64> where overflow = TwoComplementWrap), and
-//      under T-Ground-Engine refinement is per-operator (debug vs
-//      release for +/-/*; `/` and `%` panic on int::MIN/-1 regardless;
-//      `wrapping_*`/`checked_*`/`saturating_*` are explicit operator
-//      selections per Rust Reference §"overflow"). Today the language
-//      doesn't yet support first-class refinement qualifiers on type
-//      aliases, so the cleanest structural shape is a per-variant
-//      carried enum, with the integer/non-integer split handled by
-//      sum-typing `RustPrimitive` so overflow is structurally absent
-//      where it would be nonsensical (no `bool: Some(TwoComplementWrap)`,
-//      no `i64: None`).
-//   2. `IntegerAlgebra` / `NonIntegerAlgebra` / `TargetCarrier` enums
-//      identify std/algebra.dag and std/bit.dag concepts by structural
-//      tag rather than as first-class type-references-as-data. The .dag
-//      substrate doesn't yet expose type expressions as data values
-//      (data-table fields can't be `algebra: OrderedRing` with OrderedRing
-//      referenced as a
-//      type identity). When that closes — co-temporally with the
-//      types.dag/coercion.dag dissolution under T-Ground-Dissolve — these
-//      tag enums collapse into direct algebra-and-carrier references and
-//      this file shrinks accordingly.
-//   3. Unit modeled with `TerminalAlgebra` / `TerminalCarrier` sentinels.
-//      Post-DB-11 this becomes Cardinality<T, Exactly(1)>; the terminal
-//      object is the canonical inhabitant. Pilot uses the sentinel pair
-//      because cardinality-substrate is not yet available (out-of-scope
-//      per brief: "Container types — block on cardinality-substrate.").
-
 module extdeps.languages.rust.primitives
 
 import std.algebra { OrderedRing, Semiring, BooleanAlgebra }
 import std.bit { Bit, Byte, Word16, Word32, Word64, Word128 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-
-// =========================================================================
-// Algebra tags, partitioned by overflow-bearing class.
-//
-// Closed enumerations identifying which std/algebra.dag structure a target
-// primitive inhabits. Partitioned into integer-bearing and non-integer-
-// bearing subtypes so that overflow facts attach only where they have
-// meaning — making `bool: Some(TwoComplementWrap)` and `i64: None`
-// structurally unrepresentable rather than ruled out by convention
-// (state-space modeling discipline; no validation passes).
-//
-//   IntegerAlgebra
-//     OrderedRingAlgebra  <-> std.algebra.OrderedRing<C>    (signed integers)
-//     SemiringAlgebra     <-> std.algebra.Semiring<C>       (unsigned integers)
-//
-//   NonIntegerAlgebra
-//     ApproximateFieldAlgebra<-> std.approximate_field.ApproximateField<F> (Float)
-//     BooleanAlgebraAlgebra  <-> std.algebra.BooleanAlgebra<C> (Bool)
-//     TerminalAlgebra        <-> single-inhabitant terminal    (Unit; DB-11)
-//
-// Substrate-gap flag #2: these tags are bridges to algebra references.
-// =========================================================================
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/reference/types.html"
+  }
+}
 
 type IntegerAlgebra
   = OrderedRingAlgebra
@@ -122,33 +21,6 @@ type NonIntegerAlgebra
   | BooleanAlgebraAlgebra
   | TerminalAlgebra
 
-
-// =========================================================================
-// Target carrier tag.
-//
-// Closed enumeration identifying which std/bit.dag carrier (or terminal)
-// the target primitive's **algebra value-domain witness** corresponds to,
-// per the std convention declared in `dsl/std/integer.dag:4` ("Int is a
-// CARRIER (Word64) with EVIDENCE that it inhabits OrderedRing"):
-//   BitCarrier     <-> std.bit.Bit         (BooleanAlgebra value-domain: 2-element set)
-//   ByteCarrier    <-> std.bit.Byte        (Ring/Semiring value-domain over 2^8)
-//   Word16Carrier  <-> std.bit.Word16      (Ring/Semiring value-domain over 2^16)
-//   Word32Carrier  <-> std.bit.Word32      (Ring/Semiring or ApproximateField width axis)
-//   Word64Carrier  <-> std.bit.Word64      (Ring/Semiring or ApproximateField width axis)
-//   Word128Carrier <-> std.bit.Word128     (Ring/Semiring value-domain over 2^128)
-//   TerminalCarrier<-> single inhabitant   (Unit; DB-11 -> Cardinality 1)
-//
-// NOT target storage layout. Rust's `bool` storage is 1 byte with only
-// 0x00 and 0x01 valid (Rust Reference §3.5), but its algebra value-domain
-// is the 2-element {⊤, ⊥} carried by Bit. Storage layout, ABI, and
-// validity bytes are a distinct axis the pilot deliberately doesn't
-// model — they're target-codegen concerns scoped to T-Ground-Engine /
-// emit-pipeline, not to the structural target-grounding routing the
-// pilot probes.
-//
-// Substrate-gap flag #2: these tags are bridges to type references.
-// =========================================================================
-
 type TargetCarrier
   = BitCarrier
   | ByteCarrier
@@ -158,72 +30,30 @@ type TargetCarrier
   | Word128Carrier
   | TerminalCarrier
 
-
-// =========================================================================
-// Integer overflow semantics.
-//
-// All Rust integer primitives in release mode wrap on overflow per
-// two's-complement; debug mode panics on overflow. This is uniform across
-// i8..u64 and so does not affect routing within the pilot set, but is
-// declared structurally rather than left implicit because the
-// target-grounding-proposal.md worked example calls it out as a
-// declared-fact (proposal lines 174-210).
-//
-// Substrate-gap flag #1: post-DB-11 this becomes a where-clause refinement
-// on the algebra carrier rather than a separate enum field.
-// =========================================================================
-
 type IntegerOverflow
   = TwoComplementWrap
   | Saturating
   | Trap
 
-
-// =========================================================================
-// Rust target-primitive declaration.
-//
-// Sum-typed so the integer/non-integer split is structural, not
-// conventional: overflow is a field on IntegerPrimitive and structurally
-// absent on NonIntegerPrimitive. State-space discipline — no
-// `bool: Some(TwoComplementWrap)`, no `i64: None`. is_copy carries on
-// both variants (target-specific Copy-trait fact consumed downstream by
-// sharing/Rc decisions). overflow carries on IntegerPrimitive only
-// (T-Ground L4-(C) witness consumer; substrate-gap flag #1 names DB-11
-// dissolution to a where-clause refinement on the algebra carrier).
-// =========================================================================
-
 type RustPrimitive
   = IntegerPrimitive {
-      target_name: String          // Rust syntactic token: "i8".."i64", "u8".."u64"
+      target_name: String
       algebra: IntegerAlgebra
       carrier: TargetCarrier
-      // Integer literal range narrowing walks `rust_grounding_primitives`
-      // (`ValueBody::List`) and matches this row's `algebra`/`carrier`
-      // variant identities to the std `OrderedRing<C>` / `Semiring<C>`
-      // witness on the user's type — single authority for bounds.
+
       range_min_inclusive: String
       range_max_inclusive: String
       is_copy: Bool
       overflow: IntegerOverflow
     }
   | NonIntegerPrimitive {
-      target_name: String          // Rust syntactic token: "bool", "()"
+      target_name: String
       algebra: NonIntegerAlgebra
       carrier: TargetCarrier
       is_copy: Bool
     }
 
-// =========================================================================
-// Grounding mirror primitive set.
-//
-// Ordering: signed integers (i8..i128), unsigned integers (u8..u128), floats
-// (f32, f64), bool, (). No other types in this bounded grounding scope.
-// =========================================================================
-
 data rust_grounding_primitives: List<RustPrimitive> = [
-  // -- Signed integers : OrderedRing over machine-word carriers ----------
-  // Rust Reference §3.4. signed = additive inverse exists (negate in
-  // OrderedRing). Wrap is the release-mode semantics.
 
   IntegerPrimitive { target_name: "i8",  algebra: OrderedRingAlgebra, carrier: ByteCarrier,
     range_min_inclusive: "-128", range_max_inclusive: "127",
@@ -241,17 +71,10 @@ data rust_grounding_primitives: List<RustPrimitive> = [
     range_min_inclusive: "-9223372036854775808", range_max_inclusive: "9223372036854775807",
     is_copy: true, overflow: TwoComplementWrap },
 
-  // T-Int128 Slice B1: signed 128-bit. Symmetric u128 row follows in unsigned
-  // section (R3 Phase B-1; Phase A BigInt range storage — see header).
   IntegerPrimitive { target_name: "i128", algebra: OrderedRingAlgebra, carrier: Word128Carrier,
     range_min_inclusive: "-170141183460469231731687303715884105728",
     range_max_inclusive: "170141183460469231731687303715884105727",
     is_copy: true, overflow: TwoComplementWrap },
-
-
-  // -- Unsigned integers : Semiring over machine-word carriers -----------
-  // Rust Reference §3.4. unsigned = no additive inverse (no negate in
-  // Semiring). Distinguished from signed by algebra tag, not by carrier.
 
   IntegerPrimitive { target_name: "u8",  algebra: SemiringAlgebra, carrier: ByteCarrier,
     range_min_inclusive: "0", range_max_inclusive: "255",
@@ -269,25 +92,10 @@ data rust_grounding_primitives: List<RustPrimitive> = [
     range_min_inclusive: "0", range_max_inclusive: "18446744073709551615",
     is_copy: true, overflow: TwoComplementWrap },
 
-  // R3 Phase B (Director Path A RATIFIED at gunbc#1739 #issuecomment-4392731264;
-  // Option (ii) confirmed at gunbc#1761 #issuecomment-4393145631): u128 row
-  // unblocked by Phase A's `IntervalInt::ExactInterval` BigInt host repr
-  // widening (commit `e7ba022c6`). Range is `[0, 2^128 - 1]`; the prior
-  // `i128` host repr forced this row deferred (Slice B2 marker now
-  // resolved). Symmetric to i128 above; `Word128Carrier` per Rust Reference §3.4.
   IntegerPrimitive { target_name: "u128", algebra: SemiringAlgebra, carrier: Word128Carrier,
     range_min_inclusive: "0",
     range_max_inclusive: "340282366920938463463374607431768211455",
     is_copy: true, overflow: TwoComplementWrap },
-
-
-  // -- Floats : ApproximateField over machine-width refinements ----------
-  // Rust Reference §3.4. Floating-point types are IEEE 754 binary32/binary64.
-  // Substrate authority: `dsl/std/float.dag` declares Float32/Float64 as
-  // aliases of `Real32` / `Real64`, where each `Real*` is
-  // `Compose<Real, MachineWidth<32|64>>` (literal-Nat slot-2); `Real` itself is
-  // `ApproximateField<FieldOfFractions<Int>>`, keeping exact-rational carrier
-  // and approximate witness layers distinct.
 
   NonIntegerPrimitive { target_name: "f32", algebra: ApproximateFieldAlgebra, carrier: Word32Carrier,
     is_copy: true },
@@ -295,19 +103,8 @@ data rust_grounding_primitives: List<RustPrimitive> = [
   NonIntegerPrimitive { target_name: "f64", algebra: ApproximateFieldAlgebra, carrier: Word64Carrier,
     is_copy: true },
 
-
-  // -- Bool : BooleanAlgebra over Bit -----------------------------------
-  // Rust Reference §3.5. The canonical two-element Boolean algebra; carrier
-  // is a single Bit.
-
   NonIntegerPrimitive { target_name: "bool", algebra: BooleanAlgebraAlgebra, carrier: BitCarrier,
     is_copy: true },
-
-
-  // -- Unit : terminal object -------------------------------------------
-  // Rust Reference §3.7 (empty tuple). DB-11 substrate gap flag #3:
-  // TerminalAlgebra/TerminalCarrier are sentinels for the not-yet-modeled
-  // Cardinality<T, Exactly(1)> refinement.
 
   NonIntegerPrimitive { target_name: "()", algebra: TerminalAlgebra, carrier: TerminalCarrier,
     is_copy: true }

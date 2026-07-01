@@ -1,5 +1,3 @@
-// Fixture: module with formal https anchor (live projection GREEN control).
-
 module extdeps.fixture.external_authority_clean_https
 
 import extdeps.external_authority { ExternalAuthority }

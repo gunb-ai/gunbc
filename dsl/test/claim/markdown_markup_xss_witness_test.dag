@@ -1,22 +1,22 @@
-// dsl/test/claim/markdown_markup_xss_witness_test.dag
-//
-// By-execution witnesses for std.markdown CommonMark consumer: reduces to
-// std.markup.Fragment, serializes through the ONE serialize_fragment fold
-// (CoC=1 with html/react), and scheme-allowlists link/image URLs fail-closed.
-//
-// Run via: gunbc run --source-root dsl --entry <this> --function <fn> --claim-run
-
 module test.claim.markdown_markup_xss_witness
 
 import std.markup {
   escape_url,
-  serialize_fragment,
+  Serialized,
+  Rejected,
+}
+import extdeps.uri_validation {
+  validate_href,
+  SafeHref,
+  RejectedHref,
   DangerousScheme,
   DataScheme,
   JavascriptScheme,
-  RejectedHref,
-  SafeHref,
-  validate_href,
+}
+import extdeps.languages.html_fragment { serialize_fragment }
+import extdeps.languages.markdown {
+  serialize_markdown_document,
+  try_serialize_markdown_document,
 }
 import std.markdown {
   CodeBlock,
@@ -33,14 +33,10 @@ import std.markdown {
   MarkdownListItem,
   OrderedListBlock,
   ParagraphBlock,
-  Rejected,
-  Serialized,
   StrongInline,
   TextInline,
   UnorderedListBlock,
   markdown_document_to_fragment,
-  serialize_markdown_document,
-  try_serialize_markdown_document,
 }
 
 fn sample_readme_doc() -> MarkdownDocument {
@@ -163,7 +159,7 @@ fn witness_image_serializes() -> Bool {
   }
   match try_serialize_markdown_document(doc: doc) {
     Serialized { html: h } =>
-      h == "<div><p><img src=\"/static/logo.png\" alt=\"logo\"></img></p></div>"
+      h == "<div><p><img src=\"/static/logo.png\" alt=\"logo\"></p></div>"
     Rejected { reason: _ } => false
   }
 }
@@ -179,8 +175,6 @@ fn witness_heading_levels_map_to_tags() -> Bool {
     Rejected { reason: _ } => false
   }
 }
-
-// -- XSS reject-witness: link and image URLs ----------------------------------
 
 fn javascript_link_doc() -> MarkdownDocument {
   MarkdownDocument {

@@ -1,10 +1,3 @@
-// dsl/test/claim/realization_width_witness_test.dag
-//
-// §5 discriminating proof for std.realization_width — peripheral host spawn width
-// is min(IndependentShards.shard_count, PlacementSupplyRow.hardware_threads).
-//
-// Run: gunbc run --source-root dsl --entry <this> --function realization_width_witnesses --claim-run
-
 module test.claim.realization_width_witness
 
 import std.nat { Nat }
@@ -16,6 +9,7 @@ import std.realization_schedule {
   RunnableSingleClaim,
   CostAccount,
   cost_account_predicted_zero,
+  runnable_resource_profile_negligible,
 }
 import std.realization {
   bounded_host_spawn_width,
@@ -28,6 +22,10 @@ import std.realization {
   witness_unreadable_budget_falls_back_conservative,
   witness_safety_fraction_is_load_bearing,
   witness_subunit_budget_admits_one,
+  witness_pids_term_binds_below_cores_and_memory,
+  witness_memory_term_still_binds_under_three_term_fold,
+  witness_unreadable_pids_budget_falls_back_conservative,
+  witness_subunit_pids_budget_admits_one,
 }
 
 fn synthetic_plan_total() -> CostAccount<Nano> {
@@ -50,9 +48,9 @@ fn synthetic_plan() -> RealizationPlan<Nano> {
     target: "width-witness-target"
     objective: RealizationObjective { goals: [] }
     schedule: [
-      [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn }],
+      [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
       [
-        RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes" }
+        RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes", profile: runnable_resource_profile_negligible() }
       ]
     ]
     total: synthetic_plan_total()
@@ -111,7 +109,6 @@ fn witness_measured_balance_discriminator() -> Bool {
   witness_measured_cost_affects_shard_balance()
 }
 
-// §1-C memory-aware width: budget non-binding → width = shard_count (the 4→7 reality).
 fn witness_memory_non_binding_at_7() -> Bool {
   witness_memory_term_non_binding_uses_shard_count(
     shard_count: 7,
@@ -132,4 +129,8 @@ test fn realization_width_witnesses() -> Bool {
     && witness_unreadable_budget_falls_back_conservative()
     && witness_safety_fraction_is_load_bearing()
     && witness_subunit_budget_admits_one()
+    && witness_pids_term_binds_below_cores_and_memory()
+    && witness_memory_term_still_binds_under_three_term_fold()
+    && witness_unreadable_pids_budget_falls_back_conservative()
+    && witness_subunit_pids_budget_admits_one()
 }

@@ -1,8 +1,3 @@
-// Scope: scanner-execution receipt — the live transport-script projection must flag a planted
-//        let-bound string literal passed to script: position (LetBoundStringLiteral shape). The
-//        discriminating RED input that goes red when the detection breaks. Fixture committed at
-//        src/v2/test/fixture/transport_script_scan/let_bound_literal/plant.dag.
-
 module v2.test.host_language_transport_script.scanner.let_bound_literal
 
 import v2.lens.host_language_transport_script {

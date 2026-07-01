@@ -1,0 +1,13 @@
+module v2.test.extdeps_shape_transport_policy.corpus.runtime_local_embedded_policy
+
+import v2.lens.extdeps_shape_transport_policy {
+  extdeps_live_module_embedded_policy_literal_count
+}
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_runtime_local_module }
+import v2.std.logic { Bool }
+
+test fn corpus_runtime_local_embedded_policy_defused_holds() -> Bool {
+  extdeps_live_module_embedded_policy_literal_count(
+    module: extdeps_runtime_local_module
+  ) == 0
+}

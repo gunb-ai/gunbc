@@ -1,39 +1,3 @@
-// dsl/test/claim/gha_expression_roundtrip_test.dag
-//
-// The §5.2 round-trip law for the SECOND medium — GitHub Actions `${{ }}`
-// EXPRESSIONS (a recursive expression sub-language, structurally distinct from
-// markdown's block document). `ingest ∘ emit = id` over the flat canonical core,
-// reading the SAME ExpressionSpellings rows + context_name/function_name name
-// authorities the emitter writes (DESIGN §4 one grammar both directions; §5.2
-// round-trip-as-completeness). Same 5-tooth pattern as the markdown slice #5525.
-//
-// Teeth:
-//   1. ROUND-TRIP LAW — a flat-core expression AND a template round-trip exactly.
-//   2. ROW-SHARED both directions — emit AND ingest under a perturbed row still
-//      round-trips; exercised on TWO independent rows (path_sep AND or_op).
-//   3. DISCRIMINATING — perturbed-emit + canonical-ingest MUST fail (proves
-//      ingest READS the row, not a forked parser), for each of the two rows.
-//   4. OR-ASSOCIATIVITY PARTITION — a LEFT-nested `||` round-trips (Lossless,
-//      the canonical normal form) AND a RIGHT-nested `||` does NOT (it collapses
-//      to left-assoc): `id` on the canonical core, a section on non-canonical
-//      input. This is the subtle, most valuable discriminator (manager-flagged).
-//   5. FRONTIER EXECUTABLE — the Lossy partition is asserted by execution to NOT
-//      round-trip (right-nested or, string literal carrying `||`, nested
-//      multi-arg call), so the boundary is enforced, not just commented.
-//   6. FIDELITY TAG — the recovered core advertised Lossless.
-//   7. EMIT NON-REGRESSION (load-bearing) — the ExpressionSpellings extraction
-//      refactored LIVE emit (#5499, feeds ci.yml); serialize_*_with(default) is
-//      proven BYTE-IDENTICAL to the canonical serialize_* and to the pinned GHA
-//      bytes, so the round-trip slice did not regress the forward path. (The live
-//      consumers — ci_yaml_serializer_witness, medium_structure_containment
-//      discriminators — also stay green; run them alongside.)
-//
-// FLAT-CORE HONESTY: this is round-trip-complete for the FLAT core, NOT the whole
-// GHA expression language — nesting is common in real GHA and is the fenced Lossy
-// frontier (see expressions.dag FIDELITY BOUNDARY).
-//
-// Run: gunbc run --source-root dsl --entry dsl/test/claim/gha_expression_roundtrip_test.dag --function gha_expression_roundtrip_keystone_holds --claim-run
-
 module test.claim.gha_expression_roundtrip
 
 import extdeps.github.expressions {
@@ -55,7 +19,6 @@ import extdeps.github.expressions {
   ingest_expression,
   ingest_expression_with,
   ingest_template,
-  gha_expression_medium_lossless,
   Github,
   Runner,
   HashFiles,
@@ -63,10 +26,9 @@ import extdeps.github.expressions {
   FromJSON,
   Format,
 }
-import extdeps.communication.medium { Lossless, Lossy }
+import extdeps.communication.fidelity_carriers { source_medium_carried }
+import extdeps.communication.medium { Lossless }
 
-// A flat-core expression: a left-nested `||` of a function call (flat string-literal
-// args), a multi-segment context path, and a context access.
 fn core_expr() -> Expression {
   LogicalOr {
     left: LogicalOr {
@@ -80,7 +42,6 @@ fn core_expr() -> Expression {
   }
 }
 
-// A flat template: literal runs interleaved with interpolated context reads.
 fn core_template() -> ExpressionTemplate {
   ExpressionTemplate {
     segments: [
@@ -92,23 +53,11 @@ fn core_template() -> ExpressionTemplate {
   }
 }
 
-fn roundtrips_canonical(e: Expression) -> Bool {
-  match ingest_expression(src: serialize_expression(expression: e)) {
-    Present { value: v } => v == e
+fn witness_roundtrip_expression() -> Bool {
+  match ingest_expression(src: serialize_expression(expression: core_expr())) {
+    Present { value: v } => v == core_expr()
     Absent => false
   }
-}
-
-fn does_not_roundtrip(e: Expression) -> Bool {
-  match ingest_expression(src: serialize_expression(expression: e)) {
-    Present { value: v } => !(v == e)
-    Absent => true
-  }
-}
-
-// Tooth 1: the round-trip law over the flat core.
-fn witness_roundtrip_expression() -> Bool {
-  roundtrips_canonical(e: core_expr())
 }
 
 fn witness_roundtrip_template() -> Bool {
@@ -118,7 +67,6 @@ fn witness_roundtrip_template() -> Bool {
   }
 }
 
-// Perturbation builder: override path_sep and/or or_op, keep every other row canonical.
 fn override_spellings(path_sep: String, or_op: String) -> ExpressionSpellings {
   ExpressionSpellings {
     path_sep: path_sep,
@@ -147,15 +95,10 @@ fn roundtrips_under(sp: ExpressionSpellings) -> Bool {
   }
 }
 
-// Tooth 2: emit AND ingest under the SAME perturbed row still round-trips —
-// both directions read the row. Exercised on TWO independent rows.
 fn witness_roundtrip_under_perturbed_rows() -> Bool {
   roundtrips_under(sp: perturbed_path_sep()) && roundtrips_under(sp: perturbed_or_op())
 }
 
-// Tooth 3: discriminating — perturbed-emit + CANONICAL-ingest MUST fail (the
-// shifted source is unreadable by a canonical ingest). Inert (still equal) ==
-// ingest hard-coded the spelling == RED. Checked for each of the two rows.
 fn ingest_reads(sp: ExpressionSpellings) -> Bool {
   match ingest_expression(src: serialize_expression_with(expression: core_expr(), sp: sp)) {
     Present { value: v } => !(v == core_expr())
@@ -167,7 +110,6 @@ fn witness_ingest_reads_rows() -> Bool {
   ingest_reads(sp: perturbed_path_sep()) && ingest_reads(sp: perturbed_or_op())
 }
 
-// A LEFT-nested `||` (the canonical normal form the emitter/ingest agree on).
 fn left_nested_or() -> Expression {
   LogicalOr {
     left: LogicalOr {
@@ -178,9 +120,6 @@ fn left_nested_or() -> Expression {
   }
 }
 
-// A RIGHT-nested `||` — emits to the SAME bytes as the left-nested form, so
-// ingest (fold-left) recovers the left-nested tree, NOT this one: it does not
-// round-trip. The honest §5.2 reading — `id` on the canonical core only.
 fn right_nested_or() -> Expression {
   LogicalOr {
     left: ContextAccess { context: Runner, path: ["os"] },
@@ -191,18 +130,21 @@ fn right_nested_or() -> Expression {
   }
 }
 
-// Tooth 4: the OR-associativity partition — LEFT round-trips, RIGHT does not.
 fn witness_or_associativity_partition() -> Bool {
-  roundtrips_canonical(e: left_nested_or()) && does_not_roundtrip(e: right_nested_or())
+  match ingest_expression(src: serialize_expression(expression: left_nested_or())) {
+    Present { value: left_v } =>
+      match ingest_expression(src: serialize_expression(expression: right_nested_or())) {
+        Present { value: right_v } => (left_v == left_nested_or()) && !(right_v == right_nested_or())
+        Absent => false
+      }
+    Absent => false
+  }
 }
 
-// Frontier: a string literal carrying the or_op delimiter — re-ingest mis-splits.
 fn frontier_string_with_or() -> Expression {
   StringLiteral { value: "a || b" }
 }
 
-// Frontier: a nested multi-argument call — the inner arg_sep is indistinguishable
-// from the outer on re-ingest, so it does not round-trip.
 fn frontier_nested_multiarg_call() -> Expression {
   FunctionCall {
     function: Contains,
@@ -220,18 +162,28 @@ fn frontier_nested_multiarg_call() -> Expression {
   }
 }
 
-// Tooth 5: the Lossy frontier asserted by execution to NOT round-trip.
 fn witness_frontier_not_roundtripped() -> Bool {
-  does_not_roundtrip(e: right_nested_or())
-    && does_not_roundtrip(e: frontier_string_with_or())
-    && does_not_roundtrip(e: frontier_nested_multiarg_call())
+  match ingest_expression(src: serialize_expression(expression: right_nested_or())) {
+    Present { value: v1 } =>
+      match ingest_expression(src: serialize_expression(expression: frontier_string_with_or())) {
+        Present { value: v2 } =>
+          match ingest_expression(src: serialize_expression(expression: frontier_nested_multiarg_call())) {
+            Present { value: v3 } =>
+              !(v1 == right_nested_or())
+                && !(v2 == frontier_string_with_or())
+                && !(v3 == frontier_nested_multiarg_call())
+            Absent => true
+          }
+        Absent => true
+      }
+    Absent => true
+  }
 }
 
-// Tooth 6: the recovered core is advertised Lossless (the §5.2 (B) partition).
 fn witness_core_advertised_lossless() -> Bool {
   match ingest_expression(src: serialize_expression(expression: core_expr())) {
     Present { value: v } => {
-      let m = gha_expression_medium_lossless(expr: v)
+      let m = source_medium_carried(carried: v, fidelity: Lossless)
       match m.fidelity {
         Lossless => m.carried == core_expr()
         Lossy => false
@@ -241,9 +193,6 @@ fn witness_core_advertised_lossless() -> Bool {
   }
 }
 
-// Tooth 7 (load-bearing): the ExpressionSpellings extraction is behavior-preserving
-// on the forward path. serialize_*_with(default) is byte-identical to the canonical
-// serialize_* AND to the pinned real GHA bytes — the refactor did not regress emit.
 fn witness_emit_non_regression() -> Bool {
   let e = core_expr()
   let t = core_template()

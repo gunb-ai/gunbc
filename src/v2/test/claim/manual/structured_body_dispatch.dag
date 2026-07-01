@@ -1,0 +1,125 @@
+module v2.test.manual.structured_body_dispatch
+
+import v2.std.node {
+  Atom,
+  Node,
+  TypeNode,
+  node_synthetic,
+  well_formed
+}
+import v2.compiler.body_producer {
+  body_producer_dispatch_structured_body,
+  produce_arrow_with_structured_body
+}
+import v2.std.node_query { find_arrow_body_child }
+import v2.extdeps.languages.dag {
+  dag_mvp1_add_arrow_signature_node,
+  dag_mvp1_add_arrow_with_body_node,
+  dag_mvp1_add_binary_body_node,
+  dag_mvp1_pick_arrow_with_body_fixture
+}
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+fn structured_body_bool_node(pass: Bool) -> Node {
+  if pass {
+    node_synthetic(
+      kind: TypeNode { connective: Atom { identity: ^structured_body_pass } },
+      children: []
+    )
+  } else {
+    node_synthetic(
+      kind: TypeNode { connective: Atom { identity: ^structured_body_fail } },
+      children: []
+    )
+  }
+}
+
+fn structured_body_non_behavior_node() -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: ^structured_body_residual } },
+    children: []
+  )
+}
+
+fn structured_body_pick_branch_body() -> Node {
+  match find_arrow_body_child(root: dag_mvp1_pick_arrow_with_body_fixture) {
+    Accepted { value: body, diagnostics: _ } => body
+    Rejected { diagnostics: _ } => structured_body_non_behavior_node()
+  }
+}
+
+fn structured_body_dispatch_accepts_transform_call() -> Bool {
+  match body_producer_dispatch_structured_body(body: dag_mvp1_add_binary_body_node()) {
+    Accepted { value: validated, diagnostics: _ } => validated == dag_mvp1_add_binary_body_node()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn structured_body_dispatch_accepts_branch() -> Bool {
+  let branch = structured_body_pick_branch_body()
+  match body_producer_dispatch_structured_body(body: branch) {
+    Accepted { value: validated, diagnostics: _ } => validated == branch
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn structured_body_dispatch_rejects_non_behavior() -> Bool {
+  match body_producer_dispatch_structured_body(body: structured_body_non_behavior_node()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn structured_body_produce_subsumes_add_table() -> Bool {
+  match produce_arrow_with_structured_body(
+    signature: dag_mvp1_add_arrow_signature_node(),
+    structured_body: dag_mvp1_add_binary_body_node()
+  ) {
+    Accepted { value: arrow_with_body, diagnostics: _ } =>
+      arrow_with_body == dag_mvp1_add_arrow_with_body_node()
+        && well_formed(n: arrow_with_body)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data claim_structured_body_dispatch_accepts_transform_call: TestClaim = EqualsClaim {
+  label: "manual/structured-body: dispatch accepts an add Transform call body, returns it",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: structured_body_bool_node(pass: structured_body_dispatch_accepts_transform_call()),
+  rhs: structured_body_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_structured_body_dispatch_accepts_branch: TestClaim = EqualsClaim {
+  label: "manual/structured-body: dispatch accepts a pick Branch control-flow body (variant-general)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: structured_body_bool_node(pass: structured_body_dispatch_accepts_branch()),
+  rhs: structured_body_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_structured_body_dispatch_rejects_non_behavior: TestClaim = EqualsClaim {
+  label: "manual/structured-body: dispatch refuses a non-Behavior residual parse node",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: structured_body_bool_node(pass: structured_body_dispatch_rejects_non_behavior()),
+  rhs: structured_body_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_structured_body_produce_subsumes_add_table: TestClaim = EqualsClaim {
+  label: "manual/structured-body: produce_arrow_with_structured_body subsumes the add flat-index table (byte-identical Arrow)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: structured_body_bool_node(pass: structured_body_produce_subsumes_add_table()),
+  rhs: structured_body_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

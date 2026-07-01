@@ -1,17 +1,9 @@
-// src/v2/extdeps/formats/json_schema.dag
-// Scope: JSON Schema Draft 2020-12 instance shell + default-dialect keyword bundle; typed slots favor Core-shaped surface; additional_keywords enumerates keywords authorized by the meta-schema anchor.
-// Status: scaffold
-// Anchor: https://json-schema.org/draft/2020-12/schema
-
 module v2.extdeps.formats.json_schema
-
 
 import v2.extdeps.formats.json { JsonDocument, JsonValue }
 import v2.std.collection { Map, Optional, Set }
 import v2.std.witness { Witness }
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-JsonSchemaCoreTypeName.
 type JsonSchemaCoreTypeName
   = JsonSchemaCoreTypeNull
   | JsonSchemaCoreTypeBoolean
@@ -21,15 +13,11 @@ type JsonSchemaCoreTypeName
   | JsonSchemaCoreTypeString
   | JsonSchemaCoreTypeInteger
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-JsonSchemaTypeSlot.
 type JsonSchemaTypeSlot
   = JsonSchemaTypeAbsent
   | JsonSchemaTypeSingle { core_type: JsonSchemaCoreTypeName }
   | JsonSchemaTypeUnion { first: JsonSchemaCoreTypeName, rest: Set<JsonSchemaCoreTypeName> }
 
-
-// 🟡 coproduct dissolution — T-4.6-JSK.
 type JsonSchemaAdditionalKeywordKey
   = JsonSchemaKwAllOf
   | JsonSchemaKwAnyOf
@@ -87,8 +75,6 @@ type JsonSchemaAdditionalKeywordKey
   | JsonSchemaKwDefinitions
   | JsonSchemaKwDependencies
 
-
-// 🟡 coproduct dissolution — T-4.6-P4-JsonSchema.
 type JsonSchema
   = JsonSchemaTrue
   | JsonSchemaFalse
@@ -100,12 +86,10 @@ type JsonSchema
       additional_keywords: Map<JsonSchemaAdditionalKeywordKey, JsonValue>,
     }
 
-
 type JsonSchemaInterpretation {
   json_document: JsonDocument,
   schema: JsonSchema,
 }
-
 
 type JsonSchemaDocument {
   interpretation: Witness<JsonSchemaInterpretation>,

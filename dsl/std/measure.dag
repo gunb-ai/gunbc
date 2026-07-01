@@ -1,70 +1,8 @@
-// std/measure.dag -- Measure / Quantity / Scale carrier (algebra-axis
-// dimensional shape).
-//
-// Per Q-Unit-1..5 RATIFIED at gunbc#828 #issuecomment-4385412256 (2026-05-06),
-// Q-Unit-1-Recanvas RATIFIED at gunbc#828 #issuecomment-4385539791
-// (outer carrier renamed from `Unit` to `Measure` to avoid collision with
-// kernel `Unit` terminal-object type at `dsl/std/types.dag`), and
-// Q-Refined-Phantom-Composition option (c) RATIFIED 2026-05-06 (literal
-// `Refined<Measure<...>, predicate>` form deferred to value-typed integration
-// follow-up; this layer carries dimensional semantics via the `Quantity` /
-// `Scale` tags only — no predicate refinement at the Measure level).
-//
-// Authority anchors (cited by rule-text quote; bare line-number cites prohibited):
-//   - coproduct decomposition (DESIGN.md §2 decompress→map→reduce):
-//     "Any new sum with N >= 2 variants must have a checkpoint
-//     comment naming its classification (🟢/🟡/🔴), with a ledger entry
-//     if GREEN or a named trigger if YELLOW."
-//   - construction over ratchets: "Don't build the predicate
-//     ahead of consumer demand."
-//   - reason-not-label: "The predicate name is the label;
-//     the reason is the carrier's semantic content."
-// Director ratifications recorded in gunbc#828 issue comments cited above.
-// Worker brief lives outside this checkout (parent worktree); cross-program
-// review reaches the brief through the gunbc#828 ratification thread.
-//
-// Scope (Phase-1 carrier landing):
-//   - `Measure<Q, S>` -- phantom-parameter carrier for dimensional types.
-//   - `Quantity`      -- what is being measured (Time, Length, Mass, ...).
-//   - `Scale`         -- SI decimal scale exponent (Atto..Exa, `One` = 10^0) plus IEC
-//                         binary memory prefixes (Kibi..Tebi, powers of 2) for Memory.
-//   - `scale_exponent(s: Scale) -> Int` -- structural exponent query
-//     (typed exponent authority; lets Grounding consumers and downstream
-//     algebraic consumers project a Scale value to its decimal exponent
-//     without re-encoding the table at each call site).
-//
-// NOT in scope (deferred per brief):
-//   - Aspect axis (PointKind / Magnitude / Instant / Rate) -> R4 C6.
-//   - Scale-agnostic `Duration<S>` parametric form -> needs >=2 consumers.
-//   - 3-axis `AlgebraMachineRoundingProduct` -> R4 C5.
-//
-// COMPOSITION (S9 Phase-3 reframe per Q-Unit-4 RATIFIED outer-Refined /
-// inner-Measure, with option (c) deferral of the literal Refined wrapper):
-//
-//   Duration     :=  Measure<Time, One>     (Quantity-tagged; predicate deferred)
-//   Milliseconds :=  Measure<Time, Milli>   (Quantity-tagged; predicate deferred)
-//   Seconds      :=  Duration               (Q-Unit-3 collapse)
-//
-// Value-typed integration (Q-Refined-Phantom-Composition option (c) follow-up):
-// `Measure<Q, S>` carries magnitude in `count`; phantom `<Q>` / `<S>` tag
-// dimensional semantics. Predicate-bearing refinement (`Refined<Measure<…>>`)
-// remains deferred per option (c).
-
 module std.measure
 
 import std.nat { Nat }
 import std.types { Int }
 
-// --- Quantity: what is being measured -------------------------------------
-//
-// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟡 SCAFFOLD
-// Dissolution trigger (Q-Unit-5 RATIFIED): "all Quantity values consumed
-// by >= 1 Grounding emission rule". Until each value gates a real
-// emission rule (Grounding consumer demonstrates need), the carrier
-// is hand-modeled / speculative. Adding a new value without a
-// corresponding emission rule violates construction-over-ratchets (no
-// carrier ahead of consumer demand); new values require the
-// substrate-fact-introduction procedure with named consumer demand.
 type Quantity =
     Time
   | Length
@@ -75,28 +13,13 @@ type Quantity =
   | Frequency
   | Count
   | Currency
-  // Power (SI derived): the rate of energy transfer, watt = joule/second (J/s).
-  // Q-Unit-5 minted-with-consumer, NOT a carrier ahead of demand: landed together with
-  // a consuming fold (total_power_watts = Σ component Watt) that COMPUTES a power total,
-  // green-by-execution in dsl/test/claim/power_watt_witness.dag. Named demand is plural
-  // and real — PSU sizing (Σ component draw) + perf-per-watt in product.hardware_selection;
-  // extdeps.cpu CpuModelCatalogRow.tdp_watts is grounded as `Watt` (Power dimension).
-  // Energy (the joule,
-  // power × time) is NOT minted here — no consuming fold demands it yet (no carrier ahead
-  // of demand). Anchor: https://en.wikipedia.org/wiki/Watt  (P = dE/dt; 1 W = 1 J/s)
+
   | Power
-  // Thermal axis (Q-Unit-5 minted-with-consumer: extdeps.bmc Redfish thermal + sensor
-  // coproduct grounding witness). Absolute Celsius at scale One (M=Int — inlet sensors
-  // can read below 0°C; affine ΔCelsius split deferred until a consumer demands it).
+
   | Temperature
-  // Fan tach axis (revolutions per minute; Redfish ReadingUnits=Rpm). Q-Unit-5
-  // minted-with-consumer: extdeps.bmc Redfish sensor coproduct grounding witness.
+
   | RotationalSpeed
-  // Electrical dimensions (Q-Unit-5 inhabitant: v2.std.timeseries_signal R/L/C map/fold,
-  // gunbc#4895/#4913). R/L/C ratings + v/i samples are form-independent.
-  // ElectricCharge + MagneticFlux: pre-approved at gunbc#4929 forward-ref ("SPICE S1
-  // re-cut forthcoming"); minted with Form-B fold inhabitant in gunbc#4942 (Q+=i*dt,
-  // Φ+=v*dt — snappy-stag carrier-owner review rides this hunk).
+
   | ElectricPotential
   | ElectricCurrent
   | Resistance
@@ -105,51 +28,28 @@ type Quantity =
   | ElectricCharge
   | MagneticFlux
 
-// --- Scale: SI decimal + IEC binary memory exponents ----------------------
-//
-// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟡 SCAFFOLD
-// Same dissolution trigger as `Quantity`: "all Scale values consumed by
-// >= 1 Grounding emission rule" (Q-Unit-5 RATIFIED).
-//
-// `One` is the unscaled identity (10^0) -- RATIFIED rename from `Unit`
-// per Q-Unit-1 to avoid shadowing the outer carrier name and the
-// kernel terminal-object `Unit` type.
-//
-// Scale is a typed exponent authority, not bare labels: the
-// `scale_exponent` query below is the structural projection from a
-// Scale value to its decimal exponent. Grounding consumers MUST go
-// through `scale_exponent` rather than re-encoding the SI table per
-// call site (single-source-of-truth invariant; cf. T-Numeric-Construction
-// "single numeric authority" pattern).
-type Scale =
-    Atto       // 10^-18
-  | Femto      // 10^-15
-  | Pico       // 10^-12
-  | Nano       // 10^-9
-  | Micro      // 10^-6
-  | Milli      // 10^-3
-  | One        // 10^0   (identity scale; RATIFIED rename from `Unit` per Q-Unit-1)
-  | Kilo       // 10^3
-  | Mega       // 10^6
-  | Giga       // 10^9
-  | Tera       // 10^12
-  | Peta       // 10^15
-  | Exa        // 10^18
-  // IEC 80000-13 binary memory prefixes (powers of 2; supersedes IEC 60027-2). DMTF Redfish
-  // TotalSystemMemoryGiB
-  // names gibibytes (GiB = 2^30 bytes), not SI gigabytes. Q-Unit-5 minted-with-consumer:
-  // extdeps.bmc Redfish memory grounding witness.
-  | Kibi       // 2^10 bytes per unit
-  | Mebi       // 2^20
-  | Gibi       // 2^30
-  | Tebi       // 2^40
+  | Dimensionless
 
-// --- scale_exponent: typed exponent authority -----------------------------
-//
-// Structural projection from `Scale` to its exponent in the scale's native base:
-// SI decimal scales → power of 10; IEC binary memory scales → power of 2.
-// Memory capacity conversion binds `memory_scale_factor_bytes` (below), not bare
-// exponent arithmetic across bases.
+type Scale =
+    Atto
+  | Femto
+  | Pico
+  | Nano
+  | Micro
+  | Milli
+  | One
+  | Kilo
+  | Mega
+  | Giga
+  | Tera
+  | Peta
+  | Exa
+
+  | Kibi
+  | Mebi
+  | Gibi
+  | Tebi
+
 fn scale_exponent(s: Scale) -> Int {
   match s {
     Atto  => -18
@@ -172,19 +72,14 @@ fn scale_exponent(s: Scale) -> Int {
   }
 }
 
-// Single authority: bytes per gibibyte (IEC 80000-13 GiB = 2^30 bytes).
 fn gibibyte_scale_factor_bytes() -> Nat {
   1073741824
 }
 
-// Single authority for the IEC binary scale step (2^10). The Mebi/Tebi memory factors
-// derive from this and the gibibyte authority above — no per-scale magic literal.
 fn kibi_factor() -> Nat {
   1024
 }
 
-// Bytes per unit at Memory scale `s` (One = byte; Gibi = 2^30 bytes per gibibyte).
-// Fail-closed (§5): SI decimal scales are not memory-capacity factors — returns Absent.
 fn memory_scale_factor_bytes(s: Scale) -> Nat? {
   match s {
     One  => Present { value: 1 }
@@ -207,190 +102,46 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
   }
 }
 
-// --- Measure<Q, S>: phantom-parameter dimensional carrier -----------------
-//
-// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
-// Parametric dimensional carrier: phantom `<Q>` / `<S>` tag semantics;
-// non-phantom `<M>` carries the magnitude type (see the MAGNITUDE
-// GENERALIZATION note at the type decl below). `count` holds the magnitude
-// at the declared scale. Widening adds Quantity / Scale values (or a new `<M>`
-// instantiation), not new Measure variants.
-// Per-target representation (Rust `std::time::Duration`, Python
-// `datetime.timedelta`, Go `time.Duration`, etc.) is Grounding's job
-// per Q-Unit-4 RATIFIED.
-//
-// CONSTRAINED-INHABITANCE GAP (P5 tracked scaffold):
-//   Denotationally `<Q>` must inhabit `Quantity` and `<S>` must inhabit
-//   `Scale` for `Measure<Q, S>` to carry dimensional semantics. The current
-//   substrate has no parametric where-clause syntax (e.g., `<Q, S> where
-//   Q : Quantity, S : Scale`), so this declaration accepts any type-
-//   reference for `<Q>` / `<S>` at the parser/lower level. All intended
-//   consumers in Phase-1 / Phase-2 of the carrier landing instantiate with
-//   the ratified Quantity / Scale values (`Measure<Time, One>`,
-//   `Measure<Time, Milli>`, etc.); the constraint holds for those sole
-//   consumers by construction.
-//
-//   Same gap as `GroupCompletion<M>` / `FieldOfFractions<R>` in
-//   `dsl/std/algebra.dag` (where-clause syntax is a substrate-feature
-//   lane, not per-carrier ceremony). Mechanical Quantity / Scale
-//   inhabitance witnesses are not declared at this layer for the same
-//   substrate reason.
-//
-//   **Dissolution trigger:** when constrained-inhabitance / parametric
-//   where-clause syntax lands in the substrate (separate substrate-feature
-//   lane), tighten this declaration to require `<Q> : Quantity, <S> :
-//   Scale`. Existing call sites continue to type-check by construction.
-//
-// HARD BOUNDARIES (per Q-Unit RATIFIED + option (c) RATIFIED):
-//   - No `Refined<Measure<…>, predicate>` at this layer per option (c).
-//   - No mechanical Measure-witness derivation declared here -- same
-//     substrate gap as `GroupCompletion<M>`; inhabitance lens follow-up.
-//   - v2 claim-run: phantom type-arg resolution (G1), single-hop alias field
-//     access (G2), parametric record literals (G3), and multi-hop alias
-//     field-access chains all now resolve on the v2 interpreter (G3 + multi-hop
-//     landed in gunbc#4885, alias-chain peel / fail-closed). The carrier
-//     witnesses in dsl/test/claim/measure_magnitude_carrier_test.dag exercise each
-//     path by execution; the constructor/projection fns below remain the
-//     ergonomic surface, no longer a pre-flip workaround.
-// MAGNITUDE GENERALIZATION (`<M>`): the `count` field now carries its magnitude at
-// type `<M>` rather than a hardwired `Nat`. `<M>` ranges over the std numeric tower
-// (`Nat` / `Int` / `Rational` / `Real`) so a single carrier spans the magnitude
-// migration frame: GATE0 (non-negative integer magnitudes) instantiates `<M> = Nat`
-// (every existing alias below); GATE1 (signed or fractional magnitudes — e.g. SPICE
-// electrical potentials/currents, which are signed) instantiates `<M> = Int` (or
-// `Rational`/`Real` for fractional consumers, a later consumer-specific rung). `<M>`
-// is a NON-phantom parameter: unlike `<Q>`/`<S>` it appears in the `count` field. The
-// param-dependent field through the alias chains below (`ByteSize.count : Nat`,
-// `Measure<ElectricPotential, Micro, Int>.count : Int`) resolves + evaluates on the v2
-// interpreter today (verified by execution post-#4885 G3 + multi-hop): M=Nat via the
-// single-hop alias projection, signed M=Int via a direct record literal, and a two-hop
-// alias chain (product.compute_fabric.MoneyMicros.count) all round-trip —
-// dsl/test/claim/measure_magnitude_carrier_test.dag.
-// GATE1 signed SPICE *execution* (negative magnitude through map/fold, value asserted):
-// gunbc#4942 class-4 deciding artifact = ENROLLED shard-b
-// `timeseries_signed_magnitude_capacitor_fold_holds` (Form-B signed int_mul/int_add
-// crossing zero + int_div v=Q/C) in timeseries_passive_map_fold_anchor_test.dag.
-// Supplementary enrolled map witness: `timeseries_signed_magnitude_resistor_map_holds`
-// (signed int_mul R·i). NOT class-4: `measure_signed_magnitude_roundtrip_holds` is
-// projection roundtrip only (stores -5, reads back — not discriminating arithmetic).
 type Measure<Q, S, M> {
   count: M
 }
 
-// Generic magnitude projection: read any `Measure` alias's `count` at its declared
-// magnitude `<M>`. The per-alias `*_count` fns below (byte_size_count, watt_count, …) are
-// the named ergonomic surface, but a CONSUMER outside std.measure cannot peel a cross-module
-// alias's `.count` itself (the peel resolves where `Measure` is local — here). This is the
-// one generic reader those consumers call (e.g. a product-layer Bandwidth reader), so the
-// projection is single-authority, not re-coined per alias (DESIGN §2).
 fn measure_count<Q, S, M>(m: Measure<Q, S, M>) -> M {
   m.count
 }
 
-// --- Lifted measure algebra (expressibility-frontier §3 ① wall) -----------
-// docs/plans/expressibility-frontier.md §3 ①: a consumer that "unwraps a Measure
-// to its raw count, does host arithmetic, and rewraps" — the
-// unwrap→raw-arith→rewrap round-trip — is *provably* the lifted op by the
-// homomorphism law `wrap(op_M(unwrap a, unwrap b)) = op_T(a, b)`. Providing op_T
-// here makes the unwrap-form a redundancy rather than the only path; FENCING the
-// projector (making `byte_size_count`-then-rewrap unwritable) is the §2 ②-residue
-// lens follow-up, NOT this slice.
-//
-// Rounding direction is the §3 ② residue — a §5 "round toward pessimism" choice no
-// type can pick (the spec splits it three ways: demand ceils, capacity floors,
-// fit-count floors). All three are now minted, each by a demanding consumer (DESIGN §6
-// construction-over-ratchets: a carrier lands exactly when a consumer demands it):
-//   - capacity floor — `measure_scale_fraction_floor` — a fractioned *budget* (still a
-//     budget) floors; consumer std.realization_width.budget_safety_fraction_apply.
-//   - fit-count floor — `measure_fit_count_floor` — "how many whole fit" floors; consumer
-//     std.realization_width.memory_bounded_shard_count.
-//   - demand ceil — `measure_scale_fraction_ceil` — a per-share *demand* ceils; consumer
-//     std.realization_measurement.concurrent_memory_peak_per_share (peak ÷ concurrency →
-//     per-share peak), which feeds the spawn-width derivation. This is the ceil≠floor pair:
-//     the SAME `Measure × num/den → Measure` shape as the capacity floor, OPPOSITE rounding,
-//     because the pessimism direction is opposite — a demand UNDER-estimate ⇒ ⌊budget÷peak⌋
-//     too high ⇒ over-fit ⇒ OOM (§5). No type can pick the direction; the consumer does.
-//
-// `<M>` is fixed at `Nat`, NOT the spec's M-generic `Measure<Q,S,M>` (#5467 derives
-// it from M's Semiring, §4 inhabitance): the bodies do concrete numeric arithmetic
-// (`*`, `/`) over `count`, and generic `<M>` arithmetic resolves only on concrete
-// numeric nodes — the same algebra-inhabitance substrate gap `time_measure` /
-// `GroupCompletion<M>` already carry. **Dissolution trigger:** widen to
-// `<Q, S, M> where M : CommutativeSemiring` when parametric where-clause / inhabitance
-// syntax lands in the substrate (the shared lane those notes name); the bodies and
-// every call site type-check unchanged. `<Q>` / `<S>` stay generic NOW so a single
-// authority spans every Measure breadth (DESIGN §2 horizontal: one concept, every
-// breadth) — the op is not re-coined per alias (cf. `measure_count`).
-//
-// OVERFLOW: `Nat` is machine-width (`Value::Int(i64)`), not arbitrary-precision — a
-// substrate-wide property of every `Nat` op, not specific to these. `(count * num)`
-// is evaluated before `/ den` (required for floor-correctness of a sub-unit fraction);
-// for the spawn-width consumer the operands stay ~8 orders below the i64 ceiling
-// (budget ≤ ~125 GiB ≈ 1.3e11 × num 4 ≈ 5e11 ≪ 9.2e18), so it does not overflow. A
-// general saturating/checked `Nat` guard belongs at the numeric-tower layer (one
-// authority), not forked per-op (DESIGN §6).
-
-// `Measure × num/den → Measure`, rounded DOWN — the §3 ② *capacity* case (a
-// fractioned budget is still a budget). Fail-closed (§5): a zero denominator yields
-// a zero magnitude, never a host divide-by-zero.
 fn measure_scale_fraction_floor<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
-  // A zero denominator returns the zero magnitude `den` itself (already a `Nat` zero) — keeps both
-  // arms `Nat` and never divides by zero.
+
   Measure { count: if den == 0 { den } else { (m.count * num) / den } }
 }
 
-// "How many fit": `Measure ÷ Measure → count`, rounded DOWN — the §3 ② *fit-count*
-// case. The return type is a dimensionless `Nat`, NOT a `Measure`: that different
-// return type is the §3 ① wall against fusing fit-count with capacity-scaling (a
-// raw-`Nat` divide that returned the wrong type is a type error, not a flagged
-// smell). Fail-closed (§5): a zero divisor yields 0, never a host divide-by-zero; a
-// consumer wanting forward progress on an unknown `each` guards positivity at its
-// own boundary.
 fn measure_fit_count_floor<Q, S>(capacity: Measure<Q, S, Nat>, each: Measure<Q, S, Nat>) -> Nat {
-  // A zero divisor returns `each_count` itself (a `Nat` zero) — keeps both arms `Nat` and never
-  // divides by zero; the consumer floors a fit-count of 0 up to ≥1 where 0-width is invalid.
+
   let each_count = each.count
   if each_count == 0 { each_count } else { capacity.count / each_count }
 }
 
-// `Measure × num/den → Measure`, rounded UP — the §3 ② *demand* case (a per-share demand
-// that must NOT under-estimate: under-estimate ⇒ ⌊budget÷demand⌋ too high ⇒ over-fit ⇒ OOM).
-// The SAME shape as `measure_scale_fraction_floor`, OPPOSITE rounding — that opposition IS the
-// ceil≠floor money-pair the round-trip hid (§5 round-toward-pessimism; no type picks the
-// direction, the consumer does). Ceil via the integer identity `⌈a/den⌉ = (a + den − 1) / den`
-// for `den > 0` (a is `count * num`, evaluated before the divide for ceil-correctness).
-// Fail-closed (§5) is the OPPOSITE direction from the FLOOR ops: a zero denominator yields the
-// UN-divided magnitude `count * num` — the whole demand landing on one share — never a zero,
-// because the pessimistic demand is LARGE, not small (a zero would be the most dangerous
-// under-estimate). OVERFLOW: the `+ (den − 1)` addend stays far below the i64 ceiling for every
-// modeled consumer (per-share peak: 8.4e9 + 3 ≪ 9.2e18); the §6 numeric-tower note above governs.
 fn measure_scale_fraction_ceil<Q, S>(m: Measure<Q, S, Nat>, num: Nat, den: Nat) -> Measure<Q, S, Nat> {
-  // den == 0 → the whole (un-divided) demand `count * num`; keeps both arms `Nat`, never divides
-  // by zero, and fails closed PESSIMISTIC (the opposite direction from the capacity/fit floors).
+
   Measure { count: if den == 0 { m.count * num } else { ((m.count * num) + (den - 1)) / den } }
 }
 
-// Generic time-measure constructor: a `Time` magnitude at ANY scale `<S>`, magnitude
-// fixed at the concrete `Nat` node. This is the scale-AGNOSTIC surface the realization /
-// measurement framework (std.realization_measurement) builds its roll-up algebra on —
-// it names no particular scale, so the framework carries no scale CHOICE (DESIGN §3: the
-// agnostic shape stays central, the scale CHOICE sits peripheral at the consumer). A
-// consumer pins `<S>` (e.g. `Nano` for measured wall-clock) at its own boundary.
-//
-// `<M>` is fixed at `Nat` here, NOT generic: a magnitude-generic roll-up would need `+`/
-// `max` over `<M>`, and algebra-inhabitance resolves only on concrete numeric nodes —
-// the same where-clause substrate gap `GroupCompletion<M>` and the `Measure`
-// constrained-inhabitance note above already carry. **Dissolution trigger:** when
-// parametric where-clause syntax lands, widen to `<M> where M : CommutativeMonoid` and
-// the roll-up algebra generalizes with it.
+fn measure_add<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q, S, Nat> {
+  Measure { count: a.count + b.count }
+}
+
+fn measure_le<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
+  a.count <= b.count
+}
+
 fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
   Measure { count: count }
 }
 
-// Memory magnitude at unit scale (Q-Unit composition; P2 single authority).
 type ByteSize = Measure<Memory, One, Nat>
 
-// Memory capacity in gibibytes (IEC GiB). Redfish TotalSystemMemoryGiB is explicit binary units.
+type Kibibyte = Measure<Memory, Kibi, Nat>
+
 type Gibibyte = Measure<Memory, Gibi, Nat>
 
 fn gibibyte(count: Nat) -> Gibibyte {
@@ -405,50 +156,20 @@ fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
   byte_size(count: gibibyte_count(g) * gibibyte_scale_factor_bytes())
 }
 
-// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
-// carrier; Information's FIRST inhabitant — sets precedent: Information = digital
-// bits, atomic unit at scale One).
-// 🟢 feature:memory-information-byte-bit-conversion — DISSOLVED: the byte<->bit sub-unit
-// authority is `bits_per_byte` below; its first cross-conversion consumer is
-// product.hardware_selection.dram_channel_bus_bytes (bit-width / bits_per_byte = bytes).
-// x8 is non-decimal so it is NOT an SI Scale — a separate sub-unit authority, as foretold.
 type BitWidth = Measure<Information, One, Nat>
 
-// Cross-unit single authority (IEC 80000-13): 8 bits per byte — the Information<->Memory
-// bridge. One place owns the "8"; a bit-width divided by it is a byte count.
 fn bits_per_byte() -> Nat {
   8
 }
 
-// Dimensional alias for sustained per-thread clock rate (SI hertz).
 type Hertz = Measure<Frequency, One, Nat>
 
-// Schedulable hardware thread count (extdeps.cpu catalog/deployment authority).
 type HardwareThreadCount = Measure<Count, One, Nat>
 
-// NOTE: the scale-FIXED nanosecond time alias `NanosecondDuration = Measure<Time, Nano,
-// Nat>` is deliberately NOT defined here. A scale-fixed alias is a CHOICE, not generic
-// dimensional vocabulary — it is parallel to `Milliwatt` (`Measure<Power, Milli, Nat>`,
-// homed at its product consumer in #5235), not to the base SI units `Watt` / `Hertz`
-// that stay below. std.measure keeps only the generic `Measure<Time, S, M>` carrier +
-// `time_measure<S>`; the nanosecond CHOICE + its reason live at the timing-authority
-// CONSUMER (std.verification), per DESIGN §3 (the agnostic shape stays central; the
-// scale that selects a realization sits peripheral).
-
-// Power magnitude at unit scale — the plain watt (SI derived: W = J/s). The dimension
-// TDP specs, PSU ratings, and live draw are all quoted in. A power rating carries the
-// Power dimension rather than a bare Int (the anemic-leaf trap, DESIGN §2): a sum of
-// component draws stays power-typed (`total_power_watts`), and perf-per-watt divides a
-// throughput BY a real dimension instead of an untyped number. M=Nat (ratings are
-// non-negative whole watts at this layer); a fractional rung (e.g. tenths of a watt)
-// would instantiate `<M>` like the signed electrical carriers, not a new alias.
 type Watt = Measure<Power, One, Nat>
 
-// Absolute thermal magnitude in degrees Celsius (Redfish ReadingUnits=Cel). M=Int —
-// cold-aisle inlet readings can be sub-zero; ΔCelsius affine split deferred.
 type Celsius = Measure<Temperature, One, Int>
 
-// Fan tach magnitude in revolutions per minute (Redfish ReadingUnits=Rpm).
 type RevolutionsPerMinute = Measure<RotationalSpeed, One, Nat>
 
 fn watt(count: Nat) -> Watt {
@@ -475,45 +196,8 @@ fn rpm_count(r: RevolutionsPerMinute) -> Nat {
   measure_count(r)
 }
 
-// --- MoneyAmount<S>: price magnitude carrier ------------------------------
-//
-// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE (parametric alias of the 🟢 `Measure`
-// carrier; widening is on Scale, not new variants).
-//
-// `MoneyAmount<S> = Measure<Currency, S>` -- the money carrier the design
-// doc §6 (measure-value-typing-design-2026-06-13) calls for: a fixed-point
-// magnitude tagged with the `Currency` dimension, NEVER a `Float` (floating
-// point for money is a representation defect -- the magnitude is an exact
-// integer count of a sub-major denomination).
-//
-// `<S>` is the STORAGE scale of the integer `count`: the SI `Scale` at which
-// the magnitude is denominated. The per-currency ISO 4217 minor-unit
-// exponent is a SEPARATE authority (`std.currency.currency_minor_unit_exponent`)
-// -- ISO minor units (10^-2 cents) are not SI `Scale` values, so the two
-// axes stay distinct (Q-Unit-5: no new `Scale` values for currency).
-//
-// The currency *identity* (which currency) is carried alongside as a
-// `std.currency.CurrencyCode`, not in the phantom `<Q>` (which is the
-// dimension `Currency`, shared by all currencies). A consumer that needs a
-// specific currency carries the pair `(CurrencyCode, MoneyAmount<S>)` --
-// e.g. `product.compute_fabric.CostEstimate { unit_price, currency }`.
-//
-// Scale-fixed money aliases: `MoneyAmountMicro` (std, extdeps vendor-catalog boundary)
-// and `MoneyMicros` (product.compute_fabric, CostEstimate consumers) both denote
-// `MoneyAmount<Micro>`. Std keeps the parametric `MoneyAmount<S>` plus the extdeps-
-// facing micro-scale alias; product owns the downstream nickname. Multi-hop alias
-// field-access (G3 + multi-hop, gunbc#4885) is verified by execution via
-// product.compute_fabric.MoneyMicros — see measure_two_hop_alias_count_roundtrip_holds.
-// dissolution-trigger: collapse `MoneyAmountMicro` + `MoneyMicros` to parametric
-// `MoneyAmount<Micro>` in field positions once v2 parametric-in-field-position eval
-// lands (the v2-eval scaffold that forced the dual named aliases); repoint extdeps +
-// product consumers and delete the witness cross-alias pump in hetzner_cost_quote_witness.
 type MoneyAmount<S> = Measure<Currency, S, Nat>
 
-// Micro-scale money at the extdeps boundary (Hetzner `*_eur_micros` source rows).
-// Named alias required for v2 eval (parametric `MoneyAmount<Micro>` in field positions
-// does not evaluate); product `MoneyMicros` is the downstream CostEstimate nickname.
-// dissolution-trigger: see header on `MoneyAmountMicro`/`MoneyMicros` pair above.
 type MoneyAmountMicro = MoneyAmount<Micro>
 
 fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
@@ -554,4 +238,54 @@ fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
 
 fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
   measure_count(t)
+}
+
+type Bandwidth = Measure<DataRate, One, Nat>
+
+fn bandwidth(count: Nat) -> Bandwidth {
+  Bandwidth { count: count }
+}
+
+fn bandwidth_count(b: Bandwidth) -> Nat {
+  measure_count(b)
+}
+
+type Nanosecond = Measure<Time, Nano, Nat>
+
+fn nanosecond(count: Nat) -> Nanosecond {
+  Nanosecond { count: count }
+}
+
+fn nanosecond_count(n: Nanosecond) -> Nat {
+  measure_count(n)
+}
+
+type Microsecond = Measure<Time, Micro, Nat>
+
+fn microsecond(count: Nat) -> Microsecond {
+  Microsecond { count: count }
+}
+
+fn microsecond_count(m: Microsecond) -> Nat {
+  measure_count(m)
+}
+
+type Second = Measure<Time, One, Nat>
+
+fn second(count: Nat) -> Second {
+  Second { count: count }
+}
+
+fn second_count(s: Second) -> Nat {
+  measure_count(s)
+}
+
+type Percent = Measure<Dimensionless, One, Nat>
+
+fn percent(count: Nat) -> Percent {
+  Percent { count: count }
+}
+
+fn percent_count(p: Percent) -> Nat {
+  measure_count(p)
 }

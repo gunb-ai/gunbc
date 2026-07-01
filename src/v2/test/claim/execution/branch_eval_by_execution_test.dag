@@ -1,0 +1,517 @@
+module v2.test.execution.branch_eval_by_execution
+
+import v2.compiler.body_producer {
+  produce_mvp1_pick_if_arrow_with_body,
+  produce_mvp1_pick_if_arrow_with_body_swapped_arms
+}
+import v2.test.complexity_gate.source_bridged_branch_subject_producer {
+  source_bridged_pick_false_if_arrow_with_body,
+  source_bridged_pick_if_arrow_with_body
+}
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  eval,
+  inputs_root_only,
+  run_test_claim,
+  test_claim_run_verdict,
+  test_claim_typed_input_node
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.std.collection {
+  Absent,
+  List,
+  Map,
+  Present,
+  list_at_optional,
+  map_insert
+}
+import v2.std.cardinality { termination_proof_witness_for_node }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Outcome,
+  Rejected,
+  Unavailable,
+  bind_outcome,
+  diagnostics_singleton,
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
+}
+import v2.std.compilers.lexing { Token }
+import v2.std.logic { Bool }
+import v2.std.machine { Byte }
+import v2.std.node {
+  Atom,
+  Arrow,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence,
+}
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimePrimitive,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.witness { Holds, Witness }
+import v2.std.verdict { Pass }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  UnifiedTestClaim,
+  Unit,
+  manual_claim_anchor
+}
+
+fn branch_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    occurrence_id: SyntheticOccurrence,
+    children: []
+  }
+}
+
+fn branch_byte() -> Byte {
+  Byte { bits: [true] }
+}
+
+fn branch_bool_type_node() -> Node {
+  branch_atom(s: ^branch_bool_type)
+}
+
+fn branch_i64_node() -> Node {
+  branch_atom(s: ^branch_i64)
+}
+
+fn branch_int_value(bytes: List<Byte>) -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: branch_i64_node(),
+      bytes: bytes
+    }
+  }
+}
+
+fn branch_bool_value(is_true: Bool) -> RuntimeValue {
+  if is_true {
+    RuntimePrimitive {
+      value: RuntimePrimitiveValue {
+        primitive_type: branch_bool_type_node(),
+        bytes: [branch_byte()]
+      }
+    }
+  } else {
+    RuntimePrimitive {
+      value: RuntimePrimitiveValue {
+        primitive_type: branch_bool_type_node(),
+        bytes: Empty
+      }
+    }
+  }
+}
+
+fn branch_one_value() -> RuntimeValue {
+  branch_int_value(bytes: [branch_byte()])
+}
+
+fn branch_two_value() -> RuntimeValue {
+  branch_int_value(bytes: [branch_byte(), branch_byte()])
+}
+
+fn branch_literal_one_node() -> Node {
+  branch_atom(s: ^dag_mvp1_pick_lit_one)
+}
+
+fn branch_literal_two_node() -> Node {
+  branch_atom(s: ^dag_mvp1_pick_lit_two)
+}
+
+fn branch_runtime_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^branch_runtime_rejected,
+    at: node_locus(node: n),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn branch_runtime_bool_true(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      (p.primitive_type == branch_bool_type_node()) && (count(p.bytes) == 1)
+    _ => false
+  }
+}
+
+fn branch_runtime_bool_false(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      (p.primitive_type == branch_bool_type_node()) && (count(p.bytes) == 0)
+    _ => false
+  }
+}
+
+fn branch_runtime_int_is_one(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      (p.primitive_type == branch_i64_node()) && (count(p.bytes) == 1)
+    _ => false
+  }
+}
+
+fn branch_runtime_int_is_two(value: RuntimeValue) -> Bool {
+  match value {
+    RuntimePrimitive { value: p } =>
+      (p.primitive_type == branch_i64_node()) && (count(p.bytes) == 2)
+    _ => false
+  }
+}
+
+fn branch_kw_true_node() -> Node {
+  branch_atom(s: ^dag_token_kw_true)
+}
+
+fn branch_kw_false_node() -> Node {
+  branch_atom(s: ^dag_token_kw_false)
+}
+
+fn branch_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  if node == branch_literal_one_node() {
+    outcome_accepted(value: branch_one_value())
+  } else if node == branch_literal_two_node() {
+    outcome_accepted(value: branch_two_value())
+  } else if node == branch_kw_true_node() {
+    outcome_accepted(value: branch_bool_value(is_true: true))
+  } else if node == branch_kw_false_node() {
+    outcome_accepted(value: branch_bool_value(is_true: false))
+  } else {
+    outcome_rejected(d: branch_runtime_diagnostic(n: node))
+  }
+}
+
+fn branch_call_primitive(
+  _node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  outcome_rejected(d: branch_runtime_diagnostic(n: _node))
+}
+
+fn branch_nth_child_target(node: Node, wanted: Int) -> Outcome<Node> {
+  match list_at_optional(xs: node.children, index: wanted) {
+    Present { value: child } =>
+      match child {
+        Edge { label: _, target: arm } =>
+          outcome_accepted(value: arm)
+      }
+    Absent =>
+      outcome_rejected(d: branch_runtime_diagnostic(n: node))
+  }
+}
+
+fn branch_choose_branch_bool_if_else(
+  node: Node,
+  condition: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  if count(node.children) == 3 {
+    if branch_runtime_bool_true(value: condition) {
+      branch_nth_child_target(node: node, wanted: 1)
+    } else if branch_runtime_bool_false(value: condition) {
+      branch_nth_child_target(node: node, wanted: 2)
+    } else {
+      outcome_rejected(d: branch_runtime_diagnostic(n: node))
+    }
+  } else {
+    outcome_rejected(d: branch_runtime_diagnostic(n: node))
+  }
+}
+
+fn branch_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  outcome_rejected(d: branch_runtime_diagnostic(n: node))
+}
+
+fn branch_bind_value(
+  key: EnvironmentBindingKey,
+  value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted {
+    value: EvaluationEnvironment {
+      bindings: map_insert(m: env.bindings, key: key, value: value)
+    },
+    diagnostics: None
+  }
+}
+
+fn branch_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter {
+      allocate_literal: branch_allocate_literal
+    },
+    transform: TransformInterpreter {
+      call_primitive: branch_call_primitive
+    },
+    branch: BranchInterpreter {
+      choose_branch: branch_choose_branch_bool_if_else
+    },
+    loop: LoopInterpreter {
+      step_loop: branch_step_loop
+    },
+    bind: BindInterpreter {
+      bind_value: branch_bind_value
+    }
+  }
+}
+
+fn branch_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^branch_allocate_literal_sym,
+    call_primitive: ^branch_call_primitive_sym,
+    choose_branch: ^branch_choose_branch_bool_if_else_sym,
+    step_loop: ^branch_step_loop_sym,
+    bind_value: ^branch_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
+  }
+}
+
+fn branch_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^branch_runtime_id,
+    interpretation: branch_interpretation(),
+    structure_witness: branch_interpretation_structure_witness()
+  )
+}
+
+fn branch_pick_call(callee: Node) -> Node {
+  Node {
+    kind: ComputationNode { behavior: Transform },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Positional, target: callee }
+    ]
+  }
+}
+
+fn branch_tree_root(call: Node, expected: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    occurrence_id: SyntheticOccurrence,
+    children: [
+      Edge { label: Named { name: ^branch_actual }, target: call },
+      Edge { label: Named { name: ^branch_expected }, target: expected }
+    ]
+  }
+}
+
+fn branch_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Holds {
+    value: claim_inferred_facts_from_nodes(
+      resolved: key,
+      algebra: branch_i64_node(),
+      descent: termination_proof_witness_for_node(n: key)
+    )
+  }
+}
+
+fn branch_admitted_tree(root: Node) -> InferredTree {
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: branch_facts_lookup
+    }
+  }
+}
+
+fn branch_inferred_run_tree(callee: Node, expected: Node) -> Outcome<InferredTree> {
+  let call = branch_pick_call(callee: callee)
+  let root = branch_tree_root(call: call, expected: expected)
+  outcome_accepted(value: branch_admitted_tree(root: root))
+}
+
+fn branch_claim(input: Node, expected: Node) -> TestClaim {
+  CompilesClaim {
+    label: "manual/branch: source-bridged if-then-else Branch.body executes through eval",
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    input: input,
+    expected_value: expected,
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
+
+fn branch_subject(
+  tree: InferredTree,
+  input: Node,
+  expected: Node
+) -> TestClaimEvalSubject<Node> {
+  TestClaimEvalSubject {
+    claim: branch_claim(input: input, expected: expected),
+    context: branch_context(),
+    tree: tree,
+    input: test_claim_typed_input_node(
+      evaluator_input: input,
+      evaluator_pin: ^branch_pick_call_pin
+    )
+  }
+}
+
+fn branch_run(
+  callee: Node,
+  expected: Node
+) -> Outcome<TestClaimRun<Node, RuntimeValue>> {
+  let input = branch_pick_call(callee: callee)
+  bind_outcome(
+    o: branch_inferred_run_tree(callee: callee, expected: expected),
+    f: fn(tree) {
+      outcome_accepted(
+        value: run_test_claim(
+          subject: branch_subject(tree: tree, input: input, expected: expected)
+        )
+      )
+    }
+  )
+}
+
+fn branch_run_passes(run: Outcome<TestClaimRun<Node, RuntimeValue>>) -> Bool {
+  match run {
+    Accepted { value: r, diagnostics: _ } =>
+      match test_claim_run_verdict(run: r) {
+        Pass => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_source_pipeline_admits_holds() -> Bool {
+  match source_bridged_pick_if_arrow_with_body() {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_source_driven_pick_true_executes_holds() -> Bool {
+  match source_bridged_pick_if_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      branch_run_passes(
+        run: branch_run(
+          callee: arrow,
+          expected: branch_literal_one_node()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_source_driven_pick_false_executes_holds() -> Bool {
+  match source_bridged_pick_false_if_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      branch_run_passes(
+        run: branch_run(
+          callee: arrow,
+          expected: branch_literal_two_node()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_condition_perturbation_red_holds() -> Bool {
+  match source_bridged_pick_if_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      branch_run_passes(
+        run: branch_run(
+          callee: arrow,
+          expected: branch_literal_two_node()
+        )
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_direct_runtime_true_holds() -> Bool {
+  match source_bridged_pick_if_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } => {
+      let input = branch_pick_call(callee: arrow)
+      match branch_inferred_run_tree(
+        callee: arrow,
+        expected: branch_literal_one_node()
+      ) {
+        Accepted { value: tree, diagnostics: _ } =>
+          match eval(
+            tree: tree,
+            interpretation: branch_interpretation(),
+            inputs: inputs_root_only(root: input)
+          ) {
+            Accepted { value: actual, diagnostics: None } =>
+              branch_runtime_int_is_one(value: actual)
+            _ => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_swapped_arms_red_holds() -> Bool {
+  match produce_mvp1_pick_if_arrow_with_body_swapped_arms() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      branch_run_passes(
+        run: branch_run(
+          callee: arrow,
+          expected: branch_literal_one_node()
+        )
+      ) == false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn branch_fixture_producer_holds() -> Bool {
+  match produce_mvp1_pick_if_arrow_with_body() {
+    Accepted { value: arrow, diagnostics: _ } =>
+      branch_run_passes(
+        run: branch_run(
+          callee: arrow,
+          expected: branch_literal_one_node()
+        )
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn branch_eval_by_execution_keystone_holds() -> Bool {
+  branch_source_driven_pick_true_executes_holds()
+    && branch_source_driven_pick_false_executes_holds()
+    && branch_direct_runtime_true_holds()
+    && branch_source_pipeline_admits_holds()
+    && branch_condition_perturbation_red_holds()
+    && branch_swapped_arms_red_holds()
+    && branch_fixture_producer_holds()
+}

@@ -1,0 +1,46 @@
+module test.claim.plan_lens_witness
+
+import gunbc.plan {
+  Plan, DissolutionTrigger, HasTrigger, NoTrigger,
+  plan_has_dissolution_trigger, plans_all_have_dissolution_trigger,
+  plan_title_is_present, plans_all_titled,
+}
+import gunbc.plan_registry { all_plans }
+
+fn plan_with_trigger() -> Plan {
+  Plan { slug: "x", title: "x", body: [], dissolution: HasTrigger { text: "delete when X is witnessed" } }
+}
+
+fn plan_without_trigger() -> Plan {
+  Plan { slug: "y", title: "y", body: [], dissolution: NoTrigger }
+}
+
+fn plan_untitled() -> Plan {
+  Plan { slug: "z", title: "", body: [], dissolution: HasTrigger { text: "t" } }
+}
+
+fn plan_with_empty_trigger() -> Plan {
+  Plan { slug: "w", title: "w", body: [], dissolution: HasTrigger { text: "" } }
+}
+
+test fn every_registered_plan_has_dissolution_trigger() -> Bool {
+  plans_all_have_dissolution_trigger(plans: all_plans)
+}
+
+test fn every_registered_plan_is_titled() -> Bool {
+  plans_all_titled(plans: all_plans)
+}
+
+test fn missing_dissolution_trigger_is_detected() -> Bool {
+  plan_has_dissolution_trigger(p: plan_with_trigger())
+    && (plan_has_dissolution_trigger(p: plan_without_trigger()) == false)
+    && (plan_has_dissolution_trigger(p: plan_with_empty_trigger()) == false)
+    && (plans_all_have_dissolution_trigger(plans: [plan_with_trigger(), plan_without_trigger()]) == false)
+    && (plans_all_have_dissolution_trigger(plans: [plan_with_trigger(), plan_with_empty_trigger()]) == false)
+}
+
+test fn missing_title_is_detected() -> Bool {
+  plan_title_is_present(p: plan_with_trigger())
+    && (plan_title_is_present(p: plan_untitled()) == false)
+    && (plans_all_titled(plans: [plan_with_trigger(), plan_untitled()]) == false)
+}

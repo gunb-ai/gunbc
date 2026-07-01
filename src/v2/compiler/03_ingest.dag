@@ -1,20 +1,3 @@
-// src/v2/compiler/03_ingest.dag
-// Scope: #g-ingest-bridge (#4801) — the ParseTree -> emit-side core node forward interpreter,
-//   the single unrealized link of the cross-language emit matrix
-//   (cross_language_add_python_to_typescript.dag links 2-4). Structural inverse of the
-//   06_translate grammar-inverse serialize: backward selects a production from an emitted core
-//   node; this forward direction recovers the emit-side core node a parse committed to and
-//   carries it (via the LANDED semantic dual coerce_grounded_node) to canonical IR.
-//
-// Home discipline (signed design, #4821): SMALL CLOSURE. This module OWNS the forward fold and
-//   the bridge composition; it imports grammar.dag / 02_parse carriers / 06_translate /
-//   04_infer / 05_emit READ-ONLY. It edits none of them (02_parse adoption is Mgr-CONSOLIDATION
-//   territory per #g-bidir gate 2; grammar.dag is at its 47-importer ceiling).
-//
-// Genericity (CoC=1): one language-blind fold parameterised by a source TargetModel. A new
-//   language greens by authoring rows in extdeps/languages/*.dag — never by editing this fold.
-//   Any per-language / per-production arm here is a FALSIFIER (escalate, do not work around).
-
 module v2.compiler.ingest
 
 import v2.std.algebra { Empty, list_append, zip_eq }
@@ -66,32 +49,6 @@ import v2.std.diagnostic {
   outcome_rejected
 }
 
-// Named fail-closed reasons — the gaps are located, never silent shims.
-// Forward-selection (Option A) fail-closed reasons. The parse FRONTIER (the token classes the
-// parse actually consumed) selects the row; trusting the stamped emitted is explicitly forbidden
-// (signed design #4821, Option A: "select on FRONTIER, not the stamp"). No row whose production
-// token-spine matches the frontier -> fail closed; >1 such row -> the grammar is not
-// forward-deterministic at this frontier (G.2) -> fail closed.
-
-// ─────────────────────────────────────────────────────────────────────────────
-// F5 Option A (signed design #4821) — operational parse tree -> formal capture frontier.
-//
-// 🟡 dissolve-on: G.3 forward interpreter — feature:operational-parse-tree-formal-capture-projection
-//    · consumer:parse_tree_to_emitted_node (forward selection) · TRACKED-OBLIGATION:
-//    when 02_parse emits formal `emitted`-shaped trees directly for row-backed productions
-//    (Mgr-CONSOLIDATION G.3 stage adoption), this projection dissolves and the fold consumes
-//    formal captures with no operational shim. Surfaced to Mgr-EMIT as a tracked obligation, not
-//    mark-and-forget.
-//
-// Bounded projection from the operational parse shape (02_parse GrammarExpr walk: Atom leaves +
-// Sequence Conj with `grammar_sequence_left/right_node_projection` + production-wrapped Conj with
-// identity TEMPLATE + captured edges) to the flat token-class frontier the forward selection
-// matches against a row's production. GENERIC — structural recursion, no per-language /
-// per-production arm: it skips the static `grammar_production_identity_node_projection` template
-// edge (not a source token) and recurses into every other child, collecting Atom token classes
-// left-to-right. When 02_parse stamps a BoundToken binding as the Atom identity (per-identifier
-// fidelity), the frontier class is recovered from the translation-rule rows' token spines — the same
-// projection `row_token_spine_classes` uses via `concrete_syntax_token_class` (bindings dropped).
 fn parse_atom_frontier_class(atom_identity: Symbol, binding_to_class: Map<Symbol, Symbol>) -> Symbol {
   match map_get(binding_to_class, atom_identity) {
     Accepted { value: opt, diagnostics: _ } =>
@@ -195,18 +152,6 @@ fn operational_parse_tree_project_to_formal_captures(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Forward selection (signed design #4821, Option A) — row token-spine ↔ parse frontier.
-//
-// A translation row node is a Conj carrying `grammar_relation_field_tokens` (the production's
-// concrete token spine, a fold_list_node named-cons of ConcreteSyntaxToken wire-nodes) and
-// `grammar_relation_field_emitted` (the emit-side core node the row commits to). The forward
-// interpreter recovers the emitted by matching the row's token-spine CLASSES against the parse
-// frontier — it never reads the parse tree's stamped emitted template (Option A: the stamp is not
-// trusted for selection; the frontier the parse actually consumed is the source of truth).
-
-// A row's production token-spine, projected to its ordered token CLASSES (bindings dropped — class
-// is what the frontier carries). Mirrors the wire-node decode `06_translate` serialize uses.
 fn row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
@@ -228,8 +173,6 @@ fn row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
   )
 }
 
-// Three-state fold accumulator for unique forward selection (G.2 forward-determinism): a frontier
-// that matches no row fails closed; one that matches >1 row is non-deterministic and fails closed.
 type ForwardRowSelection
   = ForwardRowNone
   | ForwardRowOne { emitted: Node }
@@ -255,9 +198,6 @@ fn forward_row_select_step(acc: ForwardRowSelection, frontier: List<Symbol>, row
   }
 }
 
-// Select the unique translation row whose production token-spine CLASSES equal the parse frontier,
-// returning that row's emit-side core node. GENERIC — every row is tried by the same structural
-// class-spine match; no per-language / per-production arm.
 fn grammar_relation_row_forward_selection(frontier: List<Symbol>, rules: Node) -> Outcome<Node> {
   match rules.kind {
     TypeNode { connective: Conj } =>
@@ -304,8 +244,6 @@ fn concrete_syntax_token_spine_classes(tokens: List<ConcreteSyntaxToken>) -> Lis
   )
 }
 
-// Forward-select from a bound token spine: fixture rows first (class frontier), then structural
-// rebuild from the production catalog when no fixture rows exist (derive-only rules).
 fn grammar_relation_row_forward_token_selection(
   tokens: List<ConcreteSyntaxToken>,
   rules: Node,
@@ -332,23 +270,6 @@ fn grammar_relation_row_forward_token_selection(
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Forward fold: ParseTree -> emit-side core Node.
-//
-// (i) Project the parse tree to its token-class FRONTIER (the operational->formal projection skips
-// the static `grammar_production_identity_node_projection` template edge and collects the consumed
-// Atom token classes left-to-right). (ii) Forward-SELECT the unique source_model row whose
-// production token-spine matches that frontier, returning the row's emit-side core node. The
-// stamped emitted is never consulted: the parse committed to a token sequence, and the row that
-// sequence belongs to determines the core node (Option A, signed #4821).
-//
-// NOTE (composition / nesting): for the add keystone the production is FLAT — its frontier is the
-// full terminal spine and its emitted is a static TYPE template (e.g. Arrow[int,int,int]); untyped
-// sources like python `def add(x,y)` carry no type tokens, so the slots come from the row template,
-// not the captures. The general node-step recurses per nested production, matching each level's
-// frontier against its row and composing the emitted into the parent's nonterminal slots; the flat
-// add case has no nested-production children, so the matched row's emitted IS the composition. Per
-// the signed design, build-from-captures applies only where the source carries the slot tokens.
 fn parse_tree_to_emitted_node(parse_tree: ParseTree, source_model: TargetModel) -> Outcome<Node> {
   bind_outcome(
     o: target_bundle_child(target: source_model, edge_name: ^target_model_edge_translation_rules),
@@ -363,16 +284,6 @@ fn parse_tree_to_emitted_node(parse_tree: ParseTree, source_model: TargetModel) 
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// The bridge: ParseTree -> canonical IR (stops at canonical IR per signed signature).
-//
-//   parse_tree_to_target_model_bridge(parse_tree, source_model)
-//     = fold (syntactic half) -> infer (generic grounding) -> coerce_grounded_node (semantic half)
-//
-// The signed `bind(parse_tree_to_emitted_node, coerce_grounded_node)` elides the InferredTree
-// coerce requires; `infer(emitted)` supplies it GENERICALLY (ResolvedTree = Node), so the bridge
-// stays parameterised by source_model only — no per-language hand-built grounding. coerce returns
-// the canonical IR core node (result.target).
 fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: TargetModel) -> Outcome<CoreNode> {
   bind_outcome(
     o: parse_tree_to_emitted_node(parse_tree: parse_tree, source_model: source_model),
@@ -390,25 +301,6 @@ fn parse_tree_to_target_model_bridge(parse_tree: ParseTree, source_model: Target
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Cross-language compile (optional matrix convenience, signed signature #4821).
-//
-//   cross_language_compile(parse_tree, source_model, target_model)
-//     = bind(parse_tree_to_target_model_bridge(parse_tree, source_model),
-//         bind(neutralize_core_for_target(_, target_model),
-//           bind(infer, emit(_, target_model))))
-//
-// The bridge lands the source parse at the canonical core node GROUNDED IN THE SOURCE model.
-// neutralize_core_for_target (std/inhabitant_neutralization.dag: source inhabitant -> canonical
-// std_projection -> target inhabitant) rewrites inhabitants when flavors differ; same-flavor paths
-// are identity when std_projection already matches. emit then serializes into `target_model`'s surface.
-//
-// SCOPE: combinator realized + wired; hermetic receipt in manual/inhabitant_neutralization.dag.
-// The python→ts cross_language_emit_matrix row is ChainProven (matrix authority
-// cross_language_add_python_to_typescript.dag), proven on the real parse tree by
-// cross_language_add_python_to_typescript_chain_status_holds (~627s). The hermetic slice and
-// python_to_ts_cross_language_compile_e2e_holds here are independent corroborating receipts of
-// this combinator — they do not change the single matrix authority (matrix file 0-diff).
 fn cross_language_compile(
   parse_tree: ParseTree,
   source_model: TargetModel,

@@ -1,0 +1,92 @@
+module v2.test.boundary.english_ingest_fail_closed
+
+import v2.std.diagnostic {
+  AmbiguousIntent,
+  Diagnostic,
+  Unavailable,
+  diagnostics_singleton,
+  node_locus
+}
+import v2.std.node { Edge, Named, Node, Symbol, TypeNode, Atom, Conj, SyntheticOccurrence }
+import v2.std.verification {
+  CompilesClaim,
+  DiagnosticClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier3,
+  Boundary,
+  manual_claim_anchor
+}
+fn atom_node(s: Symbol) -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+}
+
+data arbitrary_english_prose_input: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^english_boundary_field },
+      target: atom_node(s: ^english_ingest_boundary_symbol)
+    },
+    Edge {
+      label: Named { name: ^english_payload_field },
+      target: atom_node(s: ^english_arbitrary_prose_symbol)
+    },
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data english_shape_b_docs_input: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^english_typed_value_field },
+      target: atom_node(s: ^english_typed_value_symbol)
+    },
+    Edge {
+      label: Named { name: ^english_walker_field },
+      target: atom_node(s: ^english_doc_walker_symbol)
+    },
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data english_shape_b_docs_output: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^english_typed_value_field },
+      target: atom_node(s: ^english_typed_value_symbol)
+    },
+    Edge {
+      label: Named { name: ^english_output_field },
+      target: atom_node(s: ^english_prose_output_symbol)
+    },
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data test_english_prose_ingest_is_diagnostic: TestClaim = DiagnosticClaim {
+  label: "english prose ingest rejects outside the lossless core",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: arbitrary_english_prose_input,
+  expected_rejection: diagnostics_singleton(
+      d: Diagnostic {
+        reason: ^english_ingest_not_in_lossless_core_reason,
+        at: node_locus(node: arbitrary_english_prose_input),
+        correction: Unavailable { reason: AmbiguousIntent }
+      }
+    ),
+  classification: TestClassification { tier: Tier3, layer: Boundary }
+}
+
+data test_english_emit_is_shapeB_docs: TestClaim = CompilesClaim {
+  label: "english prose output is shape-b docs over typed values",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: english_shape_b_docs_input,
+  expected_value: english_shape_b_docs_output,
+  classification: TestClassification { tier: Tier3, layer: Boundary }
+}

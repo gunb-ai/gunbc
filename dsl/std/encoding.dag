@@ -1,43 +1,20 @@
-// std/encoding.dag -- Character encoding lattice.
-//
-// Single authority for byte-sequence interpretation classification.
-// The lattice enables compile-time narrowing at I/O boundaries.
-//
-//            Unknown (top)
-//           /       \
-//        Text      Binary
-//       /    \
-//    UTF8   Latin1
-//       \    /
-//       ASCII (bottom)
-//
-// Lattice: join(UTF8, Binary) = Unknown, ASCII <: UTF8, ASCII <: Latin1
-//
-// The compiler uses Encoding to:
-//   1. Verify domain compatibility at I/O boundaries (compile-time)
-//   2. Generate coproduct branch scenarios in tests (text vs binary)
-//   3. Produce diverse mock file lists from @file_types rules
-
 module std.encoding
 
 import std.algebra { BoundedLattice }
 import std.types { Bytes }
+import std.integer { UInt8 }
+import std.bytes { pure_dag_seam_unreachable }
+import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type Encoding
-  = ASCII                          // 7-bit subset (bottom: most specific)
-  | UTF8                           // valid Unicode
-  | Latin1                         // ISO 8859-1
-  | Text                           // some text encoding (join of UTF8, Latin1)
-  | Binary                         // opaque byte sequence
-  | Unknown                        // top: could be anything
+  = ASCII
+  | UTF8
+  | Latin1
+  | Text
+  | Binary
+  | Unknown
 
-// Encoding inhabits BoundedLattice<Encoding>
-//
-// Partial order (not total): UTF8 and Latin1 are incomparable,
-// Text and Binary are incomparable. ASCII is bottom, Unknown is top.
-
-// Numeric rank within the text chain. Used by meet/join for
-// comparisons within the text subtree.
 fn encoding_rank(e: Encoding) -> Int {
   match e {
     ASCII => 0
@@ -49,7 +26,6 @@ fn encoding_rank(e: Encoding) -> Int {
   }
 }
 
-// Is this encoding in the text branch (ASCII, UTF8, Latin1, Text)?
 fn is_text_encoding(e: Encoding) -> Bool {
   match e {
     ASCII => true
@@ -61,10 +37,6 @@ fn is_text_encoding(e: Encoding) -> Bool {
   }
 }
 
-// BoundedLattice<Encoding>:
-//   top = Unknown, bottom = ASCII
-// Greatest lower bound (conservative narrowing).
-// meet(x, x) = x. For incompatible branches (text vs binary), result is ASCII.
 fn encoding_lattice_meet(a: Encoding, b: Encoding) -> Encoding {
   match a {
     Unknown => b
@@ -97,8 +69,6 @@ fn encoding_lattice_meet(a: Encoding, b: Encoding) -> Encoding {
   }
 }
 
-// Least upper bound (combining from branches).
-// join(x, x) = x. For incompatible branches (text vs binary), result is Unknown.
 fn encoding_lattice_join(a: Encoding, b: Encoding) -> Encoding {
   match a {
     ASCII => b
@@ -143,7 +113,208 @@ data encoding_bounded_lattice: BoundedLattice<Encoding> = {
   bottom: ASCII
 }
 
-// Stub body unreachable: runtime intercepts by name; v1_rt::utf8_decode_bytes provides RFC 3629 fail-closed behavior.
 fn utf8_decode_bytes(payload: Bytes) -> String {
-  ""
+  from_code_point(pure_dag_seam_unreachable())
+}
+
+type Base64Variant = Standard | UrlSafe
+
+fn base64_alphabet(variant: Base64Variant) -> String {
+  match variant {
+    Standard => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+    UrlSafe => "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+  }
+}
+
+type Base64EncodeBuf
+  = EncEmpty
+  | EncOne { b0: Int }
+  | EncTwo { b0: Int, b1: Int }
+
+type Base64EncodeState {
+  out: String
+  buf: Base64EncodeBuf
+}
+
+fn base64_octet_int(b: UInt8) -> Int {
+  b + 0
+}
+
+fn base64_sextet_char(alphabet: String, n: Int, divisor: Int) -> String {
+  char_at(alphabet, (n / divisor) % 64)
+}
+
+fn base64_encode_step(st: Base64EncodeState, octet: Int, alphabet: String) -> Base64EncodeState {
+  match st.buf {
+    EncEmpty => Base64EncodeState { out: st.out, buf: EncOne { b0: octet } }
+    EncOne { b0: x } => Base64EncodeState { out: st.out, buf: EncTwo { b0: x, b1: octet } }
+    EncTwo { b0: x, b1: y } => {
+      let n = x * 65536 + y * 256 + octet
+      let quad = concat(
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 64),
+        char_at(alphabet, n % 64)
+      )
+      Base64EncodeState { out: concat(st.out, quad), buf: EncEmpty }
+    }
+  }
+}
+
+fn base64_encode_flush(st: Base64EncodeState, alphabet: String) -> String {
+  match st.buf {
+    EncEmpty => st.out
+    EncOne { b0: x } => {
+      let n = x * 65536
+      concat(
+        st.out,
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
+        "=="
+      )
+    }
+    EncTwo { b0: x, b1: y } => {
+      let n = x * 65536 + y * 256
+      concat(
+        st.out,
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 262144),
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 4096),
+        base64_sextet_char(alphabet: alphabet, n: n, divisor: 64),
+        "="
+      )
+    }
+  }
+}
+
+fn base64_encode(octets: List<UInt8>, variant: Base64Variant) -> String {
+  let alphabet = base64_alphabet(variant: variant)
+  let st = fold(octets,
+    init: Base64EncodeState { out: "", buf: EncEmpty },
+    f: (acc, octet) => base64_encode_step(st: acc, octet: base64_octet_int(b: octet), alphabet: alphabet)
+  )
+  base64_encode_flush(st: st, alphabet: alphabet)
+}
+
+fn base64_char_value(c: String, variant: Base64Variant) -> Int? {
+  let cp = code_point(c)
+  if cp >= 65 && cp <= 90 {
+    Present { value: cp - 65 }
+  } else if cp >= 97 && cp <= 122 {
+    Present { value: cp - 71 }
+  } else if cp >= 48 && cp <= 57 {
+    Present { value: cp + 4 }
+  } else {
+    match variant {
+      Standard =>
+        if cp == 43 { Present { value: 62 } }
+        else if cp == 47 { Present { value: 63 } }
+        else { none }
+      UrlSafe =>
+        if cp == 45 { Present { value: 62 } }
+        else if cp == 95 { Present { value: 63 } }
+        else { none }
+    }
+  }
+}
+
+fn base64_collect_values(s: String, i: Int, len: Int, variant: Base64Variant, seen_pad: Bool, acc: List<Int>) -> List<Int>? {
+  if i >= len {
+    Present { value: acc }
+  } else {
+    let c = char_at(s, i)
+    if c == "=" {
+      base64_collect_values(s: s, i: i + 1, len: len, variant: variant, seen_pad: true, acc: acc)
+    } else if seen_pad {
+      none
+    } else {
+      match base64_char_value(c: c, variant: variant) {
+        Absent => none
+        Present { value: v } =>
+          base64_collect_values(s: s, i: i + 1, len: len, variant: variant, seen_pad: false, acc: acc |> list_push(v))
+      }
+    }
+  }
+}
+
+type Base64DecodeBuf
+  = DecEmpty
+  | DecOne { v0: Int }
+  | DecTwo { v0: Int, v1: Int }
+  | DecThree { v0: Int, v1: Int, v2: Int }
+
+type Base64DecodeState {
+  out: List<Int>
+  buf: Base64DecodeBuf
+}
+
+fn base64_decode_step(st: Base64DecodeState, v: Int) -> Base64DecodeState {
+  match st.buf {
+    DecEmpty => Base64DecodeState { out: st.out, buf: DecOne { v0: v } }
+    DecOne { v0: a } => Base64DecodeState { out: st.out, buf: DecTwo { v0: a, v1: v } }
+    DecTwo { v0: a, v1: b } => Base64DecodeState { out: st.out, buf: DecThree { v0: a, v1: b, v2: v } }
+    DecThree { v0: a, v1: b, v2: c } => {
+      let n = a * 262144 + b * 4096 + c * 64 + v
+      let byte0 = (n / 65536) % 256
+      let byte1 = (n / 256) % 256
+      let byte2 = n % 256
+      Base64DecodeState {
+        out: st.out |> list_push(byte0) |> list_push(byte1) |> list_push(byte2),
+        buf: DecEmpty
+      }
+    }
+  }
+}
+
+fn base64_decode_flush(st: Base64DecodeState) -> List<Int>? {
+  match st.buf {
+    DecEmpty => Present { value: st.out }
+    DecOne { v0: _ } => none
+    DecTwo { v0: a, v1: b } => {
+      let n = a * 262144 + b * 4096
+      Present { value: st.out |> list_push((n / 65536) % 256) }
+    }
+    DecThree { v0: a, v1: b, v2: c } => {
+      let n = a * 262144 + b * 4096 + c * 64
+      Present { value: st.out |> list_push((n / 65536) % 256) |> list_push((n / 256) % 256) }
+    }
+  }
+}
+
+fn base64_octet_of_int(n: Int) -> UInt8 {
+  n
+}
+
+fn base64_decode_values(vals: List<Int>) -> List<UInt8>? {
+  let st = fold(vals,
+    init: Base64DecodeState { out: [], buf: DecEmpty },
+    f: (acc, v) => base64_decode_step(st: acc, v: v)
+  )
+  match base64_decode_flush(st: st) {
+    Absent => none
+    Present { value: octets } => Present { value: octets |> map(n => base64_octet_of_int(n: n)) }
+  }
+}
+
+fn base64_decode(s: String, variant: Base64Variant) -> List<UInt8>? {
+  match base64_collect_values(s: s, i: 0, len: string_length(s), variant: variant, seen_pad: false, acc: []) {
+    Absent => none
+    Present { value: vals } =>
+      match base64_decode_values(vals: vals) {
+        Absent => none
+        Present { value: octets } => Present { value: octets }
+      }
+  }
+}
+
+data utf8_decode_bytes_host_realization_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.bytes",
+    decl_name: "builtin_function_registry",
+    field: WholeDeclaration
+  }
+}
+
+data base64_group_fill_carrier_debt_marker: Disposition = Terminal {
+  reason: "Base64EncodeBuf = EncEmpty|EncOne|EncTwo and Base64DecodeBuf = DecEmpty|DecOne|DecTwo|DecThree: the hand-rolled Int count accumulator debt is paid; closed sums are declared and all arms are covered by execution in base64_rfc4648_witness_test.dag"
 }

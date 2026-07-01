@@ -1,6 +1,3 @@
-// Interpreter test: exercises types, enums, pattern matching,
-// field access, list ops (map, fold), closures, and string concat.
-// Run: dag run --source-root dsl/examples/interp_test --source-root dsl/std
 module examples.interp_test
 
 type Temperature {

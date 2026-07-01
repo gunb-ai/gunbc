@@ -1,0 +1,42 @@
+module v2.test.manual.medium_source_serializer_determinism_fidelity
+
+import extdeps.communication.fidelity_carriers { medium_section_equal }
+import extdeps.communication.medium { Lossless, Lossy, Medium }
+import v2.compiler.source_authority { deterministic_dag_source_serializer_witness }
+import v2.std.logic { Bool }
+import v2.std.witness { Holds, Violates }
+
+data serializer_determinism_probe_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
+
+fn serializer_determinism_lossless_probe() -> Medium<String> {
+  Medium { carried: serializer_determinism_probe_text, fidelity: Lossless }
+}
+
+fn serializer_determinism_lossy_probe() -> Medium<String> {
+  Medium { carried: serializer_determinism_probe_text, fidelity: Lossy }
+}
+
+fn serializer_determinism_holds_despite_fidelity_mismatch() -> Bool {
+  match deterministic_dag_source_serializer_witness(
+    first: serializer_determinism_lossless_probe(),
+    second: serializer_determinism_lossy_probe()
+  ) {
+    Holds { value: law } =>
+      law.canonical_section == serializer_determinism_probe_text
+        && law.declared_fidelity == Lossless
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn red_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
+  medium_section_equal(
+    left: serializer_determinism_lossless_probe(),
+    right: serializer_determinism_lossy_probe()
+  )
+    && serializer_determinism_lossless_probe() != serializer_determinism_lossy_probe()
+}
+
+test fn medium_source_serializer_determinism_fidelity_holds() -> Bool {
+  serializer_determinism_holds_despite_fidelity_mismatch()
+    && red_naive_medium_equality_rejects_fidelity_mismatch()
+}

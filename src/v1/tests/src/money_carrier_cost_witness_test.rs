@@ -1,15 +1,3 @@
-//! Float-in-v2 consumer + ISO 4217 currency model — v2 resolve + eval proof.
-//!
-//! Pairs with #4825 (Float-in-v2 parse/resolve). #4825 proved `dsl/std/float.dag`
-//! RESOLVES on v2; these tests prove a real consumer of `Float` (a cost
-//! projection) and the ISO 4217 `CurrencyCode` enum RESOLVE and EVALUATE on the
-//! v2 interpreter end-to-end.
-//!
-//! Interim scope: the real `product.compute_fabric.CostEstimate` claim-run is gated
-//! on #4831 (Option-in-v2) + #4826 (G1 identifier-variant type args for Measure
-//! value eval); see `dsl/examples/cost_estimate/cost_estimate.dag`. This witness
-//! is the interim Float-in-v2 proof until those land.
-
 use std::rc::Rc;
 
 use v1_compiler::cli_run;
@@ -37,9 +25,6 @@ fn source_root_strings() -> Vec<String> {
 
 #[test]
 fn v1_std_currency_dag_resolves() {
-    // Use the scoped entry loader (transitive import closure only), matching the
-    // witness test below — the whole-tree `resolve_imports_transitively_*`
-    // helper walks every `.dag` under the roots and is far slower here.
     let roots = source_root_strings();
     let entry = workspace_root().join("dsl/std/currency.dag");
     let entry = entry.to_string_lossy().to_string();
@@ -53,9 +38,6 @@ fn v1_std_currency_dag_resolves() {
     );
 }
 
-/// The Float-in-v2 consumer witness (`dsl/examples/cost_estimate`) evaluates to
-/// `true`: a `Float` field, a float literal, Float multiplication, Float
-/// comparison, and the currency query all run on the v2 interpreter.
 #[test]
 fn cost_projection_float_witness_evaluates_true() {
     let roots = source_root_strings();

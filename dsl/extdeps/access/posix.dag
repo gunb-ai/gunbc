@@ -1,23 +1,9 @@
-// extdeps/access/posix.dag -- "What are POSIX file permissions?"
-//
-// The classic discretionary file-permission model: read/write/execute bits for three classes
-// (owner / group / other), plus the setuid / setgid / sticky special bits, over a file owned by
-// a numeric user id and group id. Faithful model of the <sys/stat.h> mode bits.
-//
-// Source: POSIX.1-2017 (IEEE Std 1003.1-2017), file mode bits (S_IRWXU/G/O, S_ISUID/ISGID/ISVTX);
-//   `chmod` permission model.
-//   https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/sys_stat.h.html
-//
-// One of several access-control systems in extdeps/access; the std abstraction is derived from
-// their commonality and validated against each (DESIGN §3), not re-coined from one.
-
 module extdeps.access.posix
 
+import std.types { NonEmptyStr }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-// External-authority anchor (promotes the Source citation above to the structured carrier
-// that v2.lens.extdeps_external_authority gates on — DESIGN §3).
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
     scheme: Https
@@ -25,30 +11,40 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// The three permission bits applied per class (e.g. S_IRUSR / S_IWUSR / S_IXUSR for the owner).
 type PermissionBits {
-  read: Bool       // r
-  write: Bool      // w
-  execute: Bool    // x  (search, for directories)
+  read: Bool
+  write: Bool
+  execute: Bool
 }
 
-// A file's mode: the three classes plus the special bits.
 type FileMode {
-  owner: PermissionBits    // user class   (S_IRWXU)
-  group: PermissionBits    // group class  (S_IRWXG)
-  other: PermissionBits    // other class  (S_IRWXO)
-  setuid: Bool             // S_ISUID — execute as the file's owner
-  setgid: Bool             // S_ISGID — execute as the file's group / dir group inheritance
-  sticky: Bool             // S_ISVTX — restricted deletion (e.g. /tmp)
+  owner: PermissionBits
+  group: PermissionBits
+  other: PermissionBits
+  setuid: Bool
+  setgid: Bool
+  sticky: Bool
 }
 
-// The owning identities the mode's classes resolve against.
 type FileOwnership {
-  uid: Int                 // owning user id
-  gid: Int                 // owning group id
+  uid: Int
+  gid: Int
 }
 
 type FilePermissions {
   ownership: FileOwnership
   mode: FileMode
+}
+
+type PosixUser {
+  name: NonEmptyStr
+  uid: Int
+  gid: Int
+}
+
+
+data posix_root_uid: Int = 0
+
+fn posix_user_is_root(user: PosixUser) -> Bool {
+  user.uid == posix_root_uid
 }

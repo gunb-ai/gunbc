@@ -1,0 +1,61 @@
+module std.layout
+
+import std.render_repeat_string_bootstrap { repeat_string }
+
+type Doc
+  = DocEmpty
+  | DocText { text: String }
+  | DocLine
+  | DocConcat { parts: List<Doc> }
+  | DocNest { levels: Int, body: Doc }
+
+type LayoutProtocol {
+  indent_unit: String
+}
+
+type RenderState {
+  out: String
+  at_line_start: Bool
+}
+
+fn doc_text(text: String) -> Doc {
+  DocText { text: text }
+}
+
+fn doc_concat(parts: List<Doc>) -> Doc {
+  DocConcat { parts: parts }
+}
+
+fn doc_nest(levels: Int, body: Doc) -> Doc {
+  DocNest { levels: levels, body: body }
+}
+
+fn doc_line_of(text: String) -> Doc {
+  DocConcat { parts: [DocText { text: text }, DocLine] }
+}
+
+fn doc_blank() -> Doc {
+  DocLine
+}
+
+fn render_go(doc: Doc, level: Int, proto: LayoutProtocol, st: RenderState) -> RenderState {
+  match doc {
+    DocEmpty => st
+    DocText { text: t } =>
+      if t == "" {
+        st
+      } else if st.at_line_start {
+        RenderState { out: concat(concat(st.out, repeat_string(s: proto.indent_unit, n: level)), t), at_line_start: false }
+      } else {
+        RenderState { out: concat(st.out, t), at_line_start: false }
+      }
+    DocLine => RenderState { out: concat(st.out, "\n"), at_line_start: true }
+    DocConcat { parts: parts } =>
+      fold(parts, init: st, f: (acc, part) => render_go(doc: part, level: level, proto: proto, st: acc))
+    DocNest { levels: n, body: body } => render_go(doc: body, level: level + n, proto: proto, st: st)
+  }
+}
+
+fn render(doc: Doc, proto: LayoutProtocol) -> String {
+  render_go(doc: doc, level: 0, proto: proto, st: RenderState { out: "", at_line_start: true }).out
+}

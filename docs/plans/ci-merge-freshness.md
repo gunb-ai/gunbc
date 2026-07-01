@@ -1,63 +1,53 @@
 # CI merge-freshness — decision record (the stale-green root of the 3× fleet-red)
 
-One-line: the fleet-red that hit `main` three times is **stale-green** — a PR validated against a base
-that pre-dates a newly-landed gate, then merged without re-validating against current `main`. The fix is
-a **merge-time freshness requirement** (a merge-policy change), not a new lens. This doc is the decision
-record so we don't re-litigate; the operator picks the option in §3.
+One-line: the fleet-red that hit `main` three times is **stale-green** — a PR validated against a base that pre-dates a newly-landed gate, then merged without re-validating against current `main`. The fix is a **merge-time freshness requirement** (a merge-policy change), not a new lens. This doc is the decision record so we don't re-litigate; the operator picks the option in §3.
 
 ## 1. Root cause — receipts (the #5429 timeline)
 
-`main` was green at 14:44, went red at 15:04 on #5429's merge, and stayed red until #5465. Bisected to
-#5429 ("warm==cold cache purity", adds `dsl/extdeps/realization/cache_purity.dag`). But the gate that
-fired (`extdeps_external_authority`, #5418) was **already on main** — so why did #5429's own PR not catch
-it? Because the green was **stale**:
+`main` was green at 14:44, went red at 15:04 on #5429's merge, and stayed red until #5465. Bisected to #5429 ("warm==cold cache purity", adds `dsl/extdeps/realization/cache_purity.dag`). But the gate that fired (`extdeps_external_authority`, #5418) was **already on main** — so why did #5429's own PR not catch it? Because the green was **stale**:
 
 - #5429 PR CI = **SUCCESS @ 06:11:18Z** (head `f66c26b1`).
-- #5418 (the external-authority gate) merged to `main` **@ 06:33:24Z** — 22 minutes *after* #5429's CI
-  completed.
-- #5429 merged **@ 15:04:10Z** — ~9 hours later, on the **same head**, **never re-run against current
-  main**.
+- #5418 (the external-authority gate) merged to `main` **@ 06:33:24Z** — 22 minutes *after* #5429's CI completed.
+- #5429 merged **@ 15:04:10Z** — ~9 hours later, on the **same head**, **never re-run against current main**.
 
-So at #5429's merge the gate was on `main`, but #5429 was last validated against a base that pre-dated it.
-The PR floor was never *red* for #5429 — it was *stale-green*. `main` went red on the merge commit (caught
-post-merge, fleet-wide, too late).
+So at #5429's merge the gate was on `main`, but #5429 was last validated against a base that pre-dated it. The PR floor was never *red* for #5429 — it was *stale-green*. `main` went red on the merge commit (caught post-merge, fleet-wide, too late).
 
 ## 2. Why the forward gate doesn't catch this
 
-The forward completeness checks already exist, are non-vacuous, and are floor-enrolled
-(`realization_vocab` `clean_tree_test.dag`; `external_authority` `live_anchored_modules_clean_test.dag`).
-They validate a PR's tree against an independent live scan — **but only at the PR's base**. A gate that
-lands *after* a PR's last CI run is invisible to that PR's green. The hole is **freshness**, not coverage:
-nothing requires the green to be against *current* `main` at merge time. This is the same shape for all
-3× reds (#5445/#5453, #5429/#5465) — the one-time cost of a gate and a module crossing `main` in
-overlapping, never-jointly-validated PRs.
+The forward completeness checks already exist, are non-vacuous, and are floor-enrolled (`realization_vocab` `clean_tree_test.dag`; `external_authority` `live_anchored_modules_clean_test.dag`). They validate a PR's tree against an independent live scan — **but only at the PR's base**. A gate that lands *after* a PR's last CI run is invisible to that PR's green. The hole is **freshness**, not coverage: nothing requires the green to be against *current* `main` at merge time. This is the same shape for all 3× reds (#5445/#5453, #5429/#5465) — the one-time cost of a gate and a module crossing `main` in overlapping, never-jointly-validated PRs.
 
 ## 3. Options (operator decision)
 
-| | Option 1 — **merge-queue** (preferred) | Option 2 — require-up-to-date + required-check |
-|---|---|---|
+|  | Option 1 — **merge-queue** (preferred) | Option 2 — require-up-to-date + required-check |
+| --- | --- | --- |
 | Mechanism | GitHub merge queue tests each PR against current `main` in the queue before merging | Branch-protection "require branches up to date" + floor as a required status check |
 | Freshness | By construction — stale-green cannot merge | By construction — must re-sync to current `main` first |
 | Churn | None forced on the author | Every PR re-syncs on each `main` move → re-runs CI **and re-stales HEAD-keyed approvals** |
 | Cost fit | Good — queue serializes validation, no manual re-sync | Poor right now — ~440 PR-runs/day; re-staling collides with the 2nd-provider approval outage + the freeze-head-during-approval-accrual discipline |
 
-**Recommendation: Option 1 (merge-queue).** It gives freshness-by-construction without the
-approval-restale churn Option 2 imposes — which is a non-starter under the current approval outage.
+**Recommendation: Option 1 (merge-queue).** It gives freshness-by-construction without the approval-restale churn Option 2 imposes — which is a non-starter under the current approval outage.
 
 ## 4. Interaction with current policy (flag for the operator)
 
-A merge-queue partly **supersedes** the current `[TEMPORARY POLICY]` "operator merges PRs manually in
-parallel." It is therefore not just a repo setting — it's a workflow change for the operator to opt into
-(the queue does the merge; the manual on-strength merges stop). Option 2 would *keep* manual merges but
-add the re-stale churn described above. Either way this is a repo-admin / merge-policy call in the
-operator's domain.
+A merge-queue partly **supersedes** the current `[TEMPORARY POLICY]` "operator merges PRs manually in parallel." It is therefore not just a repo setting — it's a workflow change for the operator to opt into (the queue does the merge; the manual on-strength merges stop). Option 2 would *keep* manual merges but add the re-stale churn described above. Either way this is a repo-admin / merge-policy call in the operator's domain.
 
 ## 5. Complementary, NOT this fix — the reverse-staleness lens
 
-`neat-ibex-867` is building a roster **soundness** (reverse-staleness) gate: every frozen-roster *entry*
-must still match a live tree element, RED on a stale entry. That fixes the **#5466-mode** stale/spurious
-anchor and the shrinking-ratchet integrity (a dropped sidecar leaving a dead roster excuse → a future
-re-leak silently excused, a §5 fail-open). It is **complementary** and explicitly does **not** claim the
-3×-red fix — claiming so would be a false-green about a false-green. The forward completeness checks
-already exist; the reverse-staleness gate is the genuine residual lens; the freshness requirement in §3 is
-the actual 3×-red killer.
+`neat-ibex-867` is building a roster **soundness** (reverse-staleness) gate: every frozen-roster *entry* must still match a live tree element, RED on a stale entry. That fixes the **#5466-mode** stale/spurious anchor and the shrinking-ratchet integrity (a dropped sidecar leaving a dead roster excuse → a future re-leak silently excused, a §5 fail-open). It is **complementary** and explicitly does **not** claim the 3×-red fix — claiming so would be a false-green about a false-green. The forward completeness checks already exist; the reverse-staleness gate is the genuine residual lens; the freshness requirement in §3 is the actual 3×-red killer.
+
+## 6. The infra-vs-structural verdict is COMPUTED + surfaced; gating is DEFERRED
+
+`gunbc.ci_failure_class` builds the construction-first half that makes the §3 freshness requirement *viable*: a classifier that partitions a floor red into `Infra | Structural` and a fail-closed verdict surface `floor_exit_blocks_merge(ProcessExit) -> Bool` (success / unambiguous-infra ⇒ non-blocking; everything else, including a bare exit-137, ⇒ Structural ⇒ blocks). Without it, requiring green-on-main would block merges on the environmental reds (sccache/EAGAIN/runner contention) that are *not* the defect the freshness rule targets.
+
+**The verdict is COMPUTED and surfaced, gating DEFERRED** (re-landed clean after the #5627 outage-revert of #5615; the re-land is #5651, on top of the #5640 `TestClaim`→`AssertionClaim` de-fork that removed the flat-intern collision the original land tripped). It is built and witnessed and **executes**, but **nothing consumes `floor_exit_blocks_merge` to block any merge** — a verdict-without-enforcement, a legitimate executed+visible interim (NOT an inert lens, and explicitly NOT a claimed-live gate). The freshness *mechanism* (§3, the operator merge-queue that re-runs the floor vs the merge-RESULT tree = Wall A and consumes the verdict) is the operator's repo-admin half, and is **out of scope of the classifier PR**. Wiring `floor_exit_blocks_merge` into the CI-floor HOST exit semantics is the **livelock path and is OFF** (infra-OOM mis-classified `Structural` ⇒ block ⇒ re-run ⇒ OOM ⇒ …) — never do it.
+
+This is a §6 **scaffold-with-dissolution-trigger**: the verdict exists and runs; flipping it to *gating/enforcing* (the operator merge-queue consuming it) is the dissolution event, and it is gated — **do not flip to enforcing until BOTH clear:**
+
+- **(a) the cross-run clustering-reclassification consumer has landed (UNBUILT today).** A *lone* exit-137 fails closed to `Structural` (a single `ProcessExit` cannot tell a co-residence OOM from a structural memory-runaway). If the green-on-main mechanism went live first, a genuine co-residence OOM on a re-run would read `Structural ⇒ block ⇒ re-run ⇒ OOM ⇒ …` — the livelock deep-otter-528 warned of. The clustering consumer (simultaneous multi-job death + host-uptime reset in a tight window) is what *reclassifies* such a clustered OOM back to `Infra`; it is a **hard prerequisite** for enforcement.
+- **(b) cap-recovery has reclaimed session slots (IN-FLIGHT: #5650 + operator oomd).** Green-on-main re-runs *increase* floor memory load during exactly the contention window this lockdown is containing; enforcing before the host has slack worsens the OOM pressure the verdict is meant to triage.
+
+Until both clear, the verdict is a loaded mechanism left unwired on purpose: a future worker must **not** flip it to enforcing early. The trigger is decidable (both consumers either exist on `main` or do not), so this is a wall-after-grounding, not a forever-ratchet.
+
+## Dissolution trigger (DESIGN §6)
+
+Delete this doc when the merge-time freshness requirement of §3 is in force as a witnessed property — a merge-queue (Option 1) or require-up-to-date required-check (Option 2) is wired so that no PR can merge while last-validated against a base that pre-dates current `main` — at which point stale-green is unwritable by construction and this decision record is redundant.

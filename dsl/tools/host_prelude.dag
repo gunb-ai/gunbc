@@ -1,12 +1,3 @@
-// tools/host_prelude.dag — shared shell-program prelude for host gates that need a built gunbc.
-//
-// One authority for the ROOT/GUNBC/ensure-built sequence that every compile-or-run host gate
-// repeats (§2 DRY): de-duplicated out of dsl_compile_clean_transport + layering_imports_transport.
-//
-//   ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-//   GUNBC="$ROOT"/target/release/gunbc
-//   if [ ! -x "$GUNBC" ]; then (cd "$ROOT" && cargo build -p v1-compiler --release --bin gunbc) || exit 1; fi
-
 module tools.host_prelude
 
 import extdeps.shell
@@ -20,15 +11,6 @@ import extdeps.languages.bash.program {
 }
 import tools.build_step { BuildArtifact, emit_verifications }
 
-// Source set the ensure-built bins must be fresh against — `$ROOT/src/**/*.rs` plus
-// Cargo.toml/Cargo.lock (same oracle as the release bootstrap build, gunbc.ci_spec; the
-// v1-compiler workspace's Rust sources all live under `src/`). Single authority for the
-// host-gate freshness inputs (§3).
-fn host_build_source_roots() -> List<ShellWord> {
-  [Concat { parts: [var_ref(name: "ROOT"), lit(text: "/src")] }]
-}
-
-// `ROOT=$(git rev-parse … || pwd)` — shared by every ensure-built prelude.
 fn assign_root_stmt() -> ShellStmt {
   assign(name: "ROOT", value: CmdSubst { body: AndOr {
     left: WithRedir {
@@ -40,7 +22,6 @@ fn assign_root_stmt() -> ShellStmt {
   } })
 }
 
-// `if [ ! -x <bin> ]; then (cd "$ROOT" && cargo build -p v1-compiler --release --bin <bin>) || exit 1; fi`
 fn build_bin_if_absent_stmt(bin_path: ShellWord, root: ShellWord, bin_name: String) -> ShellStmt {
   If {
     cond: test_not_executable(path: bin_path),
@@ -63,12 +44,6 @@ fn build_bin_if_absent_stmt(bin_path: ShellWord, root: ShellWord, bin_name: Stri
   }
 }
 
-// Ensure a release bin is present, then VERIFY it — existence (primary) + source-relative
-// freshness (secondary), derived from the declared artifact via the single build_step
-// generator. Closes the §5 fail-open the old `if ! -x then build` carried: it checked
-// existence only BEFORE building (never after) and never freshness, so a present-but-stale bin
-// (or a build that exited 0 without producing one) ran a phantom binary in the gate. Stale ⇒
-// fail closed, loud — not a silent wrong gate result.
 fn ensure_bin_built_and_verified(var_name: String, bin_name: String) -> List<ShellStmt> {
   let root = var_ref(name: "ROOT")
   let bin = var_ref(name: var_name)
@@ -79,9 +54,7 @@ fn ensure_bin_built_and_verified(var_name: String, bin_name: String) -> List<She
       build_bin_if_absent_stmt(bin_path: bin, root: root, bin_name: bin_name)
     ],
     emit_verifications(
-      produces: [BuildArtifact { path: bin, name: bin_name }],
-      roots: host_build_source_roots(),
-      patterns: ["*.rs", "Cargo.toml", "Cargo.lock"]
+      produces: [BuildArtifact { path: bin, name: bin_name }]
     )
   )
 }
@@ -90,16 +63,18 @@ fn ensure_gunbc_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "GUNBC", bin_name: "gunbc")
 }
 
-// Pre-built release bin for Lane 3a ingest (CI builds with --bins; avoid cargo run under
-// batch-2 parallel load — races rust_monolith fmt/clippy/test for the lock).
 fn ensure_discover_source_root_ingest_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
 }
 
-// 🟡 toolchain-provision carve-out — dissolve-on: model ToolchainProvision in std;
-//   interim structural allow for emit_host go/ts provisioning workarounds. Callers pass
-//   literal blobs here; the wrapper's shell.Exec.Run uses the parameter (computed), not
-//   a literal at the transport site.
+fn ensure_v1_src_dag_parse_built() -> List<ShellStmt> {
+  ensure_bin_built_and_verified(var_name: "V1_SRC_DAG_PARSE", bin_name: "v1_src_dag_parse")
+}
+
+fn ensure_regen_stage0_built() -> List<ShellStmt> {
+  ensure_bin_built_and_verified(var_name: "REGEN_STAGE0", bin_name: "regen_stage0")
+}
+
 fn toolchain_provision_shell_exec(script: String) -> Bool {
   let result = shell.Exec.Run(script: script)
   result.success

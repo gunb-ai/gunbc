@@ -1,10 +1,3 @@
-// src/v2/std/generic_instantiation.dag
-// Scope: value-level generic instantiation substrate — Lane 2b / R2 §4a.
-// Status: 🟡 scaffold — GenericSubstitution + bind-once only. NOT migrated yet:
-// v1/04_infer.dag remains authority for is_type_variable_name, ArgGenericFoldState,
-// and self-named generic-decl discrimination (infer-local).
-// Dissolve-on: v2.compiler.04_infer imports this module and drops parallel carriers.
-
 module v2.std.generic_instantiation
 
 import v2.std.collection {
@@ -29,7 +22,6 @@ import v2.std.diagnostic {
 import v2.std.node { Node, Symbol, content_hash }
 import v2.std.text { String }
 
-// Substitution map: generic name → concrete type node at a call site.
 type GenericSubstitution = Map<String, Node>
 
 data generic_substitution_bind_once_port: Symbol = generic_substitution_bind_once_port
@@ -47,7 +39,6 @@ fn generic_substitution_bind_conflict_diagnostic() -> Diagnostic {
   }
 }
 
-// Fail-closed: bind a generic name once (first wins); reject conflicting re-bind.
 fn generic_substitution_bind_once(
   subst: GenericSubstitution,
   name: String,

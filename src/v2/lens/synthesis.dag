@@ -1,24 +1,5 @@
-// src/v2/lens/synthesis.dag
-//
-// Scope: cross-algorithm complexity lens — surface that the user's
-//        realization's lens-DERIVED cost EXCEEDS the declared I/O
-//        relation's structurally-derived complexity LOWER BOUND (a
-//        provable GAP to the optimum). It does NOT construct, name, or
-//        prove the existence of a specific faster program — the optimal
-//        realization can be unknown (e.g. matmul ω) and fabricating one
-//        would violate feedback_no_engine. Distinct from
-//        lens/complexity.dag (same-algorithm tightness); synthesis
-//        compares derived cost against the relation's lower bound via the
-//        closed LowerBoundTechnique set (see Owns; C2 reframe 2026-05-15).
-// Anchor: https://en.wikipedia.org/wiki/Program_synthesis +
-//         docs/r4-carve-out-routing.md C7 (advisory carrier, NOT fail-closed
-//         Diagnostic; algorithm choice is design-tier — programmer decides)
-//
-// Status: filled.
-
 module v2.lens.synthesis
 import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
-
 
 import v2.lens.application { AdvisoryLens }
 import v2.lens.complexity {
@@ -48,7 +29,7 @@ import v2.std.diagnostic {
 import v2.std.node { Node, Symbol }
 import v2.std.report { Report, SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
 import v2.std.witness { Holds, Violates }
-// 🟢 coproduct — closed set. STOP-and-escalate if a 6th variant is needed.
+
 type LowerBoundTechnique
   = DecisionTree
   | AlgebraicRank
@@ -56,14 +37,12 @@ type LowerBoundTechnique
   | InformationTheoretic
   | ReductionConditional
 
-// 🟢 product — declared relation class + applicable technique.
 type DeclaredRelationBound {
   technique: LowerBoundTechnique
   lower_bound: ComplexityBound
   relation_locus: Locus
 }
 
-// 🟢 coproduct — outcome of one synthesis probe.
 type SynthesisOutcome
   = SynthesisGap {
       realization_cost: ComplexityBound
@@ -77,7 +56,6 @@ type SynthesisOutcome
   | SynthesisNoTechnique {
       diagnostic: Diagnostic
     }
-
 
 fn synthesis_no_technique_diagnostic(n: Node) -> Diagnostic {
   Diagnostic {
@@ -109,7 +87,6 @@ fn information_theoretic_declared_bound(n: Node) -> DeclaredRelationBound {
   }
 }
 
-// DecisionTree: realization > Θ(n log n) → gap (asymptotic_class_dominates is strict for ClassLinearithmic).
 fn assess_decision_tree(n: Node, realization: ComplexityBound) -> SynthesisOutcome {
   if asymptotic_class_dominates(
     a: complexity_bound_class(b: realization),
@@ -131,7 +108,6 @@ fn assess_decision_tree(n: Node, realization: ComplexityBound) -> SynthesisOutco
   }
 }
 
-// 🟡 parser-posture gated — strict-greater check uses double dominance until equality in if-conditions parses cleanly.
 fn assess_information_theoretic(n: Node, realization: ComplexityBound) -> SynthesisOutcome {
   if asymptotic_class_dominates(
     a: complexity_bound_class(b: realization),
@@ -156,7 +132,7 @@ fn assess_information_theoretic(n: Node, realization: ComplexityBound) -> Synthe
       }
     }
   } else {
-    // Realization is sub-linear: InformationTheoretic has no lower-bound comparison for this class.
+
     SynthesisNoTechnique {
       diagnostic: synthesis_no_technique_diagnostic(n: n)
     }
@@ -180,12 +156,6 @@ fn outcome_to_diagnostics(outcome: SynthesisOutcome) -> List<Diagnostic> {
   }
 }
 
-// Caller DECLARES declared_technique — the technique the caller's I/O relation class
-// is subject to. Probes only run for the declared technique; no unconditional sweep.
-// AlgebraicRank / AdversaryCommunication / ReductionConditional → SynthesisNoTechnique with
-// honest diagnostic. Terminal: no worked example is planned here; these techniques route through
-// the diagnostic channel by design. Adding a 4th worked-example technique requires a new
-// LowerBoundTechnique variant, which is STOP-and-escalate-gated (see 🟢 mark above).
 fn synthesis_lens(n: Node, declared_technique: LowerBoundTechnique) -> List<Report> {
   match complexity_lens(n: n) {
     Violates { diagnostic: _ } => Empty
@@ -221,9 +191,6 @@ data information_theoretic_synthesis_advisory_lens: AdvisoryLens = AdvisoryLens 
   read: information_theoretic_synthesis_lens_read
 }
 
-// Companion: surfaces diagnostics for the declared technique — both upstream complexity
-// failures and SynthesisNoTechnique cases. Complexity Violates propagates here so callers
-// do not need to call complexity_lens separately to detect upstream failure.
 fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) -> List<Diagnostic> {
   match complexity_lens(n: n) {
     Violates { diagnostic: d } => Cons { head: d, tail: Empty }
@@ -243,11 +210,6 @@ fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) 
   }
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: RatchetForever {
-    undecidable_because: "producing a specific faster realization has no constructive patch (feedback_no_engine) -- the optimum can be unknown (e.g. matmul omega), so a lower-bound GAP is provable but the closing program is not"
-  },
-  rationale: "Surfacing that a realization's cost exceeds the I/O relation's complexity lower bound is decidable, but the faster program that would close the gap cannot be constructed -- a permanent residue, distinct from same-algorithm complexity tightness."
+  class: RatchetForever
 }

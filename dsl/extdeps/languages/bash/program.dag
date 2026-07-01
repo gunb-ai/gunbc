@@ -1,98 +1,57 @@
-// extdeps/languages/bash/program.dag — structured shell-program model + byte-faithful serializer.
-//
-// ⚠️ DISSOLUTION-BOUND — DO NOT BUILD NEW TRANSPORTS ON THIS. This module is a SIDECAR EMITTER:
-// a hand-rolled per-language bash serializer (`serialize_bash`, self-declared "Peer of
-// serialize_yaml") running PARALLEL to the compiler's row-driven emit (§4: emit =
-// serialize_target ∘ translate — one grammar read backward). That parallel emitter IS the cruft.
-// It is being DISSOLVED: bash becomes the 19th v2 TARGET LANGUAGE — a TargetModel of translation
-// rows under `src/v2/extdeps/languages/bash.dag` — so a transport authors INTENT and
-// `emit(intent, Bash)` renders shell the same row-driven way `emit(intent, Rust)` already does.
-// `serialize_bash` + this whole AST DELETE once the consumers below migrate. Authoring new
-// transports against ShellProgram/serialize_bash/Raw deepens the fork — model the OPERATION and
-// emit instead. (The once-mooted `shell.Exec.Run.script` String→ShellProgram type-flip is
-// CANCELLED — it would sanction this sidecar.) Tracking: warm-badger-46 shell(intent()) arc.
-//
-// Until that migration completes it stays load-bearing for the live consumers below.
-//
-// Spec: POSIX.1-2017 Shell Command Language §2.2 (Quoting), §2.9 (Lists / Compound Commands)
-//       https://pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html
-//
-// v2-clean (no std.render / std.unicode imports) so witnesses execute under the v1 interpreter.
-//
-// Consumers (ALL migrate off, then this module deletes):
-//   test.claim.bash_serializer_witness_test, tools/host_prelude, tools/dsl_compile_clean_transport,
-//   tools/layering_imports_transport, tools/emit_host_transport,
-//   gunbc/ci_yaml_validate
-
 module extdeps.languages.bash.program
 
-// =========================================================================
-// Words — the atoms of a simple command.
-//
-// `Lit` MUST be single-quoted so the shell does not expand metacharacters inside it
-// (POSIX §2.2.2: single quotes preserve every character literally). `VarRef` is a
-// double-quoted parameter expansion. `Concat` glues adjacent words with no separator
-// (the structural form of `"$ROOT"/path` interpolation). `CmdSubst` is `$( stmt )`.
-// `Raw` is the escape hatch for an already-correct fragment with no structural model.
-// =========================================================================
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
+  }
+}
 
 type ShellWord
   = Lit { text: String }
   | VarRef { name: String }
   | Concat { parts: List<ShellWord> }
   | CmdSubst { body: ShellStmt }
-  // 🟡 escape hatch — dissolves WITH this whole module into the v2 bash TargetModel (rows,
-  // src/v2/extdeps/languages/bash.dag, slice 1 in PR #5155). The transport-script-position
-  // enforcement (lens / `shell.Exec.Run.script` String→ShellProgram flip) then makes a `Raw`
-  // in transport position a typecheck/lens error. No caller uses Raw; do not add one.
+
   | Raw { text: String }
 
-// =========================================================================
-// Statements + lists.
-//
-// A test (`[ ... ]`, `test -x …`) is NOT a separate kind — POSIX §2.9.1: the `if`
-// condition is a command list whose exit status is consulted, and `[`/`test` are
-// ordinary commands. So `If.cond` is a `ShellStmt` and a bracket test is a `Command`
-// (see `test_not_executable`), one concept not two (§2).
-// =========================================================================
-
 type AndOrOp
-  = AndThen                                 // &&
-  | OrElse                                  // ||
+  = AndThen
+  | OrElse
 
 type Redir
-  = StderrToNull                            // 2>/dev/null
-  | StdoutAndStderrToNull                   // >/dev/null 2>&1
-  | StdoutToStderr                          // >&2
+  = StderrToNull
+  | StdoutAndStderrToNull
+  | StdoutToStderr
+  | RedirToFile { path: ShellWord }
 
 type ShellStmt
   = Command { words: List<ShellWord> }
   | Assign { name: String, value: ShellWord }
   | If { cond: ShellStmt, then: List<ShellStmt> }
   | Subshell { body: List<ShellStmt> }
-  // Brace-group — `{ stmt; }` in the current shell (idiomatic precedence wrap for compound
-  // operands of `|`; distinct from Subshell which forks). Dissolves into v2 bash TargetModel rows.
+
   | BraceGroup { body: List<ShellStmt> }
   | AndOr { left: ShellStmt, op: AndOrOp, right: ShellStmt }
-  | Pipe { left: ShellStmt, right: ShellStmt }            // left | right
-  // NAME=value <command> — a single environment assignment scoped to one command (POSIX §2.9.1).
+  | Pipe { left: ShellStmt, right: ShellStmt }
+
   | EnvPrefixed { name: String, value: ShellWord, command: ShellStmt }
   | WithRedir { stmt: ShellStmt, redir: Redir }
-  // Heredoc: `cat > <path> <<'<delimiter>'\n<body>\n<delimiter>`. The body is literal
-  // file content (a fixture / a .dag source), not shell control flow — a String payload,
-  // not smuggled policy. Always a quoted delimiter (no expansion in the body).
+
   | Heredoc { path: ShellWord, delimiter: String, body: String }
   | Exit { code: Int }
-  // 🟡 escape hatch — dissolves WITH this whole module into the v2 bash TargetModel (rows);
-  // same trigger as ShellWord.Raw (transport-script-position typecheck/lens ban).
+
+  | Negation { stmt: ShellStmt }
+
   | RawLine { text: String }
 
 type ShellProgram {
   set_e: Bool
   statements: List<ShellStmt>
 }
-
-// -- constructors -----------------------------------------------------
 
 fn lit(text: String) -> ShellWord {
   Lit { text: text }
@@ -110,21 +69,13 @@ fn assign(name: String, value: ShellWord) -> ShellStmt {
   Assign { name: name, value: value }
 }
 
-// `[ ! -x <path> ]` — bracket test as the ordinary command it is.
 fn test_not_executable(path: ShellWord) -> ShellStmt {
   Command { words: [lit(text: "["), lit(text: "!"), lit(text: "-x"), path, lit(text: "]")] }
 }
 
-// -- quoting ----------------------------------------------------------
-
-// POSIX §2.2.2: inside single quotes every character is literal and a single quote
-// cannot appear, so an embedded `'` is rendered as the canonical `'\''` (close, escaped
-// quote, reopen). This is the total, always-safe quoting of an arbitrary literal.
 fn single_quote(s: String) -> String {
   concat("'", concat(replace(s, "'", "'\\''"), "'"))
 }
-
-// -- serialization (mirror of serialize_yaml's per-node helpers + one top fold) ----
 
 fn serialize_word(w: ShellWord) -> String {
   match w {
@@ -148,6 +99,7 @@ fn serialize_redir(r: Redir) -> String {
     StderrToNull => "2>/dev/null"
     StdoutAndStderrToNull => ">/dev/null 2>&1"
     StdoutToStderr => ">&2"
+    RedirToFile { path: p } => concat("> ", serialize_word(w: p))
   }
 }
 
@@ -158,7 +110,6 @@ fn serialize_and_or_op(op: AndOrOp) -> String {
   }
 }
 
-// then-body / subshell-body: statements joined by `; ` (single-line compound command).
 fn join_stmts_semi(stmts: List<ShellStmt>) -> String {
   fold(stmts, init: "", f: (acc, s) => {
     let part = serialize_stmt(s: s)
@@ -188,11 +139,11 @@ fn serialize_stmt(s: ShellStmt) -> String {
     WithRedir { stmt: st, redir: rd } =>
       concat(serialize_stmt(s: st), concat(" ", serialize_redir(r: rd)))
     Exit { code: c } => concat("exit ", to_string(c))
+    Negation { stmt: st } => concat("! ", serialize_stmt(s: st))
     RawLine { text: t } => t
   }
 }
 
-// Total serializer: ShellProgram → POSIX shell text (trailing newline at EOF).
 fn serialize_bash(p: ShellProgram) -> String {
   let body = fold(p.statements, init: "", f: (acc, s) =>
     concat(acc, concat(serialize_stmt(s: s), "\n")))

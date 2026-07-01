@@ -1,7 +1,3 @@
-// extdeps/formats/elf/types.dag — ELF-64 carriers and header decode (Slice 1).
-//
-// Anchor: https://refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html
-
 module extdeps.formats.elf.types
 
 import extdeps.formats.elf.primitives {
@@ -84,7 +80,6 @@ type ElfDecodeOutcome<T>
   = ElfDecoded { value: T }
   | ElfRejected { reason: ElfDecodeReason }
 
-// Caller must guarantee offset in bounds — used only after a length guard.
 fn byte_at_in_bounds(bytes: List<Int>, offset: Int) -> Int {
   match bytes |> get(offset) {
     null => 0

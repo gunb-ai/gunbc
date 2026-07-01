@@ -1,7 +1,3 @@
-//! Regression: `gunbc --dry-run run` must pass `cli.dry_run` into the interpreter
-//! so REST service calls return modeled `mock_response` data instead of live HTTP.
-//! Hermetic `ExecutionMode` is the interpreter-side generalization of dry-run.
-
 use std::fs;
 use std::process::Command;
 use std::rc::Rc;

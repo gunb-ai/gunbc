@@ -1,30 +1,3 @@
-// extdeps/languages/go/module.dag — Go module system (go.mod, versioning, MVS).
-//
-// Anchor: https://go.dev/ref/mod
-//
-// Single authority for the Go module system types and versioning semantics.
-// Upstream: Go Modules Reference (go.dev/ref/mod).
-//
-// DESIGN §3: this file is the authority for:
-//   - GoSemVer (decomposed v-prefixed semver atoms), go_semver_label
-//   - go_semver_to_version_identity (projector GoSemVer → VersionIdentity)
-//   - go_semver_compare (structural compare over GoSemVer atoms)
-//   - go_module_version_scheme: VersionScheme (scheme data row; compare scaffold
-//     pending string-parse builtin — dissolve-on: parse_go_semver lands)
-//   - GoModulePath, GoMajorVersionSuffix, go_major_suffix_str
-//   - GoLanguageVersion, GoToolchainName
-//   - GoRequireEntry, GoReplaceEntry, GoExcludeEntry, GoRetractEntry
-//   - GoModFile (go.mod structure)
-//   - go_mvs_properties (algorithm properties, not a runnable function)
-//
-// go.mod filename authority: extdeps.languages.go.emit.go_manifest_file
-//   (v1-seed scaffold, load-bearing in src/v1/languages.dag; this module does
-//    NOT re-declare it — dissolve-on: emit.dag imports go_manifest_file from
-//    module.dag when module.dag becomes the v1-bootstrap-read authority).
-//
-// Consumers:
-//   dsl/test/claim/go_module_versioning_witness_test.dag — by-execution witnesses
-
 module extdeps.languages.go.module
 
 import std.types { NonEmptyStr }
@@ -41,28 +14,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// ── Module version ───────────────────────────────────────────────────────────
-// go.dev/ref/mod#versions
-//
-// A module version is a v-prefixed semver tag.  Decomposed to grounded atoms
-// (major/minor/patch Int + optional prerelease/build) per DESIGN.md §2.
-// Examples: v1.2.3, v0.1.0-alpha.1, v2.0.0-rc.1
-//
-// Pseudo-versions (go.dev/ref/mod#pseudo-versions) are a PREDICATE on this
-// structure — the prerelease field matches the yyyymmddhhmmss-abcdefabcdef
-// pattern — not a separate type fork.
 type GoSemVer {
   major: Int
   minor: Int
   patch: Int
-  prerelease: String?   // e.g. "alpha.1", "rc.2", pseudo-version timestamp-hash
-  build: String?        // e.g. "build.1" — informational, ignored in version ordering
+  prerelease: String?
+  build: String?
 }
 
-// Canonical wire label for a GoSemVer (go.dev/ref/mod#versions).
-// MajorV0OrV1 example: v1.2.3 → "v1.2.3"
-// Pre-release example: v0.1.0-alpha.1 → "v0.1.0-alpha.1"
-// Build meta example: v1.0.0+build.1 → "v1.0.0+build.1"
 fn go_semver_label(v: GoSemVer) -> String {
   let base = concat("v", concat(to_string(v.major), concat(".", concat(to_string(v.minor), concat(".", to_string(v.patch))))))
   let with_pre = match v.prerelease {
@@ -75,18 +34,10 @@ fn go_semver_label(v: GoSemVer) -> String {
   }
 }
 
-// Projects a GoSemVer to the opaque VersionIdentity surface (extdeps.version).
-// The v-prefixed label is the canonical wire form (go.dev/ref/mod#versions).
 fn go_semver_to_version_identity(v: GoSemVer) -> VersionIdentity {
   go_semver_label(v: v)
 }
 
-// Structural comparison of two GoSemVer values (go.dev/ref/mod#versions).
-// Order: major → minor → patch (Int); prerelease presence:
-//   no-prerelease > same-version-with-prerelease (semver.org §11).
-// Prerelease STRING ordering: not implemented — no string compare in the
-// substrate; equal-core versions with distinct prerelease labels resolve Equal.
-// Scaffold: dissolve-on: parse_go_semver builtin lands (prerelease string ordering).
 fn go_semver_compare(a: GoSemVer, b: GoSemVer) -> Ordering {
   let mc = if a.major < b.major { Less } else { if a.major > b.major { Greater } else { Equal } }
   let nc = if a.minor < b.minor { Less } else { if a.minor > b.minor { Greater } else { Equal } }
@@ -116,38 +67,16 @@ fn go_semver_compare(a: GoSemVer, b: GoSemVer) -> Ordering {
   }
 }
 
-// VersionScheme row for Go module versioning (extdeps.version.VersionScheme).
-// compare equality case is correct; ordering is a scaffold — VersionIdentity
-// strings cannot be parsed back to GoSemVer atoms without a builtin.
-// Scaffold: dissolve-on: parse_go_semver lands — replace compare body with:
-//   (a, b) => go_semver_compare(a: parse_go_semver(a), b: parse_go_semver(b))
 data go_module_version_scheme: VersionScheme = {
   compare: (a, b) => if a == b { Equal } else { Less }
 }
 
-// ── Module path ──────────────────────────────────────────────────────────────
-// go.dev/ref/mod#module-path
-//
-// A module path identifies the module in the global namespace. It is
-// URL-path-like (not a URL itself) and usually reflects the VCS root.
-// Examples: "github.com/foo/bar", "github.com/foo/bar/v2", "golang.org/x/text"
-// Major version v2+ MUST append a /vN suffix
-// (go.dev/ref/mod#major-version-suffixes).
-//
-// Scaffold: `where pattern(...)` pending Q-Regex.
 type GoModulePath = NonEmptyStr where brand("GoModulePath")
 
-// Major version suffix encoding (go.dev/ref/mod#major-version-suffixes).
-// v0 and v1 have NO /vN suffix in the module path; v2+ must append /vN.
-// Single authority for this rule — do not re-state in emit.dag or workflow.
 type GoMajorVersionSuffix
-  = MajorV0OrV1         // no suffix: v0 and v1 are suffix-free (go.dev/ref/mod#major-version-suffixes)
-  | MajorV2Plus { major: Int where range(min: 2) }  // path must end in /v2, /v3, …; major MUST be ≥ 2
+  = MajorV0OrV1
+  | MajorV2Plus { major: Int where range(min: 2) }
 
-// Renders the /vN suffix string for a given major version suffix.
-// MajorV0OrV1 → "" (no suffix appended to module path)
-// MajorV2Plus { major: 3 } → "/v3"
-// Ref: go.dev/ref/mod#major-version-suffixes
 fn go_major_suffix_str(suffix: GoMajorVersionSuffix) -> String {
   match suffix {
     MajorV0OrV1 => ""
@@ -155,90 +84,40 @@ fn go_major_suffix_str(suffix: GoMajorVersionSuffix) -> String {
   }
 }
 
-// ── Go language version (go directive) ──────────────────────────────────────
-// go.dev/ref/mod#go-mod-file-go
-//
-// The `go` directive specifies the minimum Go version required by the module.
-// Format: MAJOR.MINOR (e.g., "1.21") or MAJOR.MINOR.PATCH (e.g., "1.21.0").
-// Since Go 1.21 this also selects language semantics and the default toolchain.
-//
-// Scaffold: `where pattern("^\\d+\\.\\d+(\\.\\d+)?$")` pending Q-Regex.
 type GoLanguageVersion = NonEmptyStr where brand("GoLanguageVersion")
 
-// ── Toolchain name (toolchain directive) ─────────────────────────────────────
-// go.dev/ref/mod#go-mod-file-toolchain (introduced Go 1.21)
-//
-// Names a specific Go toolchain distribution. Format: goVERSION (e.g., "go1.21.0").
-// Absent in modules predating Go 1.21 toolchain switching.
-//
-// Scaffold: `where pattern("^go\\d+\\.\\d+")` pending Q-Regex.
 type GoToolchainName = NonEmptyStr where brand("GoToolchainName")
 
-// ── require directive ────────────────────────────────────────────────────────
-// go.dev/ref/mod#go-mod-file-require
-//
-// Each `require` entry declares a direct or indirect module dependency.
-// `indirect: true` for modules not directly imported by this module
-// (transitive dependencies pinned for reproducible builds via MVS).
 type GoRequireEntry {
   module_path: GoModulePath
   version: GoSemVer
   indirect: Bool
 }
 
-// ── replace directive ────────────────────────────────────────────────────────
-// go.dev/ref/mod#go-mod-file-replace
-//
-// The replace RHS is one of two structurally distinct shapes
-// (go.dev/ref/mod#go-mod-file-replace):
-//   ModuleRedirect  — another module path + required version
-//   LocalDirRedirect — a relative filesystem path (must start with ./ or ../)
-//                      which MUST NOT have a version
-//
-// Collapsing these into `target_path: GoModulePath + target_version: GoSemVer?`
-// is a §2/§3 violation (illegal states representable, two upstream shapes merged).
 type GoReplaceTarget
   = ModuleRedirect { path: GoModulePath, version: GoSemVer }
   | LocalDirRedirect { path: NonEmptyStr }
 
-// `source_version: absent` replaces all versions of the source module.
 type GoReplaceEntry {
   source_path: GoModulePath
   source_version: GoSemVer?
   target: GoReplaceTarget
 }
 
-// ── exclude directive ────────────────────────────────────────────────────────
-// go.dev/ref/mod#go-mod-file-exclude
-//
-// Excludes a specific version of a module from the build graph.
-// Only applies in the main module's go.mod (ignored in dependencies).
 type GoExcludeEntry {
   module_path: GoModulePath
   version: GoSemVer
 }
 
-// ── retract directive ────────────────────────────────────────────────────────
-// go.dev/ref/mod#go-mod-file-retract (Go 1.16+)
-//
-// Marks a version or version range as retracted — not recommended for use.
-// Single-version: retract v1.2.3
-// Range: retract [v1.2.0, v1.2.5] (both bounds inclusive)
 type GoRetractRange
   = RetractSingle { version: GoSemVer }
   | RetractRange  { low: GoSemVer, high: GoSemVer }
 
 type GoRetractEntry {
   range: GoRetractRange
-  rationale: String?  // comment preceding the directive in go.mod
+  rationale: NonEmptyStr?
 }
 
-// ── go.mod file ──────────────────────────────────────────────────────────────
-// go.dev/ref/mod#go-mod-file
-//
-// Complete go.mod file structure. All directive lists may be empty.
-// `toolchain` is optional; present only in modules that opt into Go 1.21+
-// toolchain switching.
 type GoModFile {
   module_path: GoModulePath
   go_version: GoLanguageVersion
@@ -249,21 +128,10 @@ type GoModFile {
   retract: List<GoRetractEntry>
 }
 
-// ── Minimum version selection algorithm properties ───────────────────────────
-// go.dev/ref/mod#minimal-version-selection
-//
-// MVS selects, for each module, the MINIMUM version satisfying all require
-// directives in the module graph — never "latest", never a range resolver.
-// Determinism comes from the graph structure; the go.sum file locks by content
-// hash (go.dev/ref/mod#go-sum-files). replace and exclude directives only apply
-// in the main module's go.mod (dependencies cannot override the graph via these).
-//
-// Modeled as closed enum facts about the algorithm — not a runnable procedure
-// (MVS executes inside the Go toolchain, not here).
 type GoMvsProperty
-  = DeterministicMinimal  // selects minimum required version; never above
-  | ContentHashLocked     // go.sum locks by content hash (reproducible builds)
-  | MainModuleOnly        // replace/exclude apply only in the main module go.mod
+  = DeterministicMinimal
+  | ContentHashLocked
+  | MainModuleOnly
 
 data go_mvs_properties: List<GoMvsProperty> = [
   DeterministicMinimal,
@@ -271,8 +139,5 @@ data go_mvs_properties: List<GoMvsProperty> = [
   MainModuleOnly
 ]
 
-// ── Emit-host toolchain floors ───────────────────────────────────────────────
-// tools/emit_host_transport.dag bootstraps go1.22.5 when `go` is missing on PATH.
-// Minimum language version uses go-directive wire form ("1.22") — not ">= 1.22".
 data emit_host_min_go_language_version: GoLanguageVersion = "1.22"
 data emit_host_bootstrap_toolchain: GoToolchainName = "go1.22.5"

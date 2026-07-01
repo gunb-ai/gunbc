@@ -1,8 +1,3 @@
-// Scope: clean-tree witness — the live import-direction projection over std/ and extdeps/
-//        must have zero violations. Scans the real tree directly via the
-//        v2.lens.layering_imports.layer_import_facts_live projection (the single-authority
-//        replacement for the deleted scripts/layering-imports-scan.sh enumerator).
-
 module v2.test.layering_imports.clean_tree
 
 import v2.lens.layering_imports { layering_imports_clean_holds, layer_import_facts_live }
@@ -10,11 +5,6 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-// The per-layer scan roots = the CI witness layer roots (src/v2, dsl) × the std/extdeps
-// discriminator. This is workflow POLICY (DESIGN §3 (c)) — the layer<->root assignment is
-// passed to the projection as the std-layer vs extdeps-layer root lists, never baked into the
-// builtin. (gunbc.ci_layer_roots.witness_layer_roots is the base-root authority; the roster
-// is pinned against drift by coverage_domain_equivalence_test.)
 data layering_std_roots: List<String> = ["src/v2/std", "dsl/std"]
 data layering_extdeps_roots: List<String> = ["src/v2/extdeps", "dsl/extdeps"]
 

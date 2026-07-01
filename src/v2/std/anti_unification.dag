@@ -1,0 +1,135 @@
+module v2.std.anti_unification
+
+import v2.std.node {
+  Node, Edge, NodeKind, TypeNode, Connective, Atom, Symbol,
+  node_synthetic, node_subtree_nodes
+}
+import v2.std.algebra {
+  FreeMonoid, freemonoid_empty, fold_list, list_append, list_snoc_item,
+  zip_eq, zip_map, reduce_or, is_empty, any, for_all
+}
+import v2.std.exact_structural_equality_zip_fold_predicate { exact_structural_equality_zip_fold }
+import v2.std.logic { Bool }
+
+data anti_unification_hole_symbol: Symbol = ^HOLE
+
+fn hole_kind() -> NodeKind {
+  TypeNode { connective: Atom { identity: anti_unification_hole_symbol } }
+}
+fn hole_node() -> Node {
+  node_synthetic(kind: hole_kind(), children: [])
+}
+fn is_hole(n: Node) -> Bool {
+  n.kind == hole_kind()
+}
+
+fn is_leaf(n: Node) -> Bool {
+  is_empty(xs: n.children)
+}
+
+fn edge_labels_eq(ea: Edge, eb: Edge) -> Bool {
+  ea.label == eb.label
+}
+fn children_aligned(a: Node, b: Node) -> Bool {
+  a.kind == b.kind
+    && zip_eq(a: a.children, b: b.children, eq: fn(ea, eb) { edge_labels_eq(ea: ea, eb: eb) })
+}
+
+fn anti_unify_edge(ea: Edge, eb: Edge) -> Edge {
+  Edge { label: ea.label, target: anti_unify(a: ea.target, b: eb.target) }
+}
+fn anti_unify_children(a: FreeMonoid<Edge>, b: FreeMonoid<Edge>) -> FreeMonoid<Edge> {
+  zip_map(a: a, b: b, f: fn(ea, eb) { anti_unify_edge(ea: ea, eb: eb) })
+}
+
+fn anti_unify(a: Node, b: Node) -> Node {
+  if is_hole(a) {
+    hole_node()
+  } else {
+    if is_hole(b) {
+      hole_node()
+    } else {
+      if is_leaf(a) {
+        if is_leaf(b) {
+          if exact_structural_equality_zip_fold(source_facts: a, candidate: b) {
+            node_synthetic(kind: a.kind, children: [])
+          } else {
+            hole_node()
+          }
+        } else {
+          hole_node()
+        }
+      } else {
+        if is_leaf(b) {
+          hole_node()
+        } else {
+          if children_aligned(a: a, b: b) {
+            node_synthetic(kind: a.kind, children: anti_unify_children(a: a.children, b: b.children))
+          } else {
+            hole_node()
+          }
+        }
+      }
+    }
+  }
+}
+
+fn extract_fillings_edge(te: Edge, ee: Edge) -> FreeMonoid<Node> {
+  extract_fillings(template: te.target, element: ee.target)
+}
+fn extract_fillings(template: Node, element: Node) -> FreeMonoid<Node> {
+  if is_hole(template) {
+    list_snoc_item(xs: freemonoid_empty(), item: element)
+  } else {
+    fold_list(
+      xs: zip_map(
+        a: template.children,
+        b: element.children,
+        f: fn(te, ee) { extract_fillings_edge(te: te, ee: ee) }
+      ),
+      empty: freemonoid_empty(),
+      cons: fn(acc, fills) { list_append(left: acc, right: fills) }
+    )
+  }
+}
+
+type ChainGeneralization {
+  template: Node
+  per_element: FreeMonoid<FreeMonoid<Node>>
+}
+
+fn chain_template(steps: FreeMonoid<Node>) -> Node {
+  reduce_or(
+    xs: steps,
+    fallback: hole_node(),
+    combine: fn(acc, step) { anti_unify(a: acc, b: step) }
+  )
+}
+
+fn chain_generalization_for(template: Node, steps: FreeMonoid<Node>) -> ChainGeneralization {
+  ChainGeneralization {
+    template: template,
+    per_element: fold_list(
+      xs: steps,
+      empty: freemonoid_empty(),
+      cons: fn(acc, step) {
+        list_snoc_item(xs: acc, item: extract_fillings(template: template, element: step))
+      }
+    )
+  }
+}
+
+fn anti_unify_chain(steps: FreeMonoid<Node>) -> ChainGeneralization {
+  chain_generalization_for(template: chain_template(steps: steps), steps: steps)
+}
+
+fn template_has_hole(template: Node) -> Bool {
+  any(xs: node_subtree_nodes(root: template), predicate: fn(n) { is_hole(n) })
+}
+
+fn fillings_all_leaves(per_element: FreeMonoid<FreeMonoid<Node>>) -> Bool {
+  for_all(
+    xs: per_element,
+    predicate: fn(fills) { for_all(xs: fills, predicate: fn(f) { is_leaf(f) }) }
+  )
+}

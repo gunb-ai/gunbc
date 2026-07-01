@@ -1,23 +1,21 @@
-// extdeps/languages/dag/emit.dag -- .dag language facts for the v2 emitter.
-//
-// The .dag target is used for debug output and pretty-printing.
-// This file provides Dag-specific data so that language_spec_for_target(Dag)
-// returns a proper dag_spec() instead of falling back to rust_spec().
-//
-// Consumers:
-//   v2/languages.dag  -- dag_spec() constructor
-
 module extdeps.languages.dag.emit
 
-// -- Keyword/operator translation ----------------------------------------
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/languages/dag"
+  }
+}
+
 data dag_keywords: Map<String, String> = {
   "true": "true", "false": "false", "null": "none",
   "and": "&&", "or": "||", "not": "!",
   "div": "/"
 }
 
-// -- Container type templates --------------------------------------------
-// .dag containers use their natural names.
 data dag_container_templates: Map<String, String> = {
   "list": "List<\{0\}>", "set": "Set<\{0\}>",
   "non_empty_list": "NonEmptyList<\{0\}>", "non_empty_set": "NonEmptySet<\{0\}>",
@@ -26,13 +24,10 @@ data dag_container_templates: Map<String, String> = {
   "boolean_algebra": "Bool"
 }
 
-// -- Reserved words (empty — .dag handles keywords via keyword_set) ------
 data dag_reserved: List<String> = []
 
-// -- String-like types ---------------------------------------------------
 data dag_string_types: List<String> = ["String", "Secret"]
 
-// -- Item definition facts -----------------------------------------------
 data dag_func_keyword: String = "fn"
 data dag_async_prefix: String = ""
 data dag_struct_keyword: String = "type"
@@ -45,7 +40,6 @@ data dag_module_keyword: String = "module"
 data dag_import_keyword: String = "import"
 data dag_import_from_keyword: String = ""
 
-// -- Expression syntax templates ------------------------------------------
 data dag_lambda_template: String = "({0}) => {1}"
 data dag_error_expr_template: String = "error({0})"
 data dag_list_literal_empty: String = "[]"
@@ -60,5 +54,4 @@ data dag_tuple_pair_template: String = "({0}, {1})"
 data dag_tuple_multi_template: String = "({0})"
 data dag_tuple_separator: String = ", "
 
-// -- Project scaffold ----------------------------------------------------
 data dag_source_extension: String = ".dag"

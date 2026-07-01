@@ -1,0 +1,79 @@
+module v2.test.manual.coproduct_reflection_conformance
+
+import v2.std.algebra { bag_eq, Empty, list_snoc_item }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Behavior,
+  Symbol
+}
+import v2.std.node_query {
+  coproduct_arm_keys,
+  coproduct_nullary_inhabitants
+}
+
+data reflect_connective_type: Symbol = ^Connective
+data reflect_behavior_type: Symbol = ^Behavior
+
+fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
+  !bag_eq(
+    xs: coproduct_arm_keys(type_name: reflect_connective_type),
+    ys: coproduct_arm_keys(type_name: reflect_behavior_type),
+    eq: symbol_eq
+  )
+}
+
+fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol> {
+  fold(
+    xs: inhabitants,
+    init: Empty,
+    f: fn(acc, v) { list_snoc_item(xs: acc, item: discriminant(v: v)) }
+  )
+}
+
+fn symbol_in_list(sym: Symbol, xs: List<Symbol>) -> Bool {
+  fold(xs, init: false, f: fn(acc, x) { acc || symbol_eq(a: x, b: sym) })
+}
+
+fn all_inhabitant_discriminants_are_reflected_arms(
+  inhabitants: List<Behavior>,
+  arm_keys: List<Symbol>
+) -> Bool {
+  fold(inhabitants, init: true, f: fn(acc, v) {
+    acc && symbol_in_list(sym: discriminant(v: v), xs: arm_keys)
+  })
+}
+
+test fn witness_behavior_nullary_inhabitant_set_matches_arm_keys() -> Bool {
+  match coproduct_nullary_inhabitants(type_name: reflect_behavior_type) {
+    Accepted { value: inhabitants, diagnostics: _ } =>
+      let keys = coproduct_arm_keys(type_name: reflect_behavior_type)
+      bag_eq(
+        xs: nullary_inhabitant_discriminants(inhabitants: inhabitants),
+        ys: keys,
+        eq: symbol_eq
+      ) && all_inhabitant_discriminants_are_reflected_arms(
+        inhabitants: inhabitants,
+        arm_keys: keys
+      )
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn witness_connective_nullary_inhabitants_fail_closed() -> Bool {
+  match coproduct_nullary_inhabitants(type_name: reflect_connective_type) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn coproduct_reflection_conformance_holds() -> Bool {
+  witness_connective_behavior_arm_sets_are_distinct()
+    && witness_behavior_nullary_inhabitant_set_matches_arm_keys()
+    && witness_connective_nullary_inhabitants_fail_closed()
+}

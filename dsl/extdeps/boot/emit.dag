@@ -1,9 +1,3 @@
-// extdeps/boot/emit.dag — freestanding ELF-64 ET_EXEC emit (Slice-0.5).
-//
-// Scope: single PT_LOAD R+X freestanding payload via landed encode.dag inverse.
-// Anchor: gABI ch4/ch5 (Ehdr + Phdr); Linux x86-64 ET_EXEC load base 0x400000.
-// Payload: minimal VGA text-mode pixel writer (movabs + movw + hlt).
-
 module extdeps.boot.emit
 
 import extdeps.boot.framebuffer { vga_text_mode_base }
@@ -34,10 +28,18 @@ import extdeps.formats.elf.types { Elf64Ehdr, ElfIdent, byte_at_in_bounds }
 import std.exec_format { EntryPoint }
 import std.types { NonEmptyStr }
 
-// Slice-0.5 content label — structural digest defers to hash primitive when dsl bootstrap exports it.
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html"
+  }
+}
+
 data pixel_writer_payload_digest_label: NonEmptyStr = "freestanding-elf64-slice-0.5"
 
-// Linux x86-64 static ET_EXEC default load address.
 data freestanding_load_vaddr: Int = 4194304
 
 data freestanding_phoff: Int = 64
@@ -46,7 +48,6 @@ data freestanding_code_file_offset: Int = 120
 
 data freestanding_page_align: Int = 4096
 
-// x86-64: movabs rax, vga_text_mode_base; movw $0x0f48, (%rax); hlt
 data pixel_writer_code_bytes: List<Int> = [
   72, 184, 0, 128, 11, 0, 0, 0, 0, 0,
   102, 199, 0, 72, 15,

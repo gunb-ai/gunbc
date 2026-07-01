@@ -1,23 +1,9 @@
-// By-execution witnesses for the per-filesystem EntryKind reductions
-// (extdeps.filesystem.posix / .ntfs → std.filesystem.EntryKind).
-// Run via:
-//   gunbc run --source-root dsl --entry dsl/test/claim/filesystem_entry_kind_witness.dag \
-//     --function filesystem_entry_kind_witnesses --claim-run
-//
-// Locks the reduction decisions that comments alone would leave as
-// spec-without-execution (DESIGN.md §5). Discriminating: each witness goes RED
-// (keystone false → --claim-run exit 1) on a mis-map. The two load-bearing
-// guards are the cross-fs reductions that are NOT a POSIX rename:
-//   - POSIX S_IFSOCK (and the other non-regular/dir/link types) → Other
-//   - NTFS mount-point junction → Other, NOT nicknamed Symlink (DESIGN.md §3)
-
 module test.claim.filesystem_entry_kind_witness
 
 import std.filesystem.types { EntryKind }
 import extdeps.filesystem.posix { posix_entry_kind, S_IFREG, S_IFLNK, S_IFSOCK }
 import extdeps.filesystem.ntfs { ntfs_entry_kind, NormalFile, SymlinkReparse, MountPointReparse }
 
-// -- EntryKind discriminators (match, not derived ==) -----------------------
 fn is_other(k: EntryKind) -> Bool {
   match k { Other => true  _ => false }
 }
@@ -28,8 +14,6 @@ fn is_symlink(k: EntryKind) -> Bool {
   match k { Symlink => true  _ => false }
 }
 
-// -- POSIX reduction ---------------------------------------------------------
-// Load-bearing guard: a non-regular/dir/link special type reduces to Other.
 fn w_posix_socket_is_other() -> Bool {
   is_other(k: posix_entry_kind(t: S_IFSOCK))
 }
@@ -40,9 +24,6 @@ fn w_posix_symlink_is_symlink() -> Bool {
   is_symlink(k: posix_entry_kind(t: S_IFLNK))
 }
 
-// -- NTFS reduction ----------------------------------------------------------
-// Load-bearing guard: the mount-point junction is a distinct NTFS reparse
-// construct → Other, NOT nicknamed Symlink.
 fn w_ntfs_junction_is_other() -> Bool {
   is_other(k: ntfs_entry_kind(t: MountPointReparse))
 }
@@ -53,7 +34,6 @@ fn w_ntfs_normal_is_regular() -> Bool {
   is_regular(k: ntfs_entry_kind(t: NormalFile))
 }
 
-// Conjunction keystone — CI runs with --claim-run (false → exit 1).
 test fn filesystem_entry_kind_witnesses() -> Bool {
   w_posix_socket_is_other() &&
   w_posix_regular_is_regular() &&

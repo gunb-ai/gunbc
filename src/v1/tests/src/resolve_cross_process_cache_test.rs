@@ -1,20 +1,9 @@
-//! Falsifiers for resolve-cost PR2: content-addressed cross-process resolved-graph cache.
-//!
-//! ORACLE = `resolve_entry_graph` (cold single-entry resolve, no cross-process cache).
-//! CACHED = `resolve_entry_with_index` with `GUNBC_RESOLVED_GRAPH_CACHE_DIR` set.
-//!
-//! Corpus witnesses are EVAL-DETERMINISTIC Bool predicates only — credential/effect/IO
-//! witnesses are excluded (eval-time env differences would cause phantom cross-arm mismatch).
-
 use std::fs;
 use std::process::{Command, ExitStatus};
 use std::sync::{Arc, Barrier, Mutex};
 use std::thread;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Serialize mutations to the process-global `GUNBC_RESOLVED_GRAPH_CACHE_DIR`.
-/// TESTING.md: libtest runs `#[test]` in parallel by default; env restore in one
-/// test must not clear the var while another test (or thread) is still resolving.
 static CACHE_ENV_MUTEX: Mutex<()> = Mutex::new(());
 
 struct CacheEnvGuard {
@@ -142,7 +131,6 @@ fn cached_verdict(
     })
 }
 
-/// Falsifier 1 + 5: cold-oracle equivalence across adversarial orders; eval-deterministic corpus.
 #[test]
 fn cross_process_cache_matches_cold_oracle_corpus() {
     let dir = temp_dir("eq");
@@ -174,15 +162,6 @@ fn cross_process_cache_matches_cold_oracle_corpus() {
         }
         for (entry, f, expected) in witnesses {
             let got = cached_verdict(&roots, entry, f, &order_cache);
-            // CRIT-1 BOUNDARY (verdict-scope, tied to crit-6): this corpus asserts VERDICT-identity
-            // (outcome_tag) cached-vs-cold-oracle, NOT full serialized-ResolvedGraph byte-identity.
-            // Sound today because the corpus is eval-deterministic Bool-only, so the verdict is the
-            // sole observable and verdict-equivalence proxies byte-identity under resolve-determinism.
-            // FOLLOW-UP: when emit/lower consume the cached ResolvedGraph (a richer-than-Bool observable),
-            // add a canonical-serialized byte compare. Gated on canonical graph serialization first:
-            // source_indices serializes as a serde HashMap (non-canonical key order), so a byte compare
-            // today would false-fail on map order. A verdict-equal but byte-different cached graph would
-            // otherwise be an undetected crit-6 violation (cache changing behavior beyond latency at emit).
             assert_eq!(
                 got, expected,
                 "cached verdict for {f} diverged from cold oracle in order {order:?}"
@@ -193,7 +172,6 @@ fn cross_process_cache_matches_cold_oracle_corpus() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Falsifier 2: poisoned artifact under valid key → RejectedHit{ContentDigestMismatch}.
 #[test]
 fn poisoned_hit_rejected_on_content_digest_mismatch() {
     let dir = temp_dir("poison");
@@ -231,7 +209,6 @@ fn poisoned_hit_rejected_on_content_digest_mismatch() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Falsifier 2b: poisoned embedded subject under valid path → RejectedHit{BackendKeyMalformed}.
 #[test]
 fn poisoned_hit_rejected_on_subject_digest_mismatch() {
     let dir = temp_dir("poison-subject");
@@ -244,7 +221,6 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
     let subject = subject_digest_for_closure(&sources);
     let mut poisoned =
         build_valid_artifact_bytes(&subject, &graph, si.as_ref()).expect("valid bytes");
-    // Corrupt one byte of the embedded 16-char subject digest in the on-wire header.
     let subject_off = 8 + 4;
     poisoned[subject_off] ^= 0xff;
     write_raw_artifact_for_test(&cache_dir, &subject, &poisoned).expect("poison write");
@@ -269,7 +245,6 @@ fn poisoned_hit_rejected_on_subject_digest_mismatch() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Falsifier 3: concurrent writers on shared FS — WriteOnce + WriteThenRename, no torn read.
 #[test]
 fn concurrent_resolve_write_once_no_torn_read() {
     let dir = temp_dir("race");
@@ -315,7 +290,6 @@ fn concurrent_resolve_write_once_no_torn_read() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Falsifier 4: digest perturb → MISS, not stale hit.
 #[test]
 fn key_mismatch_forces_miss_not_stale_hit() {
     let dir = temp_dir("key");
@@ -333,7 +307,11 @@ fn key_mismatch_forces_miss_not_stale_hit() {
 
     let mutated = dir.join("entry_a.dag");
     let content = fs::read_to_string(&mutated).expect("read entry");
-    fs::write(&mutated, format!("{content}\n// perturb\n")).expect("perturb entry");
+    fs::write(
+        &mutated,
+        format!("{content}\nfn perturb_marker() -> Int {{ 0 }}\n"),
+    )
+    .expect("perturb entry");
 
     let sources_after = load_sources_for_entry(&roots, &a).expect("sources after");
     let digest_after = subject_digest_for_closure(&sources_after);
@@ -356,7 +334,6 @@ fn key_mismatch_forces_miss_not_stale_hit() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-/// Cross-process child worker for the two-process concurrency receipt.
 #[test]
 fn cross_process_child_worker() {
     if std::env::var("GUNBC_RG_CACHE_CHILD").ok().as_deref() != Some("1") {
@@ -401,7 +378,6 @@ fn spawn_cache_child(
         .expect("spawn child")
 }
 
-/// Falsifier 3 (cross-process): two OS processes share cache dir — atomic write, no torn read.
 #[test]
 fn two_processes_share_cache_without_torn_read() {
     let dir = temp_dir("xproc");
@@ -432,21 +408,6 @@ fn two_processes_share_cache_without_torn_read() {
     let _ = fs::remove_dir_all(&dir);
 }
 
-// === Construction proof (PR #5425): the realized key is DERIVED from the declared axis set ===
-//
-// derive_subject_digest folds a TOTAL materializer over the closed KeyInputAxis set, so the
-// key is provably a function of EXACTLY the declared axes. These falsifiers prove BY EXECUTION
-// (the #5423 lesson — a passing spec ≠ correct behavior) that:
-//   - perturbing the TransformContent axis changes the key (the toolchain IS keyed — if a
-//     future edit dropped it from the fold, this goes RED);
-//   - perturbing the ClosureSubject axis changes the key (the subject IS keyed);
-//   - identical materialized axes give an identical key (determinism — the key is a pure
-//     function of its axes, no hidden ambient input).
-// The toolchain axis is passed in (KeyInputMaterials), not read from current_exe inside the
-// fold, precisely so this sensitivity is testable rather than asserted in a comment.
-
-// Axis materials are 16-char hex Hash digests (the realizer's contract: production passes
-// closure_content_digest / transform_content_digest, both digests).
 const CLOSURE_A: &str = "aaaaaaaaaaaaaaaa";
 const CLOSURE_B: &str = "bbbbbbbbbbbbbbbb";
 const TRANSFORM_1: &str = "1111111111111111";

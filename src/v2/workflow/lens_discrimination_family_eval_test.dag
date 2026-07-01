@@ -1,25 +1,3 @@
-// src/v2/workflow/lens_discrimination_family_eval_test.dag
-//
-// Discrimination-lens family gate (discovered + run by the CI floor `claim_batch`
-// discovery — `test data` in a `*_test.dag`, scanned across src/v2). The gate logic and
-// the subject roster live in the correctly-layered discrimination-gate module
-// (v2.test.discrimination_gate.*, physically under src/v2/compiler/discrimination_gate/)
-// — the LENS (v2.lens.discrimination) stays a pure reader and never knows about a roster.
-//
-// What this gate ACTUALLY enforces (scoped honestly — DESIGN.md §6 "coverage by illusion"):
-// it asserts the §5 DISCRIMINATION property — a witness unit must pair a positive
-// (green-by-execution) with a PERTURBED discriminating negative (asserted red) — over a
-// CURATED roster of real witness units, fail-closed (empty roster → RED) and non-vacuous
-// (an all-positive control the lens must reject). This is roster/lens-correctness validation,
-// NOT yet "every change in the tree is so covered": the roster is hand-enrolled, not the
-// enumerated change set.
-//
-// Dissolve trigger toward full change-coverage: when the substrate can enumerate the change
-// set structurally (the affected-set / coverage reflection blocked on .dag structural
-// reflection — same wall named in lens/coverage.dag and lens/testgen.dag), feed that
-// enumerated set in as the roster so the gate ranges over every change, not a curated few.
-// Until then this is a bounded seed, scoped to what it proves.
-
 module v2.test.workflow.lens_discrimination_family_eval
 
 import v2.std.logic { Bool }

@@ -1,6 +1,4 @@
-
 module v2.test.extdeps_react.structural_receipts
-
 
 import v2.extdeps.frameworks.react {
   CustomHook,
@@ -46,8 +44,6 @@ import v2.extdeps.frameworks.react {
 }
 import v2.std.algebra { Cons, Empty, length }
 import v2.std.logic { Bool }
-
-
 
 import v2.std.verification {
   BoolWitness,
@@ -214,8 +210,6 @@ fn react_probe_create_element_child_element() -> ReactCreateElementChild {
   Element { element: react_probe_react_element_host() }
 }
 
-// Typed non-empty child lists: compile-time proof `children` accepts `ReactCreateElementChild`
-// (wrong list element type fails probe construction before claim-run).
 fn react_probe_host_element_with_typed_children() -> ReactHostElement {
   ReactHostElement {
     tag_ref: react_probe_cross_decl_ref,

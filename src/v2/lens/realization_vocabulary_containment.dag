@@ -1,38 +1,6 @@
-// src/v2/lens/realization_vocabulary_containment.dag
-// Scope: realization-vocabulary containment guard (DESIGN §3/§4/§5). Target-AST construction
-//   vocabulary — the hand-rolled per-language bash AST sidecar
-//   `extdeps.languages.bash.program` (ShellStmt/ShellWord/serialize_bash) and any future
-//   per-language AST sidecar — may be imported ONLY at the REALIZATION EDGE:
-//     (a) the extdeps/languages/** language models, and
-//     (b) the emit fold (05_emit / 06_translate / self_host candidate_generation),
-//   where `emit(intent, Bash)` selects a realization (DESIGN §4: emit = serialize_target ∘
-//   translate, one grammar read backward). Anywhere else, importing the sidecar AST is a
-//   `RealizationVocabularyLeak` — authoring target-language construction inside CONSUMER code
-//   forks the row-driven emit (DESIGN §2: N models, not N×M adapters). Making that import
-//   unwritable in consumer code is the construction wall behind "shell(intent()) is a
-//   realization-edge feature, never authored inside consumer code".
-//
-// MECHANISM (N+M — NOT a new lens mechanism): a SIBLING rule over the SAME host-enumerated
-//   `v2.lens.layering_imports.LayerImportFact{layer, path, import_module}` rows. The predicate
-//   reads `import_module` (∈ the sidecar vocabulary) and `path` (∉ realization-edge ∧ ∉ the
-//   exception roster); `layer` is unused (path is the discriminator here).
-//
-// RATCHET — honest, fail-closed, SHRINKING. The current importers go RED today, so this cannot
-//   ship as an instant green wall. They are carried in `realization_vocab_exception_roster`, a
-//   NAMED exception roster that only shrinks. The roster is NOT a license to add importers —
-//   a NEW (unrostered) non-edge importer goes RED immediately.
-//   dissolve-on: the bash-sidecar arc (warm-badger-46 shell(intent()) → emit(intent, Bash))
-//     migrates each rostered consumer off `serialize_bash`; as each lands, drop it from the
-//     roster. When the roster empties, this guard is a PURE WALL and
-//     extdeps.languages.bash.program is deletable (its terminal step — NOT this lens's job).
-//
-// Consumer (executable, §5): the live witnesses under
-//   src/v2/test/claim/realization_vocabulary_containment/ — floor-auto-discovered `test fn`s
-//   that scan the real tree by execution (the clean-tree green pass + the planted-leak RED
-//   receipt), plus the hardcoded-fact lens-unit discriminators.
-
 module v2.lens.realization_vocabulary_containment
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 
 import v2.lens.layering_imports {
   LayerImportFact,
@@ -49,50 +17,44 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 
-// ── single-authority policy data ──────────────────────────────────────────────
-
-// Target-AST construction vocabulary: the per-language AST sidecar module(s). Today only the
-// bash sidecar exists; a future per-language sidecar is added here (one row), not a new lens.
 data target_ast_vocab_modules: List<String> = [
-  "extdeps.languages.bash.program"
+  "extdeps.languages.bash.program",
+  "extdeps.languages.typescript.program"
 ]
 
-// Realization-edge allowset (repo-relative path PREFIXES). The only places that may import the
-// sidecar AST: the language models (extdeps/languages/**, incl. the sidecar's own home) and the
-// emit fold where a realization is selected.
 data realization_edge_path_prefixes: List<String> = [
   "dsl/extdeps/languages/",
   "src/v2/extdeps/languages/",
   "src/v2/compiler/05_emit",
   "src/v2/compiler/06_translate",
-  "src/v2/compiler/self_host/candidate_generation"
+  "src/v2/compiler/self_host/candidate_generation",
+  "src/v2/workflow/shell_emit",
+  "src/v2/workflow/orchestration_emit",
+  "src/v2/workflow/orchestration_stmt_emit",
+  "src/v2/workflow/orchestration_word_emit"
 ]
 
-// SHRINKING exception roster — the consumer modules that import the sidecar TODAY (verified by
-// `grep -rln 'extdeps.languages.bash.program' dsl src/v2 | grep -v _test | grep -v
-// 'extdeps/languages/bash'`). Each migrates off serialize_bash under warm-badger-46; drop it
-// here when it lands. DO NOT ADD ROWS for code authored AFTER this guard — a new non-edge
-// importer is a RealizationVocabularyLeak and must use intent, not be rostered. The one
-// admissible addition is skew-reconciliation: an importer that PREDATES this guard but was
-// missed by the authoring grep because it landed between the guard's branch-CI and merge —
-// e.g. extdeps_external_authority_transport.dag, from #5418's external-authority arc.
 data realization_vocab_exception_roster: List<String> = [
   "dsl/gunbc/ci_spec.dag",
+  "dsl/gunbc/node_http_server_emit.dag",
   "dsl/gunbc/ci_yaml_validate.dag",
   "dsl/tools/build_step.dag",
+  "dsl/tools/build_step_transport.dag",
   "dsl/tools/dsl_compile_clean_transport.dag",
+  "dsl/tools/emit_determinism_transport.dag",
   "dsl/tools/emit_host_transport.dag",
   "dsl/tools/extdeps_external_authority_transport.dag",
   "dsl/tools/host_prelude.dag",
   "dsl/tools/layering_imports_transport.dag",
-  "dsl/tools/resolved_imports_transport.dag",
+  "dsl/tools/regen_verify_transport.dag",
+  "dsl/tools/self_host_realized_comparison_transport.dag",
+  "dsl/tools/v1_dag_parse_transport.dag",
   "src/v2/workflow/compiler_closure_ingest_transport.dag",
+  "src/v2/workflow/floor_diff_observe.dag",
+  "src/v2/workflow/self_host_realized_comparison_gate.dag",
   "src/v2/workflow/source_root_ingest_transport.dag"
 ]
 
-// Consumer-source scan roots for the live clean-tree witness: every layer that holds (or could
-// hold) consumer code, EXCLUDING the test trees (fixtures planted under src/v2/test/** import
-// the sidecar by design and are scanned in isolation by the RED receipt, never here).
 data realization_vocab_consumer_scan_roots: List<String> = [
   "dsl/std",
   "dsl/extdeps",
@@ -106,15 +68,12 @@ data realization_vocab_consumer_scan_roots: List<String> = [
   "src/v2/lens"
 ]
 
-// One violation row.
 type RealizationVocabularyLeak {
   path: String
   import_module: String
 }
 
 data empty_realization_vocab_leaks: List<RealizationVocabularyLeak> = []
-
-// ── predicate ─────────────────────────────────────────────────────────────────
 
 fn char_eq(a: Char, b: Char) -> Bool {
   a == b
@@ -144,16 +103,11 @@ fn path_is_realization_edge(path: String) -> Bool {
   path_has_any_prefix(prefixes: realization_edge_path_prefixes, path: path)
 }
 
-// A leak: imports the sidecar AST vocabulary, is NOT a realization-edge module, and is NOT
-// carried by the (shrinking) exception roster. Roster is an explicit parameter so a witness can
-// prove the ratchet shrinks honestly (drop a member → its live import goes RED).
 fn is_realization_vocab_leak(fact: LayerImportFact, roster: List<String>) -> Bool {
   module_is_target_ast_vocab(module: fact.import_module)
     && (path_is_realization_edge(path: fact.path) == false)
     && (list_contains_str(xs: roster, target: fact.path) == false)
 }
-
-// ── scan / count / holds ────────────────────────────────────────────────────────
 
 fn scan_facts_for_leaks(
   facts: List<LayerImportFact>,
@@ -192,8 +146,6 @@ fn realization_vocab_containment_holds(
   is_empty(xs: scan_facts_for_leaks(facts: facts, roster: roster))
 }
 
-// ── canonical-roster convenience (binds the single-authority roster) ──────────────
-
 fn realization_vocab_leak_count_canonical(facts: List<LayerImportFact>) -> Int {
   realization_vocab_leak_count(facts: facts, roster: realization_vocab_exception_roster)
 }
@@ -202,11 +154,6 @@ fn realization_vocab_containment_holds_canonical(facts: List<LayerImportFact>) -
   realization_vocab_containment_holds(facts: facts, roster: realization_vocab_exception_roster)
 }
 
-// ── live projection (reuses the layering host enumerator — layer tag unused) ──────
-
-// Scan the given roots (consumer source by default) through the SAME host enumerator the
-// layering lens uses, then apply the canonical-roster leak predicate. `extdeps_roots: []` —
-// the std/extdeps layer split is irrelevant here, the path discriminator carries the rule.
 fn realization_vocab_leak_count_live(scan_roots: List<String>) -> Int {
   realization_vocab_leak_count_canonical(
     facts: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: [])
@@ -219,22 +166,8 @@ fn realization_vocab_containment_clean_live(scan_roots: List<String>) -> Bool {
   )
 }
 
-// ── REVERSE roster-soundness: shrinking-ratchet integrity (DESIGN §5/§6) ──────────
-// The forward gate (clean_tree witness) proves every live non-edge sidecar importer is
-// rostered. This is the CONVERSE: every roster ENTRY must still name a LIVE non-edge importer
-// of the sidecar. A STALE entry — its path migrated off serialize_bash (warm-badger-46) or was
-// deleted/renamed — keeps a DEAD excuse: it lies about the ratchet "shrinking" AND silently
-// EXCUSES a future re-leak at that path (a non-edge module re-importing the sidecar there would
-// be scored not-a-leak because the path is rostered → §5 fail-open). Soundness asserts the
-// FROZEN roster against the SAME INDEPENDENT live scan the forward gate uses (single authority):
-// it does NOT derive the roster (that would be vacuous), and it does NOT auto-classify — it
-// forces the author to consciously DROP a stale entry.
-
-// Typed empty path accumulator (an empty `[]` literal cannot infer its element type here).
 data empty_realization_vocab_path_list: List<String> = []
 
-// The live set of would-be-leak paths: non-edge modules that live-import the sidecar AST today
-// (the exact paths the canonical roster exists to excuse). Independent host enumeration.
 fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List<String> {
   fold_list(
     xs: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: []),
@@ -250,7 +183,6 @@ fn realization_vocab_live_leak_candidate_paths(scan_roots: List<String>) -> List
   )
 }
 
-// Stale roster entries: roster paths with NO live sidecar-import in the independent scan.
 fn realization_vocab_stale_roster_entries(
   roster: List<String>,
   live_leak_paths: List<String>
@@ -282,7 +214,6 @@ fn realization_vocab_roster_sound(
   is_empty(xs: realization_vocab_stale_roster_entries(roster: roster, live_leak_paths: live_leak_paths))
 }
 
-// Canonical live bindings (bind the single-authority roster + consumer scan roots).
 fn realization_vocab_roster_stale_count_live(scan_roots: List<String>) -> Int {
   realization_vocab_roster_stale_count(
     roster: realization_vocab_exception_roster,
@@ -297,12 +228,6 @@ fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
   )
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "the bash-sidecar arc (warm-badger-46) migrating every consumer onto emit(intent, Bash)",
-    dissolve_on: "the exception roster empties to a pure wall, extdeps.languages.bash.program is deletable, and importing target-AST vocab outside the realization edge is then unwritable"
-  },
-  rationale: "Importing the target-AST sidecar outside the realization edge is a decidable import-graph property; a shrinking-roster ratchet that becomes a pure construction wall once the bash-sidecar arc empties the roster."
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

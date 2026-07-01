@@ -1,0 +1,63 @@
+module gunbc.plan
+
+import std.markdown {
+  MarkdownDocument, MarkdownBlock,
+  HeadingBlock, ParagraphBlock,
+  TextInline, H1, H2,
+}
+import extdeps.languages.markdown { serialize_markdown_source }
+
+type DissolutionTrigger = HasTrigger { text: String } | NoTrigger
+
+type Plan {
+  slug: String,
+  title: String,
+  body: List<MarkdownBlock>,
+  dissolution: DissolutionTrigger,
+}
+
+fn plan_h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
+fn plan_h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
+fn plan_p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
+
+fn plan_dissolution_blocks(p: Plan) -> List<MarkdownBlock> {
+  match p.dissolution {
+    HasTrigger { text } => [plan_h2(text: "Dissolution trigger (DESIGN §6)"), plan_p(text: text)]
+    NoTrigger => []
+  }
+}
+
+fn plan_to_blocks(p: Plan) -> List<MarkdownBlock> {
+  concat(concat([plan_h1(text: p.title)], p.body), plan_dissolution_blocks(p: p))
+}
+
+fn plan_to_document(p: Plan) -> MarkdownDocument {
+  MarkdownDocument { blocks: plan_to_blocks(p: p) }
+}
+
+fn plan_has_dissolution_trigger(p: Plan) -> Bool {
+  match p.dissolution {
+    HasTrigger { text } => length(text) > 0
+    NoTrigger => false
+  }
+}
+
+fn plans_all_have_dissolution_trigger(plans: List<Plan>) -> Bool {
+  all(plans, p => plan_has_dissolution_trigger(p: p))
+}
+
+fn plan_title_is_present(p: Plan) -> Bool {
+  length(p.title) > 0
+}
+
+fn plans_all_titled(plans: List<Plan>) -> Bool {
+  all(plans, p => plan_title_is_present(p: p))
+}
+
+fn plan_path(p: Plan) -> String {
+  concat("docs/plans/", concat(p.slug, ".md"))
+}
+
+fn expected_plan_md(p: Plan) -> String {
+  serialize_markdown_source(doc: plan_to_document(p: p))
+}

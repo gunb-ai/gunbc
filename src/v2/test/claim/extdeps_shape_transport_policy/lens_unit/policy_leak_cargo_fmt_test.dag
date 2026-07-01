@@ -1,0 +1,38 @@
+module v2.test.extdeps_shape_transport_policy.lens_unit.policy_leak_cargo_fmt
+
+import v2.lens.extdeps_shape_transport_policy {
+  ExtdepsTransportArgvFact,
+  ExtdepsTransportFusionFact,
+  extdeps_shape_transport_policy_violation_count
+}
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_cargo_build_module }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+data policy_leak_cargo_fmt_argv_facts: List<ExtdepsTransportArgvFact> = [
+  ExtdepsTransportArgvFact {
+    module: extdeps_cargo_build_module,
+    service: "cargo.Build",
+    operation: "Fmt",
+    transport_kind: Shell,
+    argv_index: 2,
+    argv_token: "--all"
+  },
+  ExtdepsTransportArgvFact {
+    module: extdeps_cargo_build_module,
+    service: "cargo.Build",
+    operation: "Fmt",
+    transport_kind: Shell,
+    argv_index: 3,
+    argv_token: "--check"
+  }
+]
+
+data policy_leak_cargo_fmt_fusion_facts: List<ExtdepsTransportFusionFact> = []
+
+test fn policy_leak_cargo_fmt_is_red_holds() -> Bool {
+  extdeps_shape_transport_policy_violation_count(
+    argv_facts: policy_leak_cargo_fmt_argv_facts,
+    fusion_facts: policy_leak_cargo_fmt_fusion_facts
+  ) == 2
+}

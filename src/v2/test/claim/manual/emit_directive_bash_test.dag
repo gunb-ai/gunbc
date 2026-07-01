@@ -1,0 +1,116 @@
+module v2.test.manual.emit_directive_bash
+
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import extdeps.communication.medium { Medium }
+import v2.extdeps.languages.bash {
+  emit_directive_bash_emitted_command,
+  emit_directive_bash_target_model,
+  emit_directive_bash_to_stdout_wrong_target_model
+}
+import v2.std.collection { Map }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  EmitDirective,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  SeverityError,
+  SeverityWarning,
+  Unavailable,
+  node_locus
+}
+import v2.std.node { Node }
+import v2.std.witness { Violates, Witness }
+
+fn emit_directive_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^emit_directive_bash_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+data emit_directive_error_example: EmitDirective = EmitDirective {
+  severity: SeverityError,
+  message: "build verification failed"
+}
+
+data emit_directive_warning_example: EmitDirective = EmitDirective {
+  severity: SeverityWarning,
+  message: "build verification failed"
+}
+
+data emit_directive_other_example: EmitDirective = EmitDirective {
+  severity: SeverityError,
+  message: "cache corruption"
+}
+
+data emit_directive_error_expected: String = "'echo' 'build verification failed' >&2"
+data emit_directive_other_expected: String = "'echo' 'cache corruption' >&2"
+
+data emit_directive_error_to_stdout_wrong_expected: String = "'echo' 'build verification failed'"
+
+fn emit_directive_bash_emit(d: EmitDirective) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: emit_directive_bash_emitted_command,
+      facts: Map { lookup: emit_directive_facts_lookup }
+    },
+    target: emit_directive_bash_target_model(d: d)
+  )
+}
+
+test fn emit_directive_bash_error_emits_echo_stderr_holds() -> Bool {
+  match emit_directive_bash_emit(d: emit_directive_error_example) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == emit_directive_error_expected) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_directive_bash_severity_invariant_holds() -> Bool {
+  match emit_directive_bash_emit(d: emit_directive_error_example) {
+    Accepted { value: se, diagnostics: _ } =>
+      match emit_directive_bash_emit(d: emit_directive_warning_example) {
+        Accepted { value: sw, diagnostics: _ } => se.carried == sw.carried
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_directive_bash_message_flows_holds() -> Bool {
+  match emit_directive_bash_emit(d: emit_directive_error_example) {
+    Accepted { value: s1, diagnostics: _ } =>
+      match emit_directive_bash_emit(d: emit_directive_other_example) {
+        Accepted { value: s2, diagnostics: _ } =>
+          (s2.carried == emit_directive_other_expected) && (s1.carried != s2.carried)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn emit_directive_bash_emit_to_stdout_wrong(d: EmitDirective) -> Outcome<Medium<String>> {
+  emit(
+    tree: InferredTree {
+      root: emit_directive_bash_emitted_command,
+      facts: Map { lookup: emit_directive_facts_lookup }
+    },
+    target: emit_directive_bash_to_stdout_wrong_target_model(d: d)
+  )
+}
+
+test fn emit_directive_bash_to_stdout_wrong_ne_correct_holds() -> Bool {
+  match emit_directive_bash_emit_to_stdout_wrong(d: emit_directive_error_example) {
+    Accepted { value: w, diagnostics: _ } =>
+      (w.carried == emit_directive_error_to_stdout_wrong_expected)
+        && (w.carried != emit_directive_error_expected)
+    Rejected { diagnostics: _ } => false
+  }
+}

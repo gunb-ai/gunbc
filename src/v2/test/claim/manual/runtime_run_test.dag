@@ -1,0 +1,237 @@
+module v2.test.manual.runtime_run
+
+import v2.compiler.eval {
+  EvalContext,
+  eval_context_with_semantics,
+  eval_diagnostic
+}
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.std.algebra { length }
+import v2.std.cardinality { RankingDimension, TerminationProof }
+import v2.std.collection { List, Map }
+import v2.std.dependency { DependencyView }
+import v2.std.diagnostic {
+  Accepted,
+  Outcome,
+  Rejected,
+  diagnostics_singleton
+}
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Node,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimeUnit,
+  RuntimeUnitValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+import v2.std.witness { Holds, Violates, Witness }
+import v2.workflow.runtime_run {
+  RuntimeRunComplete,
+  RuntimeRunBlocked,
+  RuntimeRunState,
+  runtime_run,
+  runtime_run_log_empty,
+  runtime_run_step_from_frontier
+}
+import v2.workflow.scheduler { RunnableFrontier }
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.extdeps.runtimes.v2_effect_io_pure { effect_io_pure_unit_type_node }
+
+data runtime_run_node_a: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^runtime_run_node_a_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data runtime_run_node_b: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^runtime_run_node_b_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data runtime_run_nodes: List<Node> = [runtime_run_node_a, runtime_run_node_b]
+data runtime_run_dependencies: List<DependencyView> = []
+
+fn runtime_run_termination_proof() -> TerminationProof {
+  TerminationProof {
+    non_increasing: [],
+    strict: RankingDimension { measured: ^runtime_run_descent_dimension }
+  }
+}
+
+fn runtime_run_facts_for(node: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: node,
+    algebra: effect_io_pure_unit_type_node(),
+    descent: Holds { value: runtime_run_termination_proof() }
+  )
+}
+
+fn runtime_run_fact_lookup(node: Node) -> Witness<InferredFacts> {
+  if node == runtime_run_node_a {
+    Holds { value: runtime_run_facts_for(node: runtime_run_node_a) }
+  } else if node == runtime_run_node_b {
+    Holds { value: runtime_run_facts_for(node: runtime_run_node_b) }
+  } else {
+    Violates {
+      diagnostic: eval_diagnostic(reason: ^runtime_run_facts_miss, node: node)
+    }
+  }
+}
+
+fn runtime_run_test_tree() -> InferredTree {
+  InferredTree {
+    root: runtime_run_node_a,
+    facts: Map { lookup: runtime_run_fact_lookup }
+  }
+}
+
+fn runtime_run_unit_value() -> RuntimeValue {
+  RuntimeUnit {
+    value: RuntimeUnitValue { unit_type: effect_io_pure_unit_type_node() }
+  }
+}
+
+fn runtime_run_allocate_literal(
+  _node: Node,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  Accepted { value: runtime_run_unit_value(), diagnostics: None }
+}
+
+fn runtime_run_reject_primitive(
+  node: Node,
+  _args: List<RuntimeValue>,
+  _env: EvaluationEnvironment
+) -> Outcome<RuntimeValue> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: eval_diagnostic(reason: ^runtime_run_eval_rejected, node: node)
+    )
+  }
+}
+
+fn runtime_run_reject_branch(
+  node: Node,
+  _value: RuntimeValue,
+  _env: EvaluationEnvironment
+) -> Outcome<Node> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: eval_diagnostic(reason: ^runtime_run_eval_rejected, node: node)
+    )
+  }
+}
+
+fn runtime_run_reject_loop(
+  node: Node,
+  _env: EvaluationEnvironment
+) -> Outcome<ControlTransfer> {
+  Rejected {
+    diagnostics: diagnostics_singleton(
+      d: eval_diagnostic(reason: ^runtime_run_eval_rejected, node: node)
+    )
+  }
+}
+
+fn runtime_run_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+fn runtime_run_interpretation() -> InterpretationAlgebra {
+  InterpretationAlgebra {
+    value: ValueInterpreter { allocate_literal: runtime_run_allocate_literal },
+    transform: TransformInterpreter { call_primitive: runtime_run_reject_primitive },
+    branch: BranchInterpreter { choose_branch: runtime_run_reject_branch },
+    loop: LoopInterpreter { step_loop: runtime_run_reject_loop },
+    bind: BindInterpreter { bind_value: runtime_run_bind_value },
+    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+  }
+}
+
+fn runtime_run_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^runtime_run_allocate_literal_sym,
+    call_primitive: ^runtime_run_reject_primitive_sym,
+    choose_branch: ^runtime_run_reject_branch_sym,
+    step_loop: ^runtime_run_reject_loop_sym,
+    bind_value: ^runtime_run_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
+  }
+}
+
+fn runtime_run_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^runtime_run_eval_runtime_id,
+    interpretation: runtime_run_interpretation(),
+    structure_witness: runtime_run_structure_witness()
+  )
+}
+
+fn runtime_run_step_appends_receipt_holds() -> Bool {
+  let init = RuntimeRunState { log: runtime_run_log_empty(), scheduled: [] }
+  let frontier = RunnableFrontier { ready: [runtime_run_node_a] }
+  let state = runtime_run_step_from_frontier(
+    frontier: frontier,
+    state: init,
+    tree: runtime_run_test_tree(),
+    context: runtime_run_context()
+  )
+  length(xs: state.log.entries) == 1 && state.scheduled == [runtime_run_node_a]
+}
+
+fn runtime_run_completes_both_nodes_holds() -> Bool {
+  match runtime_run(
+    nodes: runtime_run_nodes,
+    dependencies: runtime_run_dependencies,
+    tree: runtime_run_test_tree(),
+    context: runtime_run_context()
+  ) {
+    RuntimeRunComplete { log: log, scheduled: scheduled } =>
+      length(xs: log.entries) == 2 && length(xs: scheduled) == 2
+    RuntimeRunBlocked { evidence: _, log: _, scheduled: _, remaining: _ } => false
+  }
+}
+
+fn runtime_run_step_is_bounded_to_frontier_holds() -> Bool {
+  let init = RuntimeRunState { log: runtime_run_log_empty(), scheduled: [] }
+  let frontier = RunnableFrontier { ready: [runtime_run_node_a] }
+  let state = runtime_run_step_from_frontier(
+    frontier: frontier,
+    state: init,
+    tree: runtime_run_test_tree(),
+    context: runtime_run_context()
+  )
+
+  state.scheduled == [runtime_run_node_a] && length(xs: state.log.entries) == 1
+}
+
+test fn runtime_run_claims_hold() -> Bool {
+  runtime_run_step_appends_receipt_holds()
+    && runtime_run_completes_both_nodes_holds()
+    && runtime_run_step_is_bounded_to_frontier_holds()
+}

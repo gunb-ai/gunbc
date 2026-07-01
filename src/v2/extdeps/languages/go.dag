@@ -1,8 +1,3 @@
-// src/v2/extdeps/languages/go.dag
-// Scope: Go language spec surface — scalar fact-bundles, ModelCore wave-1, channel/export vocabulary, wave-2a lex/grammar-data target model.
-// Status: T-4.17 Wave 2b go slice — Go spec §Types (https://go.dev/ref/spec#Types) predeclared numeric/bool/string primitives as fact-bundles; ModelCore.primitives via fold; integer/float/bool/string inhabitance populated via grounded std.algebra Node constructors; Go complex primitive bundles remain present but withheld from AlgebraInhabitanceDecl until std exports a complex-specific approximate algebra constructor; laws/effects/partiality empty (wave-2+); wave-1 MVP-1 grammar declared as `FormalProduction` flat rhs (`go_wave1_formal_productions`); `GrammarExpr`/`GrammarProduction` below remain operational parse scaffold until CP-1b convergence; canonical_symbols = catalog surface spellings + wave-1 lex/grammar/MVP; target_model edge keys from std/compilers/target_model.dag; GO-SG-1 TargetAtomRealization rows (Symbol/Bool/Char→rune) + atom_realizations catalog edge; platform Int atom row 🟡 gated until shared carrier gains integer value template (R1 uses ^go_surface_spelling_int / go_facts_int facts directly); bool canonical-B decl-ref — 🟡 E-6(b) staging.
-// Anchor: https://go.dev/ref/spec
-
 module v2.extdeps.languages.go
 import v2.std.language_model { LanguageModel }
 
@@ -112,7 +107,6 @@ import v2.std.algebra {
 }
 import v2.std.text { String }
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type SignedIntWidth
   = SignedBits8
   | SignedBits16
@@ -120,7 +114,6 @@ type SignedIntWidth
   | SignedBits64
   | SignedPlatformInt
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type UnsignedIntWidth
   = UnsignedBits8
   | UnsignedBits16
@@ -129,17 +122,14 @@ type UnsignedIntWidth
   | UnsignedPlatformInt
   | UnsignedPointerSized
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoFloatWidth
   = Bits32
   | Bits64
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoComplexWidth
   = Bits64
   | Bits128
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoScalarKind
   = Int
   | Float
@@ -147,7 +137,6 @@ type GoScalarKind
   | ScalarBool
   | ScalarString
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoScalar
   = SignedIntScalar { width: SignedIntWidth }
   | UnsignedIntScalar { width: UnsignedIntWidth }
@@ -156,19 +145,16 @@ type GoScalar
   | BoolScalar
   | StringScalar
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoChannelDirection
   = SendRecv
   | SendOnly
   | RecvOnly
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoExportLocus
   = PackageBlock
   | StructField
   | MethodName
 
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoExportStatus
   = Exported { locus: GoExportLocus }
   | Unexported { locus: GoExportLocus }
@@ -183,17 +169,11 @@ type GoCost {
   allocation_cost: Int
 }
 
-// Tokens are the shared v2.std.compilers.target_model ConcreteSyntaxToken carrier (FixedToken | BoundToken);
-// per-target Go coproduct dissolved into that std authority.
-
 type GoGrammarRelationRow {
   production: GrammarProduction
   tokens: List<ConcreteSyntaxToken>
 }
 
-
-// Go spec: typed integer arithmetic truncates silently on overflow (not panic).
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoBuiltinIntegerArithmeticOverflow
   = SignedTypedIntegerTruncatesSilentlyOnOverflow
   | UnsignedTypedIntegerTruncatesSilentlyOnOverflow
@@ -203,15 +183,10 @@ type GoIntegerOverflowDisposition<IRCarrier> {
   release_default: GoBuiltinIntegerArithmeticOverflow
 }
 
-// Signedness axis for ModelCore primitive bundles (mirrors java/rust carrier shape).
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoIntKind
   = Signed
   | Unsigned
 
-// Integer fact rows — signedness, width, and overflow disposition are one coproduct arm
-// (illegal states like Signed + GoUnsignedWidth are unrepresentable).
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type GoIntegerPrimitiveFacts
   = GoSignedIntegerPrimitiveFacts {
       surface_spelling: Symbol
@@ -233,7 +208,6 @@ type GoFloatPrimitiveFacts {
   std_projection: Symbol
 }
 
-// Go spec: complex is a pair of floating-point values (complex64 = two float32, etc.).
 type GoComplexPrimitiveFacts {
   surface_spelling: Symbol
   width: GoComplexWidth
@@ -252,11 +226,7 @@ type GoStringPrimitiveFacts {
   encoding: Symbol
   std_projection: Symbol
 }
-// 🟡 gated — feature:go-predeclared-identifier-binding — Go predeclared
-// identifiers such as `int` are not reserved. Wave 2a treats the MVP `int`
-// type reference as a fixed type token and therefore rejects programs that
-// shadow/use `int` as an ordinary identifier; dissolve-on: T-11 binding facts
-// express predeclared type references over `^go_token_ident` without this token.
+
 data go_mvp1_source_text: String = "func add(x int, y int) int { return x + y }"
 
 fn go_mvp1_concrete_tokens() -> List<ConcreteSyntaxToken> {
@@ -314,7 +284,6 @@ data go_facts_int: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   std_projection: ^go_std_projection_int,
 }
 
-// Platform-int slice for cross-language neutralization (python int -> go int, NOT int64).
 data go_facts_int_additive_numeric: GoIntegerPrimitiveFacts = GoSignedIntegerPrimitiveFacts {
   surface_spelling: ^go_surface_spelling_int,
   width: SignedPlatformInt,
@@ -436,7 +405,6 @@ data go_string_facts_catalog: List<GoStringPrimitiveFacts> = [
   go_facts_string,
 ]
 
-// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1)
 data go_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn go_inhabitant_atom(id: Symbol) -> Node {
@@ -1356,7 +1324,6 @@ fn go_integer_algebra_inhabitance(facts: GoIntegerPrimitiveFacts) -> AlgebraInha
   }
 }
 
-// Leaf-model Layer-A — derived fact exposure + GO-SG-1 TargetAtomRealization row (dual-name §3.1).
 data go_atom_realization_symbol_node: Node = go_inhabitant_atom(id: ^go_atom_realization_symbol)
 data go_integer_algebra_inhabitance_go_facts_int: AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int)
 data go_integer_algebra_inhabitance_go_facts_int64: AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int64)
@@ -1422,11 +1389,6 @@ fn go_string_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   )
 }
 
-// 🟡 needs-more-work — feature:go-complex-algebra-inhabitance — bind gunbc#4773.
-// Go complex values are unordered and backed by finite-precision float components;
-// std.algebra currently has no complex-specific approximate algebra constructor,
-// so Wave 2b keeps their primitive fact-bundles but does not advertise a stronger
-// AlgebraInhabitanceDecl than the shared substrate can defend.
 fn go_complex_algebra_inhabitance_decls() -> List<AlgebraInhabitanceDecl> {
   []
 }
@@ -1474,7 +1436,6 @@ fn go_int_inhabitant_node() -> Node {
 }
 }
 
-// Neutralization route: python int -> std_projection_additive_numeric -> go platform int (MVP1 emit surface).
 fn go_int_additive_numeric_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1520,8 +1481,6 @@ fn go_int_additive_numeric_inhabitant_node() -> Node {
 }
 }
 
-// Third-inhabitant falsifier slice: int64 wired to shared std_projection_additive_numeric via
-// facts_field_std_projection (design-sign cond 3) — zero new combinator arms.
 fn go_int64_additive_numeric_inhabitant_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1567,8 +1526,6 @@ fn go_int64_additive_numeric_inhabitant_node() -> Node {
 }
 }
 
-// Cond-3 falsifier carrier: python_mvp1_emitted_add_fn_node shape (3 positional inhabitants)
-// with go-int64 wired to shared std_projection_additive_numeric (extdeps-only, zero new bridge key).
 fn go_int64_falsifier_emitted_add_fn_node() -> Node {
   Node {
     kind: TypeNode { connective: Arrow },
@@ -1593,8 +1550,6 @@ fn go_declared_inhabitants_root() -> Node {
 }
 }
 
-// Zip-fold support nodes derived from go_facts_int constructors — not parallel fixture data.
-// 🟡 gated — feature:W-T-10-mvp1-exact-zip-closure — bind gunbc#4760 — dissolve-on: find_witness enumerates inside declared_inhabitants without fixture zip-fold support edges.
 fn go_mvp1_int_zip_fold_closure_edges() -> List<Edge> {
   [
     go_named_edge(
@@ -1655,7 +1610,6 @@ fn go_mvp1_selection_policy_node() -> Node {
   go_int_inhabitant_node()
 }
 
-// Discrimination probe carrier: selection_policy aligned to int64 facts (tiebreak flips winner).
 fn go_mvp1_int64_selection_policy_node() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -1684,11 +1638,9 @@ fn go_mvp1_emitted_add_fn_node() -> Node {
 }
 
 fn go_concrete_token_node(token: ConcreteSyntaxToken) -> Node {
-  // T-11: serialize through the single shared morphism (no parallel wire authority).
+
   concrete_syntax_token_to_node(token: token)
 }
-
-
 
 fn go_mvp1_serialize_source_children() -> List<Edge> {
   list_append(
@@ -1718,7 +1670,6 @@ fn go_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-
 fn go_formal_rhs_from_tokens(tokens: List<ConcreteSyntaxToken>) -> List<FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
@@ -1740,7 +1691,6 @@ fn go_wave1_formal_productions() -> List<FormalProduction> {
   [go_formal_production_mvp1_fn_add()]
 }
 
-// 🟡 coproduct dissolution — feature:go-grammar-sequence-adapter — consumer:go_grammar_sequence_from_token_classes — bound task: gunbc#4761 — dissolve-on-arrival: ParseGrammar/GrammarProduction consume flat FormalProduction rhs directly and this parser-facing GrammarExpr sequence adapter is deleted.
 type GoGramBuild1State
   = GoGramBuild1StateInit
   | GoGramBuild1StateReady { expr: GrammarExpr }
@@ -1789,7 +1739,6 @@ fn go_mvp1_grammar_relation_row() -> GoGrammarRelationRow {
     tokens: go_mvp1_concrete_tokens()
   }
 }
-
 
 fn go_grammar_relation_row_node(row: GoGrammarRelationRow) -> Node {
   Node {
@@ -1842,8 +1791,6 @@ fn go_mvp1_binding_spellings() -> Map<Symbol, String> {
     "rune"
   )
 }
-
-// T-22 emit-host runtime row — gunbc#4750.
 
 fn go_emit_host_runtime_primitive_type_node() -> Node {
   Node {
@@ -1944,10 +1891,6 @@ data go_target_atom_realization_char: TargetAtomRealization = TargetAtomRealizat
   display_name: ^char_kernel_type_atom
 }
 
-// 🟡 gated — feature:go-target-atom-realization-int — bind docs/planning/v2-go-target-atom-realization-worksheet-2026-06-01.md §4 Int row —
-// dissolve-on: v2.std.compilers.target_model adds integer TargetValueTemplateKind + value path; forbidden: Symbol
-// value templates (e.g. ValueSymbolIdentityPassthrough) standing in for platform int (faithful modeling — DESIGN.md §3).
-
 data go_target_atom_realization_catalog: List<TargetAtomRealization> = [
   go_target_atom_realization_symbol,
   go_target_atom_realization_bool,
@@ -2027,21 +1970,12 @@ fn go_keyword_lex_rule(token_class: Symbol, text: String) -> LexRule {
 }
 
 fn go_whitespace_trivia_rule() -> LexRule {
-  // 🟡 gated — feature:go-semicolon-insertion-layout — bound task: gunbc#4761 Layout-in-literals bridge + T-4.17 fail-closed ingest — Go newlines can insert
-  // semicolons after line-final identifiers, literals, break/continue/fallthrough/
-  // return, and selected delimiters. Wave 2a accepts only the horizontal-space
-  // MVP subset; newline layout fails closed until std.lexing carries Go layout.
-  // dissolve-on: T-6/T-11 TokenLayout/TriviaPolicy carries Go semicolon-insertion layout facts.
+
   TriviaRule {
     pattern: OneOrMorePattern { element: LiteralPattern { text: " " } }
   }
 }
 
-// 🟡 gated — feature:go-unicode-identifier-lexing — Go spec identifiers are
-// Unicode-letter/digit based. Wave 2a deliberately accepts only the shared
-// identifier classes and rejects outside-subset identifiers via lexer no-match;
-// dissolve-on: std.lexing exports Go Unicode identifier classes and this
-// pattern consumes them.
 fn go_ident_lex_pattern() -> LexPattern {
   SequencePattern {
     left: CharClassPattern { class: IdentStartChar },
@@ -2056,25 +1990,15 @@ fn go_ident_lex_rule() -> LexRule {
   }
 }
 
-// 🟡 gated — feature:T-6-token-layout-trivia-policy — layout whitespace is baked into
-// every LiteralPattern.text below (e.g. "func " not "func", " + " not "+") as the interim
-// trivia policy: a token carries the layout adjacent to it so `x + y` renders with the
-// spaces the reference (`go_mvp1_source_text`) requires. Homomorphic with rust/python
-// wave-1 MVP-1 lex (same T-6 dissolve trigger). `go_whitespace_trivia_rule` above is
-// ingest-side horizontal-space subset only (see feature:go-semicolon-insertion-layout);
-// serialize round-trip spacing rides these literal texts until T-6 supplies
-// TokenLayout/TriviaPolicy and token_sequence_to_source interleaves layout structurally.
 fn go_wave1_lex_rules() -> LexRuleSet {
-  // Rule order is load-bearing: lex_try_rules prefers the later rule on equal-length
-  // matches, so ident must precede keywords and fixed literals that must win ties.
+
   LexRuleSet {
     rules: [
       go_whitespace_trivia_rule(),
       go_ident_lex_rule(),
       go_keyword_lex_rule(token_class: ^go_token_kw_func, text: "func "),
       go_lex_rule(token_class: ^go_token_lparen, text: "("),
-      // See feature:go-predeclared-identifier-binding above. This is a
-      // fail-closed MVP type-reference token, not a claim that `int` is reserved.
+
       go_lex_rule(token_class: ^go_token_ty_int, text: " int"),
       go_lex_rule(token_class: ^go_token_comma, text: ", "),
       go_lex_rule(token_class: ^go_token_rparen, text: ")"),
@@ -2233,7 +2157,6 @@ fn go_language_model_canonical_symbols() -> Set<Symbol> {
   }
 }
 
-// 🟡 needs-more-work · E-6(b) bounded-exception · scaffold feature:go-language-model-consumer · dissolve-on: LanguageModel registry/T-11 consumes `go_language_model_wave1()` as the Go target carrier.
 fn go_language_model_wave1() -> LanguageModel {
   LanguageModel {
     lex: go_wave1_lex(),

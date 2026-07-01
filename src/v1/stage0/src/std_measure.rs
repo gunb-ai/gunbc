@@ -28,6 +28,8 @@ pub enum Quantity {
     Count,
     Currency,
     Power,
+    Temperature,
+    RotationalSpeed,
     ElectricPotential,
     ElectricCurrent,
     Resistance,
@@ -35,6 +37,7 @@ pub enum Quantity {
     Inductance,
     ElectricCharge,
     MagneticFlux,
+    Dimensionless,
 }
 
 #[derive(
@@ -83,139 +86,376 @@ pub fn scale_exponent(s: Scale) -> i64 {
     }
 }
 
-pub fn memory_scale_factor_bytes(s: Scale) -> Nat {
+pub fn gibibyte_scale_factor_bytes() -> Nat {
+    1073741824
+}
+
+pub fn kibi_factor() -> Nat {
+    1024
+}
+
+pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
     match s {
-        Scale::One => 1,
-        Scale::Kibi => 1024,
-        Scale::Mebi => 1048576,
-        Scale::Gibi => 1073741824,
-        Scale::Tebi => 1099511627776,
-        _ => 1,
+        Scale::One => Some(1),
+        Scale::Kibi => Some(kibi_factor()),
+        Scale::Mebi => Some((kibi_factor() * kibi_factor())),
+        Scale::Gibi => Some(gibibyte_scale_factor_bytes()),
+        Scale::Tebi => Some((gibibyte_scale_factor_bytes() * kibi_factor())),
+        Scale::Atto => None,
+        Scale::Femto => None,
+        Scale::Pico => None,
+        Scale::Nano => None,
+        Scale::Micro => None,
+        Scale::Milli => None,
+        Scale::Kilo => None,
+        Scale::Mega => None,
+        Scale::Giga => None,
+        Scale::Tera => None,
+        Scale::Peta => None,
+        Scale::Exa => None,
     }
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Measure<Q, S, M> {
-    pub count: Box<M>,
+    pub count: M,
+    pub _phantom: std::marker::PhantomData<(Q, S, M)>,
 }
 
-pub fn measure_count<Q, S, M>(m: Rc<Measure<Q, S, M>>) -> M {
+pub fn measure_count<Q, S, M: Clone>(m: Rc<Measure<Q, S, M>>) -> M {
     m.count.clone()
 }
 
-pub fn time_measure<S>(count: Nat) -> Rc<Measure<Time, S, Nat>> {
+pub fn measure_scale_fraction_floor<Q, S>(
+    m: Rc<Measure<Q, S, Nat>>,
+    num: Nat,
+    den: Nat,
+) -> Rc<Measure<Q, S, Nat>> {
     Rc::new(Measure {
-        count: Box::new(count),
+        count: if (den.clone() == 0) {
+            den.clone()
+        } else {
+            ((m.count.clone() * num) / den.clone())
+        },
+        _phantom: std::marker::PhantomData,
     })
 }
 
-pub type ByteSize = Rc<Measure<Memory, One, Nat>>;
+pub fn measure_fit_count_floor<Q, S>(
+    capacity: Rc<Measure<Q, S, Nat>>,
+    each: Rc<Measure<Q, S, Nat>>,
+) -> Nat {
+    {
+        let each_count = each.count.clone();
+        if (each_count.clone() == 0) {
+            each_count.clone()
+        } else {
+            (capacity.count.clone() / each_count.clone())
+        }
+    }
+}
 
-pub type Gibibyte = Rc<Measure<Memory, Gibi, Nat>>;
+pub fn measure_scale_fraction_ceil<Q, S>(
+    m: Rc<Measure<Q, S, Nat>>,
+    num: Nat,
+    den: Nat,
+) -> Rc<Measure<Q, S, Nat>> {
+    Rc::new(Measure {
+        count: if (den.clone() == 0) {
+            (m.count.clone() * num)
+        } else {
+            (((m.count.clone() * num) + (den.clone() - 1)) / den.clone())
+        },
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn measure_add<Q, S>(
+    a: Rc<Measure<Q, S, Nat>>,
+    b: Rc<Measure<Q, S, Nat>>,
+) -> Rc<Measure<Q, S, Nat>> {
+    Rc::new(Measure {
+        count: (a.count.clone() + b.count.clone()),
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, Nat>>, b: Rc<Measure<Q, S, Nat>>) -> bool {
+    (a.count.clone() <= b.count.clone())
+}
+
+pub fn time_measure<S>(count: Nat) -> Rc<Measure<(), S, Nat>> {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub type ByteSize = Rc<Measure<(), (), i64>>;
+
+pub type Kibibyte = Rc<Measure<(), (), i64>>;
+
+pub type Gibibyte = Rc<Measure<(), (), i64>>;
 
 pub fn gibibyte(count: Nat) -> Gibibyte {
-    Gibibyte { count: count }
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
 }
 
 pub fn gibibyte_count(g: Gibibyte) -> Nat {
-    compile_error!("field access missing reconcile summary for 'count'")
+    measure_count(g)
 }
 
 pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
-    byte_size((gibibyte_count(g) * memory_scale_factor_bytes(Scale::Gibi)))
+    byte_size((gibibyte_count(g) * gibibyte_scale_factor_bytes()))
 }
 
-pub type BitWidth = Rc<Measure<Information, One, Nat>>;
+pub type BitWidth = Rc<Measure<(), (), i64>>;
 
-pub type Hertz = Rc<Measure<Frequency, One, Nat>>;
+pub fn bits_per_byte() -> Nat {
+    8
+}
 
-pub type HardwareThreadCount = Rc<Measure<Count, One, Nat>>;
+pub type Hertz = Rc<Measure<(), (), i64>>;
 
-pub type Watt = Rc<Measure<Power, One, Nat>>;
+pub type HardwareThreadCount = Rc<Measure<(), (), i64>>;
+
+pub type Watt = Rc<Measure<(), (), i64>>;
+
+pub type Celsius = Rc<Measure<(), (), i64>>;
+
+pub type RevolutionsPerMinute = Rc<Measure<(), (), i64>>;
 
 pub fn watt(count: Nat) -> Watt {
-    Watt { count: count }
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
 }
 
 pub fn watt_count(w: Watt) -> Nat {
-    compile_error!("field access missing reconcile summary for 'count'")
+    measure_count(w)
 }
 
-pub type MoneyAmount<S> = Rc<Measure<Currency, S, Nat>>;
+pub fn celsius(count: i64) -> Celsius {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
 
-pub type MoneyAmountMicro = MoneyAmount;
+pub fn celsius_count(c: Celsius) -> i64 {
+    measure_count(c)
+}
+
+pub fn rpm(count: Nat) -> RevolutionsPerMinute {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn rpm_count(r: RevolutionsPerMinute) -> Nat {
+    measure_count(r)
+}
+
+pub type MoneyAmount<S> = Rc<Measure<(), S, i64>>;
+
+pub type MoneyAmountMicro = MoneyAmount<()>;
 
 pub fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
-    MoneyAmountMicro { count: count }
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
 }
 
 pub fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
-    compile_error!("field access missing reconcile summary for 'count'")
+    measure_count(m)
 }
 
 pub fn byte_size(count: Nat) -> ByteSize {
-    ByteSize { count: count }
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
 }
 
 pub fn byte_size_count(b: ByteSize) -> Nat {
-    compile_error!("field access missing reconcile summary for 'count'")
+    measure_count(b)
 }
 
 pub fn bit_width(count: Nat) -> BitWidth {
-    BitWidth { count: count }
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
 }
 
 pub fn bit_width_count(b: BitWidth) -> Nat {
-    compile_error!("field access missing reconcile summary for 'count'")
+    measure_count(b)
 }
 
 pub fn hertz(count: Nat) -> Hertz {
-    Hertz { count: count }
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
 }
 
 pub fn hertz_count(h: Hertz) -> Nat {
-    compile_error!("field access missing reconcile summary for 'count'")
+    measure_count(h)
 }
 
 pub fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
-    HardwareThreadCount { count: count }
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
 }
 
 pub fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
-    compile_error!("field access missing reconcile summary for 'count'")
+    measure_count(t)
 }
 
+pub type Bandwidth = Rc<Measure<(), (), i64>>;
+
+pub fn bandwidth(count: Nat) -> Bandwidth {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn bandwidth_count(b: Bandwidth) -> Nat {
+    measure_count(b)
+}
+
+pub type Nanosecond = Rc<Measure<(), (), i64>>;
+
+pub fn nanosecond(count: Nat) -> Nanosecond {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn nanosecond_count(n: Nanosecond) -> Nat {
+    measure_count(n)
+}
+
+pub type Microsecond = Rc<Measure<(), (), i64>>;
+
+pub fn microsecond(count: Nat) -> Microsecond {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn microsecond_count(m: Microsecond) -> Nat {
+    measure_count(m)
+}
+
+pub type Second = Rc<Measure<(), (), i64>>;
+
+pub fn second(count: Nat) -> Second {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn second_count(s: Second) -> Nat {
+    measure_count(s)
+}
+
+pub type Percent = Rc<Measure<(), (), i64>>;
+
+pub fn percent(count: Nat) -> Percent {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn percent_count(p: Percent) -> Nat {
+    measure_count(p)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Time;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Length;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Mass;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Memory;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Information;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct DataRate;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Frequency;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Count;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Currency;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Power;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Temperature;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct RotationalSpeed;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ElectricPotential;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ElectricCurrent;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Resistance;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Capacitance;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Inductance;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct ElectricCharge;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MagneticFlux;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Dimensionless;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Atto;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Femto;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Pico;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Nano;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Micro;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Milli;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct One;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Kilo;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Mega;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Giga;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Tera;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Peta;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Exa;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Kibi;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Mebi;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Gibi;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Tebi;

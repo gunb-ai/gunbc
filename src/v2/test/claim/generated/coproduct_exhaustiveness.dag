@@ -1,0 +1,101 @@
+module v2.test.generated.coproduct_exhaustiveness
+
+import v2.lens.testgen {
+  Generator,
+  TestgenConcept,
+  coproduct_exhaustiveness_anchor,
+  testgen_emit_coproduct_exhaustiveness_claim,
+  testgen_scheduled_coproduct_exhaustiveness_generators
+}
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.node_query { coproduct_arm_keys }
+import v2.std.verification {
+  ClaimAnchorKey,
+  DiagnosticClaim,
+  GeneratedAnchorKey,
+  GeneratedClaimAnchor,
+  GeneratedCoproductExhaustiveness,
+  TestClaim,
+  test_claim_anchor,
+  test_claim_input
+}
+
+fn reference_coproduct_exhaustiveness_anchor() -> GeneratedAnchorKey {
+  coproduct_exhaustiveness_anchor(coproduct_type: ^TestClaim, omitted_variant: ^DiagnosticClaim)
+}
+
+fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim> {
+  testgen_emit_coproduct_exhaustiveness_claim(anchor: reference_coproduct_exhaustiveness_anchor())
+}
+
+fn generated_coproduct_exhaustiveness_input() -> Outcome<Node> {
+  match generated_coproduct_exhaustiveness_claim() {
+    Accepted { value: claim, diagnostics: _ } =>
+      Accepted { value: test_claim_input(c: claim), diagnostics: None }
+    Rejected { diagnostics: d } => Rejected { diagnostics: d }
+  }
+}
+
+fn witness_coproduct_exhaustiveness_claim_is_diagnostic() -> Bool {
+  match generated_coproduct_exhaustiveness_claim() {
+    Accepted { value: DiagnosticClaim { label: _, anchor: GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } }, input: _, expected_rejection: _, classification: _ }, diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
+  match generated_coproduct_exhaustiveness_claim() {
+    Accepted { value: claim, diagnostics: _ } =>
+      match test_claim_anchor(c: claim) {
+        GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: _, omitted_variant: _ } } => true
+        _ => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn anchor_is(a: ClaimAnchorKey, coproduct_type: Symbol, omitted_variant: Symbol) -> Bool {
+  match a {
+    GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: ct, omitted_variant: ov } } =>
+      (ct == coproduct_type) && (ov == omitted_variant)
+    _ => false
+  }
+}
+
+fn roster_covers(coproduct_type: Symbol, omitted_variant: Symbol) -> Bool {
+  fold(
+    testgen_scheduled_coproduct_exhaustiveness_generators(),
+    init: false,
+    f: fn(acc, g) { acc || anchor_is(a: g.anchor, coproduct_type: coproduct_type, omitted_variant: omitted_variant) }
+  )
+}
+
+fn roster_covers_all_arms_of(coproduct_type: Symbol) -> Bool {
+  let arms = coproduct_arm_keys(type_name: coproduct_type)
+  (length(xs: arms) > 0)
+    && fold(arms, init: true, f: fn(acc, arm) {
+        acc && roster_covers(coproduct_type: coproduct_type, omitted_variant: arm)
+      })
+}
+
+fn witness_coproduct_exhaustiveness_roster_covers_testclaim() -> Bool {
+  (length(xs: testgen_scheduled_coproduct_exhaustiveness_generators()) > 0)
+    && roster_covers_all_arms_of(coproduct_type: ^TestClaim)
+}
+
+fn witness_coproduct_exhaustiveness_covers_second_coproduct() -> Bool {
+  roster_covers_all_arms_of(coproduct_type: ^Connective)
+}
+
+data witness_coproduct_exhaustiveness_diagnostic_claim: Bool = witness_coproduct_exhaustiveness_claim_is_diagnostic()
+
+data witness_coproduct_exhaustiveness_uses_generated_anchor: Bool = witness_coproduct_exhaustiveness_generated_anchor()
+
+data witness_coproduct_exhaustiveness_all_variants_emit: Bool = witness_coproduct_exhaustiveness_roster_covers_testclaim()
+
+data witness_coproduct_exhaustiveness_generator_count: Bool = witness_coproduct_exhaustiveness_covers_second_coproduct()

@@ -1,5 +1,3 @@
-// Status: activated — structural EqualsClaim + green witness over the provenance integrity fn.
-
 module v2.test.lens_testgen.generator_provenance
 
 import v2.lens.testgen { scheduled_generators_carry_provenance }
@@ -25,7 +23,6 @@ fn lens_testgen_generator_provenance_marker_node(marker: Symbol) -> Node {
 }
 }
 
-
 fn lens_testgen_generator_provenance_rhs() -> Node {
   if scheduled_generators_carry_provenance() {
     lens_testgen_generator_provenance_marker_node(marker: ^lens_testgen_generator_provenance_ok)
@@ -34,7 +31,6 @@ fn lens_testgen_generator_provenance_rhs() -> Node {
   }
 }
 
-
 data claim_lens_testgen_scheduled_generators_carry_provenance: TestClaim = EqualsClaim {
   label: "lens_testgen/generator_provenance: scheduled generators carry consistent provenance + profile metadata",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -42,6 +38,5 @@ data claim_lens_testgen_scheduled_generators_carry_provenance: TestClaim = Equal
   rhs: lens_testgen_generator_provenance_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 test data witness_lens_testgen_scheduled_generators_carry_provenance_green: Bool = scheduled_generators_carry_provenance()

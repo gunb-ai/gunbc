@@ -1,16 +1,6 @@
-// src/v2/lens/host_language_transport_script.dag
-// Scope: interim structural guard — shell.Exec.Run `script:` position must not be a
-//   compile-time-known string-literal / concat-of-literals / let-bound-literal node.
-// Reads SHAPE (Expr kind), never string contents. Subsumes transport-position
-// coverage from v2.lens.command_literal_reducibility (#5150 script arm).
-// Dissolve-on: emit(intent, Bash) makes raw String literals unrepresentable in
-//   script position (bash-as-19th-target terminal).
-//
-// Peer: std.lens_verdict for gate outcomes; Node-tree facts via parse projection
-//   builtin (structural classification only — violation logic lives here).
-
 module v2.lens.host_language_transport_script
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 
 import std.lens_verdict {
   Holds,
@@ -24,7 +14,6 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-// Structural shape of the `script:` argument at shell.Exec.Run (parse-tree kind).
 type TransportScriptArgShape
   = ComputedApplication
   | BareStringLiteral
@@ -113,17 +102,10 @@ fn transport_script_lens_verdict(
   }
 }
 
-// Parse-bridge: structural projection over a live .dag file (no content scan).
 fn transport_script_live_literal_violation_count_for_path(path: String) -> Int {
   transport_script_literal_violation_count_for_path(path: path)
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "emit(intent, Bash) -- the bash-as-target terminal (warm-badger-46 arc)",
-    dissolve_on: "raw String literals become unrepresentable in shell.Exec.Run script: position once emit(intent, Bash) owns shell construction"
-  },
-  rationale: "A compile-time-known literal in script: position is a decidable shape read; an interim structural guard until emit(intent, Bash) makes the literal unrepresentable there by construction."
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

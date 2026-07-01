@@ -1,10 +1,3 @@
-// Rust syntax specification — instance #2 of SyntaxSpec.
-//
-// Describes Rust surface syntax as data. Proves the SyntaxSpec
-// abstraction is real: the parser can be driven by non-.dag spec data.
-// This is a subset sufficient to recognize common Rust item forms,
-// operators, and literal keywords.
-
 module extdeps.languages.rust.syntax
 
 import std.syntax {
@@ -16,9 +9,15 @@ import std.syntax {
   Eq, Ne, Lt, Gt, Le, Ge, And, Or,
   LiteralValue, LitBool
 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Rust item forms — the keyword-driven dispatch table.
-// fn, struct, enum, type, trait, impl, const, static, use, mod
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/reference/"
+  }
+}
 
 data rust_item_forms: List<ItemForm> = [
   ItemForm { kind: FuncForm, keyword: "fn", has_type_params: true, has_params: true,
@@ -50,14 +49,10 @@ data rust_item_forms: List<ItemForm> = [
     has_uses: false, body_kind: BlockBody }
 ]
 
-// Rust literal keywords
-
 data rust_keyword_literals: Map<String, LiteralValue> = {
   "true": LitBool { value: true },
   "false": LitBool { value: false }
 }
-
-// Rust keyword set — all reserved words
 
 data rust_keyword_set: Map<String, Bool> = {
   "fn": true, "struct": true, "enum": true, "type": true, "trait": true,
@@ -69,10 +64,6 @@ data rust_keyword_set: Map<String, Bool> = {
   "async": true, "await": true, "dyn": true, "unsafe": true, "extern": true,
   "true": true, "false": true
 }
-
-// Rust operator precedence (subset).
-// Assignment not included (statement, not expression in .dag model).
-// Range operators (.., ..=) not included (no BinOp mapping yet).
 
 data rust_operators: List<OperatorSpec> = [
   OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: Or, algebra_field: none },

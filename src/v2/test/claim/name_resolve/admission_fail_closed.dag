@@ -1,0 +1,361 @@
+module v2.test.name_resolve.admission_fail_closed
+
+import v2.compiler.name_resolve {
+  Admission,
+  AdmissionAccepted,
+  AdmissionRejected,
+  AdmissionState,
+  Import,
+  ImportVisible,
+  ResolutionSubject,
+  admit_import_entry,
+  resolve_with_admission,
+  validate_module_roots
+}
+import v2.std.cross_tree.resolution { source_root_index_empty }
+import v2.extdeps.languages.dag {
+  dag_grammar_atom,
+  dag_language_model_surface_empty_prelude,
+  dag_named_edge
+}
+import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
+import v2.std.collection { empty_map }
+import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_eq }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.verification {
+  CompilesClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+fn fc_pass_node() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^fc_pass_sym } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+}
+fn fc_fail_node() -> Node {
+  Node { kind: TypeNode { connective: Atom { identity: ^fc_fail_sym } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+}
+fn fc_claim_input(ok: Bool) -> Node {
+  if ok { fc_pass_node() } else { fc_fail_node() }
+}
+
+fn fc_qn_node(seg: Symbol) -> Node {
+  fold_list_node(
+    xs: Cons { head: seg, tail: Empty },
+    item_node: fn(sym) {
+      Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+    }
+  )
+}
+
+fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: fc_qn_node(seg: seg)
+      ),
+      Edge {
+        label: Named { name: export_sym },
+        target: Node {
+          kind: TypeNode {
+            connective: Atom { identity: ^dag_c3_surface_sugar_service }
+          },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+}
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn fc_module_root(seg: Symbol) -> Node {
+  fc_module_root_export(seg: seg, export_sym: ^fc_export_sym)
+}
+
+fn fc_qn(seg: Symbol) -> QualifiedName {
+  QnCons { head: seg, tail: QnEmpty }
+}
+
+fn fc_duplicate_roots() -> FreeMonoid<Node> {
+  Cons {
+    head: fc_module_root(seg: ^fc_dup_seg),
+    tail: Cons { head: fc_module_root(seg: ^fc_dup_seg), tail: Empty }
+  }
+}
+
+fn fc_single_found_root() -> FreeMonoid<Node> {
+  Cons { head: fc_module_root(seg: ^fc_found_seg), tail: Empty }
+}
+
+fn fc_malformed_subject_root() -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      dag_named_edge(
+        name: ^dag_surface_module_header,
+        target: dag_grammar_atom(id: ^dag_surface_module_header)
+      ),
+      dag_named_edge(
+        name: ^dag_surface_module_header_qualified_name,
+        target: fc_qn_node(seg: ^fc_malformed_seg)
+      ),
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Atom { identity: ^fc_malformed_child_sym } },
+          children: [],
+          occurrence_id: SyntheticOccurrence
+}
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn fc_malformed_subject_roots() -> FreeMonoid<Node> {
+  Cons { head: fc_malformed_subject_root(), tail: Empty }
+}
+
+fn fc_import_missing_target() -> Import {
+  Import { target: fc_qn(seg: ^fc_missing_seg), visibility: ImportVisible }
+}
+
+fn fc_initial_admission_state() -> AdmissionState {
+  AdmissionAccepted { bindings: empty_map(), origins: empty_map() }
+}
+
+fn admit_import_missing_module_is_rejected() -> Bool {
+  let roots = fc_single_found_root()
+  match admit_import_entry(
+    roots: roots,
+    import_edge: fc_import_missing_target(),
+    state: fc_initial_admission_state(),
+    subject_qn: fc_qn(seg: ^fc_subject_seg),
+    index: source_root_index_empty(),
+    active_roots: Empty
+  ) {
+    AdmissionAccepted { bindings: _, origins: _ } => false
+    AdmissionRejected { diagnostics: _ } => true
+  }
+}
+
+fn resolve_duplicate_module_roots_is_rejected() -> Bool {
+  match resolve_with_admission(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: fc_duplicate_roots(),
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: fc_qn(seg: ^fc_dup_seg)
+      },
+      imports: Empty
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
+  match resolve_with_admission(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: fc_single_found_root(),
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: fc_qn(seg: ^fc_missing_seg)
+      },
+      imports: Empty
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn validate_module_roots_threads_accepted_projection_diagnostics() -> Bool {
+  match validate_module_roots(roots: fc_single_found_root()) {
+    Accepted { value: _, diagnostics: d } =>
+      diagnostics_eq(a: d, b: None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn validate_module_roots_merges_pending_before_duplicate_reject() -> Bool {
+  match validate_module_roots(roots: fc_duplicate_roots()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn validate_module_roots_malformed_root_is_rejected() -> Bool {
+  match validate_module_roots(roots: fc_malformed_subject_roots()) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn resolve_malformed_subject_root_is_rejected() -> Bool {
+  match resolve_with_admission(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: fc_malformed_subject_roots(),
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: fc_qn(seg: ^fc_malformed_seg)
+      },
+      imports: Empty
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn fc_dual_import_roots() -> FreeMonoid<Node> {
+  Cons {
+    head: fc_module_root_export(seg: ^fc_subject_seg, export_sym: ^fc_export_sym),
+    tail: Cons {
+      head: fc_module_root_export(seg: ^fc_import_a_seg, export_sym: ^fc_export_a_sym),
+      tail: Cons {
+        head: fc_module_root_export(seg: ^fc_import_b_seg, export_sym: ^fc_export_b_sym),
+        tail: Empty
+      }
+    }
+  }
+}
+
+fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
+  match resolve_with_admission(
+    lm: dag_language_model_surface_empty_prelude(),
+    roots: fc_dual_import_roots(),
+    admission: Admission {
+      subject: ResolutionSubject {
+        name: fc_qn(seg: ^fc_subject_seg)
+      },
+      imports: Cons {
+        head: Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible },
+        tail: Cons {
+          head: Import { target: fc_qn(seg: ^fc_import_b_seg), visibility: ImportVisible },
+          tail: Empty
+        }
+      }
+    }
+  ) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool {
+  match validate_module_roots(roots: fc_dual_import_roots()) {
+    Accepted { value: _, diagnostics: validate_diag } =>
+      match resolve_with_admission(
+        lm: dag_language_model_surface_empty_prelude(),
+        roots: fc_dual_import_roots(),
+        admission: Admission {
+          subject: ResolutionSubject {
+            name: fc_qn(seg: ^fc_subject_seg)
+          },
+          imports: Cons {
+            head: Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible },
+            tail: Cons {
+              head: Import { target: fc_qn(seg: ^fc_import_b_seg), visibility: ImportVisible },
+              tail: Empty
+            }
+          }
+        }
+      ) {
+        Accepted { value: _, diagnostics: resolve_diag } =>
+          diagnostics_eq(a: resolve_diag, b: validate_diag)
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data claim_admit_import_missing_module_is_rejected: TestClaim = CompilesClaim {
+  label: "name_resolve/admit_import_entry: missing import target is rejected",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: admit_import_missing_module_is_rejected()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_resolve_duplicate_module_roots_is_rejected: TestClaim = CompilesClaim {
+  label: "name_resolve/validate_module_roots: duplicate projected module names are rejected",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: resolve_duplicate_module_roots_is_rejected()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_resolve_subject_name_not_in_roots_is_rejected: TestClaim = CompilesClaim {
+  label: "name_resolve/resolve_with_admission: subject name not in validated roots is rejected",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: resolve_subject_name_not_in_roots_is_rejected()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_validate_module_roots_threads_accepted_projection_diagnostics: TestClaim = CompilesClaim {
+  label: "name_resolve/validate_module_roots: accepted projection diagnostics thread through Outcome",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: validate_module_roots_threads_accepted_projection_diagnostics()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_validate_module_roots_merges_pending_before_duplicate_reject: TestClaim = CompilesClaim {
+  label: "name_resolve/validate_module_roots: duplicate reject merges pending projection diagnostics",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: validate_module_roots_merges_pending_before_duplicate_reject()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_validate_module_roots_malformed_root_is_rejected: TestClaim = CompilesClaim {
+  label: "name_resolve/validate_module_roots: malformed module root is rejected",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: validate_module_roots_malformed_root_is_rejected()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_resolve_malformed_subject_root_is_rejected: TestClaim = CompilesClaim {
+  label: "name_resolve/resolve_with_admission: malformed subject module root is rejected",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: resolve_malformed_subject_root_is_rejected()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_resolve_dual_imports_do_not_collide_on_header_metadata: TestClaim = CompilesClaim {
+  label: "name_resolve/resolve_with_admission: dual imports do not export module-header metadata",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: resolve_dual_imports_do_not_collide_on_header_metadata()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_resolve_with_admission_threads_validate_diagnostics_on_accept: TestClaim = CompilesClaim {
+  label: "name_resolve/resolve_with_admission: accepted validate_module_roots diagnostics thread through Outcome",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  input: fc_claim_input(ok: resolve_with_admission_threads_validate_diagnostics_on_accept()),
+  expected_value: fc_pass_node(),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

@@ -1,0 +1,778 @@
+module v2.extdeps.formats.sql_create_table_fold
+
+import v2.extdeps.formats.sql {
+  SqlColumnConstraints,
+  SqlColumnDefault,
+  SqlColumnDefaultAbsent,
+  SqlColumnDefinition,
+  SqlDataType,
+  SqlDelimitedIdentifier,
+  SqlIdentifier,
+  SqlRegularIdentifier,
+  SqlSchemaOperation,
+  SqlTableDefinition,
+  SqlTypeCharacterLargeObject,
+  sql_serialize_schema_operation
+}
+import v2.extdeps.formats.sql_target {
+  sql_atom,
+  sql_lex_rule,
+  sql_named_edge,
+  sql_target_model_bundle,
+  sql_token_class_emit_transforms
+}
+import v2.std.algebra { fold_list, list_append }
+import v2.std.collection {
+  Absent,
+  List,
+  Map,
+  Optional,
+  Present,
+  empty_map,
+  list_at_optional,
+  list_nth,
+  map_insert
+}
+import v2.std.compilers.lexing { LexRule, LexRuleSet, LexRules, ModeledLexRules }
+import v2.std.compilers.target_model {
+  BoundToken,
+  ConcreteSyntaxToken,
+  FixedToken,
+  TargetModel,
+  target_model_make_with_emit_transforms
+}
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  Rejected,
+  Unavailable,
+  node_locus
+}
+import v2.std.node_query { find_named_child }
+import v2.std.grammar {
+  FormalGrammarSymbol,
+  FormalProduction,
+  derive_grammar_relation_row_node,
+  formal_production_for_lhs_exact,
+  formal_productions_catalog_to_node,
+  grammar_formal_nonterminal_occurrence,
+  grammar_formal_production,
+  grammar_formal_terminal,
+  grammar_formal_terminal_bound,
+  grammar_formal_terminal_free
+}
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Positional,
+  Symbol,
+  SyntheticOccurrence,
+  TypeNode
+}
+import v2.std.witness { Holds, Violates, Witness }
+
+fn sql_fold_stmt_tag(binding: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: binding } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sql_fold_stmt_kind_tag_terminal(binding: Symbol) -> FormalGrammarSymbol {
+  grammar_formal_terminal_bound(
+    identity: ^sql_fold_stmt_kind_tag,
+    binding: binding
+  )
+}
+
+data sql_fold_diagnostic_anchor: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data sql_fold_diagnostic_anchor_dissolution_trigger: String = "🟡 dissolve-on: sql_fold_diagnostic_anchor — shared empty Conj placeholder locus for fold reject diagnostics (sql_fold_unsupported_variant_diagnostic, sql_fold_columns_absent_diagnostic, wrong-fixture build failures). DISSOLVES WHEN SQL emit-medium follow-on lands: production emit callers surface sql_fold_column_def_emitted_witness / sql_fold_schema_operation_bundle_witness Violates diagnostics through emit() with node_locus over the offending SqlColumnDefinition or SqlSchemaOperation subtree in SqlFoldCreateTableBundle.emitted, retiring the synthetic anchor."
+
+fn sql_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: variant,
+    at: node_locus(node: sql_fold_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn sql_fold_columns_absent_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^sql_fold_columns_empty,
+    at: node_locus(node: sql_fold_diagnostic_anchor),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn sql_fold_identifier_spelling(id: SqlIdentifier) -> Witness<String> {
+  match id {
+    SqlRegularIdentifier { name: n } => Holds { value: n }
+    SqlDelimitedIdentifier { name: _ } =>
+      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_delimited_identifier) }
+  }
+}
+
+fn sql_fold_column_def_emitted_witness(col: SqlColumnDefinition) -> Witness<Node> {
+  match sql_fold_identifier_spelling(id: col.name) {
+    Holds { value: name } =>
+      match col.data_type {
+        SqlTypeCharacterLargeObject =>
+          if col.constraints.not_null {
+            Holds {
+              value: Node {
+                kind: TypeNode { connective: Conj },
+                children: [
+                  Edge {
+                    label: Positional,
+                    target: sql_fold_stmt_tag(binding: ^sql_production_fold_column_def)
+                  },
+                  Edge {
+                    label: Positional,
+                    target: Node {
+                      kind: TypeNode { connective: Atom { identity: name } },
+                      children: [],
+                      occurrence_id: SyntheticOccurrence
+                    }
+                  }
+                ],
+                occurrence_id: SyntheticOccurrence
+              }
+            }
+          } else {
+            Violates {
+              diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_nullable_column)
+            }
+          }
+        SqlTypeBoolean =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeSmallInt =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeInteger =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeBigInt =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeReal =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeDoublePrecision =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeNumeric { precision: _, scale: _ } =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeCharacter { length: _ } =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeCharacterVarying { length: _ } =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeDate =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeTime =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeTimestamp =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+        SqlTypeTimestampWithTimeZone =>
+          Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_type_unsupported) }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn sql_fold_conj_list_root(item: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: item }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sql_fold_conj_list_append(left: Node, right: Node) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [
+      Edge { label: Positional, target: left },
+      Edge { label: Positional, target: right }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn sql_fold_list_production_emitted_fold_rest(
+  cols: List<SqlColumnDefinition>,
+  accumulated: Node,
+  index: Int
+) -> Witness<Node> {
+  match list_at_optional(xs: cols, index: index) {
+    Present { value: col } =>
+      match sql_fold_column_def_emitted_witness(col: col) {
+        Holds { value: col_node } =>
+          sql_fold_list_production_emitted_fold_rest(
+            cols: cols,
+            accumulated: sql_fold_conj_list_append(left: accumulated, right: col_node),
+            index: index + 1
+          )
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Absent => Holds { value: accumulated }
+  }
+}
+
+fn sql_fold_column_list_emitted_witness(cols: List<SqlColumnDefinition>) -> Witness<Node> {
+  match list_nth(xs: cols, wanted: 0, absent: sql_fold_columns_absent_diagnostic()) {
+    Holds { value: col0 } =>
+      match sql_fold_column_def_emitted_witness(col: col0) {
+        Holds { value: col_node } =>
+          sql_fold_list_production_emitted_fold_rest(
+            cols: cols,
+            accumulated: sql_fold_conj_list_root(item: col_node),
+            index: 1
+          )
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn sql_fold_primary_key_emitted_witness(pk: Optional<List<SqlIdentifier>>) -> Witness<Node> {
+  match pk {
+    Absent =>
+      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_no_primary_key) }
+    Present { value: cols } =>
+      match list_nth(xs: cols, wanted: 0, absent: sql_fold_columns_absent_diagnostic()) {
+        Holds { value: id0 } =>
+          match sql_fold_identifier_spelling(id: id0) {
+            Holds { value: name } =>
+              Holds {
+                value: Node {
+                  kind: TypeNode { connective: Conj },
+                  children: [
+                    Edge {
+                      label: Positional,
+                      target: sql_fold_stmt_tag(binding: ^sql_production_fold_primary_key)
+                    },
+                    Edge {
+                      label: Positional,
+                      target: Node {
+                        kind: TypeNode { connective: Atom { identity: name } },
+                        children: [],
+                        occurrence_id: SyntheticOccurrence
+                      }
+                    }
+                  ],
+                  occurrence_id: SyntheticOccurrence
+                }
+              }
+            Violates { diagnostic: d } => Violates { diagnostic: d }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+  }
+}
+
+fn sql_fold_create_table_body_emitted(
+  table_name: String,
+  column_list: Node,
+  primary_key: Optional<Node>
+) -> Node {
+  match primary_key {
+    Absent =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Positional,
+            target: sql_fold_stmt_tag(binding: ^sql_production_fold_create_table)
+          },
+          Edge {
+            label: Positional,
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: table_name } },
+              children: [],
+              occurrence_id: SyntheticOccurrence
+            }
+          },
+          Edge { label: Positional, target: column_list }
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+    Present { value: pk_node } =>
+      Node {
+        kind: TypeNode { connective: Conj },
+        children: [
+          Edge {
+            label: Positional,
+            target: sql_fold_stmt_tag(binding: ^sql_production_fold_create_table_pk)
+          },
+          Edge {
+            label: Positional,
+            target: Node {
+              kind: TypeNode { connective: Atom { identity: table_name } },
+              children: [],
+              occurrence_id: SyntheticOccurrence
+            }
+          },
+          Edge { label: Positional, target: column_list },
+          Edge { label: Positional, target: pk_node }
+        ],
+        occurrence_id: SyntheticOccurrence
+      }
+  }
+}
+
+type SqlFoldCreateTableBundle {
+  production_binding: Symbol,
+  relation_rule: Symbol,
+  emitted: Node,
+}
+
+fn sql_fold_create_table_bundle_witness(table: SqlTableDefinition) -> Witness<SqlFoldCreateTableBundle> {
+  match sql_fold_identifier_spelling(id: table.name) {
+    Holds { value: table_name } =>
+      match sql_fold_column_list_emitted_witness(cols: table.columns) {
+        Holds { value: column_list } =>
+          match table.primary_key {
+            Absent =>
+              Holds {
+                value: SqlFoldCreateTableBundle {
+                  production_binding: ^sql_production_fold_create_table,
+                  relation_rule: ^sql_relation_rule_fold_create_table,
+                  emitted: sql_fold_create_table_body_emitted(
+                    table_name: table_name,
+                    column_list: column_list,
+                    primary_key: Absent
+                  )
+                }
+              }
+            Present { value: _ } =>
+              match sql_fold_primary_key_emitted_witness(pk: table.primary_key) {
+                Holds { value: pk_node } =>
+                  Holds {
+                    value: SqlFoldCreateTableBundle {
+                      production_binding: ^sql_production_fold_create_table_pk,
+                      relation_rule: ^sql_relation_rule_fold_create_table_pk,
+                      emitted: sql_fold_create_table_body_emitted(
+                        table_name: table_name,
+                        column_list: column_list,
+                        primary_key: Present { value: pk_node }
+                      )
+                    }
+                  }
+                Violates { diagnostic: d } => Violates { diagnostic: d }
+              }
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn sql_fold_schema_operation_bundle_witness(op: SqlSchemaOperation) -> Witness<SqlFoldCreateTableBundle> {
+  match op {
+    SqlCreateTable { table: t } => sql_fold_create_table_bundle_witness(table: t)
+    SqlDropTable { table_name: _ } =>
+      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+    SqlAddColumn { table_name: _, column: _ } =>
+      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+    SqlDropColumn { table_name: _, column_name: _ } =>
+      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+    SqlAlterTableConstraint { table_name: _, constraint: _ } =>
+      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+    SqlCreateIndex { index_name: _, table_name: _, columns: _ } =>
+      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+    SqlDropIndex { index_name: _ } =>
+      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+    SqlAlterTableRaw { table_name: _, alteration: _ } =>
+      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+    SqlRawStep { statement: _ } =>
+      Violates { diagnostic: sql_fold_unsupported_variant_diagnostic(variant: ^sql_fold_op_unsupported) }
+  }
+}
+
+fn sql_fold_column_def_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^sql_production_fold_column_def,
+    rhs: [
+      sql_fold_stmt_kind_tag_terminal(binding: ^sql_production_fold_column_def),
+      grammar_formal_terminal_free(identity: ^sql_token_ident),
+      grammar_formal_terminal(identity: ^sql_token_type_text),
+      grammar_formal_terminal(identity: ^sql_token_not_null)
+    ]
+  )
+}
+
+fn sql_fold_list_production_for_lhs(lhs: Symbol) -> List<FormalProduction> {
+  if lhs == ^sql_production_fold_column_list {
+    [
+      grammar_formal_production(
+        lhs: ^sql_production_fold_column_list,
+        rhs: [grammar_formal_nonterminal_occurrence(identity: ^sql_production_fold_column_def)]
+      ),
+      grammar_formal_production(
+        lhs: ^sql_production_fold_column_list,
+        rhs: [
+          grammar_formal_nonterminal_occurrence(identity: ^sql_production_fold_column_list),
+          grammar_formal_terminal(identity: ^sql_token_comma),
+          grammar_formal_nonterminal_occurrence(identity: ^sql_production_fold_column_def)
+        ]
+      )
+    ]
+  } else {
+    []
+  }
+}
+
+fn sql_fold_primary_key_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^sql_production_fold_primary_key,
+    rhs: [
+      sql_fold_stmt_kind_tag_terminal(binding: ^sql_production_fold_primary_key),
+      grammar_formal_terminal(identity: ^sql_token_primary_key),
+      grammar_formal_terminal_free(identity: ^sql_token_ident),
+      grammar_formal_terminal(identity: ^sql_token_pk_rparen)
+    ]
+  )
+}
+
+fn sql_fold_create_table_top_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^sql_production_fold_create_table,
+    rhs: [
+      sql_fold_stmt_kind_tag_terminal(binding: ^sql_production_fold_create_table),
+      grammar_formal_terminal(identity: ^sql_token_create_table),
+      grammar_formal_terminal_free(identity: ^sql_token_ident),
+      grammar_formal_terminal(identity: ^sql_token_lparen),
+      grammar_formal_nonterminal_occurrence(identity: ^sql_production_fold_column_list),
+      grammar_formal_terminal(identity: ^sql_token_rparen),
+      grammar_formal_terminal(identity: ^sql_token_semi)
+    ]
+  )
+}
+
+fn sql_fold_create_table_pk_top_production() -> FormalProduction {
+  grammar_formal_production(
+    lhs: ^sql_production_fold_create_table_pk,
+    rhs: [
+      sql_fold_stmt_kind_tag_terminal(binding: ^sql_production_fold_create_table_pk),
+      grammar_formal_terminal(identity: ^sql_token_create_table),
+      grammar_formal_terminal_free(identity: ^sql_token_ident),
+      grammar_formal_terminal(identity: ^sql_token_lparen),
+      grammar_formal_nonterminal_occurrence(identity: ^sql_production_fold_column_list),
+      grammar_formal_nonterminal_occurrence(identity: ^sql_production_fold_primary_key),
+      grammar_formal_terminal(identity: ^sql_token_rparen),
+      grammar_formal_terminal(identity: ^sql_token_semi)
+    ]
+  )
+}
+
+fn sql_fold_formal_productions() -> List<FormalProduction> {
+  list_append(
+    sql_fold_list_production_for_lhs(lhs: ^sql_production_fold_column_list),
+    [
+      sql_fold_column_def_production(),
+      sql_fold_primary_key_production(),
+      sql_fold_create_table_top_production(),
+      sql_fold_create_table_pk_top_production()
+    ]
+  )
+}
+
+fn sql_fold_formal_rhs_length(symbols: List<FormalGrammarSymbol>) -> Int {
+  fold_list(
+    xs: symbols,
+    empty: 0,
+    cons: fn(acc, _) { acc + 1 }
+  )
+}
+
+fn sql_fold_column_list_production_is_recursive_list(production: FormalProduction) -> Bool {
+  sql_fold_formal_rhs_length(symbols: production.rhs) == 3
+}
+
+fn sql_fold_column_list_matched_production_witness(
+  column_list: Node
+) -> Witness<FormalProduction> {
+  formal_production_for_lhs_exact(
+    productions: sql_fold_formal_productions(),
+    lhs: ^sql_production_fold_column_list,
+    child: column_list
+  )
+}
+
+fn sql_fold_column_list_uses_recursive_list_production_witness(
+  cols: List<SqlColumnDefinition>
+) -> Witness<Bool> {
+  match sql_fold_column_list_emitted_witness(cols: cols) {
+    Holds { value: column_list } =>
+      match sql_fold_column_list_matched_production_witness(column_list: column_list) {
+        Holds { value: production } =>
+          Holds {
+            value: sql_fold_column_list_production_is_recursive_list(production: production)
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn sql_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
+  let productions = sql_fold_formal_productions()
+  match formal_production_for_lhs_exact(
+    productions: productions,
+    lhs: lhs,
+    child: emitted
+  ) {
+    Holds { value: production } =>
+      derive_grammar_relation_row_node(
+        production: production,
+        productions: productions,
+        emitted: emitted
+      )
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn sql_fold_translation_rules_node_for_emitted(
+  emitted: Node,
+  lhs: Symbol,
+  rule_name: Symbol
+) -> Witness<Node> {
+  match sql_fold_relation_row_witness(emitted: emitted, lhs: lhs) {
+    Holds { value: row } =>
+      Holds {
+        value: Node {
+          kind: TypeNode { connective: Conj },
+          children: [
+            sql_named_edge(
+              name: ^grammar_relation_rules_formal_productions,
+              target: formal_productions_catalog_to_node(
+                productions: sql_fold_formal_productions()
+              )
+            ),
+            sql_named_edge(
+              name: rule_name,
+              target: row
+            )
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn sql_fold_kind_emit_transform(_spelling: String) -> String {
+  ""
+}
+
+data sql_fold_stmt_kind_marker_dissolution_trigger: String = "🟡 dissolve-on: phantom \\u{0002} stmt-kind lex byte and zero-width sql_fold_kind_emit_transform are replaced by real SQL production-tag lexing that disambiguates create_table/column_def/primary_key productions without sentinel bytes"
+
+fn sql_fold_emit_transforms() -> Map<Symbol, fn(String) -> String> {
+  let m0 = sql_token_class_emit_transforms()
+  map_insert(m0, ^sql_fold_stmt_kind_tag, sql_fold_kind_emit_transform)
+}
+
+data sql_fold_whitespace_embedded_lex_dissolution_trigger: String = "🟡 dissolve-on: whitespace-baked sql_token_create_table/sql_token_lparen/sql_token_type_text/sql_token_not_null/sql_token_primary_key lex literals (and sql_token_comma overlap with primary_key prefix) replaced by whitespace-free token classes plus explicit separator emit transforms, so future SQL emit-mediums do not copy longest-match lex hacks"
+
+fn sql_fold_lex_rules() -> LexRuleSet {
+  LexRuleSet {
+    rules: [
+      sql_lex_rule(token_class: ^sql_token_create_table, text: "CREATE TABLE "),
+      sql_lex_rule(token_class: ^sql_token_lparen, text: " ("),
+      sql_lex_rule(token_class: ^sql_token_rparen, text: ")"),
+      sql_lex_rule(token_class: ^sql_token_semi, text: ";"),
+      sql_lex_rule(token_class: ^sql_token_comma, text: ", "),
+      sql_lex_rule(token_class: ^sql_token_type_text, text: " TEXT"),
+      sql_lex_rule(token_class: ^sql_token_not_null, text: " NOT NULL"),
+      sql_lex_rule(token_class: ^sql_token_primary_key, text: ", PRIMARY KEY ("),
+      sql_lex_rule(token_class: ^sql_token_pk_rparen, text: ")"),
+      sql_lex_rule(token_class: ^sql_fold_stmt_kind_tag, text: "\u{0002}")
+    ]
+  }
+}
+
+fn sql_fold_lex() -> LexRules {
+  ModeledLexRules { root: sql_fold_lex_rules() }
+}
+
+fn sql_fold_serialize_source_witness(
+  emitted: Node,
+  source_literal: Symbol,
+  production_binding: Symbol
+) -> Witness<Node> {
+  match sql_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
+    Holds { value: row } =>
+      match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
+        Accepted { value: tokens_root, diagnostics: _ } =>
+          Holds {
+            value: Node {
+              kind: TypeNode { connective: Conj },
+              children: [
+                sql_named_edge(
+                  name: ^serialize_source_field_source_text,
+                  target: sql_atom(id: source_literal)
+                ),
+                sql_named_edge(
+                  name: ^serialize_source_field_source_grammar,
+                  target: sql_atom(id: production_binding)
+                ),
+                sql_named_edge(
+                  name: ^grammar_relation_field_tokens,
+                  target: tokens_root
+                )
+              ],
+              occurrence_id: SyntheticOccurrence
+            }
+          }
+        Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn sql_fold_target_model_for_emitted_witness(
+  emitted: Node,
+  source_literal: Symbol,
+  source_text: String,
+  production_binding: Symbol,
+  rule_name: Symbol
+) -> Witness<TargetModel> {
+  match sql_fold_serialize_source_witness(
+    emitted: emitted,
+    source_literal: source_literal,
+    production_binding: production_binding
+  ) {
+    Holds { value: serialize_source } =>
+      match sql_fold_translation_rules_node_for_emitted(
+        emitted: emitted,
+        lhs: production_binding,
+        rule_name: rule_name
+      ) {
+        Holds { value: rules } =>
+          Holds {
+            value: target_model_make_with_emit_transforms(
+              bundle: sql_target_model_bundle(
+                rules: rules,
+                serialize_source: serialize_source
+              ),
+              lex: sql_fold_lex(),
+              binding_spellings: empty_map(),
+              token_class_emit_transforms: sql_fold_emit_transforms(),
+              authority_source_text: source_text,
+              runtime_row: target_emit_host_runtime_row_unconfigured
+            )
+          }
+        Violates { diagnostic: d } => Violates { diagnostic: d }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn sql_fold_target_model_from_bundle_witness(
+  bundle: SqlFoldCreateTableBundle,
+  source_text: String
+) -> Witness<TargetModel> {
+  sql_fold_target_model_for_emitted_witness(
+    emitted: bundle.emitted,
+    source_literal: ^sql_fold_dynamic_source_literal,
+    source_text: source_text,
+    production_binding: bundle.production_binding,
+    rule_name: bundle.relation_rule
+  )
+}
+
+fn sql_fold_target_model_for_operation_witness(op: SqlSchemaOperation) -> Witness<TargetModel> {
+  match sql_fold_schema_operation_bundle_witness(op: op) {
+    Holds { value: bundle } =>
+      match sql_serialize_schema_operation(op: op) {
+        Accepted { value: source_text, diagnostics: d } =>
+          match d {
+            None =>
+              sql_fold_target_model_from_bundle_witness(
+                bundle: bundle,
+                source_text: source_text
+              )
+            Some { diagnostics: nd } => Violates { diagnostic: nd.head }
+          }
+        Rejected { diagnostics: nd } => Violates { diagnostic: nd.head }
+      }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+fn sql_fold_operation_emitted_witness(op: SqlSchemaOperation) -> Witness<Node> {
+  match sql_fold_schema_operation_bundle_witness(op: op) {
+    Holds { value: bundle } => Holds { value: bundle.emitted }
+    Violates { diagnostic: d } => Violates { diagnostic: d }
+  }
+}
+
+data sql_fold_tasks_single_col_table: SqlTableDefinition = SqlTableDefinition {
+    name: SqlRegularIdentifier { name: "tasks" },
+    columns: [
+      SqlColumnDefinition {
+        name: SqlRegularIdentifier { name: "id" },
+        data_type: SqlTypeCharacterLargeObject,
+        constraints: SqlColumnConstraints { not_null: true },
+        column_default: SqlColumnDefaultAbsent
+      }
+    ],
+    primary_key: Absent,
+    table_constraints: []
+}
+
+data sql_fold_tasks_two_col_table: SqlTableDefinition = SqlTableDefinition {
+    name: SqlRegularIdentifier { name: "tasks" },
+    columns: [
+      SqlColumnDefinition {
+        name: SqlRegularIdentifier { name: "id" },
+        data_type: SqlTypeCharacterLargeObject,
+        constraints: SqlColumnConstraints { not_null: true },
+        column_default: SqlColumnDefaultAbsent
+      },
+      SqlColumnDefinition {
+        name: SqlRegularIdentifier { name: "title" },
+        data_type: SqlTypeCharacterLargeObject,
+        constraints: SqlColumnConstraints { not_null: true },
+        column_default: SqlColumnDefaultAbsent
+      }
+    ],
+    primary_key: Absent,
+    table_constraints: []
+}
+
+data sql_fold_tasks_pk_table: SqlTableDefinition = SqlTableDefinition {
+    name: SqlRegularIdentifier { name: "tasks" },
+    columns: [
+      SqlColumnDefinition {
+        name: SqlRegularIdentifier { name: "id" },
+        data_type: SqlTypeCharacterLargeObject,
+        constraints: SqlColumnConstraints { not_null: true },
+        column_default: SqlColumnDefaultAbsent
+      },
+      SqlColumnDefinition {
+        name: SqlRegularIdentifier { name: "title" },
+        data_type: SqlTypeCharacterLargeObject,
+        constraints: SqlColumnConstraints { not_null: true },
+        column_default: SqlColumnDefaultAbsent
+      },
+      SqlColumnDefinition {
+        name: SqlRegularIdentifier { name: "status" },
+        data_type: SqlTypeCharacterLargeObject,
+        constraints: SqlColumnConstraints { not_null: true },
+        column_default: SqlColumnDefaultAbsent
+      }
+    ],
+    primary_key: Present {
+      value: [SqlRegularIdentifier { name: "id" }]
+    },
+    table_constraints: []
+}

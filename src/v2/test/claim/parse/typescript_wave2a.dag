@@ -1,0 +1,132 @@
+module v2.test.parse.typescript_wave2a
+
+import v2.compiler.tokenize { TokenStream, tokenize }
+import v2.compiler.parse { ParseTree, parse }
+import v2.extdeps.languages.typescript { ts_wave2a_lex, ts_wave2a_grammar }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration,
+  manual_claim_anchor
+}
+
+data ts_wave2a_type_alias_task_source: String = "type Task = { id: TaskId, title: string, status: TaskStatus };"
+
+data ts_wave2a_type_alias_minimal_source: String = "type Box = { value: number };"
+
+data ts_wave2a_type_alias_missing_eq_source: String = "type Box { value: number };"
+
+data ts_wave2a_union_task_status_source: String = "const status: 'Open' | 'InProgress' | 'Done' = status;"
+
+data ts_wave2a_union_minimal_source: String = "const bit: 'On' | 'Off' = bit;"
+
+fn ts_wave2a_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: ^ts_wave2a_bool_true } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^ts_wave2a_bool_false } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+fn ts_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ts_wave2a_tokenize_and_parse_source(text: String) -> Outcome<ParseTree> {
+  match tokenize(
+    text: text,
+    file: ^ts_wave2a_file,
+    rules: ts_wave2a_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
+      parse(tokens: tokens, grammar: ts_wave2a_grammar())
+  }
+}
+
+data claim_ts_wave2a_type_alias_task_parses: TestClaim = EqualsClaim {
+  label: "TS Wave 2a accepts the Task record-type alias: type Task = { id: TaskId, title: string, status: TaskStatus };",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_wave2a_bool_atom(
+    b: ts_wave2a_parse_accepted(
+      out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_type_alias_task_source)
+    )
+  ),
+  rhs: ts_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_ts_wave2a_type_alias_minimal_parses: TestClaim = EqualsClaim {
+  label: "TS Wave 2a accepts a minimal single-field record-type alias with the spec-required `=` token",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_wave2a_bool_atom(
+    b: ts_wave2a_parse_accepted(
+      out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_type_alias_minimal_source)
+    )
+  ),
+  rhs: ts_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_ts_wave2a_type_alias_missing_eq_rejected: TestClaim = EqualsClaim {
+  label: "TS Wave 2a REJECTS the no-`=` form `type Box { value: number };` — parse rejects missing ts_token_eq after ident",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_wave2a_bool_atom(
+    b: ts_wave2a_parse_accepted(
+      out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_type_alias_missing_eq_source)
+    )
+  ),
+  rhs: ts_wave2a_bool_atom(b: false),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_ts_wave2a_union_task_status_parses: TestClaim = EqualsClaim {
+  label: "TS Wave 2a accepts a 3-variant string-literal discriminated union in a const annotation (TaskStatus surface): const status: 'Open' | 'InProgress' | 'Done' = status;",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_wave2a_bool_atom(
+    b: ts_wave2a_parse_accepted(
+      out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_union_task_status_source)
+    )
+  ),
+  rhs: ts_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data claim_ts_wave2a_union_minimal_parses: TestClaim = EqualsClaim {
+  label: "TS Wave 2a accepts a minimal two-variant string-literal union (regression against left-recursive form requiring ≥3 variants)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_wave2a_bool_atom(
+    b: ts_wave2a_parse_accepted(
+      out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_union_minimal_source)
+    )
+  ),
+  rhs: ts_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}
+
+data ts_wave2a_typed_fn_list_tasks_source: String = "function list_tasks(): Task[] { return x; }"
+
+data claim_ts_wave2a_typed_fn_list_tasks_parses: TestClaim = EqualsClaim {
+  label: "TS Wave 2a accepts a typed-return fn with array-of-named-type: function list_tasks(): Task[] { return x; }",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: ts_wave2a_bool_atom(
+    b: ts_wave2a_parse_accepted(
+      out: ts_wave2a_tokenize_and_parse_source(text: ts_wave2a_typed_fn_list_tasks_source)
+    )
+  ),
+  rhs: ts_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}

@@ -1,18 +1,9 @@
-// src/v2/std/network.dag
-// Scope: network boundary carriers.
-// Status: T-26 modeled.
-
-
 module v2.std.network
-
 
 import v2.std.collection { Optional }
 import v2.std.text { String }
 import v2.std.nat { Nat }
 
-
-// Anchor: https://www.rfc-editor.org/rfc/rfc9110.html#name-methods + https://www.rfc-editor.org/rfc/rfc5789.html
-// 🟢 coproduct dissolution — T-26-HttpMethod.
 type HttpMethod
   = GET
   | POST
@@ -95,7 +86,6 @@ type UriPath {
   grammar: Rfc3986AbnfProduction,
 }
 
-// 🟢 coproduct dissolution — T-26-UriHierPart.
 type UriHierPart
   = UriHierAuthorityPath { authority: UriAuthority, path: UriPath }
   | UriHierPathAbsolute { path: UriPath }
@@ -112,7 +102,6 @@ type UriFragment {
   grammar: Rfc3986AbnfProduction,
 }
 
-// Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-3
 type Url {
   scheme: UriScheme,
   hier_part: UriHierPart,
@@ -120,8 +109,6 @@ type Url {
   fragment: Optional<UriFragment>,
 }
 
-// Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-4.2
-// 🟢 coproduct dissolution — T-26-UriRelativePart.
 type UriRelativePart
   = UriRelativeAuthorityPath { authority: UriAuthority, path: UriPath }
   | UriRelativePathAbsolute { path: UriPath }
@@ -134,13 +121,10 @@ type UriRelativeReference {
   fragment: Optional<UriFragment>,
 }
 
-// 🟢 coproduct dissolution — T-26-UriReference.
 type UriReference
   = UriReferenceAbsolute { uri: Url }
   | UriReferenceRelative { relative: UriRelativeReference }
 
-
-// Anchor: https://www.rfc-editor.org/rfc/rfc3986.html#section-3.2
 type NetworkAddress {
   authority: UriAuthority,
 }

@@ -1,10 +1,6 @@
-// src/v2/lens/parallelism.dag
-// Scope: parallelism lens — independence visible in dependency-graph structure.
-// Status: per-edge classification-family ratchet + I.1.1 UnknownCoupling collapse — projection-only over `List<DependencyView>` via parametric `ClassifiedDependencyView<ParallelismRelation>`; `ReadsParallelismFacts` rows classify through `tree.facts.lookup(dependency.source)` and project from the returned `Witness<InferredFacts>` (Violates diagnostic or admitted-facts descent witness), not a generic fallback. Resolved coupling for those rows still requires a substrate parallelism coupling carrier on `InferredFacts` (dissolves `feature:T-13-parallelism-relation-unresolved`). No copied endpoints, no parallel substrate.
-
-
 module v2.lens.parallelism
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.compiler.infer { InferredFacts, InferredTree, inferred_facts_descent }
 import v2.std.algebra { bag_eq, list_snoc_item }
@@ -34,14 +30,13 @@ import v2.std.diagnostic {
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 import v2.std.witness { Holds, Violates, Witness }
-// 🟢 lens-specific classification; endpoints live on the inner DependencyView.
+
 type ParallelismRelation
   = DataDependent
   | EffectCoupled
   | BarrierCoupled
   | UnresolvedCoupling { diagnostic: Diagnostic }
 
-// 🟡 coproduct dissolution — feature:parallelism-relation-kind-policy-axis — consumer:parallelism_relation_for_view — dissolve-on-arrival: substrate projects ParallelismRelation resolved/unresolved directly from a parallelism fact carrier.
 type ParallelismKindPolicy
   = KnownParallelismRelation { relation: ParallelismRelation }
   | ReadsParallelismFacts
@@ -90,7 +85,6 @@ fn parallelism_coupling_absent_diagnostic(facts: InferredFacts) -> Diagnostic {
   }
 }
 
-// 🟡 staged — dissolve-on: `InferredFacts` carries a decodable parallelism coupling carrier.
 fn parallelism_relation_from_admitted_facts(facts: InferredFacts) -> ParallelismRelation {
   match inferred_facts_descent(facts: facts) {
     Violates { diagnostic: d } => UnresolvedCoupling { diagnostic: d }
@@ -159,7 +153,6 @@ fn parallelism_fact(tree: InferredTree, dependencies: List<DependencyView>) -> P
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature:T-13-parallelism-relation-unresolved — dissolve-on-arrival: substrate projects ParallelismRelation resolved/unresolved from coproduct; forbidden: parallel ad-hoc unresolved Bool predicates outside parallelism_witness.
 fn parallelism_relation_unresolved(relation: ParallelismRelation) -> Bool {
   match relation {
     UnresolvedCoupling { diagnostic: _ } => true
@@ -234,12 +227,6 @@ fn parallelism_fact_eq(a: ParallelismFact, b: ParallelismFact) -> Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: parallelism_classified_eq)
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "a substrate parallelism-coupling carrier on InferredFacts (dissolves feature:T-13-parallelism-relation-unresolved)",
-    dissolve_on: "independence is read from a resolved coupling carrier by construction, not classified per-edge by a lens"
-  },
-  rationale: "Independence is decidable from dependency-graph structure; the lens is a per-edge ratchet until the coupling carrier lands on InferredFacts."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

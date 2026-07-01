@@ -1,0 +1,66 @@
+module v2.test.manual.outcome_diagnostics_eq
+
+import v2.std.diagnostic {
+  Diagnostic,
+  node_locus,
+  Unavailable,
+  ExternalContractUnknown,
+  NonEmptyDiagnostics,
+  Outcome,
+  Accepted,
+  Rejected,
+  None,
+  Some,
+  diagnostics_merge,
+  non_empty_diagnostics_eq,
+  outcome_node_eq
+}
+import v2.std.node { Node, Symbol }
+import v2.test.manual.connective_anchors { stub_empty_conj }
+fn diag_eq_x() -> Diagnostic {
+  Diagnostic {
+    reason: ^diag_eq_reason_x,
+    at: node_locus(node: stub_empty_conj),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+fn diag_eq_y() -> Diagnostic {
+  Diagnostic {
+    reason: ^diag_eq_reason_y,
+    at: node_locus(node: stub_empty_conj),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+data nds_xx_y: NonEmptyDiagnostics = NonEmptyDiagnostics {
+  head: diag_eq_x(),
+  tail: [diag_eq_x(), diag_eq_y()]
+}
+data nds_xyy: NonEmptyDiagnostics = NonEmptyDiagnostics {
+  head: diag_eq_x(),
+  tail: [diag_eq_y(), diag_eq_y()]
+}
+data rejected_xx_y: Outcome<Node> = Rejected { diagnostics: nds_xx_y }
+data rejected_xyy: Outcome<Node> = Rejected { diagnostics: nds_xyy }
+fn witness_tail_mult_not_equal() -> Bool {
+  if non_empty_diagnostics_eq(a: nds_xx_y, b: nds_xyy) {
+    false
+  } else {
+    true
+  }
+}
+fn witness_rejected_mult_not_equal() -> Bool {
+  if outcome_node_eq(a: rejected_xx_y, b: rejected_xyy) {
+    false
+  } else {
+    true
+  }
+}
+
+data witness_diagnostics_merge_some: Bool = match diagnostics_merge(
+  outer: Some { diagnostics: NonEmptyDiagnostics { head: diag_eq_x(), tail: [] } },
+  inner: Some { diagnostics: NonEmptyDiagnostics { head: diag_eq_y(), tail: [] } }
+) {
+  Some { diagnostics: _ } => true
+  None => false
+}

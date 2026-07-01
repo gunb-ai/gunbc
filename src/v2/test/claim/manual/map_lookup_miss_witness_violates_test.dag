@@ -1,0 +1,41 @@
+module v2.test.manual.map_lookup_miss_witness_violates
+
+import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.witness { Holds, Violates, Witness }
+
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+type LookupKey {
+  id: Int
+}
+
+type LookupTable = Map<LookupKey, Int>
+
+fn lookup_table(table: LookupTable, key: LookupKey) -> Witness<Int> {
+  table.lookup(key)
+}
+
+fn one_entry_table() -> LookupTable {
+  map_insert(m: empty_map(), key: LookupKey { id: 1 }, value: 100)
+}
+
+fn map_miss_is_violates() -> Bool {
+  match lookup_table(table: one_entry_table(), key: LookupKey { id: 2 }) {
+    Holds { value: _ } => false
+    Violates { diagnostic: _ } => true
+  }
+}
+
+fn map_hit_is_holds() -> Bool {
+  match lookup_table(table: one_entry_table(), key: LookupKey { id: 1 }) {
+    Holds { value: v } => v == 100
+    Violates { diagnostic: _ } => false
+  }
+}
+
+test fn map_lookup_miss_violates_and_hit_holds() -> Bool {
+  map_miss_is_violates() && map_hit_is_holds()
+}

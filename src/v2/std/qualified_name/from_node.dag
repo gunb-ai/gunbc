@@ -1,9 +1,4 @@
-// Scope: TestClaim rows for qualified_name_from_node structural walking over fold_list_node inputs.
-// Consumes: v2.std.qualified_name v2.std.algebra v2.std.node v2.std.diagnostic v2.std.verification
-
-
 module v2.test.qualified_name.from_node
-
 
 import v2.std.algebra { Cons, Empty, fold_list_node }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
@@ -50,44 +45,36 @@ fn qn_value_eq(out: Outcome<QualifiedName>, expected: QualifiedName) -> Bool {
   }
 }
 
-
-// Non-list node: plain Atom (not a Conj) → Rejected
 data qn_atom_node: Node = Node { kind: TypeNode { connective: Atom { identity: ^qn_sym_a } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 
-// Empty fold_list_node: Conj with no children → Accepted { value: Empty }
 data qn_empty_conj_node: Node = Node { kind: TypeNode { connective: Conj }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 
-// Single-element: fold_list_node([^qn_sym_a])
 data qn_single_list_node: Node = fold_list_node(
   xs: Cons { head: ^qn_sym_a, tail: Empty },
   item_node: fn(sym) { qn_sym_node(sym: sym) }
 )
 
-// Three-element: fold_list_node([^qn_sym_a, ^qn_sym_b, ^qn_sym_c])
 data qn_three_list_node: Node = fold_list_node(
   xs: Cons { head: ^qn_sym_a, tail: Cons { head: ^qn_sym_b, tail: Cons { head: ^qn_sym_c, tail: Empty } } },
   item_node: fn(sym) { qn_sym_node(sym: sym) }
 )
 
-// Malformed Conj: has a tail edge but no head edge → Rejected (non-empty but structurally invalid)
 data qn_tail_only_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [Edge { label: Named { name: ^fold_list_node_tail }, target: qn_empty_conj_node }],
   occurrence_id: SyntheticOccurrence
 }
 
-// Malformed atom segment: Atom node with a spurious child → not a valid leaf segment
 data qn_atom_with_children: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^qn_sym_a } },
   children: [Edge { label: Named { name: ^qn_sym_b }, target: qn_empty_conj_node }],
   occurrence_id: SyntheticOccurrence
 }
 
-// fold_list_node with a malformed (non-leaf) head atom → Rejected at segment extraction
 data qn_single_malformed_head_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -97,7 +84,6 @@ data qn_single_malformed_head_node: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-// Malformed tail target: tail edge points to bare Atom (not a Conj list-spine) → Rejected
 data qn_tail_to_atom_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -111,7 +97,6 @@ occurrence_id: SyntheticOccurrence
   occurrence_id: SyntheticOccurrence
 }
 
-// Reversed child order: well-formed [tail, head] storage order — labels are authority (LabeledEdges), position is not
 data qn_single_reversed_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -123,7 +108,6 @@ occurrence_id: SyntheticOccurrence
   occurrence_id: SyntheticOccurrence
 }
 
-// Malformed head target: head edge points to a Conj list-spine instead of an Atom segment → Rejected
 data qn_head_to_conj_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -133,7 +117,6 @@ data qn_head_to_conj_node: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-// Duplicate head edges (no tail edge) → Rejected; second head must not silently replace first
 data qn_double_head_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -147,7 +130,6 @@ occurrence_id: SyntheticOccurrence
   occurrence_id: SyntheticOccurrence
 }
 
-
 data claim_from_node_non_list_rejected: TestClaim = EqualsClaim {
   label: "qualified_name_from_node returns Rejected for a plain Atom node (not a Conj)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -156,7 +138,6 @@ data claim_from_node_non_list_rejected: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_from_node_empty_list_accepted: TestClaim = EqualsClaim {
   label: "qualified_name_from_node returns Accepted { value: Empty } for empty Conj (fold_list_node base case)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -164,7 +145,6 @@ data claim_from_node_empty_list_accepted: TestClaim = EqualsClaim {
   rhs: qn_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_from_node_single_accepted: TestClaim = EqualsClaim {
   label: "qualified_name_from_node returns Accepted with [^qn_sym_a] for single-element fold_list_node",
@@ -177,7 +157,6 @@ data claim_from_node_single_accepted: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_from_node_multi_accepted: TestClaim = EqualsClaim {
   label: "qualified_name_from_node returns Accepted with [^qn_sym_a, ^qn_sym_b, ^qn_sym_c] for three-element fold_list_node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -189,7 +168,6 @@ data claim_from_node_multi_accepted: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_from_node_malformed_conj_rejected: TestClaim = EqualsClaim {
   label: "qualified_name_from_node returns Rejected for Conj with tail-only edge (no head — malformed fold_list_node)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -197,7 +175,6 @@ data claim_from_node_malformed_conj_rejected: TestClaim = EqualsClaim {
   rhs: qn_bool_atom(b: false),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_from_node_malformed_atom_segment_rejected: TestClaim = EqualsClaim {
   label: "qualified_name_from_node returns Rejected when head segment Atom has non-empty children (malformed segment)",
@@ -207,7 +184,6 @@ data claim_from_node_malformed_atom_segment_rejected: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_from_node_duplicate_head_rejected: TestClaim = EqualsClaim {
   label: "qualified_name_from_node returns Rejected for Conj with two head edges and no tail (duplicate head is invalid fold_list_node shape)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -216,7 +192,6 @@ data claim_from_node_duplicate_head_rejected: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data claim_from_node_tail_to_atom_rejected: TestClaim = EqualsClaim {
   label: "qualified_name_from_node returns Rejected when fold_list_node_tail points to bare Atom instead of Conj list-spine",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -224,7 +199,6 @@ data claim_from_node_tail_to_atom_rejected: TestClaim = EqualsClaim {
   rhs: qn_bool_atom(b: false),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_from_node_reversed_order_accepted: TestClaim = EqualsClaim {
   label: "qualified_name_from_node accepts [tail, head] child ordering — LabeledEdges: storage order must not matter",
@@ -236,7 +210,6 @@ data claim_from_node_reversed_order_accepted: TestClaim = EqualsClaim {
   rhs: qn_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
-
 
 data claim_from_node_head_to_conj_rejected: TestClaim = EqualsClaim {
   label: "qualified_name_from_node returns Rejected when fold_list_node_head points to Conj list-spine instead of Atom segment",

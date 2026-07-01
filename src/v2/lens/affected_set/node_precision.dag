@@ -1,6 +1,3 @@
-// Scope: affected-set reading claim for Node-level edit/rebuild precision.
-
-
 module v2.test.lens_affected_set.node_precision
 
 import v2.compiler.infer { InferredFacts, InferredTree }

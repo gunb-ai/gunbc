@@ -1,0 +1,12 @@
+module v2.test.manual.llvm_ir_model_core_anchor
+
+import v2.extdeps.languages.llvm_ir {
+  llvm_facts_i32,
+  llvm_integer_facts_node,
+  llvm_ir_model_core_wave1
+}
+import v2.std.model_core { ModelCore }
+import v2.std.node { Node }
+
+data llvm_anchor_core: ModelCore = llvm_ir_model_core_wave1()
+data llvm_anchor_i32_facts: Node = llvm_integer_facts_node(facts: llvm_facts_i32)

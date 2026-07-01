@@ -1,11 +1,4 @@
-// src/v2/std/text.dag
-// Scope: Unicode text carriers.
-// Status: T-3 modeled; string scanning primitives added for T-6 lexer walk.
-// Anchor: https://en.wikipedia.org/wiki/Unicode
-
-
 module v2.std.text
-
 
 import v2.std.algebra { FreeMonoid, ListTailResult, TailAbsent, TailFound, fold_list, fold_list_right, is_empty, list_tail }
 import v2.std.logic { Bool }
@@ -13,10 +6,6 @@ import v2.std.nat { Nat }
 type Char = Nat
 type String = FreeMonoid<Char>
 
-// Host boundary fact: an already-decoded host string may enter the substrate as
-// Unicode text only through this text-side carrier. Byte-oriented boundaries
-// (`ByteString`, `FileBody`, stdout/stderr bytes) remain byte carriers until a
-// separate encoding witness admits them as text.
 type HostStringText {
   text: String
 }
@@ -28,9 +17,6 @@ fn host_string_text_value(value: HostStringText) -> String {
   value.text
 }
 
-// §2 — sole host↔substrate String conversion authority at explicit IO/FFI boundaries.
-// Rust realization owns the bodies (host_string_text_from_rust_host /
-// host_string_text_to_rust_host); emitter routes all boundary bridges through these names.
 fn host_string_text_from_rust_host(host: String) -> String {
   host_string_text_value(host_string_text(text: host))
 }
@@ -38,7 +24,6 @@ fn host_string_text_to_rust_host(text: String) -> String {
   host_string_text_value(host_string_text(text: text))
 }
 
-// 🟡 coproduct dissolution — feature: FreeMonoid substrate first<T> accessor; dissolves when stdlib provides a substrate-derived head projection that returns Option<T> directly, eliminating the per-use carrier type.
 type CharResult
   = CharFound { value: Char }
   | CharAbsent
@@ -53,22 +38,12 @@ fn string_tail(s: String) -> ListTailResult<Char> {
   list_tail(xs: s)
 }
 
-
-// SourceFold<R>: algebra for fold_source<R>. Bounded left-to-right scan over String
-// (FreeMonoid<Char>). fold_list(xs: src) supplies the termination bound (|src| iterations);
-// is_done short-circuits when the scan completes before the bound is exhausted.
-// Sibling to NodeFold (fold_node) and GrammarExprFold (fold_grammar_expr).
 type SourceFold<R> {
   init: fn(String) -> R
   step: fn(R) -> R
   is_done: fn(R) -> Bool
 }
 
-
-// fold_source<R>: bounded left-to-right scan combinator over source text. The only
-// genuinely-new frontend fold combinator for §1.8 tokenize; consumers express a source
-// walk as a SourceFold instead of hand-rolling fold_list over |src|. Terminates by
-// structural bound on |src| plus algebra is_done short-circuit.
 fn fold_source<R>(src: String, algebra: SourceFold<R>) -> R {
   fold_list(
     xs: src,

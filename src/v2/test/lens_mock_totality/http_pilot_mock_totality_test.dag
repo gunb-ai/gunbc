@@ -1,8 +1,3 @@
-// src/v2/test/lens_mock_totality/http_pilot_mock_totality_test.dag
-// Scope: §5 PROOF that v2.lens.mock_totality GATES by execution over the REST http_pilot layer's
-//        published mock corpus — GREEN when the consumer is total, RED when a member is omitted.
-// Status: discoverable `test fn` witness — CI floor gates via claim_batch --roster-from-discovery.
-
 module v2.test.lens_mock_totality.http_pilot_mock_totality
 
 import v2.lens.mock_totality { mock_unhandled_rejection }
@@ -12,9 +7,7 @@ import v2.test.lens_mock_totality.witness_template {
   omit_consumer_handles,
   outcome_accepted_p
 }
-// Single authority for the http_pilot mock corpus now lives in the dsl/ tree
-// (dsl/extdeps/test/mock_corpus.dag) so the v1 runtime reads the SAME model this lens does (M4
-// hermetic-realization fold). Cross-tree v2->dsl import is the existing pattern.
+
 import extdeps.test.mock_corpus {
   PublishedMockCase,
   http_pilot_published_mock_corpus

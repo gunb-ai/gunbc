@@ -1,9 +1,4 @@
-// Scope: discriminating claim-run witness for L1.4 IdenticalVariantPayload
-// Status: executes identical_variant_payload_fact_for_type; pos expects Unrealized verdict,
-// neg arm discriminates stored verdict identity (mutation-proven red-under-mutation).
-
 module v2.test.lens_identical_variant_payload.sg_claims
-
 
 import std.lens_verdict {
   Holds,
@@ -27,7 +22,6 @@ import v2.std.verification {
 data ivp_witness_type_node: Node = claim_atom_node(s: ^ivp_witness_type_symbol)
 data ivp_witness_module: String = "v2.lens.identical_variant_payload"
 
-
 fn ivp_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
   match verdict {
     Unrealized { diagnostic: _ } => true
@@ -35,18 +29,15 @@ fn ivp_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
   }
 }
 
-
 fn witness_ivp_unrealized_green_on_fact() -> Bool {
   ivp_verdict_is_unrealized(
     verdict: identical_variant_payload_fact_for_type(type_node: ivp_witness_type_node).verdict
   )
 }
 
-
 fn ivp_sample_holds() -> LensVerdict {
   Holds
 }
-
 
 fn witness_ivp_unrealized_red_on_holds() -> Bool {
   match ivp_sample_holds() {
@@ -54,7 +45,6 @@ fn witness_ivp_unrealized_red_on_holds() -> Bool {
     _ => true
   }
 }
-
 
 fn witness_ivp_locus_green_on_fact() -> Bool {
   match identical_variant_payload_fact_for_type(type_node: ivp_witness_type_node).verdict {
@@ -64,7 +54,6 @@ fn witness_ivp_locus_green_on_fact() -> Bool {
     _ => false
   }
 }
-
 
 fn witness_ivp_locus_red_on_perturbed_module() -> Bool {
   let perturbed = Unrealized {
@@ -80,7 +69,6 @@ fn witness_ivp_locus_red_on_perturbed_module() -> Bool {
     _ => false
   }
 }
-
 
 test fn lens_identical_variant_payload_unrealized_scaffold_holds() -> Bool {
   witness_ivp_unrealized_green_on_fact()

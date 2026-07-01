@@ -1,0 +1,344 @@
+module v2.test.generated.language_behavior_equivalence
+
+import v2.compiler.eval {
+  EvalContext,
+  TestClaimEvalSubject,
+  TestClaimRun,
+  eval_context_with_semantics,
+  eval_diagnostic,
+  run_test_claim,
+  run_test_claim_assert,
+  test_claim_cache_receipt,
+  test_claim_typed_input_node
+}
+import v2.std.collection { Absent }
+import v2.std.verdict { Verdict, Deferred, Fail, Pass }
+import v2.compiler.infer {
+  InferredFacts,
+  InferredTree
+}
+import v2.test.lens_common.infer_fixture { claim_inferred_facts_from_nodes }
+import v2.std.algebra { length }
+import v2.std.collection { Map }
+import v2.std.diagnostic {
+  Accepted,
+  AmbiguousIntent,
+  Diagnostic,
+  None,
+  NodeLocus,
+  NonEmptyDiagnostics,
+  Outcome,
+  Rejected,
+  Unavailable,
+  diagnostics_singleton
+}
+import v2.std.node { Atom, Hash, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.runtime {
+  BindInterpreter,
+  BranchInterpreter,
+  ControlTransfer,
+  EnvironmentBindingKey,
+  EvaluationEnvironment,
+  InterpretationAlgebra,
+  InterpretationStructureWitness,
+  LoopInterpreter,
+  RuntimePrimitiveValue,
+  RuntimeValue,
+  TransformInterpreter,
+  ValueInterpreter
+}
+
+import v2.std.witness { Holds, Violates }
+
+import v2.lens.testgen {
+  LanguageBehaviorIoMock,
+  lbe_io_mock_conj_dag_surface,
+  lbe_io_mock_disj_dag_surface,
+  lbe_io_mock_transform_dag_surface,
+  lbe_label_conj_dag_surface,
+  lbe_label_disj_dag_surface,
+  lbe_label_transform_dag_surface,
+  testgen_emit_language_behavior_equivalence_claim,
+  testgen_scheduled_language_behavior_generators
+}
+import v2.std.verification {
+  DiagnosticClaim,
+  TestClaim,
+  ManualAnchorKey,
+  ManualAnchorAbsent,
+  ManualLbeConjDagSurface,
+  ManualLbeDisjDagSurface,
+  ManualLbeTransformDagSurface,
+  TestClassification,
+  Tier1,
+  Unit,
+  test_claim_input,
+  manual_claim_anchor
+}
+import v2.test.manual.connective_anchors {
+  stub_empty_conj,
+  stub_empty_disj,
+  stub_empty_transform
+}
+fn lbe_symbol_node(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+}
+}
+
+fn lbe_runtime_value() -> RuntimeValue {
+  RuntimePrimitive {
+    value: RuntimePrimitiveValue {
+      primitive_type: lbe_symbol_node(s: ^lbe_runtime_value_symbol),
+      bytes: []
+    }
+  }
+}
+
+fn lbe_runtime_diagnostic(n: Node) -> Diagnostic {
+  Diagnostic {
+    reason: ^lbe_interpretation_rejected,
+    at: NodeLocus { node: n },
+    correction: Unavailable { reason: AmbiguousIntent }
+  }
+}
+
+fn lbe_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
+}
+
+fn lbe_call_primitive(_node: Node, _args: List<RuntimeValue>, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+  Rejected {
+    diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: _node))
+  }
+}
+
+fn lbe_choose_branch(node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+  Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
+}
+
+fn lbe_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+  Rejected { diagnostics: diagnostics_singleton(d: lbe_runtime_diagnostic(n: node)) }
+}
+
+fn lbe_bind_value(
+  _key: EnvironmentBindingKey,
+  _value: RuntimeValue,
+  env: EvaluationEnvironment
+) -> Outcome<EvaluationEnvironment> {
+  Accepted { value: env, diagnostics: None }
+}
+
+fn lbe_inferred_facts(resolved: Node) -> InferredFacts {
+  claim_inferred_facts_from_nodes(
+    resolved: resolved,
+    algebra: resolved,
+    descent: Violates {
+      diagnostic: eval_diagnostic(reason: ^eval_rejected_lbe_projection_deferred, node: resolved)
+    }
+  )
+}
+
+fn lbe_inferred_tree(root: Node) -> InferredTree {
+  let facts = lbe_inferred_facts(resolved: root)
+  InferredTree {
+    root: root,
+    facts: Map {
+      lookup: fn(_) {
+        Holds { value: facts }
+      }
+    }
+  }
+}
+
+fn lbe_interpretation_structure_witness() -> InterpretationStructureWitness {
+  InterpretationStructureWitness {
+    allocate_literal: ^lbe_allocate_literal_sym,
+    call_primitive: ^lbe_call_primitive_sym,
+    choose_branch: ^lbe_choose_branch_sym,
+    step_loop: ^lbe_step_loop_sym,
+    bind_value: ^lbe_bind_value_sym,
+    choose_arm: ^runtime_reject_match_arm
+  }
+}
+
+fn lbe_eval_context() -> EvalContext {
+  eval_context_with_semantics(
+    runtime_identity: ^lbe_interpretation_pin,
+    interpretation: InterpretationAlgebra {
+      value: ValueInterpreter {
+        allocate_literal: lbe_allocate_literal
+      },
+      transform: TransformInterpreter {
+        call_primitive: lbe_call_primitive
+      },
+      branch: BranchInterpreter {
+        choose_branch: lbe_choose_branch
+      },
+      loop: LoopInterpreter {
+        step_loop: lbe_step_loop
+      },
+      bind: BindInterpreter {
+        bind_value: lbe_bind_value
+      }
+    },
+    structure_witness: lbe_interpretation_structure_witness()
+  )
+}
+
+fn lbe_claim_from_testgen_emit(
+  anchor: ManualAnchorKey,
+  label: String,
+  mock: LanguageBehaviorIoMock
+) -> Outcome<TestClaim> {
+  testgen_emit_language_behavior_equivalence_claim(anchor: anchor, label: label, mock: mock)
+}
+
+fn lbe_subject_from_claim(claim: TestClaim) -> TestClaimEvalSubject<Node> {
+  let input = test_claim_input(c: claim)
+  TestClaimEvalSubject {
+    claim: claim,
+    context: lbe_eval_context(),
+    tree: lbe_inferred_tree(root: input),
+    input: test_claim_typed_input_node(
+      evaluator_input: input,
+      evaluator_pin: ^lbe_evaluator_pin
+    )
+  }
+}
+
+fn lbe_run_via_test_claim(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
+  run_test_claim(subject: lbe_subject_from_claim(claim: claim))
+}
+
+fn lbe_emit_rejection_sentinel_claim(
+  label: String,
+  mock: LanguageBehaviorIoMock,
+  expected: NonEmptyDiagnostics
+) -> TestClaim {
+  DiagnosticClaim {
+    label: label,
+    anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+    input: mock.snapshot.input_node,
+    expected_rejection: expected,
+    classification: TestClassification { tier: Tier1, layer: Unit }
+  }
+}
+
+fn lbe_rejected_emit_cache_receipt(
+  label: String,
+  mock: LanguageBehaviorIoMock,
+  expected: NonEmptyDiagnostics
+) -> TestClaimCacheReceipt<Node> {
+  let claim = lbe_emit_rejection_sentinel_claim(label: label, mock: mock, expected: expected)
+  test_claim_cache_receipt(subject: lbe_subject_from_claim(claim: claim))
+}
+
+fn lbe_run_test_claim_assert_from_emit(
+  anchor: ManualAnchorKey,
+  label: String,
+  mock: LanguageBehaviorIoMock
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
+  match lbe_claim_from_testgen_emit(anchor: anchor, label: label, mock: mock) {
+    Accepted { value: claim, diagnostics: None } =>
+      lbe_run_test_claim_assert_from_mock(claim: claim, mock: mock)
+    Rejected { diagnostics: d } =>
+      Fail { actual: Rejected { diagnostics: d }, falsification: Absent }
+  }
+}
+
+fn lbe_test_claim_run_from_emit(
+  anchor: ManualAnchorKey,
+  label: String,
+  mock: LanguageBehaviorIoMock
+) -> TestClaimRun<Node, RuntimeValue> {
+  match lbe_claim_from_testgen_emit(anchor: anchor, label: label, mock: mock) {
+    Accepted { value: claim, diagnostics: None } =>
+      lbe_run_via_test_claim(claim: claim)
+    Rejected { diagnostics: d } =>
+      TestClaimRun {
+        cache: lbe_rejected_emit_cache_receipt(label: label, mock: mock, expected: d),
+        verdict: Fail { actual: Rejected { diagnostics: d }, falsification: Absent }
+      }
+  }
+}
+
+fn lbe_mock_actual(mock: LanguageBehaviorIoMock) -> Outcome<Node> {
+  Accepted {
+    value: mock.snapshot.expected_value,
+    diagnostics: None
+  }
+}
+
+fn lbe_run_test_claim_assert_from_mock(
+  claim: TestClaim,
+  mock: LanguageBehaviorIoMock
+) -> Verdict<TestClaimEvalSubject<Node>, Node> {
+  run_test_claim_assert(
+    claim: claim,
+    actual: lbe_mock_actual(mock: mock),
+    at: mock.snapshot.input_node
+  )
+}
+
+data witness_lbe_conj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
+  anchor: ManualLbeConjDagSurface,
+  label: lbe_label_conj_dag_surface,
+  mock: lbe_io_mock_conj_dag_surface()
+) {
+  Pass => true
+  Fail { actual: _, falsification: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+data witness_lbe_disj_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
+  anchor: ManualLbeDisjDagSurface,
+  label: lbe_label_disj_dag_surface,
+  mock: lbe_io_mock_disj_dag_surface()
+) {
+  Pass => true
+  Fail { actual: _, falsification: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+data witness_lbe_transform_snapshot_pass: Bool = match lbe_run_test_claim_assert_from_emit(
+  anchor: ManualLbeTransformDagSurface,
+  label: lbe_label_transform_dag_surface,
+  mock: lbe_io_mock_transform_dag_surface()
+) {
+  Pass => true
+  Fail { actual: _, falsification: _ } => false
+  Deferred { actual: _, diagnostic: _ } => false
+}
+
+data run_lbe_conj_via_run_test_claim: TestClaimRun<Node, RuntimeValue> = lbe_test_claim_run_from_emit(
+  anchor: ManualLbeConjDagSurface,
+  label: lbe_label_conj_dag_surface,
+  mock: lbe_io_mock_conj_dag_surface()
+)
+
+data run_lbe_disj_via_run_test_claim: TestClaimRun<Node, RuntimeValue> = lbe_test_claim_run_from_emit(
+  anchor: ManualLbeDisjDagSurface,
+  label: lbe_label_disj_dag_surface,
+  mock: lbe_io_mock_disj_dag_surface()
+)
+
+data run_lbe_transform_via_run_test_claim: TestClaimRun<Node, RuntimeValue> = lbe_test_claim_run_from_emit(
+  anchor: ManualLbeTransformDagSurface,
+  label: lbe_label_transform_dag_surface,
+  mock: lbe_io_mock_transform_dag_surface()
+)
+
+fn lbe_witness_testgen_schedules_three_generators() -> Bool {
+  length(xs: testgen_scheduled_language_behavior_generators()) == 3
+}
+
+fn lbe_witness_dag_surface_language_identity() -> Bool {
+  lbe_io_mock_conj_dag_surface().snapshot.language == ^dag_language_model_surface_id
+}
+
+data witness_testgen_schedules_three_lbe_generators: Bool = lbe_witness_testgen_schedules_three_generators()
+
+data witness_dag_surface_language_identity: Bool = lbe_witness_dag_surface_language_identity()

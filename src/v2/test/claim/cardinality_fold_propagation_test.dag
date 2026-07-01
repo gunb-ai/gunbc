@@ -1,10 +1,3 @@
-// P4 of cardinality refinement (docs/plans/cardinality-refinement.md): cardinality propagates
-// THROUGH folds. Two faces:
-//   (A) count — length is a fold homomorphism: length(a ++ b) == length(a) + length(b), so the
-//       catamorphism CARRIES the count through its combine (concat) instead of re-counting.
-//   (B) magnitude bound — a uint8 byte-value is bounded [0,255]; the fold computes the sum and the
-//       bound catches OVERFLOW as a typed Rejected (never a silent wrap to sum mod 256), via the
-//       existing refine substrate. The "when we fold, it's handled automatically" property.
 module v2.test.claim.cardinality_fold_propagation
 
 import v2.std.refinement { Refined, Validation, refine }
@@ -15,17 +8,12 @@ import v2.std.diagnostic { Locus, Outcome, Accepted, Rejected, port_locus }
 
 fn fold_locus() -> Locus { port_locus(port: ^cardinality_fold_propagation) }
 
-// ---- (A) count propagates through the fold's combine (concat) ----
-// length is a monoid homomorphism FreeMonoid -> (Int, +): the count of a concatenated list is the
-// sum of the parts' counts. So a fold carries the cardinality; it is not recomputed.
 test fn cardinality_is_a_fold_homomorphism() -> Bool {
   let a = [1, 2, 3]
   let b = [4, 5]
   length(xs: list_append(left: a, right: b)) == (length(xs: a) + length(xs: b))
 }
 
-// ---- (B) a magnitude bound on the fold result; overflow is a typed Rejected ----
-// Single bound authority for a uint8 byte-value.
 fn byte_value_max() -> Int { 255 }
 
 fn within_byte(n: Int) -> Bool {
@@ -40,8 +28,6 @@ fn refine_byte(n: Int, at: Locus) -> Outcome<Refined<Int>> {
   )
 }
 
-// The sum IS a fold (fold_list combining the values); the bound is then checked on the fold's
-// result, so an overflowing total is a typed Rejected, not a silent wrap.
 fn byte_sum(values: FreeMonoid<Int>) -> Int {
   fold_list(xs: values, empty: 0, cons: fn(acc, v) { acc + v })
 }
@@ -57,13 +43,10 @@ fn is_rejected(o: Outcome<Refined<Int>>) -> Bool {
   match o { Accepted { value: _, diagnostics: _ } => false  Rejected { diagnostics: _ } => true }
 }
 
-// 100 + 50 + 50 = 200 <= 255 -> Accepted (the bound held over the fold result).
 test fn fold_within_bound_accepts() -> Bool {
   is_accepted(o: checked_byte_sum(values: [100, 50, 50], at: fold_locus()))
 }
 
-// 100 + 100 + 100 = 300 > 255 -> overflow caught (Rejected, not a wrap to 44).
-// Discriminating: a silent-wrap uint8 would Accept (44 is in-bound); this Rejects.
 test fn fold_overflow_rejects() -> Bool {
   is_rejected(o: checked_byte_sum(values: [100, 100, 100], at: fold_locus()))
 }

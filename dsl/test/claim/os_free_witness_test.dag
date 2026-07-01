@@ -1,0 +1,38 @@
+module test.claim.os_free_witness
+
+import extdeps.os.free {
+  FreeOutput,
+  MemoryStats,
+  SwapStats,
+}
+import std.measure { ByteSize, byte_size, byte_size_count }
+
+test fn free_output_witnesses() -> Bool {
+  let memory_stats = MemoryStats {
+    total: byte_size(count: 8192000000),
+    used: byte_size(count: 1024000000),
+    free: byte_size(count: 2048000000),
+    shared: byte_size(count: 0),
+    buff_cache: byte_size(count: 5120000000),
+    available: byte_size(count: 3072000000),
+  }
+
+  let swap_stats = SwapStats {
+    total: byte_size(count: 2048000000),
+    used: byte_size(count: 0),
+    free: byte_size(count: 2048000000),
+  }
+
+  let output = FreeOutput {
+    memory: memory_stats,
+    swap: swap_stats,
+  }
+
+  byte_size_count(b: memory_stats.total) > 0
+    && byte_size_count(b: memory_stats.available) <= byte_size_count(b: memory_stats.total)
+    && byte_size_count(b: memory_stats.free) <= byte_size_count(b: memory_stats.total)
+    && byte_size_count(b: swap_stats.used) <= byte_size_count(b: swap_stats.total)
+    && byte_size_count(b: swap_stats.free) <= byte_size_count(b: swap_stats.total)
+    && byte_size_count(b: output.memory.total) > 0
+    && byte_size_count(b: memory_stats.available) >= byte_size_count(b: memory_stats.free)
+}

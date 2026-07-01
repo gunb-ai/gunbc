@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub type Nat = Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>;
+pub type Nat = i64;
 
 pub fn nat_compare(a: Nat, b: Nat) -> Ordering {
     if (a.clone() < b.clone()) {

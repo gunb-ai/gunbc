@@ -1,13 +1,4 @@
-// src/v2/extdeps/languages/verilog.dag
-// Scope: IEEE 1364-2005 Verilog structural carriers.
-// Consumes: std/node.dag; std/nat.dag (Nat).
-// Status: import v2.std.node Symbol; v2.std.nat Nat.
-// Anchor: https://standards.ieee.org/ieee/1364/3641/
-// Ledger: CP-3229-GREEN-TERMINAL, CP-3229-VERILOG-CONSTEXPR-TERMINAL, SL-3229-VERILOG-D3200, SL-3229-VERILOG-NONEMPTY.
-// 🟡
-
 module v2.extdeps.languages.verilog
-
 
 import v2.std.nat { Nat }
 import v2.std.node { Symbol }
@@ -33,17 +24,11 @@ import v2.std.compilers.lexing {
   WhitespaceChar
 }
 
-
-
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type PortDirection
   = Input
   | Output
   | Inout
 
-
-// 🟡 coproduct dissolution · SL-3229-VERILOG-D3200.
 type NonTriregNetKind
   = Wire
   | Tri
@@ -57,29 +42,19 @@ type NonTriregNetKind
   | Supply1
   | Uwire
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type NetType
   = NonTriregNet { kind: NonTriregNetKind }
   | TriregNet
 
-
-
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type EdgeTrigger
   = PosEdge
   | NegEdge
   | AnyChange
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ProceduralAssignKind
   = Blocking
   | NonBlocking
 
-
-// 🟢 coproduct dissolution · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantUnaryOperator
   = ConstUnaryPlus
   | ConstUnaryMinus
@@ -93,8 +68,6 @@ type ConstantUnaryOperator
   | ConstUnaryReductionXnorTildeCaret
   | ConstUnaryReductionXnorCaretTilde
 
-
-// 🟢 coproduct dissolution · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantBinaryOperator
   = ConstBinaryAdd
   | ConstBinarySub
@@ -122,22 +95,16 @@ type ConstantBinaryOperator
   | ConstBinaryArithmeticShiftLeft
   | ConstBinaryArithmeticShiftRight
 
-
-// 🟢 coproduct dissolution · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantRangeExpression
   = ConstantRangeSingle { expression: ConstantExpression }
   | ConstantRange { msb: ConstantExpression, lsb: ConstantExpression }
   | ConstantIndexedRangePlus { base: ConstantExpression, width: ConstantExpression }
   | ConstantIndexedRangeMinus { base: ConstantExpression, width: ConstantExpression }
 
-
-// 🟢 coproduct dissolution · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantSelect
   = NoConstantSelect
   | ConstantSelectRange { range: ConstantRangeExpression }
 
-
-// 🟢 coproduct dissolution · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantPrimary
   = ConstantNumber { lexeme: String }
   | ConstantParameterReference { name: Symbol, select: ConstantSelect }
@@ -150,114 +117,78 @@ type ConstantPrimary
   | ConstantMinTypMaxPrimary { min: ConstantExpression, typ: ConstantExpression, max: ConstantExpression }
   | ConstantString { lexeme: String }
 
-
-// 🟢 grounded.
 type ConstantFunctionCall {
   function_name: Symbol
   attributes: AttributeInstanceClause
   arguments: List<ConstantExpression>
 }
 
-
-// 🟢 grounded.
 type ConstantSystemFunctionCall {
   system_function_name: Symbol
   arguments: List<ConstantExpression>
 }
 
-
-// 🟢 grounded.
 type ConstantConcatenation {
   expressions: List<ConstantExpression>
 }
 
-
-// 🟢 grounded.
 type ConstantMultipleConcatenation {
   repeat_count: ConstantExpression
   concatenation: ConstantConcatenation
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-VERILOG-CONSTEXPR-TERMINAL.
 type ConstantExpression
   = ConstantPrimaryExpression { primary: ConstantPrimary }
   | ConstantUnaryExpression { attributes: AttributeInstanceClause, op: ConstantUnaryOperator, operand: ConstantPrimary }
   | ConstantBinaryExpression { lhs: ConstantExpression, attributes: AttributeInstanceClause, op: ConstantBinaryOperator, rhs: ConstantExpression }
   | ConstantConditionalExpression { condition: ConstantExpression, attributes: AttributeInstanceClause, if_true: ConstantExpression, if_false: ConstantExpression }
 
-
-// 🟢 grounded.
 type VectorRange {
   msb: ConstantExpression
   lsb: ConstantExpression
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type PackingShape
   = Scalar
   | Packed { range: VectorRange }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type NetVectoredPacking
   = NetUnranged
   | NetRanged { vectoredness: VectorednessClause, range: VectorRange }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type Signedness
   = Signed
   | Unsigned
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type DriveStrengthClause
   = NoDriveStrength
   | DriveStrengthLexeme { lexeme: String }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ChargeStrengthClause
   = NoChargeStrength
   | ChargeStrengthLexeme { lexeme: String }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type DelayClause
   = NoDelay
   | DelayLexeme { lexeme: String }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type AttributeInstanceClause
   = NoAttributeInstances
   | AttributeInstanceLexeme { lexeme: String }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type VectorednessClause
   = NoVectoredness
   | VectoredNet
   | ScalaredNet
 
-
-
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type UnpackedDimensionsClause
   = NoUnpackedDimensions
   | UnpackedDimensionsLexeme { lexeme: String }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type VariableInitializerClause
   = NoVariableInitializer
   | VariableInitializerLexeme { lexeme: String }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type NetDeclaration
   = NonTriregIdentifierForm {
       kind: NonTriregNetKind
@@ -289,22 +220,16 @@ type NetDeclaration
       assignments: List<NetAssignmentDeclarator>
     }
 
-
-// 🟡 grounded.
 type NetAssignmentDeclarator {
   name: Symbol
   rhs_lexeme: String
 }
 
-
-// 🟢 grounded.
 type NetIdentifierDeclarator {
   name: Symbol
   unpacked_dimensions: UnpackedDimensionsClause
 }
 
-
-// 🟡 coproduct dissolution · SL-3229-VERILOG-D3200.
 type VariableDeclaration
   = RegVariable { packing: PackingShape, signedness: Signedness, declarators: List<VariableDeclarator> }
   | IntegerVariable { declarators: List<VariableDeclarator> }
@@ -312,8 +237,6 @@ type VariableDeclaration
   | TimeVariable { declarators: List<VariableDeclarator> }
   | RealTimeVariable { declarators: List<VariableDeclarator> }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type VariableDeclarator
   = NamedVariable {
       name: Symbol
@@ -324,43 +247,25 @@ type VariableDeclarator
       initializer_lexeme: String
     }
 
-
-
-
-
-
-
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type OutputPortAnsiNetTypeKind
   = OutputAnsiNetType { kind: NonTriregNetKind, packing: PackingShape, signedness: Signedness }
   | OutputAnsiNoNetType { packing: PackingShape, signedness: Signedness }
 
-
-// 🟡 coproduct dissolution · SL-3229-VERILOG-D3200.
 type OutputPortAnsiVariableTypeKind
   = OutputAnsiRegType { packing: PackingShape, signedness: Signedness }
   | OutputAnsiIntegerType
   | OutputAnsiTimeType
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type NonAnsiPort
   = BlankNonAnsiPort
   | ExpressionNonAnsiPort { expression_lexeme: String }
   | ExternalNamedBlankPort { external_name: Symbol }
   | ExternalNamedExpressionPort { external_name: Symbol, expression_lexeme: String }
 
-
-
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type AnsiNetPortType
   = AnsiInputInoutNet { kind: NonTriregNetKind, packing: PackingShape, signedness: Signedness }
   | AnsiInputInoutNoNetType { packing: PackingShape, signedness: Signedness }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type AnsiPortDeclaration
   = AnsiInputPort {
       net: AnsiNetPortType
@@ -379,24 +284,16 @@ type AnsiPortDeclaration
       names: List<Symbol>
     }
 
-
-// 🟢 grounded.
 type AnsiHeaderPort {
   attributes: AttributeInstanceClause
   decl: AnsiPortDeclaration
 }
 
-
-// 🟢 grounded.
 type AnsiOutputPortDeclarator {
   name: Symbol
   initializer: VariableInitializerClause
 }
 
-
-
-
-// 🟡 coproduct dissolution · SL-3229-VERILOG-D3200.
 type ParameterTypeKind
   = UntypedParameter { packing: PackingShape, signedness: Signedness }
   | IntegerParameter
@@ -404,87 +301,61 @@ type ParameterTypeKind
   | TimeParameter
   | RealTimeParameter
 
-
-
-
-// 🟡 grounded.
 type ParameterAssignment {
   name: Symbol
   default_lexeme: String
 }
 
-
-// 🟢 grounded.
 type ParameterDeclaration {
   type_kind: ParameterTypeKind
   assignments: List<ParameterAssignment>
 }
 
-
-// 🟡 grounded.
 type SensitivityItem {
   trigger: EdgeTrigger
   event_expression_lexeme: String
 }
 
-
-// 🟡 grounded.
 type NetAssignment {
   lhs_lexeme: String
   rhs_lexeme: String
 }
 
-
-// 🟢 grounded.
 type ContinuousAssign {
   drive_strength: DriveStrengthClause
   delay: DelayClause
   assignments: List<NetAssignment>
 }
 
-
-// 🟡 grounded.
 type AlwaysBlock {
   sensitivity: AlwaysBlockSensitivity
   body_lexeme: String
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type AlwaysBlockSensitivity
   = NoEventControl
   | ImplicitAtStar
   | ExplicitEventList { items: List<SensitivityItem> }
 
-
-// 🟡 grounded.
 type InitialBlock {
   body_lexeme: String
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type PortConnectionActual
   = ExpressionConnection { expression_lexeme: String }
   | BlankConnection
 
-
-// 🟢 grounded.
 type OrderedPortConnection {
   attributes: AttributeInstanceClause
   actual: PortConnectionActual
 }
 
-
-// 🟢 grounded.
 type NamedPortConnection {
   attributes: AttributeInstanceClause
   port: Symbol
   actual: PortConnectionActual
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type PortConnections
   = NoPortConnections
   | PositionalConnections {
@@ -494,107 +365,75 @@ type PortConnections
       connections: List<NamedPortConnection>
     }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ParameterOverrideActual
   = BlankParameterOverride
   | ParameterOverrideExpression { lexeme: String }
 
-
-// 🟢 grounded.
 type NamedParameterOverride {
   parameter: Symbol
   actual: ParameterOverrideActual
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ParameterOverrides
   = NoParameterOverrides
   | OrderedParameterOverrides { actuals: List<String> }
   | NamedParameterOverrides { overrides: List<NamedParameterOverride> }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type InstanceRangeClause
   = NoInstanceRange
   | InstanceRange { range: VectorRange }
 
-
-// 🟢 grounded.
 type ModuleInstance {
   instance_name: Symbol
   instance_range: InstanceRangeClause
   connections: PortConnections
 }
 
-
-// 🟢 grounded.
 type ModuleInstantiation {
   module_name: Symbol
   parameter_overrides: ParameterOverrides
   instances: List<ModuleInstance>
 }
 
-
-// 🟡 grounded.
 type DefparamAssignment {
   target_path: String
   value_lexeme: String
 }
 
-
-// 🟢 grounded.
 type DefparamDeclaration {
   assignments: List<DefparamAssignment>
 }
 
-
-// 🟡 grounded.
 type GenerateRegion {
   body_lexeme: String
 }
 
-
-// 🟡 grounded.
 type LoopGenerateConstruct {
   body_lexeme: String
 }
 
-
-// 🟡 grounded.
 type ConditionalGenerateConstruct {
   body_lexeme: String
 }
 
-
-// 🟡 grounded.
 type SpecifyBlock {
   body_lexeme: String
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type LifetimeClause
   = StaticLifetime
   | AutomaticLifetime
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type FunctionReturnTypeClause
   = NoFunctionReturnType
   | FunctionReturnTypeLexeme { lexeme: String }
 
-
-// 🟡 grounded.
 type TaskDeclaration {
   lifetime: LifetimeClause
   name: Symbol
   body_lexeme: String
 }
 
-
-// 🟡 grounded.
 type FunctionDeclaration {
   lifetime: LifetimeClause
   return_type: FunctionReturnTypeClause
@@ -602,34 +441,24 @@ type FunctionDeclaration {
   body_lexeme: String
 }
 
-
-// 🟢 grounded.
 type EventDeclarator {
   name: Symbol
   unpacked_dimensions: UnpackedDimensionsClause
 }
 
-
-// 🟢 grounded.
 type EventDeclaration {
   event_declarators: List<EventDeclarator>
 }
 
-
-// 🟢 grounded.
 type GenvarDeclaration {
   genvar_names: List<Symbol>
 }
 
-
-// 🟢 grounded.
 type LocalParameterDeclaration {
   type_kind: ParameterTypeKind
   assignments: List<ParameterAssignment>
 }
 
-
-// 🟡 coproduct dissolution · SL-3229-VERILOG-D3200.
 type PrimitiveGateKind
   = GateAnd
   | GateNand
@@ -658,28 +487,20 @@ type PrimitiveGateKind
   | GatePulldown
   | GatePullup
 
-
-// 🟡 grounded.
 type GateInstantiation {
   gate_kind: PrimitiveGateKind
   body_lexeme: String
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type UdpInstanceName
   = NoUdpInstanceName
   | NamedUdpInstance { name: Symbol, instance_range: InstanceRangeClause }
 
-
-// 🟡 grounded.
 type UdpInstance {
   instance_name: UdpInstanceName
   body_lexeme: String
 }
 
-
-// 🟢 grounded.
 type UdpInstantiation {
   udp_name: Symbol
   drive_strength: DriveStrengthClause
@@ -687,29 +508,21 @@ type UdpInstantiation {
   instances: List<UdpInstance>
 }
 
-
-// 🟡 grounded.
 type UdpDefinition {
   attributes: AttributeInstanceClause
   name: Symbol
   body_lexeme: String
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type SpecparamAssignment
   = NamedSpecparamAssignment { name: Symbol, value_lexeme: String }
   | PulseControlSpecparam { lexeme: String }
 
-
-// 🟢 grounded.
 type SpecparamDeclaration {
   packing: PackingShape
   assignments: List<SpecparamAssignment>
 }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type AnsiModuleItem
   = ContinuousAssignItem { attributes: AttributeInstanceClause, assign: ContinuousAssign }
   | AlwaysBlockItem { attributes: AttributeInstanceClause, always_block: AlwaysBlock }
@@ -732,8 +545,6 @@ type AnsiModuleItem
   | UdpInstantiationItem { attributes: AttributeInstanceClause, udp_instance: UdpInstantiation }
   | SpecparamDeclarationItem { attributes: AttributeInstanceClause, specparam: SpecparamDeclaration }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type NonAnsiModuleItem
   = NonAnsiAnsiCompatItem { item: AnsiModuleItem }
   | NonAnsiPortDeclarationItem {
@@ -741,20 +552,14 @@ type NonAnsiModuleItem
       port_decl: AnsiPortDeclaration
     }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ModuleParameterPortList
   = NoModuleParameterPortList
   | ModuleParameters { parameters: List<ParameterDeclaration> }
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type ModuleKeyword
   = ModuleKw
   | MacromoduleKw
 
-
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
 type VerilogModule
   = NoPortListModule {
       attributes: AttributeInstanceClause,
@@ -787,10 +592,6 @@ type VerilogModule
       items: List<AnsiModuleItem>
     }
 
-
-
-
-// 🟢 grounded.
 type VerilogCost {
   gate_cost: Nat
   area_cost: Nat
@@ -799,16 +600,13 @@ fn verilog_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
 
-
 fn verilog_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-
 fn verilog_grammar_sequence(left: GrammarExpr, right: GrammarExpr) -> GrammarExpr {
   Sequence { left: left, right: right }
 }
-
 
 fn verilog_identifier_pattern() -> LexPattern {
   SequencePattern {
@@ -816,7 +614,6 @@ fn verilog_identifier_pattern() -> LexPattern {
     right: RepeatPattern { element: CharClassPattern { class: IdentContinueChar } }
   }
 }
-
 
 fn verilog_wave1_lex() -> LexRules {
   ModeledLexRules {
@@ -832,7 +629,6 @@ fn verilog_wave1_lex() -> LexRules {
   }
 }
 
-
 fn verilog_source_text_module_expr() -> GrammarExpr {
   verilog_grammar_sequence(
     left: verilog_grammar_terminal(token_class: ^verilog_token_kw_module),
@@ -845,7 +641,6 @@ fn verilog_source_text_module_expr() -> GrammarExpr {
     )
   )
 }
-
 
 fn verilog_wave1_grammar() -> ParseGrammar {
   let start = GrammarProduction {
@@ -862,7 +657,6 @@ fn verilog_wave1_grammar() -> ParseGrammar {
   }
 }
 
-
 fn verilog_source_text_module_formal_production() -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: ^verilog_production_source_text_module),
@@ -875,14 +669,12 @@ fn verilog_source_text_module_formal_production() -> FormalProduction {
   }
 }
 
-
 fn verilog_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: verilog_wave1_lex(),
     grammar: verilog_wave1_grammar()
   }
 }
-
 
 fn verilog_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {

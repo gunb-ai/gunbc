@@ -1,13 +1,4 @@
-// src/v2/std/float.dag
-// Scope: IEEE-754 Float32/Float64 interchange, specials, body carriers, and ordered compare semantics.
-// Consumes: std/node.dag (Symbol); std/machine.dag (Bit, Word32, Word64); std/algebra.dag (Ordering, Less, Equal, Greater); std/diagnostic.dag (Diagnostic, Outcome, PortLocus, Produced, Rejected, Unavailable, UserInputBoundary); std/logic.dag (Bool); std/nat.dag (Nat, is_zero, nat_compare).
-// Status: std float vocabulary (32/64, specials, IEEE-ordered compare).
-// Anchor: https://en.wikipedia.org/wiki/IEEE_754
-// Ledger: CP-3229-GREEN-TERMINAL, SL-3229-FLOAT-DISPOSITION, SL-3229-FLOAT-NOMINAL.
-// 🟢
-
 module v2.std.float
-
 
 import v2.std.algebra { Ordering, Less, Equal, Greater }
 import v2.std.diagnostic { Diagnostic, Outcome, port_locus, Unavailable, UserInputBoundary, Accepted, None, diagnostics_singleton }
@@ -17,13 +8,13 @@ import v2.std.nat { Nat, nat_compare, is_zero }
 import v2.std.node { Symbol }
 type Float32Interchange = Word32
 type Float64Interchange = Word64
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+
 type FloatSpecial
   = QuietNan
   | SignalingNan
   | PosInfinity
   | NegInfinity
-// 🟢 coproduct dissolution · CP-3229-GREEN-TERMINAL.
+
 type FloatBody
   = Finite {
       sign: Bit
@@ -32,12 +23,10 @@ type FloatBody
     }
   | NonFinite { tag: FloatSpecial }
 
-// 🟢 grounded.
 type Float32 {
   body: FloatBody
 }
 
-// 🟢 grounded.
 type Float64 {
   body: FloatBody
 }
@@ -69,7 +58,6 @@ fn float_finite_unsigned_field_order(
   }
 }
 
-
 fn float_special_rank(t: FloatSpecial) -> Nat {
   match t {
     NegInfinity => Zero
@@ -78,7 +66,6 @@ fn float_special_rank(t: FloatSpecial) -> Nat {
     SignalingNan => Succ { prev: Succ { prev: Succ { prev: Zero } } }
   }
 }
-
 
 fn float_body_is_nan(x: FloatBody) -> Bool {
   match x {
@@ -172,20 +159,14 @@ fn float_ordered_compare_tier2(a: Float, b: Float) -> Outcome<Ordering> {
   float_ieee_ordered_compare_outcome(a: a, b: b)
 }
 
-
-// 🟡 coproduct dissolution — SL-3229-FLOAT-DISPOSITION — feature:float-nan-propagation-semantics — dissolve-on-arrival: SignalingNaNEnabled gains a target-backed trap handler path consumed by a T-4 language fact-bundle.
 type NaNPropagation
   = QuietNaNPropagation
   | SignalingNaNEnabled
 
-
-// 🟡 coproduct dissolution — SL-3229-FLOAT-DISPOSITION — feature:float-inf-propagation-semantics — dissolve-on-arrival: SaturatingInf gains a target-backed clamp semantic consumed by a T-4 fact-bundle (e.g. DSP target).
 type InfPropagation
   = IEEEInfinityPropagation
   | SaturatingInf
 
-
-// 🟡 coproduct dissolution — SL-3229-FLOAT-DISPOSITION — feature:float-exception-disposition-semantics — dissolve-on-arrival: TrapEnabled or FastMathUndefined gain target-backed exception handler paths consumed by T-4 fact-bundles.
 type FloatExceptionDisposition
   = SilentDefaultResult
   | TrapEnabled

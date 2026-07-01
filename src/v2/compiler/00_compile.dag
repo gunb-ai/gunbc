@@ -1,13 +1,4 @@
-// src/v2/compiler/00_compile.dag
-// Scope: B2-OMNI orchestrator — public terminal `validate_then_compile` (P3 commitment 6);
-//       internal `compile` over CoreNode + CompileMode; legacy Source staging until ingest lands.
-// Status: Wave-5-A — validate_then_compile: lens gates wired; compile_ingest_staging: tokenize → parse → normalize → resolve → validate_then_compile;
-//   compile_source_root_ingest_with_admission: SourceRootIngest → program_assembly → validate_then_compile (stage C multi-file).
-// Anchor: P3 commitment 6 + Ratified Q11.
-
-
 module v2.compiler.compile
-
 
 import v2.compiler.emit { emit }
 import v2.compiler.eval { eval_node, inputs_root_only }
@@ -55,53 +46,38 @@ import v2.std.node { Edge, Node, NodeFold, Symbol, fold_node }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
 
-
 type CoreNode = Node
 
-// 🟡 gated — feature:compile-eval-runtime-target — dissolve-on: runtime selects
-// InterpretationAlgebra / EvalContext (Cut 4+); wave-1: eval input root pin only.
 type RuntimeTarget = Node
 
-// 🟢 coproduct dissolution
 type CompileMode
   = TranslateTo { target: TargetModel }
   | Eval { runtime: RuntimeTarget }
 
-
-// 🟢 coproduct dissolution
 type CompileOutput
   = TranslateResult { source: Medium<String> }
   | EvalResult { value: Medium<Node> }
-
 
 type CompileLensOutcome = Outcome<Witness<Node>>
 
 type CompileLensGate = fn(InferredTree) -> CompileLensOutcome
 
-// 🟡 gated — feature:T-23-lens-application-migration — bind gunbc#4762 — dissolve-on: delete local CompileLens carrier plus run_compile_lens_gate when v2.lens.application supplies the canonical compile-pipeline lens adapter; forbidden: treating this compile-local gate record as the permanent lens representation.
 type CompileLens {
   gate: CompileLensGate
 }
 
-
-// 🟢 coproduct dissolution
 type CompileLensMode
   = CompileLensEnforce
   | CompileLensIntrospect
-
 
 type LensGateWitness {
   witness: Witness<Node>
 }
 
-
 type Validated<T> {
   value: T
   lens_witnesses: List<LensGateWitness>
 }
-
-
-
 
 fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -111,7 +87,6 @@ fn compile_pipeline_not_realized_diagnostic(at: Locus) -> Diagnostic {
   }
 }
 
-
 fn compile_lens_gate_rejected_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
     reason: ^compile_lens_gate_rejected,
@@ -119,7 +94,6 @@ fn compile_lens_gate_rejected_diagnostic(at: Locus) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
 
 fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
   Diagnostic {
@@ -129,42 +103,26 @@ fn compile_eval_not_realized_diagnostic(at: Locus) -> Diagnostic {
   }
 }
 
-
 data fact_density_lens: CompileLens = CompileLens { gate: fact_density_hollow_alias_compile_gate }
 
 data unit_modeling_lens: CompileLens = CompileLens { gate: unit_modeling_compile_gate }
-
 
 fn always_required_lenses() -> List<CompileLens> {
   [fact_density_lens, unit_modeling_lens]
 }
 
-
 fn fact_density_hollow_alias_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   fact_density_hollow_alias_gate(node: tree.root)
 }
 
-
-// Compile-gate adapter for the unit-modeling soundness lens: self-traverses the
-// resolved typed subtree from the root (same shape as the fact_density adapter).
-// Registered in always_required_lenses() above, so validate_then_compile runs it
-// fail-closed (CompileLensEnforce) on every gated compile — a flat-scalar field
-// carrying a known unit (e.g. a raw Nat byte-count where Measure<…> is owed)
-// rejects compilation — the unit-modeling soundness check made executable.
 fn unit_modeling_compile_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
   unit_modeling_gate(node: tree.root)
 }
-
 
 fn run_compile_lens_gate(lens: CompileLens, inferred: InferredTree) -> Outcome<Witness<Node>> {
   lens.gate(inferred)
 }
 
-
-// Advisory arm for apply_compile_lens: runs the gate but demotes rejection to Accepted(Violates)
-// so introspect mode never blocks compilation. Full NonEmptyDiagnostics from Rejected flows
-// forward as advisory Accepted.diagnostics; Violates.diagnostic carries the head.
-// Extracted to avoid nested match directly in arm (v1-compiler constraint).
 fn apply_compile_lens_introspect(
   lens: CompileLens,
   inferred: InferredTree
@@ -180,11 +138,6 @@ fn apply_compile_lens_introspect(
   }
 }
 
-
-// 🟡 gated — feature:T-23-lens-application-migration — bind gunbc#4762 — dissolve-on: delete local CompileLens type and apply_compile_lens stub when v2.lens.application.apply_lens is canonical; forbidden: callers treating compile.apply_compile_lens as permanent surface or diverging from application.dag contract.
-// T-23 migration stub: compile-orchestrator gate surface; lens application semantics stay in v2.lens.application.
-// CompileLensEnforce: fail-closed — gate rejection propagates as Rejected.
-// CompileLensIntrospect: advisory — gate runs but rejection is wrapped as Accepted(Violates) so compilation is never blocked.
 fn apply_compile_lens(
   lens: CompileLens,
   inferred: InferredTree,
@@ -195,7 +148,6 @@ fn apply_compile_lens(
     CompileLensIntrospect => apply_compile_lens_introspect(lens: lens, inferred: inferred)
   }
 }
-
 
 fn append_lens_gate_witness(
   witnesses: List<LensGateWitness>,
@@ -210,11 +162,9 @@ fn append_lens_gate_witness(
   )
 }
 
-
 fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
   []
 }
-
 
 fn run_required_lens_gates(
   inferred: InferredTree,
@@ -246,7 +196,6 @@ fn run_required_lens_gates(
   )
 }
 
-
 fn run_required_lens_gates_on_subtree(
   inferred: InferredTree,
   lenses: List<CompileLens>
@@ -274,14 +223,12 @@ fn run_required_lens_gates_on_subtree(
   )
 }
 
-
 fn compile_inferred_translate(
   inferred: InferredTree,
   target: TargetModel
 ) -> Outcome<Medium<String>> {
   emit(tree: inferred, target: target)
 }
-
 
 fn compile_inferred(
   inferred: InferredTree,
@@ -315,7 +262,6 @@ fn compile_inferred(
   }
 }
 
-
 fn compile(
   source: CoreNode,
   mode: CompileMode
@@ -328,7 +274,6 @@ fn compile(
   )
 }
 
-
 fn validated_from_compile_output(
   output: CompileOutput,
   lens_witnesses: List<LensGateWitness>
@@ -338,7 +283,6 @@ fn validated_from_compile_output(
     lens_witnesses: lens_witnesses
   }
 }
-
 
 fn validate_then_compile(
   source: CoreNode,
@@ -378,7 +322,6 @@ fn validate_then_compile(
     }
   )
 }
-
 
 fn compile_ingest_with_admission(
   source: Medium<String>,
@@ -437,7 +380,6 @@ fn compile_ingest_with_admission(
   )
 }
 
-
 fn compile_source_root_ingest_with_admission(
   ingest: SourceRootIngest,
   admission: Admission,
@@ -470,17 +412,6 @@ fn compile_source_root_ingest_with_admission(
   )
 }
 
-
-// --- compile_ingest_staging as a stage fold ------------------------------
-// Each front-end pass is reified as a first-class stage `fn(A) -> Outcome<B>` (closing
-// over the language model / target), and the pipeline is their right-fold under
-// `then_outcome` (Kleisli composition in the Outcome monad). This is behaviourally
-// identical to the former nested `bind_outcome` pyramid — `then_outcome` is `bind_outcome`
-// under a closure, so it preserves both the short-circuit and the diagnostic threading —
-// but the stages are now individually typed and testable, and adding/reordering/wrapping
-// (e.g. for content-addressed caching) a stage is a local edit, not surgery on the nest.
-// Oracle: staging_pipeline_oracle_test (empty stub -> Rejected, unchanged).
-
 fn stage_tokenize(lm: LanguageModel) -> fn(Medium<String>) -> Outcome<TokenStream> {
   fn(source) {
     tokenize(
@@ -491,35 +422,21 @@ fn stage_tokenize(lm: LanguageModel) -> fn(Medium<String>) -> Outcome<TokenStrea
   }
 }
 
-
 fn stage_parse(lm: LanguageModel) -> fn(TokenStream) -> Outcome<ParseTree> {
   fn(token_stream) { parse(tokens: token_stream, grammar: lm.grammar) }
 }
-
 
 fn stage_normalize() -> fn(ParseTree) -> Outcome<NormalizedTree> {
   fn(parse_tree) { normalize(parse_tree: parse_tree) }
 }
 
-
 fn stage_resolve(lm: LanguageModel) -> fn(NormalizedTree) -> Outcome<ResolvedTree> {
   fn(normalized) { resolve(tree: normalized, lm: lm) }
 }
 
-
-// Resolve-cache seam (DESIGN §6: keep cached_stage LIVE, not inert). stage_resolve is routed
-// through cached_stage below, so the HIT/MISS decision runs on every staged compile — the
-// abstraction is consumed by the real pipeline, not only by its own witnesses. The lookup here
-// is a 🟡 SCAFFOLD: a Miss-always stub, so behaviour is byte-identical to the uncached pipeline
-// today (every input is a MISS → stage_resolve always runs). Dissolve-on: the host realization
-// layer supplies a content-addressed resolve-cache lookup (warm==cold purity oracle) — at which
-// point enabling the resolve cache (the #2 CI win) is a one-line swap of this lookup, NOT a
-// pipeline rewire. Forbidden: returning Hit without a real content-keyed cache behind it — that
-// fakes the §2 Realization key and is a §5 fail-open.
 fn resolve_cache_miss(normalized: NormalizedTree) -> CacheProbe<ResolvedTree> {
   Miss
 }
-
 
 fn stage_translate(target: TargetModel) -> fn(ResolvedTree) -> Outcome<Medium<String>> {
   fn(resolved) {
@@ -544,7 +461,6 @@ fn stage_translate(target: TargetModel) -> fn(ResolvedTree) -> Outcome<Medium<St
     )
   }
 }
-
 
 fn compile_ingest_staging(source: Medium<String>, target: TargetModel) -> Outcome<Medium<String>> {
   let lm = dag_language_model_wave1()

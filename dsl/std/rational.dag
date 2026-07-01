@@ -1,22 +1,3 @@
-// std/rational.dag — Rational numbers (ℚ) as field of fractions of ℤ.
-//
-// T-Numeric-Construction **Slice 4** alias pivot (construction-chain layer 4).
-//
-// Authority: Q6 single-authority resolution (DESIGN.md §3) — canonical form is
-// `Field<FieldOfFractions<Int>>`, **not** compact `FieldOfFractions<Int>` alone.
-// This file owns the construction-chain layer 4 authority alongside magnitude.dag,
-// nat.dag, and integer.dag.
-//
-// `Field<T>` is the standard algebra witness over carrier `T`; here
-// `T = FieldOfFractions<Int>` is the opaque localization carrier (integral domain ℤ → field ℚ).
-// `reciprocal: fn(FieldOfFractions<Int>) -> FieldOfFractions<Int>` is structurally total over
-// the field-of-fractions carrier (runtime refinement for zero is out of scope for this substrate slice).
-//
-// HARD BOUNDARIES (Director dispatch / inbox #1130):
-//   - No numerator/denominator pair representation at this layer.
-//   - No `NonZero` / `Result` reciprocal semantics here.
-//   - No `Float` / `Real` migration; no downstream consumer cascade — alias introduction only.
-
 module std.rational
 
 import std.algebra { Field, FieldOfFractions }

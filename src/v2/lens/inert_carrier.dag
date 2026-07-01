@@ -1,0 +1,29 @@
+module v2.lens.inert_carrier
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+import v2.std.logic { Bool }
+
+fn inert_carrier_clean_holds() -> Bool {
+  inert_carrier_unrostered_count() == 0 && inert_carrier_stale_roster_count() == 0
+}
+
+fn inert_carrier_live_count() -> Int {
+  inert_carrier_count()
+}
+
+fn inert_carrier_live_unrostered_count() -> Int {
+  inert_carrier_unrostered_count()
+}
+
+fn inert_carrier_live_stale_roster_count() -> Int {
+  inert_carrier_stale_roster_count()
+}
+
+fn inert_carrier_live_declared_count() -> Int {
+  inert_carrier_declared_count()
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

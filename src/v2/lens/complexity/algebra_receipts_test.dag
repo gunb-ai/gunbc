@@ -1,4 +1,3 @@
-
 module v2.test.lens_complexity.algebra_receipts
 
 import v2.lens.complexity {
@@ -111,16 +110,10 @@ fn variable_sensitive_dominance_actual() -> Bool {
   ) == variable_sensitive_dominance_claim.expected_dominates
 }
 
-// By-execution gate: the product of two degree-2 polynomials over distinct
-// variables projects to the declared degree-4 multidimensional bound — the
-// degree-addition and variable-merge algebra. A degree miscount goes RED.
 test fn algebra_receipts_polynomial_product_projection_holds() -> Bool {
   polynomial_product_projected_complexity() == polynomial_product_degree_claim.expected_complexity
 }
 
-// By-execution gate: dominance is variable-sensitive — two linear bounds over
-// DIFFERENT size variables are incomparable (neither dominates). A name-blind
-// comparator that returned dominance would go RED.
 test fn algebra_receipts_variable_sensitive_dominance_holds() -> Bool {
   variable_sensitive_dominance_actual()
 }

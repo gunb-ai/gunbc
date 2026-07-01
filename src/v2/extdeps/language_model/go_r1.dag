@@ -1,6 +1,3 @@
-// Status: modeled claim + fixture pair; the executable receipt is the in-file
-// claim witness, run in-process by the claim_batch binary.
-
 module v2.test.language_model.go_r1
 
 import v2.lens.leaf_model_verification {

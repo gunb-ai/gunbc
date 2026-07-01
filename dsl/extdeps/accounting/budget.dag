@@ -1,0 +1,77 @@
+module extdeps.accounting.budget
+
+import std.measure { Measure, measure_add, measure_le }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Budget"
+  }
+}
+
+type BudgetingMethod = ZeroBased | Incremental | ActivityBased
+
+type Appropriation<Q, S> {
+  ceiling: Measure<Q, S, Nat>
+}
+
+type LineItem<Q, S> {
+  purpose: String
+  amount: Measure<Q, S, Nat>
+}
+
+type BudgetBalance = Surplus | Balanced | Deficit
+
+fn line_items_total<Q, S>(items: List<LineItem<Q, S>>) -> Measure<Q, S, Nat> {
+  fold(items, init: Measure { count: 0 }, f: (acc, it) => measure_add(a: acc, b: it.amount))
+}
+
+fn within_appropriation<Q, S>(appropriation: Appropriation<Q, S>, items: List<LineItem<Q, S>>) -> Bool {
+  measure_le(a: line_items_total(items: items), b: appropriation.ceiling)
+}
+
+fn budget_balance<Q, S>(appropriation: Appropriation<Q, S>, items: List<LineItem<Q, S>>) -> BudgetBalance {
+  let spent = line_items_total(items: items)
+  let ceiling = appropriation.ceiling
+  return if measure_le(a: spent, b: ceiling) {
+    if measure_le(a: ceiling, b: spent) { Balanced } else { Surplus }
+  } else {
+    Deficit
+  }
+}
+
+type AdmissionState<Q, S> {
+  appropriation: Appropriation<Q, S>
+  committed: List<LineItem<Q, S>>
+  used: Measure<Q, S, Nat>
+  refused: List<LineItem<Q, S>>
+}
+
+fn admit_line_item<Q, S>(st: AdmissionState<Q, S>, candidate: LineItem<Q, S>) -> AdmissionState<Q, S> {
+  let next_used = measure_add(a: st.used, b: candidate.amount)
+  return if measure_le(a: next_used, b: st.appropriation.ceiling) {
+    AdmissionState {
+      appropriation: st.appropriation,
+      committed: concat(st.committed, [candidate]),
+      used: next_used,
+      refused: st.refused
+    }
+  } else {
+    AdmissionState {
+      appropriation: st.appropriation,
+      committed: st.committed,
+      used: st.used,
+      refused: concat(st.refused, [candidate])
+    }
+  }
+}
+
+fn admit_all<Q, S>(appropriation: Appropriation<Q, S>, candidates: List<LineItem<Q, S>>) -> AdmissionState<Q, S> {
+  fold(
+    candidates,
+    init: AdmissionState { appropriation: appropriation, committed: [], used: Measure { count: 0 }, refused: [] },
+    f: admit_line_item
+  )
+}

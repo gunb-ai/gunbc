@@ -1,5 +1,3 @@
-// Scope: spice Component → std.timeseries_signal passive topology projection witnesses.
-
 module v2.test.extdeps.formats.spice_passive_projection
 
 import v2.std.collection { Absent, Present }

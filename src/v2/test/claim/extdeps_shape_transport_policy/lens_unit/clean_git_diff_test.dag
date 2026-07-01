@@ -1,0 +1,84 @@
+module v2.test.extdeps_shape_transport_policy.lens_unit.clean_git_diff
+
+import v2.lens.extdeps_shape_transport_policy {
+  ExtdepsOperationInputFact,
+  ExtdepsTransportArgvFact,
+  ExtdepsTransportFusionFact,
+  extdeps_shape_transport_policy_dead_param_count_for_operation,
+  extdeps_shape_transport_policy_violation_count_for_operation
+}
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_git_module }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+data clean_git_diff_service: String = "git.Core"
+data clean_git_diff_operation: String = "Diff"
+
+data clean_git_diff_argv_facts: List<ExtdepsTransportArgvFact> = [
+  ExtdepsTransportArgvFact {
+    module: extdeps_git_module,
+    service: clean_git_diff_service,
+    operation: clean_git_diff_operation,
+    transport_kind: Shell,
+    argv_index: 0,
+    argv_token: "git"
+  },
+  ExtdepsTransportArgvFact {
+    module: extdeps_git_module,
+    service: clean_git_diff_service,
+    operation: clean_git_diff_operation,
+    transport_kind: Shell,
+    argv_index: 1,
+    argv_token: "diff"
+  },
+  ExtdepsTransportArgvFact {
+    module: extdeps_git_module,
+    service: clean_git_diff_service,
+    operation: clean_git_diff_operation,
+    transport_kind: Shell,
+    argv_index: 2,
+    argv_token: "\{base\}"
+  },
+  ExtdepsTransportArgvFact {
+    module: extdeps_git_module,
+    service: clean_git_diff_service,
+    operation: clean_git_diff_operation,
+    transport_kind: Shell,
+    argv_index: 3,
+    argv_token: "\{head\}"
+  }
+]
+
+data clean_git_diff_input_facts: List<ExtdepsOperationInputFact> = [
+  ExtdepsOperationInputFact {
+    module: extdeps_git_module,
+    service: clean_git_diff_service,
+    operation: clean_git_diff_operation,
+    param_name: "base"
+  },
+  ExtdepsOperationInputFact {
+    module: extdeps_git_module,
+    service: clean_git_diff_service,
+    operation: clean_git_diff_operation,
+    param_name: "head"
+  }
+]
+
+data clean_git_diff_fusion_facts: List<ExtdepsTransportFusionFact> = []
+
+test fn clean_git_diff_is_green_holds() -> Bool {
+  extdeps_shape_transport_policy_violation_count_for_operation(
+    argv_facts: clean_git_diff_argv_facts,
+    fusion_facts: clean_git_diff_fusion_facts,
+    module: extdeps_git_module,
+    service: clean_git_diff_service,
+    operation: clean_git_diff_operation
+  ) == 0
+    && extdeps_shape_transport_policy_dead_param_count_for_operation(
+      argv_facts: clean_git_diff_argv_facts,
+      input_facts: clean_git_diff_input_facts,
+      module: extdeps_git_module,
+      service: clean_git_diff_service,
+      operation: clean_git_diff_operation
+    ) == 0
+}

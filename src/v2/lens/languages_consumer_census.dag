@@ -1,21 +1,6 @@
-// src/v2/lens/languages_consumer_census.dag
-// Scope: per-decl consumer census for dsl/std/languages.dag -- gate before
-//   deleting the ~64 per-language duplicate rows (71 data decls - 7 format rows).
-// DESIGN.md section 3 single-authority enforcement:
-//   - COMPOSITION_ONLY: decl referenced only inside languages.dag (spec field
-//     wiring) -- dissolution-safe once LanguageSpec repoints to extdeps/languages/*.
-//   - EXTERNAL_CONSUMER: any other .dag/.rs file references the decl name --
-//     must be repointed before the row is deleted.
-// Status: M1 -- host census bridge + corpus witnesses.
-// Hand-Rust scaffold receipt (DESIGN.md section 7): languages_consumer_census.rs is
-//   bootstrap text-scan census only.
-// Dissolve-on (owner: v2.lens.languages_consumer_census): delete languages_consumer_census.rs
-//   when Node-tree decl projection + import-graph resolution replace the text scan here.
-//   Concrete gate: languages.dag ~64-row delete PR after rust_spec/go_spec/python_spec repoints.
-// Consumer: claim_batch discovery over src/v2/compiler/languages_consumer_census.
-
 module v2.lens.languages_consumer_census
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -67,12 +52,6 @@ fn languages_consumer_census_live_per_language_row_ratchet_holds() -> Bool {
   )
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "LanguageSpec repointing to extdeps/languages/* (the per-language duplicate rows delete) plus Node-tree decl-reference projection",
-    dissolve_on: "the ~64 duplicate per-language rows are deleted once their consumers repoint, dissolving the census"
-  },
-  rationale: "A per-decl consumer census (composition-only vs external-consumer) is a decidable reference scan; a migration gate that dissolves when languages.dag's duplicate rows are deleted."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

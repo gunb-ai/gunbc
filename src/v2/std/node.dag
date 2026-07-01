@@ -1,25 +1,12 @@
-// src/v2/std/node.dag
-// Scope: v2 substrate root for type and computation nodes.
-// Anchor: substrate shape — closed, grounded Node+Edge substrate (DESIGN.md §4).
-// Status: T-1 modeled; substrate-extension rule.
-// Note: bind_outcome + Outcome helpers live in v2.std.diagnostic; traverse_node/sequence_node (Ratified Q4) deferred until v2 accepts Outcome<R> algebra fn types
-// (Ratified Q4) — avoids diagnostic↔node import cycle while keeping fold_node here.
-
-
 module v2.std.node
 
 type Symbol
 type Hash
-// PROV A-pivot:
-// opaque occurrence identity; sole mint via v2.std.occurrence_id.alloc_occurrence_id.
-// Distinct id space from binding_id (#4581). Excluded from structural equality / content hash.
-// Node.occurrence_id field lands atomically with #4604 span revert (Phase 1+2).
+
 type OccurrenceId {
   value: Int
 }
-// 🟢 coproduct dissolution — PROV A-pivot (feature:T-8-source-provenance): closed carrier for
-// Node.occurrence_id — SyntheticOccurrence = pre-parse / substrate literal (no minted id);
-// MintedOccurrence = allocator-issued id (sole mint in v2.std.occurrence_id).
+
 type NodeOccurrenceId
   = SyntheticOccurrence
   | MintedOccurrence { id: OccurrenceId }
@@ -27,7 +14,7 @@ type NodeOccurrenceId
 fn node_occurrence_minted(id: OccurrenceId) -> NodeOccurrenceId {
   MintedOccurrence { id: id }
 }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type Connective
   = Atom { identity: Symbol }
   | Conj
@@ -35,7 +22,7 @@ type Connective
   | Arrow
   | Cardinality
   | Instantiation
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type Behavior
   = Value
   | Transform
@@ -44,31 +31,10 @@ type Behavior
   | Bind
   | Match
 
-
-// R-reflect Phase 2a — dissolving bridge + Path-3 I/O boundary (substrate-native).
-// resolve_type_node: minimal Rust bridge (compiler Disj → substrate Node Value); dissolves when
-// v2 gains compile-graph access. Enumeration lives in v2.std.node_query (node_labeled_child_edges).
-// syntactic_coproduct_arm_keys: irreducible raw-source scan (Path 3 independence from parse+resolve).
-// 🟡 gated — feature:coproduct-reflection-bridge
-// origin: gunbc#4863 (R-reflect Phase-2a) — the PR that INTRODUCED this bridge; provenance only,
-//   NOT the dissolve trigger (a scaffold cannot dissolve on its own birth PR).
-// dissolve-on-arrival: gunbc#5364 — v2 self-host gains compile-graph access (a corpus-as-node
-//   handle); that replaces the resolve_type_node intercept with a pure .dag walk over the resolved
-//   graph. forbidden: parallel enumeration in Rust.
 fn resolve_type_node(type_name: Symbol) -> Node {
   resolve_type_node(type_name: type_name)
 }
 
-fn syntactic_coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
-  syntactic_coproduct_arm_keys(type_name: type_name)
-}
-
-fn syntactic_coproduct_arm_pairs(type_name: Symbol) -> List<CoproductArmPayloadPair> {
-  syntactic_coproduct_arm_pairs(type_name: type_name)
-}
-
-
-// R-reflect Phase 2b — reflected arm carrier (positive nullary vs typed payload).
 type ArmPayload
   = Nullary
   | Typed { target_ref: Symbol }
@@ -85,9 +51,6 @@ type CoproductArmPayloadPair {
 
 data coproduct_nullary_payload_type_name: Symbol = ^coproduct_nullary_payload
 
-
-// 🟡 gated — feature:coproduct-variant-enumeration — bound target: coproduct reflection / variant-enumeration substrate — bind gunbc#4759 — dissolve-on-arrival: derive Connective/Behavior variant lists from coproduct reflection in std/node.dag; delete these mirrors.
-// forbidden: parallel hand-enumerated Connective/Behavior universes outside std/node.dag.
 type ConnectiveCoproductVariant
   = ConnectiveAtomArm
   | ConnectiveConjArm
@@ -95,7 +58,6 @@ type ConnectiveCoproductVariant
   | ConnectiveArrowArm
   | ConnectiveCardinalityArm
   | ConnectiveInstantiationArm
-
 
 fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
   [
@@ -107,7 +69,6 @@ fn connective_coproduct_variant_keys() -> List<ConnectiveCoproductVariant> {
     ConnectiveInstantiationArm,
   ]
 }
-
 
 fn connective_from_coproduct_variant(
   variant: ConnectiveCoproductVariant,
@@ -123,21 +84,17 @@ fn connective_from_coproduct_variant(
   }
 }
 
-
 fn behavior_coproduct_variants() -> List<Behavior> {
   [Value, Transform, Branch, Loop, Bind, Match]
 }
 
-// Match arm carrier: pattern + body named edges on a Conj-shaped arm node.
 data match_arm_pattern: Symbol = ^match_arm_pattern
 data match_arm_body: Symbol = ^match_arm_body
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type NodeKind
   = TypeNode { connective: Connective }
   | ComputationNode { behavior: Behavior }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type EdgeLabel
   = Named { name: Symbol }
   | Positional
@@ -145,8 +102,7 @@ type Edge {
   label: EdgeLabel
   target: Node
 }
-// 🟢 coproduct dissolution — PROV A-pivot lifecycle: pre-stamp tree for fixtures / hand-authored
-// stubs. No occurrence_id — illegal to treat as pipeline Node until stamped via v2.std.node_shape.
+
 type EdgeShape {
   label: EdgeLabel
   target: NodeShape
@@ -155,8 +111,6 @@ type NodeShape {
   kind: NodeKind
   children: List<EdgeShape>
 }
-// 🟡 gated — substrate-shape bridge — feature: node-behavior-loop-bound-edge-tag — owner: T-12 LoopBound cost-lens wiring — lane: shared Interval<D> parent for Loop measure facts — dissolve-on-arrival: replace Symbol-tagged Loop bound attachment with structural Loop-bound coordinate owned by the interval/bound substrate; forbidden: new Loop-bound consumers matching raw Named(loop_bound_edge) outside std.node/std.cardinality.
-// 🟢 TERMINAL — DB-14: Arrow.body is the single authority for internal (Behavior sub-DAG) and external realization.
 
 fn node_with_occurrence_id(
   kind: NodeKind,
@@ -182,7 +136,6 @@ fn node_synthetic(kind: NodeKind, children: List<Edge>) -> Node {
   )
 }
 
-// occurrence_id excluded from structural equality / content hash.
 fn node_for_structural_equality(n: Node) -> Node {
   node_with_occurrence_id(
     kind: n.kind,
@@ -191,9 +144,6 @@ fn node_for_structural_equality(n: Node) -> Node {
   )
 }
 
-// PROV A-pivot provenance boundary — strip Node.occurrence_id at every depth for semantic/
-// structural equality (source authority AST/IR witnesses). Preserves child order (unlike
-// canonicalize_node_for_content_hash).
 fn strip_provenance_fold_init(n: Node) -> Node {
   node_synthetic(kind: n.kind, children: [])
 }
@@ -231,9 +181,6 @@ fn fold_node<R>(n: Node, algebra: NodeFold<R>) -> R {
   })
 }
 
-// Preorder listing of every Node in the subtree rooted at root (root first).
-// init includes self; step appends each child's recursive result — do not re-snoc edge.target
-// (sub already contains it). Sibling to node_subtree_count in 06_translate.dag.
 fn node_subtree_nodes(root: Node) -> List<Node> {
   fold_node(
     n: root,
@@ -254,14 +201,14 @@ fn fold_node_topdown<A,R>(n: Node, ctx: A, algebra: NodeFoldTopDown<A,R>) -> R {
     algebra.step(acc, e, fold_node_topdown(n: e.target, ctx: algebra.child_context(n, ctx, e), algebra: algebra))
   })
 }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type EdgeDiscipline
   = NoEdges
   | LabeledEdges
   | PositionalEdges
-  // 🟡 gated — predicate-dissolution interim — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: Loop edge discipline as EdgeDiscipline arm consumed by edges_conform and content_hash canonicalization; forbidden: parallel PositionalEdges classifier for Loop outside loop_behavior_edges_conform.
+
   | LoopBoundEdges
-  // 🟢 TERMINAL — COMPREP wave 0/1: Arrow signature positional edges + optional Arrow.body named edge.
+
   | ArrowBodyEdges
 fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
   match c {
@@ -273,14 +220,14 @@ fn connective_edge_discipline(c: Connective) -> EdgeDiscipline {
     Instantiation => PositionalEdges
   }
 }
-// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived EdgeLabel Named-variant discriminant projection; forbidden: fold laundering.
+
 fn is_named(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => true
     Positional => false
   }
 }
-// 🟡 gated — predicate-dissolution interim — feature: coproduct variant-discriminant predicate substrate — bind node://adhoc-2145db6b-69a — dissolve-on-arrival: substrate-derived EdgeLabel Positional-variant discriminant projection; forbidden: fold laundering.
+
 fn is_positional(e: Edge) -> Bool {
   match e.label {
     Named { name: _ } => false
@@ -315,11 +262,11 @@ fn positional_child_count(children: List<Edge>) -> Int {
     }
   })
 }
-// 🟡 gated — predicate-dissolution interim — feature: node-behavior-loop-positional-count — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop positional-child count query; forbidden: parallel ad-hoc Loop arity predicates outside well_formed.
+
 fn loop_positional_child_count(children: List<Edge>) -> Int {
   positional_child_count(children: children)
 }
-// 🟡 gated — predicate-dissolution interim — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
+
 fn loop_body_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
@@ -328,14 +275,14 @@ fn loop_body_edges_conform(children: List<Edge>) -> Bool {
     }
   })
 }
-// 🟡 gated — predicate-dissolution interim — feature: node-behavior-loop-edge-discipline — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop edge-discipline query shared by well_formed and cardinality witnesses; forbidden: parallel ad-hoc Loop edge predicates outside well_formed.
+
 fn loop_behavior_edges_conform(children: List<Edge>) -> Bool {
   let bound_edges = name_occurrences(name: ^loop_bound_edge, children: children)
   (bound_edges == 1)
   && loop_body_edges_conform(children: children)
   && (loop_positional_child_count(children: children) >= 1)
 }
-// 🟢 TERMINAL — COMPREP: Arrow positional signature edges + at most one Arrow.body edge.
+
 fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
   fold(children, init: true, f: fn(acc, e) {
     match e.label {
@@ -344,7 +291,7 @@ fn arrow_signature_edges_conform(children: List<Edge>) -> Bool {
     }
   })
 }
-// 🟡 gated — predicate-dissolution interim — feature: node-named-edge-target-lookup — bind COMPREP wave-0 / node-behavior-loop-bound-measure-target — dissolve-on-arrival: substrate canonical single Named-edge target projection shared by well_formed validation, cardinality witness, and node_query diagnostics; forbidden: parallel ad-hoc single-named-edge extraction outside std.node/std.node_query.
+
 type NamedEdgeTargetLookup
   = Found { target: Node }
   | Ambiguous
@@ -372,11 +319,6 @@ fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^arrow_body_edge)
 }
 
-// 🟡 gated — predicate-dissolution interim — feature:arrow-body-record-construct-m0 —
-// consumer:arrow_body_target_is_valid_realization —
-// bind: Lane 2a value-expression record construct (Conj body with type atom + named field inits) —
-// dissolve-on: Q-B1 named pattern edges for record construct (M0-B5);
-// forbidden: silent ordinal coupling past M0 constructor Conj on Arrow.body.
 fn arrow_body_record_construct_conforms(node: Node) -> Bool {
   match node.kind {
     TypeNode { connective: Conj } =>
@@ -402,7 +344,6 @@ fn arrow_body_record_construct_conforms(node: Node) -> Bool {
   }
 }
 
-// 🟡 gated — predicate-dissolution interim — feature: arrow-body-external-realization-target — owner: COMPREP wave-0 (#4616) — lane: std.node ArrowBodyEdges well_formed target-shape (E-9/DB-14) — dissolve-on-arrival: extend this predicate to admit the extdeps ExternalRealization carrier on Arrow.body when v2.extdeps primitive wiring lands (DB-14: declared Arrow.body + target bindings); wave-0 admits ComputationNode only because the body producer exercises internal Behavior sub-DAGs; forbidden: parallel Arrow.body target-shape predicates outside arrow_body_target_is_valid_realization.
 fn arrow_body_target_is_valid_realization(target: Node) -> Bool {
   match target.kind {
     ComputationNode { behavior: _ } => true
@@ -429,7 +370,7 @@ fn arrow_body_edges_conform(children: List<Edge>) -> Bool {
 fn loop_bound_measure_target(children: List<Edge>) -> NamedEdgeTargetLookup {
   named_edge_target_lookup(children: children, name: ^loop_bound_edge)
 }
-// 🟡 gated — predicate-dissolution interim — feature: node-behavior-loop-iteration-fold — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Loop iteration-fold edge query scoped to Loop parents; forbidden: edge-label-only loop_bound_edge skip outside Loop.
+
 fn loop_edge_contributes_to_iteration_fold(parent: Node, e: Edge) -> Bool {
   match parent.kind {
     ComputationNode { behavior: Loop } =>
@@ -462,7 +403,7 @@ fn edges_conform(children: List<Edge>, d: EdgeDiscipline) -> Bool {
     ArrowBodyEdges => arrow_body_edges_conform(children: children)
   }
 }
-// 🟡 gated — predicate-dissolution interim — feature: node-connective-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Connective arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
+
 fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
   match c {
     Atom { identity: _ } => edges_conform(children: children, d: NoEdges)
@@ -475,8 +416,7 @@ fn connective_edges_conform(children: List<Edge>, c: Connective) -> Bool {
       edges_conform(children: children, d: PositionalEdges) && (count(children) >= 1)
   }
 }
-// 🟡 gated — predicate-dissolution interim — feature: node-behavior-arity-well-formed — bind node://adhoc-c28e191d-684 — dissolve-on-arrival: substrate Behavior arity query over positional child count; forbidden: parallel ad-hoc arity predicates outside well_formed.
-// 🟡 gated — feature:match-arm-positional-conformance-m0 — consumer:behavior_edges_conform Match arm — bind:node://adhoc-b4793d46-0a0 — dissolve-on:named pattern edges for match arms (Q-B1 / M0-B5) replace ordinal scrutinee-skip; forbidden:parallel ad-hoc match-arm arity predicates outside well_formed.
+
 fn match_arm_node_conforms(arm: Node) -> Bool {
   match arm.kind {
     TypeNode { connective: Conj } =>
@@ -548,7 +488,7 @@ fn well_formed(n: Node) -> Bool {
     }
   )
 }
-// 🟢 predicate dissolution — api-review receipt PR #3274 (SG-0 census N/A for v2-only substrate).
+
 fn is_empty_conj_root(n: Node) -> Bool {
   match n.kind {
     TypeNode { connective: Conj } => count(n.children) == 0
@@ -578,7 +518,7 @@ fn named_edge_sort_key(e: Edge) -> Symbol {
     Positional => ^canonical_tag_positional_edge
   }
 }
-// 🟡 gated — predicate-dissolution interim — feature: node-behavior-loop-content-hash-canonicalization — bind B1-CANON content_hash — dissolve-on-arrival: Loop/LabeledEdges child reorder scoped to content_hash merkle fold; forbidden: parallel ad-hoc loop_bound_edge placement canonicalization outside this surface.
+
 fn arrow_signature_edges_for_content_hash(children: List<Edge>) -> List<Edge> {
   filter(children, e => match e.label { Positional => true, Named { name: _ } => false })
 }
@@ -668,14 +608,13 @@ fn canonicalize_node_for_content_hash(n: Node) -> Node {
       }
   }
 }
-// 🟢 TERMINAL — B1 merkle_fold: canonicalize_node_for_content_hash at every recursive step (plain fold_node would skip nested LabeledEdges/Loop reorder).
+
 fn fold_node_content_hash<R>(n: Node, algebra: NodeFold<R>) -> R {
   let n = canonicalize_node_for_content_hash(n: n)
   fold(n.children, init: algebra.init(n), f: fn(acc, e) {
     algebra.step(acc, e, fold_node_content_hash(n: e.target, algebra: algebra))
   })
 }
-
 
 fn canonical_hash_of_connective(c: Connective) -> Hash {
   match c {
@@ -692,7 +631,6 @@ fn canonical_hash_of_connective(c: Connective) -> Hash {
   }
 }
 
-
 fn canonical_hash_of_behavior(b: Behavior) -> Hash {
   match b {
     Value => atom_identity_hash(s: ^canonical_tag_value)
@@ -703,7 +641,6 @@ fn canonical_hash_of_behavior(b: Behavior) -> Hash {
     Match => atom_identity_hash(s: ^canonical_tag_match)
   }
 }
-
 
 fn canonical_hash_of_node_kind(kind: NodeKind) -> Hash {
   match kind {
@@ -720,7 +657,6 @@ fn canonical_hash_of_node_kind(kind: NodeKind) -> Hash {
   }
 }
 
-
 fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
   match label {
     Named { name: sym } =>
@@ -732,24 +668,21 @@ fn canonical_hash_of_edge_label(label: EdgeLabel) -> Hash {
   }
 }
 
-
-// B1 primitive re-export: v2 runtime hash_combine is available in-module but not importable cross-module until wrapped.
 fn combine_hash(a: Hash, b: Hash) -> Hash {
   hash_combine(a: a, b: b)
 }
 
+fn symbol_identity_digest(sym: Symbol) -> Hash {
+  atom_identity_hash(s: sym)
+}
 
 data byte_offset_residual_quotient_magnitude_shift_limbs: Int = 4
-// Interim magnitude ceiling: post-ceiling residual 256^(9+k) needs shift k (claim band through k=28 / offset 256^37).
-// Full P2 on unbounded Int offsets requires dissolve-on bounded ByteOffset carrier (coproduct marks above).
+
 data byte_offset_residual_quotient_magnitude_max_shift: Int = 28
 data byte_offset_cache_digest_max_limbs: Int = 9
-// Bounded overflow tail after the 9-limb ceiling — P4-safe remainder encoding for over-ceiling offsets (also caps overflow_quotient_peel).
-// Four limbs cover the 256^4 remainder at the first over-ceiling offset (256^9) without peel exhaustion recursion.
+
 data byte_offset_cache_digest_overflow_limbs: Int = 4
 
-
-// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: bounded ByteOffset carrier or std.induction-ranked offset projection replaces ByteOffsetCacheDigestAuthority; interim WithinCeiling/OverCeiling/CacheDigestIneligible (exhausted residual fail-closed).
 type ByteOffsetCacheDigestAuthority
   = ByteOffsetWithinCeiling { digest: Hash }
   | ByteOffsetOverCeiling {
@@ -762,8 +695,6 @@ type ByteOffsetCacheDigestAuthority
       residual_quotient: Int
     }
 
-
-// 🟡 coproduct dissolution — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: bounded ByteOffset carrier replaces ByteOffsetCacheKey; interim public cache-key boundary (eligible digest vs ineligible witness — not a bare Hash at this API).
 type ByteOffsetCacheKey
   = ByteOffsetCacheEligible { digest: Hash }
   | ByteOffsetCacheIneligible {
@@ -771,10 +702,6 @@ type ByteOffsetCacheKey
       witness: Hash
     }
 
-
-
-
-// Byte limb 0..255 only: fail-closed before Peano recursion (P4 bounded substrate).
 fn byte_limb_hash_peano_digest(limb: Int) -> Hash {
   if limb < 0 || limb > 255 {
     atom_identity_hash(s: ^canonical_tag_byte_limb_out_of_range)
@@ -792,7 +719,6 @@ fn byte_limb_hash_peano_digest(limb: Int) -> Hash {
   }
 }
 
-
 fn byte_offset_byte_digest(b: Int) -> Hash {
   combine_hash(
     a: atom_identity_hash(s: ^canonical_tag_byte_offset_byte),
@@ -800,8 +726,6 @@ fn byte_offset_byte_digest(b: Int) -> Hash {
   )
 }
 
-
-// P4: terminal when steps <= 0 (non-Nat budget — fail-closed, no negative-step recursion).
 fn byte_offset_quotient_divide_by_256_steps(quotient: Int, steps: Int) -> Int {
   if steps <= 0 {
     quotient
@@ -809,7 +733,6 @@ fn byte_offset_quotient_divide_by_256_steps(quotient: Int, steps: Int) -> Int {
     byte_offset_quotient_divide_by_256_steps(quotient: quotient / 256, steps: steps - 1)
   }
 }
-
 
 fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_steps: Int) -> Hash {
   let shifted = byte_offset_quotient_divide_by_256_steps(quotient: quotient, steps: shift_steps)
@@ -825,7 +748,6 @@ fn byte_offset_residual_quotient_magnitude_window_digest(quotient: Int, shift_st
     byte_offset_residual_quotient_limb_pair_digest(quotient: shifted)
   }
 }
-
 
 fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> Hash {
   if quotient < 256 * 256 {
@@ -847,8 +769,6 @@ fn byte_offset_residual_quotient_limb_pair_digest(quotient: Int) -> Hash {
   }
 }
 
-
-// P4: fixed windows over residual quotient (0..max_shift by 4) — interim distinctness for ineligible witnesses.
 fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> Hash {
   combine_hash(
     a: atom_identity_hash(s: ^canonical_tag_byte_offset_residual_quotient_magnitude),
@@ -883,8 +803,6 @@ fn byte_offset_residual_quotient_magnitude_digest(quotient: Int) -> Hash {
   )
 }
 
-
-// P4: terminal high-band peel only — never re-enters magnitude_digest (fixed-window ceiling).
 fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_remaining: Int) -> Hash {
   if limbs_remaining == 0 {
     if quotient == 0 {
@@ -913,8 +831,6 @@ fn byte_offset_overflow_quotient_high_band_terminal_digest(quotient: Int, limbs_
   }
 }
 
-
-// P4: Hash-only high-band peel — never re-enters byte_offset_cache_key_from_authority / witness_digest.
 fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining: Int) -> Hash {
   if limbs_remaining == 0 {
     if quotient == 0 {
@@ -946,8 +862,6 @@ fn byte_offset_overflow_quotient_high_band_digest(quotient: Int, limbs_remaining
   }
 }
 
-
-// Quotient bands above the two-limb exhausted-residual suffix (fail-closed witness material, not cache-eligible).
 fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> Hash {
   if quotient < 65536 {
     atom_identity_hash(s: ^canonical_tag_byte_offset_overflow_residual_discarded_high_zero)
@@ -961,7 +875,6 @@ fn byte_offset_overflow_residual_discarded_high_digest(quotient: Int) -> Hash {
     )
   }
 }
-
 
 fn byte_offset_cache_digest_ineligible_witness_digest(
   within_ceiling_digest: Hash,
@@ -987,7 +900,6 @@ fn byte_offset_cache_digest_ineligible_witness_digest(
   }
 }
 
-
 fn byte_offset_cache_digest_ineligible_hash(
   within_ceiling_digest: Hash,
   boundary_tag: Symbol
@@ -1001,8 +913,6 @@ fn byte_offset_cache_digest_ineligible_hash(
   )
 }
 
-
-// P4: peel post-ceiling quotient by base-256 limbs without re-entering authority_hash (v2 complexity).
 fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
   quotient: Int,
   limbs_remaining: Int
@@ -1080,7 +990,6 @@ fn byte_offset_cache_digest_overflow_quotient_peel_bounded_authority(
   }
 }
 
-
 fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> ByteOffsetCacheDigestAuthority {
   match byte_offset_cache_digest_nonneg_bounded_authority(
     i: quotient,
@@ -1135,7 +1044,6 @@ fn byte_offset_cache_digest_overflow_tail_authority(quotient: Int) -> ByteOffset
       }
   }
 }
-
 
 fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) -> ByteOffsetCacheKey {
   match auth {
@@ -1204,8 +1112,6 @@ fn byte_offset_cache_key_from_authority(auth: ByteOffsetCacheDigestAuthority) ->
   }
 }
 
-
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — bind gunbc#4758 — dissolve-on: bounded ByteOffset carrier or std.induction-ranked offset projection replaces fixed-limb recursion; interim ceiling is byte_offset_cache_digest_max_limbs (9 limbs, fail-closed).
 fn byte_offset_cache_digest_nonneg_bounded_authority(
   i: Int,
   limbs_remaining: Int
@@ -1265,14 +1171,12 @@ fn byte_offset_cache_digest_nonneg_bounded_authority(
   }
 }
 
-
 fn byte_offset_cache_digest_nonneg_authority(i: Int) -> ByteOffsetCacheDigestAuthority {
   byte_offset_cache_digest_nonneg_bounded_authority(
     i: i,
     limbs_remaining: byte_offset_cache_digest_max_limbs
   )
 }
-
 
 fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority {
   if i < 0 {
@@ -1314,10 +1218,6 @@ fn byte_offset_cache_digest_authority(i: Int) -> ByteOffsetCacheDigestAuthority 
   }
 }
 
-
-// SG-7: structural Node projection for CI / T-22 cache-hash consumers — single authority (no ci.dag parallel tree).
-
-
 fn node_offset_atom(sym: Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: sym } },
@@ -1325,11 +1225,9 @@ fn node_offset_atom(sym: Symbol) -> Node {
   )
 }
 
-
 fn node_offset_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
-
 
 fn node_offset_conj(children: List<Edge>) -> Node {
   node_synthetic(
@@ -1338,8 +1236,6 @@ fn node_offset_conj(children: List<Edge>) -> Node {
   )
 }
 
-
-// P4 bounded Peano limb tree — mirrors `byte_limb_hash_peano_digest` for B1 content_hash (no digest aliasing).
 fn byte_offset_byte_limb_projection_node(limb: Int) -> Node {
   if limb < 0 || limb > 255 {
     node_offset_atom(sym: ^canonical_tag_byte_limb_out_of_range)
@@ -1361,8 +1257,6 @@ fn byte_offset_byte_limb_projection_node(limb: Int) -> Node {
   }
 }
 
-
-// P4 bounded peel — mirrors `byte_offset_cache_digest_nonneg_bounded_authority` (limbs_remaining, not same-arg on `i`).
 fn byte_offset_digest_nonneg_projection_bounded(i: Int, limbs_remaining: Int) -> Node {
   if limbs_remaining <= 0 {
     if i == 0 {
@@ -1408,7 +1302,6 @@ fn byte_offset_digest_nonneg_projection_bounded(i: Int, limbs_remaining: Int) ->
   }
 }
 
-
 fn byte_offset_cache_digest_authority_projection_node(i: Int) -> Node {
   if i < 0 {
     node_offset_conj(children: [
@@ -1431,7 +1324,6 @@ fn byte_offset_cache_digest_authority_projection_node(i: Int) -> Node {
     )
   }
 }
-
 
 fn byte_offset_cache_key_projection_node(i: Int) -> Node {
   match byte_offset_cache_key(i: i) {
@@ -1501,13 +1393,10 @@ fn byte_offset_cache_key_projection_node(i: Int) -> Node {
   }
 }
 
-
 fn byte_offset_cache_key(i: Int) -> ByteOffsetCacheKey {
   byte_offset_cache_key_from_authority(auth: byte_offset_cache_digest_authority(i: i))
 }
 
-
-// 🟡 derived-operation — feature:T22-EVAL-CACHE-HASHES — consumer: test_claim_cache_digest_sensitivity only — bind gunbc#4758 — dissolve-on: content_hash(Node) offset projection; NOT an IRT-4 cache-key boundary (eligible vs ineligible tagged fingerprint for aliasing claims).
 fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
   match key {
     ByteOffsetCacheEligible { digest: digest } =>
@@ -1529,8 +1418,6 @@ fn byte_offset_cache_key_fingerprint(key: ByteOffsetCacheKey) -> Hash {
   }
 }
 
-
-// Canonical multiset/bag digest: sort element hashes, then order-sensitive combine_hash fold.
 fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
   fold(
     sort_by(xs, h => h),
@@ -1541,8 +1428,6 @@ fn bag_hash_digest(empty: Hash, xs: List<Hash>) -> Hash {
   )
 }
 
-
-// 🟢 TERMINAL — B1 merkle_fold content_hash over canonical Node form; LabeledEdges children sorted by label before fold (Conj/Disj order-independent); Loop positional body edges preserve list order with loop_bound_edge canonicalized after body; other positional children preserve list order; Hash carrier enforced at v2 primitive boundary (16-hex digest, not arbitrary String).
 fn content_hash(n: Node) -> Hash {
   fold_node_content_hash(
     n: n,
@@ -1558,9 +1443,6 @@ fn content_hash(n: Node) -> Hash {
   )
 }
 
-
-// RULING-1: 🟢 structural substrate node-set selector (v2-ci-schema-worksheet §2; concept home v2.std.node).
-// `Connective` is sole authority for ByConnective (`Atom { identity }` carries symbol identity).
 type NodeQuery
   = NodeQueryByConnective { connective: Connective }
   | NodeQueryByPath { at: Path }

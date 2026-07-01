@@ -1,0 +1,11 @@
+module v2.test.extdeps_shape_transport_policy.corpus.cargo_fmt_policy_leak
+
+import v2.lens.extdeps_shape_transport_policy {
+  extdeps_live_module_policy_leak_count
+}
+import v2.lens.extdeps_shape_transport_policy.module_refs { extdeps_cargo_build_module }
+import v2.std.logic { Bool }
+
+test fn corpus_cargo_fmt_defused_holds() -> Bool {
+  extdeps_live_module_policy_leak_count(module: extdeps_cargo_build_module) == 0
+}

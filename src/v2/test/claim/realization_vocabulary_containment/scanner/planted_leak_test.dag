@@ -1,10 +1,3 @@
-// Scope: scanner-execution RED receipt — the live containment guard must flag the planted
-//        non-edge consumer that imports the bash-AST sidecar
-//        (src/v2/test/fixture/realization_vocab_scan/leak/plant.dag). The discriminating RED
-//        input that goes red when the live detection breaks: scanning the fixture dir in
-//        isolation MUST report exactly one RealizationVocabularyLeak (and not-clean). This is
-//        the by-execution oracle that the guard fires on a real, committed leak.
-
 module v2.test.realization_vocabulary_containment.scanner.planted_leak
 
 import v2.lens.realization_vocabulary_containment {

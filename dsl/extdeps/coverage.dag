@@ -1,0 +1,30 @@
+module extdeps.coverage
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/coverage"
+  }
+}
+
+type CoverageClosureFact
+  = Subject { path: NonEmptyStr }
+  | VariantPending { variant: NonEmptyStr }
+  | JsonPending { field: NonEmptyStr }
+  | Residue { description: NonEmptyStr }
+  | Paid { item: NonEmptyStr }
+  | Missing { item: NonEmptyStr }
+  | DeclaredMetadata { field: NonEmptyStr }
+  | ExternalSpecWatch { item: NonEmptyStr }
+  | Blocked { reason: NonEmptyStr }
+  | PathRef { path: NonEmptyStr }
+  | RequiresArm { arm: NonEmptyStr }
+
+type CoverageClosureEntry {
+  facts: List<CoverageClosureFact>
+  trigger: NonEmptyStr?
+}

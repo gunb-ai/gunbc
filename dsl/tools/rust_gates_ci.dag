@@ -1,55 +1,59 @@
-// tools/rust_gates_ci.dag -- the Rust-monolith CI gate, run by `gunbc` (NOT a Rust binary).
-//
-// Realizes the three dependents of the Rust monolith (cargo fmt, cargo clippy, cargo test)
-// selected by `tools.rust_stage0_gates`. `git diff` is extdeps.git; cargo invocations use
-// `gunbc.ci_spec` EAGAIN retry scripts via shell.Exec (workflow policy, §3 — not dispatch_shell).
-// the gate logic is `.dag` authority, the only Rust left is the `gunbc` interpreter seed.
-//
-// Run in CI: gunbc run --source-root dsl --entry dsl/tools/rust_gates_ci.dag --function main
-//   (host maps the returned ProcessExit: ExitSuccess → 0, ExitFailure { code } → code.)
-//
-// SCAFFOLD — dissolves when the Rust seed reaches zero (DESIGN §7): no Rust monolith, no gate.
-
 module tools.rust_gates_ci
 
-import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.git
-import extdeps.shell
+import extdeps.cargo_build
+import extdeps.cargo_build { cargo_nextest_build_jobs_flag }
 import tools.rust_stage0_gates { should_run_gates }
 import gunbc.ci_spec {
   gunbc_ci_spec,
   DiffMergeBase,
   DiffTwoDot,
-  ci_cargo_eagain_retry_shell_exec,
-  ci_rust_gate_fmt_command,
-  ci_rust_gate_clippy_command,
-  ci_rust_gate_test_command,
+}
+import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
+import gunbc.fleet_intent { srv1_host, compute_host_ram_bytes_total }
+
+fn rust_gate_build_jobs_args() -> List<String> {
+  let jobs = ci_compile_jobs(
+    memory_budget: compute_host_ram_bytes_total(host: srv1_host),
+    force_serial: false
+  )
+  cargo_nextest_build_jobs_flag(count: compile_jobs_count_or_serial(jobs: jobs))
 }
 
-// Run cargo fmt, clippy, and test (all evaluated — no short-circuit, so every failure surfaces),
-// pass iff all three succeed.
-// SCAFFOLD — gate scope: hermetic seam discriminators only (interp_recorded_fixture).
-// Dissolve-on: promote to extra_args ["--workspace"] when v1-compiler --lib self_* quartet
-// and full v1-compiler-tests package are green without ignored tests (§6 named trigger).
+fn gate_diag(check: String, stdout: String, stderr: String) -> String {
+  concat(
+    concat("=== ", concat(check, " FAILED ===\n")),
+    concat(stdout, concat("\n", stderr))
+  )
+}
+
+fn rust_gate_reason(
+  fmt_success: Bool, fmt_stdout: String, fmt_stderr: String,
+  clippy_success: Bool, clippy_stdout: String, clippy_stderr: String,
+  test_success: Bool, test_stdout: String, test_stderr: String
+) -> String {
+  let fmt_diag = if fmt_success { "" } else { gate_diag(check: "cargo fmt --all --check", stdout: fmt_stdout, stderr: fmt_stderr) }
+  let clippy_diag = if clippy_success { "" } else { gate_diag(check: "cargo clippy --all-targets -- -D warnings", stdout: clippy_stdout, stderr: clippy_stderr) }
+  let test_diag = if test_success { "" } else { gate_diag(check: "cargo nextest run -p v1-compiler-tests", stdout: test_stdout, stderr: test_stderr) }
+  concat("rust gate:\n", concat(fmt_diag, concat(clippy_diag, test_diag)))
+}
+
 func run_gates() -> ProcessExit {
-  fmt = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_fmt_command())
-  )
-  clippy = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_clippy_command())
-  )
-  test = shell.Exec.Run(
-    script: ci_cargo_eagain_retry_shell_exec(command: ci_rust_gate_test_command())
-  )
+  fmt = cargo.Build.Fmt(extra_args: ["--all", "--check"])
+  clippy = cargo.Build.Clippy(extra_args: ["--all-targets"], lint_args: ["-D", "warnings"])
+  test = cargo.Build.Nextest(extra_args: ["-p", "v1-compiler-tests"], build_jobs_args: rust_gate_build_jobs_args())
   return if fmt.success && clippy.success && test.success {
     ExitSuccess
   } else {
-    ExitFailure { code: 1, reason: "rust gate failed: cargo fmt --all --check and/or cargo clippy --all-targets -- -D warnings and/or cargo test (hermetic discriminators)" }
+    exit_failure(reason: rust_gate_reason(
+      fmt_success: fmt.success, fmt_stdout: fmt.stdout, fmt_stderr: fmt.stderr,
+      clippy_success: clippy.success, clippy_stdout: clippy.stdout, clippy_stderr: clippy.stderr,
+      test_success: test.success, test_stdout: test.stdout, test_stderr: test.stderr
+    ))
   }
 }
 
-// Entry: consult the diff, fire the gates only when the Rust monolith is touched.
-// Policy (which base ref, three-dot merge-base mode) lives here — not in extdeps/git.
 func run_rust_monolith_gate() -> ProcessExit {
   let policy = gunbc_ci_spec.diff_policy
   let changed = match policy.mode {

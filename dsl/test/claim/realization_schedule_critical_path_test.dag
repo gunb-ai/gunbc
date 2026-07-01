@@ -1,11 +1,3 @@
-// dsl/test/claim/realization_schedule_critical_path_test.dag
-//
-// Phase 1.5b §5: critical-path schedule total — parallel branches take CostMax
-// (v1.compiler.complexity span authority), sequential batches add. Discriminating:
-// a short runnable hidden under a parallel branch must not inflate total.
-//
-// Run: gunbc run --source-root dsl --entry <this> --function realization_schedule_critical_path_witnesses --claim-run
-
 module test.claim.realization_schedule_critical_path
 
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }

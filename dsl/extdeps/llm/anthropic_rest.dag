@@ -1,9 +1,3 @@
-// extdeps/llm/anthropic_rest.dag — `llm.Anthropic` realization handlers (REST + Claude CLI).
-//
-// Protocol types and wire contracts live in `anthropic.dag` (`module extdeps.llm.anthropic`).
-// One dependency interface (`llm.Anthropic`), multiple transports (DESIGN.md §3) — not a
-// forked `llm.Claude` service in `cli.dag`.
-
 module extdeps.llm.anthropic_rest
 
 import extdeps.llm.anthropic {
@@ -14,21 +8,25 @@ import extdeps.llm.anthropic {
 }
 import extdeps.llm.anthropic_errors { AnthropicErrorShape }
 import std.credentials { EnvVar }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// 🟡 dissolved — feature:llm-anthropic-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.llm.mock_corpus) now governs WHICH
-// llm.Anthropic ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.anthropic.com/en/docs/claude-code"
+  }
+}
+
 service llm.Anthropic {
   config {
     endpoint: "https://api.anthropic.com"
     auth: Header("x-api-key")
     auth_input: api_key
     auth_source: EnvVar { name: "ANTHROPIC_API_KEY" }
-    // Anthropic API rate limits: varies by tier (1000-4000 RPM), use conservative default
+
     rate_limit: { requests: 1000, per: minute, scope: messages }
-    // Retry on overload and server errors with exponential backoff
+
     retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 529] }
   }
 
@@ -66,9 +64,6 @@ service llm.Anthropic {
     }
   }
 
-  // Claude Code CLI — shell realization of the same Anthropic dependency.
-  // Spec: https://docs.anthropic.com/en/docs/claude-code
-  // Auth: ANTHROPIC_API_KEY (CLI reads env; not wired through service config).
   operation CliPrompt {
     input {
       prompt: String

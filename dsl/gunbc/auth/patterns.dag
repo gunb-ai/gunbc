@@ -1,9 +1,3 @@
-// gunbc/auth/patterns.dag -- Gunbc-specific auth composition.
-//
-// These patterns intentionally live outside std/: they compose concrete
-// runtime environments, provider services, and local tooling to materialize
-// credentials and auth contexts.
-
 module gunbc.auth.patterns
 
 import std.resources { Filesystem, Network, AuthContext }
@@ -24,16 +18,10 @@ import extdeps.github.actions { GitHubActionsRuntime }
 import extdeps.runtime.local { LocalDevRuntime }
 import extdeps.shell
 
-// 🟢 terminal coproduct: consumer-owned auth runtime choice; each payload lives in its discrete concern home.
 type AuthRuntime
   = GitHubActions { runtime: GitHubActionsRuntime }
   | GcpMetadata { runtime: MetadataRuntime }
   | LocalDev { runtime: LocalDevRuntime }
-
-// Acquire a subject token based on runtime environment.
-// Useful independently for: any workflow that needs a subject token
-// without the full credential chain (e.g., direct STS exchange,
-// non-GCP federated auth).
 
 pattern acquire_subject_token(
   runtime: AuthRuntime,
@@ -42,15 +30,10 @@ pattern acquire_subject_token(
   node token = match runtime {
     GitHubActions { runtime: github_actions } => github_oidc(audience: audience, runtime: github_actions)
     GcpMetadata { runtime: _ } => metadata_oidc(audience: audience)
-    LocalDev { runtime: _ } => metadata_oidc(audience: audience)  // placeholder: local_auth() needs if/else expression support
+    LocalDev { runtime: _ } => metadata_oidc(audience: audience)
   }
   return { token: token.token }
 }
-
-// Optionally impersonate a service account.
-// Passes through the original token when no SA is specified.
-// Useful independently for: any workflow that needs conditional
-// SA impersonation outside of the credential chain.
 
 pattern optional_impersonation(
   access_token: Secret,
@@ -73,9 +56,6 @@ fn build_token(payload: Secret, scheme: AuthScheme, header_name: String, source_
   { token: payload, scheme: scheme, expires_at: none }
 }
 
-// OIDC -> STS -> optional impersonation -> secret access -> credential.
-// Composes fundamental auth steps with GCP service calls.
-
 pattern credential_chain(
   runtime: AuthRuntime,
   audience: NonEmptyStr,
@@ -89,7 +69,7 @@ pattern credential_chain(
   lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
 ) -> { token: AccessToken }
   uses net: Network
-  // provides auth: AuthContext  -- commented: parser doesn't support provides yet
+
 {
   node subject: acquire_subject_token(runtime: runtime, audience: audience)
 
@@ -121,9 +101,6 @@ pattern credential_chain(
   }
 }
 
-// Real implementations replacing stubs. Each acquires a subject token
-// from the runtime environment using the appropriate protocol.
-
 func github_oidc(audience: String, runtime: GitHubActionsRuntime) -> { token: Secret }
   uses net: Network
 {
@@ -144,24 +121,3 @@ func metadata_oidc(audience: String) -> { token: Secret }
   response = gcp.Metadata.GetIdentityToken(audience: audience)
   return { token: response.subject_token as String }
 }
-
-// ADC check -> OAuth2 refresh -> conditional re-auth via gcloud -> merge.
-// Commented: parser doesn't support if/else as inline expression yet.
-// Materializers (when enabled): gunbc.auth.credentials.gcp_oauth_access_token(strategy).
-//
-// func local_auth() -> Secret
-//   uses fs: Filesystem
-// {
-//   adc_path = shell.Env.Get(name: "GOOGLE_APPLICATION_CREDENTIALS")
-//
-//   adc = gcloud.Auth.ReadADC(path: adc_path.value) [when adc_path.value != none]   // parses ADC JSON -> client_id, client_secret, refresh_token
-//   adc_refresh = oauth2.Google.Refresh(
-//     client_id: adc.client_id, client_secret: adc.client_secret, refresh_token: adc.refresh_token
-//   ) [when adc_path.value != none]
-//   gcloud_auth = shell.GCloud.AuthPrintAccessToken()
-//
-//   let adc_token = adc_refresh.access_token
-//   let gcloud_token = gcloud_auth.access_token
-//   let result = if adc_path.value != none { adc_token } else { gcloud_token }
-//   return result
-// }

@@ -1,21 +1,9 @@
-// std/abi.dag — arch-agnostic ABI vocabulary for the §10 execution-contract layer.
-//
-// Scope: ArchitecturalRegister (open atom identity) and CallingConvention (closed syscall-role
-// set encoded as a record — one field per role for totality by construction). Cited per-arch
-// register atoms inhabit ArchitecturalRegister in extdeps/runtime/abi/*.dag (M3); std never
-// names amd64.
-//
-// Uses only Int / Bool / NonEmptyStr / List / records / enums — no distribution-enum imports.
-
 module std.abi
 
 import std.types { Bool, NonEmptyStr }
 
-// Open register atom identity (a node). Per-arch cited atoms (e.g. Amd64Gpr) inhabit this in
-// extdeps — identity only; register name is an attribute of the cited atom, not a string key.
 type ArchitecturalRegister
 
-// Closed syscall-role set (arg0..arg5, syscall_number, return_value) as record fields.
 type CallingConvention {
   arg0: ArchitecturalRegister
   arg1: ArchitecturalRegister
@@ -27,7 +15,6 @@ type CallingConvention {
   return_value: ArchitecturalRegister
 }
 
-// Stack growth direction for stack-based conventions (function-call ABIs land in later slices).
 type StackLayout {
   grows_down: Bool
 }

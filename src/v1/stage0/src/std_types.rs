@@ -69,7 +69,7 @@ pub fn container_expected_arity(name: String) -> Option<i64> {
 }
 
 pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
-    if (kind_name.clone().as_str() == "Witness".to_string().as_str()) {
+    if (kind_name.clone() == "Witness".to_string()) {
         Rc::new(vec!["T".to_string()])
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
@@ -201,11 +201,23 @@ pub enum Bool {
     False,
 }
 
-pub type Json = serde_json::Value;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Json(pub std::marker::PhantomData<()>);
 
-pub type Bytes = Vec<u8>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Bytes(pub std::marker::PhantomData<()>);
 
 pub type Char = i64;
+
+pub type List<Element> = Vec<Element>;
+
+pub type Set<Element> = Rc<crate::std_algebra::BooleanAlgebra<Element>>;
+
+pub type Map<Key, Value> = Rc<crate::std_algebra::PartialFunction<Key, Value>>;
+
+pub fn list_length<T>(items: Rc<Vec<T>>) -> i64 {
+    items.iter().fold(0, |acc: i64, _: _| (acc + 1))
+}
 
 pub type CommitSha = String;
 
@@ -224,8 +236,6 @@ pub type GistId = String;
 pub type Secret = String;
 
 pub type SecretValue = String;
-
-pub type Url = String;
 
 pub type SemVer = String;
 
@@ -364,7 +374,7 @@ pub enum AuthScheme {
 pub struct AccessToken {
     pub token: String,
     pub scheme: Rc<AuthScheme>,
-    pub expires_at: Box<Option<Timestamp>>,
+    pub expires_at: Option<Timestamp>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -445,35 +455,6 @@ pub struct StageResult {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DocumentLine {
-    pub text: String,
-    pub is_comment: bool,
-    pub is_blank: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DocumentSection {
-    pub title: String,
-    pub has_title: bool,
-    pub lines: Rc<Vec<Rc<DocumentLine>>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct Document {
-    pub header: String,
-    pub has_header: bool,
-    pub comment_prefix: String,
-    pub sections: Rc<Vec<Rc<DocumentSection>>>,
-    pub trailing_newline: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TextFile {
-    pub path: String,
-    pub document: Rc<Document>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RenderedTextFile {
     pub path: String,
     pub content: String,
@@ -532,3 +513,49 @@ pub struct DocSource {
     pub path: FilePath,
     pub kind: DocSourceKind,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ReferenceModel<T>(pub std::marker::PhantomData<T>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct True;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct False;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Pure;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Transport;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct SubDag;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Env;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Template;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Generated;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Static;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Xs;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct S;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct M;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct L;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Xl;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GET;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct POST;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PUT;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PATCH;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct DELETE;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct HEAD;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct OPTIONS;

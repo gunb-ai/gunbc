@@ -1,40 +1,19 @@
-// ctrl/review_verdict.dag -- staged substrate for ctrl PR-review verdicts.
-//
-// Current runtime authority remains in gunb-ai/ctrl:
-//   scripts/session-dashboard/findings_extract.mjs
-//   scripts/session-dashboard/findings_parser.mjs
-//   scripts/session-dashboard/findings_store.mjs
-//   scripts/session-dashboard/findings_triage.mjs
-//   scripts/session-dashboard/pr_feedback_format.mjs
-//   scripts/session-dashboard/review_subprocess_runner.mjs
-//   scripts/api-reviewer/review-one.mjs
-//   scripts/api-reviewer/review-with-cli.mjs
-//   scripts/api-reviewer/review-meta-with-cli.mjs
-//
-// This file is a Phase 1.5 staged contract for the ctrl/ -> .dag migration
-// program. It becomes authority only after the review-verdict emission target
-// and parity tests land, and the ctrl TS parser/tally files are deleted.
-
 module ctrl.review_verdict
 
-import std.types { ArtifactId, CommitSha, ContentHash, NonEmptyStr, Timestamp, Url }
+import std.types { ArtifactId, CommitSha, ContentHash, NonEmptyStr, Timestamp }
+import extdeps.github.pulls { ReviewState }
 
-// Coproduct receipt: terminal for the current provider coordinate.
-// Adding a provider is a new declaration row or ProviderOther value, not a
-// rewrite of parser/tally logic.
-type ReviewProvider
+type LlmReviewProvider
   = OpenaiPro
   | Codex
   | Claude
   | Cursor
+
+type ReviewProvider
+  = Llm { provider: LlmReviewProvider }
   | HumanReviewer
   | ProviderOther { name: NonEmptyStr }
 
-// Coproduct receipt: terminal. Semantic source-kind axis for who authored a
-// review. Distinct from ReviewProvider (transport/provider coordinate) and
-// Reviewer (structured identity including policy-backed reviewers).
-// Unattributed is the fail-closed open case (§5): unknown provider coordinates
-// map here instead of silently inheriting a guessed kind.
 type ReviewSource
   = Llm
   | Human
@@ -46,25 +25,12 @@ type PolicyRef {
   version: NonEmptyStr
 }
 
-// Coproduct receipt: terminal. LLM-only provider rows for AgentReviewer.
-// ReviewProvider (transport) retains HumanReviewer and ProviderOther for ctrl;
-// those coordinates lift to HumanSeatReviewer / UnattributedReviewer arms here.
-type LlmReviewProvider
-  = OpenaiPro
-  | Codex
-  | Claude
-  | Cursor
-
-// Coproduct receipt: terminal. Structured reviewer identity for verdict
-// carriers. Source kind is structural per arm — reviewer_source is tag
-// projection only (no nested ReviewProvider match undoing a conflation).
 type Reviewer
   = AgentReviewer { provider: LlmReviewProvider }
   | HumanSeatReviewer
   | PolicyReviewer { policy: PolicyRef }
   | UnattributedReviewer { provider_name: NonEmptyStr }
 
-// Total tag projection: each Reviewer arm maps 1:1 to ReviewSource.
 fn reviewer_source(reviewer: Reviewer) -> ReviewSource {
   match reviewer {
     AgentReviewer { provider: _ } => Llm
@@ -74,32 +40,12 @@ fn reviewer_source(reviewer: Reviewer) -> ReviewSource {
   }
 }
 
-// Coproduct receipt: staged. GitHub review/comment transport is the first
-// consumer; dashboard-only artifacts remain modeled so extraction can preserve
-// source identity instead of flattening every artifact to raw Markdown.
-// Dissolution trigger: when extdeps.github review/comment facts are reflected,
-// replace GitHubReviewState with typed GitHub state references.
 type ReviewArtifactKind
-  = GitHubReview { state: GitHubReviewState }
+  = GitHubReview { state: ReviewState }
   | GitHubReviewComment
   | GitHubIssueComment
   | DashboardReviewArtifact
 
-// Coproduct receipt: staged mirror of GitHub review states consumed by ctrl
-// today. This is not the extdeps authority for GitHub's review wire model.
-// Dissolution trigger: replace this mirror with typed state references from
-// the extdeps.github review/comment authority once that source-fact carrier
-// exists.
-type GitHubReviewState
-  = Approved
-  | ChangesRequested
-  | Commented
-  | Dismissed
-  | Pending
-
-// Coproduct receipt: terminal. This is the semantic verdict coordinate that
-// downstream merge-readiness logic consumes; it is not the same axis as raw
-// GitHub review state.
 type ReviewVerdict
   = Approve
   | ApproveWithComments
@@ -107,11 +53,6 @@ type ReviewVerdict
   | NeedsHumanTriage
   | NoVerdict
 
-// Coproduct receipt: staged. BLOCKING/P0/P1 currently drive action-routing in
-// ctrl pr_feedback_format.mjs. Priority and severity are split so the relay can
-// preserve both reviewer intent and scheduling weight.
-// Dissolution trigger: generated dashboard relay consumes this file and deletes
-// the regex classifier in pr_feedback_format.mjs.
 type FindingSeverity
   = Blocking
   | NonBlocking
@@ -124,32 +65,18 @@ type FindingPriority
   | P3
   | Unprioritized
 
-// Coproduct receipt: staged. Textual recognizers remain named evidence until
-// the review providers emit structural verdict rows directly.
-// Dissolution trigger: review providers return ReviewVerdictReport as JSON or
-// another typed transport payload, making TextualVerdictMarker unnecessary.
 type VerdictEvidence
   = ExplicitVerdictLine { verdict: ReviewVerdict }
-  | GitHubReviewStateEvidence { state: GitHubReviewState }
+  | GitHubReviewStateEvidence { state: ReviewState }
   | BlockingFindingPresent
   | NoBlockingConcernsText
   | HumanOverride { reason: String }
   | TextualVerdictMarker { marker: NonEmptyStr }
 
-// Coproduct receipt: staged. These are successful report extraction outcomes,
-// not verdicts. Parser fallback is explicit so "whole comment stored as one
-// finding" is a typed degraded success instead of silently looking like a clean
-// parse.
-// Dissolution trigger: provider outputs become structural and the Markdown
-// section parser is retired.
 type ReportExtractionState
   = ParsedDiscreteFindings
   | FallbackWholeCommentStored
 
-// Coproduct receipt: terminal subset for parse attempts that did not produce
-// a report. Kept separate from ReportExtractionState so ReviewVerdictReport
-// cannot carry no-report states, and ParseDeferred cannot carry successful
-// report states.
 type ParseDeferredState
   = DeferredCommentNotFound
   | DeferredAmbiguousShaMarker
@@ -161,11 +88,9 @@ type ReviewArtifact {
   kind: ReviewArtifactKind
   repo: NonEmptyStr
   pr_number: Int
-  // Source-native commit coordinate when the transport provides one. Issue
-  // comments and dashboard artifacts may omit it; Parse extracts successful
-  // head affiliation into ReviewVerdictReport.head_sha.
+
   source_commit_sha: CommitSha?
-  source_url: Url?
+  source_url: NonEmptyStr?
   body_hash: ContentHash?
   body_text: String
   observed_at: Timestamp?
@@ -199,8 +124,7 @@ type MergeReadinessTally {
   repo: NonEmptyStr
   pr_number: Int
   head_sha: CommitSha
-  // Non-authoritative lineage pointer only. ReviewVerdictReport values remain
-  // the Tally service input; the tally output owns only derived verdict counts.
+
   source_artifact_ids: List<ArtifactId>
   approval_count: Int
   request_changes_count: Int
@@ -213,12 +137,6 @@ type ReviewVerdictParseRequest {
   expected_head_sha: CommitSha
 }
 
-// Coproduct receipt: staged boundary result. ParsedReport and ParseDeferred
-// intentionally carry disjoint state axes: reports can only carry successful
-// ReportExtractionState, while deferred results can only carry no-report
-// ParseDeferredState. Dissolution trigger: provider outputs become structural
-// enough for Parse to return a provider-authored ReviewVerdictReport directly
-// or a typed extdeps failure carrier, retiring this parser boundary sum.
 type ReviewVerdictParseResult
   = ParsedReport { report: ReviewVerdictReport }
   | ParseDeferred { state: ParseDeferredState, artifact: ReviewArtifact }

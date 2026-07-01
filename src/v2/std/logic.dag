@@ -1,11 +1,4 @@
-// src/v2/std/logic.dag
-// Scope: classical two-valued logic.
-// Anchor: https://en.wikipedia.org/wiki/Boolean_algebra
-// Status: T-3 modeled.
-
-
 module v2.std.logic
-
 
 import v2.std.algebra {
   BooleanAlgebra,
@@ -15,7 +8,7 @@ import v2.std.algebra {
   boolean_algebra_type_node
 }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
+
 type Bool = True | False
 type BoolWidthFact {}
 type BoolEncodingFact {}
@@ -54,7 +47,6 @@ data bool_boolean_algebra: BooleanAlgebra<Bool> = BooleanAlgebra {
   }
 }
 
-
 fn bool_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^bool_node_symbol } },
@@ -62,7 +54,6 @@ fn bool_node() -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn bool_fact_atom(id: Symbol) -> Node {
   Node {
@@ -72,24 +63,19 @@ fn bool_fact_atom(id: Symbol) -> Node {
 }
 }
 
-
 fn bool_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
 
-
-// 🟡 needs-more-work — feature:bool-primitive-fact-nat-machine-node-carrier — scaffold:T-33-wave2 · Bool fact values are closed typed carriers in std.logic, then lowered to their canonical Node witnesses here. dissolve-on: std/machine or std/nat exports canonical bit-width and encoding Node constructors, replacing these variant witness atoms.
 fn bool_width_fact_node(width: BoolWidthFact) -> Node {
   let _width = width
   bool_fact_atom(id: ^bool_spec_fact_width_one_bit)
 }
 
-
 fn bool_encoding_fact_node(encoding: BoolEncodingFact) -> Node {
   let _encoding = encoding
   bool_fact_atom(id: ^bool_spec_fact_encoding_classical_two_valued)
 }
-
 
 fn bool_primitive_facts_node(facts: BoolPrimitiveFacts) -> Node {
   Node {
@@ -108,11 +94,9 @@ fn bool_primitive_facts_node(facts: BoolPrimitiveFacts) -> Node {
 }
 }
 
-
 fn bool_boolean_algebra_type_node() -> Node {
   boolean_algebra_type_node(inhabitant: bool_node())
 }
-
 
 fn bool_boolean_algebra_node() -> Node {
   boolean_algebra_node(inhabitant: bool_node())

@@ -1,13 +1,3 @@
-// gunbc/idea_pr_spine.dag — minimal flat spine for workflow_recursive witnesses.
-//
-// Slice of ctrl plans.idea_pr_spine relocated for gunbc harness re-proof.
-// Consumes std.reducible.ReduceVerdict (not re-minted).
-//
-// Layer direction: gunbc (product/workflow) imports ctrl.review_verdict — the
-// established review-authority substrate in dsl/ctrl (staged, v2-runnable).
-// No dsl/gunbc/*.dag imported ctrl.* before this slice; the direction is
-// intentional: review facts live in ctrl, idea→PR spine consumes them.
-
 module gunbc.idea_pr_spine
 
 import std.types { List }
@@ -18,7 +8,7 @@ import std.reducible {
 import ctrl.review_verdict {
   ReviewVerdict, Approve, ApproveWithComments, RequestChanges,
   NeedsHumanTriage, NoVerdict,
-  ReviewProvider, Claude, HumanReviewer, ProviderOther,
+  ReviewProvider, Llm, Claude, HumanReviewer, ProviderOther,
 }
 
 type WorkProduct
@@ -83,7 +73,7 @@ fn demo_spine_green() -> List<StageStep> {
     StageStep { stage: IdeaInput, verdict: Reduced { last_parts: 1 } },
     produce_step(DesignPlan, Reduced { last_parts: 3 }),
     produce_step(DagModel, Reduced { last_parts: 2 }),
-    review_step(Review { subject: DagModel, reviewer: Claude, verdict: Approve }),
+    review_step(Review { subject: DagModel, reviewer: Llm { provider: Claude }, verdict: Approve }),
     produce_step(Implementation, Reduced { last_parts: 5 }),
     review_step(Review { subject: Implementation, reviewer: ProviderOther { name: "policy" }, verdict: ApproveWithComments }),
     review_step(Review { subject: IntentAlignment, reviewer: HumanReviewer, verdict: Approve }),
@@ -96,7 +86,7 @@ fn demo_spine_unknown() -> List<StageStep> {
     StageStep { stage: IdeaInput, verdict: Reduced { last_parts: 1 } },
     produce_step(DesignPlan, Reduced { last_parts: 3 }),
     produce_step(DagModel, Reduced { last_parts: 2 }),
-    review_step(Review { subject: DagModel, reviewer: Claude, verdict: RequestChanges }),
+    review_step(Review { subject: DagModel, reviewer: Llm { provider: Claude }, verdict: RequestChanges }),
     produce_step(Implementation, Reduced { last_parts: 5 }),
     review_step(Review { subject: Implementation, reviewer: ProviderOther { name: "policy" }, verdict: Approve }),
     review_step(Review { subject: IntentAlignment, reviewer: HumanReviewer, verdict: Approve }),

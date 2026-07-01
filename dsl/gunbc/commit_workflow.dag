@@ -1,0 +1,284 @@
+module gunbc.commit_workflow
+
+import gunbc.ci_gate {
+  Gate,
+  RustMonolithGate, EmitHostGate, LayeringImportsGate,
+  ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
+  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
+}
+import gunbc.generated_artifact {
+  GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
+}
+import std.realization_schedule { string_list_eq }
+
+data doc_reachability_witness_entry: String = "dsl/test/claim/doc_reachability_witness_test.dag"
+
+type LocalTidyCheck
+  = LocalTidyWitnessCheck { entry: String, check_fns: List<String> }
+  | LocalTidyGateCheck { gate: GeneratedArtifactDriftGate }
+  | LocalTidyCargoFmtCheck
+
+type CommitWorkflowSurface
+  = GithubActionsCiJob
+  | GithubActionsRustTestsJob
+  | GitPrePushHook
+
+type CommitCheckKind
+  = CommitSpecGate { gate: Gate }
+  | CommitWitnessClaim { entry: String, check_fns: List<String> }
+  | CommitCargoFmtCheck
+
+type CommitCheckEnrollment {
+  check: CommitCheckKind
+  surfaces: List<CommitWorkflowSurface>
+}
+
+type CommitWorkflowRealizationKind
+  = CiYamlHandler
+  | GitPrePushScriptHandler
+
+type CommitWorkflowRealizationBinding {
+  surface: CommitWorkflowSurface
+  handler: CommitWorkflowRealizationKind
+  artifact: GeneratedArtifact
+}
+
+data commit_gate_roster: List<CommitCheckEnrollment> = [
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: EmitHostGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: LayeringImportsGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: ExtdepsExternalAuthorityGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: DslCompileCleanGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: GeneratedArtifactDriftGate },
+    surfaces: [GithubActionsCiJob, GitPrePushHook]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: SourceRootIngestGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: RegenVerifyGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: SelfHostRealizedComparisonGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: EmitDeterminismGate },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitSpecGate { gate: RustMonolithGate },
+    surfaces: [GithubActionsRustTestsJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: doc_reachability_witness_entry,
+      check_fns: ["doc_graph_has_no_orphan_docs", "doc_graph_has_no_dangling_links"]
+    },
+    surfaces: [GitPrePushHook]
+  },
+  CommitCheckEnrollment {
+    check: CommitCargoFmtCheck,
+    surfaces: [GitPrePushHook]
+  }
+]
+
+data commit_workflow_realization_bindings: List<CommitWorkflowRealizationBinding> = [
+  CommitWorkflowRealizationBinding {
+    surface: GithubActionsCiJob,
+    handler: CiYamlHandler,
+    artifact: CiYamlArtifact
+  },
+  CommitWorkflowRealizationBinding {
+    surface: GithubActionsRustTestsJob,
+    handler: CiYamlHandler,
+    artifact: CiYamlArtifact
+  },
+  CommitWorkflowRealizationBinding {
+    surface: GitPrePushHook,
+    handler: GitPrePushScriptHandler,
+    artifact: GithooksPrePushArtifact
+  }
+]
+
+fn commit_workflow_surface_eq(a: CommitWorkflowSurface, b: CommitWorkflowSurface) -> Bool {
+  match a {
+    GithubActionsCiJob =>
+      match b { GithubActionsCiJob => true  _ => false }
+    GithubActionsRustTestsJob =>
+      match b { GithubActionsRustTestsJob => true  _ => false }
+    GitPrePushHook =>
+      match b { GitPrePushHook => true  _ => false }
+  }
+}
+
+fn surface_enrolled(surface: CommitWorkflowSurface, surfaces: List<CommitWorkflowSurface>) -> Bool {
+  any(surfaces, s => commit_workflow_surface_eq(a: s, b: surface))
+}
+
+fn enrollment_has_surface(e: CommitCheckEnrollment, surface: CommitWorkflowSurface) -> Bool {
+  surface_enrolled(surface: surface, surfaces: e.surfaces)
+}
+
+fn gate_eq(a: Gate, b: Gate) -> Bool {
+  match a {
+    RustMonolithGate => match b { RustMonolithGate => true  _ => false }
+    EmitHostGate => match b { EmitHostGate => true  _ => false }
+    LayeringImportsGate => match b { LayeringImportsGate => true  _ => false }
+    ExtdepsExternalAuthorityGate => match b { ExtdepsExternalAuthorityGate => true  _ => false }
+    DslCompileCleanGate => match b { DslCompileCleanGate => true  _ => false }
+    GeneratedArtifactDriftGate => match b { GeneratedArtifactDriftGate => true  _ => false }
+    SourceRootIngestGate => match b { SourceRootIngestGate => true  _ => false }
+    RegenVerifyGate => match b { RegenVerifyGate => true  _ => false }
+    SelfHostRealizedComparisonGate => match b { SelfHostRealizedComparisonGate => true  _ => false }
+    EmitDeterminismGate => match b { EmitDeterminismGate => true  _ => false }
+  }
+}
+
+fn gates_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<Gate> {
+  fold(rows, init: [], f: fn(acc, row) {
+    match row.check {
+      CommitSpecGate { gate: g } => concat(acc, [g])
+      CommitWitnessClaim { entry: _, check_fns: _ } => acc
+      CommitCargoFmtCheck => acc
+    }
+  })
+}
+
+fn project_ci_floor_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
+  gates_from_enrollments(
+    rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiJob))
+  )
+}
+
+fn project_ci_rust_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
+  gates_from_enrollments(
+    rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsRustTestsJob))
+  )
+}
+
+fn local_tidy_check_eq(a: LocalTidyCheck, b: LocalTidyCheck) -> Bool {
+  match a {
+    LocalTidyWitnessCheck { entry, check_fns } =>
+      match b {
+        LocalTidyWitnessCheck { entry: entry2, check_fns: check_fns2 } =>
+          entry == entry2 && string_list_eq(left: check_fns, right: check_fns2)
+        _ => false
+      }
+    LocalTidyGateCheck { gate } =>
+      match b {
+        LocalTidyGateCheck { gate: gate2 } => gate_eq(a: gate, b: gate2)
+        _ => false
+      }
+    LocalTidyCargoFmtCheck =>
+      match b { LocalTidyCargoFmtCheck => true  _ => false }
+  }
+}
+
+fn project_local_tidy_checks(roster: List<CommitCheckEnrollment>) -> List<LocalTidyCheck> {
+  let pre_push = filter(roster, e => enrollment_has_surface(e: e, surface: GitPrePushHook))
+  concat(
+    project_local_tidy_witness_rows(roster: pre_push),
+    concat(
+      project_local_tidy_gate_rows(roster: pre_push),
+      project_local_tidy_fmt_rows(roster: pre_push)
+    )
+  )
+}
+
+fn project_local_tidy_witness_rows(roster: List<CommitCheckEnrollment>) -> List<LocalTidyCheck> {
+  fold(roster, init: [], f: fn(acc, row) {
+    match row.check {
+      CommitWitnessClaim { entry, check_fns } =>
+        concat(acc, [LocalTidyWitnessCheck { entry: entry, check_fns: check_fns }])
+      _ => acc
+    }
+  })
+}
+
+fn project_local_tidy_gate_rows(roster: List<CommitCheckEnrollment>) -> List<LocalTidyCheck> {
+  fold(roster, init: [], f: fn(acc, row) {
+    match row.check {
+      CommitSpecGate { gate: g } =>
+        concat(acc, [LocalTidyGateCheck { gate: g }])
+      _ => acc
+    }
+  })
+}
+
+fn project_local_tidy_fmt_rows(roster: List<CommitCheckEnrollment>) -> List<LocalTidyCheck> {
+  fold(roster, init: [], f: fn(acc, row) {
+    match row.check {
+      CommitCargoFmtCheck => concat(acc, [LocalTidyCargoFmtCheck])
+      _ => acc
+    }
+  })
+}
+
+fn gate_lists_eq(left: List<Gate>, right: List<Gate>) -> Bool {
+  if length(left) != length(right) {
+    false
+  } else if length(left) == 0 {
+    true
+  } else if !gate_eq(a: left.first(), b: right.first()) {
+    false
+  } else {
+    gate_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+fn local_tidy_lists_eq(left: List<LocalTidyCheck>, right: List<LocalTidyCheck>) -> Bool {
+  if length(left) != length(right) {
+    false
+  } else if length(left) == 0 {
+    true
+  } else if !local_tidy_check_eq(a: left.first(), b: right.first()) {
+    false
+  } else {
+    local_tidy_lists_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+  }
+}
+
+data commit_workflow_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
+
+data commit_workflow_ci_rust_job_gates: List<Gate> = project_ci_rust_job_gates(roster: commit_gate_roster)
+
+data commit_workflow_local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
+
+fn realization_artifact_path(surface: CommitWorkflowSurface) -> String {
+  match surface {
+    GithubActionsCiJob => artifact_path(a: CiYamlArtifact)
+    GithubActionsRustTestsJob => artifact_path(a: CiYamlArtifact)
+    GitPrePushHook => artifact_path(a: GithooksPrePushArtifact)
+  }
+}
+
+fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWorkflowRealizationKind {
+  match surface {
+    GithubActionsCiJob => CiYamlHandler
+    GithubActionsRustTestsJob => CiYamlHandler
+    GitPrePushHook => GitPrePushScriptHandler
+  }
+}
+
+fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> GeneratedArtifact {
+  match surface {
+    GithubActionsCiJob => CiYamlArtifact
+    GithubActionsRustTestsJob => CiYamlArtifact
+    GitPrePushHook => GithooksPrePushArtifact
+  }
+}

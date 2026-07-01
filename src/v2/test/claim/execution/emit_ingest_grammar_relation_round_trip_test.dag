@@ -1,0 +1,210 @@
+module v2.test.execution.emit_ingest_grammar_relation_round_trip
+
+import v2.compiler.ingest {
+  grammar_relation_row_forward_selection,
+  parse_tree_to_emitted_node
+}
+import v2.compiler.parse {
+  grammar_validate_for_parse,
+  parse_production_tree,
+}
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.translate { grammar_relation_row_for_emitted }
+import v2.extdeps.languages.dag {
+  dag_grammar_production_mvp1_fn_add,
+  dag_language_model_wave1,
+  dag_mvp1_fixture_emitted_add_fn,
+  dag_mvp1_grammar_relation_row_node,
+  dag_mvp1_source_text,
+  dag_mvp1_target_model,
+  dag_mvp1_translation_rules_node
+}
+import v2.std.algebra { Empty, list_append }
+import v2.std.collection { List, Set }
+import v2.std.compilers.lexing { Token, token_stream_remaining }
+import v2.std.compilers.target_model {
+  concrete_syntax_token_class,
+  concrete_syntax_token_list_from_node,
+}
+import v2.std.diagnostic {
+  Accepted,
+  Outcome,
+  Rejected,
+  bind_outcome,
+  outcome_accepted,
+  port_locus
+}
+import v2.std.grammar { GrammarRoot, ParseTree }
+import v2.std.logic { Bool }
+import v2.std.node { Node, Symbol }
+import v2.std.node_query { find_named_child }
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+fn grammar_relation_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
+  bind_outcome(
+    o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
+    f: fn(tokens_root) {
+      bind_outcome(
+        o: concrete_syntax_token_list_from_node(list_node: tokens_root),
+        f: fn(tokens) {
+          let classes = fold(
+            tokens,
+            init: Empty,
+            f: fn(acc, t) {
+              list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
+            }
+          )
+          outcome_accepted(value: classes)
+        }
+      )
+    }
+  )
+}
+
+fn emit_ingest_shared_rules() -> Node {
+  dag_mvp1_translation_rules_node()
+}
+
+fn emit_ingest_canonical_row() -> Node {
+  dag_mvp1_grammar_relation_row_node()
+}
+
+fn emit_ingest_canonical_emitted() -> Node {
+  dag_mvp1_fixture_emitted_add_fn
+}
+
+fn emit_backward_selects_canonical_row_holds() -> Bool {
+  match grammar_relation_row_for_emitted(
+    rules: emit_ingest_shared_rules(),
+    emitted: emit_ingest_canonical_emitted()
+  ) {
+    Accepted { value: row, diagnostics: _ } =>
+      row == emit_ingest_canonical_row()
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ingest_forward_selects_canonical_emitted_holds() -> Bool {
+  match grammar_relation_row_token_spine_classes(row: emit_ingest_canonical_row()) {
+    Accepted { value: frontier, diagnostics: _ } =>
+      match grammar_relation_row_forward_selection(
+        frontier: frontier,
+        rules: emit_ingest_shared_rules()
+      ) {
+        Accepted { value: emitted, diagnostics: _ } =>
+          emitted == emit_ingest_canonical_emitted()
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn emit_then_ingest_selector_identity_holds() -> Bool {
+  match grammar_relation_row_for_emitted(
+    rules: emit_ingest_shared_rules(),
+    emitted: emit_ingest_canonical_emitted()
+  ) {
+    Accepted { value: row, diagnostics: _ } =>
+      match grammar_relation_row_token_spine_classes(row: row) {
+        Accepted { value: frontier, diagnostics: _ } =>
+          match grammar_relation_row_forward_selection(
+            frontier: frontier,
+            rules: emit_ingest_shared_rules()
+          ) {
+            Accepted { value: recovered, diagnostics: _ } =>
+              recovered == emit_ingest_canonical_emitted()
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ingest_then_emit_selector_identity_holds() -> Bool {
+  match grammar_relation_row_token_spine_classes(row: emit_ingest_canonical_row()) {
+    Accepted { value: frontier, diagnostics: _ } =>
+      match grammar_relation_row_forward_selection(
+        frontier: frontier,
+        rules: emit_ingest_shared_rules()
+      ) {
+        Accepted { value: emitted, diagnostics: _ } =>
+          match grammar_relation_row_for_emitted(
+            rules: emit_ingest_shared_rules(),
+            emitted: emitted
+          ) {
+            Accepted { value: row, diagnostics: _ } =>
+              row == emit_ingest_canonical_row()
+            Rejected { diagnostics: _ } => false
+          }
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn emit_ingest_parse_root() -> GrammarRoot {
+  GrammarRoot {
+    start: ^dag_production_mvp1_fn_add,
+    productions: [dag_grammar_production_mvp1_fn_add()],
+    sync_tokens: Set {
+      member: fn(_) {
+        false
+      }
+    }
+  }
+}
+
+fn emit_ingest_parse_tokens(tokens: List<Token>) -> Outcome<ParseTree> {
+  let root = emit_ingest_parse_root()
+  match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
+    Accepted { value: validated, diagnostics: _ } =>
+      parse_production_tree(
+        tokens: tokens,
+        validated: validated,
+        production_name: ^dag_production_mvp1_fn_add
+      )
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+  }
+}
+
+fn emit_ingest_parsed_add_tree() -> Outcome<ParseTree> {
+  let lm = dag_language_model_wave1()
+  bind_outcome(
+    o: tokenize(
+      text: dag_mvp1_source_text,
+      file: ^emit_ingest_round_trip_source_file,
+      rules: lm.lex
+    ),
+    f: fn(stream) {
+      emit_ingest_parse_tokens(tokens: token_stream_remaining(stream: stream))
+    }
+  )
+}
+
+fn same_grammar_parse_ingest_bridge_holds() -> Bool {
+  match emit_ingest_parsed_add_tree() {
+    Accepted { value: tree, diagnostics: _ } =>
+      match parse_tree_to_emitted_node(
+        parse_tree: tree,
+        source_model: dag_mvp1_target_model()
+      ) {
+        Accepted { value: recovered, diagnostics: _ } =>
+          recovered == emit_ingest_canonical_emitted()
+        Rejected { diagnostics: _ } => false
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn emit_ingest_grammar_relation_round_trip_holds() -> Bool {
+  emit_backward_selects_canonical_row_holds()
+    && ingest_forward_selects_canonical_emitted_holds()
+    && emit_then_ingest_selector_identity_holds()
+    && ingest_then_emit_selector_identity_holds()
+    && same_grammar_parse_ingest_bridge_holds()
+}

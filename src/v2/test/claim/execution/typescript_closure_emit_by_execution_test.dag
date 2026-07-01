@@ -1,0 +1,207 @@
+module v2.test.execution.typescript_closure_emit_by_execution
+
+import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
+import v2.std.diagnostic { Accepted, Outcome, Rejected, bind_outcome }
+import v2.std.collection { Map, empty_map, map_insert }
+import v2.std.node { Node, Symbol }
+import v2.std.compilers.target_model {
+  BlockEvaluationMode,
+  InfixToken,
+  PrefixToken,
+  TargetModel,
+  TargetValueExpression,
+  ValueProducing,
+  canonical_operation_op_add,
+  target_model_emit_transforms_empty,
+  target_operator_realization_node,
+  target_operator_realizations_catalog_node,
+  target_value_expression_binding_ref,
+  target_value_expression_closure,
+  target_value_expression_primitive_apply,
+  target_value_expression_to_concrete_tokens
+}
+import extdeps.communication.medium { Medium }
+import v2.compiler.translate { serialize_concrete_syntax_tokens_to_source }
+import v2.extdeps.languages.typescript {
+  ts_mvp1_target_model_node,
+  ts_value_expression_projection,
+  ts_value_expression_projection_with_block_evaluation_mode,
+  ts_wave2a_lex
+}
+import v2.std.logic { Bool }
+
+data ts_closure_emit_canonical_source_text: String = "function (acc, h) { acc + h }"
+
+fn ts_closure_binding_spellings() -> Map<Symbol, String> {
+  map_insert(
+    map_insert(empty_map(), ^ts_closure_binding_acc, "acc"),
+    ^ts_closure_binding_h,
+    "h"
+  )
+}
+
+fn ts_closure_target_model() -> TargetModel {
+  TargetModel {
+    bundle: ts_mvp1_target_model_node(),
+    lex: ts_wave2a_lex(),
+    binding_spellings: ts_closure_binding_spellings(),
+    token_class_emit_transforms: target_model_emit_transforms_empty,
+    authority_source_text: "",
+    runtime_row: target_emit_host_runtime_row_unconfigured
+  }
+}
+
+fn ts_closure_add_body(left: Symbol, right: Symbol) -> TargetValueExpression {
+  target_value_expression_primitive_apply(
+    operation: canonical_operation_op_add(),
+    operands: [
+      target_value_expression_binding_ref(binding: left),
+      target_value_expression_binding_ref(binding: right)
+    ]
+  )
+}
+
+fn ts_closure_expr(
+  params: List<Symbol>,
+  left: Symbol,
+  right: Symbol
+) -> TargetValueExpression {
+  target_value_expression_closure(
+    params: params,
+    body: ts_closure_add_body(left: left, right: right)
+  )
+}
+
+fn ts_closure_canonical_expr() -> TargetValueExpression {
+  ts_closure_expr(
+    params: [^ts_closure_binding_acc, ^ts_closure_binding_h],
+    left: ^ts_closure_binding_acc,
+    right: ^ts_closure_binding_h
+  )
+}
+
+fn ts_closure_swapped_operands_expr() -> TargetValueExpression {
+  ts_closure_expr(
+    params: [^ts_closure_binding_acc, ^ts_closure_binding_h],
+    left: ^ts_closure_binding_h,
+    right: ^ts_closure_binding_acc
+  )
+}
+
+fn ts_closure_swapped_params_expr() -> TargetValueExpression {
+  ts_closure_expr(
+    params: [^ts_closure_binding_h, ^ts_closure_binding_acc],
+    left: ^ts_closure_binding_acc,
+    right: ^ts_closure_binding_h
+  )
+}
+
+fn ts_closure_infix_catalog() -> Node {
+  target_operator_realizations_catalog_node(
+    rows: [
+      target_operator_realization_node(
+        operation: canonical_operation_op_add(),
+        shape: InfixToken { token: ^ts_token_plus }
+      )
+    ]
+  )
+}
+
+fn ts_closure_prefix_catalog() -> Node {
+  target_operator_realizations_catalog_node(
+    rows: [
+      target_operator_realization_node(
+        operation: canonical_operation_op_add(),
+        shape: PrefixToken { token: ^ts_token_plus }
+      )
+    ]
+  )
+}
+
+fn ts_closure_emit_value_producing(
+  expr: TargetValueExpression,
+  catalog: Node
+) -> Outcome<Medium<String>> {
+  bind_outcome(
+    o: target_value_expression_to_concrete_tokens(
+      expr: expr,
+      projection: ts_value_expression_projection_with_block_evaluation_mode(
+        block_evaluation_mode: ValueProducing
+      ),
+      catalog: catalog
+    ),
+    f: fn(tokens) {
+      serialize_concrete_syntax_tokens_to_source(
+        target: ts_closure_target_model(),
+        tokens: tokens
+      )
+    }
+  )
+}
+
+fn ts_closure_emit_canonical_text() -> String {
+  match ts_closure_emit_value_producing(
+    expr: ts_closure_canonical_expr(),
+    catalog: ts_closure_infix_catalog()
+  ) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "TS_CLOSURE_EMIT_REJECTED"
+  }
+}
+
+fn ts_closure_emit_swapped_operands_text() -> String {
+  match ts_closure_emit_value_producing(
+    expr: ts_closure_swapped_operands_expr(),
+    catalog: ts_closure_infix_catalog()
+  ) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "TS_CLOSURE_EMIT_REJECTED"
+  }
+}
+
+fn ts_closure_emit_swapped_params_text() -> String {
+  match ts_closure_emit_value_producing(
+    expr: ts_closure_swapped_params_expr(),
+    catalog: ts_closure_infix_catalog()
+  ) {
+    Accepted { value: source, diagnostics: _ } => source.carried
+    Rejected { diagnostics: _ } => "TS_CLOSURE_EMIT_REJECTED"
+  }
+}
+
+test fn ts_closure_emit_by_execution_exact_holds() -> Bool {
+  ts_closure_emit_canonical_text() == ts_closure_emit_canonical_source_text
+}
+
+test fn ts_closure_emit_swapped_operands_discriminates_holds() -> Bool {
+  (ts_closure_emit_canonical_text() == ts_closure_emit_canonical_source_text)
+    && (ts_closure_emit_swapped_operands_text() != ts_closure_emit_canonical_text())
+    && (ts_closure_emit_swapped_operands_text() != "TS_CLOSURE_EMIT_REJECTED")
+}
+
+test fn ts_closure_emit_swapped_params_discriminates_holds() -> Bool {
+  (ts_closure_emit_canonical_text() == ts_closure_emit_canonical_source_text)
+    && (ts_closure_emit_swapped_params_text() != ts_closure_emit_canonical_text())
+    && (ts_closure_emit_swapped_params_text() != "TS_CLOSURE_EMIT_REJECTED")
+}
+
+test fn ts_closure_emit_prefix_row_perturbation_fails_closed_holds() -> Bool {
+  match ts_closure_emit_value_producing(
+    expr: ts_closure_canonical_expr(),
+    catalog: ts_closure_prefix_catalog()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn ts_closure_statement_sequenced_fails_closed_holds() -> Bool {
+  match target_value_expression_to_concrete_tokens(
+    expr: ts_closure_canonical_expr(),
+    projection: ts_value_expression_projection(),
+    catalog: ts_closure_infix_catalog()
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}

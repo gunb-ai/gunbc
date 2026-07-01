@@ -1,36 +1,17 @@
-// extdeps/languages/go/types.dag -- Go coercion data.
-//
-// Declares which Go types inhabit which .dag algebraic structures.
-// Go has garbage collection (like Python) but uses pointer types for
-// optional values (like Rust uses Option<T>).
-//
-// FAIL-CLOSED CONTRACT: Missing inhabitant = compile error.
-//
-// SCHEMA: Type definitions live in std/coercion.dag (shared authority).
-// This file instantiates data only — no local type families.
-//
-// Ref: The Go Programming Language Specification (go.dev/ref/spec)
-//      Effective Go (go.dev/doc/effective_go)
-//      std/algebra.dag, std/coercion.dag
-//
-// Consumers:
-//   v2/05_emit_go.dag -- coercion engine reads inhabitants
-
 module extdeps.languages.go.types
 
 import std.coercion {
   TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax
 }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-
-// =========================================================================
-// Type checkpoints
-//
-// Go has value types (int64, bool, float64) and reference types (slices,
-// maps, channels). is_copy is none — Go has no Copy trait; the value vs
-// reference distinction is structural and handled by the emitter via
-// ValueContext, not by a declared flag.
-// =========================================================================
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "go.dev/ref/spec"
+  }
+}
 
 data go_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Int",    target_type: "int64",       default_expr: "0",          is_copy: none, literal_suffix: none },
@@ -43,21 +24,8 @@ data go_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Json",   target_type: "interface{}", default_expr: "nil",        is_copy: none, literal_suffix: none }
 ]
 
-
-// =========================================================================
-// Algebra inhabitants
-//
-// CROSS-LANGUAGE COMPARISON:
-//   FreeMonoid     → []T (Go) vs Vec<T> (Rust) vs list[T] (Python)
-//   BooleanAlgebra → map[A]struct{} (Go) vs BTreeSet<A> (Rust) vs set[A] (Python)
-//   PartialFunction→ map[K]V (Go) vs HashMap<K,V> (Rust) vs dict[K,V] (Python)
-//
-// Go has no native set type. map[T]struct{} is idiomatic: isomorphic to
-// A → Bool (the set-theoretic definition).
-// =========================================================================
-
 data go_algebra_inhabitants: List<InhabitantDecl> = [
-  // FreeMonoid<T> → []T (Go slice)
+
   { algebra: "FreeMonoid",
     template: "[]\{0\}",
     arity: 1,
@@ -65,7 +33,6 @@ data go_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: none,
     is_copy: none },
 
-  // BooleanAlgebra<A> → map[A]struct{}
   { algebra: "BooleanAlgebra",
     template: "map[\{0\}]struct{}",
     arity: 1,
@@ -73,7 +40,6 @@ data go_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: none,
     is_copy: none },
 
-  // PartialFunction<K,V> → map[K]V
   { algebra: "PartialFunction",
     template: "map[\{0\}]\{1\}",
     arity: 2,
@@ -81,7 +47,6 @@ data go_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: none,
     is_copy: none },
 
-  // OrderedRing → int64
   { algebra: "OrderedRing",
     template: "int64",
     arity: 0,
@@ -89,7 +54,6 @@ data go_algebra_inhabitants: List<InhabitantDecl> = [
     import_path: none,
     is_copy: none },
 
-  // ApproximateField → float64
   { algebra: "ApproximateField",
     template: "float64",
     arity: 0,
@@ -98,43 +62,12 @@ data go_algebra_inhabitants: List<InhabitantDecl> = [
     is_copy: none }
 ]
 
-
-// =========================================================================
-// Optional: *T (pointer, nil = absent)
-//
-// Authority: pointer_template and nil_literal below. No separate optional
-// declarations — Go optional IS pointer indirection.
-// =========================================================================
-
-
-// =========================================================================
-// Callable: func(T) U
-//
-// Go functions are first-class. No owned/shared/static distinction —
-// all callable types are `func`. Simpler than Rust's fn/Fn/FnMut/FnOnce.
-// =========================================================================
-
 data go_callable: CallableRepr = CallableRepr {
   template: "func(\{params\}) \{return\}",
   param_separator: ", ",
   return_separator: " ",
   import_path: none
 }
-
-
-// =========================================================================
-// Sharing
-//
-// Go has GC but value semantics for structs. The value-vs-reference
-// distinction (large structs → *T, slices/maps/channels → identity) is
-// derived from ValueContext at emit time, not from a declared config.
-// Emission is translation, not decision-making.
-// =========================================================================
-
-
-// =========================================================================
-// Retained Go type system facts
-// =========================================================================
 
 data pointer_template: String = "*\{0\}"
 data go_optional_template: String = "*\{0\}"
@@ -155,11 +88,6 @@ data float_types: List<String> = ["float32", "float64"]
 
 data type_conversion_template: String = "\{type\}(\{expr\})"
 
-// Cast syntax: Go uses type conversion T(x). fail_open=true models Go's
-// actual semantics: type conversions are syntactically valid for compatible
-// types. The Go compiler validates type compatibility at build time.
-// Go type conversions: T(x). All numeric conversions valid.
-// Ref: Go Specification "Conversions"
 data go_cast_syntax: CastSyntax = {
   template: "\{type\}(\{expr\})",
   cast_rules: [

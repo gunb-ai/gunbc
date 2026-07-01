@@ -1,7 +1,3 @@
-// src/v2/extdeps/languages/lean.dag
-// Scope: Lean 4 language model for PROOF-1 termination export.
-// Status: T-4.17 wave-2b inhabitance — AlgebraInhabitanceDecl fill (Signed→CommutativeRing, Unsigned→CommutativeRing, Bool→BooleanAlgebra); wave-2a lex/grammar — FormalProduction flat rhs authority + GrammarSchemaProbe (token-sequence only; #3796 pattern); wave-1 scalar fact-bundles + MVP-1 `def`+`termination_by`; ParseGrammar nested GrammarExpr is CP-1b interim; bool canonical-B decl-ref — 🟡 E-6(b) staging.
-
 module v2.extdeps.languages.lean
 import v2.std.language_model { LanguageModel }
 
@@ -75,9 +71,6 @@ import v2.std.node {
   SyntheticOccurrence
 }
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/
-// 🟢 coproduct dissolution — P4-3208.
 type LeanDeclarationKind
   = LeanDef
   | LeanTheorem
@@ -85,16 +78,11 @@ type LeanDeclarationKind
   | LeanStructure
   | LeanAxiom
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Identifiers/
 type LeanName {
   namespace: List<Symbol>
   local: Symbol
 }
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/The-Type-System/Universes/
-// 🟢 coproduct dissolution — P4-3208.
 type LeanLevel
   = LeanLevelZero
   | LeanLevelSucc { predecessor: LeanLevelRef }
@@ -102,26 +90,20 @@ type LeanLevel
   | LeanLevelIMax { left: LeanLevelRef, right: LeanLevelRef }
   | LeanLevelParam { name: Symbol }
 
-
 type LeanLevelRef {
   name: LeanName
 }
-
 
 type LeanLevelNode {
   name: LeanName
   level: LeanLevel
 }
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/Terms/Functions/
-// 🟢 coproduct dissolution — P4-3208.
 type LeanBinderInfo
   = ExplicitBinder
   | ImplicitBinder
   | StrictImplicitBinder
   | InstanceImplicitBinder
-
 
 type LeanBinder {
   name: LeanName
@@ -129,20 +111,15 @@ type LeanBinder {
   info: LeanBinderInfo
 }
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/
 type LeanTermRef {
   name: LeanName
 }
-
 
 type LeanTermNode {
   name: LeanName
   form: LeanTermForm
 }
 
-
-// 🟢 coproduct dissolution — P4-3208.
 type LeanTermForm
   = LeanSort { level: LeanLevelRef }
   | LeanConst { name: LeanName, levels: List<LeanLevelRef> }
@@ -153,41 +130,29 @@ type LeanTermForm
   | LeanLet { binder: LeanBinder, value: LeanTermRef, body: LeanTermRef }
   | LeanMatch { scrutinee: LeanTermRef, alternatives: List<LeanMatchAlternative> }
 
-
 type LeanMatchAlternative {
   constructor: LeanName
   binders: List<LeanBinder>
   body: LeanTermRef
 }
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
 type LeanTerminationMeasure {
   subject: LeanName
   measure: LeanTermRef
 }
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
-// 🟢 coproduct dissolution — P4-3208.
 type LeanTerminationBy
   = LeanStructuralTermination { decreasing_parameter: LeanName }
   | LeanWellFoundedTermination { measure: LeanTerminationMeasure }
-
 
 type LeanDecreasingProof {
   proof: LeanTermRef
 }
 
-
-// 🟢 coproduct dissolution — P4-3208.
 type LeanTerminationClause
   = LeanTerminationByClause { termination: LeanTerminationBy }
   | LeanDecreasingBy { proof: LeanDecreasingProof }
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
-// 🟢 coproduct dissolution — P4-3208.
 type LeanDefinitionTermination
   = LeanNoExplicitTermination
   | LeanTerminationByOnly { termination: LeanTerminationBy }
@@ -197,8 +162,6 @@ type LeanDefinitionTermination
       proof: LeanDecreasingProof
     }
 
-
-// 🟢 coproduct dissolution — P4-3208.
 type LeanProofArtifact
   = LeanTheoremProofArtifact {
       name: LeanName,
@@ -212,9 +175,6 @@ type LeanProofArtifact
       termination: LeanDefinitionTermination
     }
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/
-// 🟢 coproduct dissolution — P4-3208.
 type LeanFidelityFeature
   = LeanKernelTerm
   | LeanPrettyNameSpelling
@@ -224,24 +184,16 @@ type LeanFidelityFeature
   | LeanUnresolvedUniverseLevel
   | LeanUnsupportedTheoremClass
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/
 type LeanProofCheckSemantics<IRCarrier> {
   kernel_definitional_reduction: Bool
   opaque_axiom_boundary: Bool
   proof_irrelevance_for_propositions: Bool
 }
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
-// 🟢 coproduct dissolution — P4-3208.
 type LeanIntKind
   = Signed
   | Unsigned
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
-// 🟢 coproduct dissolution — P4-3208.
 type LeanIntWidth
   = Bits8
   | Bits16
@@ -249,20 +201,15 @@ type LeanIntWidth
   | Bits64
   | Pointer
 
-
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Fixed-Precision-Integers/
-// 🟢 coproduct dissolution — P4-3208.
 type LeanScalar
   = IntScalar { kind: LeanIntKind, width: LeanIntWidth }
   | BoolScalar
-
 
 type LeanPrimitiveFacts {
   surface_spelling: Symbol
   scalar: LeanScalar
   representation: Symbol
 }
-
 
 data lean_facts_int8: LeanPrimitiveFacts = LeanPrimitiveFacts {
   surface_spelling: ^lean_surface_spelling_int8,
@@ -323,7 +270,7 @@ data lean_facts_bool: LeanPrimitiveFacts = LeanPrimitiveFacts {
   scalar: BoolScalar,
   representation: ^lean_repr_bool_inductive
 }
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/Definitions/Recursive-Definitions/
+
 data lean_mvp1_source_text: String = "def dec (n : Int32) : Int32 := n - 1\n  termination_by n"
 data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_int8,
@@ -337,10 +284,8 @@ data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_usize,
   lean_facts_bool
 ]
-// Anchor: https://lean-lang.org/doc/reference/4.20.0/Basic-Types/Booleans/
-// 🟡 canonical-B decl-ref · E-6(b) bounded-exception · scaffold feature:canonical-b-grounding-consumer · dissolve-on: B1-CANON+zip-fold consume (ledger: B1·T-9/C1)
-data lean_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
+data lean_bool_grounding: BooleanAlgebra<Bool> = bool_boolean_algebra
 
 fn lean_inhabitant_atom(id: Symbol) -> Node {
   Node {
@@ -350,11 +295,9 @@ fn lean_inhabitant_atom(id: Symbol) -> Node {
 }
 }
 
-
 fn lean_named_edge(name: Symbol, target: Node) -> Edge {
   Edge { label: Named { name: name }, target: target }
 }
-
 
 fn lean_int_kind_node(kind: LeanIntKind) -> Node {
   match kind {
@@ -362,7 +305,6 @@ fn lean_int_kind_node(kind: LeanIntKind) -> Node {
     Unsigned => lean_inhabitant_atom(id: ^lean_tag_unsigned)
   }
 }
-
 
 fn lean_int_width_node(width: LeanIntWidth) -> Node {
   match width {
@@ -373,7 +315,6 @@ fn lean_int_width_node(width: LeanIntWidth) -> Node {
     Pointer => lean_inhabitant_atom(id: ^lean_tag_pointer)
   }
 }
-
 
 fn lean_scalar_node(scalar: LeanScalar) -> Node {
   match scalar {
@@ -392,7 +333,6 @@ fn lean_scalar_node(scalar: LeanScalar) -> Node {
     BoolScalar => lean_inhabitant_atom(id: ^lean_tag_scalar_bool)
   }
 }
-
 
 fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> Node {
   Node {
@@ -415,7 +355,6 @@ fn lean_primitive_facts_node(facts: LeanPrimitiveFacts) -> Node {
 }
 }
 
-
 fn lean_primitive_inhabitant_node(id: Symbol, facts: LeanPrimitiveFacts) -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -430,11 +369,9 @@ fn lean_primitive_inhabitant_node(id: Symbol, facts: LeanPrimitiveFacts) -> Node
 }
 }
 
-
 fn lean_inhabitant_int32_node() -> Node {
   lean_primitive_inhabitant_node(id: ^lean_inhabitant_int32, facts: lean_facts_int32)
 }
-
 
 fn lean_int_spec_facts(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> Map<Symbol, Node> {
   Map {
@@ -485,7 +422,6 @@ fn lean_primitive_bundle_from_facts(facts: LeanPrimitiveFacts) -> PrimitiveFactB
   }
 }
 
-
 fn lean_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   fold_list(
     xs: lean_primitive_facts_catalog,
@@ -499,11 +435,9 @@ fn lean_wave1_primitive_fact_bundles() -> List<PrimitiveFactBundle> {
   )
 }
 
-
 fn lean_catalog_surface_symbol_step(sym: Symbol, acc: Bool, facts: LeanPrimitiveFacts) -> Bool {
   acc || sym == facts.surface_spelling
 }
-
 
 fn lean_catalog_surface_symbol(sym: Symbol) -> Bool {
   fold_list(
@@ -515,14 +449,10 @@ fn lean_catalog_surface_symbol(sym: Symbol) -> Bool {
   )
 }
 
-
 fn lean_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
 
-
-// MVP uses position-distinct literal token classes (not ident+binding) so token-sequence
-// probes match the fixture without claiming parse-stage binding projection.
 fn lean_mvp1_token_class_tail() -> List<Symbol> {
   [
     ^lean_token_name_dec,
@@ -542,14 +472,12 @@ fn lean_mvp1_token_class_tail() -> List<Symbol> {
   ]
 }
 
-
 fn lean_mvp1_formal_token_classes() -> List<Symbol> {
   Cons {
     head: ^lean_token_kw_def,
     tail: lean_mvp1_token_class_tail()
   }
 }
-
 
 fn lean_formal_rhs_from_token_classes(classes: List<Symbol>) -> List<FormalGrammarSymbol> {
   fold_list(
@@ -564,7 +492,6 @@ fn lean_formal_rhs_from_token_classes(classes: List<Symbol>) -> List<FormalGramm
   )
 }
 
-
 fn lean_mvp1_def_dec_formal_production() -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: ^lean_production_mvp1_def_dec),
@@ -572,13 +499,8 @@ fn lean_mvp1_def_dec_formal_production() -> FormalProduction {
   }
 }
 
-
 data lean_mvp1_def_dec_formal_production_authority: FormalProduction = lean_mvp1_def_dec_formal_production()
 
-
-// 🟡 gated — feature:CP-1b-bidirectional-grammar-carrier — parse sequence derived from same
-// non-empty token-class spine as FormalProduction.rhs; dissolve when ParseGrammar consumes
-// FormalProduction directly.
 fn lean_grammar_sequence_from_nonempty(
   head: Symbol,
   tail: List<Symbol>
@@ -595,14 +517,12 @@ fn lean_grammar_sequence_from_nonempty(
   )
 }
 
-
 fn lean_mvp1_def_dec_parse_expr() -> GrammarExpr {
   lean_grammar_sequence_from_nonempty(
     head: ^lean_token_kw_def,
     tail: lean_mvp1_token_class_tail()
   )
 }
-
 
 fn lean_lex_rule(token_class: Symbol, text: String) -> LexRule {
   TokenRule {
@@ -611,7 +531,6 @@ fn lean_lex_rule(token_class: Symbol, text: String) -> LexRule {
   }
 }
 
-
 fn lean_numeric_literal_lex_rule() -> LexRule {
   TokenRule {
     token_class: ^lean_token_numeric_literal,
@@ -619,9 +538,6 @@ fn lean_numeric_literal_lex_rule() -> LexRule {
   }
 }
 
-
-// 🟡 gated — feature:T-6-token-layout-trivia-policy — layout whitespace is baked into
-// LiteralPattern.text below. Dissolves when T-6 supplies TokenLayout/TriviaPolicy.
 fn lean_wave1_lex_rules() -> LexRuleSet {
   LexRuleSet {
     rules: [
@@ -640,11 +556,9 @@ fn lean_wave1_lex_rules() -> LexRuleSet {
   }
 }
 
-
 fn lean_wave1_lex() -> LexRules {
   ModeledLexRules { root: lean_wave1_lex_rules() }
 }
-
 
 fn lean_wave1_lex_token_symbol(sym: Symbol) -> Bool {
   lex_rule_set_token_class_member(
@@ -652,7 +566,6 @@ fn lean_wave1_lex_token_symbol(sym: Symbol) -> Bool {
     token_class: sym
   )
 }
-
 
 fn lean_wave1_grammar_root() -> GrammarRoot {
   let start = GrammarProduction {
@@ -667,11 +580,9 @@ fn lean_wave1_grammar_root() -> GrammarRoot {
   }
 }
 
-
 fn lean_wave1_grammar() -> ParseGrammar {
   ModeledGrammar { root: lean_wave1_grammar_root() }
 }
-
 
 fn lean_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
@@ -679,7 +590,6 @@ fn lean_ingest_grammar_schema() -> GrammarSchema {
     grammar: lean_wave1_grammar()
   }
 }
-
 
 fn lean_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {
@@ -692,9 +602,7 @@ fn lean_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   }
 }
 
-
 data lean_ingest_grammar_probe_authority: GrammarSchemaProbeBinding = lean_ingest_grammar_probe()
-
 
 fn lean_language_model_canonical_symbols() -> Set<Symbol> {
   Set {
@@ -706,7 +614,6 @@ fn lean_language_model_canonical_symbols() -> Set<Symbol> {
     }
   }
 }
-
 
 fn lean_integer_algebra_witness_node(facts: LeanPrimitiveFacts, kind: LeanIntKind, width: LeanIntWidth) -> Node {
   Node {
@@ -753,11 +660,7 @@ fn lean_bool_algebra_witness_node() -> Node {
 fn lean_scalar_algebra_inhabitance(facts: LeanPrimitiveFacts) -> AlgebraInhabitanceDecl {
   let inhabitant = lean_primitive_facts_node(facts: facts)
   match facts.scalar {
-    // Both signed and unsigned Lean fixed-precision integers use modular arithmetic
-    // (two's-complement / unsigned mod 2^n). Unsigned types expose wrapping subtraction,
-    // so they have an additive inverse in the modular sense and form Z/2^n Z —
-    // CommutativeRing, not merely Semiring. Neither class is OrderedRing: wrapping
-    // breaks a ≤ b → a+c ≤ b+c. Anchor: Lean 4 reference §Fixed-Precision Integers.
+
     IntScalar { kind, width } => AlgebraInhabitanceDecl {
       algebra: commutative_ring_type_node(inhabitant: inhabitant),
       inhabitant: inhabitant,
@@ -790,7 +693,6 @@ fn lean_model_core_wave1() -> ModelCore {
     partiality: PartialitySemanticsDecl { operations: [] }
   }
 }
-
 
 fn lean_language_model_wave1() -> LanguageModel {
   LanguageModel {

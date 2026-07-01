@@ -1,7 +1,3 @@
-// extdeps/cache/buildbuddy.dag — BuildBuddy remote CAS cache catalog (cited facts).
-//
-// Spec: https://www.buildbuddy.io/docs/remote-cache
-
 module extdeps.cache.buildbuddy
 
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
@@ -23,6 +19,16 @@ import std.cache_interface {
   Network,
 }
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.buildbuddy.io/docs/remote-cache"
+  }
+}
+
 data buildbuddy_cas_id: CacheInterfaceId = "buildbuddy_cas"
 
 data buildbuddy_cas_facts: CacheInterfaceCatalogFacts = {
@@ -30,8 +36,7 @@ data buildbuddy_cas_facts: CacheInterfaceCatalogFacts = {
   backing_surface: "buildbuddy-remote-cas"
   transport_encoding: CasContentEncoding
   key_derivation: {
-    // OUR content-addressed cache: inputs DERIVED from invalidation_triggers (no
-    // ToolchainChange ⟹ just the upsert subject content). Nothing to author.
+
     key_inputs: ContentAddressed
     overwritable: false
     prefix_fallback_allowed: false

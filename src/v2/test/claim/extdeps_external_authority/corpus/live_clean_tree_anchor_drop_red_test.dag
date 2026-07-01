@@ -1,0 +1,19 @@
+module v2.test.extdeps_external_authority.corpus.live_clean_tree_anchor_drop_red
+
+import v2.lens.extdeps_external_authority {
+  extdeps_external_authority_has_missing_formal_anchor_via_live_policy,
+  extdeps_external_authority_live_violation_count_for_module
+}
+import v2.lens.extdeps_external_authority.module_refs {
+  extdeps_fixture_clean_https_no_anchor_module
+}
+import v2.std.logic { Bool }
+
+test fn corpus_live_clean_tree_anchor_drop_red_holds() -> Bool {
+  extdeps_external_authority_live_violation_count_for_module(
+    module: extdeps_fixture_clean_https_no_anchor_module
+  ) == 1
+    && extdeps_external_authority_has_missing_formal_anchor_via_live_policy(
+      module: extdeps_fixture_clean_https_no_anchor_module
+    )
+}

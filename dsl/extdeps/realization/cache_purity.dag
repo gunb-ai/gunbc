@@ -1,54 +1,40 @@
-// extdeps/realization/cache_purity.dag — warm==cold cache-purity verdict (DESIGN §5; ROADMAP §2 P1).
-//
-// The §5 principle (caching-via-realization): a cache that changes a verdict is not a cache bug,
-// it is a PURITY bug the cache EXPOSED. A content-keyed realization promises
-// `output = f(declared key inputs)`. If an input is READ during realization but is NOT in the
-// content-key, a WARM hit (addressed by the now-stale key) serves a result a fresh COLD recompute
-// would no longer produce: warm != cold. So the cache IS the purity falsifier.
-//
-// This carrier models the falsifier's typed VERDICT: warm==cold ⟹ Pure; warm!=cold ⟹ Impure,
-// LOCATED at the read-but-unkeyed axis. It is the durable artifact v2 inherits; the executable
-// oracle (the realizer handler that performs the cold/warm byte comparison) is the v1 seed
-// `src/v1/stage0/src/cache_purity_oracle.rs` (§7 Rust→zero). The realization it audits is the
-// lone correct content-keyed realization — `resolved_graph_cache` (this directory's sibling).
-//
-// Relationship to extdeps.cache.key_completeness: that lens validates the DECLARE side (a cited
-// key's `inputs_considered` must cover what it promises to invalidate on). This carrier is the
-// RUN side — the executable oracle that catches an input which is read at realization time yet
-// absent from the key. Declared-completeness and run-time-purity are the two ends of the same
-// single authority (the content-key); this models the run-time end.
-
 module extdeps.realization.cache_purity
 
-import std.types { NonEmptyStr, ContentHash, Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// The located violation: under a FIXED content-key the realization output diverged, so an input
-// is read-but-unkeyed. A warm hit under `content_key` serves `warm_digest`, but a fresh cold
-// recompute now yields `cold_digest`; `unkeyed_axis` names the impure input (the §5 locus).
-type CachePurityViolation {
-  content_key: ContentHash    // the key held FIXED across the perturbation
-  unkeyed_axis: NonEmptyStr   // the read-but-unkeyed input — the §5 locus
-  warm_digest: ContentHash    // what a warm cache hit serves (the cached baseline)
-  cold_digest: ContentHash    // what a fresh cold recompute now yields
+import std.types { NonEmptyStr, ContentHash, Bool }
+import std.perturbation {
+  ForwardSameInSameOut,
+  ResponseConsistent,
+  ResponseViolation,
+  perturbation_verdict,
 }
 
-// The warm==cold purity verdict. Pure = a hit serves exactly what cold would; Impure carries the
-// located violation. No silent "warning" state — divergence is fail-closed (DESIGN §5).
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dsl/extdeps/realization"
+  }
+}
+
+type CachePurityViolation {
+  content_key: ContentHash
+  unkeyed_axis: NonEmptyStr
+  warm_digest: ContentHash
+  cold_digest: ContentHash
+}
+
 type CachePurityVerdict
   = Pure
   | Impure { violation: CachePurityViolation }
 
-// The warm==cold rule. The realizer handler performs the cold/warm canonical-byte comparison and
-// supplies the result (`warm_equals_cold`) plus, on divergence, the located violation naming the
-// read-but-unkeyed axis. This fn fixes the verdict mapping: equal ⟹ Pure, else ⟹ Impure.
 fn cache_purity_verdict(warm_equals_cold: Bool, violation: CachePurityViolation) -> CachePurityVerdict {
-  if warm_equals_cold {
-    Pure
-  } else {
-    Impure { violation: violation }
+  match perturbation_verdict(
+    reading: ForwardSameInSameOut,
+    output_responded: warm_equals_cold == false
+  ) {
+    ResponseConsistent => Pure
+    ResponseViolation => Impure { violation: violation }
   }
 }
-
-// (No `is_pure` Bool projection: that would restate the `CachePurityVerdict` coproduct as a
-// predicate — the §5 predicate-dissolution anti-pattern. Consumers `match` the verdict directly
-// so the located violation stays in hand on the Impure arm, never flattened to a bare Bool.)

@@ -1,0 +1,59 @@
+module extdeps.os.systemd
+
+import std.types { NonEmptyStr }
+import std.list { List }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.os.systemd_contracts { systemd_unit_active_state_wire_contract }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "man7.org/linux/man-pages/man1/systemctl.1.html#is-active"
+  }
+}
+
+type SystemdUnitActiveState
+  = Active
+  | Inactive
+  | Activating
+  | Deactivating
+  | Reloading
+  | Failed
+
+data systemd_parse_label_derivation_debt: List<NonEmptyStr> = [
+  "dissolve-on: when contract-driven derivation is available (§3 single authority), derive parse/label from wire contract instead of hand-rolling",
+]
+
+
+data systemd_memory_max_property: NonEmptyStr = "MemoryMax"
+
+data systemd_memory_swap_max_property: NonEmptyStr = "MemorySwapMax"
+
+data systemd_cpu_weight_property: NonEmptyStr = "CPUWeight"
+
+fn parse_systemd_unit_active_state(raw: String) -> SystemdUnitActiveState? {
+  if raw == "active" { Present { value: Active } }
+  else { if raw == "inactive" { Present { value: Inactive } }
+  else { if raw == "activating" { Present { value: Activating } }
+  else { if raw == "deactivating" { Present { value: Deactivating } }
+  else { if raw == "reloading" { Present { value: Reloading } }
+  else { if raw == "failed" { Present { value: Failed } }
+  else { none } } } } } }
+}
+
+fn systemd_unit_active_state_wire_label(s: SystemdUnitActiveState) -> String {
+  match s {
+    Active => "active"
+    Inactive => "inactive"
+    Activating => "activating"
+    Deactivating => "deactivating"
+    Reloading => "reloading"
+    Failed => "failed"
+  }
+}
+
+type SystemdUnitStatus {
+  name: NonEmptyStr
+  active_state: SystemdUnitActiveState
+}

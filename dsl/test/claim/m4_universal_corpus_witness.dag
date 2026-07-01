@@ -1,24 +1,12 @@
-// dsl/test/claim/m4_universal_corpus_witness.dag
-//
-// M4.1 §5 proof: hermetic governance reads the whole-tree published corpus, NOT the entry import
-// closure. This entry imports ONLY the service module — the corpus module is a separate file the
-// entry never pulls. Under M4.0 (closure-scoped corpus) the RED arm goes vacuously GREEN because
-// GovernedUniversalProbe is not corpus-governed. Under M4.1 the runtime precomputes keys from the
-// full dsl/ tree and the same discriminating pair as m4_governed_service_witness holds.
-//
-// Driven by interp_recorded_fixture_test (claim_batch subprocess, hermetic, no fixture-store).
-
 module test.claim.m4_universal_corpus_witness
 
 import test.fixture.m4_universal_governed_probe { GovernedUniversalProbe }
 
-// GREEN: published op realizes via inline mock (gate passes).
 func witness_universal_published_realizes() -> Bool {
   let r = GovernedUniversalProbe.Allowed()
   return r.ok == "universal-published-realized"
 }
 
-// RED: unpublished op on a corpus-governed service must fail closed before inline mock.
 func witness_universal_unpublished_fails_closed() -> Bool {
   let r = GovernedUniversalProbe.Forbidden()
   return r.ok != ""

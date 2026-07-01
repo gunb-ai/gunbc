@@ -1,8 +1,3 @@
-// Hand-maintained bootstrap seed — recursive fingerprint + witness ahead of
-// compile.dag (atom_identity_hash not wired in v1 compile module yet).
-// regen_stage0 copies this file; do not overwrite from codegen.
-// Source module: v1.compiler.compile (DAG collect support surface).
-
 use crate::v1_compiler_emit::escape_json_string;
 use crate::v1_rt;
 use crate::v1_std_core::{
@@ -75,7 +70,6 @@ pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
     dag_node_surface_fingerprint_rec(node)
 }
 
-/// Multiset digest for commutative child subtrees (Conj/Disj siblings).
 fn dag_node_bag_hash(digests: Vec<String>) -> String {
     let mut sorted = digests;
     sorted.sort();
@@ -86,7 +80,6 @@ fn dag_node_bag_hash(digests: Vec<String>) -> String {
     acc
 }
 
-/// Positional digest for ordered subtrees (params, Arrow operands, etc.).
 fn dag_node_seq_hash(digests: Vec<String>) -> String {
     let mut acc = v1_rt::atom_identity_hash("^dag_collect_seq_empty".to_string());
     for digest in digests {
@@ -96,7 +89,6 @@ fn dag_node_seq_hash(digests: Vec<String>) -> String {
 }
 
 fn child_subtree_hash(connective: Connective, digests: Vec<String>) -> String {
-    // Conj/Disj: commutative bag; Arrow/NoConnective: positional sequence.
     match connective {
         Connective::Conj | Connective::Disj => dag_node_bag_hash(digests),
         Connective::Arrow | Connective::NoConnective => dag_node_seq_hash(digests),
@@ -205,10 +197,10 @@ mod fingerprint_tests {
             params: Rc::new(params),
             inferred: None,
             return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
+            uses: crate::v1_std_core::empty_node_list(),
             body: None,
             transport: None,
-            properties: Rc::new(vec![]),
+            properties: crate::v1_std_core::empty_node_list(),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -217,7 +209,6 @@ mod fingerprint_tests {
         })
     }
 
-    /// Names-only fingerprint would treat these as equal; recursive hash must not.
     #[test]
     fn recursive_fingerprint_distinguishes_same_named_child_subtrees() {
         let child_a_conj = shell_node("a", Connective::Conj, vec![], vec![]);

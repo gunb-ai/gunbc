@@ -1,28 +1,4 @@
-// tools/codegen.dag -- Conditional codegen execution.
-//
-// Checks if codegen outputs exist (stamp file). If stale/missing,
-// runs the codegen binary and writes a new stamp file.
-// Uses conditional execution (when) rather than content_upsert.
-//
-// Replaces: gunbc-app/src/codegen/graph.rs (~9 nodes)
-
 module tools.codegen
 
 import std.resources { Filesystem }
 import extdeps.gunbc { shell.Codegen }
-
-// Commented: compiler doesn't bind `uses` resource variables into scope yet.
-// func codegen() -> { success: Bool, ran: Bool }
-//   uses fs: Filesystem
-// {
-//   check = shell.Codegen.Check()
-//   run = shell.Codegen.Run() [when !check.needed]
-//   stamp [when run.success] = fs.write(
-//     path: "target/codegen/.stamp",
-//     content: "ok"
-//   )
-//   return {
-//     success: check.needed || run.success,
-//     ran: !check.needed
-//   }
-// }

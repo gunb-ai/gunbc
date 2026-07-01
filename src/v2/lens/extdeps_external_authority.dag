@@ -1,18 +1,6 @@
-// src/v2/lens/extdeps_external_authority.dag
-// Scope: extdeps module external-authority anchor guard (DESIGN §3 grounding).
-// Every extdeps/ module must declare `data extdeps_external_authority_anchor:
-// ExternalAuthority { uri: Uri }` with an external http(s) URL to the concept spec.
-// Consumer: tools.extdeps_external_authority_gate + CI floor witnesses.
-//
-// Projection: structural parse bridge in extdeps_shape_transport_policy_project.rs
-// (dissolve-on #5126). NO string prefix tests; scheme decode is exhaustive
-// constructor-identity equality only.
-//
-// Live clean-tree: fail-closed default + anchor-machinery exempt + shrinking
-// backfill_pending snapshot (dsl/extdeps/external_authority_backfill_pending.txt).
-
 module v2.lens.extdeps_external_authority
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SubstrateMandatoryTag, SingleAuthority }
 
 import extdeps.uri {
   Http,
@@ -53,7 +41,6 @@ fn anchor_kind_is_present(kind: String) -> Bool {
   kind == "present"
 }
 
-// Exhaustive constructor-identity decode — the ONLY place raw scheme strings are inspected.
 fn decode_uri_scheme(raw: String) -> Optional<UriScheme> {
   match raw {
     "Http" => Present { value: Http }
@@ -90,6 +77,10 @@ fn extdeps_external_authority_is_clean_tree_roster_excluded(module: QualifiedNam
   extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name(module: module)
 }
 
+fn extdeps_external_authority_anchor_shadow_masked(module: QualifiedName) -> Bool {
+  extdeps_external_authority_anchor_shadow_masked_for_qualified_name(module: module)
+}
+
 fn scheme_violations_for_present_anchor(
   module: QualifiedName,
   raw: String
@@ -109,7 +100,6 @@ fn scheme_violations_for_present_anchor(
   }
 }
 
-// Strict per-module violations (lens-unit witnesses on explicit modules).
 fn extdeps_external_authority_violations_for_module(
   module: QualifiedName
 ) -> List<ExtdepsExternalAuthorityViolation> {
@@ -122,7 +112,6 @@ fn extdeps_external_authority_violations_for_module(
   }
 }
 
-// Live clean-tree policy: fail-closed default + machinery exempt + shrinking backfill_pending.
 fn extdeps_external_authority_live_violations_for_module(
   module: QualifiedName
 ) -> List<ExtdepsExternalAuthorityViolation> {
@@ -233,14 +222,10 @@ fn extdeps_external_authority_has_non_external_scheme(
     }
 }
 
-// Live projection roster: host-backed (extdeps_shape_transport_policy_project.rs).
-
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "a substrate-required external_authority_anchor field (Node-tree projection, dissolve-on #5126)",
-    dissolve_on: "every extdeps module declaring its anchor is enforced by construction (a required field), not by a presence-checking lens"
-  },
-  rationale: "Anchor presence per extdeps module is a decidable presence check -- the same shape as this construction-justification rule itself -- interim until the substrate requires the field by construction."
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}
+
+data shadow_mask_construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

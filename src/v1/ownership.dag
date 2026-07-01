@@ -1,32 +1,3 @@
-// v2 ownership analysis -- static proof that try_unwrap fallbacks are unnecessary.
-//
-// D-ownership: Classify every use of every binding by how it consumes the value.
-// Compute semantic_consumer_count after removing administrative edges (TCO
-// threading, pass-through reads). At try_unwrap sites:
-//
-//   semantic_consumers == 1  -> Rc::into_inner().expect("sole owner")
-//   semantic_consumers > 1   -> compile error: cannot guarantee O(1) mutation
-//   unclassified             -> completeness bug in this analysis
-//
-// One pass over each function body. No heuristics, no fallbacks.
-//
-// Clone elision (FF-1 exploitation):
-//
-// The .dag language guarantees fan-out is a syntactic property (facts flow
-// forward). This analysis computes binding_fan_out and the emitter
-// reads it: fan-out=0 → dead code, fan-out=1 → move, fan-out>1 → Rc + clone.
-//
-// VarBindingKind flows from inference through the ownership proof to emission.
-// BindingUsage carries binding_kind so the proof is self-contained:
-//
-//   LocalValueBinding   (params, let-bindings) → Rc<T> owned → movable if fan-out=1
-//   MatchBoundBinding   (match pattern vars)   → &T reference → never movable
-//   FunctionValueBinding, VariantValueBinding   → not values  → never movable
-//
-// Lambda/foreach bodies are walked in a fresh accumulator; all discovered names
-// are recorded twice in the outer accumulator (fan-out >= 2), preventing name
-// collisions from incorrectly marking outer bindings as movable.
-
 module v1.compiler.ownership
 
 import v1.std.core {
@@ -50,16 +21,6 @@ import v1.std.core {
 }
 import v1.compiler.emit { to_string }
 
-// =========================================================================
-// Edge classification
-//
-// Each use of a binding is classified by how it affects the value:
-//   Consumed  -- value is moved/destructured (ownership transferred)
-//   Read      -- value is read but not consumed (borrow)
-//   Threaded  -- administrative: TCO accumulator threading
-//   Projected -- field projection (partial read)
-// =========================================================================
-
 type EdgeKind = Consumed | Read | Threaded | Projected
 
 type EdgeClassification {
@@ -67,10 +28,6 @@ type EdgeClassification {
   site: String
   span_start: Int
 }
-
-// =========================================================================
-// Binding usage -- per-binding analysis result
-// =========================================================================
 
 type BindingUsage {
   name: String
@@ -82,18 +39,9 @@ fn semantic_consumer_count(usage: BindingUsage) -> Int {
   usage.consumers |> filter(c => match c.kind { Consumed => true, _ => false }) |> count
 }
 
-// Fan-out: total reference count across all edge kinds.
-// This is the syntactic fan-out of a binding — how many times it is referenced.
-// The emit rule: fan-out=0 → dead code, fan-out=1 → move, fan-out>1 → Rc + clone.
-// Threaded edges (fold accumulators) are excluded — they are linearity-preserving
-// by construction and should not inflate fan-out.
 fn binding_fan_out(usage: BindingUsage) -> Int {
   usage.consumers |> filter(c => match c.kind { Threaded => false, _ => true }) |> count
 }
-
-// =========================================================================
-// Ownership proof -- per-function analysis output
-// =========================================================================
 
 type OwnershipDecision
   = SoleOwner { binding: String, site: String }
@@ -123,10 +71,6 @@ type OwnershipProof {
   fold_acc_unwrap: List<FoldAccUnwrapProof>
 }
 
-// =========================================================================
-// Internal accumulator for collecting edge classifications
-// =========================================================================
-
 type UsageAccum {
   bindings: Map<String, BindingUsage>
   fold_call_nodes: List<Node>
@@ -151,10 +95,6 @@ fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, bin
   UsageAccum { bindings: map_insert(accum.bindings, name, updated), fold_call_nodes: accum.fold_call_nodes }
 }
 
-// =========================================================================
-// Branch-aware merge: mutually exclusive branches (match arms, if/else)
-// =========================================================================
-
 fn max_usage_by_fan_out(a: BindingUsage, b: BindingUsage) -> BindingUsage {
   if binding_fan_out(usage: b) > binding_fan_out(usage: a) { b } else { a }
 }
@@ -176,10 +116,6 @@ fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAcc
   let branch_fold_nodes = branches |> flat_map(b => b.fold_call_nodes |> skip(base_fold_count))
   UsageAccum { bindings: binding_merged, fold_call_nodes: base.fold_call_nodes |> concat(branch_fold_nodes) }
 }
-
-// =========================================================================
-// AST walker -- classifies each variable reference by position
-// =========================================================================
 
 fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, NewlineIndex>) -> UsageAccum {
   match texpr.expr_data {
@@ -335,10 +271,6 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
   }
 }
 
-// =========================================================================
-// Decision builder -- convert BindingUsage map to OwnershipDecision list
-// =========================================================================
-
 fn make_decision(usage: BindingUsage) -> OwnershipDecision {
   let sc = semantic_consumer_count(usage: usage)
   if sc == 1 {
@@ -361,15 +293,6 @@ fn make_decision(usage: BindingUsage) -> OwnershipDecision {
   }
 }
 
-// =========================================================================
-// Movable set -- emit-facing projection of ownership analysis
-//
-// A binding is "movable" when its fan-out is exactly 1 AND it is an owned
-// local (parameter or let-binding). Match-bound variables produce &T
-// references in Rust (from .as_ref() destructuring) and must always clone.
-// The binding_kind field on BindingUsage carries this fact from inference.
-// =========================================================================
-
 fn is_owned_local(kind: VarBindingKind?) -> Bool {
   match kind {
     Present { value: LocalValueBinding } => true
@@ -383,12 +306,6 @@ fn build_movable_set(proof: OwnershipProof) -> Set<String> {
     |> fold(init: empty_set(), f: (acc, usage) => set_insert(acc, usage.name))
 }
 
-// Read-only params: function parameters where all usage edges are
-// Read/Projected/Threaded (no Consumed). These can be passed by borrow
-// (&Rc<T>) instead of owned (Rc<T>), eliminating clone at each call site.
-// Fan-out=1 params are excluded — they're already movable (zero cost).
-// param_names restricts to actual function parameters (VarBindingKind
-// doesn't distinguish params from let-bindings).
 fn build_read_only_params(proof: OwnershipProof, param_names: Set<String>) -> Set<String> {
   proof.bindings |> map_values
     |> filter(usage =>
@@ -399,10 +316,6 @@ fn build_read_only_params(proof: OwnershipProof, param_names: Set<String>) -> Se
     )
     |> fold(init: empty_set(), f: (acc, usage) => set_insert(acc, usage.name))
 }
-
-// =========================================================================
-// Callable reference collection — which functions are passed as values?
-// =========================================================================
 
 fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<String> {
   match texpr.expr_data {
@@ -465,10 +378,6 @@ fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<Stri
     _ => empty_set()
   }
 }
-
-// =========================================================================
-// Fold accumulator unwrap — structural analysis (target-agnostic)
-// =========================================================================
 
 fn fold_terminal_expr(body: Node) -> Node {
   match body.expr_data {
@@ -630,10 +539,6 @@ fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> Fold
     eligible: eligible
   }
 }
-
-// =========================================================================
-// Analysis entry point
-// =========================================================================
 
 fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<String, NewlineIndex>) -> OwnershipProof {
   let initial = params |> fold(init: empty_usage_accum(), f: (acc, p) =>

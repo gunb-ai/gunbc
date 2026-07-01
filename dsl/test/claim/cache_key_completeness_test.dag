@@ -1,22 +1,3 @@
-// dsl/test/claim/cache_key_completeness_test.dag
-//
-// §5 discriminating proof for the cache-key-by-construction spine after the model↔realizer
-// fork was dissolved (PR #5425, construction-not-validation; supersedes #5423's spec-only
-// lens). Two distinct claims, proven BY EXECUTION:
-//
-//  (1) CONSTRUCTION — for OUR content-addressed caches the keyed inputs are DERIVED from the
-//      invalidation triggers (content_addressed_inputs), not hand-authored. Perturbing the
-//      triggers changes the derived inputs; there is NO inputs field to author out of
-//      agreement. The old "under-keyed ContentAddressedByValue row" (an inputs list that
-//      promised ToolchainChange but omitted the toolchain) is now UNCONSTRUCTABLE — the
-//      CatalogKeyInputs.ContentAddressed variant has no inputs field — so it cannot be a
-//      test case here; the type forbids it. That is the class-kill.
-//
-//  (2) CITATION — for EXTERNAL vendor caches (NativeInternal) inputs_considered is a CITED
-//      observation we don't control, so it CAN be self-contradictory; the key_completeness
-//      lens validates that citation (ToolchainChange ⟹ a cited toolchain axis). HandAuthored
-//      keys are exempt (authored). This is the genuinely-unstructurable residue (§6).
-
 module test.claim.cache_key_completeness
 
 import extdeps.cache.key_completeness {
@@ -33,13 +14,13 @@ import extdeps.cache.types {
   catalog_has_vendor_only_key_inputs,
   RustcInvocation,
   ToolchainSpec,
+  UpsertSubject,
 }
 import extdeps.cache.cache { cache_catalog }
 import extdeps.realization.resolved_graph { resolved_graph_cache_facts }
 import std.cache_interface {
   ToolchainChange,
   ManualPurge,
-  UpsertSubject,
   Org,
 }
 import std.lens_verdict { Holds, Violation }
@@ -47,34 +28,21 @@ import std.types { Bool }
 
 data witness_module: String = "test.claim.cache_key_completeness"
 
-// === (1) CONSTRUCTION: CAV inputs DERIVED from triggers (perturb triggers ⟹ inputs change) ===
-
-// ToolchainChange ∈ triggers ⟹ the derived input set keys the transform (toolchain axis
-// present, length 2). The transform is keyed BY CONSTRUCTION — no hand-authored list.
 fn witness_cav_toolchain_derives_transform() -> Bool {
   let inputs = content_addressed_inputs(triggers: [ToolchainChange, ManualPurge])
   catalog_has_vendor_only_key_inputs(inputs: inputs) && (inputs.length() == 2)
 }
 
-// Drop ToolchainChange ⟹ the toolchain axis DISAPPEARS from the derived set (just the
-// subject, length 1). This is the perturbation: the only way to change what's keyed is to
-// change the triggers — declaring/keying cannot diverge.
 fn witness_cav_no_toolchain_derives_subject_only() -> Bool {
   let inputs = content_addressed_inputs(triggers: [ManualPurge])
   !catalog_has_vendor_only_key_inputs(inputs: inputs) && (inputs.length() == 1)
 }
 
-// LIVE: the resolved_graph_cache row (ContentAddressed, ToolchainChange) derives the
-// toolchain axis. RED if the row's triggers drop ToolchainChange (the key would lose the
-// transform — but it could never silently omit it while still promising invalidation).
 fn witness_live_resolved_graph_derives_toolchain() -> Bool {
   let inputs = catalog_inputs_considered(kd: resolved_graph_cache_facts.key_derivation)
   catalog_has_vendor_only_key_inputs(inputs: inputs) && (inputs.length() == 2)
 }
 
-// === (2) CITATION: lens validates external NativeInternal citations only ===
-
-// A cited vendor key that promises ToolchainChange AND cites a toolchain axis → consistent.
 fn sound_cited_facts() -> CatalogKeyDerivationFacts {
   CatalogKeyDerivationFacts {
     key_inputs: NativeInternal { cited_inputs: [RustcInvocation, ToolchainSpec] },
@@ -86,9 +54,6 @@ fn sound_cited_facts() -> CatalogKeyDerivationFacts {
   }
 }
 
-// A cited vendor key that promises ToolchainChange but cites NO toolchain axis → a
-// self-contradictory CITATION. This IS constructable (external observations can be wrong);
-// catching it is the legitimate lens use.
 fn undercited_native_facts() -> CatalogKeyDerivationFacts {
   CatalogKeyDerivationFacts {
     key_inputs: NativeInternal { cited_inputs: [UpsertSubject] },
@@ -100,8 +65,6 @@ fn undercited_native_facts() -> CatalogKeyDerivationFacts {
   }
 }
 
-// Same omission, but HAND-AUTHORED → exempt: invalidation is the author bumping the key,
-// not an input set (the §6 carve-out). The discriminator is the variant.
 fn hand_authored_facts() -> CatalogKeyDerivationFacts {
   CatalogKeyDerivationFacts {
     key_inputs: HandAuthored { cited_inputs: [UpsertSubject] },
@@ -113,8 +76,6 @@ fn hand_authored_facts() -> CatalogKeyDerivationFacts {
   }
 }
 
-// A cited vendor key that does NOT promise ToolchainChange → vacuously consistent even
-// without a toolchain axis (the implication does not over-fire).
 fn no_promise_native_facts() -> CatalogKeyDerivationFacts {
   CatalogKeyDerivationFacts {
     key_inputs: NativeInternal { cited_inputs: [UpsertSubject] },
@@ -126,7 +87,6 @@ fn no_promise_native_facts() -> CatalogKeyDerivationFacts {
   }
 }
 
-// Pair 1 — predicate: sound cited row is complete; under-cited row is NOT.
 fn witness_complete_green_on_sound_cited() -> Bool {
   cache_key_derivation_complete(facts: sound_cited_facts())
 }
@@ -135,7 +95,6 @@ fn witness_complete_red_on_undercited() -> Bool {
   !cache_key_derivation_complete(facts: undercited_native_facts())
 }
 
-// Pair 2 — verdict: sound cited row Holds; under-cited row is a Violation (not Holds).
 fn witness_verdict_holds_on_sound_cited() -> Bool {
   match cache_key_completeness_verdict(facts: sound_cited_facts(), module_name: witness_module) {
     Holds => true
@@ -150,8 +109,6 @@ fn witness_verdict_violation_on_undercited() -> Bool {
   }
 }
 
-// Pair 3 — HandAuthored exemption: same omission is complete (exempt); NativeInternal with
-// the same omission is NOT (the discriminator is the key-inputs variant).
 fn witness_hand_authored_exempt() -> Bool {
   cache_key_derivation_complete(facts: hand_authored_facts())
 }
@@ -160,8 +117,6 @@ fn witness_native_not_exempt() -> Bool {
   !cache_key_derivation_complete(facts: undercited_native_facts())
 }
 
-// Pair 4 — vacuity: no ToolchainChange promise ⟹ complete even without a toolchain axis;
-// the same cited inputs WITH the promise are under-cited (discriminates over-firing).
 fn witness_no_promise_complete() -> Bool {
   cache_key_derivation_complete(facts: no_promise_native_facts())
 }
@@ -170,9 +125,6 @@ fn witness_promise_without_input_incomplete() -> Bool {
   !cache_key_derivation_complete(facts: undercited_native_facts())
 }
 
-// Live gate — the lens over the actual catalog rows. GREEN today (our CAV rows are derived,
-// our cited vendor rows cite their toolchain axis); RED if any cited row's citation goes
-// self-contradictory.
 fn witness_live_catalog_holds() -> Bool {
   cache_catalog_key_completeness_holds(catalog: cache_catalog)
 }

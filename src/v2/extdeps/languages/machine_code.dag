@@ -1,9 +1,4 @@
-// src/v2/extdeps/languages/machine_code.dag
-// Scope: machine-code language model parameterized by Isa.
-// Status: D2-REV; 🟢 P4-3208 — (machine_code scalar + displacement + ledger); wave-1 `MachineScalar` fact-bundles via `machine_code_model_core_wave1` (quiet-otter-381).
-
 module v2.extdeps.languages.machine_code
-
 
 import v2.std.grammar {
   StampClass,
@@ -40,52 +35,33 @@ import v2.std.model_core {
 import v2.std.witness { Holds, Violates }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
 type Isa
   = X86_64Isa { revision: Symbol }
   | Aarch64Isa { revision: Symbol }
   | RiscV64Isa { revision: Symbol }
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
 type ByteOrder
   = LittleEndian
   | BigEndian
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
 type InstructionLength
   = FixedLength { width: InstructionWord }
   | VariableLength { max_bytes: InstructionByteLimitRef }
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type InstructionByteLimitRef {
   isa: Isa,
   limit: Symbol
 }
 
-
-// Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
 type OperandFieldWidthRef {
   isa: Isa,
   width: Symbol
 }
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
 type MachineIntKind
   = Signed
   | Unsigned
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
 type MachineIntWidth
   = Bits8
   | Bits16
@@ -93,49 +69,29 @@ type MachineIntWidth
   | Bits64
   | Bits128
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208
 type MachineScalar
   = IntScalar { kind: MachineIntKind, width: MachineIntWidth }
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208
 type MachineDisplacement32WidthClass
   = DisplacementEncodingBits32 {}
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208
 type MachineDisplacement64WidthClass
   = DisplacementEncodingBits64 {}
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type MachineSignedDisplacement32 {
   width: MachineDisplacement32WidthClass
 }
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 type MachineSignedDisplacement64 {
   width: MachineDisplacement64WidthClass
 }
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟡 feature:fixed-cardinality-width-carrier — P4-3208
-// 🟡 coproduct dissolution — P4-3208.
 type InstructionWord
   = Instr16
   | Instr32
   | Instr64
   | Instr128
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
 type RegisterClass
   = GeneralPurposeRegister
   | FloatingPointRegister
@@ -144,30 +100,22 @@ type RegisterClass
   | FlagsRegister
   | ControlRegister
 
-
 type RegisterDeclaration {
   isa: Isa
   name: Symbol
   class: RegisterClass
 }
 
-
 type RegisterRef {
   declaration: RegisterDeclaration
 }
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
 type IndexScale
   = Scale1
   | Scale2
   | Scale4
   | Scale8
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
 type AddressingMode
   = AbsoluteAddress { displacement: MachineSignedDisplacement64 }
   | RegisterIndirect { base: RegisterRef }
@@ -180,48 +128,36 @@ type AddressingMode
     }
   | PcRelative { displacement: MachineSignedDisplacement32 }
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
 type Operand
   = RegisterOperand { register: RegisterRef }
   | ImmediateOperand { bytes: ByteSequence, order: ByteOrder }
   | MemoryOperand { mode: AddressingMode }
 
-
 type ByteSequence {
   bytes: List<Byte>
 }
-
 
 type InstructionProductionRef {
   isa: Isa
   opcode: Symbol
 }
 
-
 type RegisterOperandSlotRef {
   slot: Symbol
 }
-
 
 type ImmediateOperandSlotRef {
   slot: Symbol
 }
 
-
 type MemoryOperandSlotRef {
   slot: Symbol
 }
 
-
-// Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
-// 🟢 coproduct dissolution — P4-3208.
 type ImmediateOperandTarget
   = LiteralImmediate
   | PcRelativeImmediate
   | AbsoluteAddressImmediate
-
 
 type ImmediateOperandConstraint {
   width: OperandFieldWidthRef
@@ -229,9 +165,6 @@ type ImmediateOperandConstraint {
   target: ImmediateOperandTarget
 }
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
 type MemoryOperandConstraint
   = AbsoluteAddressSlot { displacement_width: OperandFieldWidthRef }
   | RegisterIndirectSlot { allowed_bases: List<RegisterRef> }
@@ -247,9 +180,6 @@ type MemoryOperandConstraint
     }
   | PcRelativeSlot { displacement_width: OperandFieldWidthRef }
 
-
-// Anchor: https://github.com/riscv/riscv-isa-manual/releases/tag/20240411
-// 🟢 coproduct dissolution — P4-3208.
 type InstructionOperandSlot
   = RegisterInstructionSlot {
       name: RegisterOperandSlotRef,
@@ -264,14 +194,11 @@ type InstructionOperandSlot
       constraint: MemoryOperandConstraint
     }
 
-
 type InstructionProduction {
   reference: InstructionProductionRef
   slots: List<InstructionOperandSlot>
 }
 
-
-// 🟢 coproduct dissolution — P4-3208.
 type OperandBinding
   = RegisterOperandBinding {
       slot: RegisterOperandSlotRef,
@@ -286,15 +213,11 @@ type OperandBinding
       mode: AddressingMode
     }
 
-
 type DecodedInstruction {
   production: InstructionProductionRef
   operands: List<OperandBinding>
 }
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
 type MachineFidelityFeature
   = ValidInstructionEncoding
   | InstructionAliasSpelling
@@ -304,32 +227,21 @@ type MachineFidelityFeature
   | IsaRevisionMismatch
   | AmbiguousDecode
 
-
-// Anchor: https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
-// 🟢 coproduct dissolution — P4-3208.
 type MachineIntegerOverflowBehavior
   = WrapModuloWidth
   | TrapOnOverflow
   | UndefinedByIsa
-
 
 type MachineIntegerOperationSemantics<IRCarrier> {
   overflow: MachineIntegerOverflowBehavior
   writes_flags: FlagWriteDisposition
 }
 
-
-// 🟢 coproduct dissolution — P4-3208.
 type FlagWriteDisposition
   = DoesNotWriteFlags
   | WritesArchitecturalFlags
   | WritesPredicateRegister
 
-
-// ── Wave-1 `MachineScalar` fact-bundles (Isa-parameterized int kinds/widths).
-// Wave-1 catalog uses `WrapModuloWidth` only; `mc_overflow_node` still gives each
-// `MachineIntegerOverflowBehavior` variant a distinct tag (rust_overflow_node pattern).
-// 🟢 coproduct dissolution · P4-3208 · SL-3229-MC-WAVE1-INT-FACTS.
 type MachineIntegerPrimitiveFacts {
   surface_spelling: Symbol
   kind: MachineIntKind
@@ -515,11 +427,9 @@ fn machine_code_lex_token(token_class: Symbol, pattern: LexPattern) -> LexRule {
   TokenRule { token_class: token_class, pattern: pattern }
 }
 
-
 fn machine_code_grammar_terminal(token_class: Symbol) -> GrammarExpr {
   Terminal { token_class: token_class, stamp: StampClass }
 }
-
 
 fn machine_code_wave1_lex(token_class: Symbol, spelling: String) -> LexRules {
   ModeledLexRules {
@@ -531,7 +441,6 @@ fn machine_code_wave1_lex(token_class: Symbol, spelling: String) -> LexRules {
     }
   }
 }
-
 
 fn machine_code_wave1_grammar(
   production_name: Symbol,
@@ -552,7 +461,6 @@ fn machine_code_wave1_grammar(
   }
 }
 
-
 fn machine_code_wave1_formal_production(production_name: Symbol, token_class: Symbol) -> FormalProduction {
   FormalProduction {
     lhs: grammar_formal_nonterminal(identity: production_name),
@@ -560,11 +468,9 @@ fn machine_code_wave1_formal_production(production_name: Symbol, token_class: Sy
   }
 }
 
-
 fn machine_code_x86_64_wave1_lex() -> LexRules {
   machine_code_wave1_lex(token_class: ^machine_code_token_x86_64_nop, spelling: "nop")
 }
-
 
 fn machine_code_x86_64_wave1_grammar() -> ParseGrammar {
   machine_code_wave1_grammar(
@@ -574,14 +480,12 @@ fn machine_code_x86_64_wave1_grammar() -> ParseGrammar {
   )
 }
 
-
 fn machine_code_x86_64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: machine_code_x86_64_wave1_lex(),
     grammar: machine_code_x86_64_wave1_grammar()
   }
 }
-
 
 fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {
@@ -597,11 +501,9 @@ fn machine_code_x86_64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   }
 }
 
-
 fn machine_code_aarch64_wave1_lex() -> LexRules {
   machine_code_wave1_lex(token_class: ^machine_code_token_aarch64_nop, spelling: "nop")
 }
-
 
 fn machine_code_aarch64_wave1_grammar() -> ParseGrammar {
   machine_code_wave1_grammar(
@@ -611,14 +513,12 @@ fn machine_code_aarch64_wave1_grammar() -> ParseGrammar {
   )
 }
 
-
 fn machine_code_aarch64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: machine_code_aarch64_wave1_lex(),
     grammar: machine_code_aarch64_wave1_grammar()
   }
 }
-
 
 fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {
@@ -634,11 +534,9 @@ fn machine_code_aarch64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   }
 }
 
-
 fn machine_code_riscv64_wave1_lex() -> LexRules {
   machine_code_wave1_lex(token_class: ^machine_code_token_riscv64_nop, spelling: "nop")
 }
-
 
 fn machine_code_riscv64_wave1_grammar() -> ParseGrammar {
   machine_code_wave1_grammar(
@@ -648,14 +546,12 @@ fn machine_code_riscv64_wave1_grammar() -> ParseGrammar {
   )
 }
 
-
 fn machine_code_riscv64_ingest_grammar_schema() -> GrammarSchema {
   GrammarSchema {
     lex: machine_code_riscv64_wave1_lex(),
     grammar: machine_code_riscv64_wave1_grammar()
   }
 }
-
 
 fn machine_code_riscv64_ingest_grammar_probe() -> GrammarSchemaProbeBinding {
   GrammarSchemaProbeBinding {

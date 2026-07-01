@@ -1,0 +1,16 @@
+module gunbc.plan_registry_batch_e
+
+import gunbc.plan { Plan }
+import gunbc.plans.inert_layer_lens { inert_layer_lens_plan }
+import gunbc.plans.compile_clean_forcecheck { compile_clean_forcecheck_plan }
+import gunbc.plans.expressibility_frontier { expressibility_frontier_plan }
+import gunbc.plans.p1_where_clause_lowering { p1_where_clause_lowering_plan }
+import gunbc.plans.intent_linearity_design_draft { intent_linearity_design_draft_plan }
+
+data batch_e_plans: List<Plan> = [
+  inert_layer_lens_plan,
+  compile_clean_forcecheck_plan,
+  expressibility_frontier_plan,
+  p1_where_clause_lowering_plan,
+  intent_linearity_design_draft_plan
+]

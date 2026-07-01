@@ -1,8 +1,3 @@
-// src/v2/extdeps/formatters/rustfmt.dag
-// Scope: rustfmt configuration model — option space grounded in rustfmt v1.6.0 toml reference.
-// Status: T-4.16 scaffold — full option space grounded in rustfmt v1.6.0 toml reference.
-// Anchor: https://rust-lang.github.io/rustfmt/?version=v1.6.0
-
 module v2.extdeps.formatters.rustfmt
 
 import v2.std.collection { List }
@@ -15,42 +10,30 @@ import v2.std.refinement {
   positive_int_authoritative_literal,
 }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtIndentStyle
   = RustfmtIndentBlock
   | RustfmtIndentVisual
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtBraceStyle
   = RustfmtBraceAlwaysNextLine
   | RustfmtBracePreferSameLine
   | RustfmtBraceSameLineWhere
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtControlBraceStyle
   = RustfmtControlBraceAlwaysSameLine
   | RustfmtControlBraceAlwaysNextLine
   | RustfmtControlBraceClosingNextLine
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtTrailingComma
   = RustfmtTrailingCommaAlways
   | RustfmtTrailingCommaNever
   | RustfmtTrailingCommaVertical
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtMatchArmLeadingPipes
   = RustfmtMatchPipesAlways
   | RustfmtMatchPipesNever
   | RustfmtMatchPipesPreserve
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtImportsGranularity
   = RustfmtImportsGranularityPreserve
   | RustfmtImportsGranularityCrate
@@ -58,108 +41,69 @@ type RustfmtImportsGranularity
   | RustfmtImportsGranularityItem
   | RustfmtImportsGranularityOne
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtGroupImports
   = RustfmtGroupImportsPreserve
   | RustfmtGroupImportsStdExternalCrate
   | RustfmtGroupImportsOne
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtImportsLayout
   = RustfmtImportsMixed
   | RustfmtImportsHorizontal
   | RustfmtImportsVertical
   | RustfmtImportsHorizontalVertical
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtFnParamsLayout
   = RustfmtFnParamsCompressed
   | RustfmtFnParamsTall
   | RustfmtFnParamsVertical
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtNewlineStyle
   = RustfmtNewlineAuto
   | RustfmtNewlineUnix
   | RustfmtNewlineWindows
   | RustfmtNewlineNative
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// v1.6.0 src/config/options.rs Edition enum: "2015", "2018", "2021", "2024" — four arms (Configurations.md omits "2024" but source is authoritative).
 type RustfmtEdition
   = RustfmtEdition2015
   | RustfmtEdition2018
   | RustfmtEdition2021
   | RustfmtEdition2024
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtSmallHeuristics
   = RustfmtHeuristicsDefault
   | RustfmtHeuristicsOff
   | RustfmtHeuristicsMax
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtHexLiteralCase
   = RustfmtHexPreserve
   | RustfmtHexUpper
   | RustfmtHexLower
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// Which formatting rule set to apply (v1.6.0 documents One and Two).
 type RustfmtVersion
   = RustfmtVersionOne
   | RustfmtVersionTwo
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtBinopSeparator
   = RustfmtBinopFront
   | RustfmtBinopBack
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtColor
   = RustfmtColorAuto
   | RustfmtColorAlways
   | RustfmtColorNever
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
 type RustfmtTypePunctuationDensity
   = RustfmtTypePunctuationWide
   | RustfmtTypePunctuationCompressed
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// v1.6.0 documents skip_macro_invocations as macro name idents plus the special "*" selector (skip all).
-// List<String> would lose this structural distinction; model the two arms explicitly.
-// 🟡 gated — feature: rustfmt-macro-name-refinement — bind T-25-core — dissolve-on-arrival: replace name: String in RustfmtMacroNamed with Refined<String> whose predicate excludes "*" and non-identifier strings (name must be a valid Rust macro ident); forbidden: treating RustfmtMacroNamed.name as unconstrained — it must not admit the "*" sentinel representable by RustfmtMacroAll.
 type RustfmtMacroSelector
   = RustfmtMacroAll
   | RustfmtMacroNamed { name: String }
 
-
-// 🟢 coproduct dissolution — CP-3229-GREEN-TERMINAL.
-// v1.6.0 default is the compiled-in CARGO_PKG_VERSION (installed version); possible configured values
-// are published version strings like "0.3.8". Encoding the compile-time expression as a String sentinel
-// would admit an invalid config value and lose set-vs-default semantics.
-// 🟡 gated — feature: rustfmt-version-string-refinement — bind T-25-core — dissolve-on-arrival: replace version: String in RustfmtVersionPinned with Refined<String> whose predicate validates it as a published semver version string (e.g. "0.3.8"); forbidden: treating version as unconstrained — it must match the published-version format rustfmt v1.6.0 documents.
 type RustfmtRequiredVersion
   = RustfmtVersionInstalled
   | RustfmtVersionPinned { version: String }
 
-
-// 🟡 gated — feature: formatter-cross-field-constraints — bind T-4.16 follow-on — dissolve-on-arrival: RustfmtConfigValidation witness checks max_width ≥ {chain_width,array_width,fn_call_width,attr_fn_like_width,struct_lit_width,struct_variant_width,single_line_if_else_max_width,single_line_let_else_max_width,short_array_element_width_threshold,doc_comment_code_block_width}; comment_width excluded — v1.6.0 documents it as "any positive integer" with no max_width upper bound (0 causes wrap_comments to apply regardless of line width); forbidden: ad-hoc cross-field guards outside validation substrate.
-// 🟡 gated — feature: rustfmt-deprecated-alias — bind T-4.16 follow-on — dissolve-on-arrival: merge_imports and fn_args_layout are deprecated v1.6.0 aliases retained for P1 faithfulness; both are subsumed by their canonical counterparts (imports_granularity and fn_params_layout respectively); precedence rule: canonical field wins when both are set; forbidden: treating either alias as an independent authoritative fact separate from its canonical field.
-// 🟡 gated — feature: rustfmt-unstable-option-validity — bind T-4.16 follow-on — dissolve-on-arrival: emit stage must omit all fields marked "Stable: No" from the emitted .toml when unstable_features=false; RustfmtConfig's full-value form collapses set-vs-absent so the validity constraint is an emit obligation, not a value predicate; follow-on: migrate unstable fields to Option<T> carriers so absence is structurally representable in the substrate; forbidden: emitting a key for any unstable field when unstable_features=false regardless of whether its value equals the default.
 type RustfmtConfig {
   indent_style: RustfmtIndentStyle
   tab_spaces: Outcome<PositiveInt>
@@ -188,9 +132,9 @@ type RustfmtConfig {
   imports_layout: RustfmtImportsLayout
   imports_indent: RustfmtIndentStyle
   reorder_imports: Bool
-  merge_imports: Bool // 🟡 gated: rustfmt-deprecated-alias — deprecated bool alias for imports_granularity=Crate; canonical field imports_granularity wins when both are set
+  merge_imports: Bool
   fn_params_layout: RustfmtFnParamsLayout
-  fn_args_layout: RustfmtFnParamsLayout // 🟡 gated: rustfmt-deprecated-alias — deprecated former name for fn_params_layout; canonical field fn_params_layout wins when both are set
+  fn_args_layout: RustfmtFnParamsLayout
   fn_single_line: Bool
   inline_attribute_width: Outcome<NonNegativeInt>
   reorder_modules: Bool
@@ -238,11 +182,9 @@ type RustfmtConfig {
   version: RustfmtVersion
   unstable_features: Bool
   required_version: RustfmtRequiredVersion
-  ignore: List<String> // 🟡 gated: rustfmt-ignore-path-refinement — bind T-4.16 follow-on — dissolve-on-arrival: replace List<String> with List<Refined<String>> whose predicate validates gitignore-format path patterns with Unix '/' separators (v1.6.0 explicitly excludes Windows backslash paths); forbidden: treating ignore elements as unconstrained strings.
+  ignore: List<String>
 }
 
-
-// Official rustfmt 1.6 defaults. edition field defaults to 2015 per rustfmt spec regardless of project edition.
 data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   indent_style: RustfmtIndentBlock,
   tab_spaces: positive_int_authoritative_literal(value: 4),
@@ -336,9 +278,7 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   ignore: [],
 }
 
-
 type RustfmtConfigPatch = ConfigPatchRecord<RustfmtConfig>
-
 
 fn rustfmt_layer(base: RustfmtConfig, patch: RustfmtConfigPatch) -> RustfmtConfig {
   config_patch_layer(base: base, patch: patch)

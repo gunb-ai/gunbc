@@ -1,0 +1,275 @@
+module v2.test.tokenize.lex_match_thunk_claims
+
+import v2.std.text { String }
+import v2.std.logic { Bool }
+import v2.std.algebra { Cons, Empty, is_empty }
+import v2.std.compilers.lexing {
+  BlockCommentTextChar,
+  CharClassPattern,
+  CharPattern,
+  ChoicePattern,
+  DelimitedPattern,
+  DigitChar,
+  EmptyPattern,
+  KeywordPattern,
+  LiteralPattern,
+  OneOrMorePattern,
+  OptionalPattern,
+  RepeatPattern,
+  SequencePattern,
+  TriviaRule
+}
+import v2.compiler.tokenize {
+  LexRuleNoMatch,
+  LexRuleToken,
+  LexRuleTrivia,
+  lex_try_rule
+}
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+
+data str_a: String = Cons { head: 97, tail: Empty }
+data str_b: String = Cons { head: 98, tail: Empty }
+data str_ab: String = Cons { head: 97, tail: Cons { head: 98, tail: Empty } }
+data str_ac: String = Cons { head: 97, tail: Cons { head: 99, tail: Empty } }
+data str_abc: String = Cons { head: 97, tail: Cons { head: 98, tail: Cons { head: 99, tail: Empty } } }
+data str_bc: String = Cons { head: 98, tail: Cons { head: 99, tail: Empty } }
+data str_aab: String = Cons { head: 97, tail: Cons { head: 97, tail: Cons { head: 98, tail: Empty } } }
+data str_123: String = Cons { head: 49, tail: Cons { head: 50, tail: Cons { head: 51, tail: Empty } } }
+data str_fn: String = Cons { head: 102, tail: Cons { head: 110, tail: Empty } }
+data str_fn_space: String = Cons { head: 102, tail: Cons { head: 110, tail: Cons { head: 32, tail: Empty } } }
+data str_fna: String = Cons { head: 102, tail: Cons { head: 110, tail: Cons { head: 97, tail: Empty } } }
+data str_slash_star: String = Cons { head: 47, tail: Cons { head: 42, tail: Empty } }
+data str_star_slash: String = Cons { head: 42, tail: Cons { head: 47, tail: Empty } }
+
+data str_block_comment: String = Cons { head: 47, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 47, tail: Empty } } } }
+
+data str_block_comment_extra_star: String = Cons { head: 47, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 42, tail: Cons { head: 47, tail: Empty } } } } }
+
+test fn lex_match_thunk_claims_holds() -> Bool {
+
+  let r1 = match lex_try_rule(
+    rule: TriviaRule { pattern: EmptyPattern },
+    source: str_abc
+  ) {
+    LexRuleTrivia { lexeme: lex, remaining: _ } => is_empty(xs: lex)
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+
+  let r2_accept = match lex_try_rule(
+    rule: TriviaRule { pattern: LiteralPattern { text: str_ab } },
+    source: str_abc
+  ) {
+    LexRuleTrivia { lexeme: _, remaining: rem } => is_empty(xs: rem) == false
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r2_reject = match lex_try_rule(
+    rule: TriviaRule { pattern: LiteralPattern { text: str_fn } },
+    source: str_abc
+  ) {
+    LexRuleNoMatch => true
+    LexRuleTrivia { lexeme: _, remaining: _ } => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r2 = r2_accept && r2_reject
+
+  let r3_accept = match lex_try_rule(
+    rule: TriviaRule { pattern: KeywordPattern { text: str_fn } },
+    source: str_fn_space
+  ) {
+    LexRuleTrivia { lexeme: _, remaining: _ } => true
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r3_reject = match lex_try_rule(
+    rule: TriviaRule { pattern: KeywordPattern { text: str_fn } },
+    source: str_fna
+  ) {
+    LexRuleNoMatch => true
+    LexRuleTrivia { lexeme: _, remaining: _ } => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r3 = r3_accept && r3_reject
+
+  let r4_accept = match lex_try_rule(
+    rule: TriviaRule { pattern: CharPattern { char: 97 } },
+    source: str_abc
+  ) {
+    LexRuleTrivia { lexeme: _, remaining: _ } => true
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r4_reject = match lex_try_rule(
+    rule: TriviaRule { pattern: CharPattern { char: 97 } },
+    source: str_bc
+  ) {
+    LexRuleNoMatch => true
+    LexRuleTrivia { lexeme: _, remaining: _ } => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r4 = r4_accept && r4_reject
+
+  let r5_accept = match lex_try_rule(
+    rule: TriviaRule { pattern: CharClassPattern { class: DigitChar } },
+    source: str_123
+  ) {
+    LexRuleTrivia { lexeme: _, remaining: _ } => true
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r5_reject = match lex_try_rule(
+    rule: TriviaRule { pattern: CharClassPattern { class: DigitChar } },
+    source: str_abc
+  ) {
+    LexRuleNoMatch => true
+    LexRuleTrivia { lexeme: _, remaining: _ } => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r5 = r5_accept && r5_reject
+
+  let r6_accept = match lex_try_rule(
+    rule: TriviaRule { pattern: SequencePattern {
+      left: CharPattern { char: 97 },
+      right: CharPattern { char: 98 }
+    } },
+    source: str_ab
+  ) {
+    LexRuleTrivia { lexeme: _, remaining: _ } => true
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r6_reject = match lex_try_rule(
+    rule: TriviaRule { pattern: SequencePattern {
+      left: CharPattern { char: 97 },
+      right: CharPattern { char: 98 }
+    } },
+    source: str_ac
+  ) {
+    LexRuleNoMatch => true
+    LexRuleTrivia { lexeme: _, remaining: _ } => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r6 = r6_accept && r6_reject
+
+  let r7_left_wins = match lex_try_rule(
+    rule: TriviaRule { pattern: ChoicePattern {
+      left: CharPattern { char: 97 },
+      right: CharPattern { char: 98 }
+    } },
+    source: str_abc
+  ) {
+    LexRuleTrivia { lexeme: _, remaining: _ } => true
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r7_right_wins = match lex_try_rule(
+    rule: TriviaRule { pattern: ChoicePattern {
+      left: CharPattern { char: 97 },
+      right: CharPattern { char: 98 }
+    } },
+    source: str_bc
+  ) {
+    LexRuleTrivia { lexeme: _, remaining: _ } => true
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r7_both_reject = match lex_try_rule(
+    rule: TriviaRule { pattern: ChoicePattern {
+      left: CharPattern { char: 97 },
+      right: CharPattern { char: 98 }
+    } },
+    source: str_123
+  ) {
+    LexRuleNoMatch => true
+    LexRuleTrivia { lexeme: _, remaining: _ } => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r7 = r7_left_wins && r7_right_wins && r7_both_reject
+
+  let r8_match = match lex_try_rule(
+    rule: TriviaRule { pattern: OptionalPattern { element: CharPattern { char: 97 } } },
+    source: str_abc
+  ) {
+    LexRuleTrivia { lexeme: _, remaining: _ } => true
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r8_no_match = match lex_try_rule(
+    rule: TriviaRule { pattern: OptionalPattern { element: CharPattern { char: 97 } } },
+    source: str_bc
+  ) {
+    LexRuleTrivia { lexeme: lex, remaining: _ } => is_empty(xs: lex)
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r8 = r8_match && r8_no_match
+
+  let r9_multi = match lex_try_rule(
+    rule: TriviaRule { pattern: RepeatPattern { element: CharPattern { char: 97 } } },
+    source: str_aab
+  ) {
+    LexRuleTrivia { lexeme: _, remaining: rem } => is_empty(xs: rem) == false
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r9_zero_width_guard = match lex_try_rule(
+    rule: TriviaRule { pattern: RepeatPattern { element: OptionalPattern { element: CharPattern { char: 97 } } } },
+    source: str_b
+  ) {
+    LexRuleTrivia { lexeme: lex, remaining: _ } => is_empty(xs: lex)
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r9 = r9_multi && r9_zero_width_guard
+
+  let r10_accept = match lex_try_rule(
+    rule: TriviaRule { pattern: OneOrMorePattern { element: CharPattern { char: 97 } } },
+    source: str_aab
+  ) {
+    LexRuleTrivia { lexeme: _, remaining: _ } => true
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r10_reject = match lex_try_rule(
+    rule: TriviaRule { pattern: OneOrMorePattern { element: CharPattern { char: 97 } } },
+    source: str_b
+  ) {
+    LexRuleNoMatch => true
+    LexRuleTrivia { lexeme: _, remaining: _ } => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r10 = r10_accept && r10_reject
+
+  let r11_accept = match lex_try_rule(
+    rule: TriviaRule { pattern: DelimitedPattern {
+      open: LiteralPattern { text: str_slash_star },
+      body: CharClassPattern { class: BlockCommentTextChar },
+      close: LiteralPattern { text: str_star_slash }
+    } },
+    source: str_block_comment
+  ) {
+    LexRuleTrivia { lexeme: _, remaining: rem } => is_empty(xs: rem)
+    LexRuleNoMatch => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r11_reject = match lex_try_rule(
+    rule: TriviaRule { pattern: DelimitedPattern {
+      open: LiteralPattern { text: str_slash_star },
+      body: CharClassPattern { class: BlockCommentTextChar },
+      close: LiteralPattern { text: str_star_slash }
+    } },
+    source: str_block_comment_extra_star
+  ) {
+    LexRuleNoMatch => true
+    LexRuleTrivia { lexeme: _, remaining: _ } => false
+    LexRuleToken { class: _, lexeme: _, remaining: _ } => false
+  }
+  let r11 = r11_accept && r11_reject
+
+  r1 && r2 && r3 && r4 && r5 && r6 && r7 && r8 && r9 && r10 && r11
+}

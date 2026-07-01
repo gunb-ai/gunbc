@@ -1,0 +1,47 @@
+module test.claim.interpreter_kernel_model_witness
+
+import gunbc.interpreter_kernel_model {
+  v1_interpreter_hybrid_seed_file,
+  is_pure_eval_authority_module,
+  is_pinned_host_physics_stage0_file,
+  pinned_host_physics_file_count,
+  pure_eval_authority_module_count,
+  interpreter_kernel_d_phase_is_model_only,
+  v1_interpreter_not_classified_as_pinned_host_physics
+}
+
+fn w_pure_eval_authority_modules() -> Bool {
+  is_pure_eval_authority_module(path: "src/v2/compiler/05_eval.dag") &&
+  is_pure_eval_authority_module(path: "src/v2/compiler/emit_host.dag") &&
+  is_pure_eval_authority_module(path: "src/v2/extdeps/runtimes/v2_evaluator.dag") &&
+  is_pure_eval_authority_module(path: "src/v2/std/host_transport.dag") &&
+  is_pure_eval_authority_module(path: "src/v2/std/host_run.dag") &&
+  pure_eval_authority_module_count() == 5 &&
+  !is_pure_eval_authority_module(path: "src/v1/stage0/src/v1_interpreter.rs")
+}
+
+fn w_pinned_host_physics_roster() -> Bool {
+  is_pinned_host_physics_stage0_file(basename: "recorded_fixture.rs") &&
+  is_pinned_host_physics_stage0_file(basename: "resolved_graph_cache.rs") &&
+  is_pinned_host_physics_stage0_file(basename: "rest_transport_facts.rs") &&
+  is_pinned_host_physics_stage0_file(basename: "wire_value_serialize.rs") &&
+  pinned_host_physics_file_count() == 4 &&
+  !is_pinned_host_physics_stage0_file(basename: "cache_purity_oracle.rs") &&
+  !is_pinned_host_physics_stage0_file(basename: "cli_run.rs")
+}
+
+fn w_hybrid_interpreter_file_boundary() -> Bool {
+  v1_interpreter_hybrid_seed_file == "v1_interpreter.rs" &&
+  v1_interpreter_not_classified_as_pinned_host_physics()
+}
+
+fn w_kernel_d_phase_model_only() -> Bool {
+  interpreter_kernel_d_phase_is_model_only()
+}
+
+test fn interpreter_kernel_model_witnesses() -> Bool {
+  w_pure_eval_authority_modules() &&
+  w_pinned_host_physics_roster() &&
+  w_hybrid_interpreter_file_boundary() &&
+  w_kernel_d_phase_model_only()
+}

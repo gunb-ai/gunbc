@@ -1,227 +1,44 @@
-// std/algebra.dag -- Algebraic structures from which type operations emerge.
-//
-// DESIGN PRINCIPLE: Operations are not listed on types — they emerge from
-// the algebraic structure the type inhabits. Like Set.union falls out of
-// Set<A> = A -> Bool (pointwise OR), Int.add falls out of Int inhabiting
-// a commutative ring (additive monoid operation).
-//
-// The compiler reads algebraic inhabitation from type declarations:
-//   is_int_type_node(n)   → inhabits_ring(n)      → arithmetic ops
-//   is_bool_type_node(n)  → inhabits_lattice(n)    → logic ops
-//   is_string_type_node(n)→ inhabits_monoid(n)     → concat, length
-//
-// ALGEBRAIC HIERARCHY:
-//
-//   Magma ─── Semigroup ─── Monoid ─── CommutativeMonoid
-//                                           │
-//                            ┌──────────────┼──────────────┐
-//                            │              │              │
-//                        Semiring      Lattice      FreeMonoid<T>
-//                       ╱       ╲          │
-//        CommutativeSemiring   Ring   BoundedLattice
-//                                │          │
-//                           OrderedRing BooleanAlgebra
-//                                │
-//                              Field
-//
-// Each level adds axioms. A type that inhabits Ring automatically gets
-// all Monoid, Semigroup, and Magma operations.
-//
-// EMERGENCE TABLE:
-//
-//   Structure           | Operations that fall out
-//   --------------------|------------------------------------------
-//   Magma               | op(T, T) -> T (closure)
-//   Semigroup           | associativity: op(op(a,b), c) == op(a, op(b,c))
-//   Monoid              | identity: op(identity, a) == a
-//   CommutativeMonoid    | commutativity: op(a, b) == op(b, a)
-//   Semiring            | add (CommMonoid) + mul (Monoid) + distribution
-//   CommutativeSemiring | Semiring + commutative multiplication
-//   Ring                | add inverse (negate, subtract)
-//   OrderedRing         | total order (compare, <, >, min, max, abs)
-//   Field               | mul inverse (reciprocal, divide)
-//   Lattice             | meet ∧ and join ∨ (both idempotent, absorptive)
-//   BoundedLattice      | top (⊤) and bottom (⊥)
-//   BooleanAlgebra      | complement (¬), distributive
-//   FreeMonoid<T>       | concat + empty; total access via List get(...)->T?
-//                       | plus length/count + slice/first/last
-//
-// DENOTATIONAL GROUNDING:
-//
-//   Bool    inhabits BooleanAlgebra
-//     Because: Bool = True | False, and {True, False} with ∧/∨/¬ is
-//     the canonical two-element Boolean algebra.
-//
-//   Nat     inhabits CommutativeSemiring
-//     Because: (Nat, +, 0) is a commutative monoid,
-//              (Nat, *, 1) is a commutative monoid,
-//              and * distributes over +.
-//     No subtraction (no additive inverse in Nat).
-//
-//   Int     inhabits OrderedCommutativeRing
-//     Because: Int extends Nat with additive inverses (negation).
-//     (Int, +, 0) is an abelian group, (Int, *, 1) is a commutative monoid,
-//     * distributes over +, and Int has a total order compatible with +.
-//
-//   Float   inhabits ApproximateField
-//     Because: Float extends Int's ring with multiplicative inverses
-//     (division), subject to IEEE 754 rounding. Not an exact field —
-//     associativity of + fails for floating point. "Approximate" is honest.
-//
-//   String  inhabits FreeMonoid<Char>
-//     Because: (String, concat, "") is a monoid, and String is the
-//     free monoid over Char — every string is a unique sequence of
-//     characters with no additional relations.
-//
-//   List<T> inhabits FreeMonoid<T>
-//     Because: (List<T>, append, []) is a monoid, free over T.
-//     String = List<Char> is the special case.
-//
-//   Set<A>  inhabits BooleanAlgebra<A>
-//     Because: Set<A> = A -> Bool, and pointwise operations on Bool
-//     lift to set operations: union = OR, intersect = AND, diff = AND-NOT.
-//
-//   Map<K,V> inhabits PartialFunction<K,V>
-//     Because: Map<K,V> = K -> (1 + V), a partial function. Lookup is
-//     function application. merge(other) combines maps; how disagreements
-//     on a key are resolved is fixed by the realization, not a merge parameter.
-
 module std.algebra
 
 import std.error_primitives { DivError, Result }
 
-// =========================================================================
-// Unary structures (single operation)
-// =========================================================================
-
-// Magma: a set with a closed binary operation.
-// No laws beyond closure. The weakest algebraic structure.
 type Magma<T> {
   op: fn(T, T) -> T
 }
 
-// Semigroup: associative magma.
-// Law: op(op(a, b), c) == op(a, op(b, c))
 type Semigroup<T> {
   op: fn(T, T) -> T
-  // associativity is a law, not a field — enforced by the algebra, not stored
+
 }
 
-// Monoid: semigroup with identity element.
-// Laws: op(identity, a) == a, op(a, identity) == a
 type Monoid<T> {
   op: fn(T, T) -> T
   identity: T
 }
 
-// CommutativeMonoid: monoid where op(a, b) == op(b, a).
 type CommutativeMonoid<T> {
   op: fn(T, T) -> T
   identity: T
-  // commutativity is a law
+
 }
 
-// Group: monoid with inverses.
-// Law: op(a, inverse(a)) == identity
 type Group<T> {
   op: fn(T, T) -> T
   identity: T
   inverse: fn(T) -> T
 }
 
-// AbelianGroup: commutative group.
 type AbelianGroup<T> {
   op: fn(T, T) -> T
   identity: T
   inverse: fn(T) -> T
-  // commutativity is a law
+
 }
 
-// =========================================================================
-// Algebraic constructions over existing algebras
-// =========================================================================
-
-// GroupCompletion<M>: opaque atom denoting the **carrier** of "the abelian
-// group derived from a commutative monoid M" via the Grothendieck
-// construction. Strictly a derived-carrier construction — NOT an
-// algebra-with-derived-carrier. The algebra witness is named separately at
-// each use site as `AbelianGroup<GroupCompletion<M>>` (standard parametric
-// reading: `T = GroupCompletion<M>` is the carrier; `AbelianGroup<T>` carries
-// op/identity/inverse over that carrier).
-//
-// Authority: `docs/audit/t-numeric-construction-group-completion-6q.md`
-// (Shape C — opaque atom; carrier-representation deferred to per-target
-// emission; the construction is named exactly once in std). Slice 3 (later)
-// will land `type Int = AbelianGroup<GroupCompletion<Nat>>` consuming this.
-//
-// CONSTRAINED-INHABITANCE GAP (P5 tracked scaffold):
-//   Denotationally `<M>` must inhabit `CommutativeMonoid` for the Grothendieck
-//   construction to be well-defined. The current substrate has no parametric
-//   where-clause syntax (`<M> where M : CommutativeMonoid<_>`), so this
-//   declaration accepts any type-reference for `<M>` at the parser/lower
-//   level. Slice 3's only intended consumer is `GroupCompletion<Nat>`, and
-//   `Nat = Semiring<Magnitude>` (Slice 2) carries the commutative-monoid
-//   laws via Semiring's `add`+`zero`+commutativity-on-add — denotationally
-//   the precondition holds.
-//
-//   **Dissolution trigger:** when constrained-inhabitance / parametric
-//   where-clause syntax lands in the substrate (separate substrate-feature
-//   lane, not T-Numeric-Construction's scope), tighten this declaration to
-//   require `<M> : CommutativeMonoid`. Existing call sites
-//   `AbelianGroup<GroupCompletion<Nat>>` continue to type-check.
-//
-// HARD BOUNDARIES (per dispatch on inbox #1288):
-//   - Opaque atom only — no fields, no quotient-of-pairs `(M, M) / ~`
-//     representation, no sign-magnitude `(Sign, M)` representation.
-//     Per-target representation is emission's job.
-//   - No mechanical AbelianGroup-witness derivation declared at this layer
-//     — current substrate cannot express algebra-inhabitance over a
-//     parametric carrier; the inhabitance lens is a follow-up.
 type GroupCompletion<M>
 
-// FieldOfFractions<R>: opaque atom denoting the **carrier** of "the field of
-// fractions derived from an integral domain R" via localization. Strictly a
-// derived-carrier construction — NOT an algebra-with-derived-carrier and NOT
-// a numerator/denominator pair at this layer. The algebra witness is named
-// separately at each use site as `Field<FieldOfFractions<R>>` (standard
-// parametric reading: `T = FieldOfFractions<R>` is the carrier; `Field<T>`
-// carries add/zero/negate/mul/one/reciprocal/compare over that carrier).
-//
-// Authority: `docs/audit/t-numeric-construction-field-of-fractions-6q.md`
-// (Shape C — opaque atom; carrier representation deferred to per-target
-// emission; Slice 4 introduces `type Rational = Field<FieldOfFractions<Int>>` in
-// `dsl/std/rational.dag` as the canonical Q6 form).
-//
-// CONSTRAINED-INHABITANCE GAP (P5 tracked scaffold):
-//   Denotationally `<R>` must be an integral domain for localization to be
-//   well-defined. The current substrate has no parametric where-clause syntax
-//   (`<R> where R : IntegralDomain<_>`), so this declaration accepts any
-//   type-reference for `<R>` at the parser/lower level. Slice 4's only intended
-//   consumer is `FieldOfFractions<Int>`, and `Int = AbelianGroup<GroupCompletion<Nat>>`
-//   (Slice 3) denotationally yields a commutative ring with no zero divisors —
-//   the integral-domain precondition holds for that sole consumer.
-//
-//   **Dissolution trigger:** when constrained-inhabitance / parametric
-//   where-clause syntax lands in the substrate (separate substrate-feature
-//   lane), tighten this declaration to require `<R> : IntegralDomain`. Existing
-//   call sites `Field<FieldOfFractions<Int>>` continue to type-check.
-//
-// HARD BOUNDARIES (Director dispatch + audit):
-//   - Opaque atom only — no pair/quotient representation, no NonZero/Result
-//     reciprocal plumbing at this prerequisite slice.
-//   - No mechanical Field-witness derivation declared here — same substrate gap
-//     as `GroupCompletion<M>`; inhabitance lens is follow-up.
 type FieldOfFractions<R>
 
-// =========================================================================
-// Ring-like structures (two operations: additive + multiplicative)
-// =========================================================================
-
-// Semiring: two monoids with distribution.
-// (T, add, zero) is a commutative monoid.
-// (T, mul, one) is a monoid.
-// mul distributes over add: a * (b + c) == a*b + a*c
-// zero annihilates: a * zero == zero
 type Semiring<T> {
   add: fn(T, T) -> T
   zero: T
@@ -229,11 +46,6 @@ type Semiring<T> {
   one: T
 }
 
-// CommutativeSemiring: semiring whose multiplicative monoid is commutative.
-// Adds only the law `mul(a, b) == mul(b, a)`; signatures stay identical to
-// Semiring. This is the algebra-strength surface for Nat. Sibling follow-ups
-// may add `CommutativeRing<T>` and `OrderedCommutativeRing<T>` when a consumer
-// needs those strengths; this slice intentionally lands only the semiring step.
 type CommutativeSemiring<T> {
   add: fn(T, T) -> T
   zero: T
@@ -241,8 +53,6 @@ type CommutativeSemiring<T> {
   one: T
 }
 
-// Ring: semiring where (T, add, zero) is an abelian group.
-// Adds: negate(T) -> T, subtract(T, T) -> T = add(a, negate(b))
 type Ring<T> {
   add: fn(T, T) -> T
   zero: T
@@ -251,20 +61,6 @@ type Ring<T> {
   one: T
 }
 
-// OrderedRing: ring with a total order compatible with addition.
-// Adds: compare(T, T) -> Ordering
-// Derived: less_than, greater_than, min, max, abs
-// Euclidean quotient/remainder are intentionally absent in v3 until a total
-// Result-shaped surface exists; `/` is the checked division authority.
-//
-// Direct operator fields (sub, div, eq, ne, lt, le, gt, ge) are
-// declared so that v3's §8.9 inhabitance walk can resolve surface
-// operators (`+`, `-`, `*`, `/`, `==`, `<`, ...) by reading the
-// algebra field's Arrow signature directly. Their runtime
-// implementation is derivable (sub = add(a, negate(b)), lt =
-// compare(a, b) == Less, etc.) and lives in the realization
-// layer — the signatures here are the compiler's consumed
-// authority.
 type OrderedRing<T> {
   add: fn(T, T) -> T
   sub: fn(T, T) -> T
@@ -282,8 +78,6 @@ type OrderedRing<T> {
   ge: fn(T, T) -> Bool
 }
 
-// Field: ring where (T \ {zero}, mul, one) is an abelian group.
-// Adds: reciprocal(T) -> T, divide(T, T) -> T = mul(a, reciprocal(b))
 type Field<T> {
   add: fn(T, T) -> T
   zero: T
@@ -294,19 +88,11 @@ type Field<T> {
   compare: fn(T, T) -> Ordering
 }
 
-// =========================================================================
-// Lattice structures
-// =========================================================================
-
-// Lattice: two idempotent, commutative, associative operations with absorption.
-// Laws: meet(a, join(a, b)) == a, join(a, meet(a, b)) == a
 type Lattice<T> {
   meet: fn(T, T) -> T
   join: fn(T, T) -> T
 }
 
-// BoundedLattice: lattice with top and bottom elements.
-// Laws: meet(top, a) == a, join(bottom, a) == a
 type BoundedLattice<T> {
   meet: fn(T, T) -> T
   join: fn(T, T) -> T
@@ -314,9 +100,6 @@ type BoundedLattice<T> {
   bottom: T
 }
 
-// BooleanAlgebra: bounded distributive lattice with complement.
-// Laws: meet(a, complement(a)) == bottom, join(a, complement(a)) == top
-// This is the algebra of Bool, Set<A>, and propositions.
 type BooleanAlgebra<T> {
   meet: fn(T, T) -> T
   join: fn(T, T) -> T
@@ -325,88 +108,26 @@ type BooleanAlgebra<T> {
   bottom: T
 }
 
-// =========================================================================
-// Lattice lifting — design specification (not yet executable authority)
-// =========================================================================
-//
-// These patterns describe how lattice operations lift through containers.
-// They are a DESIGN SPECIFICATION for concrete monomorphized instances.
-//
-// Concrete instances live next to their lattice declarations:
-//   std/termination.dag: optional_evidence_meet, map_evidence_merge_at
-//   std/induction.dag:   meet_sub_value, join_sub_value
-//
-// Generic patterns (shape; callers instantiate concretely):
-//   optional_meet(meet, a, b):  None is identity (top).
-//   map_merge_at(merge, m, k, v): pointwise per key, absent = identity.
-//   min_by(project, a, b):  compare via projection, keep lesser.
-//   max_by(project, a, b):  compare via projection, keep greater.
-//
-// Type parameters on generic fn signatures emit faithfully to Rust with no
-// synthesized trait bounds — if a concrete instance needs one, the `.dag`
-// authority must declare it (bound-declaration syntax is out-of-scope here;
-// a future lane). Known adjacent gaps, each a separate dissolution lane:
-//   - Higher-order value params still emit as `impl Fn(...) + Clone` at the
-//     callable-bound layer (see 05_emit_rust.dag line ~1401).
-//   - The type/value-param split in the emitter keys on the post-resolve
-//     invariant that resolve_item_types (04_resolve.dag:923) installs:
-//     declared type params get an env binding with
-//     `inferred: TypeVariable { id: T }`, so a param whose type_expr
-//     carries TypeVariable AND whose Node.name matches the type_expr's
-//     name is a declared type param. The classifier lives in
-//     is_function_type_param (05_emit_rust.dag). Pathological aliasing
-//     like `fn foo<T>(T: T)` — a value param whose name shadows the
-//     type-var — would be misclassified; that's a real (though unusual)
-//     case the current heuristic doesn't handle, and the dissolution
-//     target below closes it cleanly. Dissolution target: partition
-//     Node's `params` slot into `type_params` / `value_params`, or
-//     introduce a `ParamKind` discriminator.
-
-// =========================================================================
-// Sequence/collection structures
-// =========================================================================
-
-// FreeMonoid<T>: the free monoid over element type T.
-// Concretely: finite sequences (lists/strings) under concatenation.
-// The "free" means: no additional relations beyond the monoid laws.
-// Every element of FreeMonoid<T> is a unique finite sequence of T values.
-//
-// Layering (single semantic authority): the `type FreeMonoid` / `type PartialFunction`
-// records — and the "Declared surface" bullets for each — are the abstract algebra.
-// `free_monoid_scalar_templates`, `free_monoid_collection_templates`, and
-// `partial_function_templates` below only project that algebra onto kernel types for
-// compiler enrichment (receiver/param templates); they do not define a second method shape.
-//
-// Declared surface (receiver-shaped fields — matches the record below):
-//   Monoid: concat(self, other), empty, append(element)
-//   Indexed carrier: length(), count(), is_empty() -> Bool, slice(i, j), first() -> T?,
-//     last() -> T?; element lookup is total-only via `get(collection, index) -> T?`
-//     in std/primitives.dag, not a partial algebra field.
-//   map: endomorphic fn(T) -> T -> FreeMonoid<T> (not fn(T)->U with U free)
-//   fold: monoid-shaped on T — init: T plus step fn(T, T) -> T -> T
-//   (Those two stay on T because executable authority here cannot yet name
-//     per-method result/accumulator type parameters — same emitter gap as lattice lifting above.)
-//   filter, flat_map, any, all, enumerate, reverse, skip, take, sort_by, contains
 type FreeMonoid<T> {
-  // Monoid operations
+
   concat: fn(FreeMonoid<T>, FreeMonoid<T>) -> FreeMonoid<T>
   empty: FreeMonoid<T>
   append: fn(T) -> FreeMonoid<T>
-  // Positional access — partial direct indexing is intentionally absent.
+
   slice: fn(Int, Int) -> FreeMonoid<T>
   length: fn() -> Int
   is_empty: fn() -> Bool
   count: fn() -> Int
   first: fn() -> T?
   last: fn() -> T?
-  // Iteration-shaped operations (map is endomorphic on T; fold is monoid-shaped on T)
+
   map: fn(fn(T) -> T) -> FreeMonoid<T>
   filter: fn(fn(T) -> Bool) -> FreeMonoid<T>
   fold: fn(T, fn(T, T) -> T) -> T
   flat_map: fn(fn(T) -> FreeMonoid<T>) -> FreeMonoid<T>
   any: fn(fn(T) -> Bool) -> Bool
   all: fn(fn(T) -> Bool) -> Bool
-  // Structural transformations
+
   enumerate: fn() -> FreeMonoid<Tuple<Int, T>>
   reverse: fn() -> FreeMonoid<T>
   skip: fn(Int) -> FreeMonoid<T>
@@ -415,16 +136,6 @@ type FreeMonoid<T> {
   contains: fn(T) -> Bool
 }
 
-// PartialFunction<K, V>: finite partial function (Map algebra).
-// Map<K, V> = K -> (1 + V) — a function that may be undefined for some keys.
-//
-// Declared surface (receiver-shaped fields — matches the record below):
-//   lookup(k) -> Witness<V>; get(k) -> V?        (application / alias accessors)
-//   empty, insert(k, v)
-//   merge(other: PartialFunction<K, V>) -> PartialFunction<K, V>
-//   has(k), contains_key(k) -> Bool
-//   keys() -> FreeMonoid<K>, values() -> FreeMonoid<V>   (sequence views)
-//   size() -> Int
 type PartialFunction<K, V> {
   lookup: fn(K) -> Witness<V>
   empty: PartialFunction<K, V>
@@ -438,61 +149,7 @@ type PartialFunction<K, V> {
   size: fn() -> Int
 }
 
-// =========================================================================
-// Ordering (used by OrderedRing and Field)
-// =========================================================================
-
 type Ordering = Less | Equal | Greater
-
-// =========================================================================
-// Derived operations (emerge from algebraic inhabitation)
-// =========================================================================
-
-// These are not new primitives — they are derived from the algebra.
-// Listed here as the canonical derivation rules.
-
-// From Ring:
-//   subtract(a, b) = add(a, negate(b))
-//
-// From OrderedRing:
-//   abs(a) = if compare(a, zero) == Less { negate(a) } else { a }
-//   min(a, b) = if compare(a, b) == Less { a } else { b }
-//   max(a, b) = if compare(a, b) == Greater { a } else { b }
-//   less_than(a, b) = compare(a, b) == Less
-//   greater_than(a, b) = compare(a, b) == Greater
-//
-// From Lattice:
-//   meet(a, b) = greatest lower bound
-//   join(a, b) = least upper bound
-//   For total orders like FermiDepth, meet == min and join == max.
-//
-// From Field:
-//   divide(a, b) = mul(a, reciprocal(b))
-//
-// From BooleanAlgebra:
-//   and(a, b)  = meet(a, b)
-//   or(a, b)   = join(a, b)
-//   not(a)     = complement(a)
-//   xor(a, b)  = meet(join(a, b), complement(meet(a, b)))
-//
-// From FreeMonoid:
-//   length and count are declared methods (Int); is_empty() -> Bool;
-//   contains is a declared predicate.
-//   The record's fold is monoid-shaped on T, not a generic catamorphism init: U.
-
-// =========================================================================
-// Compiler bridge: algebraic enrichment profiles
-//
-// These types and data tables drive the compiler's kernel type enrichment.
-// Each kernel type is mapped to an algebra profile; the compiler reads
-// these declarations to materialize structural method fields (add, mul,
-// concat, etc.) on kernel types during build_type_env.
-//
-// Canonical source: adding algebraic enrichment for a new kernel type
-// requires one line in kernel_algebra_profile below. v3 compiler accessors
-// consume this lowered map directly; v2 parity tests remain only as transition
-// ratchets until PB retires the old stage0 comparison.
-// =========================================================================
 
 type AlgebraProfile
   = OrderedRingProfile
@@ -520,24 +177,16 @@ type AlgebraTypeTemplate
   | CallableOf { params: List<AlgebraTypeTemplate>, return_type: AlgebraTypeTemplate }
   | AlgebraTypeVariable { id: String }
 
-// Operation size effect — structural contract on how a method affects
-// collection size. Declared per-method on the algebra template.
-// Complexity analysis reads this as a single authority for descent proofs.
 type CollectionSizeEffect
-  = ShrinkEffect       // strict prefix drop: skip(N) with positive N
-  | ProjectionEffect   // extracts single element: first, last
-  | IdentityEffect     // preserves structural children: filter, reverse, enumerate, sort_by
+  = ShrinkEffect
+  | ProjectionEffect
+  | IdentityEffect
 
-// Operation cost shape — structural contract on a method's algorithmic cost.
-// Declared per-method on the algebra template. Complexity analysis reads
-// this to compute cost expressions without string-dispatching on method names.
-// CostShape is purely about the cost class — no output-shape information.
-// Whether a method produces a collection is derived from return_type.
 type CostShape
-  = ShapeConstant    // O(1)
-  | ShapeLinearScan  // O(n) — scans elements without body
-  | ShapeIterateBody // O(n * body) — iterates with callback
-  | ShapeSortBody    // O(n log n * key)
+  = ShapeConstant
+  | ShapeLinearScan
+  | ShapeIterateBody
+  | ShapeSortBody
 
 type AlgebraFieldTemplate {
   name: String
@@ -545,9 +194,7 @@ type AlgebraFieldTemplate {
   return_type: AlgebraTypeTemplate
   size_effect: CollectionSizeEffect?
   cost_shape: CostShape?
-  // Callback element contract: 0-indexed position within the CallableOf
-  // params that receives IteratedSubValue of the receiver collection.
-  // Declared fact — CX and inference read this instead of guessing.
+
   callback_element_position: Int?
 }
 
@@ -595,10 +242,6 @@ fn boolean_algebra_templates() -> List<AlgebraFieldTemplate> {
   ]
 }
 
-// Set<A> inhabits BooleanAlgebra<A> applied pointwise: union = join,
-// intersect = meet, diff = meet(a, complement(b)), member = element test.
-// Unlike FreeMonoid collections, sets have no positional operations
-// (append, sort_by, enumerate, reverse) — only algebraic + iteration ops.
 fn boolean_algebra_collection_templates() -> List<AlgebraFieldTemplate> {
   [
     { name: "union", param_types: [ReceiverSelf, ReceiverSelf], return_type: ReceiverSelf, size_effect: none, cost_shape: none, callback_element_position: none },
@@ -698,10 +341,6 @@ fn algebra_templates_for_profile(profile: AlgebraProfile) -> List<AlgebraFieldTe
   }
 }
 
-// Type parameter roles for each algebra profile. Declared once here;
-// container_param_name in std/types.dag reads this as the single authority
-// for parameter names. Templates use ReceiverElement/ReceiverKey/ReceiverValue
-// which correspond to these declared roles.
 fn algebra_type_param_names(profile: AlgebraProfile) -> List<String> {
   match profile {
     OrderedRingProfile => []

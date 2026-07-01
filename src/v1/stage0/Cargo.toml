@@ -16,6 +16,8 @@ text_lookup_work_counter = []
 # concatenation). rpds was the considered alternative; rejected because its
 # Vector has no concatenation, so it cannot realize the declared list carrier.
 im-rc = "15.1"
+unicode-ident = "1"
+unicode-properties = { version = "0.1", features = ["emoji"] }
 stacker = "0.1"
 clap = { version = "4", features = ["derive"] }
 lazy_static = "1"
@@ -73,3 +75,38 @@ path = "src/bin/discover_source_root_ingest.rs"
 [[bin]]
 name = "v2_whole_tree_parse_scan"
 path = "src/bin/v2_whole_tree_parse_scan.rs"
+
+# Parse-only regression scanner for src/v1/*.dag (cheap half of full_dsl_compiles,
+# which is #[ignore]; this lifts the v1 parse gate onto the CI floor non-ignored).
+# SCAFFOLD — dissolves when src/v1 is fully migrated to .dag substrate authority
+# and the floor covers it via the standard dsl_compile_clean_gate.
+[[bin]]
+name = "v1_src_dag_parse"
+path = "src/bin/v1_src_dag_parse.rs"
+
+# Whole-tree wiring-liveness scan (gunbc#5364 widening): runs
+# wiring_liveness_corpus_dead_wires over a context built across the WHOLE
+# source-root corpus in one pass, so a dead wire ANYWHERE (not just inside a
+# per-entry import closure) fails the floor. Coverage widens from per-entry
+# resolve-closure to whole-tree-in-one-pass.
+[[bin]]
+name = "wiring_liveness_whole_tree"
+path = "src/bin/wiring_liveness_whole_tree.rs"
+
+# SCAFFOLD — emit-only whole-corpus audit for complexity/linearity lens family (SYNTACTIC half).
+# ROADMAP §3 `3-gates-whole` ("complexity budget gates the whole codebase"); audit-first bridge
+# until `decl_facts(roots)` host builtin (#5966) grounds fn-body reflection. Parse-only walk over
+# witness_layer_roots; NOT floor-enrolled — prints findings TSV, exit 0 unless --fail-on-findings.
+# DISSOLUTION: swap stub for decl_facts(roots), move triage roster on-carrier, fold into pure .dag
+# reader (gunbc#5364), then enroll floor gate.
+[[bin]]
+name = "complexity_linearity_audit"
+path = "src/bin/complexity_linearity_audit.rs"
+
+[[bin]]
+name = "measure_whole_tree_resolve"
+path = "src/bin/measure_whole_tree_resolve.rs"
+
+[[bin]]
+name = "capture_func_env_semantic_oracle"
+path = "src/bin/capture_func_env_semantic_oracle.rs"

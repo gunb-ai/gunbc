@@ -1,67 +1,7 @@
-// std/types.dag -- Base types and domain enums for the gunbc DSL.
-//
-// SET-THEORETIC FOUNDATION:
-// Every type T denotes a set [T] of values. Subtyping is set inclusion:
-//   A <: B  iff  [A] <= [B]
-//
-// The type universe is a bounded lattice:
-//   _|_ = Unit = {}        (empty set)
-//   T = Json             (universal structured value)
-//
-// The full axiom system and coercion theorem follow from the
-// set-theoretic foundation above.
-//
-// TYPES ARE DAGS: Every type T is itself a Dag<TypeOp>. The set [T]
-// is the set of values that PASS the type's DAG when executed:
-//   [T] = {v | execute(T.dag, v) succeeds}
-//
-// Primitives are Identity DAGs (single node). Refinements add Validate
-// nodes. Records are Product nodes (parallel field DAGs). Enums are
-// Coproduct nodes (branching on variant tag). Generics are Apply nodes
-// (parameterized SubDags). Brands are Brand nodes (nominal disjointness).
-//
-// This means type checking is DAG analysis, coercion insertion is DAG
-// transformation, and test generation is DAG traversal. Same tooling
-// as business logic -- one recursive Dag<Op> structure for everything.
-//
-// The compiler's internal model uses full cardinality algebra (lattice +
-// semiring) and predicate entailment (Heyting algebra). The surface
-// syntax keeps it simple: T, T?, List<T>.
-
 module std.types
 
 import std.algebra { BooleanAlgebra, FreeMonoid, PartialFunction, kernel_algebra_profile, algebra_type_param_names }
 
-// --- Primitives (Level 0: Atoms) --------------------------------------
-// Each is a single-node Identity DAG -- no validation, just a base carrier.
-//
-// DAG representation:         Set denotation:
-//   String = Dag{Identity}      [String] = Sigma*
-//   Int    = Dag{Identity}      [Int]    = Z
-//   Bool   = Dag{Identity}      [Bool]   = {true, false}
-//   Float  = Dag{Identity}      [Float]  = F64
-//   Bytes  = Dag{Identity}      [Bytes]  = {0..255}*
-//   Secret = Dag{Identity}      [Secret] = Sigma* (security-policy distinction)
-//   Unit   = Dag{Identity}      [Unit]   = {} (bottom, _|_)
-//   Json   = Dag{Identity}      [Json]   = [Bool] U [Int] U ... U {null} (top, T)
-//
-// Kernel type declarations.
-//
-// The compiler's bootstrap kernel seed (leaf nodes) provides fallback
-// bindings for isolated tests. These declarations override the seed via
-// the normal merge order (kernel < imports < local).
-//
-// COMPOSITIONAL TARGET (Part B):
-// These types will compose from algebraic structures in std/algebra.dag:
-//   Int    = OrderedRing<Word64>      — arithmetic emerges from Ring
-//   Float  = Field<Word64>            — division emerges from Field
-//   String = FreeMonoid<Char>         — concat/length emerge from Monoid
-//   Bool   = BooleanAlgebra<{T,F}>    — and/or/not emerge from Lattice
-// Until Part B lands (inference resolves methods from type fields),
-// the compiler still uses kernel_types/is_kernel_type for these.
-
-// Canonical set of kernel-provided primitive types.
-// Single authority: all compiler stages import from here.
 data kernel_type_set: Map<String, Bool> = {
   "String": true, "Int": true, "Bool": true, "Float": true,
   "Secret": true, "Json": true, "Unit": true, "Bytes": true
@@ -74,8 +14,6 @@ fn is_kernel_type(name: String) -> Bool {
   }
 }
 
-// Container types: parameterized types that stay unexpanded at resolve time.
-// Value is the expected type-parameter arity (element collections: 1, keyed: 2).
 data container_type_arity: Map<String, Int> = {
   "List": 1, "Set": 1, "Map": 2, "Witness": 1
 }
@@ -91,8 +29,6 @@ fn container_expected_arity(name: String) -> Int? {
   map_get(container_type_arity, name)
 }
 
-// Container type parameter names: derived from algebra profile templates.
-// Element collections (FreeMonoid) → ["T"], keyed collections (PartialFunction) → ["K", "V"].
 fn container_param_names_for(kind_name: String) -> List<String> {
   if kind_name == "Witness" {
     ["T"]
@@ -112,9 +48,6 @@ fn container_param_name(kind_name: String, index: Int) -> String? {
   }
 }
 
-// Ordered element collections: support positional access (list[0]).
-// FreeMonoid-based collections preserve insertion order.
-// Set-based collections are unordered — no positional access.
 data ordered_element_collections: Map<String, Bool> = {
   "List": true
 }
@@ -123,17 +56,6 @@ fn is_ordered_element_collection(name: String) -> Bool {
   map_contains_key(ordered_element_collections, name)
 }
 
-// Canonical query: resolve a container-template name to its algebra.
-// Single surface both consumers (v2/coercion.dag, v2/05_emit.dag) read —
-// neither maintains a parallel spelling table. The rows below are the
-// concrete projection of the three type aliases declared just below
-// (type List = FreeMonoid, Set = BooleanAlgebra, Map = PartialFunction)
-// across the two spellings the compiler sees (PascalCase alias names and
-// their snake-case identifier form) plus the three kernel-algebra
-// self-identities that keep the query total over container-template
-// names. When .dag gains alias reflection, these rows derive from the
-// aliases directly; today the map is the single authority that captures
-// that relationship without requiring case-normalization primitives in std.
 data container_template_algebra_rows: Map<String, String> = {
   "List": "FreeMonoid",
   "list": "FreeMonoid",
@@ -149,8 +71,6 @@ data container_template_algebra_rows: Map<String, String> = {
   "partial_function": "PartialFunction"
 }
 
-// Alias spellings only: these names lower to target collection carriers. Algebra
-// self-identities above remain comparison canonicalization, not carrier aliases.
 data container_template_alias_rows: Map<String, String> = {
   "List": "FreeMonoid",
   "list": "FreeMonoid",
@@ -168,128 +88,45 @@ fn container_template_alias_algebra(name: String) -> String? {
   map_get(container_template_alias_rows, name)
 }
 
-// Ordered canonical parameterized-container/algebra names (PascalCase).
-// Single authority for deterministic test generation — coercion.dag imports
-// this instead of maintaining a parallel list. Consumers that need only
-// collection algebra surfaces must still filter through container_template_algebra.
-// Alphabetically sorted for fixed-point convergence.
 fn canonical_container_names() -> List<String> {
   ["BooleanAlgebra", "FreeMonoid", "List", "Map", "PartialFunction", "Set", "Witness"]
 }
 
-// Bool: two-valued coproduct. Structurally: Disj + 2 unit variants.
-// Target: Bool = BooleanAlgebra over {True, False}.
-// Note: std.logic.Classical and std.bit.Bit carry the same structural
-// shape as distinct nominal types. Aliasing Bool = Classical would
-// require the compiler to resolve aliases in Branch input type-checking
-// (currently pins Bool as a direct Disj for if/else). Deferred until
-// that compiler work lands; keeps intent-signaling via distinct names.
-// `Bool` still parses here for the legacy scanner (`dsl/` was scanned
-// end-to-end; see historical `gist_transitive_closure_parse` and
-// stage0 self-host fixtures). `Declaration.inhabits` → `BooleanAlgebra<Bool>` is
-// applied when lowering this sum. Surface `type … inhabits … =` cannot appear
-// in this file until v2 gains a compatible parse path.
 type Bool = True | False
 
-// Unit: terminal object (zero-field product, single inhabitant).
 type Unit
 
-// Json, Bytes: opaque kernel types.
-// Secret: kernel type aliased to String (type map handles target rendering).
 type Json
 type Bytes
 
-// Int, Float, String declared in std/integer.dag, std/float.dag,
-// std/string_type.dag respectively. Currently use v1-era where syntax;
-// will be rewritten as algebra.dag compositions in Part B.
-
-// --- Char type (structural primitive) ----------------------------------
-// Unicode scalar value (U+0000 to U+10FFFF, excluding U+D800..U+DFFF).
-// `unicode_scalar` registry predicate (lowered in `lower.rs`) — not a single
-// `range(max: 1114111)` interval (that would admit surrogates).
-// R3 gate #20 (`numeric_inherited_bake_ins_dissolved`): refinement over
-// abstract `Int` — not a parallel fixed-width integer row.
 type Char = Int where unicode_scalar, brand("Char")
 
-// --- Container types (parameterized) -----------------------------------
-// Each container inhabits a specific algebraic structure from which its
-// operations emerge (see std/algebra.dag).
-//
-// Denotational equations (from Collection Denotational Model in ROADMAP):
-//   List<A>  = Σ n. Fin(n) → A         (positional, ordered, duplicates OK)
-//   Set<A>   = A → Bool                 (membership, unordered, unique)
-//   Map<K,V> = K → (1 + V)             (keyed partial function)
-//
-// Algebraic inhabitation:
-//   List<T>  inhabits FreeMonoid<T>     → append, empty, length, map, fold, filter
-//   Set<A>   inhabits BooleanAlgebra<A> → union, intersect, diff, member
-//   Map<K,V> inhabits PartialFunction<K,V> → lookup, insert, delete, merge
 type List<element> = FreeMonoid<element>
 type Set<element> = BooleanAlgebra<element>
 type Map<key, value> = PartialFunction<key, value>
 
-// Generic list length (FreeMonoid cardinality). Single std authority — domain modules
-// must not mint per-type counters.
 fn list_length<T>(items: List<T>) -> Int {
   fold(items, init: 0, f: (acc, _) => acc + 1)
 }
 
-// --- Refinement types (Level 1: Subset Comprehension) -----------------
-// Each adds a Validate node to the base type's DAG:
-//   Url = Dag { Identity("String") -> Validate(NonEmpty) -> Validate(Matches("^https?://")) }
-//
-// Set meaning: [T @pred(P)] = {x in [T] | P(x)}
-// DAG meaning: execute base Identity, then each Validate; value passes iff all pass.
-//
-// Always a subtype of the base: T @pred(P) <: T  (the DAG is strictly longer)
-// Conjunction is intersection: @pred(P) @pred(Q) chains two Validate nodes
-//
-// The compiler uses refinements for:
-//   1. Validation at type-check time (compile error if [source] !<= [target])
-//   2. Auto-generation of test inputs (valid from [T], invalid from [T]^c)
-//   3. Documentation of expected shapes
-
-// S9 Slice 2.5 (Director Option A revised RATIFIED at gunbc#828
-// `issuecomment-4392245968`): pattern / format / content predicates are
-// structurally absent from the predicate registry until Q-Regex-Primitive
-// substrate-fact-introduction lands. The where-clauses on the types below
-// dropped from this slice; restore the original predicate when the
-// registry re-includes pattern / format / content. The original
-// where-clause text appears in each type's preceding comment for the
-// restoration receipt.
-//
-// CommitSha: restore `where pattern("^[a-f0-9]{40}$")` post-Q-Regex.
 type CommitSha    = String
-// Sha256: restore `where pattern("^[a-f0-9]{64}$")` post-Q-Regex.
+
 type Sha256       = String
 type RetryCount   = Int where range(min: 1, max: 5)
 type HttpStatus   = Int where range(min: 100, max: 599)
-// Email: restore `where pattern("^[^@]+@[^@]+\\.[^@]+$")` post-Q-Regex.
+
 type Email        = String
 type Port         = Int where range(min: 1, max: 65535)
-// GistId: restore `where format(uuid)` post-Q-Regex (format predicate
-// re-enrolled).
+
 type GistId       = String
 type Secret       nominal_opaque = String
 type SecretValue  = Secret where non_empty
-// Url: restore `where pattern("^https?://")` post-Q-Regex.
-type Url          = String
-// SemVer: restore `where pattern("^\\d+\\.\\d+\\.\\d+")` post-Q-Regex.
+
 type SemVer       = String
 type NonEmptyStr     = String where non_empty
 type LanguageId      = String where non_empty
 type SecretName      = String where non_empty
-// `NonNegativeInt` and `PositiveInt` migrated to Nat-based shapes per S9
-// Slice 2 / Slice 2.5; declarations now live in `dsl/std/integer.dag`
-// (which already imports `std.nat { Nat }`) — locating them here would
-// require an `std.types -> std.nat` import edge that triggers a
-// circular-dependency false-positive during transitive load of test
-// fixtures via `std.render` chains. Consumers should
-// `import std.integer { NonNegativeInt, PositiveInt }`.
 
-// Path modeling (EX-2):
-// - FilePath remains a compatibility alias for existing modules.
-// - FilePathParts and GlobPattern provide structured forms for new DSL code.
 type PathSegment   = NonEmptyStr where brand("PathSegment")
 type GlobSegment   = NonEmptyStr where brand("GlobSegment")
 type FilePathParts {
@@ -300,46 +137,19 @@ type GlobPattern {
 }
 type FilePath      = String where non_empty
 
-// --- Temporal types (Level 1: Refinements for time) -----------------------
-// Addresses the temporal-modeling deficit (D14).
-//
-// Timestamp is an ISO 8601 string (not epoch). Duration is milliseconds.
-// These are refinements, not opaque wrappers -- the pipeline can still
-// pass them where String/Int is expected (widening), but String/Int
-// cannot be passed where Timestamp/Duration is expected (narrowing error).
-//
-//   [Timestamp] < [NonEmptyStr] < [String]
-//   [Duration]  < [Int]
-//   [EpochMs]   < [Int]
-
-// --- Source locations (Level 1: Positional refinements) -------------------
-
 type SourceSpan {
   file: FilePath
   start: Int
   end: Int
 }
 
-// Timestamp: restore `where pattern("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}")` post-Q-Regex.
 type Timestamp    = String
 type EpochMs       = Int where range(min: 0)
 type Duration      = Int where range(min: 0)
 type Milliseconds  = Int where range(min: 0), brand("Milliseconds")
 type Seconds       = Int where range(min: 0), brand("Seconds")
-// Opaque logical-instant nominal (fabric/cache observation axes). Not wall-clock
-// `Timestamp` (ISO String); comparable logical time for availability and receipts.
-type LogicalTime   = NonEmptyStr where brand("LogicalTime")
 
-// --- Branded nominal types (Level 1+8: Refinement + Brand) ----------------
-// Addresses the nominal-disjointness deficit (D15).
-//
-// Branded types are structurally identical (all NonEmptyStr) but nominally
-// disjoint. The @brand annotation adds a Brand node to the type's DAG,
-// making set membership check type-aware:
-//   [IssueId] intersect [IntentId] = {}   even though both < [NonEmptyStr]
-//
-// This prevents accidental mixups (passing an IntentId where IssueId
-// is expected) at compile time.
+type LogicalTime   = NonEmptyStr where brand("LogicalTime")
 
 type IntentId     = NonEmptyStr where brand("IntentId")
 type IssueId      = NonEmptyStr where brand("IssueId")
@@ -350,112 +160,37 @@ type WorkerId     = NonEmptyStr where brand("WorkerId")
 type CommentId    = NonEmptyStr where brand("CommentId")
 type SignalKey    = NonEmptyStr where brand("SignalKey")
 type ContentHash  = NonEmptyStr where brand("ContentHash")
-// Workflow external-attachment anchor (T-WAD Slice 2 / gate #55): distinct
-// nominals for producer / observer / prover / run keys so provenance roles and
-// run scope cannot be conflated at callsites (DESIGN.md §3 single authority, vs bare `String`).
+
 type WorkflowProducerId = NonEmptyStr where brand("WorkflowProducerId")
 type WorkflowObserverId = NonEmptyStr where brand("WorkflowObserverId")
 type WorkflowProverId = NonEmptyStr where brand("WorkflowProverId")
 type WorkflowRunId = NonEmptyStr where brand("WorkflowRunId")
 
-// --- Git types (refinements of String) ------------------------------------
 type GitRef       = String where non_empty
-// Note: CommitSha <: GitRef <: String. A SHA is always a valid ref,
-// but a ref is not always a SHA (e.g., "main", "HEAD~1").
-
-// Refinement chain example (transitive subtyping):
-//   [Url] < [NonEmptyStr] < [String] < [Json]
-// Each step narrows by predicate (subset comprehension).
-// The compiler walks this chain for coercion: passing Url where String
-// expected is safe (<=); passing String where Url expected is an error (!<=).
-
-// --- Domain enums (Level 4: Finite Coproducts) ------------------------
-
-// --- Extracted enums (WS1-2: stringly-typed -> sum types) ---------------
 
 type TopologyNodeKind = Pure | Transport | SubDag | Env
 type DocSourceKind    = Template | Generated | Static
 
 type FermiDepth = Xs | S | M | L | Xl
 
-// GNU/LLVM triple + Architecture axis: extdeps/toolchain/types.dag (§3 single authority).
-
-// Simple enums are finite sets. Pattern matching must be exhaustive
-// (cover the full |).
-
-// --- Filesystem entry taxonomy: see std/filesystem/types.dag ------------
-// EntryKind / SymlinkTarget were rehomed out of this catch-all into the thin
-// module std.filesystem.types (mirroring std.os.types). They are the
-// OS-AGNOSTIC reduction across real filesystems; each filesystem's cited native
-// taxonomy + its mapping live down-layer in extdeps/filesystem/{posix,ntfs}.dag,
-// keyed to std.os.types.FileSystemSemantics — std holds the agnostic shape, not POSIX.
-
-// --- Content encoding: see std/encoding.dag (single authority) --------
-
-// --- File content types (Level 1+4: Refinement x Coproduct) -----------
-// Model BOTH sides of the file I/O equation:
-//   Producer side: what files actually exist (content encoding)
-//   Consumer side: what operations require (TextFilePath vs FilePath)
-//
-// A FilePath names a location; its referent has a content encoding.
-// TextFilePath and BinaryFilePath are content-indexed refinements:
-//   [TextFilePath] < [FilePath]         (subset)
-//   [BinaryFilePath] < [FilePath]       (subset)
-//   [TextFilePath] intersect [BinaryFilePath] = {}   (disjoint via @content brand)
-//   [TextFilePath] | [BinaryFilePath] = [FilePath]  (exhaustive partition)
-//
-// Passing FilePath where TextFilePath is expected is a compile error:
-//   [FilePath] !<= [TextFilePath]  ->  "cannot prove content is text"
-// The developer must insert an explicit classification step.
-
-// TextFilePath: restore `where content(Text)` post-Q-Regex / content-typing
-// substrate. Content-typing carved with regex predicate as parallel
-// substrate-fact-introduction.
 type TextFilePath   = FilePath
-// BinaryFilePath: restore `where content(Binary)` post-content-typing landing.
+
 type BinaryFilePath = FilePath
 
-// FileEntry / FileClassification: std/filesystem.dag — one record, alias
-// name for probe-shaped API; Encoding from std/encoding.dag.
-
-// MimeType: restore `where pattern("^[a-z]+/[a-z0-9.+-]+$")` post-Q-Regex.
 type MimeType = String
 
-// File type rules -- declarative extension-to-encoding mapping.
-// This is compile-time data the compiler uses for:
-//   1. Static narrowing: path literal "foo.rs" -> TextFilePath (from @file_types)
-//   2. Test fixture generation: diverse mock file lists across branches
-//   3. Default classification in dry-run mode (no filesystem access)
-//   4. Repo integration tests: expected binary/text file counts
-//
-// Defines the partitioning:  classify: [FilePath] -> TextFilePath | BinaryFilePath
-// file_types configuration removed (was annotation)
-
-// --- Transport types (Level 3+4: Coproduct DAGs) -----------------------
-// RFC 9110 Section 9: HTTP request methods.
-// Moved from extdeps/transports/rest.dag to std/ — universal concept.
 type HttpMethod = GET | POST | PUT | PATCH | DELETE | HEAD | OPTIONS
 
-// --- Auth types (Level 3+4: Product and Coproduct DAGs) ---------------
-// Records compile to Product nodes with parallel SubDag fields.
-// Sums compile to Coproduct nodes that branch on variant tag.
-
-// [AuthScheme] = {Bearer} | ({Header} x [String]) | ({Basic} x [String])
-// Sum type with payloads: tagged disjoint union.
-// Protocol-level schemes only (RFC 6750, RFC 7235, RFC 7617).
-// Provider-specific schemes (SigV4, OidcToken) compose from extdeps/cloud.
 type AuthScheme
   = Bearer
   | Header { name: String }
   | Basic { username: String }
   | ApiKey
 
-// [AccessToken] = [Secret] x [AuthScheme] x [String?]
-//               = [Secret] x [AuthScheme] x ([String] U {none})
 type AccessToken {
   token: Secret
   scheme: AuthScheme
-  expires_at: Timestamp?       // Level 5: Optional -- [Timestamp] U {none}
+  expires_at: Timestamp?
 }
 
 type Credential {
@@ -467,13 +202,9 @@ type Credential {
   expires_in: Int?
 }
 
-// --- Handle types (branded wrappers for resource capabilities) --------
-
 type FilesystemHandle = FilePath where brand("FilesystemHandle")
 type NetworkHandle    = Unit where brand("NetworkHandle")
 type ToolHandle       = String where brand("ToolHandle")
-
-// --- Transport types (Level 3: Labeled Products) ----------------------
 
 type TransportRequest {
   method: HttpMethod
@@ -506,8 +237,6 @@ type RestResponse {
   body: Json
 }
 
-// --- Test / CI types (Level 3: Labeled Products) ----------------------
-
 type TestResult {
   name: String
   ok: Bool
@@ -530,40 +259,10 @@ type StageResult {
   skipped: Bool
 }
 
-// --- Structured text rendering (EX-7) ----------------------------------
-// Document trees are built structurally, then rendered by shared helpers.
-
-type DocumentLine {
-  text: String
-  is_comment: Bool
-  is_blank: Bool
-}
-
-type DocumentSection {
-  title: String
-  has_title: Bool
-  lines: List<DocumentLine>
-}
-
-type Document {
-  header: String
-  has_header: Bool
-  comment_prefix: String
-  sections: List<DocumentSection>
-  trailing_newline: Bool
-}
-
-type DocumentFile {
-  path: String
-  document: Document
-}
-
 type RenderedTextFile {
   path: String
   content: String
 }
-
-// --- Tool registry (Level 3+6: Products with Collections) -------------
 
 type ToolEntry {
   name: String
@@ -575,10 +274,6 @@ type ToolRegistry {
   tools: List<ToolEntry>
 }
 
-// --- Dag visualization (nested products + collections) ----------------
-
-// DAG: Product { nodes: Wrap(List) -> SubDag(TopologyNode), edges: ..., ... }
-// Set: [DagTopology] = (Union_n [TopologyNode]^n) x (Union_m [TopologyEdge]^m) x (Union_k [String]^k)
 type DagTopology {
   nodes: List<TopologyNode>
   edges: List<TopologyEdge>
@@ -589,7 +284,7 @@ type TopologyNode {
   id: String
   label: String
   kind: TopologyNodeKind
-  parent: String?        // SubDag parent id
+  parent: String?
 }
 
 type TopologyEdge {
@@ -610,38 +305,9 @@ type PragmaDirective {
   scope: String?
 }
 
-// Workflow/repo-specific types live in gunbc.workflow.types.
-
-// --- Docgen (product with refinement) ----------------------------------
-
 type DocSource {
   path: FilePath
   kind: DocSourceKind
 }
 
-// --- ReferenceModel<T> — pointer/reference parent carrier (PR-F S7 / §Q2 decision) ---
-//
-// DFS parent attachment (DESIGN.md §3 faithful modeling, Step 1): lands under the shared
-// kernel vocabulary in `std.types`, adjacent to other carriers typed over generic parameters (same
-// epistemic-stacking pattern as Q1 `Interval<D>`). Authority: §Q2 DECISION
-// (2026-04-28) — Rust `Box<T>` / `&T` / `Rc<T>`, Go `*T`, Python object references declare projections
-// over this parent; flavors are not unrelated sibling enums here.
-//
-// DECOMPOSITION CHECKPOINT (DESIGN.md §2): 🟢 PRIMITIVE
-// Type-parameter carrier for downstream projections/specializations (`&T`, `Box<T>`, …): widening adds
-// those shapes, not new `ReferenceModel` variants at this substrate layer.
-//
-// Substrate note (DESIGN.md §3 single authority / boundary discipline): today `T` lowers only into
-// `type_params` with `phantom_params` empty — comments alone do not enforce phantom discipline.
-// Until a fail-closed `phantom_params` bridge (or source `phantom_params` on the declaration)
-// exists for `ReferenceModel`, do not read API-level “phantom” intent from this block; follow
-// `phantom_params` on the declaration.
-//
-// Named consumer demand (Grounding G1 / T-Ground-Rust Phase 1): bundles this carrier with the
-// BoundDeclaration consumer lane under Substrate canvas B3.
-//
-// HARD BOUNDARIES:
-//   - No runtime payload / value refinement at this declaration — same constrained-inhabitance deferral
-//     pattern as `Measure<Q, S>` in `dsl/std/measure.dag` until substrate where-clauses land.
-//
 type ReferenceModel<T>

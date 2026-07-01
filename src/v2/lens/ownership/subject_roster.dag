@@ -1,7 +1,4 @@
-// Status: family receipt — claim + subject + claim-id frontier are co-located; workflow/lens_ownership_family_eval.dag routes rows through run_test_claim.
-
 module v2.test.lens_ownership.subject_roster
-
 
 import v2.compiler.eval {
   TestClaimEvalSubject,
@@ -32,7 +29,6 @@ fn ownership_claim_pass_node() -> Node {
 }
 }
 
-
 fn ownership_claim_fail_node() -> Node {
   Node {
     kind: TypeNode { connective: Atom { identity: ^lens_ownership_claim_fail_symbol } },
@@ -40,7 +36,6 @@ fn ownership_claim_fail_node() -> Node {
     occurrence_id: SyntheticOccurrence
 }
 }
-
 
 fn ownership_claim_input(ok: Bool) -> Node {
   if ok {
@@ -50,7 +45,6 @@ fn ownership_claim_input(ok: Bool) -> Node {
   }
 }
 
-
 data claim_lens_ownership_resource_dependency: TestClaim = EqualsClaim {
   label: "lens_ownership resource dependency witness passes through run_test_claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
@@ -59,7 +53,6 @@ data claim_lens_ownership_resource_dependency: TestClaim = EqualsClaim {
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
 
-
 data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node> = eval_test_claim_subject(
   claim: claim_lens_ownership_resource_dependency,
   context: eval_context_v4_evaluator_wave1(),
@@ -67,15 +60,12 @@ data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node> = ev
   evaluator_pin: ^lens_ownership_resource_dependency_pin
 )
 
-
 data lens_ownership_subject_rows: List<TestClaimEvalSubject<Node>> = [
   subject_lens_ownership_resource_dependency
 ]
 
-
 data lens_ownership_family_claim_ids: List<Symbol> = [
   ^claim_lens_ownership_resource_dependency
 ]
-
 
 data lens_ownership_node_subject_rows: List<TestClaimEvalSubject<Node>> = lens_ownership_subject_rows

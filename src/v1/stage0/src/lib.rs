@@ -11,12 +11,15 @@
     suspicious_double_ref_op,
     clippy::all
 )]
+#![recursion_limit = "256"]
 
-pub mod cache_purity_oracle;
 pub mod cli_run;
+pub mod complexity_linearity_audit_project;
 pub mod coproduct_reflection;
-pub mod doc_reachability_project;
+pub mod decl_facts_project;
 pub mod extdeps_cargo;
+pub mod extdeps_cargo_version;
+pub mod extdeps_external_authority;
 pub mod extdeps_languages_dag_emit;
 pub mod extdeps_languages_dag_syntax;
 pub mod extdeps_languages_dag_types;
@@ -29,12 +32,10 @@ pub mod extdeps_languages_python_types;
 pub mod extdeps_languages_rust_emit;
 pub mod extdeps_languages_rust_syntax;
 pub mod extdeps_languages_rust_types;
-pub mod extdeps_shape_transport_policy_project;
-pub mod fact_cardinality_census;
-pub mod import_resolution_project;
-pub mod languages_consumer_census;
-pub mod layering_imports_project;
-pub mod medium_structure_project;
+pub mod extdeps_uri;
+pub mod extdeps_uri_path;
+pub mod extdeps_version;
+pub mod extdeps_version_semver;
 pub mod module_path_index;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
@@ -42,18 +43,30 @@ pub mod rest_transport_facts;
 pub mod std_algebra;
 pub mod std_coercion;
 pub mod std_computation;
+pub mod std_constructors;
+pub mod std_decl_ref;
 pub mod std_effects;
 pub mod std_emit_model;
 pub mod std_error_primitives;
 pub mod std_graph;
 pub mod std_http_path;
 pub mod std_induction;
+pub mod std_integer;
 pub mod std_iteration;
+pub mod std_lens_verdict;
+pub mod std_list;
+pub mod std_logic;
+pub mod std_machine_constraints;
+pub mod std_magnitude;
+pub mod std_measure;
+pub mod std_nat;
 pub mod std_node;
+pub mod std_pareto;
+pub mod std_realization_schedule;
+pub mod std_serialization;
 pub mod std_syntax;
 pub mod std_termination;
 pub mod std_types;
-pub mod transport_script_position_project;
 pub mod v1_compiler_artifact;
 pub mod v1_compiler_coercion;
 pub mod v1_compiler_compile;
@@ -92,9 +105,14 @@ pub mod v1_compiler_tokenize;
 pub mod v1_compiler_trace;
 pub mod v1_compiler_workspace_members;
 pub mod v1_interpreter;
+pub mod v1_probe_emit_interp;
 pub mod v1_rt;
 pub mod v1_std_core;
+pub mod v1_test_non_ascii_perf_fixture;
 pub mod wire_value_serialize;
+pub mod wt_a;
+pub mod wt_b;
+pub mod wt_common;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);

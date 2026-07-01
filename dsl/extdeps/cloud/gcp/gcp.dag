@@ -1,40 +1,28 @@
-// extdeps/cloud/gcp/gcp.dag -- "What is GCP?"
-//
-// GCP identity model: projects, service accounts, OAuth2 scopes,
-// Workload Identity Federation, API endpoint patterns, regions,
-// and the transport bindings of GCP auth operations. OAuth2 token refresh
-// is modeled once (oauth2.Google.Refresh, REST -- the canonical handler);
-// gcloud-CLI shell ops are a distinct surface, not a duplicate of it.
-//
-// Complements extdeps/api/gcp_ops.dag (which covers retries,
-// propagation delays, and operational constraints).
-//
-// Consumers:
-//   extdeps/cloud/gcp/{storage,pubsub,iam,secret_manager,cloud_run,sts}.dag
-//   gunbc/auth/patterns.dag         -- credential chain
-
 module extdeps.cloud.gcp.gcp
 
 import extdeps.cloud.cloud { ServiceEndpoint }
 import std.types { FilePath, NonEmptyStr, Secret, HttpMethod, AuthScheme }
 import extdeps.cloud.gcp.errors { GcpErrorShape, GcpOAuth2ErrorShape }
 
-// -- Grounded identifier refinements --------------------------------
-// Cite: cloud.google.com/resource-manager/docs/creating-managing-projects
-// GcpProjectId: restore `where pattern("^[a-z][a-z0-9-]{4,28}[a-z0-9]$")` post-Q-Regex.
-type GcpProjectId = String where non_empty
-// ServiceAccountEmail: restore `where pattern("^[a-z][a-z0-9-]*@[a-z0-9-]+\\.iam\\.gserviceaccount\\.com$")` post-Q-Regex.
-type ServiceAccountEmail = String
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// -- Projects ------------------------------------------------------
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/apis/design"
+  }
+}
+
+type GcpProjectId = String where non_empty
+
+type ServiceAccountEmail = String
 
 type GcpProject {
   project_id: GcpProjectId
   project_number: Int
   name: String
 }
-
-// -- Service accounts ----------------------------------------------
 
 type GcpServiceAccount {
   email: ServiceAccountEmail
@@ -43,12 +31,10 @@ type GcpServiceAccount {
   disabled: Bool
 }
 
-// -- Credential acquisition (GCP-specific flows) -------------------
-// Provider-neutral flows live in std.credentials; Workload Identity Federation,
-// interactive gcloud OAuth, and local OAuth2 access-token strategies are grounded here.
-// Token refresh is one interface shape (oauth2.Google.Refresh below); ADC file-read and
-// gcloud CLI print-access-token are N peripheral handlers composed in gunbc.auth.credentials
-// — not forked re-implementations of the endpoint (DESIGN.md §3).
+type GcpOperation {
+  name: String
+  done: Bool?
+}
 
 type GcpOAuth2AccessTokenStrategy
   = AdcRefresh { adc_path: FilePath? }
@@ -63,8 +49,6 @@ type GcpCredentialFlow
   | InteractiveAuth { scopes: List<String> }
   | OAuth2AccessToken { strategy: GcpOAuth2AccessTokenStrategy }
 
-// -- OAuth2 scopes -------------------------------------------------
-
 type OAuth2Scope {
   scope: String
   description: String
@@ -77,8 +61,6 @@ data common_scopes: List<OAuth2Scope> = [
   { scope: "https://www.googleapis.com/auth/pubsub", description: "Pub/Sub access" },
   { scope: "https://www.googleapis.com/auth/secretmanager", description: "Secret Manager access" }
 ]
-
-// -- Workload Identity Federation ----------------------------------
 
 type WifPool {
   name: String
@@ -94,12 +76,35 @@ type WifProvider {
   attribute_mapping: Map<String, String>?
 }
 
-// -- API endpoints -------------------------------------------------
-// Pattern: {service}.googleapis.com/{version}
+fn wif_pool_resource(project_number: String, pool_id: String) -> String {
+  concat(
+    concat(concat("projects/", project_number), "/locations/global/workloadIdentityPools/"),
+    pool_id
+  )
+}
+
+fn wif_provider_resource(project_number: String, provider: WifProvider) -> String {
+  concat(
+    concat(wif_pool_resource(project_number: project_number, pool_id: provider.pool), "/providers/"),
+    provider.name
+  )
+}
+
+fn wif_principal_set_for_repo(project_number: String, pool_id: String, repository: String) -> String {
+  concat(
+    concat(
+      concat("principalSet://iam.googleapis.com/", wif_pool_resource(project_number: project_number, pool_id: pool_id)),
+      "/attribute.repository/"
+    ),
+    repository
+  )
+}
 
 type GcpService
   = GcpStorage
   | GcpIam
+  | GcpIamCredentials
+  | GcpServiceUsage
   | GcpSecretManager
   | GcpCloudRun
   | GcpPubsub
@@ -109,11 +114,17 @@ fn gcp_service_wire_label(service: GcpService) -> String {
   match service {
     GcpStorage => "storage"
     GcpIam => "iam"
+    GcpIamCredentials => "iamcredentials"
+    GcpServiceUsage => "serviceusage"
     GcpSecretManager => "secretmanager"
     GcpCloudRun => "run"
     GcpPubsub => "pubsub"
     GcpSts => "sts"
   }
+}
+
+fn gcp_service_api_id(service: GcpService) -> String {
+  concat(gcp_service_wire_label(service: service), ".googleapis.com")
 }
 
 type GcpApiEndpoint {
@@ -131,8 +142,6 @@ data api_endpoints: List<GcpApiEndpoint> = [
   { service: GcpSts, base_url: "https://sts.googleapis.com/v1", version: "v1" }
 ]
 
-// -- Regions -------------------------------------------------------
-
 type GcpRegion {
   name: String
   zones: List<String>
@@ -148,13 +157,6 @@ data regions: List<GcpRegion> = [
   { name: "eu", zones: [], multi_region: true }
 ]
 
-// -- Service: GCP auth operations (shell + REST transport) -------
-
-// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
-// WHICH gcloud.Auth ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service gcloud.Auth {
   operation Login {
     input {}
@@ -174,7 +176,7 @@ service gcloud.Auth {
       refresh_token: Secret
     }
     readonly
-    // Parses JSON: extracts client_id, client_secret, refresh_token
+
     transport file { op: READ, path: "\{path\}" }
   }
 }
@@ -186,17 +188,6 @@ type GoogleOAuth2Refresh200Body {
   scope: String?
 }
 
-// OAuth2 token refresh: ONE interface shape (this service), N transport handlers elsewhere.
-// REST is the cited upstream contract (RFC 6749 §6); gcloud.Auth.ReadADC (file) supplies
-// refresh inputs; shell.GCloud.AuthPrintAccessToken (shell) is an alternate acquisition path.
-// Materializers: gunbc.auth.credentials.gcp_oauth_access_token(strategy) dispatches
-// GcpOAuth2AccessTokenStrategy to leaf handlers below.
-//
-// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
-// WHICH oauth2.Google ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service oauth2.Google {
   config { endpoint: "https://oauth2.googleapis.com" }
 
@@ -210,8 +201,7 @@ service oauth2.Google {
       access_token: Secret from "access_token"
       expires_in: Int from "expires_in"
     }
-    // Derivation unknown: POST /token has no path key.
-    // Idempotency is spec-declared per RFC 6749 §6 for a given refresh_token.
+
     idempotent
     transport rest { method: POST, path: "/token" }
     response {
@@ -223,18 +213,6 @@ service oauth2.Google {
   }
 }
 
-// NOTE: the OAuth2 token-refresh endpoint is GCP's REST API, modeled faithfully
-// by `oauth2.Google.Refresh` above. A former `shell.OAuth2.RefreshToken` op
-// re-implemented that same endpoint with hand-rolled curl + form-encoding -- a
-// business bridge masquerading as a distinct dependency, with a known JSON/encoding
-// defect its own comment flagged. Removed: there is exactly one model of the
-// refresh endpoint, and `curl` is a transport, not a second handler we owe here.
-
-// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
-// WHICH shell.GCloud ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service shell.GCloud {
   operation AuthPrintAccessToken {
     input {}

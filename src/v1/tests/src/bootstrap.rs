@@ -1,14 +1,5 @@
-//! Bootstrap tests for the v2 self-hosted compiler.
-//!
-//! These are subprocess tests that build and run the stage0 binary.
-//! Most are `#[ignore]` because they require building the stage0 binary (~2 min).
-
 #![allow(clippy::disallowed_macros)]
 
-// ── Shared helpers ─────────────────────────────────────────────────────
-
-/// Build the stage0 binary via cargo. Returns path to the binary.
-/// On CI, the binary is already cached from the "Build Compiler" step.
 fn build_stage0() -> std::path::PathBuf {
     let build = std::process::Command::new("cargo")
         .arg("build")
@@ -42,8 +33,6 @@ fn temp_dir(name: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(unique)
 }
 
-/// Run a self-compile: `<binary> compile --source-root src/v1 --source-root dsl --output-dir <dir>`.
-/// Does NOT assert success — caller decides how to handle failure.
 fn run_self_compile(
     binary: &std::path::Path,
     output_dir: &std::path::Path,
@@ -51,10 +40,6 @@ fn run_self_compile(
     run_self_compile_with_extra_source_roots(binary, output_dir, &[])
 }
 
-/// Run self-compile with additional dependency source roots appended after the
-/// canonical `src/v1` and `dsl` roots. Future build-time generated `.dag`
-/// projections should use this surface: keep `src/v1` as the entry root and
-/// pass the generated temp/OUT_DIR root as a dependency pool.
 fn run_self_compile_with_extra_source_roots(
     binary: &std::path::Path,
     output_dir: &std::path::Path,
@@ -78,8 +63,6 @@ fn run_self_compile_with_extra_source_roots(
         .expect("failed to run self-compile")
 }
 
-/// Parse diagnostic count from compile stderr.
-/// Looks for "compiled: N files emitted, M diagnostics" line.
 fn parse_diagnostic_count(stderr: &str) -> usize {
     stderr
         .lines()
@@ -93,16 +76,32 @@ fn parse_diagnostic_count(stderr: &str) -> usize {
         .unwrap_or(usize::MAX)
 }
 
-/// Copy hand-maintained Rust modules that emitted stage0 still references.
-/// These are excluded from freshness/fixed-point diffs, but they must exist
-/// in temp output dirs so rustfmt and cargo can resolve lib.rs module paths.
-/// rest_transport_facts.rs: same dissolution note as in rest_transport_facts.rs
-/// (graph-exported facts replace this scaffold).
+fn copy_dir_recursive_bootstrap(source: &std::path::Path, dest: &std::path::Path) {
+    std::fs::create_dir_all(dest)
+        .unwrap_or_else(|e| panic!("failed to create {}: {}", dest.display(), e));
+    for entry in std::fs::read_dir(source)
+        .unwrap_or_else(|e| panic!("failed to read dir {}: {}", source.display(), e))
+    {
+        let entry = entry.unwrap_or_else(|e| panic!("failed to read dir entry: {}", e));
+        let src_path = entry.path();
+        let dst_path = dest.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive_bootstrap(&src_path, &dst_path);
+        } else {
+            std::fs::copy(&src_path, &dst_path).unwrap_or_else(|e| {
+                panic!(
+                    "failed to copy {} -> {}: {}",
+                    src_path.display(),
+                    dst_path.display(),
+                    e
+                )
+            });
+        }
+    }
+}
+
 fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Path) {
     let stage0_src = ws.join("src/v1/stage0/src");
-    // Keep in sync with HAND_MAINTAINED_STAGE0_FILES in regen_stage0.rs: every
-    // hand-maintained module that committed lib.rs declares must exist in the
-    // temp output dir so rustfmt and cargo can resolve its module path.
     for name in &[
         "v1_interpreter.rs",
         "cli_run.rs",
@@ -111,13 +110,6 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "coproduct_reflection.rs",
         "resolved_graph_cache.rs",
         "recorded_fixture.rs",
-        "extdeps_shape_transport_policy_project.rs",
-        "fact_cardinality_census.rs",
-        "import_resolution_project.rs",
-        "languages_consumer_census.rs",
-        "layering_imports_project.rs",
-        "module_path_index.rs",
-        "transport_script_position_project.rs",
         "v1_compiler_dag_collect.rs",
         "v1_compiler_dag_collect_support.rs",
     ] {
@@ -128,10 +120,12 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
                 .unwrap_or_else(|e| panic!("failed to copy {} to stage1: {}", name, e));
         }
     }
+    let mpi_src = stage0_src.join("module_path_index");
+    if mpi_src.is_dir() {
+        copy_dir_recursive_bootstrap(&mpi_src, &stage1_dir.join("src/module_path_index"));
+    }
 }
 
-/// Copy hand-maintained files into a compile output dir and patch Cargo.toml
-/// with the ureq dependency needed by the interpreter.
 fn prepare_stage1_for_build(stage1_dir: &std::path::Path, ws: &std::path::Path) {
     copy_stage0_support_modules(stage1_dir, ws);
     let cargo_toml = stage1_dir.join("Cargo.toml");
@@ -147,8 +141,6 @@ fn prepare_stage1_for_build(stage1_dir: &std::path::Path, ws: &std::path::Path) 
     }
 }
 
-/// Run cargo fmt over a generated temp crate so formatting matches the same
-/// crate-wide normalization used by committed stage0.
 fn rustfmt_generated_crate(dir: &std::path::Path) -> Result<(), String> {
     let cargo_toml = dir.join("Cargo.toml");
     let out = std::process::Command::new("cargo")
@@ -168,8 +160,6 @@ fn rustfmt_generated_crate(dir: &std::path::Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Diff two src/ directories, excluding hand-maintained files.
-/// Returns Ok(()) if identical, Err(diff output) if different.
 fn diff_excluding_hand_maintained(
     dir_a: &std::path::Path,
     dir_b: &std::path::Path,
@@ -183,13 +173,7 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=coproduct_reflection.rs")
         .arg("--exclude=resolved_graph_cache.rs")
         .arg("--exclude=recorded_fixture.rs")
-        .arg("--exclude=extdeps_shape_transport_policy_project.rs")
-        .arg("--exclude=fact_cardinality_census.rs")
-        .arg("--exclude=import_resolution_project.rs")
-        .arg("--exclude=languages_consumer_census.rs")
-        .arg("--exclude=layering_imports_project.rs")
-        .arg("--exclude=module_path_index.rs")
-        .arg("--exclude=transport_script_position_project.rs")
+        .arg("--exclude=module_path_index")
         .arg("--exclude=v1_compiler_dag_collect.rs")
         .arg("--exclude=v1_compiler_dag_collect_support.rs")
         .arg(dir_a)
@@ -210,12 +194,14 @@ fn diff_excluding_hand_maintained(
     }
 }
 
-// ── 1. stage0_cargo_check ───────────────────────────────────────────────
-
 #[test]
 fn stage0_cargo_check() {
-    // Stage0 is now a workspace member — just cargo check it
+    // Nested `cargo check` inherits RUSTC_WRAPPER=sccache from CI. Under the
+    // full nextest parallel load, sccache can fail with exit 254 without a
+    // rustc diagnostic — mirror the CI release-build retry discipline.
     let output = std::process::Command::new("cargo")
+        .env_remove("RUSTC_WRAPPER")
+        .env("CARGO_BUILD_JOBS", "1")
         .arg("check")
         .arg("-p")
         .arg("v1-compiler")
@@ -228,83 +214,10 @@ fn stage0_cargo_check() {
     );
 }
 
-// ── 2. strict_compile_diagnostic_count ──────────────────────────────────
-
-// Stable bridge ratchet for the curated bootstrap path.
-// Source-root bootstrap health is tracked separately and is not yet the
-// enforced gate.
-//
-// Ratchet history:
-// 2026-03-30: 65 — pre-complexity-audit baseline.
-// 2026-03-31: 315 — honest count after restoring recursive is_unknown_cost
-//   (PR #264 review). All 315 are indirect-recursion complexity violations
-//   (A→B→A) from 27 root functions. They are real errors, not bypassed.
-//   Resolves when .dag fold primitive replaces manual recursion with
-//   bounded iteration.
-//
-// These are analyzer limitations, not program violations. Decidability:
-// if the analyzer produces ?O(?), the bug is in the analyzer (it cannot
-// see the bound that structurally exists), not in the program. The
-// ratchet only moves down, never up.
-// 2026-04-07: 526 — honest count after restoring CostUnknown for all
-//   unresolved descent patterns. The 3-fix reduction path:
-//   Node tree descent, Parser SCC, Graph DFS.
-// 2026-04-08: 526→528 — transport property inference adds 2 complexity
-//   diagnostics (infer_property_values/infer_transport_node call infer_expr).
-// 2026-04-08: 528→530 — source_index threading (PR #356 merge) adds 2
-//   diagnostics from new call paths through CostUnknown functions.
-// 2026-04-09: 530→528 — merged main (CX unification -2).
-// 2026-04-09: 528→485 — ExprLet scope fix eliminates false descent evidence.
-// 2026-04-09: PR #361 — CX-L2 infrastructure + structural completeness work:
-//   ArithmeticDescent, element_type threading, type-based collection detection,
-//   std/node.dag declarations, centralized evidence (all calls annotated),
-//   PreservedValue in structural check, transparent wrapper propagation,
-//   collection element extraction (match list |> first), lambda boundary fix.
-//   render_node_type dissolved (140). make_indent dissolved (44).
-//   488→469 after merge with main.
-// 2026-04-11: 424→421 — output provenance body inference for non-recursive
-//   functions. compose_sub_value_relations fixes structural∘structural.
-// 2026-04-11: 421→423 — per-field output provenance (+3: compose_callee_provenance,
-//   classify_body_per_field, classify_terminal_per_field calling recursive
-//   classify_body_provenance — inherent self-analysis cost).
-// 2026-04-12: 423→364 — branching guard fix: any→all for arithmetic-only check.
-//   PropertyContraction calls (with_required_cardinality) no longer poison
-//   tree-walking functions into arithmetic mode. Dissolves render_node_type
-//   and composed violations across emit files. Per-field provenance re-annotation
-//   pass added (infrastructure for Stream D).
-// 2026-04-12: 353→354 — compile_to_resolved added (M5 Phase 0 interpreter).
-//   Same complexity warning as compile_sources (same call chain).
-// 2026-04-12: 354→358 — Stream D parser restructuring (int indexing → list consumption).
-//   +7 new: parse_dotted_ident_rest, collect_lambda_idents, parse_predicates_acc,
-//   try_where_clause, try_lambda_params — CX can't yet see descent through
-//   helper return types (output provenance gap, same as Category B).
-//   -3 dissolved: scan_braces_depth, scan_for_fat_arrow_after_braces,
-//   looks_like_arm_start — integer idx recursion replaced by list consumption.
-//   Net +4. Correct observations; dissolves with return-contract inference.
-// 2026-04-12: 350→340 — CX-R: parser list consumption recognition (-10).
-//   Recognize list-consuming call patterns: field-name provenance (r.tokens →
-//   NonIncreasing), pass-through transparency (skip_newlines), generalized
-//   shrink (X |> skip(N)), and tokens-consuming call convention (any call with
-//   tokens: arg that traces back to measure param is treated as consuming).
-//   Refactored ExprBlock descent-var threading to use collect_descent_vars
-//   as single source of truth. -10 from single-func parser proofs +
-//   composed callers.
-// 2026-04-12: 350→354 — eat/advance sum-type migration + variant_provenance
-//   pipeline fix. Parser helpers return sum types (EatConsumed | EatUnchanged,
-//   AdvanceOk | AdvanceEof). Variant_provenance populates per-variant per-field
-//   SubValueRelation on sigs. Pipeline was blocked by lookup_type gap (reference
-//   node has NoConnective, need to resolve to Disj definition). Fix: lookup_type
-//   in compute_variant_provenance. +4 net: restructuring adds violations, variant
-//   provenance subtracts some (2 resolved: collect_lambda_idents,
-//   collect_type_param_names). Remaining 139 parser violations need expect/expect_name
-//   output_provenance to complete descent chains.
-// 2026-04-28: 357→358 — merged std.error_primitives Result/DivError carrier adds
-//   one complexity diagnostic in the post-#1068 main cascade. Hard diagnostics
-//   remain zero; this preserves the observed fixed-point diagnostic budget.
 const DIAG_RATCHET: usize = 358;
 
 #[test]
-#[ignore] // Requires building stage0 binary (~2 min)
+#[ignore = "Requires building stage0 binary (~2 min)"]
 fn strict_compile_diagnostic_count() {
     let stage0_bin = find_or_build_stage0();
 
@@ -328,7 +241,7 @@ fn strict_compile_diagnostic_count() {
 }
 
 #[test]
-#[ignore] // Requires building stage0 binary (~2 min)
+#[ignore = "Requires building stage0 binary (~2 min)"]
 fn stage0_compile_accepts_dag_target() {
     let stage0_bin = find_or_build_stage0();
 
@@ -371,7 +284,7 @@ fn stage0_compile_accepts_dag_target() {
 }
 
 #[test]
-#[ignore] // Requires building stage0 binary (~2 min)
+#[ignore = "Requires building stage0 binary (~2 min)"]
 fn stage0_compile_imports_ephemeral_generated_source_root() {
     let stage0_bin = find_or_build_stage0();
 
@@ -440,52 +353,14 @@ fn main() -> Int { generated_answer() }
     let _ = std::fs::remove_dir_all(&out_dir);
 }
 
-// ── 3. bootstrap_stage0_to_stage1 (emitted Rust error ratchet) ────────
-//
-// Compiles .dag source to Rust via stage0, then runs cargo check on the
-// output. Counts rustc errors as a ratchet — makes the gap between
-// "compiler runs" and "compiler output works" visible and trackable.
-
-// Ratchet for cargo check errors on stage0-compiled Rust output.
-// Note: this test currently fails at the compile step (stage0 binary
-// can't parse all .dag syntax, or compiles but emitter output has
-// codegen gaps). The ratchet accommodates both cases.
-// 2026-03-28: when stage0 compiles successfully (after parse fix),
-// regenerated output has 1087 errors in 3 categories:
-//   E0425 (541): generics — emitter generates `T` without type param declaration
-//   E0433+E0405 (404): serde — emitter generates serde code, stage0 lacks serde dep
-//   E0220+E0277 (140): downstream trait/type errors from above
-// 2026-04-01: 880 → 13 via structural emission fixes:
-//   - TestConventions/Token/Tuple imports added to .dag source
-//   - type_params recovery for self-referential generic fields
-//   - Tuple rendering in build_type_rendering (connective-independent)
-//   - Vec<()> annotation skip when fold/flat_map init has Unit elements
-//   Remaining 13: sort_by lambda inference, fold empty_map sentinels, kahn fold
-// 2026-04-01: 13 → 12 via fold/sort_by inference propagation:
-//   - Bare container (Map{}) detected as incomplete in fold refinement
-//   - list_push/map_insert refinement extended for Unit-element receivers
-//   - list_push builtin fallback uses item type when receiver is Error/Dynamic
-//   - Emit: bare container fallback to contextual accumulator type
-//   - receiver_is_map extended for bare Map{} (0 children)
-//   Remaining 12: 8 E0425 (cross-module import, pre-existing), 4 E0282 (Map<K,List<Unit>> fold)
-// 2026-04-01: 12 → 5 via invariant review fixes:
-//   - 7 E0425 resolved: added algebra template function imports to 04_types.dag
-//     (partial_function_templates, free_monoid_collection_templates, etc.)
-//   - EmitGraphInfo.type_params added to 04_emit_info.dag (was stage0-only)
-//   Remaining 5: 1 E0425 (field_access_base), 4 E0282 (Map<K,List<Unit>> fold)
-//   Fold inference bidirectional unification (Category B) — 4 E0282 → 0.
-//   Block-level lookahead scans record-lit field types; expected type unifies
-//   bare empty_map() init into Map<K,V> so emit produces correct turbofish.
-//   All resolved: field_access_base import added to complexity.dag
 const EMITTED_RUST_ERROR_RATCHET: usize = 0;
 
 #[test]
-#[ignore] // Expensive: builds binary + runs full compile + cargo check
+#[ignore = "Expensive: builds binary + runs full compile + cargo check"]
 fn bootstrap_stage0_to_stage1() {
     let stage0_bin = find_or_build_stage0();
     let ws = crate::helpers::workspace_root();
 
-    // Run stage0 to compile stage1
     let stage1_dir = std::env::temp_dir().join("v2-bootstrap-stage1");
     let _ = std::fs::remove_dir_all(&stage1_dir);
     let output = run_self_compile(&stage0_bin, &stage1_dir);
@@ -510,14 +385,10 @@ fn bootstrap_stage0_to_stage1() {
         .output()
         .expect("failed to cargo check stage1");
     let check_stderr = String::from_utf8_lossy(&check.stderr);
-    // Count both coded errors (error[Exxxx]) and uncoded errors (error: ...)
-    // to avoid silently passing on parse/syntax failures.
     let error_count = check_stderr
         .lines()
         .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
         .count();
-    // Fall back: if cargo check failed but we counted 0 errors, something
-    // uncategorized went wrong — don't silently pass.
     let error_count = if !check.status.success() && error_count == 0 {
         eprintln!(
             "cargo check failed with uncategorized errors:\n{}",
@@ -527,7 +398,6 @@ fn bootstrap_stage0_to_stage1() {
     } else {
         error_count
     };
-    // Categorize errors for diagnosis
     let mut categories: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for line in check_stderr.lines() {
         if line.starts_with("error[") {
@@ -544,7 +414,6 @@ fn bootstrap_stage0_to_stage1() {
     for (code, count) in cats.iter().take(10) {
         eprintln!("  {}: {}", code, count);
     }
-    // Show samples for top 3 categories
     for (code, _) in cats.iter().take(3) {
         let needle = code.trim_end_matches(']').trim_start_matches("error[");
         let samples: Vec<&str> = check_stderr
@@ -572,15 +441,12 @@ fn bootstrap_stage0_to_stage1() {
     let _ = std::fs::remove_dir_all(&stage1_dir);
 }
 
-// ── 4. bootstrap_fixed_point ────────────────────────────────────────────
-
 #[test]
-#[ignore] // Expensive: builds two binaries + two full compiles
+#[ignore = "Expensive: builds two binaries + two full compiles"]
 fn bootstrap_fixed_point() {
     let ws = crate::helpers::workspace_root();
     let stage0_bin = find_or_build_stage0();
 
-    // Stage0 -> stage1
     let stage1_dir = std::env::temp_dir().join("v2-fp-stage1");
     let _ = std::fs::remove_dir_all(&stage1_dir);
     let s1 = run_self_compile(&stage0_bin, &stage1_dir);
@@ -592,7 +458,6 @@ fn bootstrap_fixed_point() {
 
     prepare_stage1_for_build(&stage1_dir, &ws);
 
-    // Build stage1 binary
     let build1 = std::process::Command::new("cargo")
         .arg("build")
         .arg("--release")
@@ -604,11 +469,8 @@ fn bootstrap_fixed_point() {
         "stage1 build failed:\n{}",
         String::from_utf8_lossy(&build1.stderr)
     );
-    // Self-compile includes v1.compiler.compile, so emit_cargo_toml picks
-    // crate_name "v1_compiler" (see 05_emit_rust.dag line 452).
     let stage1_bin = stage1_dir.join("target/release/v1_compiler");
 
-    // Stage1 -> stage2
     let stage2_dir = std::env::temp_dir().join("v2-fp-stage2");
     let _ = std::fs::remove_dir_all(&stage2_dir);
     let s2 = run_self_compile(&stage1_bin, &stage2_dir);
@@ -618,7 +480,6 @@ fn bootstrap_fixed_point() {
         String::from_utf8_lossy(&s2.stderr)
     );
 
-    // Compare stage1 and stage2 source output (excluding hand-maintained files)
     let stage1_src = stage1_dir.join("src");
     let stage2_src = stage2_dir.join("src");
     prepare_stage1_for_build(&stage2_dir, &ws);
@@ -635,35 +496,20 @@ fn bootstrap_fixed_point() {
         panic!("stage1 != stage2 — fixed point not reached");
     }
 
-    // Cleanup
     let _ = std::fs::remove_dir_all(&stage1_dir);
     let _ = std::fs::remove_dir_all(&stage2_dir);
 }
 
-// ── 5. performance_ratchet ───────────────────────────────────────────────
-
-/// Performance ratchet: self-compile pipeline must complete within the
-/// time budget. Catches FF-class regressions (new O(n²) patterns,
-/// lost facts, unnecessary allocations).
-///
-/// The ratchet must be generous enough for CI runners under load.
-/// 2026-04-12: after merge_envs intern_table fix (O(N*M) string re-intern →
-/// O(1) first-table reuse), per-module reconcile dropped from ~1.1s to ~5ms.
-/// Dev hardware: ~11s. Colima container: now passes at ~40s.
-/// 2026-04-13: CI runners consistently exceeding 55s (main has 5+ consecutive
-/// failures). Bump to 150s — CI variance plus the post-R3 compiler surface
-/// can exceed 120s without a semantic regression.
 const PERF_RATCHET_SECONDS: u64 = 150;
 
 #[test]
-#[ignore] // Requires building stage0 binary
+#[ignore = "Requires building stage0 binary"]
 fn performance_ratchet() {
     let stage0_bin = find_or_build_stage0();
 
     let out_dir = std::env::temp_dir().join("v2-perf-output");
     let _ = std::fs::remove_dir_all(&out_dir);
 
-    // Time the pipeline
     let start = std::time::Instant::now();
     let output = run_self_compile(&stage0_bin, &out_dir);
     let elapsed = start.elapsed();
@@ -686,29 +532,8 @@ fn performance_ratchet() {
     let _ = std::fs::remove_dir_all(&out_dir);
 }
 
-// ── CI compile gates (shared compilation via LazyLock) ─────────────────
-//
-// Five hermetic tests run together in CI via prefix match:
-//   `cargo test -p v1-compiler-tests ci_ -- --ignored`
-//
-// ci_full_dsl           — all .dag files compile (library API, independent)
-// ci_diagnostic_ratchet  — diagnostic count <= threshold (reads PASS1)
-// ci_performance_ratchet — self-compile within time budget (reads PASS1)
-// ci_freshness           — output matches committed stage0 (reads PASS1)
-// ci_fixed_point         — regen(regen(source)) == regen(source) (reads PASS2)
-//
-// LazyLock ensures pass 1 compiles exactly once regardless of which test
-// triggers it first. Pass 2 (for fixed-point) depends on pass 1.
-//
-// Each test checks one claim:
-//   ci_diagnostic_ratchet  — diagnostic count <= threshold
-//   ci_performance_ratchet — self-compile within time budget
-//   ci_freshness           — output matches committed stage0
-//   ci_fixed_point         — regen(regen(source)) == regen(source)
-
 use std::sync::LazyLock;
 
-/// Timing log file — written by LazyLock inits, read by ci.yml after pipeline.
 const CI_TIMING_FILE: &str = "/tmp/v2-ci-timing.txt";
 
 fn ci_timing(msg: &str) {
@@ -727,21 +552,17 @@ fn ci_timing(msg: &str) {
     }
 }
 
-/// Output from pass 1: build stage0, run one self-compile.
 struct Pass1Output {
     output_dir: std::path::PathBuf,
     stderr: String,
     elapsed: std::time::Duration,
-    /// Freshness check computed here (before CI_PASS2 can modify workspace).
     freshness: Result<(), String>,
 }
 
-/// Output from pass 2: build stage1 from pass 1 output, self-compile again.
 struct Pass2Output {
     output_dir: std::path::PathBuf,
 }
 
-/// Resolve the stage0 binary path without building. Respects CARGO_TARGET_DIR.
 fn prebuilt_stage0_path() -> std::path::PathBuf {
     let target_dir = std::env::var_os("CARGO_TARGET_DIR")
         .map(std::path::PathBuf::from)
@@ -749,11 +570,6 @@ fn prebuilt_stage0_path() -> std::path::PathBuf {
     target_dir.join("release/gunbc")
 }
 
-/// Find the stage0 binary without rebuilding. On CI, the Build Compiler
-/// step already ran `cargo build -p v1-compiler --release`. Rebuilding
-/// here would waste ~2 min due to fingerprint invalidation from earlier
-/// cargo commands (clippy, test). Falls back to build_stage0() if the
-/// binary doesn't exist (local dev).
 fn find_or_build_stage0() -> std::path::PathBuf {
     let bin = prebuilt_stage0_path();
     if bin.exists() {
@@ -788,20 +604,8 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
         stderr
     );
 
-    // rustfmt resolves sibling `mod foo;` declarations while formatting
-    // lib.rs, so seed the hand-maintained companion files before the
-    // pass1 whitespace-normalization step.
     prepare_stage1_for_build(&output_dir, &ws);
 
-    // Freshness: diff pass 1 output against committed stage0.
-    // Must be computed HERE, before CI_PASS2 copies pass1 files into stage0.
-    //
-    // Committed stage0 is fmt-compliant (regen_stage0 applies a
-    // trailing `cargo fmt --all`). The v2 emitter itself does not produce
-    // fmt-canonical output, so raw self-compile output differs from
-    // committed stage0 only in whitespace/layout. Normalize pass1 output
-    // via rustfmt before the diff so whitespace never masquerades as
-    // staleness.
     prepare_stage1_for_build(&output_dir, &ws);
     if let Err(err) = rustfmt_generated_crate(&output_dir) {
         panic!("failed to rustfmt pass1 output: {err}");
@@ -822,9 +626,6 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
 static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
     let pass1 = &*CI_PASS1;
     let ws = crate::helpers::workspace_root();
-    // Rebuild the pass1 crate in place. This keeps the fixed-point check
-    // hermetic: the ignored CI tests run concurrently, so copying pass1 files
-    // into the workspace can race with freshness/lint/test gates.
     ci_timing("PASS2: start generated crate rebuild");
     let stage1_target_dir = std::env::temp_dir().join("v2-ci-pass2-target");
     let _ = std::fs::remove_dir_all(&stage1_target_dir);
@@ -847,7 +648,6 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
     );
     let stage1_bin = stage1_target_dir.join("release/v1_compiler");
 
-    // Self-compile pass 2
     ci_timing("PASS2: start self-compile");
     let output_dir = std::env::temp_dir().join("v2-ci-pass2");
     let _ = std::fs::remove_dir_all(&output_dir);
@@ -867,13 +667,9 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
 });
 
 #[test]
-#[ignore] // CI: cargo test -p v1-compiler-tests ci_ -- --ignored
+#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_full_dsl() {
     ci_timing("ci_full_dsl: start");
-    // Compile ALL .dag files under dsl/ via library API.
-    // The subprocess self-compile (CI_PASS1) only compiles files transitively
-    // imported from src/v1 entry modules — unreferenced .dag files in dsl/
-    // would be missed. This test closes that gap.
     let ws = crate::helpers::workspace_root();
     let dsl_dir = ws.join("dsl");
     let mut dsl_sources: Vec<std::rc::Rc<v1_compiler::v1_compiler_compile::SourceFile>> =
@@ -910,7 +706,7 @@ fn ci_full_dsl() {
 }
 
 #[test]
-#[ignore] // CI: cargo test -p v1-compiler-tests ci_ -- --ignored
+#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_diagnostic_ratchet() {
     let pass1 = &*CI_PASS1;
     let diag_count = parse_diagnostic_count(&pass1.stderr);
@@ -927,7 +723,7 @@ fn ci_diagnostic_ratchet() {
 }
 
 #[test]
-#[ignore] // CI: cargo test -p v1-compiler-tests ci_ -- --ignored
+#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_performance_ratchet() {
     let pass1 = &*CI_PASS1;
     eprintln!(
@@ -944,11 +740,9 @@ fn ci_performance_ratchet() {
 }
 
 #[test]
-#[ignore] // CI: cargo test -p v1-compiler-tests ci_ -- --ignored
+#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_freshness() {
     let pass1 = &*CI_PASS1;
-    // Freshness was precomputed in CI_PASS1 init — before CI_PASS2 can
-    // copy pass1 files into the workspace (which would mask staleness).
     if let Err(ref diff) = pass1.freshness {
         panic!(
             "Stage0 is STALE — does not match self-compile output.\n\
@@ -960,7 +754,7 @@ fn ci_freshness() {
 }
 
 #[test]
-#[ignore] // CI: cargo test -p v1-compiler-tests ci_ -- --ignored
+#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_fixed_point() {
     let pass1 = &*CI_PASS1;
     let pass2 = &*CI_PASS2;
@@ -972,20 +766,12 @@ fn ci_fixed_point() {
     }
 }
 
-// ── L4: Structural semantic correctness ─────────────────────────────────
-//
-// Compiles weather.dag to Rust, writes emitted files to a temp crate,
-// adds structural test file with witness-based assertions, runs cargo test.
-// This is the first test that actually RUNS emitted code (not just checks
-// it compiles).
-
 #[test]
-#[ignore] // Expensive: compiles .dag, builds emitted crate, runs cargo test
+#[ignore = "Expensive: compiles .dag, builds emitted crate, runs cargo test"]
 fn bootstrap_l4_structural() {
     let result = std::thread::Builder::new()
         .stack_size(64 * 1024 * 1024)
         .spawn(|| {
-            // 1. Compile weather.dag
             let ws = crate::helpers::workspace_root();
             let weather_src = std::fs::read_to_string(ws.join("dsl/examples/weather/weather.dag"))
                 .expect("weather.dag should exist");
@@ -1008,7 +794,6 @@ fn bootstrap_l4_structural() {
                 "weather.dag should produce emitted files"
             );
 
-            // 2. Write emitted files to temp dir
             let tmp = std::env::temp_dir().join("v2-l4-structural");
             let _ = std::fs::remove_dir_all(&tmp);
 
@@ -1021,13 +806,11 @@ fn bootstrap_l4_structural() {
                     .unwrap_or_else(|e| panic!("failed to write {}: {}", file.path, e));
             }
 
-            // List emitted files for debugging
             eprintln!("\nemitted files:");
             for file in result.files.iter() {
                 eprintln!("  {} ({} bytes)", file.path, file.content.len());
             }
 
-            // Print the module file so we can see the actual emitted types/functions
             for file in result.files.iter() {
                 if file.path.contains("examples_weather") {
                     eprintln!("\n=== {} ===", file.path);
@@ -1037,7 +820,6 @@ fn bootstrap_l4_structural() {
                 }
             }
 
-            // 3. Write structural test file
             let test_dir = tmp.join("tests");
             std::fs::create_dir_all(&test_dir).expect("create tests dir");
 
@@ -1045,7 +827,6 @@ fn bootstrap_l4_structural() {
             std::fs::write(test_dir.join("structural_tests.rs"), &test_content)
                 .expect("write structural tests");
 
-            // 4. Run cargo test on the emitted crate
             eprintln!("\n=== Running cargo test on emitted crate ===");
             let test_output = std::process::Command::new("cargo")
                 .arg("test")
@@ -1068,7 +849,6 @@ fn bootstrap_l4_structural() {
 
             eprintln!("=== L4 structural tests PASSED ===");
 
-            // Cleanup
             let _ = std::fs::remove_dir_all(&tmp);
         })
         .expect("failed to spawn thread")
@@ -1076,18 +856,11 @@ fn bootstrap_l4_structural() {
     result.expect("bootstrap_l4_structural panicked");
 }
 
-/// Generate structural test content for weather.dag's emitted Rust crate.
-///
-/// Tests are organized by witness layer:
-/// - Layer 1: canonical witnesses (type inhabitation + function calls)
-/// - Layer 2: variant witnesses (coproduct exhaustiveness)
-/// - Layer 3: algebra-derived witnesses (non-trivial values + boundary cases)
 fn generate_weather_structural_tests() -> String {
     r#"use v1_compiled::examples_weather::*;
 use v1_compiled::examples_weather::Condition::*;
 use std::rc::Rc;
 
-// ── Layer 1: Type witnesses — every type is constructible ───────────
 
 #[test]
 fn witness_temperature() {
@@ -1109,7 +882,6 @@ fn witness_forecast() {
     });
 }
 
-// ── Layer 1: Function calls — every function runs without panic ─────
 
 #[test]
 fn call_to_fahrenheit() {
@@ -1142,7 +914,6 @@ fn call_freezing_locations_empty() {
     let _result = freezing_locations(Rc::new(vec![]));
 }
 
-// ── Layer 2: Variant coverage — coproduct exhaustiveness ────────────
 
 #[test]
 fn describe_condition_all_variants() {
@@ -1152,7 +923,6 @@ fn describe_condition_all_variants() {
     let _ = describe_condition(Rc::new(Snowy { cm_per_hour: 0.0 }));
 }
 
-// ── Layer 3: Non-trivial witnesses + structural oracles ─────────────
 
 #[test]
 fn to_fahrenheit_known_value() {
@@ -1194,7 +964,6 @@ fn describe_condition_rainy_branches() {
     assert_ne!(light, heavy, "light and heavy rain should have different descriptions");
 }
 
-// ── Serde roundtrip — serialization correctness ─────────────────────
 
 #[test]
 fn roundtrip_temperature() {

@@ -1,30 +1,22 @@
-// extdeps/cloud/gcp/sts.dag -- "What is GCP Security Token Service?"
-//
-// STS token exchange model: grant types, subject token types,
-// token responses. Used for Workload Identity Federation.
-//
-// Consumers:
-//   gunbc/auth/patterns.dag    -- credential_chain pattern
-//   gunbc/auth/patterns.dag    -- credential_chain pattern
-
 module extdeps.cloud.gcp.sts
 
-import std.types { Url, HttpMethod, AuthScheme }
+import std.types { NonEmptyStr, HttpMethod, AuthScheme }
 import extdeps.cloud.gcp.errors { GcpErrorShape, GcpOAuth2ErrorShape }
 import extdeps.github.errors { GitHubErrorShape }
 
-// -- Token types ---------------------------------------------------
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cloud.google.com/iam/docs/reference/sts/rest"
+  }
+}
 
 type SubjectTokenType = Jwt | StsAccessToken | IdToken | Saml2
 
 type RequestedTokenType = RequestAccessToken | RequestIdToken
-
-// -- Grant type ----------------------------------------------------
-
-// StsGrantType: single value "urn:ietf:params:oauth:grant-type:token-exchange"
-// Modeled as String since there is only one grant type for STS.
-
-// -- Token exchange response ---------------------------------------
 
 type StsTokenResponse {
   access_token: String
@@ -42,9 +34,7 @@ type MetadataRuntime {}
 
 data metadata_runtime: MetadataRuntime = {}
 
-// -- Constants -----------------------------------------------------
-
-data sts_endpoint: Url = "https://sts.googleapis.com/v1/token"
+data sts_endpoint: NonEmptyStr = "https://sts.googleapis.com/v1/token"
 
 data default_grant_type: String = "urn:ietf:params:oauth:grant-type:token-exchange"
 
@@ -52,19 +42,12 @@ data jwt_subject_token_type: String = "urn:ietf:params:oauth:token-type:jwt"
 
 data access_token_type: String = "urn:ietf:params:oauth:token-type:access_token"
 
-// -- Service: REST transport wiring ------------------------------
-
-// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
-// WHICH gcp.STS ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service gcp.STS {
   config {
     endpoint: "https://sts.googleapis.com"
-    // GCP STS rate limits: token exchange has high limits (1000/min)
+
     rate_limit: { requests: 1000, per: minute, scope: sts }
-    // Retry on quota exceeded and server errors with exponential backoff
+
     retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 503] }
   }
 
@@ -77,10 +60,7 @@ service gcp.STS {
       access_token: Secret from "access_token"
       expires_in: Int from "expires_in"
     }
-    // Body includes grant_type and token_type fields -- the compiler
-    // generates the full OAuth2 token exchange request from these inputs.
-    // Derivation unknown: POST /v1/token has no path key.
-    // Idempotency is spec-declared per RFC 8693 for a given subject_token.
+
     idempotent
     transport rest { method: POST, path: "/v1/token" }
     response {
@@ -94,20 +74,7 @@ service gcp.STS {
   }
 }
 
-// OIDC token providers -- these are not GCP services but are used
-// to acquire subject tokens for the STS exchange.
-
-// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
-// WHICH github.OIDC ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service github.OIDC {
-  // Endpoint and auth token come from per-job env vars on GitHub Actions
-  // (ACTIONS_ID_TOKEN_REQUEST_URL / ACTIONS_ID_TOKEN_REQUEST_TOKEN).
-  // Both are wired as explicit data-flow inputs by github_oidc() in
-  // gunbc/auth/patterns.dag so that skip propagation handles the
-  // "not on GitHub Actions" case without any runtime Rust.
 
   operation GetToken {
     input {
@@ -127,18 +94,13 @@ service github.OIDC {
   }
 }
 
-// 🟡 dissolved — feature:gcp-cloud-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.cloud.gcp.mock_corpus) now governs
-// WHICH gcp.Metadata ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 service gcp.Metadata {
   config { endpoint: "http://metadata.google.internal" }
 
   operation GetIdentityToken {
     input { audience: NonEmptyStr }
     output { subject_token: Secret }
-    // Response body IS the token (not JSON), parsed as raw string.
+
     readonly
     transport rest { method: GET, path: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}" }
     response {

@@ -1,33 +1,22 @@
-// test/claim/hetzner_cost_quote_witness_test.dag — by-execution witness for the
-// MoneyMicros product consumer on the $/billing axis (DESIGN §5).
-//
-// Proves the extdeps Hetzner catalog row (cited micro-EUR hourly rate) projects
-// through product.compute_fabric.per_second_billed_cost_quote into a `CostEstimate`
-// whose fixed-point unit price round-trips the catalog magnitude — the real target
-// named in examples/cost_estimate/cost_estimate.dag (replacing the interim Float witness).
-//
-// Run:
-//   gunbc run --source-root dsl --entry dsl/test/claim/hetzner_cost_quote_witness_test.dag \
-//     --function hetzner_cost_quote_witness_holds --claim-run
-
 module test.claim.hetzner_cost_quote_witness
 
 import std.logic { Bool }
 import std.nat { Nat }
 import std.currency { Eur }
-import std.measure { money_amount_micro_count }
 import extdeps.cloud.hetzner { cax41_catalog }
-import product.compute_fabric {
+import gunbc.ci_fleet {
   per_second_billed_cost_quote,
   cost_estimate_unit_price_micros,
   PerSecondBilled,
-  money_micros,
+  OwnedMarginalZero,
+  Metered,
+  DeveloperAttention,
 }
 
 fn hetzner_cax41_hourly_micros() -> Nat {
   cost_estimate_unit_price_micros(
     quote: per_second_billed_cost_quote(
-      unit_price: money_micros(count: money_amount_micro_count(m: cax41_catalog.hourly)),
+      unit_price: cax41_catalog.hourly,
       currency: cax41_catalog.currency,
     ),
   )
@@ -35,7 +24,7 @@ fn hetzner_cax41_hourly_micros() -> Nat {
 
 fn hetzner_cax41_cost_class_is_per_second_billed() -> Bool {
   let quote = per_second_billed_cost_quote(
-    unit_price: money_micros(count: money_amount_micro_count(m: cax41_catalog.hourly)),
+    unit_price: cax41_catalog.hourly,
     currency: cax41_catalog.currency,
   )
   match quote.model.cost_class {
@@ -53,7 +42,6 @@ fn hetzner_cax41_currency_is_eur() -> Bool {
   }
 }
 
-// CAX41 Germany/Finland 2026-04-01: €0.0505/hr = 50500 micro-EUR (extdeps cited row).
 fn hetzner_cax41_unit_price_matches_catalog() -> Bool {
   hetzner_cax41_hourly_micros() == 50500
 }

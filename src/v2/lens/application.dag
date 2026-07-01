@@ -1,17 +1,6 @@
-// src/v2/lens/application.dag
-//
-// Scope: lens-application surface — how a user attaches a lens to a program section (declaration / module / expression scope) with configurable enforcement. THE opt-in-depth mechanism + user-defined-dimensions surface + the ONLY advisory→fail-closed bridge. Referenced by report.dag/synthesis.dag's apply_lens(Enforce) — this file is its substrate home.
-// Anchor: user-defined dimensions + audience duality / opt-in depth + v3 T-Lens-Application-Surface precedent.
-//
-// Status: carriers + apply_lens + D1 ops; section_subject projects via Path-backed handles pending section-ref-identity-evidence (gate below).
-// Boundary discipline (DESIGN.md §3): THIS module is the single authority for section-scoped `Lens<Output>.read`,
-// `LensApplicationConfig`, and `apply_lens` / `apply_lens_enforce` / `apply_advisory_lens`.
-// `v2.compiler.compile` owns the orthogonal compile-pipeline gate (`CompileLens`,
-// `CompileLensMode`, `apply_compile_lens` over `InferredTree`); adapter wiring is follow-on.
-// See (T-23-PIN).
-
 module v2.lens.application
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
 
 import v2.std.algebra { Cons, Empty, is_empty, fold_list, list_snoc_item }
 import v2.std.collection { List }
@@ -52,10 +41,6 @@ import v2.std.node_query {
 }
 import v2.std.report { Report, report_reason_to_diagnostic_reason }
 
-// 🟡 gated — feature:section-ref-identity-evidence —
-// dissolve-on-arrival: replace Path-backed handles with typed declaration identity and
-// node-containment evidence from the shared declaration/node identity substrate; forbidden:
-// marking SectionRef construction fully grounded while arbitrary paths can inhabit these handles.
 type DeclarationId {
   path: Path
 }
@@ -64,44 +49,34 @@ type NodeId {
 }
 type SourceSpan
 
-// 🟢 TERMINAL — disjoint sum over section shapes.
 type SectionRef
   = DeclarationScope { declaration: DeclarationId }
   | NodeScope { declaration: DeclarationId, node: NodeId }
 
-// 🟢 TERMINAL — per-lens enforcement projection + violation relation.
-// violates first argument is full Output (v3 lens_application.dag) so
-// per-lens relations can discriminate sum variants before budget comparison.
 type LensEnforcement<Output, Budget, Projected> {
   project: fn(Output) -> Projected
   violates: fn(Output, Budget) -> Bool
 }
 
-// 🟢 TERMINAL — bundled lens + canonical enforcement (single authority).
 type EnforceableLens<Output, Budget, Projected> {
   lens: Lens<Output>
   enforcement: LensEnforcement<Output, Budget, Projected>
 }
 
-// 🟢 grounded — application-surface lens read (fail-closed at read boundary).
 type Lens<Output> {
   read: fn(Node) -> Outcome<Output>
 }
 
-// 🟢 grounded — advisory lens read (Report carrier; never Witness).
-// Materialized as List<Report> (v2 Set<T> = PointwisePower membership predicate).
 type AdvisoryLens {
   read: fn(Node) -> List<Report>
 }
 
-// 🟢 coproduct dissolution — enforce vs introspect application mode (single authority).
 type LensApplicationConfig<Output, Budget, Projected>
   = LensIntrospect
   | LensEnforce {
       budget: Budget
     }
 
-// 🟢 TERMINAL — enforce-mode application carrier.
 type EnforcedApplication<Output, Budget, Projected> {
   enforceable_lens: EnforceableLens<Output, Budget, Projected>
   section: SectionRef
@@ -109,24 +84,17 @@ type EnforcedApplication<Output, Budget, Projected> {
   span: SourceSpan
 }
 
-// 🟢 grounded — enforce-mode output carrier. `Projected` flows forward for
-// downstream composition / diagnostics instead of remaining a phantom witness.
 type EnforcedLensResult<Output, Projected> {
   output: Output
   projected: Projected
 }
 
-// 🟡 gated — feature:lens-enforcement-diagnostic-detail — generic observed/declared facts
-// flow to the diagnostic boundary, but v2.std.diagnostic is reason/locus shaped today.
-// dissolve-on-arrival: Diagnostic detail payloads can carry Projected/Budget evidence;
-// forbidden: claiming projected/declared facts are consumed by plain Diagnostic.
 type LensEnforcementViolationInput<Projected, Budget> {
   at: Node
   projected: Projected
   declared: Budget
 }
 
-// 🟢 TERMINAL — introspect-mode application carrier.
 type IntrospectApplication<Output> {
   lens: Lens<Output>
   section: SectionRef
@@ -178,9 +146,6 @@ fn advisory_report_diagnostic(report: Report) -> Diagnostic {
   }
 }
 
-// Delegates to the 🟢-canonical find_named_child in std/node_query.dag; translates
-// node_query diagnostic vocabulary to the lens D1 path contract's own reasons
-// (^path_unresolvable_reason / ^path_ambiguous_reason) so callers see only lens-boundary diagnostics.
 fn find_child_by_name(root: Node, name: Symbol) -> Outcome<Node> {
   match find_named_child(root: root, name: name) {
     Accepted { value: child, diagnostics: d } => Accepted { value: child, diagnostics: d }
@@ -208,7 +173,6 @@ fn subterm_at_steps(root: Node, steps: List<Symbol>) -> Outcome<Node> {
   )
 }
 
-// Result<Node, Diagnostic> ≡ Outcome<Node> per DECISIONS item I / std/diagnostic.dag.
 fn subterm_at(root: Node, path: Path) -> Outcome<Node> {
   subterm_at_steps(root: root, steps: path.steps)
 }
@@ -244,7 +208,6 @@ fn split_path_steps(root: Node, steps: List<Symbol>) -> Outcome<PathSplit> {
   }
 }
 
-// 🟢 grounded — D1 child replacement when `name_occurrences` proves exactly one named edge.
 fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Node> {
   if name_occurrences(name: name, children: root.children) == 0 {
     outcome_rejected(d: path_unresolvable_diagnostic(at: root))
@@ -375,13 +338,10 @@ fn apply_diff_edits(root: Node, edits: List<Edit>) -> Outcome<Node> {
   )
 }
 
-// All-or-nothing sequential rewrite program (PR #3162).
 fn apply_diff(root: Node, d: Diff) -> Outcome<Node> {
   apply_diff_edits(root: root, edits: d.edits)
 }
 
-// 🟡 gated — feature:section-ref-identity-evidence — projection is real, but handle construction is
-// still a bounded bridge until DeclarationId proves declaration-ness and NodeId proves containment.
 fn section_subject(root: Node, section: SectionRef) -> Outcome<Node> {
   match section {
     DeclarationScope { declaration: declaration } =>
@@ -414,8 +374,6 @@ fn lens_enforcement_result<Output, Budget, Projected>(
   }
 }
 
-// Introspect substrate entry — Lens<Output> only.
-// 🟡 gated — feature:section-ref-identity-evidence — `section` selects the lens read subject via `section_subject`; Path-backed DeclarationId/NodeId handles are the bounded bridge (see gate on `section_subject` above).
 fn apply_lens<Output>(
   lens: Lens<Output>,
   section: SectionRef,
@@ -429,8 +387,6 @@ fn apply_lens<Output>(
   )
 }
 
-// Enforce substrate entry — EnforceableLens + declared budget (EnforcedApplication).
-// 🟡 gated — feature:section-ref-identity-evidence — section-scoped read uses `section_subject` projection; handle evidence is the open gate (see `section_subject`).
 fn apply_lens_enforce<Output, Budget, Projected>(
   enforceable: EnforceableLens<Output, Budget, Projected>,
   section: SectionRef,
@@ -515,8 +471,6 @@ fn reports_to_non_empty_diagnostics(
   }
 }
 
-// THE single advisory→fail-closed bridge: non-empty advisory reports ⇒ Rejected diagnostics.
-// 🟡 gated — feature:section-ref-identity-evidence — section-scoped read uses `section_subject` projection; handle evidence is the open gate (see `section_subject`).
 fn apply_advisory_lens(
   lens: AdvisoryLens,
   section: SectionRef,
@@ -545,12 +499,6 @@ fn apply_advisory_lens(
   )
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "the substrate lens-attachment surface (apply_lens / CompileLens pipeline-gate adapter) plus section-ref-identity-evidence",
-    dissolve_on: "lens application is a substrate mechanism (the advisory-to-fail-closed bridge by construction) and section_subject resolves via section-ref identity"
-  },
-  rationale: "The lens-application surface is a mechanism, not a bad-state detector; it is staged pending section-ref-identity-evidence and the compile-pipeline gate adapter wiring."
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

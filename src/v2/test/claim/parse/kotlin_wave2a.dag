@@ -1,0 +1,60 @@
+module v2.test.parse.kotlin_wave2a
+
+import v2.std.grammar { ParseTree }
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse }
+import v2.extdeps.languages.kotlin { kotlin_wave1_lex, kotlin_wave1_grammar }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Integration,
+  manual_claim_anchor
+}
+data kotlin_wave2a_non_mvp_source: String = "fun choose(x: Int): Int { val y: Int = x + 1; if (y > 0) { return y }; return 0 }"
+
+fn kotlin_wave2a_bool_atom(b: Bool) -> Node {
+  match b {
+    true => Node { kind: TypeNode { connective: Atom { identity: ^kotlin_wave2a_bool_true } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+    false => Node { kind: TypeNode { connective: Atom { identity: ^kotlin_wave2a_bool_false } }, children: [],
+ occurrence_id: SyntheticOccurrence
+}
+  }
+}
+
+fn kotlin_wave2a_parse_accepted(out: Outcome<ParseTree>) -> Bool {
+  match out {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn kotlin_wave2a_tokenize_and_parse() -> Outcome<ParseTree> {
+  match tokenize(
+    text: kotlin_wave2a_non_mvp_source,
+    file: ^kotlin_wave2a_file,
+    rules: kotlin_wave1_lex()
+  ) {
+    Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
+    Accepted { value: tokens, diagnostics: _ } =>
+      parse(tokens: tokens, grammar: kotlin_wave1_grammar())
+  }
+}
+
+data claim_kotlin_wave2a_non_mvp_function_parses: TestClaim = EqualsClaim {
+  label: "Kotlin Wave 2a lex/grammar accepts a non-MVP function with val, if, return, and binary expressions",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: kotlin_wave2a_bool_atom(
+    b: kotlin_wave2a_parse_accepted(out: kotlin_wave2a_tokenize_and_parse())
+  ),
+  rhs: kotlin_wave2a_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Integration }
+}

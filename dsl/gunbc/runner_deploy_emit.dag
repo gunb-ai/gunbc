@@ -1,0 +1,179 @@
+module gunbc.runner_deploy_emit
+
+import gunbc.ci_runner_placement {
+  RunnerDeploymentPlan,
+  PlanDerived,
+  PlanUnsound,
+  RunnerHostDeployment,
+  runner_deployment_plan,
+  SessionReservationPlan,
+  SessionReservationDerived,
+  SessionReservationUnsound,
+  SessionHostReservation,
+  session_reservation_plan,
+  OperatingPointRow,
+  operating_curve,
+  WorkloadClass,
+  BatchLatencyTolerant,
+  InteractiveLatencySensitive,
+  workload_class_cpu_weight,
+}
+import gunbc.ci_floor_measurement {
+  SessionReservationMode,
+  Regime2AggregateOomd,
+  Regime1WorstCase,
+  SessionReservationModeUnset,
+  SessionAggregateMeasured,
+  SessionAggregateUnmeasured,
+  gunbc_ci_session_reservation_mode,
+}
+import gunbc.ci_fleet { fleet_intent_offers }
+import gunbc.oomd_install { gunbc_oomd_sessions_policy }
+import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
+import std.measure { byte_size_count, hardware_thread_count_value, percent_count }
+import std.types { String, List, Bool }
+import std.layout {
+  Doc, DocConcat,
+  LayoutProtocol,
+  doc_concat, doc_line_of,
+  render
+}
+
+data runner_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+
+fn runner_labels_text(spec: RunnerSpec) -> String {
+  match spec {
+    SelfHosted { labels: labels } =>
+      fold(labels, init: "", f: (acc, l) => if acc == "" { l } else { concat(concat(acc, ","), l) })
+    HostedRunner { label: _ } => "hosted"
+    RunsOnExpression { expression: e } => e
+  }
+}
+
+fn manifest_host_text(h: RunnerHostDeployment) -> String {
+  concat(
+    concat(
+      concat(
+        concat(
+          concat(
+            concat(concat("host=", h.identity), concat(" runner_count=", to_string(h.runner_count))),
+            concat(" runner_slice_cap_bytes=", to_string(byte_size_count(b: h.runner_slice_cap)))
+          ),
+          concat(" per_slot_memory_max_bytes=", to_string(byte_size_count(b: h.per_runner_memory_cap)))
+        ),
+        concat(" build_tokens=", to_string(hardware_thread_count_value(t: h.build_tokens)))
+      ),
+      concat(" labels=", runner_labels_text(spec: h.runner))
+    ),
+    concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: h.workload_class)))
+  )
+}
+
+fn runner_plan_doc() -> Doc {
+  match runner_deployment_plan() {
+    PlanUnsound { reason: reason } =>
+      doc_line_of(text: concat("runner-deploy UNSOUND: ", reason))
+    PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
+      doc_concat(parts: append(
+        map(hosts, h => doc_line_of(text: concat("runner-deploy ", manifest_host_text(h: h)))),
+        items: [doc_line_of(text: concat("runner-deploy fleet_concurrent_runs=", to_string(total)))]
+      ))
+  }
+}
+
+fn session_host_text(h: SessionHostReservation) -> String {
+  concat(
+    concat(concat("host=", h.identity), concat(" sessions=", to_string(h.session_count))),
+    concat(" per_session_cap_bytes=", to_string(byte_size_count(b: h.per_session_reservation)))
+  )
+}
+
+fn session_plan_doc() -> Doc {
+  match session_reservation_plan() {
+    SessionReservationUnsound { reason: reason } =>
+      doc_line_of(text: concat("session-reservation UNSOUND: ", reason))
+    SessionReservationDerived {
+      hosts: hosts,
+      fleet_concurrent_sessions: total,
+      per_session_reservation: _,
+      coverage_count: covered,
+      sample_count: samples
+    } =>
+      doc_concat(parts: append(
+        map(hosts, h => doc_line_of(text: concat("session-reservation ", session_host_text(h: h)))),
+        items: [doc_line_of(text: concat(
+          concat("session-reservation fleet_concurrent_sessions=", to_string(total)),
+          concat(" measured_peak_coverage=", concat(to_string(covered), concat("/", to_string(samples))))
+        ))]
+      ))
+  }
+}
+
+fn operating_row_text(r: OperatingPointRow) -> String {
+  concat(
+    concat(
+      concat("  per_session_cap_bytes=", to_string(byte_size_count(b: r.per_session_cap))),
+      concat(" concurrency=", to_string(r.session_concurrency))
+    ),
+    concat(
+      concat(" sessions_slice_bytes=", to_string(byte_size_count(b: r.sessions_slice))),
+      concat(" peak_coverage=", concat(to_string(r.coverage_count), concat("/", to_string(r.sample_count))))
+    )
+  )
+}
+
+fn operating_curve_doc() -> Doc {
+  doc_concat(parts: concat(
+    [doc_line_of(text: "operating-curve (SESSION-side coverage only: operator selects one per-session operating point grounded in measured per-session peaks min 0.28 / median ~2.06 / max 8.27 GiB; sessions_slice = per_session_cap*concurrency. The per-host runner_count is budget-derived from runner_slice_cap and reported on the runner-deploy lines above, independent of this curve):")],
+    map(operating_curve(), r => doc_line_of(text: operating_row_text(r: r)))
+  ))
+}
+
+fn session_slice_doc() -> Doc {
+  match gunbc_ci_session_reservation_mode {
+    SessionReservationModeUnset =>
+      doc_line_of(text: "session-slice UNSOUND: session reservation mode unset")
+    Regime1WorstCase { point: _ } =>
+      doc_line_of(text: "session-slice UNSOUND: REGIME-1 mode has no aggregate reservation; session-slice apply requires REGIME-2")
+    Regime2AggregateOomd { oomd_eviction_ceiling: ceiling, session_concurrency: _, aggregate_reservation: agg } =>
+      match agg {
+        SessionAggregateUnmeasured =>
+          doc_line_of(text: "session-slice UNSOUND: aggregate_reservation is unmeasured; commit a measured concurrent peak before wiring the apply")
+        SessionAggregateMeasured { bytes: agg_bytes } =>
+          doc_concat(parts: map(fleet_intent_offers, o => doc_line_of(text: concat(
+            "session-slice ",
+            concat(
+              concat(
+                concat(
+                  concat(
+                    concat(concat("host=", o.supply.physical.identity), concat(" slice_max_bytes=", to_string(byte_size_count(b: agg_bytes)))),
+                    concat(" per_session_max_bytes=", to_string(byte_size_count(b: ceiling)))
+                  ),
+                  " oom_pressure_kill=true"
+                ),
+                concat(" oom_pressure_limit_pct=", to_string(percent_count(p: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit)))
+              ),
+              concat(" cpu_weight=", to_string(workload_class_cpu_weight(wc: InteractiveLatencySensitive)))
+            )
+          ))))
+      }
+  }
+}
+
+fn project_runner_deploy_to_doc() -> Doc {
+  doc_concat(parts: [
+    runner_plan_doc(),
+    session_slice_doc(),
+    session_plan_doc(),
+    operating_curve_doc()
+  ])
+}
+
+fn expected_runner_deploy_manifest() -> String {
+  render(doc: project_runner_deploy_to_doc(), proto: runner_deploy_protocol)
+}
+
+fn runner_deploy_drifted(committed: String) -> Bool {
+  !(committed == expected_runner_deploy_manifest())
+}

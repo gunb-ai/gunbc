@@ -1,10 +1,3 @@
-// By-execution witnesses for extdeps round-2 Part B grounding.
-// Discriminating: each witness goes RED if a field reverts to bare String.
-//
-// Run via:
-//   gunbc run --source-root dsl --entry dsl/test/claim/extdeps_round2_grounding_witness_test.dag \
-//     --function extdeps_round2_grounding_witnesses --claim-run
-
 module test.claim.extdeps_round2_grounding_witness
 
 import extdeps.sql.migration {
@@ -35,6 +28,17 @@ import extdeps.cloud.cloud {
   aws_region_wire_label,
   aws_service_wire_label,
 }
+import extdeps.cloud.gcp.errors {
+  GcpErrorShape,
+  GcpRpcCode,
+  GcpRpcCodePermissionDenied,
+  GcpRpcCodeNotFound,
+  GcpRpcCodeOk,
+  GcpRpcCodeOther,
+  gcp_error_example,
+  parse_gcp_rpc_code,
+  gcp_rpc_code_label,
+}
 import extdeps.cloud.gcp.gcp {
   GcpApiEndpoint,
   GcpProject,
@@ -43,7 +47,7 @@ import extdeps.cloud.gcp.gcp {
   GcpSts,
   gcp_service_wire_label,
 }
-import product.compute_fabric {
+import extdeps.gpu.types {
   GpuFacts,
   AcceleratorFacts,
   GpuComputeCapability,
@@ -51,6 +55,8 @@ import product.compute_fabric {
   GpuCapabilityLabelRejected,
   UnsubstantiatedGpuCapabilityLabel,
   gpu_compute_capability_sm_label,
+}
+import extdeps.memory.types {
   MemoryFacts,
   MemoryKind,
   Hbm,
@@ -136,6 +142,24 @@ fn w_gcp_project_id_refinement() -> Bool {
   project.project_id == "my-gcp-project"
 }
 
+fn w_gcp_rpc_code_grounded_and_other() -> Bool {
+  let example_ok = match gcp_error_example.error.status {
+    Present { value: c } => c == GcpRpcCodePermissionDenied
+    Absent => false
+  }
+  let label_ok = gcp_rpc_code_label(GcpRpcCodePermissionDenied) == "PERMISSION_DENIED"
+  let known_routes_to_known = match parse_gcp_rpc_code("NOT_FOUND") {
+    GcpRpcCodeNotFound => true
+    GcpRpcCodeOther { raw: _ } => false
+    _ => false
+  }
+  let unknown_routes_to_other = match parse_gcp_rpc_code("FUTURE_CODE_X") {
+    GcpRpcCodeOther { raw: r } => r == "FUTURE_CODE_X"
+    _ => false
+  }
+  example_ok && label_ok && known_routes_to_known && unknown_routes_to_other
+}
+
 fn w_service_account_email_grounded() -> Bool {
   let sa_row = GcpServiceAccount {
     email: "runner@my-project.iam.gserviceaccount.com",
@@ -190,14 +214,6 @@ fn w_gpu_facts_structured_compute_capability() -> Bool {
     }
 }
 
-// --- vendor unification (CpuVendor + GpuVendor + DramManufacturer -> Vendor<Hardware>) ---
-
-// Discriminating for the unification: `ampere` is a CPU-only maker. Under the old
-// forked GpuVendor enum this expression would NOT typecheck (Ampere was never a
-// GpuVendor variant); it compiles only because GpuComputeCapability.vendor is now the
-// shared Vendor<Hardware> authority and `ampere` is a cited Vendor<Hardware> entity.
-// And it must STILL fail closed (ampere has no sm/gfx scheme → identity dispatch's
-// else-branch rejects, reporting the offending vendor).
 fn w_ampere_capability_label_refuses_fail_closed() -> Bool {
   let cap = GpuComputeCapability { vendor: ampere, major: 1, minor: 0 }
   match gpu_compute_capability_sm_label(cap) {
@@ -206,10 +222,6 @@ fn w_ampere_capability_label_refuses_fail_closed() -> Bool {
   }
 }
 
-// Single authority: the same Amd entity flows through two distinct hardware-fact
-// records — the newly-grounded AcceleratorFacts.vendor (was a stringly NonEmptyStr)
-// and GpuComputeCapability.vendor — and they unify. This also exercises the
-// AcceleratorFacts grounding (it had zero constructors before).
 fn w_hardware_vendor_single_authority() -> Bool {
   let accel = AcceleratorFacts { vendor: amd, model: "MI300X" }
   let gpu_cap = GpuComputeCapability { vendor: amd, major: 11, minor: 0 }
@@ -227,6 +239,7 @@ test fn extdeps_round2_grounding_witnesses() -> Bool {
     && w_sigv4_auth_scheme_carries_enums()
     && w_gcp_api_endpoint_service_enum()
     && w_gcp_project_id_refinement()
+    && w_gcp_rpc_code_grounded_and_other()
     && w_service_account_email_grounded()
     && w_gpu_compute_capability_sm_label()
     && w_gpu_amd_label_distinct_from_nvidia()

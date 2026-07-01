@@ -1,0 +1,22 @@
+module extdeps.rust.std_process
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "doc.rust-lang.org/std/process/struct.Command.html"
+  }
+}
+
+type StdProcessSpawnOutcome
+  = SpawnSucceeded
+  | SpawnFailed
+
+fn spawn_outcome_log_fragment(outcome: StdProcessSpawnOutcome) -> String {
+  match outcome {
+    SpawnSucceeded => ""
+    SpawnFailed => "failed to spawn"
+  }
+}

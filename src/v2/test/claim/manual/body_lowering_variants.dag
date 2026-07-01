@@ -1,0 +1,87 @@
+module v2.test.manual.body_lowering_variants
+
+import v2.std.node {
+  Atom,
+  Node,
+  TypeNode,
+  node_synthetic
+}
+import v2.std.compilers.body_lowering { lower_bind, lower_branch, lower_loop }
+import v2.extdeps.languages.dag {
+  dag_mvp1_bind_let_body_node,
+  dag_mvp1_loop_body_node,
+  dag_mvp1_loop_measure_node,
+  dag_mvp1_pick_if_body_node,
+  dag_mvp1_type_atom_node
+}
+import v2.std.logic { Bool }
+import v2.std.verification {
+  EqualsClaim,
+  ManualAnchorAbsent,
+  TestClaim,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+fn body_lowering_variant_bool_node(pass: Bool) -> Node {
+  if pass {
+    node_synthetic(
+      kind: TypeNode { connective: Atom { identity: ^body_lowering_variant_pass } },
+      children: []
+    )
+  } else {
+    node_synthetic(
+      kind: TypeNode { connective: Atom { identity: ^body_lowering_variant_fail } },
+      children: []
+    )
+  }
+}
+
+fn body_lowering_variant_branch_matches() -> Bool {
+  lower_branch(
+    condition: dag_mvp1_type_atom_node(identity: ^dag_token_kw_true),
+    then_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one),
+    else_arm: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_two)
+  ) == dag_mvp1_pick_if_body_node()
+}
+
+fn body_lowering_variant_loop_matches() -> Bool {
+  lower_loop(
+    value: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one),
+    bound: dag_mvp1_loop_measure_node()
+  ) == dag_mvp1_loop_body_node()
+}
+
+fn body_lowering_variant_bind_matches() -> Bool {
+  lower_bind(
+    key_binding: dag_mvp1_type_atom_node(identity: ^dag_binding_mvp1_bind_x),
+    value: dag_mvp1_type_atom_node(identity: ^dag_mvp1_pick_lit_one),
+    body_binding: dag_mvp1_type_atom_node(identity: ^dag_binding_mvp1_bind_x)
+  ) == dag_mvp1_bind_let_body_node()
+}
+
+data claim_body_lowering_variant_branch_matches: TestClaim = EqualsClaim {
+  label: "manual/body-lowering-variants: lower_branch reconstructs the pick table body (Branch, byte-identical)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: body_lowering_variant_bool_node(pass: body_lowering_variant_branch_matches()),
+  rhs: body_lowering_variant_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_body_lowering_variant_loop_matches: TestClaim = EqualsClaim {
+  label: "manual/body-lowering-variants: lower_loop reconstructs the loop table body (Loop, byte-identical)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: body_lowering_variant_bool_node(pass: body_lowering_variant_loop_matches()),
+  rhs: body_lowering_variant_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_body_lowering_variant_bind_matches: TestClaim = EqualsClaim {
+  label: "manual/body-lowering-variants: lower_bind reconstructs the bind table body (Bind, byte-identical)",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: body_lowering_variant_bool_node(pass: body_lowering_variant_bind_matches()),
+  rhs: body_lowering_variant_bool_node(pass: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}

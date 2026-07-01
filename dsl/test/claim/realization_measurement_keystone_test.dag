@@ -1,10 +1,3 @@
-// dsl/test/claim/realization_measurement_keystone_test.dag
-//
-// Phase-0 keystone §5: durable .dag model (RealizationMeasureEffect + roll-up lens)
-// proven green-by-execution; v1 Rust is the proving handler only.
-//
-// Run: gunbc run --source-root dsl --entry <this> --function realization_measurement_keystone_witnesses --claim-run
-
 module test.claim.realization_measurement_keystone
 
 import std.types { ContentHash }
@@ -20,17 +13,20 @@ import std.realization_measurement {
   witness_concurrent_memory_peak_per_share_divides,
 }
 import extdeps.realization.v1_handler { v1_eval_expr_measure_handler_id }
-import product.compute_fabric {
+import gunbc.fleet_intent {
   WorkUnitId,
   performance_receipt_host_single_sample,
   cost_account_from_performance_receipts,
   performance_receipts_total_time,
 }
 import std.verification { NanosecondDuration, nanosecond_duration, nanosecond_duration_count }
+import std.measure { ByteSize, byte_size, byte_size_count }
 
 data sample_subject: ContentHash = "witness-subject-realization-measurement-keystone"
 data sample_work_shape: WorkUnitId = "witness:realization_measurement_keystone"
 data sample_wall_time: NanosecondDuration = nanosecond_duration(count: 5000000)
+data sample_space_a: ByteSize = byte_size(count: 1024)
+data sample_space_b: ByteSize = byte_size(count: 2048)
 
 data sample_measure_effect: RealizationMeasureEffect = ObserveElapsedAtSubject {
   subject: sample_subject
@@ -48,6 +44,7 @@ fn witness_measured_receipt_rollup_uses_lens() -> Bool {
   let receipt = performance_receipt_host_single_sample(
     work_shape: sample_work_shape,
     wall_time: sample_wall_time,
+    space: sample_space_a,
   )
   let total = cost_account_from_performance_receipts(receipts: [receipt])
   let rolled = cost_account_time_count(account: total)
@@ -58,6 +55,21 @@ fn witness_measured_receipt_rollup_uses_lens() -> Bool {
     Measured => rolled == observed
     Predicted => false
   }
+}
+
+fn witness_space_rolls_up_across_receipts() -> Bool {
+  let r1 = performance_receipt_host_single_sample(
+    work_shape: sample_work_shape,
+    wall_time: sample_wall_time,
+    space: sample_space_a,
+  )
+  let r2 = performance_receipt_host_single_sample(
+    work_shape: sample_work_shape,
+    wall_time: sample_wall_time,
+    space: sample_space_b,
+  )
+  let total = cost_account_from_performance_receipts(receipts: [r1, r2])
+  byte_size_count(total.space) == byte_size_count(sample_space_a) + byte_size_count(sample_space_b)
 }
 
 fn witness_measured_rollup_red_on_predicted_zero() -> Bool {
@@ -72,6 +84,7 @@ fn witness_v1_handler_id_declared() -> Bool {
 test fn realization_measurement_keystone_witnesses() -> Bool {
   witness_predicted_zero_is_predicted_basis()
     && witness_measured_receipt_rollup_uses_lens()
+    && witness_space_rolls_up_across_receipts()
     && witness_measured_rollup_red_on_predicted_zero()
     && witness_v1_handler_id_declared()
     && witness_concurrent_memory_peak_per_share_divides()

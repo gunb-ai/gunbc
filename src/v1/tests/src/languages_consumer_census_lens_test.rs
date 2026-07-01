@@ -1,12 +1,10 @@
-//! Parse + resolve receipts for `v2.lens.languages_consumer_census`.
-
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 use v1_compiler::v1_interpreter::{self, Value};
 
 use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
-    vec![workspace_root().join("src/v2")]
+    crate::helpers::v2_layer_roots()
 }
 
 fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
@@ -60,23 +58,23 @@ fn languages_consumer_census_lens_parses_and_runs_witnesses() {
     )));
 
     assert_witness_true(
-        "src/v2/compiler/languages_consumer_census/corpus/data_decl_ratchet_test.dag",
+        "src/v2/test/claim/languages_consumer_census/corpus/data_decl_ratchet_test.dag",
         "corpus_data_decl_ratchet_holds",
     );
     assert_witness_true(
-        "src/v2/compiler/languages_consumer_census/corpus/per_language_row_ratchet_test.dag",
+        "src/v2/test/claim/languages_consumer_census/corpus/per_language_row_ratchet_test.dag",
         "corpus_per_language_row_ratchet_holds",
     );
     assert_witness_true(
-        "src/v2/compiler/languages_consumer_census/corpus/rust_statements_composition_only_test.dag",
+        "src/v2/test/claim/languages_consumer_census/corpus/rust_statements_composition_only_test.dag",
         "corpus_rust_statements_is_composition_only",
     );
     assert_witness_true(
-        "src/v2/compiler/languages_consumer_census/corpus/rust_spec_external_consumer_test.dag",
+        "src/v2/test/claim/languages_consumer_census/corpus/rust_spec_external_consumer_test.dag",
         "corpus_rust_spec_has_external_consumer",
     );
     assert_witness_true(
-        "src/v2/compiler/languages_consumer_census/corpus/rust_language_external_consumer_test.dag",
+        "src/v2/test/claim/languages_consumer_census/corpus/rust_language_external_consumer_test.dag",
         "corpus_rust_language_has_external_consumer",
     );
 }

@@ -1,7 +1,3 @@
-// Scope: affected-set → generated TestClaim → run_test_claim CI receipt.
-// Status: first executable fusion slice; implementation module only — CI witnesses
-// live in `src/v2/test/workflow/affected_testgen_ci_runner_gate_test.dag`.
-
 module v2.test.workflow.affected_testgen_ci_runner
 
 import v2.compiler.eval {
@@ -45,19 +41,16 @@ import v2.test.lens_common.infer_fixture {
   claim_inferred_tree
 }
 
-
-data affected_testgen_path_witness_validity: RepoPath = "src/v2/compiler/generated/witness_validity.dag"
-data affected_testgen_path_source_dependency: RepoPath = "src/v2/compiler/manual/connective_anchors.dag"
-data affected_testgen_path_unrelated: RepoPath = "src/v2/compiler/generated/refinement_preservation.dag"
+data affected_testgen_path_witness_validity: RepoPath = "src/v2/test/claim/generated/witness_validity.dag"
+data affected_testgen_path_source_dependency: RepoPath = "src/v2/test/claim/manual/connective_anchors.dag"
+data affected_testgen_path_unrelated: RepoPath = "src/v2/test/claim/generated/refinement_preservation.dag"
 data affected_testgen_generated_claim_label: String = "witness-validity: constraint-satisfaction holds (positive)"
-
 
 data affected_testgen_generated_claim_input: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^affected_testgen_generated_input_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
-
 
 data affected_testgen_source_dependency: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^affected_testgen_source_dependency_symbol } },
@@ -70,7 +63,6 @@ data affected_testgen_source_dependency: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data affected_testgen_graph_root: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [
@@ -82,13 +74,11 @@ data affected_testgen_graph_root: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data affected_testgen_generated_claim_artifact: Artifact = Artifact {
   kind: SourceFile,
   id: ^affected_testgen_generated_claim_artifact_id,
   file_path: affected_testgen_path_witness_validity
 }
-
 
 data affected_testgen_source_dependency_artifact: Artifact = Artifact {
   kind: SourceFile,
@@ -96,33 +86,27 @@ data affected_testgen_source_dependency_artifact: Artifact = Artifact {
   file_path: affected_testgen_path_source_dependency
 }
 
-
 data affected_testgen_generated_claim_provenance: NodeArtifactProvenance = NodeArtifactProvenance {
   node: affected_testgen_generated_claim_input,
   artifact: affected_testgen_generated_claim_artifact
 }
-
 
 data affected_testgen_source_dependency_provenance: NodeArtifactProvenance = NodeArtifactProvenance {
   node: affected_testgen_source_dependency,
   artifact: affected_testgen_source_dependency_artifact
 }
 
-
 data affected_testgen_git_diff: GitDiffNameOnly = GitDiffNameOnly {
   changed_paths: [affected_testgen_path_witness_validity]
 }
-
 
 data affected_testgen_dependency_git_diff: GitDiffNameOnly = GitDiffNameOnly {
   changed_paths: [affected_testgen_path_source_dependency]
 }
 
-
 data affected_testgen_unrelated_git_diff: GitDiffNameOnly = GitDiffNameOnly {
   changed_paths: [affected_testgen_path_unrelated]
 }
-
 
 fn affected_testgen_claim_tree() -> InferredTree {
   claim_inferred_tree(
@@ -134,7 +118,6 @@ fn affected_testgen_claim_tree() -> InferredTree {
     )
   )
 }
-
 
 fn affected_testgen_reading_from_fixture_diff(
   git_diff: GitDiffNameOnly
@@ -148,7 +131,6 @@ fn affected_testgen_reading_from_fixture_diff(
     ]
   )
 }
-
 
 fn affected_testgen_emit_generated_claim() -> Outcome<TestClaim> {
   testgen_emit_witness_validity_claim(
@@ -166,7 +148,6 @@ fn affected_testgen_emit_generated_claim() -> Outcome<TestClaim> {
   )
 }
 
-
 fn affected_testgen_generated_claims_for_reading(
   reading: AffectedSetReading
 ) -> List<TestClaim> {
@@ -181,7 +162,6 @@ fn affected_testgen_generated_claims_for_reading(
   }
 }
 
-
 fn affected_testgen_selected_claims() -> List<TestClaim> {
   match affected_testgen_reading_from_fixture_diff(git_diff: affected_testgen_git_diff) {
     Holds { value: reading } =>
@@ -190,7 +170,6 @@ fn affected_testgen_selected_claims() -> List<TestClaim> {
   }
 }
 
-
 fn affected_testgen_dependency_selected_claims() -> List<TestClaim> {
   match affected_testgen_reading_from_fixture_diff(git_diff: affected_testgen_dependency_git_diff) {
     Holds { value: reading } =>
@@ -198,7 +177,6 @@ fn affected_testgen_dependency_selected_claims() -> List<TestClaim> {
     Violates { diagnostic: _ } => []
   }
 }
-
 
 fn affected_testgen_run_claim(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim(
@@ -209,7 +187,6 @@ fn affected_testgen_run_claim(claim: TestClaim) -> TestClaimRun<Node, RuntimeVal
   )
 }
 
-
 fn affected_testgen_selected_claim_runs_pass(claim: TestClaim) -> Bool {
   match test_claim_run_verdict(run: affected_testgen_run_claim(claim: claim)) {
     Pass => true
@@ -217,7 +194,6 @@ fn affected_testgen_selected_claim_runs_pass(claim: TestClaim) -> Bool {
     Deferred { actual: _, diagnostic: _ } => false
   }
 }
-
 
 fn affected_testgen_node_in_list(nodes: List<Node>, needle: Node) -> Bool {
   fold_list(
@@ -229,7 +205,6 @@ fn affected_testgen_node_in_list(nodes: List<Node>, needle: Node) -> Bool {
   )
 }
 
-
 fn affected_testgen_generator_emits_expected_claim_holds() -> Bool {
   match affected_testgen_emit_generated_claim() {
     Accepted { value: RoundTripClaim { label: label, anchor: _, input: _, classification: _ }, diagnostics: _ } =>
@@ -238,11 +213,9 @@ fn affected_testgen_generator_emits_expected_claim_holds() -> Bool {
   }
 }
 
-
 fn affected_testgen_selects_one_generated_claim_holds() -> Bool {
   length(xs: affected_testgen_selected_claims()) == 1
 }
-
 
 fn affected_testgen_dependency_frontier_reaches_generated_input_holds() -> Bool {
   match affected_testgen_reading_from_fixture_diff(git_diff: affected_testgen_dependency_git_diff) {
@@ -256,11 +229,9 @@ fn affected_testgen_dependency_frontier_reaches_generated_input_holds() -> Bool 
   }
 }
 
-
 fn affected_testgen_dependency_diff_selects_generated_claim_holds() -> Bool {
   length(xs: affected_testgen_dependency_selected_claims()) == 1
 }
-
 
 fn affected_testgen_generated_claim_run_passes_holds() -> Bool {
   length(xs: affected_testgen_selected_claims()) == 1
@@ -273,7 +244,6 @@ fn affected_testgen_generated_claim_run_passes_holds() -> Bool {
     )
 }
 
-
 fn affected_testgen_unrelated_diff_selects_no_claims_holds() -> Bool {
   match affected_testgen_reading_from_fixture_diff(git_diff: affected_testgen_unrelated_git_diff) {
     Holds { value: reading } =>
@@ -281,7 +251,6 @@ fn affected_testgen_unrelated_diff_selects_no_claims_holds() -> Bool {
     Violates { diagnostic: _ } => true
   }
 }
-
 
 fn affected_testgen_fusion_holds() -> Bool {
   affected_testgen_generator_emits_expected_claim_holds()

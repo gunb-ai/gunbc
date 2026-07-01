@@ -1,14 +1,3 @@
-//! Phase-0 measurement harness (ctrl#1533): the interpreter counts the copy
-//! work its collection primitives perform, and can produce a sharing-aware
-//! byte accounting of what a context retains.
-//!
-//! These tests pin the measurement semantics, not the performance. Under the
-//! phase-2 persistent carriers, native-carrier updates share structure and
-//! copy NOTHING — the *_entries_copied/_items_copied counters must read 0
-//! (the triangular-number copy term phase 0 measured is gone; what remains
-//! countable is the FreeMonoid chain flatten). Shared structure must be
-//! accounted exactly once.
-
 use std::rc::Rc;
 
 use v1_compiler::cli_run;
@@ -39,9 +28,6 @@ fn resolve(src: &str) -> Rc<ResolvedPipelineResult> {
     resolved
 }
 
-/// Building a 4-entry map by successive inserts performs 4 persistent
-/// updates and copies ZERO entries — the triangular-number term (0+1+2+3 = 6
-/// under the ephemeral carrier) is gone. This is the phase-2 receipt.
 #[test]
 fn fold_built_map_copies_no_entries() {
     let src = r#"module test.stats_map
@@ -64,9 +50,6 @@ fn build() -> Int {
     assert_eq!(counters.map_insert_entries_copied, 0);
 }
 
-/// Concat of native lists is persistent RRB concatenation: both calls are
-/// counted as merges, but no items are copied (under the ephemeral carrier
-/// [1,2,3]⊕[4] copied 4 and the 4-list⊕[5] copied 5 — triangular growth).
 #[test]
 fn list_concat_copies_no_native_items() {
     let src = r#"module test.stats_list
@@ -91,10 +74,6 @@ fn build() -> Int {
     assert_eq!(counters.list_push_calls, 0, "merge must not leak into push");
 }
 
-/// Appending an atomic element is a push regardless of dispatch surface, and
-/// a persistent push_back copies none of the receiver's elements. Same
-/// primitive, one bucket — never split between `list_push` and `list_concat`
-/// by method-vs-builtin path.
 #[test]
 fn atomic_append_counts_as_push_not_concat() {
     let src = r#"module test.stats_push
@@ -121,8 +100,6 @@ fn build() -> Int {
     );
 }
 
-/// A cached `data` value reached from two roots is one unique allocation plus
-/// a sharing hit — never double-counted bytes.
 #[test]
 fn retained_accounting_counts_shared_structure_once() {
     let src = r#"module test.stats_shared
@@ -137,8 +114,6 @@ fn read_xs() -> List<Int> { xs }
     let first = v1_interpreter::run_in_context(&ctx, "read_xs", false).expect("first run");
     let second = v1_interpreter::run_in_context(&ctx, "read_xs", false).expect("second run");
 
-    // Both results and the data cache point at ONE list allocation: the walk
-    // must report exactly one unique List and at least two sharing hits.
     let acc = ctx.account_retained_memory(&[&first, &second]);
     let list = acc.per_variant.get("List").expect("List accounted");
     assert_eq!(list.unique_allocations, 1);
@@ -154,11 +129,6 @@ fn read_xs() -> List<Int> { xs }
     );
 }
 
-/// Symbol interning (#4799) receipt, pinned at the table: a name interned
-/// twice yields the SAME `Symbol`, is retained once (`distinct == 1`), and the
-/// repeat call is a hit — the `String` allocation a per-occurrence carrier
-/// would have made and interning elides. The accounting invariant
-/// `calls == distinct + hits` always holds.
 #[test]
 fn interner_dedups_repeated_name() {
     let mut interner = v1_interpreter::SymbolInterner::default();
@@ -179,13 +149,6 @@ fn interner_dedups_repeated_name() {
     );
 }
 
-/// Running a witness interns its identity names (binding keys, every variable
-/// reference resolves through `ctx.sym(name)`), and the same names recur
-/// across the evaluation, so the context's interner accumulates hits — the
-/// live #4799 dedup signal the `claim_batch` `[interp-stats]` report surfaces.
-/// Here `x` is read four times: each read interns `"x"`, so at least three of
-/// those are hits. The accounting invariant must hold over a real evaluation,
-/// not just a hand-built table.
 #[test]
 fn witness_evaluation_produces_intern_hits() {
     let src = r#"module test.stats_intern

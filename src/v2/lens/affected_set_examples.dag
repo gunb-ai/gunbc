@@ -1,9 +1,6 @@
-// src/v2/lens/affected_set_examples.dag
-// Scope: Expected affected-frontier example values for the affected-set lens.
-// Status: example data for the affected-set frontier model.
-
 module v2.lens.affected_set_examples
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
 
 import v2.std.diagnostic {
   Accepted,
@@ -46,7 +43,6 @@ import v2.lens.affected_set {
 import v2.std.dependency { DependencyView }
 data affected_set_example_hash: Hash = affected_set_example_hash
 
-
 data affected_set_example_node: Node = Node {
   kind: TypeNode { connective: Conj },
   children: [],
@@ -58,22 +54,18 @@ data affected_set_claim_failure_node: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-
 data affected_set_example_path: Path = Path { steps: [^affected_set_example_path_symbol] }
-
 
 data affected_set_example_edit: Edit = Edit {
   at: affected_set_example_path,
   replacement: affected_set_example_node
 }
 
-
 data affected_set_example_invalid_edit_diagnostic: Diagnostic = Diagnostic {
   reason: ^affected_set_example_reason,
   at: node_locus(node: affected_set_example_node),
   correction: Unavailable { reason: ExternalContractUnknown }
 }
-
 
 data expected_affected_set_boundary_prune: ReExecFrontier = ChangedSubgraphFrontier {
   boundary_exclusions: [
@@ -87,7 +79,6 @@ data expected_affected_set_boundary_prune: ReExecFrontier = ChangedSubgraphFront
   decisions: empty_map()
 }
 
-
 data expected_affected_set_dimension_seed: ReExecFrontier = ChangedSubgraphFrontier {
   boundary_exclusions: [],
   decisions: map_insert(
@@ -96,7 +87,6 @@ data expected_affected_set_dimension_seed: ReExecFrontier = ChangedSubgraphFront
     Rerun
   )
 }
-
 
 data expected_affected_set_excluded_proofs: ReExecFrontier = ChangedSubgraphFrontier {
   boundary_exclusions: [],
@@ -118,11 +108,9 @@ data expected_affected_set_excluded_proofs: ReExecFrontier = ChangedSubgraphFron
   )
 }
 
-
 data expected_affected_set_unknown_fail_closed: ReExecFrontier = FailClosed {
   reason: ReasonSymbol { reason: ^affected_set_example_reason }
 }
-
 
 data expected_affected_set_rejected_edit_fail_closed: ReExecFrontier = FailClosed {
   reason: ReasonDiagnostics {
@@ -130,18 +118,15 @@ data expected_affected_set_rejected_edit_fail_closed: ReExecFrontier = FailClose
   }
 }
 
-
 data expected_affected_set_whole_dag_absorbs_later_unknown: ReExecFrontier = FailClosed {
   reason: ReasonDiagnostics {
     diagnostics: diagnostics_singleton(d: affected_set_example_invalid_edit_diagnostic)
   }
 }
 
-
 fn affected_set_example_boundary_hash_receipt(dag: Dag, path: Path, replacement: Node) -> HashReceipt {
   HashChanged
 }
-
 
 fn affected_set_example_changed_dimension_receipt(dag: Dag, edit: Edit) -> ChangedDimensionReceipt {
   ChangedDimensions {
@@ -150,11 +135,9 @@ fn affected_set_example_changed_dimension_receipt(dag: Dag, edit: Edit) -> Chang
   }
 }
 
-
 fn affected_set_example_transitive_frontier(dag: Dag, edit_dimension: EditDimension) -> FrontierReceipt {
   FrontierProduced { dependencies: [] }
 }
-
 
 fn affected_set_example_propagation_receipt(
   dag: Dag,
@@ -163,7 +146,6 @@ fn affected_set_example_propagation_receipt(
 ) -> PropagationReceipt {
   Propagates
 }
-
 
 data affected_set_example_read: AffectedSetRead = AffectedSetRead {
   boundary: AffectedBoundaryRead {
@@ -176,13 +158,11 @@ data affected_set_example_read: AffectedSetRead = AffectedSetRead {
   propagation_receipt: affected_set_example_propagation_receipt
 }
 
-
 fn affected_set_example_post_edit_accepts(dag: Dag, edit: Edit) -> AffectedPostEditDagRead {
   AffectedPostEditDagRead {
     outcome: Accepted { value: dag, diagnostics: None }
   }
 }
-
 
 fn affected_set_example_post_edit_rejects(dag: Dag, edit: Edit) -> AffectedPostEditDagRead {
   AffectedPostEditDagRead {
@@ -192,17 +172,10 @@ fn affected_set_example_post_edit_rejects(dag: Dag, edit: Edit) -> AffectedPostE
   }
 }
 
-
 data affected_set_example_two_edit_diff: Diff = Diff {
   edits: [affected_set_example_edit, affected_set_example_edit]
 }
 
-// Construction-justification (DESIGN sec 5/sec 6, ROADMAP sec 0): why this is a lens
-// (validation) and not construction. Layered ON TOP of the #5433 inert-lens backstop.
 data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding {
-    grounding_authority: "v2.lens.affected_set owning its example values as a sub-module / test fixture",
-    dissolve_on: "the affected-set frontier examples fold into v2.lens.affected_set as a sub-module, not a top-level lens"
-  },
-  rationale: "Example frontier values for the affected-set lens: carries no independent bad-state class; its single-authority home (DESIGN sec 3) is a sub-module of affected_set, not a separate top-level lens."
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

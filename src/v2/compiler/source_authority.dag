@@ -1,13 +1,5 @@
-// src/v2/compiler/source_authority.dag
-// Scope: Branch H.7.2 source-authority contract for `.dag` source round trips.
-// Status: modeled shape contract over canonical source text; equality witnesses become executable
-// once ParseTree/ResolvedTree equality and a canonical `.dag` TargetModel row are substrate-backed.
-// JSON IR/debug artifacts are excluded.
-// Anchor: Branch H source-authority worksheet H.1-H.3/H.7.2; Branch B-min Bmin.4-Bmin.5.
-
 module v2.compiler.source_authority
 import v2.std.language_model { LanguageModel }
-
 
 import v2.compiler.normalize { normalize, NormalizedTree }
 import v2.compiler.parse {
@@ -23,7 +15,7 @@ import v2.extdeps.languages.dag {
   dag_grammar_production_mvp1_fn_add,
   dag_language_model_wave1_modeled
 }
-import v2.std.compilers.lexing { TokenStream }
+import v2.std.compilers.lexing { TokenStream, token_stream_remaining }
 import v2.std.grammar { GrammarRoot, grammar_empty_sync_tokens }
 import v2.std.provenance { span_index_empty }
 import v2.std.algebra { Empty, FreeMonoid, fold_list, length, list_snoc_item }
@@ -47,12 +39,11 @@ import v2.std.cross_tree.import_model { SourceRootRef, SourceRootSet }
 import v2.std.cross_tree.resolution { source_root_set_insert }
 import v2.std.provenance { SpanIndex }
 import v2.std.compilers.target_model { TargetModel }
-import extdeps.communication.medium { Lossless, Medium }
-import v2.compiler.target_carriers { lossless_source }
+import extdeps.communication.fidelity_carriers { medium_section_equal }
+import extdeps.communication.medium { DecodeFidelity, Medium }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
-
 
 type DagSourceAst {
   tree: ParseTree
@@ -69,31 +60,20 @@ type DagSemanticIr {
 type DagSourceReadWitness {
   source: Medium<String>
   artifact: Artifact
-  // R3 gate #31: Symbol compilation-unit authority on Textual locus in OriginEvent::FromSource
-  // recorded in SpanIndex at parse-mint (02_parse.dag parse_mint_from_source).
+
   compilation_unit: Symbol
-  // Grounded source-tree provenance: which `--source-root` the host read this file from
-  // (filesystem truth at ingest), NOT a guess from the module's self-declared QN prefix.
-  // Folded into the active source-root set (source_root_set_from_ingest below) and the
-  // QualifiedName -> SourceRootRef index (program_assembly), which together replaced the
-  // deleted resolution.dag QN-prefix fallback — cross-tree admission is grounded on this.
+
   source_root: SourceRootRef
 }
 
-// Whole source-root ingest closure — the same set `--source-root src/v2` walks.
-// M9 home: sibling to discovery_enumeration.dag (one enumeration authority).
-// Stage C Lane 3: program_assembly.dag folds this monoid into validated module roots +
-//   resolve_with_admission (many files, not a single Source string).
 type SourceRootIngest = FreeMonoid<DagSourceReadWitness>
 
-// OOM-guard scalar receipt — mirrors OwnedDataDiscoveryReceipt shape.
 type SourceRootProvenanceCoverageReceipt {
   ingest_read_count: Int
   produced_row_count: Int
   coverage_complete: Bool
 }
 
-// PROV wave-2: parse tree + off-tree SpanIndex for executing provenance consumers (edit_locus).
 type SourceIrArtifactProvenance {
   node: Node
   artifact: Artifact
@@ -115,7 +95,10 @@ type NormalizedSourceAstEqual {
   reparsed: NormalizedDagSourceAst
 }
 
-type DeterministicDagSourceSerializerLaw {}
+type DeterministicDagSourceSerializerLaw {
+  canonical_section: String
+  declared_fidelity: DecodeFidelity
+}
 
 type NormalizedDagSourceParsePrintLaw {
   normalized_source_law: NormalizedSourceAstEqual
@@ -134,9 +117,6 @@ type SourceAuthorityRoundTripLaw {
   canonical_source_law: CanonicalDagSourceEmissionLaw
 }
 
-
-
-
 fn source_authority_diagnostic(reason: Symbol) -> Diagnostic {
   Diagnostic {
     reason: reason,
@@ -144,7 +124,6 @@ fn source_authority_diagnostic(reason: Symbol) -> Diagnostic {
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
-
 
 fn parse_dag_source_ast_with_model(
   source: Medium<String>,
@@ -164,7 +143,6 @@ fn parse_dag_source_ast_with_model(
   )
 }
 
-
 fn parse_dag_source_ast(source: Medium<String>) -> Outcome<DagSourceAst> {
   parse_dag_source_ast_with_model(
     source: source,
@@ -172,7 +150,6 @@ fn parse_dag_source_ast(source: Medium<String>) -> Outcome<DagSourceAst> {
     lm: dag_language_model_wave1_modeled()
   )
 }
-
 
 fn normalize_dag_source_ast(ast: DagSourceAst) -> Outcome<NormalizedDagSourceAst> {
   bind_outcome(
@@ -182,7 +159,6 @@ fn normalize_dag_source_ast(ast: DagSourceAst) -> Outcome<NormalizedDagSourceAst
     }
   )
 }
-
 
 fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: LanguageModel) -> Outcome<DagSemanticIr> {
   bind_outcome(
@@ -197,7 +173,6 @@ fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: LanguageModel) -> Outc
     }
   )
 }
-
 
 fn semantic_ir_from_source_with_model(
   source: Medium<String>,
@@ -216,7 +191,6 @@ fn semantic_ir_from_source_with_model(
   )
 }
 
-
 fn semantic_ir_from_source(source: Medium<String>) -> Outcome<DagSemanticIr> {
   semantic_ir_from_source_with_model(
     source: source,
@@ -224,7 +198,6 @@ fn semantic_ir_from_source(source: Medium<String>) -> Outcome<DagSemanticIr> {
     lm: dag_language_model_wave1_modeled()
   )
 }
-
 
 fn source_authority_mvp1_fn_parse_root() -> GrammarRoot {
   GrammarRoot {
@@ -234,13 +207,6 @@ fn source_authority_mvp1_fn_parse_root() -> GrammarRoot {
   }
 }
 
-
-// 🟡 gated — feature:source-authority-witness-eval-parse-module — bind
-// docs/planning/diff-node-artifact-provenance-producer-design-2026-06-13.md §Part-2
-// (span_index sealed on SourceIrArtifactProvenance) + wave-1 parse-table witness-eval
-// termination — dissolve-on-arrival: node_artifact_provenance_fold_step uses parse_module once
-// witness-eval terminates; forbidden: routing mvp1 empty span_index through
-// source_ir_artifact_provenance_from_model.
 fn source_authority_parse_source_file_tokens(
   tokens: TokenStream
 ) -> Outcome<ParseArtifact> {
@@ -248,7 +214,7 @@ fn source_authority_parse_source_file_tokens(
   match grammar_validate_for_parse(root: root, at: port_locus(port: ^parse_stage_locus_port)) {
     Accepted { value: validated, diagnostics: _ } =>
       match parse_production_tree(
-        tokens: tokens.tokens,
+        tokens: token_stream_remaining(stream: tokens),
         validated: validated,
         production_name: ^dag_production_mvp1_fn_add
       ) {
@@ -266,7 +232,6 @@ fn source_authority_parse_source_file_tokens(
       Rejected { diagnostics: r }
   }
 }
-
 
 fn source_ir_artifact_provenance_from_model(
   source_read: DagSourceReadWitness,
@@ -300,7 +265,6 @@ fn source_ir_artifact_provenance_from_model(
   }
 }
 
-
 fn source_ir_artifact_provenance(
   source_read: DagSourceReadWitness
 ) -> Outcome<SourceIrArtifactProvenance> {
@@ -309,7 +273,6 @@ fn source_ir_artifact_provenance(
     lm: dag_language_model_wave1_modeled()
   )
 }
-
 
 fn source_ir_node_artifact_provenance_from_model(
   source_read: DagSourceReadWitness,
@@ -327,7 +290,6 @@ fn source_ir_node_artifact_provenance_from_model(
   }
 }
 
-
 fn source_ir_node_artifact_provenance(
   source_read: DagSourceReadWitness
 ) -> Outcome<NodeArtifactProvenance> {
@@ -337,8 +299,6 @@ fn source_ir_node_artifact_provenance(
   )
 }
 
-
-// Node-only per-read producer for whole-ingest fold (mvp1 fn-surface; no span_index).
 fn source_ir_node_artifact_provenance_mvp1_from_model(
   source_read: DagSourceReadWitness,
   lm: LanguageModel
@@ -370,7 +330,6 @@ fn source_ir_node_artifact_provenance_mvp1_from_model(
   }
 }
 
-
 fn source_ir_node_artifact_provenance_mvp1(
   source_read: DagSourceReadWitness
 ) -> Outcome<NodeArtifactProvenance> {
@@ -380,7 +339,6 @@ fn source_ir_node_artifact_provenance_mvp1(
   )
 }
 
-
 type NodeArtifactProvenanceFoldState
   = NodeArtifactProvenanceFoldOk {
       provenance: FreeMonoid<NodeArtifactProvenance>
@@ -388,7 +346,6 @@ type NodeArtifactProvenanceFoldState
   | NodeArtifactProvenanceFoldFailed {
       diagnostics: NonEmptyDiagnostics
     }
-
 
 fn node_artifact_provenance_fold_step(
   state: NodeArtifactProvenanceFoldState,
@@ -409,9 +366,6 @@ fn node_artifact_provenance_fold_step(
   }
 }
 
-
-// Whole-ingest fold: per-read mvp1 node provenance (file-grain v1), monoid-concatenated;
-// first `Rejected` read short-circuits (fail-closed widen downstream).
 fn node_artifact_provenance_from_source_root(
   ingest: SourceRootIngest
 ) -> Outcome<FreeMonoid<NodeArtifactProvenance>> {
@@ -429,7 +383,6 @@ fn node_artifact_provenance_from_source_root(
   }
 }
 
-
 fn source_root_provenance_coverage_receipt(
   ingest: SourceRootIngest,
   produced: FreeMonoid<NodeArtifactProvenance>
@@ -441,13 +394,6 @@ fn source_root_provenance_coverage_receipt(
   }
 }
 
-
-// Grounded active source-root set, folded from the host-tagged ingest witnesses.
-// This is the §4-grounded replacement for resolution.dag's deleted QN-prefix
-// source-root guess — each witness carries the filesystem truth of which `--source-root`
-// it was read from, so the set is derived from provenance, not a guess. Wired into
-// assemble_program_from_ingest (program_assembly) as the active_roots of grounded
-// cross-tree admission.
 fn source_root_set_from_ingest(ingest: SourceRootIngest) -> SourceRootSet {
   fold_list(
     xs: ingest,
@@ -457,7 +403,6 @@ fn source_root_set_from_ingest(ingest: SourceRootIngest) -> SourceRootSet {
     }
   )
 }
-
 
 fn source_authority_node_equal(left: Node, right: Node) -> Bool {
   canonicalize_node_strip_provenance(n: left) == canonicalize_node_strip_provenance(n: right)
@@ -476,7 +421,6 @@ fn source_ast_equal_witness(
   }
 }
 
-
 fn normalized_source_ast_equal_witness(
   original: NormalizedDagSourceAst,
   reparsed: NormalizedDagSourceAst
@@ -489,7 +433,6 @@ fn normalized_source_ast_equal_witness(
     }
   }
 }
-
 
 fn semantic_ir_equal_witness(
   original: DagSemanticIr,
@@ -504,20 +447,23 @@ fn semantic_ir_equal_witness(
   }
 }
 
-
 fn deterministic_dag_source_serializer_witness(
   first: Medium<String>,
   second: Medium<String>
 ) -> Witness<DeterministicDagSourceSerializerLaw> {
-  if first.carried == second.carried {
-    Holds { value: DeterministicDagSourceSerializerLaw {} }
+  if medium_section_equal(left: first, right: second) {
+    Holds {
+      value: DeterministicDagSourceSerializerLaw {
+        canonical_section: first.carried,
+        declared_fidelity: first.fidelity
+      }
+    }
   } else {
     Violates {
       diagnostic: source_authority_diagnostic(reason: ^source_authority_serializer_nondeterministic)
     }
   }
 }
-
 
 fn canonical_dag_source_emission_law_from_parts(
   original_ast: DagSourceAst,
@@ -566,7 +512,6 @@ fn canonical_dag_source_emission_law_from_parts(
   )
 }
 
-
 fn source_authority_law_from_parts(
   original_ast: DagSourceAst,
   canonical_source: Medium<String>,
@@ -598,7 +543,6 @@ fn source_authority_law_from_parts(
       }
   }
 }
-
 
 fn source_authority_round_trip_with_model(
   source: Medium<String>,
@@ -674,7 +618,6 @@ fn source_authority_round_trip_with_model(
   )
 }
 
-
 fn canonical_dag_source_parse_print_law(
   source: Medium<String>,
   canonical_source_target: TargetModel
@@ -720,7 +663,6 @@ fn canonical_dag_source_parse_print_law(
     }
   )
 }
-
 
 fn source_authority_round_trip(
   source: Medium<String>,

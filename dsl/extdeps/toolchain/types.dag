@@ -1,15 +1,7 @@
-// extdeps/toolchain/types.dag — GNU/LLVM triple vocabulary (single Architecture authority).
-//
-// Toolchain target facts are domain models downstream of std, not universal frameworks.
-// Dissolves former std Arch/TargetArchitecture, extdeps.cpu.types.CpuArchitecture, and
-// extdeps.container.oci.types.ImageConfigArchitecture nicknames into one 11-variant axis.
-//
-// Anchor: https://wiki.debian.org/ArchitectureSpecificsMemo
-// Anchor: https://clang.llvm.org/docs/CrossCompilation.html#target-triple
-
 module extdeps.toolchain.types
 
-import std.types { String }
+import std.types { String, NonEmptyStr }
+import std.cache_identity { CacheInterfaceId }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -21,10 +13,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-// Single ISA authority — hardware cpu rows, OCI GOARCH wire, and target triples share this axis.
 type Architecture = X86_64 | X86 | Aarch64 | Arm | Armv7 | Mips | Mipsel | Mips64 | Mips64el | Riscv64 | Wasm32
 
-// Triple vendor axis (renamed from std.types.Vendor — distinct from extdeps.vendor.Vendor<Domain>).
 type TripleVendor = UnknownVendor | Pc | Apple | W64
 type Os = Linux | Macos | Windows | Freebsd | Android | Ios | Wasi
 type AbiEnv = NoneAbi | Gnu | GnuEabi | GnuEabihf | Musl | Msvc | AndroidAbi | Eabi | Eabihf
@@ -40,4 +30,24 @@ type TargetTriple {
 type RuntimePlatform {
   host: TargetTriple
   env: ExecutionEnv
+}
+
+type ToolchainEnvIsolation
+  = SharedHomeAcrossJobs
+  | PerJobCargoHome { cargo_home_var: NonEmptyStr, rustup_home_var: NonEmptyStr }
+  | HermeticContainer
+
+type BuildWrapperKind = CtrlBuild | BakedInImage | NoBuildWrapper
+
+type ToolchainCapability {
+  name: NonEmptyStr
+  version: NonEmptyStr
+  env_isolation: ToolchainEnvIsolation
+  build_wrapper: BuildWrapperKind?
+  linked_cache_interface: CacheInterfaceId?
+}
+
+type ToolchainRequirement {
+  name: NonEmptyStr
+  version: NonEmptyStr
 }

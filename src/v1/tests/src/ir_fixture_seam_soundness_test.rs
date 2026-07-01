@@ -1,9 +1,3 @@
-//! P5-SPIKE: serialized ResolvedGraph fixture seam soundness (§5 fail-closed).
-//!
-//! (b) Round-trip: compile -> cache payload serde -> load -> emit == direct emit.
-//! (c) Born-mark trap: empty-table AND wrong-but-present intern_table mutations
-//!     both fail the loader guard loudly by execution.
-
 use std::rc::Rc;
 
 use v1_compiler::resolved_graph_cache::{
@@ -68,7 +62,6 @@ fn resolved_pipeline_from_cached(cached: CachedResolvedGraph) -> Rc<ResolvedPipe
     })
 }
 
-/// Simulate naive load: keep binding ids but drop the embedded intern_table (born-mark trap).
 fn strip_intern_table_from_fixture(cached: CachedResolvedGraph) -> CachedResolvedGraph {
     let graph = cached.graph;
     let modules = Rc::new(
@@ -95,8 +88,6 @@ fn strip_intern_table_from_fixture(cached: CachedResolvedGraph) -> CachedResolve
     }
 }
 
-/// Simulate the dangerous trap: intern_table is populated, but one binding id resolves to a
-/// different present name than `binding.name` (remap in-place, not strip).
 fn remap_binding_intern_name_mismatch(cached: CachedResolvedGraph) -> CachedResolvedGraph {
     let graph = cached.graph;
     let modules = Rc::new(
@@ -178,7 +169,6 @@ fn ir_fixture_round_trip_emit_is_bit_identical_to_direct() {
         "fixture-loaded emit must be bit-identical to direct path"
     );
 
-    // Cross-check against helpers::compile_dag (full source->pipeline entry).
     let via_helpers = compile_dag(FIXTURE_SOURCE);
     assert_eq!(
         emit_files_fingerprint(&via_helpers),

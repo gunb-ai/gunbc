@@ -1,7 +1,3 @@
-// src/v2/std/reducible_test.dag
-// Scope: by-execution witnesses for std.reducible (classify_leaf, verdict_eq,
-// reduce_verdicts_located Unknown latch). Perturb-RED arm discriminates wrong expectation.
-
 module v2.test.std.reducible
 
 import v2.std.collection { List }
@@ -66,7 +62,6 @@ fn reduce_verdicts_located_unknown_latch_holds() -> Bool {
   )
 }
 
-// Perturb-RED: wrong decisive variant must not pass (flip latch-axis -> Reduced).
 data witness_reduce_verdicts_located_RED: Bool = verdict_eq(
   a: reduce_verdicts_located(
     verdicts: mixed_verdicts_unknown_absorbs_leftmost(),

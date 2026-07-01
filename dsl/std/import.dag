@@ -1,19 +1,1 @@
-// Import modeling — dependency declarations between modules.
-//
-// An import is a reference from one scope to another scope's names.
-// It is structurally distinct from items (content declarations):
-//   - Items define new structure (types, functions, services)
-//   - Imports reference existing structure from other modules
-//
-// Import representation on a module Node:
-//   - Module items live in `children`
-//   - Module imports live in `params` (unused by modules for type params)
-//   - Each import node has: name = module path, children = specific names
-//   - Wildcard import: children is empty (imports all exported names)
-//   - Specific import: children are the imported name nodes
-//
-// This separation eliminates the need for metadata markers (__is_import,
-// __import_all) — the structural position (params vs children) IS the
-// distinction.
-
 module std.import

@@ -1,11 +1,3 @@
-// Scope: N_v2 self-host closure ingest witnesses — modeled ci_claim_gate (no shell/Rust harness).
-// Host manifest overlay required at runtime for ingest-backed claims (see
-//   v2.workflow.compiler_closure_ingest_transport).
-// Anchor: DESIGN.md §5/§7 — fast in-substrate carrier check + manifest receipt claims;
-//   gap-4 discriminating probe stays a test fn (excluded from discovery) until bounded-
-//   slice manifest transport lands — dissolve-on: enroll gap4_probe_all_ingest_reads_accept_holds
-//   (+ parses_holds if needed) in compiler_closure_ingest_transport as the active RED gate.
-
 module v2.test.self_host.compiler_closure_emit_from_ingest
 
 import gunbc.ci_layer_roots { witness_layer_roots }
@@ -32,7 +24,6 @@ import v2.test.workflow.host_source_root_ingest_manifest {
   host_source_root_ingest_coverage_receipt
 }
 
-
 type Gap4IngestProbeState
   = Gap4IngestProbePending
   | Gap4IngestProbeFound {
@@ -45,7 +36,6 @@ type Gap4IngestProbeState
       remain_start: Optional<Int>,
       remain_end: Optional<Int>,
     }
-
 
 fn gap4_probe_found_from_parse_reject(
   path: String,
@@ -63,7 +53,6 @@ fn gap4_probe_found_from_parse_reject(
     remain_end: Absent,
   }
 }
-
 
 fn gap4_ingest_probe_step(
   state: Gap4IngestProbeState,
@@ -115,7 +104,6 @@ fn gap4_ingest_probe_step(
   }
 }
 
-
 fn gap4_probe_first_ingest_reject() -> Gap4IngestProbeState {
   fold_list(
     xs: host_source_root_ingest,
@@ -126,14 +114,10 @@ fn gap4_probe_first_ingest_reject() -> Gap4IngestProbeState {
   )
 }
 
-
 fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == target) })
 }
 
-
-// In-substrate carrier consumption (§3): no Rust/bash projection of witness_layer_roots.
-// Enrolled via compiler_closure_ingest_transport (no manifest overlay).
 test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Bool {
   (length(xs: self_host_closure_witness_layer_roots) == length(xs: witness_layer_roots))
     && fold_list(
@@ -145,17 +129,12 @@ test fn self_host_closure_witness_layer_roots_reexports_authority_holds() -> Boo
     )
 }
 
-
-// Manifest-overlay gate claims (excluded from discovery; run via compiler_closure_ingest_transport).
 test fn compiler_closure_scoped_ingest_module_count_ok_holds() -> Bool {
   host_source_root_ingest_coverage_receipt.coverage_complete
     && (host_source_root_ingest_coverage_receipt.ingest_read_count == host_source_root_ingest_coverage_receipt.produced_row_count)
     && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
 }
 
-
-// Discriminating gap-4 probe — RED on full closure until front-end fix (not in CI transport yet;
-// full-fold interpreter scale; enroll via bounded-slice transport when locate lands).
 test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
   match gap4_probe_first_ingest_reject() {
     Gap4IngestProbePending => true
@@ -164,7 +143,6 @@ test fn gap4_probe_all_ingest_reads_accept_holds() -> Bool {
     } => false
   }
 }
-
 
 test fn compiler_closure_scoped_ingest_parses_holds() -> Bool {
   match module_roots_from_source_root_ingest(

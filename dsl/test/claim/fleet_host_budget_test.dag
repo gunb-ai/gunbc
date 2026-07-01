@@ -1,0 +1,262 @@
+module test.claim.fleet_host_budget
+
+import std.types { Int, List, String, Bool }
+import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import product.budget_tree { BudgetNode, node_conserves }
+import extdeps.ctrl.jobserver {
+  CtrlJobserverConfig,
+  CtrlJobserverCitation,
+  CtrlJobserverCited,
+  CtrlJobserverAbsent,
+  ctrl_jobserver_config,
+  derive_jobserver_tokens,
+}
+import gunbc.fleet_container {
+  FleetContainerType,
+  GhaRunnerContainer,
+  ContainerBaseline,
+  ContainerBaselineMeasured,
+  ContainerBaselineUnmeasured,
+  BaselineResolution,
+  BaselineResolved,
+  BaselineUnmeasured,
+  container_baseline_bytes,
+  idle_memory_envelope,
+  gha_runner_container,
+}
+import gunbc.fleet_host_budget {
+  HeadroomPolicy,
+  HeadroomSet,
+  HeadroomUnset,
+  HeadroomResolution,
+  HeadroomResolved,
+  HeadroomUnsound,
+  resolve_headroom,
+  oomd_actuation_floor,
+  FleetHostPlan,
+  FleetHostPlanDerived,
+  FleetHostPlanUnsound,
+  fleet_host_plan,
+  fleet_host_plan_for,
+  fleet_host_budget_tree,
+  runner_slice_cap,
+  runner_slice_cap_drifted,
+  gunbc_fleet_oomd_floor_basis,
+}
+import gunbc.ci_floor_measurement {
+  OomdEnforcementEvidence,
+  OomdEnforced,
+  OomdUnverified,
+  RunnerSliceCapEffectiveness,
+  CapEffective,
+  CapUnbounded,
+}
+
+fn fixture_cfg() -> CtrlJobserverConfig {
+  CtrlJobserverConfig {
+    margin: hardware_thread_count(count: 8),
+    mem_reserve: byte_size(8589934592),
+    mib_per_job: byte_size(1879048192),
+  }
+}
+
+fn fixture_citation() -> CtrlJobserverCitation {
+  CtrlJobserverCited { config: fixture_cfg(), provenance: "fixture: parent-supplied installer knobs" }
+}
+
+fn runner_idle_bytes() -> ByteSize {
+  byte_size(314572800)
+}
+
+fn fixture_runner_measured() -> FleetContainerType {
+  GhaRunnerContainer { baseline: ContainerBaselineMeasured { idle: idle_memory_envelope(min_bytes: runner_idle_bytes()) } }
+}
+
+fn fixture_runner_unmeasured() -> FleetContainerType {
+  GhaRunnerContainer { baseline: ContainerBaselineUnmeasured }
+}
+
+fn host_125gib() -> ByteSize {
+  byte_size(134217728000)
+}
+
+fn overhead_16gib() -> ByteSize {
+  byte_size(17179869184)
+}
+
+fn session_slice_fixture() -> ByteSize {
+  byte_size(40000000000)
+}
+
+fn fitting_headroom() -> HeadroomPolicy {
+  HeadroomSet { bytes: byte_size(16106127360) }
+}
+
+fn fitting_headroom_bytes() -> ByteSize {
+  byte_size(16106127360)
+}
+
+fn is_unsound(plan: FleetHostPlan) -> Bool {
+  match plan {
+    FleetHostPlanUnsound { reason: _ } => true
+    FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: _, effective_build_tokens: _, effective_runner_cpu_cap: _, build_step: _ } => false
+  }
+}
+
+fn full_plan(
+  citation: CtrlJobserverCitation,
+  runner: FleetContainerType,
+  session_slice: ByteSize,
+  policy: HeadroomPolicy,
+  oomd: OomdEnforcementEvidence
+) -> FleetHostPlan {
+  fleet_host_plan_for(
+    name: "fixture",
+    host: host_125gib(),
+    overhead: overhead_16gib(),
+    nproc: hardware_thread_count(count: 128),
+    runner: runner,
+    session_slice: session_slice,
+    citation: citation,
+    policy: policy,
+    oomd: oomd
+  )
+}
+
+fn sound_plan() -> FleetHostPlan {
+  full_plan(citation: fixture_citation(), runner: fixture_runner_measured(), session_slice: session_slice_fixture(), policy: fitting_headroom(), oomd: OomdEnforced)
+}
+
+fn witness_live_plan_fail_closed() -> Bool {
+  is_unsound(plan: fleet_host_plan())
+}
+
+fn witness_jobserver_absent_unsound() -> Bool {
+  is_unsound(plan: full_plan(citation: CtrlJobserverAbsent, runner: fixture_runner_measured(), session_slice: session_slice_fixture(), policy: fitting_headroom(), oomd: OomdEnforced))
+}
+
+fn witness_runner_baseline_unmeasured_unsound() -> Bool {
+  is_unsound(plan: full_plan(citation: fixture_citation(), runner: fixture_runner_unmeasured(), session_slice: session_slice_fixture(), policy: fitting_headroom(), oomd: OomdEnforced))
+}
+
+fn witness_headroom_unset_unsound() -> Bool {
+  is_unsound(plan: full_plan(citation: fixture_citation(), runner: fixture_runner_measured(), session_slice: session_slice_fixture(), policy: HeadroomUnset, oomd: OomdEnforced))
+}
+
+fn witness_oomd_unverified_unsound() -> Bool {
+  is_unsound(plan: full_plan(citation: fixture_citation(), runner: fixture_runner_measured(), session_slice: session_slice_fixture(), policy: fitting_headroom(), oomd: OomdUnverified))
+}
+
+fn witness_headroom_below_floor_unsound() -> Bool {
+  let floor = oomd_actuation_floor(host: host_125gib())
+  match resolve_headroom(policy: HeadroomSet { bytes: byte_size(1073741824) }, floor: floor) {
+    HeadroomUnsound { reason: _ } => true
+    HeadroomResolved { bytes: _ } => false
+  }
+}
+
+fn witness_headroom_at_or_above_floor_resolved() -> Bool {
+  let floor = oomd_actuation_floor(host: host_125gib())
+  match resolve_headroom(policy: HeadroomSet { bytes: floor }, floor: floor) {
+    HeadroomResolved { bytes: b } => byte_size_count(b: b) == byte_size_count(b: floor)
+    HeadroomUnsound { reason: _ } => false
+  }
+}
+
+fn witness_tokens_memory_bound_binds() -> Bool {
+  let cfg = fixture_cfg()
+  let tokens = hardware_thread_count_value(t: derive_jobserver_tokens(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg))
+  tokens > 0 && tokens < 120
+}
+
+fn oversized_margin_cfg() -> CtrlJobserverConfig {
+  CtrlJobserverConfig {
+    margin: hardware_thread_count(count: 64),
+    mem_reserve: byte_size(8589934592),
+    mib_per_job: byte_size(1879048192),
+  }
+}
+
+fn witness_margin_exceeds_nproc_saturates() -> Bool {
+  let tokens = hardware_thread_count_value(t: derive_jobserver_tokens(nproc: hardware_thread_count(count: 8), mem_total: host_125gib(), cfg: oversized_margin_cfg()))
+  tokens == 0
+}
+
+fn witness_runner_cpu_cap_is_cores_minus_margin() -> Bool {
+  match sound_plan() {
+    FleetHostPlanDerived { name: _, tree: _, runner_slice_cap: _, effective_build_tokens: _, effective_runner_cpu_cap: cpu, build_step: _ } =>
+      hardware_thread_count_value(t: cpu) == 120
+    FleetHostPlanUnsound { reason: _ } => false
+  }
+}
+
+fn witness_plan_derives_and_conserves() -> Bool {
+  match sound_plan() {
+    FleetHostPlanDerived { name: _, tree: t, runner_slice_cap: slice, effective_build_tokens: tk, effective_runner_cpu_cap: cpu, build_step: _ } =>
+      node_conserves(node: t)
+        && hardware_thread_count_value(t: tk) > 0
+        && hardware_thread_count_value(t: cpu) > 0
+        && byte_size_count(b: slice) > 0
+    FleetHostPlanUnsound { reason: _ } => false
+  }
+}
+
+fn witness_runner_slice_is_session_worstcase_only() -> Bool {
+  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
+  let expected = byte_size_count(b: host_125gib()) - byte_size_count(b: overhead_16gib()) - byte_size_count(b: session_slice_fixture()) - byte_size_count(b: fitting_headroom_bytes())
+  byte_size_count(b: slice) == expected
+}
+
+fn witness_runner_slice_excludes_build_pool() -> Bool {
+  let cfg = fixture_cfg()
+  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
+  let build_pool_bytes = byte_size_count(b: cfg.mib_per_job) * hardware_thread_count_value(t: derive_jobserver_tokens(nproc: hardware_thread_count(count: 128), mem_total: host_125gib(), cfg: cfg))
+  let after_session = byte_size_count(b: host_125gib()) - byte_size_count(b: overhead_16gib()) - byte_size_count(b: session_slice_fixture())
+  let double_subtract_would_starve = after_session < (build_pool_bytes + byte_size_count(b: fitting_headroom_bytes()))
+  byte_size_count(b: slice) > 0 && double_subtract_would_starve
+}
+
+fn witness_host_conserves_exactly() -> Bool {
+  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
+  let whole = byte_size_count(b: overhead_16gib()) + byte_size_count(b: session_slice_fixture()) + byte_size_count(b: fitting_headroom_bytes()) + byte_size_count(b: slice)
+  whole == byte_size_count(b: host_125gib())
+}
+
+fn witness_tree_conserves() -> Bool {
+  let slice = runner_slice_cap(host: host_125gib(), overhead: overhead_16gib(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes())
+  let tree = fleet_host_budget_tree(name: "fixture", host: host_125gib(), overhead: overhead_16gib(), runner_baseline: runner_idle_bytes(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), runner_slice: slice)
+  node_conserves(node: tree)
+}
+
+fn witness_overcommit_tree_refused() -> Bool {
+  let bloated_slice = byte_size(byte_size_count(b: host_125gib()))
+  let tree = fleet_host_budget_tree(name: "overcommit", host: host_125gib(), overhead: overhead_16gib(), runner_baseline: runner_idle_bytes(), session_slice: session_slice_fixture(), headroom: fitting_headroom_bytes(), runner_slice: bloated_slice)
+  !node_conserves(node: tree)
+}
+
+fn witness_runner_slice_cap_drift_red_receipt() -> Bool {
+  let disk = byte_size(70391285350)
+  runner_slice_cap_drifted(disk_cap: disk, effective: CapUnbounded)
+    && !runner_slice_cap_drifted(disk_cap: disk, effective: CapEffective { bytes: disk })
+    && runner_slice_cap_drifted(disk_cap: disk, effective: CapEffective { bytes: byte_size(55307438489) })
+}
+
+test fn fleet_model_holds() -> Bool {
+  witness_live_plan_fail_closed()
+    && witness_jobserver_absent_unsound()
+    && witness_runner_baseline_unmeasured_unsound()
+    && witness_headroom_unset_unsound()
+    && witness_oomd_unverified_unsound()
+    && witness_headroom_below_floor_unsound()
+    && witness_headroom_at_or_above_floor_resolved()
+    && witness_tokens_memory_bound_binds()
+    && witness_margin_exceeds_nproc_saturates()
+    && witness_runner_cpu_cap_is_cores_minus_margin()
+    && witness_plan_derives_and_conserves()
+    && witness_runner_slice_is_session_worstcase_only()
+    && witness_runner_slice_excludes_build_pool()
+    && witness_host_conserves_exactly()
+    && witness_tree_conserves()
+    && witness_overcommit_tree_refused()
+    && witness_runner_slice_cap_drift_red_receipt()
+}

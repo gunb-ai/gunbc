@@ -1,5 +1,3 @@
-//! Regression: module-level fn items resolve as first-class callable values (gap-a).
-
 use std::fs;
 use std::rc::Rc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -81,12 +79,6 @@ fn scoped_entry_resolves_import_closure_not_entire_v4_tree() {
 
     let _ = fs::remove_dir_all(&dir);
 }
-
-// ── Generic value-arg instantiation (the emit(add) unblock) ──────────────
-// A generic HOF binds its type parameter from a concrete value arg and
-// substitutes it into a later lambda's param type, so the lambda body sees the
-// CONCRETE type (field access resolves + evaluates). Before this, the lambda
-// param stayed generic `T` and a field access cascaded to an error type.
 
 #[test]
 fn generic_call_instantiates_lambda_param_and_evaluates() {
@@ -209,9 +201,6 @@ fn use_body() -> Rec {
 
 #[test]
 fn generic_instantiation_field_checks_concrete_type_red() {
-    // Red-when-wrong: with T bound to Rec, the lambda param is concrete, so a
-    // non-existent field must NOT silently succeed. If instantiation left the
-    // param generic-and-permissive this would pass — it must not.
     let src = r#"module test.gi2
 type Rec { v: Int }
 fn apply_rec<T>(x: T, g: fn(T) -> Int) -> Int { g(x) }
@@ -236,10 +225,6 @@ fn use_bad() -> Int { apply_rec(x: Rec { v: 7 }, g: fn(r) { r.nope }) }
         "r.nope on instantiated Rec (T=Rec) must fail closed (diagnostic or eval error), not silently succeed"
     );
 }
-
-// ── Generic FreeMonoid fold callback instantiation (R2 §4a) ─────────────
-// fold_list/fold_list_right cons|snoc callbacks must bind T from xs: FreeMonoid<T>
-// so the second lambda param is concrete (field access / arithmetic type-checks).
 
 #[test]
 fn fold_list_generic_cons_callback_binds_element_type() {

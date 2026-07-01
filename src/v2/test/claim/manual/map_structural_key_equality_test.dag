@@ -1,0 +1,50 @@
+module v2.test.manual.map_structural_key_equality
+
+import v2.std.logic { Bool }
+import v2.std.collection { Map, empty_map, map_insert }
+
+import v2.std.verification {
+  BoolWitness,
+  BoolWitnessClaim,
+  UnifiedTestClaim
+}
+type SKey {
+  a: Int
+  b: Int
+}
+
+type SKeyMap = Map<SKey, Int>
+
+fn one_entry(a: Int, b: Int, v: Int) -> SKeyMap {
+  map_insert(m: empty_map(), key: SKey { a: a, b: b }, value: v)
+}
+
+fn struct_key_self_eq() -> Bool {
+  let m = one_entry(a: 1, b: 2, v: 7)
+  m == m
+}
+
+fn struct_key_equal_eq() -> Bool {
+  one_entry(a: 1, b: 2, v: 7) == one_entry(a: 1, b: 2, v: 7)
+}
+
+fn struct_key_distinct_neq() -> Bool {
+  (one_entry(a: 1, b: 2, v: 7) == one_entry(a: 1, b: 9, v: 7)) == false
+}
+
+fn struct_key_value_neq() -> Bool {
+  (one_entry(a: 1, b: 2, v: 7) == one_entry(a: 1, b: 2, v: 8)) == false
+}
+
+fn struct_key_shadow_latest_eq() -> Bool {
+  let shadowed = map_insert(m: one_entry(a: 1, b: 2, v: 7), key: SKey { a: 1, b: 2 }, value: 9)
+  shadowed == one_entry(a: 1, b: 2, v: 9)
+}
+
+test fn map_structural_key_equality_holds() -> Bool {
+  struct_key_self_eq()
+    && struct_key_equal_eq()
+    && struct_key_distinct_neq()
+    && struct_key_value_neq()
+    && struct_key_shadow_latest_eq()
+}

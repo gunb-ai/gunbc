@@ -1,6 +1,3 @@
-// Shared parse-engine production identities (gap-4 match-arm body dispatch).
-// Single authority for grammar row names and 02_parse engine hooks — avoids per-module
-// Symbol literal mismatch on cross-module prod_name equality.
 module v2.compiler.parse_engine_hooks
 
 import v2.std.node { Symbol }

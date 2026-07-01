@@ -1,41 +1,13 @@
-// dsl/test/claim/doc_reachability_witness_test.dag
-//
-// Floor witness for the DOC-GRAPH reachability-completeness WALL
-// (docs/plans/inert-layer-lens.md §8). The doc substrate of the one reachability
-// rule the #5433 inert-lens backstop runs over the lens substrate (DESIGN §3
-// single authority: same rule, different graph — NOT a forked concept).
-//
-// THE RULE: every declared `docs/**/*.md` must be reachable from a root
-// (ROADMAP/DESIGN for plan docs; docs/runbooks/README.md for runbooks), reached
-// via a reflective `.dag`-comment `bind:` ref, or deleted. A dangling `](x.md)`
-// link is forbidden. Both verdicts FAIL-CLOSED: any orphan / any dangling → RED.
-//
-// Host-fed (the orphan half needs filesystem enumeration; no list-dir `.dag` host
-// effect exists yet — folds into pure `.dag` on gunbc#5364, the plan Tier-2 note).
-// The verdicts come from the doc_reachability_project census builtins, the same
-// additive corpus-gate seam as extdeps_external_authority_live_clean_tree_holds /
-// fact_cardinality_*.
-//
-// RED-on-revert: revert any of this PR's inbound links → an orphan reappears →
-// doc_graph_orphan_count() > 0 → doc_graph_has_no_orphan_docs() goes RED. Break a
-// `](x.md)` link → doc_graph_dangling_link_count() > 0 → the dangling witness RED.
-// The discriminating RED/GREEN controls over a synthetic graph live in the project
-// module's unit tests (reachable_set_flags_orphan_node, dangling_detection_*).
-
 module test.claim.doc_reachability_witness
 
-// Every `docs/**/*.md` is reachable from a root (no orphan plan docs / runbooks).
 test fn doc_graph_has_no_orphan_docs() -> Bool {
   return doc_graph_orphan_count() == 0
 }
 
-// No broken `](x.md)` markdown link anywhere in the doc graph.
 test fn doc_graph_has_no_dangling_links() -> Bool {
   return doc_graph_dangling_link_count() == 0
 }
 
-// §5 non-emptiness floor: a zero universe means the `docs/` walk fail-opened (read_dir error),
-// which would make orphan_count==0 a false green — so zero discovered docs is itself RED.
 test fn doc_graph_universe_is_nonempty() -> Bool {
   return doc_graph_doc_count() > 0
 }

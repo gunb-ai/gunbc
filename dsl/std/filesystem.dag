@@ -1,40 +1,9 @@
-// std/filesystem.dag -- Filesystem model: tautological definitions.
-//
-// "What is a file?" -- answered compositionally from primitives.
-//
-// Layering:
-//   Layer 0: Taxonomy (EntryKind, SymlinkTarget -- OS-agnostic, in
-//            std.filesystem.types; per-fs realizations in extdeps/filesystem/)
-//   Layer 1: Categories (FileEntry -- the composed invariant)
-//   Layer 2: Pure functions (is_text_readable, partition_entries)
-//   Layer 3: Patterns (classify_files, read_text_files -- in patterns.dag)
-//   Layer 4: Tools (gist_snapshot, etc.)
-
 module std.filesystem
 
 import std.encoding { Encoding }
 import std.types { FilePath, MimeType }
 import std.filesystem.types { EntryKind, SymlinkTarget }
 
-// -- Layer 0: Filesystem entry taxonomy -------------------------------------
-//
-// EntryKind / SymlinkTarget — the OS-agnostic entry taxonomy — live in the thin
-// std.filesystem.types module (mirroring std.os.types), so a consumer that only
-// needs the kinds (the per-fs realizations + their witnesses) does not drag this
-// encoding-heavy carrier along. Cited per-fs realizations:
-// extdeps/filesystem/{posix,ntfs}.dag, keyed to std.os.types.FileSystemSemantics.
-// (extdeps/filesystem/filesystem_io.dag is the host read/write EFFECT — orthogonal.)
-
-// -- Layer 0.5–1: File referent (single record) -----------------------------
-//
-// One carrier for "everything we know about a path's referent" — whether
-// obtained from Filesystem.probe or held as an entry in a listing.
-// Encoding is null for directories, missing paths, and special files;
-// symlink_target is null unless kind = Symlink.
-//
-// Parallels Language in languages.dag:
-//   Language = { id, name, extensions, comment, naming, types }
-//   FileEntry = { path, kind, encoding?, symlink_target?, size, mime? }
 type FileEntry {
   path: FilePath
   kind: EntryKind
@@ -44,28 +13,15 @@ type FileEntry {
   mime: MimeType?
 }
 
-// API name for probe output — same carrier as FileEntry (P2 decompression).
 type FileClassification = FileEntry
 
-// "What is a readable file?" -- the subset we can fs.read().
-// A path is readable when it resolves to a regular text file,
-// either directly or through a symlink.
-//
-//   [ReadableEntry] < [FileEntry]
-//   [ReadableEntry] = { e in [FileEntry] | is_text_readable(e) }
 type ReadableEntry = FileEntry where is_text_readable
 
-// Partition result -- every input entry lands in exactly one list.
 type PartitionResult {
-  readable: List<FileEntry>      // text files (safe for fs.read)
-  skipped: List<FileEntry>       // everything else (with reason)
+  readable: List<FileEntry>
+  skipped: List<FileEntry>
 }
 
-// -- Layer 2: Pure functions -----------------------------------------------
-
-// "Is this entry a text file we can read?"
-// Exhaustive over EntryKind -- every branch is explicit.
-// Only explicit text encodings are readable. Unknown and Binary are not.
 fn is_text_readable(entry: FileEntry) -> Bool {
   match entry.kind {
     RegularFile => is_text_encoding(e: entry.encoding)
@@ -76,7 +32,6 @@ fn is_text_readable(entry: FileEntry) -> Bool {
   }
 }
 
-// Helper: does this optional encoding represent a known text encoding?
 fn is_text_encoding(e: Encoding?) -> Bool {
   match e {
     Present { value: ASCII } => true
@@ -87,14 +42,12 @@ fn is_text_encoding(e: Encoding?) -> Bool {
   }
 }
 
-// "Split entries into readable text files vs everything else."
 fn partition_entries(entries: List<FileEntry>) -> PartitionResult {
   readable = filter(entries, e => is_text_readable(entry: e))
   skipped  = filter(entries, e => !is_text_readable(entry: e))
   return { readable: readable, skipped: skipped }
 }
 
-// "What skip reason should we show for this entry?"
 fn skip_reason(entry: FileEntry) -> String {
   match entry.kind {
     Directory   => "directory"

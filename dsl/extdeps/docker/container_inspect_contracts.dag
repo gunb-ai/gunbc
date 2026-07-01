@@ -1,0 +1,18 @@
+module extdeps.docker.container_inspect_contracts
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import std.serialization { CoproductWireContract, StringVariant, SnakeCase }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.docker.com/engine/api/v1.47"
+  }
+}
+
+data container_state_wire_contract: CoproductWireContract = {
+  coproduct: DeclarationRef { module_path: "extdeps.docker.container_inspect", decl_name: "ContainerState", field: WholeDeclaration }
+  encoding: StringVariant { naming: SnakeCase }
+}

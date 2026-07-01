@@ -1,11 +1,4 @@
-// src/v2/extdeps/coercion_widening.dag
-// Scope: cross-target faithful refinement widening pair registry (MVP rust i32 → python int).
-// Anchor: ROADMAP.md coercion (i32 → arbitrary-precision int); W3.2 Leg B.
-// Status: MVP pair table lives here; std/refinement_widening_predicate proves bundle evidence (P2).
-
-
 module v2.extdeps.coercion_widening
-
 
 import v2.extdeps.languages.python { python_int_inhabitant_node }
 import v2.extdeps.languages.rust { rust_inhabitant_i32_node }
@@ -66,7 +59,6 @@ fn coercion_widening_python_integer_value_set_from_inhabitant(inhabitant: Node) 
   }
 }
 
-
 fn mvp_rust_i32_python_int_refinement_widening_predicate() -> PreservationPredicate {
   let source = rust_inhabitant_i32_node()
   let candidate = python_int_inhabitant_node()
@@ -94,7 +86,6 @@ fn mvp_python_int_rust_i32_refinement_narrowing_predicate() -> PreservationPredi
     preservation_rule: ^preservation_rule_refinement_widening
   }
 }
-
 
 fn coercion_fold_mvp_rust_i32_to_python_int_widening(
   source: CanonicalGrounding,

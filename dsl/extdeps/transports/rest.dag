@@ -1,36 +1,24 @@
-// extdeps/transports/rest.dag -- HTTP REST transport definition
-//
-// Spec: RFC 9110 (HTTP Semantics)
-//       https://www.rfc-editor.org/rfc/rfc9110
-// Auth: RFC 7235 (HTTP/1.1 Authentication)
-//       https://www.rfc-editor.org/rfc/rfc7235
-// URI:  RFC 3986 (Uniform Resource Identifier)
-//       https://www.rfc-editor.org/rfc/rfc3986
-//
-// Configuration schema for service operations bound to REST endpoints.
-// A service operation with `transport rest { ... }` executes via
-// HTTP request to the configured endpoint.
-
 module extdeps.transports.rest
 
-import std.types { HttpMethod, Url }
+import std.types { HttpMethod }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 
-// Fidelity row for the HTTP REST realization (§3: cited specifics live with
-// the realization, not in std). A network round-trip (RFC 9110 over the
-// network) is the large cost bucket, and it is NOT hermetic by this coarse
-// classifier — fail-closed; per-op hermetic replay is proven by execution
-// (record→replay witnesses), not assumed here.
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc9110"
+  }
+}
+
 data rest_transport_fidelity: TransportFidelity = TransportFidelity { depth: L, hermetic: false }
 
-// Configuration type for REST transport bindings.
-// The parser validates transport blocks labeled "rest" against this schema.
-// Fields match HTTP semantics from RFC 9110 and RFC 7235.
 type RestTransportConfig {
-  base_url: Url
-  auth_token: String?           // RFC 7235 Section 4.2: credentials
-  auth_header: String?          // Header field name; default "Authorization" per RFC 7235
-  headers: Map<String, String>  // Custom request headers (RFC 9110 Section 6.3)
-  response_format: WireFormat   // How to parse response body; default Json
+  base_url: Uri
+  auth_token: String?
+  auth_header: String?
+  headers: Map<String, String>
+  response_format: WireFormat
 }

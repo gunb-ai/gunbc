@@ -1,15 +1,18 @@
-// extdeps/github/errors.dag -- GitHub REST API error envelope shape.
-//
-// Spec: https://docs.github.com/en/rest/overview/resources-in-the-rest-api#client-errors
-// API version: 2022-11-28 (X-GitHub-Api-Version header)
-
 module extdeps.github.errors
 
-import std.types { Url }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/overview/resources-in-the-rest-api#client-errors"
+  }
+}
 
 type GitHubErrorShape {
   message: String
-  documentation_url: Url?
+  documentation_url: String?
 }
 
 data github_error_example: GitHubErrorShape = {

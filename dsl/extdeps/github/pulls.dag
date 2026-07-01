@@ -1,52 +1,31 @@
-// extdeps/github/pulls.dag -- GitHub Pull Requests API
-//
-// Spec: https://docs.github.com/en/rest/pulls/pulls
-// API version: 2022-11-28 (X-GitHub-Api-Version header)
-// Endpoints modeled:
-//   GET  /repos/{owner}/{repo}/pulls                        (List)
-//   GET  /repos/{owner}/{repo}/pulls/{pull_number}          (Get)
-//   GET  /repos/{owner}/{repo}/pulls/{pull_number} [diff]   (Diff)
-//   POST /repos/{owner}/{repo}/issues/{issue_number}/comments (CreateComment)
-//
-// PR comments use the Issues API because PRs are issues in GitHub's model.
-//
-// Consumers:
-//   gunbc/tools/review.dag -- PR review workflow
-
 module extdeps.github.pulls
 
 import extdeps.github.github { GitHubUser, default_api_base, default_per_page }
-import std.types { CommitSha, FilePath, GitRef, Timestamp, Url, HttpMethod, AuthScheme }
+import std.types { CommitSha, FilePath, GitRef, NonEmptyStr, Timestamp, HttpMethod, AuthScheme }
 import extdeps.github.errors { GitHubErrorShape }
 import std.credentials { CredentialSource, EnvVar }
-import std.serialization { WireFormat, Text, CoproductWireContract, StringVariant, SnakeCase, ScreamingSnakeCase }
+import std.serialization { WireFormat, Text }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+import extdeps.github.pulls_contracts {
+  pull_request_state_wire_contract,
+  review_state_wire_contract,
+  review_event_wire_contract
+}
 
-// -- Enumerations: GitHub-spec closed vocabularies --------------------
-// Spec: https://docs.github.com/en/rest/pulls/pulls#list-pull-requests
-// Wire: "open" | "closed" (lowercase, SnakeCase)
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/rest/pulls/pulls"
+  }
+}
+
 type PullRequestState = Open | Closed
-data pull_request_state_wire_contract: CoproductWireContract = {
-  coproduct: "PullRequestState",
-  encoding: StringVariant { naming: SnakeCase }
-}
 
-// Spec: https://docs.github.com/en/rest/pulls/reviews
-// Wire: "PENDING" | "COMMENTED" | "APPROVED" | "CHANGES_REQUESTED" | "DISMISSED"
 type ReviewState = Pending | Commented | Approved | ChangesRequested | Dismissed
-data review_state_wire_contract: CoproductWireContract = {
-  coproduct: "ReviewState",
-  encoding: StringVariant { naming: ScreamingSnakeCase }
-}
 
-// Spec: https://docs.github.com/en/rest/pulls/reviews#create-a-review-for-a-pull-request
-// Wire: "APPROVE" | "REQUEST_CHANGES" | "COMMENT" | "PENDING"
 type ReviewEvent = Approve | RequestChanges | Comment | Pending
-data review_event_wire_contract: CoproductWireContract = {
-  coproduct: "ReviewEvent",
-  encoding: StringVariant { naming: ScreamingSnakeCase }
-}
-
-// -- Pull request model -----------------------------------------------
 
 type PullRequestRef {
   ref: GitRef
@@ -59,7 +38,7 @@ type PullRequest {
   title: String
   body: String?
   state: PullRequestState
-  html_url: Url
+  html_url: NonEmptyStr
   user: GitHubUser
   head: PullRequestRef
   base: PullRequestRef
@@ -71,27 +50,19 @@ type PullRequest {
 
 type IssueComment {
   id: Int
-  html_url: Url
+  html_url: NonEmptyStr
   body: String
   created_at: Timestamp
 }
-
-// -- Service: REST transport wiring -----------------------------------
-//
-// 🟡 dissolved — feature:github-pulls-mock-response — scaffold:hand-authored mock_response —
-// dissolve-on-arrival: Phase-2-hermetic RecordedFixture replay from claim_batch --fixture-store
-// (recorded wet via --record); the published corpus (extdeps.github.mock_corpus) now governs WHICH
-// github.Pulls ops are hermetically realizable, and the fixture store owns the payloads (§3).
-// forbidden: reintroducing mock_response constants for Hermetic dispatch on these shapes.
 
 service github.Pulls {
   config {
     endpoint: default_api_base
     auth: Bearer
     auth_source: EnvVar { name: "GITHUB_TOKEN" }
-    // GitHub API rate limits: 5000 requests/hour for authenticated users
+
     rate_limit: { requests: 5000, per: hour, scope: core }
-    // Retry on rate limit and server errors with exponential backoff
+
     retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503, 504] }
   }
 
@@ -179,7 +150,7 @@ service github.Pulls {
     }
     output {
       id: Int from "id"
-      html_url: Url from "html_url"
+      html_url: NonEmptyStr from "html_url"
     }
     transport rest {
       method: POST,
@@ -195,9 +166,6 @@ service github.Pulls {
     }
   }
 
-  // Spec: https://docs.github.com/en/rest/pulls/reviews
-  // Stateless dedup: check if a review exists at a specific commit SHA.
-  // Returns review count -- 0 means not yet reviewed at this commit.
   operation ListReviews {
     input {
       auth_token: Secret
@@ -221,9 +189,6 @@ service github.Pulls {
     }
   }
 
-  // Spec: https://docs.github.com/en/rest/pulls/reviews#create-a-review
-  // Posts a review with line-level comments. Idempotent when guarded
-  // by ListReviews check (don't post if review at this SHA exists).
   operation CreateReview {
     input {
       auth_token: Secret
@@ -237,7 +202,7 @@ service github.Pulls {
     }
     output {
       id: Int from "id"
-      html_url: Url from "html_url"
+      html_url: NonEmptyStr from "html_url"
     }
     transport rest {
       method: POST,
@@ -252,8 +217,6 @@ service github.Pulls {
     }
   }
 
-  // Spec: https://docs.github.com/en/rest/pulls/comments
-  // Lists review comments (line-level). Used for resolution checking.
   operation ListComments {
     input {
       auth_token: Secret
@@ -278,18 +241,27 @@ service github.Pulls {
   }
 }
 
-// -- Review and comment types -----------------------------------------
-
 type PullReview {
   id: Int
   body: String
   state: ReviewState
   commit_id: CommitSha
-  html_url: Url
+  html_url: NonEmptyStr
 }
 
-data structural_coverage_gap_github_pull_review_response_residual: List<String> = [
-  "closure:github_pull_review_response_residual|PullReview|json_pending:node_id|json_pending:user|json_pending:pull_request_url|json_pending:_links|json_pending:submitted_at|json_pending:author_association|trigger:GitHub PullReview consumer needs full review response fidelity"
+data structural_coverage_gap_github_pull_review_response_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "PullReview" },
+      JsonPending { field: "node_id" },
+      JsonPending { field: "user" },
+      JsonPending { field: "pull_request_url" },
+      JsonPending { field: "_links" },
+      JsonPending { field: "submitted_at" },
+      JsonPending { field: "author_association" }
+    ],
+    trigger: "GitHub PullReview consumer needs full review response fidelity"
+  }
 ]
 
 type ReviewComment {
@@ -299,5 +271,5 @@ type ReviewComment {
   line: Int?
   original_line: Int?
   body: String
-  html_url: Url
+  html_url: NonEmptyStr
 }

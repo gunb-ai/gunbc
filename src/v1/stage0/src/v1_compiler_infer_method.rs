@@ -188,6 +188,16 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "contiguous_loop_elementwise_kernel".to_string(),
+            list_of_type_variable("collection_element".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "contiguous_loop_elementwise_float_kernel".to_string(),
+            list_of_type_variable("collection_element".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "extdeps_dead_param_count_for_operation".to_string(),
             int_type(),
         );
@@ -294,12 +304,19 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "extdeps_external_authority_anchor_shadow_masked_for_qualified_name".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "extdeps_external_authority_live_shadow_mask_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "extdeps_external_authority_live_roster_module_count".to_string(),
             int_type(),
         );
-        // Doc-graph reachability-completeness wall (docs/plans/inert-layer-lens.md §8): the doc
-        // substrate of the #5433 one-rule-N-substrates reachability discipline. Host-fed scalar
-        // verdicts for the floor witness.
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_orphan_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -307,6 +324,68 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             int_type(),
         );
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_doc_count".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "inert_carrier_count".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "inert_carrier_unrostered_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "inert_carrier_stale_roster_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "inert_carrier_declared_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "inert_lens_unreached_module_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "inert_lens_top_level_module_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(m.clone(), "non_fold_residue_count".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_unrostered_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_stale_roster_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "non_fold_residue_coproduct_universe_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "complexity_linearity_syntactic_finding_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "complexity_linearity_syntactic_wildcard_finding_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "complexity_linearity_syntactic_site_fired".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "census_corpus_roots_follow_layer_authority".to_string(),
+            bool_type(),
+        );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "transport_script_literal_violation_count_for_path".to_string(),
@@ -321,6 +400,16 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "import_resolution_facts".to_string(),
             list_of_type_variable("import_resolution_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "module_declaration_facts".to_string(),
+            list_of_type_variable("module_declaration_fact_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "concept_decl_facts".to_string(),
+            list_of_type_variable("concept_decl_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -377,6 +466,9 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             "languages_consumer_census_has_external_consumer".to_string(),
             bool_type(),
         );
+        let m = v1_rt::rc_map_insert(m.clone(), "is_xid_start".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "is_xid_continue".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "is_emoji_ident".to_string(), bool_type());
         m.clone()
     }
 }

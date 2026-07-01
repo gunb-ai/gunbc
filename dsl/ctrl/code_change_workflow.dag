@@ -1,53 +1,29 @@
-// ctrl/code_change_workflow.dag — internal code-change lifecycle (node-bound FSM).
-//
-// Authority scope: the workflow substrate is independent of GitHub PR — a code
-// change is a process-graph node with a fail-closed lifecycle:
-//   open → under-review → merge-ready → merged (or closed).
-// GitHub PullRequest is a 🟡 STAGED realization input on transition requests
-// only (draft/open/head checks); it is not part of the core stage vocabulary.
-//
-// Current runtime authority remains in gunb-ai/ctrl session-dashboard until
-// cut-over. Trio convergence with review_verdict + pr_digests unchanged.
-//
-// STAGED → AUTHORITY trigger: ctrl cut-over once emission + parity land.
-
 module ctrl.code_change_workflow
 
 import ctrl.process_algebra { ProcessNodeId }
 import ctrl.pr_digests { MergeReadinessVerdict, Ready, NotReady }
 import ctrl.review_verdict { MergeReadinessTally }
 import extdeps.github.pulls { PullRequest, Open, Closed }
-import std.types { CommitSha, NonEmptyStr, Timestamp, Url }
+import std.types { CommitSha, NonEmptyStr, Timestamp }
 
-// 🟢 TERMINAL — active code-change coordinates. Successor edges are defined
-// only over this sum.
 type CodeChangeActiveStage
   = ChangeOpen
   | ChangeUnderReview
   | ChangeMergeReady
 
-// 🟢 TERMINAL — terminal bookends. No successor edges originate here
-// (process_algebra ProcessCloseState pattern).
 type CodeChangeTerminalStage
   = ChangeMerged
   | ChangeClosed
 
-// 🟢 TERMINAL — active vs terminal progress split. Dissolution pattern
-// rejected: flat stage enum + Bool terminal predicate.
 type CodeChangeStage
   = CodeChangeActive { stage: CodeChangeActiveStage }
   | CodeChangeTerminal { stage: CodeChangeTerminalStage }
 
-// 🟢 TERMINAL — binds a process-graph node to a code-change coordinate.
-// PR/repo fields are intentionally absent; GitHub attachment is a separate
-// staged realization input on transition requests.
 type CodeChangeBinding {
   node_id: ProcessNodeId
   change_ref: NonEmptyStr
 }
 
-// 🟡 STAGED — lifecycle facts for one code-change node.
-// Dissolution trigger: emitted from the dashboard event log.
 type CodeChangeFacts {
   binding: CodeChangeBinding
   stage: CodeChangeStage
@@ -58,7 +34,6 @@ type CodeChangeFacts {
   closed_at: Timestamp?
 }
 
-// 🟢 TERMINAL — fail-closed refusal reasons.
 type CodeChangeRefusal
   = CodeChangeAlreadyTerminal { stage: CodeChangeStage }
   | ChangeDraftBlocksReview
@@ -74,25 +49,16 @@ type CodeChangeRefusal
   | CodeChangePolicyNotPermitted
   | CodeChangeInvalidSuccessor { from: CodeChangeStage, event: CodeChangeEventTag }
 
-// 🟢 TERMINAL — lifecycle transition events without policy payloads.
 type CodeChangeEventTag
   = MarkReadyForReview
   | RecordMergeReady
   | RecordMerged
   | RecordClosed
 
-// 🟢 TERMINAL coproduct — transition guard result (ProcessClosureDecision pattern).
-//
-// Decomposition receipt (DESIGN.md §2):
-// - Classification: 🟢 TERMINAL. Success and refusal are disjoint repair paths.
-// - Trigger: none for M2 scope; new refusal codes extend CodeChangeRefusal.
 type CodeChangeDecision
   = CanTransition { to: CodeChangeStage }
   | TransitionRefused { refusal: CodeChangeRefusal }
 
-// 🟡 STAGED — GitHub PR realization context for handlers that still source
-// draft/open/head facts from extdeps.github.pulls. Dissolution trigger: per-PR
-// checks move to a gunbc/ctrl GitHub handler; core FSM stays PR-agnostic.
 type CodeChangeGithubPrContext {
   pr: PullRequest
 }
@@ -141,8 +107,6 @@ fn successor_stage(
   }
 }
 
-// 🟡 STAGED — GitHub PR terminal anchor projection only. Not authoritative for
-// active UnderReview / MergeReady stages.
 fn github_pr_terminal_anchor(pr: PullRequest) -> CodeChangeStage? {
   match pr.merged_at {
     Present { value: _ } =>
