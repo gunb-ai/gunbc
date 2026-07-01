@@ -1,25 +1,18 @@
 module tools.dsl_compile_clean_partition
 
 import gunbc.ci_layer_roots { witness_layer_roots }
-import std.algebra { length }
-import std.collection { List }
+import std.list { List }
 import std.types { String, Bool }
 import std.reducible {
   ReduceVerdict, Reduced, Irreducible, Unknown,
   reduce_verdicts_located, verdict_eq
 }
 
-// Partition boundary for sharding dsl_compile_clean_gate (ROADMAP §2 compile-clean wall).
-//
-// Semantics match the committed CLI (main.rs): the FIRST --source-root lists entry
-// modules; every --source-root participates in the module index / import pools.
 type CompileCleanPartitionBoundary {
   entry_root: String
   pool_roots: List<String>
 }
 
-// One shard = one entry .dag file under entry_root, compiled with a staging dir that
-// contains only that entry as the primary source root plus the full pool_roots.
 type CompileCleanModuleShard {
   entry_path: String
 }
@@ -62,15 +55,21 @@ fn compile_clean_shard_verdict_to_reduce(v: CompileCleanShardVerdict) -> ReduceV
   }
 }
 
+fn compile_clean_shard_verdict_list_nonempty(
+  xs: List<CompileCleanShardVerdict>
+) -> Bool {
+  fold(xs, init: false, f: fn(_, _) { true })
+}
+
 fn compose_compile_clean_shard_verdicts_as_reduce(
   verdicts: List<CompileCleanShardVerdict>
 ) -> ReduceVerdict {
-  if length(xs: verdicts) == 0 {
-    Unknown { missing: "compile-clean-shard:empty" }
-  } else {
+  if compile_clean_shard_verdict_list_nonempty(xs: verdicts) {
     compile_clean_shard_verdict_to_reduce(
       v: compose_compile_clean_shard_verdicts(verdicts: verdicts)
     )
+  } else {
+    Unknown { missing: "compile-clean-shard:empty" }
   }
 }
 

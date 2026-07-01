@@ -17,10 +17,9 @@ import tools.dsl_compile_clean_shard_transport {
   shard_transport_serializes_staged_compile_invocation,
   shard_a_exemplar_entry_path
 }
-data witness_compose_red_on_injected_failure: Bool =
-  compose_compile_clean_shard_verdicts(
-    verdicts: [ShardClean, ShardFailed { entry_path: shard_a_exemplar_entry_path }]
-  ) != ShardClean
+data witness_compose_red_on_injected_failure: Bool = compose_compile_clean_shard_verdicts(
+  verdicts: [ShardClean, ShardFailed { entry_path: shard_a_exemplar_entry_path }]
+) != ShardClean
 
 test fn compile_clean_partition_boundary_matches_witness_layer_roots() -> Bool {
   witness_partition_entry_root_is_first_witness_layer_root()

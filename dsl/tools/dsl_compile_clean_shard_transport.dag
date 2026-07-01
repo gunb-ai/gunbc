@@ -14,7 +14,6 @@ import extdeps.languages.bash.program {
 import tools.host_prelude { ensure_gunbc_built }
 import tools.dsl_compile_clean_transport { dcc_pool_index_flags }
 
-// Shard A exemplar: a leaf entry module with no imports — fast, deterministic receipt.
 data shard_a_exemplar_entry_path: String = "dsl/std/logic.dag"
 
 fn dcc_shard_pool_root_flags() -> List<ShellWord> {
