@@ -5584,16 +5584,29 @@ fn eval_builtin(
             )))
         }
 
-        "transport_script_literal_violation_count_for_path" => {
+        "transport_script_position_facts_for_path" => {
             let path = expect_str(
                 positional.first().copied(),
-                "transport_script_literal_violation_count_for_path",
+                "transport_script_position_facts_for_path",
             )?;
-            let count =
-                crate::module_path_index::transport_script_position_census::transport_script_literal_violation_count_for_path(
-                    path,
-                );
-            Ok(Some(Value::Int(count)))
+            let facts = crate::cli_run::transport_script_position_facts_for_path(path);
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                let shape = Value::Variant {
+                    type_name: ctx.sym("TransportScriptArgShape"),
+                    variant_name: ctx.sym(f.shape),
+                    fields: Rc::new(vec![]),
+                };
+                items.push(Value::Record {
+                    type_name: ctx.sym("TransportScriptPositionFact"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("function"), Value::Str(f.function)),
+                        (ctx.sym("path"), Value::Str(f.path)),
+                        (ctx.sym("shape"), shape),
+                    ])),
+                });
+            }
+            Ok(Some(list_value(items)))
         }
 
         "extdeps_shape_transport_policy_facts_for_qualified_name" => {
@@ -5808,13 +5821,13 @@ fn eval_builtin(
             crate::cli_run::doc_graph_doc_count(),
         ))),
 
-        "inert_carrier_names_live" => {
-            let names = crate::cli_run::inert_carrier_names_live();
+        "unwired_model_names_live" => {
+            let names = crate::cli_run::unwired_model_names_live();
             let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
             Ok(Some(list_value(items)))
         }
-        "inert_carrier_declared_count" => Ok(Some(Value::Int(
-            crate::cli_run::inert_carrier_declared_count_live(),
+        "unwired_model_declared_count" => Ok(Some(Value::Int(
+            crate::cli_run::unwired_model_declared_count_live(),
         ))),
 
         "inert_lens_unreached_module_count" => Ok(Some(Value::Int(

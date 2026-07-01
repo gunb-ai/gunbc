@@ -8,9 +8,14 @@ import gunbc.ci_spec {
   CiSpec, gunbc_ci_spec, gunbc_ci_workflow_run, gunbc_ci_rust_job_run,
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
 }
+import gunbc.merge_admission_produce {
+  ci_merge_admission_gate_script,
+}
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
@@ -161,6 +166,31 @@ fn ci_floor_step() -> Step {
   }
 }
 
+data merge_admission_gate_step_name: String = "Merge-admission gate (receipt required; freshness block held until GatingEnforced)"
+
+data merge_admission_ci_gate_step_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_workflow",
+    decl_name: "ci_merge_admission_gate_step",
+    field: WholeDeclaration
+  }
+}
+
+fn ci_merge_admission_gate_step() -> Step {
+  RunStep {
+    name: Present { value: merge_admission_gate_step_name },
+    id: none,
+    run: ci_merge_admission_gate_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn ci_nextest_install_step() -> Step {
   RunStep {
     name: Present { value: "Install cargo-nextest" },
@@ -264,7 +294,7 @@ fn ci_job() -> Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_floor_step()]),
+    steps: concat(ci_prelude_steps(), [ci_floor_step(), ci_merge_admission_gate_step()]),
     needs: [],
     env: none,
     outputs: none,
