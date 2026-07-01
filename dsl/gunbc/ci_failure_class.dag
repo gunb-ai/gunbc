@@ -1,7 +1,9 @@
 module gunbc.ci_failure_class
 
 import std.process { ProcessExit, ExitSuccess, ExitFailure }
-import std.types { ContentHash }
+import std.types { ContentHash, String }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.runtime.errno { PosixErrno, EAGAIN, errno_strerror }
 import extdeps.rust.std_process { StdProcessSpawnOutcome, SpawnFailed, spawn_outcome_log_fragment }
 import extdeps.cache.sccache {
@@ -145,6 +147,17 @@ type MergeGatingStatus
   | GatingEnforced
 
 data merge_freshness_gating_status: MergeGatingStatus = GatingComputedDeferred
+
+data merge_admission_gating_activation_trigger: String = "flip merge_freshness_gating_status from GatingComputedDeferred to GatingEnforced after real CI run proves admit-real-fresh AND block-stale/red"
+
+data merge_admission_enforcement_gating_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_failure_class",
+    decl_name: "merge_freshness_gating_status",
+    field: WholeDeclaration
+  }
+}
 
 fn gating_is_enforced(s: MergeGatingStatus) -> Bool {
   match s {
