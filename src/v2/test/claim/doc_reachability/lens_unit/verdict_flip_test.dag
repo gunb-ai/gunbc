@@ -1,0 +1,23 @@
+module v2.test.doc_reachability.lens_unit.verdict_flip_test
+
+import v2.lens.doc_reachability {
+  doc_graph_orphan_clean_for_count,
+  doc_graph_dangling_clean_for_count,
+  doc_graph_universe_nonempty_for_count
+}
+import v2.std.logic { Bool }
+
+test fn doc_graph_orphan_verdict_flips_red_on_positive_count() -> Bool {
+  doc_graph_orphan_clean_for_count(orphan_count: 0)
+    && (doc_graph_orphan_clean_for_count(orphan_count: 1) == false)
+}
+
+test fn doc_graph_dangling_verdict_flips_red_on_positive_count() -> Bool {
+  doc_graph_dangling_clean_for_count(dangling_count: 0)
+    && (doc_graph_dangling_clean_for_count(dangling_count: 1) == false)
+}
+
+test fn doc_graph_universe_verdict_flips_red_on_empty() -> Bool {
+  doc_graph_universe_nonempty_for_count(doc_count: 1)
+    && (doc_graph_universe_nonempty_for_count(doc_count: 0) == false)
+}

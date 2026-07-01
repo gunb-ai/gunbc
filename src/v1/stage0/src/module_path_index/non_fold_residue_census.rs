@@ -56,7 +56,6 @@ use crate::cli_run::{brace_delta, corpus_dag_files, is_test_dag, strip_line_comm
 // (must drain as folds land — must never stay hidden as permanent roster fiction).
 const NON_FOLD_MIGRATION_DEBT_ROSTER: &[&str] = &[
     // (a) eval interpreter escapes — §5 fail-open on EVAL path; escalate before editing 05_eval.
-    "src/v2/compiler/05_eval.dag::eval_bind_node_eval",
     "src/v2/compiler/05_eval.dag::eval_branch_node_eval",
     "src/v2/compiler/05_eval.dag::eval_loop_node",
     "src/v2/compiler/05_eval.dag::eval_match_node_eval",
@@ -116,7 +115,6 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "dsl/tools/ci_gates.dag::exit_ok",
     "dsl/tools/generated_artifact_gate.dag::exit_ok",
     "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer",
-    "src/v2/compiler/05_eval.dag::eval_bind_node_eval",
     "src/v2/compiler/05_eval.dag::eval_branch_node_eval",
     "src/v2/compiler/05_eval.dag::eval_loop_node",
     "src/v2/compiler/05_eval.dag::eval_match_node_eval",
