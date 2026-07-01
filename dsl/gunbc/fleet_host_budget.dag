@@ -10,6 +10,7 @@ import std.measure {
   time_measure, watt,
   measure_scale_fraction_floor,
   measure_fit_count_floor,
+  measure_le,
   HardwareThreadCount, hardware_thread_count,
 }
 import std.realization_width { byte_size_saturating_sub, cpu_cores_available }
@@ -226,8 +227,10 @@ fn runner_swap_aggregate_demand(slot_count: Int, contract: RunnerSlotMemoryContr
 }
 
 fn runner_swap_aggregate_fits(slot_count: Int, contract: RunnerSlotMemoryContract, host_swap: ByteSize) -> Bool {
-  byte_size_count(b: runner_swap_aggregate_demand(slot_count: slot_count, contract: contract))
-    <= byte_size_count(b: host_swap)
+  measure_le(
+    a: runner_swap_aggregate_demand(slot_count: slot_count, contract: contract),
+    b: host_swap
+  )
 }
 
 fn effective_heavy_job_concurrency(slice_cap: ByteSize, working_set: ByteSize) -> Int {
