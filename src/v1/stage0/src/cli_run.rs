@@ -287,12 +287,7 @@ pub(crate) fn string_list_data_from_ci_layer_roots_source(
     content: &str,
     data_name: &str,
 ) -> Vec<String> {
-    string_list_data_from_module_source(
-        CI_LAYER_ROOTS_AUTHORITY_REL,
-        content,
-        data_name,
-        false,
-    )
+    string_list_data_from_module_source(CI_LAYER_ROOTS_AUTHORITY_REL, content, data_name, false)
 }
 
 /// Project the `witness_layer_roots` `List<String>` literal out of the ci_layer_roots authority.
