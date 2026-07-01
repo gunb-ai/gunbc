@@ -5838,7 +5838,6 @@ fn eval_builtin(
             crate::cli_run::doc_graph_doc_count(),
         ))),
 
-<<<<<<< HEAD
         "inert_carrier_names_live" => {
             let names = crate::cli_run::inert_carrier_names_live();
             let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
@@ -5846,19 +5845,6 @@ fn eval_builtin(
         }
         "inert_carrier_declared_count" => Ok(Some(Value::Int(
             crate::cli_run::inert_carrier_declared_count_live(),
-=======
-        "inert_carrier_count" => Ok(Some(Value::Int(
-            crate::module_path_index::inert_carrier_census::inert_carrier_count(),
-        ))),
-        "inert_carrier_unrostered_count" => Ok(Some(Value::Int(
-            crate::module_path_index::inert_carrier_census::inert_carrier_unrostered_count(),
-        ))),
-        "inert_carrier_stale_roster_count" => Ok(Some(Value::Int(
-            crate::module_path_index::inert_carrier_census::inert_carrier_stale_roster_count(),
-        ))),
-        "inert_carrier_declared_count" => Ok(Some(Value::Int(
-            crate::module_path_index::inert_carrier_census::inert_carrier_declared_count(),
->>>>>>> origin/main
         ))),
 
         "inert_lens_unreached_module_count" => Ok(Some(Value::Int(

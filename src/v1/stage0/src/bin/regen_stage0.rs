@@ -118,14 +118,6 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "complexity_linearity_audit_project.rs",
     "decl_facts_project.rs",
     "coproduct_reflection.rs",
-<<<<<<< HEAD
-    "medium_structure_project.rs",
-    "extdeps_shape_transport_policy_project.rs",
-    "fact_cardinality_census.rs",
-    "languages_consumer_census.rs",
-    "non_fold_residue_project.rs",
-=======
->>>>>>> origin/main
     "recorded_fixture.rs",
     "resolved_graph_cache.rs",
     "rest_transport_facts.rs",

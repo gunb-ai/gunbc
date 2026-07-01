@@ -36,14 +36,7 @@ pub mod extdeps_uri;
 pub mod extdeps_uri_path;
 pub mod extdeps_version;
 pub mod extdeps_version_semver;
-<<<<<<< HEAD
-pub mod fact_cardinality_census;
-pub mod languages_consumer_census;
-pub mod medium_structure_project;
-pub mod non_fold_residue_project;
-=======
 pub mod module_path_index;
->>>>>>> origin/main
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
 pub mod rest_transport_facts;
