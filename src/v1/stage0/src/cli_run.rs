@@ -4187,17 +4187,12 @@ fn run_discovery_rows(
                         provenance_live,
                     );
                     match dag_touches {
-                        Ok(true) => true,
-                        Ok(false) => {
-                            if provenance_live {
-                                entry_touches_frontier_seeds(
-                                    &entry_ctx,
-                                    &row.entry,
-                                    frontier_seeds,
-                                )?
-                            } else {
-                                false
-                            }
+                        Ok(touches) => touches,
+                        Err(msg) if provenance_live => {
+                            eprintln!(
+                                "claim_executor: live provenance node-closure failed ({msg}) — fail-closed, running entry witnesses"
+                            );
+                            true
                         }
                         Err(msg) => {
                             eprintln!(
