@@ -6855,7 +6855,6 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
     out
 }
 
-<<<<<<< HEAD
 const LANGUAGES_AUTHORITY_REL: &str = "dsl/std/languages.dag";
 
 fn languages_census_collect_source_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -7055,10 +7054,7 @@ pub fn languages_consumer_census_has_external_consumer(decl_name: String) -> boo
         .unwrap_or(false)
 }
 
-// --- Inert carrier census (folded from inert_carrier_project.rs) ---
-=======
 // --- Unwired-model census (generalizes the retired inert_carrier census: type -> type/fn/data) ---
->>>>>>> a0ea629ea (WIP: Build a floor-enrolled lens that BANS UNWIRED MODELS: any declared type/)
 //
 // A declared type/fn/data is "unwired" (DESIGN §5 coverage-by-illusion — a green test lying about
 // liveness) iff:
