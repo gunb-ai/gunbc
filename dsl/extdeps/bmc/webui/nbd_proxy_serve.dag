@@ -8,7 +8,12 @@ import extdeps.tools.websocat { websocat_cli_tool }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
 import extdeps.languages.bash.program {
+  ShellWord,
+  ShellStmt,
   ShellProgram,
+  Lit,
+  Command,
+  RawLine,
   lit,
   command,
   assign,
