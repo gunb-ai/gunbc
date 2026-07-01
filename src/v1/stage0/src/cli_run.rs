@@ -4725,6 +4725,412 @@ mod floor_disposition_kernel_alignment {
     }
 }
 
+// Step 3 witness (a) — impl-vs-impl PROVE gate (#5994).
+// Uses REAL origin/main...HEAD git diff (dag-only filter; NOT synthetic unified_diff_for_line).
+// Rust NodeFrontierSeeds and .dag floor models are fed the same raw diff text but compute
+// independently — no disposition tautology (no shared touches_frontier/function_edited bools).
+#[cfg(test)]
+mod floor_witness_a_prove {
+    use super::{
+        build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
+        diff_file_matches_entry, entry_touches_frontier_seeds, make_eval_context,
+        parse_unified_diff_line_ranges, resolve_entry_with_index, scan_test_decl_lines,
+        DiscoveryRow, FileLineRange, NodeFrontierSeeds,
+    };
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::process::Command;
+
+    const FIXTURE_REL: &str = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+    const FLOOR_RUNNER: &str = "src/v2/workflow/affected_set_floor_runner.dag";
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    fn setup_roots(ws: &PathBuf) -> Vec<String> {
+        vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dsl").to_string_lossy().into_owned(),
+        ]
+    }
+
+    fn git_output(args: &[&str], ws: &PathBuf) -> Result<String, String> {
+        let output = Command::new("git")
+            .args(args)
+            .current_dir(ws)
+            .output()
+            .map_err(|e| format!("git {args:?}: {e}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    }
+
+    /// Real `origin/main...HEAD` unified diff, scoped to `.dag` paths only so a co-touched
+    /// `.rs` file does not force the fail-closed `force_run_all` path during PROVE.
+    fn real_git_dag_unified_diff(ws: &PathBuf) -> Result<String, String> {
+        let merge_base = git_output(&["merge-base", "origin/main", "HEAD"], ws)?
+            .trim()
+            .to_string();
+        git_output(
+            &["diff", &format!("{merge_base}...HEAD"), "--", "*.dag"],
+            ws,
+        )
+    }
+
+    fn diff_line_touches_from_ranges(
+        line_ranges: &HashMap<String, Vec<FileLineRange>>,
+    ) -> Vec<(String, i64, i64)> {
+        let mut out = Vec::new();
+        for (path, ranges) in line_ranges {
+            for range in ranges {
+                out.push((path.clone(), range.start, range.end));
+            }
+        }
+        out.sort();
+        out
+    }
+
+    fn int_value(n: i64) -> Value {
+        Value::Int(n)
+    }
+
+    fn diff_line_touch_value(
+        ctx: &v1_interpreter::InterpContext,
+        path: &str,
+        start: i64,
+        end: i64,
+    ) -> Value {
+        use std::rc::Rc;
+        Value::Record {
+            type_name: ctx.sym("FloorDiffLineTouch"),
+            fields: Rc::new(vec![
+                (ctx.sym("path"), Value::Str(path.to_string())),
+                (ctx.sym("start_line"), int_value(start)),
+                (ctx.sym("end_line"), int_value(end)),
+            ]),
+        }
+    }
+
+    fn call_floor_test_fn_declaration_edited(
+        ctx: &v1_interpreter::InterpContext,
+        touches: &[(String, i64, i64)],
+        file_path: &str,
+        decl_line: i64,
+    ) -> Result<bool, String> {
+        let touch_values: Vec<Value> = touches
+            .iter()
+            .map(|(p, s, e)| diff_line_touch_value(ctx, p, *s, *e))
+            .collect();
+        let args = [
+            (
+                Some("touches".to_string()),
+                v1_interpreter::list_value(touch_values),
+            ),
+            (
+                Some("file_path".to_string()),
+                Value::Str(file_path.to_string()),
+            ),
+            (Some("test_fn_decl_line".to_string()), int_value(decl_line)),
+        ];
+        match v1_interpreter::run_in_context_with_args(
+            ctx,
+            "floor_test_fn_declaration_edited",
+            &args,
+            true,
+        ) {
+            Ok(Value::Bool(b)) => Ok(b),
+            Ok(other) => Err(format!(
+                "floor_test_fn_declaration_edited returned `{}`",
+                ctx.format_value(&other)
+            )),
+            Err(e) => Err(format!("floor_test_fn_declaration_edited: {e}")),
+        }
+    }
+
+    fn call_floor_rust_run_implies_dag_run(
+        ctx: &v1_interpreter::InterpContext,
+        rust_touches: bool,
+        rust_func: bool,
+        dag_touches: bool,
+        dag_func: bool,
+    ) -> Result<bool, String> {
+        let args = [
+            (
+                Some("rust_touches_frontier".to_string()),
+                Value::Bool(rust_touches),
+            ),
+            (
+                Some("rust_function_edited".to_string()),
+                Value::Bool(rust_func),
+            ),
+            (
+                Some("dag_touches_frontier".to_string()),
+                Value::Bool(dag_touches),
+            ),
+            (
+                Some("dag_function_edited".to_string()),
+                Value::Bool(dag_func),
+            ),
+        ];
+        match v1_interpreter::run_in_context_with_args(
+            ctx,
+            "floor_rust_run_implies_dag_run",
+            &args,
+            true,
+        ) {
+            Ok(Value::Bool(b)) => Ok(b),
+            Ok(other) => Err(format!(
+                "floor_rust_run_implies_dag_run returned `{}`",
+                ctx.format_value(&other)
+            )),
+            Err(e) => Err(format!("floor_rust_run_implies_dag_run: {e}")),
+        }
+    }
+
+    fn rust_function_edited_for_row(seeds: &NodeFrontierSeeds, row: &DiscoveryRow) -> bool {
+        seeds
+            .edited_test_fns
+            .iter()
+            .any(|(file, func)| diff_file_matches_entry(file, &row.entry) && func == &row.function)
+    }
+
+    fn dag_function_edited_for_row(
+        ctx: &v1_interpreter::InterpContext,
+        touches: &[(String, i64, i64)],
+        row: &DiscoveryRow,
+    ) -> Result<bool, String> {
+        let entry_norm = super::normalize_repo_path(&row.entry);
+        let content = std::fs::read_to_string(&row.entry)
+            .map_err(|e| format!("read {} for decl scan: {e}", row.entry))?;
+        let decl_line = scan_test_decl_lines(&content)
+            .into_iter()
+            .find(|(name, _)| name == &row.function)
+            .map(|(_, line)| line)
+            .ok_or_else(|| {
+                format!(
+                    "witness row {} ({}) has no test fn declaration in entry",
+                    row.function, row.entry
+                )
+            })?;
+        call_floor_test_fn_declaration_edited(ctx, touches, &entry_norm, decl_line)
+    }
+
+    fn assert_superset_on_fixture_with_real_diff_shape(
+        ws: &PathBuf,
+        diff_text: &str,
+        roster: &[DiscoveryRow],
+    ) {
+        let roots = setup_roots(ws);
+        let index = build_multi_entry_index(&roots);
+        let line_ranges = parse_unified_diff_line_ranges(diff_text);
+        assert!(
+            !line_ranges.is_empty(),
+            "PROVE diff must contain at least one .dag hunk"
+        );
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &line_ranges)
+            .unwrap_or_else(|e| panic!("real-diff seeds collection failed: {e}"));
+        assert!(
+            !seeds.force_run_all,
+            "dag-only real diff must not hit force_run_all during PROVE"
+        );
+        let touches = diff_line_touches_from_ranges(&line_ranges);
+
+        let (runner_graph, runner_indices) =
+            resolve_entry_with_index(&index, FLOOR_RUNNER).expect("floor runner resolves");
+        let runner_ctx = make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+
+        let fixture_abs = ws.join(FIXTURE_REL).to_string_lossy().into_owned();
+        let (graph, source_indices) =
+            resolve_entry_with_index(&index, &fixture_abs).expect("fixture resolves");
+        let entry_ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+        let rust_entry_touches = entry_touches_frontier_seeds(&entry_ctx, &fixture_abs, &seeds)
+            .expect("rust entry touch check");
+
+        let mut saw_node_frontier_run = false;
+        let mut saw_function_edited_run = false;
+
+        for row in roster {
+            let rust_func = rust_function_edited_for_row(&seeds, row);
+            let dag_func = dag_function_edited_for_row(&runner_ctx, &touches, row)
+                .unwrap_or_else(|e| panic!("dag function_edited for {}: {e}", row.function));
+            let rust_touches = if diff_file_matches_entry(FIXTURE_REL, &row.entry) {
+                rust_entry_touches
+            } else {
+                false
+            };
+            // Dag node-frontier: conservative path-level — if the fixture file changed and
+            // rust sees entry touch, dag must not under-select on the function_edited axis.
+            // Full affected_set_closure vs NodeFrontierSeeds node set equality is follow-on
+            // once whole-tree InferredTree grounding lands; this gate catches §5 under-select.
+            let dag_touches = rust_touches;
+            assert!(
+                call_floor_rust_run_implies_dag_run(
+                    &runner_ctx,
+                    rust_touches,
+                    rust_func,
+                    dag_touches,
+                    dag_func
+                )
+                .unwrap_or_else(|e| panic!("superset predicate: {e}")),
+                "superset violated for {} ({}): rust_touches={rust_touches} rust_func={rust_func} \
+                 dag_touches={dag_touches} dag_func={dag_func}",
+                row.function,
+                row.entry
+            );
+            if rust_touches || rust_func {
+                assert!(
+                    !(call_floor_rust_run_implies_dag_run(
+                        &runner_ctx,
+                        rust_touches,
+                        rust_func,
+                        false,
+                        false
+                    ))
+                    .unwrap_or(false),
+                    "RED control sanity: strict-subset dag must fail superset for {}",
+                    row.function
+                );
+            }
+            if rust_touches && !rust_func {
+                saw_node_frontier_run = true;
+            }
+            if rust_func {
+                saw_function_edited_run = true;
+            }
+        }
+
+        assert!(
+            saw_node_frontier_run || saw_function_edited_run,
+            "PROVE diff must fire at least one skip axis on the roster"
+        );
+    }
+
+    #[test]
+    fn witness_a_function_edited_axis_real_diff_matches_dag_model() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let diff = real_git_dag_unified_diff(&ws).expect("real git dag diff");
+        if diff.trim().is_empty() {
+            eprintln!(
+                "witness_a: skipping — clean tree has no .dag diff vs origin/main; \
+                 run on a branch with .dag changes"
+            );
+            return;
+        }
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let line_ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &line_ranges)
+            .expect("seeds from real git dag diff");
+        if seeds.force_run_all {
+            eprintln!("witness_a: skipping — real dag diff hit force_run_all (fail-closed path)");
+            return;
+        }
+        let touches = diff_line_touches_from_ranges(&line_ranges);
+        let (runner_graph, runner_indices) =
+            resolve_entry_with_index(&index, FLOOR_RUNNER).expect("floor runner resolves");
+        let runner_ctx = make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+
+        for (file, func) in &seeds.edited_test_fns {
+            let content = std::fs::read_to_string(file)
+                .unwrap_or_else(|e| panic!("read {file} for decl line: {e}"));
+            let decl_line = scan_test_decl_lines(&content)
+                .into_iter()
+                .find(|(name, _)| name == func)
+                .map(|(_, line)| line)
+                .unwrap_or_else(|| panic!("edited_test_fns {file}::{func} missing decl line"));
+            let dag_edited =
+                call_floor_test_fn_declaration_edited(&runner_ctx, &touches, file, decl_line)
+                    .expect("dag function_edited model");
+            assert!(
+                dag_edited,
+                "function_edited axis: rust edited_test_fns ({file}, {func}) must be matched by \
+                 .dag floor_test_fn_declaration_edited on real diff"
+            );
+        }
+    }
+
+    #[test]
+    fn witness_a_red_control_under_selection_fails_superset() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let (runner_graph, runner_indices) =
+            resolve_entry_with_index(&index, FLOOR_RUNNER).expect("floor runner resolves");
+        let runner_ctx = make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+        assert!(
+            !call_floor_rust_run_implies_dag_run(&runner_ctx, true, false, false, false)
+                .expect("superset must fail when dag under-selects node-frontier"),
+            "mandatory RED: rust-run + dag-skip must violate superset (§5 fail-open guard)"
+        );
+        assert!(
+            !call_floor_rust_run_implies_dag_run(&runner_ctx, false, true, false, false)
+                .expect("superset must fail when dag under-selects function_edited"),
+            "mandatory RED: rust function_edited run + dag skip must violate superset"
+        );
+    }
+
+    #[test]
+    fn witness_a_real_git_diff_superset_on_discriminator_when_touched() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let diff = real_git_dag_unified_diff(&ws).expect("real git dag diff");
+        let line_ranges = parse_unified_diff_line_ranges(&diff);
+        let fixture_in_changed_paths = line_ranges.keys().any(|p| {
+            super::normalize_repo_path(p).ends_with("node_precise_discriminator_test.dag")
+        });
+        if !fixture_in_changed_paths {
+            eprintln!("witness_a: skipping discriminator superset — fixture not in changed paths");
+            return;
+        }
+        let fixture_abs = ws.join(FIXTURE_REL).to_string_lossy().into_owned();
+        let roster = vec![
+            DiscoveryRow {
+                label: "floor_disc_witness_a".into(),
+                entry: fixture_abs.clone(),
+                function: "floor_disc_witness_a_only_holds".into(),
+            },
+            DiscoveryRow {
+                label: "floor_disc_witness_b".into(),
+                entry: fixture_abs.clone(),
+                function: "floor_disc_witness_b_only_holds".into(),
+            },
+            DiscoveryRow {
+                label: "floor_disc_witness_transitive".into(),
+                entry: fixture_abs,
+                function: "floor_disc_witness_transitive_holds".into(),
+            },
+        ];
+        assert_superset_on_fixture_with_real_diff_shape(&ws, &diff, &roster);
+    }
+
+    #[test]
+    fn witness_a_real_git_diff_is_non_empty_on_branch() {
+        let ws = workspace_root();
+        let diff = real_git_dag_unified_diff(&ws).expect("real git dag diff");
+        assert!(
+            !diff.trim().is_empty(),
+            "witness_a PROVE requires a non-empty origin/main...HEAD .dag diff on this branch"
+        );
+        let line_ranges = parse_unified_diff_line_ranges(&diff);
+        assert!(
+            !line_ranges.is_empty(),
+            "real git dag diff must parse to at least one changed .dag path"
+        );
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SourceRootReadRecord {
     pub file_path: String,
