@@ -33,6 +33,7 @@ import gunbc.fleet_host_budget {
   gunbc_runner_slice_cap,
   gunbc_runner_pool_budget,
   gunbc_runner_slot_memory_contract,
+  gunbc_host_swap_available,
 }
 import gunbc.ci_floor_measurement {
   gunbc_ci_runner_cgroup_memory_cap,
@@ -91,7 +92,8 @@ fn witness_per_runner_cap_within_runner_pool() -> Bool {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: _ } =>
       hosts.length() > 0
         && all(hosts, h =>
-            h.runner_count * byte_size_count(b: h.slot_memory.memory_max) <= byte_size_count(b: h.runner_slice_cap)
+            byte_size_count(b: h.slot_memory.memory_max) <= byte_size_count(b: h.runner_slice_cap)
+              && byte_size_count(b: h.slot_memory.memory_swap_max) <= byte_size_count(b: gunbc_host_swap_available)
           )
     PlanUnsound { reason: _ } => false
   }
@@ -189,6 +191,13 @@ fn witness_curve_has_full_coverage_option() -> Bool {
   any(operating_curve(), r => r.coverage_count == r.sample_count)
 }
 
+fn witness_runner_manifest_emits_fabric_concurrency() -> Bool {
+  string_contains(
+    s: expected_runner_deploy_manifest(),
+    pattern: "runner-deploy fabric_effective_heavy_job_concurrency="
+  )
+}
+
 fn witness_manifest_drift_red_receipt() -> Bool {
   !runner_deploy_drifted(committed: expected_runner_deploy_manifest())
     && runner_deploy_drifted(committed: concat(expected_runner_deploy_manifest(), "x"))
@@ -269,6 +278,7 @@ test fn runner_placement_holds() -> Bool {
     && witness_curve_coverage_monotone_in_cap()
     && witness_curve_has_full_coverage_option()
     && witness_manifest_drift_red_receipt()
+    && witness_runner_manifest_emits_fabric_concurrency()
     && witness_session_cpu_weight_exceeds_runner_cpu_weight()
     && witness_runner_manifest_line_contains_cpu_weight()
     && witness_runner_and_session_cpu_weights_are_distinct()
