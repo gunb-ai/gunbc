@@ -1,0 +1,41 @@
+module extdeps.gpu
+
+import extdeps.gpu.types { GpuFacts, GpuRuntime, GpuComputeCapability }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+import extdeps.memory.types { MemoryFacts }
+import std.types { NonEmptyStr, List }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Graphics_processing_unit"
+  }
+}
+
+fn gpu_facts_vendor(gpu: GpuFacts) -> Vendor<Hardware> {
+  gpu.catalog.vendor
+}
+
+fn gpu_facts_model_number(gpu: GpuFacts) -> NonEmptyStr {
+  gpu.catalog.model_number
+}
+
+fn gpu_facts_compute_capability(gpu: GpuFacts) -> GpuComputeCapability? {
+  gpu.catalog.compute_capability
+}
+
+fn gpu_facts_memory(gpu: GpuFacts) -> MemoryFacts {
+  gpu.catalog.memory
+}
+
+fn gpu_facts_supported_runtimes(gpu: GpuFacts) -> List<GpuRuntime> {
+  gpu.catalog.supported_runtimes
+}
+
+fn gpu_facts_wgpu_dispatch_device_label(gpu: GpuFacts) -> NonEmptyStr? {
+  gpu.catalog.wgpu_dispatch_device_label
+}

@@ -1,0 +1,62 @@
+module extdeps.gpu.devices
+
+import extdeps.gpu.apple { apple_silicon_m5_gpu, apple_m5_gpu_catalog }
+import extdeps.gpu.nvidia { nvidia_rtx_5090, nvidia_rtx_5090_catalog }
+import extdeps.gpu { gpu_facts_vendor, gpu_facts_model_number, gpu_facts_wgpu_dispatch_device_label }
+import extdeps.vendor.apple { apple }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.memory.types { UnifiedShared, Dram }
+import extdeps.gpu.types { Metal, Cuda, gpu_compute_capability_sm_label, GpuCapabilityLabelOk }
+
+fn witness_apple_m5_grounds_on_vendor() -> Bool {
+  gpu_facts_vendor(gpu: apple_silicon_m5_gpu) == apple
+    && gpu_facts_model_number(gpu: apple_silicon_m5_gpu) == "Apple M5 GPU"
+    && apple_m5_gpu_catalog.memory.memory_kind == UnifiedShared
+}
+
+fn witness_apple_m5_has_metal_runtime() -> Bool {
+  match apple_m5_gpu_catalog.supported_runtimes.first() {
+    Present { value: Metal } => true
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+fn witness_apple_m5_dispatch_label_grounded() -> Bool {
+  match gpu_facts_wgpu_dispatch_device_label(gpu: apple_silicon_m5_gpu) {
+    Present { value: label } => label == "apple-m5-metal"
+    Absent => false
+  }
+}
+
+fn witness_rtx_5090_grounds_on_vendor() -> Bool {
+  gpu_facts_vendor(gpu: nvidia_rtx_5090) == nvidia
+    && gpu_facts_model_number(gpu: nvidia_rtx_5090) == "GeForce RTX 5090"
+    && nvidia_rtx_5090_catalog.memory.memory_kind == Dram
+}
+
+fn witness_rtx_5090_compute_capability_sm_10_0() -> Bool {
+  match nvidia_rtx_5090_catalog.compute_capability {
+    Present { value: cap } =>
+      match gpu_compute_capability_sm_label(cap) {
+        GpuCapabilityLabelOk { label: label } => label == "sm_10_0"
+        GpuCapabilityLabelRejected { reason: _ } => false
+      }
+    Absent => false
+  }
+}
+
+fn witness_rtx_5090_has_cuda_runtime() -> Bool {
+  match nvidia_rtx_5090_catalog.supported_runtimes.first() {
+    Present { value: Cuda } => true
+    Present { value: _ } => false
+    Absent => false
+  }
+}
+
+fn witness_rtx_5090_dispatch_label_grounded() -> Bool {
+  match gpu_facts_wgpu_dispatch_device_label(gpu: nvidia_rtx_5090) {
+    Present { value: label } => label == "nvidia-rtx5090-dx12-vulkan"
+    Absent => false
+  }
+}

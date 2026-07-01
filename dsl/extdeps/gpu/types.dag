@@ -49,12 +49,17 @@ fn gpu_compute_capability_sm_label(cap: GpuComputeCapability) -> GpuCapabilityLa
   }
 }
 
-type GpuFacts {
+type GpuModelCatalogRow {
+  model_number: NonEmptyStr
   vendor: Vendor<Hardware>
-  model: NonEmptyStr
   compute_capability: GpuComputeCapability?
   memory: MemoryFacts
   supported_runtimes: List<GpuRuntime>
+  wgpu_dispatch_device_label: NonEmptyStr?
+}
+
+type GpuFacts {
+  catalog: GpuModelCatalogRow
 }
 
 type AcceleratorFacts {

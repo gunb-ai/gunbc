@@ -49,6 +49,7 @@ import extdeps.cloud.gcp.gcp {
 }
 import extdeps.gpu.types {
   GpuFacts,
+  GpuModelCatalogRow,
   AcceleratorFacts,
   GpuComputeCapability,
   GpuCapabilityLabelOk,
@@ -196,16 +197,19 @@ fn w_intel_capability_label_refuses_fail_closed() -> Bool {
 
 fn w_gpu_facts_structured_compute_capability() -> Bool {
   let gpu = GpuFacts {
-    vendor: nvidia,
-    model: "H100",
-    compute_capability: GpuComputeCapability { vendor: nvidia, major: 9, minor: 0 },
-    memory: MemoryFacts {
-      capacity: byte_size(80),
-      memory_kind: Hbm,
-    },
-    supported_runtimes: [],
+    catalog: GpuModelCatalogRow {
+      model_number: "H100"
+      vendor: nvidia
+      compute_capability: GpuComputeCapability { vendor: nvidia, major: 9, minor: 0 }
+      memory: MemoryFacts {
+        capacity: byte_size(80)
+        memory_kind: Hbm
+      }
+      supported_runtimes: [Cuda]
+      wgpu_dispatch_device_label: none
+    }
   }
-  gpu.vendor == nvidia
+  gpu.catalog.vendor == nvidia
     && match gpu_compute_capability_sm_label(
       GpuComputeCapability { vendor: nvidia, major: 9, minor: 0 }
     ) {

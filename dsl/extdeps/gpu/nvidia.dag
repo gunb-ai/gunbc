@@ -1,0 +1,40 @@
+module extdeps.gpu.nvidia
+
+import std.measure { ByteSize, gibibyte, gibibyte_to_byte_size }
+import extdeps.gpu.types {
+  GpuModelCatalogRow,
+  GpuFacts,
+  GpuRuntime,
+  GpuComputeCapability,
+  Cuda,
+}
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.vendor.nvidia { nvidia }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#compute-capabilities"
+  }
+}
+
+data rtx_5090_vram_bytes: ByteSize = gibibyte_to_byte_size(g: gibibyte(32))
+
+data nvidia_rtx_5090_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  model_number: "GeForce RTX 5090"
+  vendor: nvidia
+  compute_capability: GpuComputeCapability { vendor: nvidia, major: 10, minor: 0 }
+  memory: MemoryFacts {
+    capacity: rtx_5090_vram_bytes
+    memory_kind: Dram
+  }
+  supported_runtimes: [Cuda]
+  wgpu_dispatch_device_label: "nvidia-rtx5090-dx12-vulkan"
+}
+
+data nvidia_rtx_5090: GpuFacts = GpuFacts {
+  catalog: nvidia_rtx_5090_catalog
+}

@@ -1,0 +1,46 @@
+module test.claim.gpu_grounding_witness
+
+import extdeps.gpu.apple { apple_silicon_m5_gpu, apple_m5_gpu_catalog }
+import extdeps.gpu.nvidia { nvidia_rtx_5090 }
+import extdeps.gpu {
+  gpu_facts_vendor,
+  gpu_facts_model_number,
+  gpu_facts_memory,
+}
+import extdeps.gpu.types { GpuModelCatalogRow }
+import extdeps.vendor.apple { apple }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.memory.types { UnifiedShared, Dram, Hbm }
+
+fn w_gpu_facts_catalog_shape_matches_cpu_pattern() -> Bool {
+  let catalog: GpuModelCatalogRow = apple_m5_gpu_catalog
+  catalog.model_number == "Apple M5 GPU" && catalog.vendor == apple
+}
+
+fn w_apple_m5_unified_memory_grounded() -> Bool {
+  match gpu_facts_memory(gpu: apple_silicon_m5_gpu).memory_kind {
+    UnifiedShared => true
+    Dram => false
+    Hbm => false
+  }
+}
+
+fn w_nvidia_rtx_5090_discrete_vram() -> Bool {
+  match gpu_facts_memory(gpu: nvidia_rtx_5090).memory_kind {
+    Dram => true
+    UnifiedShared => false
+    Hbm => false
+  }
+}
+
+fn w_per_vendor_catalog_rows_are_distinct() -> Bool {
+  gpu_facts_model_number(gpu: apple_silicon_m5_gpu) != gpu_facts_model_number(gpu: nvidia_rtx_5090)
+    && gpu_facts_vendor(gpu: apple_silicon_m5_gpu) != gpu_facts_vendor(gpu: nvidia_rtx_5090)
+}
+
+test fn gpu_grounding_witnesses() -> Bool {
+  w_gpu_facts_catalog_shape_matches_cpu_pattern()
+    && w_apple_m5_unified_memory_grounded()
+    && w_nvidia_rtx_5090_discrete_vram()
+    && w_per_vendor_catalog_rows_are_distinct()
+}

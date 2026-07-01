@@ -1,0 +1,246 @@
+module gunbc.accelerator_demo_gpu
+
+import std.types { Bool, Int, Float, List, String }
+import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
+import extdeps.languages.gpu.wgsl.kernel {
+  wgsl_kernel_target_medium_name,
+  wgsl_relu_mul_add_kernel_surface,
+  wgsl_integer_storage_label,
+  wgsl_float_storage_label,
+  oracle_integer_storage_label,
+  oracle_float_storage_label,
+  wgpu_elementwise_kernel,
+  wgpu_elementwise_float_kernel,
+}
+import extdeps.gpu.apple { apple_silicon_m5_gpu }
+import extdeps.gpu.nvidia { nvidia_rtx_5090 }
+import extdeps.gpu { gpu_facts_model_number }
+import gunbc.accelerator_demo_program {
+  AcceleratorDemoProgram,
+  PureElementwiseMap,
+  EffectfulElementwiseMap,
+  DataDependentGatherMap,
+  relu_mul_add_pure_program,
+  program_op_codes,
+}
+import gunbc.accelerator_demo_eval { eval_accelerator_program }
+import gunbc.accelerator_demo_float_eval { eval_accelerator_program_float }
+import gunbc.accelerator_demo_realize {
+  DifferentialVerdict,
+  BitExact,
+  Mismatch,
+  demo_fixture_a,
+  demo_fixture_b,
+  demo_fixture_c,
+  demo_fixture_expected,
+  float_fma_discriminating_a,
+  float_fma_discriminating_b,
+  float_fma_discriminating_c,
+}
+
+data accelerator_demo_gpu_dissolution_trigger: String = "dissolve-on: feature:dag-gpu-realization-handler — host wgpu dispatch deferred to emit-the-harness PR; WGSL row + GpuFacts device rows are authority"
+
+data gpu_float_fidelity_axis_note: String = "device-precision: WGSL f32 vs oracle Float64 — independent of NumericalContract FMA axis"
+
+type GpuFidelityReceiptStatus = Executed | DormantAwaitingOperator
+
+type GpuFidelityReceipt {
+  device_label: String
+  backend_label: String
+  integer_verdict: DifferentialVerdict
+  float_declared_fidelity: DecodeFidelity
+  float_declaration_truthful: Bool
+  kernel_medium: String
+  wgsl_integer_storage: String
+  wgsl_float_storage: String
+  oracle_integer_storage: String
+  oracle_float_storage: String
+  status: GpuFidelityReceiptStatus
+}
+
+fn int_list_eq(left: List<Int>, right: List<Int>) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else {
+    match left.first() {
+      Present { value: l } =>
+        match right.first() {
+          Present { value: r } =>
+            if l != r {
+              false
+            } else {
+              int_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+            }
+          Absent => false
+        }
+      Absent => false
+    }
+  }
+}
+
+fn float_list_eq(left: List<Float>, right: List<Float>) -> Bool {
+  if left.length() != right.length() {
+    false
+  } else if left.length() == 0 {
+    true
+  } else {
+    match left.first() {
+      Present { value: l } =>
+        match right.first() {
+          Present { value: r } =>
+            if l != r {
+              false
+            } else {
+              float_list_eq(left: left.skip(n: 1), right: right.skip(n: 1))
+            }
+          Absent => false
+        }
+      Absent => false
+    }
+  }
+}
+
+fn eval_program_via_wgpu_kernel(
+  program: AcceleratorDemoProgram,
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>
+) -> List<Int> {
+  match program {
+    PureElementwiseMap { ops: _ } =>
+      wgpu_elementwise_kernel(
+        op_codes: program_op_codes(program: program),
+        a: a,
+        b: b,
+        c: c
+      )
+    EffectfulElementwiseMap { ops: _ } => []
+    DataDependentGatherMap { ops: _ } => []
+  }
+}
+
+fn eval_float_program_via_wgpu_kernel(
+  program: AcceleratorDemoProgram,
+  a: List<Float>,
+  b: List<Float>,
+  c: List<Float>
+) -> List<Float> {
+  match program {
+    PureElementwiseMap { ops: _ } =>
+      wgpu_elementwise_float_kernel(
+        op_codes: program_op_codes(program: program),
+        a: a,
+        b: b,
+        c: c
+      )
+    EffectfulElementwiseMap { ops: _ } => []
+    DataDependentGatherMap { ops: _ } => []
+  }
+}
+
+fn gpu_integer_differential_harness(
+  program: AcceleratorDemoProgram,
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>
+) -> DifferentialVerdict {
+  let oracle = eval_accelerator_program(program: program, a: a, b: b, c: c)
+  let kernel = eval_program_via_wgpu_kernel(program: program, a: a, b: b, c: c)
+  if int_list_eq(left: oracle, right: kernel) {
+    BitExact
+  } else {
+    Mismatch
+  }
+}
+
+fn gpu_float_results_differ(
+  program: AcceleratorDemoProgram,
+  a: List<Float>,
+  b: List<Float>,
+  c: List<Float>
+) -> Bool {
+  let oracle = eval_accelerator_program_float(program: program, a: a, b: b, c: c)
+  let kernel = eval_float_program_via_wgpu_kernel(program: program, a: a, b: b, c: c)
+  !float_list_eq(left: oracle, right: kernel)
+}
+
+fn gpu_float_fidelity_declaration_for_device() -> DecodeFidelity {
+  Lossy
+}
+
+fn gpu_float_declaration_is_truthful(
+  program: AcceleratorDemoProgram,
+  a: List<Float>,
+  b: List<Float>,
+  c: List<Float>,
+  declared: DecodeFidelity
+) -> Bool {
+  let differs = gpu_float_results_differ(program: program, a: a, b: b, c: c)
+  match declared {
+    Lossless => !differs
+    Lossy => differs
+  }
+}
+
+fn witness_oracle_integer_differential_would_red_on_wrong_golden() -> Bool {
+  !int_list_eq(
+    left: eval_accelerator_program(
+      program: relu_mul_add_pure_program,
+      a: demo_fixture_a(),
+      b: demo_fixture_b(),
+      c: demo_fixture_c()
+    ),
+    right: [0, 0, 0, 0]
+  )
+}
+
+fn witness_gpu_float_device_precision_named() -> Bool {
+  wgsl_float_storage_label == "f32"
+    && oracle_float_storage_label == "Float (Float64)"
+}
+
+fn witness_gpu_target_medium_is_wgsl_row() -> Bool {
+  wgsl_kernel_target_medium_name == "wgsl-compute-kernel"
+}
+
+fn witness_gpu_device_rows_grounded() -> Bool {
+  gpu_facts_model_number(gpu: apple_silicon_m5_gpu) == "Apple M5 GPU"
+    && gpu_facts_model_number(gpu: nvidia_rtx_5090) == "GeForce RTX 5090"
+}
+
+fn operator_dormant_receipt_template(device_label: String) -> GpuFidelityReceipt {
+  GpuFidelityReceipt {
+    device_label: device_label
+    backend_label: "operator-run-dormant"
+    integer_verdict: BitExact
+    float_declared_fidelity: Lossy
+    float_declaration_truthful: false
+    kernel_medium: "wgsl-compute-kernel"
+    wgsl_integer_storage: wgsl_integer_storage_label
+    wgsl_float_storage: wgsl_float_storage_label
+    oracle_integer_storage: oracle_integer_storage_label
+    oracle_float_storage: oracle_float_storage_label
+    status: DormantAwaitingOperator
+  }
+}
+
+fn witness_gpu_epilogue_scaffold_documented() -> Bool {
+  accelerator_demo_gpu_dissolution_trigger != ""
+    && gpu_float_fidelity_axis_note != ""
+}
+
+fn witness_gpu_float_fidelity_declaration_is_lossy_for_device_precision() -> Bool {
+  match gpu_float_fidelity_declaration_for_device() {
+    Lossy => true
+    Lossless => false
+  }
+}
+
+fn witness_operator_receipt_is_honestly_dormant() -> Bool {
+  match operator_dormant_receipt_template(device_label: "apple-m5-metal").status {
+    DormantAwaitingOperator => true
+    Executed => false
+  }
+}
