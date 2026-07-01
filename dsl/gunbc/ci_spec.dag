@@ -18,6 +18,7 @@ import gunbc.commit_workflow {
 import tools.build_step { BuildArtifact }
 import extdeps.languages.bash.program { Concat, lit, var_ref }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
+import gunbc.ci_deploy_access { RunnerHostAccess, ci_deploy_srv1_runner_access }
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -27,10 +28,23 @@ type DiffPolicy {
   mode: DiffMode
 }
 
+type DeployTrigger = PushToMainOnly
+
+type DeployStage {
+  id: String
+  step_name: String
+  entry: String
+  function: String
+  needs: List<String>
+  trigger: DeployTrigger
+  access: RunnerHostAccess
+}
+
 type CiSpec {
   gates: List<Gate>
   diff_policy: DiffPolicy
   notice_title: String
+  deploy_stages: List<DeployStage>
 }
 
 data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
@@ -39,6 +53,21 @@ data gunbc_ci_rust_job_gates: List<Gate> = project_ci_rust_job_gates(roster: com
 
 data gunbc_ci_gates: List<Gate> = concat(gunbc_ci_floor_gates, gunbc_ci_rust_job_gates)
 
+data live_deploy_apply_entry: String = "dsl/gunbc/live_deploy/apply.dag"
+data live_deploy_apply_srv1_wet_function: String = "live_deploy_apply_srv1_wet"
+
+data gunbc_ci_deploy_srv1_stage: DeployStage = {
+  id: "deploy_dashboard_srv1",
+  step_name: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)",
+  entry: live_deploy_apply_entry,
+  function: live_deploy_apply_srv1_wet_function,
+  needs: ["ci"],
+  trigger: PushToMainOnly,
+  access: ci_deploy_srv1_runner_access,
+}
+
+data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
+
 data gunbc_ci_spec: CiSpec = {
   gates: gunbc_ci_floor_gates,
   diff_policy: {
@@ -46,7 +75,8 @@ data gunbc_ci_spec: CiSpec = {
     head: "HEAD",
     mode: DiffMergeBase
   },
-  notice_title: "v2 claim corpus"
+  notice_title: "v2 claim corpus",
+  deploy_stages: gunbc_ci_deploy_stages,
 }
 
 data ci_release_features: String = "text_lookup_work_counter"
@@ -221,5 +251,22 @@ fn gunbc_ci_rust_job_run() -> String {
       gunbc_ci_rust_gate_invoke()
     )
   )
+}
+
+fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
+  concat(
+    concat(
+      concat(
+        concat(concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags(roots: witness_layer_roots)),
+        concat(" --entry ", stage.entry)
+      ),
+      concat(" --function ", stage.function)
+    ),
+    "\n"
+  )
+}
+
+fn gunbc_ci_deploy_run_script(stage: DeployStage) -> String {
+  concat(ci_release_build_script(), gunbc_ci_deploy_invoke(stage: stage))
 }
 
