@@ -12,6 +12,7 @@ import gunbc.accelerator_demo_gpu {
 import extdeps.languages.gpu.wgsl.kernel {
   witness_wgsl_kernel_surface_fused_op_count,
   witness_wgsl_op_codes_share_simd_authority,
+  witness_wgsl_kernel_sources_scaffold_documented,
 }
 import extdeps.gpu.devices {
   witness_apple_m5_grounds_on_vendor,
@@ -26,6 +27,7 @@ import extdeps.gpu.devices {
 test fn accelerator_demo_gpu_epilogue_witnesses() -> Bool {
   witness_wgsl_kernel_surface_fused_op_count()
     && witness_wgsl_op_codes_share_simd_authority()
+    && witness_wgsl_kernel_sources_scaffold_documented()
     && witness_apple_m5_grounds_on_vendor()
     && witness_apple_m5_has_metal_runtime()
     && witness_apple_m5_dispatch_label_grounded()

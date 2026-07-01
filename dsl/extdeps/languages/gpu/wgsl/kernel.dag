@@ -56,9 +56,29 @@ data wgsl_relu_mul_add_integer_kernel_source: String = "@group(0) @binding(0) va
 
 data wgsl_relu_mul_add_float_kernel_source: String = "@group(0) @binding(0) var<storage, read> a: array<f32>;\n@group(0) @binding(1) var<storage, read> b: array<f32>;\n@group(0) @binding(2) var<storage, read> c: array<f32>;\n@group(0) @binding(3) var<storage, read_write> out: array<f32>;\n\n@compute @workgroup_size(64)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {\n  let i = gid.x;\n  if i >= arrayLength(&out) { return; }\n  let tmp = a[i] * b[i] + c[i];\n  out[i] = max(tmp, 0.0);\n}\n"
 
+data wgsl_kernel_source_grammar_dissolution_trigger: String = "dissolve-on: feature:dag-wgsl-grammar-ingest — wgsl_relu_mul_add_integer_kernel_source/wgsl_relu_mul_add_float_kernel_source are hand-authored WGSL medium-as-string blobs (DESIGN §3); lift into extdeps.languages.gpu.wgsl grammar rows so compute-kernel emit walks the same productions ingest reads (§4 one grammar both directions); retire these String authorities when ingest ∘ emit = id over shared productions (roadmap: wgsl_kernel_handler_roadmap_bind)"
+
+data wgsl_relu_mul_add_integer_kernel_source_scaffold_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.gpu.wgsl.kernel",
+    decl_name: "wgsl_relu_mul_add_integer_kernel_source",
+    field: WholeDeclaration
+  }
+}
+
+data wgsl_relu_mul_add_float_kernel_source_scaffold_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.gpu.wgsl.kernel",
+    decl_name: "wgsl_relu_mul_add_float_kernel_source",
+    field: WholeDeclaration
+  }
+}
+
 data wgsl_kernel_handler_roadmap_bind: String = "bind: docs/plans/accelerator-demo-roundtrip.md §6 item 4 (GPU epilogue)"
 
-data host_kernel_wgsl_sources_scaffold_note: String = "modeling-only: wgsl_relu_mul_add_integer_kernel_source/wgsl_relu_mul_add_float_kernel_source are substrate authority; host realization deferred to emit-the-harness PR (feature:dag-gpu-realization-handler); op-code authority remains relu_mul_add_wire_op_codes (extdeps.languages.simd.kernel)"
+data host_kernel_wgsl_sources_scaffold_note: String = "modeling-only: integer/float kernel bodies are medium-as-string scaffolds (wgsl_kernel_source_grammar_dissolution_trigger); host wgpu dispatch is separate scaffold (wgsl_kernel_handler_dissolution_trigger); op-code authority remains relu_mul_add_wire_op_codes (extdeps.languages.simd.kernel)"
 
 fn witness_wgsl_kernel_surface_fused_op_count() -> Bool {
   wgsl_relu_mul_add_kernel_surface().fused_op_count == 3
@@ -66,6 +86,11 @@ fn witness_wgsl_kernel_surface_fused_op_count() -> Bool {
 
 fn witness_wgsl_op_codes_share_simd_authority() -> Bool {
   witness_relu_mul_add_wire_op_codes_are_locked_triplet()
+}
+
+fn witness_wgsl_kernel_sources_scaffold_documented() -> Bool {
+  wgsl_kernel_source_grammar_dissolution_trigger != ""
+    && wgsl_kernel_handler_dissolution_trigger != ""
 }
 
 fn wgpu_elementwise_kernel(
