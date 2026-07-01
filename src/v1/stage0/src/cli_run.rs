@@ -4510,6 +4510,7 @@ fn run_discovery_rows(
                         &mut current_entry_frontier_nodes,
                         &row.entry,
                         &skip_ctx.changed_paths,
+                        &skip_ctx.effective_roots,
                     ) {
                         Ok(()) => {}
                         Err(msg) if provenance_live => {
@@ -6478,68 +6479,85 @@ fn outcome_accepted_value(
     }
 }
 
-fn eval_runner_data_item(
+fn witness_holds_node_value(
+    value: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
-    name: &str,
 ) -> Result<v1_interpreter::Value, String> {
-    v1_interpreter::with_active_context(ctx, || v1_interpreter::eval_data_item_value(ctx, name))
-        .map_err(|e| format!("eval `{name}`: {e}"))?
-        .ok_or_else(|| format!("data item `{name}` missing"))
-}
-
-fn artifact_file_path_from_provenance_row(
-    row: &v1_interpreter::Value,
-    ctx: &v1_interpreter::InterpContext,
-) -> Option<String> {
-    let fields = match row {
-        v1_interpreter::Value::Record { fields, .. }
-        | v1_interpreter::Value::Variant { fields, .. } => fields,
-        _ => return None,
-    };
-    let artifact = ctx.field(fields, "artifact")?;
-    let artifact_fields = match artifact {
-        v1_interpreter::Value::Record { fields, .. }
-        | v1_interpreter::Value::Variant { fields, .. } => fields,
-        _ => return None,
-    };
-    match ctx.field(artifact_fields, "file_path")? {
-        v1_interpreter::Value::Str(path) => Some(path.clone()),
-        _ => None,
+    match value {
+        v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Holds") => ctx
+            .field(fields, "value")
+            .cloned()
+            .ok_or_else(|| "Holds missing `value`".to_string()),
+        v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "Violates") =>
+        {
+            Err("witness entry tree root violated".to_string())
+        }
+        other => Err(format!(
+            "expected Witness<Node>, got {}",
+            ctx.format_value(other)
+        )),
     }
 }
 
-fn provenance_entry_tree_root(
+fn eval_dag_source_read_witness_from_record(
+    source_roots: &[String],
+    rec: &SourceRootReadRecord,
+) -> Result<v1_interpreter::Value, String> {
+    let witness = emit_source_root_read_witness(rec)?;
+    let bridge_dir = std::env::temp_dir().join("gunbc_floor_witness_read_bridge");
+    std::fs::create_dir_all(&bridge_dir)
+        .map_err(|e| format!("witness read bridge dir: {e}"))?;
+    let bridge_name = rec
+        .file_path
+        .replace('/', "__")
+        .replace('\\', "__");
+    let bridge_path = bridge_dir.join(format!("{bridge_name}.dag"));
+    let content = format!(
+        "module floor_ephemeral.witness_read_bridge\n\n\
+         import v2.compiler.source_authority {{ DagSourceReadWitness }}\n\
+         import extdeps.communication.medium {{ Lossless, Medium }}\n\
+         import v2.std.artifact {{ Artifact, SourceFile }}\n\
+         import v2.std.cross_tree.import_model {{ DslTree, V2Tree }}\n\n\
+         data read: DagSourceReadWitness = {witness};\n"
+    );
+    std::fs::write(&bridge_path, content)
+        .map_err(|e| format!("witness read bridge write {:?}: {e}", bridge_path))?;
+    let entry = bridge_path.to_string_lossy().into_owned();
+    let (graph, indices) =
+        resolve_entry_graph(source_roots, &entry).map_err(|e| format!("witness read bridge resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    v1_interpreter::with_active_context(&ctx, || {
+        v1_interpreter::eval_data_item_value(&ctx, "read")
+    })
+    .map_err(|e| format!("eval witness read: {e}"))?
+    .ok_or_else(|| "witness read data missing".to_string())
+}
+
+fn witness_entry_tree_root(
     runner_ctx: &v1_interpreter::InterpContext,
+    source_roots: &[String],
     entry_path: &str,
 ) -> Result<v1_interpreter::Value, String> {
-    let ingest = eval_runner_data_item(runner_ctx, "host_source_root_ingest")?;
-    let outcome = v1_interpreter::run_in_context_with_args(
+    let entry_norm = normalize_repo_path(entry_path);
+    let records = discover_source_root_reads_for_paths(source_roots, &[entry_norm.clone()], &[])?;
+    let rec = records
+        .iter()
+        .find(|r| r.file_path == entry_norm)
+        .ok_or_else(|| format!("no source-root read for witness entry '{entry_norm}'"))?;
+    let read = eval_dag_source_read_witness_from_record(source_roots, rec)?;
+    let result = v1_interpreter::run_in_context_with_args(
         runner_ctx,
-        "node_artifact_provenance_from_source_root",
-        &[(Some("ingest".to_string()), ingest)],
+        "floor_witness_entry_tree_root_from_read",
+        &[(Some("read".to_string()), read)],
         false,
     )
-    .map_err(|e| format!("node_artifact_provenance_from_source_root: {e}"))?;
-    let provenance = outcome_accepted_value(&outcome, runner_ctx)?;
-    let entry_norm = normalize_repo_path(entry_path);
-    for row in list_values_from_free_monoid(&provenance, runner_ctx)? {
-        if artifact_file_path_from_provenance_row(&row, runner_ctx)
-            .is_some_and(|path| normalize_repo_path(&path) == entry_norm)
-        {
-            let fields = match &row {
-                v1_interpreter::Value::Record { fields, .. }
-                | v1_interpreter::Value::Variant { fields, .. } => fields,
-                _ => continue,
-            };
-            return runner_ctx
-                .field(fields, "node")
-                .cloned()
-                .ok_or_else(|| "NodeArtifactProvenance missing `node`".to_string());
-        }
-    }
-    Err(format!(
-        "no provenance tree root for entry '{entry_norm}' in live ingest"
-    ))
+    .map_err(|e| format!("floor_witness_entry_tree_root_from_read: {e}"))?;
+    witness_holds_node_value(&result, runner_ctx)
 }
 
 fn provenance_rerun_frontier_nodes(
@@ -6611,8 +6629,9 @@ fn extend_frontier_with_provenance(
     frontier: &mut Vec<v1_interpreter::Value>,
     entry_path: &str,
     changed_paths: &[String],
+    source_roots: &[String],
 ) -> Result<(), String> {
-    let provenance_entry_root = provenance_entry_tree_root(runner_ctx, entry_path)?;
+    let provenance_entry_root = witness_entry_tree_root(runner_ctx, source_roots, entry_path)?;
     let provenance_nodes =
         provenance_rerun_frontier_nodes(runner_ctx, &provenance_entry_root, changed_paths)?;
     merge_frontier_nodes(frontier, provenance_nodes, runner_ctx);

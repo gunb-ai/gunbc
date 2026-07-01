@@ -1,7 +1,11 @@
 module v2.workflow.affected_set_floor_runner
 
 import gunbc.ci_spec { gunbc_ci_spec, DiffPolicy }
-import v2.compiler.source_authority { node_artifact_provenance_from_source_root }
+import v2.compiler.source_authority {
+  DagSourceReadWitness,
+  node_artifact_provenance_from_source_root,
+  source_ir_node_artifact_provenance_mvp1
+}
 import v2.lens.affected_set { affected_set_reading_for_entry_root }
 import v2.lens.edit_locus {
   GitDiffNameOnly,
@@ -271,6 +275,15 @@ fn floor_rerun_frontier_from_edit_loci(_entry_root: Node, edit_loci: List<Node>)
       list_append(left: acc, right: reading.affected)
     }
   )
+}
+
+fn floor_witness_entry_tree_root_from_read(read: DagSourceReadWitness) -> Witness<Node> {
+  match source_ir_node_artifact_provenance_mvp1(source_read: read) {
+    Accepted { value: row, diagnostics: _ } =>
+      Holds { value: row.node }
+    Rejected { diagnostics: _ } =>
+      Violates { diagnostic: edit_locus_no_match_diagnostic() }
+  }
 }
 
 fn floor_rerun_frontier_from_provenance(

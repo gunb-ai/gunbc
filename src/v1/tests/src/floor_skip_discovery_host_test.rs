@@ -384,6 +384,60 @@ fn import_closure_helper_fn_edit_runs_importer_entry_only() {
     );
 }
 
+fn run_injected_diff_roster_live_overlay(
+    rel_path: &str,
+    line: i64,
+    roster: &[(String, String)],
+) -> DiscoverySummary {
+    let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n");
+    let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
+    run_discovery_corpus_with_options(
+        &floor_skip_source_roots(),
+        &[],
+        roster,
+        ExecutionMode::Wet,
+        1,
+        discovery_options(true),
+    )
+    .expect("live provenance overlay skip path must not error")
+}
+
+#[test]
+fn discovery_corpus_live_provenance_overlay_resolves_entry_root_off_ingest() {
+    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    chdir_workspace();
+    let ws = workspace_root();
+    let poisoner_rel = "src/v2/workflow/ci_floor_plan.dag";
+    let poisoner_abs = ws.join(poisoner_rel);
+    let text = std::fs::read_to_string(&poisoner_abs).expect("ci_floor_plan readable");
+    let data_line = fixture_line(&text, "data floor_corpus_node");
+    let budget = ws
+        .join("src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let roster = vec![(
+        budget,
+        "complexity_budget_roster_family_gate_holds".to_string(),
+    )];
+
+    let summary = run_injected_diff_roster_live_overlay(poisoner_rel, data_line, &roster);
+    assert_eq!(summary.total, 1);
+    assert!(
+        summary.failures.is_empty(),
+        "live provenance overlay must resolve witness entry root without ingest membership: {:?}",
+        summary.failures
+    );
+    assert_eq!(
+        summary.skipped, 1,
+        "unrelated .dag edit must skip witness via live provenance (entry_root off-ingest; \
+         ingest membership lookup would fail-closed and run)"
+    );
+    assert_eq!(
+        summary.passed, 0,
+        "live provenance path must not run witness when frontier misses"
+    );
+}
+
 #[test]
 fn frontier_warmup_does_not_poison_corpus_resolution() {
     let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
