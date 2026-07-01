@@ -3630,6 +3630,50 @@ impl NodeFrontierSeeds {
     }
 }
 
+fn decl_span_end_line(sorted_decl_lines: &[i64], decl_line: i64) -> i64 {
+    sorted_decl_lines
+        .iter()
+        .position(|&line| line == decl_line)
+        .map(|idx| {
+            sorted_decl_lines
+                .get(idx + 1)
+                .map(|&next| next - 1)
+                .unwrap_or(i64::MAX)
+        })
+        .unwrap_or(i64::MAX)
+}
+
+fn collect_sorted_decl_lines_for_file(
+    index: &MultiEntryIndex,
+    file_path: &str,
+) -> Result<Vec<i64>, String> {
+    let file_norm = normalize_repo_path(file_path);
+    let (graph, source_indices) = resolve_entry_with_index(index, file_path)?;
+    let content = std::fs::read_to_string(file_path)
+        .map_err(|e| format!("read {file_path} for decl span: {e}"))?;
+    let mut decls: Vec<i64> = Vec::new();
+    for module in graph.modules.iter() {
+        for item in module.items.iter() {
+            if !span_file_matches(&item.span.file, &file_norm) {
+                continue;
+            }
+            let Some(nl) = newline_index_for_span(&item.span, &source_indices).cloned() else {
+                return Err(format!(
+                    "newline index missing for decl span in {file_path}"
+                ));
+            };
+            decls.push(byte_to_line_col(nl, item.span.start).line);
+        }
+    }
+    for (_, line) in scan_test_decl_lines(&content) {
+        if !decls.contains(&line) {
+            decls.push(line);
+        }
+    }
+    decls.sort_unstable();
+    Ok(decls)
+}
+
 fn collect_frontier_seeds_from_diff_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
@@ -3679,7 +3723,8 @@ fn collect_frontier_seeds_from_diff_line_ranges(
         }
         for i in 0..decls.len() {
             let (line, name, is_data) = &decls[i];
-            let decl_end = decls.get(i + 1).map(|(l, _, _)| l - 1).unwrap_or(i64::MAX);
+            let decl_end =
+                decl_span_end_line(&decls.iter().map(|(l, _, _)| *l).collect::<Vec<_>>(), *line);
             if !ranges.iter().any(|r| *line <= r.end && decl_end >= r.start) {
                 continue;
             }
@@ -4429,6 +4474,814 @@ mod node_frontier_plumbing_controls {
         assert!(
             seeds.force_run_all,
             "diff naming a non-existent .dag path must force_run_all (resolve failure → fail-closed)"
+        );
+    }
+}
+
+// Step-3 PREP — disposition-kernel alignment only (#5994). NOT witness (a) PROVE gate.
+// Compares floor_kernel_would_skip against Rust skip predicate when both sides share
+// Rust-computed touches_frontier/function_edited (disposition tautology, NOT impl-vs-impl).
+// PROVE gate still open: independent .dag affected_set_closure vs NodeFrontierSeeds on a
+// real origin/main...HEAD diff, superset assertion, full run/skip on both axes, RED control.
+#[cfg(test)]
+mod floor_disposition_kernel_alignment {
+    use super::{
+        build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
+        diff_file_matches_entry, entry_touches_frontier_seeds, make_eval_context,
+        parse_unified_diff_line_ranges, resolve_entry_with_index, DiscoveryRow,
+    };
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use std::path::PathBuf;
+
+    const FIXTURE_REL: &str = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+    const FLOOR_RUNNER_TEST: &str = "src/v2/workflow/affected_set_floor_runner_test.dag";
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    fn setup_roots(ws: &PathBuf) -> Vec<String> {
+        vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dsl").to_string_lossy().into_owned(),
+        ]
+    }
+
+    fn fixture_line(text: &str, needle: &str) -> i64 {
+        text.lines()
+            .position(|l| l.contains(needle))
+            .map(|i| (i + 1) as i64)
+            .unwrap_or_else(|| panic!("fixture missing line containing `{needle}`"))
+    }
+
+    fn unified_diff_for_line(rel_path: &str, line: i64) -> String {
+        format!(
+            "diff --git a/{rel_path} b/{rel_path}\n--- a/{rel_path}\n+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n+// witness-a touch\n"
+        )
+    }
+
+    fn list_value_from_strings(items: &[String]) -> Value {
+        v1_interpreter::list_value(
+            items
+                .iter()
+                .map(|s| Value::Str(s.clone()))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    fn call_floor_kernel_would_skip(
+        ctx: &v1_interpreter::InterpContext,
+        changed_paths: &[String],
+        frontier_nodes: &[Value],
+        touches_frontier: bool,
+        function_edited: bool,
+    ) -> Result<bool, String> {
+        if !ctx.item_registry.contains_key("floor_kernel_would_skip") {
+            return Err("floor_kernel_would_skip not in context".to_string());
+        }
+        let args = [
+            (
+                Some("changed_paths".to_string()),
+                list_value_from_strings(changed_paths),
+            ),
+            (
+                Some("frontier_nodes".to_string()),
+                v1_interpreter::list_value(frontier_nodes.to_vec()),
+            ),
+            (
+                Some("touches_frontier".to_string()),
+                Value::Bool(touches_frontier),
+            ),
+            (
+                Some("function_edited".to_string()),
+                Value::Bool(function_edited),
+            ),
+        ];
+        match v1_interpreter::run_in_context_with_args(ctx, "floor_kernel_would_skip", &args, true)
+        {
+            Ok(Value::Bool(b)) => Ok(b),
+            Ok(other) => Err(format!(
+                "floor_kernel_would_skip returned `{}`, expected Bool",
+                ctx.format_value(&other)
+            )),
+            Err(e) => Err(format!("floor_kernel_would_skip: {e}")),
+        }
+    }
+
+    fn rust_row_would_skip(skip_enabled: bool, entry_touches: bool, function_edited: bool) -> bool {
+        skip_enabled && !entry_touches && !function_edited
+    }
+
+    fn function_edited_for_row(seeds: &super::NodeFrontierSeeds, row: &DiscoveryRow) -> bool {
+        seeds
+            .edited_test_fns
+            .iter()
+            .any(|(file, func)| diff_file_matches_entry(file, &row.entry) && func == &row.function)
+    }
+
+    struct Scenario {
+        label: &'static str,
+        diff_line_needle: &'static str,
+        expect_node_frontier_fires: bool,
+        expect_function_edited_fires: bool,
+    }
+
+    fn assert_disposition_kernel_alignment_for_scenario(
+        ws: &PathBuf,
+        scenario: &Scenario,
+        roster: &[DiscoveryRow],
+    ) {
+        let roots = setup_roots(ws);
+        let index = build_multi_entry_index(&roots);
+        let fixture_abs = ws.join(FIXTURE_REL).to_string_lossy().into_owned();
+        let text = std::fs::read_to_string(ws.join(FIXTURE_REL))
+            .expect("node_precise_discriminator fixture readable");
+        let line = fixture_line(&text, scenario.diff_line_needle);
+        let diff = unified_diff_for_line(FIXTURE_REL, line);
+        let ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
+            .unwrap_or_else(|e| panic!("{}: seeds collection failed: {e}", scenario.label));
+        assert!(
+            !seeds.force_run_all,
+            "{}: diff must be node-precise (not force_run_all)",
+            scenario.label
+        );
+
+        let (graph, source_indices) =
+            resolve_entry_with_index(&index, &fixture_abs).expect("fixture resolves");
+        let entry_ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+        let entry_touches = entry_touches_frontier_seeds(&entry_ctx, &fixture_abs, &seeds)
+            .unwrap_or_else(|e| panic!("{}: entry touch check failed: {e}", scenario.label));
+
+        if scenario.expect_node_frontier_fires {
+            assert!(
+                entry_touches,
+                "{}: node-frontier axis must fire for this diff",
+                scenario.label
+            );
+        }
+        if scenario.expect_function_edited_fires {
+            assert!(
+                seeds
+                    .edited_test_fns
+                    .iter()
+                    .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
+                "{}: function-edited axis must populate edited_test_fns (got {:?})",
+                scenario.label,
+                seeds.edited_test_fns
+            );
+        }
+
+        let (runner_graph, runner_indices) = resolve_entry_with_index(&index, FLOOR_RUNNER_TEST)
+            .expect("floor runner test entry resolves");
+        let runner_ctx = make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+        let changed_paths = vec![FIXTURE_REL.to_string()];
+
+        let mut saw_node_frontier_run = false;
+        let mut saw_function_edited_run = false;
+
+        for row in roster {
+            let function_edited = function_edited_for_row(&seeds, row);
+            let rust_skip = rust_row_would_skip(true, entry_touches, function_edited);
+            let dag_skip = call_floor_kernel_would_skip(
+                &runner_ctx,
+                &changed_paths,
+                &[],
+                entry_touches,
+                function_edited,
+            )
+            .unwrap_or_else(|e| {
+                panic!(
+                    "{}: dag floor_kernel_would_skip failed for {} ({}): {e}",
+                    scenario.label, row.function, row.entry
+                )
+            });
+            assert_eq!(
+                rust_skip, dag_skip,
+                "{}: run/skip mismatch for {} ({}): rust_skip={rust_skip} dag_skip={dag_skip} \
+                 entry_touches={entry_touches} function_edited={function_edited}",
+                scenario.label, row.function, row.entry
+            );
+            if !rust_skip && entry_touches {
+                saw_node_frontier_run = true;
+            }
+            if !rust_skip && function_edited {
+                saw_function_edited_run = true;
+            }
+        }
+
+        if scenario.expect_node_frontier_fires {
+            assert!(
+                saw_node_frontier_run,
+                "{}: expected at least one witness to RUN via node-frontier axis",
+                scenario.label
+            );
+        }
+        if scenario.expect_function_edited_fires {
+            assert!(
+                saw_function_edited_run,
+                "{}: expected at least one witness to RUN via function-edited axis",
+                scenario.label
+            );
+        }
+    }
+
+    #[test]
+    fn disposition_kernel_aligns_on_discriminator_fixture() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let fixture_abs = ws.join(FIXTURE_REL).to_string_lossy().into_owned();
+        let roster = vec![
+            DiscoveryRow {
+                label: "floor_disc_witness_a_only".into(),
+                entry: fixture_abs.clone(),
+                function: "floor_disc_witness_a_only_holds".into(),
+            },
+            DiscoveryRow {
+                label: "floor_disc_witness_b_only".into(),
+                entry: fixture_abs.clone(),
+                function: "floor_disc_witness_b_only_holds".into(),
+            },
+            DiscoveryRow {
+                label: "floor_disc_witness_transitive".into(),
+                entry: fixture_abs.clone(),
+                function: "floor_disc_witness_transitive_holds".into(),
+            },
+        ];
+
+        assert_disposition_kernel_alignment_for_scenario(
+            &ws,
+            &Scenario {
+                label: "node-frontier (referenced data item C)",
+                diff_line_needle: "^floor_disc_node_c_symbol",
+                expect_node_frontier_fires: true,
+                expect_function_edited_fires: false,
+            },
+            &roster,
+        );
+
+        assert_disposition_kernel_alignment_for_scenario(
+            &ws,
+            &Scenario {
+                label: "function-edited (witness A declaration)",
+                diff_line_needle: "test fn floor_disc_witness_a_only_holds",
+                expect_node_frontier_fires: false,
+                expect_function_edited_fires: true,
+            },
+            &roster,
+        );
+
+        assert_disposition_kernel_alignment_for_scenario(
+            &ws,
+            &Scenario {
+                label: "orphan node (both axes false for transitive witness)",
+                diff_line_needle: "^floor_disc_orphan_symbol",
+                expect_node_frontier_fires: false,
+                expect_function_edited_fires: false,
+            },
+            &roster,
+        );
+    }
+
+    #[test]
+    fn disposition_kernel_seeds_populated_on_referenced_node_diff() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let text = std::fs::read_to_string(ws.join(FIXTURE_REL)).expect("fixture readable");
+        let line = fixture_line(&text, "^floor_disc_node_c_symbol");
+        let diff = unified_diff_for_line(FIXTURE_REL, line);
+        let ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
+            .expect("seeds from referenced-node diff");
+        assert!(
+            !seeds.overlapping_data_items.is_empty(),
+            "referenced-node diff must populate overlapping_data_items"
+        );
+        assert!(
+            seeds.edited_test_fns.is_empty(),
+            "data-item diff must not populate edited_test_fns"
+        );
+    }
+}
+
+// Step 3 witness (a) PARTIAL — impl-vs-impl PROVE gate (#5994).
+// Stable floor witnesses use deterministic fixture unified diffs (same structured shape as CI
+// git diff parsing) so every checkout executes the proof — not branch-only origin/main...HEAD
+// asserts. Node-frontier axis vs Rust NodeFrontierSeeds on whole-tree InferredTree remains
+// blocked on resolve grounding (ROADMAP 1-affected-set-defork); receipt in
+// docs/plans/affected-set-precompute-pruning.md §Step 3 partial.
+#[cfg(test)]
+mod floor_witness_a_prove {
+    use super::{
+        build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
+        diff_file_matches_entry, entry_touches_frontier_seeds, make_eval_context,
+        parse_unified_diff_line_ranges, resolve_entry_with_index, scan_test_decl_lines,
+        DiscoveryRow, FileLineRange, NodeFrontierSeeds,
+    };
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    const FIXTURE_REL: &str = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+    const FLOOR_RUNNER: &str = "src/v2/workflow/affected_set_floor_runner.dag";
+    const WITNESS_A_PROVE: &str = "src/v2/test/claim/affected_set_witness_a_prove_test.dag";
+    const AFFECTED_SET_MID_PATH: &str = "src/v2/lens/affected_set.dag";
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    fn setup_roots(ws: &PathBuf) -> Vec<String> {
+        vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dsl").to_string_lossy().into_owned(),
+        ]
+    }
+
+    fn fixture_line(text: &str, needle: &str) -> i64 {
+        text.lines()
+            .position(|l| l.contains(needle))
+            .map(|i| (i + 1) as i64)
+            .unwrap_or_else(|| panic!("fixture missing line containing `{needle}`"))
+    }
+
+    fn unified_diff_for_line(rel_path: &str, line: i64) -> String {
+        format!(
+            "diff --git a/{rel_path} b/{rel_path}\n--- a/{rel_path}\n+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n+// witness-a touch\n"
+        )
+    }
+
+    fn discriminator_roster(fixture_abs: &str) -> Vec<DiscoveryRow> {
+        vec![
+            DiscoveryRow {
+                label: "floor_disc_witness_a".into(),
+                entry: fixture_abs.to_string(),
+                function: "floor_disc_witness_a_only_holds".into(),
+            },
+            DiscoveryRow {
+                label: "floor_disc_witness_b".into(),
+                entry: fixture_abs.to_string(),
+                function: "floor_disc_witness_b_only_holds".into(),
+            },
+            DiscoveryRow {
+                label: "floor_disc_witness_transitive".into(),
+                entry: fixture_abs.to_string(),
+                function: "floor_disc_witness_transitive_holds".into(),
+            },
+        ]
+    }
+
+    fn diff_line_touches_from_ranges(
+        line_ranges: &HashMap<String, Vec<FileLineRange>>,
+    ) -> Vec<(String, i64, i64)> {
+        let mut out = Vec::new();
+        for (path, ranges) in line_ranges {
+            for range in ranges {
+                out.push((path.clone(), range.start, range.end));
+            }
+        }
+        out.sort();
+        out
+    }
+
+    fn int_value(n: i64) -> Value {
+        Value::Int(n)
+    }
+
+    fn diff_line_touch_value(
+        ctx: &v1_interpreter::InterpContext,
+        path: &str,
+        start: i64,
+        end: i64,
+    ) -> Value {
+        use std::rc::Rc;
+        Value::Record {
+            type_name: ctx.sym("FloorDiffLineTouch"),
+            fields: Rc::new(vec![
+                (ctx.sym("path"), Value::Str(path.to_string())),
+                (ctx.sym("start_line"), int_value(start)),
+                (ctx.sym("end_line"), int_value(end)),
+            ]),
+        }
+    }
+
+    fn call_floor_test_fn_declaration_edited(
+        ctx: &v1_interpreter::InterpContext,
+        touches: &[(String, i64, i64)],
+        file_path: &str,
+        decl_line: i64,
+        decl_end_line: i64,
+    ) -> Result<bool, String> {
+        let touch_values: Vec<Value> = touches
+            .iter()
+            .map(|(p, s, e)| diff_line_touch_value(ctx, p, *s, *e))
+            .collect();
+        let args = [
+            (
+                Some("touches".to_string()),
+                v1_interpreter::list_value(touch_values),
+            ),
+            (
+                Some("file_path".to_string()),
+                Value::Str(file_path.to_string()),
+            ),
+            (Some("test_fn_decl_line".to_string()), int_value(decl_line)),
+            (
+                Some("test_fn_decl_end_line".to_string()),
+                int_value(decl_end_line),
+            ),
+        ];
+        match v1_interpreter::run_in_context_with_args(
+            ctx,
+            "floor_test_fn_declaration_edited",
+            &args,
+            true,
+        ) {
+            Ok(Value::Bool(b)) => Ok(b),
+            Ok(other) => Err(format!(
+                "floor_test_fn_declaration_edited returned `{}`",
+                ctx.format_value(&other)
+            )),
+            Err(e) => Err(format!("floor_test_fn_declaration_edited: {e}")),
+        }
+    }
+
+    fn call_floor_rust_run_implies_dag_run(
+        ctx: &v1_interpreter::InterpContext,
+        rust_touches: bool,
+        rust_func: bool,
+        dag_touches: bool,
+        dag_func: bool,
+    ) -> Result<bool, String> {
+        let args = [
+            (
+                Some("rust_touches_frontier".to_string()),
+                Value::Bool(rust_touches),
+            ),
+            (
+                Some("rust_function_edited".to_string()),
+                Value::Bool(rust_func),
+            ),
+            (
+                Some("dag_touches_frontier".to_string()),
+                Value::Bool(dag_touches),
+            ),
+            (
+                Some("dag_function_edited".to_string()),
+                Value::Bool(dag_func),
+            ),
+        ];
+        match v1_interpreter::run_in_context_with_args(
+            ctx,
+            "floor_rust_run_implies_dag_run",
+            &args,
+            true,
+        ) {
+            Ok(Value::Bool(b)) => Ok(b),
+            Ok(other) => Err(format!(
+                "floor_rust_run_implies_dag_run returned `{}`",
+                ctx.format_value(&other)
+            )),
+            Err(e) => Err(format!("floor_rust_run_implies_dag_run: {e}")),
+        }
+    }
+
+    fn rust_function_edited_for_row(seeds: &NodeFrontierSeeds, row: &DiscoveryRow) -> bool {
+        seeds
+            .edited_test_fns
+            .iter()
+            .any(|(file, func)| diff_file_matches_entry(file, &row.entry) && func == &row.function)
+    }
+
+    fn dag_function_edited_for_row(
+        ctx: &v1_interpreter::InterpContext,
+        index: &super::MultiEntryIndex,
+        touches: &[(String, i64, i64)],
+        row: &DiscoveryRow,
+    ) -> Result<bool, String> {
+        let file_path = touches
+            .iter()
+            .find(|(path, _, _)| diff_file_matches_entry(path, &row.entry))
+            .map(|(path, _, _)| path.clone())
+            .unwrap_or_else(|| super::normalize_repo_path(&row.entry));
+        let content = std::fs::read_to_string(&row.entry)
+            .map_err(|e| format!("read {} for decl scan: {e}", row.entry))?;
+        let decl_line = scan_test_decl_lines(&content)
+            .into_iter()
+            .find(|(name, _)| name == &row.function)
+            .map(|(_, line)| line)
+            .ok_or_else(|| {
+                format!(
+                    "witness row {} ({}) has no test fn declaration in entry",
+                    row.function, row.entry
+                )
+            })?;
+        let sorted_decls = super::collect_sorted_decl_lines_for_file(index, &row.entry)?;
+        let decl_end = super::decl_span_end_line(&sorted_decls, decl_line);
+        call_floor_test_fn_declaration_edited(ctx, touches, &file_path, decl_line, decl_end)
+    }
+
+    fn frontier_list_len(
+        prove_ctx: &v1_interpreter::InterpContext,
+        frontier: &v1_interpreter::Value,
+    ) -> Result<usize, String> {
+        let len = v1_interpreter::with_active_context(prove_ctx, || {
+            v1_interpreter::free_monoid_to_vec(frontier).map(|items| items.len())
+        });
+        len.ok_or_else(|| {
+            format!(
+                "expected list frontier from .dag affected_set_closure, got `{}`",
+                prove_ctx.format_value(frontier)
+            )
+        })
+    }
+
+    fn dag_affected_frontier_for_changed_path(
+        prove_ctx: &v1_interpreter::InterpContext,
+        changed_path: &str,
+    ) -> Result<v1_interpreter::Value, String> {
+        let args = [(
+            Some("changed".to_string()),
+            Value::Str(changed_path.to_string()),
+        )];
+        v1_interpreter::run_in_context_with_args(
+            prove_ctx,
+            "witness_a_dag_affected_nodes_for_path",
+            &args,
+            true,
+        )
+        .map_err(|e| format!("witness_a_dag_affected_nodes_for_path: {e}"))
+    }
+
+    fn dag_entry_touches_frontier_independently(
+        prove_ctx: &v1_interpreter::InterpContext,
+        entry_ctx: &v1_interpreter::InterpContext,
+        changed_path: &str,
+    ) -> Result<bool, String> {
+        let frontier = dag_affected_frontier_for_changed_path(prove_ctx, changed_path)?;
+        super::entry_claims_touch_frontier(entry_ctx, &frontier)
+    }
+
+    fn assert_superset_on_fixture_with_real_diff_shape(
+        ws: &PathBuf,
+        diff_text: &str,
+        roster: &[DiscoveryRow],
+    ) {
+        let roots = setup_roots(ws);
+        let index = build_multi_entry_index(&roots);
+        let line_ranges = parse_unified_diff_line_ranges(diff_text);
+        assert!(
+            !line_ranges.is_empty(),
+            "PROVE diff must contain at least one .dag hunk"
+        );
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &line_ranges)
+            .unwrap_or_else(|e| panic!("real-diff seeds collection failed: {e}"));
+        assert!(
+            !seeds.force_run_all,
+            "dag-only real diff must not hit force_run_all during PROVE"
+        );
+        let touches = diff_line_touches_from_ranges(&line_ranges);
+
+        let (runner_graph, runner_indices) =
+            resolve_entry_with_index(&index, FLOOR_RUNNER).expect("floor runner resolves");
+        let runner_ctx = make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+        let (prove_graph, prove_indices) =
+            resolve_entry_with_index(&index, WITNESS_A_PROVE).expect("witness a prove resolves");
+        let prove_ctx = make_eval_context(&prove_graph, prove_indices, ExecutionMode::Wet);
+
+        let fixture_abs = ws.join(FIXTURE_REL).to_string_lossy().into_owned();
+        let (graph, source_indices) =
+            resolve_entry_with_index(&index, &fixture_abs).expect("fixture resolves");
+        let entry_ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+        let rust_entry_touches = entry_touches_frontier_seeds(&entry_ctx, &fixture_abs, &seeds)
+            .expect("rust entry touch check");
+
+        let changed_paths: Vec<String> = line_ranges.keys().cloned().collect();
+        let mid_in_diff = changed_paths
+            .iter()
+            .any(|p| super::normalize_repo_path(p) == AFFECTED_SET_MID_PATH);
+        let dag_entry_touches = if mid_in_diff {
+            dag_entry_touches_frontier_independently(&prove_ctx, &entry_ctx, AFFECTED_SET_MID_PATH)
+                .unwrap_or_else(|e| panic!("independent dag node-frontier: {e}"))
+        } else {
+            false
+        };
+
+        let mut saw_node_frontier_run = false;
+        let mut saw_function_edited_run = false;
+
+        for row in roster {
+            let rust_func = rust_function_edited_for_row(&seeds, row);
+            let dag_func = dag_function_edited_for_row(&runner_ctx, &index, &touches, row)
+                .unwrap_or_else(|e| panic!("dag function_edited for {}: {e}", row.function));
+            let rust_touches = if diff_file_matches_entry(FIXTURE_REL, &row.entry) {
+                rust_entry_touches
+            } else {
+                false
+            };
+            let dag_touches = if diff_file_matches_entry(FIXTURE_REL, &row.entry) && mid_in_diff {
+                dag_entry_touches
+            } else {
+                false
+            };
+            assert!(
+                call_floor_rust_run_implies_dag_run(
+                    &runner_ctx,
+                    rust_touches,
+                    rust_func,
+                    dag_touches,
+                    dag_func
+                )
+                .unwrap_or_else(|e| panic!("superset predicate: {e}")),
+                "superset violated for {} ({}): rust_touches={rust_touches} rust_func={rust_func} \
+                 dag_touches={dag_touches} dag_func={dag_func}",
+                row.function,
+                row.entry
+            );
+            if rust_touches || rust_func {
+                assert!(
+                    !(call_floor_rust_run_implies_dag_run(
+                        &runner_ctx,
+                        rust_touches,
+                        rust_func,
+                        false,
+                        false
+                    ))
+                    .unwrap_or(false),
+                    "RED control sanity: strict-subset dag must fail superset for {}",
+                    row.function
+                );
+            }
+            if rust_touches && !rust_func {
+                saw_node_frontier_run = true;
+            }
+            if rust_func {
+                saw_function_edited_run = true;
+            }
+        }
+
+        assert!(
+            saw_node_frontier_run || saw_function_edited_run,
+            "PROVE diff must fire at least one skip axis on the roster"
+        );
+    }
+
+    #[test]
+    fn witness_a_function_edited_axis_fixture_impl_vs_impl() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let text = std::fs::read_to_string(ws.join(FIXTURE_REL)).expect("fixture readable");
+        let line = fixture_line(&text, "test fn floor_disc_witness_a_only_holds");
+        let diff = unified_diff_for_line(FIXTURE_REL, line);
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let line_ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &line_ranges)
+            .expect("seeds from function-edited fixture diff");
+        assert!(
+            !seeds.force_run_all,
+            "fixture diff must be node-precise (not force_run_all)"
+        );
+        assert!(
+            seeds
+                .edited_test_fns
+                .iter()
+                .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
+            "function-edited fixture must populate edited_test_fns"
+        );
+        let touches = diff_line_touches_from_ranges(&line_ranges);
+        let (runner_graph, runner_indices) =
+            resolve_entry_with_index(&index, FLOOR_RUNNER).expect("floor runner resolves");
+        let runner_ctx = make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+
+        for (file, func) in &seeds.edited_test_fns {
+            let content = std::fs::read_to_string(file)
+                .unwrap_or_else(|e| panic!("read {file} for decl line: {e}"));
+            let decl_line = scan_test_decl_lines(&content)
+                .into_iter()
+                .find(|(name, _)| name == func)
+                .map(|(_, line)| line)
+                .unwrap_or_else(|| panic!("edited_test_fns {file}::{func} missing decl line"));
+            let sorted_decls = super::collect_sorted_decl_lines_for_file(&index, file)
+                .expect("sorted decl lines for impl-vs-impl");
+            let decl_end = super::decl_span_end_line(&sorted_decls, decl_line);
+            let dag_edited = call_floor_test_fn_declaration_edited(
+                &runner_ctx,
+                &touches,
+                file,
+                decl_line,
+                decl_end,
+            )
+            .expect("dag function_edited model");
+            assert!(
+                dag_edited,
+                "function_edited axis: rust edited_test_fns ({file}, {func}) must be matched by \
+                 independent .dag floor_test_fn_declaration_edited"
+            );
+        }
+    }
+
+    #[test]
+    fn witness_a_function_edited_axis_body_touch_fixture_impl_vs_impl() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let diff = unified_diff_for_line(FIXTURE_REL, 78);
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let line_ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &line_ranges)
+            .expect("seeds from body-touch fixture diff");
+        assert!(
+            seeds
+                .edited_test_fns
+                .iter()
+                .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
+            "body-only diff touch must populate edited_test_fns via decl span (not decl line only)"
+        );
+        let touches = diff_line_touches_from_ranges(&line_ranges);
+        let (runner_graph, runner_indices) =
+            resolve_entry_with_index(&index, FLOOR_RUNNER).expect("floor runner resolves");
+        let runner_ctx = make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+        let file = FIXTURE_REL;
+        let content = std::fs::read_to_string(ws.join(FIXTURE_REL)).expect("fixture readable");
+        let decl_line = scan_test_decl_lines(&content)
+            .into_iter()
+            .find(|(name, _)| name == "floor_disc_witness_a_only_holds")
+            .map(|(_, line)| line)
+            .expect("witness_a decl line");
+        let sorted_decls =
+            super::collect_sorted_decl_lines_for_file(&index, file).expect("sorted decl lines");
+        let decl_end = super::decl_span_end_line(&sorted_decls, decl_line);
+        assert!(
+            call_floor_test_fn_declaration_edited(&runner_ctx, &touches, file, decl_line, decl_end)
+                .expect("dag function_edited model for body touch"),
+            "body-only diff must match .dag floor_test_fn_declaration_edited when decl_end spans body"
+        );
+    }
+
+    #[test]
+    fn witness_a_red_control_under_selection_fails_superset() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let (runner_graph, runner_indices) =
+            resolve_entry_with_index(&index, FLOOR_RUNNER).expect("floor runner resolves");
+        let runner_ctx = make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+        assert!(
+            !call_floor_rust_run_implies_dag_run(&runner_ctx, true, false, false, false)
+                .expect("superset must fail when dag under-selects node-frontier"),
+            "mandatory RED: rust-run + dag-skip must violate superset (§5 fail-open guard)"
+        );
+        assert!(
+            !call_floor_rust_run_implies_dag_run(&runner_ctx, false, true, false, false)
+                .expect("superset must fail when dag under-selects function_edited"),
+            "mandatory RED: rust function_edited run + dag skip must violate superset"
+        );
+    }
+
+    #[test]
+    fn witness_a_node_frontier_dag_closure_independent_on_fixture() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let (prove_graph, prove_indices) =
+            resolve_entry_with_index(&index, WITNESS_A_PROVE).expect("witness a prove resolves");
+        let prove_ctx = make_eval_context(&prove_graph, prove_indices, ExecutionMode::Wet);
+        let affected = dag_affected_frontier_for_changed_path(&prove_ctx, AFFECTED_SET_MID_PATH)
+            .expect("dag affected_set_closure frontier");
+        let node_count = frontier_list_len(&prove_ctx, &affected)
+            .expect("frontier must be a list (List or Cons carrier)");
+        assert!(
+            node_count > 0,
+            ".dag affected_set_closure must produce non-empty frontier for {AFFECTED_SET_MID_PATH} \
+             via provenance_producer fixture (Impl-1 not inert; whole-tree Rust equivalence deferred)"
+        );
+    }
+
+    #[test]
+    fn witness_a_superset_on_discriminator_function_edited_fixture() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let text = std::fs::read_to_string(ws.join(FIXTURE_REL)).expect("fixture readable");
+        let line = fixture_line(&text, "test fn floor_disc_witness_a_only_holds");
+        let diff = unified_diff_for_line(FIXTURE_REL, line);
+        let fixture_abs = ws.join(FIXTURE_REL).to_string_lossy().into_owned();
+        assert_superset_on_fixture_with_real_diff_shape(
+            &ws,
+            &diff,
+            &discriminator_roster(&fixture_abs),
         );
     }
 }
