@@ -3614,6 +3614,14 @@ fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Val
     v1_interpreter::list_value(items)
 }
 
+#[derive(Clone)]
+struct FloorProvenanceSkipContext {
+    effective_roots: Vec<String>,
+    changed_paths: Vec<String>,
+    provenance_overlay_active: bool,
+    provenance_ingest_live: bool,
+}
+
 #[derive(Clone, Default)]
 struct NodeFrontierSeeds {
     overlapping_data_items: HashSet<(String, String)>,
@@ -3903,7 +3911,6 @@ pub fn run_discovery_corpus_with_options(
             ));
         }
     };
-    let index = build_multi_entry_index(source_roots);
 
     let diff_outcome = if options.skip_unaffected_node_frontier {
         match floor_git_diff_range() {
@@ -3922,10 +3929,33 @@ pub fn run_discovery_corpus_with_options(
         FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
         FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_line_ranges(&text),
     };
+    let changed_paths: Vec<String> = line_ranges_by_file.keys().cloned().collect();
+    let provenance_overlay = if options.skip_unaffected_node_frontier && !changed_paths.is_empty() {
+        match prepare_floor_provenance_ingest_overlay(
+            source_roots,
+            &changed_paths,
+            &options.exclude_substrings,
+        ) {
+            Ok(overlay) => overlay,
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: floor provenance ingest overlay failed ({msg}) — skip uses seed fallback"
+                );
+                None
+            }
+        }
+    } else {
+        None
+    };
+    let effective_roots = match &provenance_overlay {
+        Some(overlay) => source_roots_with_overlay(source_roots, overlay),
+        None => source_roots.to_vec(),
+    };
+    let index = build_multi_entry_index(&effective_roots);
     let (skip_enabled, frontier_seeds) = if options.skip_unaffected_node_frontier
         && !line_ranges_by_file.is_empty()
     {
-        let frontier_index = build_multi_entry_index(source_roots);
+        let frontier_index = build_multi_entry_index(&effective_roots);
         match collect_frontier_seeds_from_diff_line_ranges(&frontier_index, &line_ranges_by_file) {
             Ok(seeds) => (!seeds.force_run_all, seeds),
             Err(msg) => {
@@ -3945,6 +3975,41 @@ pub fn run_discovery_corpus_with_options(
         parallel_width
     };
     let width = capped_width.max(1);
+    let provenance_ingest_live = provenance_overlay
+        .as_ref()
+        .map(overlay_manifest_ingest_is_live)
+        .unwrap_or(false);
+    if provenance_overlay.is_some() {
+        match floor_runner_eval_context(&effective_roots) {
+            Ok(ctx) => {
+                let dag_live = floor_provenance_ingest_is_live(&ctx);
+                if provenance_ingest_live && dag_live {
+                    eprintln!(
+                        "claim_executor: floor provenance ingest is LIVE (node-closure authority enabled)"
+                    );
+                } else if provenance_ingest_live && !dag_live {
+                    eprintln!(
+                        "claim_executor: floor provenance overlay emitted but runner liveness check failed — using .dag closure with overlay ingest"
+                    );
+                } else {
+                    eprintln!(
+                        "claim_executor: floor provenance ingest overlay present but not live — using seed fallback"
+                    );
+                }
+            }
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: floor provenance runner unavailable ({msg}) — skip uses seed fallback"
+                );
+            }
+        }
+    }
+    let skip_ctx = FloorProvenanceSkipContext {
+        effective_roots: effective_roots.clone(),
+        changed_paths,
+        provenance_overlay_active: provenance_overlay.is_some(),
+        provenance_ingest_live,
+    };
     if width == 1 {
         return run_discovery_rows(
             &rows,
@@ -3953,6 +4018,7 @@ pub fn run_discovery_corpus_with_options(
             skip_enabled,
             &frontier_seeds,
             whole_tree_published_keys.clone(),
+            &skip_ctx,
         );
     }
     let shards = shard_row_indices_by_entry(&rows, width);
@@ -3961,16 +4027,18 @@ pub fn run_discovery_corpus_with_options(
         width,
         shards.iter().filter(|s| !s.is_empty()).count()
     );
-    let source_roots_owned = source_roots.to_vec();
+    let effective_roots_owned = effective_roots.clone();
+    let skip_ctx_owned = skip_ctx;
     let mut handles = Vec::new();
     for shard in shards {
         if shard.is_empty() {
             continue;
         }
         let shard_rows: Vec<DiscoveryRow> = shard.iter().map(|&i| rows[i].clone()).collect();
-        let roots = source_roots_owned.clone();
+        let roots = effective_roots_owned.clone();
         let seeds = frontier_seeds.clone();
         let keys = whole_tree_published_keys.clone();
+        let skip = skip_ctx_owned.clone();
         handles.push(std::thread::spawn(move || {
             let index = build_multi_entry_index(&roots);
             run_discovery_rows(
@@ -3980,6 +4048,7 @@ pub fn run_discovery_corpus_with_options(
                 skip_enabled,
                 &seeds,
                 keys,
+                &skip,
             )
         }));
     }
@@ -4057,7 +4126,20 @@ fn run_discovery_rows(
     skip_enabled: bool,
     frontier_seeds: &NodeFrontierSeeds,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
+    skip_ctx: &FloorProvenanceSkipContext,
 ) -> Result<DiscoverySummary, String> {
+    let dag_closure_runner = if skip_enabled && skip_ctx.provenance_ingest_live {
+        floor_runner_eval_context(&skip_ctx.effective_roots).ok()
+    } else {
+        None
+    };
+    let provenance_live = skip_ctx.provenance_ingest_live
+        && dag_closure_runner
+            .as_ref()
+            .map(floor_provenance_ingest_is_live)
+            .unwrap_or(false);
+    let use_dag_closure =
+        skip_enabled && skip_ctx.provenance_ingest_live && dag_closure_runner.is_some();
     let mut summary = DiscoverySummary {
         total: rows.len(),
         passed: 0,
@@ -4099,7 +4181,25 @@ fn run_discovery_rows(
                 whole_tree_published_keys.clone(),
             );
             current_entry_touches = if skip_enabled {
-                entry_touches_frontier_seeds(&entry_ctx, &row.entry, frontier_seeds)?
+                if use_dag_closure {
+                    match entry_touches_frontier_via_dag_closure(
+                        dag_closure_runner.as_ref().expect("runner ctx"),
+                        &entry_ctx,
+                        frontier_seeds,
+                        &skip_ctx.changed_paths,
+                        provenance_live,
+                    ) {
+                        Ok(touches) => touches,
+                        Err(msg) => {
+                            eprintln!(
+                                "claim_executor: .dag node-closure skip failed ({msg}) — falling back to seed bridge"
+                            );
+                            entry_touches_frontier_seeds(&entry_ctx, &row.entry, frontier_seeds)?
+                        }
+                    }
+                } else {
+                    entry_touches_frontier_seeds(&entry_ctx, &row.entry, frontier_seeds)?
+                }
             } else {
                 true
             };
@@ -5614,6 +5714,367 @@ pub fn discover_source_root_reads(
     Ok(records)
 }
 
+pub const FLOOR_PROVENANCE_INGEST_MANIFEST_REL: &str =
+    "src/v2/test/claim/workflow/host_source_root_ingest_manifest.dag";
+pub const FLOOR_PROVENANCE_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
+
+struct FloorProvenanceIngestOverlay {
+    overlay_root: PathBuf,
+}
+
+impl FloorProvenanceIngestOverlay {
+    fn overlay_source_root(&self) -> String {
+        self.overlay_root.to_string_lossy().into_owned()
+    }
+}
+
+impl Drop for FloorProvenanceIngestOverlay {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.overlay_root);
+    }
+}
+
+fn overlay_manifest_ingest_is_live(overlay: &FloorProvenanceIngestOverlay) -> bool {
+    let path = overlay
+        .overlay_root
+        .join(FLOOR_PROVENANCE_INGEST_MANIFEST_REL);
+    let Ok(content) = std::fs::read_to_string(&path) else {
+        return false;
+    };
+    content.contains("coverage_complete: true")
+        && content.contains("produced_row_count:")
+        && !content.contains("produced_row_count: 0")
+        && !content.contains("host_source_root_ingest: SourceRootIngest = Empty")
+}
+
+pub fn discover_source_root_reads_for_paths(
+    source_roots: &[String],
+    paths: &[String],
+    exclude_subpaths: &[String],
+) -> Result<Vec<SourceRootReadRecord>, String> {
+    for root in source_roots {
+        let root_path = Path::new(root);
+        if !root_path.exists() {
+            return Err(format!(
+                "discover_source_root_ingest: source root does not exist: {}",
+                root
+            ));
+        }
+    }
+
+    let mut records: Vec<SourceRootReadRecord> = Vec::new();
+    for path in paths {
+        let rel_forward = normalize_repo_path(path);
+        if !rel_forward.ends_with(".dag") {
+            continue;
+        }
+        if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
+            continue;
+        }
+        let Ok(abs) = resolve_dag_path(source_roots, &rel_forward) else {
+            continue;
+        };
+        let content = std::fs::read_to_string(&abs)
+            .map_err(|e| format!("failed to read {:?}: {}", abs, e))?;
+        let module_path = extract_module_path(&content).ok_or_else(|| {
+            format!(
+                "discover_source_root_ingest: no module declaration in {}",
+                rel_forward
+            )
+        })?;
+        let source_root = source_root_ref_token_for_path(&rel_forward, source_roots)?;
+        records.push(SourceRootReadRecord {
+            file_path: rel_forward,
+            module_path,
+            source: content,
+            source_root,
+        });
+    }
+    records.sort_by(|a, b| a.file_path.cmp(&b.file_path));
+    Ok(records)
+}
+
+fn resolve_dag_path(source_roots: &[String], rel_forward: &str) -> Result<PathBuf, String> {
+    let ws = workspace_root();
+    let ws_candidate = ws.join(rel_forward);
+    if ws_candidate.is_file() {
+        return Ok(ws_candidate);
+    }
+    let direct = PathBuf::from(rel_forward);
+    if direct.is_file() {
+        return Ok(direct);
+    }
+    for root in source_roots {
+        let root_rel = repo_relative_dag_path(root);
+        let root_rel = root_rel.trim_end_matches('/');
+        if let Some(suffix) = rel_forward.strip_prefix(&format!("{root_rel}/")) {
+            let candidate = Path::new(root).join(suffix);
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+    }
+    Err(format!(
+        "discover_source_root_ingest: no source root contains file '{rel_forward}'"
+    ))
+}
+
+fn prepare_floor_provenance_ingest_overlay(
+    source_roots: &[String],
+    changed_paths: &[String],
+    exclude_subpaths: &[String],
+) -> Result<Option<FloorProvenanceIngestOverlay>, String> {
+    if changed_paths.is_empty() {
+        return Ok(None);
+    }
+    let records =
+        discover_source_root_reads_for_paths(source_roots, changed_paths, exclude_subpaths)?;
+    if records.is_empty() {
+        return Ok(None);
+    }
+    let overlay_root = std::env::temp_dir().join(format!(
+        "gunbc-floor-provenance-ingest-{}",
+        std::process::id()
+    ));
+    let manifest_path = overlay_root.join(FLOOR_PROVENANCE_INGEST_MANIFEST_REL);
+    emit_source_root_ingest_manifest(&manifest_path, &records, None)?;
+    eprintln!(
+        "claim_executor: floor provenance ingest overlay {} ({} read witness(es))",
+        overlay_root.display(),
+        records.len()
+    );
+    Ok(Some(FloorProvenanceIngestOverlay { overlay_root }))
+}
+
+fn source_roots_with_overlay(
+    source_roots: &[String],
+    overlay: &FloorProvenanceIngestOverlay,
+) -> Vec<String> {
+    let mut roots = vec![overlay.overlay_source_root()];
+    roots.extend(source_roots.iter().cloned());
+    roots
+}
+
+fn floor_runner_eval_context(
+    source_roots: &[String],
+) -> Result<v1_interpreter::InterpContext, String> {
+    let (graph, indices) = resolve_entry_graph(source_roots, FLOOR_PROVENANCE_RUNNER_ENTRY)
+        .map_err(|e| format!("floor provenance runner resolve: {e}"))?;
+    Ok(make_eval_context(
+        &graph,
+        indices,
+        v1_interpreter::ExecutionMode::Wet,
+    ))
+}
+
+fn floor_provenance_ingest_is_live(ctx: &v1_interpreter::InterpContext) -> bool {
+    match v1_interpreter::run_in_context(ctx, "floor_provenance_ingest_is_live", false) {
+        Ok(v) => matches!(v, v1_interpreter::Value::Bool(true)),
+        Err(_) => false,
+    }
+}
+
+fn witness_list_nodes_from_value(
+    value: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    match value {
+        v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Holds") => {
+            let node = ctx
+                .field(fields, "value")
+                .ok_or_else(|| "Holds missing `value`".to_string())?;
+            list_values_from_free_monoid(node, ctx)
+        }
+        v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "Violates") =>
+        {
+            Err("provenance frontier witness violated".to_string())
+        }
+        other => Err(format!(
+            "expected Witness<List<Node>>, got {}",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+fn list_values_from_free_monoid(
+    value: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    let mut out = Vec::new();
+    let mut cur = value;
+    loop {
+        match cur {
+            v1_interpreter::Value::Variant {
+                variant_name,
+                fields,
+                ..
+            } if ctx.sym_eq(*variant_name, "Cons") => {
+                let head = ctx
+                    .field(fields, "head")
+                    .ok_or_else(|| "Cons missing `head`".to_string())?;
+                out.push(head.clone());
+                cur = ctx
+                    .field(fields, "tail")
+                    .ok_or_else(|| "Cons missing `tail`".to_string())?;
+            }
+            v1_interpreter::Value::Variant { variant_name, .. }
+                if ctx.sym_eq(*variant_name, "Empty") =>
+            {
+                return Ok(out);
+            }
+            v1_interpreter::Value::List(items) => {
+                out.extend(items.iter().cloned());
+                return Ok(out);
+            }
+            other => {
+                return Err(format!(
+                    "expected List, got {}",
+                    other.type_label_public()
+                ))
+            }
+        }
+    }
+}
+
+fn entry_root_node_from_ctx(
+    ctx: &v1_interpreter::InterpContext,
+    edit_loci: &[v1_interpreter::Value],
+) -> v1_interpreter::Value {
+    let mut best: Option<&v1_interpreter::Value> = None;
+    let mut best_children = 0usize;
+    for locus in edit_loci {
+        let children = count_node_children(locus, ctx);
+        if children > best_children {
+            best_children = children;
+            best = Some(locus);
+        }
+    }
+    best.or(edit_loci.first())
+        .cloned()
+        .unwrap_or(v1_interpreter::Value::Null)
+}
+
+fn count_node_children(value: &v1_interpreter::Value, ctx: &v1_interpreter::InterpContext) -> usize {
+    match value {
+        v1_interpreter::Value::Record { fields, .. }
+        | v1_interpreter::Value::Variant { fields, .. } => ctx
+            .field(fields, "children")
+            .map(|c| list_values_from_free_monoid(c, ctx).map(|v| v.len()).unwrap_or(0))
+            .unwrap_or(0),
+        _ => 0,
+    }
+}
+
+fn provenance_rerun_frontier_nodes(
+    runner_ctx: &v1_interpreter::InterpContext,
+    entry_root: &v1_interpreter::Value,
+    changed_paths: &[String],
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    let changed_paths_value = list_value_from_strings(changed_paths);
+    let result = v1_interpreter::run_in_context_with_args(
+        runner_ctx,
+        "floor_rerun_frontier_from_provenance",
+        &[
+            (
+                Some("entry_root".to_string()),
+                entry_root.clone(),
+            ),
+            (
+                Some("changed_paths".to_string()),
+                changed_paths_value,
+            ),
+        ],
+        false,
+    )
+    .map_err(|e| format!("floor_rerun_frontier_from_provenance: {e}"))?;
+    witness_list_nodes_from_value(&result, runner_ctx)
+}
+
+fn closure_rerun_frontier_nodes(
+    runner_ctx: &v1_interpreter::InterpContext,
+    entry_root: &v1_interpreter::Value,
+    edit_loci: &[v1_interpreter::Value],
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    let edit_loci_value = list_value_from_vec(edit_loci.to_vec());
+    let result = v1_interpreter::run_in_context_with_args(
+        runner_ctx,
+        "floor_rerun_frontier_from_edit_loci",
+        &[
+            (
+                Some("entry_root".to_string()),
+                entry_root.clone(),
+            ),
+            (Some("edit_loci".to_string()), edit_loci_value),
+        ],
+        false,
+    )
+    .map_err(|e| format!("floor_rerun_frontier_from_edit_loci: {e}"))?;
+    list_values_from_free_monoid(&result, runner_ctx)
+}
+
+fn list_value_from_strings(items: &[String]) -> v1_interpreter::Value {
+    let values: Vec<v1_interpreter::Value> = items
+        .iter()
+        .cloned()
+        .map(v1_interpreter::Value::Str)
+        .collect();
+    v1_interpreter::list_value(values)
+}
+
+fn entry_frontier_nodes_via_dag_closure(
+    runner_ctx: &v1_interpreter::InterpContext,
+    entry_ctx: &v1_interpreter::InterpContext,
+    seeds: &NodeFrontierSeeds,
+    changed_paths: &[String],
+    provenance_live: bool,
+) -> Result<Vec<v1_interpreter::Value>, String> {
+    let mut edit_loci = entry_frontier_nodes_from_seeds(entry_ctx, "", seeds)?;
+    if edit_loci.is_empty() {
+        return Ok(Vec::new());
+    }
+    let entry_root = edit_loci
+        .first()
+        .cloned()
+        .unwrap_or(v1_interpreter::Value::Null);
+    if provenance_live {
+        match provenance_rerun_frontier_nodes(runner_ctx, &entry_root, changed_paths) {
+            Ok(nodes) if !nodes.is_empty() => return Ok(nodes),
+            Ok(_) => {}
+            Err(msg) => {
+                eprintln!(
+                    "claim_executor: provenance frontier failed ({msg}) — falling back to .dag closure from edit loci"
+                );
+            }
+        }
+    }
+    closure_rerun_frontier_nodes(runner_ctx, &entry_root, &edit_loci)
+}
+
+fn entry_touches_frontier_via_dag_closure(
+    runner_ctx: &v1_interpreter::InterpContext,
+    entry_ctx: &v1_interpreter::InterpContext,
+    seeds: &NodeFrontierSeeds,
+    changed_paths: &[String],
+    provenance_live: bool,
+) -> Result<bool, String> {
+    let frontier = entry_frontier_nodes_via_dag_closure(
+        runner_ctx,
+        entry_ctx,
+        seeds,
+        changed_paths,
+        provenance_live,
+    )?;
+    if frontier.is_empty() {
+        return Ok(false);
+    }
+    entry_claims_touch_frontier(entry_ctx, &list_value_from_vec(frontier))
+}
+
 pub fn discover_source_root_reads_for_entry(
     source_roots: &[String],
     entry_path: &str,
@@ -5699,6 +6160,9 @@ pub fn emit_source_root_ingest_manifest(
     };
 
     let mut out = String::new();
+    out.push_str(
+        "// GENERATED by discover_source_root_ingest — ephemeral host transport. DO NOT COMMIT.\n",
+    );
     out.push_str("module v2.test.workflow.host_source_root_ingest_manifest\n\n\n");
     out.push_str("import v2.compiler.source_authority {\n");
     out.push_str("  DagSourceReadWitness,\n");

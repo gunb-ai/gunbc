@@ -201,13 +201,13 @@ fn floor_provenance_ingest_is_live() -> Bool {
     && (length(xs: host_source_root_ingest) > 0)
 }
 
-fn floor_rerun_frontier_from_edit_loci(entry_root: Node, edit_loci: List<Node>) -> List<Node> {
+fn floor_rerun_frontier_from_edit_loci(_entry_root: Node, edit_loci: List<Node>) -> List<Node> {
   fold_list(
     xs: edit_loci,
     empty: Empty,
     cons: fn(acc, locus) {
       let reading = affected_set_reading_for_entry_root(
-        entry_root: entry_root,
+        entry_root: locus,
         edit_locus: locus
       )
       list_append(left: acc, right: reading.affected)
