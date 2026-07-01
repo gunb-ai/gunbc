@@ -18,14 +18,15 @@ import gunbc.merge_admission_produce {
   parse_receipt_wire,
 }
 import gunbc.ci_failure_class { merge_admission_blocks_merge }
-import gunbc.ci_spec { gunbc_ci_spec, ci_repo_root_shell }
+import gunbc.merge_admission_produce { ci_repo_root_shell }
+import gunbc.ci_spec { gunbc_ci_spec }
 
 fn merge_target_tree_hash() -> ContentHash {
   let policy = gunbc_ci_spec.diff_policy
   let result = shell.Exec.Run(
     script: concat(
-      concat("git rev-parse ", policy.base),
-      "^{tree} 2>/dev/null || true"
+      concat("git show -s --format=%T ", policy.base),
+      " 2>/dev/null || true"
     )
   )
   result.stdout

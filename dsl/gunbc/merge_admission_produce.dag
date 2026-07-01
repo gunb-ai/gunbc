@@ -13,8 +13,9 @@ import gunbc.merge_admission {
   mint_merge_admission_receipt,
   current_gate_roster_hash,
 }
-import gunbc.ci_spec { gunbc_ci_spec, ci_repo_root_shell }
 import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
+
+data merge_admission_merge_base_ref: String = "origin/main"
 
 data merge_admission_receipt_schema: String = "gunbc.merge_admission_receipt.v1"
 
@@ -55,7 +56,7 @@ fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
         Present {
           value: MergeAdmissionReceipt {
             pr_number: 0,
-            head_sha: if length(lines) > 3 { lines.skip(n: 3).first() } else { "" },
+            head_sha: receipt_wire_head_sha(lines: lines),
             base_tree_hash: lines.first(),
             gate_roster_hash: lines.skip(n: 1).first(),
             conclusion: conclusion,
@@ -64,6 +65,18 @@ fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
       Absent => none
     }
   }
+}
+
+fn receipt_wire_head_sha(lines: List<String>) -> CommitSha {
+  if length(lines) > 3 {
+    lines.skip(n: 3).first()
+  } else {
+    "0000000000000000000000000000000000000000"
+  }
+}
+
+fn ci_repo_root_shell() -> String {
+  "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 }
 
 fn gunbc_run_bin_shell() -> String {
@@ -108,7 +121,7 @@ fn ci_merge_admission_gate_script() -> String {
 }
 
 fn git_fetch_script_for_gate() -> String {
-  let parts = split(s: gunbc_ci_spec.diff_policy.base, delimiter: "/")
+  let parts = split(s: merge_admission_merge_base_ref, delimiter: "/")
   let remote = parts.first()
   let ref_name = fold(parts.skip(n: 1), init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
   concat(
