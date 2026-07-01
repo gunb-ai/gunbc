@@ -35,7 +35,7 @@ type RepoStandard {
 }
 
 type MergeAdmissionReceipt {
-  pr_number: Int
+  pr_number: Int?
   head_sha: CommitSha
   base_tree_hash: ContentHash
   gate_roster_hash: ContentHash
@@ -112,7 +112,7 @@ fn gate_roster_content_hash(roster: List<CommitCheckEnrollment>) -> ContentHash 
 data current_gate_roster_hash: ContentHash = gate_roster_content_hash(roster: commit_gate_roster)
 
 fn mint_merge_admission_receipt(
-  pr_number: Int,
+  pr_number: Int?,
   head_sha: CommitSha,
   base_tree_hash: ContentHash,
   gate_roster_hash: ContentHash,

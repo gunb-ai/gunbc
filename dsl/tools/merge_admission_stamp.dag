@@ -16,6 +16,8 @@ import gunbc.ci_spec { gunbc_ci_spec }
 
 data merge_admission_stamp_missing_floor_exit_is_failure: String = "CI_FLOOR_EXIT unset stamps floor_exit_code as Failure (non-zero) — fail-closed per §5; only the ci.yml floor tail sets CI_FLOOR_EXIT from claim_executor"
 
+data merge_admission_stamp_non_pr_omits_pr_number: String = "non-PR CI events (push to main, workflow_dispatch) omit pr_number from the receipt wire — jq requires .pull_request.number be a JSON number; absent field, not fabricated 0"
+
 fn env_var(name: NonEmptyStr) -> String? {
   let env = shell.Env.Get(name: name)
   match env.value {
@@ -26,25 +28,22 @@ fn env_var(name: NonEmptyStr) -> String? {
   }
 }
 
-fn pr_number_from_event() -> Int {
+fn pr_number_from_event() -> Int? {
   let line = match env_var(name: "GITHUB_EVENT_PATH") {
     Present { value: event_path } =>
       let result = shell.Exec.Run(
         script: concat(
           concat("if [ -f \"", event_path),
           concat(
-            "\" ]; then jq -r '.pull_request.number // 0' \"",
-            concat(event_path, "\" 2>/dev/null || echo 0; else echo 0; fi")
+            "\" ]; then jq -r 'if (.pull_request.number | type) == \"number\" then .pull_request.number else empty end' \"",
+            concat(event_path, "\" 2>/dev/null; else empty; fi")
           )
         )
       )
       result.stdout
-    Absent => "0"
+    Absent => ""
   }
-  match parse_int(s: shell_stdout_line(raw: line)) {
-    Present { value: n } => n
-    Absent => 0
-  }
+  parse_int(s: shell_stdout_line(raw: line))
 }
 
 fn merge_target_tree_hash() -> String {

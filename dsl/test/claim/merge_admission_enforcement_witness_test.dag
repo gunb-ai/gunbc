@@ -35,14 +35,14 @@ data scenario_roster_r1: ContentHash = "merge-admission-enforce-roster-r1"
 data scenario_head: ContentHash = "abc1234def5678901234567890abcd1234567890"
 
 data fresh_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
-  pr_number: 5933,
+  pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base_b0,
   floor_exit_code: 0,
 )
 
 data stale_base_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
-  pr_number: 5933,
+  pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base_b0,
   gate_roster_hash: current_gate_roster_hash,
@@ -50,7 +50,7 @@ data stale_base_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
 }
 
 data stale_roster_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
-  pr_number: 5933,
+  pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base_b0,
   gate_roster_hash: scenario_roster_r1,
@@ -58,7 +58,7 @@ data stale_roster_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
 }
 
 data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
-  pr_number: 5933,
+  pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base_b0,
   floor_exit_code: 1,

@@ -17,7 +17,10 @@ import gunbc.merge_admission_produce {
   ci_floor_stamp_merge_admission_script,
   shell_stdout_line,
 }
-import tools.merge_admission_stamp { merge_admission_stamp_missing_floor_exit_is_failure }
+import tools.merge_admission_stamp {
+  merge_admission_stamp_missing_floor_exit_is_failure,
+  merge_admission_stamp_non_pr_omits_pr_number,
+}
 import extdeps.github.checks { check_conclusion_wire_label }
 import std.types { ContentHash }
 
@@ -25,14 +28,14 @@ data scenario_base: ContentHash = "merge-admission-producer-base"
 data scenario_head: ContentHash = "abc1234def5678901234567890abcd1234567890"
 
 data green_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
-  pr_number: 5933,
+  pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base,
   floor_exit_code: 0,
 )
 
 data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
-  pr_number: 5933,
+  pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base,
   floor_exit_code: 1,
@@ -83,7 +86,10 @@ test fn wire_roundtrip_preserves_admission_fields() -> Bool {
         && (parsed.gate_roster_hash == current_gate_roster_hash)
         && (parsed.conclusion == Success)
         && (parsed.head_sha == scenario_head)
-        && (parsed.pr_number == 5933)
+        && match parsed.pr_number {
+          Present { value: n } => n == 5933
+          Absent => false
+        }
     Absent => false
   }
 }
@@ -102,7 +108,7 @@ test fn wire_missing_head_sha_returns_absent() -> Bool {
   }
 }
 
-test fn wire_missing_pr_number_returns_absent() -> Bool {
+test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
   let wire = concat(
     concat(
       concat(concat(scenario_base, "\n"), concat(current_gate_roster_hash, "\n")),
@@ -111,9 +117,41 @@ test fn wire_missing_pr_number_returns_absent() -> Bool {
     scenario_head
   )
   match parse_receipt_wire(text: wire) {
-    Present { value: _ } => false
-    Absent => true
+    Present { value: parsed } =>
+      match parsed.pr_number {
+        Absent => parsed.conclusion == Success
+        Present { value: _ } => false
+      }
+    Absent => false
   }
+}
+
+test fn wire_omitted_pr_roundtrips_without_fabricated_zero() -> Bool {
+  let receipt = stamp_floor_receipt(
+    pr_number: none,
+    head_sha: scenario_head,
+    base_tree_hash: scenario_base,
+    floor_exit_code: 0,
+  )
+  let wire = render_receipt_wire(receipt: receipt)
+  match parse_receipt_wire(text: wire) {
+    Present { value: parsed } =>
+      match parsed.pr_number {
+        Absent =>
+          (parsed.base_tree_hash == scenario_base)
+            && (parsed.conclusion == Success)
+            && (parsed.head_sha == scenario_head)
+        Present { value: _ } => false
+      }
+    Absent => false
+  }
+}
+
+test fn stamp_non_pr_event_omits_fabricated_pr_number() -> Bool {
+  string_contains(
+    s: merge_admission_stamp_non_pr_omits_pr_number,
+    pattern: "not fabricated 0"
+  )
 }
 
 test fn red_floor_stamps_failure_conclusion() -> Bool {
@@ -127,7 +165,7 @@ test fn receipt_schema_and_path_are_stable() -> Bool {
 
 test fn mint_matches_explicit_constructor() -> Bool {
   let explicit = mint_merge_admission_receipt(
-    pr_number: 5933,
+    pr_number: Present { value: 5933 },
     head_sha: scenario_head,
     base_tree_hash: scenario_base,
     gate_roster_hash: current_gate_roster_hash,
