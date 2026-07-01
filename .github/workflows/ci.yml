@@ -89,7 +89,9 @@ jobs:
           FLOOR_EXIT=$?
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           CI_FLOOR_EXIT=$FLOOR_EXIT "$ROOT/target/release/gunbc" run --source-root dsl --source-root src/v2 --entry dsl/tools/merge_admission_stamp.dag --function main
-          exit $FLOOR_EXIT
+          STAMP_EXIT=$?
+          if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
+          exit "$STAMP_EXIT"
       - name: Merge-admission gate (NOT ENFORCING until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)

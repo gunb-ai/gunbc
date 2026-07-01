@@ -173,8 +173,14 @@ fn ci_floor_stamp_merge_admission_script() -> String {
       concat("ROOT=", ci_repo_root_shell(), "\n")
     ),
     concat(
-      concat("CI_FLOOR_EXIT=$FLOOR_EXIT ", merge_admission_stamp_invoke()),
-      "exit $FLOOR_EXIT\n"
+      concat(
+        concat("CI_FLOOR_EXIT=$FLOOR_EXIT ", merge_admission_stamp_invoke()),
+        "STAMP_EXIT=$?\n"
+      ),
+      concat(
+        "if [ \"$FLOOR_EXIT\" -ne 0 ]; then exit \"$FLOOR_EXIT\"; fi\n",
+        "exit \"$STAMP_EXIT\"\n"
+      )
     )
   )
 }
