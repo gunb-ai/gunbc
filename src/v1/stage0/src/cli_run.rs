@@ -7170,7 +7170,9 @@ fn unwired_whole_decl_scaffold_names(files: &[(String, String)]) -> BTreeSet<Str
     let mut out = BTreeSet::new();
     for (_rel, content) in files {
         for raw in content.lines() {
-            let line = strip_line_comment(raw);
+            // Read the RAW line: the marker's decl_name lives INSIDE a string literal, which
+            // strip_line_comment would blank. (.dag comments are a parse error, so raw is safe.)
+            let line = raw;
             if !line.contains("WholeDeclaration") {
                 continue;
             }
@@ -7347,14 +7349,6 @@ pub fn unwired_model_declared_count_live() -> i64 {
 #[cfg(test)]
 mod unwired_model_tests {
     use super::*;
-    #[test]
-    fn zzz_dump_live_unwired_roster() {
-        let d = compute_unwired_model_data(&corpus_dag_files());
-        let mut out = String::new();
-        for n in &d.unwired_names { out.push_str(n); out.push('\n'); }
-        std::fs::write("/tmp/claude-1000/-home-briansrls--worktrees-gunbc-quiet-hawk-578/c56374ed-d281-41ed-b8de-ddbe793feb52/scratchpad/rust_roster.txt", out).unwrap();
-        eprintln!("DUMPED {} names, declared_count {}", d.unwired_names.len(), d.declared_count);
-    }
 
     fn unwired_names_of(files: &[(&str, &str)]) -> Vec<String> {
         let owned: Vec<(String, String)> = files
@@ -7394,7 +7388,10 @@ mod unwired_model_tests {
     #[test]
     fn red_control_self_tested_zero_consumer_fn_is_unwired() {
         let unwired = unwired_names_of(&[
-            ("a.dag", "module a\nfn lonely_helper(x: Int) -> Int { x + 1 }\n"),
+            (
+                "a.dag",
+                "module a\nfn lonely_helper(x: Int) -> Int { x + 1 }\n",
+            ),
             (
                 "a_test.dag",
                 "module t\nfn t() -> Bool { lonely_helper(x: 1) == 2 }\n",
@@ -7410,7 +7407,10 @@ mod unwired_model_tests {
     fn red_control_self_tested_zero_consumer_data_is_unwired() {
         let unwired = unwired_names_of(&[
             ("a.dag", "module a\ndata lonely_row: Int = 7\n"),
-            ("a_test.dag", "module t\nfn t() -> Bool { lonely_row == 7 }\n"),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { lonely_row == 7 }\n",
+            ),
         ]);
         assert!(
             unwired.contains(&"lonely_row".to_string()),
@@ -7421,7 +7421,10 @@ mod unwired_model_tests {
     #[test]
     fn green_control_fn_with_real_consumer_is_wired() {
         let unwired = unwired_names_of(&[
-            ("a.dag", "module a\nfn used_helper(x: Int) -> Int { x + 1 }\n"),
+            (
+                "a.dag",
+                "module a\nfn used_helper(x: Int) -> Int { x + 1 }\n",
+            ),
             (
                 "b.dag",
                 "module b\nimport a { used_helper }\nfn caller() -> Int { used_helper(x: 2) }\n",
