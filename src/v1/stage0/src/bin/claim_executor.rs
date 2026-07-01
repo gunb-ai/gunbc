@@ -12,9 +12,19 @@ use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     compute_histogram_data, compute_witness_timing_rows, make_eval_context, resolve_entry_graph,
     run_claim, run_discovery_corpus_with_options, run_value, top_n_slowest_witnesses, ClaimOutcome,
-    DiscoveryCorpusOptions, DiscoverySummary, HistogramData, TimingPercentiles, WitnessTimingRow,
-    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    DiscoveryCorpusOptions, DiscoverySummary, HistogramData, LayerSpanLane, TimingPercentiles,
+    WitnessTimingRow, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
+
+/// Run-wide layer-span lane, set once from `--layer-span-lane` in `main` and
+/// read when each discovery batch builds its DiscoveryCorpusOptions. A run-wide
+/// immutable selector (like the CI lane it serves), so a OnceLock avoids
+/// threading the flag through the parallel batch scheduler. Defaults to `All`.
+static LAYER_SPAN_LANE: std::sync::OnceLock<LayerSpanLane> = std::sync::OnceLock::new();
+
+fn active_layer_span_lane() -> LayerSpanLane {
+    *LAYER_SPAN_LANE.get().unwrap_or(&LayerSpanLane::All)
+}
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
 };
@@ -782,7 +792,7 @@ fn run_discovery_batch_node(
             exclude_substrings,
             discovery_scope_dirs,
             spawn_width_cap,
-            ..Default::default()
+            layer_span_lane: active_layer_span_lane(),
         },
     ) {
         Ok(summary) if summary.failures.is_empty() => {
@@ -1681,6 +1691,18 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--notice-title" => {
                 i += 1;
                 notice_title = Some(require_value(&args, i, "--notice-title")?);
+            }
+            "--layer-span-lane" => {
+                i += 1;
+                let value = require_value(&args, i, "--layer-span-lane")?;
+                let lane = LayerSpanLane::from_flag(&value).map_err(|msg| {
+                    eprintln!("claim_executor: {msg}");
+                    ExitCode::from(2)
+                })?;
+                if LAYER_SPAN_LANE.set(lane).is_err() {
+                    eprintln!("claim_executor: --layer-span-lane specified more than once");
+                    return Err(ExitCode::from(2));
+                }
             }
             "--perturb-check" => perturb_check = true,
             "--measure-cgroup-peak" => measure_cgroup_peak = true,

@@ -3509,6 +3509,19 @@ impl LayerSpanLane {
             LayerSpanLane::Integration => span >= 2,
         }
     }
+
+    /// Parse the `--layer-span-lane` CLI value. Unknown values fail closed to an
+    /// error so a typo cannot silently run the wrong (or full) corpus.
+    pub fn from_flag(value: &str) -> Result<LayerSpanLane, String> {
+        match value {
+            "all" => Ok(LayerSpanLane::All),
+            "floor" => Ok(LayerSpanLane::Floor),
+            "integration" => Ok(LayerSpanLane::Integration),
+            other => Err(format!(
+                "unknown --layer-span-lane value '{other}' (expected: all | floor | integration)"
+            )),
+        }
+    }
 }
 
 fn inert_lens_modules(
