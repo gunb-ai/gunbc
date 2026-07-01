@@ -1,0 +1,35 @@
+{
+    "grants": [
+        {"src": ["autogroup:member"], "dst": ["*"], "ip": ["*"]},
+        {"src": ["tag:ci"], "dst": ["100.65.94.55", "tag:dashboard"], "ip": ["tcp:3737"]},
+        {"src": ["tag:dashboard"], "dst": ["tag:dashboard"], "ip": ["*"]},
+        {"src": ["tag:dashboard"], "dst": ["tag:ci"], "ip": ["tcp:22"]}
+    ],
+    "ssh": [
+        {
+            "action": "accept",
+            "src":    ["autogroup:member"],
+            "dst":    ["autogroup:self"],
+            "users":  ["autogroup:nonroot", "root"]
+        },
+        {
+            "action": "accept",
+            "src":    ["autogroup:member"],
+            "dst":    ["tag:ci"],
+            "users":  ["autogroup:nonroot"]
+        },
+        {
+            "action": "accept",
+            "src":    ["tag:dashboard"],
+            "dst":    ["tag:ci"],
+            "users":  ["autogroup:nonroot", "root"]
+        }
+    ],
+    "nodeAttrs": [
+        {"target": ["autogroup:member"], "attr": ["funnel"]}
+    ],
+    "tagOwners": {
+        "tag:ci": ["autogroup:admin"],
+        "tag:dashboard": ["autogroup:admin"]
+    }
+}
