@@ -279,16 +279,10 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             int_type(),
         );
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_doc_count".to_string(), int_type());
-        let m = v1_rt::rc_map_insert(m.clone(), "inert_carrier_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "inert_carrier_unrostered_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "inert_carrier_stale_roster_count".to_string(),
-            int_type(),
+            "inert_carrier_names_live".to_string(),
+            list_of_type_variable("inert_carrier_name_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
