@@ -1201,15 +1201,9 @@ fn data_init_literal_fingerprint(body: &Rc<Node>) -> Option<String> {
     // Encoding must match `v2.std.data_index` (`literal_fingerprint_*_lexeme`).
     match body.expr_data.as_ref() {
         ExprData::ExprLiteral { value, .. } => match value.as_ref() {
-            crate::std_syntax::LiteralValue::LitInt { value: n, .. } => {
-                Some(format!("num:{n}"))
-            }
-            crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => {
-                Some(format!("num:{f}"))
-            }
-            crate::std_syntax::LiteralValue::LitBool { value: b } => {
-                Some(format!("bool:{b}"))
-            }
+            crate::std_syntax::LiteralValue::LitInt { value: n, .. } => Some(format!("num:{n}")),
+            crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => Some(format!("num:{f}")),
+            crate::std_syntax::LiteralValue::LitBool { value: b } => Some(format!("bool:{b}")),
             crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
                 Some(format!("str:\"{s}\""))
             }
