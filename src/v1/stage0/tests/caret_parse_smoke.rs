@@ -15,7 +15,7 @@ fn tokenize_expr(src: &str) -> Rc<Vec<Rc<v1_compiler::v1_std_core::Token>>> {
     tokenize(src.to_string(), "test.dag".to_string())
 }
 
-fn token_stream_remaining<'a>(stream: &'a TokenStream) -> &'a [Rc<v1_compiler::v1_std_core::Token>] {
+fn token_stream_remaining(stream: &TokenStream) -> &[Rc<v1_compiler::v1_std_core::Token>] {
     stream
         .all
         .get(stream.pos as usize..)
