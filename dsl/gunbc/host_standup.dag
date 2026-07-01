@@ -202,8 +202,8 @@ data host_standup_spine: List<HostStandupStep> = [
     phase: ReachSecretsNetwork,
     label: "P0:reach-secrets-network",
     disposition: DeclaredGap {
-      interim_realization: "ACL authority: extdeps.tailscale.acl + gunbc.tailscale_acl_emit (fixture: dsl/test/fixture/tailscale_acl_reference.hujson); credential interim: ctrl:scripts/session-dashboard/lib/spawn_github_token.mjs; bind-dir interim: scripts/session-dashboard/container_runtime.mjs#prepareHostBindDirs",
-      refusal: "host_standup:P0:reach-secrets-network:partial — Tailscale ACL modeled+emit; refuse live upsert until API credential authority lands (Phase 2)"
+      interim_realization: "ACL authority: extdeps.tailscale.acl + gunbc.tailscale_acl_emit (fixture: dsl/test/fixture/tailscale_acl_reference.hujson); Phase 2 credential design: gunbc.tailscale_acl_phase2_credential (operator user-principal Secret Accessor, ADC-only, no repo WIF); bind-dir interim: scripts/session-dashboard/container_runtime.mjs#prepareHostBindDirs",
+      refusal: "host_standup:P0:reach-secrets-network:partial — ACL modeled+emit; Phase 2 credential design landed (DESIGN_ONLY); refuse live upsert until operator sign-off on tailscale_acl_upsert_wet"
     },
     effect_policy: OneShotIdempotent
   ),

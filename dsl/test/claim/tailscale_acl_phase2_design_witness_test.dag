@@ -1,0 +1,86 @@
+module test.claim.tailscale_acl_phase2_design_witness
+
+import gunbc.tailscale_acl_phase2_credential {
+  tailscale_acl_api_key_secret_id,
+  tailscale_acl_operator_principal,
+  tailscale_acl_operator_email,
+  operator_principal_member,
+  operator_tailscale_acl_secret_bindings,
+  tailscale_acl_uses_operator_adc_not_wif,
+  tailscale_acl_admits_repo_scoped_wif,
+  tailscale_acl_operator_binding_is_user_principal_only,
+  tailscale_acl_operator_binding_excludes_bmc_assimilator,
+  tailscale_acl_operator_binding_excludes_wif_principal,
+  tailscale_acl_phase2_credential_design_holds,
+  tailscale_acl_phase2_design_status,
+  tailscale_acl_phase2_live_write_disposition,
+  acl_auto_upsert_refused,
+  acl_upsert_permitted,
+  DiffPending,
+  OperatorConfirmed,
+  RefusedAutoUpsert,
+  PoliciesDiffer,
+  PoliciesMatch,
+  acl_diff_from_authority,
+}
+import gunbc.assimilate.bmc_token_federation {
+  bmc_secrets_project_id,
+  bmc_federated_github_repo,
+  bmc_wif_principal_set,
+}
+import extdeps.cloud.gcp.iam { role_secretmanager_secret_accessor }
+import std.disposition { Scaffold, SingleAuthority }
+
+fn witness_secret_homed_in_gunbai_secrets() -> Bool {
+  operator_tailscale_acl_secret_bindings.first().project == bmc_secrets_project_id
+    && operator_tailscale_acl_secret_bindings.first().secret == (tailscale_acl_api_key_secret_id as String)
+}
+
+fn witness_operator_user_principal_accessor_only() -> Bool {
+  tailscale_acl_operator_binding_is_user_principal_only()
+    && operator_tailscale_acl_secret_bindings.first().role == role_secretmanager_secret_accessor
+    && operator_principal_member() == (tailscale_acl_operator_principal as String)
+    && string_contains(s: operator_principal_member(), pattern: tailscale_acl_operator_email as String)
+}
+
+fn witness_excludes_repo_scoped_wif() -> Bool {
+  !tailscale_acl_admits_repo_scoped_wif()
+    && tailscale_acl_operator_binding_excludes_wif_principal()
+    && tailscale_acl_operator_binding_excludes_bmc_assimilator()
+    && string_contains(s: bmc_wif_principal_set(), pattern: bmc_federated_github_repo)
+}
+
+fn witness_uses_operator_adc_not_ci_federation() -> Bool {
+  tailscale_acl_uses_operator_adc_not_wif()
+}
+
+fn witness_diff_gate_refuses_auto_upsert() -> Bool {
+  acl_auto_upsert_refused(gate: DiffPending { diff: PoliciesMatch })
+    && acl_auto_upsert_refused(gate: DiffPending {
+      diff: PoliciesDiffer { emitted: "{}", live: "{\"grants\":[]}" }
+    })
+    && acl_auto_upsert_refused(gate: RefusedAutoUpsert { reason: "operator has not confirmed" })
+    && acl_upsert_permitted(gate: OperatorConfirmed { emitted: "{}" })
+}
+
+fn witness_phase2_is_design_only_scaffold() -> Bool {
+  string_contains(s: tailscale_acl_phase2_design_status, pattern: "DESIGN_ONLY")
+    && match tailscale_acl_phase2_live_write_disposition {
+      Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+      _ => false
+    }
+}
+
+fn witness_design_spine() -> Bool {
+  tailscale_acl_phase2_credential_design_holds()
+}
+
+test fn tailscale_acl_phase2_design_witnesses() -> Bool {
+  witness_secret_homed_in_gunbai_secrets()
+    && witness_operator_user_principal_accessor_only()
+    && witness_excludes_repo_scoped_wif()
+    && witness_uses_operator_adc_not_ci_federation()
+    && witness_diff_gate_refuses_auto_upsert()
+    && witness_phase2_is_design_only_scaffold()
+    && witness_design_spine()
+}
