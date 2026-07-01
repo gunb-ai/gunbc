@@ -134,16 +134,12 @@ fn witness_fixture_memory_max_drifts_against_model_cap() -> Bool {
 }
 
 fn witness_fixture_swap_max_converges_to_zero() -> Bool {
-  runner_unit_swap_max_converged(read: fixture_live_read())
+  runner_unit_swap_max_converged(read: fixture_live_read(), target: fixture_swap_max_target())
 }
 
 fn witness_matching_read_converges_on_memory_max_target() -> Bool {
   let read = runner_unit_live_read_typed(row: matching_memory_max_row())
-  match converge_target_live_verdict(
-    read: read,
-    target: fixture_memory_max_target(),
-    desired: gunbc_ci_runner_cgroup_memory_cap
-  ) {
+  match converge_target_live_verdict(read: read, target: fixture_memory_max_target()) {
     Present { value: Converged } => true
     _ => false
   }
@@ -151,12 +147,22 @@ fn witness_matching_read_converges_on_memory_max_target() -> Bool {
 
 fn witness_drift_read_fails_memory_max_target() -> Bool {
   let read = runner_unit_live_read_typed(row: drift_memory_max_row())
-  match converge_target_live_verdict(
-    read: read,
-    target: fixture_memory_max_target(),
-    desired: gunbc_ci_runner_cgroup_memory_cap
-  ) {
+  match converge_target_live_verdict(read: read, target: fixture_memory_max_target()) {
     Present { value: Drifted } => true
+    _ => false
+  }
+}
+
+fn witness_target_bytes_value_is_single_authority() -> Bool {
+  let read = runner_unit_live_read_typed(row: drift_memory_max_row())
+  let target = PerSlotMemoryCap {
+    dropin_path: gunbc_runner_per_slot_dropin_path,
+    instance_glob: runner_instance_glob(host: fixture_host()),
+    property: systemd_memory_max_property,
+    bytes_value: "30000000000",
+  }
+  match converge_target_live_verdict(read: read, target: target) {
+    Present { value: Converged } => true
     _ => false
   }
 }
@@ -188,5 +194,6 @@ test fn runner_unit_live_read_grounds_converge_target() -> Bool {
     && witness_fixture_memory_max_drifts_against_model_cap()
     && witness_fixture_swap_max_converges_to_zero()
     && witness_perturbed_fixture_read_diff_red_on_memory_max()
+    && witness_target_bytes_value_is_single_authority()
     && witness_cap_effectiveness_projection_matches_runner_slot_type()
 }
