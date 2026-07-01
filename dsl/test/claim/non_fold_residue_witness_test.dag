@@ -5,5 +5,5 @@ test fn non_fold_residue_clean_holds() -> Bool {
 }
 
 test fn non_fold_residue_universe_is_nonempty() -> Bool {
-  return non_fold_residue_count() > 0
+  return non_fold_residue_coproduct_universe_count() > 0
 }
