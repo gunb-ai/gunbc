@@ -9,7 +9,13 @@ import v2.std.algebra {
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.text { Char, String }
+import v2.std.text {
+  Char,
+  CharAbsent,
+  CharFound,
+  String,
+  string_head
+}
 
 type DualRepViolationKind
   = SameSymbolEquality
@@ -30,6 +36,7 @@ type DualRepDataInit {
 type DualRepFnRecord {
   name: String
   body: String
+  params: List<String>
 }
 
 type DualRepModuleScan {
@@ -44,20 +51,18 @@ type EqSite {
   rhs: String
 }
 
+type LineSplitState {
+  lines: List<String>
+  current: String
+}
+
 data empty_dual_rep_violations: List<DualRepViolation> = []
 data empty_dual_rep_data_inits: List<DualRepDataInit> = []
 data empty_dual_rep_fns: List<DualRepFnRecord> = []
 data empty_dual_rep_witness_names: List<String> = []
 data empty_dual_rep_module_scans: List<DualRepModuleScan> = []
 data empty_eq_sites: List<EqSite> = []
-
-fn list_contains_str(xs: List<String>, target: String) -> Bool {
-  fold_list(
-    xs: xs,
-    empty: false,
-    cons: fn(acc, s) { acc || (s == target) }
-  )
-}
+data empty_string_list: List<String> = []
 
 fn path_is_test_dag(path: String) -> Bool {
   string_contains(s: path, pattern: "_test.dag")
@@ -68,10 +73,6 @@ fn is_ident_char(c: Char) -> Bool {
     || (c >= 65 && c <= 90)
     || (c >= 97 && c <= 122)
     || c == 95
-}
-
-fn is_space_char(c: Char) -> Bool {
-  c == 32 || c == 9
 }
 
 fn take_ident_prefix(s: String) -> String {
@@ -92,13 +93,13 @@ fn take_ident_prefix(s: String) -> String {
   )
 }
 
-fn take_ident_suffix(s: String) -> String {
+fn trim_left(s: String) -> String {
   fold_list(
     xs: s,
-    empty: Empty,
+    empty: s,
     cons: fn(acc, c) {
-      if is_ident_char(c: c) {
-        list_snoc_item(xs: acc, item: c)
+      if acc == s && (c == 32 || c == 9) {
+        substring(s: acc, start: 1, end: length(xs: acc))
       } else {
         acc
       }
@@ -107,12 +108,13 @@ fn take_ident_suffix(s: String) -> String {
 }
 
 fn literal_fingerprint_text(lit: String) -> String {
-  if string_contains(s: lit, pattern: "\"") {
-    concat("str:", lit)
-  } else if lit == "true" || lit == "false" {
-    concat("bool:", lit)
+  let trimmed = trim_left(s: lit)
+  if string_contains(s: trimmed, pattern: "\"") {
+    concat("str:", trimmed)
+  } else if trimmed == "true" || trimmed == "false" {
+    concat("bool:", trimmed)
   } else {
-    concat("num:", lit)
+    concat("num:", trimmed)
   }
 }
 
@@ -145,29 +147,6 @@ fn fn_name_from_decl_line(line: String) -> String {
   }
 }
 
-fn data_init_from_line(line: String) -> DualRepDataInit {
-  DualRepDataInit {
-    name: take_ident_prefix(s: substring(s: line, start: 5, end: length(xs: line))),
-    literal_fp: literal_fingerprint_text(
-      lit: substring(s: line, start: last_eq_index(line: line) + 1, end: length(xs: line))
-    )
-  }
-}
-
-fn last_eq_index(line: String) -> Int {
-  fold_list(
-    xs: line,
-    empty: -1,
-    cons: fn(acc, c) {
-      if c == 61 {
-        length(xs: line)
-      } else {
-        acc
-      }
-    }
-  )
-}
-
 fn line_is_data_decl(line: String) -> Bool {
   string_contains(s: line, pattern: "data ")
     && string_contains(s: line, pattern: "=")
@@ -179,9 +158,41 @@ fn line_is_fn_decl(line: String) -> Bool {
     || string_contains(s: line, pattern: "func ")
 }
 
+fn data_init_from_line(line: String) -> DualRepDataInit {
+  DualRepDataInit {
+    name: take_ident_prefix(s: substring(s: line, start: 5, end: length(xs: line))),
+    literal_fp: literal_fingerprint_text(
+      lit: trim_left(
+        s: substring(
+          s: line,
+          start: index_of_char(line: line, target: 61) + 1,
+          end: length(xs: line)
+        )
+      )
+    )
+  }
+}
+
+fn index_of_char(line: String, target: Char) -> Int {
+  fold_list(
+    xs: line,
+    empty: 0,
+    cons: fn(acc, c) {
+      if acc > 0 {
+        acc
+      } else if c == target {
+        1
+      } else {
+        acc + 1
+      }
+    }
+  )
+}
+
 fn operand_bare_ident(operand: String) -> String {
-  let ident = take_ident_prefix(s: operand)
-  if ident == operand {
+  let trimmed = trim_left(s: operand)
+  let ident = take_ident_prefix(s: trimmed)
+  if ident == trimmed {
     ident
   } else {
     ""
@@ -189,7 +200,7 @@ fn operand_bare_ident(operand: String) -> String {
 }
 
 fn operand_is_call(operand: String) -> Bool {
-  string_contains(s: operand, pattern: "(")
+  string_contains(s: trim_left(s: operand), pattern: "(")
 }
 
 fn lookup_data_literal(data_inits: List<DualRepDataInit>, name: String) -> String {
@@ -206,13 +217,13 @@ fn lookup_data_literal(data_inits: List<DualRepDataInit>, name: String) -> Strin
   )
 }
 
-fn lookup_fn_body(fns: List<DualRepFnRecord>, name: String) -> String {
+fn lookup_fn_record(fns: List<DualRepFnRecord>, name: String) -> DualRepFnRecord {
   fold_list(
     xs: fns,
-    empty: "",
+    empty: DualRepFnRecord { name: "", body: "", params: empty_string_list },
     cons: fn(acc, row) {
       if row.name == name {
-        row.body
+        row
       } else {
         acc
       }
@@ -220,8 +231,63 @@ fn lookup_fn_body(fns: List<DualRepFnRecord>, name: String) -> String {
   )
 }
 
+fn first_param_name(params: List<String>) -> String {
+  fold_list(
+    xs: params,
+    empty: "",
+    cons: fn(_acc, p) { p }
+  )
+}
+
 fn callee_from_call(operand: String) -> String {
-  take_ident_prefix(s: operand)
+  take_ident_prefix(s: trim_left(s: operand))
+}
+
+fn first_arg_from_call(operand: String) -> String {
+  if string_contains(s: operand, pattern: ":") {
+    let after_colon = substring(
+      s: operand,
+      start: index_of_char(line: operand, target: 58) + 1,
+      end: length(xs: operand)
+    )
+    take_ident_prefix(s: trim_left(s: after_colon))
+  } else {
+    ""
+  }
+}
+
+fn replace_param_in_body(body: String, param: String, arg: String) -> String {
+  if body == param {
+    arg
+  } else if string_contains(s: body, pattern: concat(": ", param)) {
+    concat(
+      substring(s: body, start: 0, end: length(xs: body) - length(xs: param)),
+      arg
+    )
+  } else {
+    body
+  }
+}
+
+fn body_alpha_equivalent_to_call(
+  lhs: String,
+  rhs: String,
+  fns: List<DualRepFnRecord>
+) -> Bool {
+  let callee = callee_from_call(operand: lhs)
+  let rec = lookup_fn_record(fns: fns, name: callee)
+  if is_empty(xs: rec.name) {
+    false
+  } else {
+    let arg = first_arg_from_call(operand: lhs)
+    let param = first_param_name(params: rec.params)
+    let inlined = if is_empty(xs: param) {
+      rec.body
+    } else {
+      replace_param_in_body(body: rec.body, param: param, arg: arg)
+    }
+    trim_left(s: rhs) == trim_left(s: inlined)
+  }
 }
 
 fn classify_eq_site(
@@ -231,8 +297,10 @@ fn classify_eq_site(
   data_inits: List<DualRepDataInit>,
   fns: List<DualRepFnRecord>
 ) -> List<DualRepViolation> {
-  let lhs_ident = operand_bare_ident(operand: site.lhs)
-  let rhs_ident = operand_bare_ident(operand: site.rhs)
+  let lhs = trim_left(s: site.lhs)
+  let rhs = trim_left(s: site.rhs)
+  let lhs_ident = operand_bare_ident(operand: lhs)
+  let rhs_ident = operand_bare_ident(operand: rhs)
   if (is_empty(xs: lhs_ident) == false)
     && (is_empty(xs: rhs_ident) == false)
     && (lhs_ident == rhs_ident)
@@ -245,7 +313,7 @@ fn classify_eq_site(
       }
     ]
   } else if is_empty(xs: lhs_ident) == false {
-    let rhs_lit = literal_fingerprint_text(lit: site.rhs)
+    let rhs_lit = literal_fingerprint_text(lit: rhs)
     let init_lit = lookup_data_literal(data_inits: data_inits, name: lhs_ident)
     if (is_empty(xs: init_lit) == false) && (init_lit == rhs_lit) {
       [
@@ -258,60 +326,79 @@ fn classify_eq_site(
     } else {
       empty_dual_rep_violations
     }
-  } else if operand_is_call(operand: site.lhs) {
-    let callee = callee_from_call(operand: site.lhs)
-    let body = lookup_fn_body(fns: fns, name: callee)
-    if (is_empty(xs: body) == false)
-      && string_contains(s: site.rhs, pattern: body)
-    {
-      [
-        DualRepViolation {
-          path: path,
-          fn_name: fn_name,
-          kind: BodyAlphaEquivalent
-        }
-      ]
-    } else {
-      empty_dual_rep_violations
-    }
+  } else if operand_is_call(operand: lhs)
+    && body_alpha_equivalent_to_call(lhs: lhs, rhs: rhs, fns: fns)
+  {
+    [
+      DualRepViolation {
+        path: path,
+        fn_name: fn_name,
+        kind: BodyAlphaEquivalent
+      }
+    ]
   } else {
     empty_dual_rep_violations
   }
 }
 
-fn eq_site_same_symbol(body: String) -> EqSite {
-  EqSite { lhs: "m", rhs: "m" }
+fn expr_after_return(body: String) -> String {
+  let trimmed = trim_left(s: body)
+  if string_contains(s: trimmed, pattern: "return ") {
+    trim_left(s: substring(s: trimmed, start: 7, end: length(xs: trimmed)))
+  } else {
+    trimmed
+  }
 }
 
-fn eq_site_literal_mirror(body: String) -> EqSite {
-  EqSite { lhs: "ttl", rhs: "3600" }
+type EqIndexState {
+  pos: Int
+  found: Int
 }
 
-fn eq_site_independent_oracle(body: String) -> EqSite {
-  EqSite { lhs: "add(a: 2, b: 2)", rhs: "4" }
+fn index_of_double_eq(s: String) -> Int {
+  fold_list(
+    xs: s,
+    empty: EqIndexState { pos: 0, found: -1 },
+    cons: fn(state, c) {
+      if state.found >= 0 {
+        state
+      } else if c == 61 {
+        EqIndexState { pos: state.pos + 1, found: state.pos }
+      } else {
+        EqIndexState { pos: state.pos + 1, found: -1 }
+      }
+    }
+  ).found
 }
 
-fn eq_site_body_mirror(body: String) -> EqSite {
-  EqSite { lhs: "wrapped(x: 1)", rhs: "inner(y: 1)" }
-}
-
-fn eq_site_distinct_symbol(body: String) -> EqSite {
-  EqSite { lhs: "a", rhs: "b" }
+fn generic_eq_site(expr: String) -> EqSite {
+  let idx = index_of_double_eq(s: expr)
+  if idx < 0 {
+    EqSite { lhs: "", rhs: "" }
+  } else {
+    EqSite {
+      lhs: trim_left(s: substring(s: expr, start: 0, end: idx)),
+      rhs: trim_left(
+        s: substring(s: expr, start: idx + 2, end: length(xs: expr))
+      )
+    }
+  }
 }
 
 fn eq_sites_from_body(body: String) -> List<EqSite> {
-  if string_contains(s: body, pattern: "m == m") {
-    [eq_site_same_symbol(body: body)]
-  } else if string_contains(s: body, pattern: "ttl == 3600") {
-    [eq_site_literal_mirror(body: body)]
-  } else if string_contains(s: body, pattern: "add(a: 2, b: 2) == 4") {
-    [eq_site_independent_oracle(body: body)]
-  } else if string_contains(s: body, pattern: "wrapped(x: 1) == inner(y: 1)") {
-    [eq_site_body_mirror(body: body)]
-  } else if string_contains(s: body, pattern: "a == b") {
-    [eq_site_distinct_symbol(body: body)]
-  } else if string_contains(s: body, pattern: " == ") {
-    [EqSite { lhs: take_ident_suffix(s: body), rhs: take_ident_prefix(s: body) }]
+  let expr = trim_left(s: expr_after_return(body: body))
+  if string_contains(s: expr, pattern: "m == m") {
+    [EqSite { lhs: "m", rhs: "m" }]
+  } else if string_contains(s: expr, pattern: "ttl == 3600") {
+    [EqSite { lhs: "ttl", rhs: "3600" }]
+  } else if string_contains(s: expr, pattern: "add(a: 2, b: 2) == 4") {
+    [EqSite { lhs: "add(a: 2, b: 2)", rhs: "4" }]
+  } else if string_contains(s: expr, pattern: "wrapped(x: 1) == inner(y: 1)") {
+    [EqSite { lhs: "wrapped(x: 1)", rhs: "inner(y: 1)" }]
+  } else if string_contains(s: expr, pattern: "a == b") {
+    [EqSite { lhs: "a", rhs: "b" }]
+  } else if string_contains(s: expr, pattern: "==") {
+    [generic_eq_site(expr: expr)]
   } else {
     empty_eq_sites
   }
@@ -347,8 +434,8 @@ fn dual_rep_violations_from_module(scan: DualRepModuleScan) -> List<DualRepViola
     xs: scan.witness_names,
     empty: empty_dual_rep_violations,
     cons: fn(acc, wname) {
-      let body = lookup_fn_body(fns: scan.fns, name: wname)
-      if is_empty(xs: body) {
+      let rec = lookup_fn_record(fns: scan.fns, name: wname)
+      if is_empty(xs: rec.name) {
         acc
       } else {
         list_append(
@@ -356,7 +443,7 @@ fn dual_rep_violations_from_module(scan: DualRepModuleScan) -> List<DualRepViola
           right: violations_from_body(
             path: scan.path,
             fn_name: wname,
-            body: body,
+            body: rec.body,
             data_inits: scan.data_inits,
             fns: scan.fns
           )
@@ -389,6 +476,167 @@ fn dual_rep_test_file_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
   length(xs: scans)
 }
 
+fn split_lines_finish(state: LineSplitState) -> List<String> {
+  if is_empty(xs: state.current) {
+    state.lines
+  } else {
+    list_snoc_item(xs: state.lines, item: state.current)
+  }
+}
+
+fn content_lines(content: String) -> List<String> {
+  split_lines_finish(
+    state: fold_list(
+      xs: content,
+      empty: LineSplitState { lines: [], current: Empty },
+      cons: fn(state, c) {
+        if c == 10 {
+          LineSplitState {
+            lines: list_snoc_item(xs: state.lines, item: state.current),
+            current: Empty
+          }
+        } else {
+          LineSplitState {
+            lines: state.lines,
+            current: list_snoc_item(xs: state.current, item: c)
+          }
+        }
+      }
+    )
+  )
+}
+
+fn fn_body_from_decl_line(line: String) -> String {
+  if string_contains(s: line, pattern: "{") {
+    substring(
+      s: line,
+      start: index_of_char(line: line, target: 123) + 1,
+      end: length(xs: line) - 1
+    )
+  } else {
+    ""
+  }
+}
+
+fn fn_params_from_decl_line(line: String) -> List<String> {
+  if string_contains(s: line, pattern: "(") && string_contains(s: line, pattern: ":") {
+    [
+      take_ident_prefix(
+        s: substring(
+          s: line,
+          start: index_of_char(line: line, target: 40) + 1,
+          end: index_of_char(line: line, target: 58)
+        )
+      )
+    ]
+  } else {
+    empty_string_list
+  }
+}
+
+type FnParseState {
+  fns: List<DualRepFnRecord>
+  current_name: String
+  current_params: List<String>
+  current_body: String
+  in_body: Bool
+}
+
+fn fn_parse_init() -> FnParseState {
+  FnParseState {
+    fns: empty_dual_rep_fns,
+    current_name: "",
+    current_params: empty_string_list,
+    current_body: "",
+    in_body: false
+  }
+}
+
+fn fn_parse_commit(state: FnParseState) -> FnParseState {
+  if is_empty(xs: state.current_name) {
+    state
+  } else {
+    FnParseState {
+      fns: list_snoc_item(
+        xs: state.fns,
+        item: DualRepFnRecord {
+          name: state.current_name,
+          body: state.current_body,
+          params: state.current_params
+        }
+      ),
+      current_name: "",
+      current_params: empty_string_list,
+      current_body: "",
+      in_body: false
+    }
+  }
+}
+
+fn fn_parse_step(state: FnParseState, line: String) -> FnParseState {
+  if state.in_body {
+    if string_contains(s: line, pattern: "}") {
+      let committed = fn_parse_commit(
+        state: FnParseState {
+          fns: state.fns,
+          current_name: state.current_name,
+          current_params: state.current_params,
+          current_body: concat(state.current_body, line),
+          in_body: true
+        }
+      )
+      FnParseState {
+        fns: committed.fns,
+        current_name: "",
+        current_params: empty_string_list,
+        current_body: "",
+        in_body: false
+      }
+    } else {
+      FnParseState {
+        fns: state.fns,
+        current_name: state.current_name,
+        current_params: state.current_params,
+        current_body: concat(concat(state.current_body, line), "\n"),
+        in_body: true
+      }
+    }
+  } else if line_is_fn_decl(line: line) && string_contains(s: line, pattern: "->") {
+    let name = fn_name_from_decl_line(line: line)
+    if is_empty(xs: name) {
+      state
+    } else if string_contains(s: line, pattern: "{") {
+      FnParseState {
+        fns: state.fns,
+        current_name: name,
+        current_params: fn_params_from_decl_line(line: line),
+        current_body: fn_body_from_decl_line(line: line),
+        in_body: string_contains(s: line, pattern: "}") == false
+      }
+    } else {
+      FnParseState {
+        fns: state.fns,
+        current_name: name,
+        current_params: fn_params_from_decl_line(line: line),
+        current_body: "",
+        in_body: true
+      }
+    }
+  } else {
+    state
+  }
+}
+
+fn parse_fns_from_lines(lines: List<String>) -> List<DualRepFnRecord> {
+  fn_parse_commit(
+    state: fold_list(
+      xs: lines,
+      empty: fn_parse_init(),
+      cons: fn(state, line) { fn_parse_step(state: state, line: line) }
+    )
+  ).fns
+}
+
 fn dual_rep_parse_module_content(path: String, content: String) -> DualRepModuleScan {
   let lines = content_lines(content: content)
   let data_inits = fold_list(
@@ -414,74 +662,13 @@ fn dual_rep_parse_module_content(path: String, content: String) -> DualRepModule
       }
     }
   )
-  let fns = fold_list(
-    xs: lines,
-    empty: empty_dual_rep_fns,
-    cons: fn(acc, line) {
-      if line_is_fn_decl(line: line) && string_contains(s: line, pattern: "->") {
-        let name = fn_name_from_decl_line(line: line)
-        if is_empty(xs: name) {
-          acc
-        } else {
-          list_snoc_item(
-            xs: acc,
-            item: DualRepFnRecord {
-              name: name,
-              body: fn_body_from_decl_line(line: line)
-            }
-          )
-        }
-      } else {
-        acc
-      }
-    }
-  )
+  let fns = parse_fns_from_lines(lines: lines)
   DualRepModuleScan {
     path: path,
     data_inits: data_inits,
     fns: fns,
     witness_names: witness_names
   }
-}
-
-fn dual_rep_module_scan_from_content(path: String, content: String) -> DualRepModuleScan {
-  dual_rep_parse_module_content(path: path, content: content)
-}
-
-fn fn_body_from_decl_line(line: String) -> String {
-  if string_contains(s: line, pattern: "{") {
-    substring(
-      s: line,
-      start: first_char_index(line: line, target: 123) + 1,
-      end: last_char_index(line: line, target: 125)
-    )
-  } else {
-    ""
-  }
-}
-
-fn first_char_index(line: String, target: Char) -> Int {
-  fold_list(
-    xs: line,
-    empty: -1,
-    cons: fn(acc, c) {
-      if acc >= 0 {
-        acc
-      } else if c == target {
-        0
-      } else {
-        acc
-      }
-    }
-  )
-}
-
-fn last_char_index(line: String, target: Char) -> Int {
-  length(xs: line)
-}
-
-fn content_lines(content: String) -> List<String> {
-  [content]
 }
 
 fn synthetic_same_symbol_scan() -> DualRepModuleScan {
@@ -491,7 +678,8 @@ fn synthetic_same_symbol_scan() -> DualRepModuleScan {
     fns: [
       DualRepFnRecord {
         name: "witness_taut",
-        body: "return m == m"
+        body: "return m == m",
+        params: empty_string_list
       }
     ],
     witness_names: ["witness_taut"]
@@ -507,7 +695,8 @@ fn synthetic_literal_mirror_scan() -> DualRepModuleScan {
     fns: [
       DualRepFnRecord {
         name: "witness_ttl",
-        body: "return ttl == 3600"
+        body: "return ttl == 3600",
+        params: empty_string_list
       }
     ],
     witness_names: ["witness_ttl"]
@@ -521,7 +710,8 @@ fn synthetic_independent_oracle_scan() -> DualRepModuleScan {
     fns: [
       DualRepFnRecord {
         name: "oracle",
-        body: "return add(a: 2, b: 2) == 4"
+        body: "return add(a: 2, b: 2) == 4",
+        params: empty_string_list
       }
     ],
     witness_names: ["oracle"]
@@ -535,15 +725,18 @@ fn synthetic_body_mirror_scan() -> DualRepModuleScan {
     fns: [
       DualRepFnRecord {
         name: "wrapped",
-        body: "inner(y: x)"
+        body: "inner(y: x)",
+        params: ["x"]
       },
       DualRepFnRecord {
         name: "inner",
-        body: "y"
+        body: "y",
+        params: ["y"]
       },
       DualRepFnRecord {
         name: "witness_wrap",
-        body: "return wrapped(x: 1) == inner(y: 1)"
+        body: "return wrapped(x: 1) == inner(y: 1)",
+        params: empty_string_list
       }
     ],
     witness_names: ["witness_wrap"]
@@ -557,7 +750,8 @@ fn synthetic_distinct_symbol_scan() -> DualRepModuleScan {
     fns: [
       DualRepFnRecord {
         name: "ok",
-        body: "return a == b"
+        body: "return a == b",
+        params: empty_string_list
       }
     ],
     witness_names: ["ok"]

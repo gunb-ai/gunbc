@@ -13,7 +13,7 @@ import v2.lens.no_dual_representation_test.scan {
   empty_dual_rep_module_scans,
   path_is_test_dag
 }
-import v2.std.algebra { fold_list, is_empty, length, list_append, list_snoc_item }
+import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
