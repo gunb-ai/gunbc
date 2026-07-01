@@ -200,13 +200,25 @@ data gunbc_host_swap_available: ByteSize = byte_size(8589934592)
 
 data gunbc_ci_heavy_job_working_set: ByteSize = byte_size(11811160064)
 
-fn runner_swap_aggregate_demand(slot_count: Int, contract: RunnerSlotMemoryContract) -> ByteSize {
-  measure_scale_fraction_floor(m: contract.memory_swap_max, num: slot_count, den: 1)
+fn runner_ram_overcommit_per_host(
+  slot_count: Int,
+  contract: RunnerSlotMemoryContract,
+  slice_cap: ByteSize
+) -> ByteSize {
+  byte_size_saturating_sub(
+    total: fabric_contract_memory_demand_per_host(slot_count: slot_count, contract: contract),
+    reserved: slice_cap
+  )
 }
 
-fn runner_swap_aggregate_fits(slot_count: Int, contract: RunnerSlotMemoryContract, host_swap: ByteSize) -> Bool {
+fn runner_swap_backs_ram_overcommit(
+  slot_count: Int,
+  contract: RunnerSlotMemoryContract,
+  slice_cap: ByteSize,
+  host_swap: ByteSize
+) -> Bool {
   measure_le(
-    a: runner_swap_aggregate_demand(slot_count: slot_count, contract: contract),
+    a: runner_ram_overcommit_per_host(slot_count: slot_count, contract: contract, slice_cap: slice_cap),
     b: host_swap
   )
 }
@@ -235,15 +247,12 @@ fn fabric_host_count(offers: List<ComputeOffer>) -> Int {
 
 fn fabric_runner_slice_cap_per_host(offers: List<ComputeOffer>, overhead: ByteSize) -> ByteSize {
   let count = fabric_host_count(offers: offers)
-  if count <= 0 {
-    byte_size(0)
-  } else {
-    measure_scale_fraction_floor(
-      m: fabric_total_allocatable_runner_memory(offers: offers, overhead: overhead),
-      num: 1,
-      den: count
-    )
-  }
+  let divisor = if count <= 0 { 1 } else { count }
+  measure_scale_fraction_floor(
+    m: fabric_total_allocatable_runner_memory(offers: offers, overhead: overhead),
+    num: 1,
+    den: divisor
+  )
 }
 
 fn fabric_contract_memory_demand_per_host(slot_count: Int, contract: RunnerSlotMemoryContract) -> ByteSize {
@@ -272,9 +281,10 @@ fn fabric_memory_accounting_sound(
   let capacity = fabric_total_allocatable_runner_memory(offers: offers, overhead: overhead)
   let demand = fabric_total_contract_memory_demand(offers: offers, slot_count: slot_count, contract: contract)
   measure_le(a: demand, b: capacity)
-    || runner_swap_aggregate_fits(
-      slot_count: slot_count * fabric_host_count(offers: offers),
+    || runner_swap_backs_ram_overcommit(
+      slot_count: slot_count,
       contract: contract,
+      slice_cap: fabric_runner_slice_cap_per_host(offers: offers, overhead: overhead),
       host_swap: host_swap
     )
 }

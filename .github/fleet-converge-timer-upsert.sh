@@ -16,7 +16,8 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/bash $HOME/ctrl/third_party/gunbc/.github/fleet-converge.sh
+User=briansrls
+ExecStart=/usr/bin/bash /home/briansrls/ctrl/third_party/gunbc/.github/fleet-converge.sh
 RemainAfterExit=no
 GUNBC_FLEET_CONVERGE_SERVICE_EOF
 

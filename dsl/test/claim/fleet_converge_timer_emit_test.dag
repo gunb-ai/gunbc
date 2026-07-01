@@ -11,6 +11,7 @@ import gunbc.host_converge {
   gunbc_host_ctrl_checkout_path,
   gunbc_dsl_root_submodule_path,
   gunbc_spawn_retry_backstop_cadence,
+  gunbc_fleet_operator_unix_user,
 }
 import std.measure { second_count }
 
@@ -36,6 +37,8 @@ fn witness_service_execs_converge_script() -> Bool {
     "/.github/fleet-converge.sh"
   )
   has(s: sh, p: concat("ExecStart=/usr/bin/bash ", script))
+    && has(s: sh, p: concat("User=", gunbc_fleet_operator_unix_user))
+    && !has(s: sh, p: "$HOME")
 }
 
 fn witness_timer_cadence_matches_spawn_backstop() -> Bool {

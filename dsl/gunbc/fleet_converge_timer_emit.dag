@@ -16,6 +16,7 @@ import gunbc.host_converge {
   gunbc_host_ctrl_checkout_path,
   gunbc_dsl_root_submodule_path,
   gunbc_spawn_retry_backstop_cadence,
+  gunbc_fleet_operator_unix_user,
 }
 
 data fleet_converge_timer_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
@@ -53,6 +54,7 @@ fn emit_service_unit_doc() -> Doc {
     doc_line_of(text: ""),
     doc_line_of(text: "[Service]"),
     doc_line_of(text: "Type=oneshot"),
+    doc_line_of(text: concat("User=", gunbc_fleet_operator_unix_user)),
     doc_line_of(text: concat("ExecStart=/usr/bin/bash ", script)),
     doc_line_of(text: "RemainAfterExit=no"),
   ])

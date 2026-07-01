@@ -63,9 +63,13 @@ data gunbc_root_env_key: String = "GUNBC_ROOT"
 
 data gunbc_dsl_root_submodule_path: String = "third_party/gunbc"
 
-data gunbc_host_ctrl_checkout_path: String = "$HOME/ctrl"
+data gunbc_fleet_operator_unix_home: String = "/home/briansrls"
 
-data gunbc_host_gunbc_root_path: String = "$HOME/.local/share/gunbc/pinned"
+data gunbc_fleet_operator_unix_user: String = "briansrls"
+
+data gunbc_host_ctrl_checkout_path: String = concat(gunbc_fleet_operator_unix_home, "/ctrl")
+
+data gunbc_host_gunbc_root_path: String = concat(gunbc_fleet_operator_unix_home, "/.local/share/gunbc/pinned")
 
 data gunbc_pinned_tree_desired_label: String = "ctrl:third_party/gunbc"
 
