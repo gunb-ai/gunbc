@@ -1,0 +1,101 @@
+module extdeps.bmc.webui.nbd_proxy_serve
+
+import std.types { NonEmptyStr, Int, String, Secret }
+import std.logic { Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools.curl { curl_cli_tool }
+import extdeps.tools.websocat { websocat_cli_tool }
+import extdeps.tools.nbdkit { nbdkit_cli_tool }
+import extdeps.tools.socat { socat_cli_tool }
+import extdeps.bmc.webui.nbd_proxy {
+  extdeps_external_authority_anchor,
+  nbd_proxy_role_assignment,
+  NbdServer,
+}
+
+data nbd_proxy_serve_transport_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data bmcweb_session_token_env_ref: NonEmptyStr = "${BMCWEB_SESSION_TOKEN}"
+
+data srv3_nbd_proxy_local_port: Int = 10809
+
+fn nbd_proxy_serve_shell_script(
+  bmc_host: NonEmptyStr,
+  session_token: NonEmptyStr,
+  ws_path: NonEmptyStr,
+  iso_path: NonEmptyStr,
+  local_nbd_port: Int,
+) -> String {
+  let port = to_string(local_nbd_port)
+  concat(
+    "set -euo pipefail; ",
+    nbdkit_cli_tool.name, " file file=", iso_path, " port=", port, " rdonly=yes & ",
+    "NBDKIT_PID=$!; trap 'kill \"$NBDKIT_PID\"' EXIT INT TERM; ",
+    websocat_cli_tool.name, " -b --insecure ",
+    "-H 'Authorization: Token ", session_token, "' ",
+    "'wss://", bmc_host, ws_path, "' ",
+    "exec:'", socat_cli_tool.name, " STDIO TCP:127.0.0.1:", port, "'"
+  )
+}
+
+service bmc.webui.BmcwebSession {
+  operation Login {
+    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
+    output { body: String from "stdout", success: Bool from "exit_success" }
+    readonly
+    transport shell {
+      argv: [
+        curl_cli_tool.name,
+        "-sk",
+        "-X", "POST",
+        "https://{bmc_host}/login",
+        "-H", "Content-Type: application/json",
+        "-d", "{\"username\":\"{username}\",\"password\":\"{password}\"}",
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "bmcweb session login POST failed"
+    }
+  }
+}
+
+service bmc.webui.NbdProxyServe {
+  operation ServeReadOnlyExport {
+    input { serve_script: String }
+    output {
+      exit_code: Int from "exit_code"
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: ["sh", "-c", "{serve_script}"]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "nbd-proxy serve pipeline failed"
+    }
+  }
+}
+
+fn nbd_proxy_serve_operation_script(
+  bmc_host: NonEmptyStr,
+  session_token: NonEmptyStr,
+  ws_path: NonEmptyStr,
+  iso_path: NonEmptyStr,
+  local_nbd_port: Int,
+) -> String {
+  nbd_proxy_serve_shell_script(
+    bmc_host: bmc_host,
+    session_token: session_token,
+    ws_path: ws_path,
+    iso_path: iso_path,
+    local_nbd_port: local_nbd_port,
+  )
+}
+
+fn nbd_proxy_serve_requires_host_as_nbd_server() -> Bool {
+  nbd_proxy_role_assignment.host_program_role == NbdServer
+}

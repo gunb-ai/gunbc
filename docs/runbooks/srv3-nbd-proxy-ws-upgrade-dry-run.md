@@ -48,7 +48,7 @@ TOKEN=$(
   curl -sk -X POST "https://${BMC_HOST}/login" \
     -H 'Content-Type: application/json' \
     -d '{"username":"root","password":"0penBmc"}' \
-  | jq -r '.data // empty'
+  | jq -r '.token // empty'
 )
 
 test -n "$TOKEN" || { echo "FAIL: no session token from /login"; exit 1; }
@@ -66,7 +66,7 @@ acceptable for this gate; step 4 ensures no media is mounted.
 # Primary endpoint (cited in nbd_proxy.dag: /nbd/{slot}, slot=0).
 # websocat: exit after 5s idle or first inbound frame; do NOT send NBD server greeting.
 timeout 8 websocat -v \
-  -H "X-Auth-Token: ${TOKEN}" \
+  -H "Authorization: Token ${TOKEN}" \
   "wss://${BMC_HOST}/nbd/0" \
   2>&1 | tee /tmp/srv3-nbd0-ws-dry-run.log
 ```
@@ -75,7 +75,7 @@ Alternate with `wscat`:
 
 ```bash
 timeout 8 wscat -c "wss://${BMC_HOST}/nbd/0" \
-  -H "X-Auth-Token: ${TOKEN}" \
+  -H "Authorization: Token ${TOKEN}" \
   2>&1 | tee /tmp/srv3-nbd0-ws-dry-run.log
 ```
 
@@ -105,7 +105,7 @@ Only if step 2 is inconclusive. Same constraints — upgrade only, no export ser
 
 ```bash
 timeout 8 websocat -v \
-  -H "X-Auth-Token: ${TOKEN}" \
+  -H "Authorization: Token ${TOKEN}" \
   "wss://${BMC_HOST}/vm/0/0" \
   2>&1 | tee /tmp/srv3-vm00-ws-dry-run.log
 ```

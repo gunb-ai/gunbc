@@ -1,0 +1,46 @@
+module test.claim.nbd_proxy_serve_transport
+
+import std.logic { Bool }
+import extdeps.bmc.webui.nbd_proxy {
+  VmSlotIndexEndpoint,
+  bmcweb_nbd_proxy_ws_path,
+}
+import extdeps.bmc.webui.nbd_proxy_serve {
+  nbd_proxy_serve_shell_script,
+  bmcweb_session_token_env_ref,
+  srv3_nbd_proxy_local_port,
+  nbd_proxy_serve_requires_host_as_nbd_server,
+}
+import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
+import extdeps.tools.curl { curl_cli_tool }
+import extdeps.tools.websocat { websocat_cli_tool }
+import extdeps.tools.nbdkit { nbdkit_cli_tool }
+import extdeps.tools.socat { socat_cli_tool }
+
+test fn nbd_proxy_ws_path_for_vm_slot_index() -> Bool {
+  bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0) == "/vm/0/0"
+}
+
+test fn nbd_proxy_serve_script_cites_cited_tools() -> Bool {
+  let script = nbd_proxy_serve_shell_script(
+    bmc_host: asrock_srv3_live_bmc_host,
+    session_token: bmcweb_session_token_env_ref,
+    ws_path: bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0),
+    iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04-live-server-arm64.iso",
+    local_nbd_port: srv3_nbd_proxy_local_port,
+  )
+  string_contains(s: script, pattern: nbdkit_cli_tool.name)
+    && string_contains(s: script, pattern: websocat_cli_tool.name)
+    && string_contains(s: script, pattern: socat_cli_tool.name)
+    && string_contains(s: script, pattern: "Authorization: Token")
+    && string_contains(s: script, pattern: "wss://192.168.1.192/vm/0/0")
+    && string_contains(s: script, pattern: "rdonly=yes")
+}
+
+test fn nbd_proxy_serve_host_role_is_nbd_server() -> Bool {
+  nbd_proxy_serve_requires_host_as_nbd_server()
+}
+
+test fn bmcweb_login_transport_cites_curl() -> Bool {
+  curl_cli_tool.name == "curl"
+}

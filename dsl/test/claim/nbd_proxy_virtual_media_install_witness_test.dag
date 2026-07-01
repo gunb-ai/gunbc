@@ -21,7 +21,12 @@ import gunbc.nbd_proxy_virtual_media_install {
   os_install_actuator_step_count,
   os_install_actuator_steps,
   srv3_nbd_proxy_export_placeholder,
+  actuator_step_to_host_effect_intent,
+  srv3_os_install_actuator_host,
+  srv3_os_install_actuator_toolchain_grant_row_count,
 }
+import gunbc.host_effect { HostOs, ShellCommand, BmcController, RedfishAction }
+import extdeps.tools.websocat { websocat_cli_tool }
 
 test fn srv3_install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {
   match srv3_install_mechanism {
@@ -73,4 +78,28 @@ test fn pxe_actuator_steps_stage_boot_restart() -> Bool {
       ActuatorPxeNetworkBootStaging => true
       _ => false
     }
+}
+
+test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
+  let steps = os_install_actuator_steps(
+    mechanism: NbdProxyVirtualMediaInstall,
+    export: srv3_nbd_proxy_export_placeholder
+  )
+  match actuator_step_to_host_effect_intent(step: steps.first()) {
+    Present { value: intent } =>
+      match intent.target {
+        HostOs { node: h } => h == srv3_os_install_actuator_host
+        _ => false
+      }
+        && match intent.effect {
+          ShellCommand { script: s } =>
+            string_contains(s: s, pattern: websocat_cli_tool.name)
+          _ => false
+        }
+    Absent => false
+  }
+}
+
+test fn actuator_toolchain_grant_is_wired() -> Bool {
+  srv3_os_install_actuator_toolchain_grant_row_count() == 4
 }
