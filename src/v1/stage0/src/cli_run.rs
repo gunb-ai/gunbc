@@ -174,6 +174,14 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                     })
                     .to_string_lossy()
                     .replace('\\', "/");
+                if let Some(existing) = index.get(&module_path) {
+                    if existing != &rel {
+                        panic!(
+                            "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
+                            module_path, existing, rel
+                        );
+                    }
+                }
                 index.insert(module_path.clone(), rel);
             }
         }
@@ -465,6 +473,14 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             if let Some(module_path) = extract_module_path(&content) {
                 let rel_path = path.to_string_lossy().to_string();
+                if let Some(existing) = index.get(&module_path) {
+                    if existing.path != rel_path {
+                        panic!(
+                            "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
+                            module_path, existing.path, rel_path
+                        );
+                    }
+                }
                 index.insert(
                     module_path,
                     Rc::new(v1_compiler_compile::SourceFile {
@@ -8533,9 +8549,41 @@ mod module_path_index_tests {
     }
 
     #[test]
-    fn co_root_overlay_last_root_wins_on_duplicate_module_path() {
+    fn extdeps_shell_resolves_to_the_dsl_authority() {
         let path = source_path_for_module_path("extdeps.shell".to_string());
-        assert_eq!(path, "src/v2/extdeps/shell.dag");
+        assert_eq!(path, "dsl/extdeps/shell/shell.dag");
+    }
+
+    #[test]
+    fn duplicate_module_path_across_roots_refuses_loudly() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-module-collision-wall-{}",
+            std::process::id()
+        ));
+        let root_a = dir.join("root_a");
+        let root_b = dir.join("root_b");
+        std::fs::create_dir_all(&root_a).unwrap();
+        std::fs::create_dir_all(&root_b).unwrap();
+        std::fs::write(root_a.join("m.dag"), "module collision.example\n").unwrap();
+        std::fs::write(root_b.join("m.dag"), "module collision.example\n").unwrap();
+        let roots = vec![
+            root_a.to_string_lossy().into_owned(),
+            root_b.to_string_lossy().into_owned(),
+        ];
+        // RED control: same module declared in two files refuses loudly.
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::build_module_index(&roots)
+        }))
+        .is_err();
+        // GREEN control: distinct modules build fine.
+        std::fs::write(root_b.join("m.dag"), "module collision.other\n").unwrap();
+        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::build_module_index(&roots)
+        }))
+        .is_ok();
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(refused, "collision must refuse loudly, not shadow silently");
+        assert!(built, "distinct modules must still index");
     }
 
     #[test]

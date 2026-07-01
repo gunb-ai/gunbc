@@ -20,12 +20,17 @@ import extdeps.languages.bash.program {
   serialize_bash,
 }
 import extdeps.bmc.webui.nbd_proxy {
-  extdeps_external_authority_anchor,
   nbd_proxy_role_assignment,
   NbdServer,
 }
+import extdeps.uri { Uri, Https }
 
-data nbd_proxy_serve_transport_authority: ExternalAuthority = extdeps_external_authority_anchor
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/jsnbd"
+  }
+}
 
 data bmcweb_session_token_env_ref: NonEmptyStr = concat("$", "BMCWEB_SESSION_TOKEN") as NonEmptyStr
 
