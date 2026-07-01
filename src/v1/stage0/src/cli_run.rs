@@ -6546,8 +6546,8 @@ fn witness_entry_tree_root(
         false,
     )
     .map_err(|e| format!("floor_witness_entry_tree_root_from_ingest_path: {e}"))?;
-    if witness_holds_node_value(&ingest_result, runner_ctx).is_ok() {
-        return witness_holds_node_value(&ingest_result, runner_ctx);
+    if let Ok(v) = witness_holds_node_value(&ingest_result, runner_ctx) {
+        return Ok(v);
     }
     let abs = resolve_dag_path(source_roots, &rel)?;
     let content = std::fs::read_to_string(&abs)

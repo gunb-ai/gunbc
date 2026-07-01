@@ -313,16 +313,9 @@ fn floor_node_artifact_provenance_fold_step(
 }
 
 fn floor_changed_path_in_list(changed_paths: List<String>, file_path: String) -> Bool {
-  fold_list(
+  any(
     xs: changed_paths,
-    empty: false,
-    cons: fn(acc, changed) {
-      if acc == true {
-        true
-      } else {
-        changed == file_path
-      }
-    }
+    predicate: fn(x) { x == file_path }
   )
 }
 
