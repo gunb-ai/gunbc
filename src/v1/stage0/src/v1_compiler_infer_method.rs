@@ -198,62 +198,17 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "extdeps_dead_param_count_for_operation".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
             "shell_materialize_argv_for_operation".to_string(),
             list_of_element(string_type()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "extdeps_dead_param_count_for_path".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_embedded_policy_literal_count_for_path".to_string(),
-            int_type(),
+            "extdeps_shape_transport_policy_facts_for_qualified_name".to_string(),
+            type_variable_node("extdeps_module_facts_record".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "extdeps_qualified_name_resolves_in_derived_module_set".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_dead_param_count_for_qualified_name".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_embedded_policy_literal_count_for_qualified_name".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "module_source_nickname_literal_count_for_qualified_name".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_policy_leak_count_for_qualified_name".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_transport_fusion_fork_count_for_qualified_name".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_gist_create_declares_filename_input_for_qualified_name".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "extdeps_gist_create_files_keyed_by_filename_for_qualified_name".to_string(),
             bool_type(),
         );
         let m = v1_rt::rc_map_insert(
@@ -326,12 +281,12 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_doc_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "inert_carrier_names_live".to_string(),
-            list_of_type_variable("inert_carrier_name_elem".to_string()),
+            "unwired_model_names_live".to_string(),
+            list_of_type_variable("unwired_model_name_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "inert_carrier_declared_count".to_string(),
+            "unwired_model_declared_count".to_string(),
             int_type(),
         );
         let m = v1_rt::rc_map_insert(
@@ -382,8 +337,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "transport_script_literal_violation_count_for_path".to_string(),
-            int_type(),
+            "transport_script_position_facts_for_path".to_string(),
+            list_of_type_variable("transport_script_position_fact_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

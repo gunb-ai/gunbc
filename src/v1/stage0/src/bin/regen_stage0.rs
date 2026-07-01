@@ -41,7 +41,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "extdeps_version.rs",
     "extdeps_version_semver.rs",
     "lib.rs",
-    "main.rs",
     "std_algebra.rs",
     "std_coercion.rs",
     "std_computation.rs",
@@ -74,6 +73,8 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_compile.rs",
     "v1_compiler_compiler_tests_rust.rs",
     "v1_compiler_complexity.rs",
+    "v1_compiler_dag_collect.rs",
+    "v1_compiler_dag_collect_support.rs",
     "v1_compiler_effect_derivation.rs",
     "v1_compiler_emit.rs",
     "v1_compiler_emit_core_support.rs",
@@ -118,12 +119,17 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "complexity_linearity_audit_project.rs",
     "decl_facts_project.rs",
     "coproduct_reflection.rs",
+    "external_authority_project.rs",
     "recorded_fixture.rs",
     "resolved_graph_cache.rs",
     "rest_transport_facts.rs",
     "wire_value_serialize.rs",
-    "v1_compiler_dag_collect.rs",
-    "v1_compiler_dag_collect_support.rs",
+    // dag_collect split (#6053) removed Ci-subcommand / extract_module_path emission from
+    // 05_emit_rust.dag; without those, the emitter no longer produces byte-identical main.rs,
+    // so main.rs parks here until those gaps are restored in .dag. Registry flip deferred until
+    // regen_stage0 --verify confirms byte-identical output vs this committed file.
+    // Dissolution: run regen_stage0 --verify; on green, move to GENERATED_STAGE0_FILES.
+    "main.rs",
     "v1_interpreter.rs",
 ];
 
