@@ -5833,9 +5833,14 @@ fn prepare_floor_provenance_ingest_overlay(
     if records.is_empty() {
         return Ok(None);
     }
+    let overlay_nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
     let overlay_root = std::env::temp_dir().join(format!(
-        "gunbc-floor-provenance-ingest-{}",
-        std::process::id()
+        "gunbc-floor-provenance-ingest-{}-{}",
+        std::process::id(),
+        overlay_nonce
     ));
     let manifest_path = overlay_root.join(FLOOR_PROVENANCE_INGEST_MANIFEST_REL);
     emit_source_root_ingest_manifest(&manifest_path, &records, None)?;
