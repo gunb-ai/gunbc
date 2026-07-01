@@ -129,6 +129,7 @@ data medium_structure_exception_roster: List<String> = [
   "dsl/extdeps/formats/yaml.dag",
 
   "dsl/test/claim/ci_yaml_serializer_witness_test.dag",
+  "dsl/test/claim/ci_deploy_witness_test.dag",
   "dsl/test/claim/ci_runner_seam_witness_test.dag",
   "dsl/test/claim/yaml_quoting_witness_test.dag",
   "src/v2/test/claim/ci_spec_witness_test.dag",
