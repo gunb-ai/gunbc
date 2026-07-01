@@ -14,7 +14,7 @@ import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, byte_size, ByteSize, byte_size_count }
-import std.realization_width { width_fold_objective_goals, bounded_host_spawn_width, int_min }
+import std.realization_width { width_fold_objective_goals, bounded_host_spawn_width }
 import gunbc.fleet_container {
   ResourceEnvelope,
   parallel_run_demand_envelope,
@@ -476,11 +476,7 @@ fn gunbc_ci_floor_spawn_width_from_tree() -> HardwareThreadCount {
 }
 
 fn gunbc_ci_plan_spawn_width(memory_budget_bytes: Int) -> HardwareThreadCount {
-  let floor_w = hardware_thread_count_value(
-    t: gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
-  )
-  let exec_w = execution_corpus_spawn_width()
-  hardware_thread_count(count: int_min(a: floor_w, b: exec_w))
+  gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(memory_budget_bytes))
 }
 
 fn gunbc_ci_floor_run_envelope(memory_budget_bytes: Int) -> ResourceEnvelope {
@@ -534,7 +530,11 @@ fn witness_floor_spawn_width_tight_budget_backs_off() -> Bool {
 
 fn witness_floor_spawn_width_zero_budget_falls_back() -> Bool {
   let width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: 0))
+<<<<<<< HEAD
   width <= gunbc_ci_floor_conservative_fallback_width
+=======
+  width == int_min(a: gunbc_ci_floor_conservative_fallback_width, b: execution_corpus_spawn_width())
+>>>>>>> origin/main
 }
 
 fn floor_batch_heavy_gate_resolve_count(batch: List<Runnable>) -> Int {
@@ -599,14 +599,13 @@ fn witness_execution_corpus_spawn_width_at_runner_cap() -> Bool {
   execution_corpus_spawn_width() == 3
 }
 
-fn witness_plan_spawn_width_is_min_floor_exec_at_runner_cap() -> Bool {
+fn witness_plan_spawn_width_is_floor_width_at_runner_cap() -> Bool {
   let cap_budget = byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
   let plan_w = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: cap_budget))
   let floor_w = hardware_thread_count_value(
     t: gunbc_ci_floor_spawn_width_for_budget(memory_budget: gunbc_ci_runner_cgroup_memory_cap)
   )
-  let exec_w = execution_corpus_spawn_width()
-  plan_w == int_min(a: floor_w, b: exec_w)
+  plan_w == floor_w
 }
 
 fn witness_floor_derived_width_leaves_headroom_at_cap() -> Bool {
