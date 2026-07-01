@@ -1,0 +1,7 @@
+module v2.test.fixture.floor_skip.floor_disc_shared_helper
+
+import v2.std.logic { Bool }
+
+fn floor_disc_shared_helper() -> Bool {
+  true
+}
