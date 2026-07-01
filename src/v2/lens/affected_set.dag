@@ -429,7 +429,11 @@ fn affected_set_closure(dependencies: List<DependencyView>, edit_locus: Node) ->
 }
 
 fn affected_set_reading(graph: InferredTree, edit_locus: Node) -> AffectedSetReading {
-  let dependency_reading = dependency_lens(root: graph.root)
+  affected_set_reading_for_entry_root(entry_root: graph.root, edit_locus: edit_locus)
+}
+
+fn affected_set_reading_for_entry_root(entry_root: Node, edit_locus: Node) -> AffectedSetReading {
+  let dependency_reading = dependency_lens(root: entry_root)
   let closure = affected_set_closure(dependencies: dependency_reading, edit_locus: edit_locus)
   AffectedSetReading {
     edit_locus: edit_locus,

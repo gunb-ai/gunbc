@@ -1,17 +1,31 @@
 module v2.workflow.affected_set_floor_runner
 
 import gunbc.ci_spec { gunbc_ci_spec, DiffPolicy }
+import v2.compiler.source_authority { node_artifact_provenance_from_source_root }
+import v2.lens.affected_set { affected_set_reading_for_entry_root }
+import v2.lens.edit_locus {
+  GitDiffNameOnly,
+  affected_set_reading_from_git_diff_provenance,
+  edit_locus_no_match_diagnostic
+}
+import v2.compiler.infer { InferredTree }
 import v2.std.algebra { any, Empty, fold_list, length, list_append }
 import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.text { String }
 import v2.std.integer { Int }
+import v2.std.witness { Holds, Violates, Witness }
 import v2.std.verification {
   TestClaim,
   test_claim_evaluation_node_touches_frontier,
   test_claim_evaluation_nodes,
   test_claim_evaluation_touches_rerun_frontier
+}
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_source_root_ingest,
+  host_source_root_ingest_coverage_receipt
 }
 
 type FloorDiffObservation
@@ -179,4 +193,49 @@ fn floor_witness_eval_nodes_from_claims(claims: List<TestClaim>) -> List<Node> {
       list_append(left: acc, right: test_claim_evaluation_nodes(c: claim))
     }
   )
+}
+
+fn floor_provenance_ingest_is_live() -> Bool {
+  host_source_root_ingest_coverage_receipt.coverage_complete
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
+    && (length(xs: host_source_root_ingest) > 0)
+}
+
+fn floor_rerun_frontier_from_edit_loci(entry_root: Node, edit_loci: List<Node>) -> List<Node> {
+  fold_list(
+    xs: edit_loci,
+    empty: Empty,
+    cons: fn(acc, locus) {
+      let reading = affected_set_reading_for_entry_root(
+        entry_root: entry_root,
+        edit_locus: locus
+      )
+      list_append(left: acc, right: reading.affected)
+    }
+  )
+}
+
+fn floor_rerun_frontier_from_provenance(
+  entry_root: Node,
+  changed_paths: List<String>
+) -> Witness<List<Node>> {
+  if floor_provenance_ingest_is_live() == false {
+    Violates { diagnostic: edit_locus_no_match_diagnostic() }
+  } else {
+    match node_artifact_provenance_from_source_root(ingest: host_source_root_ingest) {
+      Accepted { value: provenance, diagnostics: _ } =>
+        match affected_set_reading_from_git_diff_provenance(
+          graph: InferredTree { root: entry_root, facts: Empty },
+          git_diff: GitDiffNameOnly { changed_paths: changed_paths },
+          provenance: provenance
+        ) {
+          Holds { value: reading } =>
+            Holds { value: reading.affected }
+          Violates { diagnostic: d } =>
+            Violates { diagnostic: d }
+        }
+      Rejected { diagnostics: _ } =>
+        Violates { diagnostic: edit_locus_no_match_diagnostic() }
+    }
+  }
 }
