@@ -89,6 +89,7 @@ fn baseline_corpus_roots(corpus_dir: &Path) -> Vec<String> {
 }
 
 #[test]
+#[ignore = "baseline commit 57223267a2 was squash-GC'd and no longer exists on GitHub; re-baseline needed via capture_func_env_semantic_oracle against a reachable tagged commit"]
 fn func_env_whole_corpus_semantic_oracle_matches_pre_change_baseline() {
     let fixture_path = workspace_root().join(BASELINE_FIXTURE);
     let raw = fs::read_to_string(&fixture_path)
