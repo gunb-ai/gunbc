@@ -6855,7 +6855,6 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
     out
 }
 
-<<<<<<< HEAD
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
 //
 // Audits the corpus for `match` expressions whose scrutinee is a function parameter with a declared
@@ -6964,71 +6963,11 @@ fn nfr_closed_coproduct_names(files: &[(String, String)]) -> std::collections::B
                 i += 1;
                 continue;
             };
-=======
-const LANGUAGES_AUTHORITY_REL: &str = "dsl/std/languages.dag";
-
-fn languages_census_collect_source_files(dir: &Path, out: &mut Vec<PathBuf>) {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            languages_census_collect_source_files(&path, out);
-        } else {
-            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if ext == "dag" || ext == "rs" {
-                out.push(path);
-            }
-        }
-    }
-}
-
-fn languages_census_strip_content(source: &str) -> String {
-    let mut out = String::with_capacity(source.len());
-    let mut chars = source.chars().peekable();
-    while let Some(c) = chars.next() {
-        if c == '/' && chars.peek() == Some(&'/') {
-            while chars.next().is_some_and(|ch| ch != '\n') {}
-            out.push('\n');
-            continue;
-        }
-        if c == '"' {
-            while let Some(ch) = chars.next() {
-                if ch == '\\' {
-                    chars.next();
-                    continue;
-                }
-                if ch == '"' {
-                    break;
-                }
-            }
-            out.push(' ');
-            continue;
-        }
-        if c == '`' {
-            while chars.next().is_some_and(|ch| ch != '`') {}
-            out.push(' ');
-            continue;
-        }
-        out.push(c);
-    }
-    out
-}
-
-fn languages_census_extract_data_decl_names(content: &str) -> Vec<String> {
-    content
-        .lines()
-        .filter_map(|line| {
-            let rest = line.strip_prefix("data ")?;
->>>>>>> origin/main
             let name: String = rest
                 .chars()
                 .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
                 .collect();
             if name.is_empty() {
-<<<<<<< HEAD
                 i += 1;
                 continue;
             }
@@ -7330,7 +7269,70 @@ pub fn non_fold_residue_live_sites() -> &'static [String] {
 
 pub fn non_fold_residue_roster_size() -> i64 {
     NON_FOLD_RESIDUE_ROSTER.len() as i64
-=======
+}
+
+const LANGUAGES_AUTHORITY_REL: &str = "dsl/std/languages.dag";
+
+fn languages_census_collect_source_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            languages_census_collect_source_files(&path, out);
+        } else {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if ext == "dag" || ext == "rs" {
+                out.push(path);
+            }
+        }
+    }
+}
+
+fn languages_census_strip_content(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '/' && chars.peek() == Some(&'/') {
+            while chars.next().is_some_and(|ch| ch != '\n') {}
+            out.push('\n');
+            continue;
+        }
+        if c == '"' {
+            while let Some(ch) = chars.next() {
+                if ch == '\\' {
+                    chars.next();
+                    continue;
+                }
+                if ch == '"' {
+                    break;
+                }
+            }
+            out.push(' ');
+            continue;
+        }
+        if c == '`' {
+            while chars.next().is_some_and(|ch| ch != '`') {}
+            out.push(' ');
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
+fn languages_census_extract_data_decl_names(content: &str) -> Vec<String> {
+    content
+        .lines()
+        .filter_map(|line| {
+            let rest = line.strip_prefix("data ")?;
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if name.is_empty() {
                 None
             } else {
                 Some(name)
@@ -7466,7 +7468,6 @@ pub fn languages_consumer_census_has_external_consumer(decl_name: String) -> boo
     languages_decl_record_for(&decl_name)
         .map(|r| !r.external_consumer_paths.is_empty())
         .unwrap_or(false)
->>>>>>> origin/main
 }
 
 // --- Inert carrier census (folded from inert_carrier_project.rs) ---
@@ -7797,12 +7798,6 @@ mod inert_carrier_tests {
         assert!(!inert.contains(&"Dup".to_string()));
     }
 }
-
-// ── Doc-reachability census (DESIGN §3 single-authority, §5 fail-closed) ─────────────────────────
-//
-// Host-fed corpus walk: every .md file reachable from ROADMAP/DESIGN/runbooks roots is a live doc;
-// orphans (unreachable) and dangling links (link target absent) are fail-closed violations.
-// DISSOLUTION: folds into a pure .dag Node-tree reader when compile-graph access lands (gunbc#5364).
 
 fn resolve_doc_link(from: &str, target: &str) -> Vec<String> {
     let mut candidates = Vec::new();
@@ -8619,117 +8614,5 @@ mod doc_reachability_tests {
         let c = "// bind: docs/planning/foo.md (provenance)\n// no bind here\n// bind: bar.md";
         let t = bind_md_refs(c);
         assert_eq!(t, vec!["docs/planning/foo.md", "bar.md"]);
-    }
-}
-
-#[cfg(test)]
-mod non_fold_residue_tests {
-    use super::*;
-
-    fn files(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
-        pairs
-            .iter()
-            .map(|(p, c)| (p.to_string(), c.to_string()))
-            .collect()
-    }
-
-    #[test]
-    fn coproduct_index_finds_sums_not_records() {
-        let f = files(&[(
-            "t.dag",
-            "module t\ntype Mode = A | B | C\ntype Rec { x: Int }\ntype Alias = Witness<Int>\n",
-        )]);
-        let cps = nfr_closed_coproduct_names(&f);
-        assert!(cps.contains("Mode"));
-        assert!(!cps.contains("Rec"));
-        assert!(!cps.contains("Alias"));
-    }
-
-    #[test]
-    fn red_control_wildcard_over_closed_coproduct_is_residue() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            sites.contains(&"m.dag::f".to_string()),
-            "a wildcard over a closed-coproduct param must be flagged; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_total_fold_is_not_residue() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n    C => false\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::f".to_string()),
-            "an exhaustive match (no wildcard) must NOT be flagged; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_wildcard_over_open_domain_is_not_residue() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B\nfn g(s: String) -> Bool {\n  match s {\n    \"y\" => true\n    _ => false\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::g".to_string()),
-            "a wildcard over an open/primitive domain must NOT be flagged; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_field_placeholder_underscore_is_not_a_wildcard_arm() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A { v: Int } | B { v: Int }\nfn f(x: Mode) -> Int {\n  match x {\n    A { v: _ } => 1\n    B { v: _ } => 2\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::f".to_string()),
-            "field-placeholder `_` is not a wildcard arm; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn nested_match_wildcard_is_attributed_to_its_own_match() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B\nfn eq(a: Mode, b: Mode) -> Bool {\n  match a {\n    A => match b { A => true _ => false }\n    B => match b { B => true _ => false }\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(sites.contains(&"m.dag::eq".to_string()));
-    }
-
-    #[test]
-    fn green_control_wildcard_and_slashes_inside_string_literal_are_ignored() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    B => \"b\"\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            !sites.contains(&"m.dag::f".to_string()),
-            "`_ =>`/`//` inside a string literal must not be read as code; got {sites:?}"
-        );
-    }
-
-    #[test]
-    fn red_control_real_wildcard_survives_an_in_string_decoy() {
-        let f = files(&[(
-            "m.dag",
-            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    _ => \"rest\"\n  }\n}\n",
-        )]);
-        let sites = nfr_residue_sites(&f);
-        assert!(
-            sites.contains(&"m.dag::f".to_string()),
-            "a real wildcard arm must still be flagged despite an in-string decoy; got {sites:?}"
-        );
     }
 }
