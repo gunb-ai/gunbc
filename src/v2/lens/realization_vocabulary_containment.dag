@@ -35,6 +35,7 @@ data realization_edge_path_prefixes: List<String> = [
 ]
 
 data realization_vocab_exception_roster: List<String> = [
+  "dsl/gunbc/node_http_server_emit.dag",
   "dsl/gunbc/ci_yaml_validate.dag",
   "dsl/tools/build_step.dag",
   "dsl/tools/build_step_transport.dag",
