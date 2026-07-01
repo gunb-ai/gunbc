@@ -6655,28 +6655,6 @@ fn provenance_rerun_frontier_nodes(
     witness_list_nodes_from_value(&result, runner_ctx)
 }
 
-// Step 3 equivalence may wire this for edit-loci closure expansion; skip disposition
-// uses seed-derived loci directly until that gate lands.
-#[allow(dead_code)]
-fn closure_rerun_frontier_nodes(
-    runner_ctx: &v1_interpreter::InterpContext,
-    entry_root: &v1_interpreter::Value,
-    edit_loci: &[v1_interpreter::Value],
-) -> Result<Vec<v1_interpreter::Value>, String> {
-    let edit_loci_value = list_value_from_vec(edit_loci.to_vec());
-    let result = v1_interpreter::run_in_context_with_args(
-        runner_ctx,
-        "floor_rerun_frontier_from_edit_loci",
-        &[
-            (Some("entry_root".to_string()), entry_root.clone()),
-            (Some("edit_loci".to_string()), edit_loci_value),
-        ],
-        false,
-    )
-    .map_err(|e| format!("floor_rerun_frontier_from_edit_loci: {e}"))?;
-    list_values_from_free_monoid(&result, runner_ctx)
-}
-
 fn list_value_from_strings(items: &[String]) -> v1_interpreter::Value {
     let values: Vec<v1_interpreter::Value> = items
         .iter()
