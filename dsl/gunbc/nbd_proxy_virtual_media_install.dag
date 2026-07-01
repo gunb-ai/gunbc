@@ -127,8 +127,7 @@ fn os_install_actuator_plan(mechanism: OsInstallMechanism, export: NbdProxyServe
 
 data srv3_os_install_actuator_host: ComputeHost = srv1_host
 
-data srv3_nbd_proxy_iso_path_placeholder: NonEmptyStr =
-  "/var/lib/gunbc/artifacts/ubuntu-24.04-live-server-arm64.iso"
+data srv3_nbd_proxy_iso_path_placeholder: NonEmptyStr = "/var/lib/gunbc/artifacts/ubuntu-24.04-live-server-arm64.iso"
 
 data srv3_nbd_proxy_export_placeholder: NbdProxyServeInterface = NbdProxyServeInterface {
   export_byte_count: byte_size(0),

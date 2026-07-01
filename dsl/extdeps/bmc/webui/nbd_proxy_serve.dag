@@ -23,12 +23,11 @@ import extdeps.bmc.webui.nbd_proxy {
 
 data nbd_proxy_serve_transport_authority: ExternalAuthority = extdeps_external_authority_anchor
 
-data bmcweb_session_token_env_ref: NonEmptyStr = "${BMCWEB_SESSION_TOKEN}"
+data bmcweb_session_token_env_ref: NonEmptyStr = concat("$", "BMCWEB_SESSION_TOKEN") as NonEmptyStr
 
 data srv3_nbd_proxy_local_port: Int = 10809
 
-data nbd_proxy_serve_bash_emit_dissolution_trigger: String =
-  "🟡 dissolve-on: nbd_proxy_serve — held-open nbdkit→websocat→socat pipeline serialized via extdeps.languages.bash.program ShellProgram (SCAFFOLD ahead of grammar-row bash_fold emit + host_effect NbdProxyServe transport handler); medium-as-string concat retired; DISSOLVES WHEN bash_fold grammar rows realize this pipeline with ingest ∘ emit = id and host_effect_apply binds NbdProxyServe without serialize_bash; retire medium_structure_exception_roster entry for dsl/extdeps/bmc/webui/nbd_proxy_serve.dag"
+data nbd_proxy_serve_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: nbd_proxy_serve — held-open nbdkit→websocat→socat pipeline serialized via extdeps.languages.bash.program ShellProgram (SCAFFOLD ahead of grammar-row bash_fold emit + host_effect NbdProxyServe transport handler); medium-as-string concat retired; DISSOLVES WHEN bash_fold grammar rows realize this pipeline with ingest ∘ emit = id and host_effect_apply binds NbdProxyServe without serialize_bash; retire medium_structure_exception_roster entry for dsl/extdeps/bmc/webui/nbd_proxy_serve.dag"
 
 type NbdProxyServeTransportIntent {
   bmc_host: NonEmptyStr
