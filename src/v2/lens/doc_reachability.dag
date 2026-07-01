@@ -1,0 +1,37 @@
+module v2.lens.doc_reachability
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+import v2.std.logic { Bool }
+
+fn doc_graph_orphan_clean_for_count(orphan_count: Int) -> Bool {
+  orphan_count == 0
+}
+
+fn doc_graph_dangling_clean_for_count(dangling_count: Int) -> Bool {
+  dangling_count == 0
+}
+
+fn doc_graph_universe_nonempty_for_count(doc_count: Int) -> Bool {
+  doc_count > 0
+}
+
+fn doc_graph_orphan_clean_holds() -> Bool {
+  doc_graph_orphan_clean_for_count(orphan_count: doc_graph_orphan_count())
+}
+
+fn doc_graph_dangling_clean_holds() -> Bool {
+  doc_graph_dangling_clean_for_count(dangling_count: doc_graph_dangling_link_count())
+}
+
+fn doc_graph_universe_nonempty_holds() -> Bool {
+  doc_graph_universe_nonempty_for_count(doc_count: doc_graph_doc_count())
+}
+
+fn doc_graph_clean_holds() -> Bool {
+  doc_graph_orphan_clean_holds() && doc_graph_dangling_clean_holds()
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

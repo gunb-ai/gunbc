@@ -17,7 +17,7 @@ Why a tier: **"it compiles but nothing works" traces to non-fold residue** — a
 **Audit half — measure the friction + the residue (decidable; wall-able):**
 
 - [ ] **inert-abstraction lens** *(keystone)* — flag any item *defined + self-tested + zero non-test consumers*; generalizes the inert-lens backstop (#5433) from lenses to all carriers. **First RED witness = `Placement` / `Materialization` / `RealizationObjective`** (charter §4: "modeled + witness-passing, no non-test consumer") — a genuinely-inert carrier the lens *fires* on day one, so the lens isn't itself inert (its own §6 guardrail). (`cached_stage` is the *resolved* case — now wired, see Fix half — so it's the worked example, not the witness.)
-- [ ] **non-fold-residue audit** — `_ =>` catch-alls over *closed* coproducts · `unwrap_or_default` in inference · hand-rolled recursion where a fold exists. These are the decidable fail-open shapes → §0 wall candidates, not just lenses [irreducible residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) [real-debt syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md)
+- [ ] **non-fold-residue audit** — `_ =>` catch-alls over *closed* coproducts · `unwrap_or_default` in inference · hand-rolled recursion where a fold exists. These are the decidable fail-open shapes → §0 wall candidates, not just lenses [irreducible residue catalogue](docs/plans/non-fold-irreducible-residue-catalogue.md) [real-debt syntactic sample audit](docs/plans/real-debt-syntactic-sample-audit.md) [eval-bind node-eval PROPOSE](docs/plans/eval-bind-node-eval-propose.md)
 - [ ] **fold-friction audit** — what makes the fold awkward to reach (the #5512 pre-state: generic fn-params mis-inferred as kernel `Witness`/`Optional`, forcing typed-param workarounds) — the friction predicts where new residue appears
 
 **Fix half — make the fold the path of least resistance:**
@@ -253,6 +253,12 @@ A program is a canonical `Node` (the *idea*); ingest / emit / eval across many m
       - [ ] **C5 — digest/accelerator kv** *(low)* — route `digest_render` through `serialize_record` [plan](docs/plans/format-model-reconciliation.md)
       - [ ] **C6 — CSS declaration blocks** *(cosmetic)* — `css_rule` props as record emit [plan](docs/plans/format-model-reconciliation.md)
 - [ ] **emission = ingestion⁻¹ extended past syntax** — diagnostic + orchestration intent emit per-target by rows [plan](docs/plans/emission-ingestion-inverse.md)
+  - [ ] **shell emission model** — `emit(intent,Bash)` via `05_emit_orchestration`; dissolves `program.dag` + `ShellCommand{script}` (Phase B); cross-link §1 `1-inline-shell-defork` [plan](docs/plans/shell-emission-model.md)
+    - [ ] **slice 0 — CI EAGAIN-retry** — `ci_cargo_eagain_retry_core` → `emit(Retry,Bash)`; byte-oracle = committed `ci.yml` [plan](docs/plans/shell-emission-model.md)
+      - [ ] **slice 1 — control-flow emit** — `If` then `For`/`While` (`orch_emit_step` arms + byte goldens) [plan](docs/plans/shell-emission-model.md)
+        - [ ] **slice 2 — fleet_converge** — `fleet_converge_emit` → committed `.github/fleet-converge.sh` [plan](docs/plans/shell-emission-model.md)
+          - [ ] **slice 3 — live_deploy** — freeze golden first; heredoc foreign-media = permanent ratchet [plan](docs/plans/shell-emission-model.md)
+            - [ ] **slice 4 — tail** — `bmc_token_federation` → `ci_workflow` RunSteps → githooks [plan](docs/plans/shell-emission-model.md)
 - [ ] `FidelityDisposition` compose-up → medium-level `DecodeFidelity`
 - [ ] eval runtime generalization (wave-1 literal pins → `wave1_model_core` primitives)
 - [ ] **invert hand-maintained artifacts** — emit each (ROADMAP flagship · doc indexes) from its `.dag` authority + drift-gate it (the ci.yml pattern) [plan](docs/plans/invert-hand-maintained.md)
