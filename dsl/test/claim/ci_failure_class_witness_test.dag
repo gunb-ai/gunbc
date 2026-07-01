@@ -10,7 +10,7 @@ import gunbc.ci_failure_class {
   infra_retry_grep_alternation, build_retry_infra_signatures,
   verdict_infra_signatures, infra_signature_match_substring,
   infra_signature_origin,
-  MergeGatingStatus, GatingEnforced,
+  MergeGatingStatus, GatingComputedDeferred,
   merge_freshness_gating_status, gating_is_enforced,
   merge_freshness_verdict_is_consumed_to_block
 }
@@ -136,10 +136,9 @@ fn witness_every_signature_is_grounded() -> Bool {
   })
 }
 
-fn witness_gating_enforced_and_consumes_verdict() -> Bool {
-  (merge_freshness_gating_status == GatingEnforced)
-    && (gating_is_enforced(s: merge_freshness_gating_status) == true)
-    && (merge_freshness_verdict_is_consumed_to_block() == true)
+fn witness_verdict_computed_but_gating_deferred() -> Bool {
+  (gating_is_enforced(s: merge_freshness_gating_status) == false)
+    && (merge_freshness_verdict_is_consumed_to_block() == false)
 }
 
 test fn ci_failure_class_witnesses() -> Bool {
@@ -151,5 +150,5 @@ test fn ci_failure_class_witnesses() -> Bool {
     && witness_floor_green_does_not_block()
     && witness_grep_alternation_is_single_authority()
     && witness_build_retry_subset_excludes_job_signals()
-    && witness_gating_enforced_and_consumes_verdict()
+    && witness_verdict_computed_but_gating_deferred()
 }

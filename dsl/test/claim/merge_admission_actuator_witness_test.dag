@@ -97,16 +97,16 @@ test fn enforcement_red_on_revert_stale_base() -> Bool {
   fresh && stale
 }
 
-test fn activation_enforced_blocks_merge_for_stale() -> Bool {
-  (gating_is_enforced(s: merge_freshness_gating_status) == true)
+test fn activation_deferred_blocks_merge_false_for_stale() -> Bool {
+  (gating_is_enforced(s: merge_freshness_gating_status) == false)
     && merge_admission_would_block(
       receipt: scenario_pr_x_receipt,
       merge_target_tree_hash: scenario_base_b1,
       current_roster_hash: scenario_roster_r0,
     )
-    && merge_admission_blocks_merge(
+    && (merge_admission_blocks_merge(
       receipt: scenario_pr_x_receipt,
       merge_target_tree_hash: scenario_base_b1,
       current_roster_hash: scenario_roster_r0,
-    )
+    ) == false)
 }

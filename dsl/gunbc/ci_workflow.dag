@@ -14,7 +14,8 @@ import gunbc.merge_admission_produce {
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
-import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
@@ -165,10 +166,15 @@ fn ci_floor_step() -> Step {
   }
 }
 
-data merge_admission_gate_step_name: String = "Merge-admission gate"
+data merge_admission_gate_step_name: String = "Merge-admission gate (NOT ENFORCING until GatingEnforced)"
 
-data merge_admission_ci_gate_step_scaffold: Disposition = Terminal {
-  reason: "Activated: ci_merge_admission_gate_step runs merge_admission_blocks_merge on every CI floor."
+data merge_admission_ci_gate_step_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_workflow",
+    decl_name: "ci_merge_admission_gate_step",
+    field: WholeDeclaration
+  }
 }
 
 fn ci_merge_admission_gate_step() -> Step {
