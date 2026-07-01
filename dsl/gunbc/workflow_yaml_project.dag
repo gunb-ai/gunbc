@@ -290,18 +290,29 @@ fn steps_yaml(steps: List<Step>) -> YamlValue {
   yaml_sequence(elements: fold(steps, init: empty_yaml_values, f: (acc, s) => concat(acc, [step_yaml(step: s)])))
 }
 
+fn optional_string_list_kv(key: String, items: List<String>) -> List<YamlKeyValue> {
+  if items.length() == 0 {
+    []
+  } else {
+    [kv(key: key, value: string_list_flow(items: items))]
+  }
+}
+
 fn job_yaml(job: Job) -> YamlValue {
   yaml_mapping(entries: concat(
     [kv(key: "runs-on", value: runner_yaml(spec: job.runner))],
     concat(
-      optional_int_kv(key: "timeout-minutes", value: job.timeout_minutes),
+      optional_string_list_kv(key: "needs", items: job.needs),
       concat(
-        [kv(key: "steps", value: steps_yaml(steps: job.steps))],
+        optional_int_kv(key: "timeout-minutes", value: job.timeout_minutes),
         concat(
-          optional_env_mapping(entries: job.env),
+          optional_string_kv(key: "if", value: job.if_condition),
           concat(
-            optional_string_kv(key: "if", value: job.if_condition),
-            optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
+            [kv(key: "steps", value: steps_yaml(steps: job.steps))],
+            concat(
+              optional_env_mapping(entries: job.env),
+              optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
+            )
           )
         )
       )
