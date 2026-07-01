@@ -72,6 +72,19 @@ pub const UNIFIED_CLAIM_VERIFICATION_MODULE: &str = "v2.std.verification";
 pub const BOOL_WITNESS_CLAIM_TYPE: &str = "BoolWitnessClaim";
 pub const NODE_CORPUS_TYPE: &str = "NodeCorpus";
 
+// cargo's build-output dir (a `target` dir beside a Cargo.toml) is realization
+// output, not source: a corpus copy materialized under it (e.g.
+// target/func_env_semantic_baseline_corpus/dsl/**) must never enter a module
+// index alongside the tree it was copied from. A source root passed FROM
+// inside target/ is still walked — only descent into the output dir is refused.
+pub(crate) fn is_cargo_target_output_dir(
+    parent: &std::path::Path,
+    child: &std::path::Path,
+) -> bool {
+    child.file_name().and_then(|n| n.to_str()) == Some("target")
+        && parent.join("Cargo.toml").is_file()
+}
+
 fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
     let mut entries: Vec<_> = std::fs::read_dir(dir)
         .unwrap_or_else(|e| panic!("failed to read dir {:?}: {}", dir, e))
@@ -81,6 +94,9 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
     for entry in entries {
         let path = entry.path();
         if path.is_dir() {
+            if is_cargo_target_output_dir(dir, &path) {
+                continue;
+            }
             collect_dag_files(&path, files);
         } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
             files.push(path);
@@ -174,6 +190,14 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                     })
                     .to_string_lossy()
                     .replace('\\', "/");
+                if let Some(existing) = index.get(&module_path) {
+                    if existing != &rel {
+                        panic!(
+                            "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
+                            module_path, existing, rel
+                        );
+                    }
+                }
                 index.insert(module_path.clone(), rel);
             }
         }
@@ -465,6 +489,14 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             if let Some(module_path) = extract_module_path(&content) {
                 let rel_path = path.to_string_lossy().to_string();
+                if let Some(existing) = index.get(&module_path) {
+                    if existing.path != rel_path {
+                        panic!(
+                            "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
+                            module_path, existing.path, rel_path
+                        );
+                    }
+                }
                 index.insert(
                     module_path,
                     Rc::new(v1_compiler_compile::SourceFile {
@@ -2876,6 +2908,9 @@ pub(crate) fn collect_dag_files_tolerant(dir: &Path, out: &mut Vec<PathBuf>) {
     for entry in entries.flatten() {
         let path = entry.path();
         if path.is_dir() {
+            if is_cargo_target_output_dir(dir, &path) {
+                continue;
+            }
             collect_dag_files_tolerant(&path, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
             out.push(path);
@@ -8533,9 +8568,77 @@ mod module_path_index_tests {
     }
 
     #[test]
-    fn co_root_overlay_last_root_wins_on_duplicate_module_path() {
+    fn extdeps_shell_resolves_to_the_dsl_authority() {
         let path = source_path_for_module_path("extdeps.shell".to_string());
-        assert_eq!(path, "src/v2/extdeps/shell.dag");
+        assert_eq!(path, "dsl/extdeps/shell/shell.dag");
+    }
+
+    #[test]
+    fn duplicate_module_path_across_roots_refuses_loudly() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc-module-collision-wall-{}",
+            std::process::id()
+        ));
+        let root_a = dir.join("root_a");
+        let root_b = dir.join("root_b");
+        std::fs::create_dir_all(&root_a).unwrap();
+        std::fs::create_dir_all(&root_b).unwrap();
+        std::fs::write(root_a.join("m.dag"), "module collision.example\n").unwrap();
+        std::fs::write(root_b.join("m.dag"), "module collision.example\n").unwrap();
+        let roots = vec![
+            root_a.to_string_lossy().into_owned(),
+            root_b.to_string_lossy().into_owned(),
+        ];
+        // RED control: same module declared in two files refuses loudly.
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::build_module_index(&roots)
+        }))
+        .is_err();
+        // GREEN control: distinct modules build fine.
+        std::fs::write(root_b.join("m.dag"), "module collision.other\n").unwrap();
+        let built = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::build_module_index(&roots)
+        }))
+        .is_ok();
+        std::fs::remove_dir_all(&dir).ok();
+        assert!(refused, "collision must refuse loudly, not shadow silently");
+        assert!(built, "distinct modules must still index");
+    }
+
+    #[test]
+    fn cargo_target_dir_output_never_enters_the_module_index() {
+        let dir =
+            std::env::temp_dir().join(format!("gunbc-target-dir-exclusion-{}", std::process::id()));
+        let root = dir.join("root");
+        let baseline = root.join("target").join("baseline_corpus");
+        std::fs::create_dir_all(&baseline).unwrap();
+        std::fs::write(root.join("m.dag"), "module corpus.example\n").unwrap();
+        std::fs::write(baseline.join("m.dag"), "module corpus.example\n").unwrap();
+        let roots = vec![root.to_string_lossy().into_owned()];
+        // With a Cargo.toml beside it, target/ is build output: the corpus
+        // copy is skipped and the source file indexes alone (the CI regression:
+        // target/func_env_semantic_baseline_corpus tripped the collision wall).
+        std::fs::write(root.join("Cargo.toml"), "[package]\n").unwrap();
+        let indexed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::build_module_index(&roots)
+        }));
+        // RED control: without Cargo.toml the same layout is two source files
+        // declaring one module — the wall must still refuse.
+        std::fs::remove_file(root.join("Cargo.toml")).unwrap();
+        let refused = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            super::build_module_index(&roots)
+        }))
+        .is_err();
+        std::fs::remove_dir_all(&dir).ok();
+        let index = indexed.expect("cargo target output must be excluded, not collide");
+        assert!(
+            index.contains_key("corpus.example"),
+            "the source-tree declaration must still index"
+        );
+        assert!(
+            refused,
+            "a plain (non-cargo) target dir is source like any other — collision must refuse"
+        );
     }
 
     #[test]
