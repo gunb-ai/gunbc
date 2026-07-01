@@ -248,7 +248,7 @@ A program is a canonical `Node` (the *idea*); ingest / emit / eval across many m
   - [ ] `Medium<A> ↔ Medium<B>` homomorphisms
   - [ ] **format-model reconciliation** — decompose record-spelling onto single authority (`SerializationKnobs` + `serialize_record` → `Doc`); complementary to regime-2 line-layout half [plan](docs/plans/format-model-reconciliation.md)
     - [ ] **C1 — SerializationKnobs + serialize_record keystone** (#6045) — delete `FormatModel`; migrate runner manifest byte-identically; JSON swap-test witness (still-wolf-292) [plan](docs/plans/format-model-reconciliation.md)
-      - [ ] **C3 — gitignore de-fork** — migrate `OutputFormat` consumer onto `SerializationKnobs` + `ConfigFormat`; delete `OutputFormat` + `gitignore_render.dag` [plan](docs/plans/format-model-reconciliation.md)
+      - [ ] **C3 — gitignore de-fork** — migrate `OutputFormat` consumer onto `SerializationKnobs` + `ConfigFormat`; delete `OutputFormat` + `gitignore_render.dag` [plan](docs/plans/format-model-reconciliation.md) — ⏳ awaiting sign-off
       - [ ] **C4 — dnsmasq emit** — dnsmasq `ConfigFormat` + knobs; honest positional micro-syntax [plan](docs/plans/format-model-reconciliation.md)
       - [ ] **C5 — digest/accelerator kv** *(low)* — route `digest_render` through `serialize_record` [plan](docs/plans/format-model-reconciliation.md)
       - [ ] **C6 — CSS declaration blocks** *(cosmetic)* — `css_rule` props as record emit [plan](docs/plans/format-model-reconciliation.md)
