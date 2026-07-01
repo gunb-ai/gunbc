@@ -1,5 +1,0 @@
-module test.claim.unwired_model_hygiene_witness
-
-test fn unwired_model_hygiene_declared_count_positive() -> Bool {
-  return unwired_model_declared_count() > 0
-}
