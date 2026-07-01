@@ -27,6 +27,12 @@ test fn node_http_server_source_contains_port_env_check() -> Bool {
   string_contains(s: gunbhub_node_http_server_source(), pattern: "process.env['PORT']")
 }
 
+test fn node_http_server_source_allow_header_set_join_holds() -> Bool {
+  let src = gunbhub_node_http_server_source()
+  string_contains(s: src, pattern: "const allow = [...new Set(pathRoutes.map((r) => r.method))].join(', ');")
+    && !string_contains(s: src, pattern: "Set(pathRoutes.map((r) => r.method)).join")
+}
+
 test fn node_http_server_source_discriminating_negative() -> Bool {
   !string_contains(s: gunbhub_node_http_server_source(), pattern: "DOES_NOT_EXIST_IN_SERVER_SOURCE")
 }

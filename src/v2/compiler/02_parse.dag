@@ -65,7 +65,14 @@ import v2.std.collection { Absent, List, Map, Optional, Present, Set, empty_map,
 import v2.std.algebra { Cons, Empty, TailAbsent, TailFound, any, contains, filter, fold_list, fold_list_right, is_empty, length, list_append, list_snoc_item, list_tail, unique }
 import v2.std.text { Char, CharAbsent, CharFound, string_head }
 import v2.std.witness { Holds, Violates, Witness }
-import v2.std.compilers.lexing { Lexeme, Token, TokenStream, symbol_intern_lexeme }
+import v2.std.compilers.lexing {
+  Lexeme,
+  Token,
+  TokenStream,
+  symbol_intern_lexeme,
+  token_stream_remaining,
+  token_stream_remaining_count
+}
 import v2.std.grammar {
   Choice,
   ParseGrammar,
@@ -1282,7 +1289,7 @@ fn parse_production_tree(
 }
 fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArtifact> {
   let at = port_locus(port: ^parse_stage_locus_port)
-  let ntok = length(xs: tokens.tokens)
+  let ntok = token_stream_remaining_count(stream: tokens)
   let grammar_node = grammar_to_node(grammar: grammar)
   if well_formed(n: grammar_node) {
     match grammar {
@@ -1299,7 +1306,11 @@ fn parse_module(tokens: TokenStream, grammar: ParseGrammar) -> Outcome<ParseArti
         match grammar_validate_for_parse(root: root, at: at) {
           Rejected { diagnostics: diags } => Rejected { diagnostics: diags }
           Accepted { value: validated, diagnostics: _ } =>
-            parse_production(tokens: tokens.tokens, validated: validated, production_name: root.start)
+            parse_production(
+              tokens: token_stream_remaining(stream: tokens),
+              validated: validated,
+              production_name: root.start
+            )
         }
     }
   } else {
