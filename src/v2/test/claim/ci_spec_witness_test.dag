@@ -12,8 +12,10 @@ import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates, gunbc_ci_rust_job_gates,
   ci_release_features,
   scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, git_fetch_script,
-  ci_release_build_script, gunbc_ci_rust_job_run
+  ci_release_build_script, gunbc_ci_rust_job_run, ci_floor_build_verify_script
 }
+
+data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\"\n"
 
 data reflect_gate_type: Symbol = ^Gate
 
@@ -164,6 +166,10 @@ fn witness_release_build_verifies_nonempty_artifacts() -> Bool {
     !string_contains(s: script, pattern: "-newer")
 }
 
+fn witness_floor_build_verify_script_byte_identical() -> Bool {
+  ci_floor_build_verify_script() == golden_floor_build_verify_script
+}
+
 fn witness_scheduler_uses_release_binary() -> Bool {
   string_contains(
     s: scheduler_invoke(spec: gunbc_ci_spec),
@@ -187,6 +193,7 @@ test fn ci_spec_witnesses() -> Bool {
     witness_release_build_eagain_cold_retry() &&
     witness_release_build_eagain_tiers_wrap_build_command() &&
     witness_release_build_verifies_nonempty_artifacts() &&
+    witness_floor_build_verify_script_byte_identical() &&
     witness_scheduler_uses_release_binary() &&
     witness_workflow_run_is_collapsed_script() &&
     witness_gate_roster_matches_coproduct_arms() &&
