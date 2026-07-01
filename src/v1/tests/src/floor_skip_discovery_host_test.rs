@@ -299,6 +299,90 @@ fn node_precise_test_fn_body_edit_runs_only_that_witness() {
 }
 
 #[test]
+fn entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only() {
+    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    chdir_workspace();
+    let ws = workspace_root();
+    let disc_rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
+    let disc_abs = ws.join(disc_rel);
+    let text = std::fs::read_to_string(&disc_abs).expect("discriminator fixture readable");
+    let helper_line = fixture_line(&text, "fn floor_disc_helper_fn");
+    let disc_entry = disc_abs.to_string_lossy().into_owned();
+    let runner_entry = ws
+        .join("src/v2/workflow/affected_set_floor_runner_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let roster = vec![
+        (
+            disc_entry.clone(),
+            "floor_disc_witness_a_only_holds".to_string(),
+        ),
+        (
+            runner_entry,
+            "floor_runner_node_frontier_policy_holds".to_string(),
+        ),
+    ];
+
+    let summary = run_injected_diff_roster(disc_rel, helper_line, &roster);
+    assert_eq!(summary.total, 2);
+    assert!(
+        summary.failures.is_empty(),
+        "helper-fn edit cross-entry roster failures: {:?}",
+        summary.failures
+    );
+    assert_eq!(
+        summary.passed, 1,
+        "helper-fn edit must RUN the witness in the touched entry"
+    );
+    assert_eq!(
+        summary.skipped, 1,
+        "helper-fn edit must SKIP witnesses in unrelated entries (replaces force_run_all)"
+    );
+}
+
+#[test]
+fn import_closure_helper_fn_edit_runs_importer_entry_only() {
+    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    chdir_workspace();
+    let ws = workspace_root();
+    let helper_rel = "src/v2/test/fixture/floor_skip/floor_disc_shared_helper.dag";
+    let helper_abs = ws.join(helper_rel);
+    let text = std::fs::read_to_string(&helper_abs).expect("shared helper readable");
+    let helper_line = fixture_line(&text, "fn floor_disc_shared_helper");
+    let disc_entry = ws
+        .join("src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let runner_entry = ws
+        .join("src/v2/workflow/affected_set_floor_runner_test.dag")
+        .to_string_lossy()
+        .into_owned();
+    let roster = vec![
+        (disc_entry, "floor_disc_witness_a_only_holds".to_string()),
+        (
+            runner_entry,
+            "floor_runner_node_frontier_policy_holds".to_string(),
+        ),
+    ];
+
+    let summary = run_injected_diff_roster(helper_rel, helper_line, &roster);
+    assert_eq!(summary.total, 2);
+    assert!(
+        summary.failures.is_empty(),
+        "cross-file helper-fn edit roster failures: {:?}",
+        summary.failures
+    );
+    assert_eq!(
+        summary.passed, 1,
+        "cross-file helper-fn edit must RUN the witness in the importing entry"
+    );
+    assert_eq!(
+        summary.skipped, 1,
+        "cross-file helper-fn edit must SKIP witnesses in unrelated entries"
+    );
+}
+
+#[test]
 fn frontier_warmup_does_not_poison_corpus_resolution() {
     let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     chdir_workspace();

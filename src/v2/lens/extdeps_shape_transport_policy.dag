@@ -88,6 +88,16 @@ data empty_extdeps_transport_fusion_facts: List<ExtdepsTransportFusionFact> = []
 data empty_extdeps_operation_input_facts: List<ExtdepsOperationInputFact> = []
 data empty_extdeps_embedded_policy_literal_facts: List<ExtdepsEmbeddedPolicyLiteralFact> = []
 
+type ExtdepsModuleFacts {
+  argv_facts: List<ExtdepsTransportArgvFact>
+  embedded_facts: List<ExtdepsEmbeddedPolicyLiteralFact>
+  fusion_facts: List<ExtdepsTransportFusionFact>
+  gist_create_declares_filename_input: Bool
+  gist_create_files_keyed_by_filename: Bool
+  input_facts: List<ExtdepsOperationInputFact>
+  source_nickname_literal_count: Int
+}
+
 fn extdeps_argv_token_is_parameterized_placeholder(token: String) -> Bool {
   string_contains(token, "{") && string_contains(token, "}")
 }
@@ -119,27 +129,35 @@ fn extdeps_data_literal_is_embedded_policy_literal(value: String) -> Bool {
 }
 
 fn extdeps_live_module_embedded_policy_literal_count(module: QualifiedName) -> Int {
-  extdeps_embedded_policy_literal_count_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_embedded_policy_literal_count(
+    facts: extdeps_shape_transport_policy_facts_for_qualified_name(module: module).embedded_facts
+  )
 }
 
 fn extdeps_live_module_source_nickname_literal_count(module: QualifiedName) -> Int {
-  module_source_nickname_literal_count_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_facts_for_qualified_name(module: module).source_nickname_literal_count
 }
 
 fn extdeps_live_module_transport_fusion_fork_count(module: QualifiedName) -> Int {
-  extdeps_transport_fusion_fork_count_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_fusion_count_for_module(
+    fusion_facts: extdeps_shape_transport_policy_facts_for_qualified_name(module: module).fusion_facts,
+    module: module
+  )
 }
 
 fn extdeps_live_module_policy_leak_count(module: QualifiedName) -> Int {
-  extdeps_policy_leak_count_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_policy_leak_count_for_module(
+    argv_facts: extdeps_shape_transport_policy_facts_for_qualified_name(module: module).argv_facts,
+    module: module
+  )
 }
 
 fn extdeps_live_module_gist_create_declares_filename_input(module: QualifiedName) -> Bool {
-  extdeps_gist_create_declares_filename_input_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_facts_for_qualified_name(module: module).gist_create_declares_filename_input
 }
 
 fn extdeps_live_module_gist_create_files_keyed_by_filename(module: QualifiedName) -> Bool {
-  extdeps_gist_create_files_keyed_by_filename_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_facts_for_qualified_name(module: module).gist_create_files_keyed_by_filename
 }
 
 fn extdeps_module_identity_resolves(module: QualifiedName) -> Bool {
@@ -151,7 +169,10 @@ fn extdeps_live_module_dead_param_count_for_operation(
   service: String,
   operation: String
 ) -> Int {
-  extdeps_dead_param_count_for_qualified_name(
+  let facts = extdeps_shape_transport_policy_facts_for_qualified_name(module: module)
+  extdeps_shape_transport_policy_dead_param_count_for_operation(
+    argv_facts: facts.argv_facts,
+    input_facts: facts.input_facts,
     module: module,
     service: service,
     operation: operation
