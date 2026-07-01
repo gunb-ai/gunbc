@@ -5797,13 +5797,13 @@ fn eval_builtin(
             crate::cli_run::doc_graph_doc_count(),
         ))),
 
-        "unwired_model_names_live" => {
-            let names = crate::cli_run::unwired_model_names_live();
+        "inert_carrier_names_live" => {
+            let names = crate::cli_run::inert_carrier_names_live();
             let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
             Ok(Some(list_value(items)))
         }
-        "unwired_model_declared_count" => Ok(Some(Value::Int(
-            crate::cli_run::unwired_model_declared_count_live(),
+        "inert_carrier_declared_count" => Ok(Some(Value::Int(
+            crate::cli_run::inert_carrier_declared_count_live(),
         ))),
 
         "inert_lens_unreached_module_count" => Ok(Some(Value::Int(
