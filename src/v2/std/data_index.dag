@@ -11,8 +11,6 @@ type DataInitDecl {
   literal_fp: String
 }
 
-// Fingerprint encoding shared with `data_init_literal_fingerprint` in
-// `coproduct_reflection.rs` (host bridge for `data_init_decl_facts_live`).
 fn literal_fingerprint_num_lexeme(lexeme: String) -> String {
   concat("num:", lexeme)
 }
