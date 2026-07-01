@@ -5491,7 +5491,6 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
     out
 }
 
-<<<<<<< HEAD
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
 const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
 
@@ -5524,31 +5523,10 @@ fn collect_md_files(dir: &Path, out: &mut BTreeSet<String>) {
             collect_md_files(&path, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
             out.insert(doc_repo_rel(&path));
-=======
-// Host-fed fact extraction for `v2.lens.host_language_transport_script` — the lens `.dag` table
-// owns verdict logic; this bridge only projects `shell.Exec.Run` script-arg shapes from parsed
-// modules. DISSOLUTION: node-tree reader at gunbc#5364; until then one shared host seam (Chunk D).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TransportScriptArgShape {
-    ComputedApplication = 0,
-    BareStringLiteral = 1,
-    LetBoundStringLiteral = 2,
-    StringInterpLiteralsOnly = 3,
-}
-
-impl TransportScriptArgShape {
-    fn as_symbol(self) -> &'static str {
-        match self {
-            Self::ComputedApplication => "ComputedApplication",
-            Self::BareStringLiteral => "BareStringLiteral",
-            Self::LetBoundStringLiteral => "LetBoundStringLiteral",
-            Self::StringInterpLiteralsOnly => "StringInterpLiteralsOnly",
->>>>>>> 5fbd516baf (WIP: HAND lens E: interpreter reads v2/lens/*.dag tables → retire 13 census p)
         }
     }
 }
 
-<<<<<<< HEAD
 fn markdown_link_targets(content: &str) -> Vec<String> {
     let mut out = Vec::new();
     let bytes = content.as_bytes();
@@ -5741,7 +5719,29 @@ pub fn doc_graph_dangling_link_count() -> i64 {
 
 pub fn doc_graph_doc_count() -> i64 {
     doc_graph_report().doc_count as i64
-=======
+
+// Host-fed fact extraction for `v2.lens.host_language_transport_script` — the lens `.dag` table
+// owns verdict logic; this bridge only projects `shell.Exec.Run` script-arg shapes from parsed
+// modules. DISSOLUTION: node-tree reader at gunbc#5364; until then one shared host seam (Chunk D).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransportScriptArgShape {
+    ComputedApplication = 0,
+    BareStringLiteral = 1,
+    LetBoundStringLiteral = 2,
+    StringInterpLiteralsOnly = 3,
+}
+
+impl TransportScriptArgShape {
+    fn as_symbol(self) -> &'static str {
+        match self {
+            Self::ComputedApplication => "ComputedApplication",
+            Self::BareStringLiteral => "BareStringLiteral",
+            Self::LetBoundStringLiteral => "LetBoundStringLiteral",
+            Self::StringInterpLiteralsOnly => "StringInterpLiteralsOnly",
+        }
+    }
+}
+
 pub struct TransportScriptPositionFactRaw {
     pub path: String,
     pub function: String,
@@ -5762,10 +5762,7 @@ fn resolve_dag_path_for_transport_script(path: &str) -> PathBuf {
 
 fn parse_module_items_for_transport_script(
     path: &str,
-) -> (
-    Rc<Vec<Rc<Node>>>,
-    Rc<HashMap<String, Rc<NewlineIndex>>>,
-) {
+) -> (Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
     let resolved = resolve_dag_path_for_transport_script(path);
     let path_str = resolved.to_string_lossy();
     let content = std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
@@ -5959,7 +5956,9 @@ fn transport_script_facts_for_function_body(
     facts
 }
 
-pub fn transport_script_position_facts_for_path(path: String) -> Vec<TransportScriptPositionFactRaw> {
+pub fn transport_script_position_facts_for_path(
+    path: String,
+) -> Vec<TransportScriptPositionFactRaw> {
     let (items, source_indices) = parse_module_items_for_transport_script(&path);
     let mut facts = Vec::new();
     for item in items.iter() {
@@ -5978,8 +5977,7 @@ pub fn transport_script_position_facts_for_path(path: String) -> Vec<TransportSc
         ));
     }
     facts
->>>>>>> 5fbd516baf (WIP: HAND lens E: interpreter reads v2/lens/*.dag tables → retire 13 census p)
-}
+
 
 #[cfg(test)]
 mod module_path_index_tests {

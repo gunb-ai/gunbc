@@ -5640,13 +5640,6 @@ fn eval_builtin(
                 positional.first().copied(),
                 "transport_script_position_facts_for_path",
             )?;
-<<<<<<< HEAD
-            let count =
-                crate::module_path_index::transport_script_position_census::transport_script_literal_violation_count_for_path(
-                    path,
-                );
-            Ok(Some(Value::Int(count)))
-=======
             let facts = crate::cli_run::transport_script_position_facts_for_path(path);
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
@@ -5665,7 +5658,6 @@ fn eval_builtin(
                 });
             }
             Ok(Some(list_value(items)))
->>>>>>> d3130c4cf4 (WIP: HAND lens E: interpreter reads v2/lens/*.dag tables → retire 13 census p)
         }
 
         "extdeps_embedded_policy_literal_count_for_qualified_name" => {
