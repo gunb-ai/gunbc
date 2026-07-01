@@ -123,3 +123,5 @@ fn deploy_target_host_preflight_block(proof: DeployTargetHostProof) -> String {
       )
   }
 }
+
+data deploy_target_host_preflight_shell_dissolution_trigger: String = "🟡 dissolve-on: deploy_target_host_preflight_block — bash hostname/RUNNER_NAME proof script built with concat/string shell (extends deploy_access_preflight_shell + live_deploy medium-as-string debt, #5828); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — target-host proof modeled as HostEffect intent rows realized through host_effect_apply transport handlers, retiring bash script emit and medium_structure_exception_roster entry for dsl/gunbc/ci_deploy_target_host.dag"
