@@ -5,6 +5,14 @@ import std.credentials { FactoryLogin, CredentialFlow, Stored }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
 import std.types { NonEmptyStr, Int, List }
 import std.logic { Bool }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
+}
 import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetPxe, RedfishAccountRole, AccountRoleAdministrator }
 import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
@@ -231,4 +239,55 @@ fn bmc_credential_probe_to_phase(probe: BmcCredentialProbeResult) -> BmcOnboardi
     RotatedCredentialActive => Present { value: CredentialsRotated }
     CredentialStateUnknown { reason: _ } => Absent
   }
+}
+
+type HostOnboardingLifecycleRow {
+  identity: HostIdentity
+  phase: BmcOnboardingPhase
+}
+
+data fleet_host_onboarding_lifecycle_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.bmc_onboarding",
+    decl_name: "fleet_host_onboarding_lifecycle",
+    field: WholeDeclaration
+  }
+}
+
+data srv1_bmc_lifecycle_phase: BmcOnboardingPhase = OsInstalled
+
+data srv2_bmc_lifecycle_phase: BmcOnboardingPhase = OsInstalled
+
+data srv3_bmc_lifecycle_phase: BmcOnboardingPhase = CredentialsRotated
+
+data fleet_host_onboarding_lifecycle: List<HostOnboardingLifecycleRow> = [
+  HostOnboardingLifecycleRow { identity: operator_host_srv1, phase: srv1_bmc_lifecycle_phase },
+  HostOnboardingLifecycleRow { identity: operator_host_srv2, phase: srv2_bmc_lifecycle_phase },
+  HostOnboardingLifecycleRow { identity: operator_host_srv3, phase: srv3_bmc_lifecycle_phase },
+]
+
+fn host_onboarding_lifecycle_phase(host: HostIdentity) -> BmcOnboardingPhase? {
+  if host == operator_host_srv1 {
+    Present { value: srv1_bmc_lifecycle_phase }
+  } else if host == operator_host_srv2 {
+    Present { value: srv2_bmc_lifecycle_phase }
+  } else if host == operator_host_srv3 {
+    Present { value: srv3_bmc_lifecycle_phase }
+  } else {
+    Absent
+  }
+}
+
+fn bmc_phase_is_pre_os_installed(phase: BmcOnboardingPhase) -> Bool {
+  match phase {
+    FactoryDefault => true
+    CredentialsRotated => true
+    OsInstalled => false
+    FabricJoined => false
+  }
+}
+
+fn bmc_phase_has_running_os(phase: BmcOnboardingPhase) -> Bool {
+  !bmc_phase_is_pre_os_installed(phase: phase)
 }

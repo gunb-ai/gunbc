@@ -307,7 +307,7 @@ converge_slice_property "srv2" "sessions" "cpu_weight" "sessions.slice" "CPUWeig
 emit_sessions_membership "srv2" "/sys/fs/cgroup/sessions.slice" "/sys/fs/cgroup/system.slice"
 host_summary "srv2"
 host_begin "srv3"
-converge_gunbc_pinned_tree "srv3" "gunbc" "pinned_tree_sha" "existing_host_quiescent" "skip_process_pin_coherent_and_marker" "GUNBC_ROOT" "$HOME/.local/share/gunbc/pinned" "defer_submodule" "third_party/gunbc" "$HOME/ctrl" "ghcr.io/gunb-ai/gunbc/bootstrap" "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER" "gunbc" "scripts/session-dashboard/container/read-gunbc-pin.sh" ".dashboard/converge-green-place.marker" "pin=" "first_green_at=" "scripts/session-dashboard/bin/gunbc-pin-quiescent-reload.mjs"
+converge_gunbc_pinned_tree "srv3" "gunbc" "pinned_tree_sha" "fresh_standup" "skip_process_pin_coherent_and_marker" "GUNBC_ROOT" "$HOME/.local/share/gunbc/pinned" "defer_submodule" "third_party/gunbc" "$HOME/ctrl" "ghcr.io/gunb-ai/gunbc/bootstrap" "sha256:BOOTSTRAP_DIGEST_PLACEHOLDER" "gunbc" "scripts/session-dashboard/container/read-gunbc-pin.sh" ".dashboard/converge-green-place.marker" "pin=" "first_green_at=" "scripts/session-dashboard/bin/gunbc-pin-quiescent-reload.mjs"
 converge_slice_property "srv3" "runner" "runner_slice_cap_bytes" "system-actions-runner.slice" "MemoryMax" "111669051696" "111669051696" "111669051696"
 converge_per_slot_cap "srv3" "runner" "per_slot_memory_max_bytes" "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf" "actions-runner@srv3-*.service" "MemoryMax" "25769803776"
 converge_per_slot_cap "srv3" "runner" "per_slot_memory_swap_max_bytes" "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf" "actions-runner@srv3-*.service" "MemorySwapMax" "8589934592"

@@ -64,7 +64,7 @@ import gunbc.host_converge {
   fleet_converge_policy,
 }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match }
-import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
 import gunbc.fleet_converge_emit {
   expected_fleet_converge_sh,
   fleet_converge_sh_for,
@@ -126,7 +126,7 @@ fn witness_live_converge_is_conservation_sound() -> Bool {
     && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_high_bytes\" \"/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf\" \"actions-runner@srv1-*.service\" \"MemoryHigh\" \"15032385536\"")
     && has(s: sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"10\"")
     && has(s: sh, p: "host_begin \"srv3\"")
-    && has(s: sh, p: concat("converge_gunbc_pinned_tree \"srv3\" \"gunbc\" \"pinned_tree_sha\" \"existing_host_quiescent\""))
+    && has(s: sh, p: concat("converge_gunbc_pinned_tree \"srv3\" \"gunbc\" \"pinned_tree_sha\" \"fresh_standup\""))
     && has(s: sh, p: "converge_runner_width \"srv3\" \"runner\" \"runner_count\" \"actions-runner@srv3-*.service\" \"10\"")
 }
 
@@ -263,9 +263,10 @@ fn witness_gunbc_pinned_tree_emitted() -> Bool {
     && has(s: sh, p: "first_green_at=")
 }
 
-fn witness_gunbc_apply_mode_all_hosts_quiescent() -> Bool {
-  converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv3)) == "existing_host_quiescent"
-    && converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: "srv1")) == "existing_host_quiescent"
+fn witness_gunbc_apply_mode_derives_from_lifecycle() -> Bool {
+  converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv1)) == "existing_host_quiescent"
+    && converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv2)) == "existing_host_quiescent"
+    && converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv3)) == "fresh_standup"
 }
 
 fn witness_gunbc_noop_predicate_process_and_green_place() -> Bool {
@@ -329,7 +330,7 @@ test fn fleet_converge_emit_holds() -> Bool {
     && witness_drift_perturbed_desired_flips_emit()
     && witness_gunbc_pinned_tree_emitted()
     && witness_gunbc_noop_predicate_process_and_green_place()
-    && witness_gunbc_apply_mode_all_hosts_quiescent()
+    && witness_gunbc_apply_mode_derives_from_lifecycle()
     && witness_gunbc_pinned_tree_runs_first()
     && witness_sessions_membership_line_emitted()
 }

@@ -36,6 +36,15 @@ import gunbc.bmc_onboarding {
   RotatedCredentialActive,
   CredentialStateUnknown,
   bmc_credential_probe_to_phase,
+  host_onboarding_lifecycle_phase,
+  bmc_phase_is_pre_os_installed,
+  bmc_phase_has_running_os,
+  srv3_bmc_lifecycle_phase,
+}
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  operator_host_srv3,
 }
 import extdeps.bmc.types { BootTargetPxe, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
 import gunbc.assimilate.bmc_token_federation { emit_bmc_token_smoke_workflow_yaml }
@@ -215,4 +224,28 @@ test fn credential_probe_maps_to_correct_phase() -> Bool {
       Absent => true
       Present { value: _ } => false
     }
+}
+
+test fn fleet_host_lifecycle_phase_is_single_authority_for_apply_mode() -> Bool {
+  bmc_phase_is_pre_os_installed(phase: FactoryDefault)
+    && bmc_phase_is_pre_os_installed(phase: CredentialsRotated)
+    && !bmc_phase_is_pre_os_installed(phase: OsInstalled)
+    && !bmc_phase_is_pre_os_installed(phase: FabricJoined)
+    && bmc_phase_has_running_os(phase: OsInstalled)
+    && match host_onboarding_lifecycle_phase(host: operator_host_srv1) {
+      Present { value: OsInstalled } => true
+      Present { value: _ } => false
+      Absent => false
+    }
+    && match host_onboarding_lifecycle_phase(host: operator_host_srv2) {
+      Present { value: OsInstalled } => true
+      Present { value: _ } => false
+      Absent => false
+    }
+    && match host_onboarding_lifecycle_phase(host: operator_host_srv3) {
+      Present { value: CredentialsRotated } => true
+      Present { value: _ } => false
+      Absent => false
+    }
+    && srv3_bmc_lifecycle_phase == CredentialsRotated
 }
