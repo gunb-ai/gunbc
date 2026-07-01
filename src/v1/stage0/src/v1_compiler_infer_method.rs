@@ -281,12 +281,12 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_doc_count".to_string(), int_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "unwired_model_names_live".to_string(),
-            list_of_type_variable("unwired_model_name_elem".to_string()),
+            "inert_carrier_names_live".to_string(),
+            list_of_type_variable("inert_carrier_name_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "unwired_model_declared_count".to_string(),
+            "inert_carrier_declared_count".to_string(),
             int_type(),
         );
         let m = v1_rt::rc_map_insert(
@@ -367,23 +367,8 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
-            "fact_cardinality_cross_tree_coexistence_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "fact_cardinality_cross_tree_diverged_fork_count".to_string(),
-            int_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "fact_cardinality_cross_tree_is_coexistence".to_string(),
-            bool_type(),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "fact_cardinality_cross_tree_is_diverged_fork".to_string(),
-            bool_type(),
+            "fact_cardinality_decl_facts".to_string(),
+            list_of_type_variable("fact_cardinality_decl_fact_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

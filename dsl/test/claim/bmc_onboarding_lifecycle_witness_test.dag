@@ -37,7 +37,7 @@ import gunbc.bmc_onboarding {
   CredentialStateUnknown,
   bmc_credential_probe_to_phase,
 }
-import extdeps.bmc.types { BootTargetPxe, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
+import extdeps.bmc.types { BootTargetCd, AccountRoleAdministrator, redfish_boot_target_wire, redfish_account_role_wire }
 import gunbc.assimilate.bmc_token_federation { emit_bmc_token_smoke_workflow_yaml }
 import extdeps.communication.medium { Lossless, Lossy }
 
@@ -194,8 +194,8 @@ test fn new_altra_plan_starts_factory_default_at_192() -> Bool {
       WindowsOs { distro: _ } => false
       MacosOs { distro: _ } => false
     }
-    && redfish_boot_target_wire(t: new_altra_onboarding_plan.os_install_boot_target) == "Pxe"
-    && redfish_boot_target_wire(t: BootTargetPxe) == "Pxe"
+    && redfish_boot_target_wire(t: new_altra_onboarding_plan.os_install_boot_target) == "Cd"
+    && redfish_boot_target_wire(t: BootTargetCd) == "Cd"
     && redfish_account_role_wire(role: new_altra_onboarding_plan.rotated_account_role) == "Administrator"
     && redfish_account_role_wire(role: AccountRoleAdministrator) == "Administrator"
 }

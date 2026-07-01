@@ -5439,32 +5439,30 @@ fn eval_builtin(
             Ok(Some(list_value(items)))
         }
 
-        "fact_cardinality_cross_tree_coexistence_count" => Ok(Some(Value::Int(
-            crate::module_path_index::fact_cardinality_census::cross_tree_coexistence_count(),
-        ))),
-
-        "fact_cardinality_cross_tree_diverged_fork_count" => Ok(Some(Value::Int(
-            crate::module_path_index::fact_cardinality_census::cross_tree_diverged_fork_count(),
-        ))),
-
-        "fact_cardinality_cross_tree_is_coexistence" => {
-            let key = expect_str(
-                positional.first().copied(),
-                "fact_cardinality_cross_tree_is_coexistence",
-            )?;
-            Ok(Some(Value::Bool(
-                crate::module_path_index::fact_cardinality_census::cross_tree_is_coexistence(key),
-            )))
-        }
-
-        "fact_cardinality_cross_tree_is_diverged_fork" => {
-            let key = expect_str(
-                positional.first().copied(),
-                "fact_cardinality_cross_tree_is_diverged_fork",
-            )?;
-            Ok(Some(Value::Bool(
-                crate::module_path_index::fact_cardinality_census::cross_tree_is_diverged_fork(key),
-            )))
+        "fact_cardinality_decl_facts" => {
+            let facts = crate::cli_run::fact_cardinality_decl_facts();
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                let tree = match f.tree.as_str() {
+                    "dsl" => "Dsl",
+                    "v2" => "V2",
+                    other => panic!("fact_cardinality_decl_facts: unknown tree {other:?}"),
+                };
+                let tree_value = Value::Variant {
+                    type_name: ctx.sym("FactCardinalityTree"),
+                    variant_name: ctx.sym(tree),
+                    fields: Rc::new(vec![]),
+                };
+                items.push(Value::Record {
+                    type_name: ctx.sym("FactCardinalityDeclFact"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (ctx.sym("rel_path_decl_key"), Value::Str(f.rel_path_decl_key)),
+                        (ctx.sym("tree"), tree_value),
+                        (ctx.sym("content_hash"), Value::Str(f.content_hash)),
+                    ])),
+                });
+            }
+            Ok(Some(list_value(items)))
         }
 
         "languages_consumer_census_data_decl_count" => Ok(Some(Value::Int(
@@ -5797,13 +5795,13 @@ fn eval_builtin(
             crate::cli_run::doc_graph_doc_count(),
         ))),
 
-        "unwired_model_names_live" => {
-            let names = crate::cli_run::unwired_model_names_live();
+        "inert_carrier_names_live" => {
+            let names = crate::cli_run::inert_carrier_names_live();
             let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
             Ok(Some(list_value(items)))
         }
-        "unwired_model_declared_count" => Ok(Some(Value::Int(
-            crate::cli_run::unwired_model_declared_count_live(),
+        "inert_carrier_declared_count" => Ok(Some(Value::Int(
+            crate::cli_run::inert_carrier_declared_count_live(),
         ))),
 
         "inert_lens_unreached_module_count" => Ok(Some(Value::Int(
@@ -5814,16 +5812,16 @@ fn eval_builtin(
         ))),
 
         "non_fold_residue_count" => Ok(Some(Value::Int(
-            crate::module_path_index::non_fold_residue_census::non_fold_residue_count(),
+            crate::cli_run::non_fold_residue_count(),
         ))),
         "non_fold_residue_unrostered_count" => Ok(Some(Value::Int(
-            crate::module_path_index::non_fold_residue_census::non_fold_residue_unrostered_count(),
+            crate::cli_run::non_fold_residue_unrostered_count(),
         ))),
         "non_fold_residue_stale_roster_count" => Ok(Some(Value::Int(
-            crate::module_path_index::non_fold_residue_census::non_fold_residue_stale_roster_count(),
+            crate::cli_run::non_fold_residue_stale_roster_count(),
         ))),
         "non_fold_residue_coproduct_universe_count" => Ok(Some(Value::Int(
-            crate::module_path_index::non_fold_residue_census::non_fold_residue_coproduct_universe_count(),
+            crate::cli_run::non_fold_residue_coproduct_universe_count(),
         ))),
 
         "complexity_linearity_syntactic_finding_count" => Ok(Some(Value::Int(

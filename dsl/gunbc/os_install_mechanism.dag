@@ -1,6 +1,11 @@
 module gunbc.os_install_mechanism
 
 import std.types { List }
+import extdeps.bmc.types {
+  RedfishBootSourceOverrideTarget,
+  BootTargetPxe,
+  BootTargetCd,
+}
 import extdeps.bmc.capability {
   BmcCapability,
   BmcFirmwareCapabilityRow,
@@ -42,4 +47,17 @@ data srv3_firmware_catalog: List<BmcFirmwareCapabilityRow> = asrock_altrad8ud_1l
 data srv3_install_mechanism: OsInstallMechanism = solve_install_mechanism(
   current: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
   catalog: srv3_firmware_catalog
+)
+
+fn install_boot_target_for(mechanism: OsInstallMechanism) -> RedfishBootSourceOverrideTarget {
+  match mechanism {
+    VirtualMediaInstall => BootTargetCd
+    NbdProxyVirtualMediaInstall => BootTargetCd
+    PxeHttpInstall => BootTargetPxe
+    FirmwareUpdateThenVirtualMedia => BootTargetCd
+  }
+}
+
+data srv3_install_boot_target: RedfishBootSourceOverrideTarget = install_boot_target_for(
+  mechanism: srv3_install_mechanism
 )

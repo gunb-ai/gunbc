@@ -3288,7 +3288,7 @@ pub fn construction_authority_unresolved(
         .iter()
         .filter(|(_, module_path, decl_name)| {
             !module_to_content.get(module_path).is_some_and(|content| {
-                crate::module_path_index::fact_cardinality_census::extract_top_level_decls(content)
+                extract_top_level_decls(content)
                     .iter()
                     .any(|(name, _)| name == decl_name)
             })
@@ -6794,6 +6794,171 @@ pub fn layer_import_facts(
     out
 }
 
+// Host-fed fact extraction for `v2.lens.fact_cardinality` — the lens `.dag` table owns
+// verdict logic; this bridge only projects top-level decl keys + content hashes from the
+// witness-layer trees. DISSOLUTION: node-tree reader at gunbc#5364; until then one shared
+// host seam (Chunk D).
+const FACT_CARDINALITY_ITEM_KEYWORDS: [&str; 8] = [
+    "data ",
+    "fn ",
+    "func ",
+    "type ",
+    "service ",
+    "const ",
+    "pattern ",
+    "resource ",
+];
+
+pub struct FactCardinalityDeclFactRaw {
+    pub rel_path_decl_key: String,
+    pub tree: String,
+    pub content_hash: String,
+}
+
+fn normalize_decl_body(source: &str) -> String {
+    source
+        .lines()
+        .map(|line| line.split("//").next().unwrap_or(line).trim())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn decl_body_hash(body: &str) -> String {
+    crate::v1_rt::atom_identity_hash(normalize_decl_body(body))
+}
+
+/// Kind-agnostic top-level decl extraction (name, content-hash) for cross-tree cardinality.
+pub fn extract_top_level_decls(content: &str) -> Vec<(String, String)> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        if line.starts_with("test ") {
+            i += 1;
+            continue;
+        }
+        let Some(kw) = FACT_CARDINALITY_ITEM_KEYWORDS
+            .iter()
+            .find(|kw| line.starts_with(*kw))
+        else {
+            i += 1;
+            continue;
+        };
+        let rest = &line[kw.len()..];
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            i += 1;
+            continue;
+        }
+        let mut body = String::new();
+        body.push_str(line);
+        body.push('\n');
+        i += 1;
+        let mut depth = brace_delta(line);
+        while i < lines.len() {
+            let next = lines[i];
+            if depth <= 0
+                && FACT_CARDINALITY_ITEM_KEYWORDS
+                    .iter()
+                    .any(|kw| next.starts_with(kw))
+                && !next.starts_with("test ")
+            {
+                break;
+            }
+            body.push_str(next);
+            body.push('\n');
+            depth += brace_delta(next);
+            i += 1;
+        }
+        out.push((name, decl_body_hash(&body)));
+    }
+    out
+}
+
+fn rel_path_within_tree(top_root: &Path, path: &Path) -> String {
+    path.strip_prefix(top_root)
+        .unwrap_or_else(|_| {
+            panic!(
+                "fact_cardinality_decl_facts: path {} is not under tree root {}",
+                path.display(),
+                top_root.display()
+            )
+        })
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+fn walk_fact_cardinality_tree_dir(
+    top_root: &Path,
+    dir: &Path,
+    tree: &str,
+    records: &mut Vec<FactCardinalityDeclFactRaw>,
+) {
+    let entries = std::fs::read_dir(dir).unwrap_or_else(|e| {
+        panic!(
+            "fact_cardinality_decl_facts: failed to read dir {}: {e}",
+            dir.display()
+        )
+    });
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            walk_fact_cardinality_tree_dir(top_root, &path, tree, records);
+            continue;
+        }
+        if path.extension().and_then(|e| e.to_str()) != Some("dag") {
+            continue;
+        }
+        let rel = rel_path_within_tree(top_root, &path);
+        let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+            panic!(
+                "fact_cardinality_decl_facts: failed to read {}: {e}",
+                path.display()
+            )
+        });
+        for (name, hash) in extract_top_level_decls(&content) {
+            records.push(FactCardinalityDeclFactRaw {
+                rel_path_decl_key: format!("{rel}:{name}"),
+                tree: tree.to_string(),
+                content_hash: hash,
+            });
+        }
+    }
+}
+
+fn walk_fact_cardinality_tree(
+    top_root: &Path,
+    tree: &str,
+    records: &mut Vec<FactCardinalityDeclFactRaw>,
+) {
+    if !top_root.is_dir() {
+        panic!(
+            "fact_cardinality_decl_facts: tree root {} does not exist",
+            top_root.display()
+        );
+    }
+    walk_fact_cardinality_tree_dir(top_root, top_root, tree, records);
+}
+
+pub fn fact_cardinality_decl_facts() -> Vec<FactCardinalityDeclFactRaw> {
+    let ws = workspace_root();
+    let mut records = Vec::new();
+    for root in witness_layer_roots() {
+        let tree = Path::new(&root)
+            .file_name()
+            .expect("ci_layer_roots: each root must have a file_name component")
+            .to_string_lossy()
+            .into_owned();
+        walk_fact_cardinality_tree(&ws.join(&root), &tree, &mut records);
+    }
+    records
+}
+
 pub struct ImportResolutionFactRaw {
     pub path: String,
     pub import_module: String,
@@ -6865,6 +7030,534 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
         .collect();
     out.sort_by(|a, b| a.module.cmp(&b.module));
     out
+}
+
+// ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
+//
+// Audits the corpus for `match` expressions whose scrutinee is a function parameter with a declared
+// closed-coproduct type AND whose body has a top-level `_ =>` wildcard arm.
+//
+// Host-fed; DISSOLUTION: folds into a pure `.dag` Node-tree reader (match nodes + scrutinee type)
+// when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
+
+const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
+    "dsl/extdeps/languages/markdown.dag::md_nested",
+    "dsl/gunbc/generated_artifact.dag::artifact_eq",
+    "dsl/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
+    "dsl/gunbc/commit_workflow.dag::gate_eq",
+    "dsl/gunbc/commit_workflow.dag::local_tidy_check_eq",
+    "dsl/std/computation.dag::constant_bound_value",
+    "dsl/std/computation.dag::is_constant_bound",
+    "dsl/std/effects.dag::create_double_init_collapsible",
+    "dsl/std/effects.dag::create_effect_is_dedupable",
+    "dsl/std/effects.dag::key_source_eq",
+    "dsl/std/encoding.dag::encoding_lattice_join",
+    "dsl/std/encoding.dag::encoding_lattice_meet",
+    "dsl/std/filesystem.dag::is_text_encoding",
+    "dsl/std/induction.dag::compose_sub_value",
+    "dsl/std/induction.dag::compose_sub_value_relations",
+    "dsl/std/induction.dag::is_strict_style_structural",
+    "dsl/std/induction.dag::recursion_shape_eq",
+    "dsl/std/induction.dag::shrink_factor_eq",
+    "dsl/std/induction.dag::sub_value_structural_eq",
+    "dsl/std/reducible.dag::reduce_verdict_combine",
+    "dsl/std/termination.dag::descent_evidence_lattice_join",
+    "dsl/std/termination.dag::descent_evidence_lattice_meet",
+    "dsl/std/termination.dag::promote_to_strict",
+    "dsl/tools/ci_gates.dag::exit_ok",
+    "dsl/tools/generated_artifact_gate.dag::exit_ok",
+    "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer",
+    "src/v2/compiler/05_eval.dag::eval_branch_node_eval",
+    "src/v2/compiler/05_eval.dag::eval_loop_node",
+    "src/v2/compiler/05_eval.dag::eval_match_node_eval",
+    "src/v2/compiler/05_eval.dag::eval_transform_node",
+    "src/v2/compiler/05_eval.dag::eval_value_node",
+    "src/v2/compiler/05_eval.dag::run_test_claim_assert_decided",
+    "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
+    "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
+    "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
+    "src/v2/test/claim/manual/eval_runtime_mvp.dag::eval_mvp2_arg_is_two_literal",
+    "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
+    "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
+    "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
+    "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
+    "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
+    "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
+    "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
+    "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
+    "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
+    "src/v2/lens/complexity.dag::complexity_bound_dominates",
+    "src/v2/lens/complexity.dag::complexity_bound_from_class",
+    "src/v2/lens/cost.dag::asymptotic_class_dominates",
+    "src/v2/lens/cost.dag::multiply_classes",
+    "src/v2/lens/cost.dag::symbolic_cost_dominates",
+    "src/v2/lens/cost.dag::symbolic_cost_witness",
+    "src/v2/lens/cost.dag::symbolic_max",
+    "src/v2/lens/cost.dag::symbolic_product",
+    "src/v2/lens/cost.dag::symbolic_sequential",
+    "src/v2/lens/fact_density.dag::connective_is_kernel_ambient_atom",
+    "src/v2/lens/idempotency.dag::idempotency_verdict_eq",
+    "src/v2/lens/ownership.dag::ownership_mode_eq",
+    "src/v2/lens/parallelism.dag::parallelism_relation_eq",
+    "src/v2/lens/registry.dag::lens_id_v0_eq",
+    "src/v2/lens/unused_parameters.dag::use_relation_eq",
+    "src/v2/program.dag::program_runtime_bool_false",
+    "src/v2/program.dag::program_runtime_bool_true",
+    "src/v2/std/compilers/target_model.dag::source_atom_value_as_bool",
+    "src/v2/std/compilers/target_model.dag::source_atom_value_as_char",
+    "src/v2/std/compilers/target_model.dag::source_atom_value_as_string",
+    "src/v2/std/compilers/target_model.dag::source_atom_value_as_symbol",
+    "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
+    "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
+    "src/v2/std/effects.dag::key_source_eq",
+    "src/v2/std/determinism.dag::determinism_class_eq",
+    "src/v2/std/determinism.dag::non_det_source_eq",
+    "src/v2/std/float.dag::float_body_is_nan",
+    "src/v2/std/node_minimal.dag::node_superset_field_eq",
+    "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
+    "src/v2/std/qualified_name.dag::qn_fold_step",
+];
+
+fn nfr_strip_comments(content: &str) -> String {
+    content
+        .lines()
+        .map(strip_line_comment)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn nfr_closed_coproduct_names(files: &[(String, String)]) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for (rel, content) in files {
+        if is_test_dag(rel) {
+            continue;
+        }
+        let lines: Vec<&str> = content.lines().collect();
+        let mut i = 0;
+        while i < lines.len() {
+            let trimmed = lines[i].trim_start();
+            let Some(rest) = trimmed.strip_prefix("type ") else {
+                i += 1;
+                continue;
+            };
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if name.is_empty() {
+                i += 1;
+                continue;
+            }
+            let mut block = String::new();
+            block.push_str(&strip_line_comment(lines[i]));
+            let mut depth = brace_delta(lines[i]);
+            i += 1;
+            while i < lines.len() {
+                let nt = lines[i].trim_start();
+                if depth <= 0 {
+                    if nt.is_empty() {
+                        i += 1;
+                        continue;
+                    }
+                    if !(nt.starts_with('|') || nt.starts_with('=')) {
+                        break;
+                    }
+                }
+                block.push('\n');
+                block.push_str(&strip_line_comment(lines[i]));
+                depth += brace_delta(lines[i]);
+                i += 1;
+            }
+            if block.contains('|') {
+                out.insert(name);
+            }
+        }
+    }
+    out
+}
+
+fn nfr_is_ident(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !s.chars().next().unwrap().is_ascii_digit()
+}
+
+fn nfr_matching_brace(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut j = open;
+    while j < bytes.len() {
+        match bytes[j] {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(j);
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
+}
+
+fn nfr_has_top_level_wildcard_arm(body: &str) -> bool {
+    let bytes = body.as_bytes();
+    let mut depth = 0i32;
+    let mut k = 0;
+    while k < bytes.len() {
+        match bytes[k] {
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            b'_' => {
+                let prev_ok = k == 0 || !nfr_is_ident_byte(bytes[k - 1]);
+                let next_is_ident = k + 1 < bytes.len() && nfr_is_ident_byte(bytes[k + 1]);
+                if depth == 0 && prev_ok && !next_is_ident {
+                    let mut m = k + 1;
+                    while m < bytes.len()
+                        && (bytes[m] == b' ' || bytes[m] == b'\n' || bytes[m] == b'\t')
+                    {
+                        m += 1;
+                    }
+                    if m + 1 < bytes.len() && bytes[m] == b'=' && bytes[m + 1] == b'>' {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+        k += 1;
+    }
+    false
+}
+
+fn nfr_is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+struct NfrFnSig {
+    name: String,
+    params: std::collections::BTreeMap<String, String>,
+    body: String,
+}
+
+fn nfr_parse_fns(src: &str) -> Vec<NfrFnSig> {
+    let bytes = src.as_bytes();
+    let mut out = Vec::new();
+    for (start, _) in src.match_indices("fn ") {
+        if start > 0 && nfr_is_ident_byte(bytes[start - 1]) {
+            continue;
+        }
+        let after = start + 3;
+        let name: String = src[after..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            continue;
+        }
+        let paren_open = match src[after..].find('(') {
+            Some(p) => after + p,
+            None => continue,
+        };
+        let paren_close = match nfr_matching_paren(bytes, paren_open) {
+            Some(p) => p,
+            None => continue,
+        };
+        let params = nfr_parse_params(&src[paren_open + 1..paren_close]);
+        let brace_open = match src[paren_close..].find('{') {
+            Some(b) => paren_close + b,
+            None => continue,
+        };
+        let brace_close = match nfr_matching_brace(bytes, brace_open) {
+            Some(b) => b,
+            None => continue,
+        };
+        out.push(NfrFnSig {
+            name,
+            params,
+            body: src[brace_open + 1..brace_close].to_string(),
+        });
+    }
+    out
+}
+
+fn nfr_matching_paren(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut j = open;
+    while j < bytes.len() {
+        match bytes[j] {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(j);
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
+}
+
+fn nfr_parse_params(s: &str) -> std::collections::BTreeMap<String, String> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut depth = 0i32;
+    let mut cur = String::new();
+    let mut parts: Vec<String> = Vec::new();
+    for ch in s.chars() {
+        match ch {
+            '<' | '(' | '[' => {
+                depth += 1;
+                cur.push(ch);
+            }
+            '>' | ')' | ']' => {
+                depth -= 1;
+                cur.push(ch);
+            }
+            ',' if depth == 0 => parts.push(std::mem::take(&mut cur)),
+            _ => cur.push(ch),
+        }
+    }
+    if !cur.trim().is_empty() {
+        parts.push(cur);
+    }
+    for part in parts {
+        let Some((name, ty)) = part.split_once(':') else {
+            continue;
+        };
+        let name = name.trim();
+        let ty_head: String = ty
+            .trim()
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if nfr_is_ident(name) && !ty_head.is_empty() {
+            out.insert(name.to_string(), ty_head);
+        }
+    }
+    out
+}
+
+fn nfr_residue_sites(files: &[(String, String)]) -> Vec<String> {
+    let coproducts = nfr_closed_coproduct_names(files);
+    let mut out: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (rel, content) in files {
+        if is_test_dag(rel) {
+            continue;
+        }
+        let src = nfr_strip_comments(content);
+        for sig in nfr_parse_fns(&src) {
+            for (mi, _) in sig.body.match_indices("match ") {
+                if mi > 0 && nfr_is_ident_byte(sig.body.as_bytes()[mi - 1]) {
+                    continue;
+                }
+                let after = mi + "match ".len();
+                let Some(brace_rel) = sig.body[after..].find('{') else {
+                    continue;
+                };
+                let scrut = sig.body[after..after + brace_rel].trim();
+                if !nfr_is_ident(scrut) {
+                    continue;
+                }
+                let Some(ty) = sig.params.get(scrut) else {
+                    continue;
+                };
+                if !coproducts.contains(ty) {
+                    continue;
+                }
+                let body_bytes = sig.body.as_bytes();
+                let brace_abs = after + brace_rel;
+                let Some(close) = nfr_matching_brace(body_bytes, brace_abs) else {
+                    continue;
+                };
+                let body = &sig.body[brace_abs + 1..close];
+                if nfr_has_top_level_wildcard_arm(body) {
+                    out.insert(format!("{}::{}", rel, sig.name));
+                }
+            }
+        }
+    }
+    out.into_iter().collect()
+}
+
+struct NonFoldReport {
+    sites: Vec<String>,
+    coproduct_universe: usize,
+    closed_coproduct_names: std::collections::BTreeSet<String>,
+}
+
+fn nfr_build_report() -> &'static NonFoldReport {
+    static REPORT: std::sync::OnceLock<NonFoldReport> = std::sync::OnceLock::new();
+    REPORT.get_or_init(|| {
+        let files = corpus_dag_files();
+        let closed_coproduct_names = nfr_closed_coproduct_names(&files);
+        NonFoldReport {
+            sites: nfr_residue_sites(&files),
+            coproduct_universe: closed_coproduct_names.len(),
+            closed_coproduct_names,
+        }
+    })
+}
+
+pub fn non_fold_residue_closed_coproduct_type_names() -> &'static std::collections::BTreeSet<String>
+{
+    &nfr_build_report().closed_coproduct_names
+}
+
+pub fn non_fold_residue_count() -> i64 {
+    nfr_build_report().sites.len() as i64
+}
+
+pub fn non_fold_residue_unrostered_count() -> i64 {
+    let roster: std::collections::BTreeSet<&str> =
+        NON_FOLD_RESIDUE_ROSTER.iter().copied().collect();
+    nfr_build_report()
+        .sites
+        .iter()
+        .filter(|s| !roster.contains(s.as_str()))
+        .count() as i64
+}
+
+pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
+    NON_FOLD_RESIDUE_ROSTER.contains(&site)
+}
+
+pub fn non_fold_residue_stale_roster_count() -> i64 {
+    let live: std::collections::BTreeSet<&str> = nfr_build_report()
+        .sites
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    NON_FOLD_RESIDUE_ROSTER
+        .iter()
+        .filter(|s| !live.contains(*s))
+        .count() as i64
+}
+
+pub fn non_fold_residue_coproduct_universe_count() -> i64 {
+    nfr_build_report().coproduct_universe as i64
+}
+
+pub fn non_fold_residue_live_sites() -> &'static [String] {
+    &nfr_build_report().sites
+}
+
+pub fn non_fold_residue_roster_size() -> i64 {
+    NON_FOLD_RESIDUE_ROSTER.len() as i64
+}
+
+#[cfg(test)]
+mod nfr_tests {
+    use super::*;
+
+    fn files(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(p, c)| (p.to_string(), c.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn coproduct_index_finds_sums_not_records() {
+        let f = files(&[(
+            "t.dag",
+            "module t\ntype Mode = A | B | C\ntype Rec { x: Int }\ntype Alias = Witness<Int>\n",
+        )]);
+        let cps = nfr_closed_coproduct_names(&f);
+        assert!(cps.contains("Mode"));
+        assert!(!cps.contains("Rec"));
+        assert!(!cps.contains("Alias"));
+    }
+
+    #[test]
+    fn red_control_wildcard_over_closed_coproduct_is_residue() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(
+            sites.contains(&"m.dag::f".to_string()),
+            "a wildcard over a closed-coproduct param must be flagged; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_total_fold_is_not_residue() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n    C => false\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(
+            !sites.contains(&"m.dag::f".to_string()),
+            "an exhaustive match (no wildcard) must NOT be flagged; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_wildcard_over_open_domain_is_not_residue() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B\nfn g(s: String) -> Bool {\n  match s {\n    \"y\" => true\n    _ => false\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(
+            !sites.contains(&"m.dag::g".to_string()),
+            "a wildcard over an open/primitive domain must NOT be flagged; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_field_placeholder_underscore_is_not_a_wildcard_arm() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A { v: Int } | B { v: Int }\nfn f(x: Mode) -> Int {\n  match x {\n    A { v: _ } => 1\n    B { v: _ } => 2\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(
+            !sites.contains(&"m.dag::f".to_string()),
+            "field-placeholder `_` is not a wildcard arm; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn nested_match_wildcard_is_attributed_to_its_own_match() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B\nfn eq(a: Mode, b: Mode) -> Bool {\n  match a {\n    A => match b { A => true _ => false }\n    B => match b { B => true _ => false }\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(sites.contains(&"m.dag::eq".to_string()));
+    }
+
+    #[test]
+    fn green_control_wildcard_and_slashes_inside_string_literal_are_ignored() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    B => \"b\"\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(
+            !sites.contains(&"m.dag::f".to_string()),
+            "`_ =>`/`//` inside a string literal must not be read as code; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn red_control_real_wildcard_survives_an_in_string_decoy() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    _ => \"rest\"\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(
+            sites.contains(&"m.dag::f".to_string()),
+            "a real wildcard arm must still be flagged despite an in-string decoy; got {sites:?}"
+        );
+    }
 }
 
 const LANGUAGES_AUTHORITY_REL: &str = "dsl/std/languages.dag";
@@ -7066,26 +7759,15 @@ pub fn languages_consumer_census_has_external_consumer(decl_name: String) -> boo
         .unwrap_or(false)
 }
 
-// --- Unwired-model census (generalizes the retired inert_carrier census: type -> type/fn/data) ---
+// --- Inert carrier census (folded from inert_carrier_project.rs) ---
 //
-// A declared type/fn/data is "unwired" (DESIGN §5 coverage-by-illusion — a green test lying about
-// liveness) iff:
-//   (a) it is declared exactly once in a PRODUCTION file — not a *_test.dag / `/test/` / `/fixture/`
-//       (test infra) nor a `/plans/` file (plan/design doc);
-//   (b) it is self-tested — its name appears in at least one test file (a witness claims it is live);
-//   (c) it has ZERO production consumer outside its own declaration block; and
-//   (d) it carries no whole-declaration Scaffold marker (std.disposition
-//       `Scaffold { .. bind: DeclarationRef { decl_name: "X", field: WholeDeclaration } }`).
-// (a)+(b)+(c) means the only nodes that reach it are its own tests / plan-docs — no production node
-// consumes it — while a green test pretends otherwise; (d) is DESIGN §6's tracked-debt escape hatch.
-// A PURE orphan (no test at all) makes no liveness claim, so it is OUT of scope here (that is the
-// larger dead-code fight against §6 model-just-in-time, not this lens). Plan-doc PROSE mentions are
-// string-blanked by strip_line_comment and plan/test files are non-production, so a decl reached only
-// by tests / plan-docs is correctly unwired.
-// DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the token
-// scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.
+// A type carrier is "inert" iff (a) declared in a non-test file, (b) its name appears in at least
+// one *_test.dag file (self-tested), and (c) its name appears in NO non-test .dag file outside its
+// own declaration block (zero real consumer). This is DESIGN §5 coverage-by-illusion.
+// DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the
+// token scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.
 
-fn unwired_identifier_tokens(line: &str) -> Vec<String> {
+fn inert_carrier_identifier_tokens(line: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut cur = String::new();
     for ch in line.chars() {
@@ -7101,10 +7783,10 @@ fn unwired_identifier_tokens(line: &str) -> Vec<String> {
     out
 }
 
-fn unwired_count_token(text: &str, name: &str) -> i64 {
+fn inert_carrier_count_token(text: &str, name: &str) -> i64 {
     let mut n = 0i64;
     for raw in text.lines() {
-        for tok in unwired_identifier_tokens(&strip_line_comment(raw)) {
+        for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
             if tok == name {
                 n += 1;
             }
@@ -7113,35 +7795,16 @@ fn unwired_count_token(text: &str, name: &str) -> i64 {
     n
 }
 
-// Structural nesting delta over one line ({}, [], ()), string/comment-blind (reuses strip_line_comment).
-fn unwired_structural_delta(line: &str) -> i32 {
-    let c = strip_line_comment(line);
-    let opens = c.matches('{').count() + c.matches('[').count() + c.matches('(').count();
-    let closes = c.matches('}').count() + c.matches(']').count() + c.matches(')').count();
-    opens as i32 - closes as i32
-}
-
-// Every top-level `type` / `fn` / `data` declaration and its source block. Generalizes the retired
-// inert_carrier_type_carrier_blocks (type-only) by tracking (), [] and {} nesting so fn signatures
-// and multi-line data values are captured; type continuation lines (`|` / `=`) extend a zero-depth
-// block as before.
-fn unwired_decl_blocks(content: &str) -> Vec<(String, String)> {
+fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
     let lines: Vec<&str> = content.lines().collect();
     let mut out = Vec::new();
     let mut i = 0;
     while i < lines.len() {
         let trimmed = lines[i].trim_start();
-        let kind = if trimmed.starts_with("type ") {
-            "type"
-        } else if trimmed.starts_with("fn ") {
-            "fn"
-        } else if trimmed.starts_with("data ") {
-            "data"
-        } else {
+        let Some(rest) = trimmed.strip_prefix("type ") else {
             i += 1;
             continue;
         };
-        let rest = &trimmed[kind.len() + 1..];
         let name: String = rest
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
@@ -7153,67 +7816,23 @@ fn unwired_decl_blocks(content: &str) -> Vec<(String, String)> {
         let mut block = String::new();
         block.push_str(lines[i]);
         block.push('\n');
-        let mut depth = unwired_structural_delta(lines[i]);
+        let mut depth = brace_delta(lines[i]);
         i += 1;
         while i < lines.len() {
             let nt = lines[i].trim_start();
             if depth <= 0 {
-                let type_continuation =
-                    kind == "type" && (nt.starts_with('|') || nt.starts_with('='));
-                if !type_continuation {
+                if !(nt.starts_with('|') || nt.starts_with('=')) {
                     break;
                 }
             }
             block.push_str(lines[i]);
             block.push('\n');
-            depth += unwired_structural_delta(lines[i]);
+            depth += brace_delta(lines[i]);
             i += 1;
         }
         out.push((name, block));
     }
     out
-}
-
-// Whole-declaration Scaffold-marker exemption (DESIGN §6 tracked debt). A decl X is exempt iff some
-// `Scaffold { .. bind: DeclarationRef { .. decl_name: "X", field: WholeDeclaration } }` exists — the
-// canonical one-line bind form (a NamedField bind exempts a field, not the whole model, so it does
-// not exempt an unwired decl).
-fn unwired_whole_decl_scaffold_names(files: &[(String, String)]) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for (_rel, content) in files {
-        for raw in content.lines() {
-            // Read the RAW line: the marker's decl_name lives INSIDE a string literal, which
-            // strip_line_comment would blank. (.dag comments are a parse error, so raw is safe.)
-            let line = raw;
-            if !line.contains("WholeDeclaration") {
-                continue;
-            }
-            let Some(idx) = line.find("decl_name:") else {
-                continue;
-            };
-            let after = &line[idx + "decl_name:".len()..];
-            let Some(q0) = after.find('"') else { continue };
-            let tail = &after[q0 + 1..];
-            let Some(q1) = tail.find('"') else { continue };
-            let name = &tail[..q1];
-            if !name.is_empty() {
-                out.insert(name.to_string());
-            }
-        }
-    }
-    out
-}
-
-fn unwired_is_test_file(rel: &str) -> bool {
-    is_test_dag(rel) || rel.contains("/test/") || rel.contains("/fixture/")
-}
-
-fn unwired_is_plan_file(rel: &str) -> bool {
-    rel.contains("/plans/")
-}
-
-fn unwired_is_prod_file(rel: &str) -> bool {
-    !unwired_is_test_file(rel) && !unwired_is_plan_file(rel)
 }
 
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
@@ -7277,50 +7896,49 @@ fn markdown_link_targets(content: &str) -> Vec<String> {
     out
 }
 
-struct UnwiredModelData {
+struct InertCarrierData {
     declared_count: usize,
-    unwired_names: Vec<String>,
+    inert_names: Vec<String>,
 }
 
-fn compute_unwired_model_data(files: &[(String, String)]) -> UnwiredModelData {
-    let exempt = unwired_whole_decl_scaffold_names(files);
+fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
     let mut declared: BTreeMap<String, String> = BTreeMap::new();
     let mut decl_count: BTreeMap<String, usize> = BTreeMap::new();
     let mut self_block_refs: BTreeMap<String, i64> = BTreeMap::new();
     for (rel, content) in files {
-        if !unwired_is_prod_file(rel) {
+        if is_test_dag(rel) {
             continue;
         }
-        for (name, block) in unwired_decl_blocks(content) {
+        for (name, block) in inert_carrier_type_carrier_blocks(content) {
             declared.entry(name.clone()).or_insert_with(|| rel.clone());
             *decl_count.entry(name.clone()).or_insert(0) += 1;
-            *self_block_refs.entry(name.clone()).or_insert(0) += unwired_count_token(&block, &name);
+            *self_block_refs.entry(name.clone()).or_insert(0) +=
+                inert_carrier_count_token(&block, &name);
         }
     }
     let names: BTreeSet<String> = declared.keys().cloned().collect();
-    let mut prod_occ: BTreeMap<String, i64> = BTreeMap::new();
+    let mut nontest_occ: BTreeMap<String, i64> = BTreeMap::new();
     let mut self_tested: BTreeSet<String> = BTreeSet::new();
     for (rel, content) in files {
         let mut local: BTreeMap<String, i64> = BTreeMap::new();
         for raw in content.lines() {
-            for tok in unwired_identifier_tokens(&strip_line_comment(raw)) {
+            for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
                 if names.contains(&tok) {
                     *local.entry(tok).or_insert(0) += 1;
                 }
             }
         }
-        if unwired_is_test_file(rel) {
-            for k in local.keys() {
-                self_tested.insert(k.clone());
+        if is_test_dag(rel) {
+            for (k, _) in local {
+                self_tested.insert(k);
             }
-        }
-        if unwired_is_prod_file(rel) {
+        } else {
             for (k, v) in local {
-                *prod_occ.entry(k).or_insert(0) += v;
+                *nontest_occ.entry(k).or_insert(0) += v;
             }
         }
     }
-    let mut unwired_names: Vec<String> = Vec::new();
+    let mut inert_names: Vec<String> = Vec::new();
     for name in declared.keys() {
         if decl_count.get(name).copied().unwrap_or(0) != 1 {
             continue;
@@ -7328,63 +7946,67 @@ fn compute_unwired_model_data(files: &[(String, String)]) -> UnwiredModelData {
         if !self_tested.contains(name) {
             continue;
         }
-        if exempt.contains(name) {
-            continue;
-        }
-        let total = prod_occ.get(name).copied().unwrap_or(0);
+        let total = nontest_occ.get(name).copied().unwrap_or(0);
         let own = self_block_refs.get(name).copied().unwrap_or(0);
         if total - own <= 0 {
-            unwired_names.push(name.clone());
+            inert_names.push(name.clone());
         }
     }
-    unwired_names.sort();
-    unwired_names.dedup();
-    UnwiredModelData {
+    inert_names.sort();
+    inert_names.dedup();
+    InertCarrierData {
         declared_count: declared.len(),
-        unwired_names,
+        inert_names,
     }
 }
 
-fn build_unwired_model_data() -> &'static UnwiredModelData {
-    static CACHE: OnceLock<UnwiredModelData> = OnceLock::new();
-    CACHE.get_or_init(|| compute_unwired_model_data(&corpus_dag_files()))
+fn build_inert_carrier_data() -> &'static InertCarrierData {
+    static CACHE: OnceLock<InertCarrierData> = OnceLock::new();
+    CACHE.get_or_init(|| compute_inert_carrier_data(&corpus_dag_files()))
 }
 
-pub fn unwired_model_names_live() -> Vec<String> {
-    build_unwired_model_data().unwired_names.clone()
+pub fn inert_carrier_names_live() -> Vec<String> {
+    build_inert_carrier_data().inert_names.clone()
 }
 
-pub fn unwired_model_declared_count_live() -> i64 {
-    build_unwired_model_data().declared_count as i64
+pub fn inert_carrier_declared_count_live() -> i64 {
+    build_inert_carrier_data().declared_count as i64
 }
 
 #[cfg(test)]
-mod unwired_model_tests {
+mod inert_carrier_tests {
     use super::*;
 
-    fn unwired_names_of(files: &[(&str, &str)]) -> Vec<String> {
+    fn inert_names_of(files: &[(&str, &str)]) -> Vec<String> {
         let owned: Vec<(String, String)> = files
             .iter()
             .map(|(p, c)| (p.to_string(), c.to_string()))
             .collect();
-        compute_unwired_model_data(&owned).unwired_names
+        compute_inert_carrier_data(&owned).inert_names
     }
 
     #[test]
-    fn decl_blocks_extracts_type_fn_and_data() {
-        let c = "module m\ntype Connective = Atom | Conj\nfn f(x: Int) -> Int {\n  x + 1\n}\ndata d: List<Int> = [\n  1,\n  2\n]\n";
-        let blocks = unwired_decl_blocks(c);
+    fn type_carrier_blocks_extracts_names_and_bodies() {
+        let c = "module m\ntype Connective = Atom | Conj\ntype WorkDemand {\n  field: Int\n}\nfn f() -> Int { 1 }\n";
+        let blocks = inert_carrier_type_carrier_blocks(c);
         let names: Vec<&String> = blocks.iter().map(|(n, _)| n).collect();
-        assert_eq!(names, vec!["Connective", "f", "d"]);
-        let f = &blocks.iter().find(|(n, _)| n == "f").unwrap().1;
-        assert!(f.contains("x + 1") && !f.contains("data d"));
-        let d = &blocks.iter().find(|(n, _)| n == "d").unwrap().1;
-        assert!(d.contains("2") && d.contains(']'));
+        assert_eq!(names, vec!["Connective", "WorkDemand"]);
+        let wd = &blocks.iter().find(|(n, _)| n == "WorkDemand").unwrap().1;
+        assert!(wd.contains("field: Int") && wd.contains('}'));
+        assert!(!wd.contains("fn f"));
     }
 
     #[test]
-    fn red_control_self_tested_zero_consumer_type_is_unwired() {
-        let unwired = unwired_names_of(&[
+    fn identifier_tokens_are_whole_words() {
+        let toks = inert_carrier_identifier_tokens("  field: PlacementSupply = foo(Placement)");
+        assert!(toks.contains(&"PlacementSupply".to_string()));
+        assert!(toks.contains(&"Placement".to_string()));
+        assert!(toks.contains(&"field".to_string()));
+    }
+
+    #[test]
+    fn red_control_self_tested_zero_consumer_carrier_is_inert() {
+        let inert = inert_names_of(&[
             ("a.dag", "module a\ntype Lonely { x: Int }\n"),
             (
                 "a_test.dag",
@@ -7392,115 +8014,57 @@ mod unwired_model_tests {
             ),
         ]);
         assert!(
-            unwired.contains(&"Lonely".to_string()),
-            "a self-tested type with no production consumer must be flagged; got {unwired:?}"
+            inert.contains(&"Lonely".to_string()),
+            "a self-tested carrier with no real consumer must be flagged inert; got {inert:?}"
         );
     }
 
     #[test]
-    fn red_control_self_tested_zero_consumer_fn_is_unwired() {
-        let unwired = unwired_names_of(&[
-            (
-                "a.dag",
-                "module a\nfn lonely_helper(x: Int) -> Int { x + 1 }\n",
-            ),
-            (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { lonely_helper(x: 1) == 2 }\n",
-            ),
-        ]);
-        assert!(
-            unwired.contains(&"lonely_helper".to_string()),
-            "a self-tested fn with no production consumer must be flagged; got {unwired:?}"
-        );
-    }
-
-    #[test]
-    fn red_control_self_tested_zero_consumer_data_is_unwired() {
-        let unwired = unwired_names_of(&[
-            ("a.dag", "module a\ndata lonely_row: Int = 7\n"),
-            (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { lonely_row == 7 }\n",
-            ),
-        ]);
-        assert!(
-            unwired.contains(&"lonely_row".to_string()),
-            "a self-tested data decl with no production consumer must be flagged; got {unwired:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_fn_with_real_consumer_is_wired() {
-        let unwired = unwired_names_of(&[
-            (
-                "a.dag",
-                "module a\nfn used_helper(x: Int) -> Int { x + 1 }\n",
-            ),
+    fn green_control_carrier_with_real_consumer_is_not_inert() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Used { x: Int }\n"),
             (
                 "b.dag",
-                "module b\nimport a { used_helper }\nfn caller() -> Int { used_helper(x: 2) }\n",
+                "module b\nimport a { Used }\nfn f(u: Used) -> Int { u.x }\n",
             ),
             (
                 "a_test.dag",
-                "module t\nfn t() -> Bool { used_helper(x: 1) == 2 }\n",
+                "module t\nfn t() -> Bool { Used { x: 1 } == Used { x: 1 } }\n",
             ),
         ]);
         assert!(
-            !unwired.contains(&"used_helper".to_string()),
-            "a fn with a real production consumer must NOT be flagged; got {unwired:?}"
+            !inert.contains(&"Used".to_string()),
+            "a carrier with a real (non-test, cross-file) consumer must NOT be flagged; got {inert:?}"
         );
     }
 
     #[test]
-    fn green_control_scaffold_marked_unwired_is_exempt() {
-        let unwired = unwired_names_of(&[
+    fn green_control_same_file_consumer_is_not_inert() {
+        let inert = inert_names_of(&[
             (
-                "a.dag",
-                "module a\ntype MarkedModel { x: Int }\ndata marked_disp: Disposition = Scaffold {\n  dissolves_to: SingleAuthority,\n  bind: DeclarationRef { module_path: \"a\", decl_name: \"MarkedModel\", field: WholeDeclaration }\n}\n",
+                "lens.dag",
+                "module lens\ntype LocalFact { x: Int }\nfn clean(fs: LocalFact) -> Bool { fs.x == 0 }\n",
             ),
-            (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { MarkedModel { x: 1 } == MarkedModel { x: 1 } }\n",
-            ),
+            ("lens_test.dag", "module t\nfn t() -> Bool { clean(fs: LocalFact { x: 0 }) }\n"),
         ]);
         assert!(
-            !unwired.contains(&"MarkedModel".to_string()),
-            "a whole-decl Scaffold-marked model is tracked debt, NOT a violation; got {unwired:?}"
+            !inert.contains(&"LocalFact".to_string()),
+            "a carrier consumed by a fn in its own file is NOT inert; got {inert:?}"
         );
     }
 
     #[test]
-    fn green_control_pure_orphan_no_test_is_out_of_scope() {
-        let unwired = unwired_names_of(&[("a.dag", "module a\ntype Staged { x: Int }\n")]);
+    fn green_control_untested_unused_carrier_is_not_flagged() {
+        let inert = inert_names_of(&[("a.dag", "module a\ntype Staged { x: Int }\n")]);
         assert!(
-            !unwired.contains(&"Staged".to_string()),
-            "an untested orphan makes no liveness claim (model-first); it is not this lens's target; got {unwired:?}"
-        );
-    }
-
-    #[test]
-    fn green_control_plan_doc_only_consumer_is_unwired() {
-        let unwired = unwired_names_of(&[
-            ("a.dag", "module a\ntype PlanOnly { x: Int }\n"),
-            (
-                "gunbc/plans/p.dag",
-                "module p\nfn body() -> PlanOnly { PlanOnly { x: 1 } }\n",
-            ),
-            (
-                "a_test.dag",
-                "module t\nfn t() -> Bool { PlanOnly { x: 1 } == PlanOnly { x: 1 } }\n",
-            ),
-        ]);
-        assert!(
-            unwired.contains(&"PlanOnly".to_string()),
-            "a decl consumed only by a plan-doc (non-production) file must be flagged; got {unwired:?}"
+            !inert.contains(&"Staged".to_string()),
+            "an untested unused carrier must NOT be flagged (it is model-first, not illusion); got {inert:?}"
         );
     }
 
     #[test]
     fn comment_reference_is_not_a_real_consumer() {
-        let unwired = unwired_names_of(&[
+        let inert = inert_names_of(&[
             ("a.dag", "module a\ntype Noted { x: Int }\n"),
             (
                 "b.dag",
@@ -7511,16 +8075,16 @@ mod unwired_model_tests {
                 "module t\nfn t() -> Bool { Noted { x: 1 } == Noted { x: 1 } }\n",
             ),
         ]);
-        assert!(unwired.contains(&"Noted".to_string()));
+        assert!(inert.contains(&"Noted".to_string()));
     }
 
     #[test]
     fn doubly_declared_name_is_not_flagged() {
-        let unwired = unwired_names_of(&[
+        let inert = inert_names_of(&[
             ("a.dag", "module a\ntype Dup { x: Int }\n"),
             ("b.dag", "module b\ntype Dup { y: Int }\n"),
         ]);
-        assert!(!unwired.contains(&"Dup".to_string()));
+        assert!(!inert.contains(&"Dup".to_string()));
     }
 }
 
@@ -8079,6 +8643,23 @@ mod module_path_index_tests {
     fn is_test_dag_matches_suffix() {
         assert!(is_test_dag("src/v2/lens/x_test.dag"));
         assert!(!is_test_dag("src/v2/lens/x.dag"));
+    }
+
+    #[test]
+    fn extract_top_level_decls_captures_split_brace_body() {
+        let source = include_str!("../tests/fixtures/fact_cardinality_split_brace.dag");
+        let decls = extract_top_level_decls(source);
+        let sample = decls
+            .iter()
+            .find(|(name, _)| name == "split_brace_sample")
+            .expect("split-brace decl must be captured");
+        let expected = decl_body_hash(
+            "data split_brace_sample: SplitBraceSample =\nSplitBraceSample {\n  field: \"x\"\n}\n",
+        );
+        assert_eq!(
+            sample.1, expected,
+            "split-brace body hash must include lines after the opener"
+        );
     }
 }
 
