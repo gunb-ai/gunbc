@@ -21,9 +21,8 @@ import gunbc.ci_failure_class {
   merge_admission_blocks_merge,
   merge_freshness_gating_status,
   gating_is_enforced,
-  GatingComputedDeferred,
+  GatingEnforced,
   merge_admission_enforcement_gating_scaffold,
-  merge_admission_gating_activation_trigger,
 }
 import gunbc.ci_workflow { merge_admission_gate_step_name, merge_admission_ci_gate_step_scaffold }
 import std.disposition { Scaffold, SingleAuthority, Terminal }
@@ -64,37 +63,27 @@ data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
   floor_exit_code: 1,
 )
 
-test fn gating_still_deferred_until_activation_flip() -> Bool {
-  (merge_freshness_gating_status == GatingComputedDeferred)
-    && (gating_is_enforced(s: merge_freshness_gating_status) == false)
+test fn gating_is_enforced_after_activation_flip() -> Bool {
+  (merge_freshness_gating_status == GatingEnforced)
+    && (gating_is_enforced(s: merge_freshness_gating_status) == true)
 }
 
-test fn enforcement_gating_scaffold_is_tracked() -> Bool {
+test fn enforcement_gating_scaffold_is_dissolved() -> Bool {
   match merge_admission_enforcement_gating_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
-    Terminal { reason: _ } => false
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: _ } => true
   }
 }
 
-test fn ci_gate_step_scaffold_is_tracked() -> Bool {
+test fn ci_gate_step_scaffold_is_dissolved() -> Bool {
   match merge_admission_ci_gate_step_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
-    Terminal { reason: _ } => false
+    Scaffold { dissolves_to: _, bind: _ } => false
+    Terminal { reason: _ } => true
   }
 }
 
-test fn ci_gate_step_name_declares_not_enforcing() -> Bool {
-  string_contains(
-    s: merge_admission_gate_step_name,
-    pattern: "NOT ENFORCING until GatingEnforced"
-  )
-}
-
-test fn gating_activation_trigger_names_flip() -> Bool {
-  string_contains(
-    s: merge_admission_gating_activation_trigger,
-    pattern: "GatingComputedDeferred to GatingEnforced"
-  )
+test fn ci_gate_step_name_declares_enforcing() -> Bool {
+  merge_admission_gate_step_name == "Merge-admission gate"
 }
 
 test fn would_block_stale_base() -> Bool {
@@ -129,17 +118,17 @@ test fn would_not_block_fresh_green() -> Bool {
   )
 }
 
-test fn blocks_merge_false_while_deferred_even_if_stale() -> Bool {
+test fn blocks_merge_true_when_enforced_for_stale() -> Bool {
   merge_admission_would_block(
     receipt: stale_base_receipt,
     merge_target_tree_hash: scenario_base_b1,
     current_roster_hash: current_gate_roster_hash,
   )
-    && (merge_admission_blocks_merge(
+    && merge_admission_blocks_merge(
       receipt: stale_base_receipt,
       merge_target_tree_hash: scenario_base_b1,
       current_roster_hash: current_gate_roster_hash,
-    ) == false)
+    )
 }
 
 test fn wire_stale_base_fails_verdict_parse_path() -> Bool {
