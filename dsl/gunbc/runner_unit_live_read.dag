@@ -14,7 +14,6 @@ import extdeps.os.systemd {
 }
 import gunbc.host_converge {
   ConvergeTarget,
-  PerSlotMemoryCap,
   ConvergeVerdict,
   Converged,
   Drifted,
@@ -95,18 +94,6 @@ fn per_slot_memory_limit_for_property(
   } else { if property == systemd_memory_high_property {
     Present { value: read.memory_high }
   } else { none } } }
-}
-
-fn per_slot_memory_cap_live_verdict(
-  read: RunnerUnitMemoryLiveRead,
-  target: PerSlotMemoryCap,
-  desired: ByteSize,
-) -> ConvergeVerdict? {
-  match per_slot_memory_limit_for_property(read: read, property: target.property) {
-    Present { value: observed } =>
-      Present { value: memory_limit_converge_verdict(observed: observed, desired: desired) }
-    Absent => none
-  }
 }
 
 fn converge_target_live_verdict(

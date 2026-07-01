@@ -36,7 +36,6 @@ import gunbc.runner_unit_live_read {
   runner_unit_live_read_typed,
   memory_limit_to_cap_effectiveness,
   memory_limit_converge_verdict,
-  per_slot_memory_cap_live_verdict,
   converge_target_live_verdict,
   runner_unit_memory_max_drifts_against_cap,
   runner_unit_swap_max_converged,
