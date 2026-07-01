@@ -1,0 +1,86 @@
+module tools.dsl_compile_clean_shard_transport
+
+import extdeps.shell
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Assign, If, Subshell, AndOr, WithRedir, Exit,
+  Lit, VarRef, Concat, CmdSubst,
+  AndThen, OrElse, StderrToNull,
+  lit, var_ref, command, assign, serialize_bash
+}
+import tools.host_prelude { ensure_gunbc_built }
+import tools.dsl_compile_clean_transport { dcc_pool_index_flags }
+
+// Shard A exemplar: a leaf entry module with no imports — fast, deterministic receipt.
+data shard_a_exemplar_entry_path: String = "dsl/std/logic.dag"
+
+fn dcc_shard_pool_root_flags() -> List<ShellWord> {
+  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+}
+
+fn single_module_shard_compile_program(entry_rel_path: String) -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  let stage = var_ref(name: "SHARD_STAGE")
+  let out = var_ref(name: "OUT")
+  let tmp = var_ref(name: "TMP")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      command(words: [lit(text: "cd"), root]),
+      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      assign(name: "SHARD_STAGE", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      command(words: [
+        lit(text: "cp"),
+        Concat { parts: [root, lit(text: "/"), lit(text: entry_rel_path)] },
+        stage
+      ]),
+      command(words: concat(
+        [gunbc, lit(text: "compile"), lit(text: "--source-root"), stage],
+        concat(dcc_shard_pool_root_flags(), concat(dcc_pool_index_flags(), [
+          lit(text: "--output-dir"), out,
+          lit(text: "--target"), lit(text: "dag")
+        ]))
+      )),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), stage]),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
+    ])
+  }
+}
+
+fn run_shard_a_exemplar_compile() -> Bool {
+  let result = shell.Exec.Run(
+    script: serialize_bash(p: single_module_shard_compile_program(entry_rel_path: shard_a_exemplar_entry_path))
+  )
+  result.success
+}
+
+data dcc_shard_transport_invocation_substring_witness_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.lens.medium_structure_containment",
+    decl_name: "medium_structure_containment_holds",
+    field: WholeDeclaration
+  }
+}
+
+data shard_stage_marker: String = "\"$SHARD_STAGE\""
+data shard_entry_marker: String = "'dsl/std/logic.dag'"
+
+fn shard_transport_serializes_staged_compile_invocation() -> Bool {
+  let script = serialize_bash(
+    p: single_module_shard_compile_program(entry_rel_path: shard_a_exemplar_entry_path)
+  )
+  script != ""
+    && string_contains(s: script, pattern: shard_stage_marker)
+    && string_contains(s: script, pattern: shard_entry_marker)
+    && string_contains(s: script, pattern: "'--source-root' 'dsl'")
+    && string_contains(s: script, pattern: "'--source-root' 'src/v2'")
+    && string_contains(s: script, pattern: "'--dependency-pool-index' 'primary-precedence'")
+    && string_contains(s: script, pattern: "'--target' 'dag'")
+}
