@@ -1,0 +1,93 @@
+module test.claim.gcp_access_check_witness
+
+import std.logic { Bool }
+import extdeps.cloud.gcp.mock_corpus { gcp_published_mock_corpus }
+import gunbc.gcp_access_check {
+  GcpAccessCheckResult,
+  gcp_access_check_entry,
+  gcp_access_check_wet_function,
+  gcp_access_check_interval,
+  gcp_access_check_concurrency_group,
+  gcp_access_check_project_id,
+  gcp_access_check_canary_secret,
+  gcp_access_check_service_account,
+  gcp_access_check_wif_audience,
+  gcp_access_check_run_script,
+  gcp_access_check_workflow,
+  gcp_wif_secret_manager_reachability_check,
+  gcp_access_check_succeeded,
+}
+import gunbc.gcp_access_check_emit { expected_gcp_access_check_yml, gcp_access_check_yml_drifted }
+import gunbc.auth.patterns { GitHubActions }
+import extdeps.github.actions { github_actions_runtime }
+import extdeps.cron.schedule_model { render_cron_schedule }
+
+data gcp_access_check_required_mock_keys: List<String> = [
+  "github.OIDC.GetToken",
+  "gcp.STS.Exchange",
+  "gcp.IAM.GenerateAccessToken",
+  "gcp.SecretManager.AccessVersion"
+]
+
+fn mock_corpus_contains_key(key: String) -> Bool {
+  fold(gcp_published_mock_corpus, init: false, f: (acc, case) => acc || case.operation_key == key)
+}
+
+test fn gcp_access_check_mock_corpus_covers_wif_sm_chain() -> Bool {
+  fold(gcp_access_check_required_mock_keys, init: true, f: (acc, key) => acc && mock_corpus_contains_key(key: key))
+}
+
+test fn gcp_access_check_targets_scoped_canary_secret() -> Bool {
+  gcp_access_check_project_id == "gunbai-secrets"
+    && gcp_access_check_canary_secret == "bmc-srv3-admin"
+    && gcp_access_check_service_account == "bmc-assimilator@gunbai-secrets.iam.gserviceaccount.com"
+    && string_contains(s: gcp_access_check_wif_audience as String, pattern: "workloadIdentityPools/")
+}
+
+test fn gcp_access_check_interval_is_conservative_hours_not_minutes() -> Bool {
+  render_cron_schedule(s: gcp_access_check_interval) == "23 */6 * * *"
+}
+
+test fn gcp_access_check_workflow_is_scheduled_throttled_not_per_commit() -> Bool {
+  let y = expected_gcp_access_check_yml()
+  string_contains(s: y, pattern: "schedule:")
+    && string_contains(s: y, pattern: "cron: '23 */6 * * *'")
+    && string_contains(s: y, pattern: "workflow_dispatch:")
+    && string_contains(s: y, pattern: concat("group: ", gcp_access_check_concurrency_group))
+    && string_contains(s: y, pattern: "cancel-in-progress: true")
+    && string_contains(s: y, pattern: "id-token: write")
+    && !string_contains(s: y, pattern: "pull_request:")
+    && !string_contains(s: y, pattern: "push:")
+}
+
+test fn gcp_access_check_workflow_invokes_modeled_wet_entry() -> Bool {
+  let y = expected_gcp_access_check_yml()
+  string_contains(s: y, pattern: gcp_access_check_entry)
+    && string_contains(s: y, pattern: gcp_access_check_wet_function)
+    && string_contains(s: y, pattern: "$ROOT/target/release/gunbc")
+    && string_contains(s: y, pattern: "WET GCP WIF + Secret Manager reachability check")
+}
+
+test fn gcp_access_check_run_script_targets_wet_function() -> Bool {
+  let script = gcp_access_check_run_script()
+  string_contains(s: script, pattern: gcp_access_check_entry)
+    && string_contains(s: script, pattern: gcp_access_check_wet_function)
+}
+
+test fn gcp_access_check_yml_drift_gate_is_sensitive() -> Bool {
+  let expected = expected_gcp_access_check_yml()
+  !gcp_access_check_yml_drifted(committed: expected)
+    && gcp_access_check_yml_drifted(committed: concat(expected, "# perturb\n"))
+}
+
+test fn gcp_access_check_hermetic_pattern_reports_reachability_without_payload_use() -> Bool {
+  let result = gcp_wif_secret_manager_reachability_check(
+    runtime: GitHubActions { runtime: github_actions_runtime }
+  )
+  gcp_access_check_succeeded(result: result)
+    && result.secret_resource_name != ""
+}
+
+test fn gcp_access_check_workflow_job_id_is_pinned() -> Bool {
+  gcp_access_check_workflow.jobs.first().id == "gcp_access_check"
+}

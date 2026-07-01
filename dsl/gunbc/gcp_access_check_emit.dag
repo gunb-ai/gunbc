@@ -1,0 +1,13 @@
+module gunbc.gcp_access_check_emit
+
+import extdeps.formats.yaml { serialize_yaml }
+import gunbc.gcp_access_check { gcp_access_check_workflow }
+import gunbc.workflow_yaml_project { project_workflow_to_yaml }
+
+fn expected_gcp_access_check_yml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: gcp_access_check_workflow))
+}
+
+fn gcp_access_check_yml_drifted(committed: String) -> Bool {
+  !(committed == expected_gcp_access_check_yml())
+}

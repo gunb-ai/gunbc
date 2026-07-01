@@ -1,0 +1,189 @@
+module gunbc.gcp_access_check
+
+import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
+import extdeps.cron.schedule_model { CronSchedule, Wildcard, Exact, Step }
+import extdeps.github.actions {
+  Step, RunStep, UsesStep,
+  Workflow, Job,
+  WorkflowTrigger, WorkflowDispatch, Schedule,
+  WorkflowPermissions, PermRead, PermWrite,
+  ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
+  checkout_action, default_job_timeout_minutes, github_actions_runtime
+}
+import gunbc.assimilate.bmc_token_federation {
+  bmc_secrets_project_id,
+  bmc_srv3_secret_name,
+  bmc_assimilator_sa_email,
+  bmc_wif_provider_resource
+}
+import gunbc.auth.patterns {
+  AuthRuntime, GitHubActions,
+  acquire_subject_token,
+  optional_impersonation
+}
+import gunbc.ci_spec { ci_release_build_script }
+import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.types { NonEmptyStr }
+
+data gcp_access_check_entry: String = "dsl/gunbc/gcp_access_check.dag"
+data gcp_access_check_wet_function: String = "gcp_wif_secret_manager_reachability_wet"
+
+data gcp_access_check_concurrency_group: String = "gcp-access-check"
+
+data gcp_access_check_interval: CronSchedule = CronSchedule {
+  minute: Exact { value: 23 },
+  hour: Step { start: 0, step: 6 },
+  day_of_month: Wildcard,
+  month: Wildcard,
+  day_of_week: Wildcard
+}
+
+data gcp_access_check_project_id: GcpProjectId = bmc_secrets_project_id
+
+data gcp_access_check_canary_secret: NonEmptyStr = bmc_srv3_secret_name
+
+data gcp_access_check_service_account: ServiceAccountEmail = bmc_assimilator_sa_email
+
+data gcp_access_check_wif_audience: NonEmptyStr = bmc_wif_provider_resource()
+
+type GcpAccessCheckResult {
+  sts_ok: Bool
+  secret_reachable: Bool
+  secret_resource_name: String
+}
+
+pattern gcp_wif_secret_manager_reachability_check(runtime: AuthRuntime) -> GcpAccessCheckResult
+  uses net: Network
+{
+  node subject: acquire_subject_token(
+    runtime: runtime,
+    audience: gcp_access_check_wif_audience
+  )
+
+  node sts: gcp.STS.Exchange(
+    subject_token: subject.token,
+    audience: gcp_access_check_wif_audience
+  )
+
+  node impersonated: optional_impersonation(
+    access_token: sts.access_token,
+    service_account: Present { value: gcp_access_check_service_account },
+    lifetime_seconds: 3600
+  )
+
+  node probe: gcp.SecretManager.AccessVersion(
+    access_token: impersonated.token,
+    project_id: gcp_access_check_project_id,
+    secret: gcp_access_check_canary_secret
+  )
+
+  return GcpAccessCheckResult {
+    sts_ok: true,
+    secret_reachable: probe.name != "",
+    secret_resource_name: probe.name
+  }
+}
+
+fn gcp_access_check_succeeded(result: GcpAccessCheckResult) -> Bool {
+  result.sts_ok && result.secret_reachable
+}
+
+func gcp_wif_secret_manager_reachability_wet() -> ProcessExit {
+  node result = gcp_wif_secret_manager_reachability_check(
+    runtime: GitHubActions { runtime: github_actions_runtime }
+  )
+  if gcp_access_check_succeeded(result: result) {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "gcp_wif_secret_manager_reachability: STS/WIF or Secret Manager unreachable")
+  }
+}
+
+fn gcp_access_check_invoke() -> String {
+  concat(
+    concat(
+      concat(
+        concat("\"$ROOT/target/release/gunbc\" run --source-root dsl --source-root src/v2 --entry ", gcp_access_check_entry),
+        concat(" --function ", gcp_access_check_wet_function)
+      ),
+      "\n"
+    ),
+    ""
+  )
+}
+
+fn gcp_access_check_run_script() -> String {
+  concat(concat(ci_release_build_script(), "\n"), gcp_access_check_invoke())
+}
+
+fn gcp_access_check_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: none,
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn gcp_access_check_wet_step() -> Step {
+  RunStep {
+    name: Present { value: "WET GCP WIF + Secret Manager reachability check" },
+    id: none,
+    run: gcp_access_check_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn gcp_access_check_job() -> Job {
+  Job {
+    id: "gcp_access_check",
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    steps: [gcp_access_check_checkout_step(), gcp_access_check_wet_step()],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    strategy: none,
+    timeout_minutes: Present { value: default_job_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none
+  }
+}
+
+data gcp_access_check_workflow: Workflow = {
+  name: "gcp-access-check",
+  on: [
+    Schedule { cron: gcp_access_check_interval },
+    WorkflowDispatch { inputs: [] }
+  ],
+  concurrency: Present {
+    value: ConcurrencyMappingQueueNotMax {
+      group: gcp_access_check_concurrency_group,
+      cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
+      explicit_single: none
+    }
+  },
+  env: none,
+  permissions: Present {
+    value: WorkflowPermissions {
+      contents: Present { value: PermRead },
+      pull_requests: none,
+      issues: none,
+      actions: none,
+      id_token: Present { value: PermWrite }
+    }
+  },
+  jobs: [gcp_access_check_job()]
+}

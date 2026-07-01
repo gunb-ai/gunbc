@@ -5,9 +5,10 @@ import extdeps.formats.yaml {
   yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv,
   empty_yaml_values
 }
+import extdeps.cron.schedule_model { CronSchedule, render_cron_schedule }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, ActionRef,
-  WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
+  WorkflowTrigger, Push, PullRequest, WorkflowDispatch, Schedule,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed,
   WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
   ConcurrencySpec, ConcurrencyScalar, ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax,
@@ -89,8 +90,10 @@ fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
         kv(key: "branches", value: string_list_flow(items: bs)),
         kv(key: "types", value: pr_activities_flow(types: ts))
       ]))
-    Schedule { cron: _ } =>
-      kv(key: "schedule", value: YamlNull)
+    Schedule { cron: c } =>
+      kv(key: "schedule", value: yaml_sequence(elements: [
+        yaml_mapping(entries: [kv(key: "cron", value: yaml_string(s: render_cron_schedule(s: c)))])
+      ]))
     WorkflowCall { inputs: _ } =>
       kv(key: "workflow_call", value: YamlNull)
   }
