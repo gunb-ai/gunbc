@@ -1,0 +1,187 @@
+module test.claim.merge_admission_enforcement_witness
+
+import gunbc.merge_admission {
+  MergeAdmissionReceipt,
+  Success,
+  Failure,
+  current_gate_roster_hash,
+  classify_merge_admission_verdict,
+  merge_admission_would_block,
+  MergeAdmitted,
+  MergeDeniedStaleBase,
+  MergeDeniedStaleRoster,
+  MergeDeniedNotSuccess,
+}
+import gunbc.merge_admission_produce {
+  render_receipt_wire,
+  parse_receipt_wire,
+  stamp_floor_receipt,
+}
+import gunbc.ci_failure_class {
+  merge_admission_blocks_merge,
+  merge_freshness_gating_status,
+  gating_is_enforced,
+  GatingComputedDeferred,
+  merge_admission_enforcement_gating_scaffold,
+  merge_admission_gating_activation_trigger,
+}
+import gunbc.ci_workflow { merge_admission_gate_step_name, merge_admission_ci_gate_step_scaffold }
+import std.disposition { Scaffold, SingleAuthority, Terminal }
+import std.types { ContentHash }
+
+data scenario_base_b0: ContentHash = "merge-admission-enforce-base-b0"
+data scenario_base_b1: ContentHash = "merge-admission-enforce-base-b1"
+data scenario_roster_r1: ContentHash = "merge-admission-enforce-roster-r1"
+data scenario_head: ContentHash = "abc1234def5678901234567890abcd1234567890"
+
+data fresh_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+  pr_number: Present { value: 5933 },
+  head_sha: scenario_head,
+  base_tree_hash: scenario_base_b0,
+  floor_exit_code: 0,
+)
+
+data stale_base_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
+  pr_number: Present { value: 5933 },
+  head_sha: scenario_head,
+  base_tree_hash: scenario_base_b0,
+  gate_roster_hash: current_gate_roster_hash,
+  conclusion: Success,
+}
+
+data stale_roster_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
+  pr_number: Present { value: 5933 },
+  head_sha: scenario_head,
+  base_tree_hash: scenario_base_b0,
+  gate_roster_hash: scenario_roster_r1,
+  conclusion: Success,
+}
+
+data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+  pr_number: Present { value: 5933 },
+  head_sha: scenario_head,
+  base_tree_hash: scenario_base_b0,
+  floor_exit_code: 1,
+)
+
+test fn gating_still_deferred_until_activation_flip() -> Bool {
+  (merge_freshness_gating_status == GatingComputedDeferred)
+    && (gating_is_enforced(s: merge_freshness_gating_status) == false)
+}
+
+test fn enforcement_gating_scaffold_is_tracked() -> Bool {
+  match merge_admission_enforcement_gating_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+test fn ci_gate_step_scaffold_is_tracked() -> Bool {
+  match merge_admission_ci_gate_step_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+test fn ci_gate_step_name_declares_not_enforcing() -> Bool {
+  string_contains(
+    s: merge_admission_gate_step_name,
+    pattern: "freshness block held until GatingEnforced"
+  )
+}
+
+test fn gating_activation_trigger_names_flip() -> Bool {
+  string_contains(
+    s: merge_admission_gating_activation_trigger,
+    pattern: "GatingComputedDeferred to GatingEnforced"
+  )
+}
+
+test fn would_block_stale_base() -> Bool {
+  merge_admission_would_block(
+    receipt: stale_base_receipt,
+    merge_target_tree_hash: scenario_base_b1,
+    current_roster_hash: current_gate_roster_hash,
+  )
+}
+
+test fn would_block_stale_roster() -> Bool {
+  merge_admission_would_block(
+    receipt: stale_roster_receipt,
+    merge_target_tree_hash: scenario_base_b0,
+    current_roster_hash: current_gate_roster_hash,
+  )
+}
+
+test fn would_block_red_conclusion() -> Bool {
+  merge_admission_would_block(
+    receipt: red_receipt,
+    merge_target_tree_hash: scenario_base_b0,
+    current_roster_hash: current_gate_roster_hash,
+  )
+}
+
+test fn would_not_block_fresh_green() -> Bool {
+  !merge_admission_would_block(
+    receipt: fresh_receipt,
+    merge_target_tree_hash: scenario_base_b0,
+    current_roster_hash: current_gate_roster_hash,
+  )
+}
+
+test fn blocks_merge_false_while_deferred_even_if_stale() -> Bool {
+  merge_admission_would_block(
+    receipt: stale_base_receipt,
+    merge_target_tree_hash: scenario_base_b1,
+    current_roster_hash: current_gate_roster_hash,
+  )
+    && (merge_admission_blocks_merge(
+      receipt: stale_base_receipt,
+      merge_target_tree_hash: scenario_base_b1,
+      current_roster_hash: current_gate_roster_hash,
+    ) == false)
+}
+
+test fn wire_stale_base_fails_verdict_parse_path() -> Bool {
+  let wire = render_receipt_wire(receipt: stale_base_receipt)
+  match parse_receipt_wire(text: wire) {
+    Present { value: parsed } =>
+      match classify_merge_admission_verdict(
+        receipt: parsed,
+        merge_target_tree_hash: scenario_base_b1,
+        current_roster_hash: current_gate_roster_hash,
+      ) {
+        MergeDeniedStaleBase => true
+        MergeAdmitted => false
+        MergeDeniedStaleRoster => false
+        MergeDeniedNotSuccess => false
+      }
+    Absent => false
+  }
+}
+
+test fn fresh_verdict_is_merge_admitted() -> Bool {
+  match classify_merge_admission_verdict(
+    receipt: fresh_receipt,
+    merge_target_tree_hash: scenario_base_b0,
+    current_roster_hash: current_gate_roster_hash,
+  ) {
+    MergeAdmitted => true
+    MergeDeniedStaleBase => false
+    MergeDeniedStaleRoster => false
+    MergeDeniedNotSuccess => false
+  }
+}
+
+test fn red_verdict_is_merge_denied_not_success() -> Bool {
+  match classify_merge_admission_verdict(
+    receipt: red_receipt,
+    merge_target_tree_hash: scenario_base_b0,
+    current_roster_hash: current_gate_roster_hash,
+  ) {
+    MergeDeniedNotSuccess => true
+    MergeAdmitted => false
+    MergeDeniedStaleBase => false
+    MergeDeniedStaleRoster => false
+  }
+}
