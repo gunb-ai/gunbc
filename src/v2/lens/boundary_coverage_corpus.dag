@@ -3,6 +3,9 @@ module v2.lens.boundary_coverage_corpus
 import v2.lens.boundary_coverage { Boundary }
 import v2.lens.module_graph { ImportResolutionFact, import_resolution_facts_live }
 import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import std.disposition { SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import v2.std.algebra { any, filter, is_empty, fold_list, list_snoc_item, contains }
 import v2.std.collection { List }
@@ -106,4 +109,15 @@ fn corpus_uncovered_boundaries() -> List<Boundary> {
 
 fn corpus_coverage_wall_holds() -> Bool {
   is_empty(xs: corpus_uncovered_boundaries())
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallNow {
+    mechanism: SingleAuthority,
+    authority: DeclarationRef {
+      module_path: "v2.lens.boundary_coverage_corpus",
+      decl_name: "corpus_coverage_wall_holds",
+      field: WholeDeclaration
+    }
+  }
 }
