@@ -88,6 +88,7 @@ fn witness_credential_flow_binds_auth_pattern_authorities() -> Bool {
   tailscale_acl_credential_flow_uses_auth_patterns()
     && tailscale_acl_gcp_secret_credential_authority.decl_name == "gcp_secret_credential"
     && tailscale_acl_adc_refresh_credential_authority.decl_name == "gcp_oauth_access_token_via_adc_refresh"
+    && tailscale_acl_optional_impersonation_authority.module_path == "gunbc.auth.optional_impersonation"
     && tailscale_acl_optional_impersonation_authority.decl_name == "optional_impersonation"
     && match tailscale_acl_operator_adc_strategy {
       AdcRefresh { adc_path: _ } => true

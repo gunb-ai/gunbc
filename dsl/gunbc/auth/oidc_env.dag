@@ -1,8 +1,0 @@
-module gunbc.auth.oidc_env
-
-import extdeps.shell
-import std.types { NonEmptyStr }
-
-fn read_env_value(name: NonEmptyStr) -> String? {
-  shell.Env.Get(name: name).value
-}
