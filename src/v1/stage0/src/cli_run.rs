@@ -4181,17 +4181,13 @@ fn run_discovery_rows(
                     let dag_touches = entry_touches_frontier_via_dag_closure(
                         dag_closure_runner.as_ref().expect("runner ctx"),
                         &entry_ctx,
+                        &row.entry,
                         frontier_seeds,
                         &skip_ctx.changed_paths,
                         provenance_live,
                     );
                     match dag_touches {
-                        Ok(true) => true,
-                        Ok(false) => entry_touches_frontier_seeds(
-                            &entry_ctx,
-                            &row.entry,
-                            frontier_seeds,
-                        )?,
+                        Ok(touches) => touches,
                         Err(msg) => {
                             eprintln!(
                                 "claim_executor: .dag node-closure skip failed ({msg}) — falling back to seed bridge"
@@ -5935,6 +5931,97 @@ fn list_values_from_free_monoid(
     }
 }
 
+fn outcome_accepted_value(
+    value: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<v1_interpreter::Value, String> {
+    match value {
+        v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "Accepted") => ctx
+            .field(fields, "value")
+            .cloned()
+            .ok_or_else(|| "Accepted missing `value`".to_string()),
+        v1_interpreter::Value::Variant { variant_name, .. }
+            if ctx.sym_eq(*variant_name, "Rejected") =>
+        {
+            Err("Outcome rejected".to_string())
+        }
+        other => Err(format!(
+            "expected Outcome, got {}",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+fn eval_runner_data_item(
+    ctx: &v1_interpreter::InterpContext,
+    name: &str,
+) -> Result<v1_interpreter::Value, String> {
+    v1_interpreter::with_active_context(ctx, || {
+        v1_interpreter::eval_data_item_value(ctx, name)
+    })
+    .map_err(|e| format!("eval `{name}`: {e}"))?
+    .ok_or_else(|| format!("data item `{name}` missing"))
+}
+
+fn artifact_file_path_from_provenance_row(
+    row: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Option<String> {
+    let fields = match row {
+        v1_interpreter::Value::Record { fields, .. }
+        | v1_interpreter::Value::Variant { fields, .. } => fields,
+        _ => return None,
+    };
+    let artifact = ctx.field(fields, "artifact")?;
+    let artifact_fields = match artifact {
+        v1_interpreter::Value::Record { fields, .. }
+        | v1_interpreter::Value::Variant { fields, .. } => fields,
+        _ => return None,
+    };
+    match ctx.field(artifact_fields, "file_path")? {
+        v1_interpreter::Value::Str(path) => Some(path.clone()),
+        _ => None,
+    }
+}
+
+fn provenance_entry_tree_root(
+    runner_ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
+) -> Result<v1_interpreter::Value, String> {
+    let ingest = eval_runner_data_item(runner_ctx, "host_source_root_ingest")?;
+    let outcome = v1_interpreter::run_in_context_with_args(
+        runner_ctx,
+        "node_artifact_provenance_from_source_root",
+        &[(Some("ingest".to_string()), ingest)],
+        false,
+    )
+    .map_err(|e| format!("node_artifact_provenance_from_source_root: {e}"))?;
+    let provenance = outcome_accepted_value(&outcome, runner_ctx)?;
+    let entry_norm = normalize_repo_path(entry_path);
+    for row in list_values_from_free_monoid(&provenance, runner_ctx)? {
+        if artifact_file_path_from_provenance_row(&row, runner_ctx)
+            .is_some_and(|path| normalize_repo_path(&path) == entry_norm)
+        {
+            let fields = match &row {
+                v1_interpreter::Value::Record { fields, .. }
+                | v1_interpreter::Value::Variant { fields, .. } => fields,
+                _ => continue,
+            };
+            return runner_ctx
+                .field(fields, "node")
+                .cloned()
+                .ok_or_else(|| "NodeArtifactProvenance missing `node`".to_string());
+        }
+    }
+    Err(format!(
+        "no provenance tree root for entry '{entry_norm}' in live ingest"
+    ))
+}
+
 fn provenance_rerun_frontier_nodes(
     runner_ctx: &v1_interpreter::InterpContext,
     entry_root: &v1_interpreter::Value,
@@ -6008,27 +6095,41 @@ fn merge_frontier_nodes(
 fn entry_frontier_nodes_via_dag_closure(
     runner_ctx: &v1_interpreter::InterpContext,
     entry_ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
     seeds: &NodeFrontierSeeds,
     changed_paths: &[String],
     provenance_live: bool,
 ) -> Result<Vec<v1_interpreter::Value>, String> {
-    let edit_loci = entry_frontier_nodes_from_seeds(entry_ctx, "", seeds)?;
+    let edit_loci = entry_frontier_nodes_from_seeds(entry_ctx, entry_path, seeds)?;
     if edit_loci.is_empty() {
         return Ok(Vec::new());
     }
-    let entry_root = edit_loci
-        .first()
-        .cloned()
-        .unwrap_or(v1_interpreter::Value::Null);
-    let mut frontier = closure_rerun_frontier_nodes(runner_ctx, &entry_root, &edit_loci)?;
+    let mut frontier = closure_rerun_frontier_nodes(
+        runner_ctx,
+        &v1_interpreter::Value::Null,
+        &edit_loci,
+    )?;
     if provenance_live {
-        match provenance_rerun_frontier_nodes(runner_ctx, &entry_root, changed_paths) {
-            Ok(provenance_nodes) => {
-                merge_frontier_nodes(&mut frontier, provenance_nodes, runner_ctx);
+        match provenance_entry_tree_root(runner_ctx, entry_path) {
+            Ok(provenance_entry_root) => {
+                match provenance_rerun_frontier_nodes(
+                    runner_ctx,
+                    &provenance_entry_root,
+                    changed_paths,
+                ) {
+                    Ok(provenance_nodes) => {
+                        merge_frontier_nodes(&mut frontier, provenance_nodes, runner_ctx);
+                    }
+                    Err(msg) => {
+                        eprintln!(
+                            "claim_executor: provenance frontier failed ({msg}) — using edit-loci closure only"
+                        );
+                    }
+                }
             }
             Err(msg) => {
                 eprintln!(
-                    "claim_executor: provenance frontier failed ({msg}) — using edit-loci closure only"
+                    "claim_executor: provenance entry tree root unavailable ({msg}) — using edit-loci closure only"
                 );
             }
         }
@@ -6039,6 +6140,7 @@ fn entry_frontier_nodes_via_dag_closure(
 fn entry_touches_frontier_via_dag_closure(
     runner_ctx: &v1_interpreter::InterpContext,
     entry_ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
     seeds: &NodeFrontierSeeds,
     changed_paths: &[String],
     provenance_live: bool,
@@ -6046,6 +6148,7 @@ fn entry_touches_frontier_via_dag_closure(
     let frontier = entry_frontier_nodes_via_dag_closure(
         runner_ctx,
         entry_ctx,
+        entry_path,
         seeds,
         changed_paths,
         provenance_live,
