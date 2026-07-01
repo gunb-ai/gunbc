@@ -90,7 +90,7 @@ fresh_artifact_path() {
 fresh_artifact() {
   local p
   for p in "$@"; do fresh_artifact_path "$p" && return 0; done
-  if ! "$CLAIM_BATCH" --source-root dsl --entry dsl/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet 2>/dev/null; then return 0; fi
+  if ! "$CLAIM_BATCH" --source-root dsl --source-root src/v2 --entry dsl/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet 2>/dev/null; then return 0; fi
   return 1
 }
 fresh_fmt_path() {
@@ -146,15 +146,15 @@ if fresh_fmt "${PUSH_CHANGED[@]}"; then NEED_FMT=1; fi
 if [[ "$NEED_DOC" == "0" && "$NEED_ARTIFACT" == "0" && "$NEED_FMT" == "0" ]]; then exit 0; fi
 if [[ "$NEED_DOC" == "1" ]]; then
 echo "[pre-push] doc reachability: doc_graph_has_no_orphan_docs"
-"$CLAIM_BATCH" --source-root dsl --entry dsl/test/claim/doc_reachability_witness_test.dag --function doc_graph_has_no_orphan_docs --claim-run
+"$CLAIM_BATCH" --source-root dsl --source-root src/v2 --entry src/v2/lens/doc_reachability_test.dag --function doc_graph_has_no_orphan_docs --claim-run
 echo "[pre-push] doc reachability: doc_graph_has_no_dangling_links"
-"$CLAIM_BATCH" --source-root dsl --entry dsl/test/claim/doc_reachability_witness_test.dag --function doc_graph_has_no_dangling_links --claim-run
+"$CLAIM_BATCH" --source-root dsl --source-root src/v2 --entry src/v2/lens/doc_reachability_test.dag --function doc_graph_has_no_dangling_links --claim-run
 fi
 if [[ "$NEED_ARTIFACT" == "1" ]]; then
 echo "[pre-push] generated-artifact drift gate"
-if "$CLAIM_BATCH" --source-root dsl --entry dsl/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet; then :; else
+if "$CLAIM_BATCH" --source-root dsl --source-root src/v2 --entry dsl/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet; then :; else
   echo "[pre-push] drift detected; running main_wet"
-  "$CLAIM_BATCH" --source-root dsl --entry dsl/tools/generated_artifact_gate.dag --function main_wet --wet
+  "$CLAIM_BATCH" --source-root dsl --source-root src/v2 --entry dsl/tools/generated_artifact_gate.dag --function main_wet --wet
   echo "[pre-push] staging regen outputs:"
   git diff --name-only --diff-filter=ACMR | while IFS= read -r p; do
     [ -n "$p" ] || continue
@@ -167,7 +167,7 @@ if "$CLAIM_BATCH" --source-root dsl --entry dsl/tools/generated_artifact_gate.da
     git add -- "$p"
   done
   echo "[pre-push] re-checking drift after regen"
-  "$CLAIM_BATCH" --source-root dsl --entry dsl/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet
+  "$CLAIM_BATCH" --source-root dsl --source-root src/v2 --entry dsl/tools/generated_artifact_gate.dag --function run_generated_artifact_drift_gate_body --wet
 fi
 fi
 if [[ "$NEED_ARTIFACT" == "1" ]]; then
