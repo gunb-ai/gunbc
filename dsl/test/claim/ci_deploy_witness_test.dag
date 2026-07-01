@@ -1,0 +1,82 @@
+module test.claim.ci_deploy_witness
+
+import gunbc.ci_spec {
+  gunbc_ci_spec,
+  gunbc_ci_deploy_stages,
+  gunbc_ci_deploy_srv1_stage,
+  live_deploy_apply_entry,
+  live_deploy_apply_srv1_wet_function,
+  gunbc_ci_deploy_run_script,
+}
+import gunbc.ci_deploy_access {
+  ci_deploy_srv1_runner_access,
+  runner_host_access_reachable,
+}
+import gunbc.ci_workflow { ci_workflow }
+import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
+import gunbc.ci_yaml_emit { expected_ci_yml }
+import gunbc.live_deploy.spec { deployment_plan_ssh_host, deployment_spec_srv1 }
+import gunbc.fleet_intent_network { operator_host_srv1, srv1_tailscale_endpoint }
+import gunbc.host_effect { SshShell }
+
+fn witness_deploy_stage_targets_live_deploy_wet() -> Bool {
+  gunbc_ci_deploy_srv1_stage.entry == live_deploy_apply_entry
+    && gunbc_ci_deploy_srv1_stage.function == live_deploy_apply_srv1_wet_function
+    && gunbc_ci_deploy_srv1_stage.needs == ["ci"]
+}
+
+fn witness_deploy_access_grounds_ssh_on_srv1_tailnet() -> Bool {
+  let access = ci_deploy_srv1_runner_access
+  access.ssh_host == operator_host_srv1
+    && access.tailscale_endpoint == srv1_tailscale_endpoint
+    && match access.transport {
+      SshShell { ssh_host: h } => h == deployment_plan_ssh_host(spec: deployment_spec_srv1())
+      _ => false
+    }
+}
+
+fn witness_deploy_access_reachable_from_runner() -> Bool {
+  runner_host_access_reachable(access: ci_deploy_srv1_runner_access)
+}
+
+fn witness_ci_spec_carries_deploy_stages() -> Bool {
+  gunbc_ci_spec.deploy_stages == gunbc_ci_deploy_stages
+    && length(gunbc_ci_deploy_stages) == 1
+}
+
+fn witness_deploy_run_script_invokes_gunbc_wet() -> Bool {
+  let script = gunbc_ci_deploy_run_script(stage: gunbc_ci_deploy_srv1_stage)
+  string_contains(s: script, pattern: live_deploy_apply_entry)
+    && string_contains(s: script, pattern: live_deploy_apply_srv1_wet_function)
+    && string_contains(s: script, pattern: "$ROOT/target/release/gunbc")
+    && string_contains(s: script, pattern: "--source-root dsl")
+}
+
+fn witness_workflow_has_deploy_job_gated_on_ci() -> Bool {
+  let deploy_jobs = filter(ci_workflow.jobs, j => j.id == "deploy_dashboard_srv1")
+  length(deploy_jobs) == 1
+    && deploy_jobs.first().needs == ["ci"]
+    && match deploy_jobs.first().if_condition {
+      Present { value: cond } => cond == ci_deploy_push_to_main_if
+      Absent => false
+    }
+}
+
+fn witness_ci_yml_emits_deploy_job() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:")
+    && string_contains(s: yaml, pattern: "    needs: [ci]")
+    && string_contains(s: yaml, pattern: concat("    if: ", ci_deploy_push_to_main_if))
+    && string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)")
+    && string_contains(s: yaml, pattern: live_deploy_apply_srv1_wet_function)
+}
+
+test fn ci_deploy_witnesses() -> Bool {
+  witness_deploy_stage_targets_live_deploy_wet()
+    && witness_deploy_access_grounds_ssh_on_srv1_tailnet()
+    && witness_deploy_access_reachable_from_runner()
+    && witness_ci_spec_carries_deploy_stages()
+    && witness_deploy_run_script_invokes_gunbc_wet()
+    && witness_workflow_has_deploy_job_gated_on_ci()
+    && witness_ci_yml_emits_deploy_job()
+}
