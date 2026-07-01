@@ -3412,6 +3412,12 @@ fn is_top_level_lens_module(module: &str) -> bool {
 // boundary) or the non-blocking integration lane (span >= 2). std is the
 // ambient framework layer and never counts toward the span. Keep the prefixes
 // and the `keeps_on_floor` threshold in lockstep with layer_span.dag.
+//
+// SCAFFOLD (DESIGN §6). dissolve-on: `seed-discovery-invokes-dag-lens` — when
+// floor discovery (a v1 seed host-effect) can resolve+evaluate a `.dag` lens
+// query directly, this classifier is deleted and discovery calls
+// `v2.lens.layer_span.keeps_on_floor` on the witness's import closure, leaving
+// the `.dag` as the single authority (§7 "Rust is a seed that shrinks to zero").
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CoarseLayer {
