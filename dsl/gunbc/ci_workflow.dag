@@ -4,7 +4,11 @@ import extdeps.formats.yaml { yaml_string, yaml_int, yaml_bool, kv }
 import gunbc.ci_workflow_expressions {
   ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys
 }
-import gunbc.ci_spec { CiSpec, gunbc_ci_spec, gunbc_ci_workflow_run, gunbc_ci_rust_job_run }
+import gunbc.ci_spec {
+  CiSpec, gunbc_ci_spec, gunbc_ci_workflow_run, gunbc_ci_rust_job_run,
+  gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
+}
+import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import extdeps.github.actions {
@@ -138,7 +142,8 @@ fn ci_floor_spec_from_roster() -> CiSpec {
   {
     gates: project_ci_floor_gates(roster: commit_gate_roster),
     diff_policy: gunbc_ci_spec.diff_policy,
-    notice_title: gunbc_ci_spec.notice_title
+    notice_title: gunbc_ci_spec.notice_title,
+    deploy_stages: [],
   }
 }
 
@@ -219,6 +224,41 @@ fn ci_rust_cgroup_measurement_step() -> Step {
   }
 }
 
+fn ci_deploy_step(stage: DeployStage) -> Step {
+  RunStep {
+    name: Present { value: stage.step_name },
+    id: none,
+    run: gunbc_ci_deploy_run_script(stage: stage),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_deploy_job(stage: DeployStage) -> Job {
+  Job {
+    id: stage.id,
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    steps: concat(ci_prelude_steps(), [ci_deploy_step(stage: stage)]),
+    needs: stage.needs,
+    env: none,
+    outputs: none,
+    if_condition: Present { value: ci_deploy_push_to_main_if },
+    strategy: none,
+    timeout_minutes: Present { value: default_job_timeout_minutes },
+    continue_on_error: none,
+    concurrency: none
+  }
+}
+
+fn ci_deploy_jobs() -> List<Job> {
+  map(gunbc_ci_deploy_stages, s => ci_deploy_job(stage: s))
+}
+
 fn ci_job() -> Job {
   Job {
     id: "ci",
@@ -286,5 +326,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [ci_job(), rust_tests_job()]
+  jobs: concat([ci_job(), rust_tests_job()], ci_deploy_jobs())
 }
