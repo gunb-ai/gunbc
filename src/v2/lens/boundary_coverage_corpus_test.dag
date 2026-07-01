@@ -1,0 +1,33 @@
+module v2.test.lens_boundary_coverage.boundary_coverage_corpus_test
+
+import v2.lens.boundary_coverage { Boundary }
+import v2.lens.boundary_coverage_corpus {
+  required_boundaries,
+  corpus_import_facts,
+  boundary_covered_live,
+  corpus_uncovered_boundaries,
+  corpus_coverage_wall_holds
+}
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+
+data infer_translate: Boundary = Boundary {
+  producer: "v2.compiler.infer",
+  consumer: "v2.compiler.translate"
+}
+data translate_emit: Boundary = Boundary {
+  producer: "v2.compiler.translate",
+  consumer: "v2.compiler.emit"
+}
+
+test fn required_boundaries_derived_from_pipeline() -> Bool {
+  length(xs: required_boundaries()) == 5
+}
+
+test fn infer_translate_covered_live() -> Bool {
+  boundary_covered_live(b: infer_translate, facts: corpus_import_facts())
+}
+
+test fn translate_emit_covered_live() -> Bool {
+  boundary_covered_live(b: translate_emit, facts: corpus_import_facts())
+}

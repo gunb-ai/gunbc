@@ -1,0 +1,95 @@
+module v2.lens.boundary_coverage_corpus
+
+import v2.lens.boundary_coverage { Boundary }
+import v2.lens.module_graph { ImportResolutionFact, import_resolution_facts_live }
+import gunbc.ci_layer_roots { witness_layer_roots }
+
+import v2.std.algebra { any, filter, is_empty, fold_list, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data pipeline_stages: List<String> = [
+  "v2.compiler.tokenize",
+  "v2.compiler.parse",
+  "v2.compiler.resolve",
+  "v2.compiler.infer",
+  "v2.compiler.translate",
+  "v2.compiler.emit"
+]
+
+type StageFold {
+  seen: Bool
+  prev: String
+  boundaries: List<Boundary>
+}
+
+data empty_stage_fold: StageFold = StageFold {
+  seen: false,
+  prev: "",
+  boundaries: []
+}
+
+fn absorb_stage(acc: StageFold, stage: String) -> StageFold {
+  if acc.seen {
+    StageFold {
+      seen: true,
+      prev: stage,
+      boundaries: list_snoc_item(
+        xs: acc.boundaries,
+        item: Boundary { producer: acc.prev, consumer: stage }
+      )
+    }
+  } else {
+    StageFold { seen: true, prev: stage, boundaries: acc.boundaries }
+  }
+}
+
+fn required_boundaries() -> List<Boundary> {
+  let folded = fold_list(
+    xs: pipeline_stages,
+    empty: empty_stage_fold,
+    cons: fn(acc, stage) { absorb_stage(acc: acc, stage: stage) }
+  )
+  folded.boundaries
+}
+
+fn corpus_import_facts() -> List<ImportResolutionFact> {
+  import_resolution_facts_live(
+    pool_roots: witness_layer_roots,
+    importer_roots: witness_layer_roots,
+    exclude_substrings: []
+  )
+}
+
+fn fact_bridges(f: ImportResolutionFact, path: String, mod: String) -> Bool {
+  f.path == path && f.import_module == mod
+}
+
+fn path_imports_module(path: String, mod: String, facts: List<ImportResolutionFact>) -> Bool {
+  any(xs: facts, predicate: fn(f) { fact_bridges(f: f, path: path, mod: mod) })
+}
+
+fn fact_covers_boundary(f: ImportResolutionFact, b: Boundary, facts: List<ImportResolutionFact>) -> Bool {
+  f.import_module == b.producer
+    && path_imports_module(path: f.path, mod: b.consumer, facts: facts)
+}
+
+fn boundary_covered_live(b: Boundary, facts: List<ImportResolutionFact>) -> Bool {
+  any(xs: facts, predicate: fn(f) { fact_covers_boundary(f: f, b: b, facts: facts) })
+}
+
+fn boundary_uncovered_live(b: Boundary, facts: List<ImportResolutionFact>) -> Bool {
+  is_empty(xs: filter(xs: [b], predicate: fn(x) { boundary_covered_live(b: x, facts: facts) }))
+}
+
+fn corpus_uncovered_boundaries() -> List<Boundary> {
+  let facts = corpus_import_facts()
+  filter(xs: required_boundaries(), predicate: fn(b) {
+    boundary_uncovered_live(b: b, facts: facts)
+  })
+}
+
+fn corpus_coverage_wall_holds() -> Bool {
+  is_empty(xs: corpus_uncovered_boundaries())
+}
