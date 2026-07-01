@@ -65,7 +65,7 @@ test fn srv3_survey_forces_proxy_dhcp() -> Bool {
     }
 }
 
-test fn srv3_plan_targets_ubuntu_2404_aarch64_pxe_once() -> Bool {
+test fn srv3_plan_targets_ubuntu_2404_aarch64_nbd_proxy_boot_once() -> Bool {
   match srv3_os_install_plan.os_target {
     UbuntuOs { distro: d } =>
       match d {
@@ -74,7 +74,7 @@ test fn srv3_plan_targets_ubuntu_2404_aarch64_pxe_once() -> Bool {
     WindowsOs { distro: _ } => false
     MacosOs { distro: _ } => false
   }
-    && redfish_boot_target_wire(t: srv3_os_install_plan.bmc_boot_target) == "Pxe"
+    && redfish_boot_target_wire(t: srv3_os_install_plan.bmc_boot_target) == "Cd"
     && redfish_boot_override_enabled_wire(e: srv3_os_install_plan.bmc_boot_enabled) == "Once"
     && srv3_os_install_plan.network_boot_delivery.autoinstall.fully_automated
     && srv3_os_install_plan.network_boot_delivery.autoinstall.autoinstall_version == 1

@@ -22,12 +22,12 @@ import product.placement_supply { HostIdentity }
 import product.network_topology { NetworkSegment }
 import extdeps.bmc.types {
   RedfishBootSourceOverrideTarget,
-  BootTargetPxe,
   RedfishBootSourceOverrideEnabled,
   BootOverrideOnce,
   RedfishResetType,
   ResetForceRestart,
 }
+import gunbc.os_install_mechanism { srv3_install_boot_target }
 
 type NetworkBootDelivery {
   chain: NetworkBootChain
@@ -105,7 +105,7 @@ data srv3_os_install_plan: Srv3OsInstallPlan = Srv3OsInstallPlan {
     chain: srv3_network_boot_chain,
     autoinstall: srv3_ubuntu_autoinstall,
   },
-  bmc_boot_target: BootTargetPxe,
+  bmc_boot_target: srv3_install_boot_target,
   bmc_boot_enabled: BootOverrideOnce,
   post_stage_reset: ResetForceRestart,
 }

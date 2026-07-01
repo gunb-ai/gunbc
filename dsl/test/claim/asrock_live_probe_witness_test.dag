@@ -1,0 +1,62 @@
+module test.claim.asrock_live_probe
+
+import std.logic { Bool }
+import std.types { list_length }
+import extdeps.bmc.capability {
+  CapabilityVirtualMedia,
+  CapabilityNbdProxyVirtualMedia,
+  firmware_has_capability,
+}
+import extdeps.boards.asrock_rack {
+  asrock_srv3_live_bmc_host,
+  asrock_srv3_live_probe_firmware_version,
+  asrock_srv3_live_readonly_probe_rows,
+  asrock_altrad8ud_shipped_bmc_firmware_capabilities,
+  live_probe_confirms_shipped_firmware_version,
+  live_probe_confirms_redfish_virtual_media_absent,
+  ProbeAbsent,
+  ProbeInconclusive,
+}
+
+test fn srv3_live_bmc_host_is_grounded() -> Bool {
+  asrock_srv3_live_bmc_host == "192.168.1.192"
+}
+
+test fn live_probe_firmware_matches_shipped_catalog_row() -> Bool {
+  live_probe_confirms_shipped_firmware_version()
+    && asrock_srv3_live_probe_firmware_version == "2.07.00"
+    && asrock_altrad8ud_shipped_bmc_firmware_capabilities.firmware.version == "2.07.00"
+}
+
+test fn live_probe_redfish_virtual_media_absent_matches_catalog() -> Bool {
+  live_probe_confirms_redfish_virtual_media_absent()
+    && firmware_has_capability(
+      row: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
+      cap: CapabilityVirtualMedia
+    ) == false
+}
+
+test fn live_probe_rows_cover_vm_and_nbd_get_surfaces() -> Bool {
+  list_length(items: asrock_srv3_live_readonly_probe_rows) == 5
+    && fold(
+      asrock_srv3_live_readonly_probe_rows,
+      init: false,
+      f: (acc, row) =>
+        acc || (row.locator == "/vm/0/0 non-upgrade GET" as NonEmptyStr
+          && row.verdict == ProbeInconclusive)
+    )
+    && fold(
+      asrock_srv3_live_readonly_probe_rows,
+      init: false,
+      f: (acc, row) =>
+        acc || (row.locator == "/redfish/v1/Systems/system/VirtualMedia" as NonEmptyStr
+          && row.verdict == ProbeAbsent)
+    )
+}
+
+test fn shipped_row_nbd_proxy_capability_requires_ws_dry_run_receipt() -> Bool {
+  firmware_has_capability(
+    row: asrock_altrad8ud_shipped_bmc_firmware_capabilities,
+    cap: CapabilityNbdProxyVirtualMedia
+  )
+}

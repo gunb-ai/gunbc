@@ -5,7 +5,7 @@ import std.baseboard {
   AsrockRackAltrad8ud1l2t,
 }
 import std.bmc { OpenBmc }
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Bool }
 
 import extdeps.bmc.capability {
   BmcCapability,
@@ -103,3 +103,64 @@ data asrock_altrad8ud_shipped_bmc_firmware_capabilities: BmcFirmwareCapabilityRo
 data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint: BmcwebNbdProxyEndpointVariant = VmSlotIndexEndpoint
 
 data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints: List<BmcwebNbdProxyEndpointVariant> = [NbdSlotEndpoint]
+
+type BmcReadOnlyProbeVerdict = ProbePresent | ProbeAbsent | ProbeInconclusive
+
+type BmcLiveReadOnlyProbeRow {
+  locator: NonEmptyStr
+  verdict: BmcReadOnlyProbeVerdict
+  probed_at: NonEmptyStr
+}
+
+data asrock_srv3_live_bmc_host: NonEmptyStr = "192.168.1.192"
+
+data asrock_srv3_live_readonly_probe_rows: List<BmcLiveReadOnlyProbeRow> = [
+  BmcLiveReadOnlyProbeRow {
+    locator: "/redfish/v1/Managers/bmc FirmwareVersion",
+    verdict: ProbePresent,
+    probed_at: "2026-07-01",
+  },
+  BmcLiveReadOnlyProbeRow {
+    locator: "/redfish/v1/Systems/system/VirtualMedia",
+    verdict: ProbeAbsent,
+    probed_at: "2026-07-01",
+  },
+  BmcLiveReadOnlyProbeRow {
+    locator: "/redfish/v1/Managers/bmc/VirtualMedia",
+    verdict: ProbeAbsent,
+    probed_at: "2026-07-01",
+  },
+  BmcLiveReadOnlyProbeRow {
+    locator: "/vm/0/0 non-upgrade GET",
+    verdict: ProbeInconclusive,
+    probed_at: "2026-07-01",
+  },
+  BmcLiveReadOnlyProbeRow {
+    locator: "/nbd/0 non-upgrade GET",
+    verdict: ProbeInconclusive,
+    probed_at: "2026-07-01",
+  },
+]
+
+data asrock_srv3_live_probe_firmware_version: NonEmptyStr = "2.07.00"
+
+fn live_probe_confirms_shipped_firmware_version() -> Bool {
+  asrock_srv3_live_probe_firmware_version == asrock_altrad8ud_shipped_bmc_firmware_capabilities.firmware.version
+}
+
+fn live_probe_row_is_redfish_vm_absent(row: BmcLiveReadOnlyProbeRow) -> Bool {
+  if row.locator == "/redfish/v1/Systems/system/VirtualMedia" as NonEmptyStr
+      || row.locator == "/redfish/v1/Managers/bmc/VirtualMedia" as NonEmptyStr {
+    row.verdict == ProbeAbsent
+  } else {
+    true
+  }
+}
+
+fn live_probe_confirms_redfish_virtual_media_absent() -> Bool {
+  fold(
+    asrock_srv3_live_readonly_probe_rows,
+    init: true,
+    f: (acc, row) => acc && live_probe_row_is_redfish_vm_absent(row: row)
+  )
+}

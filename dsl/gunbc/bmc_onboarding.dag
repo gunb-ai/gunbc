@@ -5,7 +5,8 @@ import std.credentials { FactoryLogin, CredentialFlow, Stored }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
 import std.types { NonEmptyStr, Int, List }
 import std.logic { Bool }
-import extdeps.bmc.types { RedfishBootSourceOverrideTarget, BootTargetPxe, RedfishAccountRole, AccountRoleAdministrator }
+import extdeps.bmc.types { RedfishBootSourceOverrideTarget, RedfishAccountRole, AccountRoleAdministrator }
+import gunbc.os_install_mechanism { srv3_install_boot_target }
 import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
 
@@ -216,7 +217,7 @@ data new_altra_onboarding_plan: BmcOnboardingPlan = BmcOnboardingPlan {
   rotated_credential: Stored { secret_name: "bmc-srv3-admin" },
   rotated_account_role: AccountRoleAdministrator,
   os_target: UbuntuOs { distro: NobleNumbat2404Lts },
-  os_install_boot_target: BootTargetPxe,
+  os_install_boot_target: srv3_install_boot_target,
   start_phase: FactoryDefault,
 }
 
