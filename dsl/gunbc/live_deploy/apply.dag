@@ -13,9 +13,9 @@ import gunbc.live_deploy.emit {
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   deploy_access_preflight_script,
+  deploy_target_proof_from_access,
 }
 import gunbc.ci_deploy_target_host {
-  deploy_target_proof_from_access,
   deploy_target_ssh_proof_structurally_valid,
 }
 import gunbc.host_effect {

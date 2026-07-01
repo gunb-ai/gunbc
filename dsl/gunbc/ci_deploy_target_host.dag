@@ -2,11 +2,9 @@ module gunbc.ci_deploy_target_host
 
 import std.types { String, NonEmptyStr, Bool, List }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent { ComputeHost }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.ci_fleet { srv1_offer, ComputeOffer }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
-import gunbc.ci_deploy_access { DeployAccess }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import extdeps.github.actions { RunnerSpec, SelfHosted }
 
@@ -18,15 +16,12 @@ data deploy_target_host_refusal_local: String = "deploy-target-host: FAIL LocalS
 
 data deploy_target_host_refusal_ssh: String = "deploy-target-host: FAIL SshShell ssh_host does not match target host identity"
 
-fn deploy_target_proof_from_access(access: DeployAccess) -> DeployTargetHostProof {
-  match access.transport {
+fn deploy_target_proof(host: HostIdentity, transport: HostEffectTransport) -> DeployTargetHostProof {
+  match transport {
     LocalShell =>
-      RunnerIdentityOnHost {
-        host: access.host.identity,
-        pinned_label: access.host.identity,
-      }
+      RunnerIdentityOnHost { host: host, pinned_label: host }
     SshShell { ssh_host: h } =>
-      SshExplicitHost { host: access.host.identity, ssh_host: h }
+      SshExplicitHost { host: host, ssh_host: h }
   }
 }
 
@@ -63,12 +58,13 @@ fn deploy_target_host_apply_permitted(
 }
 
 fn deploy_local_apply_refused_for_observed_host(
-  access: DeployAccess,
+  host: HostIdentity,
+  transport: HostEffectTransport,
   observed_hostname: String,
   observed_runner_name: String
 ) -> Bool {
-  let proof = deploy_target_proof_from_access(access: access)
-  match access.transport {
+  let proof = deploy_target_proof(host: host, transport: transport)
+  match transport {
     LocalShell =>
       !deploy_target_host_apply_permitted(
         proof: proof,
@@ -100,7 +96,7 @@ fn deploy_target_host_preflight_block(proof: DeployTargetHostProof) -> String {
           concat(
             concat(
               "HOSTNAME=\"$(hostname -s 2>/dev/null || hostname)\"\n",
-              "RUNNER_NAME=\"${RUNNER_NAME:-}\"\n"
+              "RUNNER_NAME=\"$(printenv RUNNER_NAME 2>/dev/null || true)\"\n"
             ),
             concat(
               concat("if [ \"$HOSTNAME\" != \"", id),
@@ -125,14 +121,5 @@ fn deploy_target_host_preflight_block(proof: DeployTargetHostProof) -> String {
         concat(concat("echo \"deploy-target-host: PASS SshShell target=", h), concat(" host=", id)),
         "\"\n"
       )
-  }
-}
-
-fn deploy_access_with_ssh_transport(access: DeployAccess, ssh_host: NonEmptyStr) -> DeployAccess {
-  DeployAccess {
-    principal: access.principal,
-    host: access.host,
-    transport: SshShell { ssh_host: ssh_host },
-    privileged_commands: access.privileged_commands,
   }
 }

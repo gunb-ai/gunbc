@@ -1,14 +1,17 @@
 module test.claim.ci_deploy_target_host_witness
 
-import gunbc.ci_deploy_access { ci_deploy_srv1_access, deploy_access_preflight_script }
+import gunbc.ci_deploy_access {
+  ci_deploy_srv1_access,
+  deploy_access_preflight_script,
+  deploy_target_proof_from_access,
+  deploy_access_with_ssh_transport,
+}
 import std.types { Bool, List, String }
 import gunbc.ci_deploy_target_host {
   RunnerIdentityOnHost,
-  deploy_target_proof_from_access,
   deploy_target_host_apply_permitted,
   deploy_local_apply_refused_for_observed_host,
   deploy_target_ssh_proof_structurally_valid,
-  deploy_access_with_ssh_transport,
   gunbc_ci_deploy_srv1_runner_spec,
   deploy_target_host_refusal_local,
 }
@@ -30,7 +33,8 @@ fn witness_srv1_hostname_proves_target() -> Bool {
 
 fn witness_srv2_hostname_refused_for_srv1_deploy() -> Bool {
   deploy_local_apply_refused_for_observed_host(
-    access: ci_deploy_srv1_access,
+    host: ci_deploy_srv1_access.host.identity,
+    transport: ci_deploy_srv1_access.transport,
     observed_hostname: "srv2",
     observed_runner_name: "actions-runner@srv2-09.service"
   )
@@ -38,7 +42,8 @@ fn witness_srv2_hostname_refused_for_srv1_deploy() -> Bool {
 
 fn witness_ubicloud_runner_name_refused_for_local_apply() -> Bool {
   deploy_local_apply_refused_for_observed_host(
-    access: ci_deploy_srv1_access,
+    host: ci_deploy_srv1_access.host.identity,
+    transport: ci_deploy_srv1_access.transport,
     observed_hostname: "ubicloud-runner",
     observed_runner_name: "ubicloud-standard-16-arm"
   )
@@ -91,14 +96,13 @@ fn witness_preflight_script_checks_target_host() -> Bool {
   string_contains(s: script, pattern: "deploy-target-host: PASS host=srv1")
     && string_contains(s: script, pattern: deploy_target_host_refusal_local)
     && string_contains(s: script, pattern: "hostname -s")
-    && string_contains(s: script, pattern: "RUNNER_NAME")
+    && string_contains(s: script, pattern: "printenv RUNNER_NAME")
 }
 
 fn witness_ci_yml_deploy_job_pins_srv1_runner() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:")
-    && string_contains(s: yaml, pattern: "    runs-on:")
-    && string_contains(s: yaml, pattern: "- srv1")
+    && string_contains(s: yaml, pattern: "    runs-on: [self-hosted, linux, arm64, srv1]")
     && !string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:\n    runs-on: ubicloud-standard-16-arm")
 }
 
