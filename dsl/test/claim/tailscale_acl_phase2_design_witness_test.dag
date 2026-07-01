@@ -2,7 +2,7 @@ module test.claim.tailscale_acl_phase2_design_witness
 
 import gunbc.tailscale_acl_phase2_credential {
   tailscale_acl_ephemeral_token_secret_id,
-  tailscale_acl_ephemeral_lifetime_seconds,
+  tailscale_acl_ephemeral_lifetime,
   tailscale_acl_operator_adc_strategy,
   tailscale_acl_gcp_secret_credential_authority,
   tailscale_acl_adc_refresh_credential_authority,
@@ -45,6 +45,7 @@ import gunbc.assimilate.bmc_token_federation {
 import extdeps.cloud.gcp.gcp { AdcRefresh }
 import extdeps.cloud.gcp.iam { role_secretmanager_secret_accessor }
 import std.disposition { Scaffold, SingleAuthority }
+import std.measure { second, second_count }
 
 fn witness_secret_homed_in_gunbai_secrets() -> Bool {
   operator_tailscale_acl_secret_bindings.first().project == bmc_secrets_project_id
@@ -94,7 +95,7 @@ fn witness_credential_flow_binds_auth_pattern_authorities() -> Bool {
 }
 
 fn witness_ephemeral_lifetime_matches_optional_impersonation_cap() -> Bool {
-  tailscale_acl_ephemeral_lifetime_seconds == 3600
+  second_count(s: tailscale_acl_ephemeral_lifetime) == 3600
     && string_contains(s: tailscale_acl_ephemeral_token_secret_id as String, pattern: "ephemeral")
 }
 
@@ -109,13 +110,13 @@ fn witness_fail_closed_on_absent_or_expired_token() -> Bool {
       gate: TokenPresent {
         token: "tskey-witness" as Secret,
         issued_at_epoch_seconds: 1000,
-        lifetime_seconds: 3600,
+        lifetime: second(count: 3600),
       },
       now_epoch_seconds: 2000
     )
     && !tailscale_ephemeral_token_within_ttl(
       issued_at_epoch_seconds: 1000,
-      lifetime_seconds: 3600,
+      lifetime: second(count: 3600),
       now_epoch_seconds: 5000
     )
 }
@@ -138,7 +139,7 @@ fn witness_upsert_requires_valid_ephemeral_token() -> Bool {
       emitted: "{}",
       token: "tskey-witness" as Secret,
       issued_at_epoch_seconds: 1000,
-      lifetime_seconds: 3600,
+      lifetime: second(count: 3600),
     },
     now_epoch_seconds: 2000
   )
@@ -147,7 +148,7 @@ fn witness_upsert_requires_valid_ephemeral_token() -> Bool {
         emitted: "{}",
         token: "tskey-witness" as Secret,
         issued_at_epoch_seconds: 1000,
-        lifetime_seconds: 3600,
+        lifetime: second(count: 3600),
       },
       now_epoch_seconds: 5000
     )
