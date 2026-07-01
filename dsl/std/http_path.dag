@@ -31,3 +31,27 @@ fn last_path_param(template: PathTemplate) -> String? {
     Absent => none
   }
 }
+
+type PathParamBinding {
+  name: String
+  value: String
+}
+
+fn path_param_value(params: List<PathParamBinding>, name: String) -> String {
+  fold(params, init: "", f: (acc, binding) => {
+    if acc != "" {
+      acc
+    } else if binding.name == name {
+      binding.value
+    } else {
+      acc
+    }
+  })
+}
+
+fn render_path_template(template: PathTemplate, params: List<PathParamBinding>) -> String {
+  fold(template.tokens, init: "", f: (acc, tok) => match tok {
+    LiteralToken { text: t } => concat(acc, t)
+    ParamToken { name: n } => concat(acc, path_param_value(params: params, name: n))
+  })
+}

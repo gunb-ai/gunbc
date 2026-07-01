@@ -70,8 +70,8 @@ fn witness_registry_complete() -> Bool {
     && registry_contains(a: RunnerDeployArtifact)
     && registry_contains(a: FleetConvergeArtifact)
     && registry_contains(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
-    && registry_contains(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
     && registry_contains(a: PlanArtifact { plan: idea_machine_plan })
+    && fleet_install_server_specs.length() == 0
     && artifact_is_committed(a: CiYamlArtifact)
     && artifact_is_committed(a: GcpAccessCheckYamlArtifact)
     && artifact_is_committed(a: GitignoreArtifact)

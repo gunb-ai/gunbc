@@ -14,12 +14,9 @@
 
 use std::process::ExitCode;
 
+use v1_compiler::cli_run::{non_fold_residue_count, non_fold_residue_unrostered_count};
 use v1_compiler::complexity_linearity_audit_project::{
     audit_corpus_default_roots, audit_corpus_parse_only, roster_fiction_report,
-};
-use v1_compiler::module_path_index::non_fold_residue_census::{
-    non_fold_residue_count, non_fold_residue_irreducible_roster_slots,
-    non_fold_residue_migration_debt_roster_slots, non_fold_residue_unrostered_count,
 };
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -73,10 +70,10 @@ fn print_summary(
     );
     eprintln!(
         "complexity_linearity_audit: resolved-half roster proxies (not whole-corpus): \
-         non_fold_residue total={} unrostered={}, unwired_model unwired={}",
+         non_fold_residue total={} unrostered={}, inert_carrier inert={}",
         non_fold_residue_count(),
         non_fold_residue_unrostered_count(),
-        v1_compiler::cli_run::unwired_model_names_live().len()
+        v1_compiler::cli_run::inert_carrier_names_live().len()
     );
     let fiction = roster_fiction_report(summary);
     eprintln!(
@@ -85,10 +82,10 @@ fn print_summary(
          (b) IRREDUCIBLE: {}/{} honest permanent residue (operator-signed); \
          unrostered today: {}",
         fiction.migration_debt_live,
-        non_fold_residue_migration_debt_roster_slots(),
+        fiction.migration_debt_roster_slots,
         fiction.floor_red_if_migration_roster_fiction_dropped,
         fiction.irreducible_live,
-        non_fold_residue_irreducible_roster_slots(),
+        fiction.irreducible_roster_slots,
         fiction.resolved_unrostered_sites
     );
     eprintln!(
