@@ -4,7 +4,7 @@ import v2.lens.boundary_coverage { Boundary }
 import v2.lens.module_graph { ImportResolutionFact, import_resolution_facts_live }
 import gunbc.ci_layer_roots { witness_layer_roots }
 
-import v2.std.algebra { any, filter, is_empty, fold_list, list_snoc_item }
+import v2.std.algebra { any, filter, is_empty, fold_list, list_snoc_item, contains }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -54,12 +54,26 @@ fn required_boundaries() -> List<Boundary> {
   folded.boundaries
 }
 
+data test_importer_roots: List<String> = ["src/v2/test", "dsl/test"]
+
 fn corpus_import_facts() -> List<ImportResolutionFact> {
   import_resolution_facts_live(
     pool_roots: witness_layer_roots,
-    importer_roots: witness_layer_roots,
+    importer_roots: test_importer_roots,
     exclude_substrings: []
   )
+}
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn fact_is_stage_import(f: ImportResolutionFact) -> Bool {
+  contains(xs: pipeline_stages, item: f.import_module, eq: string_eq)
+}
+
+fn stage_import_facts() -> List<ImportResolutionFact> {
+  filter(xs: corpus_import_facts(), predicate: fn(f) { fact_is_stage_import(f: f) })
 }
 
 fn fact_bridges(f: ImportResolutionFact, path: String, mod: String) -> Bool {
@@ -84,7 +98,7 @@ fn boundary_uncovered_live(b: Boundary, facts: List<ImportResolutionFact>) -> Bo
 }
 
 fn corpus_uncovered_boundaries() -> List<Boundary> {
-  let facts = corpus_import_facts()
+  let facts = stage_import_facts()
   filter(xs: required_boundaries(), predicate: fn(b) {
     boundary_uncovered_live(b: b, facts: facts)
   })
