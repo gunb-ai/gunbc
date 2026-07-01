@@ -5540,7 +5540,10 @@ fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
             i += 1;
         }
         out.push((name, block));
-=======
+    }
+    out
+}
+
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
 const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
 
@@ -5598,12 +5601,10 @@ fn markdown_link_targets(content: &str) -> Vec<String> {
             }
         }
         i += 1;
->>>>>>> origin/main
     }
     out
 }
 
-<<<<<<< HEAD
 struct InertCarrierData {
     declared_count: usize,
     inert_names: Vec<String>,
@@ -5794,7 +5795,8 @@ mod inert_carrier_tests {
         ]);
         assert!(!inert.contains(&"Dup".to_string()));
     }
-=======
+}
+
 fn resolve_doc_link(from: &str, target: &str) -> Vec<String> {
     let mut candidates = Vec::new();
     let from_dir = Path::new(from).parent().unwrap_or_else(|| Path::new(""));
@@ -5962,7 +5964,6 @@ pub fn doc_graph_dangling_link_count() -> i64 {
 
 pub fn doc_graph_doc_count() -> i64 {
     doc_graph_report().doc_count as i64
->>>>>>> origin/main
 }
 
 #[cfg(test)]
