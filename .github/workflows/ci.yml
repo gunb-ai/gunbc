@@ -87,8 +87,8 @@ jobs:
           set +e
           "$ROOT/target/release/claim_executor" --source-root dsl --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
           FLOOR_EXIT=$?
-          CI_FLOOR_EXIT=$FLOOR_EXIT ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
-          "$ROOT/target/release/gunbc" run --source-root dsl --source-root src/v2 --entry dsl/tools/merge_admission_stamp.dag --function main
+          ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+          CI_FLOOR_EXIT=$FLOOR_EXIT "$ROOT/target/release/gunbc" run --source-root dsl --source-root src/v2 --entry dsl/tools/merge_admission_stamp.dag --function main
           exit $FLOOR_EXIT
       - name: Merge-admission gate (NOT ENFORCING until GatingEnforced)
         run: |
