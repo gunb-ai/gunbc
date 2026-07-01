@@ -304,8 +304,6 @@ data unwired_model_roster: List<String> = [
   "extdeps_live_module_transport_fusion_fork_count",
   "extdeps_module_identity_resolves",
   "extdeps_runtime_local_module",
-  "extdeps_shape_transport_policy_dead_param_count_for_operation",
-  "extdeps_shape_transport_policy_embedded_policy_literal_count",
   "extdeps_shape_transport_policy_violation_count_for_operation",
   "fact_cardinality_cross_tree_variant_mismatch",
   "fact_cardinality_live_coexistence_ratchet_holds",
