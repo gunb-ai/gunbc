@@ -1,0 +1,38 @@
+module gunbc.ci_deploy_access
+
+import std.types { NonEmptyStr }
+import product.network_topology {
+  NetworkEndpoint,
+  NetworkReachabilityZone,
+  TailscaleMesh,
+  HostLan,
+  network_reachability,
+}
+import gunbc.fleet_intent_network { srv1_tailscale_endpoint }
+import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_ssh_host }
+import gunbc.host_effect { HostEffectTransport, SshShell }
+
+type RunnerHostAccess {
+  from_zone: NetworkReachabilityZone
+  to_zone: NetworkReachabilityZone
+  ssh_host: NonEmptyStr
+  tailscale_endpoint: NetworkEndpoint
+  transport: HostEffectTransport
+}
+
+fn ci_runner_to_srv1_ssh_tailnet_access() -> RunnerHostAccess {
+  let ssh_host = deployment_plan_ssh_host(spec: deployment_spec_srv1())
+  RunnerHostAccess {
+    from_zone: HostLan,
+    to_zone: TailscaleMesh,
+    ssh_host: ssh_host,
+    tailscale_endpoint: srv1_tailscale_endpoint,
+    transport: SshShell { ssh_host: ssh_host },
+  }
+}
+
+data ci_deploy_srv1_runner_access: RunnerHostAccess = ci_runner_to_srv1_ssh_tailnet_access()
+
+fn runner_host_access_reachable(access: RunnerHostAccess) -> Bool {
+  network_reachability(from: access.from_zone, to: access.to_zone)
+}
