@@ -1,0 +1,52 @@
+module v2.lens.layer_span_test
+
+import v2.lens.layer_span {
+  keeps_on_floor,
+  is_integration_witness,
+  layer_boundary_span,
+  layer_of_module
+}
+import v2.std.layer {
+  LayerPrefixStd,
+  LayerPrefixExtdeps,
+  LayerPrefixCompiler,
+  LayerPrefixWorkflow
+}
+import v2.std.logic { Bool }
+
+test fn adjacent_pair_kept_on_floor() -> Bool {
+  keeps_on_floor(imports: ["v2.compiler.infer", "v2.workflow.executor"])
+}
+
+test fn std_ambient_workflow_unit_kept() -> Bool {
+  keeps_on_floor(imports: ["v2.std.text", "v2.std.logic", "v2.workflow.executor"])
+}
+
+test fn std_only_kept_on_floor() -> Bool {
+  keeps_on_floor(imports: ["v2.std.text", "v2.std.collection"])
+}
+
+test fn multi_layer_span_is_integration() -> Bool {
+  is_integration_witness(imports: ["v2.extdeps.shell", "v2.workflow.executor"])
+}
+
+test fn end_to_end_span_is_integration() -> Bool {
+  is_integration_witness(imports: ["extdeps.shell", "v2.compiler.emit", "gunbc.ci_spec"])
+}
+
+test fn adjacent_pair_span_is_one() -> Bool {
+  layer_boundary_span(imports: ["v2.compiler.infer", "v2.workflow.executor"]) == 1
+}
+
+test fn skip_layer_span_is_two() -> Bool {
+  layer_boundary_span(imports: ["v2.extdeps.shell", "v2.workflow.executor"]) == 2
+}
+
+test fn product_module_is_workflow_layer() -> Bool {
+  match layer_of_module(mod_name: "gunbc.ci_spec") {
+    LayerPrefixWorkflow => true
+    LayerPrefixStd => false
+    LayerPrefixExtdeps => false
+    LayerPrefixCompiler => false
+  }
+}

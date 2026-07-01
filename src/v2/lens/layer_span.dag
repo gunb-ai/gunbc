@@ -1,20 +1,5 @@
 module v2.lens.layer_span
 
-// Layer-span policy: classify a witness by HOW MANY layer boundaries its
-// (non-std) imports cross, grounding the CI split on WHAT a test is rather
-// than on measured runtime (DESIGN §2/§3; operator steer 2026-06-29).
-//
-// A hermetic unit test exercises one component against a faithful mock of its
-// direct neighbour, so its real imports touch at most two ADJACENT layers
-// (span <= 1 boundary). A test whose imports span two or more boundaries
-// (a->c, a->d, full end-to-end) is an INTEGRATION test. std is the ambient
-// framework layer (every module imports it for types) so it never counts
-// toward the span.
-//
-// Consumed by floor discovery (dsl/gunbc CI spec) to route span<=1 witnesses
-// onto the blocking floor and span>=2 witnesses onto the non-blocking
-// integration lane.
-
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
@@ -32,7 +17,9 @@ import v2.std.algebra {
   Equal,
   Greater,
   fold_list,
-  is_prefix_of,
+  is_prefix_of
+}
+import v2.std.integer {
   int_add,
   int_negate,
   int_compare
@@ -45,8 +32,8 @@ fn char_eq(a: Char, b: Char) -> Bool {
   a == b
 }
 
-fn has_prefix(prefix: String, module: String) -> Bool {
-  is_prefix_of(prefix: prefix, xs: module, eq: char_eq)
+fn has_prefix(prefix: String, mod_name: String) -> Bool {
+  is_prefix_of(prefix: prefix, xs: mod_name, eq: char_eq)
 }
 
 data std_prefix_v2: String = "v2.std."
@@ -63,41 +50,34 @@ data compiler_prefix_v2: String = "v2.compiler."
 data compiler_prefix_dsl: String = "compiler."
 data compiler_exact_v2: String = "v2.compiler"
 
-fn is_std_module(module: String) -> Bool {
-  module == std_exact_v2
-    || module == std_exact_dsl
-    || has_prefix(prefix: std_prefix_v2, module: module)
-    || has_prefix(prefix: std_prefix_dsl, module: module)
+fn is_std_module(mod_name: String) -> Bool {
+  mod_name == std_exact_v2
+    || mod_name == std_exact_dsl
+    || has_prefix(prefix: std_prefix_v2, mod_name: mod_name)
+    || has_prefix(prefix: std_prefix_dsl, mod_name: mod_name)
 }
 
-fn is_extdeps_module(module: String) -> Bool {
-  module == extdeps_exact_v2
-    || module == extdeps_exact_dsl
-    || has_prefix(prefix: extdeps_prefix_v2, module: module)
-    || has_prefix(prefix: extdeps_prefix_dsl, module: module)
+fn is_extdeps_module(mod_name: String) -> Bool {
+  mod_name == extdeps_exact_v2
+    || mod_name == extdeps_exact_dsl
+    || has_prefix(prefix: extdeps_prefix_v2, mod_name: mod_name)
+    || has_prefix(prefix: extdeps_prefix_dsl, mod_name: mod_name)
 }
 
-fn is_compiler_module(module: String) -> Bool {
-  module == compiler_exact_v2
-    || has_prefix(prefix: compiler_prefix_v2, module: module)
-    || has_prefix(prefix: compiler_prefix_dsl, module: module)
+fn is_compiler_module(mod_name: String) -> Bool {
+  mod_name == compiler_exact_v2
+    || has_prefix(prefix: compiler_prefix_v2, mod_name: mod_name)
+    || has_prefix(prefix: compiler_prefix_dsl, mod_name: mod_name)
 }
 
-// Coarse layer of an imported module by name prefix. Reuses the single
-// LayerPrefix authority (v2.std.layer). std is ambient; extdeps/compiler are
-// classified by prefix; every remaining domain module (v2.workflow.*,
-// gunbc.*, tools.*, v2.lens.*, test.*) is the outermost Workflow layer.
-// Unknown prefixes fall through to Workflow, which is fail-safe for the
-// blocking floor: an isolated unknown import yields span 0 (kept on the
-// floor) rather than silently dropping a unit test.
-fn layer_of_module(module: String) -> LayerPrefix {
-  if is_std_module(module: module) {
+fn layer_of_module(mod_name: String) -> LayerPrefix {
+  if is_std_module(mod_name: mod_name) {
     LayerPrefixStd
   } else {
-    if is_extdeps_module(module: module) {
+    if is_extdeps_module(mod_name: mod_name) {
       LayerPrefixExtdeps
     } else {
-      if is_compiler_module(module: module) {
+      if is_compiler_module(mod_name: mod_name) {
         LayerPrefixCompiler
       } else {
         LayerPrefixWorkflow
@@ -115,9 +95,6 @@ fn is_std_layer(layer: LayerPrefix) -> Bool {
   }
 }
 
-// Running (min, max) of the non-std layer ordinals seen so far. `seen` is
-// false until the first non-std import folds in, so std-only import sets
-// leave the accumulator empty (span 0).
 type LayerOrdinalSpan {
   seen: Bool
   min_ordinal: Int
@@ -158,8 +135,8 @@ fn absorb_ordinal(acc: LayerOrdinalSpan, ordinal: Int) -> LayerOrdinalSpan {
   }
 }
 
-fn absorb_module(acc: LayerOrdinalSpan, module: String) -> LayerOrdinalSpan {
-  let layer = layer_of_module(module: module)
+fn absorb_module(acc: LayerOrdinalSpan, mod_name: String) -> LayerOrdinalSpan {
+  let layer = layer_of_module(mod_name: mod_name)
   if is_std_layer(layer: layer) {
     acc
   } else {
@@ -171,13 +148,10 @@ fn ordinal_span_of_imports(imports: List<String>) -> LayerOrdinalSpan {
   fold_list(
     xs: imports,
     empty: empty_layer_ordinal_span,
-    cons: fn(acc, module) { absorb_module(acc: acc, module: module) }
+    cons: fn(acc, mod_name) { absorb_module(acc: acc, mod_name: mod_name) }
   )
 }
 
-// Number of non-std layer BOUNDARIES an import set crosses: max_rank - min_rank
-// over the non-std layers touched. 0 when no non-std imports or a single
-// non-std layer; 1 for two adjacent layers; >=2 for a multi-layer span.
 fn layer_boundary_span(imports: List<String>) -> Int {
   let s = ordinal_span_of_imports(imports: imports)
   if s.seen {
@@ -187,9 +161,6 @@ fn layer_boundary_span(imports: List<String>) -> Int {
   }
 }
 
-// A witness belongs on the blocking, per-PR floor iff it is hermetic: its
-// imports cross at most one layer boundary. Everything else is an integration
-// witness routed to the non-blocking lane.
 fn keeps_on_floor(imports: List<String>) -> Bool {
   match int_compare(a: layer_boundary_span(imports: imports), b: 2) {
     Less => true
