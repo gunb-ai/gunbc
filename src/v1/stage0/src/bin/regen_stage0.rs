@@ -835,7 +835,6 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-
 fn patch_complexity_linearity_audit_mod(src_dir: &Path) -> Result<(), String> {
     let lib_path = src_dir.join("lib.rs");
     let mut lib_text =
