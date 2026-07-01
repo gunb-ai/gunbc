@@ -28,15 +28,12 @@ type DiffPolicy {
   mode: DiffMode
 }
 
-type DeployTrigger = PushToMainOnly
-
 type DeployStage {
   id: String
   step_name: String
   entry: String
   function: String
   needs: List<String>
-  trigger: DeployTrigger
   access: RunnerHostAccess
 }
 
@@ -62,7 +59,6 @@ data gunbc_ci_deploy_srv1_stage: DeployStage = {
   entry: live_deploy_apply_entry,
   function: live_deploy_apply_srv1_wet_function,
   needs: ["ci"],
-  trigger: PushToMainOnly,
   access: ci_deploy_srv1_runner_access,
 }
 
@@ -257,7 +253,7 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
   concat(
     concat(
       concat(
-        concat(concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags(roots: witness_layer_roots)),
+        concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags(roots: witness_layer_roots)),
         concat(" --entry ", stage.entry)
       ),
       concat(" --function ", stage.function)
@@ -267,6 +263,6 @@ fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
 }
 
 fn gunbc_ci_deploy_run_script(stage: DeployStage) -> String {
-  concat(ci_release_build_script(), gunbc_ci_deploy_invoke(stage: stage))
+  concat(concat(ci_release_build_script(), "\n"), gunbc_ci_deploy_invoke(stage: stage))
 }
 
