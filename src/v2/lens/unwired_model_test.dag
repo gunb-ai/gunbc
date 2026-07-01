@@ -1,0 +1,31 @@
+module v2.test.lens_unwired_model.unwired_model_test
+
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.lens.unwired_model {
+  unwired_model_clean_holds,
+  unwired_model_live_declared_count,
+  count_not_in_roster,
+  count_stale_roster,
+  empty_unwired_model_names
+}
+
+data roster_one: List<String> = ["KnownEntry"]
+data names_with_unknown: List<String> = ["UnknownEntry"]
+
+test fn unwired_model_no_unrostered_or_stale() -> Bool {
+  return unwired_model_clean_holds()
+}
+
+test fn unwired_model_universe_is_nonempty() -> Bool {
+  return unwired_model_live_declared_count() > 0
+}
+
+test fn count_not_in_roster_detects_unrostered() -> Bool {
+  return count_not_in_roster(names: names_with_unknown, roster: roster_one) == 1
+}
+
+test fn count_stale_roster_detects_stale_entry() -> Bool {
+  return count_stale_roster(roster: roster_one, unwired_names: empty_unwired_model_names) == 1
+}
