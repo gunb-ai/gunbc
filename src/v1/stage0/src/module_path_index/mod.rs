@@ -1,6 +1,5 @@
 pub mod extdeps_shape_transport_policy_census;
 pub mod fact_cardinality_census;
-pub mod languages_consumer_census;
 pub mod medium_structure_census;
 pub mod non_fold_residue_census;
 pub mod transport_script_position_census;
@@ -33,12 +32,6 @@ pub use extdeps_shape_transport_policy_census::{
 pub use fact_cardinality_census::{
     cross_tree_coexistence_count, cross_tree_diverged_fork_count, cross_tree_is_coexistence,
     cross_tree_is_diverged_fork,
-};
-pub use languages_consumer_census::{
-    languages_consumer_census_data_decl_count, languages_consumer_census_external_consumer_count,
-    languages_consumer_census_format_row_count, languages_consumer_census_has_external_consumer,
-    languages_consumer_census_is_composition_only,
-    languages_consumer_census_per_language_row_count,
 };
 pub use medium_structure_census::medium_structure_leak_facts;
 pub use non_fold_residue_census::{

@@ -5473,15 +5473,15 @@ fn eval_builtin(
         }
 
         "languages_consumer_census_data_decl_count" => Ok(Some(Value::Int(
-            crate::module_path_index::languages_consumer_census::languages_consumer_census_data_decl_count(),
+            crate::cli_run::languages_consumer_census_data_decl_count(),
         ))),
 
         "languages_consumer_census_per_language_row_count" => Ok(Some(Value::Int(
-            crate::module_path_index::languages_consumer_census::languages_consumer_census_per_language_row_count(),
+            crate::cli_run::languages_consumer_census_per_language_row_count(),
         ))),
 
         "languages_consumer_census_format_row_count" => Ok(Some(Value::Int(
-            crate::module_path_index::languages_consumer_census::languages_consumer_census_format_row_count(),
+            crate::cli_run::languages_consumer_census_format_row_count(),
         ))),
 
         "languages_consumer_census_external_consumer_count" => {
@@ -5490,9 +5490,7 @@ fn eval_builtin(
                 "languages_consumer_census_external_consumer_count",
             )?;
             Ok(Some(Value::Int(
-                crate::module_path_index::languages_consumer_census::languages_consumer_census_external_consumer_count(
-                    decl_name,
-                ),
+                crate::cli_run::languages_consumer_census_external_consumer_count(decl_name),
             )))
         }
 
@@ -5502,9 +5500,7 @@ fn eval_builtin(
                 "languages_consumer_census_is_composition_only",
             )?;
             Ok(Some(Value::Bool(
-                crate::module_path_index::languages_consumer_census::languages_consumer_census_is_composition_only(
-                    decl_name,
-                ),
+                crate::cli_run::languages_consumer_census_is_composition_only(decl_name),
             )))
         }
 
@@ -5514,9 +5510,7 @@ fn eval_builtin(
                 "languages_consumer_census_has_external_consumer",
             )?;
             Ok(Some(Value::Bool(
-                crate::module_path_index::languages_consumer_census::languages_consumer_census_has_external_consumer(
-                    decl_name,
-                ),
+                crate::cli_run::languages_consumer_census_has_external_consumer(decl_name),
             )))
         }
 
