@@ -87,6 +87,20 @@ test fn wire_missing_head_sha_returns_absent() -> Bool {
   }
 }
 
+test fn wire_missing_pr_number_returns_absent() -> Bool {
+  let wire = concat(
+    concat(
+      concat(concat(scenario_base, "\n"), concat(current_gate_roster_hash, "\n")),
+      concat(check_conclusion_wire_label(c: Success), "\n")
+    ),
+    scenario_head
+  )
+  match parse_receipt_wire(text: wire) {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
 test fn red_floor_stamps_failure_conclusion() -> Bool {
   red_receipt.conclusion == Failure
 }

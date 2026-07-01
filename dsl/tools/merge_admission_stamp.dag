@@ -52,8 +52,8 @@ fn floor_exit_code_from_env() -> Int {
   let env = shell.Env.Get(name: "CI_FLOOR_EXIT")
   match env.value {
     Present { value: raw } =>
-      if raw == "0" || raw == "" { 0 } else { 1 }
-    Absent => 0
+      if raw == "0" { 0 } else { 1 }
+    Absent => 1
   }
 }
 
