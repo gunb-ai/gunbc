@@ -1,7 +1,6 @@
 module v2.lens.no_dual_representation_test.scan
 
 import v2.std.algebra {
-  fold,
   fold_list,
   is_empty,
   length,
