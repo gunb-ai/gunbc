@@ -9,6 +9,8 @@ import std.http_path {
   PathTemplate,
   has_path_params,
   last_path_param,
+  PathParamBinding,
+  render_path_template,
 }
 
 fn param_path(prefix: String, param_name: String) -> String {
@@ -83,6 +85,24 @@ fn witness_malformed_discriminates_from_valid() -> Bool {
   }
 }
 
+fn witness_render_path_template_binds_params() -> Bool {
+  let template = PathTemplate {
+    tokens: [
+      LiteralToken { text: "/vm/" },
+      ParamToken { name: "slot" },
+      LiteralToken { text: "/" },
+      ParamToken { name: "index" },
+    ],
+  }
+  render_path_template(
+    template: template,
+    params: [
+      PathParamBinding { name: "slot", value: "0" },
+      PathParamBinding { name: "index", value: "0" },
+    ],
+  ) == "/vm/0/0"
+}
+
 test fn uri_path_parse_keystone_holds() -> Bool {
   witness_literal_path_parses()
     && witness_param_path_has_params()
@@ -91,4 +111,5 @@ test fn uri_path_parse_keystone_holds() -> Bool {
     && witness_empty_root_path_parses()
     && witness_malformed_unclosed_brace_rejects()
     && witness_malformed_discriminates_from_valid()
+    && witness_render_path_template_binds_params()
 }
