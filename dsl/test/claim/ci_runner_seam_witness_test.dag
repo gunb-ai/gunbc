@@ -1,38 +1,28 @@
 module test.claim.ci_runner_seam_witness
 
-import gunbc.ci_fleet { gunbc_ci_fleet_offer }
-import gunbc.runner_spec_from_offer { runner_spec_from_offer, gunbc_ci_runner_spec }
+import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec, gunbc_ci_ubicloud_runner_label }
 import gunbc.ci_workflow { ci_workflow }
 import gunbc.ci_yaml_emit { expected_ci_yml }
-import extdeps.github.actions { SelfHosted }
+import extdeps.github.actions { RunsOnExpression }
 
-fn witness_ci_runner_spec_derives_from_fleet_offer() -> Bool {
-  gunbc_ci_runner_spec() == runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
-}
-
-fn witness_ci_workflow_runner_matches_fleet_offer() -> Bool {
-  ci_workflow.jobs.first().runner == gunbc_ci_runner_spec()
-}
-
-fn witness_ci_yaml_runs_on_projects_fleet_labels() -> Bool {
-  let yaml = expected_ci_yml()
-  string_contains(s: yaml, pattern: "    runs-on: [self-hosted, linux, arm64]")
-}
-
-fn witness_ci_runner_spec_is_self_hosted_arm64_linux() -> Bool {
+fn witness_ci_runner_spec_is_ubicloud_hosted() -> Bool {
   match gunbc_ci_runner_spec() {
-    SelfHosted { labels: ls } =>
-      ls.length() == 3
-        && ls.first() == "self-hosted"
-        && ls.skip(n: 1).first() == "linux"
-        && ls.skip(n: 2).first() == "arm64"
+    RunsOnExpression { expression: e } => e == gunbc_ci_ubicloud_runner_label
     _ => false
   }
 }
 
+fn witness_ci_workflow_runner_matches_spec() -> Bool {
+  ci_workflow.jobs.first().runner == gunbc_ci_runner_spec()
+}
+
+fn witness_ci_yaml_runs_on_projects_ubicloud_label() -> Bool {
+  let yaml = expected_ci_yml()
+  string_contains(s: yaml, pattern: "    runs-on: ubicloud-standard-16-arm")
+}
+
 test fn ci_runner_seam_holds() -> Bool {
-  witness_ci_runner_spec_derives_from_fleet_offer()
-    && witness_ci_workflow_runner_matches_fleet_offer()
-    && witness_ci_yaml_runs_on_projects_fleet_labels()
-    && witness_ci_runner_spec_is_self_hosted_arm64_linux()
+  witness_ci_runner_spec_is_ubicloud_hosted()
+    && witness_ci_workflow_runner_matches_spec()
+    && witness_ci_yaml_runs_on_projects_ubicloud_label()
 }
