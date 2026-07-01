@@ -6504,38 +6504,62 @@ fn witness_holds_node_value(
     }
 }
 
-fn eval_dag_source_read_witness_from_record(
-    source_roots: &[String],
+fn dag_source_read_witness_value(
+    ctx: &v1_interpreter::InterpContext,
     rec: &SourceRootReadRecord,
 ) -> Result<v1_interpreter::Value, String> {
-    let witness = emit_source_root_read_witness(rec)?;
-    let bridge_dir = std::env::temp_dir().join("gunbc_floor_witness_read_bridge");
-    std::fs::create_dir_all(&bridge_dir)
-        .map_err(|e| format!("witness read bridge dir: {e}"))?;
-    let bridge_name = rec
-        .file_path
-        .replace('/', "__")
-        .replace('\\', "__");
-    let bridge_path = bridge_dir.join(format!("{bridge_name}.dag"));
-    let content = format!(
-        "module floor_ephemeral.witness_read_bridge\n\n\
-         import v2.compiler.source_authority {{ DagSourceReadWitness }}\n\
-         import extdeps.communication.medium {{ Lossless, Medium }}\n\
-         import v2.std.artifact {{ Artifact, SourceFile }}\n\
-         import v2.std.cross_tree.import_model {{ DslTree, V2Tree }}\n\n\
-         data read: DagSourceReadWitness = {witness};\n"
-    );
-    std::fs::write(&bridge_path, content)
-        .map_err(|e| format!("witness read bridge write {:?}: {e}", bridge_path))?;
-    let entry = bridge_path.to_string_lossy().into_owned();
-    let (graph, indices) =
-        resolve_entry_graph(source_roots, &entry).map_err(|e| format!("witness read bridge resolve: {e}"))?;
-    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
-    v1_interpreter::with_active_context(&ctx, || {
-        v1_interpreter::eval_data_item_value(&ctx, "read")
+    use std::rc::Rc;
+    use v1_interpreter::{sorted_fields, Value};
+
+    let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
+    let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
+    let rel_path = repo_relative_dag_path(&rec.file_path);
+    let source_root_variant = match rec.source_root.as_str() {
+        "V2Tree" | "DslTree" => rec.source_root.as_str(),
+        other => {
+            return Err(format!(
+                "dag_source_read_witness_value: unknown source_root token '{other}'"
+            ))
+        }
+    };
+    let nullary_variant = |type_name: &str, variant_name: &str| Value::Variant {
+        type_name: ctx.sym(type_name),
+        variant_name: ctx.sym(variant_name),
+        fields: Rc::new(vec![]),
+    };
+    let source = Value::Record {
+        type_name: ctx.sym("Medium"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("carried"), Value::Str(rec.source.clone())),
+            (
+                ctx.sym("fidelity"),
+                nullary_variant("DecodeFidelity", "Lossless"),
+            ),
+        ])),
+    };
+    let artifact = Value::Record {
+        type_name: ctx.sym("Artifact"),
+        fields: Rc::new(sorted_fields(vec![
+            (
+                ctx.sym("kind"),
+                nullary_variant("ArtifactKind", "SourceFile"),
+            ),
+            (ctx.sym("id"), Value::Str(artifact_id)),
+            (ctx.sym("file_path"), Value::Str(rel_path)),
+        ])),
+    };
+    Ok(Value::Record {
+        type_name: ctx.sym("DagSourceReadWitness"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("source"), source),
+            (ctx.sym("artifact"), artifact),
+            (ctx.sym("compilation_unit"), Value::Str(compilation_unit)),
+            (
+                ctx.sym("source_root"),
+                nullary_variant("SourceRootRef", source_root_variant),
+            ),
+        ])),
     })
-    .map_err(|e| format!("eval witness read: {e}"))?
-    .ok_or_else(|| "witness read data missing".to_string())
 }
 
 fn witness_entry_tree_root(
@@ -6543,13 +6567,17 @@ fn witness_entry_tree_root(
     source_roots: &[String],
     entry_path: &str,
 ) -> Result<v1_interpreter::Value, String> {
-    let entry_norm = normalize_repo_path(entry_path);
+    let entry_norm = repo_relative_dag_path(entry_path);
     let records = discover_source_root_reads_for_paths(source_roots, &[entry_norm.clone()], &[])?;
     let rec = records
         .iter()
-        .find(|r| r.file_path == entry_norm)
+        .find(|r| repo_relative_dag_path(&r.file_path) == entry_norm)
         .ok_or_else(|| format!("no source-root read for witness entry '{entry_norm}'"))?;
-    let read = eval_dag_source_read_witness_from_record(source_roots, rec)?;
+    let read_rec = SourceRootReadRecord {
+        file_path: entry_norm,
+        ..rec.clone()
+    };
+    let read = dag_source_read_witness_value(runner_ctx, &read_rec)?;
     let result = v1_interpreter::run_in_context_with_args(
         runner_ctx,
         "floor_witness_entry_tree_root_from_read",
