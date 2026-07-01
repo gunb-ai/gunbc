@@ -1,0 +1,14 @@
+module test.claim.unwired_model_hygiene_witness
+
+import v2.lens.unwired_model {
+  unwired_model_clean_holds,
+  unwired_model_live_declared_count,
+}
+
+test fn unwired_model_hygiene_no_unrostered_or_stale() -> Bool {
+  unwired_model_clean_holds()
+}
+
+test fn unwired_model_hygiene_universe_is_nonempty() -> Bool {
+  unwired_model_live_declared_count() > 0
+}
