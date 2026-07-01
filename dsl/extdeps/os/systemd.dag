@@ -30,6 +30,8 @@ data systemd_memory_max_property: NonEmptyStr = "MemoryMax"
 
 data systemd_memory_swap_max_property: NonEmptyStr = "MemorySwapMax"
 
+data systemd_memory_high_property: NonEmptyStr = "MemoryHigh"
+
 data systemd_cpu_weight_property: NonEmptyStr = "CPUWeight"
 
 fn parse_systemd_unit_active_state(raw: String) -> SystemdUnitActiveState? {

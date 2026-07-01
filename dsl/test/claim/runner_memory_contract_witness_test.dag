@@ -1,0 +1,52 @@
+module test.claim.runner_memory_contract
+
+import std.types { Bool, String }
+import std.measure { byte_size_count }
+import gunbc.fleet_host_budget {
+  gunbc_per_runner_memory_cap,
+  gunbc_per_runner_swap_cap,
+  gunbc_per_runner_memory_high,
+  gunbc_ci_runner_cgroup_memory_cap,
+}
+import gunbc.fleet_converge_emit { expected_fleet_converge_sh }
+import gunbc.host_converge { fleet_converge_policy, ConvergePolicyDerived, RunnerSlice }
+
+fn has(s: String, p: String) -> Bool {
+  string_contains(s: s, pattern: p)
+}
+
+fn witness_standalone_contract_bytes() -> Bool {
+  byte_size_count(b: gunbc_per_runner_memory_cap) == 8589934592
+    && byte_size_count(b: gunbc_per_runner_swap_cap) == 25769803776
+    && byte_size_count(b: gunbc_per_runner_memory_high) == 7516192768
+    && gunbc_per_runner_memory_cap == gunbc_ci_runner_cgroup_memory_cap
+}
+
+fn witness_emit_projects_swap_and_high() -> Bool {
+  let sh = expected_fleet_converge_sh()
+  has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv1-*.service\" \"MemorySwapMax\" \"25769803776\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_high_bytes\" \"/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf\" \"actions-runner@srv1-*.service\" \"MemoryHigh\" \"7516192768\"")
+    && has(s: sh, p: "converge_slice_property \"srv1\" \"runner\" \"oom_pressure_auto\" \"system-actions-runner.slice\" \"ManagedOOMMemoryPressure\" \"auto\" \"auto\" \"true\"")
+    && has(s: sh, p: "converge_gunbc_pinned_tree \"srv3\" \"gunbc\" \"pinned_tree_sha\" \"fresh_standup\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv3\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv3-*.service\" \"MemorySwapMax\" \"25769803776\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv3\" \"runner\" \"per_slot_memory_high_bytes\" \"/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf\" \"actions-runner@srv3-*.service\" \"MemoryHigh\" \"7516192768\"")
+    && has(s: sh, p: "converge_slice_property \"srv3\" \"runner\" \"oom_pressure_auto\" \"system-actions-runner.slice\" \"ManagedOOMMemoryPressure\" \"auto\" \"auto\" \"true\"")
+    && !has(s: sh, p: "\"MemorySwapMax\" \"0\"")
+}
+
+fn witness_policy_has_runner_oom_auto_knob() -> Bool {
+  match fleet_converge_policy() {
+    ConvergePolicyDerived { hosts: hosts } =>
+      hosts.length() > 0
+        && all(hosts, h =>
+          any(h.knobs, k => k.name == "oom_pressure_auto" && k.slice == RunnerSlice)
+        )
+    _ => false
+  }
+}
+
+test fn runner_memory_contract_holds() -> Bool {
+  witness_standalone_contract_bytes()
+    && witness_emit_projects_swap_and_high()
+    && witness_policy_has_runner_oom_auto_knob()
+}

@@ -2,7 +2,7 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, RunnerDeployArtifact, FleetConvergeArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  GeneratedArtifact, CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, RunnerDeployArtifact, FleetConvergeArtifact, FleetConvergeTimerUpsertArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
   generated_artifact_registry,
@@ -35,6 +35,7 @@ fn witness_all_known_committed() -> Bool {
     && artifact_is_committed(a: GithooksPrePushArtifact)
     && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
     && artifact_is_committed(a: FleetConvergeArtifact)
+    && artifact_is_committed(a: FleetConvergeTimerUpsertArtifact)
     && !artifact_is_committed(a: RunnerDeployArtifact)
     && !artifact_is_committed(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && !artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
@@ -44,6 +45,7 @@ fn witness_all_known_committed() -> Bool {
     && !path_is_ignored(path: "DESIGN.md")
     && !path_is_ignored(path: ".githooks/pre-push")
     && !path_is_ignored(path: ".github/fleet-converge.sh")
+    && !path_is_ignored(path: ".github/fleet-converge-timer-upsert.sh")
     && !path_is_ignored(path: "docs/plans/idea-machine.md")
 }
 
@@ -58,7 +60,7 @@ fn witness_ignored_paths_excluded() -> Bool {
 }
 
 fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (7 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (8 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
     && registry_contains(a: GitignoreArtifact)
     && registry_contains(a: RoadmapArtifact)
@@ -66,6 +68,7 @@ fn witness_registry_complete() -> Bool {
     && registry_contains(a: GithooksPrePushArtifact)
     && registry_contains(a: RunnerDeployArtifact)
     && registry_contains(a: FleetConvergeArtifact)
+    && registry_contains(a: FleetConvergeTimerUpsertArtifact)
     && registry_contains(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && registry_contains(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
     && registry_contains(a: PlanArtifact { plan: idea_machine_plan })
@@ -76,6 +79,7 @@ fn witness_registry_complete() -> Bool {
     && artifact_is_committed(a: GithooksPrePushArtifact)
     && artifact_is_committed(a: PlanArtifact { plan: idea_machine_plan })
     && artifact_is_committed(a: FleetConvergeArtifact)
+    && artifact_is_committed(a: FleetConvergeTimerUpsertArtifact)
     && !artifact_is_committed(a: RunnerDeployArtifact)
     && !artifact_is_committed(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && !artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
@@ -101,6 +105,7 @@ fn witness_commit_policy_reasons() -> Bool {
     && consumer_is(a: DesignArtifact, expected: ProjectDocumentation)
     && consumer_is(a: PlanArtifact { plan: idea_machine_plan }, expected: ProjectDocumentation)
     && consumer_is(a: FleetConvergeArtifact, expected: HostReconciler)
+    && consumer_is(a: FleetConvergeTimerUpsertArtifact, expected: HostReconciler)
     && match artifact_commit_policy(a: RunnerDeployArtifact) { NotCommitted => true  _ => false }
     && match artifact_commit_policy(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec }) { NotCommitted => true  _ => false }
     && match artifact_commit_policy(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec }) { NotCommitted => true  _ => false }

@@ -17,6 +17,7 @@ import gunbc.os_install_mechanism {
   srv3_install_mechanism,
 }
 import gunbc.host_converge { fleet_converge_policy, ConvergePolicy }
+import gunbc.host_runner_provision { HostRunnerProvision, gunbc_runner_provision_for }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import product.placement_supply { HostIdentity }
 
@@ -212,6 +213,8 @@ data host_standup_spine: List<HostStandupStep> = [
     label: "P1:runner-deploy-slot",
     disposition: ModeledCompose {
       authorities: [
+        decl_ref(module_path: "gunbc.host_runner_provision", decl_name: "HostRunnerProvision"),
+        decl_ref(module_path: "gunbc.host_runner_provision", decl_name: "gunbc_runner_provision_for"),
         decl_ref(module_path: "gunbc.runner_spec_from_offer", decl_name: "runner_spec_from_offer"),
         decl_ref(module_path: "gunbc.runner_deploy_emit", decl_name: "expected_runner_deploy_manifest"),
         decl_ref(module_path: "gunbc.runner_slot_enforcement", decl_name: "reconcile_runner_slot"),
@@ -291,7 +294,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "P1:runner-deploy-slot",
     modeling: "modeled",
-    authority_or_interim: "gunbc.runner_spec_from_offer + gunbc.runner_deploy_emit + gunbc.runner_slot_enforcement + gunbc.ci_runner_placement"
+    authority_or_interim: "gunbc.host_runner_provision.HostRunnerProvision + gunbc.runner_spec_from_offer + gunbc.runner_deploy_emit + gunbc.runner_slot_enforcement + gunbc.ci_runner_placement"
   },
   GapLedgerRow {
     phase_label: "P2:compute-fabric-enroll",

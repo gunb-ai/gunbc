@@ -1,0 +1,33 @@
+module gunbc.host_runner_provision
+
+import std.types { String, List, NonEmptyStr }
+import gunbc.fleet_intent { ComputeHost }
+
+data gunbc_runner_principal: NonEmptyStr = "gunbc-runner"
+
+data gunbc_runner_provision_privileged_commands: List<NonEmptyStr> = [
+  "apt-get",
+  "install",
+  "systemctl",
+  "tailscale",
+]
+
+type HostRunnerProvision {
+  principal: NonEmptyStr
+  host: ComputeHost
+  privileged_commands: List<NonEmptyStr>
+}
+
+data gunbc_runner_provision_privileged_commands_basis: String = "Option (a) consumer-declares, provisioning-grants: privileged_commands is aggregated from deploy consumers' declared sudo needs (cool-swift DeployAccess seed: apt-get, install, systemctl, tailscale). Provisioning realizes the union as /etc/sudoers.d/gunbc-deploy NOPASSWD scoped to exactly these commands — never blanket root. dissolve-on: aggregate_authority fold over all HostEffect consumers once DeployAccess lands (#6093)."
+
+fn gunbc_runner_provision_for(host: ComputeHost) -> HostRunnerProvision {
+  HostRunnerProvision {
+    principal: gunbc_runner_principal,
+    host: host,
+    privileged_commands: gunbc_runner_provision_privileged_commands,
+  }
+}
+
+fn host_runner_provision_principal(p: HostRunnerProvision) -> String {
+  p.principal
+}

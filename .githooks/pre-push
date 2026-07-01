@@ -40,6 +40,7 @@ fresh_artifact_path() {
     DESIGN.md*) return 0 ;;
     .githooks/pre-push*) return 0 ;;
     .github/fleet-converge.sh*) return 0 ;;
+    .github/fleet-converge-timer-upsert.sh*) return 0 ;;
     docs/plans/idea-machine.md*) return 0 ;;
     docs/plans/algebraic-rewrite-optimization.md*) return 0 ;;
     docs/plans/dsl-v2-defork-audit.md*) return 0 ;;

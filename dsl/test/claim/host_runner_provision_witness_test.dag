@@ -1,0 +1,35 @@
+module test.claim.host_runner_provision
+
+import std.types { Bool }
+import gunbc.host_runner_provision {
+  HostRunnerProvision,
+  gunbc_runner_principal,
+  gunbc_runner_provision_for,
+  gunbc_runner_provision_privileged_commands,
+  host_runner_provision_principal,
+}
+import gunbc.fleet_intent { srv1_host, srv3_host }
+
+fn witness_principal_is_gunbc_runner() -> Bool {
+  gunbc_runner_principal == "gunbc-runner"
+    && host_runner_provision_principal(p: gunbc_runner_provision_for(host: srv1_host)) == "gunbc-runner"
+}
+
+fn witness_privileged_commands_seeded() -> Bool {
+  gunbc_runner_provision_privileged_commands.length() == 4
+    && all(gunbc_runner_provision_privileged_commands, c =>
+      c == "apt-get" || c == "install" || c == "systemctl" || c == "tailscale"
+    )
+}
+
+fn witness_srv3_greenfield_provision() -> Bool {
+  let p = gunbc_runner_provision_for(host: srv3_host)
+  p.host.identity == "srv3"
+    && p.principal == gunbc_runner_principal
+}
+
+test fn host_runner_provision_holds() -> Bool {
+  witness_principal_is_gunbc_runner()
+    && witness_privileged_commands_seeded()
+    && witness_srv3_greenfield_provision()
+}

@@ -1,0 +1,56 @@
+module test.claim.fleet_converge_timer_emit
+
+import std.types { Bool, String }
+import gunbc.fleet_converge_timer_emit {
+  expected_fleet_converge_timer_upsert_sh,
+  fleet_converge_timer_upsert_drifted,
+  gunbc_fleet_converge_service_unit_name,
+  gunbc_fleet_converge_timer_unit_name,
+}
+import gunbc.host_converge {
+  gunbc_host_ctrl_checkout_path,
+  gunbc_dsl_root_submodule_path,
+  gunbc_spawn_retry_backstop_cadence,
+}
+import std.measure { second_count }
+
+fn has(s: String, p: String) -> Bool {
+  string_contains(s: s, pattern: p)
+}
+
+fn witness_timer_upsert_emits_units_and_enables() -> Bool {
+  let sh = expected_fleet_converge_timer_upsert_sh()
+  !has(s: sh, p: "fleet-converge-timer UNSOUND:")
+    && has(s: sh, p: "#!/usr/bin/env bash")
+    && has(s: sh, p: gunbc_fleet_converge_service_unit_name)
+    && has(s: sh, p: gunbc_fleet_converge_timer_unit_name)
+    && has(s: sh, p: "systemctl daemon-reload")
+    && has(s: sh, p: "systemctl enable --now gunbc-fleet-converge.timer")
+    && has(s: sh, p: "fleet-converge-timer-receipt")
+}
+
+fn witness_service_execs_converge_script() -> Bool {
+  let sh = expected_fleet_converge_timer_upsert_sh()
+  let script = concat(
+    concat(concat(gunbc_host_ctrl_checkout_path, "/"), gunbc_dsl_root_submodule_path),
+    "/.github/fleet-converge.sh"
+  )
+  has(s: sh, p: concat("ExecStart=/usr/bin/bash ", script))
+}
+
+fn witness_timer_cadence_matches_spawn_backstop() -> Bool {
+  let sh = expected_fleet_converge_timer_upsert_sh()
+  has(s: sh, p: concat("OnUnitActiveSec=", concat(to_string(second_count(s: gunbc_spawn_retry_backstop_cadence)), "s")))
+}
+
+fn witness_drift_red_receipt() -> Bool {
+  !fleet_converge_timer_upsert_drifted(committed: expected_fleet_converge_timer_upsert_sh())
+    && fleet_converge_timer_upsert_drifted(committed: concat(expected_fleet_converge_timer_upsert_sh(), "x"))
+}
+
+test fn fleet_converge_timer_emit_holds() -> Bool {
+  witness_timer_upsert_emits_units_and_enables()
+    && witness_service_execs_converge_script()
+    && witness_timer_cadence_matches_spawn_backstop()
+    && witness_drift_red_receipt()
+}

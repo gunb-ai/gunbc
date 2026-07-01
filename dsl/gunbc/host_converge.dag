@@ -29,10 +29,16 @@ import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
+import gunbc.fleet_host_budget {
+  gunbc_per_runner_memory_cap,
+  gunbc_per_runner_swap_cap,
+  gunbc_per_runner_memory_high,
+}
 import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
 import extdeps.os.systemd {
   systemd_memory_max_property,
   systemd_memory_swap_max_property,
+  systemd_memory_high_property,
   systemd_cpu_weight_property,
 }
 import extdeps.os.oomd {
@@ -40,6 +46,7 @@ import extdeps.os.oomd {
   oomd_managed_oom_memory_pressure_limit_property,
   managed_oom_action_value,
   managed_oom_pressure_limit_show_value,
+  ManagedOomAuto,
 }
 
 
@@ -49,6 +56,7 @@ data gunbc_sessions_legacy_parent_slice: String = "system.slice"
 data gunbc_runner_unit_template: String = "actions-runner@.service"
 data gunbc_runner_per_slot_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf"
 data gunbc_runner_per_slot_swap_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf"
+data gunbc_runner_per_slot_high_dropin_path: String = "/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf"
 data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
 data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
 data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
@@ -446,12 +454,34 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
     legacy_converge_knob(
       slice: RunnerSlice,
       name: "per_slot_memory_swap_max_bytes",
-      desired: "0",
+      desired: to_string(byte_size_count(b: gunbc_per_runner_swap_cap)),
       target: PerSlotMemoryCap {
         dropin_path: gunbc_runner_per_slot_swap_dropin_path,
         instance_glob: glob,
         property: systemd_memory_swap_max_property,
-        bytes_value: "0",
+        bytes_value: to_string(byte_size_count(b: gunbc_per_runner_swap_cap)),
+      }
+    ),
+    legacy_converge_knob(
+      slice: RunnerSlice,
+      name: "per_slot_memory_high_bytes",
+      desired: to_string(byte_size_count(b: gunbc_per_runner_memory_high)),
+      target: PerSlotMemoryCap {
+        dropin_path: gunbc_runner_per_slot_high_dropin_path,
+        instance_glob: glob,
+        property: systemd_memory_high_property,
+        bytes_value: to_string(byte_size_count(b: gunbc_per_runner_memory_high)),
+      }
+    ),
+    legacy_converge_knob(
+      slice: RunnerSlice,
+      name: "oom_pressure_auto",
+      desired: "true",
+      target: SliceProperty {
+        unit: gunbc_runner_slot_unit_placeholder,
+        property: oomd_managed_oom_memory_pressure_property,
+        apply_value: managed_oom_action_value(a: ManagedOomAuto),
+        expected_effective: managed_oom_action_value(a: ManagedOomAuto),
       }
     ),
     slice_numeric_knob(
