@@ -21,9 +21,9 @@ use crate::cli_run::{corpus_dag_files, is_test_dag};
 use crate::module_path_index::medium_structure_census::parse_dag_file;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_std_core::{
-    authored_name_at, binop_left, binop_right, expr_call_func_at, expr_var_name_at, let_body,
-    let_binding_name_at, let_value, param_node_name_at, BinOp, ExprData, LiteralValue, Node,
-    NewlineIndex,
+    authored_name_at, binop_left, binop_right, expr_call_func_at, expr_var_name_at,
+    let_binding_name_at, let_body, let_value, param_node_name_at, BinOp, ExprData, LiteralValue,
+    NewlineIndex, Node,
 };
 
 type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
@@ -330,11 +330,7 @@ fn imported_modules(content: &str) -> Vec<String> {
     out
 }
 
-fn scoped_data_inits(
-    rel: &str,
-    content: &str,
-    index: &CorpusIndex,
-) -> BTreeMap<String, Rc<Node>> {
+fn scoped_data_inits(rel: &str, content: &str, index: &CorpusIndex) -> BTreeMap<String, Rc<Node>> {
     let mut out = BTreeMap::new();
     if let Some(rec) = index.by_path.get(rel) {
         out.extend(rec.data_inits.clone());
@@ -355,11 +351,15 @@ fn scoped_data_inits(
 fn scoped_fns(rel: &str, content: &str, index: &CorpusIndex) -> BTreeMap<String, FnRecord> {
     let mut out = BTreeMap::new();
     if let Some(rec) = index.by_path.get(rel) {
-        out.extend(
-            rec.fns
-                .iter()
-                .map(|(k, v)| (k.clone(), FnRecord { body: v.body.clone(), params: v.params.clone() })),
-        );
+        out.extend(rec.fns.iter().map(|(k, v)| {
+            (
+                k.clone(),
+                FnRecord {
+                    body: v.body.clone(),
+                    params: v.params.clone(),
+                },
+            )
+        }));
     }
     for module in imported_modules(content) {
         let Some(path) = index.module_to_path.get(&module) else {
@@ -441,8 +441,7 @@ fn classify_eq_violations(
             let args = call_args(&lhs);
             if let Some(rec) = fns.get(&callee) {
                 if rec.params.len() == args.len() {
-                    let inlined =
-                        substitute_params(&rec.body, &rec.params, &args, si);
+                    let inlined = substitute_params(&rec.body, &rec.params, &args, si);
                     if nodes_alpha_equal(&inlined, &rhs, si) {
                         violations.push(format!(
                             "{}::{}::{}",
@@ -459,8 +458,7 @@ fn classify_eq_violations(
             let args = call_args(&rhs);
             if let Some(rec) = fns.get(&callee) {
                 if rec.params.len() == args.len() {
-                    let inlined =
-                        substitute_params(&rec.body, &rec.params, &args, si);
+                    let inlined = substitute_params(&rec.body, &rec.params, &args, si);
                     if nodes_alpha_equal(&inlined, &lhs, si) {
                         violations.push(format!(
                             "{}::{}::{}",
@@ -558,8 +556,20 @@ pub fn no_dual_representation_test_file_count() -> i64 {
 mod tests {
     use super::*;
     use std::fs;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn fixture_dir() -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "no-dual-representation-test-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ))
+    }
 
     fn write_fixture(dir: &Path, name: &str, content: &str) -> String {
+        fs::create_dir_all(dir).expect("fixture dir");
         let path = dir.join(name);
         fs::write(&path, content).expect("write fixture");
         path.to_string_lossy().replace('\\', "/")
@@ -575,10 +585,26 @@ mod tests {
     }
 
     #[test]
+    fn debug_print_live_violation_sites() {
+        let sites = &build_report().sites;
+        eprintln!(
+            "no_dual_representation live violation count: {}",
+            sites.len()
+        );
+        for site in sites {
+            eprintln!("  {site}");
+        }
+        assert!(
+            sites.is_empty(),
+            "live corpus has dual-representation violations: {sites:?}"
+        );
+    }
+
+    #[test]
     fn red_control_same_symbol_equality_is_flagged() {
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = fixture_dir();
         let sites = sites_in_fixtures(
-            dir.path(),
+            &dir,
             &[(
                 "t_test.dag",
                 "module t\nfn witness_taut() -> Bool {\n  let m = one()\n  return m == m\n}\n",
@@ -592,9 +618,9 @@ mod tests {
 
     #[test]
     fn green_control_distinct_symbol_equality_is_not_flagged() {
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = fixture_dir();
         let sites = sites_in_fixtures(
-            dir.path(),
+            &dir,
             &[(
                 "t_test.dag",
                 "module t\ntest fn ok() -> Bool {\n  return a == b\n}\n",
@@ -608,9 +634,9 @@ mod tests {
 
     #[test]
     fn green_control_independent_oracle_literal_is_not_flagged() {
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = fixture_dir();
         let sites = sites_in_fixtures(
-            dir.path(),
+            &dir,
             &[(
                 "t_test.dag",
                 "module t\nfn add(a: Int, b: Int) -> Int { a + b }\ntest fn oracle() -> Bool {\n  return add(a: 2, b: 2) == 4\n}\n",
@@ -624,9 +650,9 @@ mod tests {
 
     #[test]
     fn red_control_literal_mirror_is_flagged() {
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = fixture_dir();
         let sites = sites_in_fixtures(
-            dir.path(),
+            &dir,
             &[(
                 "t_test.dag",
                 "module t\ndata ttl: Int = 3600\nfn witness_ttl() -> Bool {\n  return ttl == 3600\n}\n",
@@ -640,9 +666,9 @@ mod tests {
 
     #[test]
     fn red_control_body_mirror_is_flagged() {
-        let dir = tempfile::tempdir().expect("tempdir");
+        let dir = fixture_dir();
         let sites = sites_in_fixtures(
-            dir.path(),
+            &dir,
             &[(
                 "t_test.dag",
                 "module t\nfn wrapped(x: Int) -> Int { inner(y: x) }\nfn inner(y: Int) -> Int { y }\nfn witness_wrap() -> Bool {\n  return wrapped(x: 1) == inner(y: 1)\n}\n",

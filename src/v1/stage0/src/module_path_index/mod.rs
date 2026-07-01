@@ -44,8 +44,7 @@ pub use languages_consumer_census::{
 pub use medium_structure_census::medium_structure_leak_facts;
 pub use no_dual_representation_test_census::{
     no_dual_representation_test_count, no_dual_representation_test_file_count,
-    no_dual_representation_test_stale_roster_count,
-    no_dual_representation_test_unrostered_count,
+    no_dual_representation_test_stale_roster_count, no_dual_representation_test_unrostered_count,
 };
 pub use non_fold_residue_census::{
     non_fold_residue_coproduct_universe_count, non_fold_residue_count,
