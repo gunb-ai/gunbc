@@ -176,8 +176,8 @@ type RunnerSlotMemoryContract {
 data gunbc_runner_slot_memory_contract_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.fleet_host_budget",
-    decl_name: "gunbc_runner_slot_memory_contract",
+    module_path: "product.compute_fabric",
+    decl_name: "connect",
     field: WholeDeclaration
   }
 }
