@@ -4,6 +4,7 @@ import v2.lens.common.construction_justification { ConstructionJustification, Wa
 import std.disposition { SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
+import v2.lens.coverage { missing_keys }
 import v2.std.algebra { any, filter, is_empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
@@ -46,14 +47,16 @@ fn all_boundaries_covered(required: List<Boundary>, mocks: List<MockCoverage>) -
   is_empty(xs: uncovered_boundaries(required: required, mocks: mocks))
 }
 
-fn missing_fields(contract: Contract, m: MockCoverage) -> List<String> {
-  filter(xs: contract.required_fields, predicate: fn(f) {
-    is_empty(xs: filter(xs: m.exercised_fields, predicate: fn(e) { e == f }))
-  })
+fn field_eq(a: String, b: String) -> Bool {
+  a == b
 }
 
 fn mock_is_faithful(contract: Contract, m: MockCoverage) -> Bool {
-  is_empty(xs: missing_fields(contract: contract, m: m))
+  is_empty(xs: missing_keys(
+    expected: contract.required_fields,
+    actual: m.exercised_fields,
+    eq: field_eq
+  ))
 }
 
 fn mock_makes_contract_anemic(c: Contract, m: MockCoverage) -> Bool {
