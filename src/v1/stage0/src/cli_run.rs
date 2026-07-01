@@ -4081,6 +4081,24 @@ pub fn run_discovery_corpus_with_options(
             .then_with(|| a.function.cmp(&b.function))
     });
     if rows.is_empty() {
+        // A lane filter (floor/integration) can legitimately empty a scoped
+        // discovery batch — e.g. the execution-corpus scope holds only span>=2
+        // witnesses, so the floor lane sees zero. That is an empty LANE, not a
+        // broken corpus, so it must not trip the fail-closed guard (which exists
+        // to catch an UNFILTERED discovery that silently found nothing).
+        if options.layer_span_lane != LayerSpanLane::All {
+            return Ok(DiscoverySummary {
+                total: 0,
+                passed: 0,
+                skipped: 0,
+                failures: Vec::new(),
+                witness_outcomes: Vec::new(),
+                entry_resolve_receipts: Vec::new(),
+                total_resolve_nanos: 0,
+                performance_receipts: Vec::new(),
+                total_measured_nanos: 0,
+            });
+        }
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
     let whole_tree_published_keys = match precompute_whole_tree_published_mock_keys(source_roots) {
