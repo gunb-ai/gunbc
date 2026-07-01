@@ -157,19 +157,7 @@ fn kv_block(level: Int, unit: String, sep: String, entries: List<{ key: String, 
   join(indented, "\n")
 }
 
-type OutputFormat {
-  name: String
-  indent_unit: String
-  kv_separator: String
-  list_prefix: String
-  comment_prefix: String
-  section_separator: String
-  trailing_newline: Bool
-}
-
 type GeneratorHeader {
   generator: String
   regen_command: String
 }
-
-data output_format_dissolution_trigger: String = "dissolve-on: gitignore consumer in extdeps.git.gitignore migrates to std.serialize.SerializationKnobs + std.layout.LayoutProtocol + std.languages.ConfigFormat; OutputFormat.name -> ConfigFormat.name, OutputFormat.comment_prefix -> CommentSyntax.line_prefix, OutputFormat.indent_unit -> LayoutProtocol.indent_unit; residue = SerializationKnobs (kv_separator, list_prefix)"
