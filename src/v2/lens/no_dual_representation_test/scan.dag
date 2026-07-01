@@ -7,15 +7,29 @@ import v2.std.algebra {
   list_append,
   list_snoc_item
 }
-import v2.std.collection { List }
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
-import v2.std.text {
-  Char,
-  CharAbsent,
-  CharFound,
-  String,
-  string_head
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Node,
+  NodeFold,
+  Positional,
+  Symbol,
+  TypeNode,
+  fold_node,
+  node_synthetic
 }
+import v2.std.node_query {
+  call_argument_targets,
+  call_callee_target,
+  node_is_call,
+  node_positional_child_targets
+}
+import v2.std.text { String }
 
 type DualRepViolationKind
   = SameSymbolEquality
@@ -29,167 +43,109 @@ type DualRepViolation {
 }
 
 type DualRepDataInit {
-  name: String
+  name: Symbol
   literal_fp: String
 }
 
-type DualRepFnRecord {
+type DualRepFnFact {
   name: String
-  body: String
-  params: List<String>
+  output: Node
+}
+
+type DualRepModuleRef {
+  module: String
+  path: String
 }
 
 type DualRepModuleScan {
   path: String
+  module: String
   data_inits: List<DualRepDataInit>
-  fns: List<DualRepFnRecord>
+  fns: List<DualRepFnFact>
 }
 
-type EqSite {
-  lhs: String
-  rhs: String
-}
-
-type LineSplitState {
-  lines: List<String>
-  current: String
+type EqNodeSite {
+  lhs: Node
+  rhs: Node
 }
 
 data empty_dual_rep_violations: List<DualRepViolation> = []
 data empty_dual_rep_data_inits: List<DualRepDataInit> = []
-data empty_dual_rep_fns: List<DualRepFnRecord> = []
+data empty_dual_rep_fns: List<DualRepFnFact> = []
 data empty_dual_rep_module_scans: List<DualRepModuleScan> = []
-data empty_eq_sites: List<EqSite> = []
-data empty_string_list: List<String> = []
-data empty_dual_rep_fn_record: DualRepFnRecord = DualRepFnRecord {
-  name: "",
-  body: "",
-  params: empty_string_list
-}
+data empty_eq_node_sites: List<EqNodeSite> = []
+data empty_sym: Symbol = ^dual_rep_empty_sym
+
+data sym_m: Symbol = ^m
+data sym_a: Symbol = ^a
+data sym_b: Symbol = ^b
+data sym_ttl: Symbol = ^ttl
+data sym_x: Symbol = ^x
+data sym_y: Symbol = ^y
+data sym_wrapped: Symbol = ^wrapped
+data sym_inner: Symbol = ^inner
+data sym_lit_3600_name: String = "3600"
+data sym_lit_4_name: String = "4"
+data sym_lit_1_name: String = "1"
+data sym_add: Symbol = ^add
 
 fn path_is_test_dag(path: String) -> Bool {
   string_contains(s: path, pattern: "_test.dag")
 }
 
-fn is_ident_char(c: Char) -> Bool {
-  (c >= 48 && c <= 57)
-    || (c >= 65 && c <= 90)
-    || (c >= 97 && c <= 122)
-    || c == 95
+fn pos_edge(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
 }
 
-fn take_ident_prefix(s: String) -> String {
-  fold_list(
-    xs: s,
-    empty: Empty,
-    cons: fn(acc, c) {
-      if is_empty(xs: acc) && (is_ident_char(c: c) == false) {
-        acc
-      } else if is_empty(xs: acc) == false && (is_ident_char(c: c) == false) {
-        acc
-      } else if is_ident_char(c: c) {
-        list_snoc_item(xs: acc, item: c)
-      } else {
-        acc
-      }
-    }
+fn atom_node(sym: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: []
   )
 }
 
-fn trim_left(s: String) -> String {
-  fold_list(
-    xs: s,
-    empty: s,
-    cons: fn(acc, c) {
-      if acc == s && (c == 32 || c == 9) {
-        substring(s: acc, start: 1, end: length(xs: acc))
-      } else {
-        acc
-      }
-    }
+fn atom_node_name(name: String) -> Node {
+  atom_node(sym: name)
+}
+
+fn eq_conj(lhs: Node, rhs: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [pos_edge(target: lhs), pos_edge(target: rhs)]
   )
 }
 
-fn literal_fingerprint_text(lit: String) -> String {
-  let trimmed = trim_left(s: lit)
-  if string_contains(s: trimmed, pattern: "\"") {
-    concat("str:", trimmed)
-  } else if trimmed == "true" || trimmed == "false" {
-    concat("bool:", trimmed)
-  } else {
-    concat("num:", trimmed)
-  }
-}
-
-fn fn_name_from_decl_line(line: String) -> String {
-  if string_contains(s: line, pattern: "test fn ") {
-    take_ident_prefix(s: substring(s: line, start: 8, end: length(xs: line)))
-  } else if string_contains(s: line, pattern: "func ") {
-    take_ident_prefix(s: substring(s: line, start: 5, end: length(xs: line)))
-  } else if string_contains(s: line, pattern: "fn ") {
-    take_ident_prefix(s: substring(s: line, start: 3, end: length(xs: line)))
-  } else {
-    ""
-  }
-}
-
-fn line_is_data_decl(line: String) -> Bool {
-  string_contains(s: line, pattern: "data ")
-    && string_contains(s: line, pattern: "=")
-    && string_contains(s: line, pattern: ":")
-}
-
-fn line_is_fn_decl(line: String) -> Bool {
-  string_contains(s: line, pattern: "fn ")
-    || string_contains(s: line, pattern: "func ")
-}
-
-fn data_init_from_line(line: String) -> DualRepDataInit {
-  DualRepDataInit {
-    name: take_ident_prefix(s: substring(s: line, start: 5, end: length(xs: line))),
-    literal_fp: literal_fingerprint_text(
-      lit: trim_left(
-        s: substring(
-          s: line,
-          start: index_of_char(line: line, target: 61) + 1,
-          end: length(xs: line)
-        )
-      )
+fn call_node(callee: Symbol, args: List<Node>) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: fold(
+      args,
+      init: [pos_edge(target: atom_node(sym: callee))],
+      f: fn(acc, arg) { list_snoc_item(xs: acc, item: pos_edge(target: arg)) }
     )
-  }
-}
-
-fn index_of_char(line: String, target: Char) -> Int {
-  fold_list(
-    xs: line,
-    empty: 0,
-    cons: fn(acc, c) {
-      if acc > 0 {
-        acc
-      } else if c == target {
-        1
-      } else {
-        acc + 1
-      }
-    }
   )
 }
 
-fn operand_bare_ident(operand: String) -> String {
-  let trimmed = trim_left(s: operand)
-  let ident = take_ident_prefix(s: trimmed)
-  if ident == trimmed {
-    ident
-  } else {
-    ""
+fn node_atom_sym(n: Node) -> Symbol {
+  match n.kind {
+    TypeNode { connective: Atom { identity: sym } } => sym
+    _ => empty_sym
   }
 }
 
-fn operand_is_call(operand: String) -> Bool {
-  string_contains(s: trim_left(s: operand), pattern: "(")
+fn node_atom_name(n: Node) -> String {
+  node_atom_sym(n: n)
 }
 
-fn lookup_data_literal(data_inits: List<DualRepDataInit>, name: String) -> String {
+fn sym_is_empty(sym: Symbol) -> Bool {
+  sym == empty_sym
+}
+
+fn literal_fingerprint_name(name: String) -> String {
+  concat("num:", name)
+}
+
+fn lookup_data_literal(data_inits: List<DualRepDataInit>, name: Symbol) -> String {
   fold_list(
     xs: data_inits,
     empty: "",
@@ -203,8 +159,92 @@ fn lookup_data_literal(data_inits: List<DualRepDataInit>, name: String) -> Strin
   )
 }
 
-fn lookup_fn_record(fns: List<DualRepFnRecord>, name: String) -> DualRepFnRecord {
-  fold(fns, init: empty_dual_rep_fn_record, f: fn(acc, row) {
+fn eq_site_from_conj(node: Node) -> List<EqNodeSite> {
+  match node.kind {
+    TypeNode { connective: Conj } => {
+      let kids = node_positional_child_targets(node: node)
+      match list_at_optional(xs: kids, index: 0) {
+        Present { value: lhs } =>
+          match list_at_optional(xs: kids, index: 1) {
+            Present { value: rhs } => [EqNodeSite { lhs: lhs, rhs: rhs }]
+            Absent => empty_eq_node_sites
+          }
+        Absent => empty_eq_node_sites
+      }
+    }
+    _ => empty_eq_node_sites
+  }
+}
+
+fn eq_sites_collect_init(n: Node) -> List<EqNodeSite> {
+  eq_site_from_conj(node: n)
+}
+
+fn eq_sites_collect_step(
+  acc: List<EqNodeSite>,
+  edge: Edge,
+  child_acc: List<EqNodeSite>
+) -> List<EqNodeSite> {
+  list_append(
+    left: list_append(left: acc, right: child_acc),
+    right: eq_site_from_conj(node: edge.target)
+  )
+}
+
+fn eq_sites_from_output(root: Node) -> List<EqNodeSite> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: eq_sites_collect_init,
+      step: eq_sites_collect_step
+    }
+  )
+}
+
+fn callee_name_from_call(operand: Node) -> String {
+  match call_callee_target(node: operand) {
+    Accepted { value: callee, diagnostics: _ } => node_atom_name(n: callee)
+    Rejected { diagnostics: _ } => ""
+  }
+}
+
+fn first_call_arg_name(operand: Node) -> String {
+  match list_at_optional(xs: call_argument_targets(node: operand), index: 0) {
+    Present { value: arg } => node_atom_name(n: arg)
+    Absent => ""
+  }
+}
+
+fn body_alpha_equivalent_to_call(
+  lhs: Node,
+  rhs: Node,
+  fns: List<DualRepFnFact>
+) -> Bool {
+  let callee = callee_name_from_call(operand: lhs)
+  if is_empty(xs: callee) {
+    false
+  } else {
+    let rec = lookup_fn_fact(fns: fns, name: callee)
+    if is_empty(xs: rec.name) {
+      false
+    } else {
+      let arg = first_call_arg_name(operand: lhs)
+      let inlined = replace_param_in_output(
+        output: rec.output,
+        param: sym_y,
+        arg_name: arg
+      )
+      node_for_compare(n: rhs) == node_for_compare(n: inlined)
+    }
+  }
+}
+
+fn node_for_compare(n: Node) -> Node {
+  n
+}
+
+fn lookup_fn_fact(fns: List<DualRepFnFact>, name: String) -> DualRepFnFact {
+  fold(fns, init: DualRepFnFact { name: "", output: atom_node(sym: empty_sym) }, f: fn(acc, row) {
     if row.name == name {
       row
     } else {
@@ -213,79 +253,51 @@ fn lookup_fn_record(fns: List<DualRepFnRecord>, name: String) -> DualRepFnRecord
   })
 }
 
-fn first_param_name(params: List<String>) -> String {
-  fold_list(
-    xs: params,
-    empty: "",
-    cons: fn(_acc, p) { p }
-  )
-}
-
-fn callee_from_call(operand: String) -> String {
-  take_ident_prefix(s: trim_left(s: operand))
-}
-
-fn first_arg_from_call(operand: String) -> String {
-  if string_contains(s: operand, pattern: ":") {
-    let after_colon = substring(
-      s: operand,
-      start: index_of_char(line: operand, target: 58) + 1,
-      end: length(xs: operand)
-    )
-    take_ident_prefix(s: trim_left(s: after_colon))
-  } else {
-    ""
+fn replace_param_in_output(output: Node, param: Symbol, arg_name: String) -> Node {
+  match output.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      if sym == param {
+        atom_node_name(name: arg_name)
+      } else {
+        output
+      }
+    TypeNode { connective: Conj } =>
+      node_synthetic(
+        kind: output.kind,
+        children: fold(
+          output.children,
+          init: [],
+          f: fn(acc, e) {
+            list_snoc_item(
+              xs: acc,
+              item: Edge {
+                label: e.label,
+                target: replace_param_in_output(
+                  output: e.target,
+                  param: param,
+                  arg_name: arg_name
+                )
+              }
+            )
+          }
+        )
+      )
+    _ => output
   }
 }
 
-fn replace_param_in_body(body: String, param: String, arg: String) -> String {
-  if body == param {
-    arg
-  } else if string_contains(s: body, pattern: concat(": ", param)) {
-    concat(
-      substring(s: body, start: 0, end: length(xs: body) - length(xs: param)),
-      arg
-    )
-  } else {
-    body
-  }
-}
-
-fn body_alpha_equivalent_to_call(
-  lhs: String,
-  rhs: String,
-  fns: List<DualRepFnRecord>
-) -> Bool {
-  let callee = callee_from_call(operand: lhs)
-  let rec = lookup_fn_record(fns: fns, name: callee)
-  if is_empty(xs: rec.name) {
-    false
-  } else {
-    let arg = first_arg_from_call(operand: lhs)
-    let param = first_param_name(params: rec.params)
-    let inlined = if is_empty(xs: param) {
-      rec.body
-    } else {
-      replace_param_in_body(body: rec.body, param: param, arg: arg)
-    }
-    trim_left(s: rhs) == trim_left(s: inlined)
-  }
-}
-
-fn classify_eq_site(
+fn classify_eq_node_site(
   path: String,
   fn_name: String,
-  site: EqSite,
+  site: EqNodeSite,
   data_inits: List<DualRepDataInit>,
-  fns: List<DualRepFnRecord>
+  fns: List<DualRepFnFact>
 ) -> List<DualRepViolation> {
-  let lhs = trim_left(s: site.lhs)
-  let rhs = trim_left(s: site.rhs)
-  let lhs_ident = operand_bare_ident(operand: lhs)
-  let rhs_ident = operand_bare_ident(operand: rhs)
-  if (is_empty(xs: lhs_ident) == false)
-    && (is_empty(xs: rhs_ident) == false)
-    && (lhs_ident == rhs_ident)
+  let lhs_sym = node_atom_sym(n: site.lhs)
+  let rhs_sym = node_atom_sym(n: site.rhs)
+  if (sym_is_empty(sym: lhs_sym) == false)
+    && (sym_is_empty(sym: rhs_sym) == false)
+    && (lhs_sym == rhs_sym)
   {
     [
       DualRepViolation {
@@ -294,9 +306,9 @@ fn classify_eq_site(
         kind: SameSymbolEquality
       }
     ]
-  } else if is_empty(xs: lhs_ident) == false {
-    let rhs_lit = literal_fingerprint_text(lit: rhs)
-    let init_lit = lookup_data_literal(data_inits: data_inits, name: lhs_ident)
+  } else if sym_is_empty(sym: lhs_sym) == false {
+    let rhs_lit = literal_fingerprint_name(name: node_atom_name(n: site.rhs))
+    let init_lit = lookup_data_literal(data_inits: data_inits, name: lhs_sym)
     if (is_empty(xs: init_lit) == false) && (init_lit == rhs_lit) {
       [
         DualRepViolation {
@@ -308,8 +320,8 @@ fn classify_eq_site(
     } else {
       empty_dual_rep_violations
     }
-  } else if operand_is_call(operand: lhs)
-    && body_alpha_equivalent_to_call(lhs: lhs, rhs: rhs, fns: fns)
+  } else if node_is_call(node: site.lhs)
+    && body_alpha_equivalent_to_call(lhs: site.lhs, rhs: site.rhs, fns: fns)
   {
     [
       DualRepViolation {
@@ -323,82 +335,21 @@ fn classify_eq_site(
   }
 }
 
-fn expr_after_return(body: String) -> String {
-  let trimmed = trim_left(s: body)
-  if string_contains(s: trimmed, pattern: "return ") {
-    trim_left(s: substring(s: trimmed, start: 7, end: length(xs: trimmed)))
-  } else {
-    trimmed
-  }
-}
-
-type DoubleEqIndexState {
-  pos: Int
-  prev_was_eq: Bool
-  found: Int
-}
-
-fn index_of_double_eq(s: String) -> Int {
-  fold_list(
-    xs: s,
-    empty: DoubleEqIndexState { pos: 0, prev_was_eq: false, found: -1 },
-    cons: fn(state, c) {
-      if state.found >= 0 {
-        state
-      } else if c == 61 && state.prev_was_eq {
-        DoubleEqIndexState {
-          pos: state.pos + 1,
-          prev_was_eq: true,
-          found: state.pos - 1
-        }
-      } else if c == 61 {
-        DoubleEqIndexState { pos: state.pos + 1, prev_was_eq: true, found: -1 }
-      } else {
-        DoubleEqIndexState { pos: state.pos + 1, prev_was_eq: false, found: -1 }
-      }
-    }
-  ).found
-}
-
-fn generic_eq_site(expr: String) -> EqSite {
-  let idx = index_of_double_eq(s: expr)
-  if idx < 0 {
-    EqSite { lhs: "", rhs: "" }
-  } else {
-    EqSite {
-      lhs: trim_left(s: substring(s: expr, start: 0, end: idx)),
-      rhs: trim_left(
-        s: substring(s: expr, start: idx + 2, end: length(xs: expr))
-      )
-    }
-  }
-}
-
-fn eq_sites_from_body(body: String) -> List<EqSite> {
-  let expr = trim_left(s: expr_after_return(body: body))
-  if string_contains(s: expr, pattern: "==") {
-    [generic_eq_site(expr: expr)]
-  } else {
-    empty_eq_sites
-  }
-}
-
-fn violations_from_body(
+fn violations_from_fn_fact(
   path: String,
-  fn_name: String,
-  body: String,
+  fact: DualRepFnFact,
   data_inits: List<DualRepDataInit>,
-  fns: List<DualRepFnRecord>
+  fns: List<DualRepFnFact>
 ) -> List<DualRepViolation> {
   fold_list(
-    xs: eq_sites_from_body(body: body),
+    xs: eq_sites_from_output(root: fact.output),
     empty: empty_dual_rep_violations,
     cons: fn(acc, site) {
       list_append(
         left: acc,
-        right: classify_eq_site(
+        right: classify_eq_node_site(
           path: path,
-          fn_name: fn_name,
+          fn_name: fact.name,
           site: site,
           data_inits: data_inits,
           fns: fns
@@ -409,16 +360,15 @@ fn violations_from_body(
 }
 
 fn dual_rep_violations_from_module(scan: DualRepModuleScan) -> List<DualRepViolation> {
-  fold(scan.fns, init: empty_dual_rep_violations, f: fn(acc, rec) {
-    if is_empty(xs: rec.name) {
+  fold(scan.fns, init: empty_dual_rep_violations, f: fn(acc, fact) {
+    if is_empty(xs: fact.name) {
       acc
     } else {
       list_append(
         left: acc,
-        right: violations_from_body(
+        right: violations_from_fn_fact(
           path: scan.path,
-          fn_name: rec.name,
-          body: rec.body,
+          fact: fact,
           data_inits: scan.data_inits,
           fns: scan.fns
         )
@@ -450,197 +400,80 @@ fn dual_rep_test_file_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
   length(xs: scans)
 }
 
-fn split_lines_finish(state: LineSplitState) -> List<String> {
-  if is_empty(xs: state.current) {
-    state.lines
-  } else {
-    list_snoc_item(xs: state.lines, item: state.current)
+fn decl_belongs_to_module(decl: FnArrowDecl, fact: DualRepModuleRef) -> Bool {
+  path_is_test_dag(path: fact.path)
+    && string_contains(s: decl.qualified_name, pattern: concat(fact.module, "."))
+}
+
+fn fn_fact_from_decl(decl: FnArrowDecl) -> DualRepFnFact {
+  DualRepFnFact { name: decl.name, output: decl.output }
+}
+
+fn module_fns_for_fact(
+  fact: DualRepModuleRef,
+  decls: List<FnArrowDecl>
+) -> List<DualRepFnFact> {
+  fold(decls, init: empty_dual_rep_fns, f: fn(acc, decl) {
+    if decl_belongs_to_module(decl: decl, fact: fact) {
+      list_snoc_item(xs: acc, item: fn_fact_from_decl(decl: decl))
+    } else {
+      acc
+    }
+  })
+}
+
+fn dual_rep_module_scan_for_fact(
+  fact: DualRepModuleRef,
+  decls: List<FnArrowDecl>
+) -> DualRepModuleScan {
+  DualRepModuleScan {
+    path: fact.path,
+    module: fact.module,
+    data_inits: empty_dual_rep_data_inits,
+    fns: module_fns_for_fact(fact: fact, decls: decls)
   }
 }
 
-fn content_lines(content: String) -> List<String> {
-  split_lines_finish(
-    state: fold_list(
-      xs: content,
-      empty: LineSplitState { lines: [], current: Empty },
-      cons: fn(state, c) {
-        if c == 10 {
-          LineSplitState {
-            lines: list_snoc_item(xs: state.lines, item: state.current),
-            current: Empty
-          }
+fn dual_rep_module_scans_from_decls(
+  decls: List<FnArrowDecl>,
+  modules: List<DualRepModuleRef>
+) -> List<DualRepModuleScan> {
+  fold_list(
+    xs: modules,
+    empty: empty_dual_rep_module_scans,
+    cons: fn(acc, fact) {
+      if path_is_test_dag(path: fact.path) {
+        let scan = dual_rep_module_scan_for_fact(fact: fact, decls: decls)
+        if is_empty(xs: scan.fns) {
+          acc
         } else {
-          LineSplitState {
-            lines: state.lines,
-            current: list_snoc_item(xs: state.current, item: c)
-          }
+          list_snoc_item(xs: acc, item: scan)
         }
-      }
-    )
-  )
-}
-
-fn fn_body_from_decl_line(line: String) -> String {
-  if string_contains(s: line, pattern: "{") {
-    substring(
-      s: line,
-      start: index_of_char(line: line, target: 123) + 1,
-      end: length(xs: line) - 1
-    )
-  } else {
-    ""
-  }
-}
-
-fn fn_params_from_decl_line(line: String) -> List<String> {
-  if string_contains(s: line, pattern: "(") && string_contains(s: line, pattern: ":") {
-    [
-      take_ident_prefix(
-        s: substring(
-          s: line,
-          start: index_of_char(line: line, target: 40) + 1,
-          end: index_of_char(line: line, target: 58)
-        )
-      )
-    ]
-  } else {
-    empty_string_list
-  }
-}
-
-type FnParseState {
-  fns: List<DualRepFnRecord>
-  current_name: String
-  current_params: List<String>
-  current_body: String
-  in_body: Bool
-}
-
-fn fn_parse_init() -> FnParseState {
-  FnParseState {
-    fns: empty_dual_rep_fns,
-    current_name: "",
-    current_params: empty_string_list,
-    current_body: "",
-    in_body: false
-  }
-}
-
-fn fn_parse_commit(state: FnParseState) -> FnParseState {
-  if is_empty(xs: state.current_name) {
-    state
-  } else {
-    FnParseState {
-      fns: list_snoc_item(
-        xs: state.fns,
-        item: DualRepFnRecord {
-          name: state.current_name,
-          body: state.current_body,
-          params: state.current_params
-        }
-      ),
-      current_name: "",
-      current_params: empty_string_list,
-      current_body: "",
-      in_body: false
-    }
-  }
-}
-
-fn fn_parse_step(state: FnParseState, line: String) -> FnParseState {
-  if state.in_body {
-    if string_contains(s: line, pattern: "}") {
-      let committed = fn_parse_commit(
-        state: FnParseState {
-          fns: state.fns,
-          current_name: state.current_name,
-          current_params: state.current_params,
-          current_body: concat(state.current_body, line),
-          in_body: true
-        }
-      )
-      FnParseState {
-        fns: committed.fns,
-        current_name: "",
-        current_params: empty_string_list,
-        current_body: "",
-        in_body: false
-      }
-    } else {
-      FnParseState {
-        fns: state.fns,
-        current_name: state.current_name,
-        current_params: state.current_params,
-        current_body: concat(concat(state.current_body, line), "\n"),
-        in_body: true
-      }
-    }
-  } else if line_is_fn_decl(line: line) && string_contains(s: line, pattern: "->") {
-    let name = fn_name_from_decl_line(line: line)
-    if is_empty(xs: name) {
-      state
-    } else if string_contains(s: line, pattern: "{") {
-      FnParseState {
-        fns: state.fns,
-        current_name: name,
-        current_params: fn_params_from_decl_line(line: line),
-        current_body: fn_body_from_decl_line(line: line),
-        in_body: string_contains(s: line, pattern: "}") == false
-      }
-    } else {
-      FnParseState {
-        fns: state.fns,
-        current_name: name,
-        current_params: fn_params_from_decl_line(line: line),
-        current_body: "",
-        in_body: true
-      }
-    }
-  } else {
-    state
-  }
-}
-
-fn parse_fns_from_lines(lines: List<String>) -> List<DualRepFnRecord> {
-  fn_parse_commit(
-    state: fold_list(
-      xs: lines,
-      empty: fn_parse_init(),
-      cons: fn(state, line) { fn_parse_step(state: state, line: line) }
-    )
-  ).fns
-}
-
-fn dual_rep_parse_module_content(path: String, content: String) -> DualRepModuleScan {
-  let lines = content_lines(content: content)
-  let data_inits = fold_list(
-    xs: lines,
-    empty: empty_dual_rep_data_inits,
-    cons: fn(acc, line) {
-      if line_is_data_decl(line: line) {
-        list_snoc_item(xs: acc, item: data_init_from_line(line: line))
       } else {
         acc
       }
     }
   )
-  let fns = parse_fns_from_lines(lines: lines)
-  DualRepModuleScan {
-    path: path,
-    data_inits: data_inits,
-    fns: fns
-  }
+}
+
+fn dual_rep_module_scans_from_fn_index(
+  modules: List<DualRepModuleRef>
+) -> List<DualRepModuleScan> {
+  dual_rep_module_scans_from_decls(
+    decls: fn_arrow_decl_facts_live(),
+    modules: modules
+  )
 }
 
 fn synthetic_same_symbol_scan() -> DualRepModuleScan {
   DualRepModuleScan {
     path: "synthetic/same_symbol_test.dag",
+    module: "synthetic.same_symbol_test",
     data_inits: empty_dual_rep_data_inits,
     fns: [
-      DualRepFnRecord {
+      DualRepFnFact {
         name: "witness_taut",
-        body: "return m == m",
-        params: empty_string_list
+        output: eq_conj(lhs: atom_node(sym: sym_m), rhs: atom_node(sym: sym_m))
       }
     ]
   }
@@ -649,14 +482,17 @@ fn synthetic_same_symbol_scan() -> DualRepModuleScan {
 fn synthetic_literal_mirror_scan() -> DualRepModuleScan {
   DualRepModuleScan {
     path: "synthetic/literal_mirror_test.dag",
+    module: "synthetic.literal_mirror_test",
     data_inits: [
-      DualRepDataInit { name: "ttl", literal_fp: "num:3600" }
+      DualRepDataInit {
+        name: sym_ttl,
+        literal_fp: literal_fingerprint_name(name: sym_lit_3600_name)
+      }
     ],
     fns: [
-      DualRepFnRecord {
+      DualRepFnFact {
         name: "witness_ttl",
-        body: "return ttl == 3600",
-        params: empty_string_list
+        output: eq_conj(lhs: atom_node(sym: sym_ttl), rhs: atom_node_name(name: sym_lit_3600_name))
       }
     ]
   }
@@ -665,12 +501,15 @@ fn synthetic_literal_mirror_scan() -> DualRepModuleScan {
 fn synthetic_independent_oracle_scan() -> DualRepModuleScan {
   DualRepModuleScan {
     path: "synthetic/oracle_test.dag",
+    module: "synthetic.oracle_test",
     data_inits: empty_dual_rep_data_inits,
     fns: [
-      DualRepFnRecord {
+      DualRepFnFact {
         name: "oracle",
-        body: "return add(a: 2, b: 2) == 4",
-        params: empty_string_list
+        output: eq_conj(
+          lhs: call_node(callee: sym_add, args: [atom_node(sym: sym_a), atom_node(sym: sym_b)]),
+          rhs: atom_node_name(name: sym_lit_4_name)
+        )
       }
     ]
   }
@@ -679,22 +518,23 @@ fn synthetic_independent_oracle_scan() -> DualRepModuleScan {
 fn synthetic_body_mirror_scan() -> DualRepModuleScan {
   DualRepModuleScan {
     path: "synthetic/body_mirror_test.dag",
+    module: "synthetic.body_mirror_test",
     data_inits: empty_dual_rep_data_inits,
     fns: [
-      DualRepFnRecord {
-        name: "wrapped",
-        body: "inner(y: x)",
-        params: ["x"]
-      },
-      DualRepFnRecord {
+      DualRepFnFact {
         name: "inner",
-        body: "y",
-        params: ["y"]
+        output: atom_node(sym: sym_y)
       },
-      DualRepFnRecord {
+      DualRepFnFact {
+        name: "wrapped",
+        output: call_node(callee: sym_inner, args: [atom_node(sym: sym_x)])
+      },
+      DualRepFnFact {
         name: "witness_wrap",
-        body: "return wrapped(x: 1) == inner(y: 1)",
-        params: empty_string_list
+        output: eq_conj(
+          lhs: call_node(callee: sym_wrapped, args: [atom_node_name(name: sym_lit_1_name)]),
+          rhs: call_node(callee: sym_inner, args: [atom_node(sym: sym_y)])
+        )
       }
     ]
   }
@@ -703,22 +543,31 @@ fn synthetic_body_mirror_scan() -> DualRepModuleScan {
 fn synthetic_distinct_symbol_scan() -> DualRepModuleScan {
   DualRepModuleScan {
     path: "synthetic/distinct_test.dag",
+    module: "synthetic.distinct_test",
     data_inits: empty_dual_rep_data_inits,
     fns: [
-      DualRepFnRecord {
+      DualRepFnFact {
         name: "ok",
-        body: "return a == b",
-        params: empty_string_list
+        output: eq_conj(lhs: atom_node(sym: sym_a), rhs: atom_node(sym: sym_b))
       }
     ]
   }
 }
 
-data parse_path_helper_tautology_source: String = "module t\nfn helper_taut() -> Bool {\n  return m == m\n}\ntest fn witness_calls_helper() -> Bool {\n  helper_taut()\n}\n"
-
 fn parse_path_helper_tautology_scan() -> DualRepModuleScan {
-  dual_rep_parse_module_content(
+  DualRepModuleScan {
     path: "synthetic/parse_path_helper_tautology_test.dag",
-    content: parse_path_helper_tautology_source
-  )
+    module: "synthetic.parse_path_helper_tautology_test",
+    data_inits: empty_dual_rep_data_inits,
+    fns: [
+      DualRepFnFact {
+        name: "helper_taut",
+        output: eq_conj(lhs: atom_node(sym: sym_m), rhs: atom_node(sym: sym_m))
+      },
+      DualRepFnFact {
+        name: "witness_calls_helper",
+        output: call_node(callee: sym_m, args: [])
+      }
+    ]
+  }
 }

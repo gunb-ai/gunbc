@@ -5,61 +5,46 @@ import std.disposition { SubstrateMandatoryTag }
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import v2.lens.module_graph { module_declaration_facts_live }
 import v2.lens.no_dual_representation_test.scan {
+  DualRepModuleRef,
   DualRepModuleScan,
   dual_rep_clean_holds_for_scans,
-  dual_rep_parse_module_content,
+  dual_rep_module_scans_from_fn_index,
   dual_rep_test_file_count_from_scans,
-  dual_rep_violation_count_from_scans,
-  empty_dual_rep_module_scans,
-  path_is_test_dag
+  dual_rep_violation_count_from_scans
 }
 import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.text { String }
 
-type FilesystemReadResult { content: String }
-
-fn test_dag_module_scans(pool_roots: List<String>) -> List<DualRepModuleScan> {
+fn module_refs_from_declaration_facts(pool_roots: List<String>) -> List<DualRepModuleRef> {
   fold_list(
     xs: module_declaration_facts_live(pool_roots: pool_roots),
-    empty: empty_dual_rep_module_scans,
+    empty: [],
     cons: fn(acc, decl) {
-      if path_is_test_dag(path: decl.path) {
-        let content = filesystem_read(path: decl.path).content
-        list_snoc_item(
-          xs: acc,
-          item: dual_rep_parse_module_content(path: decl.path, content: content)
-        )
-      } else {
-        acc
-      }
+      list_snoc_item(
+        xs: acc,
+        item: DualRepModuleRef { module: decl.module, path: decl.path }
+      )
     }
   )
 }
 
 fn dual_rep_live_module_scans() -> List<DualRepModuleScan> {
-  test_dag_module_scans(pool_roots: witness_layer_roots)
+  dual_rep_module_scans_from_fn_index(
+    modules: module_refs_from_declaration_facts(pool_roots: witness_layer_roots)
+  )
 }
 
-fn no_dual_representation_test_count() -> Int {
+fn no_dual_representation_test_live_count() -> Int {
   dual_rep_violation_count_from_scans(scans: dual_rep_live_module_scans())
 }
 
-fn no_dual_representation_test_file_count() -> Int {
+fn no_dual_representation_test_live_file_count() -> Int {
   dual_rep_test_file_count_from_scans(scans: dual_rep_live_module_scans())
 }
 
 fn no_dual_representation_test_clean_holds() -> Bool {
   dual_rep_clean_holds_for_scans(scans: dual_rep_live_module_scans())
-}
-
-fn no_dual_representation_test_live_count() -> Int {
-  no_dual_representation_test_count()
-}
-
-fn no_dual_representation_test_live_file_count() -> Int {
-  no_dual_representation_test_file_count()
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
