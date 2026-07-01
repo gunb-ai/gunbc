@@ -14,6 +14,11 @@ import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   deploy_access_preflight_script,
 }
+import gunbc.ci_deploy_target_host {
+  deploy_target_proof_from_access,
+  deploy_target_ssh_proof_structurally_valid,
+  deploy_local_apply_refused_for_observed_host,
+}
 import gunbc.host_effect {
   ShellCommand,
   HostOs,
