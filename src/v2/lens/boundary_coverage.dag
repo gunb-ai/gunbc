@@ -1,0 +1,97 @@
+module v2.lens.boundary_coverage
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallNow }
+import std.disposition { SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+import v2.std.algebra { any, filter, is_empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+type Boundary {
+  producer: String
+  consumer: String
+}
+
+fn boundary_eq(a: Boundary, b: Boundary) -> Bool {
+  a.producer == b.producer && a.consumer == b.consumer
+}
+
+type Contract {
+  boundary: Boundary
+  required_fields: List<String>
+}
+
+type MockCoverage {
+  boundary: Boundary
+  exercised_fields: List<String>
+}
+
+fn mock_on_boundary(m: MockCoverage, b: Boundary) -> Bool {
+  boundary_eq(a: m.boundary, b: b)
+}
+
+fn mocks_for_boundary(b: Boundary, mocks: List<MockCoverage>) -> List<MockCoverage> {
+  filter(xs: mocks, predicate: fn(m) { mock_on_boundary(m: m, b: b) })
+}
+
+fn uncovered_boundaries(required: List<Boundary>, mocks: List<MockCoverage>) -> List<Boundary> {
+  filter(xs: required, predicate: fn(b) {
+    is_empty(xs: mocks_for_boundary(b: b, mocks: mocks))
+  })
+}
+
+fn all_boundaries_covered(required: List<Boundary>, mocks: List<MockCoverage>) -> Bool {
+  is_empty(xs: uncovered_boundaries(required: required, mocks: mocks))
+}
+
+fn missing_fields(contract: Contract, m: MockCoverage) -> List<String> {
+  filter(xs: contract.required_fields, predicate: fn(f) {
+    is_empty(xs: filter(xs: m.exercised_fields, predicate: fn(e) { e == f }))
+  })
+}
+
+fn mock_is_faithful(contract: Contract, m: MockCoverage) -> Bool {
+  is_empty(xs: missing_fields(contract: contract, m: m))
+}
+
+fn mock_is_unfaithful(contract: Contract, m: MockCoverage) -> Bool {
+  any(xs: contract.required_fields, predicate: fn(f) {
+    is_empty(xs: filter(xs: m.exercised_fields, predicate: fn(e) { e == f }))
+  })
+}
+
+fn mock_makes_contract_anemic(c: Contract, m: MockCoverage) -> Bool {
+  boundary_eq(a: m.boundary, b: c.boundary) && mock_is_unfaithful(contract: c, m: m)
+}
+
+fn anemic_contracts(contracts: List<Contract>, mocks: List<MockCoverage>) -> List<Contract> {
+  filter(xs: contracts, predicate: fn(c) {
+    any(xs: mocks, predicate: fn(m) { mock_makes_contract_anemic(c: c, m: m) })
+  })
+}
+
+fn no_anemic_coverage(contracts: List<Contract>, mocks: List<MockCoverage>) -> Bool {
+  is_empty(xs: anemic_contracts(contracts: contracts, mocks: mocks))
+}
+
+fn coverage_wall_holds(
+  required: List<Boundary>,
+  contracts: List<Contract>,
+  mocks: List<MockCoverage>
+) -> Bool {
+  all_boundaries_covered(required: required, mocks: mocks)
+    && no_anemic_coverage(contracts: contracts, mocks: mocks)
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallNow {
+    mechanism: SingleAuthority,
+    authority: DeclarationRef {
+      module_path: "v2.lens.boundary_coverage",
+      decl_name: "coverage_wall_holds",
+      field: WholeDeclaration
+    }
+  }
+}

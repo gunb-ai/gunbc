@@ -1,0 +1,95 @@
+module v2.test.lens_boundary_coverage.boundary_coverage_test
+
+import v2.lens.boundary_coverage {
+  Boundary,
+  Contract,
+  MockCoverage,
+  all_boundaries_covered,
+  no_anemic_coverage,
+  mock_is_faithful,
+  uncovered_boundaries,
+  anemic_contracts,
+  coverage_wall_holds
+}
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+
+data infer_translate: Boundary = Boundary {
+  producer: "v2.compiler.infer",
+  consumer: "v2.compiler.translate"
+}
+data translate_emit: Boundary = Boundary {
+  producer: "v2.compiler.translate",
+  consumer: "v2.compiler.emit"
+}
+
+data infer_contract: Contract = Contract {
+  boundary: infer_translate,
+  required_fields: ["type_of", "effect_of", "termination"]
+}
+
+data faithful_infer_mock: MockCoverage = MockCoverage {
+  boundary: infer_translate,
+  exercised_fields: ["type_of", "effect_of", "termination"]
+}
+
+data anemic_infer_mock: MockCoverage = MockCoverage {
+  boundary: infer_translate,
+  exercised_fields: ["type_of"]
+}
+
+test fn wall_red_when_boundary_uncovered() -> Bool {
+  coverage_wall_holds(
+    required: [infer_translate, translate_emit],
+    contracts: [infer_contract],
+    mocks: [faithful_infer_mock]
+  ) == false
+}
+
+test fn uncovered_names_the_missing_boundary() -> Bool {
+  length(xs: uncovered_boundaries(
+    required: [infer_translate, translate_emit],
+    mocks: [faithful_infer_mock]
+  )) == 1
+}
+
+test fn wall_red_when_mock_anemic() -> Bool {
+  coverage_wall_holds(
+    required: [infer_translate],
+    contracts: [infer_contract],
+    mocks: [anemic_infer_mock]
+  ) == false
+}
+
+test fn anemic_mock_is_flagged() -> Bool {
+  length(xs: anemic_contracts(
+    contracts: [infer_contract],
+    mocks: [anemic_infer_mock]
+  )) == 1
+}
+
+test fn faithful_mock_is_not_anemic() -> Bool {
+  mock_is_faithful(contract: infer_contract, m: faithful_infer_mock)
+}
+
+test fn wall_green_when_complete_and_faithful() -> Bool {
+  coverage_wall_holds(
+    required: [infer_translate],
+    contracts: [infer_contract],
+    mocks: [faithful_infer_mock]
+  )
+}
+
+test fn complete_coverage_holds() -> Bool {
+  all_boundaries_covered(
+    required: [infer_translate],
+    mocks: [faithful_infer_mock]
+  )
+}
+
+test fn no_anemic_when_faithful() -> Bool {
+  no_anemic_coverage(
+    contracts: [infer_contract],
+    mocks: [faithful_infer_mock]
+  )
+}
