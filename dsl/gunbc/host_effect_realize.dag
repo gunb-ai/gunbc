@@ -44,6 +44,19 @@ type ShellExecObserved {
   exit_code: Int
   success: Bool
   stdout: String
+  stderr: String
+}
+
+fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
+  let header = "host_effect_apply: shell exec returned a nonzero exit code; fail-closed, no fabricated convergence"
+  if observed.stdout == "" && observed.stderr == "" {
+    header
+  } else {
+    concat(
+      concat(concat(header, "\n--- stdout ---\n"), observed.stdout),
+      concat("\n--- stderr ---\n", observed.stderr)
+    )
+  }
 }
 
 fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellExecObserved {
@@ -54,6 +67,7 @@ fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellE
         exit_code: result.exit_code,
         success: result.success,
         stdout: result.stdout,
+        stderr: result.stderr,
       }
     }
     SshShell { ssh_host: h } => {
@@ -62,6 +76,7 @@ fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellE
           exit_code: 1,
           success: false,
           stdout: "host_effect_apply: empty shell script over SshShell; fail-closed",
+          stderr: "",
         }
       } else {
         let result = ssh_session_exec(host: h, command: script as NonEmptyStr)
@@ -69,6 +84,7 @@ fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellE
           exit_code: result.exit_code,
           success: result.success,
           stdout: result.stdout,
+          stderr: "",
         }
       }
     }
@@ -80,7 +96,7 @@ fn realize_shell_on_host(script: String, transport: HostEffectTransport, intent:
   let grounding = if result.success {
       Grounds { evidence: ShellEffectApplied { exit_code: result.exit_code, stdout: result.stdout } }
     } else {
-      DoesNotGround { reason: "host_effect_apply: shell exec returned a nonzero exit code; fail-closed, no fabricated convergence" }
+      DoesNotGround { reason: shell_exec_failure_reason(observed: result) }
     }
   reconcile_grounded(
     apply_effect: intent,

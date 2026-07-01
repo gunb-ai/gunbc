@@ -23,6 +23,9 @@ pub use crate::v1_compiler_complexity::{build_complexity_report, empty_complexit
 pub use crate::v1_compiler_complexity::{
     ComplexityReport, ComplexityViolation, FuncEntry, RecursionContext,
 };
+pub use crate::v1_compiler_dag_collect::{collect_dag_nodes, dag_node_key, is_module_shell_node};
+pub use crate::v1_compiler_dag_collect_support::DagCollectAcc;
+pub use crate::v1_compiler_dag_collect_support::{connective_name, json_quote};
 pub use crate::v1_compiler_emit::escape_json_string;
 pub use crate::v1_compiler_emit_core_support::EmitResult;
 pub use crate::v1_compiler_emit_go::emit_go;
@@ -365,18 +368,6 @@ pub fn json_optional_string(value: Option<String>) -> String {
         None => "null".to_string(),
     }
 }
-
-pub use crate::v1_compiler_dag_collect_support::{
-    connective_name, dag_node_key_collision_error, dag_node_surface_fingerprint, expr_data_variant,
-    inferred_fingerprint, json_quote, DagCollectAcc,
-};
-
-pub use crate::v1_compiler_dag_collect::{
-    collect_dag_nodes, dag_collect_from_module, dag_collect_inferred, dag_collect_insert,
-    dag_collect_match_pattern, dag_collect_node_tree, dag_collect_nodes_list,
-    dag_collect_optional_node, dag_node_collection_anchor, dag_node_fingerprint,
-    dag_node_is_resolved_identity_shell, dag_node_key,
-};
 
 pub fn dag_node_missing_ref_error(node: Rc<Node>) -> Rc<ErrorNode> {
     make_error_node(
@@ -1812,32 +1803,6 @@ pub fn serialize_param(
         ),
         "}".to_string(),
     )
-}
-
-pub fn is_module_shell_node(n: Rc<Node>) -> bool {
-    (((((((n.inferred.clone() == None)
-        && (n.expr_data.clone() == Rc::new(ExprData::NoExprData)))
-        && (n.connective.clone() == Connective::NoConnective))
-        && (n.body.clone() == None))
-        && (n.transport.clone() == None))
-        && ((n.uses.clone().len() as i64) == 0))
-        && {
-            let mut __all = true;
-            for p in n.params.clone().iter().cloned() {
-                if !(is_import_slot_node(p.clone())) {
-                    __all = false;
-                    break;
-                }
-            }
-            __all
-        })
-}
-
-pub fn is_import_slot_node(n: Rc<Node>) -> bool {
-    (import_is_all(n.clone())
-        || (((((n.params.clone().len() as i64) == 0) && (n.ident_span.clone() != None))
-            && (n.body.clone() == None))
-            && (n.expr_data.clone() == Rc::new(ExprData::NoExprData))))
 }
 
 pub fn is_import_statement_node(n: Rc<Node>) -> bool {
