@@ -3,41 +3,18 @@ module v2.test.realization_vocabulary_containment.importer_census
 import v2.lens.realization_vocabulary_containment {
   realization_vocab_consumer_scan_roots,
   realization_vocab_exception_roster,
-  realization_vocab_leak_count_live
+  realization_vocab_leak_count_live,
+  path_is_realization_edge
 }
-import v2.lens.layering_imports { LayerImportFact, layer_import_facts_live }
-import v2.std.algebra { fold_list, is_prefix_of, length, list_snoc_item }
+import v2.lens.layering_imports { layer_import_facts_live }
+import v2.std.algebra { fold_list, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.text { Char, String }
+import v2.std.text { String }
 
 data bash_program_sidecar: String = "extdeps.languages.bash.program"
 
 data empty_bash_importer_paths: List<String> = []
-
-fn char_eq(a: Char, b: Char) -> Bool {
-  a == b
-}
-
-fn path_has_any_prefix(prefixes: List<String>, path: String) -> Bool {
-  fold_list(
-    xs: prefixes,
-    empty: false,
-    cons: fn(acc, p) { acc || is_prefix_of(prefix: p, xs: path, eq: char_eq) }
-  )
-}
-
-data realization_edge_path_prefixes: List<String> = [
-  "dsl/extdeps/languages/",
-  "src/v2/extdeps/languages/",
-  "src/v2/compiler/05_emit",
-  "src/v2/compiler/06_translate",
-  "src/v2/compiler/self_host/candidate_generation",
-  "src/v2/workflow/shell_emit",
-  "src/v2/workflow/orchestration_emit",
-  "src/v2/workflow/orchestration_stmt_emit",
-  "src/v2/workflow/orchestration_word_emit"
-]
 
 fn list_contains_str(xs: List<String>, target: String) -> Bool {
   fold(xs, init: false, f: fn(acc, s) { acc || (s == target) })
@@ -49,7 +26,7 @@ fn bash_sidecar_live_non_edge_paths(scan_roots: List<String>) -> List<String> {
     empty: empty_bash_importer_paths,
     cons: fn(acc, fact) {
       if (fact.import_module == bash_program_sidecar)
-        && (path_has_any_prefix(prefixes: realization_edge_path_prefixes, path: fact.path) == false) {
+        && (path_is_realization_edge(path: fact.path) == false) {
         list_snoc_item(xs: acc, item: fact.path)
       } else {
         acc
@@ -58,12 +35,12 @@ fn bash_sidecar_live_non_edge_paths(scan_roots: List<String>) -> List<String> {
   )
 }
 
-fn bash_sidecar_roster_entries(roster: List<String>) -> List<String> {
+fn bash_sidecar_roster_entries(roster: List<String>, live: List<String>) -> List<String> {
   fold_list(
     xs: roster,
     empty: empty_bash_importer_paths,
     cons: fn(acc, entry) {
-      if list_contains_str(xs: bash_sidecar_live_non_edge_paths(scan_roots: realization_vocab_consumer_scan_roots), target: entry) {
+      if list_contains_str(xs: live, target: entry) {
         list_snoc_item(xs: acc, item: entry)
       } else {
         acc
@@ -74,7 +51,7 @@ fn bash_sidecar_roster_entries(roster: List<String>) -> List<String> {
 
 test fn bash_sidecar_roster_matches_live_non_edge_importers_holds() -> Bool {
   let live = bash_sidecar_live_non_edge_paths(scan_roots: realization_vocab_consumer_scan_roots)
-  let rostered = bash_sidecar_roster_entries(roster: realization_vocab_exception_roster)
+  let rostered = bash_sidecar_roster_entries(roster: realization_vocab_exception_roster, live: live)
   length(xs: live) == length(xs: rostered)
     && realization_vocab_leak_count_live(scan_roots: realization_vocab_consumer_scan_roots) == 0
 }
