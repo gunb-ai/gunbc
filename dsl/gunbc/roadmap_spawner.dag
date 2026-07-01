@@ -218,3 +218,40 @@ fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_co
     concat(", \"anchor_commit\": ", concat(json_str(s: anchor_commit),
     concat(", \"ready\": ", concat(ready_array_json(nodes: nodes, edges: edges), "}"))))))
 }
+
+fn json_str_list(items: List<String>) -> String {
+  concat("[", concat(join_strings(items: items |> map(s => json_str(s: s))), "]"))
+}
+
+fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: ProcessNodeId, merged: List<Int>) -> List<ProcessNodeId> {
+  node_parent_ids(edges: edges, id: id)
+    |> filter(pid => !any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged)))
+}
+
+fn upcoming_node_json(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
+  let unmet = node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node, merged: merged)
+  concat("{\"node_id\": ", concat(json_str(s: n.node),
+    concat(", \"title\": ", concat(json_str(s: node_title(item: n.line)),
+    concat(", \"unmet_parents\": ", concat(json_str_list(items: unmet), "}"))))))
+}
+
+fn upcoming_array_json(frontier_upcoming: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
+  concat("[",
+    concat(join_strings(items: frontier_upcoming |> map(n =>
+      upcoming_node_json(n: n, nodes: nodes, edges: edges, merged: merged))), "]"))
+}
+
+fn done_ids_json(frontier_done: List<RoadmapNode>) -> String {
+  json_str_list(items: frontier_done |> map(n => n.node))
+}
+
+fn roadmap_dispatch_json(doc: RoadmapDocument, merged: List<Int>) -> String {
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  let frontier = spawn_frontier(doc: doc, merged: merged)
+  concat("{",
+    concat("\"schema\": \"roadmap-dispatch/v1\"",
+    concat(", \"ready\": ", concat(ready_array_json(nodes: frontier.ready, edges: edges),
+    concat(", \"upcoming\": ", concat(upcoming_array_json(frontier_upcoming: frontier.upcoming, nodes: nodes, edges: edges, merged: merged),
+    concat(", \"done\": ", concat(done_ids_json(frontier_done: frontier.done), "}"))))))))
+}

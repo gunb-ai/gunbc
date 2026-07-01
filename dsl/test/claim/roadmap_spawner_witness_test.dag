@@ -10,7 +10,7 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_status { DerivableLine, AuthoredLine, Signoff, Unsigned }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_spawner { next_spawnable, roadmap_spawn_request_json, spawn_frontier }
+import gunbc.roadmap_spawner { next_spawnable, roadmap_spawn_request_json, spawn_frontier, roadmap_dispatch_json }
 
 fn nid(s: String) -> ProcessNodeId { s }
 
@@ -141,9 +141,27 @@ fn witness_all_parents_gate_spawnability() -> Bool {
     && any(both_parents_done, n => n.node == nid(s: "mp-c"))
 }
 
+fn witness_dispatch_json_partitions_ready_upcoming_done() -> Bool {
+  let node_done = sized_derivable(id: "dj-done", prs: [100], title: "Done Node")
+  let node_ready = sized_derivable(id: "dj-ready", prs: [200], title: "Ready Node")
+  let node_gated = sized_derivable(id: "dj-gated", prs: [300], title: "Gated Node")
+  let edges = [
+    RoadmapEdge { child: nid(s: "dj-ready"), parent: nid(s: "dj-done") },
+    RoadmapEdge { child: nid(s: "dj-gated"), parent: nid(s: "dj-ready") },
+  ]
+  let doc = fixture_doc(nodes: [node_done, node_ready, node_gated], edges: edges)
+  let json = roadmap_dispatch_json(doc: doc, merged: [100])
+  string_contains(s: json, pattern: "roadmap-dispatch/v1")
+    && string_contains(s: json, pattern: "\"node_id\": \"dj-ready\"")
+    && !string_contains(s: json, pattern: "\"node_id\": \"dj-done\"")
+    && string_contains(s: json, pattern: "\"node_id\": \"dj-gated\", \"title\": \"Gated Node\", \"unmet_parents\": [\"dj-ready\"]")
+    && string_contains(s: json, pattern: "\"done\": [\"dj-done\"]")
+}
+
 test fn roadmap_spawner_witnesses() -> Bool {
   witness_satisfied_dep_is_spawnable()
     && witness_all_parents_gate_spawnability()
+    && witness_dispatch_json_partitions_ready_upcoming_done()
     && witness_unsatisfied_dep_not_spawnable()
     && witness_unsized_node_excluded()
     && witness_done_node_excluded()
