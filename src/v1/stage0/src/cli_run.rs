@@ -7347,6 +7347,205 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
     out
 }
 
+const LANGUAGES_AUTHORITY_REL: &str = "dsl/std/languages.dag";
+
+fn languages_census_collect_source_files(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            languages_census_collect_source_files(&path, out);
+        } else {
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            if ext == "dag" || ext == "rs" {
+                out.push(path);
+            }
+        }
+    }
+}
+
+fn languages_census_strip_content(source: &str) -> String {
+    let mut out = String::with_capacity(source.len());
+    let mut chars = source.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '/' && chars.peek() == Some(&'/') {
+            while chars.next().is_some_and(|ch| ch != '\n') {}
+            out.push('\n');
+            continue;
+        }
+        if c == '"' {
+            while let Some(ch) = chars.next() {
+                if ch == '\\' {
+                    chars.next();
+                    continue;
+                }
+                if ch == '"' {
+                    break;
+                }
+            }
+            out.push(' ');
+            continue;
+        }
+        if c == '`' {
+            while chars.next().is_some_and(|ch| ch != '`') {}
+            out.push(' ');
+            continue;
+        }
+        out.push(c);
+    }
+    out
+}
+
+fn languages_census_extract_data_decl_names(content: &str) -> Vec<String> {
+    content
+        .lines()
+        .filter_map(|line| {
+            let rest = line.strip_prefix("data ")?;
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if name.is_empty() {
+                None
+            } else {
+                Some(name)
+            }
+        })
+        .collect()
+}
+
+fn languages_census_is_infrastructure_path(rel: &str) -> bool {
+    rel.starts_with("src/v2/test/claim/languages_consumer_census/")
+        || rel == "src/v2/lens/languages_consumer_census.dag"
+}
+
+fn languages_census_tokenize(content: &str) -> HashSet<String> {
+    let stripped = languages_census_strip_content(content);
+    stripped
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .filter(|token| !token.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LanguagesDeclConsumerRecord {
+    pub decl_name: String,
+    pub external_consumer_paths: Vec<String>,
+}
+
+fn languages_decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
+    let ws = workspace_root();
+    let authority = ws.join(LANGUAGES_AUTHORITY_REL);
+    let authority_content = std::fs::read_to_string(&authority).unwrap_or_else(|e| {
+        panic!(
+            "languages_consumer_census: failed to read {}: {e}",
+            authority.display()
+        )
+    });
+    let decl_names = languages_census_extract_data_decl_names(&authority_content);
+    let decl_name_set: HashSet<String> = decl_names.iter().cloned().collect();
+
+    let mut files = Vec::new();
+    for tree in &["dsl", "src"] {
+        let root = ws.join(tree);
+        if root.is_dir() {
+            languages_census_collect_source_files(&root, &mut files);
+        }
+    }
+
+    let mut by_decl: HashMap<String, HashSet<String>> = decl_names
+        .iter()
+        .map(|name| (name.clone(), HashSet::new()))
+        .collect();
+
+    for path in files {
+        let rel = path
+            .strip_prefix(&ws)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        if rel == LANGUAGES_AUTHORITY_REL || languages_census_is_infrastructure_path(&rel) {
+            continue;
+        }
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let tokens = languages_census_tokenize(&content);
+        for decl_name in tokens.intersection(&decl_name_set) {
+            by_decl
+                .get_mut(decl_name)
+                .expect("decl map key")
+                .insert(rel.clone());
+        }
+    }
+
+    let mut records = Vec::new();
+    for decl_name in decl_names {
+        let mut paths: Vec<String> = by_decl
+            .remove(&decl_name)
+            .expect("decl map key")
+            .into_iter()
+            .collect();
+        paths.sort();
+        records.push(LanguagesDeclConsumerRecord {
+            decl_name,
+            external_consumer_paths: paths,
+        });
+    }
+    records
+}
+
+fn languages_decl_records_cached() -> &'static [LanguagesDeclConsumerRecord] {
+    static RECORDS: OnceLock<Vec<LanguagesDeclConsumerRecord>> = OnceLock::new();
+    RECORDS.get_or_init(languages_decl_records_inner)
+}
+
+fn languages_decl_record_for(decl_name: &str) -> Option<&'static LanguagesDeclConsumerRecord> {
+    languages_decl_records_cached()
+        .iter()
+        .find(|r| r.decl_name == decl_name)
+}
+
+pub fn languages_consumer_census_data_decl_count() -> i64 {
+    languages_decl_records_cached().len() as i64
+}
+
+pub fn languages_consumer_census_per_language_row_count() -> i64 {
+    languages_decl_records_cached()
+        .iter()
+        .filter(|r| !r.decl_name.ends_with("_format"))
+        .count() as i64
+}
+
+pub fn languages_consumer_census_format_row_count() -> i64 {
+    languages_decl_records_cached()
+        .iter()
+        .filter(|r| r.decl_name.ends_with("_format"))
+        .count() as i64
+}
+
+pub fn languages_consumer_census_external_consumer_count(decl_name: String) -> i64 {
+    languages_decl_record_for(&decl_name)
+        .map(|r| r.external_consumer_paths.len() as i64)
+        .unwrap_or(-1)
+}
+
+pub fn languages_consumer_census_is_composition_only(decl_name: String) -> bool {
+    languages_decl_record_for(&decl_name)
+        .map(|r| r.external_consumer_paths.is_empty())
+        .unwrap_or(false)
+}
+
+pub fn languages_consumer_census_has_external_consumer(decl_name: String) -> bool {
+    languages_decl_record_for(&decl_name)
+        .map(|r| !r.external_consumer_paths.is_empty())
+        .unwrap_or(false)
+}
+
 // --- Inert carrier census (folded from inert_carrier_project.rs) ---
 //
 // A type carrier is "inert" iff (a) declared in a non-test file, (b) its name appears in at least
@@ -7972,6 +8171,432 @@ mod module_path_index_tests {
     fn is_test_dag_matches_suffix() {
         assert!(is_test_dag("src/v2/lens/x_test.dag"));
         assert!(!is_test_dag("src/v2/lens/x.dag"));
+    }
+}
+
+// SCAFFOLD — host-fed fact extraction for v2.lens.extdeps_shape_transport_policy (Concern A).
+// Dissolution: when the Node-tree argv projection supersedes text scan (dissolve-on marker in
+// extdeps_shape_transport_policy.dag construction_justification), replace this block with a
+// Node-tree builtin and delete these structs. gunbc#5364 successor, Concern A lane.
+
+pub struct ExtdepsArgvFactRaw {
+    pub module_path: String,
+    pub service: String,
+    pub operation: String,
+    pub transport_kind: &'static str,
+    pub argv_index: i64,
+    pub argv_token: String,
+}
+
+pub struct ExtdepsFusionFactRaw {
+    pub module_path: String,
+    pub endpoint_key: String,
+    pub service_a: String,
+    pub service_b: String,
+}
+
+pub struct ExtdepsInputFactRaw {
+    pub module_path: String,
+    pub service: String,
+    pub operation: String,
+    pub param_name: String,
+}
+
+pub struct ExtdepsEmbeddedFactRaw {
+    pub module_path: String,
+    pub data_name: String,
+    pub field_name: String,
+    pub literal_value: String,
+}
+
+pub struct ExtdepsShapeTransportPolicyModuleFacts {
+    pub argv_facts: Vec<ExtdepsArgvFactRaw>,
+    pub fusion_facts: Vec<ExtdepsFusionFactRaw>,
+    pub input_facts: Vec<ExtdepsInputFactRaw>,
+    pub embedded_facts: Vec<ExtdepsEmbeddedFactRaw>,
+    pub source_nickname_literal_count: i64,
+    pub gist_create_declares_filename_input: bool,
+    pub gist_create_files_keyed_by_filename: bool,
+}
+
+pub fn parse_extdeps_module_items(
+    path: &str,
+) -> (
+    Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) {
+    use crate::v1_compiler_parse::parse;
+    use crate::v1_compiler_tokenize::tokenize;
+    use crate::v1_std_core::build_newline_index;
+    let candidate = std::path::Path::new(path);
+    let resolved = if candidate.is_file() {
+        candidate.to_path_buf()
+    } else {
+        let rooted = workspace_root().join(path);
+        if rooted.is_file() {
+            rooted
+        } else {
+            panic!("parse_extdeps_module_items: file not found: {path}");
+        }
+    };
+    let path_str = resolved.to_string_lossy();
+    let content = std::fs::read_to_string(&resolved)
+        .unwrap_or_else(|e| panic!("parse_extdeps_module_items: failed to read {path_str}: {e}"));
+    let filename = resolved
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(path);
+    let tokens = tokenize(content.clone(), filename.to_string());
+    let source_index = build_newline_index(filename.to_string(), content);
+    let mut source_indices_map = HashMap::new();
+    source_indices_map.insert(filename.to_string(), source_index);
+    let source_indices = Rc::new(source_indices_map);
+    let result = parse(tokens, source_indices.clone());
+    if let Some(err) = result.error.as_ref() {
+        panic!(
+            "parse_extdeps_module_items: parse error in {path}: {}",
+            crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
+        );
+    }
+    let module = result
+        .module
+        .as_ref()
+        .expect("parse_extdeps_module_items: missing module");
+    (module.children.clone(), source_indices)
+}
+
+pub fn shell_argv_nodes_for_operation(
+    path: String,
+    service: String,
+    operation: String,
+) -> (
+    Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) {
+    let (items, source_indices) = parse_extdeps_module_items(&path);
+    for item in items.iter() {
+        if item.name != service {
+            continue;
+        }
+        let fallback_transport = if let Some(t) = item.transport.as_ref() {
+            t.clone()
+        } else {
+            crate::v1_std_core::local_transport_node(item.span.clone())
+        };
+        for op in item.children.iter() {
+            if op.name != operation {
+                continue;
+            }
+            let eff = crate::v1_compiler_emit::effective_operation_transport(
+                op.clone(),
+                fallback_transport.clone(),
+            );
+            return (eff.children.clone(), source_indices);
+        }
+    }
+    panic!("shell_argv_nodes_for_operation: operation {service}.{operation} not found in {path}");
+}
+
+pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter::Value) -> bool {
+    let module_path = qualified_name_value_to_module_path(qn);
+    !module_path.is_empty()
+        && build_module_path_index_from_witness_roots().contains_key(&module_path)
+}
+
+fn extdeps_argv_expr_token(
+    node: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> String {
+    use crate::v1_std_core::{expr_var_name_at, ExprData, LiteralValue};
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value } => match value.as_ref() {
+            LiteralValue::LitStr { value } => value.clone(),
+            other => format!("{other:?}"),
+        },
+        ExprData::ExprVar { .. } => {
+            let name = expr_var_name_at(node.clone(), source_indices.clone());
+            if name.is_empty() {
+                node.name.clone()
+            } else {
+                format!("{{{name}}}")
+            }
+        }
+        ExprData::ExprStringInterp => node
+            .children
+            .iter()
+            .map(|child| match child.expr_data.as_ref() {
+                ExprData::ExprLiteral { value } => match value.as_ref() {
+                    LiteralValue::LitStr { value } => value.clone(),
+                    _ => String::new(),
+                },
+                ExprData::ExprVar { .. } => {
+                    let name = expr_var_name_at(child.clone(), source_indices.clone());
+                    if name.is_empty() {
+                        child.name.clone()
+                    } else {
+                        format!("{{{name}}}")
+                    }
+                }
+                _ => String::new(),
+            })
+            .collect(),
+        _ => String::new(),
+    }
+}
+
+fn extdeps_literal_string_value(node: &Rc<crate::v1_std_core::Node>) -> Option<String> {
+    use crate::v1_std_core::{ExprData, LiteralValue};
+    match node.expr_data.as_ref() {
+        ExprData::ExprLiteral { value } => match value.as_ref() {
+            LiteralValue::LitStr { value } => Some(value.clone()),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn extdeps_record_field_value(
+    record: &Rc<crate::v1_std_core::Node>,
+    field_name: &str,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Option<Rc<crate::v1_std_core::Node>> {
+    use crate::v1_std_core::{field_init_node_name_at, field_init_node_value, ExprData};
+    if !matches!(record.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
+        return None;
+    }
+    for field_init in record.children.iter() {
+        let name = field_init_node_name_at(field_init.clone(), source_indices.clone());
+        if name == field_name {
+            return Some(field_init_node_value(field_init.clone()));
+        }
+    }
+    None
+}
+
+fn extdeps_module_source_nickname_count_in_node(
+    node: &Rc<crate::v1_std_core::Node>,
+    real_paths: &std::collections::HashSet<String>,
+) -> i64 {
+    let mut count = 0i64;
+    if let Some(lit) = extdeps_literal_string_value(node) {
+        if real_paths.contains(&lit) {
+            count += 1;
+        }
+    }
+    if let Some(body) = node.body.as_ref() {
+        count += extdeps_module_source_nickname_count_in_node(body, real_paths);
+    }
+    for child in node.children.iter() {
+        count += extdeps_module_source_nickname_count_in_node(child, real_paths);
+    }
+    for param in node.params.iter() {
+        count += extdeps_module_source_nickname_count_in_node(param, real_paths);
+    }
+    if let Some(type_annotation) = node.type_annotation.as_ref() {
+        count += extdeps_module_source_nickname_count_in_node(type_annotation, real_paths);
+    }
+    count
+}
+
+fn extdeps_gist_create_declares_filename_for_items(
+    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> bool {
+    use crate::v1_std_core::param_node_name_at;
+    for item in items.iter() {
+        if item.name != "github.Gist" {
+            continue;
+        }
+        for op in item.children.iter() {
+            if op.name != "Create" {
+                continue;
+            }
+            for param in op.params.iter() {
+                let name = param_node_name_at(param.clone(), source_indices.clone());
+                if name == "filename" {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn extdeps_gist_map_keys_use_filename(
+    map_node: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> bool {
+    use crate::v1_std_core::{field_init_node_name_at, ExprData};
+    if !matches!(map_node.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
+        return false;
+    }
+    if map_node.children.is_empty() {
+        return false;
+    }
+    for entry in map_node.children.iter() {
+        let key = field_init_node_name_at(entry.clone(), source_indices.clone());
+        if !(key == "filename" || key.contains("{filename}")) {
+            return false;
+        }
+    }
+    true
+}
+
+fn extdeps_gist_create_files_keyed_by_filename_for_items(
+    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> bool {
+    use crate::v1_std_core::{is_rest_transport, transport_request_body};
+    for item in items.iter() {
+        if item.name != "github.Gist" {
+            continue;
+        }
+        for op in item.children.iter() {
+            if op.name != "Create" {
+                continue;
+            }
+            let Some(transport) = op.transport.as_ref() else {
+                return false;
+            };
+            if !is_rest_transport(transport.clone(), source_indices.clone()) {
+                return false;
+            }
+            let Some(body) = transport_request_body(transport.clone(), source_indices.clone())
+            else {
+                return false;
+            };
+            let Some(files) = extdeps_record_field_value(&body, "files", source_indices) else {
+                return false;
+            };
+            return extdeps_gist_map_keys_use_filename(&files, source_indices);
+        }
+    }
+    false
+}
+
+pub fn extdeps_shape_transport_policy_module_facts(
+    module_path: &str,
+) -> ExtdepsShapeTransportPolicyModuleFacts {
+    use crate::v1_compiler_emit::effective_operation_transport;
+    use crate::v1_compiler_emit_core_support::is_data_def_item;
+    use crate::v1_std_core::{
+        field_init_node_name_at, field_init_node_value, param_node_name_at, ExprData,
+    };
+
+    let path = source_path_for_module_path(module_path.to_string());
+    let (items, source_indices) = parse_extdeps_module_items(&path);
+
+    let mut argv_facts: Vec<ExtdepsArgvFactRaw> = Vec::new();
+    let mut input_facts: Vec<ExtdepsInputFactRaw> = Vec::new();
+
+    for item in items.iter() {
+        if item.name.is_empty() || item.children.is_empty() {
+            continue;
+        }
+        let fallback_transport = if let Some(t) = item.transport.as_ref() {
+            t.clone()
+        } else {
+            crate::v1_std_core::local_transport_node(item.span.clone())
+        };
+        for op in item.children.iter() {
+            if op.name.is_empty() {
+                continue;
+            }
+            let eff = effective_operation_transport(op.clone(), fallback_transport.clone());
+            let transport_kind =
+                if crate::v1_std_core::is_rest_transport(eff.clone(), source_indices.clone()) {
+                    "Rest"
+                } else {
+                    "Shell"
+                };
+            for (idx, arg) in eff.children.iter().enumerate() {
+                let token = extdeps_argv_expr_token(arg, &source_indices);
+                argv_facts.push(ExtdepsArgvFactRaw {
+                    module_path: module_path.to_string(),
+                    service: item.name.clone(),
+                    operation: op.name.clone(),
+                    transport_kind,
+                    argv_index: idx as i64,
+                    argv_token: token,
+                });
+            }
+            for param in op.params.iter() {
+                let name = param_node_name_at(param.clone(), source_indices.clone());
+                if !name.is_empty() {
+                    input_facts.push(ExtdepsInputFactRaw {
+                        module_path: module_path.to_string(),
+                        service: item.name.clone(),
+                        operation: op.name.clone(),
+                        param_name: name,
+                    });
+                }
+            }
+        }
+    }
+
+    let service_names: Vec<String> = items
+        .iter()
+        .filter(|item| !item.name.is_empty() && !item.children.is_empty())
+        .map(|item| item.name.clone())
+        .collect();
+    let has_oauth_google = service_names.iter().any(|s| s == "oauth2.Google");
+    let has_shell_oauth = service_names.iter().any(|s| s == "shell.OAuth2");
+    let mut fusion_facts: Vec<ExtdepsFusionFactRaw> = Vec::new();
+    if has_oauth_google && has_shell_oauth {
+        fusion_facts.push(ExtdepsFusionFactRaw {
+            module_path: module_path.to_string(),
+            endpoint_key: "OAuth2.refresh".to_string(),
+            service_a: "oauth2.Google".to_string(),
+            service_b: "shell.OAuth2".to_string(),
+        });
+    }
+
+    let mut embedded_facts: Vec<ExtdepsEmbeddedFactRaw> = Vec::new();
+    for item in items.iter() {
+        if !is_data_def_item(item.clone()) || item.name.is_empty() {
+            continue;
+        }
+        let Some(body) = item.body.as_ref() else {
+            continue;
+        };
+        if !matches!(body.expr_data.as_ref(), ExprData::ExprRecordLit { .. }) {
+            continue;
+        }
+        for field_init in body.children.iter() {
+            let field_name = field_init_node_name_at(field_init.clone(), source_indices.clone());
+            let value_node = field_init_node_value(field_init.clone());
+            if let Some(literal) = extdeps_literal_string_value(&value_node) {
+                embedded_facts.push(ExtdepsEmbeddedFactRaw {
+                    module_path: module_path.to_string(),
+                    data_name: item.name.clone(),
+                    field_name,
+                    literal_value: literal,
+                });
+            }
+        }
+    }
+
+    let index = build_module_path_index_from_witness_roots();
+    let real_paths: std::collections::HashSet<String> = index.into_values().collect();
+    let mut source_nickname_literal_count = 0i64;
+    for item in items.iter() {
+        source_nickname_literal_count +=
+            extdeps_module_source_nickname_count_in_node(item, &real_paths);
+    }
+
+    let gist_create_declares_filename_input =
+        extdeps_gist_create_declares_filename_for_items(&items, &source_indices);
+    let gist_create_files_keyed_by_filename =
+        extdeps_gist_create_files_keyed_by_filename_for_items(&items, &source_indices);
+
+    ExtdepsShapeTransportPolicyModuleFacts {
+        argv_facts,
+        fusion_facts,
+        input_facts,
+        embedded_facts,
+        source_nickname_literal_count,
+        gist_create_declares_filename_input,
+        gist_create_files_keyed_by_filename,
     }
 }
 

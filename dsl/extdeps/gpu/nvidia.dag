@@ -1,0 +1,40 @@
+module extdeps.gpu.nvidia
+
+import extdeps.gpu.types { GpuModelCatalogRow, GpuComputeCapability, GpuRuntime, Cuda }
+import extdeps.memory.types { MemoryFacts, Dram }
+import extdeps.vendor.nvidia { nvidia }
+import std.measure { hardware_thread_count, bandwidth, hertz, watt, gibibyte, gibibyte_to_byte_size }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.nvidia.com/en-us/geforce/graphics-cards/50-series/rtx-5090/"
+  }
+}
+
+data nvidia_rtx_5090_catalog_grounding_note: String = "NVIDIA GeForce RTX 5090 (Blackwell), figures from NVIDIA's published spec page: 21760 CUDA cores; 32 GB GDDR7 (modeled as MemoryKind.Dram — GDDR is a graphics DRAM); 1792 GB/s memory bandwidth (base unit bytes/second, matching extdeps.storage per-lane convention); 575 W total graphics power; 2.41 GHz boost clock. Compute capability sm_120 = major 12 minor 0 (docs.nvidia.com compute-capabilities). Runtimes: Cuda (the GpuRuntime enum has no Vulkan/DirectX variant, so only Cuda is asserted)."
+
+data nvidia_rtx_5090_catalog: GpuModelCatalogRow = GpuModelCatalogRow {
+  vendor: nvidia,
+  model: "GeForce RTX 5090",
+  microarchitecture: "Blackwell",
+  execution_lane_count: hardware_thread_count(21760),
+  memory: MemoryFacts {
+    capacity: gibibyte_to_byte_size(g: gibibyte(count: 32)),
+    memory_kind: Dram,
+  },
+  memory_bandwidth: bandwidth(count: 1792000000000),
+  boost_clock: hertz(count: 2410000000),
+  tdp_watts: watt(count: 575),
+  compute_capability: Present {
+    value: GpuComputeCapability {
+      vendor: nvidia,
+      major: 12,
+      minor: 0,
+    }
+  },
+  supported_runtimes: [Cuda],
+}
