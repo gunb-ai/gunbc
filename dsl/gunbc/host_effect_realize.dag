@@ -16,8 +16,9 @@ import extdeps.shell
 import extdeps.diagnostic.ssh { ssh_session_exec }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
+import std.access { AccessDecision, Permit, Deny }
 import gunbc.ci_deploy_access {
-  DeployAccess, DeployAccessActor, AccessDecision, Permit, Deny,
+  DeployAccess, DeployAccessActor,
   deploy_access_check, deploy_access_check_observed,
   deploy_access_refusal_prefix, deploy_access_decision_reason,
 }
