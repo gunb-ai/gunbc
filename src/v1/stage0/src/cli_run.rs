@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::rc::Rc;
@@ -5883,6 +5883,242 @@ pub fn non_fold_residue_live_sites() -> &'static [String] {
 
 pub fn non_fold_residue_roster_size() -> i64 {
     NON_FOLD_RESIDUE_ROSTER.len() as i64
+}
+
+// ── Doc-reachability census (DESIGN §3 single-authority, §5 fail-closed) ─────────────────────────
+//
+// Host-fed corpus walk: every .md file reachable from ROADMAP/DESIGN/runbooks roots is a live doc;
+// orphans (unreachable) and dangling links (link target absent) are fail-closed violations.
+// DISSOLUTION: folds into a pure .dag Node-tree reader when compile-graph access lands (gunbc#5364).
+
+const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
+const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
+
+fn doc_repo_rel(path: &Path) -> String {
+    let ws = workspace_root();
+    let s = path.to_string_lossy().replace('\\', "/");
+    let prefix = format!("{}/", ws.to_string_lossy().replace('\\', "/"));
+    s.strip_prefix(&prefix)
+        .map(|p| p.to_string())
+        .unwrap_or(s)
+        .trim_start_matches("./")
+        .to_string()
+}
+
+fn doc_universe() -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let docs_dir = workspace_root().join("docs");
+    collect_md_files(&docs_dir, &mut out);
+    out
+}
+
+fn collect_md_files(dir: &Path, out: &mut BTreeSet<String>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_md_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            out.insert(doc_repo_rel(&path));
+        }
+    }
+}
+
+fn markdown_link_targets(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = content.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b']' && bytes[i + 1] == b'(' {
+            if let Some(end) = content[i + 2..].find(')') {
+                let raw = &content[i + 2..i + 2 + end];
+                let target = raw.split('#').next().unwrap_or("").trim();
+                if !target.is_empty()
+                    && !target.starts_with("http://")
+                    && !target.starts_with("https://")
+                    && !target.starts_with("mailto:")
+                {
+                    out.push(target.to_string());
+                }
+                i = i + 2 + end + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
+fn resolve_doc_link(from: &str, target: &str) -> Vec<String> {
+    let mut candidates = Vec::new();
+    let from_dir = Path::new(from).parent().unwrap_or_else(|| Path::new(""));
+    candidates.push(normalize_doc_path(&from_dir.join(target)));
+    candidates.push(normalize_doc_path(Path::new(target)));
+    candidates.dedup();
+    candidates
+}
+
+fn normalize_doc_path(path: &Path) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for comp in path.to_string_lossy().replace('\\', "/").split('/') {
+        match comp {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            other => parts.push(other.to_string()),
+        }
+    }
+    parts.join("/")
+}
+
+fn dag_comment_bind_doc_refs() -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for root in witness_layer_roots() {
+        let mut dag_files = Vec::new();
+        collect_dag_files_tolerant(&workspace_root().join(&root), &mut dag_files);
+        for path in dag_files {
+            let content = match std::fs::read_to_string(&path) {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            for target in bind_md_refs(&content) {
+                out.insert(target);
+            }
+        }
+    }
+    out
+}
+
+fn bind_md_refs(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for (idx, _) in content.match_indices("bind:") {
+        let rest = content[idx + "bind:".len()..].trim_start();
+        let token: String = rest
+            .chars()
+            .take_while(|c| !c.is_whitespace() && *c != ')' && *c != '"' && *c != '`')
+            .collect();
+        if token.ends_with(".md") {
+            out.push(normalize_doc_path(Path::new(&token)));
+        }
+    }
+    out
+}
+
+fn doc_reachable_set(
+    roots: &BTreeSet<String>,
+    edges: &HashMap<String, Vec<String>>,
+) -> BTreeSet<String> {
+    let mut reached: BTreeSet<String> = BTreeSet::new();
+    let mut queue: VecDeque<String> = VecDeque::new();
+    for r in roots {
+        if reached.insert(r.clone()) {
+            queue.push_back(r.clone());
+        }
+    }
+    while let Some(node) = queue.pop_front() {
+        if let Some(neighbors) = edges.get(&node) {
+            for n in neighbors {
+                if reached.insert(n.clone()) {
+                    queue.push_back(n.clone());
+                }
+            }
+        }
+    }
+    reached
+}
+
+struct DocGraphReport {
+    doc_count: usize,
+    orphans: Vec<String>,
+    dangling: Vec<(String, String)>,
+}
+
+fn build_doc_graph_report() -> DocGraphReport {
+    let universe = doc_universe();
+    let bind_refs = dag_comment_bind_doc_refs();
+
+    let mut roots: BTreeSet<String> = BTreeSet::new();
+    for r in DOC_PLAN_ROOTS {
+        roots.insert((*r).to_string());
+    }
+    if workspace_root().join(DOC_RUNBOOK_ROOT).is_file() {
+        roots.insert(DOC_RUNBOOK_ROOT.to_string());
+    }
+    for b in &bind_refs {
+        if universe.contains(b) {
+            roots.insert(b.clone());
+        }
+    }
+
+    let mut edges: HashMap<String, Vec<String>> = HashMap::new();
+    let mut dangling: Vec<(String, String)> = Vec::new();
+    let mut sources: Vec<String> = universe.iter().cloned().collect();
+    for r in DOC_PLAN_ROOTS {
+        sources.push((*r).to_string());
+    }
+    if roots.contains(DOC_RUNBOOK_ROOT) {
+        sources.push(DOC_RUNBOOK_ROOT.to_string());
+    }
+    sources.sort();
+    sources.dedup();
+    for src in &sources {
+        let content = match std::fs::read_to_string(workspace_root().join(src)) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let mut out_edges: Vec<String> = Vec::new();
+        for target in markdown_link_targets(&content) {
+            let candidates = resolve_doc_link(src, &target);
+            let existing = candidates
+                .iter()
+                .find(|c| workspace_root().join(c).is_file())
+                .cloned();
+            match existing {
+                Some(path) => out_edges.push(path),
+                None => {
+                    if target.ends_with(".md") {
+                        dangling.push((src.clone(), target.clone()));
+                    }
+                }
+            }
+        }
+        edges.insert(src.clone(), out_edges);
+    }
+
+    let reached = doc_reachable_set(&roots, &edges);
+    let orphans: Vec<String> = universe
+        .iter()
+        .filter(|d| !reached.contains(*d))
+        .cloned()
+        .collect();
+    dangling.sort();
+    dangling.dedup();
+    DocGraphReport {
+        doc_count: universe.len(),
+        orphans,
+        dangling,
+    }
+}
+
+fn doc_graph_report() -> &'static DocGraphReport {
+    static REPORT: OnceLock<DocGraphReport> = OnceLock::new();
+    REPORT.get_or_init(build_doc_graph_report)
+}
+
+pub fn doc_graph_orphan_count() -> i64 {
+    doc_graph_report().orphans.len() as i64
+}
+
+pub fn doc_graph_dangling_link_count() -> i64 {
+    doc_graph_report().dangling.len() as i64
+}
+
+pub fn doc_graph_doc_count() -> i64 {
+    doc_graph_report().doc_count as i64
 }
 
 #[cfg(test)]
