@@ -1,0 +1,172 @@
+module gunbc.live_deploy.emit
+
+import std.types { String, List, Bool, NonEmptyStr, Int }
+import std.layout {
+  Doc, DocConcat,
+  LayoutProtocol,
+  doc_concat, doc_line_of,
+  render
+}
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  DeploymentEnsuredStep,
+  DeploymentOwnedStep,
+  deployment_spec_srv1,
+  deployment_plan_listen_port,
+  gunbc_roadmap_server_path,
+  gunbc_roadmap_systemd_unit_path,
+}
+import gunbc.node_http_server_emit { roadmap_dashboard_node_http_server_source }
+
+data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+fn sh_arg(s: String) -> String {
+  concat(concat("\"", s), "\"")
+}
+
+fn emit_systemd_unit_doc(spec: DeploymentSpec) -> Doc {
+  let svc = spec.service
+  let port = to_string(svc.listen.port)
+  let host = svc.listen.host
+  doc_concat(parts: [
+    doc_line_of(text: "[Unit]"),
+    doc_line_of(text: "Description=gunbc roadmap HTTP server"),
+    doc_line_of(text: "After=network-online.target tailscaled.service"),
+    doc_line_of(text: "Wants=network-online.target"),
+    doc_line_of(text: ""),
+    doc_line_of(text: "[Service]"),
+    doc_line_of(text: "Type=simple"),
+    doc_line_of(text: concat("Environment=PORT=", port)),
+    doc_line_of(text: concat("Environment=HOST=", host)),
+    doc_line_of(text: concat("WorkingDirectory=/opt/gunbc")),
+    doc_line_of(text: concat("ExecStart=/usr/bin/node ", svc.server_path)),
+    doc_line_of(text: "Restart=on-failure"),
+    doc_line_of(text: ""),
+    doc_line_of(text: "[Install]"),
+    doc_line_of(text: "WantedBy=multi-user.target"),
+  ])
+}
+
+fn deployment_ensured_steps_from_spec(spec: DeploymentSpec) -> List<DeploymentEnsuredStep> {
+  fold(
+    spec.steps,
+    init: [],
+    f: (acc, step) =>
+      match step {
+        Ensured { step: s } => concat(acc, [s])
+        Owned { step: _ } => acc
+      }
+  )
+}
+
+fn emit_sudo_wrapped_script_body(inner: Doc, marker: String) -> Doc {
+  doc_concat(parts: [
+    doc_line_of(text: concat("sudo bash -s <<'", marker, "'")),
+    inner,
+    doc_line_of(text: marker),
+  ])
+}
+
+fn emit_apply_script_body(spec: DeploymentSpec) -> Doc {
+  let port = deployment_plan_listen_port(spec: spec)
+  let dep_lines = map(
+    deployment_ensured_steps_from_spec(spec: spec),
+    d => doc_line_of(text: concat("ensure_apt_package ", sh_arg(s: d.package)))
+  )
+  emit_sudo_wrapped_script_body(
+    marker: "GUNBC_APPLY_EOF",
+    inner: doc_concat(parts: concat(
+    [
+      doc_line_of(text: "set -euo pipefail"),
+      doc_line_of(text: concat("# GENERATED APPLY by dsl/gunbc/live_deploy/emit.dag host=", spec.target.host.identity)),
+      doc_line_of(text: "ensure_apt_package() {"),
+      doc_line_of(text: "  local pkg=\"$1\""),
+      doc_line_of(text: "  if ! dpkg -s \"$pkg\" >/dev/null 2>&1; then"),
+      doc_line_of(text: "    apt-get install -y \"$pkg\""),
+      doc_line_of(text: "  fi"),
+      doc_line_of(text: "}"),
+      doc_line_of(text: ""),
+    ],
+    dep_lines,
+    [
+      doc_line_of(text: ""),
+      doc_line_of(text: "install -d -m 0755 /opt/gunbc"),
+      doc_line_of(text: concat("cat > ", gunbc_roadmap_server_path, " <<'GUNBC_SERVER_EOF'")),
+      doc_line_of(text: roadmap_dashboard_node_http_server_source()),
+      doc_line_of(text: "GUNBC_SERVER_EOF"),
+      doc_line_of(text: ""),
+      doc_line_of(text: concat("cat > ", gunbc_roadmap_systemd_unit_path, " <<'GUNBC_UNIT_EOF'")),
+    ],
+    [
+      emit_systemd_unit_doc(spec: spec),
+      doc_line_of(text: "GUNBC_UNIT_EOF"),
+      doc_line_of(text: ""),
+      doc_line_of(text: "systemctl daemon-reload"),
+      doc_line_of(text: concat("systemctl enable ", spec.service.unit_name)),
+      doc_line_of(text: concat("systemctl restart ", spec.service.unit_name)),
+      doc_line_of(text: ""),
+      doc_line_of(text: concat("if ! tailscale serve status 2>/dev/null | grep -q ':", to_string(port), "'; then")),
+      doc_line_of(text: concat("  tailscale serve --bg ", to_string(port))),
+      doc_line_of(text: "fi"),
+      doc_line_of(text: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=apply verdict=converged")),
+    ]
+  )))
+}
+
+fn emit_retract_script_body(spec: DeploymentSpec) -> Doc {
+  emit_sudo_wrapped_script_body(
+    marker: "GUNBC_RETRACT_EOF",
+    inner: doc_concat(parts: [
+    doc_line_of(text: "set -euo pipefail"),
+    doc_line_of(text: concat("# GENERATED RETRACT by dsl/gunbc/live_deploy/emit.dag host=", spec.target.host.identity)),
+    doc_line_of(text: "# owned-artifacts only — ensured deps (tailscale, nodejs) intentionally NOT purged"),
+    doc_line_of(text: "tailscale serve reset || true"),
+    doc_line_of(text: concat("systemctl disable --now ", spec.service.unit_name, " 2>/dev/null || true")),
+    doc_line_of(text: concat("rm -f ", gunbc_roadmap_systemd_unit_path)),
+    doc_line_of(text: "systemctl daemon-reload"),
+    doc_line_of(text: concat("rm -f ", gunbc_roadmap_server_path)),
+    doc_line_of(text: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=retract verdict=converged")),
+  ]))
+}
+
+fn live_deploy_apply_script_for(spec: DeploymentSpec) -> String {
+  render(doc: emit_apply_script_body(spec: spec), proto: live_deploy_protocol)
+}
+
+fn live_deploy_retract_script_for(spec: DeploymentSpec) -> String {
+  render(doc: emit_retract_script_body(spec: spec), proto: live_deploy_protocol)
+}
+
+fn expected_live_deploy_apply_script() -> String {
+  live_deploy_apply_script_for(spec: deployment_spec_srv1())
+}
+
+fn expected_live_deploy_retract_script() -> String {
+  live_deploy_retract_script_for(spec: deployment_spec_srv1())
+}
+
+fn live_deploy_apply_script_drifted(committed: String) -> Bool {
+  !(committed == expected_live_deploy_apply_script())
+}
+
+fn live_deploy_retract_script_drifted(committed: String) -> Bool {
+  !(committed == expected_live_deploy_retract_script())
+}
+
+fn live_deploy_systemd_unit_for(spec: DeploymentSpec) -> String {
+  render(doc: emit_systemd_unit_doc(spec: spec), proto: live_deploy_protocol)
+}
+
+fn deployment_ensure_dependency_script(dep: DeploymentEnsuredStep) -> String {
+  concat(
+    concat(
+      concat("if ! dpkg -s ", dep.package),
+      concat(" >/dev/null 2>&1; then apt-get install -y ", dep.package)
+    ),
+    "; fi"
+  )
+}
+
+data emit_sudo_wrapped_script_body_dissolution_trigger: String = "🟡 dissolve-on: emit_sudo_wrapped_script_body — sudo heredoc framing built with doc_concat/string shell (extends pre-existing bash-emit concat in this file); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — HostEffect intent rows per owned/ensured step realized through host_effect_apply transport handlers, retiring bash script emit and medium_structure_exception_roster entry for dsl/gunbc/live_deploy/emit.dag"
+
+data live_deploy_emit_shell_dissolution_trigger: String = "🟡 dissolve-on: host_effect modeled shell steps — replace bash concat emit with HostEffect intent rows realized per transport handler; medium_structure_exception_roster entry retires when live_deploy folds emit through host_effect_apply without string shell"

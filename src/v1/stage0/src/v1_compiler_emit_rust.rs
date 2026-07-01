@@ -3613,7 +3613,7 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod complexity_linearity_audit_project;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod doc_reachability_project;\npub mod inert_carrier_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod languages_consumer_census;\npub mod non_fold_residue_project;\npub mod transport_script_position_project;\npub mod v1_compiler_dag_collect;\npub mod v1_compiler_dag_collect_support;".to_string()
+            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod complexity_linearity_audit_project;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod inert_carrier_project;\npub mod medium_structure_project;\npub mod extdeps_shape_transport_policy_project;\npub mod fact_cardinality_census;\npub mod languages_consumer_census;\npub mod non_fold_residue_project;\npub mod transport_script_position_project;\npub mod v1_compiler_dag_collect;\npub mod v1_compiler_dag_collect_support;".to_string()
         } else {
             "".to_string()
         };
@@ -24161,6 +24161,11 @@ pub fn emit_main_rs(
         } else {
             "".to_string()
         };
+        let main_tests = if has_pipeline.clone() {
+            emit_main_extract_module_path_tests()
+        } else {
+            "".to_string()
+        };
         let content = v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
@@ -24173,30 +24178,33 @@ pub fn emit_main_rs(
                                             v1_rt::concat(
                                                 v1_rt::concat(
                                                     v1_rt::concat(
-                                                        v1_rt::concat(header, crate_use),
-                                                        resource_use,
+                                                        v1_rt::concat(
+                                                            v1_rt::concat(header, crate_use),
+                                                            resource_use,
+                                                        ),
+                                                        svc_use,
                                                     ),
-                                                    svc_use,
+                                                    mod_uses,
                                                 ),
-                                                mod_uses,
+                                                "\n".to_string(),
                                             ),
-                                            "\n".to_string(),
+                                            cli_struct,
                                         ),
-                                        cli_struct,
+                                        "\n\n".to_string(),
                                     ),
-                                    "\n\n".to_string(),
+                                    subcommand_enum,
                                 ),
-                                subcommand_enum,
+                                "\n\n".to_string(),
                             ),
-                            "\n\n".to_string(),
+                            pipeline_fns,
                         ),
-                        pipeline_fns,
+                        main_fn,
                     ),
-                    main_fn,
+                    "\n".to_string(),
                 ),
-                "\n".to_string(),
+                diagnostic_fns,
             ),
-            diagnostic_fns,
+            main_tests,
         );
         Rc::new(TextFile {
             path: v1_rt::concat(
@@ -24323,6 +24331,11 @@ pub fn emit_subcommand_enum(
         } else {
             "".to_string()
         };
+        let ci_variant = if has_pipeline.clone() {
+            "    Ci,\n".to_string()
+        } else {
+            "".to_string()
+        };
         let run_variant_lines = Rc::new(vec![
             "/// Execute a .dag program directly (interpreter)\n".to_string(),
             make_indent((depth.clone() + 1)),
@@ -24363,7 +24376,10 @@ pub fn emit_subcommand_enum(
             "".to_string()
         };
         let all_variants = if has_pipeline.clone() {
-            v1_rt::concat(variants, Rc::new(vec![compile_variant, run_variant]))
+            v1_rt::concat(
+                variants,
+                Rc::new(vec![compile_variant, ci_variant, run_variant]),
+            )
         } else {
             variants
         };
@@ -24557,13 +24573,18 @@ pub fn emit_main_fn(
         } else {
             "".to_string()
         };
+        let ci_arm = if has_pipeline.clone() {
+            emit_ci_match_arm()
+        } else {
+            "".to_string()
+        };
         let run_arm = if has_pipeline.clone() {
             emit_run_match_arm(crate_name.clone())
         } else {
             "".to_string()
         };
         let all_arms = if has_pipeline.clone() {
-            v1_rt::concat(match_arms, Rc::new(vec![compile_arm, run_arm]))
+            v1_rt::concat(match_arms, Rc::new(vec![compile_arm, ci_arm, run_arm]))
         } else {
             match_arms
         };
@@ -24620,8 +24641,22 @@ pub fn emit_compile_match_arm(crate_name: String) -> String {
     }
 }
 
+pub fn emit_ci_match_arm() -> String {
+    v1_rt::concat(
+        v1_rt::concat(
+            "\n        Commands::Ci {} => {\n".to_string(),
+            "            cli_run::handle_ci();\n".to_string(),
+        ),
+        "        }\n".to_string(),
+    )
+}
+
 pub fn emit_run_match_arm(crate_name: String) -> String {
     v1_rt::concat(v1_rt::concat("\n        Commands::Run { source_roots, function, entry, claim_run } => {\n".to_string(), "            cli_run::handle_run_with_options(source_roots, function, entry, cli.dry_run, claim_run);\n".to_string()), "        },".to_string())
+}
+
+pub fn emit_main_extract_module_path_tests() -> String {
+    v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("\n#[cfg(test)]\n".to_string(), "mod tests {\n".to_string()), "    use super::*;\n\n".to_string()), "    #[test]\n".to_string()), "    fn extract_module_path_none_for_moduleless_parse_fixture() {\n".to_string()), "        let fixture =\n".to_string()), "            \"data split_brace_sample: SplitBraceSample =\\nSplitBraceSample { field: \\\"x\\\" }\\n\";\n".to_string()), "        assert!(extract_module_path(fixture).is_none());\n".to_string()), "    }\n\n".to_string()), "    #[test]\n".to_string()), "    fn extract_module_path_some_for_module_decl() {\n".to_string()), "        assert_eq!(\n".to_string()), "            extract_module_path(\"module v1.test.fixture\\n\"),\n".to_string()), "            Some(\"v1.test.fixture\".to_string())\n".to_string()), "        );\n".to_string()), "    }\n".to_string()), "}\n".to_string())
 }
 
 pub fn emit_main_pipeline_fns(crate_name: String) -> String {
