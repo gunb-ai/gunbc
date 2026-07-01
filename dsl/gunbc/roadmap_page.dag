@@ -15,6 +15,7 @@ import gunbc.roadmap_model {
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done, signoff_accepts, signoff_by }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
+import gunbc.roadmap_spawner { spawn_frontier, SpawnFrontier }
 import ctrl.process_algebra { ProcessNodeId }
 
 fn roadmap_page_max_depth() -> Int { 8 }
@@ -178,6 +179,65 @@ fn section_markup(s: RoadmapSection, merged: List<Int>) -> MarkupNode {
   el_class("section", "roadmap-section", concat([ el("h2", [ txt(s.title) ]) ], body))
 }
 
+fn frontier_flat_node_li(rn: RoadmapNode, merged: List<Int>) -> MarkupNode {
+  let status = node_status_symbol(rn: rn, merged: merged)
+  let head = concat(
+    concat(
+      [
+        el_class("span", concat("status status-", status), [ txt(status) ]),
+        el_class("span", "title", title_nodes(line: rn.line)),
+      ],
+      owner_badge(rn: rn),
+    ),
+    concat(sizing_badge(rn: rn), carrier_links(carriers: rn.carriers)),
+  )
+  ElementNode {
+    tag: "li",
+    attrs: [ MarkupAttr { name: "class", value: concat("node node-", status) } ],
+    children: head,
+  }
+}
+
+fn frontier_bucket_ul(items: List<RoadmapNode>, merged: List<Int>) -> MarkupNode {
+  el("ul", map(items, rn => frontier_flat_node_li(rn: rn, merged: merged)))
+}
+
+fn frontier_bucket_markup(label: String, cls: String, items: List<RoadmapNode>, merged: List<Int>) -> MarkupNode {
+  el_class("section", concat("frontier-bucket frontier-", cls), [
+    el("h2", [ txt(label) ]),
+    frontier_bucket_ul(items: items, merged: merged),
+  ])
+}
+
+fn roadmap_frontier_markup(frontier: SpawnFrontier, merged: List<Int>) -> MarkupNode {
+  el_class("section", "roadmap-frontier", [
+    frontier_bucket_markup(label: "Ready", cls: "ready", items: frontier.ready, merged: merged),
+    frontier_bucket_markup(label: "Upcoming", cls: "upcoming", items: frontier.upcoming, merged: merged),
+    frontier_bucket_markup(label: "Done", cls: "done", items: frontier.done, merged: merged),
+  ])
+}
+
+fn roadmap_daily_workspace_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
+  let frontier = spawn_frontier(doc: doc, merged: merged)
+  ElementNode {
+    tag: "html",
+    attrs: [],
+    children: [
+      el("head", [
+        ElementNode { tag: "meta", attrs: [ MarkupAttr { name: "charset", value: "utf-8" } ], children: [] },
+        el("style", [ txt(roadmap_css()) ]),
+        el("title", [ txt("gunbc — daily workspace") ]),
+      ]),
+      el("body", [
+        el("header", [ el("h1", [ txt("gunbc — daily workspace") ]) ]),
+        el_class("main", "daily-workspace", [
+          roadmap_frontier_markup(frontier: frontier, merged: merged),
+        ]),
+      ]),
+    ],
+  }
+}
+
 fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
   let lead = map(doc.lead_lanes, s => section_markup(s: s, merged: merged))
   let secs = map(doc.sections, s => section_markup(s: s, merged: merged))
@@ -201,4 +261,8 @@ fn roadmap_page(doc: RoadmapDocument, merged: List<Int>) -> MarkupNode {
 
 fn roadmap_page_for_authority() -> MarkupNode {
   roadmap_page(doc: roadmap_authority(), merged: authored_merged_prs())
+}
+
+fn roadmap_daily_workspace_page_for_authority() -> MarkupNode {
+  roadmap_daily_workspace_page(doc: roadmap_authority(), merged: authored_merged_prs())
 }

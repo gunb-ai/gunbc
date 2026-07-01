@@ -1,7 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::rc::Rc;
 use std::sync::OnceLock;
 
@@ -199,13 +198,21 @@ fn ci_layer_roots_authority_content() -> &'static str {
         .as_str()
 }
 
-/// Project a `List<String>` data literal out of the ci_layer_roots authority's SOURCE TEXT via the
-/// real front-end (`tokenize` + `parse`) — no second hand-rolled scanner.
-pub(crate) fn string_list_data_from_ci_layer_roots_source(
+/// Project a `List<String>` data literal out of a `.dag` module's SOURCE TEXT via the real front-end
+/// (`tokenize` + `parse`) — no second hand-rolled scanner. Pure (text in, list out) so a synthetic
+/// authority carrying non-default values can drive it: a reader that ignored its input and returned
+/// a hardcoded copy fails that control — the by-construction discrimination (DESIGN §5). Fail-closed:
+/// a parse error, a missing data def, a non-string-list body, or (when `allow_empty` is false) an
+/// empty list is a loud panic, never a silent fallback that would re-open the drift.
+pub(crate) fn string_list_data_from_module_source(
+    module_rel_path: &str,
     content: &str,
     data_name: &str,
+    allow_empty: bool,
 ) -> Vec<String> {
-    let filename = CI_LAYER_ROOTS_AUTHORITY_REL.to_string();
+    use crate::v1_std_core::{ExprData, LiteralValue};
+
+    let filename = module_rel_path.to_string();
     let tokens = crate::v1_compiler_tokenize::tokenize(content.to_string(), filename.clone());
     let source_index =
         crate::v1_std_core::build_newline_index(filename.clone(), content.to_string());
@@ -214,13 +221,14 @@ pub(crate) fn string_list_data_from_ci_layer_roots_source(
     let result = crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(source_indices));
     if let Some(err) = result.error.as_ref() {
         panic!(
-            "ci_layer_roots authority: parse error in {CI_LAYER_ROOTS_AUTHORITY_REL}: {}",
+            "lens table reader: parse error in {module_rel_path}: {}",
             crate::v1_std_core::diagnostic_to_message(err.diagnostic.clone())
         );
     }
-    let module = result.module.as_ref().unwrap_or_else(|| {
-        panic!("ci_layer_roots authority: {CI_LAYER_ROOTS_AUTHORITY_REL} parsed to no module")
-    });
+    let module = result
+        .module
+        .as_ref()
+        .unwrap_or_else(|| panic!("lens table reader: {module_rel_path} parsed to no module"));
     for item in module.children.iter() {
         if item.name != data_name
             || !crate::v1_compiler_emit_core_support::is_data_def_item(item.clone())
@@ -228,15 +236,12 @@ pub(crate) fn string_list_data_from_ci_layer_roots_source(
             continue;
         }
         let body = item.body.as_ref().unwrap_or_else(|| {
-            panic!(
-                "ci_layer_roots authority: `data {data_name}` in \
-                 {CI_LAYER_ROOTS_AUTHORITY_REL} has no value body"
-            )
+            panic!("lens table reader: `data {data_name}` in {module_rel_path} has no value body")
         });
         if !matches!(body.expr_data.as_ref(), ExprData::ExprListLit) {
             panic!(
-                "ci_layer_roots authority: `data {data_name}` in \
-                 {CI_LAYER_ROOTS_AUTHORITY_REL} is not a `List<String>` literal"
+                "lens table reader: `data {data_name}` in {module_rel_path} is not a \
+                 `List<String>` literal"
             );
         }
         let mut values = Vec::new();
@@ -245,29 +250,43 @@ pub(crate) fn string_list_data_from_ci_layer_roots_source(
                 ExprData::ExprLiteral { value } => match value.as_ref() {
                     LiteralValue::LitStr { value } => values.push(value.clone()),
                     _ => panic!(
-                        "ci_layer_roots authority: an element of `{data_name}` in \
-                         {CI_LAYER_ROOTS_AUTHORITY_REL} is not a string literal"
+                        "lens table reader: an element of `{data_name}` in {module_rel_path} is not \
+                         a string literal"
                     ),
                 },
                 _ => panic!(
-                    "ci_layer_roots authority: an element of `{data_name}` in \
-                     {CI_LAYER_ROOTS_AUTHORITY_REL} is not a literal"
+                    "lens table reader: an element of `{data_name}` in {module_rel_path} is not a \
+                     literal"
                 ),
             }
         }
-        if values.is_empty() {
-            panic!(
-                "ci_layer_roots authority: `{data_name}` in \
-                 {CI_LAYER_ROOTS_AUTHORITY_REL} is empty (fail-closed: an empty witness corpus would \
-                 vacuously pass every census wall)"
-            );
+        if values.is_empty() && !allow_empty {
+            panic!("lens table reader: `{data_name}` in {module_rel_path} is empty (fail-closed)");
         }
         return values;
     }
-    panic!(
-        "ci_layer_roots authority: no `data {data_name}` def in \
-         {CI_LAYER_ROOTS_AUTHORITY_REL}"
-    )
+    panic!("lens table reader: no `data {data_name}` def in {module_rel_path}")
+}
+
+/// Read a `List<String>` data table from a live `.dag` lens authority on disk.
+pub fn lens_string_list_data(
+    module_rel_path: &str,
+    data_name: &str,
+    allow_empty: bool,
+) -> Vec<String> {
+    let path = workspace_root().join(module_rel_path);
+    let content = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("lens table reader: failed to read {}: {e}", path.display()));
+    string_list_data_from_module_source(module_rel_path, &content, data_name, allow_empty)
+}
+
+/// Project a `List<String>` data literal out of the ci_layer_roots authority's SOURCE TEXT via the
+/// real front-end (`tokenize` + `parse`) — no second hand-rolled scanner.
+pub(crate) fn string_list_data_from_ci_layer_roots_source(
+    content: &str,
+    data_name: &str,
+) -> Vec<String> {
+    string_list_data_from_module_source(CI_LAYER_ROOTS_AUTHORITY_REL, content, data_name, false)
 }
 
 /// Project the `witness_layer_roots` `List<String>` literal out of the ci_layer_roots authority.
@@ -3257,7 +3276,7 @@ pub fn construction_authority_unresolved(
         .iter()
         .filter(|(_, module_path, decl_name)| {
             !module_to_content.get(module_path).is_some_and(|content| {
-                crate::fact_cardinality_census::extract_top_level_decls(content)
+                crate::module_path_index::fact_cardinality_census::extract_top_level_decls(content)
                     .iter()
                     .any(|(name, _)| name == decl_name)
             })
@@ -3417,9 +3436,6 @@ impl Default for DiscoveryCorpusOptions {
     }
 }
 
-const FLOOR_CI_DIFF_POLICY_BASE: &str = "origin/main";
-const FLOOR_CI_DIFF_POLICY_HEAD: &str = "HEAD";
-
 enum FloorGitDiffOutcome {
     ObservationFailClosed { reason: String },
     UnifiedProduced(String),
@@ -3432,32 +3448,37 @@ struct FileLineRange {
 }
 
 fn floor_git_diff_range() -> Result<String, String> {
-    if let Ok(injected) = std::env::var("GUNBC_CI_DIFF_UNIFIED") {
-        return Ok(injected);
+    use v1_interpreter::Value;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_diff_observe.dag";
+    let (graph, indices) = resolve_entry_graph(&roots, entry)
+        .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let result =
+        v1_interpreter::run_in_context(&ctx, "floor_observe_git_diff_unified_for_ci", false)
+            .map_err(|e| format!("floor_observe_git_diff_unified_for_ci: {e}"))?;
+    match &result {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "UnifiedDiffOk") => match ctx.field(fields, "text") {
+            Some(Value::Str(s)) => Ok(s.clone()),
+            _ => Err("UnifiedDiffOk missing `text` field".to_string()),
+        },
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "UnifiedDiffFail") => match ctx.field(fields, "reason") {
+            Some(Value::Str(r)) => Err(r.clone()),
+            _ => Err("git diff observation failed (no reason)".to_string()),
+        },
+        other => Err(format!(
+            "floor_observe_git_diff_unified_for_ci returned `{}`, expected FloorUnifiedDiffResult",
+            ctx.format_value(other)
+        )),
     }
-    let base = std::env::var("GUNBC_CI_DIFF_BASE")
-        .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_BASE.to_string());
-    let head = std::env::var("GUNBC_CI_DIFF_HEAD")
-        .unwrap_or_else(|_| FLOOR_CI_DIFF_POLICY_HEAD.to_string());
-    let merge_base = std::env::var("GUNBC_CI_DIFF_MERGE_BASE")
-        .map(|v| v != "0" && v != "false")
-        .unwrap_or(true);
-    let range = if merge_base {
-        format!("{base}...{head}")
-    } else {
-        format!("{base} {head}")
-    };
-    let output = Command::new("git")
-        .args(["diff", "-U0", &range])
-        .output()
-        .map_err(|e| format!("git diff spawn failed: {e}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "git diff -U0 {} failed (status {})",
-            range, output.status
-        ));
-    }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
 fn normalize_repo_path(path: &str) -> String {
@@ -5468,6 +5489,82 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
     out
 }
 
+// --- Inert carrier census (folded from inert_carrier_project.rs) ---
+//
+// A type carrier is "inert" iff (a) declared in a non-test file, (b) its name appears in at least
+// one *_test.dag file (self-tested), and (c) its name appears in NO non-test .dag file outside its
+// own declaration block (zero real consumer). This is DESIGN §5 coverage-by-illusion.
+// DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the
+// token scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.
+
+fn inert_carrier_identifier_tokens(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for ch in line.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            cur.push(ch);
+        } else if !cur.is_empty() {
+            out.push(std::mem::take(&mut cur));
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+fn inert_carrier_count_token(text: &str, name: &str) -> i64 {
+    let mut n = 0i64;
+    for raw in text.lines() {
+        for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
+            if tok == name {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let trimmed = lines[i].trim_start();
+        let Some(rest) = trimmed.strip_prefix("type ") else {
+            i += 1;
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            i += 1;
+            continue;
+        }
+        let mut block = String::new();
+        block.push_str(lines[i]);
+        block.push('\n');
+        let mut depth = brace_delta(lines[i]);
+        i += 1;
+        while i < lines.len() {
+            let nt = lines[i].trim_start();
+            if depth <= 0 {
+                if !(nt.starts_with('|') || nt.starts_with('=')) {
+                    break;
+                }
+            }
+            block.push_str(lines[i]);
+            block.push('\n');
+            depth += brace_delta(lines[i]);
+            i += 1;
+        }
+        out.push((name, block));
+    }
+    out
+}
+
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
 const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
 
@@ -5527,6 +5624,198 @@ fn markdown_link_targets(content: &str) -> Vec<String> {
         i += 1;
     }
     out
+}
+
+struct InertCarrierData {
+    declared_count: usize,
+    inert_names: Vec<String>,
+}
+
+fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
+    let mut declared: BTreeMap<String, String> = BTreeMap::new();
+    let mut decl_count: BTreeMap<String, usize> = BTreeMap::new();
+    let mut self_block_refs: BTreeMap<String, i64> = BTreeMap::new();
+    for (rel, content) in files {
+        if is_test_dag(rel) {
+            continue;
+        }
+        for (name, block) in inert_carrier_type_carrier_blocks(content) {
+            declared.entry(name.clone()).or_insert_with(|| rel.clone());
+            *decl_count.entry(name.clone()).or_insert(0) += 1;
+            *self_block_refs.entry(name.clone()).or_insert(0) +=
+                inert_carrier_count_token(&block, &name);
+        }
+    }
+    let names: BTreeSet<String> = declared.keys().cloned().collect();
+    let mut nontest_occ: BTreeMap<String, i64> = BTreeMap::new();
+    let mut self_tested: BTreeSet<String> = BTreeSet::new();
+    for (rel, content) in files {
+        let mut local: BTreeMap<String, i64> = BTreeMap::new();
+        for raw in content.lines() {
+            for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
+                if names.contains(&tok) {
+                    *local.entry(tok).or_insert(0) += 1;
+                }
+            }
+        }
+        if is_test_dag(rel) {
+            for (k, _) in local {
+                self_tested.insert(k);
+            }
+        } else {
+            for (k, v) in local {
+                *nontest_occ.entry(k).or_insert(0) += v;
+            }
+        }
+    }
+    let mut inert_names: Vec<String> = Vec::new();
+    for name in declared.keys() {
+        if decl_count.get(name).copied().unwrap_or(0) != 1 {
+            continue;
+        }
+        if !self_tested.contains(name) {
+            continue;
+        }
+        let total = nontest_occ.get(name).copied().unwrap_or(0);
+        let own = self_block_refs.get(name).copied().unwrap_or(0);
+        if total - own <= 0 {
+            inert_names.push(name.clone());
+        }
+    }
+    inert_names.sort();
+    inert_names.dedup();
+    InertCarrierData {
+        declared_count: declared.len(),
+        inert_names,
+    }
+}
+
+fn build_inert_carrier_data() -> &'static InertCarrierData {
+    static CACHE: OnceLock<InertCarrierData> = OnceLock::new();
+    CACHE.get_or_init(|| compute_inert_carrier_data(&corpus_dag_files()))
+}
+
+pub fn inert_carrier_names_live() -> Vec<String> {
+    build_inert_carrier_data().inert_names.clone()
+}
+
+pub fn inert_carrier_declared_count_live() -> i64 {
+    build_inert_carrier_data().declared_count as i64
+}
+
+#[cfg(test)]
+mod inert_carrier_tests {
+    use super::*;
+
+    fn inert_names_of(files: &[(&str, &str)]) -> Vec<String> {
+        let owned: Vec<(String, String)> = files
+            .iter()
+            .map(|(p, c)| (p.to_string(), c.to_string()))
+            .collect();
+        compute_inert_carrier_data(&owned).inert_names
+    }
+
+    #[test]
+    fn type_carrier_blocks_extracts_names_and_bodies() {
+        let c = "module m\ntype Connective = Atom | Conj\ntype WorkDemand {\n  field: Int\n}\nfn f() -> Int { 1 }\n";
+        let blocks = inert_carrier_type_carrier_blocks(c);
+        let names: Vec<&String> = blocks.iter().map(|(n, _)| n).collect();
+        assert_eq!(names, vec!["Connective", "WorkDemand"]);
+        let wd = &blocks.iter().find(|(n, _)| n == "WorkDemand").unwrap().1;
+        assert!(wd.contains("field: Int") && wd.contains('}'));
+        assert!(!wd.contains("fn f"));
+    }
+
+    #[test]
+    fn identifier_tokens_are_whole_words() {
+        let toks = inert_carrier_identifier_tokens("  field: PlacementSupply = foo(Placement)");
+        assert!(toks.contains(&"PlacementSupply".to_string()));
+        assert!(toks.contains(&"Placement".to_string()));
+        assert!(toks.contains(&"field".to_string()));
+    }
+
+    #[test]
+    fn red_control_self_tested_zero_consumer_carrier_is_inert() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Lonely { x: Int }\n"),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Lonely { x: 1 } == Lonely { x: 1 } }\n",
+            ),
+        ]);
+        assert!(
+            inert.contains(&"Lonely".to_string()),
+            "a self-tested carrier with no real consumer must be flagged inert; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_carrier_with_real_consumer_is_not_inert() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Used { x: Int }\n"),
+            (
+                "b.dag",
+                "module b\nimport a { Used }\nfn f(u: Used) -> Int { u.x }\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Used { x: 1 } == Used { x: 1 } }\n",
+            ),
+        ]);
+        assert!(
+            !inert.contains(&"Used".to_string()),
+            "a carrier with a real (non-test, cross-file) consumer must NOT be flagged; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_same_file_consumer_is_not_inert() {
+        let inert = inert_names_of(&[
+            (
+                "lens.dag",
+                "module lens\ntype LocalFact { x: Int }\nfn clean(fs: LocalFact) -> Bool { fs.x == 0 }\n",
+            ),
+            ("lens_test.dag", "module t\nfn t() -> Bool { clean(fs: LocalFact { x: 0 }) }\n"),
+        ]);
+        assert!(
+            !inert.contains(&"LocalFact".to_string()),
+            "a carrier consumed by a fn in its own file is NOT inert; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_untested_unused_carrier_is_not_flagged() {
+        let inert = inert_names_of(&[("a.dag", "module a\ntype Staged { x: Int }\n")]);
+        assert!(
+            !inert.contains(&"Staged".to_string()),
+            "an untested unused carrier must NOT be flagged (it is model-first, not illusion); got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn comment_reference_is_not_a_real_consumer() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Noted { x: Int }\n"),
+            (
+                "b.dag",
+                "module b\n// Noted is described here\nfn f() -> Int { 1 }\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Noted { x: 1 } == Noted { x: 1 } }\n",
+            ),
+        ]);
+        assert!(inert.contains(&"Noted".to_string()));
+    }
+
+    #[test]
+    fn doubly_declared_name_is_not_flagged() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Dup { x: Int }\n"),
+            ("b.dag", "module b\ntype Dup { y: Int }\n"),
+        ]);
+        assert!(!inert.contains(&"Dup".to_string()));
+    }
 }
 
 fn resolve_doc_link(from: &str, target: &str) -> Vec<String> {
@@ -5780,6 +6069,25 @@ mod module_path_index_tests {
                 "src/v2/test/claim/manual".to_string(),
             ],
             "live authority scan-dir value drifted"
+        );
+    }
+
+    #[test]
+    fn lens_table_reader_projects_live_medium_structure_exception_roster() {
+        const LENS: &str = "src/v2/lens/medium_structure_containment.dag";
+        let roster = lens_string_list_data(LENS, "medium_structure_exception_roster", false);
+        assert!(
+            roster.iter().any(|p| p == "dsl/gunbc/ci_workflow.dag"),
+            "live lens authority roster must include a known exception path; got {roster:?}"
+        );
+    }
+
+    #[test]
+    fn lens_table_reader_allows_empty_when_explicit() {
+        const LENS: &str = "src/v2/lens/medium_structure_containment.dag";
+        assert!(
+            lens_string_list_data(LENS, "empty_medium_marker_list", true).is_empty(),
+            "allow_empty=true must permit intentionally empty lens tables"
         );
     }
 

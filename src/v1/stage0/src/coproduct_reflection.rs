@@ -798,13 +798,12 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
         let file_content = std::fs::read_to_string(&abs).map_err(|e| InterpError::TypeError {
             msg: format!("concept_decl_facts: failed to read `{rel_path}`: {e}"),
         })?;
-        let (items, si) = crate::medium_structure_project::parse_file(&abs).ok_or_else(|| {
-            InterpError::TypeError {
+        let (items, si) = crate::module_path_index::medium_structure_census::parse_file(&abs)
+            .ok_or_else(|| InterpError::TypeError {
                 msg: format!(
                     "concept_decl_facts: failed to parse `{rel_path}` (fail-closed; no silent skip)"
                 ),
-            }
-        })?;
+            })?;
         files_parsed += 1;
         for item in items.iter() {
             if crate::v1_compiler_infer_items::item_kind(item.clone()) != ItemKind::TypeItem {
