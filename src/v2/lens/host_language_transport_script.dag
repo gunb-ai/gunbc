@@ -1,7 +1,4 @@
 module v2.lens.host_language_transport_script
-import gunbc.hand_lens_host_bridge_scaffold_index {
-  transport_script_position_host_bridge_dissolution_trigger,
-}
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { RealizationDispatch }
 
