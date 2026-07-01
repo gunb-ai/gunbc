@@ -29,11 +29,6 @@ import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
-import gunbc.fleet_host_budget {
-  gunbc_per_runner_memory_cap,
-  gunbc_per_runner_swap_cap,
-  gunbc_per_runner_memory_high,
-}
 import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
 import extdeps.os.systemd {
   systemd_memory_max_property,
@@ -443,34 +438,34 @@ fn runner_host_knobs(h: RunnerHostDeployment) -> List<ConvergeKnob> {
     legacy_converge_knob(
       slice: RunnerSlice,
       name: "per_slot_memory_max_bytes",
-      desired: to_string(byte_size_count(b: h.per_runner_memory_cap)),
+      desired: to_string(byte_size_count(b: h.slot_memory.memory_max)),
       target: PerSlotMemoryCap {
         dropin_path: gunbc_runner_per_slot_dropin_path,
         instance_glob: glob,
         property: systemd_memory_max_property,
-        bytes_value: to_string(byte_size_count(b: h.per_runner_memory_cap)),
+        bytes_value: to_string(byte_size_count(b: h.slot_memory.memory_max)),
       }
     ),
     legacy_converge_knob(
       slice: RunnerSlice,
       name: "per_slot_memory_swap_max_bytes",
-      desired: to_string(byte_size_count(b: gunbc_per_runner_swap_cap)),
+      desired: to_string(byte_size_count(b: h.slot_memory.memory_swap_max)),
       target: PerSlotMemoryCap {
         dropin_path: gunbc_runner_per_slot_swap_dropin_path,
         instance_glob: glob,
         property: systemd_memory_swap_max_property,
-        bytes_value: to_string(byte_size_count(b: gunbc_per_runner_swap_cap)),
+        bytes_value: to_string(byte_size_count(b: h.slot_memory.memory_swap_max)),
       }
     ),
     legacy_converge_knob(
       slice: RunnerSlice,
       name: "per_slot_memory_high_bytes",
-      desired: to_string(byte_size_count(b: gunbc_per_runner_memory_high)),
+      desired: to_string(byte_size_count(b: h.slot_memory.memory_high)),
       target: PerSlotMemoryCap {
         dropin_path: gunbc_runner_per_slot_high_dropin_path,
         instance_glob: glob,
         property: systemd_memory_high_property,
-        bytes_value: to_string(byte_size_count(b: gunbc_per_runner_memory_high)),
+        bytes_value: to_string(byte_size_count(b: h.slot_memory.memory_high)),
       }
     ),
     legacy_converge_knob(

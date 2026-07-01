@@ -13,6 +13,8 @@ import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.fleet_host_budget {
   gunbc_fleet_oomd_evidence,
   gunbc_runner_pool_budget,
+  gunbc_runner_slot_memory_contract,
+  RunnerSlotMemoryContract,
   host_allocation_conserves,
   declared_runner_count,
   oomd_actuation_floor,
@@ -67,7 +69,7 @@ type RunnerHostDeployment {
   identity: HostIdentity
   runner_count: Int
   runner_slice_cap: ByteSize
-  per_runner_memory_cap: ByteSize
+  slot_memory: RunnerSlotMemoryContract
   build_tokens: HardwareThreadCount
   runner: RunnerSpec
   workload_class: WorkloadClass
@@ -157,7 +159,7 @@ fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount)
     identity: offer.supply.physical.identity,
     runner_count: declared_runner_count(),
     runner_slice_cap: gunbc_runner_pool_budget,
-    per_runner_memory_cap: gunbc_ci_runner_cgroup_memory_cap,
+    slot_memory: gunbc_runner_slot_memory_contract,
     build_tokens: nproc,
     runner: runner_spec_from_offer(offer: offer),
     workload_class: BatchLatencyTolerant,
@@ -212,7 +214,7 @@ fn runner_deployment_plan() -> RunnerDeploymentPlan {
   if acc.unsound_reason != "" {
     PlanUnsound { reason: acc.unsound_reason }
   } else if acc.any_unfit {
-    PlanUnsound { reason: "declared runner_pool_budget admits zero runners at the declared per_runner_memory_cap: raise runner_pool_budget or lower per_runner_memory_cap" }
+    PlanUnsound { reason: "declared runner_pool_budget admits zero runners at the declared slot_memory.memory_max: raise runner_pool_budget or lower memory_max" }
   } else {
     PlanDerived { hosts: acc.deployments, fleet_concurrent_runs: acc.total }
   }

@@ -66,7 +66,9 @@ fn manifest_host_fields(h: RunnerHostDeployment) -> List<SerialField> {
     serial_field(key: "host", value: serial_scalar(text: h.identity)),
     serial_field(key: "runner_count", value: serial_scalar(text: to_string(h.runner_count))),
     serial_field(key: "runner_slice_cap_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.runner_slice_cap)))),
-    serial_field(key: "per_slot_memory_max_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.per_runner_memory_cap)))),
+    serial_field(key: "per_slot_memory_max_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.slot_memory.memory_max)))),
+    serial_field(key: "per_slot_memory_high_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.slot_memory.memory_high)))),
+    serial_field(key: "per_slot_memory_swap_max_bytes", value: serial_scalar(text: to_string(byte_size_count(b: h.slot_memory.memory_swap_max)))),
     serial_field(key: "build_tokens", value: serial_scalar(text: to_string(hardware_thread_count_value(t: h.build_tokens)))),
     serial_field(key: "labels", value: serial_scalar(text: runner_labels_text(spec: h.runner))),
     serial_field(key: "cpu_weight", value: serial_scalar(text: to_string(workload_class_cpu_weight(wc: h.workload_class))))

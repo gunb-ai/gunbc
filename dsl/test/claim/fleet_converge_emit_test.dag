@@ -3,6 +3,10 @@ module test.claim.fleet_converge_emit
 import std.types { Bool, String, List, Int }
 import std.measure { byte_size, hardware_thread_count, second_count }
 import extdeps.github.actions { RunnerSpec, SelfHosted }
+import gunbc.fleet_host_budget {
+  gunbc_runner_slot_memory_contract,
+  RunnerSlotMemoryContract,
+}
 import gunbc.ci_runner_placement {
   RunnerDeploymentPlan,
   PlanDerived,
@@ -66,12 +70,20 @@ import gunbc.fleet_converge_emit {
   fleet_converge_drifted,
 }
 
+fn fixture_slot_memory(max_bytes: Int) -> RunnerSlotMemoryContract {
+  RunnerSlotMemoryContract {
+    memory_max: byte_size(max_bytes),
+    memory_high: gunbc_runner_slot_memory_contract.memory_high,
+    memory_swap_max: gunbc_runner_slot_memory_contract.memory_swap_max,
+  }
+}
+
 fn fixture_runner_host() -> RunnerHostDeployment {
   RunnerHostDeployment {
     identity: "srv1",
     runner_count: 7,
     runner_slice_cap: byte_size(70391285350),
-    per_runner_memory_cap: byte_size(30000000000),
+    slot_memory: fixture_slot_memory(max_bytes: 30000000000),
     build_tokens: hardware_thread_count(count: 12),
     runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
     workload_class: BatchLatencyTolerant,
@@ -200,7 +212,7 @@ fn witness_drift_perturbed_desired_flips_emit() -> Bool {
       identity: "srv1",
       runner_count: 99,
       runner_slice_cap: byte_size(70391285350),
-      per_runner_memory_cap: byte_size(30000000000),
+      slot_memory: fixture_slot_memory(max_bytes: 30000000000),
       build_tokens: hardware_thread_count(count: 12),
       runner: SelfHosted { labels: ["self-hosted"] },
       workload_class: BatchLatencyTolerant,

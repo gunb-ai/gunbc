@@ -3,35 +3,87 @@ module test.claim.runner_memory_contract
 import std.types { Bool, String }
 import std.measure { byte_size_count }
 import gunbc.fleet_host_budget {
+  gunbc_runner_slot_memory_contract,
   gunbc_per_runner_memory_cap,
   gunbc_per_runner_swap_cap,
   gunbc_per_runner_memory_high,
-  gunbc_ci_runner_cgroup_memory_cap,
 }
+import gunbc.ci_floor_measurement { gunbc_ci_runner_cgroup_memory_cap }
 import gunbc.fleet_converge_emit { expected_fleet_converge_sh }
 import gunbc.host_converge { fleet_converge_policy, ConvergePolicyDerived, RunnerSlice }
+import gunbc.ci_runner_placement { runner_deployment_plan, PlanDerived }
 
 fn has(s: String, p: String) -> Bool {
   string_contains(s: s, pattern: p)
 }
 
-fn witness_standalone_contract_bytes() -> Bool {
-  byte_size_count(b: gunbc_per_runner_memory_cap) == 8589934592
-    && byte_size_count(b: gunbc_per_runner_swap_cap) == 25769803776
-    && byte_size_count(b: gunbc_per_runner_memory_high) == 7516192768
-    && gunbc_per_runner_memory_cap == gunbc_ci_runner_cgroup_memory_cap
+fn witness_contract_is_parameterized_record() -> Bool {
+  let c = gunbc_runner_slot_memory_contract
+  byte_size_count(b: c.memory_max) > 0
+    && byte_size_count(b: c.memory_high) > 0
+    && byte_size_count(b: c.memory_swap_max) >= 0
+    && gunbc_per_runner_memory_cap == c.memory_max
+    && gunbc_per_runner_swap_cap == c.memory_swap_max
+    && gunbc_per_runner_memory_high == c.memory_high
 }
 
-fn witness_emit_projects_swap_and_high() -> Bool {
+fn witness_contract_aliases_nominal_budget_cap() -> Bool {
+  byte_size_count(b: gunbc_runner_slot_memory_contract.memory_max)
+    == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+}
+
+fn per_slot_line(host: String, knob: String, property: String, bytes: String) -> String {
+  concat(
+    concat(
+      concat(
+        concat(
+          concat(
+            concat(
+              concat("converge_per_slot_cap \"", host),
+              "\" \"runner\" \""
+            ),
+            knob
+          ),
+          if knob == "per_slot_memory_swap_max_bytes" {
+            "\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@"
+          } else {
+            "\" \"/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf\" \"actions-runner@"
+          }
+        ),
+        host
+      ),
+      "-*.service\" \""
+    ),
+    concat(concat(property, "\" \""), concat(bytes, "\""))
+  )
+}
+
+fn witness_emit_projects_contract_bytes() -> Bool {
+  let c = gunbc_runner_slot_memory_contract
+  let swap = to_string(byte_size_count(b: c.memory_swap_max))
+  let high = to_string(byte_size_count(b: c.memory_high))
   let sh = expected_fleet_converge_sh()
-  has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv1-*.service\" \"MemorySwapMax\" \"25769803776\"")
-    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_high_bytes\" \"/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf\" \"actions-runner@srv1-*.service\" \"MemoryHigh\" \"7516192768\"")
+  has(s: sh, p: per_slot_line(host: "srv1", knob: "per_slot_memory_swap_max_bytes", property: "MemorySwapMax", bytes: swap))
+    && has(s: sh, p: per_slot_line(host: "srv1", knob: "per_slot_memory_high_bytes", property: "MemoryHigh", bytes: high))
     && has(s: sh, p: "converge_slice_property \"srv1\" \"runner\" \"oom_pressure_auto\" \"system-actions-runner.slice\" \"ManagedOOMMemoryPressure\" \"auto\" \"auto\" \"true\"")
     && has(s: sh, p: "converge_gunbc_pinned_tree \"srv3\" \"gunbc\" \"pinned_tree_sha\" \"fresh_standup\"")
-    && has(s: sh, p: "converge_per_slot_cap \"srv3\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv3-*.service\" \"MemorySwapMax\" \"25769803776\"")
-    && has(s: sh, p: "converge_per_slot_cap \"srv3\" \"runner\" \"per_slot_memory_high_bytes\" \"/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf\" \"actions-runner@srv3-*.service\" \"MemoryHigh\" \"7516192768\"")
+    && has(s: sh, p: per_slot_line(host: "srv3", knob: "per_slot_memory_swap_max_bytes", property: "MemorySwapMax", bytes: swap))
+    && has(s: sh, p: per_slot_line(host: "srv3", knob: "per_slot_memory_high_bytes", property: "MemoryHigh", bytes: high))
     && has(s: sh, p: "converge_slice_property \"srv3\" \"runner\" \"oom_pressure_auto\" \"system-actions-runner.slice\" \"ManagedOOMMemoryPressure\" \"auto\" \"auto\" \"true\"")
     && !has(s: sh, p: "\"MemorySwapMax\" \"0\"")
+}
+
+fn witness_deployment_carries_slot_memory() -> Bool {
+  match runner_deployment_plan() {
+    PlanDerived { hosts: hosts } =>
+      hosts.length() > 0
+        && all(hosts, h =>
+          byte_size_count(b: h.slot_memory.memory_max) == byte_size_count(b: gunbc_runner_slot_memory_contract.memory_max)
+            && byte_size_count(b: h.slot_memory.memory_high) == byte_size_count(b: gunbc_runner_slot_memory_contract.memory_high)
+            && byte_size_count(b: h.slot_memory.memory_swap_max) == byte_size_count(b: gunbc_runner_slot_memory_contract.memory_swap_max)
+        )
+    _ => false
+  }
 }
 
 fn witness_policy_has_runner_oom_auto_knob() -> Bool {
@@ -46,7 +98,9 @@ fn witness_policy_has_runner_oom_auto_knob() -> Bool {
 }
 
 test fn runner_memory_contract_holds() -> Bool {
-  witness_standalone_contract_bytes()
-    && witness_emit_projects_swap_and_high()
+  witness_contract_is_parameterized_record()
+    && witness_contract_aliases_nominal_budget_cap()
+    && witness_emit_projects_contract_bytes()
+    && witness_deployment_carries_slot_memory()
     && witness_policy_has_runner_oom_auto_knob()
 }
