@@ -1,0 +1,160 @@
+module v1.compiler.dag_collect
+
+import v1.std.core {
+  Node,
+  InferredNode, Resolved,
+  ExprData,
+  Connective, NoConnective,
+  MatchPattern,
+  import_is_all
+}
+import v1.compiler.dag_collect_support {
+  DagCollectAcc, DagCollectPending,
+  dag_node_surface_fingerprint, dag_node_key_collision_error
+}
+import v1.compiler.infer_items { ResolvedGraph, TypedModule }
+
+fn is_import_slot_node(n: Node) -> Bool {
+  import_is_all(n: n) || (
+    n.params |> count == 0 && n.ident_span != none && n.body == none && n.expr_data == NoExprData)
+}
+
+fn is_module_shell_node(n: Node) -> Bool {
+  n.inferred == none && n.expr_data == NoExprData && n.connective == NoConnective && n.body == none
+    && n.transport == none && n.uses |> count == 0
+    && n.params |> all(p => is_import_slot_node(p: p))
+}
+
+fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
+  match node.expr_data {
+    NoExprData =>
+      match node.inferred {
+        Present { value: Resolved { node: _ } } =>
+          node.body == none && node.transport == none
+            && (node.children |> count) == 0 && (node.params |> count) == 0
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn dag_node_collection_anchor(node: Node) -> Node {
+  if dag_node_is_resolved_identity_shell(node: node) {
+    match node.inferred {
+      Present { value: Resolved { node: target } } => dag_node_collection_anchor(node: target)
+      _ => node
+    }
+  } else {
+    node
+  }
+}
+
+fn dag_node_key(node: Node) -> String {
+  let anchor = dag_node_collection_anchor(node: node)
+  if anchor.span.start == 0 && anchor.span.end == 0 {
+    concat(":0..0:", dag_node_surface_fingerprint(node: anchor))
+  } else {
+    concat(
+      anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
+      match anchor.ident {
+        Present { value: id } => concat(":", to_string(i: id))
+        Absent => ""
+      })
+  }
+}
+
+fn dag_node_fingerprint(node: Node) -> String {
+  dag_node_surface_fingerprint(node: dag_node_collection_anchor(node: node))
+}
+
+fn dag_collect_nodes_list(nodes: List<Node>, acc: DagCollectAcc) -> DagCollectAcc {
+  nodes |> fold(init: acc, f: (a, n) => dag_collect_insert(node: n, acc: a))
+}
+
+fn dag_collect_optional_node(value: Node?, acc: DagCollectAcc) -> DagCollectAcc {
+  match value {
+    Present { value: inner } => dag_collect_insert(node: inner, acc: acc)
+    Absent => acc
+  }
+}
+
+fn dag_collect_inferred(value: InferredNode?, acc: DagCollectAcc) -> DagCollectAcc {
+  match value {
+    Present { value: Resolved { node: n } } => dag_collect_insert(node: n, acc: acc)
+    _ => acc
+  }
+}
+
+fn dag_collect_match_pattern(pattern: MatchPattern, acc: DagCollectAcc) -> DagCollectAcc {
+  match pattern {
+    Bind { name: _ } => acc
+    LitPattern { value: _ } => acc
+    VariantPattern { name: _, parent_enum: _, field_bindings: field_bindings } =>
+      field_bindings |> fold(init: acc, f: (a, fb) => dag_collect_insert(node: fb, acc: a))
+    Wildcard => acc
+  }
+}
+
+fn dag_collect_node_tree(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
+  let acc = dag_collect_nodes_list(nodes: node.children, acc: acc)
+  let acc = if is_module_shell_node(n: node) {
+    acc
+  } else {
+    dag_collect_nodes_list(nodes: node.params, acc: acc)
+  }
+  let acc = dag_collect_nodes_list(nodes: node.uses, acc: acc)
+  let acc = dag_collect_optional_node(value: node.body, acc: acc)
+  let acc = dag_collect_optional_node(value: node.transport, acc: acc)
+  let acc = dag_collect_nodes_list(nodes: node.properties, acc: acc)
+  let acc = dag_collect_optional_node(value: node.type_annotation, acc: acc)
+  let acc = dag_collect_inferred(value: node.inferred, acc: acc)
+  match node.match_pattern {
+    Present { value: p } => dag_collect_match_pattern(pattern: p, acc: acc)
+    Absent => acc
+  }
+}
+
+fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
+  let anchor = dag_node_collection_anchor(node: node)
+  let key = dag_node_key(node: anchor)
+  let fp = dag_node_fingerprint(node: anchor)
+  match map_get(acc.seen, key) {
+    Present { value: prior } =>
+      if prior == fp {
+        acc
+      } else if anchor.span.start == 0 && anchor.span.end == 0 {
+        DagCollectAcc {
+          seen: acc.seen,
+          order: acc.order,
+          collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: anchor.span))
+        }
+      } else {
+        acc
+      }
+    Absent => {
+      [DagCollectPending { anchor: anchor, key: key, fp: fp }]
+        |> fold(
+          init: acc,
+          f: (inner, pending) =>
+            dag_collect_node_tree(
+              node: pending.anchor,
+              acc: DagCollectAcc {
+                seen: map_insert(inner.seen, pending.key, pending.fp),
+                order: list_push(inner.order, pending.anchor),
+                collision_errors: inner.collision_errors
+              }
+            )
+        )
+    }
+  }
+}
+
+fn dag_collect_from_module(module: TypedModule, acc: DagCollectAcc) -> DagCollectAcc {
+  let acc = dag_collect_insert(node: module.module, acc: acc)
+  module.items |> fold(init: acc, f: (a, item) => dag_collect_insert(node: item, acc: a))
+}
+
+fn collect_dag_nodes(typed: ResolvedGraph) -> DagCollectAcc {
+  typed.modules
+    |> fold(init: DagCollectAcc { seen: empty_map(), order: [], collision_errors: [] }, f: (acc, m) => dag_collect_from_module(module: m, acc: acc))
+}
