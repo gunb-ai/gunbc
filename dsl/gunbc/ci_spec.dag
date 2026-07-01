@@ -16,7 +16,8 @@ import gunbc.commit_workflow {
   project_ci_rust_job_gates
 }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
-import gunbc.ci_deploy_access { RunnerHostAccess, ci_deploy_srv1_runner_access }
+import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
+import gunbc.merge_admission_produce { ci_floor_stamp_merge_admission_script }
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -32,7 +33,7 @@ type DeployStage {
   entry: String
   function: String
   needs: List<String>
-  access: RunnerHostAccess
+  access: DeployAccess
 }
 
 type CiSpec {
@@ -57,7 +58,7 @@ data gunbc_ci_deploy_srv1_stage: DeployStage = {
   entry: live_deploy_apply_entry,
   function: live_deploy_apply_srv1_wet_function,
   needs: ["ci"],
-  access: ci_deploy_srv1_runner_access,
+  access: ci_deploy_srv1_access,
 }
 
 data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
@@ -210,7 +211,10 @@ fn gunbc_ci_run_script(spec: CiSpec) -> String {
       concat(ci_release_build_script(), "\n"),
       concat(git_fetch_script(policy: spec.diff_policy), "\n")
     ),
-    scheduler_invoke(spec: spec)
+    concat(
+      concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
+      ci_floor_stamp_merge_admission_script()
+    )
   )
 }
 
