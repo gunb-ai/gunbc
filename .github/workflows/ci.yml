@@ -17,7 +17,7 @@ env:
   RUSTFLAGS: -D warnings
 jobs:
   ci:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: ubicloud-standard-16-arm
     timeout-minutes: 360
     steps:
       - name: Checkout
@@ -98,7 +98,7 @@ jobs:
           git fetch --no-tags origin main
           "$ROOT/target/release/gunbc" run --source-root dsl --source-root src/v2 --entry dsl/tools/merge_admission_gate.dag --function main
   rust_tests:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: ubicloud-standard-16-arm
     timeout-minutes: 360
     steps:
       - name: Checkout
@@ -199,7 +199,7 @@ jobs:
           if [ -x "$BIN" ]; then "$BIN" --measure-cgroup-peak; else echo "[measurement] cgroup peak: unavailable (claim_executor not built)"; fi
         if: always()
   deploy_dashboard_srv1:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: ubicloud-standard-16-arm
     needs: [ci]
     timeout-minutes: 360
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
