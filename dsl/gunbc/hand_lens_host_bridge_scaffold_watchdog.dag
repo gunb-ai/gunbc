@@ -1,8 +1,9 @@
 module gunbc.hand_lens_host_bridge_scaffold_watchdog
 
+import gunbc.hand_lens_host_bridge_scaffold_index {
+  transport_script_position_host_bridge_dissolution_trigger,
+}
 import std.types { List, String, Bool }
-
-data transport_script_position_host_bridge_dissolution_trigger: String = "dissolve-on: gunbc#5364 — host-fed transport_script_position_facts_for_path (cli_run.rs TransportScriptArgShape classify_*) folds into pure Node-tree reader; verdict authority is v2.lens.host_language_transport_script.dag"
 
 type HostBridgeScaffoldRow {
   lens_module: String
@@ -24,14 +25,14 @@ fn scaffold_dissolution_trigger_nonempty(row: HostBridgeScaffoldRow) -> Bool {
   row.dissolution_trigger != ""
 }
 
-fn scaffold_dissolution_trigger_cites_5364(row: HostBridgeScaffoldRow) -> Bool {
-  string_contains(s: row.dissolution_trigger, pattern: "5364")
+fn scaffold_dissolution_trigger_matches_authority(row: HostBridgeScaffoldRow) -> Bool {
+  row.dissolution_trigger == transport_script_position_host_bridge_dissolution_trigger
 }
 
 fn hand_lens_host_bridge_scaffold_roster_tracked() -> Bool {
   all(
     hand_lens_host_bridge_scaffold_roster,
     row => scaffold_dissolution_trigger_nonempty(row: row)
-      && scaffold_dissolution_trigger_cites_5364(row: row)
+      && scaffold_dissolution_trigger_matches_authority(row: row)
   )
 }
