@@ -79,6 +79,39 @@ fn next_spawnable(doc: RoadmapDocument, merged: List<Int>) -> List<RoadmapNode> 
   nodes |> filter(n => node_is_spawnable(n: n, nodes: nodes, edges: edges, merged: merged))
 }
 
+fn node_is_sized(n: RoadmapNode) -> Bool {
+  match n.sizing {
+    Unsized => false
+    Sized { intricacy: _, volume: _, repo: _, acceptance: _ } => true
+  }
+}
+
+fn node_is_upcoming(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Bool {
+  node_is_sized(n: n)
+    && !item_is_done(item: n.line, merged: merged)
+    && !node_dep_done(nodes: nodes, edges: edges, id: n.node, merged: merged)
+}
+
+fn node_is_frontier_done(n: RoadmapNode, merged: List<Int>) -> Bool {
+  node_is_sized(n: n) && item_is_done(item: n.line, merged: merged)
+}
+
+type SpawnFrontier {
+  ready: List<RoadmapNode>
+  upcoming: List<RoadmapNode>
+  done: List<RoadmapNode>
+}
+
+fn spawn_frontier(doc: RoadmapDocument, merged: List<Int>) -> SpawnFrontier {
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  SpawnFrontier {
+    ready: next_spawnable(doc: doc, merged: merged),
+    upcoming: nodes |> filter(n => node_is_upcoming(n: n, nodes: nodes, edges: edges, merged: merged)),
+    done: nodes |> filter(n => node_is_frontier_done(n: n, merged: merged)),
+  }
+}
+
 fn json_escape(s: String) -> String {
   replace(replace(s, "\\", "\\\\"), "\"", "\\\"")
 }
