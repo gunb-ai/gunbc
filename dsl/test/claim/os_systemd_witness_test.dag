@@ -43,10 +43,10 @@ test fn witness_memory_limit_infinity_roundtrip() -> Bool {
 
 test fn witness_memory_limit_bytes_roundtrip() -> Bool {
   let cap = gunbc_ci_runner_cgroup_memory_cap
-  match parse_systemd_memory_limit_show(raw: to_string(byte_size_count(b: cap))) {
+  let raw = to_string(byte_size_count(b: cap))
+  match parse_systemd_memory_limit_show(raw: raw) {
     MemoryLimitBytes { bytes: b } =>
-      systemd_memory_limit_wire_label(lim: MemoryLimitBytes { bytes: b })
-        == to_string(byte_size_count(b: cap))
+      systemd_memory_limit_wire_label(lim: MemoryLimitBytes { bytes: b }) == raw
     _ => false
   }
 }
