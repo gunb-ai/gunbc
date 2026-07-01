@@ -2,6 +2,7 @@ pub mod extdeps_shape_transport_policy_census;
 pub mod fact_cardinality_census;
 pub mod languages_consumer_census;
 pub mod medium_structure_census;
+pub mod no_dual_representation_test_census;
 pub mod non_fold_residue_census;
 pub mod transport_script_position_census;
 
@@ -41,6 +42,11 @@ pub use languages_consumer_census::{
     languages_consumer_census_per_language_row_count,
 };
 pub use medium_structure_census::medium_structure_leak_facts;
+pub use no_dual_representation_test_census::{
+    no_dual_representation_test_count, no_dual_representation_test_file_count,
+    no_dual_representation_test_stale_roster_count,
+    no_dual_representation_test_unrostered_count,
+};
 pub use non_fold_residue_census::{
     non_fold_residue_coproduct_universe_count, non_fold_residue_count,
     non_fold_residue_stale_roster_count, non_fold_residue_unrostered_count,

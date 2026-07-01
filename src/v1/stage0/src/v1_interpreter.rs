@@ -5867,6 +5867,23 @@ fn eval_builtin(
             crate::module_path_index::non_fold_residue_census::non_fold_residue_coproduct_universe_count(),
         ))),
 
+        "no_dual_representation_test_count" => Ok(Some(Value::Int(
+            crate::module_path_index::no_dual_representation_test_census::no_dual_representation_test_count(
+            ),
+        ))),
+        "no_dual_representation_test_unrostered_count" => Ok(Some(Value::Int(
+            crate::module_path_index::no_dual_representation_test_census::no_dual_representation_test_unrostered_count(
+            ),
+        ))),
+        "no_dual_representation_test_stale_roster_count" => Ok(Some(Value::Int(
+            crate::module_path_index::no_dual_representation_test_census::no_dual_representation_test_stale_roster_count(
+            ),
+        ))),
+        "no_dual_representation_test_file_count" => Ok(Some(Value::Int(
+            crate::module_path_index::no_dual_representation_test_census::no_dual_representation_test_file_count(
+            ),
+        ))),
+
         "complexity_linearity_syntactic_finding_count" => Ok(Some(Value::Int(
             crate::complexity_linearity_audit_project::complexity_linearity_syntactic_finding_count(
             ),

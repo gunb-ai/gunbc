@@ -1,0 +1,30 @@
+module v2.lens.no_dual_representation_test
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SubstrateMandatoryTag }
+import v2.std.logic { Bool }
+
+fn no_dual_representation_test_clean_holds() -> Bool {
+  no_dual_representation_test_unrostered_count() == 0
+    && no_dual_representation_test_stale_roster_count() == 0
+}
+
+fn no_dual_representation_test_live_count() -> Int {
+  no_dual_representation_test_count()
+}
+
+fn no_dual_representation_test_live_unrostered_count() -> Int {
+  no_dual_representation_test_unrostered_count()
+}
+
+fn no_dual_representation_test_live_stale_roster_count() -> Int {
+  no_dual_representation_test_stale_roster_count()
+}
+
+fn no_dual_representation_test_live_file_count() -> Int {
+  no_dual_representation_test_file_count()
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}
