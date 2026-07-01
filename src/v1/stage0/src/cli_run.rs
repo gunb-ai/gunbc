@@ -3658,7 +3658,9 @@ fn collect_sorted_decl_lines_for_file(
                 continue;
             }
             let Some(nl) = newline_index_for_span(&item.span, &source_indices).cloned() else {
-                return Err(format!("newline index missing for decl span in {file_path}"));
+                return Err(format!(
+                    "newline index missing for decl span in {file_path}"
+                ));
             };
             decls.push(byte_to_line_col(nl, item.span.start).line);
         }
@@ -3721,10 +3723,8 @@ fn collect_frontier_seeds_from_diff_line_ranges(
         }
         for i in 0..decls.len() {
             let (line, name, is_data) = &decls[i];
-            let decl_end = decl_span_end_line(
-                &decls.iter().map(|(l, _, _)| *l).collect::<Vec<_>>(),
-                *line,
-            );
+            let decl_end =
+                decl_span_end_line(&decls.iter().map(|(l, _, _)| *l).collect::<Vec<_>>(), *line);
             if !ranges.iter().any(|r| *line <= r.end && decl_end >= r.start) {
                 continue;
             }
@@ -4965,6 +4965,7 @@ mod floor_witness_a_prove {
 
     fn dag_function_edited_for_row(
         ctx: &v1_interpreter::InterpContext,
+        index: &super::MultiEntryIndex,
         touches: &[(String, i64, i64)],
         row: &DiscoveryRow,
     ) -> Result<bool, String> {
@@ -4985,7 +4986,9 @@ mod floor_witness_a_prove {
                     row.function, row.entry
                 )
             })?;
-        call_floor_test_fn_declaration_edited(ctx, touches, &file_path, decl_line)
+        let sorted_decls = super::collect_sorted_decl_lines_for_file(index, &row.entry)?;
+        let decl_end = super::decl_span_end_line(&sorted_decls, decl_line);
+        call_floor_test_fn_declaration_edited(ctx, touches, &file_path, decl_line, decl_end)
     }
 
     fn frontier_list_len(
@@ -5079,7 +5082,7 @@ mod floor_witness_a_prove {
 
         for row in roster {
             let rust_func = rust_function_edited_for_row(&seeds, row);
-            let dag_func = dag_function_edited_for_row(&runner_ctx, &touches, row)
+            let dag_func = dag_function_edited_for_row(&runner_ctx, &index, &touches, row)
                 .unwrap_or_else(|e| panic!("dag function_edited for {}: {e}", row.function));
             let rust_touches = if diff_file_matches_entry(FIXTURE_REL, &row.entry) {
                 rust_entry_touches
@@ -5169,15 +5172,61 @@ mod floor_witness_a_prove {
                 .find(|(name, _)| name == func)
                 .map(|(_, line)| line)
                 .unwrap_or_else(|| panic!("edited_test_fns {file}::{func} missing decl line"));
-            let dag_edited =
-                call_floor_test_fn_declaration_edited(&runner_ctx, &touches, file, decl_line)
-                    .expect("dag function_edited model");
+            let sorted_decls = super::collect_sorted_decl_lines_for_file(&index, file)
+                .expect("sorted decl lines for impl-vs-impl");
+            let decl_end = super::decl_span_end_line(&sorted_decls, decl_line);
+            let dag_edited = call_floor_test_fn_declaration_edited(
+                &runner_ctx,
+                &touches,
+                file,
+                decl_line,
+                decl_end,
+            )
+            .expect("dag function_edited model");
             assert!(
                 dag_edited,
                 "function_edited axis: rust edited_test_fns ({file}, {func}) must be matched by \
                  independent .dag floor_test_fn_declaration_edited"
             );
         }
+    }
+
+    #[test]
+    fn witness_a_function_edited_axis_body_touch_fixture_impl_vs_impl() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let diff = unified_diff_for_line(FIXTURE_REL, 78);
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let line_ranges = parse_unified_diff_line_ranges(&diff);
+        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &line_ranges)
+            .expect("seeds from body-touch fixture diff");
+        assert!(
+            seeds
+                .edited_test_fns
+                .iter()
+                .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
+            "body-only diff touch must populate edited_test_fns via decl span (not decl line only)"
+        );
+        let touches = diff_line_touches_from_ranges(&line_ranges);
+        let (runner_graph, runner_indices) =
+            resolve_entry_with_index(&index, FLOOR_RUNNER).expect("floor runner resolves");
+        let runner_ctx = make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+        let file = FIXTURE_REL;
+        let content = std::fs::read_to_string(ws.join(FIXTURE_REL)).expect("fixture readable");
+        let decl_line = scan_test_decl_lines(&content)
+            .into_iter()
+            .find(|(name, _)| name == "floor_disc_witness_a_only_holds")
+            .map(|(_, line)| line)
+            .expect("witness_a decl line");
+        let sorted_decls =
+            super::collect_sorted_decl_lines_for_file(&index, file).expect("sorted decl lines");
+        let decl_end = super::decl_span_end_line(&sorted_decls, decl_line);
+        assert!(
+            call_floor_test_fn_declaration_edited(&runner_ctx, &touches, file, decl_line, decl_end)
+                .expect("dag function_edited model for body touch"),
+            "body-only diff must match .dag floor_test_fn_declaration_edited when decl_end spans body"
+        );
     }
 
     #[test]
