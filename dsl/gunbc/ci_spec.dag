@@ -15,8 +15,6 @@ import gunbc.commit_workflow {
   project_ci_floor_gates,
   project_ci_rust_job_gates
 }
-import tools.build_step { BuildArtifact }
-import extdeps.languages.bash.program { Concat, lit, var_ref }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { RunnerHostAccess, ci_deploy_srv1_runner_access }
 
@@ -143,28 +141,18 @@ fn ci_cargo_eagain_retry_shell_exec(command: String) -> String {
   )
 }
 
-fn ci_release_artifact(name: String) -> BuildArtifact {
-  BuildArtifact {
-    path: Concat { parts: [var_ref(name: "ROOT"), lit(text: concat("/target/release/", name))] },
-    name: name
-  }
-}
+data ci_floor_required_artifact_names: List<String> = ["claim_executor", "gunbc"]
 
-data ci_floor_required_artifacts: List<BuildArtifact> = [
-  ci_release_artifact(name: "claim_executor"),
-  ci_release_artifact(name: "gunbc")
-]
-
-fn artifact_shell_path(a: BuildArtifact) -> String {
-  concat(concat("\"$ROOT/target/release/", a.name), "\"")
+fn artifact_shell_path(name: String) -> String {
+  concat(concat("\"$ROOT/target/release/", name), "\"")
 }
 
 fn ci_floor_build_verify_script() -> String {
   let bin = claim_executor_bin_shell()
   let paths = fold(
-    ci_floor_required_artifacts,
+    ci_floor_required_artifact_names,
     init: "",
-    f: (acc, a) => concat(acc, concat(" ", artifact_shell_path(a: a)))
+    f: (acc, name) => concat(acc, concat(" ", artifact_shell_path(name: name)))
   )
   concat(concat(concat(bin, " --verify-build-artifacts"), paths), "\n")
 }
