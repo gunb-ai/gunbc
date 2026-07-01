@@ -93,6 +93,8 @@ data asrock_altrad8ud_openbmc_3_06_00_capabilities: BmcFirmwareCapabilityRow = B
   capabilities: altrad8ud_openbmc_base_capabilities,
 }
 
+data asrock_altrad8ud_openbmc_3_06_00_catalog_authority: ExternalAuthority = asrock_altrad8ud_bmc_manual_authority
+
 data asrock_altrad8ud_1l2t_bmc_firmware_capability_catalog: List<BmcFirmwareCapabilityRow> = [
   asrock_altrad8ud_openbmc_2_07_00_capabilities,
   asrock_altrad8ud_openbmc_3_06_00_capabilities,

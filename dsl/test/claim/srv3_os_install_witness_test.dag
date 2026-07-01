@@ -18,9 +18,16 @@ import extdeps.os.ubuntu_autoinstall {
 import gunbc.os_install {
   LanInstallInfraSurvey,
   survey_implied_dhcp_direction,
-  srv3_network_boot_chain,
+  srv3_pxe_network_boot_chain,
   srv3_os_install_plan,
+  OsInstallDelivery,
+  NetworkBoot,
+  VirtualMediaIso,
+  os_install_delivery_is_network_boot,
+  srv3_os_install_plan_autoinstall,
+  fleet_install_server_specs,
 }
+import gunbc.os_install_mechanism { NbdProxyVirtualMediaInstall, srv3_install_mechanism }
 import extdeps.bmc.types {
   redfish_boot_target_wire,
   redfish_boot_override_enabled_wire,
@@ -41,8 +48,8 @@ test fn srv3_bootloader_artifact_is_arch_grounded() -> Bool {
     }
 }
 
-test fn srv3_chain_is_uefi_http_boot() -> Bool {
-  match srv3_network_boot_chain.boot_mode {
+test fn srv3_pxe_chain_is_uefi_http_boot_when_modeled() -> Bool {
+  match srv3_pxe_network_boot_chain.boot_mode {
     UefiHttpBoot => true
     LegacyBiosPxe { tftp_root: _ } => false
     UefiPxe { tftp_root: _ } => false
@@ -50,7 +57,7 @@ test fn srv3_chain_is_uefi_http_boot() -> Bool {
 }
 
 test fn srv3_survey_forces_proxy_dhcp() -> Bool {
-  match srv3_network_boot_chain.dhcp_direction {
+  match srv3_pxe_network_boot_chain.dhcp_direction {
     ProxyDhcp => true
     NativeDhcpBootOptions => false
   }
@@ -65,6 +72,19 @@ test fn srv3_survey_forces_proxy_dhcp() -> Bool {
     }
 }
 
+test fn srv3_plan_is_solver_derived_nbd_proxy_virtual_media() -> Bool {
+  match srv3_install_mechanism {
+    NbdProxyVirtualMediaInstall => true
+    _ => false
+  }
+    && !os_install_delivery_is_network_boot(delivery: srv3_os_install_plan.delivery)
+    && match srv3_os_install_plan.delivery {
+      VirtualMediaIso { autoinstall: _ } => true
+      NetworkBoot { delivery: _ } => false
+    }
+    && fleet_install_server_specs.length() == 0
+}
+
 test fn srv3_plan_targets_ubuntu_2404_aarch64_nbd_proxy_boot_once() -> Bool {
   match srv3_os_install_plan.os_target {
     UbuntuOs { distro: d } =>
@@ -76,9 +96,9 @@ test fn srv3_plan_targets_ubuntu_2404_aarch64_nbd_proxy_boot_once() -> Bool {
   }
     && redfish_boot_target_wire(t: srv3_os_install_plan.bmc_boot_target) == "Cd"
     && redfish_boot_override_enabled_wire(e: srv3_os_install_plan.bmc_boot_enabled) == "Once"
-    && srv3_os_install_plan.network_boot_delivery.autoinstall.fully_automated
-    && srv3_os_install_plan.network_boot_delivery.autoinstall.autoinstall_version == 1
-    && match srv3_os_install_plan.network_boot_delivery.autoinstall.delivery {
+    && srv3_os_install_plan_autoinstall(plan: srv3_os_install_plan).fully_automated
+    && srv3_os_install_plan_autoinstall(plan: srv3_os_install_plan).autoinstall_version == 1
+    && match srv3_os_install_plan_autoinstall(plan: srv3_os_install_plan).delivery {
       NoCloudNet { seed_url: _ } => true
       NoCloudLocal => false
     }

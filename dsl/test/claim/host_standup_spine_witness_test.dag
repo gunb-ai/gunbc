@@ -41,6 +41,7 @@ import gunbc.host_standup {
   Assimilation,
   BmcCredentialConverge,
   OsInstallMechanismResolved,
+  OsInstallActuated,
   HostConvergePolicyDerived,
   ReachSecretsNetwork,
   RunnerDeploySlot,
@@ -64,13 +65,14 @@ fn spine_step_tag(step: HostStandupStep) -> Int {
   match step.phase {
     Prefix { phase: BmcCredentialConverge } => 0
     Prefix { phase: OsInstallMechanismResolved } => 1
-    Prefix { phase: HostConvergePolicyDerived } => 2
-    Assimilation { phase: ReachSecretsNetwork } => 3
-    Assimilation { phase: RunnerDeploySlot } => 4
-    Assimilation { phase: ComputeFabricEnroll } => 5
-    Assimilation { phase: GreenPlaceReadiness } => 6
-    Assimilation { phase: SessionPlacementEnrollment } => 7
-    Assimilation { phase: StandupAssimilationComplete } => 8
+    Prefix { phase: OsInstallActuated } => 2
+    Prefix { phase: HostConvergePolicyDerived } => 3
+    Assimilation { phase: ReachSecretsNetwork } => 4
+    Assimilation { phase: RunnerDeploySlot } => 5
+    Assimilation { phase: ComputeFabricEnroll } => 6
+    Assimilation { phase: GreenPlaceReadiness } => 7
+    Assimilation { phase: SessionPlacementEnrollment } => 8
+    Assimilation { phase: StandupAssimilationComplete } => 9
   }
 }
 
@@ -90,11 +92,11 @@ fn spine_tags_are_linear() -> Bool {
   ).ok
 }
 
-test fn host_standup_spine_is_nine_step_linear_prefix_then_p0_p5() -> Bool {
-  host_standup_spine_length() == 9
+test fn host_standup_spine_is_ten_step_linear_prefix_then_p0_p5() -> Bool {
+  host_standup_spine_length() == 10
     && spine_tags_are_linear()
-    && host_standup_gap_count() == 3
-    && host_standup_gap_ledger.length() == 9
+    && host_standup_gap_count() == 4
+    && host_standup_gap_ledger.length() == 10
 }
 
 test fn srv3_target_and_install_mechanism_are_grounded() -> Bool {
@@ -196,7 +198,7 @@ test fn p3_green_place_contributes_via_gunbc_gate_after_pinned_tree_lands() -> B
 
 test fn assimilation_gate_still_refuses_p0_p2_p4_gaps_when_p3_landed() -> Bool {
   host_standup_p3_gunbc_pinned_tree_landed
-    && host_standup_gap_count() == 3
+    && host_standup_gap_count() == 4
     && match assimilation_complete(gate: host_standup_default_assimilation_gate_unsatisfied()) {
       AssimilationIncomplete { input: NodeRegistered, reason: r } =>
         string_contains(s: r, pattern: "P5:gap-refused:")
