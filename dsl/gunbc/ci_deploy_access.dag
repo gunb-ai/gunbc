@@ -1,6 +1,8 @@
 module gunbc.ci_deploy_access
 
 import std.types { NonEmptyStr, List, String, Bool }
+import std.access { AccessDecision, Permit, Deny }
+import extdeps.shell
 import gunbc.fleet_intent { ComputeHost, srv1_host }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
 
@@ -15,6 +17,17 @@ type DeployAccess {
   transport: HostEffectTransport
   privileged_commands: List<PrivilegedCommand>
 }
+
+type DeployAccessActor {
+  principal: NonEmptyStr
+  sudo_granted: Bool
+}
+
+type DeployAccessVerdict
+  = AccessGranted
+  | AccessDenied { reason: String }
+
+data deploy_access_refusal_prefix: String = "deploy_access: typed refusal before mutation"
 
 data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
 
