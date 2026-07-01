@@ -145,6 +145,8 @@ mod resolve_typed_cache_equivalence_test;
 #[cfg(test)]
 mod resolved_graph_cache_size_bound_test;
 #[cfg(test)]
+mod route_a_emit_fresh_cargo_green_test;
+#[cfg(test)]
 mod route_a_final_six_test;
 #[cfg(test)]
 mod source_audit;
