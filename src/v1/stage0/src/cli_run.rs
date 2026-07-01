@@ -5520,7 +5520,6 @@ fn languages_census_strip_content(source: &str) -> String {
     out
 }
 
-<<<<<<< HEAD
 fn languages_census_extract_data_decl_names(content: &str) -> Vec<String> {
     content
         .lines()
@@ -5667,7 +5666,69 @@ pub fn languages_consumer_census_has_external_consumer(decl_name: String) -> boo
     languages_decl_record_for(&decl_name)
         .map(|r| !r.external_consumer_paths.is_empty())
         .unwrap_or(false)
-=======
+}
+
+const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
+const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
+
+fn doc_repo_rel(path: &Path) -> String {
+    let ws = workspace_root();
+    let s = path.to_string_lossy().replace('\\', "/");
+    let prefix = format!("{}/", ws.to_string_lossy().replace('\\', "/"));
+    s.strip_prefix(&prefix)
+        .map(|p| p.to_string())
+        .unwrap_or(s)
+        .trim_start_matches("./")
+        .to_string()
+}
+
+fn doc_universe() -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let docs_dir = workspace_root().join("docs");
+    collect_md_files(&docs_dir, &mut out);
+    out
+}
+
+fn collect_md_files(dir: &Path, out: &mut BTreeSet<String>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_md_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            out.insert(doc_repo_rel(&path));
+        }
+    }
+}
+
+fn markdown_link_targets(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = content.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b']' && bytes[i + 1] == b'(' {
+            if let Some(end) = content[i + 2..].find(')') {
+                let raw = &content[i + 2..i + 2 + end];
+                let target = raw.split('#').next().unwrap_or("").trim();
+                if !target.is_empty()
+                    && !target.starts_with("http://")
+                    && !target.starts_with("https://")
+                    && !target.starts_with("mailto:")
+                {
+                    out.push(target.to_string());
+                }
+                i = i + 2 + end + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
 fn resolve_doc_link(from: &str, target: &str) -> Vec<String> {
     let mut candidates = Vec::new();
     let from_dir = Path::new(from).parent().unwrap_or_else(|| Path::new(""));
@@ -5835,7 +5896,6 @@ pub fn doc_graph_dangling_link_count() -> i64 {
 
 pub fn doc_graph_doc_count() -> i64 {
     doc_graph_report().doc_count as i64
->>>>>>> origin/main
 }
 
 #[cfg(test)]
