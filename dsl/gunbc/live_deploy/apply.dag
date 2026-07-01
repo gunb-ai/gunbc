@@ -17,7 +17,6 @@ import gunbc.ci_deploy_access {
 import gunbc.ci_deploy_target_host {
   deploy_target_proof_from_access,
   deploy_target_ssh_proof_structurally_valid,
-  deploy_local_apply_refused_for_observed_host,
 }
 import gunbc.host_effect {
   ShellCommand,
@@ -81,12 +80,25 @@ fn live_deploy_retract_via_transport(
 
 fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let access = ci_deploy_srv1_access
-  host_effect_apply(
-    target: HostOs { node: access.host },
-    effect: ShellCommand { script: deploy_access_preflight_script(access: access) },
-    policy: OneShotIdempotent,
-    transport: access.transport
-  )
+  let proof = deploy_target_proof_from_access(access: access)
+  if !deploy_target_ssh_proof_structurally_valid(proof: proof) {
+    NotConverged {
+      reason: "live_deploy: deploy target-host proof structurally invalid; fail-closed",
+      applied: HostEffectIntent {
+        target: HostOs { node: access.host },
+        effect: ShellCommand { script: "" },
+        policy: OneShotIdempotent,
+        transport: access.transport,
+      },
+    }
+  } else {
+    host_effect_apply(
+      target: HostOs { node: access.host },
+      effect: ShellCommand { script: deploy_access_preflight_script(access: access) },
+      policy: OneShotIdempotent,
+      transport: access.transport
+    )
+  }
 }
 
 fn live_deploy_apply_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
