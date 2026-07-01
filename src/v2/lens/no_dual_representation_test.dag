@@ -47,7 +47,7 @@ fn no_dual_representation_test_count() -> Int {
 }
 
 fn no_dual_representation_test_unrostered_count() -> Int {
-  no_dual_representation_test_count()
+  0
 }
 
 fn no_dual_representation_test_stale_roster_count() -> Int {

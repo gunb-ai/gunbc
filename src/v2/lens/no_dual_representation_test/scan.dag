@@ -1,6 +1,7 @@
 module v2.lens.no_dual_representation_test.scan
 
 import v2.std.algebra {
+  fold,
   fold_list,
   is_empty,
   length,
@@ -63,6 +64,11 @@ data empty_dual_rep_witness_names: List<String> = []
 data empty_dual_rep_module_scans: List<DualRepModuleScan> = []
 data empty_eq_sites: List<EqSite> = []
 data empty_string_list: List<String> = []
+data empty_dual_rep_fn_record: DualRepFnRecord = DualRepFnRecord {
+  name: "",
+  body: "",
+  params: empty_string_list
+}
 
 fn path_is_test_dag(path: String) -> Bool {
   string_contains(s: path, pattern: "_test.dag")
@@ -218,17 +224,13 @@ fn lookup_data_literal(data_inits: List<DualRepDataInit>, name: String) -> Strin
 }
 
 fn lookup_fn_record(fns: List<DualRepFnRecord>, name: String) -> DualRepFnRecord {
-  fold_list(
-    xs: fns,
-    empty: DualRepFnRecord { name: "", body: "", params: empty_string_list },
-    cons: fn(acc, row) {
-      if row.name == name {
-        row
-      } else {
-        acc
-      }
+  fold(fns, init: empty_dual_rep_fn_record, f: fn(acc, row) {
+    if row.name == name {
+      row
+    } else {
+      acc
     }
-  )
+  })
 }
 
 fn first_param_name(params: List<String>) -> String {
@@ -430,27 +432,22 @@ fn violations_from_body(
 }
 
 fn dual_rep_violations_from_module(scan: DualRepModuleScan) -> List<DualRepViolation> {
-  fold_list(
-    xs: scan.witness_names,
-    empty: empty_dual_rep_violations,
-    cons: fn(acc, wname) {
-      let rec = lookup_fn_record(fns: scan.fns, name: wname)
-      if is_empty(xs: rec.name) {
-        acc
-      } else {
-        list_append(
-          left: acc,
-          right: violations_from_body(
-            path: scan.path,
-            fn_name: wname,
-            body: rec.body,
-            data_inits: scan.data_inits,
-            fns: scan.fns
-          )
+  fold(scan.fns, init: empty_dual_rep_violations, f: fn(acc, rec) {
+    if is_empty(xs: rec.name) {
+      acc
+    } else {
+      list_append(
+        left: acc,
+        right: violations_from_body(
+          path: scan.path,
+          fn_name: rec.name,
+          body: rec.body,
+          data_inits: scan.data_inits,
+          fns: scan.fns
         )
-      }
+      )
     }
-  )
+  })
 }
 
 fn dual_rep_violation_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
@@ -756,4 +753,13 @@ fn synthetic_distinct_symbol_scan() -> DualRepModuleScan {
     ],
     witness_names: ["ok"]
   }
+}
+
+data parse_path_helper_tautology_source: String = "module t\nfn helper_taut() -> Bool {\n  return m == m\n}\ntest fn witness_calls_helper() -> Bool {\n  helper_taut()\n}\n"
+
+fn parse_path_helper_tautology_scan() -> DualRepModuleScan {
+  dual_rep_parse_module_content(
+    path: "synthetic/parse_path_helper_tautology_test.dag",
+    content: parse_path_helper_tautology_source
+  )
 }

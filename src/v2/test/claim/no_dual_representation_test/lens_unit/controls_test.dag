@@ -5,6 +5,7 @@ import v2.lens.no_dual_representation_test.scan {
   dual_rep_clean_holds_for_scans,
   dual_rep_violation_count_from_scans,
   dual_rep_violations_from_module,
+  parse_path_helper_tautology_scan,
   synthetic_body_mirror_scan,
   synthetic_distinct_symbol_scan,
   synthetic_independent_oracle_scan,
@@ -31,4 +32,8 @@ test fn distinct_symbol_equality_is_green() -> Bool {
 
 test fn body_mirror_is_red() -> Bool {
   length(xs: dual_rep_violations_from_module(scan: synthetic_body_mirror_scan())) == 1
+}
+
+test fn parse_path_helper_tautology_is_red() -> Bool {
+  dual_rep_violation_count_from_scans(scans: [parse_path_helper_tautology_scan()]) == 1
 }
