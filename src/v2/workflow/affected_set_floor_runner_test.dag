@@ -126,7 +126,8 @@ test fn floor_test_untouched_skips_assumed_green_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_nonempty,
     frontier: floor_test_frontier_touched,
-    touches_frontier: false
+    touches_frontier: false,
+    function_edited: false
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
@@ -137,9 +138,22 @@ test fn floor_test_touched_runs_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_nonempty,
     frontier: floor_test_frontier_touched,
-    touches_frontier: true
+    touches_frontier: true,
+    function_edited: false
   ) {
     RunWitness { reason: _ } => true
+    SkipAssumedGreen => false
+  }
+}
+
+test fn floor_test_function_edited_runs_holds() -> Bool {
+  match floor_witness_run_disposition(
+    diff: floor_test_diff_nonempty,
+    frontier: floor_test_frontier_touched,
+    touches_frontier: false,
+    function_edited: true
+  ) {
+    RunWitness { reason: reason } => reason == "witness test fn declaration directly edited"
     SkipAssumedGreen => false
   }
 }
@@ -148,7 +162,8 @@ test fn floor_test_empty_diff_runs_all_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_empty,
     frontier: floor_test_frontier_touched,
-    touches_frontier: false
+    touches_frontier: false,
+    function_edited: false
   ) {
     RunWitness { reason: reason } => reason == "empty diff — run full corpus (fail-closed)"
     SkipAssumedGreen => false
@@ -159,7 +174,8 @@ test fn floor_test_diff_fail_closed_runs_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_fail_closed,
     frontier: floor_test_frontier_touched,
-    touches_frontier: false
+    touches_frontier: false,
+    function_edited: false
   ) {
     RunWitness { reason: reason } => reason == "git diff unavailable"
     SkipAssumedGreen => false
@@ -170,7 +186,8 @@ test fn floor_test_frontier_fail_closed_runs_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_nonempty,
     frontier: floor_test_frontier_fail_closed,
-    touches_frontier: false
+    touches_frontier: false,
+    function_edited: false
   ) {
     RunWitness { reason: reason } => reason == "provenance unavailable"
     SkipAssumedGreen => false
@@ -203,12 +220,14 @@ test fn floor_test_host_kernel_skip_equivalent_holds() -> Bool {
   floor_kernel_would_skip(
     changed_paths: ["src/v2/lens/affected_set.dag"],
     frontier_nodes: [floor_test_touched_node],
-    touches_frontier: false
+    touches_frontier: false,
+    function_edited: false
   )
     && floor_host_scaffold_would_skip(
       changed_paths: ["src/v2/lens/affected_set.dag"],
       frontier_nodes: [floor_test_touched_node],
-      touches_frontier: false
+      touches_frontier: false,
+      function_edited: false
     )
 }
 
@@ -216,12 +235,14 @@ test fn floor_test_host_kernel_run_equivalent_holds() -> Bool {
   !floor_kernel_would_skip(
     changed_paths: ["src/v2/lens/affected_set.dag"],
     frontier_nodes: [floor_test_touched_node],
-    touches_frontier: true
+    touches_frontier: true,
+    function_edited: false
   )
     && !floor_host_scaffold_would_skip(
       changed_paths: ["src/v2/lens/affected_set.dag"],
       frontier_nodes: [floor_test_touched_node],
-      touches_frontier: true
+      touches_frontier: true,
+      function_edited: false
     )
 }
 
@@ -263,6 +284,7 @@ test fn floor_runner_unaffected_assumed_green_skips_holds() -> Bool {
 test fn floor_runner_node_frontier_policy_holds() -> Bool {
   floor_test_untouched_skips_assumed_green_holds()
     && floor_test_touched_runs_holds()
+    && floor_test_function_edited_runs_holds()
     && floor_test_empty_diff_runs_all_holds()
     && floor_test_diff_fail_closed_runs_holds()
     && floor_test_frontier_fail_closed_runs_holds()
