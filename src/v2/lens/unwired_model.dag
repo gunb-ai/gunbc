@@ -339,7 +339,6 @@ data unwired_model_roster: List<String> = [
   "github_error_example",
   "github_published_mock_corpus",
   "gitignore_drifted",
-  "gitignore_format",
   "go_g1_3_per_language_fact_bundle_registry",
   "go_int64_falsifier_emitted_add_fn_node",
   "go_language_model_wave1",
