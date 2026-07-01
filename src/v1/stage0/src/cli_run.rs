@@ -5921,12 +5921,7 @@ fn list_values_from_free_monoid(
                 out.extend(items.iter().cloned());
                 return Ok(out);
             }
-            other => {
-                return Err(format!(
-                    "expected List, got {}",
-                    other.type_label_public()
-                ))
-            }
+            other => return Err(format!("expected List, got {}", other.type_label_public())),
         }
     }
 }
@@ -5949,10 +5944,7 @@ fn outcome_accepted_value(
         {
             Err("Outcome rejected".to_string())
         }
-        other => Err(format!(
-            "expected Outcome, got {}",
-            ctx.format_value(other)
-        )),
+        other => Err(format!("expected Outcome, got {}", ctx.format_value(other))),
     }
 }
 
@@ -5960,11 +5952,9 @@ fn eval_runner_data_item(
     ctx: &v1_interpreter::InterpContext,
     name: &str,
 ) -> Result<v1_interpreter::Value, String> {
-    v1_interpreter::with_active_context(ctx, || {
-        v1_interpreter::eval_data_item_value(ctx, name)
-    })
-    .map_err(|e| format!("eval `{name}`: {e}"))?
-    .ok_or_else(|| format!("data item `{name}` missing"))
+    v1_interpreter::with_active_context(ctx, || v1_interpreter::eval_data_item_value(ctx, name))
+        .map_err(|e| format!("eval `{name}`: {e}"))?
+        .ok_or_else(|| format!("data item `{name}` missing"))
 }
 
 fn artifact_file_path_from_provenance_row(
@@ -6032,14 +6022,8 @@ fn provenance_rerun_frontier_nodes(
         runner_ctx,
         "floor_rerun_frontier_from_provenance",
         &[
-            (
-                Some("entry_root".to_string()),
-                entry_root.clone(),
-            ),
-            (
-                Some("changed_paths".to_string()),
-                changed_paths_value,
-            ),
+            (Some("entry_root".to_string()), entry_root.clone()),
+            (Some("changed_paths".to_string()), changed_paths_value),
         ],
         false,
     )
@@ -6057,10 +6041,7 @@ fn closure_rerun_frontier_nodes(
         runner_ctx,
         "floor_rerun_frontier_from_edit_loci",
         &[
-            (
-                Some("entry_root".to_string()),
-                entry_root.clone(),
-            ),
+            (Some("entry_root".to_string()), entry_root.clone()),
             (Some("edit_loci".to_string()), edit_loci_value),
         ],
         false,
@@ -6104,11 +6085,8 @@ fn entry_frontier_nodes_via_dag_closure(
     if edit_loci.is_empty() {
         return Ok(Vec::new());
     }
-    let mut frontier = closure_rerun_frontier_nodes(
-        runner_ctx,
-        &v1_interpreter::Value::Null,
-        &edit_loci,
-    )?;
+    let mut frontier =
+        closure_rerun_frontier_nodes(runner_ctx, &v1_interpreter::Value::Null, &edit_loci)?;
     if provenance_live {
         match provenance_entry_tree_root(runner_ctx, entry_path) {
             Ok(provenance_entry_root) => {
