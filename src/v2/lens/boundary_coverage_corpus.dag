@@ -96,14 +96,10 @@ fn boundary_covered_live(b: Boundary, facts: List<ImportResolutionFact>) -> Bool
   any(xs: facts, predicate: fn(f) { fact_covers_boundary(f: f, b: b, facts: facts) })
 }
 
-fn boundary_uncovered_live(b: Boundary, facts: List<ImportResolutionFact>) -> Bool {
-  is_empty(xs: filter(xs: [b], predicate: fn(x) { boundary_covered_live(b: x, facts: facts) }))
-}
-
 fn corpus_uncovered_boundaries() -> List<Boundary> {
   let facts = stage_import_facts()
   filter(xs: required_boundaries(), predicate: fn(b) {
-    boundary_uncovered_live(b: b, facts: facts)
+    !boundary_covered_live(b: b, facts: facts)
   })
 }
 

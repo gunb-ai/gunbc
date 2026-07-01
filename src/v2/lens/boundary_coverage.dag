@@ -56,14 +56,8 @@ fn mock_is_faithful(contract: Contract, m: MockCoverage) -> Bool {
   is_empty(xs: missing_fields(contract: contract, m: m))
 }
 
-fn mock_is_unfaithful(contract: Contract, m: MockCoverage) -> Bool {
-  any(xs: contract.required_fields, predicate: fn(f) {
-    is_empty(xs: filter(xs: m.exercised_fields, predicate: fn(e) { e == f }))
-  })
-}
-
 fn mock_makes_contract_anemic(c: Contract, m: MockCoverage) -> Bool {
-  boundary_eq(a: m.boundary, b: c.boundary) && mock_is_unfaithful(contract: c, m: m)
+  boundary_eq(a: m.boundary, b: c.boundary) && !mock_is_faithful(contract: c, m: m)
 }
 
 fn anemic_contracts(contracts: List<Contract>, mocks: List<MockCoverage>) -> List<Contract> {
