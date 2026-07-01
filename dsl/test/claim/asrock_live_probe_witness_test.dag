@@ -1,7 +1,7 @@
 module test.claim.asrock_live_probe
 
 import std.logic { Bool }
-import std.types { list_length }
+import std.types { list_length, NonEmptyStr }
 import extdeps.bmc.capability {
   CapabilityVirtualMedia,
   CapabilityNbdProxyVirtualMedia,
