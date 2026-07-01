@@ -3613,7 +3613,7 @@ pub fn emit_lib_rs_from_files(
             __result
         });
         let hand_maintained_mods = if has_compiler_tests.clone() {
-            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod complexity_linearity_audit_project;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod module_path_index;".to_string()
+            "\npub mod v1_interpreter;\npub mod cli_run;\npub mod complexity_linearity_audit_project;\npub mod rest_transport_facts;\npub mod wire_value_serialize;\npub mod coproduct_reflection;\npub mod resolved_graph_cache;\npub mod recorded_fixture;\npub mod module_path_index;\npub mod external_authority_project;".to_string()
         } else {
             "".to_string()
         };

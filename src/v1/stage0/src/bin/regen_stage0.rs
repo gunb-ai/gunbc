@@ -119,6 +119,7 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "complexity_linearity_audit_project.rs",
     "decl_facts_project.rs",
     "coproduct_reflection.rs",
+    "external_authority_project.rs",
     "recorded_fixture.rs",
     "resolved_graph_cache.rs",
     "rest_transport_facts.rs",
