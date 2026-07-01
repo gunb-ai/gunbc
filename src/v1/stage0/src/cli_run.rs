@@ -3277,7 +3277,7 @@ pub fn construction_authority_unresolved(
         .iter()
         .filter(|(_, module_path, decl_name)| {
             !module_to_content.get(module_path).is_some_and(|content| {
-                crate::fact_cardinality_census::extract_top_level_decls(content)
+                crate::module_path_index::fact_cardinality_census::extract_top_level_decls(content)
                     .iter()
                     .any(|(name, _)| name == decl_name)
             })
