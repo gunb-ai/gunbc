@@ -6867,6 +6867,534 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
     out
 }
 
+// ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
+//
+// Audits the corpus for `match` expressions whose scrutinee is a function parameter with a declared
+// closed-coproduct type AND whose body has a top-level `_ =>` wildcard arm.
+//
+// Host-fed; DISSOLUTION: folds into a pure `.dag` Node-tree reader (match nodes + scrutinee type)
+// when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
+
+const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
+    "dsl/extdeps/languages/markdown.dag::md_nested",
+    "dsl/gunbc/generated_artifact.dag::artifact_eq",
+    "dsl/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
+    "dsl/gunbc/commit_workflow.dag::gate_eq",
+    "dsl/gunbc/commit_workflow.dag::local_tidy_check_eq",
+    "dsl/std/computation.dag::constant_bound_value",
+    "dsl/std/computation.dag::is_constant_bound",
+    "dsl/std/effects.dag::create_double_init_collapsible",
+    "dsl/std/effects.dag::create_effect_is_dedupable",
+    "dsl/std/effects.dag::key_source_eq",
+    "dsl/std/encoding.dag::encoding_lattice_join",
+    "dsl/std/encoding.dag::encoding_lattice_meet",
+    "dsl/std/filesystem.dag::is_text_encoding",
+    "dsl/std/induction.dag::compose_sub_value",
+    "dsl/std/induction.dag::compose_sub_value_relations",
+    "dsl/std/induction.dag::is_strict_style_structural",
+    "dsl/std/induction.dag::recursion_shape_eq",
+    "dsl/std/induction.dag::shrink_factor_eq",
+    "dsl/std/induction.dag::sub_value_structural_eq",
+    "dsl/std/reducible.dag::reduce_verdict_combine",
+    "dsl/std/termination.dag::descent_evidence_lattice_join",
+    "dsl/std/termination.dag::descent_evidence_lattice_meet",
+    "dsl/std/termination.dag::promote_to_strict",
+    "dsl/tools/ci_gates.dag::exit_ok",
+    "dsl/tools/generated_artifact_gate.dag::exit_ok",
+    "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer",
+    "src/v2/compiler/05_eval.dag::eval_branch_node_eval",
+    "src/v2/compiler/05_eval.dag::eval_loop_node",
+    "src/v2/compiler/05_eval.dag::eval_match_node_eval",
+    "src/v2/compiler/05_eval.dag::eval_transform_node",
+    "src/v2/compiler/05_eval.dag::eval_value_node",
+    "src/v2/compiler/05_eval.dag::run_test_claim_assert_decided",
+    "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
+    "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
+    "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
+    "src/v2/test/claim/manual/eval_runtime_mvp.dag::eval_mvp2_arg_is_two_literal",
+    "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
+    "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
+    "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
+    "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
+    "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
+    "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
+    "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
+    "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
+    "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle",
+    "src/v2/lens/complexity.dag::complexity_bound_dominates",
+    "src/v2/lens/complexity.dag::complexity_bound_from_class",
+    "src/v2/lens/cost.dag::asymptotic_class_dominates",
+    "src/v2/lens/cost.dag::multiply_classes",
+    "src/v2/lens/cost.dag::symbolic_cost_dominates",
+    "src/v2/lens/cost.dag::symbolic_cost_witness",
+    "src/v2/lens/cost.dag::symbolic_max",
+    "src/v2/lens/cost.dag::symbolic_product",
+    "src/v2/lens/cost.dag::symbolic_sequential",
+    "src/v2/lens/fact_density.dag::connective_is_kernel_ambient_atom",
+    "src/v2/lens/idempotency.dag::idempotency_verdict_eq",
+    "src/v2/lens/ownership.dag::ownership_mode_eq",
+    "src/v2/lens/parallelism.dag::parallelism_relation_eq",
+    "src/v2/lens/registry.dag::lens_id_v0_eq",
+    "src/v2/lens/unused_parameters.dag::use_relation_eq",
+    "src/v2/program.dag::program_runtime_bool_false",
+    "src/v2/program.dag::program_runtime_bool_true",
+    "src/v2/std/compilers/target_model.dag::source_atom_value_as_bool",
+    "src/v2/std/compilers/target_model.dag::source_atom_value_as_char",
+    "src/v2/std/compilers/target_model.dag::source_atom_value_as_string",
+    "src/v2/std/compilers/target_model.dag::source_atom_value_as_symbol",
+    "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
+    "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
+    "src/v2/std/effects.dag::key_source_eq",
+    "src/v2/std/determinism.dag::determinism_class_eq",
+    "src/v2/std/determinism.dag::non_det_source_eq",
+    "src/v2/std/float.dag::float_body_is_nan",
+    "src/v2/std/node_minimal.dag::node_superset_field_eq",
+    "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
+    "src/v2/std/qualified_name.dag::qn_fold_step",
+];
+
+fn nfr_strip_comments(content: &str) -> String {
+    content
+        .lines()
+        .map(strip_line_comment)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn nfr_closed_coproduct_names(files: &[(String, String)]) -> std::collections::BTreeSet<String> {
+    let mut out = std::collections::BTreeSet::new();
+    for (rel, content) in files {
+        if is_test_dag(rel) {
+            continue;
+        }
+        let lines: Vec<&str> = content.lines().collect();
+        let mut i = 0;
+        while i < lines.len() {
+            let trimmed = lines[i].trim_start();
+            let Some(rest) = trimmed.strip_prefix("type ") else {
+                i += 1;
+                continue;
+            };
+            let name: String = rest
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if name.is_empty() {
+                i += 1;
+                continue;
+            }
+            let mut block = String::new();
+            block.push_str(&strip_line_comment(lines[i]));
+            let mut depth = brace_delta(lines[i]);
+            i += 1;
+            while i < lines.len() {
+                let nt = lines[i].trim_start();
+                if depth <= 0 {
+                    if nt.is_empty() {
+                        i += 1;
+                        continue;
+                    }
+                    if !(nt.starts_with('|') || nt.starts_with('=')) {
+                        break;
+                    }
+                }
+                block.push('\n');
+                block.push_str(&strip_line_comment(lines[i]));
+                depth += brace_delta(lines[i]);
+                i += 1;
+            }
+            if block.contains('|') {
+                out.insert(name);
+            }
+        }
+    }
+    out
+}
+
+fn nfr_is_ident(s: &str) -> bool {
+    !s.is_empty()
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !s.chars().next().unwrap().is_ascii_digit()
+}
+
+fn nfr_matching_brace(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut j = open;
+    while j < bytes.len() {
+        match bytes[j] {
+            b'{' => depth += 1,
+            b'}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(j);
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
+}
+
+fn nfr_has_top_level_wildcard_arm(body: &str) -> bool {
+    let bytes = body.as_bytes();
+    let mut depth = 0i32;
+    let mut k = 0;
+    while k < bytes.len() {
+        match bytes[k] {
+            b'{' => depth += 1,
+            b'}' => depth -= 1,
+            b'_' => {
+                let prev_ok = k == 0 || !nfr_is_ident_byte(bytes[k - 1]);
+                let next_is_ident = k + 1 < bytes.len() && nfr_is_ident_byte(bytes[k + 1]);
+                if depth == 0 && prev_ok && !next_is_ident {
+                    let mut m = k + 1;
+                    while m < bytes.len()
+                        && (bytes[m] == b' ' || bytes[m] == b'\n' || bytes[m] == b'\t')
+                    {
+                        m += 1;
+                    }
+                    if m + 1 < bytes.len() && bytes[m] == b'=' && bytes[m + 1] == b'>' {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+        k += 1;
+    }
+    false
+}
+
+fn nfr_is_ident_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_'
+}
+
+struct NfrFnSig {
+    name: String,
+    params: std::collections::BTreeMap<String, String>,
+    body: String,
+}
+
+fn nfr_parse_fns(src: &str) -> Vec<NfrFnSig> {
+    let bytes = src.as_bytes();
+    let mut out = Vec::new();
+    for (start, _) in src.match_indices("fn ") {
+        if start > 0 && nfr_is_ident_byte(bytes[start - 1]) {
+            continue;
+        }
+        let after = start + 3;
+        let name: String = src[after..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            continue;
+        }
+        let paren_open = match src[after..].find('(') {
+            Some(p) => after + p,
+            None => continue,
+        };
+        let paren_close = match nfr_matching_paren(bytes, paren_open) {
+            Some(p) => p,
+            None => continue,
+        };
+        let params = nfr_parse_params(&src[paren_open + 1..paren_close]);
+        let brace_open = match src[paren_close..].find('{') {
+            Some(b) => paren_close + b,
+            None => continue,
+        };
+        let brace_close = match nfr_matching_brace(bytes, brace_open) {
+            Some(b) => b,
+            None => continue,
+        };
+        out.push(NfrFnSig {
+            name,
+            params,
+            body: src[brace_open + 1..brace_close].to_string(),
+        });
+    }
+    out
+}
+
+fn nfr_matching_paren(bytes: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut j = open;
+    while j < bytes.len() {
+        match bytes[j] {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(j);
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
+}
+
+fn nfr_parse_params(s: &str) -> std::collections::BTreeMap<String, String> {
+    let mut out = std::collections::BTreeMap::new();
+    let mut depth = 0i32;
+    let mut cur = String::new();
+    let mut parts: Vec<String> = Vec::new();
+    for ch in s.chars() {
+        match ch {
+            '<' | '(' | '[' => {
+                depth += 1;
+                cur.push(ch);
+            }
+            '>' | ')' | ']' => {
+                depth -= 1;
+                cur.push(ch);
+            }
+            ',' if depth == 0 => parts.push(std::mem::take(&mut cur)),
+            _ => cur.push(ch),
+        }
+    }
+    if !cur.trim().is_empty() {
+        parts.push(cur);
+    }
+    for part in parts {
+        let Some((name, ty)) = part.split_once(':') else {
+            continue;
+        };
+        let name = name.trim();
+        let ty_head: String = ty
+            .trim()
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if nfr_is_ident(name) && !ty_head.is_empty() {
+            out.insert(name.to_string(), ty_head);
+        }
+    }
+    out
+}
+
+fn nfr_residue_sites(files: &[(String, String)]) -> Vec<String> {
+    let coproducts = nfr_closed_coproduct_names(files);
+    let mut out: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for (rel, content) in files {
+        if is_test_dag(rel) {
+            continue;
+        }
+        let src = nfr_strip_comments(content);
+        for sig in nfr_parse_fns(&src) {
+            for (mi, _) in sig.body.match_indices("match ") {
+                if mi > 0 && nfr_is_ident_byte(sig.body.as_bytes()[mi - 1]) {
+                    continue;
+                }
+                let after = mi + "match ".len();
+                let Some(brace_rel) = sig.body[after..].find('{') else {
+                    continue;
+                };
+                let scrut = sig.body[after..after + brace_rel].trim();
+                if !nfr_is_ident(scrut) {
+                    continue;
+                }
+                let Some(ty) = sig.params.get(scrut) else {
+                    continue;
+                };
+                if !coproducts.contains(ty) {
+                    continue;
+                }
+                let body_bytes = sig.body.as_bytes();
+                let brace_abs = after + brace_rel;
+                let Some(close) = nfr_matching_brace(body_bytes, brace_abs) else {
+                    continue;
+                };
+                let body = &sig.body[brace_abs + 1..close];
+                if nfr_has_top_level_wildcard_arm(body) {
+                    out.insert(format!("{}::{}", rel, sig.name));
+                }
+            }
+        }
+    }
+    out.into_iter().collect()
+}
+
+struct NonFoldReport {
+    sites: Vec<String>,
+    coproduct_universe: usize,
+    closed_coproduct_names: std::collections::BTreeSet<String>,
+}
+
+fn nfr_build_report() -> &'static NonFoldReport {
+    static REPORT: std::sync::OnceLock<NonFoldReport> = std::sync::OnceLock::new();
+    REPORT.get_or_init(|| {
+        let files = corpus_dag_files();
+        let closed_coproduct_names = nfr_closed_coproduct_names(&files);
+        NonFoldReport {
+            sites: nfr_residue_sites(&files),
+            coproduct_universe: closed_coproduct_names.len(),
+            closed_coproduct_names,
+        }
+    })
+}
+
+pub fn non_fold_residue_closed_coproduct_type_names() -> &'static std::collections::BTreeSet<String>
+{
+    &nfr_build_report().closed_coproduct_names
+}
+
+pub fn non_fold_residue_count() -> i64 {
+    nfr_build_report().sites.len() as i64
+}
+
+pub fn non_fold_residue_unrostered_count() -> i64 {
+    let roster: std::collections::BTreeSet<&str> =
+        NON_FOLD_RESIDUE_ROSTER.iter().copied().collect();
+    nfr_build_report()
+        .sites
+        .iter()
+        .filter(|s| !roster.contains(s.as_str()))
+        .count() as i64
+}
+
+pub fn non_fold_residue_site_is_rostered(site: &str) -> bool {
+    NON_FOLD_RESIDUE_ROSTER.contains(&site)
+}
+
+pub fn non_fold_residue_stale_roster_count() -> i64 {
+    let live: std::collections::BTreeSet<&str> = nfr_build_report()
+        .sites
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
+    NON_FOLD_RESIDUE_ROSTER
+        .iter()
+        .filter(|s| !live.contains(*s))
+        .count() as i64
+}
+
+pub fn non_fold_residue_coproduct_universe_count() -> i64 {
+    nfr_build_report().coproduct_universe as i64
+}
+
+pub fn non_fold_residue_live_sites() -> &'static [String] {
+    &nfr_build_report().sites
+}
+
+pub fn non_fold_residue_roster_size() -> i64 {
+    NON_FOLD_RESIDUE_ROSTER.len() as i64
+}
+
+#[cfg(test)]
+mod nfr_tests {
+    use super::*;
+
+    fn files(pairs: &[(&str, &str)]) -> Vec<(String, String)> {
+        pairs
+            .iter()
+            .map(|(p, c)| (p.to_string(), c.to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn coproduct_index_finds_sums_not_records() {
+        let f = files(&[(
+            "t.dag",
+            "module t\ntype Mode = A | B | C\ntype Rec { x: Int }\ntype Alias = Witness<Int>\n",
+        )]);
+        let cps = nfr_closed_coproduct_names(&f);
+        assert!(cps.contains("Mode"));
+        assert!(!cps.contains("Rec"));
+        assert!(!cps.contains("Alias"));
+    }
+
+    #[test]
+    fn red_control_wildcard_over_closed_coproduct_is_residue() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    _ => false\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(
+            sites.contains(&"m.dag::f".to_string()),
+            "a wildcard over a closed-coproduct param must be flagged; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_total_fold_is_not_residue() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> Bool {\n  match x {\n    A => true\n    B => false\n    C => false\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(
+            !sites.contains(&"m.dag::f".to_string()),
+            "an exhaustive match (no wildcard) must NOT be flagged; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_wildcard_over_open_domain_is_not_residue() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B\nfn g(s: String) -> Bool {\n  match s {\n    \"y\" => true\n    _ => false\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(
+            !sites.contains(&"m.dag::g".to_string()),
+            "a wildcard over an open/primitive domain must NOT be flagged; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_field_placeholder_underscore_is_not_a_wildcard_arm() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A { v: Int } | B { v: Int }\nfn f(x: Mode) -> Int {\n  match x {\n    A { v: _ } => 1\n    B { v: _ } => 2\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(
+            !sites.contains(&"m.dag::f".to_string()),
+            "field-placeholder `_` is not a wildcard arm; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn nested_match_wildcard_is_attributed_to_its_own_match() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B\nfn eq(a: Mode, b: Mode) -> Bool {\n  match a {\n    A => match b { A => true _ => false }\n    B => match b { B => true _ => false }\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(sites.contains(&"m.dag::eq".to_string()));
+    }
+
+    #[test]
+    fn green_control_wildcard_and_slashes_inside_string_literal_are_ignored() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    B => \"b\"\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(
+            !sites.contains(&"m.dag::f".to_string()),
+            "`_ =>`/`//` inside a string literal must not be read as code; got {sites:?}"
+        );
+    }
+
+    #[test]
+    fn red_control_real_wildcard_survives_an_in_string_decoy() {
+        let f = files(&[(
+            "m.dag",
+            "module m\ntype Mode = A | B | C\nfn f(x: Mode) -> String {\n  match x {\n    A => \"see https://x/y and _ => z\"\n    _ => \"rest\"\n  }\n}\n",
+        )]);
+        let sites = nfr_residue_sites(&f);
+        assert!(
+            sites.contains(&"m.dag::f".to_string()),
+            "a real wildcard arm must still be flagged despite an in-string decoy; got {sites:?}"
+        );
+    }
+}
+
 const LANGUAGES_AUTHORITY_REL: &str = "dsl/std/languages.dag";
 
 fn languages_census_collect_source_files(dir: &Path, out: &mut Vec<PathBuf>) {

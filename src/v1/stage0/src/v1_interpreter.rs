@@ -5814,16 +5814,16 @@ fn eval_builtin(
         ))),
 
         "non_fold_residue_count" => Ok(Some(Value::Int(
-            crate::module_path_index::non_fold_residue_census::non_fold_residue_count(),
+            crate::cli_run::non_fold_residue_count(),
         ))),
         "non_fold_residue_unrostered_count" => Ok(Some(Value::Int(
-            crate::module_path_index::non_fold_residue_census::non_fold_residue_unrostered_count(),
+            crate::cli_run::non_fold_residue_unrostered_count(),
         ))),
         "non_fold_residue_stale_roster_count" => Ok(Some(Value::Int(
-            crate::module_path_index::non_fold_residue_census::non_fold_residue_stale_roster_count(),
+            crate::cli_run::non_fold_residue_stale_roster_count(),
         ))),
         "non_fold_residue_coproduct_universe_count" => Ok(Some(Value::Int(
-            crate::module_path_index::non_fold_residue_census::non_fold_residue_coproduct_universe_count(),
+            crate::cli_run::non_fold_residue_coproduct_universe_count(),
         ))),
 
         "complexity_linearity_syntactic_finding_count" => Ok(Some(Value::Int(
