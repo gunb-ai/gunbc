@@ -31,7 +31,7 @@ fn witness_subgroup_labels() -> Bool {
   string_contains(s: o, pattern: "**Now — correctness of the current posture:**")
     && string_contains(s: o, pattern: "**Floor wall-clock — 26m → <1min on a typical PR:**")
     && string_contains(s: o, pattern: "**Control plane — the #6096 re-land, done right (G2/G3):**")
-    && string_contains(s: o, pattern: "**Fleet return — required CI back on our metal:**")
+    && string_contains(s: o, pattern: "**Fleet hardening — make our metal safe for the load it carries:**")
 }
 
 fn witness_emit_refs_from_binding() -> Bool {
@@ -51,7 +51,8 @@ fn witness_pillar1_no_overclaim() -> Bool {
 
 fn witness_pillar2_posture() -> Bool {
   let o = out()
-  string_contains(s: o, pattern: "required CI is **stabilized on Ubicloud** (#6107")
+  string_contains(s: o, pattern: "required CI is back on the fleet")
+    && string_contains(s: o, pattern: "#6107, reverted #6111")
     && string_contains(s: o, pattern: "#6096 (fleet converge control plane) was **closed unmerged**")
     && string_contains(s: o, pattern: "the re-land is an architecture change, not a rebase")
 }
@@ -93,6 +94,8 @@ fn witness_audit_lane_present() -> Bool {
   string_contains(s: o, pattern: "**Audit — green by execution, red by perturbation:**")
     && string_contains(s: o, pattern: "**affected-set lens** *(the operator's named example)*")
     && string_contains(s: o, pattern: "A mechanism claim without a red-control is *unverified*")
+    && string_contains(s: o, pattern: "**artifact-freshness gate**")
+    && string_contains(s: o, pattern: "**one tree, one verdict**")
 }
 
 test fn roadmap_authority_witnesses() -> Bool {
