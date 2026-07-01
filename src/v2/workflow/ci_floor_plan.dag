@@ -529,9 +529,7 @@ fn witness_floor_spawn_width_tight_budget_backs_off() -> Bool {
 }
 
 fn witness_floor_spawn_width_zero_budget_falls_back() -> Bool {
-  let width = hardware_thread_count_value(
-    t: gunbc_ci_floor_spawn_width_for_budget(memory_budget: byte_size(0))
-  )
+  let width = hardware_thread_count_value(t: gunbc_ci_plan_spawn_width(memory_budget_bytes: 0))
   width == gunbc_ci_floor_conservative_fallback_width
 }
 
