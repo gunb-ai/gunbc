@@ -1,11 +1,11 @@
-module gunbc.live_deploy_apply
+module gunbc.live_deploy.apply
 
-import gunbc.live_deploy {
+import gunbc.live_deploy.spec {
   DeploymentSpec,
   DeploymentEnsuredStep,
   deployment_spec_srv1,
 }
-import gunbc.live_deploy_emit {
+import gunbc.live_deploy.emit {
   live_deploy_apply_script_for,
   live_deploy_retract_script_for,
   deployment_ensure_dependency_script,
@@ -19,7 +19,8 @@ import gunbc.host_effect {
   HostEffectEvidence,
 }
 import gunbc.host_effect_realize { host_effect_apply }
-import std.realization_reconcile { Reconciliation }
+import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
 
 fn live_deploy_ensure_dependency_via_ssh(
   spec: DeploymentSpec,
@@ -62,4 +63,23 @@ fn live_deploy_apply_srv1() -> Reconciliation<HostEffectIntent, HostEffectEviden
 
 fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_retract_via_ssh(spec: deployment_spec_srv1())
+}
+
+fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ProcessExit {
+  if reconciliation_converged(r: r) {
+    ExitSuccess
+  } else {
+    match r {
+      NotConverged { reason: why, applied: _ } => exit_failure(reason: why)
+      Converged { evidence: _, applied: _ } => ExitSuccess
+    }
+  }
+}
+
+func live_deploy_apply_srv1_wet() -> ProcessExit {
+  live_deploy_reconciliation_exit(r: live_deploy_apply_srv1())
+}
+
+func live_deploy_retract_srv1_wet() -> ProcessExit {
+  live_deploy_reconciliation_exit(r: live_deploy_retract_srv1())
 }

@@ -1,0 +1,292 @@
+module extdeps.languages.typescript.program
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.typescriptlang.org/docs/handbook/2/basic-types.html"
+  }
+}
+
+type TsStringQuote
+  = SingleQuote
+  | DoubleQuote
+  | Backtick
+
+type TsExpr
+  = LitStr { value: String, quote: TsStringQuote }
+  | LitNum { text: String }
+  | LitRegex { source: String }
+  | Ident { name: String }
+  | Member { object: TsExpr, property: String }
+  | Index { object: TsExpr, index: TsExpr }
+  | Call { callee: TsExpr, args: List<TsExpr> }
+  | ArrowFn { params: List<String>, body: TsStmt }
+  | BinOp { left: TsExpr, op: String, right: TsExpr }
+  | Prefix { op: String, expr: TsExpr }
+  | ArrayLit { elements: List<TsExpr> }
+  | ObjectLit { fields: List<TsObjectField> }
+  | Spread { expr: TsExpr }
+  | Cond { test: TsExpr, consequent: TsExpr, alternate: TsExpr }
+
+type TsObjectField
+  = Field { key: String, value: TsExpr, quote_key: Bool }
+
+type TsStmt
+  = Const { name: String, value: TsExpr }
+  | Let { name: String, value: TsExpr }
+  | ExprStmt { expr: TsExpr }
+  | If { cond: TsExpr, then: TsStmt, else_stmt: TsStmt? }
+  | ForOf { var_name: String, iterable: TsExpr, body: TsStmt }
+  | Return { expr: TsExpr? }
+  | Block { stmts: List<TsStmt> }
+
+type TsProgram {
+  ts_nocheck: Bool
+  header_lines: List<String>
+  statements: List<TsStmt>
+}
+
+fn ts_ident(name: String) -> TsExpr {
+  Ident { name: name }
+}
+
+fn ts_lit_str(value: String) -> TsExpr {
+  LitStr { value: value, quote: SingleQuote }
+}
+
+fn ts_lit_str_double(value: String) -> TsExpr {
+  LitStr { value: value, quote: DoubleQuote }
+}
+
+fn ts_lit_backtick(value: String) -> TsExpr {
+  LitStr { value: value, quote: Backtick }
+}
+
+fn ts_lit_num(text: String) -> TsExpr {
+  LitNum { text: text }
+}
+
+fn ts_lit_regex(source: String) -> TsExpr {
+  LitRegex { source: source }
+}
+
+fn ts_member(object: TsExpr, property: String) -> TsExpr {
+  Member { object: object, property: property }
+}
+
+fn ts_call(callee: TsExpr, args: List<TsExpr>) -> TsExpr {
+  Call { callee: callee, args: args }
+}
+
+fn ts_binop(left: TsExpr, op: String, right: TsExpr) -> TsExpr {
+  BinOp { left: left, op: op, right: right }
+}
+
+fn ts_field(key: String, value: TsExpr) -> TsObjectField {
+  Field { key: key, value: value, quote_key: false }
+}
+
+fn ts_quoted_field(key: String, value: TsExpr) -> TsObjectField {
+  Field { key: key, value: value, quote_key: true }
+}
+
+fn ts_object(fields: List<TsObjectField>) -> TsExpr {
+  ObjectLit { fields: fields }
+}
+
+fn ts_array(elements: List<TsExpr>) -> TsExpr {
+  ArrayLit { elements: elements }
+}
+
+fn ts_arrow(params: List<String>, body: TsStmt) -> TsExpr {
+  ArrowFn { params: params, body: body }
+}
+
+fn ts_index(object: TsExpr, index: TsExpr) -> TsExpr {
+  Index { object: object, index: index }
+}
+
+fn ts_cond(test: TsExpr, consequent: TsExpr, alternate: TsExpr) -> TsExpr {
+  Cond { test: test, consequent: consequent, alternate: alternate }
+}
+
+fn ts_prefix(op: String, expr: TsExpr) -> TsExpr {
+  Prefix { op: op, expr: expr }
+}
+
+fn ts_spread(expr: TsExpr) -> TsExpr {
+  Spread { expr: expr }
+}
+
+fn ts_block(stmts: List<TsStmt>) -> TsStmt {
+  Block { stmts: stmts }
+}
+
+fn ts_const(name: String, value: TsExpr) -> TsStmt {
+  Const { name: name, value: value }
+}
+
+fn ts_let(name: String, value: TsExpr) -> TsStmt {
+  Let { name: name, value: value }
+}
+
+fn ts_expr_stmt(expr: TsExpr) -> TsStmt {
+  ExprStmt { expr: expr }
+}
+
+fn ts_return(expr: TsExpr?) -> TsStmt {
+  Return { expr: expr }
+}
+
+fn ts_if(cond: TsExpr, then: TsStmt, else_stmt: TsStmt?) -> TsStmt {
+  If { cond: cond, then: then, else_stmt: else_stmt }
+}
+
+fn ts_for_of(var_name: String, iterable: TsExpr, body: TsStmt) -> TsStmt {
+  ForOf { var_name: var_name, iterable: iterable, body: body }
+}
+
+fn escape_single_quoted(s: String) -> String {
+  let s1 = join(split(s: s, delimiter: "\\"), "\\\\")
+  join(split(s: s1, delimiter: "'"), "\\'")
+}
+
+fn escape_double_quoted(s: String) -> String {
+  let s1 = join(split(s: s, delimiter: "\\"), "\\\\")
+  join(split(s: s1, delimiter: "\""), "\\\"")
+}
+
+fn escape_backtick(s: String) -> String {
+  let s1 = join(split(s: s, delimiter: "\\"), "\\\\")
+  let s2 = join(split(s: s1, delimiter: "`"), "\\`")
+  let s3 = join(split(s: s2, delimiter: "$"), "\\$")
+  s3
+}
+
+fn serialize_string_literal(value: String, quote: TsStringQuote) -> String {
+  match quote {
+    SingleQuote => concat("'", concat(escape_single_quoted(s: value), "'"))
+    DoubleQuote => concat("\"", concat(escape_double_quoted(s: value), "\""))
+    Backtick => concat("`", concat(escape_backtick(s: value), "`"))
+  }
+}
+
+fn join_expr_args(args: List<TsExpr>) -> String {
+  fold(args, init: "", f: (acc, a) => {
+    let part = serialize_ts_expr(e: a)
+    if acc == "" { part } else { concat(acc, concat(", ", part)) }
+  })
+}
+
+fn serialize_object_field(f: TsObjectField) -> String {
+  match f {
+    Field { key: k, value: v, quote_key: qk } =>
+      if qk {
+        concat(serialize_string_literal(value: k, quote: SingleQuote), concat(": ", serialize_ts_expr(e: v)))
+      } else {
+        concat(k, concat(": ", serialize_ts_expr(e: v)))
+      }
+  }
+}
+
+fn join_object_fields(fields: List<TsObjectField>) -> String {
+  fold(fields, init: "", f: (acc, field) => {
+    let part = serialize_object_field(f: field)
+    if acc == "" { part } else { concat(acc, concat(", ", part)) }
+  })
+}
+
+fn join_array_elements(elements: List<TsExpr>) -> String {
+  fold(elements, init: "", f: (acc, el) => {
+    let part = serialize_ts_expr(e: el)
+    if acc == "" { part } else { concat(acc, concat(", ", part)) }
+  })
+}
+
+fn serialize_ts_expr(e: TsExpr) -> String {
+  match e {
+    LitStr { value: v, quote: q } => serialize_string_literal(value: v, quote: q)
+    LitNum { text: t } => t
+    LitRegex { source: s } => concat("/", concat(s, "/"))
+    Ident { name: n } => n
+    Member { object: o, property: p } => concat(serialize_ts_expr(e: o), concat(".", p))
+    Index { object: o, index: i } =>
+      concat(serialize_ts_expr(e: o), concat("[", concat(serialize_ts_expr(e: i), "]")))
+    Call { callee: c, args: a } =>
+      concat(serialize_ts_expr(e: c), concat("(", concat(join_expr_args(args: a), ")")))
+    ArrowFn { params: ps, body: b } =>
+      concat("(", concat(join(ps, ", "), concat(") => ", serialize_ts_stmt_body(s: b))))
+    BinOp { left: l, op: o, right: r } =>
+      concat(serialize_ts_expr(e: l), concat(concat(" ", o), concat(" ", serialize_ts_expr(e: r))))
+    Prefix { op: o, expr: x } => concat(o, serialize_ts_expr(e: x))
+    ArrayLit { elements: els } => concat("[", concat(join_array_elements(elements: els), "]"))
+    ObjectLit { fields: fs } => concat("{ ", concat(join_object_fields(fields: fs), " }"))
+    Spread { expr: x } => concat("...", serialize_ts_expr(e: x))
+    Cond { test: t, consequent: c, alternate: a } =>
+      concat(serialize_ts_expr(e: t), concat(" ? ", concat(serialize_ts_expr(e: c), concat(" : ", serialize_ts_expr(e: a)))))
+  }
+}
+
+fn serialize_ts_stmt_body(s: TsStmt) -> String {
+  match s {
+    Block { stmts: ss } => concat("{ ", concat(serialize_ts_stmts_indented(stmts: ss, indent: "  "), " }"))
+    ExprStmt { expr: e } => serialize_ts_expr(e: e)
+    Const { name: _, value: _ } => serialize_ts_stmt(s: s)
+    Let { name: _, value: _ } => serialize_ts_stmt(s: s)
+    If { cond: _, then: _, else_stmt: _ } => serialize_ts_stmt(s: s)
+    ForOf { var_name: _, iterable: _, body: _ } => serialize_ts_stmt(s: s)
+    Return { expr: _ } => serialize_ts_stmt(s: s)
+  }
+}
+
+fn serialize_ts_stmt(s: TsStmt) -> String {
+  match s {
+    Const { name: n, value: v } => concat("const ", concat(n, concat(" = ", concat(serialize_ts_expr(e: v), ";"))))
+    Let { name: n, value: v } => concat("let ", concat(n, concat(" = ", concat(serialize_ts_expr(e: v), ";"))))
+    ExprStmt { expr: e } => concat(serialize_ts_expr(e: e), ";")
+    If { cond: c, then: t, else_stmt: e } =>
+      match e {
+        Present { value: es } =>
+          concat("if (", concat(serialize_ts_expr(e: c), concat(") ", concat(serialize_ts_stmt_body(s: t), concat(" else ", serialize_ts_stmt_body(s: es))))))
+        Absent =>
+          concat("if (", concat(serialize_ts_expr(e: c), concat(") ", serialize_ts_stmt_body(s: t))))
+      }
+    ForOf { var_name: vn, iterable: it, body: b } =>
+      concat("for (const ", concat(vn, concat(" of ", concat(serialize_ts_expr(e: it), concat(") ", serialize_ts_stmt_body(s: b))))))
+    Return { expr: e } =>
+      match e {
+        Present { value: x } => concat("return ", concat(serialize_ts_expr(e: x), ";"))
+        Absent => "return;"
+      }
+    Block { stmts: ss } => concat("{\n", concat(serialize_ts_stmts_indented(stmts: ss, indent: "  "), "\n}"))
+  }
+}
+
+fn serialize_ts_stmts_indented(stmts: List<TsStmt>, indent: String) -> String {
+  fold(stmts, init: "", f: (acc, s) => {
+    let line = concat(indent, serialize_ts_stmt(s: s))
+    if acc == "" { line } else { concat(acc, concat("\n", line)) }
+  })
+}
+
+fn serialize_typescript_program(p: TsProgram) -> String {
+  let header = fold(p.header_lines, init: "", f: (acc, line) => {
+    let part = concat("// ", line)
+    if acc == "" { part } else { concat(acc, concat("\n", part)) }
+  })
+  let nocheck = if p.ts_nocheck { "// @ts-nocheck\n" } else { "" }
+  let body = fold(p.statements, init: "", f: (acc, s) => {
+    let part = serialize_ts_stmt(s: s)
+    if acc == "" { part } else { concat(acc, concat("\n", part)) }
+  })
+  if header == "" {
+    concat(nocheck, body)
+  } else {
+    concat(nocheck, concat(header, concat("\n", body)))
+  }
+}
+
+data typescript_program_serialize_dissolution_trigger: String = "🟡 dissolve-on: serialize_typescript_program concat serializer — TsExpr/TsStmt/TsProgram AST + hand emission standing in for grammar-row-driven TypeScript program emit/ingest (DESIGN §4 one grammar read both directions). gunbc/node_http_server_emit no longer assembles JS syntax (medium_structure_exception_roster exit is honest). DISSOLVES WHEN TypeScript program surface emits through extdeps.languages.typescript grammar rows with ingest ∘ emit = id over shared productions (parallel to bash_fold); retire this serializer oracle."
