@@ -4302,7 +4302,7 @@ pub fn run_discovery_corpus_with_options(
     };
     let skip_ctx = FloorProvenanceSkipContext {
         effective_roots: effective_roots.clone(),
-        changed_paths,
+        changed_paths: changed_paths.clone(),
         provenance_overlay_active: provenance_overlay.is_some(),
         provenance_ingest_live,
     };
@@ -6813,49 +6813,6 @@ fn extend_frontier_with_provenance(
         provenance_rerun_frontier_nodes(runner_ctx, &provenance_entry_root, changed_paths)?;
     merge_frontier_nodes(frontier, provenance_nodes, runner_ctx);
     Ok(())
-}
-
-fn entry_frontier_nodes_via_dag_closure(
-    runner_ctx: &v1_interpreter::InterpContext,
-    entry_ctx: &v1_interpreter::InterpContext,
-    entry_path: &str,
-    seeds: &NodeFrontierSeeds,
-    changed_paths: &[String],
-    provenance_live: bool,
-) -> Result<Vec<v1_interpreter::Value>, String> {
-    let edit_loci = entry_frontier_nodes_from_seeds(entry_ctx, entry_path, seeds)?;
-    let mut frontier = edit_loci;
-    if provenance_live {
-        let provenance_entry_root = provenance_entry_tree_root(runner_ctx, entry_path)
-            .map_err(|msg| format!("provenance entry tree root unavailable ({msg})"))?;
-        let provenance_nodes =
-            provenance_rerun_frontier_nodes(runner_ctx, &provenance_entry_root, changed_paths)
-                .map_err(|msg| format!("provenance frontier failed ({msg})"))?;
-        merge_frontier_nodes(&mut frontier, provenance_nodes, runner_ctx);
-    }
-    Ok(frontier)
-}
-
-fn entry_touches_frontier_via_dag_closure(
-    runner_ctx: &v1_interpreter::InterpContext,
-    entry_ctx: &v1_interpreter::InterpContext,
-    entry_path: &str,
-    seeds: &NodeFrontierSeeds,
-    changed_paths: &[String],
-    provenance_live: bool,
-) -> Result<bool, String> {
-    let frontier = entry_frontier_nodes_via_dag_closure(
-        runner_ctx,
-        entry_ctx,
-        entry_path,
-        seeds,
-        changed_paths,
-        provenance_live,
-    )?;
-    if frontier.is_empty() {
-        return Ok(false);
-    }
-    entry_claims_touch_frontier(entry_ctx, &list_value_from_vec(frontier))
 }
 
 pub fn discover_source_root_reads_for_entry(
