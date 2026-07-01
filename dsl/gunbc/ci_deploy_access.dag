@@ -28,6 +28,8 @@ data deploy_access_refusal_prefix: String = "deploy_access: typed refusal before
 data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
 
 data ci_deploy_runner_principal: NonEmptyStr = "runner"
+
+fn srv1_live_deploy_privileged_commands() -> List<PrivilegedCommand> {
   [
     PrivilegedCommand { path: "/usr/bin/bash", check: "-c true" },
     PrivilegedCommand { path: "/usr/bin/apt-get", check: "--help" },
