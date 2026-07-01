@@ -16,7 +16,8 @@ import extdeps.tailscale.acl {
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Https }
-import gunbc.tailscale_acl_emit { expected_tailscale_acl_json }
+import std.disposition { Scaffold, SingleAuthority }
+import gunbc.tailscale_acl_emit { expected_tailscale_acl_json, tailscale_acl_json_emit_scaffold, tailscale_acl_json_emit_dissolution_trigger }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 data tailscale_acl_reference_fixture_path: String = "dsl/test/fixture/tailscale_acl_reference.json"
@@ -68,6 +69,15 @@ fn witness_dashboard_tag_not_ci_in_acl_model() -> Bool {
     && !string_contains(s: tag_dashboard, pattern: "tag:ci")
 }
 
+fn witness_acl_json_emit_carries_dissolution_marker() -> Bool {
+  match tailscale_acl_json_emit_scaffold {
+    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+    _ => false
+  }
+    && string_contains(s: tailscale_acl_json_emit_dissolution_trigger, pattern: "tailscale_acl_json_emit")
+    && string_contains(s: tailscale_acl_json_emit_dissolution_trigger, pattern: "medium_structure_exception_roster")
+}
+
 test fn tailscale_acl_witnesses() -> Bool {
   witness_acl_cites_tailscale_grants_authority()
     && witness_operator_policy_row_counts()
@@ -78,4 +88,5 @@ test fn tailscale_acl_witnesses() -> Bool {
     && witness_security_spine()
     && witness_emit_matches_reference_fixture()
     && witness_dashboard_tag_not_ci_in_acl_model()
+    && witness_acl_json_emit_carries_dissolution_marker()
 }

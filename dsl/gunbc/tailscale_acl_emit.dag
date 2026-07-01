@@ -1,6 +1,8 @@
 module gunbc.tailscale_acl_emit
 
 import std.types { String, NonEmptyStr, List }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.tailscale.acl {
   TailscaleGrant,
   TailscaleSshRule,
@@ -8,6 +10,17 @@ import extdeps.tailscale.acl {
   TailscaleTagOwnerRow,
   operator_tailscale_acl_policy,
 }
+
+data tailscale_acl_json_emit_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.primitives",
+    decl_name: "to_json",
+    field: WholeDeclaration
+  }
+}
+
+data tailscale_acl_json_emit_dissolution_trigger: String = "dissolve-on: tailscale_acl_json_emit concat serializer — JSON body built via nested string concat (medium-as-string) instead of grammar-row emit from extdeps.tailscale.acl authority; DISSOLVES WHEN Tailscale ACL policy emits through to_json/grammar rows with ingest o emit = id over operator_tailscale_acl_policy; retire medium_structure_exception_roster entry for dsl/gunbc/tailscale_acl_emit.dag"
 
 fn join_json_quoted(items: List<NonEmptyStr>) -> String {
   fold(items, init: "", f: (acc, x) => if acc == "" { concat("\"", concat(x, "\"")) } else { concat(concat(acc, ", \""), concat(x, "\"")) })
