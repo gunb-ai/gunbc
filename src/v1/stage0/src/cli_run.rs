@@ -4178,14 +4178,20 @@ fn run_discovery_rows(
             );
             current_entry_touches = if skip_enabled {
                 if use_dag_closure {
-                    match entry_touches_frontier_via_dag_closure(
+                    let dag_touches = entry_touches_frontier_via_dag_closure(
                         dag_closure_runner.as_ref().expect("runner ctx"),
                         &entry_ctx,
                         frontier_seeds,
                         &skip_ctx.changed_paths,
                         provenance_live,
-                    ) {
-                        Ok(touches) => touches,
+                    );
+                    match dag_touches {
+                        Ok(true) => true,
+                        Ok(false) => entry_touches_frontier_seeds(
+                            &entry_ctx,
+                            &row.entry,
+                            frontier_seeds,
+                        )?,
                         Err(msg) => {
                             eprintln!(
                                 "claim_executor: .dag node-closure skip failed ({msg}) — falling back to seed bridge"
@@ -5985,6 +5991,20 @@ fn list_value_from_strings(items: &[String]) -> v1_interpreter::Value {
     v1_interpreter::list_value(values)
 }
 
+fn merge_frontier_nodes(
+    acc: &mut Vec<v1_interpreter::Value>,
+    more: Vec<v1_interpreter::Value>,
+    ctx: &v1_interpreter::InterpContext,
+) {
+    let mut seen: HashSet<String> = acc.iter().map(|n| ctx.format_value(n)).collect();
+    for node in more {
+        let key = ctx.format_value(&node);
+        if seen.insert(key) {
+            acc.push(node);
+        }
+    }
+}
+
 fn entry_frontier_nodes_via_dag_closure(
     runner_ctx: &v1_interpreter::InterpContext,
     entry_ctx: &v1_interpreter::InterpContext,
@@ -5992,7 +6012,7 @@ fn entry_frontier_nodes_via_dag_closure(
     changed_paths: &[String],
     provenance_live: bool,
 ) -> Result<Vec<v1_interpreter::Value>, String> {
-    let mut edit_loci = entry_frontier_nodes_from_seeds(entry_ctx, "", seeds)?;
+    let edit_loci = entry_frontier_nodes_from_seeds(entry_ctx, "", seeds)?;
     if edit_loci.is_empty() {
         return Ok(Vec::new());
     }
@@ -6000,18 +6020,20 @@ fn entry_frontier_nodes_via_dag_closure(
         .first()
         .cloned()
         .unwrap_or(v1_interpreter::Value::Null);
+    let mut frontier = closure_rerun_frontier_nodes(runner_ctx, &entry_root, &edit_loci)?;
     if provenance_live {
         match provenance_rerun_frontier_nodes(runner_ctx, &entry_root, changed_paths) {
-            Ok(nodes) if !nodes.is_empty() => return Ok(nodes),
-            Ok(_) => {}
+            Ok(provenance_nodes) => {
+                merge_frontier_nodes(&mut frontier, provenance_nodes, runner_ctx);
+            }
             Err(msg) => {
                 eprintln!(
-                    "claim_executor: provenance frontier failed ({msg}) — falling back to .dag closure from edit loci"
+                    "claim_executor: provenance frontier failed ({msg}) — using edit-loci closure only"
                 );
             }
         }
     }
-    closure_rerun_frontier_nodes(runner_ctx, &entry_root, &edit_loci)
+    Ok(frontier)
 }
 
 fn entry_touches_frontier_via_dag_closure(
