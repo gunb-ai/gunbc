@@ -1,0 +1,31 @@
+module v2.test.fixture.program_assembly.pa_ingest_peer
+
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  ManualAnchorAbsent,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+
+data pa_ingest_peer_orphan: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^pa_ingest_peer_orphan_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data pa_ingest_peer_claim: TestClaim = EqualsClaim {
+  label: "pa ingest peer orphan claim",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: pa_ingest_peer_orphan,
+  rhs: pa_ingest_peer_orphan,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+test fn pa_ingest_peer_witness_holds() -> Bool {
+  true
+}

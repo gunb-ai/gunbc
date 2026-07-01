@@ -6251,13 +6251,28 @@ mod floor_witness_entry_tree_root_controls {
         let _cwd = workspace_root();
         std::env::set_current_dir(&_cwd).expect("chdir");
         let roots = default_source_roots();
-        let entry = "src/v2/test/fixture/program_assembly/pa_ingest_peer.dag";
+        let entry = "src/v2/test/fixture/program_assembly/pa_ingest_peer_test.dag";
         let overlay = prepare_floor_provenance_ingest_overlay(&roots, &[entry.to_string()], &[])
             .expect("overlay prep")
             .expect("overlay present");
         let effective = source_roots_with_overlay(&roots, &overlay);
         let runner = floor_runner_eval_context(&effective).expect("runner ctx");
         witness_entry_tree_root(&runner, &roots, entry).expect("entry tree root");
+    }
+
+    #[test]
+    fn discover_source_root_reads_for_paths_fails_closed_on_missing_dag() {
+        let roots = default_source_roots();
+        let err = super::discover_source_root_reads_for_paths(
+            &roots,
+            &["src/v2/no/such/file.dag".to_string()],
+            &[],
+        )
+        .expect_err("missing .dag path must not silently skip");
+        assert!(
+            err.contains("no source root contains file"),
+            "unexpected error: {err}"
+        );
     }
 }
 
@@ -6310,9 +6325,7 @@ pub fn discover_source_root_reads_for_paths(
         if path_matches_any_subpath(&rel_forward, exclude_subpaths) {
             continue;
         }
-        let Ok(abs) = resolve_dag_path(source_roots, &rel_forward) else {
-            continue;
-        };
+        let abs = resolve_dag_path(source_roots, &rel_forward)?;
         let content = std::fs::read_to_string(&abs)
             .map_err(|e| format!("failed to read {:?}: {}", abs, e))?;
         let module_path = extract_module_path(&content).ok_or_else(|| {
@@ -6372,7 +6385,7 @@ fn write_provenance_ingest_overlay(
         overlay_nonce
     ));
     let manifest_path = overlay_root.join(FLOOR_PROVENANCE_INGEST_MANIFEST_REL);
-    emit_source_root_ingest_manifest(&manifest_path, records, None)?;
+    emit_source_root_ingest_manifest(&manifest_path, records, None, true)?;
     Ok(FloorProvenanceIngestOverlay { overlay_root })
 }
 
@@ -6708,6 +6721,7 @@ pub fn emit_source_root_ingest_manifest(
     path: &Path,
     records: &[SourceRootReadRecord],
     entry_admission: Option<&SourceRootEntryAdmission>,
+    coverage_complete: bool,
 ) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)
@@ -6751,7 +6765,10 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {\n");
     out.push_str(&format!("  ingest_read_count: {read_count},\n"));
     out.push_str(&format!("  produced_row_count: {read_count},\n"));
-    out.push_str("  coverage_complete: true\n");
+    out.push_str(&format!(
+        "  coverage_complete: {}\n",
+        if coverage_complete { "true" } else { "false" }
+    ));
     out.push_str("}\n\n\n");
     for (i, rec) in inline_records.iter().enumerate() {
         out.push_str(&emit_source_root_medium_data(

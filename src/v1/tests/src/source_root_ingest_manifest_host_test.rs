@@ -42,7 +42,7 @@ fn manifest_entry_admission_qualified_name_is_well_formed() {
         &["host_source_root_ingest_manifest.dag".to_string()],
     )
     .expect("discover reads");
-    emit_source_root_ingest_manifest(&manifest_path, &records[..1], Some(&admission))
+    emit_source_root_ingest_manifest(&manifest_path, &records[..1], Some(&admission), false)
         .expect("emit manifest");
     let manifest = fs::read_to_string(&manifest_path).expect("read manifest");
     assert!(

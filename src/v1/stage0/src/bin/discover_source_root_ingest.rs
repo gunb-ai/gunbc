@@ -107,7 +107,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             None => None,
         };
         if let Err(msg) =
-            emit_source_root_ingest_manifest(&path, &records, entry_admission.as_ref())
+            emit_source_root_ingest_manifest(&path, &records, entry_admission.as_ref(), true)
         {
             eprintln!("discover_source_root_ingest: {}", msg);
             return Err(ExitCode::from(1));

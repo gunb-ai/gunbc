@@ -412,7 +412,7 @@ fn discovery_corpus_live_provenance_overlay_resolves_entry_root_off_ingest() {
     let text = std::fs::read_to_string(&poisoner_abs).expect("pa_ingest_subject readable");
     let fn_line = fixture_line(&text, "fn add");
     let peer = ws
-        .join("src/v2/test/fixture/program_assembly/pa_ingest_peer.dag")
+        .join("src/v2/test/fixture/program_assembly/pa_ingest_peer_test.dag")
         .to_string_lossy()
         .into_owned();
     let roster = vec![(peer, "pa_ingest_peer_witness_holds".to_string())];
