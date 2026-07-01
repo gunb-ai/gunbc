@@ -564,4 +564,47 @@ mod tests {
             "expected syntactic findings on the live corpus"
         );
     }
+
+    #[test]
+    fn roster_partition_covers_every_entry_without_overlap() {
+        // Every migration-debt entry must exist in the full roster.
+        for site in NON_FOLD_MIGRATION_DEBT_ROSTER {
+            assert!(
+                non_fold_residue_site_is_rostered(site),
+                "migration-debt roster entry missing from full roster: {site}"
+            );
+        }
+        // Partition sums: migration slots + irreducible slots == full roster size.
+        let migration_slots = NON_FOLD_MIGRATION_DEBT_ROSTER.len() as i64;
+        let irreducible_slots = non_fold_residue_roster_size() - migration_slots;
+        assert!(
+            irreducible_slots >= 0,
+            "migration-debt roster is larger than full roster"
+        );
+        assert_eq!(
+            migration_slots + irreducible_slots,
+            non_fold_residue_roster_size(),
+            "roster partition must cover every slot"
+        );
+        // Live sites must partition into migration-debt + irreducible (no unclassified rostered sites).
+        let live = non_fold_residue_live_sites();
+        let migration_live = live
+            .iter()
+            .filter(|s| {
+                matches!(
+                    nfr_roster_bucket(s),
+                    Some(NonFoldRosterBucket::MigrationDebt)
+                )
+            })
+            .count() as i64;
+        let irreducible_live = live
+            .iter()
+            .filter(|s| matches!(nfr_roster_bucket(s), Some(NonFoldRosterBucket::Irreducible)))
+            .count() as i64;
+        assert_eq!(
+            migration_live + irreducible_live,
+            non_fold_residue_count(),
+            "live residue sites must partition into migration-debt + irreducible"
+        );
+    }
 }
