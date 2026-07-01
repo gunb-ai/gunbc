@@ -19,7 +19,8 @@ import gunbc.ci_deploy_access {
   srv1_live_deploy_privileged_commands,
 }
 import gunbc.ci_workflow { ci_workflow }
-import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
+import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if, ci_deploy_srv1_job_if }
+import gunbc.host_runner_provision { gunbc_deploy_runner_provisioned }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.fleet_intent { srv1_host }
 import gunbc.host_effect { LocalShell }
@@ -73,16 +74,21 @@ fn witness_workflow_has_deploy_job_gated_on_ci() -> Bool {
   length(deploy_jobs) == 1
     && deploy_jobs.first().needs == ["ci"]
     && match deploy_jobs.first().if_condition {
-      Present { value: cond } => cond == ci_deploy_push_to_main_if
+      Present { value: cond } => cond == ci_deploy_srv1_job_if()
       Absent => false
     }
+}
+
+fn witness_deploy_job_gated_off_until_runner_live() -> Bool {
+  !gunbc_deploy_runner_provisioned
+    && ci_deploy_srv1_job_if() == "false"
 }
 
 fn witness_ci_yml_emits_deploy_job() -> Bool {
   let yaml = expected_ci_yml()
   string_contains(s: yaml, pattern: "  deploy_dashboard_srv1:")
     && string_contains(s: yaml, pattern: "    needs: [ci]")
-    && string_contains(s: yaml, pattern: concat("    if: ", ci_deploy_push_to_main_if))
+    && string_contains(s: yaml, pattern: "    if: \"false\"")
     && string_contains(s: yaml, pattern: "Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)")
     && string_contains(s: yaml, pattern: live_deploy_apply_srv1_wet_function)
     && string_contains(s: yaml, pattern: "runs-on: [self-hosted, linux, arm64, deploy]")
@@ -95,5 +101,6 @@ test fn ci_deploy_witnesses() -> Bool {
     && witness_ci_spec_carries_deploy_stages()
     && witness_deploy_run_script_invokes_gunbc_wet()
     && witness_workflow_has_deploy_job_gated_on_ci()
+    && witness_deploy_job_gated_off_until_runner_live()
     && witness_ci_yml_emits_deploy_job()
 }

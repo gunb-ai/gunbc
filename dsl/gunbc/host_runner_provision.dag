@@ -28,6 +28,10 @@ data gunbc_runner_principal: NonEmptyStr = gunbc_ci_runner_principal
 
 data gunbc_deploy_runner_label: NonEmptyStr = "deploy"
 
+data gunbc_deploy_runner_provisioned: Bool = false
+
+data gunbc_deploy_runner_provisioned_basis: String = "Live gate for deploy_dashboard_srv1: false until srv1 has gunbc-deploy registered with GHA label deploy (operator live step per HostRunnerProvision deploy role). Flip to true after cool-swift/operator confirms runner inventory; ci_deploy_srv1_job_if then ANDs ci_deploy_push_to_main_if with vars.GUNBC_DEPLOY_RUNNER_READY == 'true' so main stays clean until both model and repo variable agree."
+
 data gunbc_runner_provision_privileged_commands_basis: String = "Dual-role HostRunnerProvision (operator L8 / cool-swift): ci role = gunbc-runner, quarantined (privileged_commands empty); deploy role = gunbc-deploy, trusted, privileged_commands aggregated from DeployAccess consumer-declares/provisioning-grants (bash, apt-get, systemctl, tailscale, install) realized as /etc/sudoers.d/gunbc-deploy NOPASSWD. Deploy GHA label = deploy so runs-on [self-hosted, linux, arm64, deploy] lands only on the trusted identity. srv1 carries both roles; other fleet hosts CI-only until deploy is declared. dissolve-on: aggregate_authority fold over all HostEffect consumers (#6093)."
 
 fn compute_offer_for_host(host: ComputeHost) -> ComputeOffer {

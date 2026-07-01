@@ -2,7 +2,8 @@ module gunbc.ci_workflow
 
 import extdeps.formats.yaml { yaml_string, yaml_int, yaml_bool, kv }
 import gunbc.ci_workflow_expressions {
-  ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys
+  ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
+  ci_deploy_push_to_main_if, ci_deploy_srv1_job_if,
 }
 import gunbc.ci_spec {
   CiSpec, gunbc_ci_spec, gunbc_ci_workflow_run, gunbc_ci_rust_job_run,
@@ -11,7 +12,6 @@ import gunbc.ci_spec {
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
 }
-import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.host_runner_provision { gunbc_deploy_runner_spec }
@@ -278,7 +278,7 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
     needs: stage.needs,
     env: none,
     outputs: none,
-    if_condition: Present { value: ci_deploy_push_to_main_if },
+    if_condition: Present { value: ci_deploy_srv1_job_if() },
     strategy: none,
     timeout_minutes: Present { value: default_job_timeout_minutes },
     continue_on_error: none,

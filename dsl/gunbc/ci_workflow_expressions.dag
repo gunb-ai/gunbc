@@ -6,6 +6,7 @@ import extdeps.github.expressions {
   HashFiles, Github,
   serialize_template, runner_os, runner_arch, runner_temp
 }
+import gunbc.host_runner_provision { gunbc_deploy_runner_provisioned }
 
 fn ci_cache_hash_files() -> Expression {
   FunctionCall {
@@ -79,6 +80,19 @@ data ci_workflow_expression_templates: List<ExpressionTemplate> = [
 ]
 
 data ci_deploy_push_to_main_if: String = "github.ref == 'refs/heads/main' && github.event_name == 'push'"
+
+data ci_deploy_runner_ready_repo_var_if: String = "vars.GUNBC_DEPLOY_RUNNER_READY == 'true'"
+
+fn ci_deploy_srv1_job_if() -> String {
+  if gunbc_deploy_runner_provisioned {
+    concat(
+      concat("(", ci_deploy_push_to_main_if),
+      concat(") && (", concat(ci_deploy_runner_ready_repo_var_if, ")"))
+    )
+  } else {
+    "false"
+  }
+}
 
 fn ci_concurrency_group() -> String { serialize_template(template: ci_concurrency_group_template) }
 fn ci_setup_rust_home() -> String { serialize_template(template: ci_setup_rust_home_template) }
