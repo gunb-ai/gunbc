@@ -5489,7 +5489,6 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
     out
 }
 
-<<<<<<< HEAD
 // ── Non-fold-residue census (DESIGN §6) ──────────────────────────────────────────────────────────
 //
 // Audits the corpus for `match` expressions whose scrutinee is a function parameter with a declared
@@ -5708,60 +5707,10 @@ fn nfr_parse_fns(src: &str) -> Vec<NfrFnSig> {
         }
         let after = start + 3;
         let name: String = src[after..]
-=======
-// --- Inert carrier census (folded from inert_carrier_project.rs) ---
-//
-// A type carrier is "inert" iff (a) declared in a non-test file, (b) its name appears in at least
-// one *_test.dag file (self-tested), and (c) its name appears in NO non-test .dag file outside its
-// own declaration block (zero real consumer). This is DESIGN §5 coverage-by-illusion.
-// DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the
-// token scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.
-
-fn inert_carrier_identifier_tokens(line: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let mut cur = String::new();
-    for ch in line.chars() {
-        if ch.is_ascii_alphanumeric() || ch == '_' {
-            cur.push(ch);
-        } else if !cur.is_empty() {
-            out.push(std::mem::take(&mut cur));
-        }
-    }
-    if !cur.is_empty() {
-        out.push(cur);
-    }
-    out
-}
-
-fn inert_carrier_count_token(text: &str, name: &str) -> i64 {
-    let mut n = 0i64;
-    for raw in text.lines() {
-        for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
-            if tok == name {
-                n += 1;
-            }
-        }
-    }
-    n
-}
-
-fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
-    let lines: Vec<&str> = content.lines().collect();
-    let mut out = Vec::new();
-    let mut i = 0;
-    while i < lines.len() {
-        let trimmed = lines[i].trim_start();
-        let Some(rest) = trimmed.strip_prefix("type ") else {
-            i += 1;
-            continue;
-        };
-        let name: String = rest
->>>>>>> origin/main
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
             .collect();
         if name.is_empty() {
-<<<<<<< HEAD
             continue;
         }
         let paren_open = match src[after..].find('(') {
@@ -5786,34 +5735,10 @@ fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
             params,
             body: src[brace_open + 1..brace_close].to_string(),
         });
-=======
-            i += 1;
-            continue;
-        }
-        let mut block = String::new();
-        block.push_str(lines[i]);
-        block.push('\n');
-        let mut depth = brace_delta(lines[i]);
-        i += 1;
-        while i < lines.len() {
-            let nt = lines[i].trim_start();
-            if depth <= 0 {
-                if !(nt.starts_with('|') || nt.starts_with('=')) {
-                    break;
-                }
-            }
-            block.push_str(lines[i]);
-            block.push('\n');
-            depth += brace_delta(lines[i]);
-            i += 1;
-        }
-        out.push((name, block));
->>>>>>> origin/main
     }
     out
 }
 
-<<<<<<< HEAD
 fn nfr_matching_paren(bytes: &[u8], open: usize) -> Option<usize> {
     let mut depth = 0i32;
     let mut j = open;
@@ -5980,71 +5905,79 @@ pub fn non_fold_residue_roster_size() -> i64 {
     NON_FOLD_RESIDUE_ROSTER.len() as i64
 }
 
-// ── Doc-reachability census (DESIGN §3 single-authority, §5 fail-closed) ─────────────────────────
+
+// --- Inert carrier census (folded from inert_carrier_project.rs) ---
 //
-// Host-fed corpus walk: every .md file reachable from ROADMAP/DESIGN/runbooks roots is a live doc;
-// orphans (unreachable) and dangling links (link target absent) are fail-closed violations.
-// DISSOLUTION: folds into a pure .dag Node-tree reader when compile-graph access lands (gunbc#5364).
+// A type carrier is "inert" iff (a) declared in a non-test file, (b) its name appears in at least
+// one *_test.dag file (self-tested), and (c) its name appears in NO non-test .dag file outside its
+// own declaration block (zero real consumer). This is DESIGN §5 coverage-by-illusion.
+// DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the
+// token scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.
 
-=======
->>>>>>> origin/main
-const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
-const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
-
-fn doc_repo_rel(path: &Path) -> String {
-    let ws = workspace_root();
-    let s = path.to_string_lossy().replace('\\', "/");
-    let prefix = format!("{}/", ws.to_string_lossy().replace('\\', "/"));
-    s.strip_prefix(&prefix)
-        .map(|p| p.to_string())
-        .unwrap_or(s)
-        .trim_start_matches("./")
-        .to_string()
-}
-
-fn doc_universe() -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    let docs_dir = workspace_root().join("docs");
-    collect_md_files(&docs_dir, &mut out);
+fn inert_carrier_identifier_tokens(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for ch in line.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            cur.push(ch);
+        } else if !cur.is_empty() {
+            out.push(std::mem::take(&mut cur));
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
     out
 }
 
-fn collect_md_files(dir: &Path, out: &mut BTreeSet<String>) {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_md_files(&path, out);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
-            out.insert(doc_repo_rel(&path));
-        }
-    }
-}
-
-fn markdown_link_targets(content: &str) -> Vec<String> {
-    let mut out = Vec::new();
-    let bytes = content.as_bytes();
-    let mut i = 0;
-    while i + 1 < bytes.len() {
-        if bytes[i] == b']' && bytes[i + 1] == b'(' {
-            if let Some(end) = content[i + 2..].find(')') {
-                let raw = &content[i + 2..i + 2 + end];
-                let target = raw.split('#').next().unwrap_or("").trim();
-                if !target.is_empty()
-                    && !target.starts_with("http://")
-                    && !target.starts_with("https://")
-                    && !target.starts_with("mailto:")
-                {
-                    out.push(target.to_string());
-                }
-                i = i + 2 + end + 1;
-                continue;
+fn inert_carrier_count_token(text: &str, name: &str) -> i64 {
+    let mut n = 0i64;
+    for raw in text.lines() {
+        for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
+            if tok == name {
+                n += 1;
             }
         }
+    }
+    n
+}
+
+fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let trimmed = lines[i].trim_start();
+        let Some(rest) = trimmed.strip_prefix("type ") else {
+            i += 1;
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            i += 1;
+            continue;
+        }
+        let mut block = String::new();
+        block.push_str(lines[i]);
+        block.push('\n');
+        let mut depth = brace_delta(lines[i]);
         i += 1;
+        while i < lines.len() {
+            let nt = lines[i].trim_start();
+            if depth <= 0 {
+                if !(nt.starts_with('|') || nt.starts_with('=')) {
+                    break;
+                }
+            }
+            block.push_str(lines[i]);
+            block.push('\n');
+            depth += brace_delta(lines[i]);
+            i += 1;
+        }
+        out.push((name, block));
     }
     out
 }
@@ -6239,6 +6172,73 @@ mod inert_carrier_tests {
         ]);
         assert!(!inert.contains(&"Dup".to_string()));
     }
+}
+
+// ── Doc-reachability census (DESIGN §3 single-authority, §5 fail-closed) ─────────────────────────
+//
+// Host-fed corpus walk: every .md file reachable from ROADMAP/DESIGN/runbooks roots is a live doc;
+// orphans (unreachable) and dangling links (link target absent) are fail-closed violations.
+// DISSOLUTION: folds into a pure .dag Node-tree reader when compile-graph access lands (gunbc#5364).
+
+const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
+const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
+
+fn doc_repo_rel(path: &Path) -> String {
+    let ws = workspace_root();
+    let s = path.to_string_lossy().replace('\\', "/");
+    let prefix = format!("{}/", ws.to_string_lossy().replace('\\', "/"));
+    s.strip_prefix(&prefix)
+        .map(|p| p.to_string())
+        .unwrap_or(s)
+        .trim_start_matches("./")
+        .to_string()
+}
+
+fn doc_universe() -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    let docs_dir = workspace_root().join("docs");
+    collect_md_files(&docs_dir, &mut out);
+    out
+}
+
+fn collect_md_files(dir: &Path, out: &mut BTreeSet<String>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_md_files(&path, out);
+        } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
+            out.insert(doc_repo_rel(&path));
+        }
+    }
+}
+
+fn markdown_link_targets(content: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = content.as_bytes();
+    let mut i = 0;
+    while i + 1 < bytes.len() {
+        if bytes[i] == b']' && bytes[i + 1] == b'(' {
+            if let Some(end) = content[i + 2..].find(')') {
+                let raw = &content[i + 2..i + 2 + end];
+                let target = raw.split('#').next().unwrap_or("").trim();
+                if !target.is_empty()
+                    && !target.starts_with("http://")
+                    && !target.starts_with("https://")
+                    && !target.starts_with("mailto:")
+                {
+                    out.push(target.to_string());
+                }
+                i = i + 2 + end + 1;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
 }
 
 fn resolve_doc_link(from: &str, target: &str) -> Vec<String> {
