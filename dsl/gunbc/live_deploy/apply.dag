@@ -1,0 +1,65 @@
+module gunbc.live_deploy.apply
+
+import gunbc.live_deploy.spec {
+  DeploymentSpec,
+  DeploymentEnsuredStep,
+  deployment_spec_srv1,
+}
+import gunbc.live_deploy.emit {
+  live_deploy_apply_script_for,
+  live_deploy_retract_script_for,
+  deployment_ensure_dependency_script,
+}
+import gunbc.host_effect {
+  ShellCommand,
+  HostOs,
+  OneShotIdempotent,
+  SshShell,
+  HostEffectIntent,
+  HostEffectEvidence,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import std.realization_reconcile { Reconciliation }
+
+fn live_deploy_ensure_dependency_via_ssh(
+  spec: DeploymentSpec,
+  dep: DeploymentEnsuredStep
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  host_effect_apply(
+    target: HostOs { node: spec.target.host },
+    effect: ShellCommand { script: deployment_ensure_dependency_script(dep: dep) },
+    policy: OneShotIdempotent,
+    transport: SshShell { ssh_host: spec.target.ssh_host }
+  )
+}
+
+fn live_deploy_fold_via_ssh(spec: DeploymentSpec, script: String) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  host_effect_apply(
+    target: HostOs { node: spec.target.host },
+    effect: ShellCommand { script: script },
+    policy: OneShotIdempotent,
+    transport: SshShell { ssh_host: spec.target.ssh_host }
+  )
+}
+
+fn live_deploy_apply_via_ssh(spec: DeploymentSpec) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_fold_via_ssh(
+    spec: spec,
+    script: live_deploy_apply_script_for(spec: spec)
+  )
+}
+
+fn live_deploy_retract_via_ssh(spec: DeploymentSpec) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_fold_via_ssh(
+    spec: spec,
+    script: live_deploy_retract_script_for(spec: spec)
+  )
+}
+
+fn live_deploy_apply_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_apply_via_ssh(spec: deployment_spec_srv1())
+}
+
+fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_retract_via_ssh(spec: deployment_spec_srv1())
+}
