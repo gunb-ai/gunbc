@@ -38,6 +38,8 @@ import std.termination {
 }
 import v1.compiler.ownership { OwnershipProof, OwnershipDecision, SharedError, analyze_ownership }
 import v1.compiler.artifact { ArtifactPlan, Artifact, RenderTarget, Dag, default_artifact_plan }
+import v1.compiler.dag_collect_support { DagCollectAcc, json_quote, connective_name }
+import v1.compiler.dag_collect { is_module_shell_node, dag_node_key, collect_dag_nodes }
 
 type SourceFile {
   path: String
@@ -150,10 +152,6 @@ fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
   }
 }
 
-fn json_quote(s: String) -> String {
-  concat("\"", escape_json_string(s: s), "\"")
-}
-
 fn json_list(items: List<String>) -> String {
   concat("[", items |> join(separator: ", "), "]")
 }
@@ -165,124 +163,6 @@ fn json_optional_string(value: String?) -> String {
   }
 }
 
-type DagCollectAcc {
-  seen: Map<String, String>
-  order: List<Node>
-  collision_errors: List<ErrorNode>
-}
-
-type DagCollectPending {
-  anchor: Node
-  key: String
-  fp: String
-}
-
-fn dag_node_key(node: Node) -> String {
-  let anchor = dag_node_collection_anchor(node: node)
-  if anchor.span.start == 0 && anchor.span.end == 0 {
-    concat(":0..0:", dag_node_surface_fingerprint(node: anchor))
-  } else {
-    concat(
-      anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
-      match anchor.ident {
-        Present { value: id } => concat(":", to_string(i: id))
-        Absent => ""
-      })
-  }
-}
-
-fn dag_node_is_resolved_identity_shell(node: Node) -> Bool {
-  match node.expr_data {
-    NoExprData =>
-      match node.inferred {
-        Present { value: Resolved { node: _ } } =>
-
-          node.body == none && node.transport == none
-            && (node.children |> count) == 0 && (node.params |> count) == 0
-        _ => false
-      }
-    _ => false
-  }
-}
-
-fn dag_node_collection_anchor(node: Node) -> Node {
-  if dag_node_is_resolved_identity_shell(node: node) {
-    match node.inferred {
-      Present { value: Resolved { node: target } } => dag_node_collection_anchor(node: target)
-      _ => node
-    }
-  } else {
-    node
-  }
-}
-
-fn inferred_fingerprint(value: InferredNode?) -> String {
-  match value {
-    Absent => "none"
-    Present { value: Resolved { node: _ } } => "Resolved"
-    Present { value: TypeVariable { id } } => concat("TypeVariable:", id)
-    Present { value: CompilerError { message: m } } => concat("CompilerError:", m)
-  }
-}
-
-fn expr_data_variant(data: ExprData) -> String {
-  match data {
-    NoExprData => "NoExprData"
-    ExprLiteral { value: _ } => "ExprLiteral"
-    ExprError { kind: _, message: _ } => "ExprError"
-    ExprVar { binding_kind: _ } => "ExprVar"
-    ExprFieldAccess { summary: _ } => "ExprFieldAccess"
-    ExprCall { call_semantics: _, descent_evidence: _ } => "ExprCall"
-    ExprMethodCall { method_semantics: _ } => "ExprMethodCall"
-    ExprMatch => "ExprMatch"
-    ExprIf => "ExprIf"
-    ExprLet => "ExprLet"
-    ExprRecordLit { parent_enum: _ } => "ExprRecordLit"
-    ExprListLit => "ExprListLit"
-    ExprBinOp { op: _, algebra_field: _ } => "ExprBinOp"
-    ExprUnaryOp { op: _ } => "ExprUnaryOp"
-    ExprLambda => "ExprLambda"
-    ExprStringInterp => "ExprStringInterp"
-    ExprBlock => "ExprBlock"
-    ExprCast => "ExprCast"
-    ExprForEach => "ExprForEach"
-    ExprIndex => "ExprIndex"
-    ExprSlice => "ExprSlice"
-    ExprReturn => "ExprReturn"
-  }
-}
-
-fn dag_node_surface_fingerprint(node: Node) -> String {
-  let child_names = node.children |> map(c => c.name) |> join(separator: ",")
-  let param_names = node.params |> map(p => p.name) |> join(separator: ",")
-  concat(
-    node.name, "|",
-    connective_name(value: node.connective), "|",
-    inferred_fingerprint(value: node.inferred), "|",
-    expr_data_variant(data: node.expr_data), "|",
-    child_names, "|",
-    param_names)
-}
-
-fn dag_node_fingerprint(node: Node) -> String {
-  dag_node_surface_fingerprint(node: dag_node_collection_anchor(node: node))
-}
-
-fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {
-  let synthetic = span.start == 0 && span.end == 0
-  let detail = if synthetic {
-    " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
-  } else {
-    ""
-  }
-  make_error_node(
-    diagnostic: InternalError {
-      message: concat("dag artifact: distinct nodes share identity key ", json_quote(s: key), detail),
-      span: span
-    },
-    module_name: ""
-  )
-}
 
 fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
   make_error_node(
@@ -340,98 +220,6 @@ fn dag_emit_ref_errors(order: List<Node>, key_to_id: Map<String, String>) -> Lis
   order |> flat_map(n => dag_emit_check_node_refs(node: n, key_to_id: key_to_id))
 }
 
-fn dag_collect_nodes_list(nodes: List<Node>, acc: DagCollectAcc) -> DagCollectAcc {
-  nodes |> fold(init: acc, f: (a, n) => dag_collect_insert(node: n, acc: a))
-}
-
-fn dag_collect_optional_node(value: Node?, acc: DagCollectAcc) -> DagCollectAcc {
-  match value {
-    Present { value: inner } => dag_collect_insert(node: inner, acc: acc)
-    Absent => acc
-  }
-}
-
-fn dag_collect_inferred(value: InferredNode?, acc: DagCollectAcc) -> DagCollectAcc {
-  match value {
-    Present { value: Resolved { node: n } } => dag_collect_insert(node: n, acc: acc)
-    _ => acc
-  }
-}
-
-fn dag_collect_match_pattern(pattern: MatchPattern, acc: DagCollectAcc) -> DagCollectAcc {
-  match pattern {
-    Bind { name: _ } => acc
-    LitPattern { value: _ } => acc
-    VariantPattern { name: _, parent_enum: _, field_bindings: field_bindings } =>
-      field_bindings |> fold(init: acc, f: (a, fb) => dag_collect_insert(node: fb, acc: a))
-    Wildcard => acc
-  }
-}
-
-fn dag_collect_node_tree(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
-  let acc = dag_collect_nodes_list(nodes: node.children, acc: acc)
-  let acc = if is_module_shell_node(n: node) {
-    acc
-  } else {
-    dag_collect_nodes_list(nodes: node.params, acc: acc)
-  }
-  let acc = dag_collect_nodes_list(nodes: node.uses, acc: acc)
-  let acc = dag_collect_optional_node(value: node.body, acc: acc)
-  let acc = dag_collect_optional_node(value: node.transport, acc: acc)
-  let acc = dag_collect_nodes_list(nodes: node.properties, acc: acc)
-  let acc = dag_collect_optional_node(value: node.type_annotation, acc: acc)
-  let acc = dag_collect_inferred(value: node.inferred, acc: acc)
-  match node.match_pattern {
-    Present { value: p } => dag_collect_match_pattern(pattern: p, acc: acc)
-    Absent => acc
-  }
-}
-
-fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
-  let anchor = dag_node_collection_anchor(node: node)
-  let key = dag_node_key(node: anchor)
-  let fp = dag_node_fingerprint(node: anchor)
-  match map_get(acc.seen, key) {
-    Present { value: prior } =>
-      if prior == fp {
-        acc
-      } else if anchor.span.start == 0 && anchor.span.end == 0 {
-        DagCollectAcc {
-          seen: acc.seen,
-          order: acc.order,
-          collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: anchor.span))
-        }
-      } else {
-        acc
-      }
-    Absent => {
-      [DagCollectPending { anchor: anchor, key: key, fp: fp }]
-        |> fold(
-          init: acc,
-          f: (inner, pending) =>
-            dag_collect_node_tree(
-              node: pending.anchor,
-              acc: DagCollectAcc {
-                seen: map_insert(inner.seen, pending.key, pending.fp),
-                order: list_push(inner.order, pending.anchor),
-                collision_errors: inner.collision_errors
-              }
-            )
-        )
-    }
-  }
-}
-
-fn dag_collect_from_module(module: TypedModule, acc: DagCollectAcc) -> DagCollectAcc {
-  let acc = dag_collect_insert(node: module.module, acc: acc)
-  module.items |> fold(init: acc, f: (a, item) => dag_collect_insert(node: item, acc: a))
-}
-
-fn collect_dag_nodes(typed: ResolvedGraph) -> DagCollectAcc {
-  typed.modules
-    |> fold(init: DagCollectAcc { seen: empty_map(), order: [], collision_errors: [] }, f: (acc, m) => dag_collect_from_module(module: m, acc: acc))
-}
-
 fn build_dag_key_to_id(order: List<Node>) -> Map<String, String> {
   order |> enumerate |> fold(init: empty_map(), f: (acc, pair) =>
     map_insert(acc, dag_node_key(node: pair.second), concat("n", to_string(i: pair.first)))
@@ -472,15 +260,6 @@ fn json_optional_span(value: SourceSpan?) -> String {
 
 fn json_bool(value: Bool) -> String {
   if value { "true" } else { "false" }
-}
-
-fn connective_name(value: Connective) -> String {
-  match value {
-    Conj => "Conj"
-    Disj => "Disj"
-    NoConnective => "NoConnective"
-    Arrow => "Arrow"
-  }
 }
 
 fn cardinality_name(value: Cardinality) -> String {
@@ -932,17 +711,6 @@ fn serialize_param(param: Node, source_indices: Map<String, NewlineIndex>, key_t
     ", \"default_value\": ", json_optional_node_ref(value: param_node_default_value(n: param), key_to_id: key_to_id),
     ", \"span\": ", serialize_span(span: param_node_span(n: param)),
     "}")
-}
-
-fn is_module_shell_node(n: Node) -> Bool {
-  n.inferred == none && n.expr_data == NoExprData && n.connective == NoConnective && n.body == none
-    && n.transport == none && n.uses |> count == 0
-    && n.params |> all(p => is_import_slot_node(p: p))
-}
-
-fn is_import_slot_node(n: Node) -> Bool {
-  import_is_all(n: n) || (
-    n.params |> count == 0 && n.ident_span != none && n.body == none && n.expr_data == NoExprData)
 }
 
 fn is_import_statement_node(n: Node) -> Bool {

@@ -1,0 +1,41 @@
+module v2.test.host_language_transport_script.corpus.facts_readback_verdict_perturb
+
+import v2.lens.host_language_transport_script {
+  transport_script_position_facts_live,
+  transport_script_literal_ban_holds,
+  transport_script_literal_violation_count,
+  transport_script_lens_verdict,
+}
+import std.lens_verdict { Holds, Violation, NotApplicable, Unrealized }
+import v2.std.logic { Bool }
+
+data corpus_computed_path: String = "dsl/tools/dsl_compile_clean_transport.dag"
+data perturb_literal_path: String = "src/v2/test/fixture/transport_script_scan/bare_string_literal/plant.dag"
+
+fn witness_computed_facts_readback_holds() -> Bool {
+  let facts = transport_script_position_facts_live(path: corpus_computed_path)
+  transport_script_literal_ban_holds(facts: facts)
+    && match transport_script_lens_verdict(facts: facts) {
+      Holds => true
+      Violation { diagnostic: _ } => false
+      NotApplicable { diagnostic: _ } => false
+      Unrealized { diagnostic: _ } => false
+    }
+}
+
+fn witness_literal_perturb_facts_readback_red() -> Bool {
+  let facts = transport_script_position_facts_live(path: perturb_literal_path)
+  !transport_script_literal_ban_holds(facts: facts)
+    && transport_script_literal_violation_count(facts: facts) == 1
+    && match transport_script_lens_verdict(facts: facts) {
+      Violation { diagnostic: _ } => true
+      Holds => false
+      NotApplicable { diagnostic: _ } => false
+      Unrealized { diagnostic: _ } => false
+    }
+}
+
+test fn transport_script_facts_readback_verdict_perturb_witness() -> Bool {
+  witness_computed_facts_readback_holds()
+    && witness_literal_perturb_facts_readback_red()
+}
