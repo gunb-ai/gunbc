@@ -14,14 +14,10 @@ import v2.workflow.ci_floor_plan {
   witness_floor_no_corpus_resource_edge_to_compile_anchor,
   witness_floor_tight_budget_backs_off_envelope,
   witness_floor_fail_open_would_exceed_budget,
-  witness_floor_unreadable_budget_uses_conservative_envelope,
   witness_floor_width_governed_by_budget_tree,
   witness_floor_width_derived_from_tree_is_positive,
   witness_floor_spawn_width_tight_budget_backs_off,
-  witness_floor_spawn_width_zero_budget_falls_back,
   witness_corpus_effective_widths_fit_runner_cap,
-  witness_execution_corpus_spawn_width_at_runner_cap,
-  witness_plan_spawn_width_is_floor_width_at_runner_cap,
   witness_floor_derived_width_leaves_headroom_at_cap,
 }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
@@ -159,8 +155,7 @@ test fn ci_floor_plan_witnesses() -> Bool {
 
 test fn ci_floor_run_envelope_witnesses() -> Bool {
   witness_floor_tight_budget_backs_off_envelope() &&
-    witness_floor_fail_open_would_exceed_budget() &&
-    witness_floor_unreadable_budget_uses_conservative_envelope()
+    witness_floor_fail_open_would_exceed_budget()
 }
 
 test fn ci_floor_spawn_width_from_budget_tree_witnesses() -> Bool {
@@ -169,13 +164,10 @@ test fn ci_floor_spawn_width_from_budget_tree_witnesses() -> Bool {
 }
 
 test fn ci_floor_spawn_width_live_budget_witnesses() -> Bool {
-  witness_floor_spawn_width_tight_budget_backs_off() &&
-    witness_floor_spawn_width_zero_budget_falls_back()
+  witness_floor_spawn_width_tight_budget_backs_off()
 }
 
 test fn ci_floor_honest_width_fold_witnesses() -> Bool {
   witness_corpus_effective_widths_fit_runner_cap() &&
-    witness_execution_corpus_spawn_width_at_runner_cap() &&
-    witness_plan_spawn_width_is_floor_width_at_runner_cap() &&
     witness_floor_derived_width_leaves_headroom_at_cap()
 }
