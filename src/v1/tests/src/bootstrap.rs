@@ -76,6 +76,30 @@ fn parse_diagnostic_count(stderr: &str) -> usize {
         .unwrap_or(usize::MAX)
 }
 
+fn copy_dir_recursive_bootstrap(source: &std::path::Path, dest: &std::path::Path) {
+    std::fs::create_dir_all(dest)
+        .unwrap_or_else(|e| panic!("failed to create {}: {}", dest.display(), e));
+    for entry in std::fs::read_dir(source)
+        .unwrap_or_else(|e| panic!("failed to read dir {}: {}", source.display(), e))
+    {
+        let entry = entry.unwrap_or_else(|e| panic!("failed to read dir entry: {}", e));
+        let src_path = entry.path();
+        let dst_path = dest.join(entry.file_name());
+        if src_path.is_dir() {
+            copy_dir_recursive_bootstrap(&src_path, &dst_path);
+        } else {
+            std::fs::copy(&src_path, &dst_path).unwrap_or_else(|e| {
+                panic!(
+                    "failed to copy {} -> {}: {}",
+                    src_path.display(),
+                    dst_path.display(),
+                    e
+                )
+            });
+        }
+    }
+}
+
 fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Path) {
     let stage0_src = ws.join("src/v1/stage0/src");
     for name in &[
@@ -86,10 +110,6 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "coproduct_reflection.rs",
         "resolved_graph_cache.rs",
         "recorded_fixture.rs",
-        "extdeps_shape_transport_policy_project.rs",
-        "fact_cardinality_census.rs",
-        "languages_consumer_census.rs",
-        "transport_script_position_project.rs",
         "v1_compiler_dag_collect.rs",
         "v1_compiler_dag_collect_support.rs",
     ] {
@@ -99,6 +119,10 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
             std::fs::copy(&src, &dst)
                 .unwrap_or_else(|e| panic!("failed to copy {} to stage1: {}", name, e));
         }
+    }
+    let mpi_src = stage0_src.join("module_path_index");
+    if mpi_src.is_dir() {
+        copy_dir_recursive_bootstrap(&mpi_src, &stage1_dir.join("src/module_path_index"));
     }
 }
 
@@ -149,10 +173,7 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=coproduct_reflection.rs")
         .arg("--exclude=resolved_graph_cache.rs")
         .arg("--exclude=recorded_fixture.rs")
-        .arg("--exclude=extdeps_shape_transport_policy_project.rs")
-        .arg("--exclude=fact_cardinality_census.rs")
-        .arg("--exclude=languages_consumer_census.rs")
-        .arg("--exclude=transport_script_position_project.rs")
+        .arg("--exclude=module_path_index")
         .arg("--exclude=v1_compiler_dag_collect.rs")
         .arg("--exclude=v1_compiler_dag_collect_support.rs")
         .arg(dir_a)
