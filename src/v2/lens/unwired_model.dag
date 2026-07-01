@@ -1,0 +1,64 @@
+module v2.lens.unwired_model
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { RealizationDispatch }
+import v2.std.algebra { fold_list, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data empty_unwired_model_names: List<String> = []
+
+fn list_contains_str(xs: List<String>, target: String) -> Bool {
+  fold_list(
+    xs: xs,
+    empty: false,
+    cons: fn(acc, s) { acc || (s == target) }
+  )
+}
+
+fn count_not_in_roster(names: List<String>, roster: List<String>) -> Int {
+  fold_list(
+    xs: names,
+    empty: 0,
+    cons: fn(count, name) {
+      if list_contains_str(xs: roster, target: name) { count } else { count + 1 }
+    }
+  )
+}
+
+fn count_stale_roster(roster: List<String>, unwired_names: List<String>) -> Int {
+  fold_list(
+    xs: roster,
+    empty: 0,
+    cons: fn(count, entry) {
+      if list_contains_str(xs: unwired_names, target: entry) { count } else { count + 1 }
+    }
+  )
+}
+
+fn unwired_model_clean_holds() -> Bool {
+  let names = unwired_model_names_live()
+  count_not_in_roster(names: names, roster: unwired_model_roster) == 0
+    && count_stale_roster(roster: unwired_model_roster, unwired_names: names) == 0
+}
+
+fn unwired_model_live_count() -> Int {
+  length(xs: unwired_model_names_live())
+}
+
+fn unwired_model_live_unrostered_count() -> Int {
+  count_not_in_roster(names: unwired_model_names_live(), roster: unwired_model_roster)
+}
+
+fn unwired_model_live_stale_roster_count() -> Int {
+  count_stale_roster(roster: unwired_model_roster, unwired_names: unwired_model_names_live())
+}
+
+fn unwired_model_live_declared_count() -> Int {
+  unwired_model_declared_count()
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}
