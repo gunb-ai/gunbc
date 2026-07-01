@@ -4177,10 +4177,19 @@ pub fn run_discovery_corpus_with_options(
         FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_line_ranges(text),
     };
     let changed_paths: Vec<String> = line_ranges_by_file.keys().cloned().collect();
-    let provenance_overlay = if options.skip_unaffected_node_frontier && !changed_paths.is_empty() {
+    let mut provenance_ingest_paths: std::collections::HashSet<String> = changed_paths
+        .iter()
+        .map(|path| repo_relative_dag_path(path))
+        .collect();
+    for row in &rows {
+        provenance_ingest_paths.insert(repo_relative_dag_path(&row.entry));
+    }
+    let provenance_ingest_paths: Vec<String> = provenance_ingest_paths.into_iter().collect();
+    let provenance_overlay = if options.skip_unaffected_node_frontier && !provenance_ingest_paths.is_empty()
+    {
         match prepare_floor_provenance_ingest_overlay(
             source_roots,
-            &changed_paths,
+            &provenance_ingest_paths,
             &options.exclude_substrings,
         ) {
             Ok(overlay) => overlay,
@@ -6233,34 +6242,22 @@ pub fn discover_source_root_reads(
 #[cfg(test)]
 mod floor_witness_entry_tree_root_controls {
     use super::{
-        dag_source_read_witness_value, default_source_roots, discover_source_root_reads_for_paths,
-        floor_runner_eval_context, witness_holds_node_value, workspace_root,
+        default_source_roots, floor_runner_eval_context, prepare_floor_provenance_ingest_overlay,
+        source_roots_with_overlay, witness_entry_tree_root, workspace_root,
     };
-    use crate::v1_interpreter;
 
     #[test]
-    fn dag_source_read_witness_value_yields_entry_tree_root() {
+    fn witness_entry_tree_root_resolves_from_overlay_ingest() {
         let _cwd = workspace_root();
         std::env::set_current_dir(&_cwd).expect("chdir");
         let roots = default_source_roots();
-        let runner = floor_runner_eval_context(&roots).expect("runner ctx");
-        let entry = "src/v2/workflow/affected_set_floor_runner_test.dag".to_string();
-        let records =
-            discover_source_root_reads_for_paths(&roots, std::slice::from_ref(&entry), &[])
-                .expect("read witness entry");
-        let rec = records
-            .first()
-            .expect("entry read record")
-            .clone();
-        let read = dag_source_read_witness_value(&runner, &rec).expect("witness value");
-        let result = v1_interpreter::run_in_context_with_args(
-            &runner,
-            "floor_witness_entry_tree_root_from_read",
-            &[(Some("read".to_string()), read)],
-            false,
-        )
-        .expect("floor_witness_entry_tree_root_from_read");
-        witness_holds_node_value(&result, &runner).expect("Holds Node");
+        let entry = "src/v2/workflow/affected_set_floor_runner_test.dag";
+        let overlay = prepare_floor_provenance_ingest_overlay(&roots, &[entry.to_string()], &[])
+            .expect("overlay prep")
+            .expect("overlay present");
+        let effective = source_roots_with_overlay(&roots, &overlay);
+        let runner = floor_runner_eval_context(&effective).expect("runner ctx");
+        witness_entry_tree_root(&runner, &roots, entry).expect("entry tree root");
     }
 }
 
@@ -6361,9 +6358,27 @@ fn resolve_dag_path(source_roots: &[String], rel_forward: &str) -> Result<PathBu
     ))
 }
 
+fn write_provenance_ingest_overlay(
+    records: &[SourceRootReadRecord],
+    overlay_prefix: &str,
+) -> Result<FloorProvenanceIngestOverlay, String> {
+    let overlay_nonce = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let overlay_root = std::env::temp_dir().join(format!(
+        "{overlay_prefix}-{}-{}",
+        std::process::id(),
+        overlay_nonce
+    ));
+    let manifest_path = overlay_root.join(FLOOR_PROVENANCE_INGEST_MANIFEST_REL);
+    emit_source_root_ingest_manifest(&manifest_path, records, None)?;
+    Ok(FloorProvenanceIngestOverlay { overlay_root })
+}
+
 fn prepare_floor_provenance_ingest_overlay(
     source_roots: &[String],
-    changed_paths: &[String],
+    ingest_paths: &[String],
     exclude_subpaths: &[String],
 ) -> Result<Option<FloorProvenanceIngestOverlay>, String> {
     if matches!(
@@ -6374,31 +6389,21 @@ fn prepare_floor_provenance_ingest_overlay(
     ) {
         return Ok(None);
     }
-    if changed_paths.is_empty() {
+    if ingest_paths.is_empty() {
         return Ok(None);
     }
     let records =
-        discover_source_root_reads_for_paths(source_roots, changed_paths, exclude_subpaths)?;
+        discover_source_root_reads_for_paths(source_roots, ingest_paths, exclude_subpaths)?;
     if records.is_empty() {
         return Ok(None);
     }
-    let overlay_nonce = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
-    let overlay_root = std::env::temp_dir().join(format!(
-        "gunbc-floor-provenance-ingest-{}-{}",
-        std::process::id(),
-        overlay_nonce
-    ));
-    let manifest_path = overlay_root.join(FLOOR_PROVENANCE_INGEST_MANIFEST_REL);
-    emit_source_root_ingest_manifest(&manifest_path, &records, None)?;
+    let overlay = write_provenance_ingest_overlay(&records, "gunbc-floor-provenance-ingest")?;
     eprintln!(
         "claim_executor: floor provenance ingest overlay {} ({} read witness(es))",
-        overlay_root.display(),
+        overlay.overlay_root.display(),
         records.len()
     );
-    Ok(Some(FloorProvenanceIngestOverlay { overlay_root }))
+    Ok(Some(overlay))
 }
 
 fn source_roots_with_overlay(
@@ -6513,6 +6518,91 @@ fn outcome_accepted_value(
     }
 }
 
+fn eval_runner_data_item(
+    ctx: &v1_interpreter::InterpContext,
+    name: &str,
+) -> Result<v1_interpreter::Value, String> {
+    v1_interpreter::with_active_context(ctx, || v1_interpreter::eval_data_item_value(ctx, name))
+        .map_err(|e| format!("eval `{name}`: {e}"))?
+        .ok_or_else(|| format!("data item `{name}` missing"))
+}
+
+fn artifact_file_path_from_provenance_row(
+    row: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Option<String> {
+    let fields = match row {
+        v1_interpreter::Value::Record { fields, .. }
+        | v1_interpreter::Value::Variant { fields, .. } => fields,
+        _ => return None,
+    };
+    let artifact = ctx.field(fields, "artifact")?;
+    let artifact_fields = match artifact {
+        v1_interpreter::Value::Record { fields, .. }
+        | v1_interpreter::Value::Variant { fields, .. } => fields,
+        _ => return None,
+    };
+    match ctx.field(artifact_fields, "file_path")? {
+        v1_interpreter::Value::Str(path) => Some(path.clone()),
+        _ => None,
+    }
+}
+
+fn artifact_file_path_from_witness_read(
+    read: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Option<String> {
+    let fields = match read {
+        v1_interpreter::Value::Record { fields, .. }
+        | v1_interpreter::Value::Variant { fields, .. } => fields,
+        _ => return None,
+    };
+    let artifact = ctx.field(fields, "artifact")?;
+    let artifact_fields = match artifact {
+        v1_interpreter::Value::Record { fields, .. }
+        | v1_interpreter::Value::Variant { fields, .. } => fields,
+        _ => return None,
+    };
+    match ctx.field(artifact_fields, "file_path")? {
+        v1_interpreter::Value::Str(path) => Some(path.clone()),
+        _ => None,
+    }
+}
+
+fn witness_read_for_entry_file(
+    ingest: &v1_interpreter::Value,
+    entry_path: &str,
+    ctx: &v1_interpreter::InterpContext,
+) -> Result<v1_interpreter::Value, String> {
+    let entry_norm = repo_relative_dag_path(entry_path);
+    for read in list_values_from_free_monoid(ingest, ctx)? {
+        if artifact_file_path_from_witness_read(&read, ctx)
+            .is_some_and(|path| repo_relative_dag_path(&path) == entry_norm)
+        {
+            return Ok(read);
+        }
+    }
+    Err(format!(
+        "no DagSourceReadWitness for witness entry '{entry_norm}' in overlay ingest"
+    ))
+}
+
+fn provenance_tree_node_for_entry_file(
+    ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
+) -> Result<v1_interpreter::Value, String> {
+    let ingest = eval_runner_data_item(ctx, "host_source_root_ingest")?;
+    let read = witness_read_for_entry_file(&ingest, entry_path, ctx)?;
+    let result = v1_interpreter::run_in_context_with_args(
+        ctx,
+        "floor_witness_entry_tree_root_from_read",
+        &[(Some("read".to_string()), read)],
+        false,
+    )
+    .map_err(|e| format!("floor_witness_entry_tree_root_from_read: {e}"))?;
+    witness_holds_node_value(&result, ctx)
+}
+
 fn witness_holds_node_value(
     value: &v1_interpreter::Value,
     ctx: &v1_interpreter::InterpContext,
@@ -6538,88 +6628,12 @@ fn witness_holds_node_value(
     }
 }
 
-fn dag_source_read_witness_value(
-    ctx: &v1_interpreter::InterpContext,
-    rec: &SourceRootReadRecord,
-) -> Result<v1_interpreter::Value, String> {
-    use std::rc::Rc;
-    use v1_interpreter::{sorted_fields, Value};
-
-    let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
-    let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
-    let rel_path = repo_relative_dag_path(&rec.file_path);
-    let source_root_variant = match rec.source_root.as_str() {
-        "V2Tree" | "DslTree" => rec.source_root.as_str(),
-        other => {
-            return Err(format!(
-                "dag_source_read_witness_value: unknown source_root token '{other}'"
-            ))
-        }
-    };
-    let nullary_variant = |type_name: &str, variant_name: &str| Value::Variant {
-        type_name: ctx.sym(type_name),
-        variant_name: ctx.sym(variant_name),
-        fields: Rc::new(vec![]),
-    };
-    let source = Value::Record {
-        type_name: ctx.sym("Medium"),
-        fields: Rc::new(sorted_fields(vec![
-            (ctx.sym("carried"), Value::Str(rec.source.clone())),
-            (
-                ctx.sym("fidelity"),
-                nullary_variant("DecodeFidelity", "Lossless"),
-            ),
-        ])),
-    };
-    let artifact = Value::Record {
-        type_name: ctx.sym("Artifact"),
-        fields: Rc::new(sorted_fields(vec![
-            (
-                ctx.sym("kind"),
-                nullary_variant("ArtifactKind", "SourceFile"),
-            ),
-            (ctx.sym("id"), Value::Str(artifact_id)),
-            (ctx.sym("file_path"), Value::Str(rel_path)),
-        ])),
-    };
-    Ok(Value::Record {
-        type_name: ctx.sym("DagSourceReadWitness"),
-        fields: Rc::new(sorted_fields(vec![
-            (ctx.sym("source"), source),
-            (ctx.sym("artifact"), artifact),
-            (ctx.sym("compilation_unit"), Value::Str(compilation_unit)),
-            (
-                ctx.sym("source_root"),
-                nullary_variant("SourceRootRef", source_root_variant),
-            ),
-        ])),
-    })
-}
-
 fn witness_entry_tree_root(
     runner_ctx: &v1_interpreter::InterpContext,
-    source_roots: &[String],
+    _source_roots: &[String],
     entry_path: &str,
 ) -> Result<v1_interpreter::Value, String> {
-    let entry_norm = repo_relative_dag_path(entry_path);
-    let records = discover_source_root_reads_for_paths(source_roots, &[entry_norm.clone()], &[])?;
-    let rec = records
-        .iter()
-        .find(|r| repo_relative_dag_path(&r.file_path) == entry_norm)
-        .ok_or_else(|| format!("no source-root read for witness entry '{entry_norm}'"))?;
-    let read_rec = SourceRootReadRecord {
-        file_path: entry_norm,
-        ..rec.clone()
-    };
-    let read = dag_source_read_witness_value(runner_ctx, &read_rec)?;
-    let result = v1_interpreter::run_in_context_with_args(
-        runner_ctx,
-        "floor_witness_entry_tree_root_from_read",
-        &[(Some("read".to_string()), read)],
-        false,
-    )
-    .map_err(|e| format!("floor_witness_entry_tree_root_from_read: {e}"))?;
-    witness_holds_node_value(&result, runner_ctx)
+    provenance_tree_node_for_entry_file(runner_ctx, entry_path)
 }
 
 fn provenance_rerun_frontier_nodes(
