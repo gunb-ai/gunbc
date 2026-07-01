@@ -89,6 +89,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     // `file::fn` with a `match <coproduct-param> { ... _ => ... }` — a wildcard escape over a closed
     // coproduct. This is the honest baseline; the wall is that no NEW residue merges.
     "dsl/extdeps/languages/markdown.dag::md_nested",
+    // #6077 gcp-access-check lane: predicate-over-coproduct throttle registry matcher.
     "dsl/gunbc/external_access_throttle.dag::external_access_throttle_policy_matches",
     "dsl/gunbc/generated_artifact.dag::artifact_eq",
     // Category (b) kernel — `*_eq` off-diagonal; dissolves with exhaustiveness-by-default (gunbc#5364).
@@ -690,6 +691,17 @@ mod tests {
         assert!(
             sites.contains(&"m.dag::f".to_string()),
             "a real wildcard arm must still be flagged despite an in-string decoy; got {sites:?}"
+        );
+    }
+
+    #[test]
+    #[test]
+    fn external_access_throttle_policy_matches_is_on_roster() {
+        const SITE: &str =
+            "dsl/gunbc/external_access_throttle.dag::external_access_throttle_policy_matches";
+        assert!(
+            non_fold_residue_site_is_rostered(SITE),
+            "gcp lane throttle matcher must stay enrolled on NON_FOLD_RESIDUE_ROSTER"
         );
     }
 
