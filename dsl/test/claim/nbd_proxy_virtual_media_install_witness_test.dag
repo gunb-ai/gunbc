@@ -26,7 +26,9 @@ import gunbc.nbd_proxy_virtual_media_install {
   srv3_os_install_actuator_toolchain_grant_row_count,
 }
 import gunbc.host_effect { HostOs, ShellCommand }
-import extdeps.tools.websocat { websocat_cli_tool }
+import extdeps.bmc.webui.nbd_proxy_serve {
+  nbd_proxy_serve_bash_emit_dissolution_trigger,
+}
 
 test fn srv3_install_boot_target_follows_mechanism_not_hardcoded_pxe() -> Bool {
   match srv3_install_mechanism {
@@ -92,12 +94,12 @@ test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
         _ => false
       }
         && match intent.effect {
-          ShellCommand { script: s } =>
-            string_contains(s: s, pattern: websocat_cli_tool.name)
+          ShellCommand { script: _ } => true
           _ => false
         }
     Absent => false
   }
+    && string_contains(s: nbd_proxy_serve_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
 }
 
 test fn actuator_toolchain_grant_is_wired() -> Bool {

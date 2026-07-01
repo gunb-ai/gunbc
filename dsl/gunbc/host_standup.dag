@@ -212,7 +212,7 @@ data host_standup_spine: List<HostStandupStep> = [
   host_standup_prefix_gap_step(
     phase: OsInstallActuated,
     label: "prefix:os-install-actuated",
-    interim_realization: "extdeps.bmc.webui.nbd_proxy_serve shell transport (websocat+nbdkit+socat+curl) + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan; live mount+boot proof operator-gated",
+    interim_realization: "extdeps.bmc.webui.nbd_proxy_serve ShellProgram transport (bash_emit dissolve-on) + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan; live mount+boot proof operator-gated",
     refusal: "host_standup:prefix:os-install-actuated:unexecuted — refuse assimilation until NBD-proxy install actuates and OS-up witness is green-by-execution",
     effect_policy: OneShotIdempotent
   ),
@@ -308,7 +308,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "prefix:os-install-actuated",
     modeling: "gap",
-    authority_or_interim: "extdeps.bmc.webui.nbd_proxy_serve + extdeps.bmc.os_install_actuator_toolchain — shell transport modeled (§6(1) ws-upgrade PRESENT); live execution proof operator-gated"
+    authority_or_interim: "extdeps.bmc.webui.nbd_proxy_serve (ShellProgram + bash_emit dissolve-on) + extdeps.bmc.os_install_actuator_toolchain — live execution proof operator-gated"
   },
   GapLedgerRow {
     phase_label: "prefix:host-converge",
