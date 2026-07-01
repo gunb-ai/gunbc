@@ -107,14 +107,22 @@ fn orch_emit_if(
       match cond {
         ExitZero { run: r } =>
           bind_outcome(
-            o: orch_emit_pipeline(p: then_),
-            f: fn(body_medium) {
-              emit(
-                tree: InferredTree {
-                  root: bash_stmt_if_emitted,
-                  facts: Map { lookup: orch_emit_facts_lookup }
-                },
-                target: bash_stmt_if_target_model(cond: r.command, body: body_medium.carried)
+            o: orch_emit_run(r: r),
+            f: fn(cond_medium) {
+              bind_outcome(
+                o: orch_emit_pipeline(p: then_),
+                f: fn(body_medium) {
+                  emit(
+                    tree: InferredTree {
+                      root: bash_stmt_if_emitted,
+                      facts: Map { lookup: orch_emit_facts_lookup }
+                    },
+                    target: bash_stmt_if_target_model(
+                      cond: cond_medium.carried,
+                      body: body_medium.carried
+                    )
+                  )
+                }
               )
             }
           )

@@ -495,7 +495,6 @@ data unwired_model_roster: List<String> = [
   "openai_responses_status_label",
   "openai_tool_call_type_label",
   "orch_emit_pipeline",
-  "orch_emit_control_flow_dissolution_trigger",
   "orch_run_env_reduction_dissolution_trigger",
   "ordering_predicate_accepts",
   "owned",
