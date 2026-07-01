@@ -782,6 +782,7 @@ fn run_discovery_batch_node(
             exclude_substrings,
             discovery_scope_dirs,
             spawn_width_cap,
+            ..Default::default()
         },
     ) {
         Ok(summary) if summary.failures.is_empty() => {

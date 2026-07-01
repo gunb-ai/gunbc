@@ -2973,6 +2973,22 @@ pub fn discover_floor_corpus_rows_scoped(
     )
 }
 
+pub fn discover_floor_corpus_rows_scoped_laned(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+    discovery_scope_dirs: &[String],
+    lane: LayerSpanLane,
+) -> Result<Vec<DiscoveryRow>, String> {
+    discover_floor_corpus_rows_inner_laned(
+        source_roots,
+        scan_dirs,
+        exclude_substrings,
+        discovery_scope_dirs,
+        lane,
+    )
+}
+
 struct FloorLensHygieneGraph {
     rows: Vec<DiscoveryRow>,
     path_imports: std::collections::HashMap<String, Vec<String>>,
@@ -3205,7 +3221,32 @@ fn discover_floor_corpus_rows_inner_laned(
             unjustified.join(", ")
         ));
     }
-    Ok(rows)
+    if lane == LayerSpanLane::All {
+        return Ok(rows);
+    }
+    // Route each witness to its lane by layer-boundary span over its transitive
+    // import closure (seed mirror of v2.lens.layer_span). No silent drop: log
+    // the partition so a routed-out integration witness is visible.
+    let total = rows.len();
+    let kept: Vec<DiscoveryRow> = rows
+        .into_iter()
+        .filter(|row| {
+            let entry_rel = repo_relative_dag_path(&row.entry);
+            let span = witness_layer_boundary_span(&entry_rel, &path_imports, &module_to_path);
+            lane.admits(span)
+        })
+        .collect();
+    let lane_name = match lane {
+        LayerSpanLane::Floor => "floor (hermetic, span<=1)",
+        LayerSpanLane::Integration => "integration (span>=2)",
+        LayerSpanLane::All => "all",
+    };
+    eprintln!(
+        "claim_executor: layer-span lane = {lane_name}: {} of {total} witness(es) enrolled ({} routed to the other lane)",
+        kept.len(),
+        total - kept.len()
+    );
+    Ok(kept)
 }
 
 fn declares_construction_justification(content: &str) -> bool {
@@ -3542,6 +3583,11 @@ pub struct DiscoveryCorpusOptions {
     /// Derived from RunnableDiscoveryBatch.spawn_width_cap (provisioned from runner alloc ÷
     /// per-witness memory reservation). 0 = use the batch-wide spawn_width.
     pub spawn_width_cap: usize,
+    /// Which layer-span lane this discovery pass enrols: the blocking floor
+    /// (hermetic, span<=1), the non-blocking integration lane (span>=2), or all
+    /// witnesses (default, pre-lane behaviour). Seed mirror authority is
+    /// `v2.lens.layer_span`.
+    pub layer_span_lane: LayerSpanLane,
 }
 
 impl Default for DiscoveryCorpusOptions {
@@ -3555,6 +3601,7 @@ impl Default for DiscoveryCorpusOptions {
                 .collect(),
             discovery_scope_dirs: vec![],
             spawn_width_cap: 0,
+            layer_span_lane: LayerSpanLane::All,
         }
     }
 }
@@ -3942,11 +3989,12 @@ pub fn run_discovery_corpus_with_options(
         if options.explicit_roster_only || (scan_dirs.is_empty() && !explicit_entries.is_empty()) {
             Vec::new()
         } else {
-            discover_floor_corpus_rows_scoped(
+            discover_floor_corpus_rows_scoped_laned(
                 source_roots,
                 scan_dirs,
                 &options.exclude_substrings,
                 &options.discovery_scope_dirs,
+                options.layer_span_lane,
             )?
         };
     let mut seen: std::collections::BTreeSet<(String, String)> = rows
@@ -5009,6 +5057,112 @@ pub fn emit_source_root_ingest_manifest(
     }
 
     std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
+}
+
+#[cfg(test)]
+mod layer_span_lane_tests {
+    use super::{coarse_layer_of_module, witness_layer_boundary_span, CoarseLayer, LayerSpanLane};
+    use std::collections::HashMap;
+
+    fn imports(pairs: &[(&str, &[&str])]) -> HashMap<String, Vec<String>> {
+        pairs
+            .iter()
+            .map(|(p, ims)| {
+                (
+                    (*p).to_string(),
+                    ims.iter().map(|s| (*s).to_string()).collect(),
+                )
+            })
+            .collect()
+    }
+
+    fn modules(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs
+            .iter()
+            .map(|(m, p)| ((*m).to_string(), (*p).to_string()))
+            .collect()
+    }
+
+    // Parity with v2.lens.layer_span classifier: prefixes map to the coarse
+    // LayerPrefix, std is ambient, product modules are Workflow.
+    #[test]
+    fn classifier_matches_dag_model() {
+        assert!(coarse_layer_of_module("v2.std.text") == CoarseLayer::Std);
+        assert!(coarse_layer_of_module("extdeps.shell") == CoarseLayer::Extdeps);
+        assert!(coarse_layer_of_module("v2.compiler.emit") == CoarseLayer::Compiler);
+        assert!(coarse_layer_of_module("v2.workflow.executor") == CoarseLayer::Workflow);
+        assert!(coarse_layer_of_module("gunbc.ci_spec") == CoarseLayer::Workflow);
+    }
+
+    // A hermetic compiler->workflow test touches two adjacent layers (the unit
+    // under test at workflow + a mock of the compiler neighbour): span 1, floor.
+    // The mock keeps the closure shallow (it pulls only std).
+    #[test]
+    fn adjacent_pair_is_floor() {
+        let path_imports = imports(&[
+            (
+                "t.dag",
+                &[
+                    "v2.workflow.executor",
+                    "v2.compiler.mock_infer",
+                    "v2.std.text",
+                ],
+            ),
+            ("executor.dag", &["v2.std.text"]),
+            ("mock_infer.dag", &["v2.std.text"]),
+        ]);
+        let module_to_path = modules(&[
+            ("v2.workflow.executor", "executor.dag"),
+            ("v2.compiler.mock_infer", "mock_infer.dag"),
+        ]);
+        let span = witness_layer_boundary_span("t.dag", &path_imports, &module_to_path);
+        assert_eq!(span, 1);
+        assert!(LayerSpanLane::Floor.admits(span));
+        assert!(!LayerSpanLane::Integration.admits(span));
+    }
+
+    // A single-layer test (only one non-std layer touched) has span 0: floor.
+    #[test]
+    fn single_layer_is_floor() {
+        let path_imports = imports(&[
+            ("t.dag", &["v2.compiler.infer", "v2.std.text"]),
+            ("infer.dag", &["v2.std.text"]),
+        ]);
+        let module_to_path = modules(&[("v2.compiler.infer", "infer.dag")]);
+        let span = witness_layer_boundary_span("t.dag", &path_imports, &module_to_path);
+        assert_eq!(span, 0);
+        assert!(LayerSpanLane::Floor.admits(span));
+    }
+
+    // An integration test that directly imports only `a` but transitively
+    // reaches an extdeps layer through it spans two boundaries: integration.
+    #[test]
+    fn transitive_reach_is_integration() {
+        let path_imports = imports(&[
+            ("t.dag", &["v2.workflow.a", "v2.std.text"]),
+            ("a.dag", &["v2.compiler.b"]),
+            ("b.dag", &["extdeps.shell"]),
+        ]);
+        let module_to_path = modules(&[
+            ("v2.workflow.a", "a.dag"),
+            ("v2.compiler.b", "b.dag"),
+            ("extdeps.shell", "b_ext.dag"),
+        ]);
+        let span = witness_layer_boundary_span("t.dag", &path_imports, &module_to_path);
+        assert_eq!(span, 2);
+        assert!(!LayerSpanLane::Floor.admits(span));
+        assert!(LayerSpanLane::Integration.admits(span));
+    }
+
+    // std-only imports have span 0 and stay on the floor.
+    #[test]
+    fn std_only_is_floor() {
+        let path_imports = imports(&[("t.dag", &["v2.std.text", "v2.std.collection"])]);
+        let module_to_path = modules(&[]);
+        let span = witness_layer_boundary_span("t.dag", &path_imports, &module_to_path);
+        assert_eq!(span, 0);
+        assert!(LayerSpanLane::Floor.admits(span));
+    }
 }
 
 #[cfg(test)]
