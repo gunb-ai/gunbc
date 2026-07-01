@@ -111,12 +111,7 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "coproduct_reflection.rs",
         "resolved_graph_cache.rs",
         "recorded_fixture.rs",
-<<<<<<< HEAD
-=======
         "external_authority_project.rs",
-        "v1_compiler_dag_collect.rs",
-        "v1_compiler_dag_collect_support.rs",
->>>>>>> origin/main
     ] {
         let src = stage0_src.join(name);
         if src.exists() {
