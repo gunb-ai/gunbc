@@ -3153,6 +3153,22 @@ fn discover_floor_corpus_rows_inner(
     exclude_substrings: &[String],
     discovery_scope_dirs: &[String],
 ) -> Result<Vec<DiscoveryRow>, String> {
+    discover_floor_corpus_rows_inner_laned(
+        source_roots,
+        scan_dirs,
+        exclude_substrings,
+        discovery_scope_dirs,
+        LayerSpanLane::All,
+    )
+}
+
+fn discover_floor_corpus_rows_inner_laned(
+    source_roots: &[String],
+    scan_dirs: &[String],
+    exclude_substrings: &[String],
+    discovery_scope_dirs: &[String],
+    lane: LayerSpanLane,
+) -> Result<Vec<DiscoveryRow>, String> {
     let graph = build_floor_lens_hygiene_graph(
         source_roots,
         scan_dirs,
@@ -3325,6 +3341,132 @@ fn is_top_level_lens_module(module: &str) -> bool {
     match module.strip_prefix("v2.lens.") {
         Some(rest) => !rest.is_empty() && !rest.contains('.'),
         None => false,
+    }
+}
+
+// ─── Layer-span lane classification (seed mirror of `v2.lens.layer_span`) ─────
+//
+// The .dag module `v2.lens.layer_span` is the authority; this is its host-side
+// seed mirror, used at floor-discovery time to route each witness onto the
+// blocking floor lane (hermetic: transitive imports cross <= 1 non-std layer
+// boundary) or the non-blocking integration lane (span >= 2). std is the
+// ambient framework layer and never counts toward the span. Keep the prefixes
+// and the `keeps_on_floor` threshold in lockstep with layer_span.dag.
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CoarseLayer {
+    Std,
+    Extdeps,
+    Compiler,
+    Workflow,
+}
+
+fn coarse_layer_of_module(module: &str) -> CoarseLayer {
+    if module == "std"
+        || module == "v2.std"
+        || module.starts_with("std.")
+        || module.starts_with("v2.std.")
+    {
+        CoarseLayer::Std
+    } else if module == "extdeps"
+        || module == "v2.extdeps"
+        || module.starts_with("extdeps.")
+        || module.starts_with("v2.extdeps.")
+    {
+        CoarseLayer::Extdeps
+    } else if module == "v2.compiler"
+        || module.starts_with("v2.compiler.")
+        || module.starts_with("compiler.")
+    {
+        CoarseLayer::Compiler
+    } else {
+        CoarseLayer::Workflow
+    }
+}
+
+fn coarse_layer_ordinal(layer: CoarseLayer) -> i64 {
+    match layer {
+        CoarseLayer::Std => 0,
+        CoarseLayer::Extdeps => 1,
+        CoarseLayer::Compiler => 2,
+        CoarseLayer::Workflow => 3,
+    }
+}
+
+/// The set of module names transitively imported starting from `seed_path` (a
+/// repo-relative .dag path), following `path_imports` (rel-path -> imported
+/// module names) via `module_to_path` (module name -> rel path). Excludes std
+/// (ambient). Acyclic in principle; guarded by `visited` regardless.
+fn transitive_non_std_modules(
+    seed_path: &str,
+    path_imports: &std::collections::HashMap<String, Vec<String>>,
+    module_to_path: &std::collections::HashMap<String, String>,
+) -> std::collections::BTreeSet<String> {
+    let mut reached: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut visited_paths: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut queue: Vec<String> = vec![seed_path.to_string()];
+    while let Some(path) = queue.pop() {
+        if !visited_paths.insert(path.clone()) {
+            continue;
+        }
+        let Some(imports) = path_imports.get(&path) else {
+            continue;
+        };
+        for import_module in imports {
+            if coarse_layer_of_module(import_module) != CoarseLayer::Std {
+                reached.insert(import_module.clone());
+            }
+            if let Some(next_path) = module_to_path.get(import_module) {
+                if !visited_paths.contains(next_path) {
+                    queue.push(next_path.clone());
+                }
+            }
+        }
+    }
+    reached
+}
+
+/// Number of non-std layer boundaries the witness at `entry_rel` crosses across
+/// its transitive import closure: max_ordinal - min_ordinal over the non-std
+/// layers touched (0 when none or a single layer).
+fn witness_layer_boundary_span(
+    entry_rel: &str,
+    path_imports: &std::collections::HashMap<String, Vec<String>>,
+    module_to_path: &std::collections::HashMap<String, String>,
+) -> i64 {
+    let modules = transitive_non_std_modules(entry_rel, path_imports, module_to_path);
+    let mut min_ord: Option<i64> = None;
+    let mut max_ord: Option<i64> = None;
+    for module in &modules {
+        let ord = coarse_layer_ordinal(coarse_layer_of_module(module));
+        min_ord = Some(min_ord.map_or(ord, |m| m.min(ord)));
+        max_ord = Some(max_ord.map_or(ord, |m| m.max(ord)));
+    }
+    match (min_ord, max_ord) {
+        (Some(lo), Some(hi)) => hi - lo,
+        _ => 0,
+    }
+}
+
+/// Which lane a floor-discovery pass enrols. `Floor` keeps only hermetic
+/// witnesses (span <= 1) — the blocking "is this a safe change" gate.
+/// `Integration` keeps only span >= 2 witnesses (a->c, e2e, regen) for the
+/// separate, non-blocking lane. `All` keeps everything (default; identical to
+/// pre-lane behaviour).
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum LayerSpanLane {
+    All,
+    Floor,
+    Integration,
+}
+
+impl LayerSpanLane {
+    fn admits(self, span: i64) -> bool {
+        match self {
+            LayerSpanLane::All => true,
+            LayerSpanLane::Floor => span <= 1,
+            LayerSpanLane::Integration => span >= 2,
+        }
     }
 }
 
