@@ -38,7 +38,6 @@ import gunbc.bmc_onboarding {
   bmc_credential_probe_to_phase,
   host_onboarding_lifecycle_phase,
   bmc_phase_is_pre_os_installed,
-  bmc_phase_has_running_os,
   srv3_bmc_lifecycle_phase,
 }
 import gunbc.fleet_intent_network {
@@ -231,7 +230,6 @@ test fn fleet_host_lifecycle_phase_is_single_authority_for_apply_mode() -> Bool 
     && bmc_phase_is_pre_os_installed(phase: CredentialsRotated)
     && !bmc_phase_is_pre_os_installed(phase: OsInstalled)
     && !bmc_phase_is_pre_os_installed(phase: FabricJoined)
-    && bmc_phase_has_running_os(phase: OsInstalled)
     && match host_onboarding_lifecycle_phase(host: operator_host_srv1) {
       Present { value: OsInstalled } => true
       Present { value: _ } => false

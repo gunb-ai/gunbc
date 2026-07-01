@@ -2,6 +2,8 @@ module gunbc.fleet_converge_timer_emit
 
 import std.types { String, List, Int, Bool }
 import std.measure { second_count }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.layout {
   Doc, DocConcat,
   LayoutProtocol,
@@ -20,6 +22,15 @@ import gunbc.host_converge {
 }
 
 data fleet_converge_timer_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+
+data fleet_converge_timer_emit_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.fleet_converge_timer_emit",
+    decl_name: "project_timer_upsert_to_doc",
+    field: WholeDeclaration
+  }
+}
 
 data gunbc_fleet_converge_service_unit_name: String = "gunbc-fleet-converge.service"
 data gunbc_fleet_converge_timer_unit_name: String = "gunbc-fleet-converge.timer"

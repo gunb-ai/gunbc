@@ -293,7 +293,3 @@ fn bmc_phase_is_pre_os_installed(phase: BmcOnboardingPhase) -> Bool {
     FabricJoined => false
   }
 }
-
-fn bmc_phase_has_running_os(phase: BmcOnboardingPhase) -> Bool {
-  !bmc_phase_is_pre_os_installed(phase: phase)
-}

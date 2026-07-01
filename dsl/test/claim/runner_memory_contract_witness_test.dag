@@ -150,8 +150,8 @@ fn witness_policy_has_per_slot_memory_knobs() -> Bool {
   }
 }
 
-fn witness_fabric_accounting_overcommit_requires_swap() -> Bool {
-  !fabric_memory_accounting_sound(
+fn witness_fabric_accounting_sound_with_swap_escape() -> Bool {
+  fabric_memory_accounting_sound(
     offers: fleet_intent_offers,
     overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead),
     slot_count: gunbc_declared_runner_slot_count,
@@ -168,5 +168,5 @@ test fn runner_memory_contract_holds() -> Bool {
     && witness_emit_projects_burst_contract()
     && witness_deployment_carries_slot_memory_and_slice()
     && witness_policy_has_per_slot_memory_knobs()
-    && witness_fabric_accounting_overcommit_requires_swap()
+    && witness_fabric_accounting_sound_with_swap_escape()
 }

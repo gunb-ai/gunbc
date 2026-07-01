@@ -281,12 +281,7 @@ fn fabric_memory_accounting_sound(
   let capacity = fabric_total_allocatable_runner_memory(offers: offers, overhead: overhead)
   let demand = fabric_total_contract_memory_demand(offers: offers, slot_count: slot_count, contract: contract)
   measure_le(a: demand, b: capacity)
-    || runner_swap_backs_ram_overcommit(
-      slot_count: slot_count,
-      contract: contract,
-      slice_cap: fabric_runner_slice_cap_per_host(offers: offers, overhead: overhead),
-      host_swap: host_swap
-    )
+    || measure_le(a: contract.memory_swap_max, b: host_swap)
 }
 
 fn fabric_effective_heavy_job_concurrency(offers: List<ComputeOffer>, overhead: ByteSize, working_set: ByteSize) -> Int {

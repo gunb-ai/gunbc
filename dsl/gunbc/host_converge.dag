@@ -28,7 +28,11 @@ import gunbc.ci_floor_measurement {
 import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.bmc_onboarding {
   host_onboarding_lifecycle_phase,
-  bmc_phase_is_pre_os_installed,
+  BmcOnboardingPhase,
+  FactoryDefault,
+  CredentialsRotated,
+  OsInstalled,
+  FabricJoined,
 }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
@@ -379,10 +383,11 @@ fn gunbc_pinned_binary_provenance_policy() -> GunbcBinaryProvenancePolicy {
 fn gunbc_apply_mode_for_host(host: HostIdentity) -> ConvergeApplyMode {
   match host_onboarding_lifecycle_phase(host: host) {
     Present { value: phase } =>
-      if bmc_phase_is_pre_os_installed(phase: phase) {
-        FreshStandup
-      } else {
-        ExistingHostQuiescentReload
+      match phase {
+        FactoryDefault => FreshStandup
+        CredentialsRotated => FreshStandup
+        OsInstalled => ExistingHostQuiescentReload
+        FabricJoined => ExistingHostQuiescentReload
       }
     Absent => ExistingHostQuiescentReload
   }

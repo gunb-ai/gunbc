@@ -19,6 +19,8 @@ import gunbc.fleet_host_budget {
   host_allocation_conserves,
   declared_runner_count,
   oomd_actuation_floor,
+  gunbc_host_swap_available,
+  fabric_memory_accounting_sound,
 }
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
@@ -206,17 +208,28 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
 }
 
 fn runner_deployment_plan() -> RunnerDeploymentPlan {
-  let acc = fold(
-    fleet_intent_offers,
-    init: DeploymentAccumulator { deployments: [], unsound_reason: "", any_unfit: false, total: 0 },
-    f: (a, o) => accumulate_conservation_deployment(acc: a, offer: o)
-  )
-  if acc.unsound_reason != "" {
-    PlanUnsound { reason: acc.unsound_reason }
-  } else if acc.any_unfit {
-    PlanUnsound { reason: "declared runner_pool_budget admits zero runners at the declared slot_memory.memory_max: raise runner_pool_budget or lower memory_max" }
+  let overhead = host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead)
+  if !fabric_memory_accounting_sound(
+    offers: fleet_intent_offers,
+    overhead: overhead,
+    slot_count: declared_runner_count(),
+    contract: gunbc_runner_slot_memory_contract,
+    host_swap: gunbc_host_swap_available,
+  ) {
+    PlanUnsound { reason: "fabric runner memory accounting unsound: Σ(slot memory_max contracts) exceeds Σ(allocatable runner memory) and per-slot swap_max exceeds host swap pool" }
   } else {
-    PlanDerived { hosts: acc.deployments, fleet_concurrent_runs: acc.total }
+    let acc = fold(
+      fleet_intent_offers,
+      init: DeploymentAccumulator { deployments: [], unsound_reason: "", any_unfit: false, total: 0 },
+      f: (a, o) => accumulate_conservation_deployment(acc: a, offer: o)
+    )
+    if acc.unsound_reason != "" {
+      PlanUnsound { reason: acc.unsound_reason }
+    } else if acc.any_unfit {
+      PlanUnsound { reason: "declared runner_pool_budget admits zero runners at the declared slot_memory.memory_max: raise runner_pool_budget or lower memory_max" }
+    } else {
+      PlanDerived { hosts: acc.deployments, fleet_concurrent_runs: acc.total }
+    }
   }
 }
 

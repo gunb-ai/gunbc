@@ -28,6 +28,12 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_session_reservation_mode,
 }
 import gunbc.ci_fleet { fleet_intent_offers }
+import gunbc.fleet_host_budget {
+  host_fixed_overhead_bytes,
+  gunbc_ci_heavy_job_working_set,
+  fabric_effective_heavy_job_concurrency,
+}
+import gunbc.ci_floor_measurement { gunbc_ci_host_fixed_overhead }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy }
 import extdeps.github.actions { RunnerSpec, SelfHosted, HostedRunner, RunsOnExpression }
 import std.measure { byte_size_count, hardware_thread_count_value, percent_count }
@@ -86,7 +92,17 @@ fn runner_plan_doc() -> Doc {
     PlanDerived { hosts: hosts, fleet_concurrent_runs: total } =>
       doc_concat(parts: append(
         map(hosts, h => doc_concat(parts: [doc_text(text: "runner-deploy "), manifest_host_doc(h: h), DocLine])),
-        items: [doc_line_of(text: concat("runner-deploy fleet_concurrent_runs=", to_string(total)))]
+        items: [
+          doc_line_of(text: concat("runner-deploy fleet_concurrent_runs=", to_string(total))),
+          doc_line_of(text: concat(
+            "runner-deploy fabric_effective_heavy_job_concurrency=",
+            to_string(fabric_effective_heavy_job_concurrency(
+              offers: fleet_intent_offers,
+              overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead),
+              working_set: gunbc_ci_heavy_job_working_set,
+            ))
+          )),
+        ]
       ))
   }
 }
