@@ -21,7 +21,7 @@ import v2.workflow.ci_floor_plan {
   witness_floor_spawn_width_zero_budget_falls_back,
   witness_corpus_effective_widths_fit_runner_cap,
   witness_execution_corpus_spawn_width_at_runner_cap,
-  witness_plan_spawn_width_is_max_floor_exec_at_runner_cap,
+  witness_plan_spawn_width_is_min_floor_exec_at_runner_cap,
   witness_floor_derived_width_leaves_headroom_at_cap,
 }
 import gunbc.ci_layer_roots { witness_discovery_scan_dirs, witness_layer_roots }
@@ -176,6 +176,6 @@ test fn ci_floor_spawn_width_live_budget_witnesses() -> Bool {
 test fn ci_floor_honest_width_fold_witnesses() -> Bool {
   witness_corpus_effective_widths_fit_runner_cap() &&
     witness_execution_corpus_spawn_width_at_runner_cap() &&
-    witness_plan_spawn_width_is_max_floor_exec_at_runner_cap() &&
+    witness_plan_spawn_width_is_min_floor_exec_at_runner_cap() &&
     witness_floor_derived_width_leaves_headroom_at_cap()
 }

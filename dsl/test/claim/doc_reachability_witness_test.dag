@@ -1,0 +1,13 @@
+module test.claim.doc_reachability_witness
+
+test fn doc_graph_has_no_orphan_docs() -> Bool {
+  return doc_graph_orphan_count() == 0
+}
+
+test fn doc_graph_has_no_dangling_links() -> Bool {
+  return doc_graph_dangling_link_count() == 0
+}
+
+test fn doc_graph_universe_is_nonempty() -> Bool {
+  return doc_graph_doc_count() > 0
+}

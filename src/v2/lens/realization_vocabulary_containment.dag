@@ -18,7 +18,8 @@ import v2.std.logic { Bool }
 import v2.std.text { Char, String }
 
 data target_ast_vocab_modules: List<String> = [
-  "extdeps.languages.bash.program"
+  "extdeps.languages.bash.program",
+  "extdeps.languages.typescript.program"
 ]
 
 data realization_edge_path_prefixes: List<String> = [
@@ -35,6 +36,7 @@ data realization_edge_path_prefixes: List<String> = [
 
 data realization_vocab_exception_roster: List<String> = [
   "dsl/gunbc/ci_spec.dag",
+  "dsl/gunbc/node_http_server_emit.dag",
   "dsl/gunbc/ci_yaml_validate.dag",
   "dsl/tools/build_step.dag",
   "dsl/tools/build_step_transport.dag",
