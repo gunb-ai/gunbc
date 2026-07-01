@@ -12,6 +12,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.runner_spec_from_offer { runner_spec_from_offer }
 import gunbc.fleet_host_budget {
   gunbc_fleet_oomd_evidence,
+  gunbc_runner_slice_cap,
   gunbc_runner_pool_budget,
   gunbc_runner_slot_memory_contract,
   RunnerSlotMemoryContract,
@@ -158,7 +159,7 @@ fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount)
   RunnerHostDeployment {
     identity: offer.supply.physical.identity,
     runner_count: declared_runner_count(),
-    runner_slice_cap: gunbc_runner_pool_budget,
+    runner_slice_cap: gunbc_runner_slice_cap,
     slot_memory: gunbc_runner_slot_memory_contract,
     build_tokens: nproc,
     runner: runner_spec_from_offer(offer: offer),
@@ -183,7 +184,7 @@ fn accumulate_conservation_deployment(acc: DeploymentAccumulator, offer: Compute
         host: host_ram,
         overhead: overhead,
         headroom: headroom,
-        runner_pool: gunbc_runner_pool_budget
+        runner_pool: gunbc_runner_slice_cap
       ) {
         let dep = conservation_host_deployment(offer: offer, nproc: cpu_facts_threads(cpu: cpu))
         DeploymentAccumulator {

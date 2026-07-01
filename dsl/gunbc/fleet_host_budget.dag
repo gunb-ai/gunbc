@@ -147,7 +147,15 @@ fn child_node(name: String, b: ByteSize) -> BudgetNode {
 }
 
 
-data gunbc_runner_pool_budget: ByteSize = byte_size(85899345920)
+data gunbc_runner_slice_cap: ByteSize = byte_size(85899345920)
+
+data gunbc_declared_runner_slot_count: Int = 10
+
+data gunbc_runner_pool_budget: ByteSize = gunbc_runner_slice_cap
+
+data gunbc_host_swap_available: ByteSize = byte_size(8589934592)
+
+data gunbc_ci_heavy_job_working_set: ByteSize = byte_size(11811160064)
 
 type RunnerSlotMemoryContract {
   memory_max: ByteSize
@@ -165,9 +173,9 @@ data gunbc_runner_slot_memory_contract_disposition: Disposition = Scaffold {
 }
 
 data gunbc_runner_slot_memory_contract: RunnerSlotMemoryContract = RunnerSlotMemoryContract {
-  memory_max: gunbc_ci_runner_cgroup_memory_cap,
-  memory_high: byte_size(7516192768),
-  memory_swap_max: byte_size(25769803776),
+  memory_max: byte_size(25769803776),
+  memory_high: byte_size(15032385536),
+  memory_swap_max: byte_size(8589934592),
 }
 
 data gunbc_per_runner_memory_cap: ByteSize = gunbc_runner_slot_memory_contract.memory_max
@@ -176,7 +184,7 @@ data gunbc_per_runner_swap_cap: ByteSize = gunbc_runner_slot_memory_contract.mem
 
 data gunbc_per_runner_memory_high: ByteSize = gunbc_runner_slot_memory_contract.memory_high
 
-data gunbc_runner_standalone_memory_contract_basis: String = "Parameterized per-slot memory contract (operator 2026-07-01): memory.max / memory.high / memory.swap.max are declared inputs on RunnerSlotMemoryContract (gunbc_runner_slot_memory_contract). Provisional defaults mirror the HANDOFF strict 8 GiB + 24 GiB-swap model; exact knob values are under live verification on srv1 (burst-vs-swap: idle host RAM may favor MemoryHigh=8G soft target + higher MemoryMax ceiling over swap-thrash on NVMe swapfile). Slot sizing does NOT cover the ~37 GiB rust_tests tentpole — that stays on the separate W2 cargo-test split. Runner slice ManagedOOMMemoryPressure=auto. Runners and sessions are INDEPENDENT standalone 8G contracts on notionally-separate hardware — this module does NOT carry a session_pool term and does NOT conserve runner+session against one host budget (session 8G contract: cool-swift P4 session-dispatch). runner_count stays operator-declared via gunbc_runner_pool_budget. dissolve-on: operator-validated contract values + clever-raven orchestration-intent converge emit."
+data gunbc_runner_standalone_memory_contract_basis: String = "Stopgap-validated burst contract (operator 2026-07-01 adversarial verify): RunnerSlotMemoryContract carries memory_high=14GiB (soft knee above ~11GiB CI working set), memory_max=24GiB (hard ceiling), memory_swap_max=8GiB per slot — burst into real RAM, NOT HANDOFF strict 8G+24G-swap. Values stay parameterized (Scaffold dissolve-on). THE throughput wall is gunbc_runner_slice_cap (80GiB parent slice MemoryMax), not per-slot cap: 10 slots × 24GiB oversubscribes 3:1 at slice → effective heavy-job concurrency ≈ floor(slice/working_set) ≈ 7. gunbc_declared_runner_slot_count is operator width (10), independent of slice math. Aggregate per-slot swap demand = slot_count × memory_swap_max must be ≤ gunbc_host_swap_available (today 8GiB host swap vs 80GiB demand — swap provisioning gap modeled, dissolve-on swapfile/LV provision). Runners/sessions independent 8G standalone contracts on separate hardware; no session_pool in runner budget (cool-swift P4). dissolve-on: clever-raven orchestration-intent converge emit."
 
 fn host_allocation_tree(
   host: ByteSize,
@@ -210,7 +218,20 @@ fn host_allocation_conserves(
 }
 
 fn declared_runner_count() -> Int {
-  measure_fit_count_floor(capacity: gunbc_runner_pool_budget, each: gunbc_ci_runner_cgroup_memory_cap)
+  gunbc_declared_runner_slot_count
+}
+
+fn runner_swap_aggregate_demand(slot_count: Int, contract: RunnerSlotMemoryContract) -> ByteSize {
+  measure_scale_fraction_floor(m: contract.memory_swap_max, num: slot_count, den: 1)
+}
+
+fn runner_swap_aggregate_fits(slot_count: Int, contract: RunnerSlotMemoryContract, host_swap: ByteSize) -> Bool {
+  byte_size_count(b: runner_swap_aggregate_demand(slot_count: slot_count, contract: contract))
+    <= byte_size_count(b: host_swap)
+}
+
+fn effective_heavy_job_concurrency(slice_cap: ByteSize, working_set: ByteSize) -> Int {
+  measure_fit_count_floor(capacity: slice_cap, each: working_set)
 }
 
 fn runner_slice_cap(host: ByteSize, overhead: ByteSize, headroom: ByteSize) -> ByteSize {

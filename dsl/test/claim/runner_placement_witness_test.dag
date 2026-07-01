@@ -30,6 +30,7 @@ import gunbc.ci_runner_placement {
 }
 import gunbc.fleet_host_budget {
   declared_runner_count,
+  gunbc_runner_slice_cap,
   gunbc_runner_pool_budget,
   gunbc_runner_slot_memory_contract,
 }
@@ -77,8 +78,8 @@ fn witness_live_plan_is_conservation_sound() -> Bool {
         && total == declared_runner_count() * fleet_intent_offers.length()
         && all(hosts, h =>
             h.runner_count == declared_runner_count()
-              && byte_size_count(b: h.slot_memory.memory_max) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
-              && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_pool_budget)
+              && byte_size_count(b: h.slot_memory.memory_max) == byte_size_count(b: gunbc_runner_slot_memory_contract.memory_max)
+              && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_slice_cap)
               && hardware_thread_count_value(t: h.build_tokens) > 0
           )
     PlanUnsound { reason: _ } => false

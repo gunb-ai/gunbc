@@ -5,7 +5,7 @@ import std.measure { byte_size }
 import gunbc.fleet_host_budget {
   host_allocation_conserves,
   declared_runner_count,
-  gunbc_runner_pool_budget,
+  gunbc_runner_slice_cap,
 }
 
 test fn declared_runner_count_is_ten() -> Bool {
@@ -17,7 +17,7 @@ test fn allocation_conserves_when_runner_pool_fits() -> Bool {
     host: byte_size(134217728000),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget
+    runner_pool: gunbc_runner_slice_cap
   )
 }
 
@@ -35,7 +35,7 @@ test fn allocation_is_runner_only_no_session_term() -> Bool {
     host: byte_size(134217728000),
     overhead: byte_size(17179869184),
     headroom: byte_size(8589934592),
-    runner_pool: gunbc_runner_pool_budget
+    runner_pool: gunbc_runner_slice_cap
   )
     && declared_runner_count() > 0
 }

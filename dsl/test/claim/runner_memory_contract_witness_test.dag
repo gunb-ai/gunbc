@@ -4,11 +4,18 @@ import std.types { Bool, String }
 import std.measure { byte_size_count }
 import gunbc.fleet_host_budget {
   gunbc_runner_slot_memory_contract,
+  gunbc_runner_slice_cap,
+  gunbc_declared_runner_slot_count,
+  gunbc_host_swap_available,
+  gunbc_ci_heavy_job_working_set,
   gunbc_per_runner_memory_cap,
   gunbc_per_runner_swap_cap,
   gunbc_per_runner_memory_high,
+  runner_swap_aggregate_demand,
+  runner_swap_aggregate_fits,
+  effective_heavy_job_concurrency,
+  declared_runner_count,
 }
-import gunbc.ci_floor_measurement { gunbc_ci_runner_cgroup_memory_cap }
 import gunbc.fleet_converge_emit { expected_fleet_converge_sh }
 import gunbc.host_converge { fleet_converge_policy, ConvergePolicyDerived, RunnerSlice }
 import gunbc.ci_runner_placement { runner_deployment_plan, PlanDerived }
@@ -19,17 +26,38 @@ fn has(s: String, p: String) -> Bool {
 
 fn witness_contract_is_parameterized_record() -> Bool {
   let c = gunbc_runner_slot_memory_contract
-  byte_size_count(b: c.memory_max) > 0
-    && byte_size_count(b: c.memory_high) > 0
-    && byte_size_count(b: c.memory_swap_max) >= 0
+  byte_size_count(b: c.memory_max) == 25769803776
+    && byte_size_count(b: c.memory_high) == 15032385536
+    && byte_size_count(b: c.memory_swap_max) == 8589934592
     && gunbc_per_runner_memory_cap == c.memory_max
     && gunbc_per_runner_swap_cap == c.memory_swap_max
     && gunbc_per_runner_memory_high == c.memory_high
 }
 
-fn witness_contract_aliases_nominal_budget_cap() -> Bool {
-  byte_size_count(b: gunbc_runner_slot_memory_contract.memory_max)
-    == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+fn witness_slice_cap_is_first_class_knob() -> Bool {
+  byte_size_count(b: gunbc_runner_slice_cap) == 85899345920
+    && declared_runner_count() == gunbc_declared_runner_slot_count
+    && declared_runner_count() == 10
+}
+
+fn witness_heavy_job_concurrency_bounded_by_slice() -> Bool {
+  effective_heavy_job_concurrency(
+    slice_cap: gunbc_runner_slice_cap,
+    working_set: gunbc_ci_heavy_job_working_set
+  ) == 7
+}
+
+fn witness_swap_aggregate_exceeds_current_host_swap() -> Bool {
+  let demand = runner_swap_aggregate_demand(
+    slot_count: declared_runner_count(),
+    contract: gunbc_runner_slot_memory_contract
+  )
+  byte_size_count(b: demand) == 85899345920
+    && !runner_swap_aggregate_fits(
+      slot_count: declared_runner_count(),
+      contract: gunbc_runner_slot_memory_contract,
+      host_swap: gunbc_host_swap_available
+    )
 }
 
 fn per_slot_line(host: String, knob: String, property: String, bytes: String) -> String {
@@ -46,6 +74,8 @@ fn per_slot_line(host: String, knob: String, property: String, bytes: String) ->
           ),
           if knob == "per_slot_memory_swap_max_bytes" {
             "\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@"
+          } else if knob == "per_slot_memory_max_bytes" {
+            "\" \"/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf\" \"actions-runner@"
           } else {
             "\" \"/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf\" \"actions-runner@"
           }
@@ -58,22 +88,25 @@ fn per_slot_line(host: String, knob: String, property: String, bytes: String) ->
   )
 }
 
-fn witness_emit_projects_contract_bytes() -> Bool {
+fn witness_emit_projects_burst_contract() -> Bool {
   let c = gunbc_runner_slot_memory_contract
+  let max = to_string(byte_size_count(b: c.memory_max))
   let swap = to_string(byte_size_count(b: c.memory_swap_max))
   let high = to_string(byte_size_count(b: c.memory_high))
+  let slice = to_string(byte_size_count(b: gunbc_runner_slice_cap))
   let sh = expected_fleet_converge_sh()
-  has(s: sh, p: per_slot_line(host: "srv1", knob: "per_slot_memory_swap_max_bytes", property: "MemorySwapMax", bytes: swap))
+  has(s: sh, p: concat("converge_slice_property \"srv1\" \"runner\" \"runner_slice_cap_bytes\" \"system-actions-runner.slice\" \"MemoryMax\" \"", concat(slice, "\"")))
+    && has(s: sh, p: per_slot_line(host: "srv1", knob: "per_slot_memory_max_bytes", property: "MemoryMax", bytes: max))
+    && has(s: sh, p: per_slot_line(host: "srv1", knob: "per_slot_memory_swap_max_bytes", property: "MemorySwapMax", bytes: swap))
     && has(s: sh, p: per_slot_line(host: "srv1", knob: "per_slot_memory_high_bytes", property: "MemoryHigh", bytes: high))
     && has(s: sh, p: "converge_slice_property \"srv1\" \"runner\" \"oom_pressure_auto\" \"system-actions-runner.slice\" \"ManagedOOMMemoryPressure\" \"auto\" \"auto\" \"true\"")
-    && has(s: sh, p: "converge_gunbc_pinned_tree \"srv3\" \"gunbc\" \"pinned_tree_sha\" \"fresh_standup\"")
-    && has(s: sh, p: per_slot_line(host: "srv3", knob: "per_slot_memory_swap_max_bytes", property: "MemorySwapMax", bytes: swap))
+    && has(s: sh, p: per_slot_line(host: "srv3", knob: "per_slot_memory_max_bytes", property: "MemoryMax", bytes: max))
     && has(s: sh, p: per_slot_line(host: "srv3", knob: "per_slot_memory_high_bytes", property: "MemoryHigh", bytes: high))
-    && has(s: sh, p: "converge_slice_property \"srv3\" \"runner\" \"oom_pressure_auto\" \"system-actions-runner.slice\" \"ManagedOOMMemoryPressure\" \"auto\" \"auto\" \"true\"")
     && !has(s: sh, p: "\"MemorySwapMax\" \"0\"")
+    && !has(s: sh, p: "\"MemoryMax\" \"8589934592\"")
 }
 
-fn witness_deployment_carries_slot_memory() -> Bool {
+fn witness_deployment_carries_slot_memory_and_slice() -> Bool {
   match runner_deployment_plan() {
     PlanDerived { hosts: hosts } =>
       hosts.length() > 0
@@ -81,17 +114,22 @@ fn witness_deployment_carries_slot_memory() -> Bool {
           byte_size_count(b: h.slot_memory.memory_max) == byte_size_count(b: gunbc_runner_slot_memory_contract.memory_max)
             && byte_size_count(b: h.slot_memory.memory_high) == byte_size_count(b: gunbc_runner_slot_memory_contract.memory_high)
             && byte_size_count(b: h.slot_memory.memory_swap_max) == byte_size_count(b: gunbc_runner_slot_memory_contract.memory_swap_max)
+            && byte_size_count(b: h.runner_slice_cap) == byte_size_count(b: gunbc_runner_slice_cap)
         )
     _ => false
   }
 }
 
-fn witness_policy_has_runner_oom_auto_knob() -> Bool {
+fn witness_policy_has_per_slot_memory_knobs() -> Bool {
   match fleet_converge_policy() {
     ConvergePolicyDerived { hosts: hosts } =>
       hosts.length() > 0
         && all(hosts, h =>
-          any(h.knobs, k => k.name == "oom_pressure_auto" && k.slice == RunnerSlice)
+          any(h.knobs, k => k.name == "per_slot_memory_high_bytes" && k.slice == RunnerSlice)
+            && any(h.knobs, k => k.name == "per_slot_memory_max_bytes" && k.slice == RunnerSlice)
+            && any(h.knobs, k => k.name == "per_slot_memory_swap_max_bytes" && k.slice == RunnerSlice)
+            && any(h.knobs, k => k.name == "runner_slice_cap_bytes" && k.slice == RunnerSlice)
+            && any(h.knobs, k => k.name == "oom_pressure_auto" && k.slice == RunnerSlice)
         )
     _ => false
   }
@@ -99,8 +137,10 @@ fn witness_policy_has_runner_oom_auto_knob() -> Bool {
 
 test fn runner_memory_contract_holds() -> Bool {
   witness_contract_is_parameterized_record()
-    && witness_contract_aliases_nominal_budget_cap()
-    && witness_emit_projects_contract_bytes()
-    && witness_deployment_carries_slot_memory()
-    && witness_policy_has_runner_oom_auto_knob()
+    && witness_slice_cap_is_first_class_knob()
+    && witness_heavy_job_concurrency_bounded_by_slice()
+    && witness_swap_aggregate_exceeds_current_host_swap()
+    && witness_emit_projects_burst_contract()
+    && witness_deployment_carries_slot_memory_and_slice()
+    && witness_policy_has_per_slot_memory_knobs()
 }
