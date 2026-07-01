@@ -11,6 +11,7 @@ import std.measure {
   measure_scale_fraction_floor,
   measure_fit_count_floor,
   measure_le,
+  measure_add,
   HardwareThreadCount, hardware_thread_count,
 }
 import std.realization_width { byte_size_saturating_sub, cpu_cores_available }
@@ -19,7 +20,13 @@ import std.effects { EffectShape, CreateEffect, CreateCause, CreateIfAbsent, Key
 import std.realization_schedule { CostAccount, CostBasis, Predicted }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree { BudgetNode, BudgetClaim, Guaranteed, node_conserves }
-import gunbc.ci_fleet { ComputeOffer }
+import gunbc.ci_fleet { fleet_intent_offers, ComputeOffer }
+import gunbc.ci_floor_measurement {
+  gunbc_ci_host_fixed_overhead,
+  HostFixedOverhead,
+  HostFixedOverheadMeasured,
+  HostFixedOverheadUnmeasured,
+}
 import gunbc.fleet_intent { compute_host_ram_bytes_total, compute_host_primary_cpu }
 import extdeps.cpu { cpu_facts_threads }
 import extdeps.ctrl.jobserver {
@@ -148,15 +155,17 @@ fn child_node(name: String, b: ByteSize) -> BudgetNode {
 }
 
 
-data gunbc_runner_slice_cap: ByteSize = byte_size(85899345920)
+fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
+  match o {
+    HostFixedOverheadMeasured { bytes: b } => b
+    HostFixedOverheadUnmeasured => byte_size(0)
+  }
+}
 
-data gunbc_declared_runner_slot_count: Int = 10
-
-data gunbc_runner_pool_budget: ByteSize = gunbc_runner_slice_cap
-
-data gunbc_host_swap_available: ByteSize = byte_size(8589934592)
-
-data gunbc_ci_heavy_job_working_set: ByteSize = byte_size(11811160064)
+fn runner_slice_cap(host: ByteSize, overhead: ByteSize, headroom: ByteSize) -> ByteSize {
+  let after_overhead = byte_size_saturating_sub(total: host, reserved: overhead)
+  byte_size_saturating_sub(total: after_overhead, reserved: headroom)
+}
 
 type RunnerSlotMemoryContract {
   memory_max: ByteSize
@@ -185,7 +194,106 @@ data gunbc_per_runner_swap_cap: ByteSize = gunbc_runner_slot_memory_contract.mem
 
 data gunbc_per_runner_memory_high: ByteSize = gunbc_runner_slot_memory_contract.memory_high
 
-data gunbc_runner_standalone_memory_contract_basis: String = "Stopgap-validated burst contract (operator 2026-07-01 adversarial verify): RunnerSlotMemoryContract carries memory_high=14GiB (soft knee above ~11GiB CI working set), memory_max=24GiB (hard ceiling), memory_swap_max=8GiB per slot — burst into real RAM, NOT HANDOFF strict 8G+24G-swap. Values stay parameterized (Scaffold dissolve-on). THE throughput wall is gunbc_runner_slice_cap (80GiB parent slice MemoryMax), not per-slot cap: 10 slots × 24GiB oversubscribes 3:1 at slice → effective heavy-job concurrency ≈ floor(slice/working_set) ≈ 7. gunbc_declared_runner_slot_count is operator width (10), independent of slice math. Aggregate per-slot swap demand = slot_count × memory_swap_max must be ≤ gunbc_host_swap_available (today 8GiB host swap vs 80GiB demand — swap provisioning gap modeled, dissolve-on swapfile/LV provision). Runners/sessions independent 8G standalone contracts on separate hardware; no session_pool in runner budget (cool-swift P4). dissolve-on: clever-raven orchestration-intent converge emit."
+data gunbc_declared_runner_slot_count: Int = 10
+
+data gunbc_host_swap_available: ByteSize = byte_size(8589934592)
+
+data gunbc_ci_heavy_job_working_set: ByteSize = byte_size(11811160064)
+
+fn runner_swap_aggregate_demand(slot_count: Int, contract: RunnerSlotMemoryContract) -> ByteSize {
+  measure_scale_fraction_floor(m: contract.memory_swap_max, num: slot_count, den: 1)
+}
+
+fn runner_swap_aggregate_fits(slot_count: Int, contract: RunnerSlotMemoryContract, host_swap: ByteSize) -> Bool {
+  measure_le(
+    a: runner_swap_aggregate_demand(slot_count: slot_count, contract: contract),
+    b: host_swap
+  )
+}
+
+fn effective_heavy_job_concurrency(slice_cap: ByteSize, working_set: ByteSize) -> Int {
+  measure_fit_count_floor(capacity: slice_cap, each: working_set)
+}
+
+fn fabric_host_allocatable_runner_memory(offer: ComputeOffer, overhead: ByteSize) -> ByteSize {
+  let host_ram = compute_host_ram_bytes_total(host: offer.supply.physical)
+  let headroom = oomd_actuation_floor(host: host_ram)
+  runner_slice_cap(host: host_ram, overhead: overhead, headroom: headroom)
+}
+
+fn fabric_total_allocatable_runner_memory(offers: List<ComputeOffer>, overhead: ByteSize) -> ByteSize {
+  fold(
+    offers,
+    init: byte_size(0),
+    f: (acc, o) => measure_add(a: acc, b: fabric_host_allocatable_runner_memory(offer: o, overhead: overhead))
+  )
+}
+
+fn fabric_host_count(offers: List<ComputeOffer>) -> Int {
+  offers.length()
+}
+
+fn fabric_runner_slice_cap_per_host(offers: List<ComputeOffer>, overhead: ByteSize) -> ByteSize {
+  let count = fabric_host_count(offers: offers)
+  if count <= 0 {
+    byte_size(0)
+  } else {
+    measure_scale_fraction_floor(
+      m: fabric_total_allocatable_runner_memory(offers: offers, overhead: overhead),
+      num: 1,
+      den: count
+    )
+  }
+}
+
+fn fabric_contract_memory_demand_per_host(slot_count: Int, contract: RunnerSlotMemoryContract) -> ByteSize {
+  measure_scale_fraction_floor(m: contract.memory_max, num: slot_count, den: 1)
+}
+
+fn fabric_total_contract_memory_demand(
+  offers: List<ComputeOffer>,
+  slot_count: Int,
+  contract: RunnerSlotMemoryContract
+) -> ByteSize {
+  measure_scale_fraction_floor(
+    m: fabric_contract_memory_demand_per_host(slot_count: slot_count, contract: contract),
+    num: fabric_host_count(offers: offers),
+    den: 1
+  )
+}
+
+fn fabric_memory_accounting_sound(
+  offers: List<ComputeOffer>,
+  overhead: ByteSize,
+  slot_count: Int,
+  contract: RunnerSlotMemoryContract,
+  host_swap: ByteSize
+) -> Bool {
+  let capacity = fabric_total_allocatable_runner_memory(offers: offers, overhead: overhead)
+  let demand = fabric_total_contract_memory_demand(offers: offers, slot_count: slot_count, contract: contract)
+  measure_le(a: demand, b: capacity)
+    || runner_swap_aggregate_fits(
+      slot_count: slot_count * fabric_host_count(offers: offers),
+      contract: contract,
+      host_swap: host_swap
+    )
+}
+
+fn fabric_effective_heavy_job_concurrency(offers: List<ComputeOffer>, overhead: ByteSize, working_set: ByteSize) -> Int {
+  effective_heavy_job_concurrency(
+    slice_cap: fabric_total_allocatable_runner_memory(offers: offers, overhead: overhead),
+    working_set: working_set
+  )
+}
+
+data gunbc_runner_slice_cap: ByteSize = fabric_runner_slice_cap_per_host(
+  offers: fleet_intent_offers,
+  overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead)
+)
+
+data gunbc_runner_pool_budget: ByteSize = gunbc_runner_slice_cap
+
+data gunbc_runner_standalone_memory_contract_basis: String = "Fabric-level runner budget (operator 2026-07-01 reframe): authority is Σ(contracts) ≤ Σ(capacity) across fleet_intent_offers — hosts are fungible opportunities, not per-host literals. RunnerSlotMemoryContract (burst: high=14GiB, max=24GiB, swap=8GiB/slot) is the workload contract; gunbc_runner_slice_cap is a REALIZATION projection (systemd slice MemoryMax per host) derived via fabric_runner_slice_cap_per_host = Σallocatable / host_count, NOT a hardcoded 80G input. fabric_effective_heavy_job_concurrency = Σallocatable / working_set (~11GiB). Overcommit only when swap-backed (fabric_memory_accounting_sound). srv3 is mixed (runners+sessions), not dedicated. session_pool dropped from runner budget (cool-swift P4). dissolve-on: product.compute_fabric connect() memory axis + clever-raven orchestration emit."
 
 fn host_allocation_tree(
   host: ByteSize,
@@ -220,26 +328,6 @@ fn host_allocation_conserves(
 
 fn declared_runner_count() -> Int {
   gunbc_declared_runner_slot_count
-}
-
-fn runner_swap_aggregate_demand(slot_count: Int, contract: RunnerSlotMemoryContract) -> ByteSize {
-  measure_scale_fraction_floor(m: contract.memory_swap_max, num: slot_count, den: 1)
-}
-
-fn runner_swap_aggregate_fits(slot_count: Int, contract: RunnerSlotMemoryContract, host_swap: ByteSize) -> Bool {
-  measure_le(
-    a: runner_swap_aggregate_demand(slot_count: slot_count, contract: contract),
-    b: host_swap
-  )
-}
-
-fn effective_heavy_job_concurrency(slice_cap: ByteSize, working_set: ByteSize) -> Int {
-  measure_fit_count_floor(capacity: slice_cap, each: working_set)
-}
-
-fn runner_slice_cap(host: ByteSize, overhead: ByteSize, headroom: ByteSize) -> ByteSize {
-  let after_overhead = byte_size_saturating_sub(total: host, reserved: overhead)
-  byte_size_saturating_sub(total: after_overhead, reserved: headroom)
 }
 
 fn runner_slice_node(runner_slice: ByteSize, runner_baseline: ByteSize) -> BudgetNode {

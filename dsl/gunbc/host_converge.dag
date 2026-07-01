@@ -26,7 +26,6 @@ import gunbc.ci_floor_measurement {
   gunbc_ci_session_reservation_mode,
 }
 import gunbc.ci_fleet { fleet_intent_offers }
-import gunbc.fleet_intent_network { operator_host_srv3 }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
 import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
@@ -370,7 +369,7 @@ fn gunbc_pinned_binary_provenance_policy() -> GunbcBinaryProvenancePolicy {
 }
 
 fn gunbc_apply_mode_for_host(host: HostIdentity) -> ConvergeApplyMode {
-  if host == operator_host_srv3 { FreshStandup } else { ExistingHostQuiescentReload }
+  ExistingHostQuiescentReload
 }
 
 fn gunbc_pinned_noop_policy() -> ConvergeNoOpPolicy {

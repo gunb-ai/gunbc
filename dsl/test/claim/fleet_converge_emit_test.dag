@@ -1,9 +1,10 @@
 module test.claim.fleet_converge_emit
 
 import std.types { Bool, String, List, Int }
-import std.measure { byte_size, hardware_thread_count, second_count }
+import std.measure { byte_size, byte_size_count, hardware_thread_count, second_count }
 import extdeps.github.actions { RunnerSpec, SelfHosted }
 import gunbc.fleet_host_budget {
+  gunbc_runner_slice_cap,
   gunbc_runner_slot_memory_contract,
   RunnerSlotMemoryContract,
 }
@@ -115,16 +116,17 @@ fn has(s: String, p: String) -> Bool {
 }
 
 fn witness_live_converge_is_conservation_sound() -> Bool {
+  let slice = to_string(byte_size_count(b: gunbc_runner_slice_cap))
   let sh = expected_fleet_converge_sh()
   !has(s: sh, p: "fleet-converge UNSOUND:")
     && has(s: sh, p: "converge-receipt")
-    && has(s: sh, p: "converge_slice_property \"srv1\" \"runner\" \"runner_slice_cap_bytes\" \"system-actions-runner.slice\" \"MemoryMax\" \"85899345920\" \"85899345920\" \"85899345920\"")
+    && has(s: sh, p: concat("converge_slice_property \"srv1\" \"runner\" \"runner_slice_cap_bytes\" \"system-actions-runner.slice\" \"MemoryMax\" \"", concat(slice, concat("\" \"", concat(slice, concat("\" \"", concat(slice, "\"")))))))
     && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf\" \"actions-runner@srv1-*.service\" \"MemoryMax\" \"25769803776\"")
     && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv1-*.service\" \"MemorySwapMax\" \"8589934592\"")
     && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_high_bytes\" \"/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf\" \"actions-runner@srv1-*.service\" \"MemoryHigh\" \"15032385536\"")
     && has(s: sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"10\"")
     && has(s: sh, p: "host_begin \"srv3\"")
-    && has(s: sh, p: "converge_gunbc_pinned_tree \"srv3\" \"gunbc\" \"pinned_tree_sha\" \"fresh_standup\"")
+    && has(s: sh, p: concat("converge_gunbc_pinned_tree \"srv3\" \"gunbc\" \"pinned_tree_sha\" \"existing_host_quiescent\""))
     && has(s: sh, p: "converge_runner_width \"srv3\" \"runner\" \"runner_count\" \"actions-runner@srv3-*.service\" \"10\"")
 }
 
@@ -261,8 +263,8 @@ fn witness_gunbc_pinned_tree_emitted() -> Bool {
     && has(s: sh, p: "first_green_at=")
 }
 
-fn witness_gunbc_apply_mode_srv3_fresh_standup() -> Bool {
-  converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv3)) == "fresh_standup"
+fn witness_gunbc_apply_mode_all_hosts_quiescent() -> Bool {
+  converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: operator_host_srv3)) == "existing_host_quiescent"
     && converge_apply_mode_label(m: gunbc_apply_mode_for_host(host: "srv1")) == "existing_host_quiescent"
 }
 
@@ -327,7 +329,7 @@ test fn fleet_converge_emit_holds() -> Bool {
     && witness_drift_perturbed_desired_flips_emit()
     && witness_gunbc_pinned_tree_emitted()
     && witness_gunbc_noop_predicate_process_and_green_place()
-    && witness_gunbc_apply_mode_srv3_fresh_standup()
+    && witness_gunbc_apply_mode_all_hosts_quiescent()
     && witness_gunbc_pinned_tree_runs_first()
     && witness_sessions_membership_line_emitted()
 }

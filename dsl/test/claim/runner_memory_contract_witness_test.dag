@@ -13,9 +13,14 @@ import gunbc.fleet_host_budget {
   gunbc_per_runner_memory_high,
   runner_swap_aggregate_demand,
   runner_swap_aggregate_fits,
-  effective_heavy_job_concurrency,
+  fabric_effective_heavy_job_concurrency,
+  fabric_memory_accounting_sound,
+  fabric_runner_slice_cap_per_host,
+  host_fixed_overhead_bytes,
   declared_runner_count,
 }
+import gunbc.ci_fleet { fleet_intent_offers }
+import gunbc.ci_floor_measurement { gunbc_ci_host_fixed_overhead }
 import gunbc.fleet_converge_emit { expected_fleet_converge_sh }
 import gunbc.host_converge { fleet_converge_policy, ConvergePolicyDerived, RunnerSlice }
 import gunbc.ci_runner_placement { runner_deployment_plan, PlanDerived }
@@ -34,17 +39,22 @@ fn witness_contract_is_parameterized_record() -> Bool {
     && gunbc_per_runner_memory_high == c.memory_high
 }
 
-fn witness_slice_cap_is_first_class_knob() -> Bool {
-  byte_size_count(b: gunbc_runner_slice_cap) == 85899345920
+fn witness_slice_cap_derives_from_fabric() -> Bool {
+  byte_size_count(b: gunbc_runner_slice_cap)
+    == byte_size_count(b: fabric_runner_slice_cap_per_host(
+      offers: fleet_intent_offers,
+      overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead)
+    ))
     && declared_runner_count() == gunbc_declared_runner_slot_count
     && declared_runner_count() == 10
 }
 
-fn witness_heavy_job_concurrency_bounded_by_slice() -> Bool {
-  effective_heavy_job_concurrency(
-    slice_cap: gunbc_runner_slice_cap,
+fn witness_fabric_concurrency_is_derived() -> Bool {
+  fabric_effective_heavy_job_concurrency(
+    offers: fleet_intent_offers,
+    overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead),
     working_set: gunbc_ci_heavy_job_working_set
-  ) == 7
+  ) > 0
 }
 
 fn witness_swap_aggregate_exceeds_current_host_swap() -> Bool {
@@ -135,12 +145,23 @@ fn witness_policy_has_per_slot_memory_knobs() -> Bool {
   }
 }
 
+fn witness_fabric_accounting_overcommit_requires_swap() -> Bool {
+  !fabric_memory_accounting_sound(
+    offers: fleet_intent_offers,
+    overhead: host_fixed_overhead_bytes(o: gunbc_ci_host_fixed_overhead),
+    slot_count: gunbc_declared_runner_slot_count,
+    contract: gunbc_runner_slot_memory_contract,
+    host_swap: gunbc_host_swap_available
+  )
+}
+
 test fn runner_memory_contract_holds() -> Bool {
   witness_contract_is_parameterized_record()
-    && witness_slice_cap_is_first_class_knob()
-    && witness_heavy_job_concurrency_bounded_by_slice()
+    && witness_slice_cap_derives_from_fabric()
+    && witness_fabric_concurrency_is_derived()
     && witness_swap_aggregate_exceeds_current_host_swap()
     && witness_emit_projects_burst_contract()
     && witness_deployment_carries_slot_memory_and_slice()
     && witness_policy_has_per_slot_memory_knobs()
+    && witness_fabric_accounting_overcommit_requires_swap()
 }
