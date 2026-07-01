@@ -1,0 +1,98 @@
+module test.claim.accelerator_demo_gpu_witness
+
+import gunbc.accelerator_demo_gpu {
+  witness_m5_gpu_execution_lane_count_grounded,
+  witness_rtx5090_execution_lane_count_grounded,
+  witness_rtx5090_memory_bandwidth_grounded,
+  witness_m5_memory_bandwidth_grounded,
+  witness_rtx5090_compute_capability_grounded,
+  witness_m5_has_no_compute_capability,
+  witness_integer_path_is_lossless,
+  witness_float_path_is_lossy_even_when_fma_refused,
+  witness_gpu_receipt_status_is_dormant,
+  witness_gpu_triptych_contains_three_panels,
+}
+import extdeps.languages.gpu.wgsl.kernel {
+  witness_wgsl_relu_mul_add_kernel_surface_shape,
+  witness_wgsl_reuses_simd_op_code_authority,
+  witness_wgsl_int_kernel_source_shape,
+  witness_wgsl_float_kernel_source_shape,
+}
+import extdeps.gpu.types { Metal, Cuda, Rocm, OpenCl }
+import extdeps.gpu.apple { apple_m5_gpu_catalog }
+import extdeps.gpu.nvidia { nvidia_rtx_5090_catalog }
+import extdeps.vendor.apple { apple }
+import extdeps.vendor.nvidia { nvidia }
+import extdeps.memory.types { UnifiedShared, Dram, Hbm }
+import std.types { Bool }
+
+fn witness_m5_vendor_grounds_on_apple_entity() -> Bool {
+  apple_m5_gpu_catalog.vendor == apple
+}
+
+fn witness_rtx5090_vendor_grounds_on_nvidia_entity() -> Bool {
+  nvidia_rtx_5090_catalog.vendor == nvidia
+}
+
+fn witness_m5_runtime_is_metal() -> Bool {
+  match apple_m5_gpu_catalog.supported_runtimes.first() {
+    Present { value: rt } => match rt {
+      Metal => true
+      Cuda => false
+      Rocm => false
+      OpenCl => false
+    }
+    Absent => false
+  }
+}
+
+fn witness_rtx5090_runtime_is_cuda() -> Bool {
+  match nvidia_rtx_5090_catalog.supported_runtimes.first() {
+    Present { value: rt } => match rt {
+      Cuda => true
+      Metal => false
+      Rocm => false
+      OpenCl => false
+    }
+    Absent => false
+  }
+}
+
+fn witness_m5_memory_kind_is_unified_shared() -> Bool {
+  match apple_m5_gpu_catalog.memory.memory_kind {
+    UnifiedShared => true
+    Dram => false
+    Hbm => false
+  }
+}
+
+fn witness_rtx5090_memory_kind_is_dram() -> Bool {
+  match nvidia_rtx_5090_catalog.memory.memory_kind {
+    Dram => true
+    UnifiedShared => false
+    Hbm => false
+  }
+}
+
+test fn accelerator_demo_gpu_modeling_witnesses() -> Bool {
+  witness_m5_gpu_execution_lane_count_grounded()
+    && witness_rtx5090_execution_lane_count_grounded()
+    && witness_rtx5090_memory_bandwidth_grounded()
+    && witness_m5_memory_bandwidth_grounded()
+    && witness_rtx5090_compute_capability_grounded()
+    && witness_m5_has_no_compute_capability()
+    && witness_integer_path_is_lossless()
+    && witness_float_path_is_lossy_even_when_fma_refused()
+    && witness_gpu_receipt_status_is_dormant()
+    && witness_gpu_triptych_contains_three_panels()
+    && witness_wgsl_relu_mul_add_kernel_surface_shape()
+    && witness_wgsl_reuses_simd_op_code_authority()
+    && witness_wgsl_int_kernel_source_shape()
+    && witness_wgsl_float_kernel_source_shape()
+    && witness_m5_vendor_grounds_on_apple_entity()
+    && witness_rtx5090_vendor_grounds_on_nvidia_entity()
+    && witness_m5_runtime_is_metal()
+    && witness_rtx5090_runtime_is_cuda()
+    && witness_m5_memory_kind_is_unified_shared()
+    && witness_rtx5090_memory_kind_is_dram()
+}
