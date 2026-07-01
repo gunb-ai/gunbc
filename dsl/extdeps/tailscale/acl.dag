@@ -22,17 +22,75 @@ data tag_dashboard: NonEmptyStr = "tag:dashboard"
 data dashboard_tcp_port: NonEmptyStr = "tcp:3737"
 data ssh_tcp_port: NonEmptyStr = "tcp:22"
 
+type TailscaleAclSelector
+  = AclTag { label: NonEmptyStr }
+  | AclAutogroup { group: NonEmptyStr }
+  | AclIpv4 { address: NonEmptyStr }
+  | AclProtoPort { spec: NonEmptyStr }
+  | AclLiteralUser { name: NonEmptyStr }
+  | AclWildcard
+
+fn render_tailscale_acl_selector(s: TailscaleAclSelector) -> NonEmptyStr {
+  match s {
+    AclTag { label: l } => concat("tag:", l)
+    AclAutogroup { group: g } => concat("autogroup:", g)
+    AclIpv4 { address: a } => a
+    AclProtoPort { spec: p } => p
+    AclLiteralUser { name: n } => n
+    AclWildcard => "*" as NonEmptyStr
+  }
+}
+
+fn sel_tag(label: NonEmptyStr) -> TailscaleAclSelector {
+  AclTag { label: label }
+}
+
+fn sel_autogroup(group: NonEmptyStr) -> TailscaleAclSelector {
+  AclAutogroup { group: group }
+}
+
+fn sel_ipv4(address: NonEmptyStr) -> TailscaleAclSelector {
+  AclIpv4 { address: address }
+}
+
+fn sel_proto_port(spec: NonEmptyStr) -> TailscaleAclSelector {
+  AclProtoPort { spec: spec }
+}
+
+fn sel_literal_user(name: NonEmptyStr) -> TailscaleAclSelector {
+  AclLiteralUser { name: name }
+}
+
+fn sel_wildcard() -> TailscaleAclSelector {
+  AclWildcard
+}
+
+data tag_ci_label: NonEmptyStr = "ci"
+data tag_dashboard_label: NonEmptyStr = "dashboard"
+
+fn sel_tag_ci() -> TailscaleAclSelector {
+  sel_tag(label: tag_ci_label)
+}
+
+fn sel_tag_dashboard() -> TailscaleAclSelector {
+  sel_tag(label: tag_dashboard_label)
+}
+
+fn tailscale_acl_selector_eq(a: TailscaleAclSelector, b: TailscaleAclSelector) -> Bool {
+  render_tailscale_acl_selector(s: a) == render_tailscale_acl_selector(s: b)
+}
+
 type TailscaleGrant {
-  src: List<NonEmptyStr>
-  dst: List<NonEmptyStr>
-  ip: List<NonEmptyStr>
+  src: List<TailscaleAclSelector>
+  dst: List<TailscaleAclSelector>
+  ip: List<TailscaleAclSelector>
 }
 
 type TailscaleSshRule {
   action: NonEmptyStr
-  src: List<NonEmptyStr>
-  dst: List<NonEmptyStr>
-  users: List<NonEmptyStr>
+  src: List<TailscaleAclSelector>
+  dst: List<TailscaleAclSelector>
+  users: List<TailscaleAclSelector>
 }
 
 type TailscaleNodeAttr {
@@ -54,33 +112,33 @@ type TailscaleAclPolicy {
 
 fn member_baseline_grant() -> TailscaleGrant {
   TailscaleGrant {
-    src: ["autogroup:member" as NonEmptyStr],
-    dst: ["*" as NonEmptyStr],
-    ip: ["*" as NonEmptyStr],
+    src: [sel_autogroup(group: "member" as NonEmptyStr)],
+    dst: [sel_wildcard()],
+    ip: [sel_wildcard()],
   }
 }
 
 fn tag_ci_quarantine_grant() -> TailscaleGrant {
   TailscaleGrant {
-    src: [tag_ci],
-    dst: [dashboard_cutover_mac_ip, tag_dashboard],
-    ip: [dashboard_tcp_port],
+    src: [sel_tag_ci()],
+    dst: [sel_ipv4(address: dashboard_cutover_mac_ip), sel_tag_dashboard()],
+    ip: [sel_proto_port(spec: dashboard_tcp_port)],
   }
 }
 
 fn tag_dashboard_self_grant() -> TailscaleGrant {
   TailscaleGrant {
-    src: [tag_dashboard],
-    dst: [tag_dashboard],
-    ip: ["*" as NonEmptyStr],
+    src: [sel_tag_dashboard()],
+    dst: [sel_tag_dashboard()],
+    ip: [sel_wildcard()],
   }
 }
 
 fn tag_dashboard_to_ci_ssh_grant() -> TailscaleGrant {
   TailscaleGrant {
-    src: [tag_dashboard],
-    dst: [tag_ci],
-    ip: [ssh_tcp_port],
+    src: [sel_tag_dashboard()],
+    dst: [sel_tag_ci()],
+    ip: [sel_proto_port(spec: ssh_tcp_port)],
   }
 }
 
@@ -97,21 +155,21 @@ fn operator_tailscale_acl_ssh() -> List<TailscaleSshRule> {
   [
     TailscaleSshRule {
       action: "accept" as NonEmptyStr,
-      src: ["autogroup:member" as NonEmptyStr],
-      dst: ["autogroup:self" as NonEmptyStr],
-      users: ["autogroup:nonroot" as NonEmptyStr, "root" as NonEmptyStr],
+      src: [sel_autogroup(group: "member" as NonEmptyStr)],
+      dst: [sel_autogroup(group: "self" as NonEmptyStr)],
+      users: [sel_autogroup(group: "nonroot" as NonEmptyStr), sel_literal_user(name: "root" as NonEmptyStr)],
     },
     TailscaleSshRule {
       action: "accept" as NonEmptyStr,
-      src: ["autogroup:member" as NonEmptyStr],
-      dst: [tag_ci],
-      users: ["autogroup:nonroot" as NonEmptyStr],
+      src: [sel_autogroup(group: "member" as NonEmptyStr)],
+      dst: [sel_tag_ci()],
+      users: [sel_autogroup(group: "nonroot" as NonEmptyStr)],
     },
     TailscaleSshRule {
       action: "accept" as NonEmptyStr,
-      src: [tag_dashboard],
-      dst: [tag_ci],
-      users: ["autogroup:nonroot" as NonEmptyStr, "root" as NonEmptyStr],
+      src: [sel_tag_dashboard()],
+      dst: [sel_tag_ci()],
+      users: [sel_autogroup(group: "nonroot" as NonEmptyStr), sel_literal_user(name: "root" as NonEmptyStr)],
     },
   ]
 }
@@ -139,20 +197,20 @@ data operator_tailscale_acl_policy: TailscaleAclPolicy = {
   tag_owners: operator_tailscale_acl_tag_owners(),
 }
 
-fn list_contains(items: List<NonEmptyStr>, needle: NonEmptyStr) -> Bool {
-  fold(items, init: false, f: (acc, x) => acc || (x == needle))
+fn selector_list_contains(items: List<TailscaleAclSelector>, needle: TailscaleAclSelector) -> Bool {
+  fold(items, init: false, f: (acc, x) => acc || tailscale_acl_selector_eq(a: x, b: needle))
 }
 
 fn grant_src_is_tag_ci(g: TailscaleGrant) -> Bool {
-  list_contains(items: g.src, needle: tag_ci)
+  selector_list_contains(items: g.src, needle: sel_tag_ci())
 }
 
 fn grant_is_tag_ci_quarantine(g: TailscaleGrant) -> Bool {
   grant_src_is_tag_ci(g: g)
-    && list_contains(items: g.dst, needle: dashboard_cutover_mac_ip)
-    && list_contains(items: g.dst, needle: tag_dashboard)
+    && selector_list_contains(items: g.dst, needle: sel_ipv4(address: dashboard_cutover_mac_ip))
+    && selector_list_contains(items: g.dst, needle: sel_tag_dashboard())
     && (length(g.dst) == 2)
-    && list_contains(items: g.ip, needle: dashboard_tcp_port)
+    && selector_list_contains(items: g.ip, needle: sel_proto_port(spec: dashboard_tcp_port))
     && (length(g.ip) == 1)
 }
 
@@ -162,18 +220,18 @@ fn tag_ci_quarantine_holds(policy: TailscaleAclPolicy) -> Bool {
 }
 
 fn grant_is_tag_dashboard_self_all_ports(g: TailscaleGrant) -> Bool {
-  list_contains(items: g.src, needle: tag_dashboard)
-    && list_contains(items: g.dst, needle: tag_dashboard)
+  selector_list_contains(items: g.src, needle: sel_tag_dashboard())
+    && selector_list_contains(items: g.dst, needle: sel_tag_dashboard())
     && (length(g.dst) == 1)
-    && list_contains(items: g.ip, needle: "*" as NonEmptyStr)
+    && selector_list_contains(items: g.ip, needle: sel_wildcard())
     && (length(g.ip) == 1)
 }
 
 fn grant_is_tag_dashboard_to_ci_ssh(g: TailscaleGrant) -> Bool {
-  list_contains(items: g.src, needle: tag_dashboard)
-    && list_contains(items: g.dst, needle: tag_ci)
+  selector_list_contains(items: g.src, needle: sel_tag_dashboard())
+    && selector_list_contains(items: g.dst, needle: sel_tag_ci())
     && (length(g.dst) == 1)
-    && list_contains(items: g.ip, needle: ssh_tcp_port)
+    && selector_list_contains(items: g.ip, needle: sel_proto_port(spec: ssh_tcp_port))
     && (length(g.ip) == 1)
 }
 
@@ -186,14 +244,17 @@ fn tag_dashboard_admin_plane_holds(policy: TailscaleAclPolicy) -> Bool {
 fn dashboard_cutover_ip_is_transient_in_tag_ci_grant(policy: TailscaleAclPolicy) -> Bool {
   let ci_grants = policy.grants |> filter(g => grant_src_is_tag_ci(g: g))
   (length(ci_grants) == 1)
-    && list_contains(items: ci_grants.first().dst, needle: dashboard_cutover_mac_ip)
+    && selector_list_contains(
+      items: ci_grants.first().dst,
+      needle: sel_ipv4(address: dashboard_cutover_mac_ip)
+    )
 }
 
 fn ssh_rule_matches(
   rule: TailscaleSshRule,
-  src: List<NonEmptyStr>,
-  dst: List<NonEmptyStr>,
-  users: List<NonEmptyStr>
+  src: List<TailscaleAclSelector>,
+  dst: List<TailscaleAclSelector>,
+  users: List<TailscaleAclSelector>
 ) -> Bool {
   rule.action == ("accept" as NonEmptyStr)
     && rule.src == src
@@ -206,9 +267,9 @@ fn ssh_members_reach_ci_nonroot_only(policy: TailscaleAclPolicy) -> Bool {
     policy.ssh,
     r => ssh_rule_matches(
       rule: r,
-      src: ["autogroup:member" as NonEmptyStr],
-      dst: [tag_ci],
-      users: ["autogroup:nonroot" as NonEmptyStr]
+      src: [sel_autogroup(group: "member" as NonEmptyStr)],
+      dst: [sel_tag_ci()],
+      users: [sel_autogroup(group: "nonroot" as NonEmptyStr)]
     )
   )
 }
@@ -218,9 +279,9 @@ fn ssh_dashboard_reaches_ci_root_and_nonroot(policy: TailscaleAclPolicy) -> Bool
     policy.ssh,
     r => ssh_rule_matches(
       rule: r,
-      src: [tag_dashboard],
-      dst: [tag_ci],
-      users: ["autogroup:nonroot" as NonEmptyStr, "root" as NonEmptyStr]
+      src: [sel_tag_dashboard()],
+      dst: [sel_tag_ci()],
+      users: [sel_autogroup(group: "nonroot" as NonEmptyStr), sel_literal_user(name: "root" as NonEmptyStr)]
     )
   )
 }

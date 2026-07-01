@@ -46,6 +46,7 @@ import extdeps.cloud.gcp.gcp { AdcRefresh }
 import extdeps.cloud.gcp.iam { role_secretmanager_secret_accessor }
 import std.disposition { Scaffold, SingleAuthority }
 import std.measure { second, second_count }
+import std.types { Secret }
 
 fn witness_secret_homed_in_gunbai_secrets() -> Bool {
   operator_tailscale_acl_secret_bindings.first().project == bmc_secrets_project_id
@@ -104,20 +105,20 @@ fn witness_fail_closed_on_absent_or_expired_token() -> Bool {
     && ephemeral_token_gate_fail_closed(gate: TokenExpired { reason: "ttl elapsed" })
     && !ephemeral_token_gate_valid(
       gate: TokenAbsent { reason: "not dispensed" },
-      now_epoch_seconds: 1000
+      now: second(count: 1000)
     )
     && ephemeral_token_gate_valid(
       gate: TokenPresent {
         token: "tskey-witness" as Secret,
-        issued_at_epoch_seconds: 1000,
+        issued_at: second(count: 1000),
         lifetime: second(count: 3600),
       },
-      now_epoch_seconds: 2000
+      now: second(count: 2000)
     )
     && !tailscale_ephemeral_token_within_ttl(
-      issued_at_epoch_seconds: 1000,
+      issued_at: second(count: 1000),
       lifetime: second(count: 3600),
-      now_epoch_seconds: 5000
+      now: second(count: 5000)
     )
 }
 
@@ -138,19 +139,19 @@ fn witness_upsert_requires_valid_ephemeral_token() -> Bool {
     gate: OperatorConfirmed {
       emitted: "{}",
       token: "tskey-witness" as Secret,
-      issued_at_epoch_seconds: 1000,
+      issued_at: second(count: 1000),
       lifetime: second(count: 3600),
     },
-    now_epoch_seconds: 2000
+    now: second(count: 2000)
   )
     && !acl_upsert_permitted(
       gate: OperatorConfirmed {
         emitted: "{}",
         token: "tskey-witness" as Secret,
-        issued_at_epoch_seconds: 1000,
+        issued_at: second(count: 1000),
         lifetime: second(count: 3600),
       },
-      now_epoch_seconds: 5000
+      now: second(count: 5000)
     )
 }
 
