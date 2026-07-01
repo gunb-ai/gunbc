@@ -3803,7 +3803,6 @@ fn entry_touches_frontier_seeds(
     entry_touches_rerun_frontier(ctx, &list_value_from_vec(entry_frontier))
 }
 
-
 // SCAFFOLD (DESIGN §6–§7): host-side diff→declaration attribution
 // (`floor_diff_edits_from_line_ranges`) and per-entry frontier materialization
 // (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`) are Implementation 2
