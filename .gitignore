@@ -129,4 +129,3 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 # Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).
 /.github/fleet-runner-deploy.manifest
 /provisioning/srv3/user-data
-/provisioning/srv3/dnsmasq.conf

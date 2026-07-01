@@ -10,7 +10,7 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_status { DerivableLine, AuthoredLine, Signoff, Unsigned }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-import gunbc.roadmap_spawner { next_spawnable, roadmap_spawn_request_json, spawn_frontier }
+import gunbc.roadmap_spawner { next_spawnable, roadmap_spawn_request_json, spawn_frontier, roadmap_dispatch_json }
 
 fn nid(s: String) -> ProcessNodeId { s }
 
@@ -99,6 +99,7 @@ fn witness_json_schema_field_present() -> Bool {
     && string_contains(s: json, pattern: "test-json")
     && string_contains(s: json, pattern: "Json Node")
     && string_contains(s: json, pattern: "prs_merged")
+    && string_contains(s: json, pattern: "\"owner\": null")
 }
 
 fn witness_json_satisfied_dep_in_ready() -> Bool {
@@ -118,6 +119,14 @@ fn witness_json_title_escaping() -> Bool {
   string_contains(s: json, pattern: "Title \\\"quoted\\\" and \\\\back")
 }
 
+fn witness_json_newline_escaping() -> Bool {
+  let node = sized_derivable(id: "newline-test", prs: [1], title: "line one\nline two")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let json = roadmap_spawn_request_json(doc: doc, merged: [], anchor_commit: "x")
+  string_contains(s: json, pattern: "line one\\nline two")
+    && !string_contains(s: json, pattern: "line one\nline two")
+}
+
 fn witness_spawn_frontier_ready_matches_next_spawnable() -> Bool {
   let node = sized_derivable(id: "frontier-ready", prs: [88], title: "Frontier Ready")
   let doc = fixture_doc(nodes: [node], edges: [])
@@ -126,8 +135,42 @@ fn witness_spawn_frontier_ready_matches_next_spawnable() -> Bool {
     && any(frontier.ready, n => n.node == nid(s: "frontier-ready"))
 }
 
+fn witness_all_parents_gate_spawnability() -> Bool {
+  let node_a = sized_derivable(id: "mp-a", prs: [100], title: "Node A")
+  let node_b = sized_derivable(id: "mp-b", prs: [200], title: "Node B")
+  let node_c = sized_derivable(id: "mp-c", prs: [300], title: "Node C")
+  let edges = [
+    RoadmapEdge { child: nid(s: "mp-c"), parent: nid(s: "mp-a") },
+    RoadmapEdge { child: nid(s: "mp-c"), parent: nid(s: "mp-b") },
+  ]
+  let doc = fixture_doc(nodes: [node_a, node_b, node_c], edges: edges)
+  let one_parent_done = next_spawnable(doc: doc, merged: [100])
+  let both_parents_done = next_spawnable(doc: doc, merged: [100, 200])
+  !any(one_parent_done, n => n.node == nid(s: "mp-c"))
+    && any(both_parents_done, n => n.node == nid(s: "mp-c"))
+}
+
+fn witness_dispatch_json_partitions_ready_upcoming_done() -> Bool {
+  let node_done = sized_derivable(id: "dj-done", prs: [100], title: "Done Node")
+  let node_ready = sized_derivable(id: "dj-ready", prs: [200], title: "Ready Node")
+  let node_gated = sized_derivable(id: "dj-gated", prs: [300], title: "Gated Node")
+  let edges = [
+    RoadmapEdge { child: nid(s: "dj-ready"), parent: nid(s: "dj-done") },
+    RoadmapEdge { child: nid(s: "dj-gated"), parent: nid(s: "dj-ready") },
+  ]
+  let doc = fixture_doc(nodes: [node_done, node_ready, node_gated], edges: edges)
+  let json = roadmap_dispatch_json(doc: doc, merged: [100])
+  string_contains(s: json, pattern: "roadmap-dispatch/v1")
+    && string_contains(s: json, pattern: "\"node_id\": \"dj-ready\"")
+    && !string_contains(s: json, pattern: "\"node_id\": \"dj-done\"")
+    && string_contains(s: json, pattern: "\"node_id\": \"dj-gated\", \"title\": \"Gated Node\", \"unmet_parents\": [\"dj-ready\"]")
+    && string_contains(s: json, pattern: "\"done\": [\"dj-done\"]")
+}
+
 test fn roadmap_spawner_witnesses() -> Bool {
   witness_satisfied_dep_is_spawnable()
+    && witness_all_parents_gate_spawnability()
+    && witness_dispatch_json_partitions_ready_upcoming_done()
     && witness_unsatisfied_dep_not_spawnable()
     && witness_unsized_node_excluded()
     && witness_done_node_excluded()
@@ -135,6 +178,7 @@ test fn roadmap_spawner_witnesses() -> Bool {
     && witness_json_schema_field_present()
     && witness_json_satisfied_dep_in_ready()
     && witness_json_title_escaping()
+    && witness_json_newline_escaping()
     && witness_spawn_frontier_ready_matches_next_spawnable()
 }
 

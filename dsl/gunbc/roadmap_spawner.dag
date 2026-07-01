@@ -56,12 +56,13 @@ fn doc_all_edges(doc: RoadmapDocument) -> List<RoadmapEdge> {
   fold(doc.sections, init: lane_edges, f: (acc, s) => concat(acc, section_edges(s: s)))
 }
 
+fn node_parent_ids(edges: List<RoadmapEdge>, id: ProcessNodeId) -> List<ProcessNodeId> {
+  edges |> filter(e => e.child == id) |> map(e => e.parent)
+}
+
 fn node_dep_done(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: ProcessNodeId, merged: List<Int>) -> Bool {
-  match roadmap_parent(edges: edges, node: id) {
-    TopLevel => true
-    UnderParent { parent: pid } =>
-      any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged))
-  }
+  all(node_parent_ids(edges: edges, id: id), pid =>
+    any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged)))
 }
 
 fn node_is_spawnable(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> Bool {
@@ -113,7 +114,7 @@ fn spawn_frontier(doc: RoadmapDocument, merged: List<Int>) -> SpawnFrontier {
 }
 
 fn json_escape(s: String) -> String {
-  replace(replace(s, "\\", "\\\\"), "\"", "\\\"")
+  replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
 }
 
 fn json_str(s: String) -> String {
@@ -189,8 +190,10 @@ fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String,
   let f1 = concat("\"node_id\": ", concat(json_str(s: n.node), concat(", \"title\": ", json_str(s: title))))
   let f2 = concat(", \"repo\": ", concat(json_str(s: repo), concat(", \"intricacy\": ", json_str(s: intricacy_str(i: intricacy)))))
   let f3 = concat(", \"volume\": ", concat(json_str(s: volume_str(v: volume)), concat(", \"parent_node_id\": ", parent_id_json)))
+  let f3b = concat(", \"parent_node_ids\": ", json_str_list(items: node_parent_ids(edges: edges, id: n.node)))
+  let f3c = concat(", \"owner\": ", if n.owner == "" { "null" } else { json_str(s: n.owner) })
   let f4 = concat(", \"plan_doc\": ", concat(plan_json, concat(", \"acceptance\": ", acceptance_json(a: acceptance, line: n.line))))
-  concat("{", concat(f1, concat(f2, concat(f3, concat(f4, "}")))))
+  concat("{", concat(f1, concat(f2, concat(f3, concat(f3b, concat(f3c, concat(f4, "}")))))))
 }
 
 fn join_strings(items: List<String>) -> String {
@@ -216,4 +219,41 @@ fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_co
     concat("\"schema\": \"roadmap-spawn-request/v1\"",
     concat(", \"anchor_commit\": ", concat(json_str(s: anchor_commit),
     concat(", \"ready\": ", concat(ready_array_json(nodes: nodes, edges: edges), "}"))))))
+}
+
+fn json_str_list(items: List<String>) -> String {
+  concat("[", concat(join_strings(items: items |> map(s => json_str(s: s))), "]"))
+}
+
+fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: ProcessNodeId, merged: List<Int>) -> List<ProcessNodeId> {
+  node_parent_ids(edges: edges, id: id)
+    |> filter(pid => !any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged)))
+}
+
+fn upcoming_node_json(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
+  let unmet = node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node, merged: merged)
+  concat("{\"node_id\": ", concat(json_str(s: n.node),
+    concat(", \"title\": ", concat(json_str(s: node_title(item: n.line)),
+    concat(", \"unmet_parents\": ", concat(json_str_list(items: unmet), "}"))))))
+}
+
+fn upcoming_array_json(frontier_upcoming: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
+  concat("[",
+    concat(join_strings(items: frontier_upcoming |> map(n =>
+      upcoming_node_json(n: n, nodes: nodes, edges: edges, merged: merged))), "]"))
+}
+
+fn done_ids_json(frontier_done: List<RoadmapNode>) -> String {
+  json_str_list(items: frontier_done |> map(n => n.node))
+}
+
+fn roadmap_dispatch_json(doc: RoadmapDocument, merged: List<Int>) -> String {
+  let nodes = doc_all_nodes(doc: doc)
+  let edges = doc_all_edges(doc: doc)
+  let frontier = spawn_frontier(doc: doc, merged: merged)
+  concat("{",
+    concat("\"schema\": \"roadmap-dispatch/v1\"",
+    concat(", \"ready\": ", concat(ready_array_json(nodes: frontier.ready, edges: edges),
+    concat(", \"upcoming\": ", concat(upcoming_array_json(frontier_upcoming: frontier.upcoming, nodes: nodes, edges: edges, merged: merged),
+    concat(", \"done\": ", concat(done_ids_json(frontier_done: frontier.done), "}"))))))))
 }

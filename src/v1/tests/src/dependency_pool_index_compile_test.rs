@@ -83,21 +83,31 @@ fn primary_precedence_within_root_duplicate_module_path_panics() {
     rm_rf(&out);
 }
 
+// The live-tree extdeps.shell collision fixture is gone (the src/v2 fork was
+// deleted — one module, one authority, DESIGN §3), so the strict-mode RED
+// control synthesizes its own cross-root duplicate instead of depending on a
+// defect persisting in the real corpus.
 #[test]
-fn strict_dependency_pool_index_panics_on_cross_root_extdeps_shell_collision() {
+fn strict_dependency_pool_index_panics_on_cross_root_collision() {
     let Some(gunbc) = gunbc_bin() else {
         eprintln!("skipping: release gunbc binary not found");
         return;
     };
     let ws = workspace_root();
+    let root_a = temp_dir("strict-cross-root-a");
+    let root_b = temp_dir("strict-cross-root-b");
+    fs::write(
+        root_a.join("dup.dag"),
+        "module duplicate.across.roots\nfn a() -> Int { 1 }\n",
+    )
+    .expect("write root_a dup.dag");
+    fs::write(
+        root_b.join("dup.dag"),
+        "module duplicate.across.roots\nfn b() -> Int { 2 }\n",
+    )
+    .expect("write root_b dup.dag");
     let out = temp_dir("strict-cross-root-out");
-    let output = compile_with_roots(
-        &gunbc,
-        &ws,
-        &[&ws.join("dsl"), &ws.join("src/v2")],
-        "strict",
-        &out,
-    );
+    let output = compile_with_roots(&gunbc, &ws, &[&root_a, &root_b], "strict", &out);
     let combined = format!(
         "{}{}",
         String::from_utf8_lossy(&output.stdout),
@@ -105,13 +115,35 @@ fn strict_dependency_pool_index_panics_on_cross_root_extdeps_shell_collision() {
     );
     assert!(
         !output.status.success(),
-        "strict mode must panic on cross-root extdeps.shell collision"
+        "strict mode must panic on a cross-root duplicate module path; got success"
     );
     assert!(
-        combined.contains("extdeps.shell"),
-        "expected extdeps.shell collision diagnostic; got:\n{combined}"
+        combined.contains("duplicate module path"),
+        "expected duplicate module path panic; got:\n{combined}"
     );
+    // GREEN control: the same fixture under primary-precedence indexes
+    // first-root-wins instead of refusing at the index layer.
+    let out_pp = temp_dir("strict-cross-root-pp-out");
+    let output_pp = compile_with_roots(
+        &gunbc,
+        &ws,
+        &[&root_a, &root_b],
+        "primary-precedence",
+        &out_pp,
+    );
+    let combined_pp = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output_pp.stdout),
+        String::from_utf8_lossy(&output_pp.stderr)
+    );
+    assert!(
+        !combined_pp.contains("duplicate module path"),
+        "primary-precedence must not refuse the cross-root duplicate at the index layer; got:\n{combined_pp}"
+    );
+    rm_rf(&root_a);
+    rm_rf(&root_b);
     rm_rf(&out);
+    rm_rf(&out_pp);
 }
 
 #[test]
