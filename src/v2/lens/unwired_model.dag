@@ -320,6 +320,7 @@ data unwired_model_roster: List<String> = [
   "floor_any_claim_touches_rerun_frontier",
   "floor_diff_script_serializes_git_diff_unified",
   "floor_exit_blocks_merge",
+  "floor_host_scaffold_precompute_would_skip",
   "floor_host_scaffold_would_skip",
   "floor_observe_git_diff_unified_for_ci",
   "floor_rust_run_implies_dag_run",
