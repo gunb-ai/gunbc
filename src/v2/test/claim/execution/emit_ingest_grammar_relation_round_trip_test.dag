@@ -21,7 +21,7 @@ import v2.extdeps.languages.dag {
 }
 import v2.std.algebra { Empty, list_append }
 import v2.std.collection { List, Set }
-import v2.std.compilers.lexing { Token }
+import v2.std.compilers.lexing { Token, token_stream_remaining }
 import v2.std.compilers.target_model {
   concrete_syntax_token_class,
   concrete_syntax_token_list_from_node,
@@ -181,7 +181,7 @@ fn emit_ingest_parsed_add_tree() -> Outcome<ParseTree> {
       rules: lm.lex
     ),
     f: fn(stream) {
-      emit_ingest_parse_tokens(tokens: stream.tokens)
+      emit_ingest_parse_tokens(tokens: token_stream_remaining(stream: stream))
     }
   )
 }
