@@ -17,6 +17,7 @@ import extdeps.cloud.gcp.sts { MetadataRuntime }
 import extdeps.github.actions { GitHubActionsRuntime }
 import extdeps.runtime.local { LocalDevRuntime }
 import extdeps.shell
+import gunbc.auth.optional_impersonation { optional_impersonation }
 
 type AuthRuntime
   = GitHubActions { runtime: GitHubActionsRuntime }
@@ -33,23 +34,6 @@ pattern acquire_subject_token(
     LocalDev { runtime: _ } => metadata_oidc(audience: audience)
   }
   return { token: token.token }
-}
-
-pattern optional_impersonation(
-  access_token: Secret,
-  service_account: ServiceAccountEmail?,
-  lifetime_seconds: Int where range(min: 1, max: 3600)= 3600
-) -> { token: Secret } {
-  impersonated = gcp.IAM.GenerateAccessToken(
-    access_token: access_token,
-    target_sa: service_account,
-    lifetime_seconds: lifetime_seconds
-  ) [when service_account != none]
-  let result_token = match service_account {
-    Present { value: _sa } => impersonated.access_token
-    Absent => access_token
-  }
-  return { token: result_token }
 }
 
 fn build_token(payload: Secret, scheme: AuthScheme, header_name: String, source_id: String, required_scopes: List<String>) -> AccessToken {
