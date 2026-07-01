@@ -1,0 +1,707 @@
+module v2.lens.no_dual_representation_test.scan
+
+import v2.std.algebra {
+  Cons,
+  Empty,
+  TailAbsent,
+  TailFound,
+  fold_list,
+  is_empty,
+  is_prefix_of,
+  length,
+  list_append,
+  list_snoc_item,
+  list_tail
+}
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.data_index {
+  DataInitDecl,
+  data_init_decl_facts_live,
+  lexeme_matches_literal_fp,
+  literal_fingerprint_bool_lexeme,
+  literal_fingerprint_num_lexeme
+}
+import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Node,
+  NodeFold,
+  Positional,
+  Symbol,
+  TypeNode,
+  fold_node,
+  node_synthetic
+}
+import v2.std.node_query { node_positional_child_targets }
+import v2.std.text { Char, String }
+
+type DualRepViolationKind
+  = SameSymbolEquality
+  | DataLiteralMirror
+  | BodyAlphaEquivalent
+
+type DualRepViolation {
+  path: String
+  fn_name: String
+  kind: DualRepViolationKind
+}
+
+type DualRepDataInit {
+  name: String
+  literal_fp: String
+}
+
+type DualRepFnFact {
+  name: String
+  params: List<Symbol>
+  output: Node
+}
+
+type DualRepModuleRef {
+  module: String
+  path: String
+}
+
+type DualRepModuleScan {
+  path: String
+  module: String
+  data_inits: List<DualRepDataInit>
+  fns: List<DualRepFnFact>
+}
+
+type EqNodeSite {
+  lhs: Node
+  rhs: Node
+}
+
+data empty_dual_rep_module_refs: List<DualRepModuleRef> = []
+data empty_dual_rep_violations: List<DualRepViolation> = []
+data empty_dual_rep_data_inits: List<DualRepDataInit> = []
+data empty_dual_rep_fns: List<DualRepFnFact> = []
+data empty_dual_rep_module_scans: List<DualRepModuleScan> = []
+data empty_eq_node_sites: List<EqNodeSite> = []
+data empty_symbol_list: List<Symbol> = []
+data empty_edges: List<Edge> = []
+data empty_sym: Symbol = ^dual_rep_empty_sym
+
+data sym_m: Symbol = ^m
+data sym_a: Symbol = ^a
+data sym_b: Symbol = ^b
+data sym_ttl_name: String = "ttl"
+data sym_flag_name: String = "flag"
+data sym_true_name: String = "true"
+data sym_x: Symbol = ^x
+data sym_y: Symbol = ^y
+data sym_wrapped: Symbol = ^wrapped
+data sym_inner: Symbol = ^inner
+data sym_lit_3600_name: String = "3600"
+data sym_lit_4_name: String = "4"
+data sym_lit_1_name: String = "1"
+data sym_add: Symbol = ^add
+
+fn path_is_test_dag(path: String) -> Bool {
+  string_contains(s: path, pattern: "_test.dag")
+}
+
+fn pos_edge(target: Node) -> Edge {
+  Edge { label: Positional, target: target }
+}
+
+fn atom_node(sym: Symbol) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Atom { identity: sym } },
+    children: []
+  )
+}
+
+fn atom_node_name(name: String) -> Node {
+  atom_node(sym: name)
+}
+
+fn eq_conj(lhs: Node, rhs: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [pos_edge(target: lhs), pos_edge(target: rhs)]
+  )
+}
+
+fn call_node(callee: Symbol, args: List<Node>) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: fold(
+      args,
+      init: [pos_edge(target: atom_node(sym: callee))],
+      f: fn(acc, arg) { list_snoc_item(xs: acc, item: pos_edge(target: arg)) }
+    )
+  )
+}
+
+fn node_atom_sym(n: Node) -> Symbol {
+  match n.kind {
+    TypeNode { connective: Atom { identity: sym } } => sym
+    _ => empty_sym
+  }
+}
+
+fn node_atom_name(n: Node) -> String {
+  node_atom_sym(n: n)
+}
+
+fn sym_is_empty(sym: Symbol) -> Bool {
+  sym == empty_sym
+}
+
+fn lookup_data_literal(data_inits: List<DualRepDataInit>, name: String) -> String {
+  fold_list(
+    xs: data_inits,
+    empty: "",
+    cons: fn(acc, row) {
+      if row.name == name {
+        row.literal_fp
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn eq_site_from_conj(node: Node) -> List<EqNodeSite> {
+  match node.kind {
+    TypeNode { connective: Conj } => {
+      let kids = node_positional_child_targets(node: node)
+      match list_at_optional(xs: kids, index: 0) {
+        Present { value: lhs } =>
+          match list_at_optional(xs: kids, index: 1) {
+            Present { value: rhs } => [EqNodeSite { lhs: lhs, rhs: rhs }]
+            Absent => empty_eq_node_sites
+          }
+        Absent => empty_eq_node_sites
+      }
+    }
+    _ => empty_eq_node_sites
+  }
+}
+
+fn eq_sites_collect_init(n: Node) -> List<EqNodeSite> {
+  eq_site_from_conj(node: n)
+}
+
+fn eq_sites_collect_step(
+  acc: List<EqNodeSite>,
+  edge: Edge,
+  child_acc: List<EqNodeSite>
+) -> List<EqNodeSite> {
+  list_append(
+    left: list_append(left: acc, right: child_acc),
+    right: eq_site_from_conj(node: edge.target)
+  )
+}
+
+fn eq_sites_from_output(root: Node) -> List<EqNodeSite> {
+  fold_node(
+    n: root,
+    algebra: NodeFold {
+      init: eq_sites_collect_init,
+      step: eq_sites_collect_step
+    }
+  )
+}
+
+fn skeleton_is_callee_atom(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Atom { identity: _ } } => true
+    _ => false
+  }
+}
+
+fn skeleton_is_call(node: Node) -> Bool {
+  match node.kind {
+    TypeNode { connective: Conj } =>
+      match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+        Present { value: callee } => skeleton_is_callee_atom(node: callee)
+        Absent => false
+      }
+    _ => false
+  }
+}
+
+fn skeleton_callee_target(node: Node) -> Node {
+  match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
+    Present { value: callee } => callee
+    Absent => atom_node(sym: empty_sym)
+  }
+}
+
+fn skeleton_call_argument_targets(node: Node) -> List<Node> {
+  match list_tail(xs: node_positional_child_targets(node: node)) {
+    TailFound { tail: args } => args
+    TailAbsent => Empty
+  }
+}
+
+fn callee_name_from_call(operand: Node) -> String {
+  if skeleton_is_call(node: operand) {
+    node_atom_name(n: skeleton_callee_target(node: operand))
+  } else {
+    ""
+  }
+}
+
+fn first_call_arg_name(operand: Node) -> String {
+  match list_at_optional(xs: skeleton_call_argument_targets(node: operand), index: 0) {
+    Present { value: arg } => node_atom_name(n: arg)
+    Absent => ""
+  }
+}
+
+fn body_alpha_equivalent_to_single_arg_call(
+  lhs: Node,
+  rhs: Node,
+  fns: List<DualRepFnFact>
+) -> Bool {
+  let callee = callee_name_from_call(operand: lhs)
+  if is_empty(xs: callee) {
+    false
+  } else {
+    let rec = lookup_fn_fact(fns: fns, name: callee)
+    if is_empty(xs: rec.name) {
+      false
+    } else {
+      let arg = first_call_arg_name(operand: lhs)
+      let param = first_param_sym(params: rec.params)
+      let inlined = replace_param_in_output(
+        output: rec.output,
+        param: param,
+        arg_name: arg
+      )
+      rhs == inlined
+    }
+  }
+}
+
+fn char_eq(a: Char, b: Char) -> Bool {
+  a == b
+}
+
+fn qualified_name_in_module(qname: String, module: String) -> Bool {
+  is_prefix_of(prefix: concat(module, "."), xs: qname, eq: char_eq)
+}
+
+fn first_param_sym(params: List<Symbol>) -> Symbol {
+  match list_at_optional(xs: params, index: 0) {
+    Present { value: p } => p
+    Absent => empty_sym
+  }
+}
+
+fn param_syms_from_decl(decl: FnArrowDecl) -> List<Symbol> {
+  fold(decl.params, init: empty_symbol_list, f: fn(acc, p) {
+    list_snoc_item(xs: acc, item: p.name)
+  })
+}
+
+fn lookup_fn_fact(fns: List<DualRepFnFact>, name: String) -> DualRepFnFact {
+  fold(
+    fns,
+    init: DualRepFnFact {
+      name: "",
+      params: empty_symbol_list,
+      output: atom_node(sym: empty_sym)
+    },
+    f: fn(acc, row) {
+    if row.name == name {
+      row
+    } else {
+      acc
+    }
+  })
+}
+
+fn replace_param_in_output(output: Node, param: Symbol, arg_name: String) -> Node {
+  match output.kind {
+    TypeNode { connective: Atom { identity: sym } } =>
+      if sym == param {
+        atom_node_name(name: arg_name)
+      } else {
+        output
+      }
+    TypeNode { connective: Conj } =>
+      node_synthetic(
+        kind: output.kind,
+        children: fold(
+          output.children,
+          init: empty_edges,
+          f: fn(acc, e) {
+            list_snoc_item(
+              xs: acc,
+              item: Edge {
+                label: e.label,
+                target: replace_param_in_output(
+                  output: e.target,
+                  param: param,
+                  arg_name: arg_name
+                )
+              }
+            )
+          }
+        )
+      )
+    _ => output
+  }
+}
+
+fn classify_eq_node_site(
+  path: String,
+  fn_name: String,
+  site: EqNodeSite,
+  data_inits: List<DualRepDataInit>,
+  fns: List<DualRepFnFact>
+) -> List<DualRepViolation> {
+  let lhs_sym = node_atom_sym(n: site.lhs)
+  let rhs_sym = node_atom_sym(n: site.rhs)
+  if (sym_is_empty(sym: lhs_sym) == false)
+    && (sym_is_empty(sym: rhs_sym) == false)
+    && (lhs_sym == rhs_sym)
+  {
+    [
+      DualRepViolation {
+        path: path,
+        fn_name: fn_name,
+        kind: SameSymbolEquality
+      }
+    ]
+  } else if sym_is_empty(sym: lhs_sym) == false {
+    let lhs_name = node_atom_name(n: site.lhs)
+    let rhs_lexeme = node_atom_name(n: site.rhs)
+    let init_lit = lookup_data_literal(data_inits: data_inits, name: lhs_name)
+    if (is_empty(xs: init_lit) == false)
+      && (sym_is_empty(sym: rhs_sym) == false)
+      && lexeme_matches_literal_fp(lexeme: rhs_lexeme, literal_fp: init_lit)
+    {
+      [
+        DualRepViolation {
+          path: path,
+          fn_name: fn_name,
+          kind: DataLiteralMirror
+        }
+      ]
+    } else {
+      empty_dual_rep_violations
+    }
+  } else if skeleton_is_call(node: site.lhs)
+    && body_alpha_equivalent_to_single_arg_call(lhs: site.lhs, rhs: site.rhs, fns: fns)
+  {
+    [
+      DualRepViolation {
+        path: path,
+        fn_name: fn_name,
+        kind: BodyAlphaEquivalent
+      }
+    ]
+  } else {
+    empty_dual_rep_violations
+  }
+}
+
+fn violations_from_fn_fact(
+  path: String,
+  fact: DualRepFnFact,
+  data_inits: List<DualRepDataInit>,
+  fns: List<DualRepFnFact>
+) -> List<DualRepViolation> {
+  fold_list(
+    xs: eq_sites_from_output(root: fact.output),
+    empty: empty_dual_rep_violations,
+    cons: fn(acc, site) {
+      list_append(
+        left: acc,
+        right: classify_eq_node_site(
+          path: path,
+          fn_name: fact.name,
+          site: site,
+          data_inits: data_inits,
+          fns: fns
+        )
+      )
+    }
+  )
+}
+
+fn dual_rep_violations_from_module(scan: DualRepModuleScan) -> List<DualRepViolation> {
+  fold(scan.fns, init: empty_dual_rep_violations, f: fn(acc, fact) {
+    if is_empty(xs: fact.name) {
+      acc
+    } else {
+      list_append(
+        left: acc,
+        right: violations_from_fn_fact(
+          path: scan.path,
+          fact: fact,
+          data_inits: scan.data_inits,
+          fns: scan.fns
+        )
+      )
+    }
+  })
+}
+
+fn dual_rep_violation_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
+  length(
+    xs: fold_list(
+      xs: scans,
+      empty: empty_dual_rep_violations,
+      cons: fn(acc, scan) {
+        list_append(
+          left: acc,
+          right: dual_rep_violations_from_module(scan: scan)
+        )
+      }
+    )
+  )
+}
+
+fn dual_rep_clean_holds_for_scans(scans: List<DualRepModuleScan>) -> Bool {
+  dual_rep_violation_count_from_scans(scans: scans) == 0
+}
+
+fn dual_rep_test_file_count_from_scans(scans: List<DualRepModuleScan>) -> Int {
+  length(xs: scans)
+}
+
+fn decl_belongs_to_module(decl: FnArrowDecl, fact: DualRepModuleRef) -> Bool {
+  path_is_test_dag(path: fact.path)
+    && qualified_name_in_module(qname: decl.qualified_name, module: fact.module)
+}
+
+fn fn_fact_from_decl(decl: FnArrowDecl) -> DualRepFnFact {
+  DualRepFnFact {
+    name: decl.name,
+    params: param_syms_from_decl(decl: decl),
+    output: decl.output
+  }
+}
+
+fn module_fns_for_fact(
+  fact: DualRepModuleRef,
+  decls: List<FnArrowDecl>
+) -> List<DualRepFnFact> {
+  fold(decls, init: empty_dual_rep_fns, f: fn(acc, decl) {
+    if decl_belongs_to_module(decl: decl, fact: fact) {
+      list_snoc_item(xs: acc, item: fn_fact_from_decl(decl: decl))
+    } else {
+      acc
+    }
+  })
+}
+
+fn data_init_belongs_to_module(decl: DataInitDecl, fact: DualRepModuleRef) -> Bool {
+  decl.module == fact.module
+}
+
+fn data_inits_for_fact(
+  fact: DualRepModuleRef,
+  decls: List<DataInitDecl>
+) -> List<DualRepDataInit> {
+  fold(decls, init: empty_dual_rep_data_inits, f: fn(acc, decl) {
+    if data_init_belongs_to_module(decl: decl, fact: fact) {
+      list_snoc_item(
+        xs: acc,
+        item: DualRepDataInit { name: decl.name, literal_fp: decl.literal_fp }
+      )
+    } else {
+      acc
+    }
+  })
+}
+
+fn dual_rep_module_scan_for_fact(
+  fact: DualRepModuleRef,
+  decls: List<FnArrowDecl>,
+  data_init_decls: List<DataInitDecl>
+) -> DualRepModuleScan {
+  DualRepModuleScan {
+    path: fact.path,
+    module: fact.module,
+    data_inits: data_inits_for_fact(fact: fact, decls: data_init_decls),
+    fns: module_fns_for_fact(fact: fact, decls: decls)
+  }
+}
+
+fn dual_rep_module_scans_from_decls(
+  decls: List<FnArrowDecl>,
+  data_init_decls: List<DataInitDecl>,
+  modules: List<DualRepModuleRef>
+) -> List<DualRepModuleScan> {
+  fold_list(
+    xs: modules,
+    empty: empty_dual_rep_module_scans,
+    cons: fn(acc, fact) {
+      if path_is_test_dag(path: fact.path) {
+        let scan = dual_rep_module_scan_for_fact(
+          fact: fact,
+          decls: decls,
+          data_init_decls: data_init_decls
+        )
+        if is_empty(xs: scan.fns) {
+          acc
+        } else {
+          list_snoc_item(xs: acc, item: scan)
+        }
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn dual_rep_module_scans_from_fn_index(
+  modules: List<DualRepModuleRef>
+) -> List<DualRepModuleScan> {
+  dual_rep_module_scans_from_decls(
+    decls: fn_arrow_decl_facts_live(),
+    data_init_decls: data_init_decl_facts_live(),
+    modules: modules
+  )
+}
+
+fn synthetic_same_symbol_scan() -> DualRepModuleScan {
+  DualRepModuleScan {
+    path: "synthetic/same_symbol_test.dag",
+    module: "synthetic.same_symbol_test",
+    data_inits: empty_dual_rep_data_inits,
+    fns: [
+      DualRepFnFact {
+        name: "witness_taut",
+        params: empty_symbol_list,
+        output: eq_conj(lhs: atom_node(sym: sym_m), rhs: atom_node(sym: sym_m))
+      }
+    ]
+  }
+}
+
+fn synthetic_literal_mirror_scan() -> DualRepModuleScan {
+  DualRepModuleScan {
+    path: "synthetic/literal_mirror_test.dag",
+    module: "synthetic.literal_mirror_test",
+    data_inits: [
+      DualRepDataInit {
+        name: sym_ttl_name,
+        literal_fp: literal_fingerprint_num_lexeme(lexeme: sym_lit_3600_name)
+      }
+    ],
+    fns: [
+      DualRepFnFact {
+        name: "witness_ttl",
+        params: empty_symbol_list,
+        output: eq_conj(lhs: atom_node_name(name: sym_ttl_name), rhs: atom_node_name(name: sym_lit_3600_name))
+      }
+    ]
+  }
+}
+
+fn synthetic_bool_literal_mirror_scan() -> DualRepModuleScan {
+  DualRepModuleScan {
+    path: "synthetic/bool_literal_mirror_test.dag",
+    module: "synthetic.bool_literal_mirror_test",
+    data_inits: [
+      DualRepDataInit {
+        name: sym_flag_name,
+        literal_fp: literal_fingerprint_bool_lexeme(lexeme: sym_true_name)
+      }
+    ],
+    fns: [
+      DualRepFnFact {
+        name: "witness_flag",
+        params: empty_symbol_list,
+        output: eq_conj(
+          lhs: atom_node_name(name: sym_flag_name),
+          rhs: atom_node_name(name: sym_true_name)
+        )
+      }
+    ]
+  }
+}
+
+fn synthetic_independent_oracle_scan() -> DualRepModuleScan {
+  DualRepModuleScan {
+    path: "synthetic/oracle_test.dag",
+    module: "synthetic.oracle_test",
+    data_inits: empty_dual_rep_data_inits,
+    fns: [
+      DualRepFnFact {
+        name: "oracle",
+        params: empty_symbol_list,
+        output: eq_conj(
+          lhs: call_node(callee: sym_add, args: [atom_node(sym: sym_a), atom_node(sym: sym_b)]),
+          rhs: atom_node_name(name: sym_lit_4_name)
+        )
+      }
+    ]
+  }
+}
+
+fn synthetic_body_mirror_scan() -> DualRepModuleScan {
+  DualRepModuleScan {
+    path: "synthetic/body_mirror_test.dag",
+    module: "synthetic.body_mirror_test",
+    data_inits: empty_dual_rep_data_inits,
+    fns: [
+      DualRepFnFact {
+        name: "inner",
+        params: [sym_y],
+        output: atom_node(sym: sym_y)
+      },
+      DualRepFnFact {
+        name: "wrapped",
+        params: [sym_x],
+        output: call_node(callee: sym_inner, args: [atom_node(sym: sym_x)])
+      },
+      DualRepFnFact {
+        name: "witness_wrap",
+        params: empty_symbol_list,
+        output: eq_conj(
+          lhs: call_node(callee: sym_wrapped, args: [atom_node_name(name: sym_lit_1_name)]),
+          rhs: call_node(callee: sym_inner, args: [atom_node_name(name: sym_lit_1_name)])
+        )
+      }
+    ]
+  }
+}
+
+fn synthetic_distinct_symbol_scan() -> DualRepModuleScan {
+  DualRepModuleScan {
+    path: "synthetic/distinct_test.dag",
+    module: "synthetic.distinct_test",
+    data_inits: empty_dual_rep_data_inits,
+    fns: [
+      DualRepFnFact {
+        name: "ok",
+        params: empty_symbol_list,
+        output: eq_conj(lhs: atom_node(sym: sym_a), rhs: atom_node(sym: sym_b))
+      }
+    ]
+  }
+}
+
+fn parse_path_helper_tautology_scan() -> DualRepModuleScan {
+  DualRepModuleScan {
+    path: "synthetic/parse_path_helper_tautology_test.dag",
+    module: "synthetic.parse_path_helper_tautology_test",
+    data_inits: empty_dual_rep_data_inits,
+    fns: [
+      DualRepFnFact {
+        name: "helper_taut",
+        params: empty_symbol_list,
+        output: eq_conj(lhs: atom_node(sym: sym_m), rhs: atom_node(sym: sym_m))
+      },
+      DualRepFnFact {
+        name: "witness_calls_helper",
+        params: empty_symbol_list,
+        output: call_node(callee: sym_m, args: [])
+      }
+    ]
+  }
+}

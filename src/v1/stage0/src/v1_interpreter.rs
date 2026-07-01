@@ -2139,6 +2139,8 @@ pub(crate) const STD_CONCEPT_INDEX_BRIDGE_FNS: &[&str] = &["concept_decl_facts_l
 
 pub(crate) const STD_FN_INDEX_BRIDGE_FNS: &[&str] = &["fn_arrow_decl_facts_live"];
 
+pub(crate) const STD_DATA_INDEX_BRIDGE_FNS: &[&str] = &["data_init_decl_facts_live"];
+
 pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
     STD_NODE_BRIDGE_FNS
 }
@@ -2153,6 +2155,10 @@ pub fn std_concept_index_bridge_fn_names() -> &'static [&'static str] {
 
 pub fn std_fn_index_bridge_fn_names() -> &'static [&'static str] {
     STD_FN_INDEX_BRIDGE_FNS
+}
+
+pub fn std_data_index_bridge_fn_names() -> &'static [&'static str] {
+    STD_DATA_INDEX_BRIDGE_FNS
 }
 
 pub fn std_qualified_name_bridge_fn_names() -> &'static [&'static str] {
@@ -2193,6 +2199,15 @@ fn is_v4_std_fn_index_bridge_call(ctx: &InterpContext, func_name: &str) -> bool 
     ctx.item_registry
         .get(func_name)
         .is_some_and(|info| info.module_name == "v2.std.fn_index")
+}
+
+fn is_v4_std_data_index_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !STD_DATA_INDEX_BRIDGE_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v2.std.data_index")
 }
 
 fn is_v4_std_lexing_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
@@ -2287,6 +2302,15 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
                 crate::coproduct_reflection::eval_fn_arrow_decl_facts_live(ctx, &args)
             }
             _ => unreachable!("fn_index bridge fn set mismatch"),
+        };
+    }
+
+    if is_v4_std_data_index_bridge_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "data_init_decl_facts_live" => {
+                crate::coproduct_reflection::eval_data_init_decl_facts_live(ctx, &args)
+            }
+            _ => unreachable!("data_index bridge fn set mismatch"),
         };
     }
 
