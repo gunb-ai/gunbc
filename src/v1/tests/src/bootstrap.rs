@@ -105,14 +105,13 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
     for name in &[
         "v1_interpreter.rs",
         "cli_run.rs",
+        "main.rs",
         "rest_transport_facts.rs",
         "wire_value_serialize.rs",
         "coproduct_reflection.rs",
         "resolved_graph_cache.rs",
         "recorded_fixture.rs",
         "external_authority_project.rs",
-        "v1_compiler_dag_collect.rs",
-        "v1_compiler_dag_collect_support.rs",
     ] {
         let src = stage0_src.join(name);
         if src.exists() {
@@ -169,6 +168,7 @@ fn diff_excluding_hand_maintained(
         .arg("-r")
         .arg("--exclude=v1_interpreter.rs")
         .arg("--exclude=cli_run.rs")
+        .arg("--exclude=main.rs")
         .arg("--exclude=rest_transport_facts.rs")
         .arg("--exclude=wire_value_serialize.rs")
         .arg("--exclude=coproduct_reflection.rs")
@@ -176,8 +176,6 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=recorded_fixture.rs")
         .arg("--exclude=external_authority_project.rs")
         .arg("--exclude=module_path_index")
-        .arg("--exclude=v1_compiler_dag_collect.rs")
-        .arg("--exclude=v1_compiler_dag_collect_support.rs")
         .arg(dir_a)
         .arg(dir_b)
         .output()

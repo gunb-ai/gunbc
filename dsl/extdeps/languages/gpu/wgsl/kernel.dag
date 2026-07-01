@@ -1,0 +1,141 @@
+module extdeps.languages.gpu.wgsl.kernel
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.communication.medium { Medium, Lossless }
+import std.types { NonEmptyStr, Int, List, Float, String, Bool }
+import extdeps.languages.simd.kernel {
+  relu_mul_add_wire_op_codes,
+  elemwise_mul_wire_op_code,
+  elemwise_add_wire_op_code,
+  elemwise_relu_wire_op_code,
+}
+import std.bytes { pure_dag_seam_unreachable }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.w3.org/TR/WGSL/"
+  }
+}
+
+data wgsl_kernel_target_medium_name: NonEmptyStr = "wgsl-compute-relu-mul-add"
+
+data wgsl_relu_mul_add_op_code_single_authority_note: String = "The fused op triplet (Mul -> Add -> Relu) is NOT re-minted here: relu_mul_add_wire_op_codes is imported from extdeps.languages.simd.kernel (§3 single authority). This WGSL module is a second EMISSION MEDIUM for the same op sequence, not a second op catalog."
+
+data wgsl_relu_mul_add_int_kernel_source: String = "@group(0) @binding(0) var<storage, read> a: array<i32>;\n@group(0) @binding(1) var<storage, read> b: array<i32>;\n@group(0) @binding(2) var<storage, read> c: array<i32>;\n@group(0) @binding(3) var<storage, read_write> result: array<i32>;\n@compute @workgroup_size(64)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {\n  let i = gid.x;\n  result[i] = max(a[i] * b[i] + c[i], 0);\n}\n"
+
+data wgsl_relu_mul_add_float_kernel_source: String = "@group(0) @binding(0) var<storage, read> a: array<f32>;\n@group(0) @binding(1) var<storage, read> b: array<f32>;\n@group(0) @binding(2) var<storage, read> c: array<f32>;\n@group(0) @binding(3) var<storage, read_write> result: array<f32>;\n@compute @workgroup_size(64)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {\n  let i = gid.x;\n  result[i] = max(a[i] * b[i] + c[i], 0.0);\n}\n"
+
+type WgslKernelEmitSurface {
+  fused_op_count: Int
+  workgroup_size: Int
+}
+
+fn wgsl_kernel_medium(surface: WgslKernelEmitSurface) -> Medium<WgslKernelEmitSurface> {
+  Medium {
+    carried: surface
+    fidelity: Lossless
+  }
+}
+
+fn wgsl_relu_mul_add_kernel_surface() -> WgslKernelEmitSurface {
+  WgslKernelEmitSurface {
+    fused_op_count: 3
+    workgroup_size: 64
+  }
+}
+
+fn witness_wgsl_relu_mul_add_kernel_surface_shape() -> Bool {
+  let surface = wgsl_relu_mul_add_kernel_surface()
+  surface.fused_op_count == 3 && surface.workgroup_size == 64
+}
+
+fn witness_wgsl_reuses_simd_op_code_authority() -> Bool {
+  relu_mul_add_wire_op_codes.length() == 3
+    && match relu_mul_add_wire_op_codes.first() {
+      Present { value: c0 } => c0 == elemwise_mul_wire_op_code
+      Absent => false
+    }
+}
+
+fn witness_wgsl_int_kernel_source_shape() -> Bool {
+  string_contains(s: wgsl_relu_mul_add_int_kernel_source, pattern: "array<i32>")
+    && string_contains(s: wgsl_relu_mul_add_int_kernel_source, pattern: "max(a[i] * b[i] + c[i], 0)")
+    && string_contains(s: wgsl_relu_mul_add_int_kernel_source, pattern: "@compute @workgroup_size(64)")
+}
+
+fn witness_wgsl_float_kernel_source_shape() -> Bool {
+  string_contains(s: wgsl_relu_mul_add_float_kernel_source, pattern: "array<f32>")
+    && string_contains(s: wgsl_relu_mul_add_float_kernel_source, pattern: "max(a[i] * b[i] + c[i], 0.0)")
+}
+
+fn wgsl_relu_mul_add_int_kernel_execute(
+  op_codes: List<Int>,
+  a: List<Int>,
+  b: List<Int>,
+  c: List<Int>
+) -> List<Int> {
+  [pure_dag_seam_unreachable()]
+}
+
+fn wgsl_relu_mul_add_float_kernel_execute(
+  op_codes: List<Int>,
+  a: List<Float>,
+  b: List<Float>,
+  c: List<Float>
+) -> List<Float> {
+  [pure_dag_seam_unreachable()]
+}
+
+data wgsl_kernel_int_execution_host_realization_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.gpu.wgsl.kernel",
+    decl_name: "wgsl_relu_mul_add_int_kernel_execute",
+    field: WholeDeclaration
+  }
+}
+
+data wgsl_kernel_float_execution_host_realization_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.gpu.wgsl.kernel",
+    decl_name: "wgsl_relu_mul_add_float_kernel_execute",
+    field: WholeDeclaration
+  }
+}
+
+data wgsl_kernel_handler_dissolution_trigger: String = "dissolve-on: feature:dag-gpu-realization-handler — a SEPARATE future PR emits the WGSL host harness (device dispatch via a GPU runtime) and dissolves these pure_dag_seam_unreachable() stubs into a target_model emit + on-silicon execution handler. Until then GPU execution is DEFERRED: these bodies are fail-closed stubs, this module is MODELING ONLY (the WGSL source strings are the emit authority)."
+
+data wgsl_kernel_source_grammar_dissolution_trigger: String = "dissolve-on: feature:dag-wgsl-grammar-ingest — the WGSL source String blobs below (wgsl_relu_mul_add_int/float_kernel_source) are a SCAFFOLD (§6): opaque emit-target authority that has not yet been lifted into substrate WGSL grammar rows. Dissolve by modeling the WGSL grammar under extdeps.languages.gpu.wgsl so the source is EMITTED (ingest ∘ emit = id) rather than carried as a String. This is DISTINCT from the host-realization dissolution (feature:dag-gpu-realization-handler): that lifts the dispatch stubs, this lifts the kernel text."
+
+data wgsl_relu_mul_add_int_kernel_source_grammar_scaffold_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.gpu.wgsl.kernel",
+    decl_name: "wgsl_relu_mul_add_int_kernel_source",
+    field: WholeDeclaration
+  }
+}
+
+data wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.gpu.wgsl.kernel",
+    decl_name: "wgsl_relu_mul_add_float_kernel_source",
+    field: WholeDeclaration
+  }
+}
+
+fn witness_wgsl_kernel_sources_grammar_scaffold_documented() -> Bool {
+  match wgsl_relu_mul_add_int_kernel_source_grammar_scaffold_marker {
+    Scaffold { dissolves_to: _, bind: _ } => match wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker {
+      Scaffold { dissolves_to: _, bind: _ } => wgsl_kernel_source_grammar_dissolution_trigger != ""
+      Terminal { reason: _ } => false
+    }
+    Terminal { reason: _ } => false
+  }
+}
