@@ -26,7 +26,7 @@ use crate::cli_run::{is_test_dag, repo_rel, witness_layer_roots};
 use crate::decl_facts_project::{
     decl_facts_is_fn_like, logical_qualified_name_from_module, DeclFact,
 };
-use crate::medium_structure_project::parse_dag_file;
+use crate::module_path_index::medium_structure_census::parse_dag_file;
 use crate::v1_compiler_infer_items::item_kind;
 use crate::v1_std_core::{
     arm_pattern, authored_name_at, expr_var_name_at, match_arm_nodes, match_scrutinee,
@@ -109,7 +109,7 @@ fn audit_function_body(
     si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
     param_types: &BTreeMap<String, String>,
 ) -> Vec<AuditFinding> {
-    let closed = crate::non_fold_residue_project::non_fold_residue_closed_coproduct_type_names();
+    let closed = crate::module_path_index::non_fold_residue_census::non_fold_residue_closed_coproduct_type_names();
     let mut stats = FnBodyStats::default();
     walk_expr(body, si, param_types, closed, &mut stats);
     let site = format!("{rel}::{fn_name}");
@@ -203,13 +203,15 @@ pub struct RosterFictionReport {
 }
 
 pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
-    let resolved_residue_sites = crate::non_fold_residue_project::non_fold_residue_count();
+    let resolved_residue_sites =
+        crate::module_path_index::non_fold_residue_census::non_fold_residue_count();
     let resolved_unrostered_sites =
-        crate::non_fold_residue_project::non_fold_residue_unrostered_count();
+        crate::module_path_index::non_fold_residue_census::non_fold_residue_unrostered_count();
     let migration_debt_live =
-        crate::non_fold_residue_project::non_fold_residue_migration_debt_live_count();
+        crate::module_path_index::non_fold_residue_census::non_fold_residue_migration_debt_live_count();
     let irreducible_live =
-        crate::non_fold_residue_project::non_fold_residue_irreducible_live_count();
+        crate::module_path_index::non_fold_residue_census::non_fold_residue_irreducible_live_count(
+        );
     let mut report = RosterFictionReport {
         resolved_residue_sites,
         resolved_unrostered_sites,
@@ -224,7 +226,9 @@ pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
             continue;
         }
         report.syntactic_wildcard_total += 1;
-        if crate::non_fold_residue_project::non_fold_residue_site_is_rostered(&f.site) {
+        if crate::module_path_index::non_fold_residue_census::non_fold_residue_site_is_rostered(
+            &f.site,
+        ) {
             report.syntactic_wildcard_on_roster += 1;
         } else {
             report.syntactic_wildcard_off_roster += 1;
@@ -268,14 +272,14 @@ fn triage_wildcard(site: &str, fn_name: &str, has_closed_coproduct_wildcard: boo
         return "open-domain";
     }
     if matches!(
-        crate::non_fold_residue_project::non_fold_residue_roster_bucket(site),
-        Some(crate::non_fold_residue_project::NonFoldRosterBucket::MigrationDebt)
+        crate::module_path_index::non_fold_residue_census::non_fold_residue_roster_bucket(site),
+        Some(crate::module_path_index::non_fold_residue_census::NonFoldRosterBucket::MigrationDebt)
     ) {
         return "migration-debt";
     }
     if matches!(
-        crate::non_fold_residue_project::non_fold_residue_roster_bucket(site),
-        Some(crate::non_fold_residue_project::NonFoldRosterBucket::Irreducible)
+        crate::module_path_index::non_fold_residue_census::non_fold_residue_roster_bucket(site),
+        Some(crate::module_path_index::non_fold_residue_census::NonFoldRosterBucket::Irreducible)
     ) {
         return "kernel-permanent";
     }
