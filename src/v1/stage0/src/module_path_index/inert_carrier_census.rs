@@ -12,8 +12,7 @@
 // the declaration site. So this is the genuinely-unstructurable residue a lens is for: a decidable
 // reachability/consumer property, walled fail-closed against a NAMED, SHRINKING exception roster
 // (the realization-loop staged-ahead carriers) — the same ratchet-during-migration → wall-when-empty
-// shape as #5433 and the doc-graph reachability wall (`cli_run.rs` host census +
-// `v2.lens.doc_reachability` verdict).
+// shape as #5433 and the doc-graph reachability wall (doc_reachability_project.rs).
 //
 // DEFINITION — the COVERAGE-BY-ILLUSION class exactly (bright-stag's deliverable 1 wording: "defined
 // + self-tested + ZERO real consumer"):

@@ -26,7 +26,8 @@ data spec_alternate_notice: CiSpec = {
     head: "HEAD",
     mode: DiffMergeBase
   },
-  notice_title: "alt-notice"
+  notice_title: "alt-notice",
+  deploy_stages: [],
 }
 
 data alternate_witness_layer_roots: List<String> = ["Z9Z9Z9-witness-root"]
