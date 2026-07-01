@@ -14,7 +14,7 @@ import v2.std.node { Atom, Node, TypeNode }
 import v2.std.text { String }
 import std.types { ContentHash, Int }
 import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value, byte_size, ByteSize, byte_size_count }
-import std.realization_width { width_fold_objective_goals, bounded_host_spawn_width, int_min }
+import std.realization_width { width_fold_objective_goals, bounded_host_spawn_width }
 import gunbc.fleet_container {
   ResourceEnvelope,
   parallel_run_demand_envelope,
@@ -461,10 +461,7 @@ fn gunbc_ci_floor_hardware_threads() -> HardwareThreadCount {
 fn gunbc_ci_floor_spawn_width_for_budget(memory_budget: ByteSize) -> HardwareThreadCount {
   let budget_count = byte_size_count(b: memory_budget)
   if budget_count <= 0 {
-    hardware_thread_count(count: int_min(
-      a: gunbc_ci_floor_conservative_fallback_width,
-      b: execution_corpus_spawn_width()
-    ))
+    hardware_thread_count(count: gunbc_ci_floor_conservative_fallback_width)
   } else {
     let cpu_bound = hardware_thread_count_value(t: bounded_host_spawn_width(
       shard_count: gunbc_ci_floor_breadth(),
@@ -511,10 +508,7 @@ fn witness_floor_fail_open_would_exceed_budget() -> Bool {
 
 fn witness_floor_unreadable_budget_uses_conservative_envelope() -> Bool {
   let envelope = gunbc_ci_floor_run_envelope(memory_budget_bytes: 0)
-  demand_envelope_thread_count(envelope: envelope) == int_min(
-    a: gunbc_ci_floor_conservative_fallback_width,
-    b: execution_corpus_spawn_width()
-  )
+  demand_envelope_thread_count(envelope: envelope) == gunbc_ci_floor_conservative_fallback_width
 }
 
 fn witness_floor_width_governed_by_budget_tree() -> Bool {
