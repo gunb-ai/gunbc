@@ -1,4 +1,4 @@
-module v2.lens.layer_span_test
+module v2.test.lens_layer_span.layer_span_test
 
 import v2.lens.layer_span {
   keeps_on_floor,
