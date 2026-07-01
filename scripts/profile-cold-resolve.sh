@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# SCAFFOLD — dissolve-on: substrate-emitted resolve-phase timings (realization_measurement_loop
+# carrier / GUNBC_RESOLVE_PROFILE=1) retire this bash runner; until then it is the reproducible
+# receipt entrypoint documented in docs/plans/resolver-pathology-profile-receipt.md.
+# dissolve-on: gunbc bash-emit capability (#5828 / ROADMAP shell-emission) realizes profile
+# orchestration through host_effect_apply transport handlers instead of hand-rolled bash.
+#
 # Reproducible cold-resolve profiling for the CI floor witness corpus.
 # Profile receipt: docs/plans/resolver-pathology-profile-receipt.md
 #
@@ -11,8 +17,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
+# Cross-process resolve cache OFF: unset only (do not export empty string — var_os treats "" as set).
 unset GUNBC_RESOLVED_GRAPH_CACHE_DIR
-export GUNBC_RESOLVED_GRAPH_CACHE_DIR
 
 BIN="${CLAIM_BATCH:-$ROOT/target/release/claim_batch}"
 if [[ ! -x "$BIN" ]]; then
