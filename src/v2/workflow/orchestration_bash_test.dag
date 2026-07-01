@@ -1,6 +1,7 @@
 module v2.workflow.orchestration_bash_test
 
 import v2.compiler.emit { emit }
+import v2.compiler.emit_orchestration { orch_emit_step }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }
 import v2.extdeps.languages.bash {
@@ -9,6 +10,12 @@ import v2.extdeps.languages.bash {
 }
 import v2.std.orchestration {
   Run,
+  Step,
+  Do,
+  If,
+  Pipeline,
+  ExitZero,
+  FailFast,
   EnvSet,
   EnvUnset,
   StdoutAndStderr,
@@ -96,6 +103,78 @@ test fn orch_run_env_value_has_teeth_holds() -> Bool {
   match orch_run_emit(r: orch_run_env_perturbed()) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != "CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --bins"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+data orch_if_true_echo_hi_frozen_golden: String = "if true; then echo hi; fi"
+
+fn orch_if_true_echo_hi_intent() -> Step {
+  If {
+    cond: ExitZero {
+      run: Run {
+        command: "true",
+        env: [],
+        redirect: Absent,
+        capture: Absent
+      }
+    },
+    then_: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: "echo hi",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+fn orch_if_true_echo_bye_intent() -> Step {
+  If {
+    cond: ExitZero {
+      run: Run {
+        command: "true",
+        env: [],
+        redirect: Absent,
+        capture: Absent
+      }
+    },
+    then_: Pipeline {
+      steps: [
+        Do {
+          run: Run {
+            command: "echo bye",
+            env: [],
+            redirect: Absent,
+            capture: Absent
+          }
+        }
+      ],
+      on_failure: FailFast
+    },
+    else_: Absent
+  }
+}
+
+test fn orch_if_single_branch_byte_golden_holds() -> Bool {
+  match orch_emit_step(s: orch_if_true_echo_hi_intent()) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == orch_if_true_echo_hi_frozen_golden) && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_if_single_branch_perturb_has_teeth_holds() -> Bool {
+  match orch_emit_step(s: orch_if_true_echo_bye_intent()) {
+    Accepted { value: source, diagnostics: _ } =>
+      source.carried != orch_if_true_echo_hi_frozen_golden
     Rejected { diagnostics: _ } => false
   }
 }

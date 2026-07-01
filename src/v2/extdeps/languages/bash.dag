@@ -1876,16 +1876,6 @@ fn bash_stmt_if_target_model(cond: String, body: String) -> TargetModel {
   )
 }
 
-data orch_if_emitted_command: Node = bash_stmt_if_emitted
-
-fn orch_if_source_text(cond: String, then_body: String) -> String {
-  bash_stmt_if_source_text(cond: cond, body: then_body)
-}
-
-fn orch_if_target_model(cond: String, then_body: String) -> TargetModel {
-  bash_stmt_if_target_model(cond: cond, body: then_body)
-}
-
 fn bash_stmt_heredoc_tokens() -> List<ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_heredoc_kw },

@@ -4,9 +4,9 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }
 import v2.extdeps.languages.bash {
+  bash_stmt_if_emitted,
+  bash_stmt_if_target_model,
   bash_word_pass_emitted,
-  orch_if_emitted_command,
-  orch_if_target_model,
   orch_run_emitted_command,
   orch_run_target_model,
   orch_seq2_emitted_command,
@@ -56,6 +56,8 @@ fn orch_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
 
 data orch_run_env_reduction_dissolution_trigger: String = "orchestration_emit Run/Step/Retry path reduces onto bash_fold serialize: an env-FREE Run is delegated to bash_fold_raw_line_target_model + bash_word_pass_emitted via orch_fold_serialize_rawline (single orch_raw, green path, proven byte-identical by orch_run_empty_env_delegates_to_shell_emit and bash_fold fold==serialize_stmt witnesses). An env-BEARING Run lowers to an EnvPrefixed over env plus a RawLine command. The emit-kernel String<->List-Int-codepoint straddle that blocked this is now FIXED by grounding String construction into its native realization (free_monoid_to_string in v1_interpreter.rs, sibling to Int<->Nat PR 5428). The RESIDUAL blocker is a DIFFERENT, modeling-side gap, not the kernel: EnvBinding has EnvUnset (env -u NAME) and FreeMonoid<EnvBinding> is a LIST, but the bash AST EnvPrefixed models only a single name=value prefix with no EnvUnset node, so an env-bearing Run cannot yet be lowered losslessly. It stays on the orch_run_emitted_command single-string render (orch_emit_run_env_welded) until the bash AST grows an env-unset construct and multi-binding nesting. DISSOLVES WHEN the bash EnvPrefixed AST covers EnvUnset + multi-binding env (modeling follow-on landed by gunbc#5846 'Grow bash AST: EnvUnset node + multi-binding env nesting (dissolve orch_emit_run_env_welded)', which depends on this PR's kernel String grounding and dissolves this welded fn outright; no longer kernel-blocked)."
 
+data orch_emit_control_flow_dissolution_trigger: String = "orchestration_emit If/For/While: single-branch If (else_=Absent, ExitZero cond via r.command) lowers through bash_stmt_if_target_model (`if <cond>; then <body>; fi`); else branch, non-ExitZero Predicate variants, For, and While stay outcome_rejected until bash grows else/elif/for/while stmt productions and predicate-lowering rows (parallel follow-on to orch_run_env_reduction_dissolution_trigger). DISSOLVES WHEN orch_emit_if accepts else_ and full Predicate algebra and orch_emit_step::For/While reach parameterized bash_stmt_* bridges."
+
 fn orch_fold_serialize_rawline(text: String) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
@@ -93,22 +95,6 @@ fn orch_emit_join2(left: String, right: String) -> Outcome<Medium<String>> {
   )
 }
 
-fn orch_emit_predicate(p: Predicate) -> Outcome<Medium<String>> {
-  match p {
-    ExitZero { run: r } => orch_emit_run(r: r)
-    LogMatches { source: _, pattern: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_logmatches_unsupported))
-    StrEq { lhs: _, rhs: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_streq_unsupported))
-    Not { inner: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_not_unsupported))
-    And { lhs: _, rhs: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_and_unsupported))
-    Or { lhs: _, rhs: _ } =>
-      outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_or_unsupported))
-  }
-}
-
 fn orch_emit_if(
   cond: Predicate,
   then_: Pipeline,
@@ -118,26 +104,31 @@ fn orch_emit_if(
     Present { value: _ } =>
       outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_if_else_unsupported))
     Absent =>
-      bind_outcome(
-        o: orch_emit_predicate(p: cond),
-        f: fn(cond_medium) {
+      match cond {
+        ExitZero { run: r } =>
           bind_outcome(
             o: orch_emit_pipeline(p: then_),
-            f: fn(then_medium) {
+            f: fn(body_medium) {
               emit(
                 tree: InferredTree {
-                  root: orch_if_emitted_command,
+                  root: bash_stmt_if_emitted,
                   facts: Map { lookup: orch_emit_facts_lookup }
                 },
-                target: orch_if_target_model(
-                  cond: cond_medium.carried,
-                  then_body: then_medium.carried
-                )
+                target: bash_stmt_if_target_model(cond: r.command, body: body_medium.carried)
               )
             }
           )
-        }
-      )
+        LogMatches { source: _, pattern: _ } =>
+          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_logmatches_unsupported))
+        StrEq { lhs: _, rhs: _ } =>
+          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_streq_unsupported))
+        Not { inner: _ } =>
+          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_not_unsupported))
+        And { lhs: _, rhs: _ } =>
+          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_and_unsupported))
+        Or { lhs: _, rhs: _ } =>
+          outcome_rejected(orch_emit_unsupported_step_diagnostics(reason: ^orch_emit_predicate_or_unsupported))
+      }
   }
 }
 
