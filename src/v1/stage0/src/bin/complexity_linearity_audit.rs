@@ -70,10 +70,10 @@ fn print_summary(
     );
     eprintln!(
         "complexity_linearity_audit: resolved-half roster proxies (not whole-corpus): \
-         non_fold_residue total={} unrostered={}, unwired_model unwired={}",
+         non_fold_residue total={} unrostered={}, inert_carrier inert={}",
         non_fold_residue_count(),
         non_fold_residue_unrostered_count(),
-        v1_compiler::cli_run::unwired_model_names_live().len()
+        v1_compiler::cli_run::inert_carrier_names_live().len()
     );
     let fiction = roster_fiction_report(summary);
     eprintln!(
