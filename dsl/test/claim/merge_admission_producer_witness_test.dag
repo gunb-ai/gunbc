@@ -1,0 +1,82 @@
+module test.claim.merge_admission_producer_witness
+
+import gunbc.merge_admission {
+  MergeAdmissionReceipt,
+  Success,
+  Failure,
+  current_gate_roster_hash,
+  mint_merge_admission_receipt,
+}
+import gunbc.merge_admission_produce {
+  merge_admission_receipt_schema,
+  merge_admission_receipt_rel_path,
+  render_receipt_wire,
+  parse_receipt_wire,
+  stamp_floor_receipt,
+  floor_exit_to_check_conclusion,
+}
+import extdeps.github.checks { check_conclusion_wire_label }
+import std.types { ContentHash }
+
+data scenario_base: ContentHash = "merge-admission-producer-base"
+data scenario_head: ContentHash = "abc1234def5678901234567890abcd1234567890"
+
+data green_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+  pr_number: 5933,
+  head_sha: scenario_head,
+  base_tree_hash: scenario_base,
+  floor_exit_code: 0,
+)
+
+data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+  pr_number: 5933,
+  head_sha: scenario_head,
+  base_tree_hash: scenario_base,
+  floor_exit_code: 1,
+)
+
+test fn floor_exit_zero_maps_to_success() -> Bool {
+  floor_exit_to_check_conclusion(exit_code: 0) == Success
+}
+
+test fn floor_exit_nonzero_maps_to_failure() -> Bool {
+  floor_exit_to_check_conclusion(exit_code: 1) == Failure
+}
+
+test fn mint_binds_current_gate_roster_hash() -> Bool {
+  green_receipt.gate_roster_hash == current_gate_roster_hash
+}
+
+test fn wire_roundtrip_preserves_admission_fields() -> Bool {
+  let wire = render_receipt_wire(receipt: green_receipt)
+  match parse_receipt_wire(text: wire) {
+    Present { value: parsed } =>
+      (parsed.base_tree_hash == scenario_base)
+        && (parsed.gate_roster_hash == current_gate_roster_hash)
+        && (parsed.conclusion == Success)
+        && (parsed.head_sha == scenario_head)
+    Absent => false
+  }
+}
+
+test fn red_floor_stamps_failure_conclusion() -> Bool {
+  red_receipt.conclusion == Failure
+}
+
+test fn receipt_schema_and_path_are_stable() -> Bool {
+  (merge_admission_receipt_schema == "gunbc.merge_admission_receipt.v1")
+    && (merge_admission_receipt_rel_path == ".gunbc/merge-admission-receipt.wire")
+}
+
+test fn mint_matches_explicit_constructor() -> Bool {
+  let explicit = mint_merge_admission_receipt(
+    pr_number: 5933,
+    head_sha: scenario_head,
+    base_tree_hash: scenario_base,
+    gate_roster_hash: current_gate_roster_hash,
+    conclusion: Success,
+  )
+  (explicit.base_tree_hash == green_receipt.base_tree_hash)
+    && (explicit.gate_roster_hash == green_receipt.gate_roster_hash)
+    && (explicit.conclusion == green_receipt.conclusion)
+}

@@ -1,0 +1,89 @@
+module tools.merge_admission_stamp
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.git
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.merge_admission_produce {
+  merge_admission_receipt_path,
+  stamp_floor_receipt,
+  render_receipt_wire_with_pr_line,
+}
+import gunbc.ci_spec { gunbc_ci_spec, ci_repo_root_shell }
+
+fn pr_number_line() -> String {
+  let path = shell.Env.Get(name: "GITHUB_EVENT_PATH")
+  match path.value {
+    Present { value: event_path } =>
+      let result = shell.Exec.Run(
+        script: concat(
+          concat("if [ -f \"", event_path),
+          concat(
+            "\" ]; then jq -r '.pull_request.number // 0' \"",
+            concat(event_path, "\" 2>/dev/null || echo 0; else echo 0; fi")
+          )
+        )
+      )
+      result.stdout
+    Absent => "0"
+  }
+}
+
+fn merge_base_tree_hash() -> String {
+  let policy = gunbc_ci_spec.diff_policy
+  let result = shell.Exec.Run(
+    script: concat(
+      concat(
+        concat("git rev-parse \"$(git merge-base ", policy.base),
+        concat(" ", concat(policy.head, ")^{tree}\" 2>/dev/null || true"))
+      ),
+      ""
+    )
+  )
+  result.stdout
+}
+
+fn repo_root() -> String {
+  let result = shell.Exec.Run(script: concat("cd ", concat(ci_repo_root_shell(), " && pwd")))
+  result.stdout
+}
+
+fn floor_exit_code_from_env() -> Int {
+  let env = shell.Env.Get(name: "CI_FLOOR_EXIT")
+  match env.value {
+    Present { value: raw } =>
+      if raw == "0" { 0 } else { 1 }
+    Absent => 0
+  }
+}
+
+func main() -> ProcessExit {
+  let head = git.Core.HeadCommit()
+  if !head.success {
+    return exit_failure(reason: "merge_admission_stamp: git rev-parse HEAD failed")
+  }
+  let base_tree = merge_base_tree_hash()
+  if base_tree == "" {
+    return exit_failure(reason: "merge_admission_stamp: merge-base tree hash unavailable")
+  }
+  let receipt = stamp_floor_receipt(
+    pr_number: 0,
+    head_sha: head.sha,
+    base_tree_hash: base_tree,
+    floor_exit_code: floor_exit_code_from_env(),
+  )
+  let root = repo_root()
+  let path = merge_admission_receipt_path(root: root)
+  let dir = concat(root, "/.gunbc")
+  let mkdir = shell.Exec.Run(script: concat("mkdir -p \"", concat(dir, "\"")))
+  if !mkdir.success {
+    return exit_failure(reason: concat("merge_admission_stamp: mkdir .gunbc failed: ", mkdir.stderr))
+  }
+  let wire = render_receipt_wire_with_pr_line(receipt: receipt, pr_line: pr_number_line())
+  let write = Filesystem.Write(path: path, content: wire)
+  if write.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("merge_admission_stamp: write failed: ", write.error))
+  }
+}
