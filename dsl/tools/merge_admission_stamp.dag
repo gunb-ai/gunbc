@@ -30,14 +30,11 @@ fn pr_number_line() -> String {
   }
 }
 
-fn merge_base_tree_hash() -> String {
+fn merge_target_tree_hash() -> String {
   let policy = gunbc_ci_spec.diff_policy
   let result = shell.Exec.Run(
     script: concat(
-      concat(
-        concat("git show -s --format=%T \"$(git merge-base ", policy.base),
-        concat(" ", concat(policy.head, ")\""))
-      ),
+      concat("git show -s --format=%T ", policy.base),
       ""
     )
   )
@@ -63,9 +60,9 @@ func main() -> ProcessExit {
   if !head.success {
     return exit_failure(reason: "merge_admission_stamp: git rev-parse HEAD failed")
   }
-  let base_tree = merge_base_tree_hash()
+  let base_tree = merge_target_tree_hash()
   if base_tree == "" {
-    return exit_failure(reason: "merge_admission_stamp: merge-base tree hash unavailable")
+    return exit_failure(reason: "merge_admission_stamp: merge-target tree hash unavailable")
   }
   let receipt = stamp_floor_receipt(
     pr_number: 0,
