@@ -77,3 +77,5 @@ The #5433 inert-lens backstop **does execute** in the floor (`dsl/test/claim/ine
 - `deployed_gate_admits_stale_base_while_gating_deferred` — the **deployed** wrapper `merge_admission_blocks_merge` returns false and does so exactly because `merge_freshness_verdict_is_consumed_to_block()` is false.
 
 Together they make the C2↔B2 gap (fully-witnessed model, switched-off deployment) executable and loud: the day `merge_freshness_gating_status` flips to `GatingEnforced`, the second claim goes RED, forcing the flip to be acknowledged in the same diff — the inert state can no longer be silent. This is a control on the audit finding, not a fix of it (the flip itself stays behind its named activation trigger, `ci_failure_class.dag:151`).
+
+Execution receipt (2026-07-01, this branch): both claims PASS via `claim_batch --claim-run`; perturb control — with `merge_freshness_gating_status` locally flipped to `GatingEnforced`, `deployed_gate_admits_stale_base_while_gating_deferred` goes FAIL; reverted, PASS again. Discrimination proven by execution, not by grep.
