@@ -4918,7 +4918,11 @@ mod floor_witness_a_prove {
         touches: &[(String, i64, i64)],
         row: &DiscoveryRow,
     ) -> Result<bool, String> {
-        let entry_norm = super::normalize_repo_path(&row.entry);
+        let file_path = touches
+            .iter()
+            .find(|(path, _, _)| diff_file_matches_entry(path, &row.entry))
+            .map(|(path, _, _)| path.clone())
+            .unwrap_or_else(|| normalize_repo_path(&row.entry));
         let content = std::fs::read_to_string(&row.entry)
             .map_err(|e| format!("read {} for decl scan: {e}", row.entry))?;
         let decl_line = scan_test_decl_lines(&content)
@@ -4931,7 +4935,21 @@ mod floor_witness_a_prove {
                     row.function, row.entry
                 )
             })?;
-        call_floor_test_fn_declaration_edited(ctx, touches, &entry_norm, decl_line)
+        call_floor_test_fn_declaration_edited(ctx, touches, &file_path, decl_line)
+    }
+
+    fn frontier_list_len(
+        prove_ctx: &v1_interpreter::InterpContext,
+        frontier: &v1_interpreter::Value,
+    ) -> Result<usize, String> {
+        v1_interpreter::free_monoid_to_vec(frontier)
+            .map(|items| items.len())
+            .ok_or_else(|| {
+                format!(
+                    "expected list frontier from .dag affected_set_closure, got `{}`",
+                    prove_ctx.format_value(frontier)
+                )
+            })
     }
 
     fn dag_affected_frontier_for_changed_path(
@@ -4942,19 +4960,13 @@ mod floor_witness_a_prove {
             Some("changed".to_string()),
             Value::Str(changed_path.to_string()),
         )];
-        match v1_interpreter::run_in_context_with_args(
+        v1_interpreter::run_in_context_with_args(
             prove_ctx,
             "witness_a_dag_affected_nodes_for_path",
             &args,
             true,
-        ) {
-            Ok(v @ Value::List(_)) => Ok(v),
-            Ok(other) => Err(format!(
-                "witness_a_dag_affected_nodes_for_path returned `{}`",
-                prove_ctx.format_value(&other)
-            )),
-            Err(e) => Err(format!("witness_a_dag_affected_nodes_for_path: {e}")),
-        }
+        )
+        .map_err(|e| format!("witness_a_dag_affected_nodes_for_path: {e}"))
     }
 
     fn dag_entry_touches_frontier_independently(
