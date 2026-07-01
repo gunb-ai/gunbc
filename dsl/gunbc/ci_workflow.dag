@@ -8,6 +8,7 @@ import gunbc.ci_spec {
   CiSpec, gunbc_ci_spec, gunbc_ci_workflow_run, gunbc_ci_rust_job_run,
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
 }
+import gunbc.ci_deploy_access { deploy_access_runner_spec }
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
 }
@@ -268,11 +269,13 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
   }
 }
 
+data gunbc_ci_deploy_runner_continue_on_error_dissolution_trigger: String = "🟡 dissolve-on: gunbc_ci_deploy_runner_continue_on_error — deploy_dashboard_srv1 is continue_on_error:true because the dedicated gunbc-deploy self-hosted runner (runs-on derived from DeployAccess.host: self-hosted,gunbc-deploy,srv1) is not yet registered on srv1; a push-to-main run currently queues with no matching runner. DISSOLVES WHEN the gunbc-deploy runner is registered and a green deploy_dashboard_srv1 run is observed on main — flip continue_on_error back to none in ci_deploy_job."
+
 fn ci_deploy_job(stage: DeployStage) -> Job {
   Job {
     id: stage.id,
     name: none,
-    runner: gunbc_ci_runner_spec(),
+    runner: deploy_access_runner_spec(access: stage.access),
     steps: concat(ci_prelude_steps(), [ci_deploy_step(stage: stage)]),
     needs: stage.needs,
     env: none,
@@ -280,7 +283,7 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
     if_condition: Present { value: ci_deploy_push_to_main_if },
     strategy: none,
     timeout_minutes: Present { value: default_job_timeout_minutes },
-    continue_on_error: none,
+    continue_on_error: Present { value: true },
     concurrency: none
   }
 }
