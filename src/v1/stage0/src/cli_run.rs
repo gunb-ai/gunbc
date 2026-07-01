@@ -18,12 +18,14 @@ use crate::v1_compiler_tokenize;
 use crate::v1_interpreter;
 use crate::v1_rt;
 use crate::v1_std_core::{
-    authored_name_at, build_newline_index, byte_to_line_col, diagnostic_to_message,
-    diagnostic_to_span, empty_intern_table, expr_var_name_at, field_init_node_name_at,
+    arg_name_at, arg_value, authored_name_at, block_stmts, build_newline_index, byte_to_line_col,
+    diagnostic_to_message, diagnostic_to_span, empty_intern_table, expr_method_name_at,
+    expr_var_name_at, field_access_base, field_access_field_at, field_init_node_name_at,
     field_init_node_value, has_child_named, intern,
     is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
-    is_error_diagnostic, is_interpreter_blocking_diagnostic, CompilerDiagnostic, ErrorNode,
-    ExprData, InferredNode, InternTable, NewlineIndex, Node,
+    is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
+    method_arg_nodes, method_receiver, CompilerDiagnostic, ErrorNode, ExprData, InferredNode,
+    InternTable, LiteralValue, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -5489,6 +5491,7 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
     out
 }
 
+<<<<<<< HEAD
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
 const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
 
@@ -5521,10 +5524,31 @@ fn collect_md_files(dir: &Path, out: &mut BTreeSet<String>) {
             collect_md_files(&path, out);
         } else if path.extension().and_then(|e| e.to_str()) == Some("md") {
             out.insert(doc_repo_rel(&path));
+=======
+// Host-fed fact extraction for `v2.lens.host_language_transport_script` — the lens `.dag` table
+// owns verdict logic; this bridge only projects `shell.Exec.Run` script-arg shapes from parsed
+// modules. DISSOLUTION: node-tree reader at gunbc#5364; until then one shared host seam (Chunk D).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TransportScriptArgShape {
+    ComputedApplication = 0,
+    BareStringLiteral = 1,
+    LetBoundStringLiteral = 2,
+    StringInterpLiteralsOnly = 3,
+}
+
+impl TransportScriptArgShape {
+    fn as_symbol(self) -> &'static str {
+        match self {
+            Self::ComputedApplication => "ComputedApplication",
+            Self::BareStringLiteral => "BareStringLiteral",
+            Self::LetBoundStringLiteral => "LetBoundStringLiteral",
+            Self::StringInterpLiteralsOnly => "StringInterpLiteralsOnly",
+>>>>>>> 5fbd516baf (WIP: HAND lens E: interpreter reads v2/lens/*.dag tables → retire 13 census p)
         }
     }
 }
 
+<<<<<<< HEAD
 fn markdown_link_targets(content: &str) -> Vec<String> {
     let mut out = Vec::new();
     let bytes = content.as_bytes();
@@ -5717,6 +5741,244 @@ pub fn doc_graph_dangling_link_count() -> i64 {
 
 pub fn doc_graph_doc_count() -> i64 {
     doc_graph_report().doc_count as i64
+=======
+pub struct TransportScriptPositionFactRaw {
+    pub path: String,
+    pub function: String,
+    pub shape: &'static str,
+}
+
+fn resolve_dag_path_for_transport_script(path: &str) -> PathBuf {
+    let candidate = Path::new(path);
+    if candidate.is_file() {
+        return candidate.to_path_buf();
+    }
+    let rooted = workspace_root().join(path);
+    if rooted.is_file() {
+        return rooted;
+    }
+    panic!("transport_script_position_facts: file not found: {path}");
+}
+
+fn parse_module_items_for_transport_script(
+    path: &str,
+) -> (
+    Rc<Vec<Rc<Node>>>,
+    Rc<HashMap<String, Rc<NewlineIndex>>>,
+) {
+    let resolved = resolve_dag_path_for_transport_script(path);
+    let path_str = resolved.to_string_lossy();
+    let content = std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
+        panic!("transport_script_position_facts: failed to read {path_str}: {e}")
+    });
+    let filename = resolved
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or(path);
+    let tokens = v1_compiler_tokenize::tokenize(content.clone(), filename.to_string());
+    let source_index = build_newline_index(filename.to_string(), content);
+    let mut source_indices = HashMap::new();
+    source_indices.insert(filename.to_string(), source_index);
+    let source_indices = Rc::new(source_indices);
+    let result = v1_compiler_parse::parse(tokens, source_indices.clone());
+    if let Some(err) = result.error.as_ref() {
+        panic!(
+            "transport_script_position_facts: parse error in {path}: {}",
+            diagnostic_to_message(err.diagnostic.clone())
+        );
+    }
+    let module = result
+        .module
+        .as_ref()
+        .expect("transport_script_position_facts: missing module");
+    (module.children.clone(), source_indices)
+}
+
+fn literal_string_value_transport_script(node: &Rc<Node>) -> bool {
+    matches!(
+        node.expr_data.as_ref(),
+        ExprData::ExprLiteral {
+            value: lit,
+            ..
+        } if matches!(lit.as_ref(), LiteralValue::LitStr { .. })
+    )
+}
+
+fn classify_transport_script_arg(
+    node: &Rc<Node>,
+    let_literal_bindings: &HashMap<String, bool>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> TransportScriptArgShape {
+    if literal_string_value_transport_script(node) {
+        return TransportScriptArgShape::BareStringLiteral;
+    }
+    match node.expr_data.as_ref() {
+        ExprData::ExprStringInterp => {
+            for child in node.children.iter() {
+                match child.expr_data.as_ref() {
+                    ExprData::ExprLiteral { value, .. } => {
+                        if !matches!(value.as_ref(), LiteralValue::LitStr { .. }) {
+                            return TransportScriptArgShape::ComputedApplication;
+                        }
+                    }
+                    ExprData::ExprVar { .. } => {
+                        let name = expr_var_name_at(child.clone(), source_indices.clone());
+                        if !let_literal_bindings.get(&name).copied().unwrap_or(false) {
+                            return TransportScriptArgShape::ComputedApplication;
+                        }
+                    }
+                    _ => return TransportScriptArgShape::ComputedApplication,
+                }
+            }
+            TransportScriptArgShape::StringInterpLiteralsOnly
+        }
+        ExprData::ExprVar { .. } => {
+            let name = expr_var_name_at(node.clone(), source_indices.clone());
+            if let_literal_bindings.get(&name).copied().unwrap_or(false) {
+                TransportScriptArgShape::LetBoundStringLiteral
+            } else {
+                TransportScriptArgShape::ComputedApplication
+            }
+        }
+        _ => TransportScriptArgShape::ComputedApplication,
+    }
+}
+
+fn is_shell_exec_run_transport_script(
+    node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    match node.expr_data.as_ref() {
+        ExprData::ExprMethodCall { .. } => {
+            if expr_method_name_at(node.clone(), source_indices.clone()) != "Run" {
+                return false;
+            }
+            let recv = method_receiver(node.clone());
+            match recv.expr_data.as_ref() {
+                ExprData::ExprFieldAccess { .. } => {
+                    if field_access_field_at(recv.clone(), source_indices.clone()) != "Exec" {
+                        return false;
+                    }
+                    let base = field_access_base(recv.clone());
+                    match base.expr_data.as_ref() {
+                        ExprData::ExprVar { .. } => {
+                            expr_var_name_at(base.clone(), source_indices.clone()) == "shell"
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+        _ => false,
+    }
+}
+
+fn transport_script_arg_node(
+    node: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    for arg in method_arg_nodes(node.clone()).iter() {
+        if arg_name_at(arg.clone(), source_indices.clone()).as_deref() == Some("script") {
+            return Some(arg_value(arg.clone()));
+        }
+    }
+    None
+}
+
+fn binding_is_literal_shaped_transport_script(
+    node: &Rc<Node>,
+    bindings: &HashMap<String, bool>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    matches!(
+        classify_transport_script_arg(node, bindings, source_indices),
+        TransportScriptArgShape::BareStringLiteral
+            | TransportScriptArgShape::LetBoundStringLiteral
+            | TransportScriptArgShape::StringInterpLiteralsOnly
+    )
+}
+
+fn collect_let_bindings_in_block_transport_script(
+    block: &Rc<Node>,
+    bindings: &mut HashMap<String, bool>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) {
+    for stmt in block_stmts(block.clone()).iter() {
+        match stmt.expr_data.as_ref() {
+            ExprData::ExprLet { .. } => {
+                let name = let_binding_name_at(stmt.clone(), source_indices.clone());
+                let val = let_value(stmt.clone());
+                let literal_shaped =
+                    binding_is_literal_shaped_transport_script(&val, bindings, source_indices);
+                bindings.insert(name, literal_shaped);
+            }
+            _ => walk_transport_script_expr(stmt, bindings, source_indices, &mut |_| {}),
+        }
+    }
+}
+
+fn walk_transport_script_expr(
+    node: &Rc<Node>,
+    let_bindings: &HashMap<String, bool>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    on_run: &mut dyn FnMut(TransportScriptArgShape),
+) {
+    if is_shell_exec_run_transport_script(node, source_indices) {
+        if let Some(script_node) = transport_script_arg_node(node, source_indices) {
+            on_run(classify_transport_script_arg(
+                &script_node,
+                let_bindings,
+                source_indices,
+            ));
+        }
+    }
+    for child in node.children.iter() {
+        walk_transport_script_expr(child, let_bindings, source_indices, on_run);
+    }
+}
+
+fn transport_script_facts_for_function_body(
+    rel_path: &str,
+    function: &str,
+    body: &Rc<Node>,
+    source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Vec<TransportScriptPositionFactRaw> {
+    let mut bindings = HashMap::new();
+    if let ExprData::ExprBlock { .. } = body.expr_data.as_ref() {
+        collect_let_bindings_in_block_transport_script(body, &mut bindings, source_indices);
+    }
+    let mut facts = Vec::new();
+    walk_transport_script_expr(body, &bindings, source_indices, &mut |shape| {
+        facts.push(TransportScriptPositionFactRaw {
+            path: rel_path.to_string(),
+            function: function.to_string(),
+            shape: shape.as_symbol(),
+        });
+    });
+    facts
+}
+
+pub fn transport_script_position_facts_for_path(path: String) -> Vec<TransportScriptPositionFactRaw> {
+    let (items, source_indices) = parse_module_items_for_transport_script(&path);
+    let mut facts = Vec::new();
+    for item in items.iter() {
+        let kind = item_kind(item.clone());
+        if !matches!(kind, ItemKind::FuncItem | ItemKind::FnItem) {
+            continue;
+        }
+        let Some(body) = item.body.as_ref() else {
+            continue;
+        };
+        facts.extend(transport_script_facts_for_function_body(
+            &path,
+            &item.name,
+            body,
+            &source_indices,
+        ));
+    }
+    facts
+>>>>>>> 5fbd516baf (WIP: HAND lens E: interpreter reads v2/lens/*.dag tables → retire 13 census p)
 }
 
 #[cfg(test)]
