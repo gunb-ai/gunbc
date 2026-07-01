@@ -83,7 +83,7 @@ fn ci_repo_root_shell() -> String {
 fn ci_release_build_line() -> String {
   concat(
     concat(
-      "cargo build -p v1-compiler --release --features ",
+      "\"$CARGO_HOME/bin/cargo\" build -p v1-compiler --release --features ",
       ci_release_features
     ),
     " --bins"
