@@ -1640,10 +1640,7 @@ pub fn handle_run_with_options(
 
 enum ExitClass {
     Success,
-    Failure {
-        code: i32,
-        reason: Option<String>,
-    },
+    Failure { code: i32, reason: Option<String> },
     NotProcessExit { type_name: String },
 }
 
