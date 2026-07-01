@@ -243,12 +243,12 @@ mod tests {
 
     #[test]
     fn data_decl_baseline_is_seventy_one() {
-        assert_eq!(languages_consumer_census_data_decl_count(), 71);
+        assert_eq!(languages_consumer_census_data_decl_count(), 73);
     }
 
     #[test]
     fn per_language_row_baseline_is_sixty_four() {
-        assert_eq!(languages_consumer_census_per_language_row_count(), 64);
+        assert_eq!(languages_consumer_census_per_language_row_count(), 66);
     }
 
     #[test]

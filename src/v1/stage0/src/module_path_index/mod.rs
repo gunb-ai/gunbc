@@ -1,6 +1,5 @@
 pub mod extdeps_shape_transport_policy_census;
 pub mod fact_cardinality_census;
-pub mod inert_carrier_census;
 pub mod languages_consumer_census;
 pub mod medium_structure_census;
 pub mod non_fold_residue_census;
@@ -34,10 +33,6 @@ pub use extdeps_shape_transport_policy_census::{
 pub use fact_cardinality_census::{
     cross_tree_coexistence_count, cross_tree_diverged_fork_count, cross_tree_is_coexistence,
     cross_tree_is_diverged_fork,
-};
-pub use inert_carrier_census::{
-    inert_carrier_count, inert_carrier_declared_count, inert_carrier_stale_roster_count,
-    inert_carrier_unrostered_count,
 };
 pub use languages_consumer_census::{
     languages_consumer_census_data_decl_count, languages_consumer_census_external_consumer_count,
