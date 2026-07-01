@@ -17,6 +17,7 @@ import extdeps.languages.gpu.wgsl.kernel {
   witness_wgsl_reuses_simd_op_code_authority,
   witness_wgsl_int_kernel_source_shape,
   witness_wgsl_float_kernel_source_shape,
+  witness_wgsl_kernel_sources_grammar_scaffold_documented,
 }
 import extdeps.gpu.types { Metal, Cuda, Rocm, OpenCl }
 import extdeps.gpu.apple { apple_m5_gpu_catalog }
@@ -89,6 +90,7 @@ test fn accelerator_demo_gpu_modeling_witnesses() -> Bool {
     && witness_wgsl_reuses_simd_op_code_authority()
     && witness_wgsl_int_kernel_source_shape()
     && witness_wgsl_float_kernel_source_shape()
+    && witness_wgsl_kernel_sources_grammar_scaffold_documented()
     && witness_m5_vendor_grounds_on_apple_entity()
     && witness_rtx5090_vendor_grounds_on_nvidia_entity()
     && witness_m5_runtime_is_metal()
