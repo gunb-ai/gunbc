@@ -7,11 +7,9 @@ import gunbc.tailscale_acl_phase2_credential {
   tailscale_acl_operator_email,
   operator_principal_member,
   operator_tailscale_acl_secret_bindings,
-  tailscale_acl_uses_operator_adc_not_wif,
-  tailscale_acl_admits_repo_scoped_wif,
-  tailscale_acl_operator_binding_is_user_principal_only,
-  tailscale_acl_operator_binding_excludes_bmc_assimilator,
-  tailscale_acl_operator_binding_excludes_wif_principal,
+  operator_bindings_are_user_principal_accessor_only,
+  operator_bindings_admit_repo_scoped_wif,
+  operator_bindings_admit_bmc_assimilator_sa,
   tailscale_acl_phase2_credential_design_holds,
   tailscale_acl_phase2_design_status,
   tailscale_acl_phase2_live_write_disposition,
@@ -32,12 +30,13 @@ import gunbc.tailscale_acl_phase2_credential {
   TokenAbsent,
   TokenExpired,
   TailscaleEphemeralApiToken,
-  acl_diff_from_authority,
 }
 import gunbc.assimilate.bmc_token_federation {
+  SecretAccessBinding,
   bmc_secrets_project_id,
   bmc_federated_github_repo,
   bmc_wif_principal_set,
+  bmc_assimilator_sa_member,
 }
 import extdeps.cloud.gcp.iam { role_secretmanager_secret_accessor }
 import std.disposition { Scaffold, SingleAuthority }
@@ -48,21 +47,34 @@ fn witness_secret_homed_in_gunbai_secrets() -> Bool {
 }
 
 fn witness_operator_user_principal_accessor_only() -> Bool {
-  tailscale_acl_operator_binding_is_user_principal_only()
+  operator_bindings_are_user_principal_accessor_only(bindings: operator_tailscale_acl_secret_bindings)
     && operator_tailscale_acl_secret_bindings.first().role == role_secretmanager_secret_accessor
     && operator_principal_member() == (tailscale_acl_operator_principal as String)
     && string_contains(s: operator_principal_member(), pattern: tailscale_acl_operator_email as String)
 }
 
-fn witness_excludes_repo_scoped_wif() -> Bool {
-  !tailscale_acl_admits_repo_scoped_wif()
-    && tailscale_acl_operator_binding_excludes_wif_principal()
-    && tailscale_acl_operator_binding_excludes_bmc_assimilator()
+fn witness_excludes_repo_scoped_wif_structurally() -> Bool {
+  !operator_bindings_admit_repo_scoped_wif(bindings: operator_tailscale_acl_secret_bindings)
+    && !operator_bindings_admit_bmc_assimilator_sa(bindings: operator_tailscale_acl_secret_bindings)
     && string_contains(s: bmc_wif_principal_set(), pattern: bmc_federated_github_repo)
 }
 
-fn witness_uses_operator_adc_not_ci_federation() -> Bool {
-  tailscale_acl_uses_operator_adc_not_wif()
+fn witness_wif_binding_perturbation_reddens() -> Bool {
+  let poisoned_wif = SecretAccessBinding {
+    member: bmc_wif_principal_set(),
+    role: role_secretmanager_secret_accessor,
+    secret: tailscale_acl_ephemeral_token_secret_id as String,
+    project: bmc_secrets_project_id,
+  }
+  let poisoned_sa = SecretAccessBinding {
+    member: bmc_assimilator_sa_member(),
+    role: role_secretmanager_secret_accessor,
+    secret: tailscale_acl_ephemeral_token_secret_id as String,
+    project: bmc_secrets_project_id,
+  }
+  operator_bindings_admit_repo_scoped_wif(bindings: [poisoned_wif])
+    && operator_bindings_admit_bmc_assimilator_sa(bindings: [poisoned_sa])
+    && !operator_bindings_are_user_principal_accessor_only(bindings: [poisoned_wif])
 }
 
 fn witness_ephemeral_token_ttl_one_hour() -> Bool {
@@ -145,8 +157,8 @@ fn witness_design_spine() -> Bool {
 test fn tailscale_acl_phase2_design_witnesses() -> Bool {
   witness_secret_homed_in_gunbai_secrets()
     && witness_operator_user_principal_accessor_only()
-    && witness_excludes_repo_scoped_wif()
-    && witness_uses_operator_adc_not_ci_federation()
+    && witness_excludes_repo_scoped_wif_structurally()
+    && witness_wif_binding_perturbation_reddens()
     && witness_ephemeral_token_ttl_one_hour()
     && witness_fail_closed_on_absent_or_expired_token()
     && witness_diff_gate_refuses_auto_upsert()
