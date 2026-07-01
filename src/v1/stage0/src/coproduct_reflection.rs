@@ -1197,6 +1197,68 @@ pub fn eval_fn_arrow_decl_facts_live(
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
+fn data_init_literal_fingerprint(body: &Rc<Node>) -> Option<String> {
+    match body.expr_data.as_ref() {
+        ExprData::ExprLiteral { value, .. } => match value.as_ref() {
+            crate::std_syntax::LiteralValue::LitInt { value: n, .. } => {
+                Some(format!("num:{n}"))
+            }
+            crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => {
+                Some(format!("num:{f}"))
+            }
+            crate::std_syntax::LiteralValue::LitBool { value: b } => {
+                Some(format!("bool:{b}"))
+            }
+            crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
+                Some(format!("str:\"{s}\""))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+pub fn eval_data_init_decl_facts_live(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let si = ctx.source_indices();
+    let mut rows: Vec<Value> = Vec::new();
+    for module in ctx.modules.iter() {
+        for item in module.items.iter() {
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            let info = module
+                .item_registry
+                .get(&name)
+                .or_else(|| module.item_registry.get(&item.name));
+            let Some(info) = info else { continue };
+            if info.kind != ItemKind::DataItem {
+                continue;
+            }
+            let Some(body) = item.body.as_ref() else {
+                continue;
+            };
+            let Some(literal_fp) = data_init_literal_fingerprint(body) else {
+                continue;
+            };
+            let qualified_name = logical_qualified_name(&info.module_name, &name);
+            rows.push(Value::Record {
+                type_name: ctx.sym("DataInitDecl"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
+                    (ctx.sym("module"), Value::Str(info.module_name.clone())),
+                    (ctx.sym("name"), Value::Str(name.clone())),
+                    (ctx.sym("literal_fp"), Value::Str(literal_fp)),
+                ])),
+            });
+        }
+    }
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
 fn variant_is_nullary(variant: &Rc<Node>) -> bool {
     variant.children.is_empty()
 }
