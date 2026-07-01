@@ -6498,23 +6498,17 @@ fn list_values_from_free_monoid(
 
 fn witness_entry_tree_root(
     runner_ctx: &v1_interpreter::InterpContext,
-    source_roots: &[String],
+    _source_roots: &[String],
     entry_path: &str,
 ) -> Result<v1_interpreter::Value, String> {
     let rel = repo_relative_dag_path(entry_path);
-    let abs = resolve_dag_path(source_roots, &rel)?;
-    let content = std::fs::read_to_string(&abs)
-        .map_err(|e| format!("witness entry tree root: failed to read {:?}: {e}", abs))?;
     let result = v1_interpreter::run_in_context_with_args(
         runner_ctx,
-        "floor_witness_entry_tree_root_from_host_read",
-        &[
-            (Some("source_text".to_string()), v1_interpreter::Value::Str(content)),
-            (Some("file_path".to_string()), v1_interpreter::Value::Str(rel)),
-        ],
+        "floor_witness_entry_tree_root_from_ingest_path",
+        &[(Some("entry_path".to_string()), v1_interpreter::Value::Str(rel))],
         false,
     )
-    .map_err(|e| format!("floor_witness_entry_tree_root_from_host_read: {e}"))?;
+    .map_err(|e| format!("floor_witness_entry_tree_root_from_ingest_path: {e}"))?;
     witness_holds_node_value(&result, runner_ctx)
 }
 

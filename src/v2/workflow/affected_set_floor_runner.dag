@@ -341,22 +341,43 @@ fn floor_witness_entry_tree_root_from_read(read: DagSourceReadWitness) -> Witnes
   }
 }
 
-fn floor_witness_entry_tree_root_from_host_read(
-  source_text: String,
-  file_path: String,
-) -> Witness<Node> {
-  floor_witness_entry_tree_root_from_read(
-    read: DagSourceReadWitness {
-      source: Medium { carried: source_text, fidelity: Lossless },
-      artifact: Artifact {
-        kind: SourceFile,
-        id: ^floor_host_read_artifact,
-        file_path: file_path
-      },
-      compilation_unit: ^floor_host_read_compilation_unit,
-      source_root: V2Tree
+fn floor_entry_read_from_ingest_step(
+  found: Witness<DagSourceReadWitness>,
+  read: DagSourceReadWitness,
+  entry_path: String
+) -> Witness<DagSourceReadWitness> {
+  match found {
+    Holds { value: _ } => found
+    Violates { diagnostic: _ } =>
+      if read.artifact.file_path == entry_path {
+        Holds { value: read }
+      } else {
+        Violates { diagnostic: edit_locus_no_match_diagnostic() }
+      }
+  }
+}
+
+fn floor_entry_read_from_ingest(entry_path: String) -> Witness<DagSourceReadWitness> {
+  fold_list(
+    xs: host_source_root_ingest,
+    empty: Violates { diagnostic: edit_locus_no_match_diagnostic() },
+    cons: fn(found, read) {
+      floor_entry_read_from_ingest_step(
+        found: found,
+        read: read,
+        entry_path: entry_path
+      )
     }
   )
+}
+
+fn floor_witness_entry_tree_root_from_ingest_path(entry_path: String) -> Witness<Node> {
+  match floor_entry_read_from_ingest(entry_path: entry_path) {
+    Holds { value: read } =>
+      floor_witness_entry_tree_root_from_read(read: read)
+    Violates { diagnostic: d } =>
+      Violates { diagnostic: d }
+  }
 }
 
 fn floor_rerun_frontier_from_provenance(
