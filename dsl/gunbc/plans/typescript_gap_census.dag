@@ -73,6 +73,8 @@ fn typescript_gap_census_body() -> List<MarkdownBlock> {
   ]
 }
 
+data typescript_gap_census_plan_doc_provenance: String = "bind: docs/plans/typescript-gap-census.md"
+
 data typescript_gap_census_plan: Plan = Plan {
   slug: "typescript-gap-census",
   title: "TypeScript first-class gap census — discriminating construct audit (Lane C / Track T)",
