@@ -253,11 +253,12 @@ A program is a canonical `Node` (the *idea*); ingest / emit / eval across many m
       - [ ] **C5 — digest/accelerator kv** *(low)* — route `digest_render` through `serialize_record` [plan](docs/plans/format-model-reconciliation.md)
       - [ ] **C6 — CSS declaration blocks** *(cosmetic)* — `css_rule` props as record emit [plan](docs/plans/format-model-reconciliation.md)
 - [ ] **emission = ingestion⁻¹ extended past syntax** — diagnostic + orchestration intent emit per-target by rows [plan](docs/plans/emission-ingestion-inverse.md)
-- [ ] **shell emission model** — intent coproduct (`std/orchestration`) → bash grammar rows → `emit(intent, Bash)`; dissolves `program.dag` sidecar and the shrinking importer roster [plan](docs/plans/shell-emission-model.md)
-  - [ ] **env-free Run + 2-level Retry keystone** — landed: `orch_emit_run` delegates env-free runs to `bash_fold`; `Retry` with `LogMatches` escalations unrolled and witnessed
-  - [ ] **bash AST gaps** — `EnvUnset` + multi-binding env nesting (dissolves `orch_emit_run_env_welded`; gunbc#5846)
-  - [ ] **control-flow emit** — parameterized `If`/`For`/`While` productions + `orch_emit_step` arms (today fail-closed `Rejected`)
-  - [ ] **consumer migration** — rewrite 11 `program.dag` importers to `Pipeline` intent; shrink §0 containment roster to 0
+  - [ ] **shell emission model** — `emit(intent,Bash)` via `05_emit_orchestration`; dissolves `program.dag` + `ShellCommand{script}` (Phase B); cross-link §1 `1-inline-shell-defork` [plan](docs/plans/shell-emission-model.md)
+    - [ ] **slice 0 — CI EAGAIN-retry** — `ci_cargo_eagain_retry_core` → `emit(Retry,Bash)`; byte-oracle = committed `ci.yml` [plan](docs/plans/shell-emission-model.md)
+      - [ ] **slice 1 — control-flow emit** — `If` then `For`/`While` (`orch_emit_step` arms + byte goldens) [plan](docs/plans/shell-emission-model.md)
+        - [ ] **slice 2 — fleet_converge** — `fleet_converge_emit` → committed `.github/fleet-converge.sh` [plan](docs/plans/shell-emission-model.md)
+          - [ ] **slice 3 — live_deploy** — freeze golden first; heredoc foreign-media = permanent ratchet [plan](docs/plans/shell-emission-model.md)
+            - [ ] **slice 4 — tail** — `bmc_token_federation` → `ci_workflow` RunSteps → githooks [plan](docs/plans/shell-emission-model.md)
 - [ ] `FidelityDisposition` compose-up → medium-level `DecodeFidelity`
 - [ ] eval runtime generalization (wave-1 literal pins → `wave1_model_core` primitives)
 - [ ] **invert hand-maintained artifacts** — emit each (ROADMAP flagship · doc indexes) from its `.dag` authority + drift-gate it (the ci.yml pattern) [plan](docs/plans/invert-hand-maintained.md)

@@ -53,6 +53,7 @@ fresh_artifact_path() {
     docs/plans/fail-closed-lockdown.md*) return 0 ;;
     docs/plans/format-model-reconciliation.md*) return 0 ;;
     docs/plans/regime2-shared-emission-fold.md*) return 0 ;;
+    docs/plans/shell-emission-model.md*) return 0 ;;
     docs/plans/construction-justification-rule.md*) return 0 ;;
     docs/plans/emission-ingestion-inverse.md*) return 0 ;;
     docs/plans/testgen-oracle.md*) return 0 ;;
@@ -82,7 +83,6 @@ fresh_artifact_path() {
     docs/plans/ci-floor-fractal-gantt.md*) return 0 ;;
     docs/plans/representation-minimization.md*) return 0 ;;
     docs/plans/reference-grounding-migration.md*) return 0 ;;
-    docs/plans/shell-emission-model.md*) return 0 ;;
     dsl/**) return 0 ;;
     src/v2/**) return 0 ;;
   esac

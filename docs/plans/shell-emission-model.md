@@ -1,63 +1,77 @@
-# Shell emission model — orchestration intent to bash via grammar rows
+# Shell emission model — orchestration intent to bash via emit(intent, Bash)
 
-> Formal plan for shell as a **first-class emission target**: medium-agnostic orchestration intent (`std/orchestration`) renders to bash through grammar-inverse rows at the realization edge — not through the deletable `program.dag` forward emitter. Realizes [emission-ingestion-inverse.md](emission-ingestion-inverse.md) gap **(B)**; design proposal: [orchestration-as-intent-design.md](orchestration-as-intent-design.md). DESIGN refs: §2 (one concept — intent vs transport vs spelling), §3 (intent central / dispatch+rows peripheral; `program.dag` is a nickname scaffold), §4 (`emit = serialize_target ∘ translate`, N+M), §5 (fail-closed; construction over validation), §6 (priced in displaced cost).
+> Operator-signed design (multi-agent audit, verified against live tree). Shell emission lane: medium-agnostic orchestration intent → `emit(intent, Bash)` via the existing `05_emit_orchestration` dispatcher — **not** a new `ShellProgram` AST. DESIGN refs: §2 (intent vs transport vs spelling), §3 (single authority; `program.dag` rostered for dissolution), §4 (`emit = serialize_target ∘ translate` — endgame Q3), §5 (emit-only faithfulness; green by execution vs frozen bytes), §6 (purity-trap fence: no construct without a named live site). Complements [regime-2 shared emission fold](regime2-shared-emission-fold.md) (`std.layout.Doc` = **layout only**, never shell content) and [format-model-reconciliation](format-model-reconciliation.md) (record spelling). Parent arc: [emission-ingestion-inverse.md](emission-ingestion-inverse.md) gap (B).
 
-**Status:** planning tracker · **`.dag` carrier is authority**. Linked from `ROADMAP.md` §6. Complementary to [regime-2 shared emission fold](regime2-shared-emission-fold.md) (config/doc *projection*) and [format-model-reconciliation](format-model-reconciliation.md) (record spelling) — those own non-shell text; **this doc owns orchestration → shell**.
+**Status:** planning tracker · **`.dag` carrier is authority** (§6). Linked from `ROADMAP.md` §6. **This PR is docs/authority only** — no emitter/serializer code.
 
-## 1. The gap
+## 1. The finding (reframes the frontier)
 
-Shell is the only language used for *orchestration* (CI steps, hooks, fleet converge) but was never a modeled emission target — consumers hand-author bash as `concat` trees or import the `program.dag` `ShellStmt` sidecar directly (11 importers on a shrinking frozen roster per the §0 containment guard). Displaced cost: every new control-flow pattern is another bespoke string; the anemia cannot spread to Rust/Go (they are single-shot emit targets only) but forces *more bash* until intent is modeled.
+Shell is emitted as **raw strings** everywhere — even `host_effect.dag` carries `ShellCommand{script: String}`. But the arc is **~20% built**, not greenfield:
 
-Historical anchor: ROADMAP #510 named "Shell-emission target (needs design)" when pre-push hooks bypassed the compiler's dependency machinery.
+- **Intent coproduct exists** — `src/v2/std/orchestration.dag`: `Run` / `Step{Do,If,For,While,Retry}` / `Pipeline` / `Predicate`.
+- **Bidirectional bash language exists** — `src/v2/extdeps/languages/bash.dag` (~2201 lines, POSIX-cited).
+- **Intent→bash lowering exists but is bespoke** — `src/v2/compiler/05_emit_orchestration.dag` is a per-construct dispatcher, **not** the same `target_model_edge_translation_rules` table that emits Rust/TS (`06_translate.dag` has zero orchestration refs).
+- **Control-flow emission is the greenfield work** — `If`/`For`/`While` all return `outcome_rejected` today; only `Do{Run}` + a hardcoded 2-level `Retry` lower. `Run.command:String` is the **same anemic leaf** as `host_effect.ShellCommand.script`.
 
-## 2. The model — three layers, one fold direction
+## 2. The model (locked)
+
+**ADOPT:** `intent(std)` → `bash(extdeps)` via `emit(intent, Bash)`, extending the existing dispatcher.
+
+**REJECT:** a new `ShellProgram` AST — `dsl/extdeps/languages/bash/program.dag` is already rostered for dissolution ([emission-ingestion-inverse.md](emission-ingestion-inverse.md) §2).
+
+**CUT:** host-op vocab (`EnsurePackage`/`EnableService`/`ServePort`) — single consumer (`live_deploy`) + idempotency is already a `host_effect.Policy` fact (`OneShotIdempotent`). Desugar `live_deploy` verbs **inline** to `If{Not{ExitZero{…}}, Do{…}}` intent; no minted verb.
+
+**Binding purity-trap fence (§6):** no construct (grammar arm / intent variant / desugar) added without a **named live site** that emits it; do not grow ingest-direction bash gates to serve emit-only coverage.
+
+**`std.layout.Doc` stays for LAYOUT only** (line/indent/heredoc-body framing), never for shell content — [regime-2](regime2-shared-emission-fold.md) owns that half.
 
 ```
-author intent (std/orchestration)  →  grammar rows (v2.extdeps.languages.bash)
-                                      →  shell text (bash_command_fold / 05_emit_orchestration)
+std/orchestration (intent)  →  05_emit_orchestration (dispatcher)
+                              →  v2.extdeps.languages.bash (rows)
+                              →  shell text
 ```
 
-| layer | home | role |
-| --- | --- | --- |
-| **intent** | `src/v2/std/orchestration.dag` | medium-agnostic `Run`/`Step`/`Pipeline` coproduct (control flow, retry, predicates) |
-| **realization rows** | `src/v2/extdeps/languages/bash.dag` | parameterized grammar productions (`bash_if_*`, `bash_retry_*`, env-prefix, pipe, …) |
-| **emit fold** | `src/v2/compiler/05_emit_orchestration.dag` + `bash_command_fold.dag` | `emit(intent, Bash)` = grammar-inverse serialize; **never** extends `program.dag` |
+## 3. Effects are first-class (load-bearing)
 
-**Discriminator (not a fourth hand-fold):** consumer modules import **no** bash AST. Only the realization edge authors target syntax; the §0 `RealizationVocabularyContainment` guard enforces this with a shrinking roster.
+**host_effect Phase B:** the `ShellCommand{script:String}` payload dissolves onto **modeled orchestration intent** (a `Pipeline`), **NOT** onto the doomed `program.dag`+`serialize_bash` sidecar. The existing [host-effect-orchestration.md](host-effect-orchestration.md) Phase-B text pointing at `program.dag` **predates** `emit(intent,Bash)` and is **superseded** by this plan.
 
-**Honesty boundary:** orchestration shell is emit-primary today (no `ingest(Pipeline)`), but the architecture is grammar-inverse so rows can gain ingest later without a second emitter — same class as bash syntax slices 1–5d.
+Load-bearing: `host_effect.dag` is a DESIGN-named seam. **Gated** on srv3 `OsInstalled` + Receipt-lock (#5725) milestones — record direction here; execution sequences behind those gates.
 
-## 3. Sibling plans (one home each)
+## 4. Faithfulness boundary (§5)
 
-- **[emission-ingestion-inverse.md](emission-ingestion-inverse.md)** — parent arc (gap A diagnostics + gap B orchestration + gap C ci.yml shim + §0 containment guard). This doc is the **implementation tracker for gap B's shell half**.
-- **[orchestration-as-intent-design.md](orchestration-as-intent-design.md)** — sign-ready **design** (vocabulary grounding, tier-1 vs tier-2, worked consumers `ci_cargo_eagain_retry_core` + `fleet_converge_emit`). This doc does not restate it; it tracks landings against it.
-- **[regime-2 shared emission fold](regime2-shared-emission-fold.md)** — **different regime**: forward-only `Doc` layout projection for config artifacts (yaml, gitignore, runner manifest). Not orchestration shell.
-- **[host-effect-orchestration.md](host-effect-orchestration.md)** — **execution** interface (`apply(target, effect, policy)`). Shell emission produces the artifacts that `EmitArtifactThenThinRun` executes; compose, don't merge.
+Shell-orchestration sites are **emit-only** (regime-2 class): no round-trip oracle. Faithfulness = **byte-identity vs the current committed emitted output** + a discriminating one-byte-perturbation RED tooth.
 
-## 4. Landed (execution-grounded)
+**Critical honesty — `live_deploy`:** has **no committed artifact**. Its "drift gate" (`dsl/test/claim/live_deploy/emit_test.dag:123-128`) compares `expected_live_deploy_apply_script()` to **itself** (the emit fn) = a self-referential fabricated-green trap (#6023 disease). `live_deploy` must **freeze** its current output as a committed golden literal **before** it is provable.
 
-- **`std/orchestration.dag`** — `Run`, `Step`/`Do`/`Retry`, `Predicate`, `EnvBinding`, `Pipeline` (tier-1 vocabulary per design doc).
-- **`05_emit_orchestration.dag`** — `orch_emit_pipeline` / `orch_emit_run` / `orch_emit_step`:
-  - env-**free** `Run` → delegates to `bash_fold_raw_line_target_model` + `bash_word_pass_emitted` (byte-identical witness: `orch_run_empty_env_delegates_to_shell_emit_holds`).
-  - `Retry` with two `LogMatches` escalation levels → unrolled bash (witnessed in `orchestration_retry_emit_test.dag`).
-  - `If`/`For`/`While` → **fail-closed `Rejected`** (not silently omitted).
-- **`bash_command_fold.dag`** — grammar-inverse fold over `ShellStmt` productions; fold==serialize witnesses green.
-- **Gap A partial** — `EmitDirective` bash rows landed (#5505); orchestration `Retry` warnings compose on them.
+**Committed real goldens that exist:** `.github/workflows/ci.yml`, `.github/fleet-converge.sh`.
 
-## 5. Sequencing
+**Done bar:** green by **execution** vs frozen bytes, RED on perturb — never typechecks/emits/self-referential-gate.
 
-1. **Bash AST gaps (modeling)** — `EnvUnset` + multi-binding `FreeMonoid<EnvBinding>` nesting in bash grammar (dissolves `orch_emit_run_env_welded` single-string render). Tracked: gunbc#5846.
-2. **Parameterized control-flow productions** — lift fixed-literal `bash_if_*` / `for` / `while` rows to accept `BoundToken` child emissions per [orchestration-as-intent-design.md](orchestration-as-intent-design.md) §4.2; wire `orch_emit_step` `If`/`For`/`While` arms.
-3. **Consumer migration** — each of the 11 `program.dag` importers rewrites to `Pipeline` intent + `orch_emit_*`; roster entry deleted per migration. Order: `dsl/tools/*` transports → `ci_spec` retry core → `fleet_converge_emit` (hardest).
-4. **Roster empties → pure wall** — containment guard flips ratchet→wall; delete `extdeps/languages/bash/program.dag` forward emitter.
-5. **ci.yml shim (gap C)** — held until keystone: bootstrap + EAGAIN retry cascade emitted from intent into thin GHA YAML ([emission-ingestion-inverse.md](emission-ingestion-inverse.md) §4(C)).
+## 5. Slice sequence (each gated by a frozen committed byte oracle)
 
-## 6. Open / boundaries
+1. **Slice 0 — CI EAGAIN-retry cutover:** route `dsl/gunbc/ci_spec.dag` `ci_cargo_eagain_retry_core` (nested-concat blob, :68) through `render(emit(Retry,Bash))`; proven by committed `ci.yml` drift-gate staying byte-identical + existing teeth witness `orch_retry_env_value_has_teeth_holds`. Env is welded (`orch_emit_run_env_welded`, dissolves gunbc#5846) but byte-exact.
+2. **Slice 1 — control-flow emission (greenfield):** `If` first (new `orch_emit_step::If` arm + parameterized `orch_if_target_model` bridge + bash round-trip fixture + byte golden), then `For`/`While`. The real greenfield work + the §4 payoff for control flow.
+3. **Slice 2 — fleet_converge:** `fleet_converge_emit.dag` (~21KB) → committed golden `.github/fleet-converge.sh` — the biggest displaced cost.
+4. **Slice 3 — live_deploy:** ONLY after Q1 execution-gates clear **and** after freezing output as a committed golden. Heredoc foreign-media bodies (JS server, systemd unit) stay opaque `FailClosed` — a **permanent ratchet**, not migration debt.
+5. **Slice 4 — tail consumers:** `bmc_token_federation` → `ci_workflow` inline `RunStep`s (case/`uname` → model as `TargetArchitecture`; cross-link ROADMAP §1 `1-inline-shell-defork`) → githooks.
 
-- Tier-2 residue (`fleet_converge_emit` functions, arithmetic) stays named second-tier per design doc — not a reason to widen tier-1 or touch `program.dag`.
-- `Retry` lowering is **unroll** (heterogeneous escalation), not uniform `for seq` — modeling decision locked in design doc §4.2.
-- Pre-push / commit-pipeline hooks are consumers of this model once keystone consumers land; not a separate emitter fork.
+## 6. Sidecar dissolution (parallel)
+
+`dsl/extdeps/languages/bash/program.dag` (`ShellProgram`/`serialize_bash`) has **11 live importers** (`ci_spec`, `ci_yaml_validate`, `local_tidy_spec`, `dsl/tools/{build_step,dsl_compile_clean_transport,emit_determinism_transport,emit_host_transport,extdeps_external_authority_transport,layering_imports_transport}`, + 2 test witnesses). Migrate all onto the v2 bidirectional bash language, then delete `program.dag`+`serialize_bash`.
+
+Tracked in [emission-ingestion-inverse.md](emission-ingestion-inverse.md) / `emission_ingestion_inverse.dag` ("11 importers shrinking to 0") — **cross-link only, do not duplicate** the roster here.
+
+## 7. Named residue / dissolution triggers
+
+- **(a) Dispatcher endgame (OPEN Q3):** dissolve `05_emit_orchestration`'s hand-dispatch into `06_translate`'s rule table — the §4 endgame that makes "a new construct is a row" TRUE.
+- **(b) `live_deploy_emit_shell_dissolution_trigger`:** retires only at host_effect Phase B (escalated).
+- **(c) Roster honesty:** `medium_structure_exception_roster` entries for `live_deploy`/`githooks` **never fully retire** while foreign-media heredoc bodies stay opaque — split "migratable raw control flow" (eventual wall) vs "permanent foreign-media framing" (permanent ratchet); check rosters by **model walk**, not grep.
+
+## 8. Open questions (unresolved)
+
+- **Q3:** commit to dissolving `05_emit_orchestration` dispatch into `06_translate` rules, or accept per-construct bridges as steady state?
+- **Q4:** cross-tree — `dsl/extdeps/shell/shell.dag` AND `src/v2/extdeps/shell.dag` both declare module `extdeps.shell` (flat-intern collision), and `bash_command_fold.dag:3` imports the dsl `program.dag` — resolve via `--dependency-pool-index` precedence now, or fold into the dsl/v2 consolidation thread?
 
 ## Dissolution trigger (DESIGN §6)
 
-Delete this doc when orchestration intent emits exclusively through grammar rows (every `program.dag` importer migrated, the §0 containment roster empty, `program.dag` deleted), `If`/`For`/`While`/`Retry`/`Run` coverage matches the tier-1 vocabulary witnessed byte-identically on `ci_cargo_eagain_retry_core` and the majority tier-1 surface of `fleet_converge_emit`, and gap C's ci.yml embedded-shell count has collapsed to GHA-native structure only — at which point shell emission is a witnessed property of the substrate, not a tracked arc.
+Delete this doc when all shell-emit sites route through emit(intent,Bash), the sidecar program.dag is deleted, and host_effect Phase B has dissolved ShellCommand{script} onto modeled orchestration intent.
