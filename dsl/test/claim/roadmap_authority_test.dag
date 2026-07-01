@@ -14,107 +14,114 @@ fn out() -> String { emit_with(m: merged()) }
 fn witness_frame_all_sections() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "# gunbc — Roadmap")
-    && string_contains(s: o, pattern: "## 0. Fail-closed lock-down")
-    && string_contains(s: o, pattern: "## 1. CI as the substrate integration dogfood")
-    && string_contains(s: o, pattern: "## 2. Minimal work")
-    && string_contains(s: o, pattern: "## 3. Complexity budget gate")
-    && string_contains(s: o, pattern: "## 4. Testgen as the bug-class oracle")
-    && string_contains(s: o, pattern: "## 5. Self-host v2")
-    && string_contains(s: o, pattern: "## 6. idea → idea compiler")
-    && string_contains(s: o, pattern: "## 7. HTML / React rendering")
-    && string_contains(s: o, pattern: "## 8. Session dashboard on `.dag` (SHELVED)")
+    && string_contains(s: o, pattern: "## 1. Get off v1 — v2 self-hosts (TERMINAL: `src/v1` deleted)")
+    && string_contains(s: o, pattern: "## 2. Compute fabric — own the infra (CI · deploy · control plane)")
+    && string_contains(s: o, pattern: "## 3. The floor — audit what we have (does it actually do what it claims?)")
+    && string_contains(s: o, pattern: "## 4. Shelved (parked 2026-07-01 — not deleted)")
+}
+
+fn witness_reset_marker() -> Bool {
+  let o = out()
+  string_contains(s: o, pattern: "**Reset 2026-07-01 (operator-directed).**")
+    && string_contains(s: o, pattern: "The prior roadmap with full detail is in git history.")
 }
 
 fn witness_subgroup_labels() -> Bool {
   let o = out()
-  string_contains(s: o, pattern: "**Audits (done):**")
-    && string_contains(s: o, pattern: "**In-scope this window:**")
-    && string_contains(s: o, pattern: "**Fenced OUT (after stability):**")
-    && string_contains(s: o, pattern: "**Meta — lock down the reasoning (§7 recursion):**")
+  string_contains(s: o, pattern: "**Now — correctness of the current posture:**")
+    && string_contains(s: o, pattern: "**Floor throughput — reduce work, then schedule it (26m → <1min on a typical PR):**")
+    && string_contains(s: o, pattern: "**Control plane — the #6096 re-land, done right (G2/G3):**")
+    && string_contains(s: o, pattern: "**Fabric dispatch — RunShape → Allocation → Receipt (GitHub is the queue, not the scheduler):**")
+    && string_contains(s: o, pattern: "**Fleet hardening — make our metal safe for the load it carries:**")
+}
+
+fn witness_fabric_design_rule() -> Bool {
+  let o = out()
+  string_contains(s: o, pattern: "provider-specific power is earned behind a `ProviderOffer` adapter")
+    && string_contains(s: o, pattern: "oversubscription is an optimization proven by receipts, never assumed by placement")
+    && string_contains(s: o, pattern: "**TERMINAL: required CI runs on the compute fabric")
+    && string_contains(s: o, pattern: "immutable storage + stateless compute + explicit route + read-back receipt")
+    && string_contains(s: o, pattern: "**stateless frontend MVP on fabric**")
+    && string_contains(s: o, pattern: "**Ordering (operator-signed):**")
 }
 
 fn witness_emit_refs_from_binding() -> Bool {
   let o = out()
-  string_contains(s: o, pattern: "**numeric-tower grounding** (#5428)")
-    && string_contains(s: o, pattern: "**realization-vocabulary containment guard** (#5445/#5453)")
+  string_contains(s: o, pattern: "**provenance ingest live at floor runtime** (#6105)")
+    && string_contains(s: o, pattern: "**orchestration emission → agnostic registry dispatch** (#6106)")
+    && string_contains(s: o, pattern: "**no-dual-representation-test lens rebuilt pure-v2** (#6104)")
 }
 
-fn witness_c1_measure_rows() -> Bool {
-  string_contains(s: out(),
-    pattern: "- [ ] **Section 1 spawn-width foundation — std.measure expressibility** (#5470/#5478)")
-    && string_contains(s: out(), pattern: "⏳ awaiting sign-off")
-}
-
-fn witness_c2_roundtrip_law() -> Bool {
+fn witness_pillar1_no_overclaim() -> Bool {
   let o = out()
-  string_contains(s: o, pattern: "- [ ] **round-trip law (ingest∘emit = id, DecodeFidelity-bounded)** (#5525/#5527)")
-    && string_contains(s: o, pattern: "- [ ] **medium axis** —")
-    && string_contains(s: o, pattern: "per-medium round-trips are v1-seed interim")
-    && string_contains(s: o, pattern: "⏳ awaiting sign-off")
-}
-
-fn witness_c3_inversion_subrows() -> Bool {
-  string_contains(s: out(),
-    pattern: "- [ ] **PR→checkbox status + section-emit + projection layer** (#5491/#5508/#5520)")
-    && string_contains(s: out(), pattern: "⏳ awaiting sign-off")
-}
-
-fn witness_c4_selfhost_no_overclaim() -> Bool {
-  let o = out()
-  string_contains(s: o, pattern: "class-3 corpus-coherence + cargo-green seed ✓ (#5481)")
-    && string_contains(s: o, pattern: "§7 regen-fixpoint deferred, #5514; src/v1 NOT yet deletable")
+  string_contains(s: o, pattern: "interim fixpoint gate, 2-of-92 roster ✓ (#6009)")
     && string_contains(s: o, pattern: "**TERMINAL: `src/v1` deleted**")
+    && string_contains(s: o, pattern: "the ~154k figure in older docs is stale")
+    && !string_contains(s: o, pattern: "- [x] **real fixed point**")
 }
 
-fn witness_c4_cargo_green_landed() -> Bool {
-  string_contains(s: out(),
-    pattern: "- [ ] **emitted crate `cargo build`s green (Route-A last mile) ✓ LANDED (#5777/#5873)**")
-    && string_contains(s: out(), pattern: "⏳ awaiting sign-off")
-}
-
-fn witness_c5_rust_gate_not_greenlit() -> Bool {
-  string_contains(s: out(), pattern: "- [ ] **rust-gate coverage** (shared §1)")
+fn witness_pillar2_posture() -> Bool {
+  let o = out()
+  string_contains(s: o, pattern: "required CI is back on the fleet")
+    && string_contains(s: o, pattern: "#6107, reverted #6111")
+    && string_contains(s: o, pattern: "#6096 (fleet converge control plane) was **closed unmerged**")
+    && string_contains(s: o, pattern: "the re-land is an architecture change, not a rebase")
 }
 
 fn witness_a_prose_verbatim() -> Bool {
   string_contains(s: out(),
-    pattern: "**◆ Milestones:** key-by-construction ✓ (#5425) → **▸ warm==cold purity proven (616/616, #5429)**")
+    pattern: "**◆ Milestones:** front-end ✓ · emit-rust well-typed ✓ · cross-tree import ✓ (#5473)")
 }
 
 fn witness_b_ordered_interleaving() -> Bool {
   let o = out()
-  string_contains(s: o, pattern: "([DESIGN §5](DESIGN.md)).\n\n→ [audit + checklist](docs/plans/fail-closed-lockdown.md)")
-    && string_contains(s: o, pattern: "[audit + checklist](docs/plans/fail-closed-lockdown.md)\n\nThis window = a few days of STABILITY")
-    && string_contains(s: o, pattern: "[fork plan](docs/plans/model-realization-fork.md) §3).\n\n**◆ Milestones:** fail-open audited")
-    && string_contains(s: o, pattern: "`Value::Null` split *(deep root)*\n\n**Audits (done):**")
+  string_contains(s: o, pattern: "[seed census](docs/plans/seed-shrink-census.md)\n\nGround truth (2026-07-01):")
+    && string_contains(s: o, pattern: "byte-identity + the interim fixpoint + well-typed emit.\n\n**◆ Milestones:** front-end ✓")
+    && string_contains(s: o, pattern: "[charter](docs/plans/ci-process-end-to-end.md)\n\n**The core design rule (operator-signed, 2026-07-01):**")
+    && string_contains(s: o, pattern: "Phase 2, earned by receipts.\n\n**◆ Milestones:** OOM root-caused")
 }
 
 fn witness_b_order_discriminator() -> Bool {
-  !string_contains(s: out(), pattern: "**Audits (done):**\n\nThis window = a few days of STABILITY")
+  !string_contains(s: out(), pattern: "**◆ Milestones:** front-end ✓ · emit-rust well-typed ✓ · cross-tree import ✓ (#5473)\n\nGround truth (2026-07-01):")
 }
 
 fn witness_merge_perturb_does_not_flip_boxes() -> Bool {
   let full = out()
-  let dropped = emit_with(m: [5445, 5453, 5433, 5476, 5473, 5456, 5421, 5425])
-  let pat = "- [ ] **numeric-tower grounding** (#5428)"
+  let flipped = emit_with(m: [6104, 6105, 6106])
+  let pat = "- [ ] **provenance ingest live at floor runtime** (#6105)"
   string_contains(s: full, pattern: pat)
-    && string_contains(s: dropped, pattern: pat)
-    && !string_contains(s: full, pattern: "- [x] **numeric-tower grounding** (#5428)")
-    && !string_contains(s: dropped, pattern: "- [x] **numeric-tower grounding** (#5428)")
+    && string_contains(s: flipped, pattern: pat)
+    && !string_contains(s: full, pattern: "- [x] **provenance ingest live at floor runtime** (#6105)")
+    && !string_contains(s: flipped, pattern: "- [x] **provenance ingest live at floor runtime** (#6105)")
+}
+
+fn witness_shelf_is_uncheckboxed() -> Bool {
+  let o = out()
+  string_contains(s: o, pattern: "- **fold-ergonomics lane** —")
+    && !string_contains(s: o, pattern: "- [ ] **fold-ergonomics lane** —")
+}
+
+fn witness_audit_lane_present() -> Bool {
+  let o = out()
+  string_contains(s: o, pattern: "**Audit — green by execution, red by perturbation:**")
+    && string_contains(s: o, pattern: "**affected-set lens** *(the operator's named example)*")
+    && string_contains(s: o, pattern: "A mechanism claim without a red-control is *unverified*")
+    && string_contains(s: o, pattern: "**artifact-freshness gate**")
+    && string_contains(s: o, pattern: "**one tree, one verdict**")
 }
 
 test fn roadmap_authority_witnesses() -> Bool {
   witness_frame_all_sections()
+    && witness_reset_marker()
     && witness_subgroup_labels()
+    && witness_fabric_design_rule()
     && witness_emit_refs_from_binding()
-    && witness_c1_measure_rows()
-    && witness_c2_roundtrip_law()
-    && witness_c3_inversion_subrows()
-    && witness_c4_selfhost_no_overclaim()
-    && witness_c4_cargo_green_landed()
-    && witness_c5_rust_gate_not_greenlit()
+    && witness_pillar1_no_overclaim()
+    && witness_pillar2_posture()
     && witness_a_prose_verbatim()
     && witness_b_ordered_interleaving()
     && witness_b_order_discriminator()
     && witness_merge_perturb_does_not_flip_boxes()
+    && witness_shelf_is_uncheckboxed()
+    && witness_audit_lane_present()
 }
