@@ -3,8 +3,6 @@ module gunbc.ci_deploy_access
 import std.types { NonEmptyStr, List, String, Bool }
 import gunbc.fleet_intent { ComputeHost, srv1_host }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
-import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
-import extdeps.github.actions { RunnerSpec, SelfHosted }
 
 type PrivilegedCommand {
   path: NonEmptyStr
@@ -100,21 +98,5 @@ fn deploy_access_is_local_apply(access: DeployAccess) -> Bool {
     SshShell { ssh_host: _ } => false
   }
 }
-
-fn deploy_access_host_runner_label(host: ComputeHost) -> String {
-  host.identity as String
-}
-
-fn deploy_access_runner_spec(access: DeployAccess) -> RunnerSpec {
-  match gunbc_ci_runner_spec() {
-    SelfHosted { labels: base } =>
-      SelfHosted {
-        labels: concat(base, [deploy_access_host_runner_label(host: access.host)]),
-      }
-    other => other
-  }
-}
-
-data deploy_access_host_label_provisioning_note: String = "DeployAccess consumes the host identity as a GHA runner label (e.g. srv1); HostRunnerProvision (merry-carp-256) must register matching labels on each host's actions-runner instances."
 
 data deploy_access_preflight_shell_dissolution_trigger: String = "🟡 dissolve-on: deploy_access_preflight_shell — bash preflight script built with concat/string shell (extends live_deploy medium-as-string debt, #5828); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — privileged-command checks modeled as HostEffect intent rows realized through host_effect_apply transport handlers, retiring bash script emit and medium_structure_exception_roster entry for dsl/gunbc/ci_deploy_access.dag"
