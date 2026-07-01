@@ -1,0 +1,42 @@
+module test.claim.merge_admission_deployed_gate_control
+
+import gunbc.merge_admission {
+  MergeAdmissionReceipt,
+  Success,
+  merge_admission_would_block,
+}
+import gunbc.ci_failure_class {
+  merge_admission_blocks_merge,
+  merge_freshness_verdict_is_consumed_to_block,
+}
+import std.types { ContentHash }
+
+data control_base_b0: ContentHash = "merge-admission-deployed-gate-control-base-b0"
+data control_base_b1: ContentHash = "merge-admission-deployed-gate-control-base-b1"
+data control_roster_r0: ContentHash = "merge-admission-deployed-gate-control-roster-r0"
+
+data control_stale_base_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
+  pr_number: Present { value: 6100 },
+  head_sha: "feedfacefeedfacefeedfacefeedfacefeedface",
+  base_tree_hash: control_base_b0,
+  gate_roster_hash: control_roster_r0,
+  conclusion: Success,
+}
+
+test fn deployed_gate_pure_predicate_would_block_stale_base() -> Bool {
+  merge_admission_would_block(
+    receipt: control_stale_base_receipt,
+    merge_target_tree_hash: control_base_b1,
+    current_roster_hash: control_roster_r0,
+  )
+}
+
+test fn deployed_gate_admits_stale_base_while_gating_deferred() -> Bool {
+  let deployed_blocks = merge_admission_blocks_merge(
+    receipt: control_stale_base_receipt,
+    merge_target_tree_hash: control_base_b1,
+    current_roster_hash: control_roster_r0,
+  )
+  merge_freshness_verdict_is_consumed_to_block() == deployed_blocks
+    && deployed_blocks == false
+}
