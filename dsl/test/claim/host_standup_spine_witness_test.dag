@@ -204,16 +204,30 @@ test fn assimilation_gate_still_refuses_p0_p2_p4_gaps_when_p3_landed() -> Bool {
     }
 }
 
-test fn declared_gap_steps_carry_interim_ctrl_realization_paths() -> Bool {
+test fn declared_gap_steps_carry_interim_realization_authority() -> Bool {
   fold(
     host_standup_spine,
     init: true,
     f: (acc, s) => acc && match s.disposition {
       DeclaredGap { interim_realization: path, refusal: r } =>
-        string_contains(s: path, pattern: "ctrl:scripts/session-dashboard/lib/")
-          && string_contains(s: r, pattern: "host_standup:")
+        string_contains(s: r, pattern: "host_standup:")
+          && (string_contains(s: path, pattern: "ctrl:")
+            || (string_contains(s: path, pattern: "extdeps.")
+              && string_contains(s: path, pattern: "gunbc.")))
       ModeledCompose { authorities: refs } => refs.length() > 0
     }
+  )
+}
+
+test fn p0_gap_ledger_matches_spine_partial_authorities() -> Bool {
+  fold(
+    host_standup_gap_ledger,
+    init: false,
+    f: (acc, row) =>
+      acc || (row.phase_label == "P0:reach-secrets-network"
+        && row.modeling == "partial"
+        && string_contains(s: row.authority_or_interim, pattern: "extdeps.tailscale.acl")
+        && string_contains(s: row.authority_or_interim, pattern: "gunbc.tailscale_acl"))
   )
 }
 
