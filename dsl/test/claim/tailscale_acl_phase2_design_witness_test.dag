@@ -1,7 +1,8 @@
 module test.claim.tailscale_acl_phase2_design_witness
 
 import gunbc.tailscale_acl_phase2_credential {
-  tailscale_acl_api_key_secret_id,
+  tailscale_acl_ephemeral_token_secret_id,
+  tailscale_acl_ephemeral_token_ttl_seconds,
   tailscale_acl_operator_principal,
   tailscale_acl_operator_email,
   operator_principal_member,
@@ -16,11 +17,21 @@ import gunbc.tailscale_acl_phase2_credential {
   tailscale_acl_phase2_live_write_disposition,
   acl_auto_upsert_refused,
   acl_upsert_permitted,
+  acl_upsert_wet_shape_is_diff_print_only,
+  ephemeral_token_gate_fail_closed,
+  ephemeral_token_gate_valid,
+  tailscale_ephemeral_token_within_ttl,
   DiffPending,
   OperatorConfirmed,
   RefusedAutoUpsert,
   PoliciesDiffer,
   PoliciesMatch,
+  DiffPrintOnly,
+  LiveWriteRefused,
+  TokenPresent,
+  TokenAbsent,
+  TokenExpired,
+  TailscaleEphemeralApiToken,
   acl_diff_from_authority,
 }
 import gunbc.assimilate.bmc_token_federation {
@@ -33,7 +44,7 @@ import std.disposition { Scaffold, SingleAuthority }
 
 fn witness_secret_homed_in_gunbai_secrets() -> Bool {
   operator_tailscale_acl_secret_bindings.first().project == bmc_secrets_project_id
-    && operator_tailscale_acl_secret_bindings.first().secret == (tailscale_acl_api_key_secret_id as String)
+    && operator_tailscale_acl_secret_bindings.first().secret == (tailscale_acl_ephemeral_token_secret_id as String)
 }
 
 fn witness_operator_user_principal_accessor_only() -> Bool {
@@ -54,17 +65,73 @@ fn witness_uses_operator_adc_not_ci_federation() -> Bool {
   tailscale_acl_uses_operator_adc_not_wif()
 }
 
+fn witness_ephemeral_token_ttl_one_hour() -> Bool {
+  tailscale_acl_ephemeral_token_ttl_seconds == 3600
+    && string_contains(s: tailscale_acl_ephemeral_token_secret_id as String, pattern: "ephemeral")
+}
+
+fn witness_fail_closed_on_absent_or_expired_token() -> Bool {
+  ephemeral_token_gate_fail_closed(gate: TokenAbsent { reason: "not dispensed" })
+    && ephemeral_token_gate_fail_closed(gate: TokenExpired { reason: "ttl elapsed" })
+    && !ephemeral_token_gate_valid(
+      gate: TokenAbsent { reason: "not dispensed" },
+      now_epoch_seconds: 1000
+    )
+    && !ephemeral_token_gate_valid(
+      gate: TokenExpired { reason: "ttl elapsed" },
+      now_epoch_seconds: 1000
+    )
+    && ephemeral_token_gate_valid(
+      gate: TokenPresent {
+        token: TailscaleEphemeralApiToken {
+          token: "tskey-witness" as Secret,
+          issued_at_epoch_seconds: 1000,
+          ttl_seconds: 3600,
+        }
+      },
+      now_epoch_seconds: 2000
+    )
+    && !tailscale_ephemeral_token_within_ttl(
+      token: TailscaleEphemeralApiToken {
+        token: "tskey-witness" as Secret,
+        issued_at_epoch_seconds: 1000,
+        ttl_seconds: 3600,
+      },
+      now_epoch_seconds: 5000
+    )
+}
+
 fn witness_diff_gate_refuses_auto_upsert() -> Bool {
   acl_auto_upsert_refused(gate: DiffPending { diff: PoliciesMatch })
     && acl_auto_upsert_refused(gate: DiffPending {
       diff: PoliciesDiffer { emitted: "{}", live: "{\"grants\":[]}" }
     })
     && acl_auto_upsert_refused(gate: RefusedAutoUpsert { reason: "operator has not confirmed" })
-    && acl_upsert_permitted(gate: OperatorConfirmed { emitted: "{}" })
+    && acl_upsert_wet_shape_is_diff_print_only(shape: DiffPrintOnly {
+      diff: PoliciesDiffer { emitted: "{}", live: "{\"grants\":[]}" }
+    })
+    && !acl_upsert_wet_shape_is_diff_print_only(shape: LiveWriteRefused { reason: "design only" })
+}
+
+fn witness_upsert_requires_valid_ephemeral_token() -> Bool {
+  let token = TailscaleEphemeralApiToken {
+    token: "tskey-witness" as Secret,
+    issued_at_epoch_seconds: 1000,
+    ttl_seconds: 3600,
+  }
+  acl_upsert_permitted(
+    gate: OperatorConfirmed { emitted: "{}", token: token },
+    now_epoch_seconds: 2000
+  )
+    && !acl_upsert_permitted(
+      gate: OperatorConfirmed { emitted: "{}", token: token },
+      now_epoch_seconds: 5000
+    )
 }
 
 fn witness_phase2_is_design_only_scaffold() -> Bool {
   string_contains(s: tailscale_acl_phase2_design_status, pattern: "DESIGN_ONLY")
+    && string_contains(s: tailscale_acl_phase2_design_status, pattern: "1hr")
     && match tailscale_acl_phase2_live_write_disposition {
       Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
       _ => false
@@ -80,7 +147,10 @@ test fn tailscale_acl_phase2_design_witnesses() -> Bool {
     && witness_operator_user_principal_accessor_only()
     && witness_excludes_repo_scoped_wif()
     && witness_uses_operator_adc_not_ci_federation()
+    && witness_ephemeral_token_ttl_one_hour()
+    && witness_fail_closed_on_absent_or_expired_token()
     && witness_diff_gate_refuses_auto_upsert()
+    && witness_upsert_requires_valid_ephemeral_token()
     && witness_phase2_is_design_only_scaffold()
     && witness_design_spine()
 }
