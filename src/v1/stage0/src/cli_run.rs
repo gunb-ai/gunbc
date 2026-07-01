@@ -5905,7 +5905,6 @@ pub fn non_fold_residue_roster_size() -> i64 {
     NON_FOLD_RESIDUE_ROSTER.len() as i64
 }
 
-
 // --- Inert carrier census (folded from inert_carrier_project.rs) ---
 //
 // A type carrier is "inert" iff (a) declared in a non-test file, (b) its name appears in at least
