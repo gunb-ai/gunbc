@@ -20,7 +20,7 @@ import gunbc.ci_budget_tree {
   budget_tree_dashboard_session_pool_node,
   witness_floor_budget_equals_runner_cgroup_cap,
 }
-import gunbc.fleet_host_budget { gunbc_per_runner_memory_cap }
+import gunbc.fleet_host_budget { gunbc_runner_slot_memory_contract }
 import gunbc.ci_floor_measurement {
   gunbc_ci_runner_cgroup_memory_cap,
   gunbc_ci_dashboard_session_container_cap,
@@ -105,11 +105,11 @@ fn witness_unknown_child_is_absent() -> Bool {
   }
 }
 
-fn witness_spawn_width_budget_is_per_runner_cap() -> Bool {
+fn witness_spawn_width_budget_is_floor_cgroup_cap() -> Bool {
   byte_size_count(b: srv1_floor_memory_budget()) > 0
     && byte_size_count(b: srv1_floor_memory_budget()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
-    && byte_size_count(b: srv1_floor_memory_budget()) == byte_size_count(b: gunbc_per_runner_memory_cap)
     && byte_size_count(b: srv1_floor_memory_budget()) < byte_size_count(b: srv1_host_ram())
+    && byte_size_count(b: gunbc_runner_slot_memory_contract.memory_max) > byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
 }
 
 fn witness_hard_cap_is_runner_cgroup_cap() -> Bool {
@@ -149,7 +149,7 @@ test fn ci_budget_tree_holds() -> Bool {
     && witness_srv3_symmetric_to_srv1()
     && witness_two_pools_present()
     && witness_unknown_child_is_absent()
-    && witness_spawn_width_budget_is_per_runner_cap()
+    && witness_spawn_width_budget_is_floor_cgroup_cap()
     && witness_hard_cap_is_runner_cgroup_cap()
     && witness_cap_split_runner_lt_session()
     && witness_floor_budget_equals_runner_cgroup_cap_holds()
