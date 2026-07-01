@@ -220,7 +220,7 @@ fn substitute_vars(
     );
     Rc::new(Node {
         children: new_children,
-        ..(*node).clone()
+        ..node.as_ref().clone()
     })
 }
 
