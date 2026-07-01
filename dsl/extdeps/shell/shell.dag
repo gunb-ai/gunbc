@@ -81,3 +81,7 @@ service shell.Exec {
     }
   }
 }
+
+fn env_get_value(name: NonEmptyStr) -> String? {
+  shell.Env.Get(name: name).value
+}
