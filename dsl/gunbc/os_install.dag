@@ -61,13 +61,6 @@ fn os_install_delivery_for(mechanism: OsInstallMechanism, pxe_chain: NetworkBoot
   }
 }
 
-fn os_install_delivery_is_network_boot(delivery: OsInstallDelivery) -> Bool {
-  match delivery {
-    NetworkBoot { delivery: _ } => true
-    VirtualMediaIso { autoinstall: _ } => false
-  }
-}
-
 type LanInstallInfraSurvey {
   existing_dhcp_configurable: Bool
   dedicated_install_server_present: Bool
