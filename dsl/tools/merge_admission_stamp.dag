@@ -8,8 +8,8 @@ import gunbc.merge_admission_produce {
   merge_admission_receipt_path,
   stamp_floor_receipt,
   render_receipt_wire_with_pr_line,
+  ci_repo_root_shell,
 }
-import gunbc.merge_admission_produce { ci_repo_root_shell }
 import gunbc.ci_spec { gunbc_ci_spec }
 
 fn pr_number_line() -> String {
