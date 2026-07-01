@@ -1,0 +1,69 @@
+module extdeps.tailscale.acl_api
+
+import std.types { String, Secret, NonEmptyStr, HttpMethod, AuthScheme, HttpStatus }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "tailscale.com/api"
+  }
+}
+
+type TailscaleAclApiError {
+  message: String
+  status: HttpStatus
+}
+
+service tailscale.AclAdmin {
+  config {
+    endpoint: "https://api.tailscale.com"
+    auth: Bearer
+    auth_input: api_key
+  }
+
+  operation GetPolicy {
+    input {
+      api_key: Secret
+      tailnet: NonEmptyStr
+    }
+    output {
+      policy_json: String from "acl"
+      etag: String?
+    }
+    readonly
+    transport rest { method: GET, path: "/api/v2/tailnet/\{tailnet\}/acl" }
+    response {
+      200 => String
+      401 => TailscaleAclApiError
+      403 => TailscaleAclApiError
+      404 => TailscaleAclApiError
+      5xx => TailscaleAclApiError
+    }
+  }
+
+  operation UpsertPolicy {
+    input {
+      api_key: Secret
+      tailnet: NonEmptyStr
+      policy_json: String
+    }
+    output {
+      policy_json: String from "acl"
+    }
+
+    transport rest {
+      method: PUT,
+      path: "/api/v2/tailnet/\{tailnet\}/acl",
+      body: { acl: policy_json }
+    }
+    response {
+      200 => String
+      401 => TailscaleAclApiError
+      403 => TailscaleAclApiError
+      409 => TailscaleAclApiError
+      5xx => TailscaleAclApiError
+    }
+  }
+}
