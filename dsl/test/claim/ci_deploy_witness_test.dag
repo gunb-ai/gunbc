@@ -49,8 +49,8 @@ fn witness_deploy_access_principal_is_dedicated() -> Bool {
 }
 
 fn witness_deploy_access_runner_spec_derived_from_host_label() -> Bool {
-  deploy_access_runner_spec(access: ci_deploy_srv1_access)
-    == SelfHosted { labels: ["self-hosted", "gunbc-deploy", srv1_host.identity] }
+  let expected = SelfHosted { labels: ["self-hosted", "gunbc-deploy", srv1_host.identity] }
+  deploy_access_runner_spec(access: ci_deploy_srv1_access) == expected
 }
 
 fn witness_deploy_access_preflight_is_fail_closed() -> Bool {
@@ -90,8 +90,9 @@ fn witness_workflow_has_deploy_job_gated_on_ci() -> Bool {
 
 fn witness_deploy_job_runs_on_dedicated_runner_and_is_non_blocking() -> Bool {
   let deploy_jobs = filter(ci_workflow.jobs, j => j.id == "deploy_dashboard_srv1")
+  let expected_runner = SelfHosted { labels: ["self-hosted", "gunbc-deploy", srv1_host.identity] }
   length(deploy_jobs) == 1
-    && deploy_jobs.first().runner == SelfHosted { labels: ["self-hosted", "gunbc-deploy", srv1_host.identity] }
+    && deploy_jobs.first().runner == expected_runner
     && match deploy_jobs.first().continue_on_error {
       Present { value: coe } => coe
       Absent => false

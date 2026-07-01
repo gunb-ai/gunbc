@@ -199,7 +199,7 @@ jobs:
           if [ -x "$BIN" ]; then "$BIN" --measure-cgroup-peak; else echo "[measurement] cgroup peak: unavailable (claim_executor not built)"; fi
         if: always()
   deploy_dashboard_srv1:
-    runs-on: [self-hosted, linux, arm64]
+    runs-on: [self-hosted, gunbc-deploy, srv1]
     needs: [ci]
     timeout-minutes: 360
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -268,3 +268,4 @@ jobs:
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
           "$ROOT/target/release/gunbc" run --source-root dsl --source-root src/v2 --entry dsl/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
+    continue-on-error: true
