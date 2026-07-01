@@ -6,6 +6,9 @@ import v2.std.text { String }
 import v2.lens.unwired_model {
   unwired_model_clean_holds,
   unwired_model_live_declared_count,
+  unwired_model_roster_ceiling_invariant,
+  unwired_model_roster_dissolution_trigger,
+  unwired_model_roster_owner,
   count_not_in_roster,
   count_stale_roster,
   empty_unwired_model_names
@@ -20,6 +23,12 @@ test fn unwired_model_no_unrostered_or_stale() -> Bool {
 
 test fn unwired_model_universe_is_nonempty() -> Bool {
   return unwired_model_live_declared_count() > 0
+}
+
+test fn unwired_model_roster_scaffold_documents_owner_and_ceiling() -> Bool {
+  return unwired_model_roster_owner != ""
+    && string_contains(s: unwired_model_roster_ceiling_invariant, pattern: "live census")
+    && string_contains(s: unwired_model_roster_dissolution_trigger, pattern: "dissolve-on")
 }
 
 test fn count_not_in_roster_detects_unrostered() -> Bool {
