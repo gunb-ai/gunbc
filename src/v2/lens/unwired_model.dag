@@ -7,6 +7,12 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
+data unwired_model_roster_owner: String = "v2.lens.unwired_model — floor witness unwired_model_no_unrostered_or_stale"
+
+data unwired_model_roster_ceiling_invariant: String = "roster cardinality MUST equal unwired_model_names_live() exactly (no growing allow-list); ceiling is live census, not a fixed cap — entries shrink only as decls wire"
+
+data unwired_model_roster_dissolution_trigger: String = "🟡 dissolve-on: hand-maintained unwired_model_roster — each entry removes when its decl gains a production consumer; whole roster deletes when live unwired census reaches zero and RealizationDispatch derives wiring liveness without a parallel name list"
+
 data unwired_model_roster: List<String> = [
   "AccessPolicy",
   "CargoDependency",
