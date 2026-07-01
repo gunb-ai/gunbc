@@ -202,7 +202,7 @@ data host_standup_spine: List<HostStandupStep> = [
     phase: ReachSecretsNetwork,
     label: "P0:reach-secrets-network",
     disposition: DeclaredGap {
-      interim_realization: "ACL authority: extdeps.tailscale.acl + gunbc.tailscale_acl_emit (fixture: dsl/test/fixture/tailscale_acl_reference.hujson); Phase 2 credential design: gunbc.tailscale_acl_phase2_credential (operator user-principal Secret Accessor, ADC-only, no repo WIF); bind-dir interim: scripts/session-dashboard/container_runtime.mjs#prepareHostBindDirs",
+      interim_realization: "ACL authority: extdeps.tailscale.acl + gunbc.tailscale_acl_emit (fixture: dsl/test/fixture/tailscale_acl_reference.hujson); Phase 2 credential design: gunbc.tailscale_acl_phase2_credential (operator user-principal Secret Accessor, ADC-only, no repo WIF); ctrl interim: grant_host_reach.mjs, spawn_github_token.mjs; bind-dir interim: scripts/session-dashboard/container_runtime.mjs#prepareHostBindDirs",
       refusal: "host_standup:P0:reach-secrets-network:partial — ACL modeled+emit; Phase 2 credential design landed (DESIGN_ONLY); refuse live upsert until operator sign-off on tailscale_acl_upsert_wet"
     },
     effect_policy: OneShotIdempotent
@@ -285,8 +285,8 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   },
   GapLedgerRow {
     phase_label: "P0:reach-secrets-network",
-    modeling: "gap",
-    authority_or_interim: "ctrl: grant_host_reach.mjs, spawn_github_token.mjs, container_runtime.mjs#prepareHostBindDirs"
+    modeling: "partial",
+    authority_or_interim: "extdeps.tailscale.acl + gunbc.tailscale_acl_emit + gunbc.tailscale_acl_phase2_credential (DESIGN_ONLY); ctrl interim: grant_host_reach.mjs, spawn_github_token.mjs, container_runtime.mjs#prepareHostBindDirs"
   },
   GapLedgerRow {
     phase_label: "P1:runner-deploy-slot",
