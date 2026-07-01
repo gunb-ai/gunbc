@@ -136,7 +136,9 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     // the TokenStream cursor into 02_parse.dag, then move this file back to
     // GENERATED_STAGE0_FILES.
     "v1_compiler_parse.rs",
-    // Dep-pool emit wiring landed in 05_emit_rust.dag; registry flip deferred until
+    // dag_collect split (#6053) removed Ci-subcommand / extract_module_path emission from
+    // 05_emit_rust.dag; without those, the emitter no longer produces byte-identical main.rs,
+    // so main.rs parks here until those gaps are restored in .dag. Registry flip deferred until
     // regen_stage0 --verify confirms byte-identical output vs this committed file.
     // Dissolution: run regen_stage0 --verify; on green, move to GENERATED_STAGE0_FILES.
     "main.rs",
