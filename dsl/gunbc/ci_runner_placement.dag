@@ -21,6 +21,7 @@ import gunbc.fleet_host_budget {
   oomd_actuation_floor,
   gunbc_host_swap_available,
   fabric_memory_accounting_admissible,
+  host_fixed_overhead_bytes,
 }
 import extdeps.cpu { cpu_facts_threads }
 import gunbc.ci_floor_measurement {
@@ -148,14 +149,7 @@ fn resolve_session_slice(mode: SessionReservationMode, oomd: OomdEnforcementEvid
   }
 }
 
-data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN standalone runner model: runner_count divides DECLARED runner_pool_budget by DECLARED slot_memory.memory_max (gunbc_runner_slot_memory_contract). Soundness is host_allocation_conserves (runner_pool + fixed_overhead + headroom <= host RAM) — runners only; sessions are an independent standalone 8G contract in cool-swift P4 session-dispatch, NOT conserved here. Replaces the old chicken-and-egg RunnerSlotUnenforced gate. 'Is the cap live on the host' is a converge-receipt question, not plan-soundness." }
-
-fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
-  match o {
-    HostFixedOverheadMeasured { bytes: b } => b
-    HostFixedOverheadUnmeasured => byte_size(0)
-  }
-}
+data gunbc_ci_runner_count_from_budget_disposition: Disposition = Terminal { reason: "DESIGN standalone runner model: runner_count is operator-declared width gunbc_declared_runner_slot_count (10) per host — NOT budget-derived from runner_pool/slot_memory.memory_max. Soundness is host_allocation_conserves (runner_pool + fixed_overhead + headroom <= host RAM) plus fabric_memory_accounting_admissible at plan gate — runners only; sessions are an independent standalone contract in cool-swift P4 session-dispatch, NOT conserved here. Replaces the old chicken-and-egg RunnerSlotUnenforced gate. 'Is the cap live on the host' is a converge-receipt question, not plan-soundness." }
 
 fn conservation_host_deployment(offer: ComputeOffer, nproc: HardwareThreadCount) -> RunnerHostDeployment {
   RunnerHostDeployment {

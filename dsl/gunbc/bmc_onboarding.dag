@@ -5,7 +5,7 @@ import std.credentials { FactoryLogin, CredentialFlow, Stored }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
 import std.types { NonEmptyStr, Int, List, Map }
 import std.logic { Bool }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network {
@@ -281,6 +281,10 @@ fn host_onboarding_lifecycle_row(host: HostIdentity) -> HostOnboardingLifecycleR
 
 fn host_onboarding_lifecycle_phase(host: HostIdentity) -> BmcOnboardingPhase? {
   map_get(fleet_host_lifecycle_phase_map_derived(rows: fleet_host_onboarding_lifecycle), host)
+}
+
+data bmc_phase_is_pre_os_installed_disposition: Disposition = Terminal {
+  reason: "Canonical exhaustive partition on closed BmcOnboardingPhase ladder: FactoryDefault|CredentialsRotated are pre-OsInstalled; OsInstalled|FabricJoined are installed+. FreshStandup apply boundary in host_converge.gunbc_apply_mode_for_host mirrors this match — not a nickname predicate."
 }
 
 fn bmc_phase_is_pre_os_installed(phase: BmcOnboardingPhase) -> Bool {
