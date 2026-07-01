@@ -1,0 +1,193 @@
+module test.claim.runner_unit_live_read_witness
+
+import std.types { Bool, String }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import extdeps.os.systemd {
+  SystemdCgroupMemoryLimit,
+  MemoryLimitUnbounded,
+  MemoryLimitBytes,
+  MemoryLimitAbsent,
+  parse_systemd_memory_limit_show,
+  systemd_memory_max_property,
+  systemd_memory_swap_max_property,
+  systemd_memory_high_property,
+}
+import gunbc.host_converge {
+  ConvergeTarget,
+  PerSlotMemoryCap,
+  ConvergeVerdict,
+  Converged,
+  Drifted,
+  Absent,
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_swap_dropin_path,
+  runner_instance_glob,
+}
+import gunbc.ci_floor_measurement {
+  gunbc_ci_runner_cgroup_memory_cap,
+  RunnerSliceCapEffectiveness,
+  CapEffective,
+  CapUnbounded,
+}
+import gunbc.runner_unit_live_read {
+  RunnerUnitLiveReadRow,
+  RunnerUnitMemoryLiveRead,
+  gunbc_srv1_runner_unit_live_read_fixture,
+  runner_unit_live_read_typed,
+  memory_limit_to_cap_effectiveness,
+  memory_limit_converge_verdict,
+  per_slot_memory_cap_live_verdict,
+  converge_target_live_verdict,
+  runner_unit_memory_max_drifts_against_cap,
+  runner_unit_swap_max_converged,
+  fixture_live_read,
+}
+
+fn fixture_host() -> String {
+  "srv1"
+}
+
+fn fixture_unit() -> String {
+  "actions-runner@srv1-01.service"
+}
+
+fn fixture_memory_max_target() -> ConvergeTarget {
+  PerSlotMemoryCap {
+    dropin_path: gunbc_runner_per_slot_dropin_path,
+    instance_glob: runner_instance_glob(host: fixture_host()),
+    property: systemd_memory_max_property,
+    bytes_value: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
+  }
+}
+
+fn fixture_swap_max_target() -> ConvergeTarget {
+  PerSlotMemoryCap {
+    dropin_path: gunbc_runner_per_slot_swap_dropin_path,
+    instance_glob: runner_instance_glob(host: fixture_host()),
+    property: systemd_memory_swap_max_property,
+    bytes_value: "0",
+  }
+}
+
+fn matching_memory_max_row() -> RunnerUnitLiveReadRow {
+  RunnerUnitLiveReadRow {
+    unit: fixture_unit(),
+    memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
+    memory_swap_max_raw: "0",
+    memory_high_raw: "infinity",
+    probed_at: "2026-07-01",
+  }
+}
+
+fn drift_memory_max_row() -> RunnerUnitLiveReadRow {
+  RunnerUnitLiveReadRow {
+    unit: fixture_unit(),
+    memory_max_raw: "30000000000",
+    memory_swap_max_raw: "0",
+    memory_high_raw: "infinity",
+    probed_at: "2026-07-01",
+  }
+}
+
+fn witness_parse_infinity_is_unbounded() -> Bool {
+  match parse_systemd_memory_limit_show(raw: "infinity") {
+    MemoryLimitUnbounded => true
+    _ => false
+  }
+}
+
+fn witness_parse_bytes_is_typed() -> Bool {
+  match parse_systemd_memory_limit_show(raw: "8589934592") {
+    MemoryLimitBytes { bytes: b } =>
+      byte_size_count(b: b) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+    _ => false
+  }
+}
+
+fn witness_parse_empty_is_absent() -> Bool {
+  match parse_systemd_memory_limit_show(raw: "") {
+    MemoryLimitAbsent => true
+    _ => false
+  }
+}
+
+fn witness_fixture_read_types_all_three_properties() -> Bool {
+  let read = fixture_live_read()
+  match read.memory_max {
+    MemoryLimitUnbounded => true
+    _ => false
+  }
+    && match read.memory_swap_max {
+      MemoryLimitBytes { bytes: b } => byte_size_count(b: b) == 0
+      _ => false
+    }
+    && match read.memory_high {
+      MemoryLimitUnbounded => true
+      _ => false
+    }
+}
+
+fn witness_fixture_memory_max_drifts_against_model_cap() -> Bool {
+  runner_unit_memory_max_drifts_against_cap(
+    read: fixture_live_read(),
+    desired_cap: gunbc_ci_runner_cgroup_memory_cap
+  )
+}
+
+fn witness_fixture_swap_max_converges_to_zero() -> Bool {
+  runner_unit_swap_max_converged(read: fixture_live_read())
+}
+
+fn witness_matching_read_converges_on_memory_max_target() -> Bool {
+  let read = runner_unit_live_read_typed(row: matching_memory_max_row())
+  match converge_target_live_verdict(
+    read: read,
+    target: fixture_memory_max_target(),
+    desired: gunbc_ci_runner_cgroup_memory_cap
+  ) {
+    Present { value: Converged } => true
+    _ => false
+  }
+}
+
+fn witness_drift_read_fails_memory_max_target() -> Bool {
+  let read = runner_unit_live_read_typed(row: drift_memory_max_row())
+  match converge_target_live_verdict(
+    read: read,
+    target: fixture_memory_max_target(),
+    desired: gunbc_ci_runner_cgroup_memory_cap
+  ) {
+    Present { value: Drifted } => true
+    _ => false
+  }
+}
+
+fn witness_perturbed_fixture_read_diff_red_on_memory_max() -> Bool {
+  witness_fixture_memory_max_drifts_against_model_cap()
+    && witness_matching_read_converges_on_memory_max_target()
+    && witness_drift_read_fails_memory_max_target()
+}
+
+fn witness_cap_effectiveness_projection_matches_runner_slot_type() -> Bool {
+  let read = runner_unit_live_read_typed(row: matching_memory_max_row())
+  match memory_limit_to_cap_effectiveness(lim: read.memory_max) {
+    Present { value: CapEffective { bytes: b } } =>
+      byte_size_count(b: b) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
+    _ => false
+  }
+    && match memory_limit_to_cap_effectiveness(lim: read.memory_swap_max) {
+      Present { value: CapEffective { bytes: b } } => byte_size_count(b: b) == 0
+      _ => false
+    }
+}
+
+test fn runner_unit_live_read_grounds_converge_target() -> Bool {
+  witness_parse_infinity_is_unbounded()
+    && witness_parse_bytes_is_typed()
+    && witness_parse_empty_is_absent()
+    && witness_fixture_read_types_all_three_properties()
+    && witness_fixture_memory_max_drifts_against_model_cap()
+    && witness_fixture_swap_max_converges_to_zero()
+    && witness_perturbed_fixture_read_diff_red_on_memory_max()
+    && witness_cap_effectiveness_projection_matches_runner_slot_type()
+}
