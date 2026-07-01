@@ -187,7 +187,7 @@ jobs:
           if [ -x "$BIN" ]; then "$BIN" --measure-cgroup-peak; else echo "[measurement] cgroup peak: unavailable (claim_executor not built)"; fi
         if: always()
   deploy_dashboard_srv1:
-    runs-on: [self-hosted, linux, arm64, srv1]
+    runs-on: [self-hosted, linux, arm64]
     needs: [ci]
     timeout-minutes: 360
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
