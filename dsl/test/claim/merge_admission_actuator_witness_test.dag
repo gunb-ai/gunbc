@@ -23,7 +23,7 @@ data scenario_roster_r0: ContentHash = "merge-admission-witness-roster-r0"
 data scenario_roster_r1: ContentHash = "merge-admission-witness-roster-r1"
 
 data scenario_pr_x_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
-  pr_number: 5933,
+  pr_number: Present { value: 5933 },
   head_sha: "abc1234def5678901234567890abcd1234567890",
   base_tree_hash: scenario_base_b0,
   gate_roster_hash: scenario_roster_r0,

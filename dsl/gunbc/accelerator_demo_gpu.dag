@@ -1,0 +1,226 @@
+module gunbc.accelerator_demo_gpu
+
+import std.types { String, Bool, Int, NonEmptyStr }
+import extdeps.communication.medium { DecodeFidelity, Lossless, Lossy }
+import std.numerical_contract {
+  NumericalContract,
+  IntegerExact,
+  FloatApproximate,
+  FmaContractionPermitted,
+  FmaContractionRefused,
+  integer_exact_contract,
+  float_contract,
+}
+import std.approximate_field { ToNearestEven }
+import extdeps.gpu.types {
+  GpuModelCatalogRow,
+  GpuComputeCapability,
+}
+import extdeps.gpu.apple { apple_m5_gpu_catalog }
+import extdeps.gpu.nvidia { nvidia_rtx_5090_catalog }
+import extdeps.languages.gpu.wgsl.kernel {
+  wgsl_kernel_target_medium_name,
+  wgsl_relu_mul_add_int_kernel_source,
+  wgsl_relu_mul_add_float_kernel_source,
+}
+import std.measure { hardware_thread_count_value, bandwidth_count }
+
+data gpu_device_precision_axis_note: String = "The device-precision fidelity axis is INDEPENDENT of the FMA-contraction axis. On the WGSL device every float path is f32; the interpreter oracle is Float64. So ANY FloatApproximate contract decodes Lossy on this device — even FmaContractionRefused — because the loss is precision (f32 vs f64), not fused-multiply-add reassociation. Integer paths are bit-exact, hence Lossless. This is why gpu device fidelity is a SEPARATE call from the SIMD/CPU-lane fidelity where FmaRefused can be Lossless."
+
+fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity {
+  match contract {
+    IntegerExact => Lossless
+    FloatApproximate { rounding: _, fma_contraction: _ } => Lossy
+  }
+}
+
+type GpuExecutionStatus = | DormantAwaitingOperator
+
+type GpuFidelityReceipt {
+  device: GpuModelCatalogRow
+  target_medium: NonEmptyStr
+  contract: NumericalContract
+  device_precision_fidelity: DecodeFidelity
+  status: GpuExecutionStatus
+}
+
+fn gpu_fidelity_receipt(
+  device: GpuModelCatalogRow,
+  contract: NumericalContract
+) -> GpuFidelityReceipt {
+  GpuFidelityReceipt {
+    device: device
+    target_medium: wgsl_kernel_target_medium_name
+    contract: contract
+    device_precision_fidelity: wgsl_device_precision_fidelity(contract: contract)
+    status: DormantAwaitingOperator
+  }
+}
+
+fn render_decode_fidelity(fidelity: DecodeFidelity) -> String {
+  match fidelity {
+    Lossless => "Lossless"
+    Lossy => "Lossy"
+  }
+}
+
+fn render_gpu_execution_status(status: GpuExecutionStatus) -> String {
+  match status {
+    DormantAwaitingOperator => "DormantAwaitingOperator (on-silicon execution not yet wired; feature:dag-gpu-realization-handler)"
+  }
+}
+
+fn render_gpu_fidelity_receipt(receipt: GpuFidelityReceipt) -> String {
+  concat(
+    "device=",
+    concat(
+      receipt.device.model,
+      concat(
+        " medium=",
+        concat(
+          receipt.target_medium,
+          concat(
+            " device_precision=",
+            concat(
+              render_decode_fidelity(fidelity: receipt.device_precision_fidelity),
+              concat(" status=", render_gpu_execution_status(status: receipt.status))
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn wgsl_source_for_contract(contract: NumericalContract) -> String {
+  match contract {
+    IntegerExact => wgsl_relu_mul_add_int_kernel_source
+    FloatApproximate { rounding: _, fma_contraction: _ } => wgsl_relu_mul_add_float_kernel_source
+  }
+}
+
+type GpuDemoTriptychView {
+  left_device_sketch: String
+  middle_wgsl_kernel: String
+  right_receipt: String
+}
+
+fn render_device_sketch(device: GpuModelCatalogRow) -> String {
+  concat(
+    device.vendor.legal_name,
+    concat(
+      " ",
+      concat(
+        device.model,
+        concat(
+          " [",
+          concat(
+            device.microarchitecture,
+            concat(
+              ", lanes=",
+              concat(to_string(hardware_thread_count_value(t: device.execution_lane_count)), "]")
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+fn project_gpu_triptych_view(
+  device: GpuModelCatalogRow,
+  contract: NumericalContract
+) -> GpuDemoTriptychView {
+  GpuDemoTriptychView {
+    left_device_sketch: render_device_sketch(device: device)
+    middle_wgsl_kernel: wgsl_source_for_contract(contract: contract)
+    right_receipt: render_gpu_fidelity_receipt(
+      receipt: gpu_fidelity_receipt(device: device, contract: contract)
+    )
+  }
+}
+
+fn render_gpu_triptych_text(view: GpuDemoTriptychView) -> String {
+  concat(
+    "[LEFT: GPU device]\n",
+    concat(
+      view.left_device_sketch,
+      concat(
+        "\n[MIDDLE: WGSL compute kernel]\n",
+        concat(
+          view.middle_wgsl_kernel,
+          concat("\n[RIGHT: Fidelity + status]\n", view.right_receipt)
+        )
+      )
+    )
+  )
+}
+
+fn witness_m5_gpu_execution_lane_count_grounded() -> Bool {
+  hardware_thread_count_value(t: apple_m5_gpu_catalog.execution_lane_count) == 10
+}
+
+fn witness_rtx5090_execution_lane_count_grounded() -> Bool {
+  hardware_thread_count_value(t: nvidia_rtx_5090_catalog.execution_lane_count) == 21760
+}
+
+fn witness_rtx5090_memory_bandwidth_grounded() -> Bool {
+  bandwidth_count(b: nvidia_rtx_5090_catalog.memory_bandwidth) == 1792000000000
+}
+
+fn witness_m5_memory_bandwidth_grounded() -> Bool {
+  bandwidth_count(b: apple_m5_gpu_catalog.memory_bandwidth) == 153000000000
+}
+
+fn witness_rtx5090_compute_capability_grounded() -> Bool {
+  match nvidia_rtx_5090_catalog.compute_capability {
+    Present { value: cap } => cap.major == 12 && cap.minor == 0
+    Absent => false
+  }
+}
+
+fn witness_m5_has_no_compute_capability() -> Bool {
+  match apple_m5_gpu_catalog.compute_capability {
+    Present { value: _ } => false
+    Absent => true
+  }
+}
+
+fn witness_integer_path_is_lossless() -> Bool {
+  match wgsl_device_precision_fidelity(contract: integer_exact_contract()) {
+    Lossless => true
+    Lossy => false
+  }
+}
+
+fn witness_float_path_is_lossy_even_when_fma_refused() -> Bool {
+  match wgsl_device_precision_fidelity(
+    contract: float_contract(rounding: ToNearestEven, fma: FmaContractionRefused)
+  ) {
+    Lossless => false
+    Lossy => true
+  }
+}
+
+fn witness_gpu_receipt_status_is_dormant() -> Bool {
+  let receipt = gpu_fidelity_receipt(
+    device: nvidia_rtx_5090_catalog,
+    contract: integer_exact_contract()
+  )
+  match receipt.status {
+    DormantAwaitingOperator => receipt.target_medium == "wgsl-compute-relu-mul-add"
+  }
+}
+
+fn witness_gpu_triptych_contains_three_panels() -> Bool {
+  let text = render_gpu_triptych_text(
+    view: project_gpu_triptych_view(
+      device: nvidia_rtx_5090_catalog,
+      contract: integer_exact_contract()
+    )
+  )
+  string_contains(s: text, pattern: "[LEFT: GPU device]")
+    && string_contains(s: text, pattern: "[MIDDLE: WGSL compute kernel]")
+    && string_contains(s: text, pattern: "[RIGHT: Fidelity + status]")
+    && string_contains(s: text, pattern: "Blackwell")
+}

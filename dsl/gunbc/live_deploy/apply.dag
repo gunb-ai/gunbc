@@ -10,11 +10,15 @@ import gunbc.live_deploy.emit {
   live_deploy_retract_script_for,
   deployment_ensure_dependency_script,
 }
+import gunbc.ci_deploy_access {
+  ci_deploy_srv1_access,
+  deploy_access_preflight_script,
+}
 import gunbc.host_effect {
   ShellCommand,
   HostOs,
   OneShotIdempotent,
-  SshShell,
+  HostEffectTransport,
   HostEffectIntent,
   HostEffectEvidence,
 }
@@ -22,47 +26,78 @@ import gunbc.host_effect_realize { host_effect_apply }
 import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
-fn live_deploy_ensure_dependency_via_ssh(
+fn live_deploy_ensure_dependency(
   spec: DeploymentSpec,
-  dep: DeploymentEnsuredStep
+  dep: DeploymentEnsuredStep,
+  transport: HostEffectTransport
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   host_effect_apply(
     target: HostOs { node: spec.target.host },
     effect: ShellCommand { script: deployment_ensure_dependency_script(dep: dep) },
     policy: OneShotIdempotent,
-    transport: SshShell { ssh_host: spec.target.ssh_host }
+    transport: transport
   )
 }
 
-fn live_deploy_fold_via_ssh(spec: DeploymentSpec, script: String) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn live_deploy_fold(
+  spec: DeploymentSpec,
+  script: String,
+  transport: HostEffectTransport
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   host_effect_apply(
     target: HostOs { node: spec.target.host },
     effect: ShellCommand { script: script },
     policy: OneShotIdempotent,
-    transport: SshShell { ssh_host: spec.target.ssh_host }
+    transport: transport
   )
 }
 
-fn live_deploy_apply_via_ssh(spec: DeploymentSpec) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_fold_via_ssh(
+fn live_deploy_apply_via_transport(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_fold(
     spec: spec,
-    script: live_deploy_apply_script_for(spec: spec)
+    script: live_deploy_apply_script_for(spec: spec),
+    transport: transport
   )
 }
 
-fn live_deploy_retract_via_ssh(spec: DeploymentSpec) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_fold_via_ssh(
+fn live_deploy_retract_via_transport(
+  spec: DeploymentSpec,
+  transport: HostEffectTransport
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_fold(
     spec: spec,
-    script: live_deploy_retract_script_for(spec: spec)
+    script: live_deploy_retract_script_for(spec: spec),
+    transport: transport
+  )
+}
+
+fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let access = ci_deploy_srv1_access
+  host_effect_apply(
+    target: HostOs { node: access.host },
+    effect: ShellCommand { script: deploy_access_preflight_script(access: access) },
+    policy: OneShotIdempotent,
+    transport: access.transport
   )
 }
 
 fn live_deploy_apply_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_apply_via_ssh(spec: deployment_spec_srv1())
+  let access = ci_deploy_srv1_access
+  live_deploy_apply_via_transport(
+    spec: deployment_spec_srv1(),
+    transport: access.transport
+  )
 }
 
 fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  live_deploy_retract_via_ssh(spec: deployment_spec_srv1())
+  let access = ci_deploy_srv1_access
+  live_deploy_retract_via_transport(
+    spec: deployment_spec_srv1(),
+    transport: access.transport
+  )
 }
 
 fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ProcessExit {
@@ -77,9 +112,19 @@ fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffec
 }
 
 func live_deploy_apply_srv1_wet() -> ProcessExit {
-  live_deploy_reconciliation_exit(r: live_deploy_apply_srv1())
+  let preflight = live_deploy_access_preflight()
+  if !reconciliation_converged(r: preflight) {
+    live_deploy_reconciliation_exit(r: preflight)
+  } else {
+    live_deploy_reconciliation_exit(r: live_deploy_apply_srv1())
+  }
 }
 
 func live_deploy_retract_srv1_wet() -> ProcessExit {
-  live_deploy_reconciliation_exit(r: live_deploy_retract_srv1())
+  let preflight = live_deploy_access_preflight()
+  if !reconciliation_converged(r: preflight) {
+    live_deploy_reconciliation_exit(r: preflight)
+  } else {
+    live_deploy_reconciliation_exit(r: live_deploy_retract_srv1())
+  }
 }

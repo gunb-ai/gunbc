@@ -1,7 +1,6 @@
 pub mod fact_cardinality_census;
 pub mod medium_structure_census;
 pub mod non_fold_residue_census;
-pub mod transport_script_position_census;
 
 pub use fact_cardinality_census::{
     cross_tree_coexistence_count, cross_tree_diverged_fork_count, cross_tree_is_coexistence,
@@ -12,4 +11,3 @@ pub use non_fold_residue_census::{
     non_fold_residue_coproduct_universe_count, non_fold_residue_count,
     non_fold_residue_stale_roster_count, non_fold_residue_unrostered_count,
 };
-pub use transport_script_position_census::transport_script_literal_violation_count_for_path;
