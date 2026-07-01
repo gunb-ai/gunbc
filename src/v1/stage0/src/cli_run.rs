@@ -4129,8 +4129,7 @@ fn run_discovery_rows(
     } else {
         None
     };
-    let provenance_live =
-        skip_ctx.provenance_ingest_live && dag_closure_runner.is_some();
+    let provenance_live = skip_ctx.provenance_ingest_live && dag_closure_runner.is_some();
     let use_dag_closure =
         skip_enabled && skip_ctx.provenance_ingest_live && dag_closure_runner.is_some();
     let mut summary = DiscoverySummary {
@@ -5818,7 +5817,9 @@ fn prepare_floor_provenance_ingest_overlay(
     exclude_subpaths: &[String],
 ) -> Result<Option<FloorProvenanceIngestOverlay>, String> {
     if matches!(
-        std::env::var("GUNBC_FLOOR_PROVENANCE_OVERLAY").ok().as_deref(),
+        std::env::var("GUNBC_FLOOR_PROVENANCE_OVERLAY")
+            .ok()
+            .as_deref(),
         Some("0") | Some("false")
     ) {
         return Ok(None);
