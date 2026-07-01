@@ -1,0 +1,55 @@
+module std.serialize
+
+import std.types { String, Bool, List }
+import std.layout { Doc, DocConcat, doc_text, doc_concat }
+import std.languages { SerializationKnobs, SerialField, SerialValue, ScalarValue, RecordValue }
+
+fn serial_scalar(text: String) -> SerialValue {
+  ScalarValue { text: text }
+}
+
+fn serial_field(key: String, value: SerialValue) -> SerialField {
+  SerialField { key: key, value: value }
+}
+
+fn serialize_value_doc(knobs: SerializationKnobs, v: SerialValue) -> Doc {
+  match v {
+    ScalarValue { text: t } =>
+      match knobs.value_quote {
+        null => doc_text(text: t)
+        q => doc_text(text: concat(concat(q, t), q))
+      }
+    RecordValue { fields: fields } =>
+      serialize_record_doc(knobs: knobs, fields: fields)
+  }
+}
+
+fn serialize_field_doc(knobs: SerializationKnobs, f: SerialField) -> Doc {
+  let key_text = if knobs.quote_keys {
+    concat(concat("\"", f.key), "\"")
+  } else {
+    f.key
+  }
+  doc_concat(parts: [
+    doc_text(text: concat(key_text, knobs.assign)),
+    serialize_value_doc(knobs: knobs, v: f.value)
+  ])
+}
+
+fn serialize_fields_doc(knobs: SerializationKnobs, fields: List<SerialField>) -> Doc {
+  doc_concat(parts: fold(fields, init: [], f: (acc, fld) =>
+    if count(acc) == 0 {
+      [serialize_field_doc(knobs: knobs, f: fld)]
+    } else {
+      concat(acc, [doc_text(text: knobs.entry_separator), serialize_field_doc(knobs: knobs, f: fld)])
+    }
+  ))
+}
+
+fn serialize_record_doc(knobs: SerializationKnobs, fields: List<SerialField>) -> Doc {
+  doc_concat(parts: [
+    doc_text(text: knobs.open),
+    serialize_fields_doc(knobs: knobs, fields: fields),
+    doc_text(text: knobs.close)
+  ])
+}

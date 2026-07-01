@@ -1,0 +1,160 @@
+module test.claim.roadmap_frontier_witness
+
+import ctrl.process_algebra { ProcessNodeId }
+import gunbc.roadmap_model {
+  RoadmapNode, RoadmapEdge,
+  IntricacyHigh, VolumeMedium,
+  PrsMerged,
+  NodeSizing, Unsized, Sized,
+  SectionElement, Group, SectionGroup,
+}
+import gunbc.roadmap_status { DerivableLine, Signoff, Unsigned }
+import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_spawner { spawn_frontier, next_spawnable }
+import gunbc.roadmap_page {
+  roadmap_daily_workspace_page,
+  roadmap_daily_workspace_page_for_authority,
+}
+import gunbc.roadmap_authority { authored_merged_prs }
+import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
+
+fn nid(s: String) -> ProcessNodeId { s }
+
+fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: prs, title: title, description: "" },
+    carriers: [],
+    sizing: Sized { intricacy: IntricacyHigh, volume: VolumeMedium, repo: "gunbc", acceptance: PrsMerged },
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn unsized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
+  RoadmapNode {
+    node: nid(s: id),
+    line: DerivableLine { prs: prs, title: title, description: "" },
+    carriers: [],
+    sizing: Unsized,
+    owner: "",
+    signoff: Unsigned,
+  }
+}
+
+fn fixture_section(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapSection {
+  RoadmapSection {
+    title: "Test",
+    elements: [Group { group: SectionGroup { label: "test", nodes: nodes, edges: edges } }],
+  }
+}
+
+fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDocument {
+  RoadmapDocument {
+    preamble: [],
+    lead_lanes: [],
+    sections: [fixture_section(nodes: nodes, edges: edges)],
+  }
+}
+
+fn witness_ready_matches_next_spawnable() -> Bool {
+  let node_a = sized_derivable(id: "parent-done", prs: [100], title: "Parent")
+  let node_b = sized_derivable(id: "child-ready", prs: [200], title: "Child Ready")
+  let edges = [RoadmapEdge { child: nid(s: "child-ready"), parent: nid(s: "parent-done") }]
+  let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
+  let frontier = spawn_frontier(doc: doc, merged: [100])
+  let spawnable = next_spawnable(doc: doc, merged: [100])
+  count(frontier.ready) == count(spawnable)
+    && any(frontier.ready, n => n.node == nid(s: "child-ready"))
+}
+
+fn witness_upcoming_is_blocked_sized_node() -> Bool {
+  let node_a = sized_derivable(id: "parent-open", prs: [100], title: "Parent Open")
+  let node_b = sized_derivable(id: "child-blocked", prs: [200], title: "Child Blocked")
+  let edges = [RoadmapEdge { child: nid(s: "child-blocked"), parent: nid(s: "parent-open") }]
+  let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
+  let frontier = spawn_frontier(doc: doc, merged: [])
+  any(frontier.upcoming, n => n.node == nid(s: "child-blocked"))
+    && !any(frontier.ready, n => n.node == nid(s: "child-blocked"))
+}
+
+fn witness_done_is_merged_sized_node() -> Bool {
+  let node = sized_derivable(id: "done-node", prs: [999], title: "Done Node")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let frontier = spawn_frontier(doc: doc, merged: [999])
+  any(frontier.done, n => n.node == nid(s: "done-node"))
+    && !any(frontier.ready, n => n.node == nid(s: "done-node"))
+    && !any(frontier.upcoming, n => n.node == nid(s: "done-node"))
+}
+
+fn witness_unsized_excluded_from_frontier() -> Bool {
+  let node = unsized_derivable(id: "unsized-open", prs: [], title: "Unsized")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let frontier = spawn_frontier(doc: doc, merged: [])
+  count(frontier.ready) == 0
+    && count(frontier.upcoming) == 0
+    && count(frontier.done) == 0
+}
+
+fn witness_buckets_are_disjoint() -> Bool {
+  let node_a = sized_derivable(id: "a-open", prs: [100], title: "A")
+  let node_b = sized_derivable(id: "b-blocked", prs: [200], title: "B")
+  let node_c = sized_derivable(id: "c-done", prs: [300], title: "C")
+  let edges = [RoadmapEdge { child: nid(s: "b-blocked"), parent: nid(s: "a-open") }]
+  let doc = fixture_doc(nodes: [node_a, node_b, node_c], edges: edges)
+  let frontier = spawn_frontier(doc: doc, merged: [300])
+  any(frontier.ready, n => n.node == nid(s: "a-open"))
+    && any(frontier.upcoming, n => n.node == nid(s: "b-blocked"))
+    && any(frontier.done, n => n.node == nid(s: "c-done"))
+    && !any(frontier.ready, n => n.node == nid(s: "b-blocked"))
+    && !any(frontier.upcoming, n => n.node == nid(s: "a-open"))
+}
+
+fn daily_workspace_html(doc: RoadmapDocument, merged: List<Int>) -> String {
+  match try_serialize_html_source(node: roadmap_daily_workspace_page(doc: doc, merged: merged)) {
+    EmitOk { html: h } => h
+    EmitRejected { reason: _ } => ""
+  }
+}
+
+fn witness_page_renders_three_buckets() -> Bool {
+  let node_a = sized_derivable(id: "ready-node", prs: [10], title: "Ready Title")
+  let doc = fixture_doc(nodes: [node_a], edges: [])
+  let h = daily_workspace_html(doc: doc, merged: [])
+  string_contains(s: h, pattern: "<h1>gunbc — daily workspace</h1>")
+    && string_contains(s: h, pattern: "class=\"roadmap-frontier\"")
+    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
+    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-upcoming\"")
+    && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-done\"")
+    && string_contains(s: h, pattern: "<h2>Ready</h2>")
+    && string_contains(s: h, pattern: "<h2>Upcoming</h2>")
+    && string_contains(s: h, pattern: "<h2>Done</h2>")
+}
+
+fn witness_page_places_ready_node_in_ready_bucket() -> Bool {
+  let node = sized_derivable(id: "spawn-me", prs: [42], title: "Spawn Me Now")
+  let doc = fixture_doc(nodes: [node], edges: [])
+  let h = daily_workspace_html(doc: doc, merged: [])
+  string_contains(s: h, pattern: "Spawn Me Now")
+    && string_contains(s: h, pattern: "class=\"status status-open\"")
+}
+
+fn witness_authority_daily_workspace_serializes() -> Bool {
+  match try_serialize_html_source(node: roadmap_daily_workspace_page_for_authority()) {
+    EmitOk { html: h } =>
+      string_contains(s: h, pattern: "class=\"frontier-bucket frontier-ready\"")
+        && string_contains(s: h, pattern: "class=\"frontier-bucket frontier-done\"")
+    EmitRejected { reason: _ } => false
+  }
+}
+
+test fn roadmap_frontier_witnesses() -> Bool {
+  witness_ready_matches_next_spawnable()
+    && witness_upcoming_is_blocked_sized_node()
+    && witness_done_is_merged_sized_node()
+    && witness_unsized_excluded_from_frontier()
+    && witness_buckets_are_disjoint()
+    && witness_page_renders_three_buckets()
+    && witness_page_places_ready_node_in_ready_bucket()
+    && witness_authority_daily_workspace_serializes()
+}
