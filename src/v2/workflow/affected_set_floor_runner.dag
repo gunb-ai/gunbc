@@ -6,6 +6,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
 import v2.std.text { String }
+import v2.std.integer { Int }
 import v2.std.verification {
   TestClaim,
   test_claim_evaluation_node_touches_frontier,
@@ -29,6 +30,52 @@ type FloorWitnessRow {
   label: String
   entry: String
   function: String
+}
+
+type FloorDiffLineTouch {
+  path: String
+  start_line: Int
+  end_line: Int
+}
+
+fn floor_diff_line_touches_decl(
+  touch: FloorDiffLineTouch,
+  file_path: String,
+  decl_line: Int,
+  decl_end_line: Int
+) -> Bool {
+  touch.path == file_path
+    && touch.start_line <= decl_end_line
+    && touch.end_line >= decl_line
+}
+
+fn floor_test_fn_declaration_edited(
+  touches: List<FloorDiffLineTouch>,
+  file_path: String,
+  test_fn_decl_line: Int
+) -> Bool {
+  any(
+    xs: touches,
+    predicate: fn(t) {
+      floor_diff_line_touches_decl(
+        touch: t,
+        file_path: file_path,
+        decl_line: test_fn_decl_line,
+        decl_end_line: test_fn_decl_line
+      )
+    }
+  )
+}
+
+fn floor_rust_run_implies_dag_run(
+  rust_touches_frontier: Bool,
+  rust_function_edited: Bool,
+  dag_touches_frontier: Bool,
+  dag_function_edited: Bool
+) -> Bool {
+  let rust_run = rust_touches_frontier || rust_function_edited
+  let dag_run = dag_touches_frontier || dag_function_edited
+  !rust_run || dag_run
 }
 
 fn floor_skip_git_diff_policy() -> DiffPolicy {
