@@ -5689,6 +5689,82 @@ pub fn languages_consumer_census_has_external_consumer(decl_name: String) -> boo
         .unwrap_or(false)
 }
 
+// --- Inert carrier census (folded from inert_carrier_project.rs) ---
+//
+// A type carrier is "inert" iff (a) declared in a non-test file, (b) its name appears in at least
+// one *_test.dag file (self-tested), and (c) its name appears in NO non-test .dag file outside its
+// own declaration block (zero real consumer). This is DESIGN §5 coverage-by-illusion.
+// DISSOLUTION TRIGGER: when .dag gains compile-graph / reference-edge access (gunbc#5364), the
+// token scan folds into a pure .dag reader over BindsTo edges and this Rust census deletes.
+
+fn inert_carrier_identifier_tokens(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    for ch in line.chars() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            cur.push(ch);
+        } else if !cur.is_empty() {
+            out.push(std::mem::take(&mut cur));
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+fn inert_carrier_count_token(text: &str, name: &str) -> i64 {
+    let mut n = 0i64;
+    for raw in text.lines() {
+        for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
+            if tok == name {
+                n += 1;
+            }
+        }
+    }
+    n
+}
+
+fn inert_carrier_type_carrier_blocks(content: &str) -> Vec<(String, String)> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let trimmed = lines[i].trim_start();
+        let Some(rest) = trimmed.strip_prefix("type ") else {
+            i += 1;
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            i += 1;
+            continue;
+        }
+        let mut block = String::new();
+        block.push_str(lines[i]);
+        block.push('\n');
+        let mut depth = brace_delta(lines[i]);
+        i += 1;
+        while i < lines.len() {
+            let nt = lines[i].trim_start();
+            if depth <= 0 {
+                if !(nt.starts_with('|') || nt.starts_with('=')) {
+                    break;
+                }
+            }
+            block.push_str(lines[i]);
+            block.push('\n');
+            depth += brace_delta(lines[i]);
+            i += 1;
+        }
+        out.push((name, block));
+    }
+    out
+}
+
 const DOC_PLAN_ROOTS: &[&str] = &["ROADMAP.md", "DESIGN.md"];
 const DOC_RUNBOOK_ROOT: &str = "docs/runbooks/README.md";
 
@@ -5748,6 +5824,198 @@ fn markdown_link_targets(content: &str) -> Vec<String> {
         i += 1;
     }
     out
+}
+
+struct InertCarrierData {
+    declared_count: usize,
+    inert_names: Vec<String>,
+}
+
+fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
+    let mut declared: BTreeMap<String, String> = BTreeMap::new();
+    let mut decl_count: BTreeMap<String, usize> = BTreeMap::new();
+    let mut self_block_refs: BTreeMap<String, i64> = BTreeMap::new();
+    for (rel, content) in files {
+        if is_test_dag(rel) {
+            continue;
+        }
+        for (name, block) in inert_carrier_type_carrier_blocks(content) {
+            declared.entry(name.clone()).or_insert_with(|| rel.clone());
+            *decl_count.entry(name.clone()).or_insert(0) += 1;
+            *self_block_refs.entry(name.clone()).or_insert(0) +=
+                inert_carrier_count_token(&block, &name);
+        }
+    }
+    let names: BTreeSet<String> = declared.keys().cloned().collect();
+    let mut nontest_occ: BTreeMap<String, i64> = BTreeMap::new();
+    let mut self_tested: BTreeSet<String> = BTreeSet::new();
+    for (rel, content) in files {
+        let mut local: BTreeMap<String, i64> = BTreeMap::new();
+        for raw in content.lines() {
+            for tok in inert_carrier_identifier_tokens(&strip_line_comment(raw)) {
+                if names.contains(&tok) {
+                    *local.entry(tok).or_insert(0) += 1;
+                }
+            }
+        }
+        if is_test_dag(rel) {
+            for (k, _) in local {
+                self_tested.insert(k);
+            }
+        } else {
+            for (k, v) in local {
+                *nontest_occ.entry(k).or_insert(0) += v;
+            }
+        }
+    }
+    let mut inert_names: Vec<String> = Vec::new();
+    for name in declared.keys() {
+        if decl_count.get(name).copied().unwrap_or(0) != 1 {
+            continue;
+        }
+        if !self_tested.contains(name) {
+            continue;
+        }
+        let total = nontest_occ.get(name).copied().unwrap_or(0);
+        let own = self_block_refs.get(name).copied().unwrap_or(0);
+        if total - own <= 0 {
+            inert_names.push(name.clone());
+        }
+    }
+    inert_names.sort();
+    inert_names.dedup();
+    InertCarrierData {
+        declared_count: declared.len(),
+        inert_names,
+    }
+}
+
+fn build_inert_carrier_data() -> &'static InertCarrierData {
+    static CACHE: OnceLock<InertCarrierData> = OnceLock::new();
+    CACHE.get_or_init(|| compute_inert_carrier_data(&corpus_dag_files()))
+}
+
+pub fn inert_carrier_names_live() -> Vec<String> {
+    build_inert_carrier_data().inert_names.clone()
+}
+
+pub fn inert_carrier_declared_count_live() -> i64 {
+    build_inert_carrier_data().declared_count as i64
+}
+
+#[cfg(test)]
+mod inert_carrier_tests {
+    use super::*;
+
+    fn inert_names_of(files: &[(&str, &str)]) -> Vec<String> {
+        let owned: Vec<(String, String)> = files
+            .iter()
+            .map(|(p, c)| (p.to_string(), c.to_string()))
+            .collect();
+        compute_inert_carrier_data(&owned).inert_names
+    }
+
+    #[test]
+    fn type_carrier_blocks_extracts_names_and_bodies() {
+        let c = "module m\ntype Connective = Atom | Conj\ntype WorkDemand {\n  field: Int\n}\nfn f() -> Int { 1 }\n";
+        let blocks = inert_carrier_type_carrier_blocks(c);
+        let names: Vec<&String> = blocks.iter().map(|(n, _)| n).collect();
+        assert_eq!(names, vec!["Connective", "WorkDemand"]);
+        let wd = &blocks.iter().find(|(n, _)| n == "WorkDemand").unwrap().1;
+        assert!(wd.contains("field: Int") && wd.contains('}'));
+        assert!(!wd.contains("fn f"));
+    }
+
+    #[test]
+    fn identifier_tokens_are_whole_words() {
+        let toks = inert_carrier_identifier_tokens("  field: PlacementSupply = foo(Placement)");
+        assert!(toks.contains(&"PlacementSupply".to_string()));
+        assert!(toks.contains(&"Placement".to_string()));
+        assert!(toks.contains(&"field".to_string()));
+    }
+
+    #[test]
+    fn red_control_self_tested_zero_consumer_carrier_is_inert() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Lonely { x: Int }\n"),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Lonely { x: 1 } == Lonely { x: 1 } }\n",
+            ),
+        ]);
+        assert!(
+            inert.contains(&"Lonely".to_string()),
+            "a self-tested carrier with no real consumer must be flagged inert; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_carrier_with_real_consumer_is_not_inert() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Used { x: Int }\n"),
+            (
+                "b.dag",
+                "module b\nimport a { Used }\nfn f(u: Used) -> Int { u.x }\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Used { x: 1 } == Used { x: 1 } }\n",
+            ),
+        ]);
+        assert!(
+            !inert.contains(&"Used".to_string()),
+            "a carrier with a real (non-test, cross-file) consumer must NOT be flagged; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_same_file_consumer_is_not_inert() {
+        let inert = inert_names_of(&[
+            (
+                "lens.dag",
+                "module lens\ntype LocalFact { x: Int }\nfn clean(fs: LocalFact) -> Bool { fs.x == 0 }\n",
+            ),
+            ("lens_test.dag", "module t\nfn t() -> Bool { clean(fs: LocalFact { x: 0 }) }\n"),
+        ]);
+        assert!(
+            !inert.contains(&"LocalFact".to_string()),
+            "a carrier consumed by a fn in its own file is NOT inert; got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn green_control_untested_unused_carrier_is_not_flagged() {
+        let inert = inert_names_of(&[("a.dag", "module a\ntype Staged { x: Int }\n")]);
+        assert!(
+            !inert.contains(&"Staged".to_string()),
+            "an untested unused carrier must NOT be flagged (it is model-first, not illusion); got {inert:?}"
+        );
+    }
+
+    #[test]
+    fn comment_reference_is_not_a_real_consumer() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Noted { x: Int }\n"),
+            (
+                "b.dag",
+                "module b\n// Noted is described here\nfn f() -> Int { 1 }\n",
+            ),
+            (
+                "a_test.dag",
+                "module t\nfn t() -> Bool { Noted { x: 1 } == Noted { x: 1 } }\n",
+            ),
+        ]);
+        assert!(inert.contains(&"Noted".to_string()));
+    }
+
+    #[test]
+    fn doubly_declared_name_is_not_flagged() {
+        let inert = inert_names_of(&[
+            ("a.dag", "module a\ntype Dup { x: Int }\n"),
+            ("b.dag", "module b\ntype Dup { y: Int }\n"),
+        ]);
+        assert!(!inert.contains(&"Dup".to_string()));
+    }
 }
 
 fn resolve_doc_link(from: &str, target: &str) -> Vec<String> {
