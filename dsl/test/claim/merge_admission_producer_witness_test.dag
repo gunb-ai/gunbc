@@ -14,6 +14,7 @@ import gunbc.merge_admission_produce {
   parse_receipt_wire,
   stamp_floor_receipt,
   floor_exit_to_check_conclusion,
+  ci_floor_stamp_merge_admission_script,
 }
 import extdeps.github.checks { check_conclusion_wire_label }
 import std.types { ContentHash }
@@ -34,6 +35,13 @@ data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
   base_tree_hash: scenario_base,
   floor_exit_code: 1,
 )
+
+test fn floor_stamp_exports_ci_floor_exit_on_gunbc_line() -> Bool {
+  string_contains(
+    s: ci_floor_stamp_merge_admission_script(),
+    pattern: "CI_FLOOR_EXIT=$FLOOR_EXIT \"$ROOT/target/release/gunbc\" run"
+  )
+}
 
 test fn floor_exit_zero_maps_to_success() -> Bool {
   floor_exit_to_check_conclusion(exit_code: 0) == Success
