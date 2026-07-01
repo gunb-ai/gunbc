@@ -6,8 +6,8 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data languages_consumer_census_data_decl_baseline: Int = 71
-data languages_consumer_census_per_language_row_baseline: Int = 64
+data languages_consumer_census_data_decl_baseline: Int = 73
+data languages_consumer_census_per_language_row_baseline: Int = 66
 data languages_consumer_census_format_row_baseline: Int = 7
 
 fn languages_consumer_census_ratchet_holds(live_count: Int, baseline: Int) -> Bool {

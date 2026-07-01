@@ -5838,17 +5838,13 @@ fn eval_builtin(
             crate::cli_run::doc_graph_doc_count(),
         ))),
 
-        "inert_carrier_count" => Ok(Some(Value::Int(
-            crate::module_path_index::inert_carrier_census::inert_carrier_count(),
-        ))),
-        "inert_carrier_unrostered_count" => Ok(Some(Value::Int(
-            crate::module_path_index::inert_carrier_census::inert_carrier_unrostered_count(),
-        ))),
-        "inert_carrier_stale_roster_count" => Ok(Some(Value::Int(
-            crate::module_path_index::inert_carrier_census::inert_carrier_stale_roster_count(),
-        ))),
-        "inert_carrier_declared_count" => Ok(Some(Value::Int(
-            crate::module_path_index::inert_carrier_census::inert_carrier_declared_count(),
+        "unwired_model_names_live" => {
+            let names = crate::cli_run::unwired_model_names_live();
+            let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
+            Ok(Some(list_value(items)))
+        }
+        "unwired_model_declared_count" => Ok(Some(Value::Int(
+            crate::cli_run::unwired_model_declared_count_live(),
         ))),
 
         "inert_lens_unreached_module_count" => Ok(Some(Value::Int(
