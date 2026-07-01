@@ -34,6 +34,7 @@ import gunbc.external_access_throttle {
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { Second, second, second_count }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
 import std.types { NonEmptyStr }
@@ -46,6 +47,8 @@ data gcp_access_check_project_id: GcpProjectId = bmc_secrets_project_id
 data gcp_access_check_canary_secret: NonEmptyStr = bmc_srv3_secret_name
 
 data gcp_access_check_service_account: ServiceAccountEmail = bmc_assimilator_sa_email
+
+data gcp_access_check_impersonation_lifetime: Second = second(count: 3600)
 
 data gcp_access_check_wif_audience: NonEmptyStr = bmc_wif_provider_resource()
 
@@ -94,7 +97,7 @@ pattern gcp_wif_secret_manager_reachability_check(runtime: AuthRuntime) -> GcpAc
   node impersonated: optional_impersonation(
     access_token: sts.access_token,
     service_account: Present { value: gcp_access_check_service_account },
-    lifetime_seconds: 3600
+    lifetime_seconds: second_count(s: gcp_access_check_impersonation_lifetime)
   )
 
   node probe: gcp.SecretManager.AccessVersion(
