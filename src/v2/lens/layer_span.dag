@@ -3,15 +3,9 @@ module v2.lens.layer_span
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 
-import v2.std.layer {
-  LayerPrefix,
-  LayerPrefixStd,
-  LayerPrefixExtdeps,
-  LayerPrefixCompiler,
-  LayerPrefixWorkflow,
-  layer_prefix_ordinal
-}
+import v2.std.layer { LayerPrefix, layer_prefix_ordinal }
 import v2.std.cross_tree.resolution { layer_prefix_from_dotted_qualified_name }
+import v2.lens.layering_imports { is_std_layer }
 import v2.std.algebra {
   Ordering,
   Less,
@@ -30,15 +24,6 @@ import v2.std.text { String }
 
 fn layer_of_module(mod_name: String) -> LayerPrefix {
   layer_prefix_from_dotted_qualified_name(qn: mod_name)
-}
-
-fn is_std_layer(layer: LayerPrefix) -> Bool {
-  match layer {
-    LayerPrefixStd => true
-    LayerPrefixExtdeps => false
-    LayerPrefixCompiler => false
-    LayerPrefixWorkflow => false
-  }
 }
 
 type LayerOrdinalSpan {
