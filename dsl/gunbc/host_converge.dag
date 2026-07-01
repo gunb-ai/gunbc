@@ -109,6 +109,8 @@ data gunbc_ctrl_quiescent_reload_hook: String = "scripts/session-dashboard/bin/g
 
 data gunbc_spawn_retry_backstop_cadence: Second = second(count: 600)
 
+data gunbc_fleet_converge_timer_on_boot_delay: Second = second(count: 120)
+
 type GreenPlaceReadinessMarker {
   path: String
   pin_prefix: String

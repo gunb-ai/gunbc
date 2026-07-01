@@ -10,6 +10,7 @@ import std.layout {
   doc_concat, doc_line_of,
   render
 }
+import gunbc.fleet_converge_emit { fleet_converge_shell_emit_dissolution_trigger }
 import gunbc.host_converge {
   ConvergePolicy,
   ConvergePolicyDerived,
@@ -18,6 +19,7 @@ import gunbc.host_converge {
   gunbc_host_ctrl_checkout_path,
   gunbc_dsl_root_submodule_path,
   gunbc_spawn_retry_backstop_cadence,
+  gunbc_fleet_converge_timer_on_boot_delay,
   gunbc_fleet_operator_unix_user,
 }
 
@@ -26,11 +28,13 @@ data fleet_converge_timer_protocol: LayoutProtocol = LayoutProtocol { indent_uni
 data fleet_converge_timer_emit_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "gunbc.fleet_converge_timer_emit",
-    decl_name: "project_timer_upsert_to_doc",
+    module_path: "gunbc.fleet_converge_emit",
+    decl_name: "fleet_converge_shell_emit_dissolution_trigger",
     field: WholeDeclaration
   }
 }
+
+data fleet_converge_timer_emit_shell_authority: String = fleet_converge_shell_emit_dissolution_trigger
 
 data gunbc_fleet_converge_service_unit_name: String = "gunbc-fleet-converge.service"
 data gunbc_fleet_converge_timer_unit_name: String = "gunbc-fleet-converge.timer"
@@ -55,6 +59,10 @@ fn timer_on_unit_active_sec() -> String {
   concat(to_string(second_count(s: gunbc_spawn_retry_backstop_cadence)), "s")
 }
 
+fn timer_on_boot_sec() -> String {
+  concat(to_string(second_count(s: gunbc_fleet_converge_timer_on_boot_delay)), "s")
+}
+
 fn emit_service_unit_doc() -> Doc {
   let script = fleet_converge_script_path()
   doc_concat(parts: [
@@ -73,12 +81,13 @@ fn emit_service_unit_doc() -> Doc {
 
 fn emit_timer_unit_doc() -> Doc {
   let interval = timer_on_unit_active_sec()
+  let boot = timer_on_boot_sec()
   doc_concat(parts: [
     doc_line_of(text: "[Unit]"),
     doc_line_of(text: "Description=gunbc fleet converge periodic reconcile"),
     doc_line_of(text: ""),
     doc_line_of(text: "[Timer]"),
-    doc_line_of(text: "OnBootSec=2min"),
+    doc_line_of(text: concat("OnBootSec=", boot)),
     doc_line_of(text: concat("OnUnitActiveSec=", interval)),
     doc_line_of(text: "Unit=gunbc-fleet-converge.service"),
     doc_line_of(text: ""),

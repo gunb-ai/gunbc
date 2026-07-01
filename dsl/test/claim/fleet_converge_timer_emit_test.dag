@@ -11,6 +11,7 @@ import gunbc.host_converge {
   gunbc_host_ctrl_checkout_path,
   gunbc_dsl_root_submodule_path,
   gunbc_spawn_retry_backstop_cadence,
+  gunbc_fleet_converge_timer_on_boot_delay,
   gunbc_fleet_operator_unix_user,
 }
 import std.measure { second_count }
@@ -44,6 +45,7 @@ fn witness_service_execs_converge_script() -> Bool {
 fn witness_timer_cadence_matches_spawn_backstop() -> Bool {
   let sh = expected_fleet_converge_timer_upsert_sh()
   has(s: sh, p: concat("OnUnitActiveSec=", concat(to_string(second_count(s: gunbc_spawn_retry_backstop_cadence)), "s")))
+    && has(s: sh, p: concat("OnBootSec=", concat(to_string(second_count(s: gunbc_fleet_converge_timer_on_boot_delay)), "s")))
 }
 
 fn witness_drift_red_receipt() -> Bool {

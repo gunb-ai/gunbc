@@ -38,6 +38,8 @@ import gunbc.host_converge {
 
 data fleet_converge_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
+data fleet_converge_shell_emit_dissolution_trigger: String = "dissolve-on: emit(intent,Bash) orchestration registry seam (#6092) — hand-shell concat in fleet_converge_emit.dag + fleet_converge_timer_emit.dag dissolves when Slice 2 fleet_converge (+ timer host-effect rows) lower through std.orchestration intent via 05_emit_orchestration; retire fleet_converge_sh_for + project_timer_upsert_to_doc and paired medium_structure_exception_roster entries together (gunbc.plans.shell_emission_model §5 Slice 2)"
+
 
 fn sh_arg(s: String) -> String {
   concat(concat("\"", s), "\"")

@@ -26,7 +26,7 @@ cat > "$timer_path" <<'GUNBC_FLEET_CONVERGE_TIMER_EOF'
 Description=gunbc fleet converge periodic reconcile
 
 [Timer]
-OnBootSec=2min
+OnBootSec=120s
 OnUnitActiveSec=600s
 Unit=gunbc-fleet-converge.service
 
