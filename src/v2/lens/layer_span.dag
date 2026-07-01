@@ -11,13 +11,13 @@ import v2.std.layer {
   LayerPrefixWorkflow,
   layer_prefix_ordinal
 }
+import v2.std.cross_tree.resolution { layer_prefix_from_dotted_qualified_name }
 import v2.std.algebra {
   Ordering,
   Less,
   Equal,
   Greater,
-  fold_list,
-  is_prefix_of
+  fold_list
 }
 import v2.std.integer {
   int_add,
@@ -26,64 +26,10 @@ import v2.std.integer {
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.text { Char, String }
-
-fn char_eq(a: Char, b: Char) -> Bool {
-  a == b
-}
-
-fn has_prefix(prefix: String, mod_name: String) -> Bool {
-  is_prefix_of(prefix: prefix, xs: mod_name, eq: char_eq)
-}
-
-data std_prefix_v2: String = "v2.std."
-data std_prefix_dsl: String = "std."
-data std_exact_v2: String = "v2.std"
-data std_exact_dsl: String = "std"
-
-data extdeps_prefix_v2: String = "v2.extdeps."
-data extdeps_prefix_dsl: String = "extdeps."
-data extdeps_exact_v2: String = "v2.extdeps"
-data extdeps_exact_dsl: String = "extdeps"
-
-data compiler_prefix_v2: String = "v2.compiler."
-data compiler_prefix_dsl: String = "compiler."
-data compiler_exact_v2: String = "v2.compiler"
-
-fn is_std_module(mod_name: String) -> Bool {
-  mod_name == std_exact_v2
-    || mod_name == std_exact_dsl
-    || has_prefix(prefix: std_prefix_v2, mod_name: mod_name)
-    || has_prefix(prefix: std_prefix_dsl, mod_name: mod_name)
-}
-
-fn is_extdeps_module(mod_name: String) -> Bool {
-  mod_name == extdeps_exact_v2
-    || mod_name == extdeps_exact_dsl
-    || has_prefix(prefix: extdeps_prefix_v2, mod_name: mod_name)
-    || has_prefix(prefix: extdeps_prefix_dsl, mod_name: mod_name)
-}
-
-fn is_compiler_module(mod_name: String) -> Bool {
-  mod_name == compiler_exact_v2
-    || has_prefix(prefix: compiler_prefix_v2, mod_name: mod_name)
-    || has_prefix(prefix: compiler_prefix_dsl, mod_name: mod_name)
-}
+import v2.std.text { String }
 
 fn layer_of_module(mod_name: String) -> LayerPrefix {
-  if is_std_module(mod_name: mod_name) {
-    LayerPrefixStd
-  } else {
-    if is_extdeps_module(mod_name: mod_name) {
-      LayerPrefixExtdeps
-    } else {
-      if is_compiler_module(mod_name: mod_name) {
-        LayerPrefixCompiler
-      } else {
-        LayerPrefixWorkflow
-      }
-    }
-  }
+  layer_prefix_from_dotted_qualified_name(qn: mod_name)
 }
 
 fn is_std_layer(layer: LayerPrefix) -> Bool {

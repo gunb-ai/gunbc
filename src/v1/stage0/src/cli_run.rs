@@ -3413,11 +3413,22 @@ fn is_top_level_lens_module(module: &str) -> bool {
 // ambient framework layer and never counts toward the span. Keep the prefixes
 // and the `keeps_on_floor` threshold in lockstep with layer_span.dag.
 //
-// SCAFFOLD (DESIGN §6). dissolve-on: `seed-discovery-invokes-dag-lens` — when
-// floor discovery (a v1 seed host-effect) can resolve+evaluate a `.dag` lens
-// query directly, this classifier is deleted and discovery calls
-// `v2.lens.layer_span.keeps_on_floor` on the witness's import closure, leaving
-// the `.dag` as the single authority (§7 "Rust is a seed that shrinks to zero").
+// SCAFFOLD (DESIGN §6). dissolve-on: ROADMAP.md §1 row
+// `1-seed-discovery-invokes-dag-lens` — when floor discovery (a v1 seed
+// host-effect) can resolve+evaluate a `.dag` lens query directly, this
+// classifier + the closure walk below are deleted and discovery calls
+// `v2.lens.layer_span.keeps_on_floor` on the host-gathered import closure,
+// leaving the `.dag` as the single authority (§7 "Rust is a seed that shrinks
+// to zero").
+//
+// Division of labour (why the `.dag` authority takes a flat list, not a graph):
+// the `.dag` `layer_span` classifies a MODULE-SET -> lane (max-min layer span);
+// the TRANSITIVE-CLOSURE gather (`transitive_non_std_modules` below) is the
+// host graph-walk that produces that set. Classification semantics are
+// identical to the `.dag` (parity test `classifier_matches_dag_model`; the
+// multi-layer closure result is the `.dag` witness `end_to_end_span_is_integration`
+// over an already-gathered module-set). Only the walk is host-only, and it is
+// exactly what the dissolution removes.
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CoarseLayer {
@@ -3427,26 +3438,40 @@ enum CoarseLayer {
     Workflow,
 }
 
+// Faithful mirror of `layer_prefix_from_qualified_name`
+// (src/v2/std/cross_tree/resolution.dag) — the SINGLE layer-classification
+// authority also consumed by `v2.lens.grounding`. Classifies on the qualified
+// name's head segments, NOT ad-hoc prefixes: notably `v2.lens.*`/`v2.test.*`
+// and bare `lens`/`test`/`compiler` are Compiler, and an unknown head is Std
+// (ambient). Keep in lockstep with that authority (see the SCAFFOLD block's
+// dissolve-on trigger — once seed discovery can invoke the .dag lens, this is
+// deleted in favour of it).
 fn coarse_layer_of_module(module: &str) -> CoarseLayer {
-    if module == "std"
-        || module == "v2.std"
-        || module.starts_with("std.")
-        || module.starts_with("v2.std.")
-    {
-        CoarseLayer::Std
-    } else if module == "extdeps"
-        || module == "v2.extdeps"
-        || module.starts_with("extdeps.")
-        || module.starts_with("v2.extdeps.")
-    {
-        CoarseLayer::Extdeps
-    } else if module == "v2.compiler"
-        || module.starts_with("v2.compiler.")
-        || module.starts_with("compiler.")
-    {
-        CoarseLayer::Compiler
+    let mut segs = module.split('.');
+    let head = segs.next().unwrap_or("");
+    if head == "v2" {
+        match segs.next() {
+            None => CoarseLayer::Std,
+            Some("std") => CoarseLayer::Std,
+            Some("extdeps") => CoarseLayer::Extdeps,
+            Some("compiler") => CoarseLayer::Compiler,
+            Some("workflow") => CoarseLayer::Workflow,
+            Some("lens") => CoarseLayer::Compiler,
+            Some("test") => CoarseLayer::Compiler,
+            Some(_) => CoarseLayer::Compiler,
+        }
     } else {
-        CoarseLayer::Workflow
+        match head {
+            "extdeps" => CoarseLayer::Extdeps,
+            "std" => CoarseLayer::Std,
+            "compiler" => CoarseLayer::Compiler,
+            "lens" => CoarseLayer::Compiler,
+            "test" => CoarseLayer::Compiler,
+            "workflow" => CoarseLayer::Workflow,
+            "gunbc" => CoarseLayer::Workflow,
+            "tools" => CoarseLayer::Workflow,
+            _ => CoarseLayer::Std,
+        }
     }
 }
 
