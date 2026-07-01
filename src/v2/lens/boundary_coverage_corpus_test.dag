@@ -31,3 +31,7 @@ test fn infer_translate_covered_live() -> Bool {
 test fn translate_emit_covered_live() -> Bool {
   boundary_covered_live(b: translate_emit, facts: stage_import_facts())
 }
+
+test fn corpus_pipeline_fully_covered() -> Bool {
+  corpus_coverage_wall_holds()
+}
