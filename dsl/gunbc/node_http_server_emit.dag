@@ -2,6 +2,7 @@ module gunbc.node_http_server_emit
 
 import std.types { HttpMethod, GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS }
 import std.http_path { PathTemplate, LiteralToken, ParamToken }
+import std.markup { MarkupNode }
 import extdeps.uri_path {
   ParsedPathTemplate,
   MalformedPathTemplate,
@@ -17,7 +18,7 @@ import extdeps.http.server {
   http_content_type_wire_label,
 }
 import gunbc.gunbhub_serve { gunbhub_served_static_route_table }
-import gunbc.roadmap_page { roadmap_page_for_authority }
+import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
 import extdeps.languages.typescript.program {
   TsProgram,
   TsExpr,
@@ -366,22 +367,40 @@ fn roadmap_dashboard_root_path_template() -> PathTemplate {
   }
 }
 
-fn roadmap_dashboard_served_static_route_table() -> ServedStaticRouteTable {
-  match try_serialize_html_source(node: roadmap_page_for_authority()) {
-    EmitOk { html: h } =>
-      ServedStaticRouteTable {
-        routes: [
-          ServedStaticRoute {
-            method: GET,
-            path_pattern: roadmap_dashboard_root_path_template(),
-            body: h,
-            content_type: TextHtmlUtf8,
-            status_on_hit: 200,
-          },
-        ],
-      }
-    EmitRejected { reason: _ } => ServedStaticRouteTable { routes: [] }
+fn roadmap_dashboard_roadmap_path_template() -> PathTemplate {
+  match parse_path_template(raw: "/roadmap") {
+    ParsedPathTemplate { template: t } => t
+    MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
+      PathTemplate { tokens: [LiteralToken { text: "roadmap" }] }
   }
+}
+
+fn roadmap_served_static_route(path: PathTemplate, page: MarkupNode) -> List<ServedStaticRoute> {
+  match try_serialize_html_source(node: page) {
+    EmitOk { html: h } =>
+      [
+        ServedStaticRoute {
+          method: GET,
+          path_pattern: path,
+          body: h,
+          content_type: TextHtmlUtf8,
+          status_on_hit: 200,
+        },
+      ]
+    EmitRejected { reason: _ } => []
+  }
+}
+
+fn roadmap_dashboard_served_static_route_table() -> ServedStaticRouteTable {
+  let daily = roadmap_served_static_route(
+    path: roadmap_dashboard_root_path_template(),
+    page: roadmap_daily_workspace_page_for_authority(),
+  )
+  let full = roadmap_served_static_route(
+    path: roadmap_dashboard_roadmap_path_template(),
+    page: roadmap_page_for_authority(),
+  )
+  ServedStaticRouteTable { routes: concat(daily, full) }
 }
 
 fn roadmap_dashboard_node_http_static_server_spec() -> NodeHttpStaticServerSpec {
