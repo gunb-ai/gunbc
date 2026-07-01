@@ -6230,6 +6230,40 @@ pub fn discover_source_root_reads(
     Ok(records)
 }
 
+#[cfg(test)]
+mod floor_witness_entry_tree_root_controls {
+    use super::{
+        dag_source_read_witness_value, default_source_roots, discover_source_root_reads_for_paths,
+        floor_runner_eval_context, witness_holds_node_value, workspace_root,
+    };
+    use crate::v1_interpreter;
+
+    #[test]
+    fn dag_source_read_witness_value_yields_entry_tree_root() {
+        let _cwd = workspace_root();
+        std::env::set_current_dir(&_cwd).expect("chdir");
+        let roots = default_source_roots();
+        let runner = floor_runner_eval_context(&roots).expect("runner ctx");
+        let entry = "src/v2/workflow/affected_set_floor_runner_test.dag".to_string();
+        let records =
+            discover_source_root_reads_for_paths(&roots, std::slice::from_ref(&entry), &[])
+                .expect("read witness entry");
+        let rec = records
+            .first()
+            .expect("entry read record")
+            .clone();
+        let read = dag_source_read_witness_value(&runner, &rec).expect("witness value");
+        let result = v1_interpreter::run_in_context_with_args(
+            &runner,
+            "floor_witness_entry_tree_root_from_read",
+            &[(Some("read".to_string()), read)],
+            false,
+        )
+        .expect("floor_witness_entry_tree_root_from_read");
+        witness_holds_node_value(&result, &runner).expect("Holds Node");
+    }
+}
+
 // SCAFFOLD (DESIGN §6, dissolution named): runtime provenance-ingest overlay + interpreter
 // bridges that wire floor skip to `v2.lens.affected_set` node-closure while the committed
 // `host_source_root_ingest_manifest` stub stays Empty. Dissolve-on: Step 3 equivalence gate
