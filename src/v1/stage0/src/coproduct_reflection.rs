@@ -7,7 +7,7 @@ use crate::v1_interpreter::{
 };
 use crate::v1_std_core::{
     authored_name_at, expr_var_name_at, field_node_type_expr, inferred_to_node, param_node_name_at,
-    Connective, ExprData, NewlineIndex, Node, VarBindingKind,
+    source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
 pub(crate) const NULLARY_PAYLOAD_TYPE_NAME: &str = "coproduct_nullary_payload";
@@ -1197,13 +1197,30 @@ pub fn eval_fn_arrow_decl_facts_live(
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
-fn data_init_literal_fingerprint(body: &Rc<Node>) -> Option<String> {
+fn literal_source_lexeme(
+    node: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    let index = si.get(&node.span.file)?;
+    let text = source_text_at(index.clone(), node.span.clone());
+    if text.is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+fn data_init_literal_fingerprint(
+    body: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
     // Encoding must match `v2.std.data_index` (`literal_fingerprint_*_lexeme`).
+    let lexeme = literal_source_lexeme(body, si)?;
     match body.expr_data.as_ref() {
         ExprData::ExprLiteral { value, .. } => match value.as_ref() {
-            crate::std_syntax::LiteralValue::LitInt { value: n, .. } => Some(format!("num:{n}")),
-            crate::std_syntax::LiteralValue::LitFloat { value: f, .. } => Some(format!("num:{f}")),
-            crate::std_syntax::LiteralValue::LitBool { value: b } => Some(format!("bool:{b}")),
+            crate::std_syntax::LiteralValue::LitInt { .. }
+            | crate::std_syntax::LiteralValue::LitFloat { .. } => Some(format!("num:{lexeme}")),
+            crate::std_syntax::LiteralValue::LitBool { .. } => Some(format!("bool:{lexeme}")),
             crate::std_syntax::LiteralValue::LitStr { value: s, .. } => {
                 Some(format!("str:\"{s}\""))
             }
@@ -1244,7 +1261,7 @@ pub fn eval_data_init_decl_facts_live(
             let Some(body) = item.body.as_ref() else {
                 continue;
             };
-            let Some(literal_fp) = data_init_literal_fingerprint(body) else {
+            let Some(literal_fp) = data_init_literal_fingerprint(body, &si) else {
                 continue;
             };
             let qualified_name = logical_qualified_name(&info.module_name, &name);
