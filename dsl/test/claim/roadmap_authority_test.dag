@@ -29,9 +29,20 @@ fn witness_reset_marker() -> Bool {
 fn witness_subgroup_labels() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "**Now — correctness of the current posture:**")
-    && string_contains(s: o, pattern: "**Floor wall-clock — 26m → <1min on a typical PR:**")
+    && string_contains(s: o, pattern: "**Floor throughput — reduce work, then schedule it (26m → <1min on a typical PR):**")
     && string_contains(s: o, pattern: "**Control plane — the #6096 re-land, done right (G2/G3):**")
+    && string_contains(s: o, pattern: "**Fabric dispatch — RunShape → Allocation → Receipt (GitHub is the queue, not the scheduler):**")
     && string_contains(s: o, pattern: "**Fleet hardening — make our metal safe for the load it carries:**")
+}
+
+fn witness_fabric_design_rule() -> Bool {
+  let o = out()
+  string_contains(s: o, pattern: "provider-specific power is earned behind a `ProviderOffer` adapter")
+    && string_contains(s: o, pattern: "oversubscription is an optimization proven by receipts, never assumed by placement")
+    && string_contains(s: o, pattern: "**TERMINAL: required CI runs on the compute fabric")
+    && string_contains(s: o, pattern: "immutable storage + stateless compute + explicit route + read-back receipt")
+    && string_contains(s: o, pattern: "**stateless frontend MVP on fabric**")
+    && string_contains(s: o, pattern: "**Ordering (operator-signed):**")
 }
 
 fn witness_emit_refs_from_binding() -> Bool {
@@ -66,7 +77,8 @@ fn witness_b_ordered_interleaving() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "[seed census](docs/plans/seed-shrink-census.md)\n\nGround truth (2026-07-01):")
     && string_contains(s: o, pattern: "byte-identity + the interim fixpoint + well-typed emit.\n\n**◆ Milestones:** front-end ✓")
-    && string_contains(s: o, pattern: "[charter](docs/plans/ci-process-end-to-end.md)\n\n**◆ Milestones:** OOM root-caused")
+    && string_contains(s: o, pattern: "[charter](docs/plans/ci-process-end-to-end.md)\n\n**The core design rule (operator-signed, 2026-07-01):**")
+    && string_contains(s: o, pattern: "Phase 2, earned by receipts.\n\n**◆ Milestones:** OOM root-caused")
 }
 
 fn witness_b_order_discriminator() -> Bool {
@@ -102,6 +114,7 @@ test fn roadmap_authority_witnesses() -> Bool {
   witness_frame_all_sections()
     && witness_reset_marker()
     && witness_subgroup_labels()
+    && witness_fabric_design_rule()
     && witness_emit_refs_from_binding()
     && witness_pillar1_no_overclaim()
     && witness_pillar2_posture()
