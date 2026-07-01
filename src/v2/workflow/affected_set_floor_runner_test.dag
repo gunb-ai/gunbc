@@ -285,16 +285,30 @@ data floor_test_fn_edit_touch: FloorDiffLineTouch = FloorDiffLineTouch {
   end_line: 74
 }
 
+data floor_test_fn_body_edit_touch: FloorDiffLineTouch = FloorDiffLineTouch {
+  path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+  start_line: 78,
+  end_line: 78
+}
+
 test fn floor_test_fn_declaration_edited_holds() -> Bool {
   floor_test_fn_declaration_edited(
     touches: [floor_test_fn_edit_touch],
     file_path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
-    test_fn_decl_line: 74
+    test_fn_decl_line: 74,
+    test_fn_decl_end_line: 84
   )
+    && floor_test_fn_declaration_edited(
+      touches: [floor_test_fn_body_edit_touch],
+      file_path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+      test_fn_decl_line: 74,
+      test_fn_decl_end_line: 84
+    )
     && !floor_test_fn_declaration_edited(
       touches: [floor_test_fn_edit_touch],
       file_path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
-      test_fn_decl_line: 15
+      test_fn_decl_line: 15,
+      test_fn_decl_end_line: 19
     )
 }
 

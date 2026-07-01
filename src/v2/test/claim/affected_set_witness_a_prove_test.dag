@@ -53,7 +53,8 @@ fn witness_a_dag_function_edited_model_holds() -> Bool {
   floor_test_fn_declaration_edited(
     touches: [witness_a_fixture_fn_edit_touch],
     file_path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
-    test_fn_decl_line: 74
+    test_fn_decl_line: 74,
+    test_fn_decl_end_line: 84
   )
 }
 

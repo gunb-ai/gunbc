@@ -52,7 +52,8 @@ fn floor_diff_line_touches_decl(
 fn floor_test_fn_declaration_edited(
   touches: List<FloorDiffLineTouch>,
   file_path: String,
-  test_fn_decl_line: Int
+  test_fn_decl_line: Int,
+  test_fn_decl_end_line: Int
 ) -> Bool {
   any(
     xs: touches,
@@ -61,7 +62,7 @@ fn floor_test_fn_declaration_edited(
         touch: t,
         file_path: file_path,
         decl_line: test_fn_decl_line,
-        decl_end_line: test_fn_decl_line
+        decl_end_line: test_fn_decl_end_line
       )
     }
   )

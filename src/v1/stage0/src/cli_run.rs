@@ -3630,6 +3630,48 @@ impl NodeFrontierSeeds {
     }
 }
 
+fn decl_span_end_line(sorted_decl_lines: &[i64], decl_line: i64) -> i64 {
+    sorted_decl_lines
+        .iter()
+        .position(|&line| line == decl_line)
+        .map(|idx| {
+            sorted_decl_lines
+                .get(idx + 1)
+                .map(|&next| next - 1)
+                .unwrap_or(i64::MAX)
+        })
+        .unwrap_or(i64::MAX)
+}
+
+fn collect_sorted_decl_lines_for_file(
+    index: &MultiEntryIndex,
+    file_path: &str,
+) -> Result<Vec<i64>, String> {
+    let file_norm = normalize_repo_path(file_path);
+    let (graph, source_indices) = resolve_entry_with_index(index, file_path)?;
+    let content = std::fs::read_to_string(file_path)
+        .map_err(|e| format!("read {file_path} for decl span: {e}"))?;
+    let mut decls: Vec<i64> = Vec::new();
+    for module in graph.modules.iter() {
+        for item in module.items.iter() {
+            if !span_file_matches(&item.span.file, &file_norm) {
+                continue;
+            }
+            let Some(nl) = newline_index_for_span(&item.span, &source_indices).cloned() else {
+                return Err(format!("newline index missing for decl span in {file_path}"));
+            };
+            decls.push(byte_to_line_col(nl, item.span.start).line);
+        }
+    }
+    for (_, line) in scan_test_decl_lines(&content) {
+        if !decls.contains(&line) {
+            decls.push(line);
+        }
+    }
+    decls.sort_unstable();
+    Ok(decls)
+}
+
 fn collect_frontier_seeds_from_diff_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
@@ -3679,7 +3721,10 @@ fn collect_frontier_seeds_from_diff_line_ranges(
         }
         for i in 0..decls.len() {
             let (line, name, is_data) = &decls[i];
-            let decl_end = decls.get(i + 1).map(|(l, _, _)| l - 1).unwrap_or(i64::MAX);
+            let decl_end = decl_span_end_line(
+                &decls.iter().map(|(l, _, _)| *l).collect::<Vec<_>>(),
+                *line,
+            );
             if !ranges.iter().any(|r| *line <= r.end && decl_end >= r.start) {
                 continue;
             }
@@ -4835,6 +4880,7 @@ mod floor_witness_a_prove {
         touches: &[(String, i64, i64)],
         file_path: &str,
         decl_line: i64,
+        decl_end_line: i64,
     ) -> Result<bool, String> {
         let touch_values: Vec<Value> = touches
             .iter()
@@ -4850,6 +4896,10 @@ mod floor_witness_a_prove {
                 Value::Str(file_path.to_string()),
             ),
             (Some("test_fn_decl_line".to_string()), int_value(decl_line)),
+            (
+                Some("test_fn_decl_end_line".to_string()),
+                int_value(decl_end_line),
+            ),
         ];
         match v1_interpreter::run_in_context_with_args(
             ctx,
