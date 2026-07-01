@@ -1198,6 +1198,7 @@ pub fn eval_fn_arrow_decl_facts_live(
 }
 
 fn data_init_literal_fingerprint(body: &Rc<Node>) -> Option<String> {
+    // Encoding must match `v2.std.data_index` (`literal_fingerprint_*_lexeme`).
     match body.expr_data.as_ref() {
         ExprData::ExprLiteral { value, .. } => match value.as_ref() {
             crate::std_syntax::LiteralValue::LitInt { value: n, .. } => {

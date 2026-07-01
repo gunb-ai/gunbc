@@ -13,7 +13,13 @@ import v2.std.algebra {
   list_tail
 }
 import v2.std.collection { Absent, List, Present, list_at_optional }
-import v2.std.data_index { DataInitDecl, data_init_decl_facts_live }
+import v2.std.data_index {
+  DataInitDecl,
+  data_init_decl_facts_live,
+  lexeme_matches_literal_fp,
+  literal_fingerprint_bool_lexeme,
+  literal_fingerprint_num_lexeme
+}
 import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
 import v2.std.node {
@@ -84,6 +90,8 @@ data sym_m: Symbol = ^m
 data sym_a: Symbol = ^a
 data sym_b: Symbol = ^b
 data sym_ttl_name: String = "ttl"
+data sym_flag_name: String = "flag"
+data sym_true_name: String = "true"
 data sym_x: Symbol = ^x
 data sym_y: Symbol = ^y
 data sym_wrapped: Symbol = ^wrapped
@@ -143,10 +151,6 @@ fn node_atom_name(n: Node) -> String {
 
 fn sym_is_empty(sym: Symbol) -> Bool {
   sym == empty_sym
-}
-
-fn literal_fingerprint_name(name: String) -> String {
-  concat("num:", name)
 }
 
 fn lookup_data_literal(data_inits: List<DualRepDataInit>, name: String) -> String {
@@ -366,9 +370,12 @@ fn classify_eq_node_site(
     ]
   } else if sym_is_empty(sym: lhs_sym) == false {
     let lhs_name = node_atom_name(n: site.lhs)
-    let rhs_lit = literal_fingerprint_name(name: node_atom_name(n: site.rhs))
+    let rhs_lexeme = node_atom_name(n: site.rhs)
     let init_lit = lookup_data_literal(data_inits: data_inits, name: lhs_name)
-    if (is_empty(xs: init_lit) == false) && (init_lit == rhs_lit) {
+    if (is_empty(xs: init_lit) == false)
+      && (sym_is_empty(sym: rhs_sym) == false)
+      && lexeme_matches_literal_fp(lexeme: rhs_lexeme, literal_fp: init_lit)
+    {
       [
         DualRepViolation {
           path: path,
@@ -577,7 +584,7 @@ fn synthetic_literal_mirror_scan() -> DualRepModuleScan {
     data_inits: [
       DualRepDataInit {
         name: sym_ttl_name,
-        literal_fp: literal_fingerprint_name(name: sym_lit_3600_name)
+        literal_fp: literal_fingerprint_num_lexeme(lexeme: sym_lit_3600_name)
       }
     ],
     fns: [
@@ -585,6 +592,29 @@ fn synthetic_literal_mirror_scan() -> DualRepModuleScan {
         name: "witness_ttl",
         params: empty_symbol_list,
         output: eq_conj(lhs: atom_node_name(name: sym_ttl_name), rhs: atom_node_name(name: sym_lit_3600_name))
+      }
+    ]
+  }
+}
+
+fn synthetic_bool_literal_mirror_scan() -> DualRepModuleScan {
+  DualRepModuleScan {
+    path: "synthetic/bool_literal_mirror_test.dag",
+    module: "synthetic.bool_literal_mirror_test",
+    data_inits: [
+      DualRepDataInit {
+        name: sym_flag_name,
+        literal_fp: literal_fingerprint_bool_lexeme(lexeme: sym_true_name)
+      }
+    ],
+    fns: [
+      DualRepFnFact {
+        name: "witness_flag",
+        params: empty_symbol_list,
+        output: eq_conj(
+          lhs: atom_node_name(name: sym_flag_name),
+          rhs: atom_node_name(name: sym_true_name)
+        )
       }
     ]
   }
