@@ -5560,8 +5560,7 @@ fn languages_census_extract_data_decl_names(content: &str) -> Vec<String> {
 }
 
 fn languages_census_is_infrastructure_path(rel: &str) -> bool {
-    rel == "src/v1/stage0/src/languages_consumer_census.rs"
-        || rel.starts_with("src/v2/test/claim/languages_consumer_census/")
+    rel.starts_with("src/v2/test/claim/languages_consumer_census/")
         || rel == "src/v2/lens/languages_consumer_census.dag"
 }
 
