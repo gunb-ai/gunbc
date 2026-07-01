@@ -4187,7 +4187,18 @@ fn run_discovery_rows(
                         provenance_live,
                     );
                     match dag_touches {
-                        Ok(touches) => touches,
+                        Ok(true) => true,
+                        Ok(false) => {
+                            if provenance_live {
+                                entry_touches_frontier_seeds(
+                                    &entry_ctx,
+                                    &row.entry,
+                                    frontier_seeds,
+                                )?
+                            } else {
+                                false
+                            }
+                        }
                         Err(msg) => {
                             eprintln!(
                                 "claim_executor: .dag node-closure skip failed ({msg}) — falling back to seed bridge"
@@ -6088,29 +6099,12 @@ fn entry_frontier_nodes_via_dag_closure(
     let mut frontier =
         closure_rerun_frontier_nodes(runner_ctx, &v1_interpreter::Value::Null, &edit_loci)?;
     if provenance_live {
-        match provenance_entry_tree_root(runner_ctx, entry_path) {
-            Ok(provenance_entry_root) => {
-                match provenance_rerun_frontier_nodes(
-                    runner_ctx,
-                    &provenance_entry_root,
-                    changed_paths,
-                ) {
-                    Ok(provenance_nodes) => {
-                        merge_frontier_nodes(&mut frontier, provenance_nodes, runner_ctx);
-                    }
-                    Err(msg) => {
-                        eprintln!(
-                            "claim_executor: provenance frontier failed ({msg}) — using edit-loci closure only"
-                        );
-                    }
-                }
-            }
-            Err(msg) => {
-                eprintln!(
-                    "claim_executor: provenance entry tree root unavailable ({msg}) — using edit-loci closure only"
-                );
-            }
-        }
+        let provenance_entry_root = provenance_entry_tree_root(runner_ctx, entry_path)
+            .map_err(|msg| format!("provenance entry tree root unavailable ({msg})"))?;
+        let provenance_nodes =
+            provenance_rerun_frontier_nodes(runner_ctx, &provenance_entry_root, changed_paths)
+                .map_err(|msg| format!("provenance frontier failed ({msg})"))?;
+        merge_frontier_nodes(&mut frontier, provenance_nodes, runner_ctx);
     }
     Ok(frontier)
 }
