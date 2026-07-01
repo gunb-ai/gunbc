@@ -695,7 +695,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn external_access_throttle_policy_matches_is_on_roster() {
         const SITE: &str =
             "dsl/gunbc/external_access_throttle.dag::external_access_throttle_policy_matches";

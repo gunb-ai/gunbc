@@ -62,6 +62,8 @@ data gcp_access_check_invoke_shell_emit_debt: Disposition = Scaffold {
   }
 }
 
+data gcp_access_check_invoke_shell_emit_dissolution_trigger: String = "dissolve-on: gcp_access_check_invoke — RunStep.run concat medium-as-string; DISSOLVES WHEN CI inline-shell de-fork lands (roadmap 1-inline-shell-defork / docs/plans/shell-emission-model.md) — same bash-emit authority class as ci_release_build_script"
+
 fn gcp_access_check_workflow_schedule() -> CronSchedule {
   external_access_throttle_enforce_schedule(namespace: gcp_access_check_sts_throttle_namespace)
 }
