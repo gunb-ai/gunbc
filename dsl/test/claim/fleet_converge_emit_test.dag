@@ -119,8 +119,9 @@ fn witness_live_converge_is_conservation_sound() -> Bool {
   !has(s: sh, p: "fleet-converge UNSOUND:")
     && has(s: sh, p: "converge-receipt")
     && has(s: sh, p: "converge_slice_property \"srv1\" \"runner\" \"runner_slice_cap_bytes\" \"system-actions-runner.slice\" \"MemoryMax\" \"85899345920\" \"85899345920\" \"85899345920\"")
-    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf\" \"actions-runner@srv1-*.service\" \"MemoryMax\" \"8589934592\"")
-    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv1-*.service\" \"MemorySwapMax\" \"25769803776\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf\" \"actions-runner@srv1-*.service\" \"MemoryMax\" \"25769803776\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv1-*.service\" \"MemorySwapMax\" \"8589934592\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_high_bytes\" \"/etc/systemd/system/actions-runner@.service.d/40-fleet-high.conf\" \"actions-runner@srv1-*.service\" \"MemoryHigh\" \"15032385536\"")
     && has(s: sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"10\"")
     && has(s: sh, p: "host_begin \"srv3\"")
     && has(s: sh, p: "converge_gunbc_pinned_tree \"srv3\" \"gunbc\" \"pinned_tree_sha\" \"fresh_standup\"")
@@ -147,7 +148,7 @@ fn witness_sound_emits_runner_knobs() -> Bool {
   let sh = fixture_sound_sh()
   has(s: sh, p: "converge_slice_property \"srv1\" \"runner\" \"runner_slice_cap_bytes\" \"system-actions-runner.slice\" \"MemoryMax\" \"70391285350\" \"70391285350\" \"70391285350\"")
     && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/20-fleet-width.conf\" \"actions-runner@srv1-*.service\" \"MemoryMax\" \"30000000000\"")
-    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv1-*.service\" \"MemorySwapMax\" \"25769803776\"")
+    && has(s: sh, p: "converge_per_slot_cap \"srv1\" \"runner\" \"per_slot_memory_swap_max_bytes\" \"/etc/systemd/system/actions-runner@.service.d/30-fleet-swap.conf\" \"actions-runner@srv1-*.service\" \"MemorySwapMax\" \"8589934592\"")
     && has(s: sh, p: "converge_runner_width \"srv1\" \"runner\" \"runner_count\" \"actions-runner@srv1-*.service\" \"7\"")
 }
 
