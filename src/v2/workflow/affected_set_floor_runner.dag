@@ -1,15 +1,13 @@
 module v2.workflow.affected_set_floor_runner
 
 import gunbc.ci_spec { gunbc_ci_spec, DiffPolicy }
-import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.program_assembly { program_assembly_read_to_normalized_root }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest
 }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
-import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
-import v2.std.cross_tree.import_model { V2Tree }
+import v2.std.artifact { NodeArtifactProvenance }
 import v2.lens.edit_locus {
   GitDiffNameOnly,
   affected_set_reading_from_git_diff_provenance,
@@ -312,6 +310,62 @@ fn floor_node_artifact_provenance_fold_step(
   }
 }
 
+fn floor_changed_path_in_list(changed_paths: List<String>, file_path: String) -> Bool {
+  fold_list(
+    xs: changed_paths,
+    empty: false,
+    cons: fn(acc, changed) {
+      if acc == true {
+        true
+      } else {
+        changed == file_path
+      }
+    }
+  )
+}
+
+fn floor_node_artifact_provenance_fold_step_for_changed_paths(
+  state: FloorNodeArtifactProvenanceFoldState,
+  read: DagSourceReadWitness,
+  changed_paths: List<String>
+) -> FloorNodeArtifactProvenanceFoldState {
+  match state {
+    FloorNodeArtifactProvenanceFoldFailed { diagnostics: d } =>
+      FloorNodeArtifactProvenanceFoldFailed { diagnostics: d }
+    FloorNodeArtifactProvenanceFoldOk { provenance: acc } =>
+      if floor_changed_path_in_list(
+        changed_paths: changed_paths,
+        file_path: read.artifact.file_path
+      ) == false {
+        FloorNodeArtifactProvenanceFoldOk { provenance: acc }
+      } else {
+        floor_node_artifact_provenance_fold_step(state: state, read: read)
+      }
+  }
+}
+
+fn floor_node_artifact_provenance_from_ingest_for_changed_paths(
+  ingest: SourceRootIngest,
+  changed_paths: List<String>
+) -> Outcome<FreeMonoid<NodeArtifactProvenance>> {
+  match fold_list(
+    xs: ingest,
+    empty: FloorNodeArtifactProvenanceFoldOk { provenance: Empty },
+    cons: fn(state, read) {
+      floor_node_artifact_provenance_fold_step_for_changed_paths(
+        state: state,
+        read: read,
+        changed_paths: changed_paths
+      )
+    }
+  ) {
+    FloorNodeArtifactProvenanceFoldOk { provenance: p } =>
+      outcome_accepted(value: p)
+    FloorNodeArtifactProvenanceFoldFailed { diagnostics: d } =>
+      Rejected { diagnostics: d }
+  }
+}
+
 fn floor_node_artifact_provenance_from_ingest(
   ingest: SourceRootIngest
 ) -> Outcome<FreeMonoid<NodeArtifactProvenance>> {
@@ -387,7 +441,10 @@ fn floor_rerun_frontier_from_provenance(
   if floor_provenance_ingest_is_live() == false {
     Violates { diagnostic: edit_locus_no_match_diagnostic() }
   } else {
-    match floor_node_artifact_provenance_from_ingest(ingest: host_source_root_ingest) {
+    match floor_node_artifact_provenance_from_ingest_for_changed_paths(
+      ingest: host_source_root_ingest,
+      changed_paths: changed_paths
+    ) {
       Accepted { value: provenance, diagnostics: _ } =>
         match affected_set_reading_from_git_diff_provenance(
           graph: InferredTree { root: entry_root, facts: Empty },

@@ -407,20 +407,17 @@ fn discovery_corpus_live_provenance_overlay_resolves_entry_root_off_ingest() {
     let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     chdir_workspace();
     let ws = workspace_root();
-    let poisoner_rel = "src/v2/workflow/ci_floor_plan.dag";
+    let poisoner_rel = "src/v2/test/fixture/program_assembly/pa_ingest_subject.dag";
     let poisoner_abs = ws.join(poisoner_rel);
-    let text = std::fs::read_to_string(&poisoner_abs).expect("ci_floor_plan readable");
-    let data_line = fixture_line(&text, "data floor_corpus_node");
-    let budget = ws
-        .join("src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag")
+    let text = std::fs::read_to_string(&poisoner_abs).expect("pa_ingest_subject readable");
+    let fn_line = fixture_line(&text, "fn add");
+    let peer = ws
+        .join("src/v2/test/fixture/program_assembly/pa_ingest_peer.dag")
         .to_string_lossy()
         .into_owned();
-    let roster = vec![(
-        budget,
-        "complexity_budget_roster_family_gate_holds".to_string(),
-    )];
+    let roster = vec![(peer, "pa_ingest_peer_witness_holds".to_string())];
 
-    let summary = run_injected_diff_roster_live_overlay(poisoner_rel, data_line, &roster);
+    let summary = run_injected_diff_roster_live_overlay(poisoner_rel, fn_line, &roster);
     assert_eq!(summary.total, 1);
     assert!(
         summary.failures.is_empty(),

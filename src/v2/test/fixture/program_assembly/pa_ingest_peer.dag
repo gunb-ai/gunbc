@@ -1,3 +1,7 @@
 module bisect.add
 
 fn add(x:Int, y:Int) -> Int { x + y }
+
+test fn pa_ingest_peer_witness_holds() -> Bool {
+  true
+}

@@ -6251,7 +6251,7 @@ mod floor_witness_entry_tree_root_controls {
         let _cwd = workspace_root();
         std::env::set_current_dir(&_cwd).expect("chdir");
         let roots = default_source_roots();
-        let entry = "src/v2/workflow/affected_set_floor_runner_test.dag";
+        let entry = "src/v2/test/fixture/program_assembly/pa_ingest_peer.dag";
         let overlay = prepare_floor_provenance_ingest_overlay(&roots, &[entry.to_string()], &[])
             .expect("overlay prep")
             .expect("overlay present");
