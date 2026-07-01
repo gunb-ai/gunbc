@@ -6592,33 +6592,15 @@ fn provenance_tree_node_for_entry_file(
     entry_path: &str,
 ) -> Result<v1_interpreter::Value, String> {
     let ingest = eval_runner_data_item(ctx, "host_source_root_ingest")?;
-    let outcome = v1_interpreter::run_in_context_with_args(
+    let read = witness_read_for_entry_file(&ingest, entry_path, ctx)?;
+    let result = v1_interpreter::run_in_context_with_args(
         ctx,
-        "node_artifact_provenance_from_source_root",
-        &[(Some("ingest".to_string()), ingest)],
+        "floor_witness_entry_tree_root_from_read",
+        &[(Some("read".to_string()), read)],
         false,
     )
-    .map_err(|e| format!("node_artifact_provenance_from_source_root: {e}"))?;
-    let provenance = outcome_accepted_value(&outcome, ctx)?;
-    let entry_norm = repo_relative_dag_path(entry_path);
-    for row in list_values_from_free_monoid(&provenance, ctx)? {
-        if artifact_file_path_from_provenance_row(&row, ctx)
-            .is_some_and(|path| repo_relative_dag_path(&path) == entry_norm)
-        {
-            let fields = match &row {
-                v1_interpreter::Value::Record { fields, .. }
-                | v1_interpreter::Value::Variant { fields, .. } => fields,
-                _ => continue,
-            };
-            return ctx
-                .field(fields, "node")
-                .cloned()
-                .ok_or_else(|| "NodeArtifactProvenance missing `node`".to_string());
-        }
-    }
-    Err(format!(
-        "no provenance tree root for witness entry '{entry_norm}'"
-    ))
+    .map_err(|e| format!("floor_witness_entry_tree_root_from_read: {e}"))?;
+    witness_holds_node_value(&result, ctx)
 }
 
 fn witness_holds_node_value(
@@ -6775,12 +6757,25 @@ pub fn discover_source_root_reads_for_entry(
     Ok(records)
 }
 
-fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, String> {
+fn source_root_ingest_medium_data_name(index: usize) -> String {
+    format!("host_source_root_ingest_medium_{index}")
+}
+
+fn emit_source_root_medium_data(rec: &SourceRootReadRecord, data_name: &str) -> Result<String, String> {
+    Ok(format!(
+        "data {data_name}: Medium<String> = Medium {{ carried: \"{}\", fidelity: Lossless }}\n\n",
+        dag_embedded_dag_source_escape(&rec.source)
+    ))
+}
+
+fn emit_source_root_read_witness(
+    rec: &SourceRootReadRecord,
+    medium_data_name: &str,
+) -> Result<String, String> {
     let artifact_id = source_root_ingest_artifact_id_for_path(&rec.file_path);
     let compilation_unit = source_root_ingest_compilation_unit_for_path(&rec.file_path);
     Ok(format!(
-        "DagSourceReadWitness {{\n  source: Medium {{ carried: \"{}\", fidelity: Lossless }},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit},\n  source_root: {}\n}}",
-        dag_embedded_dag_source_escape(&rec.source),
+        "DagSourceReadWitness {{\n  source: {medium_data_name},\n  artifact: Artifact {{\n    kind: SourceFile,\n    id: {artifact_id},\n    file_path: \"{}\"\n  }},\n  compilation_unit: {compilation_unit},\n  source_root: {}\n}}",
         dag_manifest_scalar_escape(&rec.file_path)?,
         rec.source_root,
     ))
@@ -6789,7 +6784,10 @@ fn emit_source_root_read_witness(rec: &SourceRootReadRecord) -> Result<String, S
 fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> Result<String, String> {
     let mut witness_nodes: Vec<String> = records
         .iter()
-        .map(emit_source_root_read_witness)
+        .enumerate()
+        .map(|(i, rec)| {
+            emit_source_root_read_witness(rec, &source_root_ingest_medium_data_name(i))
+        })
         .collect::<Result<_, _>>()?;
     let mut out = String::from("Empty");
     while let Some(head) = witness_nodes.pop() {
@@ -6826,6 +6824,7 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import extdeps.communication.medium { Lossless, Medium }\n");
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
+    out.push_str("import v2.std.cross_tree.import_model { DslTree, V2Tree }\n");
     out.push_str("import v2.std.text { String }\n");
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");
@@ -6846,6 +6845,12 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str(&format!("  produced_row_count: {read_count},\n"));
     out.push_str("  coverage_complete: true\n");
     out.push_str("}\n\n\n");
+    for (i, rec) in inline_records.iter().enumerate() {
+        out.push_str(&emit_source_root_medium_data(
+            rec,
+            &source_root_ingest_medium_data_name(i),
+        )?);
+    }
     out.push_str("data host_source_root_ingest: SourceRootIngest = ");
     if inline_records.is_empty() {
         out.push_str("Empty\n");
