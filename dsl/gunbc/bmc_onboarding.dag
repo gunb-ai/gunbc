@@ -3,7 +3,7 @@ module gunbc.bmc_onboarding
 import std.bmc { BmcEndpoint, Redfish }
 import std.credentials { FactoryLogin, CredentialFlow, Stored }
 import std.os.types { OperatingSystemProduct, UbuntuOs, NobleNumbat2404Lts }
-import std.types { NonEmptyStr, Int, List }
+import std.types { NonEmptyStr, Int, List, Map }
 import std.logic { Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -267,30 +267,20 @@ data fleet_host_onboarding_lifecycle: List<HostOnboardingLifecycleRow> = [
   HostOnboardingLifecycleRow { identity: operator_host_srv3, phase: srv3_bmc_lifecycle_phase },
 ]
 
-fn lifecycle_row_for_host(host: HostIdentity, row: HostOnboardingLifecycleRow) -> HostOnboardingLifecycleRow? {
-  if row.identity == host {
-    Present { value: row }
-  } else {
-    Absent
-  }
+fn fleet_host_lifecycle_phase_map_derived(rows: List<HostOnboardingLifecycleRow>) -> Map<String, BmcOnboardingPhase> {
+  rows |> fold(init: empty_map(), f: (acc, row) => map_insert(acc, row.identity, row.phase))
 }
 
 fn host_onboarding_lifecycle_row(host: HostIdentity) -> HostOnboardingLifecycleRow? {
-  fold(
-    fleet_host_onboarding_lifecycle,
-    init: Absent,
-    f: (acc, row) => match acc {
-      Present { value: found } => Present { value: found }
-      Absent => lifecycle_row_for_host(host: host, row: row)
-    }
-  )
+  match map_get(fleet_host_lifecycle_phase_map_derived(rows: fleet_host_onboarding_lifecycle), host) {
+    Present { value: phase } =>
+      Present { value: HostOnboardingLifecycleRow { identity: host, phase: phase } }
+    Absent => Absent
+  }
 }
 
 fn host_onboarding_lifecycle_phase(host: HostIdentity) -> BmcOnboardingPhase? {
-  match host_onboarding_lifecycle_row(host: host) {
-    Present { value: row } => Present { value: row.phase }
-    Absent => Absent
-  }
+  map_get(fleet_host_lifecycle_phase_map_derived(rows: fleet_host_onboarding_lifecycle), host)
 }
 
 fn bmc_phase_is_pre_os_installed(phase: BmcOnboardingPhase) -> Bool {
