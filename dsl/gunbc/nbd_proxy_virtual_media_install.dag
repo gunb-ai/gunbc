@@ -1,6 +1,6 @@
 module gunbc.nbd_proxy_virtual_media_install
 
-import std.types { List, Int, NonEmptyStr }
+import std.types { List, Int, NonEmptyStr, String }
 import std.measure { ByteSize, byte_size }
 import extdeps.bmc.types {
   RedfishBootSourceOverrideTarget,
@@ -127,7 +127,11 @@ fn os_install_actuator_plan(mechanism: OsInstallMechanism, export: NbdProxyServe
 
 data srv3_os_install_actuator_host: ComputeHost = srv1_host
 
+data srv3_nbd_proxy_iso_path_dissolution_trigger: String = "🟡 dissolve-on: srv3_nbd_proxy_iso_path_placeholder — static Ubuntu 24.04 ARM64 ISO path scaffold; DISSOLVES WHEN fleet artifact registry supplies grounded NobleNumbat2404Lts ISO path for srv3 actuator host"
+
 data srv3_nbd_proxy_iso_path_placeholder: NonEmptyStr = "/var/lib/gunbc/artifacts/ubuntu-24.04-live-server-arm64.iso"
+
+data srv3_nbd_proxy_export_dissolution_trigger: String = "🟡 dissolve-on: srv3_nbd_proxy_export_placeholder — byte_size(0) NbdProxyServeInterface scaffold; DISSOLVES WHEN live serve binds export_byte_count from grounded ISO artifact ByteSize"
 
 data srv3_nbd_proxy_export_placeholder: NbdProxyServeInterface = NbdProxyServeInterface {
   export_byte_count: byte_size(0),

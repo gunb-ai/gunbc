@@ -21,6 +21,8 @@ import gunbc.nbd_proxy_virtual_media_install {
   os_install_actuator_step_count,
   os_install_actuator_steps,
   srv3_nbd_proxy_export_placeholder,
+  srv3_nbd_proxy_iso_path_dissolution_trigger,
+  srv3_nbd_proxy_export_dissolution_trigger,
   actuator_step_to_host_effect_intent,
   srv3_os_install_actuator_host,
   srv3_os_install_actuator_toolchain_grant_row_count,
@@ -104,4 +106,9 @@ test fn nbd_proxy_serve_step_maps_to_actuator_host_shell_intent() -> Bool {
 
 test fn actuator_toolchain_grant_is_wired() -> Bool {
   srv3_os_install_actuator_toolchain_grant_row_count() == 4
+}
+
+test fn nbd_proxy_placeholder_scaffolds_carry_dissolve_on_markers() -> Bool {
+  string_contains(s: srv3_nbd_proxy_iso_path_dissolution_trigger, pattern: "dissolve-on:")
+    && string_contains(s: srv3_nbd_proxy_export_dissolution_trigger, pattern: "dissolve-on:")
 }
