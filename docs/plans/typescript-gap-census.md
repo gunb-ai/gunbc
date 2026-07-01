@@ -1,6 +1,6 @@
 # TypeScript first-class gap census — discriminating construct audit (Lane C / Track T)
 
-**Status:** audit-first discriminating census · **approved 2026-07-01** (loyal-bee-794) · linked from `ROADMAP.md` `5-ts-first-class` · companion to `v2-self-hosting.md` Track T. **This file is the authority;** `docs/plans/typescript-gap-census.md` is generated (PlanArtifact).
+**Status:** audit-first discriminating census · **approved 2026-07-01** (loyal-bee-794) · linked from `ROADMAP.md` `5-ts-first-class` · companion to `v2-self-hosting.md` Track T. **`dsl/gunbc/plans/typescript_gap_census.dag` is the authority** (DESIGN §6); `docs/plans/typescript-gap-census.md` is its generated projection (PlanArtifact).
 
 **Method:** enumerate construct families `src/v2` actually uses (compiler substrate behaviors in `src/v2/compiler/*` + TargetModel emit surfaces in `src/v2/extdeps/languages/typescript.dag`). For each family report three independent bars: (a) grammar-inverse row enrolled on the committed TargetModel node, (b) VEP / pipeline emits the expected **TypeScript source string** (witness PASS), (c) **`tsc` / emit_host accepts the output** (consumer green-by-execution). Every FAIL names a witness or authority site — not a stub count.
 
