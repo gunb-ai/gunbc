@@ -16,10 +16,7 @@ fn tokenize_expr(src: &str) -> Rc<Vec<Rc<v1_compiler::v1_std_core::Token>>> {
 }
 
 fn token_stream_remaining(stream: &TokenStream) -> &[Rc<v1_compiler::v1_std_core::Token>] {
-    stream
-        .all
-        .get(stream.pos as usize..)
-        .unwrap_or(&[])
+    stream.all.get(stream.pos as usize..).unwrap_or(&[])
 }
 
 fn parse_ctx() -> Rc<ParseContext> {
