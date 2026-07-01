@@ -156,6 +156,20 @@ fn ci_floor_step() -> Step {
   }
 }
 
+fn ci_integration_step() -> Step {
+  RunStep {
+    name: Present { value: "gunbc ci integration (span>=2 witnesses, non-blocking)" },
+    id: none,
+    run: gunbc_ci_integration_run(spec: ci_floor_spec_from_roster()),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
 fn ci_nextest_install_step() -> Step {
   RunStep {
     name: Present { value: "Install cargo-nextest" },
@@ -236,6 +250,23 @@ fn ci_job() -> Job {
   }
 }
 
+fn integration_job() -> Job {
+  Job {
+    id: "integration",
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    steps: concat(ci_prelude_steps(), [ci_integration_step()]),
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    strategy: none,
+    timeout_minutes: Present { value: default_job_timeout_minutes },
+    continue_on_error: Present { value: true },
+    concurrency: none
+  }
+}
+
 fn rust_tests_job() -> Job {
   Job {
     id: "rust_tests",
@@ -286,5 +317,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: [ci_job(), rust_tests_job()]
+  jobs: [ci_job(), integration_job(), rust_tests_job()]
 }

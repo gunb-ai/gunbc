@@ -203,6 +203,14 @@ fn gunbc_ci_run_script_laned(spec: CiSpec, lane: String) -> String {
   )
 }
 
+fn scheduler_invoke(spec: CiSpec) -> String {
+  scheduler_invoke_laned(spec: spec, lane: "floor")
+}
+
+fn gunbc_ci_run_script(spec: CiSpec) -> String {
+  gunbc_ci_run_script_laned(spec: spec, lane: "floor")
+}
+
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
   gunbc_ci_run_script_laned(spec: spec, lane: "floor")
 }
