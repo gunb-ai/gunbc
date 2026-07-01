@@ -171,3 +171,5 @@ type GeneratorHeader {
   generator: String
   regen_command: String
 }
+
+data output_format_dissolution_trigger: String = "dissolve-on: gitignore consumer in extdeps.git.gitignore migrates to std.serialize.SerializationKnobs + std.layout.LayoutProtocol + std.languages.ConfigFormat; OutputFormat.name -> ConfigFormat.name, OutputFormat.comment_prefix -> CommentSyntax.line_prefix, OutputFormat.indent_unit -> LayoutProtocol.indent_unit; residue = SerializationKnobs (kv_separator, list_prefix)"

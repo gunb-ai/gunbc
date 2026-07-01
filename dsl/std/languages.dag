@@ -17,6 +17,24 @@ type CommentSyntax {
   doc_prefix: String?
 }
 
+type SerializationKnobs {
+  assign: String
+  entry_separator: String
+  open: String
+  close: String
+  quote_keys: Bool
+  value_quote: String?
+}
+
+type SerialField {
+  key: String
+  value: SerialValue
+}
+
+type SerialValue
+  = ScalarValue { text: String }
+  | RecordValue { fields: List<SerialField> }
+
 type NamingConvention {
   type_case: NamingCase
   function_case: NamingCase
@@ -32,13 +50,6 @@ type IndentStyle
 type ImportGrouping
   = StdExternalLocal
   | NoGrouping
-
-type FormatModel {
-  indent: IndentStyle
-  max_line_width: Int
-  import_grouping: ImportGrouping
-  trailing_newline: Bool
-}
 
 type ImportTrigger
   = TypeUsageTrigger { type_name: String }
@@ -348,6 +359,7 @@ type ConfigFormat {
   name: String
   extensions: List<String>
   comment: CommentSyntax
+  record: SerializationKnobs?
 }
 
 data rust_language: Language = {
@@ -1122,7 +1134,8 @@ data yaml_format: ConfigFormat = {
     block_start: null,
     block_end: null,
     doc_prefix: null
-  }
+  },
+  record: { assign: ": ", entry_separator: "\n", open: "", close: "", quote_keys: false, value_quote: null }
 }
 
 data toml_format: ConfigFormat = {
@@ -1134,7 +1147,8 @@ data toml_format: ConfigFormat = {
     block_start: null,
     block_end: null,
     doc_prefix: null
-  }
+  },
+  record: { assign: " = ", entry_separator: "\n", open: "", close: "", quote_keys: false, value_quote: "\"" }
 }
 
 data makefile_format: ConfigFormat = {
@@ -1146,7 +1160,8 @@ data makefile_format: ConfigFormat = {
     block_start: null,
     block_end: null,
     doc_prefix: null
-  }
+  },
+  record: { assign: " = ", entry_separator: "\n", open: "", close: "", quote_keys: false, value_quote: null }
 }
 
 data gitignore_format: ConfigFormat = {
@@ -1158,7 +1173,8 @@ data gitignore_format: ConfigFormat = {
     block_start: null,
     block_end: null,
     doc_prefix: null
-  }
+  },
+  record: null
 }
 
 data css_format: ConfigFormat = {
@@ -1170,5 +1186,17 @@ data css_format: ConfigFormat = {
     block_start: "/*",
     block_end: "*/",
     doc_prefix: null
-  }
+  },
+  record: null
 }
+
+data json_record_knobs: SerializationKnobs = {
+  assign: ": ",
+  entry_separator: ", ",
+  open: "{",
+  close: "}",
+  quote_keys: true,
+  value_quote: "\""
+}
+
+data value_quote_escape_dissolution_trigger: String = "dissolve-on (two gaps): (1) SerializationKnobs.value_quote is a wrap-char (concat(q,t,q)), NOT RFC-8259 JSON or TOML string escaping — a value containing a double-quote or newline produces silently invalid output; dissolution = real string-escape authority citing RFC 8259 §7 (JSON) and TOML v1.0 §String (TOML) in std.serialize. (2) ScalarValue { text: String } lacks typed scalars — Int/Bool values serialize as quoted strings (e.g. runner_count '4' not 4), making json_record_knobs non-conforming JSON the moment a real typed consumer arrives; dissolution = split SerialValue into TypedScalar { kind: ScalarKind, text: String } where ScalarKind = StringKind | NumberKind | BoolKind drives value_quote elision; no live bug today (manifest values are all stringified by to_string() at the call site)"
