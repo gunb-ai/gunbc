@@ -110,6 +110,7 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "coproduct_reflection.rs",
         "resolved_graph_cache.rs",
         "recorded_fixture.rs",
+        "external_authority_project.rs",
         "v1_compiler_dag_collect.rs",
         "v1_compiler_dag_collect_support.rs",
     ] {
@@ -173,6 +174,7 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=coproduct_reflection.rs")
         .arg("--exclude=resolved_graph_cache.rs")
         .arg("--exclude=recorded_fixture.rs")
+        .arg("--exclude=external_authority_project.rs")
         .arg("--exclude=module_path_index")
         .arg("--exclude=v1_compiler_dag_collect.rs")
         .arg("--exclude=v1_compiler_dag_collect_support.rs")
@@ -196,17 +198,14 @@ fn diff_excluding_hand_maintained(
 
 #[test]
 fn stage0_cargo_check() {
-    // Nested `cargo check` inherits RUSTC_WRAPPER=sccache from CI. Under the
-    // full nextest parallel load, sccache can fail with exit 254 without a
-    // rustc diagnostic — mirror the CI release-build retry discipline.
-    let output = std::process::Command::new("cargo")
-        .env_remove("RUSTC_WRAPPER")
-        .env("CARGO_BUILD_JOBS", "1")
-        .arg("check")
-        .arg("-p")
-        .arg("v1-compiler")
-        .output()
-        .expect("failed to run cargo check");
+    let output = crate::helpers::run_cargo_with_infra_retry(|| {
+        let mut cmd = std::process::Command::new("cargo");
+        cmd.arg("check")
+            .arg("-p")
+            .arg("v1-compiler")
+            .current_dir(crate::helpers::workspace_root());
+        cmd
+    });
     assert!(
         output.status.success(),
         "stage0 cargo check failed:\n{}",

@@ -16,9 +16,11 @@ import v2.std.verification {
   test_claim_evaluation_nodes,
   test_claim_evaluation_touches_rerun_frontier
 }
+import v2.std.integer { Int }
 import v2.workflow.affected_set_floor_runner {
   DiffObservationFailClosed,
   DiffPathsProduced,
+  FloorDiffLineTouch,
   FloorDiffObservation,
   FloorRerunFrontier,
   FloorWitnessRow,
@@ -29,8 +31,13 @@ import v2.workflow.affected_set_floor_runner {
   floor_any_claim_touches_rerun_frontier,
   floor_claim_touches_rerun_frontier,
   floor_host_scaffold_would_skip,
+  floor_host_scaffold_precompute_would_skip,
   floor_kernel_would_skip,
+  floor_kernel_precompute_would_skip,
+  floor_precompute_would_skip,
+  floor_rust_run_implies_dag_run,
   floor_skip_git_diff_policy,
+  floor_test_fn_declaration_edited,
   floor_witness_eval_nodes_from_claims,
   floor_witness_nodes_touch_frontier,
   floor_witness_run_disposition
@@ -126,7 +133,9 @@ test fn floor_test_untouched_skips_assumed_green_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_nonempty,
     frontier: floor_test_frontier_touched,
-    touches_frontier: false
+    touches_frontier: false,
+    function_edited: false,
+    entry_file_touched: false
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
@@ -137,9 +146,39 @@ test fn floor_test_touched_runs_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_nonempty,
     frontier: floor_test_frontier_touched,
-    touches_frontier: true
+    touches_frontier: true,
+    function_edited: false,
+    entry_file_touched: false
   ) {
     RunWitness { reason: _ } => true
+    SkipAssumedGreen => false
+  }
+}
+
+test fn floor_test_function_edited_runs_holds() -> Bool {
+  match floor_witness_run_disposition(
+    diff: floor_test_diff_nonempty,
+    frontier: floor_test_frontier_touched,
+    touches_frontier: false,
+    function_edited: true,
+    entry_file_touched: false
+  ) {
+    RunWitness { reason: reason } =>
+      reason == "witness test fn declaration directly edited"
+    SkipAssumedGreen => false
+  }
+}
+
+test fn floor_test_entry_file_touched_runs_holds() -> Bool {
+  match floor_witness_run_disposition(
+    diff: floor_test_diff_nonempty,
+    frontier: floor_test_frontier_touched,
+    touches_frontier: false,
+    function_edited: false,
+    entry_file_touched: true
+  ) {
+    RunWitness { reason: reason } =>
+      reason == "witness entry import-closure has non-data fn edit in diff"
     SkipAssumedGreen => false
   }
 }
@@ -148,7 +187,9 @@ test fn floor_test_empty_diff_runs_all_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_empty,
     frontier: floor_test_frontier_touched,
-    touches_frontier: false
+    touches_frontier: false,
+    function_edited: false,
+    entry_file_touched: false
   ) {
     RunWitness { reason: reason } => reason == "empty diff — run full corpus (fail-closed)"
     SkipAssumedGreen => false
@@ -159,7 +200,9 @@ test fn floor_test_diff_fail_closed_runs_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_fail_closed,
     frontier: floor_test_frontier_touched,
-    touches_frontier: false
+    touches_frontier: false,
+    function_edited: false,
+    entry_file_touched: false
   ) {
     RunWitness { reason: reason } => reason == "git diff unavailable"
     SkipAssumedGreen => false
@@ -170,7 +213,9 @@ test fn floor_test_frontier_fail_closed_runs_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_nonempty,
     frontier: floor_test_frontier_fail_closed,
-    touches_frontier: false
+    touches_frontier: false,
+    function_edited: false,
+    entry_file_touched: false
   ) {
     RunWitness { reason: reason } => reason == "provenance unavailable"
     SkipAssumedGreen => false
@@ -203,12 +248,16 @@ test fn floor_test_host_kernel_skip_equivalent_holds() -> Bool {
   floor_kernel_would_skip(
     changed_paths: ["src/v2/lens/affected_set.dag"],
     frontier_nodes: [floor_test_touched_node],
-    touches_frontier: false
+    touches_frontier: false,
+    function_edited: false,
+    entry_file_touched: false
   )
     && floor_host_scaffold_would_skip(
       changed_paths: ["src/v2/lens/affected_set.dag"],
       frontier_nodes: [floor_test_touched_node],
-      touches_frontier: false
+      touches_frontier: false,
+      function_edited: false,
+      entry_file_touched: false
     )
 }
 
@@ -216,12 +265,64 @@ test fn floor_test_host_kernel_run_equivalent_holds() -> Bool {
   !floor_kernel_would_skip(
     changed_paths: ["src/v2/lens/affected_set.dag"],
     frontier_nodes: [floor_test_touched_node],
-    touches_frontier: true
+    touches_frontier: true,
+    function_edited: false,
+    entry_file_touched: false
   )
     && !floor_host_scaffold_would_skip(
       changed_paths: ["src/v2/lens/affected_set.dag"],
       frontier_nodes: [floor_test_touched_node],
-      touches_frontier: true
+      touches_frontier: true,
+      function_edited: false,
+      entry_file_touched: false
+    )
+}
+
+test fn floor_test_precompute_skip_holds() -> Bool {
+  floor_precompute_would_skip(
+    diff: floor_test_diff_nonempty,
+    frontier: FrontierProduced { nodes: [] },
+    edited_test_fn_count: 0,
+    touched_entry_file_count: 0
+  )
+    && !floor_precompute_would_skip(
+      diff: floor_test_diff_nonempty,
+      frontier: floor_test_frontier_touched,
+      edited_test_fn_count: 0,
+      touched_entry_file_count: 0
+    )
+    && !floor_precompute_would_skip(
+      diff: floor_test_diff_nonempty,
+      frontier: FrontierProduced { nodes: [] },
+      edited_test_fn_count: 1,
+      touched_entry_file_count: 0
+    )
+    && !floor_precompute_would_skip(
+      diff: floor_test_diff_nonempty,
+      frontier: FrontierProduced { nodes: [] },
+      edited_test_fn_count: 0,
+      touched_entry_file_count: 1
+    )
+}
+
+test fn floor_test_precompute_host_kernel_equivalent_holds() -> Bool {
+  floor_kernel_precompute_would_skip(
+    changed_paths: ["src/v2/lens/affected_set.dag"],
+    frontier_node_count: 0,
+    edited_test_fn_count: 0,
+    touched_entry_file_count: 0
+  )
+    && floor_host_scaffold_precompute_would_skip(
+      changed_paths: ["src/v2/lens/affected_set.dag"],
+      frontier_node_count: 0,
+      edited_test_fn_count: 0,
+      touched_entry_file_count: 0
+    )
+    && !floor_kernel_precompute_would_skip(
+      changed_paths: ["src/v2/lens/affected_set.dag"],
+      frontier_node_count: 0,
+      edited_test_fn_count: 0,
+      touched_entry_file_count: 1
     )
 }
 
@@ -254,6 +355,66 @@ test fn floor_test_diff_policy_matches_ci_spec_holds() -> Bool {
     && floor_skip_git_diff_policy().mode == DiffMergeBase
 }
 
+data floor_test_fn_edit_touch: FloorDiffLineTouch = FloorDiffLineTouch {
+  path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+  start_line: 74,
+  end_line: 74
+}
+
+data floor_test_fn_body_edit_touch: FloorDiffLineTouch = FloorDiffLineTouch {
+  path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+  start_line: 78,
+  end_line: 78
+}
+
+test fn floor_test_fn_declaration_edited_holds() -> Bool {
+  floor_test_fn_declaration_edited(
+    touches: [floor_test_fn_edit_touch],
+    file_path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+    test_fn_decl_line: 74,
+    test_fn_decl_end_line: 84
+  )
+    && floor_test_fn_declaration_edited(
+      touches: [floor_test_fn_body_edit_touch],
+      file_path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+      test_fn_decl_line: 74,
+      test_fn_decl_end_line: 84
+    )
+    && !floor_test_fn_declaration_edited(
+      touches: [floor_test_fn_edit_touch],
+      file_path: "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag",
+      test_fn_decl_line: 15,
+      test_fn_decl_end_line: 19
+    )
+}
+
+test fn floor_test_rust_run_implies_dag_run_superset_holds() -> Bool {
+  floor_rust_run_implies_dag_run(
+    rust_touches_frontier: true,
+    rust_function_edited: false,
+    dag_touches_frontier: true,
+    dag_function_edited: false
+  )
+    && floor_rust_run_implies_dag_run(
+      rust_touches_frontier: false,
+      rust_function_edited: true,
+      dag_touches_frontier: false,
+      dag_function_edited: true
+    )
+    && floor_rust_run_implies_dag_run(
+      rust_touches_frontier: false,
+      rust_function_edited: false,
+      dag_touches_frontier: false,
+      dag_function_edited: false
+    )
+    && !floor_rust_run_implies_dag_run(
+      rust_touches_frontier: true,
+      rust_function_edited: false,
+      dag_touches_frontier: false,
+      dag_function_edited: false
+    )
+}
+
 test fn floor_runner_unaffected_assumed_green_skips_holds() -> Bool {
   floor_test_untouched_skips_assumed_green_holds()
     && floor_test_empty_diff_runs_all_holds()
@@ -263,6 +424,10 @@ test fn floor_runner_unaffected_assumed_green_skips_holds() -> Bool {
 test fn floor_runner_node_frontier_policy_holds() -> Bool {
   floor_test_untouched_skips_assumed_green_holds()
     && floor_test_touched_runs_holds()
+    && floor_test_function_edited_runs_holds()
+    && floor_test_entry_file_touched_runs_holds()
+    && floor_test_fn_declaration_edited_holds()
+    && floor_test_rust_run_implies_dag_run_superset_holds()
     && floor_test_empty_diff_runs_all_holds()
     && floor_test_diff_fail_closed_runs_holds()
     && floor_test_frontier_fail_closed_runs_holds()
@@ -270,6 +435,8 @@ test fn floor_runner_node_frontier_policy_holds() -> Bool {
     && floor_test_inner_frontier_discriminates_holds()
     && floor_test_host_kernel_skip_equivalent_holds()
     && floor_test_host_kernel_run_equivalent_holds()
+    && floor_test_precompute_skip_holds()
+    && floor_test_precompute_host_kernel_equivalent_holds()
     && floor_test_eval_nodes_from_claims_holds()
     && floor_test_any_claim_touch_holds()
     && floor_test_diff_policy_matches_ci_spec_holds()
