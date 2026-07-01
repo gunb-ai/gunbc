@@ -1,13 +1,15 @@
 module v2.workflow.affected_set_floor_runner
 
 import gunbc.ci_spec { gunbc_ci_spec, DiffPolicy }
+import extdeps.communication.medium { Lossless, Medium }
 import v2.compiler.program_assembly { program_assembly_read_to_normalized_root }
 import v2.compiler.source_authority {
   DagSourceReadWitness,
   SourceRootIngest
 }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
-import v2.std.artifact { NodeArtifactProvenance }
+import v2.std.artifact { Artifact, NodeArtifactProvenance, SourceFile }
+import v2.std.cross_tree.import_model { V2Tree }
 import v2.lens.edit_locus {
   GitDiffNameOnly,
   affected_set_reading_from_git_diff_provenance,
@@ -432,6 +434,24 @@ fn floor_witness_entry_tree_root_from_ingest_path(entry_path: String) -> Witness
     Violates { diagnostic: d } =>
       Violates { diagnostic: d }
   }
+}
+
+fn floor_witness_entry_tree_root_from_host_read(
+  source_text: String,
+  file_path: String,
+) -> Witness<Node> {
+  floor_witness_entry_tree_root_from_read(
+    read: DagSourceReadWitness {
+      source: Medium { carried: source_text, fidelity: Lossless },
+      artifact: Artifact {
+        kind: SourceFile,
+        id: ^floor_host_read_artifact,
+        file_path: file_path
+      },
+      compilation_unit: ^floor_host_read_compilation_unit,
+      source_root: V2Tree
+    }
+  )
 }
 
 fn floor_rerun_frontier_from_provenance(

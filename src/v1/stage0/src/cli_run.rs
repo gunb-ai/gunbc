@@ -6496,19 +6496,48 @@ fn list_values_from_free_monoid(
     }
 }
 
+fn source_text_before_test_fns(content: &str) -> String {
+    let mut lines: Vec<&str> = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("test fn ") || trimmed.starts_with("test data ") {
+            break;
+        }
+        lines.push(line);
+    }
+    lines.join("\n")
+}
+
 fn witness_entry_tree_root(
     runner_ctx: &v1_interpreter::InterpContext,
-    _source_roots: &[String],
+    source_roots: &[String],
     entry_path: &str,
 ) -> Result<v1_interpreter::Value, String> {
     let rel = repo_relative_dag_path(entry_path);
-    let result = v1_interpreter::run_in_context_with_args(
+    let ingest_result = v1_interpreter::run_in_context_with_args(
         runner_ctx,
         "floor_witness_entry_tree_root_from_ingest_path",
-        &[(Some("entry_path".to_string()), v1_interpreter::Value::Str(rel))],
+        &[(Some("entry_path".to_string()), v1_interpreter::Value::Str(rel.clone()))],
         false,
     )
     .map_err(|e| format!("floor_witness_entry_tree_root_from_ingest_path: {e}"))?;
+    if witness_holds_node_value(&ingest_result, runner_ctx).is_ok() {
+        return witness_holds_node_value(&ingest_result, runner_ctx);
+    }
+    let abs = resolve_dag_path(source_roots, &rel)?;
+    let content = std::fs::read_to_string(&abs)
+        .map_err(|e| format!("witness entry tree root: failed to read {:?}: {e}", abs))?;
+    let truncated = source_text_before_test_fns(&content);
+    let result = v1_interpreter::run_in_context_with_args(
+        runner_ctx,
+        "floor_witness_entry_tree_root_from_host_read",
+        &[
+            (Some("source_text".to_string()), v1_interpreter::Value::Str(truncated)),
+            (Some("file_path".to_string()), v1_interpreter::Value::Str(rel)),
+        ],
+        false,
+    )
+    .map_err(|e| format!("floor_witness_entry_tree_root_from_host_read: {e}"))?;
     witness_holds_node_value(&result, runner_ctx)
 }
 
