@@ -1,38 +1,105 @@
 module gunbc.ci_deploy_access
 
-import std.types { NonEmptyStr }
-import product.network_topology {
-  NetworkEndpoint,
-  NetworkReachabilityZone,
-  TailscaleMesh,
-  HostLan,
-  network_reachability,
-}
-import gunbc.fleet_intent_network { srv1_tailscale_endpoint }
-import gunbc.live_deploy.spec { deployment_spec_srv1, deployment_plan_ssh_host }
-import gunbc.host_effect { HostEffectTransport, SshShell }
+import std.types { NonEmptyStr, List, String, Bool }
+import gunbc.fleet_intent { ComputeHost, srv1_host }
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
+import product.placement_supply { HostIdentity }
 
-type RunnerHostAccess {
-  from_zone: NetworkReachabilityZone
-  to_zone: NetworkReachabilityZone
-  ssh_host: NonEmptyStr
-  tailscale_endpoint: NetworkEndpoint
+type PrivilegedCommand {
+  path: NonEmptyStr
+  check: NonEmptyStr
+}
+
+type DeployAccess {
+  principal: NonEmptyStr
+  host: ComputeHost
   transport: HostEffectTransport
+  privileged_commands: List<PrivilegedCommand>
 }
 
-fn ci_runner_to_srv1_ssh_tailnet_access() -> RunnerHostAccess {
-  let ssh_host = deployment_plan_ssh_host(spec: deployment_spec_srv1())
-  RunnerHostAccess {
-    from_zone: HostLan,
-    to_zone: TailscaleMesh,
-    ssh_host: ssh_host,
-    tailscale_endpoint: srv1_tailscale_endpoint,
-    transport: SshShell { ssh_host: ssh_host },
+data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
+
+data ci_deploy_runner_principal: NonEmptyStr = "runner"
+
+fn srv1_live_deploy_privileged_commands() -> List<PrivilegedCommand> {
+  [
+    PrivilegedCommand { path: "/usr/bin/bash", check: "-c true" },
+    PrivilegedCommand { path: "/usr/bin/apt-get", check: "--help" },
+    PrivilegedCommand { path: "/usr/bin/systemctl", check: "--version" },
+    PrivilegedCommand { path: "/usr/bin/tailscale", check: "version" },
+    PrivilegedCommand { path: "/usr/bin/install", check: "--version" },
+  ]
+}
+
+fn ci_deploy_srv1_local_access() -> DeployAccess {
+  DeployAccess {
+    principal: ci_deploy_runner_principal,
+    host: srv1_host,
+    transport: LocalShell,
+    privileged_commands: srv1_live_deploy_privileged_commands(),
   }
 }
 
-data ci_deploy_srv1_runner_access: RunnerHostAccess = ci_runner_to_srv1_ssh_tailnet_access()
+data ci_deploy_srv1_access: DeployAccess = ci_deploy_srv1_local_access()
 
-fn runner_host_access_reachable(access: RunnerHostAccess) -> Bool {
-  network_reachability(from: access.from_zone, to: access.to_zone)
+fn deploy_access_sudoers_line(access: DeployAccess, cmd: PrivilegedCommand) -> String {
+  concat(concat(access.principal, " ALL=(ALL) NOPASSWD: "), cmd.path)
+}
+
+fn deploy_access_preflight_check_block(access: DeployAccess, cmd: PrivilegedCommand) -> String {
+  let sudoers = deploy_access_sudoers_line(access: access, cmd: cmd)
+  concat(
+    concat(
+      concat(concat("if ! sudo -n ", cmd.path), concat(" ", cmd.check)),
+      concat(" >/dev/null 2>&1; then\n  echo \"deploy-access-preflight: FAIL sudo -n ", cmd.path)
+    ),
+    concat(
+      concat(concat(" ", cmd.check), "\"\n"),
+      concat(
+        concat(concat("  echo \"Add to ", gunbc_deploy_sudoers_dropin), ":\"\n"),
+        concat(concat("  echo \"", sudoers), "\"\n  exit 1\nfi\n")
+      )
+    )
+  )
+}
+
+fn deploy_access_preflight_script(access: DeployAccess) -> String {
+  let checks = fold(
+    access.privileged_commands,
+    init: "",
+    f: (acc, cmd) => concat(acc, deploy_access_preflight_check_block(access: access, cmd: cmd))
+  )
+  concat(
+    concat(
+      concat("set -euo pipefail\n", "echo \"deploy-access-preflight: whoami=$(whoami)\"\n"),
+      concat(
+        concat(
+          concat("if [ \"$(whoami)\" != \"", access.principal),
+          "\" ]; then\n"
+        ),
+        concat(
+          concat(
+            concat(
+              concat("  echo \"deploy-access-preflight: FAIL principal mismatch expected=", access.principal),
+              " actual=$(whoami)\""
+            ),
+            "\n  exit 1\nfi\n"
+          ),
+          checks
+        )
+      )
+    ),
+    concat("echo \"deploy-access-preflight: PASS\"\n", "")
+  )
+}
+
+fn deploy_access_is_local_apply(access: DeployAccess) -> Bool {
+  match access.transport {
+    LocalShell => true
+    SshShell { ssh_host: _ } => false
+  }
+}
+
+fn deploy_access_transport_for_host(access: DeployAccess) -> HostEffectTransport {
+  access.transport
 }

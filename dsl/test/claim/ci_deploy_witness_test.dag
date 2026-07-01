@@ -9,15 +9,19 @@ import gunbc.ci_spec {
   gunbc_ci_deploy_run_script,
 }
 import gunbc.ci_deploy_access {
-  ci_deploy_srv1_runner_access,
-  runner_host_access_reachable,
+  ci_deploy_srv1_access,
+  ci_deploy_runner_principal,
+  deploy_access_is_local_apply,
+  deploy_access_preflight_script,
+  gunbc_deploy_sudoers_dropin,
+  deploy_access_sudoers_line,
+  srv1_live_deploy_privileged_commands,
 }
 import gunbc.ci_workflow { ci_workflow }
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.ci_yaml_emit { expected_ci_yml }
-import gunbc.live_deploy.spec { deployment_plan_ssh_host, deployment_spec_srv1 }
-import gunbc.fleet_intent_network { operator_host_srv1, srv1_tailscale_endpoint }
-import gunbc.host_effect { SshShell }
+import gunbc.fleet_intent { srv1_host }
+import gunbc.host_effect { LocalShell }
 
 fn witness_deploy_stage_targets_live_deploy_wet() -> Bool {
   gunbc_ci_deploy_srv1_stage.entry == live_deploy_apply_entry
@@ -25,18 +29,27 @@ fn witness_deploy_stage_targets_live_deploy_wet() -> Bool {
     && gunbc_ci_deploy_srv1_stage.needs == ["ci"]
 }
 
-fn witness_deploy_access_grounds_ssh_on_srv1_tailnet() -> Bool {
-  let access = ci_deploy_srv1_runner_access
-  access.ssh_host == operator_host_srv1
-    && access.tailscale_endpoint == srv1_tailscale_endpoint
+fn witness_deploy_access_uses_local_apply_on_srv1() -> Bool {
+  let access = ci_deploy_srv1_access
+  access.host == srv1_host
+    && access.principal == ci_deploy_runner_principal
+    && deploy_access_is_local_apply(access: access)
     && match access.transport {
-      SshShell { ssh_host: h } => h == deployment_plan_ssh_host(spec: deployment_spec_srv1())
+      LocalShell => true
       _ => false
     }
 }
 
-fn witness_deploy_access_reachable_from_runner() -> Bool {
-  runner_host_access_reachable(access: ci_deploy_srv1_runner_access)
+fn witness_deploy_access_preflight_is_fail_closed() -> Bool {
+  let script = deploy_access_preflight_script(access: ci_deploy_srv1_access)
+  string_contains(s: script, pattern: "whoami=$(whoami)")
+    && string_contains(s: script, pattern: "sudo -n /usr/bin/systemctl --version")
+    && string_contains(s: script, pattern: concat("Add to ", gunbc_deploy_sudoers_dropin))
+    && string_contains(s: script, pattern: deploy_access_sudoers_line(
+      access: ci_deploy_srv1_access,
+      cmd: srv1_live_deploy_privileged_commands().first()
+    ))
+    && string_contains(s: script, pattern: "deploy-access-preflight: PASS")
 }
 
 fn witness_ci_spec_carries_deploy_stages() -> Bool {
@@ -73,8 +86,8 @@ fn witness_ci_yml_emits_deploy_job() -> Bool {
 
 test fn ci_deploy_witnesses() -> Bool {
   witness_deploy_stage_targets_live_deploy_wet()
-    && witness_deploy_access_grounds_ssh_on_srv1_tailnet()
-    && witness_deploy_access_reachable_from_runner()
+    && witness_deploy_access_uses_local_apply_on_srv1()
+    && witness_deploy_access_preflight_is_fail_closed()
     && witness_ci_spec_carries_deploy_stages()
     && witness_deploy_run_script_invokes_gunbc_wet()
     && witness_workflow_has_deploy_job_gated_on_ci()
