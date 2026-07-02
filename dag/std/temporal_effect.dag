@@ -1,0 +1,205 @@
+module std.temporal_effect
+
+import std.types { String, NonEmptyStr, Int, Bool, ContentHash, Timestamp, List }
+
+data temporal_effect_doc: String = "Temporal realization spine — minimal durable facts (intent, receipt, lease, approval grant, base snapshot) and a receipt-derived fold for next-step plan. Not a workflow engine: cursor is derived from receipts+leases+observations, never authoritative alone. Persistence is a realization handler; these types are the single authority (roadmap 2-temporal-effect-spine-a)."
+
+type EffectAttemptIntent {
+  attempt_id: NonEmptyStr
+  intent_hash: ContentHash
+  target: NonEmptyStr
+  created_at: Timestamp
+}
+
+type AppliedEffectRef
+  = NoEffectApplied
+  | EffectApplied { effect_id: NonEmptyStr }
+
+type EffectStepReceipt {
+  attempt_id: NonEmptyStr
+  step_id: NonEmptyStr
+  observation_digest: ContentHash
+  verdict_label: NonEmptyStr
+  plan_label: NonEmptyStr
+  applied: AppliedEffectRef
+  read_back_ok: Bool
+  recorded_at: Timestamp
+}
+
+type HeldLeaseObservedState
+  = LeaseAbsent
+  | LeaseRunningExpected
+  | LeaseRunningStale
+  | LeasePortForeign
+  | LeaseInaccessible
+
+type HeldLease {
+  lease_key: NonEmptyStr
+  resource_fingerprint: ContentHash
+  owner_fingerprint: ContentHash
+  generation: Int
+  observed: HeldLeaseObservedState
+}
+
+type DurableApprovalGrant
+  = GrantAbsent
+  | GrantActive {
+      escalation_id: NonEmptyStr
+      intent_hash: ContentHash
+      granted_by: NonEmptyStr
+      granted_at: Timestamp
+      expires_at: Timestamp
+    }
+  | GrantConsumed {
+      escalation_id: NonEmptyStr
+      intent_hash: ContentHash
+      consumed_by_step: NonEmptyStr
+    }
+
+type BaseSnapshotRow {
+  row_key: NonEmptyStr
+  value_hash: ContentHash
+}
+
+type BaseSnapshot {
+  generation: Int
+  observed_at: Timestamp
+  rows: List<BaseSnapshotRow>
+}
+
+type TemporalEffectPolicy
+  = PureRead
+  | CreateIfAbsent { content_key: ContentHash }
+  | ReplaceIfStale { content_key: ContentHash }
+  | UpsertScope { scope_key: NonEmptyStr }
+  | HeldSessionLease { lease_key: NonEmptyStr }
+  | DestructiveOnce { approval_id: NonEmptyStr, idempotency_key: ContentHash }
+
+type NextStepPlan
+  = PlanNoop { step_id: NonEmptyStr }
+  | PlanApply { step_id: NonEmptyStr }
+  | PlanRefuse { step_id: NonEmptyStr, reason: NonEmptyStr }
+  | PlanAwaitApproval { escalation_id: NonEmptyStr }
+  | PlanDrainThenStart { step_id: NonEmptyStr, lease_key: NonEmptyStr }
+
+type PriorStepReceipt
+  = NoPriorReceipt
+  | PriorReceipt { receipt: EffectStepReceipt }
+
+fn approval_grant_covers_intent(
+  grant: DurableApprovalGrant,
+  intent: EffectAttemptIntent,
+  escalation_id: NonEmptyStr,
+) -> Bool {
+  match grant {
+    GrantAbsent => false
+    GrantConsumed { escalation_id: eid, intent_hash: ih, consumed_by_step: _ } =>
+      eid == escalation_id && ih == intent.intent_hash
+    GrantActive {
+      escalation_id: eid,
+      intent_hash: ih,
+      granted_by: _,
+      granted_at: _,
+      expires_at: _,
+    } =>
+      eid == escalation_id && ih == intent.intent_hash
+  }
+}
+
+fn plan_for_held_lease_observation(
+  lease: HeldLease,
+  pending_step_id: NonEmptyStr,
+) -> NextStepPlan {
+  match lease.observed {
+    LeaseAbsent => PlanApply { step_id: pending_step_id }
+    LeaseRunningExpected => PlanNoop { step_id: pending_step_id }
+    LeaseRunningStale => PlanDrainThenStart { step_id: pending_step_id, lease_key: lease.lease_key }
+    LeasePortForeign => PlanRefuse {
+      step_id: pending_step_id,
+      reason: "foreign lease holder on scoped resource",
+    }
+    LeaseInaccessible => PlanRefuse {
+      step_id: pending_step_id,
+      reason: "lease observation inaccessible",
+    }
+  }
+}
+
+fn fold_next_step_plan(
+  intent: EffectAttemptIntent,
+  pending_step_id: NonEmptyStr,
+  requires_destructive_approval: Bool,
+  escalation_id: NonEmptyStr,
+  grant: DurableApprovalGrant,
+  lease: HeldLease,
+  prior: PriorStepReceipt,
+) -> NextStepPlan {
+  if requires_destructive_approval
+    && !approval_grant_covers_intent(
+      grant: grant,
+      intent: intent,
+      escalation_id: escalation_id,
+    ) {
+    PlanAwaitApproval { escalation_id: escalation_id }
+  } else {
+    match prior {
+      PriorReceipt { receipt: r } =>
+        if r.read_back_ok && r.step_id == pending_step_id {
+          PlanNoop { step_id: pending_step_id }
+        } else {
+          match r.applied {
+            EffectApplied { effect_id: _ } =>
+              if !r.read_back_ok {
+                PlanRefuse {
+                  step_id: pending_step_id,
+                  reason: "applied without read-back convergence",
+                }
+              } else {
+                plan_for_held_lease_observation(lease: lease, pending_step_id: pending_step_id)
+              }
+            NoEffectApplied =>
+              plan_for_held_lease_observation(lease: lease, pending_step_id: pending_step_id)
+          }
+        }
+      NoPriorReceipt =>
+        plan_for_held_lease_observation(lease: lease, pending_step_id: pending_step_id)
+    }
+  }
+}
+
+fn receipt_log_last_step_id(receipts: List<EffectStepReceipt>) -> NonEmptyStr {
+  fold(
+    receipts,
+    init: "cursor-unset" as NonEmptyStr,
+    f: (acc, r) => r.step_id,
+  )
+}
+
+fn derived_pending_step_id(
+  receipts: List<EffectStepReceipt>,
+  default_step: NonEmptyStr,
+) -> NonEmptyStr {
+  let last = receipt_log_last_step_id(receipts: receipts)
+  if last == "cursor-unset" as NonEmptyStr {
+    default_step
+  } else {
+    last
+  }
+}
+
+fn prior_receipt_for_step(
+  receipts: List<EffectStepReceipt>,
+  step_id: NonEmptyStr,
+) -> PriorStepReceipt {
+  fold(
+    receipts,
+    init: NoPriorReceipt,
+    f: (acc, r) => {
+      if r.step_id == step_id {
+        PriorReceipt { receipt: r }
+      } else {
+        acc
+      }
+    },
+  )
+}
