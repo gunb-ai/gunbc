@@ -1,61 +1,9 @@
 module gunbc.ci_yaml_validate
 
-import extdeps.shell
-import extdeps.languages.bash.program {
-  ShellProgram, ShellStmt, ShellWord,
-  Command, Subshell, AndOr, WithRedir,
-  Lit, OrElse, AndThen, StderrToNull,
-  lit, command, serialize_bash
-}
-
-data yaml_check_release_bin: String = "target/release/yaml_check"
-
-fn ci_yml_parse_program(path: String) -> ShellProgram {
-  let p = lit(text: path)
-  let bin = lit(text: yaml_check_release_bin)
-  let python = WithRedir {
-    stmt: command(words: [
-      lit(text: "python3"), lit(text: "-c"),
-      lit(text: "import yaml,sys; yaml.safe_load(open(sys.argv[1]))"), p
-    ]),
-    redir: StderrToNull
-  }
-  let actionlint = WithRedir {
-    stmt: command(words: [lit(text: "actionlint"), p]),
-    redir: StderrToNull
-  }
-  let yaml_check_bin = Subshell { body: [
-    AndOr {
-      left: command(words: [lit(text: "test"), lit(text: "-x"), bin]),
-      op: AndThen,
-      right: command(words: [bin, p])
-    }
-  ] }
-  let cargo_fallback = command(words: [
-    lit(text: "cargo"), lit(text: "run"), lit(text: "-q"), lit(text: "-p"), lit(text: "v1-compiler"),
-    lit(text: "--release"), lit(text: "--bin"), lit(text: "yaml_check"), lit(text: "--"), p
-  ])
-  ShellProgram {
-    set_e: false,
-    statements: [
-      AndOr {
-        left: AndOr {
-          left: AndOr { left: python, op: OrElse, right: actionlint },
-          op: OrElse,
-          right: yaml_check_bin
-        },
-        op: OrElse,
-        right: cargo_fallback
-      }
-    ]
-  }
-}
-
-fn ci_yml_parse_script(path: String) -> String {
-  serialize_bash(p: ci_yml_parse_program(path: path))
-}
+import extdeps.filesystem.filesystem_io { Filesystem }
+import extdeps.languages.yaml.ingest { yaml_source_parses }
 
 fn ci_yml_parses(path: String) -> Bool {
-  let result = shell.Exec.Run(script: ci_yml_parse_script(path: path))
-  result.success
+  let read = Filesystem.Read(path: path)
+  read.success && yaml_source_parses(src: read.content)
 }

@@ -1,0 +1,51 @@
+module extdeps.languages.yaml.types
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "yaml.org/spec/1.2.2/"
+  }
+}
+
+type YamlKeyValue {
+  key: String
+  value: YamlValue
+}
+
+type YamlValue
+  = YamlNull
+  | YamlBool { value: Bool }
+  | YamlInt { lexeme: String }
+  | YamlFloat { lexeme: String }
+  | YamlString { value: String }
+  | YamlSequence { elements: List<YamlValue> }
+  | YamlMapping { entries: List<YamlKeyValue> }
+
+data empty_yaml_values: List<YamlValue> = []
+
+fn yaml_string(s: String) -> YamlValue {
+  YamlString { value: s }
+}
+
+fn yaml_int(n: Int) -> YamlValue {
+  YamlInt { lexeme: to_string(n) }
+}
+
+fn yaml_bool(b: Bool) -> YamlValue {
+  YamlBool { value: b }
+}
+
+fn yaml_mapping(entries: List<YamlKeyValue>) -> YamlValue {
+  YamlMapping { entries: entries }
+}
+
+fn yaml_sequence(elements: List<YamlValue>) -> YamlValue {
+  YamlSequence { elements: elements }
+}
+
+fn kv(key: String, value: YamlValue) -> YamlKeyValue {
+  YamlKeyValue { key: key, value: value }
+}

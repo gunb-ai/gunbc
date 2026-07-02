@@ -1,0 +1,294 @@
+module extdeps.languages.yaml.ingest
+
+import extdeps.languages.yaml.types {
+  YamlValue, YamlKeyValue,
+  YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping,
+  kv
+}
+
+data yaml_ingest_reconciliation_scaffold: String = "scaffold: this ingest is a hand-written recursive-descent parser sharing the YamlValue IR with emit.dag but not yet emit's spelling rows read backward (DESIGN §4 one-grammar-both-directions is not yet realized for YAML — ingest selects productions forward, emit selects the same rows backward, in FormalProduction/TargetModel form). Interim guard: the round-trip witnesses in dsl/test/claim/yaml_ingest_witness_test.dag (ingest o emit = id, including the real committed ci.yml) catch drift between the two hand-written halves. dissolve-on: YAML gains v2 grammar-inverse rows (FormalProduction/TargetModel, analogous to json_emit_fold_dissolution_trigger in dsl/extdeps/languages/json/grammar.dag) wired through 06_translate, at which point this hand-written ingest/emit pair is replaced by one row-driven fold read in both directions"
+
+type YamlIngestResult
+  = IngestedYaml { value: YamlValue }
+  | YamlIngestRejected { reason: String }
+
+type YamlBlockResult
+  = ParsedYamlBlock { value: YamlValue, next_index: Int }
+  | YamlBlockRejected { reason: String }
+
+type YamlEntryResult
+  = ParsedYamlEntry { entry: YamlKeyValue, next_index: Int }
+  | YamlEntryRejected { reason: String }
+
+type YamlSeqItemResult
+  = ParsedYamlSeqItem { value: YamlValue, next_index: Int }
+  | YamlSeqItemRejected { reason: String }
+
+type YamlLiteralCollectResult {
+  text: String
+  next_index: Int
+}
+
+data yaml_digit_chars: String = "0123456789"
+
+fn yaml_all_digits(s: String) -> Bool {
+  if s == "" {
+    true
+  } else {
+    string_contains(s: yaml_digit_chars, pattern: substring(s: s, start: 0, end: 1)) &&
+      yaml_all_digits(s: substring(s: s, start: 1, end: s.length()))
+  }
+}
+
+fn yaml_looks_like_int(s: String) -> Bool {
+  if s == "" {
+    false
+  } else if starts_with(s: s, prefix: "-") {
+    let rest = substring(s: s, start: 1, end: s.length())
+    (rest != "") && yaml_all_digits(s: rest)
+  } else {
+    yaml_all_digits(s: s)
+  }
+}
+
+fn yaml_indent_of(line: String) -> Int {
+  if starts_with(s: line, prefix: " ") {
+    1 + yaml_indent_of(line: substring(s: line, start: 1, end: line.length()))
+  } else {
+    0
+  }
+}
+
+fn yaml_strip_indent(line: String, indent: Int) -> String {
+  substring(s: line, start: indent, end: line.length())
+}
+
+fn yaml_lines_from_source(src: String) -> List<String> {
+  let raw = split(s: src, delimiter: "\n")
+  let n = raw.length()
+  if (n > 0) && (raw.skip(n: n - 1).first() == "") {
+    raw.take(n: n - 1)
+  } else {
+    raw
+  }
+}
+
+fn yaml_has_line_at(lines: List<String>, index: Int) -> Bool {
+  index < lines.length()
+}
+
+fn yaml_line_at(lines: List<String>, index: Int) -> String {
+  lines.skip(n: index).first()
+}
+
+fn yaml_indent_at(lines: List<String>, index: Int) -> Int {
+  if yaml_has_line_at(lines: lines, index: index) {
+    yaml_indent_of(line: yaml_line_at(lines: lines, index: index))
+  } else {
+    -1
+  }
+}
+
+fn yaml_unescape_double_quoted(s: String) -> String {
+  if s == "" {
+    ""
+  } else if starts_with(s: s, prefix: "\\\"") {
+    concat("\"", yaml_unescape_double_quoted(s: substring(s: s, start: 2, end: s.length())))
+  } else if starts_with(s: s, prefix: "\\\\") {
+    concat("\\", yaml_unescape_double_quoted(s: substring(s: s, start: 2, end: s.length())))
+  } else {
+    concat(substring(s: s, start: 0, end: 1), yaml_unescape_double_quoted(s: substring(s: s, start: 1, end: s.length())))
+  }
+}
+
+fn yaml_is_flow_sequence_text(text: String) -> Bool {
+  starts_with(s: text, prefix: "[") && ends_with(s: text, suffix: "]")
+}
+
+fn yaml_parse_flow_sequence(text: String) -> YamlValue {
+  let inner = substring(s: text, start: 1, end: text.length() - 1)
+  if inner == "" {
+    YamlSequence { elements: [] }
+  } else {
+    YamlSequence { elements: map(split(s: inner, delimiter: ", "), t => yaml_parse_scalar_text(text: t)) }
+  }
+}
+
+fn yaml_parse_scalar_text(text: String) -> YamlValue {
+  if text == "''" {
+    YamlString { value: "" }
+  } else if starts_with(s: text, prefix: "\"") && ends_with(s: text, suffix: "\"") && (text.length() >= 2) {
+    YamlString { value: yaml_unescape_double_quoted(s: substring(s: text, start: 1, end: text.length() - 1)) }
+  } else if text == "true" {
+    YamlBool { value: true }
+  } else if text == "false" {
+    YamlBool { value: false }
+  } else if yaml_looks_like_int(s: text) {
+    YamlInt { lexeme: text }
+  } else {
+    YamlString { value: text }
+  }
+}
+
+fn yaml_collect_literal_lines_from(lines: List<String>, index: Int, content_indent: Int, acc: List<String>) -> YamlLiteralCollectResult {
+  if yaml_has_line_at(lines: lines, index: index) && (yaml_line_at(lines: lines, index: index) == "") {
+    yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: content_indent, acc: concat(acc, [""]))
+  } else if yaml_has_line_at(lines: lines, index: index) && (yaml_indent_at(lines: lines, index: index) >= content_indent) {
+    let stripped = yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: content_indent)
+    yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: content_indent, acc: concat(acc, [stripped]))
+  } else {
+    YamlLiteralCollectResult { text: join(acc, "\n"), next_index: index }
+  }
+}
+
+fn yaml_parse_mapping_entry(lines: List<String>, index: Int, indent: Int) -> YamlEntryResult {
+  let content = yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent)
+  let parts = split(s: content, delimiter: ": ")
+  if parts.length() > 1 {
+    let key = parts.first()
+    let rest = join(parts.skip(n: 1), ": ")
+    if rest == "|" {
+      let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2, acc: [])
+      ParsedYamlEntry { entry: kv(key: key, value: YamlString { value: lit.text }), next_index: lit.next_index }
+    } else if yaml_is_flow_sequence_text(text: rest) {
+      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
+    } else {
+      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_scalar_text(text: rest)), next_index: index + 1 }
+    }
+  } else if ends_with(s: content, suffix: ":") {
+    let key = substring(s: content, start: 0, end: content.length() - 1)
+    if yaml_has_line_at(lines: lines, index: index + 1) && (yaml_indent_at(lines: lines, index: index + 1) == indent + 2) {
+      match yaml_parse_block(lines: lines, index: index + 1, indent: indent + 2) {
+        ParsedYamlBlock { value: nested, next_index: ni } =>
+          ParsedYamlEntry { entry: kv(key: key, value: nested), next_index: ni }
+        YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
+      }
+    } else {
+      ParsedYamlEntry { entry: kv(key: key, value: YamlNull), next_index: index + 1 }
+    }
+  } else {
+    YamlEntryRejected { reason: concat("malformed mapping entry: ", content) }
+  }
+}
+
+fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: Int, indent: Int) -> YamlEntryResult {
+  let parts = split(s: text, delimiter: ": ")
+  if parts.length() > 1 {
+    let key = parts.first()
+    let rest = join(parts.skip(n: 1), ": ")
+    if rest == "|" {
+      let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 4, acc: [])
+      ParsedYamlEntry { entry: kv(key: key, value: YamlString { value: lit.text }), next_index: lit.next_index }
+    } else if yaml_is_flow_sequence_text(text: rest) {
+      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_flow_sequence(text: rest)), next_index: index + 1 }
+    } else {
+      ParsedYamlEntry { entry: kv(key: key, value: yaml_parse_scalar_text(text: rest)), next_index: index + 1 }
+    }
+  } else if ends_with(s: text, suffix: ":") {
+    let key = substring(s: text, start: 0, end: text.length() - 1)
+    if yaml_has_line_at(lines: lines, index: index + 1) && (yaml_indent_at(lines: lines, index: index + 1) == indent + 4) {
+      match yaml_parse_block(lines: lines, index: index + 1, indent: indent + 4) {
+        ParsedYamlBlock { value: nested, next_index: ni } =>
+          ParsedYamlEntry { entry: kv(key: key, value: nested), next_index: ni }
+        YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
+      }
+    } else {
+      ParsedYamlEntry { entry: kv(key: key, value: YamlNull), next_index: index + 1 }
+    }
+  } else {
+    YamlEntryRejected { reason: concat("malformed sequence-item mapping entry: ", text) }
+  }
+}
+
+fn yaml_parse_mapping_entries(lines: List<String>, index: Int, indent: Int, acc: List<YamlKeyValue>) -> YamlBlockResult {
+  if !yaml_has_line_at(lines: lines, index: index) {
+    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: index }
+  } else if yaml_indent_at(lines: lines, index: index) != indent {
+    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: index }
+  } else if starts_with(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent), prefix: "- ") {
+    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: index }
+  } else {
+    match yaml_parse_mapping_entry(lines: lines, index: index, indent: indent) {
+      ParsedYamlEntry { entry: e, next_index: ni } =>
+        yaml_parse_mapping_entries(lines: lines, index: ni, indent: indent, acc: concat(acc, [e]))
+      YamlEntryRejected { reason: r } => YamlBlockRejected { reason: r }
+    }
+  }
+}
+
+fn yaml_parse_seq_item(lines: List<String>, index: Int, indent: Int) -> YamlSeqItemResult {
+  let content = yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent)
+  let item_text = substring(s: content, start: 2, end: content.length())
+  if item_text == "|" {
+    let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2, acc: [])
+    ParsedYamlSeqItem { value: YamlString { value: lit.text }, next_index: lit.next_index }
+  } else if yaml_is_flow_sequence_text(text: item_text) {
+    ParsedYamlSeqItem { value: yaml_parse_flow_sequence(text: item_text), next_index: index + 1 }
+  } else if string_contains(s: item_text, pattern: ": ") || ends_with(s: item_text, suffix: ":") {
+    match yaml_parse_mapping_entry_from_text(text: item_text, lines: lines, index: index, indent: indent) {
+      ParsedYamlEntry { entry: first_entry, next_index: ni } =>
+        match yaml_parse_mapping_entries(lines: lines, index: ni, indent: indent + 2, acc: [first_entry]) {
+          ParsedYamlBlock { value: v, next_index: fi } => ParsedYamlSeqItem { value: v, next_index: fi }
+          YamlBlockRejected { reason: r } => YamlSeqItemRejected { reason: r }
+        }
+      YamlEntryRejected { reason: r } => YamlSeqItemRejected { reason: r }
+    }
+  } else {
+    ParsedYamlSeqItem { value: yaml_parse_scalar_text(text: item_text), next_index: index + 1 }
+  }
+}
+
+fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<YamlValue>) -> YamlBlockResult {
+  if !yaml_has_line_at(lines: lines, index: index) {
+    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: index }
+  } else if yaml_indent_at(lines: lines, index: index) != indent {
+    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: index }
+  } else if !starts_with(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent), prefix: "- ") {
+    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: index }
+  } else {
+    match yaml_parse_seq_item(lines: lines, index: index, indent: indent) {
+      ParsedYamlSeqItem { value: v, next_index: ni } =>
+        yaml_parse_seq_items(lines: lines, index: ni, indent: indent, acc: concat(acc, [v]))
+      YamlSeqItemRejected { reason: r } => YamlBlockRejected { reason: r }
+    }
+  }
+}
+
+fn yaml_parse_block(lines: List<String>, index: Int, indent: Int) -> YamlBlockResult {
+  if !yaml_has_line_at(lines: lines, index: index) {
+    YamlBlockRejected { reason: "expected a YAML block, found end of input" }
+  } else if yaml_indent_at(lines: lines, index: index) != indent {
+    YamlBlockRejected { reason: concat("indentation mismatch at line ", to_string(index)) }
+  } else {
+    let content = yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent)
+    if starts_with(s: content, prefix: "- ") {
+      yaml_parse_seq_items(lines: lines, index: index, indent: indent, acc: [])
+    } else {
+      yaml_parse_mapping_entries(lines: lines, index: index, indent: indent, acc: [])
+    }
+  }
+}
+
+fn ingest_yaml_source(src: String) -> YamlIngestResult {
+  let lines = yaml_lines_from_source(src: src)
+  if lines.length() == 0 {
+    YamlIngestRejected { reason: "empty document" }
+  } else {
+    match yaml_parse_block(lines: lines, index: 0, indent: 0) {
+      ParsedYamlBlock { value: v, next_index: ni } =>
+        if ni == lines.length() {
+          IngestedYaml { value: v }
+        } else {
+          YamlIngestRejected { reason: concat("trailing content at line ", to_string(ni)) }
+        }
+      YamlBlockRejected { reason: r } => YamlIngestRejected { reason: r }
+    }
+  }
+}
+
+fn yaml_source_parses(src: String) -> Bool {
+  match ingest_yaml_source(src: src) {
+    IngestedYaml { value: _ } => true
+    YamlIngestRejected { reason: _ } => false
+  }
+}
