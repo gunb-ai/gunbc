@@ -1,6 +1,8 @@
 # Floor shared-computation memoization — design sketch
 
-**Status:** DESIGN SKETCH — no implementation. Returns to stern-moth-225 + operator for approval before any code.
+**Status:** M1 LANDED + verified (2026-07-02). M2 remains a forward-only tracker (no present-day sharing opportunity — see §3). This file is no longer a pre-implementation sketch; it is the M1 receipt + M2 open-thread record. Any M2 code still returns to the operator for approval.
+
+**M1 — within-walk resolve memo — is implemented as construction, not the sketch's proposed validation.** `claim_executor.rs` `run_walk` maintains a cross-batch `walk_memo: HashMap<entry, InterpContext>` keyed directly off `RunnableResourceProfile.heavy_whole_tree_resolve` (see §3-M1's `use_walk_memo`), so a heavy whole-tree resolve that runs isolated per batch is **unwritable** — stronger than the sketch's proposed `ResolveScope = Isolated | Shared` field, which would have needed a lens to forbid the heavy+isolated combination. The construction guarantee lives at the carrier; no `ResolveScope` field and no lens were added. Receipt: two purity oracles in the `claim_executor` bin tests — `memo_warm_cold_results_are_identical` (warm memo path is byte-identical to the cold `run_shared_entry_claims` path — the §5 purity oracle) and `memo_deduplicates_resolve_count` (resolve fires exactly once across batch boundaries; goes RED if the memo is bypassed). Run: `cargo test -p v1-compiler --bin claim_executor memo_` — 2 pass, 0.37s (2026-07-02).
 
 **Grounded 2026-06-29.** Root measurement: 537s clean-tree compile. Design principle: DESIGN.md §2 (minimize redundancy), §5 (correctness by construction, not validation).
 
@@ -67,7 +69,9 @@ For Axis A (subprocess compiles): the current gate set has no sharing opportunit
 
 **Memory:** The resolved graph for `floor_effect_gate_witness.dag` is ~0.9 GiB. Since the heavy-resolve chain already serializes these batches (Batch 1 finishes before Batch 2 starts), both batches hold the graph at different times — the memo doesn't increase peak memory, it keeps the Batch 1 graph alive slightly longer. This is acceptable.
 
-**Model surface needed (DESIGN.md §5 "model before implement"):** The `RunnableResourceProfile` already carries `heavy_whole_tree_resolve: Bool`. A new field `resolve_scope: ResolveScope` where `ResolveScope = ResolveScopeIsolated | ResolveScopeShared` lets the model explicitly declare which runnables participate in the shared resolve pool:
+**Model surface (as landed — supersedes the proposal below):** No new field was added. The memo keys directly off the existing `RunnableResourceProfile.heavy_whole_tree_resolve: Bool` — the executor treats every heavy whole-tree resolve as memo-shared, and a same-entry non-heavy claim in a later batch also joins the memo (clause (b) in `run_walk`). This is *stronger* than the proposal: the invariant "a heavy resolve is never correctly isolated" (which the proposed lens below would have enforced) is discharged by construction — heavy+isolated cannot be expressed. The `ResolveScope` design below is retained only as the rejected alternative.
+
+**~~Proposed model surface~~ (rejected in favour of the direct key above):** A new field `resolve_scope: ResolveScope` where `ResolveScope = ResolveScopeIsolated | ResolveScopeShared` would have let the model explicitly declare which runnables participate in the shared resolve pool:
 - `ResolveScopeShared` — the executor provides the memoized `ResolvedGraph` from the first resolve of this `(source_roots, entry)` in the walk; a second resolve is structurally impossible (the executor owns it). This is the construction guarantee.
 - `ResolveScopeIsolated` (default) — the executor resolves independently; no sharing. Fail-closed: a new gate that omits `ResolveScopeShared` re-resolves rather than silently sharing stale data. The wrong behavior is safe (extra work), not silent (shared stale result).
 
