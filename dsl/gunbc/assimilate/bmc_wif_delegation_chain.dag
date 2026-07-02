@@ -7,7 +7,7 @@ import extdeps.cloud.gcp.iam { GcpBinding }
 import gunbc.auth.secret_access_grant {
   SecretAccessGrant, GrantPrincipal, GrantPrincipalCondition,
   Signed, Unsigned, DeclaredInModel, AppliedOutOfBand,
-  signed_grants_only, signed_grant_bindings, grant_is_legacy
+  signed_grants_only, signed_grant_bindings
 }
 import gunbc.assimilate.bmc_token_federation {
   bmc_secrets_project_id,
