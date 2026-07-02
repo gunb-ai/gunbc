@@ -113,31 +113,19 @@ fn gate_node(g: Gate) -> Node {
 
 data ci_floor_compile_perturb_entry: String = "dsl/tools/dsl_compile_clean_perturb_witness.dag"
 
-fn floor_compile_clean_shard_node(index: Int) -> Node {
-  Node {
-    kind: TypeNode { connective: Atom { identity: ^gunbc_floor_compile_clean_shard } },
-    children: [],
-    occurrence_id: node_occurrence_minted(id: OccurrenceId { value: index })
-  }
+data floor_compile_clean_shard_barrier_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^gunbc_floor_compile_clean_shard } },
+  children: [],
+  occurrence_id: node_occurrence_minted(id: OccurrenceId { value: 0 })
 }
 
-fn compile_clean_shard_nodes() -> List<Node> {
-  fold(compile_clean_shard_entry_paths(), init: [], f: fn(acc, _path) {
-    list_snoc_item(xs: acc, item: floor_compile_clean_shard_node(index: length(xs: acc)))
-  })
-}
-
-fn compile_clean_shard_node_count() -> Int {
-  compile_clean_shard_roster_count()
-}
-
-fn floor_compile_clean_shard_nodes() -> List<Node> {
-  compile_clean_shard_nodes()
+fn compile_clean_shard_barrier_node_count() -> Int {
+  if compile_clean_sharding_enabled() { 1 } else { 0 }
 }
 
 fn floor_compile_root_node() -> Node {
   if compile_clean_sharding_enabled() {
-    floor_compile_clean_shard_node(index: 0)
+    floor_compile_clean_shard_barrier_node
   } else {
     gate_node(g: DslCompileCleanGate)
   }
@@ -145,7 +133,14 @@ fn floor_compile_root_node() -> Node {
 
 fn floor_is_compile_clean_shard_node(node: Node) -> Bool {
   compile_clean_sharding_enabled()
-    && (node.kind == floor_compile_clean_shard_node(index: 0).kind)
+    && (node.kind == floor_compile_clean_shard_barrier_node.kind)
+}
+
+fn floor_gate_enrolled_in_plan(g: Gate) -> Bool {
+  match g {
+    DslCompileCleanGate => !compile_clean_sharding_enabled()
+    _ => true
+  }
 }
 
 fn floor_resource_anchor_node(node: Node) -> Bool {
@@ -296,7 +291,7 @@ fn floor_nodes(spec: CiSpec) -> List<Node> {
     })
     concat(
       [floor_corpus_node, execution_corpus_node, floor_grounding_whole_tree_node],
-      concat(floor_compile_clean_shard_nodes(), gate_nodes)
+      concat([floor_compile_clean_shard_barrier_node], gate_nodes)
     )
   } else {
     fold(spec.gates, init: [floor_corpus_node, execution_corpus_node, floor_grounding_whole_tree_node], f: fn(acc, g) {
@@ -312,20 +307,6 @@ fn floor_depends_on_compile(dependent: Node) -> DependencyView {
     kind: DataDependsOn,
     usage_site: dependent
   }
-}
-
-fn floor_depends_on_all_compile_shards(dependent: Node) -> List<DependencyView> {
-  fold(floor_compile_clean_shard_nodes(), init: [], f: fn(acc, shard_node) {
-    list_snoc_item(
-      xs: acc,
-      item: DependencyView {
-        source: shard_node,
-        dependent: dependent,
-        kind: DataDependsOn,
-        usage_site: dependent
-      }
-    )
-  })
 }
 
 fn floor_resource_depends_on(source: Node, dependent: Node) -> DependencyView {
@@ -344,32 +325,40 @@ fn floor_corpus_exclusion_resource_edges(spec: CiSpec) -> List<DependencyView> {
     floor_resource_depends_on(source: execution_corpus_node, dependent: floor_grounding_whole_tree_node)
   ]
   fold(spec.gates, init: after_floor_corpus, f: fn(acc, g) {
-    let node = gate_node(g: g)
-    if floor_resource_anchor_node(node: node) {
+    if !floor_gate_enrolled_in_plan(g: g) {
       acc
-    } else if runnable_excludes_corpus_co_residence(profile: gate_runnable_profile(g: g)) {
-      list_snoc_item(
-        xs: list_snoc_item(
-          xs: acc,
-          item: floor_resource_depends_on(source: floor_corpus_node, dependent: node)
-        ),
-        item: floor_resource_depends_on(source: execution_corpus_node, dependent: node)
-      )
     } else {
-      acc
+      let node = gate_node(g: g)
+      if floor_resource_anchor_node(node: node) {
+        acc
+      } else if runnable_excludes_corpus_co_residence(profile: gate_runnable_profile(g: g)) {
+        list_snoc_item(
+          xs: list_snoc_item(
+            xs: acc,
+            item: floor_resource_depends_on(source: floor_corpus_node, dependent: node)
+          ),
+          item: floor_resource_depends_on(source: execution_corpus_node, dependent: node)
+        )
+      } else {
+        acc
+      }
     }
   })
 }
 
 fn floor_heavy_resolve_chain_resource_edges(spec: CiSpec) -> List<DependencyView> {
   let heavy_nodes = fold(spec.gates, init: [], f: fn(acc, g) {
-    let node = gate_node(g: g)
-    if floor_resource_anchor_node(node: node) {
+    if !floor_gate_enrolled_in_plan(g: g) {
       acc
-    } else if runnable_heavy_whole_tree_resolve(profile: gate_runnable_profile(g: g)) {
-      list_snoc_item(xs: acc, item: node)
     } else {
-      acc
+      let node = gate_node(g: g)
+      if floor_resource_anchor_node(node: node) {
+        acc
+      } else if runnable_heavy_whole_tree_resolve(profile: gate_runnable_profile(g: g)) {
+        list_snoc_item(xs: acc, item: node)
+      } else {
+        acc
+      }
     }
   })
   let heavy_nodes = list_snoc_item(xs: heavy_nodes, item: floor_grounding_whole_tree_node)
@@ -383,43 +372,23 @@ fn floor_heavy_resolve_chain_resource_edges(spec: CiSpec) -> List<DependencyView
 }
 
 fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
-  if compile_clean_sharding_enabled() {
-    let compile_barrier = concat(
-      floor_depends_on_all_compile_shards(dependent: floor_corpus_node),
-      concat(
-        floor_depends_on_all_compile_shards(dependent: execution_corpus_node),
-        floor_depends_on_all_compile_shards(dependent: floor_grounding_whole_tree_node)
-      )
-    )
-    fold(
-      spec.gates,
-      init: compile_barrier,
-      f: fn(acc, g) {
-        match g {
-          DslCompileCleanGate => acc
-          _ => concat(acc, floor_depends_on_all_compile_shards(dependent: gate_node(g: g)))
-        }
+  fold(
+    spec.gates,
+    init: [
+      floor_depends_on_compile(dependent: floor_corpus_node),
+      floor_depends_on_compile(dependent: execution_corpus_node),
+      floor_depends_on_compile(dependent: floor_grounding_whole_tree_node)
+    ],
+    f: fn(acc, g) {
+      match g {
+        DslCompileCleanGate => acc
+        _ => list_snoc_item(
+          xs: acc,
+          item: floor_depends_on_compile(dependent: gate_node(g: g))
+        )
       }
-    )
-  } else {
-    fold(
-      spec.gates,
-      init: [
-        floor_depends_on_compile(dependent: floor_corpus_node),
-        floor_depends_on_compile(dependent: execution_corpus_node),
-        floor_depends_on_compile(dependent: floor_grounding_whole_tree_node)
-      ],
-      f: fn(acc, g) {
-        match g {
-          DslCompileCleanGate => acc
-          _ => list_snoc_item(
-            xs: acc,
-            item: floor_depends_on_compile(dependent: gate_node(g: g))
-          )
-        }
-      }
-    )
-  }
+    }
+  )
 }
 
 fn floor_regen_emit_artifact_resource_edges(spec: CiSpec) -> List<DependencyView> {
@@ -487,7 +456,7 @@ fn compile_clean_batch_runnables() -> List<Runnable> {
 }
 
 fn batch_jobs_are_all_compile_shards(jobs: List<ExecutorJob>) -> Bool {
-  (length(xs: jobs) == compile_clean_shard_node_count())
+  (length(xs: jobs) == compile_clean_shard_barrier_node_count())
     && fold(jobs, init: true, f: fn(ok, job) {
       ok && floor_is_compile_clean_shard_node(node: job.node)
     })
