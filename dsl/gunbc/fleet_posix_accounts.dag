@@ -1,0 +1,153 @@
+module gunbc.fleet_posix_accounts
+
+import extdeps.access.posix { PosixUser, posix_user_is_root }
+import std.types { NonEmptyStr, List, String, Bool }
+import std.disposition { Disposition, Terminal }
+
+// §3 layer: PosixUser is the extdeps/access authority (POSIX passwd shape).
+// Fleet-specific account rows, sudo grants, and existence witnesses live here.
+
+type PosixAccountExistenceWitness {
+  probed_at: NonEmptyStr
+  probe_command: NonEmptyStr
+  host: NonEmptyStr
+}
+
+type PosixSudoGrant {
+  command_path: NonEmptyStr
+  check_argv: NonEmptyStr
+}
+
+type GroundedPosixPrincipal {
+  posix: PosixUser
+  sudo_grants: List<PosixSudoGrant>
+  existence: PosixAccountExistenceWitness
+}
+
+type FleetPosixAccountKey
+  = FleetAccountRoot
+  | FleetAccountOperator
+  | FleetAccountCiRunner
+
+data fleet_posix_accounts_scope_disposition: Disposition = Terminal {
+  reason: "Single authority for fleet POSIX principals on srv1/srv2: grounded rows with existence witnesses; no arbitrary-string principal constructor."
+}
+
+data fleet_posix_root_user: PosixUser = PosixUser {
+  name: "root",
+  uid: 0,
+  gid: 0,
+}
+
+data fleet_posix_operator_user: PosixUser = PosixUser {
+  name: "briansrls",
+  uid: 1000,
+  gid: 1000,
+}
+
+data fleet_posix_ci_runner_user: PosixUser = PosixUser {
+  name: "ghrunner",
+  uid: 1001,
+  gid: 1001,
+}
+
+data fleet_posix_root_existence: PosixAccountExistenceWitness = PosixAccountExistenceWitness {
+  probed_at: "2026-07-02",
+  probe_command: "id root",
+  host: "srv1",
+}
+
+data fleet_posix_operator_existence: PosixAccountExistenceWitness = PosixAccountExistenceWitness {
+  probed_at: "2026-07-02",
+  probe_command: "id briansrls",
+  host: "srv1",
+}
+
+data fleet_posix_ci_runner_existence: PosixAccountExistenceWitness = PosixAccountExistenceWitness {
+  probed_at: "2026-07-02",
+  probe_command: "id ghrunner",
+  host: "srv1",
+}
+
+data fleet_operator_email: NonEmptyStr = "briansrls@gmail.com"
+
+fn fleet_operator_gcp_iam_member() -> String {
+  concat("user:", fleet_operator_email as String)
+}
+
+fn fleet_posix_root_sudo_grants() -> List<PosixSudoGrant> {
+  []
+}
+
+fn fleet_posix_operator_sudo_grants() -> List<PosixSudoGrant> {
+  [
+    PosixSudoGrant {
+      command_path: "/usr/bin/hostnamectl",
+      check_argv: "--version",
+    },
+  ]
+}
+
+fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
+  [
+    PosixSudoGrant { command_path: "/usr/bin/bash", check_argv: "-c true" },
+    PosixSudoGrant { command_path: "/usr/bin/apt-get", check_argv: "--help" },
+    PosixSudoGrant { command_path: "/usr/bin/systemctl", check_argv: "--version" },
+    PosixSudoGrant { command_path: "/usr/bin/tailscale", check_argv: "version" },
+    PosixSudoGrant { command_path: "/usr/bin/install", check_argv: "--version" },
+  ]
+}
+
+fn fleet_posix_principal(key: FleetPosixAccountKey) -> GroundedPosixPrincipal {
+  match key {
+    FleetAccountRoot =>
+      GroundedPosixPrincipal {
+        posix: fleet_posix_root_user,
+        sudo_grants: fleet_posix_root_sudo_grants(),
+        existence: fleet_posix_root_existence,
+      }
+    FleetAccountOperator =>
+      GroundedPosixPrincipal {
+        posix: fleet_posix_operator_user,
+        sudo_grants: fleet_posix_operator_sudo_grants(),
+        existence: fleet_posix_operator_existence,
+      }
+    FleetAccountCiRunner =>
+      GroundedPosixPrincipal {
+        posix: fleet_posix_ci_runner_user,
+        sudo_grants: fleet_posix_ci_runner_sudo_grants(),
+        existence: fleet_posix_ci_runner_existence,
+      }
+  }
+}
+
+fn grounded_posix_principal_name(p: GroundedPosixPrincipal) -> NonEmptyStr {
+  p.posix.name
+}
+
+fn fleet_posix_account_from_name(name: NonEmptyStr) -> GroundedPosixPrincipal? {
+  if name == fleet_posix_root_user.name {
+    Present { value: fleet_posix_principal(key: FleetAccountRoot) }
+  } else {
+    if name == fleet_posix_operator_user.name {
+      Present { value: fleet_posix_principal(key: FleetAccountOperator) }
+    } else {
+      if name == fleet_posix_ci_runner_user.name {
+        Present { value: fleet_posix_principal(key: FleetAccountCiRunner) }
+      } else {
+        Absent
+      }
+    }
+  }
+}
+
+fn fleet_posix_account_exists(name: NonEmptyStr) -> Bool {
+  match fleet_posix_account_from_name(name: name) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn grounded_posix_principal_has_existence_witness(p: GroundedPosixPrincipal) -> Bool {
+  p.existence.probe_command != "" && p.existence.probed_at != ""
+}
