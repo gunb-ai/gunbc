@@ -52,6 +52,11 @@ data gunbc_srv1_host_identity_observation_fixture_row: HostIdentityObservationRo
   probed_at: "2026-07-02",
 }
 
+data gunbc_srv2_host_identity_observation_fixture_row: HostIdentityObservationRow = HostIdentityObservationRow {
+  short_hostname_raw: "alstrad8d-1l2t-2",
+  probed_at: "2026-07-02",
+}
+
 fn host_identity_observation_typed(row: HostIdentityObservationRow) -> HostIdentityObservation {
   HostIdentityObservation {
     short_hostname: trim(row.short_hostname_raw),
