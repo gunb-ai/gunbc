@@ -36,7 +36,7 @@ data synthetic_intent: StandingIntent = {
   recurring: true,
   receiptable: true,
   desired_scope: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
-  required_subjects: [],
+  required_subjects: SubjectRoster { entries: [] },
   default_mode: Blocking,
   required_consumer: Exact { kind: FloorGate },
   self_application_required: true,
@@ -88,17 +88,55 @@ data synthetic_receipt_redfail: CoverageReceipt = {
   probed_at: Timestamp { iso: "2026-07-02" }
 }
 
+data synthetic_intent_with_subject: StandingIntent = {
+  id: "synthetic.parallelism.with-subject",
+  property: LensFamily { lens: Parallelism },
+  displaced_cost: "synthetic fixture cost",
+  mechanism_class: "synthetic mechanism",
+  recurring: true,
+  receiptable: true,
+  desired_scope: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
+  required_subjects: SubjectRoster { entries: ["dsl"] },
+  default_mode: Blocking,
+  required_consumer: Exact { kind: FloorGate },
+  self_application_required: true,
+  allowed_narrowing: [],
+  fallback_when_unavailable: Refuse
+}
+
+data synthetic_intent_missing_subject: StandingIntent = {
+  id: "synthetic.parallelism.missing-subject",
+  property: LensFamily { lens: Parallelism },
+  displaced_cost: "synthetic fixture cost",
+  mechanism_class: "synthetic mechanism",
+  recurring: true,
+  receiptable: true,
+  desired_scope: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
+  required_subjects: SubjectRoster { entries: ["not-discovered"] },
+  default_mode: Blocking,
+  required_consumer: Exact { kind: FloorGate },
+  self_application_required: true,
+  allowed_narrowing: [],
+  fallback_when_unavailable: Refuse
+}
+
 data synthetic_contracts: List<LensContract> = [synthetic_contract]
 data receipts_good: List<CoverageReceipt> = [synthetic_receipt_good]
 data receipts_narrow: List<CoverageReceipt> = [synthetic_receipt_narrow]
 data receipts_redfail: List<CoverageReceipt> = [synthetic_receipt_redfail]
 
-test fn complexity_repo_wide_reds_on_scope_consumer_self() -> Bool {
+test fn complexity_repo_wide_reds_on_scope_subjects_consumer_self() -> Bool {
   return leg_holds(l: complexity_repo_wide_verdict().claimed)
     && leg_holds(l: complexity_repo_wide_verdict().red_control)
     && leg_fails(l: complexity_repo_wide_verdict().scope_covered)
+    && leg_fails(l: complexity_repo_wide_verdict().subjects_covered)
     && leg_fails(l: complexity_repo_wide_verdict().live_consumer)
     && leg_fails(l: complexity_repo_wide_verdict().self_application)
+}
+
+test fn subjects_leg_discriminates() -> Bool {
+  return leg_holds(l: intent_family_verdict(intent: synthetic_intent_with_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
+    && leg_fails(l: intent_family_verdict(intent: synthetic_intent_missing_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
 }
 
 test fn complexity_repo_wide_intent_does_not_hold() -> Bool {
