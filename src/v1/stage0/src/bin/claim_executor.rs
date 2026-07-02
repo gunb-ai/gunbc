@@ -16,7 +16,8 @@ use v1_compiler::cli_run::{
     DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::v1_interpreter::{
-    color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
+    color_enabled, eval_data_item_value, paint, run_in_context_with_args, sgr, ExecutionMode,
+    InterpContext, Value,
 };
 
 #[derive(Clone)]
