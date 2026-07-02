@@ -185,13 +185,10 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
 }
 
 fn flatten_visible_bindings(env: TypeEnv) -> Map<String, TypeBinding> {
-  let from_parents = fold(env.parents, init: empty_map(), f: (acc, parent) =>
-    map_merge(flatten_visible_bindings(env: parent), acc)
+  map_merge(
+    env.ancestry_str_bindings,
+    env.str_bindings,
   )
-  let local_by_name = fold(env.bindings |> map_values, init: empty_map(), f: (acc, binding) =>
-    map_insert(acc, binding.name, binding)
-  )
-  map_merge(from_parents, local_by_name)
 }
 
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {

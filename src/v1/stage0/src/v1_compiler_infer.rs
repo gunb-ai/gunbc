@@ -11979,29 +11979,29 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                             }
                         },
                     ),
-                ancestry_str_bindings: Rc::new(v1_rt::map_keys(&parent_env.ancestry_str_bindings.clone()))
-                    .iter()
-                    .cloned()
-                    .fold(
-                        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
-                            if is_type_variable_name(name.clone()) {
-                                acc.clone()
-                            } else {
-                                match v1_rt::map_get(
-                                    &parent_env.ancestry_str_bindings.clone(),
-                                    name.clone(),
-                                ) {
-                                    Some(binding) => v1_rt::rc_map_insert(
-                                        acc.clone(),
-                                        name.clone(),
-                                        binding.clone(),
-                                    ),
-                                    None => acc.clone(),
+                ancestry_str_bindings: Rc::new(v1_rt::map_keys(
+                    &parent_env.ancestry_str_bindings.clone(),
+                ))
+                .iter()
+                .cloned()
+                .fold(
+                    v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                    |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: String| {
+                        if is_type_variable_name(name.clone()) {
+                            acc.clone()
+                        } else {
+                            match v1_rt::map_get(
+                                &parent_env.ancestry_str_bindings.clone(),
+                                name.clone(),
+                            ) {
+                                Some(binding) => {
+                                    v1_rt::rc_map_insert(acc.clone(), name.clone(), binding.clone())
                                 }
+                                None => acc.clone(),
                             }
-                        },
-                    ),
+                        }
+                    },
+                ),
                 parents: parent_env.parents.clone(),
                 recursive_types: parent_env.recursive_types.clone(),
                 recursive_type_set: parent_env.recursive_type_set.clone(),
@@ -12621,14 +12621,28 @@ pub fn build_type_env(
         );
         let merged_inductive_fields =
             merge_inductive_fields(parent_inductive_fields, local_inductive_fields);
-        let visible_str_bindings = v1_rt::rc_map_merge(
-            ancestry_cache.str_bindings.clone(),
-            local_str_bindings.clone(),
-        );
+        let ancestry_str_bindings = if module.resolved_imports.clone().len() == 1 {
+            if let Some(imp) = module.resolved_imports.clone().first().cloned() {
+                if let Some(parent_mod) = v1_rt::map_get(&parent_index, imp.module_path.clone()) {
+                    v1_rt::rc_map_merge(
+                        parent_mod.type_env.ancestry_str_bindings.clone(),
+                        parent_mod.type_env.str_bindings.clone(),
+                    )
+                } else {
+                    ancestry_cache.str_bindings.clone()
+                }
+            } else {
+                ancestry_cache.str_bindings.clone()
+            }
+        } else {
+            ancestry_cache.str_bindings.clone()
+        };
+        let visible_str_bindings =
+            v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
         let unresolved_env = Rc::new(TypeEnv {
             bindings: all_local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
-            ancestry_str_bindings: ancestry_cache.str_bindings.clone(),
+            ancestry_str_bindings: ancestry_str_bindings.clone(),
             parents: scope_parents.clone(),
             recursive_types: cycle_set,
             recursive_type_set: cross_type_set,
@@ -13058,14 +13072,28 @@ pub fn build_type_env_unresolved(
         );
         let merged_inductive_fields =
             merge_inductive_fields(parent_inductive_fields, local_inductive_fields);
-        let visible_str_bindings = v1_rt::rc_map_merge(
-            ancestry_cache.str_bindings.clone(),
-            local_str_bindings.clone(),
-        );
+        let ancestry_str_bindings = if module.resolved_imports.clone().len() == 1 {
+            if let Some(imp) = module.resolved_imports.clone().first().cloned() {
+                if let Some(parent_mod) = v1_rt::map_get(&parent_index, imp.module_path.clone()) {
+                    v1_rt::rc_map_merge(
+                        parent_mod.type_env.ancestry_str_bindings.clone(),
+                        parent_mod.type_env.str_bindings.clone(),
+                    )
+                } else {
+                    ancestry_cache.str_bindings.clone()
+                }
+            } else {
+                ancestry_cache.str_bindings.clone()
+            }
+        } else {
+            ancestry_cache.str_bindings.clone()
+        };
+        let visible_str_bindings =
+            v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
         let unresolved_env = Rc::new(TypeEnv {
             bindings: local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
-            ancestry_str_bindings: ancestry_cache.str_bindings.clone(),
+            ancestry_str_bindings: ancestry_str_bindings.clone(),
             parents: scope_parents.clone(),
             recursive_types: cycle_set,
             recursive_type_set: cross_type_set,
@@ -14531,10 +14559,7 @@ pub fn rewire_type_env_import_str_binding_identity(
     modules: Rc<Vec<Rc<TypedModule>>>,
     _source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
-    fn local_authority_binding(
-        owner: Rc<TypedModule>,
-        name: String,
-    ) -> Option<Rc<TypeBinding>> {
+    fn local_authority_binding(owner: Rc<TypedModule>, name: String) -> Option<Rc<TypeBinding>> {
         owner
             .type_env
             .bindings
@@ -14547,12 +14572,10 @@ pub fn rewire_type_env_import_str_binding_identity(
         modules: Rc<Vec<Rc<TypedModule>>>,
         name: String,
     ) -> Option<Rc<TypedModule>> {
-        modules.iter().find(|m| {
-            m.type_env
-                .bindings
-                .values()
-                .any(|b| b.name.clone() == name)
-        }).cloned()
+        modules
+            .iter()
+            .find(|m| m.type_env.bindings.values().any(|b| b.name.clone() == name))
+            .cloned()
     }
 
     Rc::new({
@@ -14566,14 +14589,13 @@ pub fn rewire_type_env_import_str_binding_identity(
                 .collect();
             let mut str_bindings = m.type_env.str_bindings.clone();
             let mut ancestry_str_bindings = m.type_env.ancestry_str_bindings.clone();
-            let inherited_names: std::collections::HashSet<String> = Rc::new(v1_rt::map_keys(
-                &ancestry_str_bindings,
-            ))
-            .iter()
-            .chain(Rc::new(v1_rt::map_keys(&str_bindings)).iter())
-            .cloned()
-            .filter(|name| !local_names.contains(name))
-            .collect();
+            let inherited_names: std::collections::HashSet<String> =
+                Rc::new(v1_rt::map_keys(&ancestry_str_bindings))
+                    .iter()
+                    .chain(Rc::new(v1_rt::map_keys(&str_bindings)).iter())
+                    .cloned()
+                    .filter(|name| !local_names.contains(name))
+                    .collect();
             for name in inherited_names {
                 if let Some(owner) = local_authority_for_name(modules.clone(), name.clone()) {
                     if let Some(canonical) = local_authority_binding(owner, name.clone()) {
@@ -14744,8 +14766,6 @@ pub fn reconcile(
     {
         let typed = typecheck(graph, source_indices.clone(), intern_table);
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
-        let modules =
-            rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
         let emit_info = build_emit_graph_info(modules.clone());
         Rc::new(ResolvedGraph {

@@ -21,9 +21,22 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 static TYPE_ENV_LOOKUP_BY_NAME_CALLS: AtomicU64 = AtomicU64::new(0);
 static TYPE_ENV_PARENT_CHAIN_STEPS: AtomicU64 = AtomicU64::new(0);
+static FLATTEN_VISIBLE_PARENT_RECURSES: AtomicU64 = AtomicU64::new(0);
+
+pub fn flatten_visible_parent_recurses() -> u64 {
+    FLATTEN_VISIBLE_PARENT_RECURSES.load(Ordering::Relaxed)
+}
+
+pub fn reset_flatten_visible_profile() {
+    FLATTEN_VISIBLE_PARENT_RECURSES.store(0, Ordering::Relaxed);
+}
 
 pub fn maybe_print_type_env_lookup_profile() {
-    if std::env::var("GUNBC_TYPE_ENV_LOOKUP_PROFILE").ok().as_deref() == Some("1") {
+    if std::env::var("GUNBC_TYPE_ENV_LOOKUP_PROFILE")
+        .ok()
+        .as_deref()
+        == Some("1")
+    {
         let calls = TYPE_ENV_LOOKUP_BY_NAME_CALLS.load(Ordering::Relaxed);
         let steps = TYPE_ENV_PARENT_CHAIN_STEPS.load(Ordering::Relaxed);
         let avg_depth = if calls > 0 {
@@ -40,6 +53,7 @@ pub fn maybe_print_type_env_lookup_profile() {
 pub fn reset_type_env_lookup_profile() {
     TYPE_ENV_LOOKUP_BY_NAME_CALLS.store(0, Ordering::Relaxed);
     TYPE_ENV_PARENT_CHAIN_STEPS.store(0, Ordering::Relaxed);
+    reset_flatten_visible_profile();
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -310,10 +324,16 @@ pub fn inductive_fields_list_to_map(
 }
 
 pub fn flatten_visible_bindings(env: Rc<TypeEnv>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    // O(1) flat view: ancestry + local (local wins), same overlay order as lookup_binding_by_name.
+    if !env.ancestry_str_bindings.is_empty() || env.parents.is_empty() {
+        return v1_rt::rc_map_merge(env.ancestry_str_bindings.clone(), env.str_bindings.clone());
+    }
+    // Fallback for envs that still carry only parent-chain links (tests / legacy stubs).
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let from_parents = env.parents.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
+                FLATTEN_VISIBLE_PARENT_RECURSES.fetch_add(1, Ordering::Relaxed);
                 v1_rt::rc_map_merge(flatten_visible_bindings(parent.clone()), acc)
             },
         );

@@ -370,13 +370,14 @@ fn synthetic_import_chain_sources(depth: usize) -> Vec<Rc<SourceFile>> {
 
 fn time_import_chain_resolve(depth: usize) -> Duration {
     let sources = synthetic_import_chain_sources(depth);
-    let mut best = Duration::from_secs(u64::MAX);
-    for _ in 0..3 {
+    let mut samples = Vec::new();
+    for _ in 0..7 {
         let start = Instant::now();
         compile_modules(sources.clone());
-        best = best.min(start.elapsed());
+        samples.push(start.elapsed());
     }
-    best
+    samples.sort();
+    samples[samples.len() / 2]
 }
 
 #[test]
@@ -400,5 +401,16 @@ fn type_env_import_chain_scaling_not_quadratic() {
     assert!(
         ratio_64_32 < 3.0,
         "import-chain resolve must stay sub-quadratic: time(64)/time(32)={ratio_64_32:.2} (budget <3.0)"
+    );
+}
+
+#[test]
+fn type_env_import_chain_flatten_parent_recurses_zero() {
+    v1_compiler::v1_compiler_infer_env::reset_flatten_visible_profile();
+    compile_modules(synthetic_import_chain_sources(128));
+    assert_eq!(
+        v1_compiler::v1_compiler_infer_env::flatten_visible_parent_recurses(),
+        0,
+        "flatten_visible_bindings must use ancestry index, not recursive parent flatten"
     );
 }
