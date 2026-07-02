@@ -140,4 +140,9 @@ test fn json_emit_witnesses() -> Bool {
     && witness_int_list_helper()
     && witness_str_list_helper()
     && witness_grammar_rows_cover_json_value_variants()
+    && witness_invalid_number_lexeme_rejected()
+    && witness_json_int_lexeme_always_valid()
+    && witness_json_number_lexeme_valid_accepts_fraction_and_exp()
+    && witness_unicode_escape_hex4_boundary_0fff()
+    && witness_unicode_escape_hex4_boundary_ffff()
 }

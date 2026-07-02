@@ -39,20 +39,20 @@ type JsonNumberParseRest {
   ok: Bool
 }
 
-fn is_json_digit(cp: Int) -> Bool {
-  cp >= 48 && cp <= 57
+fn is_json_digit_char(c: String) -> Bool {
+  (c != "") && string_contains(s: "0123456789", pattern: c)
 }
 
-fn is_json_digit1(cp: Int) -> Bool {
-  cp >= 49 && cp <= 57
+fn is_json_digit1_char(c: String) -> Bool {
+  (c != "") && string_contains(s: "123456789", pattern: c)
 }
 
 fn json_number_consume_digit_run(s: String) -> JsonNumberParseRest {
   if s.length() == 0 {
     JsonNumberParseRest { rest: "", ok: true }
   } else {
-    let first = code_point_int(ch: char_at(s, 0))
-    if !is_json_digit(cp: first) {
+    let first = char_at(s, 0)
+    if !is_json_digit_char(c: first) {
       JsonNumberParseRest { rest: s, ok: true }
     } else {
       let inner = json_number_consume_digit_run(s: substring(s: s, start: 1, end: s.length()))
@@ -62,17 +62,14 @@ fn json_number_consume_digit_run(s: String) -> JsonNumberParseRest {
 }
 
 fn json_number_consume_int(s: String) -> JsonNumberParseRest {
-  if s == "0" {
-    JsonNumberParseRest { rest: "", ok: true }
-  } else if s.length() == 0 {
+  if s.length() == 0 {
+    JsonNumberParseRest { rest: s, ok: false }
+  } else if char_at(s, 0) == "0" {
+    JsonNumberParseRest { rest: substring(s: s, start: 1, end: s.length()), ok: true }
+  } else if !is_json_digit1_char(c: char_at(s, 0)) {
     JsonNumberParseRest { rest: s, ok: false }
   } else {
-    let first = code_point_int(ch: char_at(s, 0))
-    if !is_json_digit1(cp: first) {
-      JsonNumberParseRest { rest: s, ok: false }
-    } else {
-      json_number_consume_digit_run(s: s)
-    }
+    json_number_consume_digit_run(s: s)
   }
 }
 
@@ -80,8 +77,8 @@ fn json_number_consume_frac_digits(s: String) -> JsonNumberParseRest {
   if s.length() == 0 {
     JsonNumberParseRest { rest: "", ok: false }
   } else {
-    let first = code_point_int(ch: char_at(s, 0))
-    if !is_json_digit(cp: first) {
+    let first = char_at(s, 0)
+    if !is_json_digit_char(c: first) {
       JsonNumberParseRest { rest: s, ok: false }
     } else {
       json_number_consume_digit_run(s: s)
@@ -105,8 +102,8 @@ fn json_number_consume_optional_exp(s: String) -> Bool {
   if s.length() == 0 {
     true
   } else {
-    let marker = code_point_int(ch: char_at(s, 0))
-    if marker != 69 && marker != 101 {
+    let marker = char_at(s, 0)
+    if marker != "E" && marker != "e" {
       false
     } else {
       let after = substring(s: s, start: 1, end: s.length())
