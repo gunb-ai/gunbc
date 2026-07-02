@@ -6007,8 +6007,13 @@ fn build_module_context(contributions: List<ItemContribution>,
     source_indices: env.source_indices
   )
   let imported_variants = build_imported_variants(resolved_imports: resolved_imports, parent_index: parent_index, source_indices: env.source_indices)
+  let ancestry_cache = union_parent_type_env_caches(resolved_imports: resolved_imports, parent_index: parent_index)
+  let local_str_bindings = fold(env.bindings |> map_values, init: empty_map(), f: (acc, b) =>
+    map_insert(acc, b.name, b)
+  )
+  let bindings_for_variants = map_merge(ancestry_cache.str_bindings, local_str_bindings)
   let variant_fold = fold(
-    flatten_visible_bindings(env: env) |> map_values |> sort_by(b => b.name),
+    bindings_for_variants |> map_values |> sort_by(b => b.name),
     init: VariantFoldState { locals: empty_map(), collision_errors: [] },
     f: (acc, binding) =>
       let is_coproduct = binding.resolved.connective == Disj
@@ -6034,7 +6039,28 @@ fn build_module_context(contributions: List<ItemContribution>,
         )
       } else { acc }
   )
-  let imported_variant_locals = variant_fold.locals
+  let imported_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
+  let imported_variant_locals = fold(resolved_imports, init: imported_variant_locals, f: (acc, imp) =>
+    fold(imp.specific_names, init: acc, f: (inner, variant_name) =>
+      if map_contains_key(inner, variant_name) {
+        inner
+      } else {
+        match map_get(imported_variants, variant_name) {
+          Present { value: enum_name } =>
+            match lookup_type_by_name(env: env, name: enum_name) {
+              Present { value: enum_node } =>
+                map_insert(inner, variant_name, TypeBinding {
+                  name: variant_name,
+                  resolved: enum_node,
+                  provenance: SubValueUnknown
+                })
+              Absent => inner
+            }
+          Absent => inner
+        }
+      }
+    )
+  )
   let variant_collision_errors = variant_fold.collision_errors
   let env_variant_locals = variant_locals_from_items(items: local.resolved_items, init: imported_variant_locals, source_indices: env.source_indices)
   let merged_scope = merge_scope_from_imports(

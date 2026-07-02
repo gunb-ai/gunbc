@@ -13377,13 +13377,26 @@ pub fn build_module_context(
             parent_index.clone(),
             env.source_indices.clone(),
         );
-        let variant_fold = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_values(&flatten_visible_bindings(
-                env.clone(),
-            )))
+        let ancestry_cache = union_parent_type_env_caches(
+            resolved_imports.clone(),
+            parent_index.clone(),
+        );
+        let local_str_bindings = Rc::new(v1_rt::map_values(&env.bindings.clone()))
             .iter()
             .cloned()
-            .collect();
+            .fold(
+                v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                |acc: Rc<HashMap<String, Rc<TypeBinding>>>, b: Rc<TypeBinding>| {
+                    v1_rt::rc_map_insert(acc, b.name.clone(), b.clone())
+                },
+            );
+        let bindings_for_variants =
+            v1_rt::rc_map_merge(ancestry_cache.str_bindings.clone(), local_str_bindings);
+        let variant_fold = Rc::new({
+            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_values(&bindings_for_variants))
+                .iter()
+                .cloned()
+                .collect();
             __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
                 let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
                 let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
@@ -13466,7 +13479,37 @@ pub fn build_module_context(
                 }
             },
         );
-        let imported_variant_locals = variant_fold.locals.clone();
+        let imported_variant_locals = {
+            let mut acc = merge_kernel_variant_locals_low_priority(
+                env.clone(),
+                variant_fold.locals.clone(),
+            );
+            for imp in resolved_imports.clone().iter().cloned() {
+                for variant_name in imp.specific_names.clone().iter().cloned() {
+                    if v1_rt::map_contains_key(&acc, variant_name.clone()) {
+                        continue;
+                    }
+                    if let Some(enum_name) =
+                        v1_rt::map_get(&imported_variants, variant_name.clone())
+                    {
+                        if let Some(enum_node) =
+                            lookup_type_by_name(env.clone(), enum_name.clone())
+                        {
+                            acc = v1_rt::rc_map_insert(
+                                acc,
+                                variant_name.clone(),
+                                Rc::new(TypeBinding {
+                                    name: variant_name.clone(),
+                                    resolved: enum_node,
+                                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                                }),
+                            );
+                        }
+                    }
+                }
+            }
+            acc
+        };
         let variant_collision_errors = variant_fold.collision_errors.clone();
         let env_variant_locals = variant_locals_from_items(
             local.resolved_items.clone(),
