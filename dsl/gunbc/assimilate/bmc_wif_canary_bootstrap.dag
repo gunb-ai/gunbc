@@ -2,7 +2,7 @@ module gunbc.assimilate.bmc_wif_canary_bootstrap
 
 import std.resources { Network }
 import std.types { String, List }
-import extdeps.cloud.gcp.gcp { GcpService, gcp_service_api_id }
+import extdeps.cloud.gcp.gcp { GcpService, gcp_service_api_id, ServiceAccountEmail }
 import extdeps.cloud.gcp.serviceusage
 import extdeps.cloud.gcp.iam_admin
 import extdeps.cloud.gcp.secret_manager
