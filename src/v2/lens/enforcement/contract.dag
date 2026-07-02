@@ -2,13 +2,17 @@ module v2.lens.enforcement.contract
 
 import v2.std.collection { List }
 import v2.std.text { String }
-import v2.std.qualified_name { QualifiedName, qualified_name_singleton }
-import v2.lens.registry { LensRegistryEntryV0, lens_registry_v0_cost, lens_registry_v0_complexity }
+import v2.lens.registry { LensRegistryEntryV0, LensIdV0, Cost, Complexity, lens_registry_v0_cost, lens_registry_v0_complexity }
 import v2.lens.enforcement.vocab {
+  SubjectRoster,
   EnforcementMode, Blocking, AuditOnly, Advisory,
-  LensConsumer, FloorGate, WitnessOnly, NoConsumer,
-  RedControl, RedControlPresent, RedControlAbsent,
-  SelfApplication, SelfApplies, SelfExempt, SelfAbsent
+  ConsumerKind, FloorGate, WitnessOnly, NoConsumer,
+  ScopeSatisfaction, ScopeCovers, ScopeNarrowed, ScopeMissing,
+  NarrowingReason, TypeReflectionUnavailable,
+  RedControlStatus, RedControlPassed, RedControlMissing, RedControlFailedToFlip,
+  SelfApplicationStatus, SelfAppliesObserved, SelfExemptObserved, SelfApplicationAbsent,
+  ReceiptRef, HasReceiptRef, NoReceiptRef,
+  Timestamp
 }
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow, RatchetForever }
 import std.disposition { SubstrateMandatoryTag }
@@ -16,22 +20,27 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type LensContract {
   entry: LensRegistryEntryV0
-  claimed_scope: List<String>
   mode: EnforcementMode
-  consumer: LensConsumer
-  red_control: RedControl
-  self_application: SelfApplication
+  claimed_scope: SubjectRoster
   exemptions: List<String>
   boundary: ConstructionJustification
 }
 
+type CoverageReceipt {
+  contract_id: LensIdV0
+  discovered_subjects: SubjectRoster
+  scope_satisfaction: ScopeSatisfaction
+  consumer_observed: ConsumerKind
+  consumer_receipt_ref: ReceiptRef
+  red_control_status: RedControlStatus
+  self_application_status: SelfApplicationStatus
+  probed_at: Timestamp
+}
+
 data lens_contract_cost: LensContract = {
   entry: lens_registry_v0_cost,
-  claimed_scope: ["fixture:mvp1-exemplars"],
   mode: Blocking,
-  consumer: WitnessOnly,
-  red_control: RedControlPresent { witness: qualified_name_singleton(sym: ^loop_iteration_floor_holds) },
-  self_application: SelfAbsent,
+  claimed_scope: SubjectRoster { entries: ["fixture:mvp1-exemplars"] },
   exemptions: [],
   boundary: ConstructionJustification {
     class: WallNow {
@@ -43,16 +52,46 @@ data lens_contract_cost: LensContract = {
 
 data lens_contract_complexity: LensContract = {
   entry: lens_registry_v0_complexity,
-  claimed_scope: ["fixture:mvp1-exemplars"],
   mode: AuditOnly,
-  consumer: WitnessOnly,
-  red_control: RedControlPresent { witness: qualified_name_singleton(sym: ^complexity_lens_projects_bound_holds) },
-  self_application: SelfAbsent,
+  claimed_scope: SubjectRoster { entries: ["fixture:mvp1-exemplars"] },
   exemptions: [],
   boundary: ConstructionJustification { class: RatchetForever }
+}
+
+data receipt_cost: CoverageReceipt = {
+  contract_id: Cost,
+  discovered_subjects: SubjectRoster { entries: ["source_bridged_add", "source_bridged_bind", "source_bridged_branch", "source_bridged_loop"] },
+  scope_satisfaction: ScopeNarrowed {
+    missing: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
+    reason: TypeReflectionUnavailable { blocker: "decl_facts(roots) #5966/gunbc#5364" }
+  },
+  consumer_observed: WitnessOnly,
+  consumer_receipt_ref: NoReceiptRef,
+  red_control_status: RedControlPassed,
+  self_application_status: SelfApplicationAbsent,
+  probed_at: Timestamp { iso: "2026-07-02" }
+}
+
+data receipt_complexity: CoverageReceipt = {
+  contract_id: Complexity,
+  discovered_subjects: SubjectRoster { entries: ["fixture:mvp1-exemplars"] },
+  scope_satisfaction: ScopeNarrowed {
+    missing: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
+    reason: TypeReflectionUnavailable { blocker: "decl_facts(roots) #5966/gunbc#5364" }
+  },
+  consumer_observed: WitnessOnly,
+  consumer_receipt_ref: NoReceiptRef,
+  red_control_status: RedControlPassed,
+  self_application_status: SelfApplicationAbsent,
+  probed_at: Timestamp { iso: "2026-07-02" }
 }
 
 data lens_contract_registry: List<LensContract> = [
   lens_contract_cost,
   lens_contract_complexity
+]
+
+data coverage_receipt_registry: List<CoverageReceipt> = [
+  receipt_cost,
+  receipt_complexity
 ]
