@@ -56,7 +56,7 @@ fn expressibility_frontier_body() -> List<MarkdownBlock> {
     },
     p(text: "The reading: anemic-modeling and complexity are not analogous by coincidence — they are **two samples of one structure**. Each has a constructive core (①), a detectable-but-not-yet-walled middle (②), and an undecidable tail (③) that is honestly review-bound forever. The win in each is the **same move**: drag instances leftward — review → lens → construction — and *stop* at the decidability boundary."),
     h2(text: "4. The methodology (and its two failure modes)"),
-    p(text: "For any discipline D we propose to enforce: **partition D's instances into ① ② ③ *before* building enforcement.** The partition is the deliverable; the gate is downstream of it."),
+    p(text: "For any discipline D we propose to enforce: **partition D's instances into ① ② ③ *before* building enforcement.** The partition is the deliverable; the gate is downstream of it. The worked instance for algorithmic complexity is the [structural-quadratic wall coverage audit](structural-quadratic-wall-coverage-audit.md) — every live cost/complexity mechanism located on these three regions, with an execution receipt."),
     p(text: "The two ways to get the partition wrong are exactly DESIGN's two named traps:"),
     ul(items: [
       li(text: "**Region ③ priced as ①** → the **\"never\" trap** (§5): a ratchet sold as a wall. You build a \"gate\" that can never be complete (optimality, leaf-decomposition), then either it silently lets things through (coverage-by-illusion) or it grows without bound chasing completeness (the **purity trap**, §6 — the economic twin). Tell: the gate's success criterion contains \"never\" over an undecidable set."),
