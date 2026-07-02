@@ -321,8 +321,7 @@ fn minimal_kind_placed_fields_union() -> List<NodeSupersetField> {
 
 data minimal_kind_owed_placement: List<NodeSupersetField> = [
   NsfTransport,
-  NsfProperties,
-  NsfTypeAnnotation
+  NsfProperties
 ]
 
 data minimal_kind_migrated_to_facts: List<NodeSupersetField> = [
