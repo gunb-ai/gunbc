@@ -1,6 +1,6 @@
 module v2.extdeps.github.gha_fold_pilot_emit
 
-import extdeps.formats.yaml { YamlKeyValue }
+import extdeps.languages.yaml.types { YamlKeyValue }
 import extdeps.github.actions {
   ActionRef,
   RunStep,

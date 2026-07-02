@@ -16,8 +16,9 @@ import extdeps.github.actions {
   google_auth_action, checkout_action,
   default_job_timeout_minutes
 }
-import extdeps.formats.yaml { YamlKeyValue, kv, yaml_string, serialize_yaml }
-import gunbc.workflow_yaml_project { project_workflow_to_yaml }
+import extdeps.languages.yaml.types { YamlKeyValue, kv, yaml_string }
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 
 data bmc_secrets_project_id: GcpProjectId = "gunbai-secrets"

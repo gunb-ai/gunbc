@@ -1,8 +1,9 @@
 module test.claim.yaml_quoting_witness
 
-import extdeps.formats.yaml {
-  YamlValue, serialize_yaml, yaml_string, yaml_mapping, kv
+import extdeps.languages.yaml.types {
+  YamlValue, yaml_string, yaml_mapping, kv
 }
+import extdeps.languages.yaml.emit { serialize_yaml }
 
 fn ser_kv(k: String, s: String) -> String {
   serialize_yaml(v: yaml_mapping(entries: [kv(key: k, value: yaml_string(s: s))]))

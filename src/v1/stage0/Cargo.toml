@@ -23,7 +23,6 @@ clap = { version = "4", features = ["derive"] }
 lazy_static = "1"
 serde = { version = "1", features = ["derive", "rc"] }
 serde_json = "1"
-serde_yaml = { workspace = true }
 ureq = { version = "2", features = ["json"] }
 
 [[bin]]
@@ -56,15 +55,6 @@ path = "src/bin/claim_executor.rs"
 [[bin]]
 name = "discover_owned_data"
 path = "src/bin/discover_owned_data.rs"
-
-# Hand-written CI parse fallback for `gunbc.ci_yaml_validate` when PyYAML/actionlint
-# are absent on the runner (see `dsl/gunbc/ci_yaml_validate.dag`). SCAFFOLD — dissolves
-# when (a) self-hosted CI image pins actionlint/PyYAML so the shell chain never needs this
-# bin, or (b) YAML parse becomes a declared extdeps host effect with no v1 seed binary
-# (DESIGN §7: seed transport shrinks as host facts move into `.dag` authority).
-[[bin]]
-name = "yaml_check"
-path = "src/bin/yaml_check.rs"
 
 # Whole-tree `.dag` source read discovery for Stage C Lane 3a SourceRootIngest.
 [[bin]]
