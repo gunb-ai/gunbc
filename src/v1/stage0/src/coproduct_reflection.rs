@@ -885,4 +885,3 @@ fn outcome_rejected_value(ctx: &InterpContext, reason: &str) -> Value {
         )]),
     }
 }
-
