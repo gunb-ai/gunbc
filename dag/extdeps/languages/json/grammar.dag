@@ -157,8 +157,5 @@ fn json_number_lexeme(s: String) -> JsonNumberLexeme? {
 }
 
 fn json_int_lexeme(n: Int) -> JsonNumberLexeme {
-  match json_number_lexeme(s: to_string(n)) {
-    Present { value: l } => l
-    Absent => json_number_lexeme_unchecked(s: "0")
-  }
+  json_number_lexeme_unchecked(s: to_string(n))
 }
