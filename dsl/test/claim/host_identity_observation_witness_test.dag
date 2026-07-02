@@ -226,7 +226,10 @@ fn witness_adopt_model_hash_is_stable() -> Bool {
 fn witness_desired_intent_from_modeled_fleet_slot() -> Bool {
   match gunbc_srv1_deployed_intent_v1 {
     Present { value: desired } =>
-      desired.desired_hostname_short == require_dns_label(raw: operator_host_srv1 as String)
+      match deployed_intent_v1_desired_hostname_short(fleet_slot: operator_host_srv1) {
+        Present { value: derived } => desired.desired_hostname_short == derived
+        Absent => false
+      }
     Absent => false
   }
 }
