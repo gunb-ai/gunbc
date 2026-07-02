@@ -1,0 +1,179 @@
+module test.claim.os_install_deduction
+
+import std.types { Bool, NonEmptyStr }
+import extdeps.os.ubuntu_autoinstall {
+  UbuntuAutoinstallPayload,
+  AutoinstallIdentity,
+  NoCloudLocal,
+  NoCloudNet,
+  StoragePolicyAbsent,
+  StoragePolicyDirectLayout,
+  autoinstall_has_storage_policy,
+}
+import extdeps.uri { Uri, Https }
+import gunbc.os_install {
+  srv3_ubuntu_autoinstall_on_iso,
+  srv3_autoinstall_identity,
+}
+import gunbc.os_install_emit { autoinstall_user_data }
+import gunbc.os_install_deduction {
+  TargetDiskState,
+  EmptyDisk,
+  ForeignOsPresent,
+  UnknownDiskState,
+  OsInstallPreflightVerdict,
+  CompleteForUnattended,
+  RequiresStoragePolicy,
+  RequiresDiskObservation,
+  AutoinstallIncompleteNotBootable,
+  IncompleteSeedDelivery,
+  fold_os_install_preflight_verdict,
+  preflight_verdict_allows_ready_to_boot,
+  plan_for_os_install_preflight_verdict,
+  RemasterWithStoragePolicy,
+  RefuseUntilStoragePolicyDeclared,
+  RefuseNeedsDiskObservation,
+  KvmOperatorAttestation,
+  KvmObservedScreen,
+  SubiquityStorageScreen,
+  FirmwareSetup,
+  InstallerAwaitingStorage,
+  FirmwareIdleBenign,
+  runtime_verdict_from_kvm_attestation,
+}
+import gunbc.fleet_intent_network { operator_host_srv3 }
+
+data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+  autoinstall_version: 1,
+  delivery: NoCloudLocal,
+  fully_automated: true,
+  target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
+  identity: srv3_autoinstall_identity,
+  locale: "en_US.UTF-8",
+  keyboard_layout: "us",
+  install_openssh_server: true,
+  storage_policy: StoragePolicyDirectLayout,
+}
+
+test fn foreign_disk_without_storage_is_not_bootable() -> Bool {
+  match fold_os_install_preflight_verdict(
+    payload: srv3_ubuntu_autoinstall_on_iso,
+    disk: ForeignOsPresent,
+  ) {
+    AutoinstallIncompleteNotBootable => true
+    CompleteForUnattended => false
+    _ => false
+  }
+}
+
+test fn unknown_disk_without_storage_needs_observation() -> Bool {
+  fold_os_install_preflight_verdict(
+    payload: srv3_ubuntu_autoinstall_on_iso,
+    disk: UnknownDiskState,
+  ) == RequiresDiskObservation
+}
+
+test fn empty_disk_without_storage_requires_policy() -> Bool {
+  fold_os_install_preflight_verdict(
+    payload: srv3_ubuntu_autoinstall_on_iso,
+    disk: EmptyDisk,
+  ) == RequiresStoragePolicy
+}
+
+test fn direct_layout_storage_is_complete_for_unattended() -> Bool {
+  fold_os_install_preflight_verdict(
+    payload: witness_autoinstall_with_storage,
+    disk: ForeignOsPresent,
+  ) == CompleteForUnattended
+    && autoinstall_has_storage_policy(payload: witness_autoinstall_with_storage)
+}
+
+test fn removing_storage_policy_flips_ready_to_boot_witness() -> Bool {
+  !preflight_verdict_allows_ready_to_boot(
+    verdict: fold_os_install_preflight_verdict(
+      payload: srv3_ubuntu_autoinstall_on_iso,
+      disk: ForeignOsPresent,
+    ),
+  )
+    && preflight_verdict_allows_ready_to_boot(
+      verdict: fold_os_install_preflight_verdict(
+        payload: witness_autoinstall_with_storage,
+        disk: ForeignOsPresent,
+      ),
+    )
+}
+
+test fn nocloud_net_seed_is_incomplete_for_actuator_path() -> Bool {
+  let net_payload = UbuntuAutoinstallPayload {
+    autoinstall_version: 1,
+    delivery: NoCloudNet {
+      seed_url: Uri {
+        scheme: Https,
+        locator: "install.srv3.lan/ubuntu-24.04/autoinstall/",
+      },
+    },
+    fully_automated: true,
+    target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
+    identity: srv3_autoinstall_identity,
+    locale: "en_US.UTF-8",
+    keyboard_layout: "us",
+    install_openssh_server: true,
+    storage_policy: StoragePolicyDirectLayout,
+  }
+  fold_os_install_preflight_verdict(payload: net_payload, disk: EmptyDisk)
+    == IncompleteSeedDelivery
+}
+
+test fn requires_storage_policy_plans_remaster() -> Bool {
+  match plan_for_os_install_preflight_verdict(
+    verdict: RequiresStoragePolicy,
+  ) {
+    RemasterWithStoragePolicy => true
+    _ => false
+  }
+}
+
+test fn incomplete_not_bootable_plans_refuse_until_declared() -> Bool {
+  match plan_for_os_install_preflight_verdict(
+    verdict: AutoinstallIncompleteNotBootable,
+  ) {
+    RefuseUntilStoragePolicyDeclared => true
+    _ => false
+  }
+}
+
+test fn direct_layout_emits_storage_yaml() -> Bool {
+  let ud = autoinstall_user_data(payload: witness_autoinstall_with_storage)
+  string_contains(s: ud, pattern: "layout:")
+    && string_contains(s: ud, pattern: "direct")
+}
+
+test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool {
+  match runtime_verdict_from_kvm_attestation(
+    attestation: KvmOperatorAttestation {
+      target: operator_host_srv3,
+      observed_screen: SubiquityStorageScreen,
+      observed_at: "2026-07-02T23:00:00Z",
+      attested_by: "operator" as NonEmptyStr,
+    },
+    preflight: AutoinstallIncompleteNotBootable,
+  ) {
+    InstallerAwaitingStorage => true
+    _ => false
+  }
+}
+
+test fn kvm_firmware_setup_is_benign_idle() -> Bool {
+  match runtime_verdict_from_kvm_attestation(
+    attestation: KvmOperatorAttestation {
+      target: operator_host_srv3,
+      observed_screen: FirmwareSetup,
+      observed_at: "2026-07-02T23:00:00Z",
+      attested_by: "operator" as NonEmptyStr,
+    },
+    preflight: CompleteForUnattended,
+  ) {
+    FirmwareIdleBenign => true
+    _ => false
+  }
+}

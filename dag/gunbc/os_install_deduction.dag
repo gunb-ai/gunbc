@@ -1,0 +1,138 @@
+module gunbc.os_install_deduction
+
+import std.types { String, NonEmptyStr, Timestamp, Bool }
+import extdeps.os.ubuntu_autoinstall {
+  UbuntuAutoinstallPayload,
+  AutoinstallStoragePolicy,
+  StoragePolicyAbsent,
+  StoragePolicyDirectLayout,
+  autoinstall_has_storage_policy,
+  NoCloudLocal,
+  NoCloudNet,
+}
+import product.placement_supply { HostIdentity }
+
+data os_install_deduction_doc: String = "OS install deduction spine — construction-time preflight (intent+policy completeness) and runtime diagnostic vocabulary. Not a monitoring product: verdicts derive from modeled facts plus typed observations (roadmap 2-os-install-deduction-a). Deduction half pairs with std.temporal_effect receipt/resume half."
+
+type TargetDiskState
+  = EmptyDisk
+  | ForeignOsPresent
+  | UnknownDiskState
+
+type OsInstallPreflightVerdict
+  = CompleteForUnattended
+  | RequiresStoragePolicy
+  | RequiresDiskObservation
+  | IncompleteSeedDelivery
+  | AutoinstallIncompleteNotBootable
+
+type OsInstallPreflightPlan
+  = PreflightNoop
+  | RemasterWithStoragePolicy
+  | RefuseUntilStoragePolicyDeclared
+  | RefuseNeedsDiskObservation
+  | RefuseIncompleteSeedDelivery
+
+type OsInstallRuntimeDiagnosticVerdict
+  = ReadyToBoot
+  | FirmwareIdleBenign
+  | BootOverrideConsumedNoInstallEvidence
+  | InstallerAwaitingStorage
+  | InstallerRunning
+  | InstallerHung
+  | OsInstalled
+  | AutoinstallIncompleteNotBootable
+
+type KvmObservedScreen
+  = FirmwareSetup
+  | UefiBootMenu
+  | GrubMenu
+  | SubiquityStorageScreen
+  | SubiquityInstalling
+  | LoginPrompt
+  | ErrorScreen { summary: NonEmptyStr }
+
+type KvmOperatorAttestation {
+  target: HostIdentity
+  observed_screen: KvmObservedScreen
+  observed_at: Timestamp
+  attested_by: NonEmptyStr
+}
+
+fn os_install_seed_delivery_is_local(payload: UbuntuAutoinstallPayload) -> Bool {
+  match payload.delivery {
+    NoCloudLocal => true
+    NoCloudNet { seed_url: _ } => false
+  }
+}
+
+fn fold_os_install_preflight_verdict(
+  payload: UbuntuAutoinstallPayload,
+  disk: TargetDiskState,
+) -> OsInstallPreflightVerdict {
+  if !payload.fully_automated {
+    CompleteForUnattended
+  } else {
+    if !os_install_seed_delivery_is_local(payload: payload) {
+      IncompleteSeedDelivery
+    } else {
+      if autoinstall_has_storage_policy(payload: payload) {
+        CompleteForUnattended
+      } else {
+        match disk {
+          EmptyDisk => RequiresStoragePolicy
+          ForeignOsPresent => AutoinstallIncompleteNotBootable
+          UnknownDiskState => RequiresDiskObservation
+        }
+      }
+    }
+  }
+}
+
+fn preflight_verdict_allows_ready_to_boot(verdict: OsInstallPreflightVerdict) -> Bool {
+  match verdict {
+    CompleteForUnattended => true
+    _ => false
+  }
+}
+
+fn plan_for_os_install_preflight_verdict(
+  verdict: OsInstallPreflightVerdict,
+) -> OsInstallPreflightPlan {
+  match verdict {
+    CompleteForUnattended => PreflightNoop
+    RequiresStoragePolicy => RemasterWithStoragePolicy
+    RequiresDiskObservation => RefuseNeedsDiskObservation
+    IncompleteSeedDelivery => RefuseIncompleteSeedDelivery
+    AutoinstallIncompleteNotBootable => RefuseUntilStoragePolicyDeclared
+  }
+}
+
+fn runtime_verdict_from_kvm_attestation(
+  attestation: KvmOperatorAttestation,
+  preflight: OsInstallPreflightVerdict,
+) -> OsInstallRuntimeDiagnosticVerdict {
+  match attestation.observed_screen {
+    SubiquityStorageScreen =>
+      match preflight {
+        AutoinstallIncompleteNotBootable => InstallerAwaitingStorage
+        RequiresStoragePolicy => InstallerAwaitingStorage
+        _ => InstallerRunning
+      }
+    SubiquityInstalling => InstallerRunning
+    LoginPrompt => OsInstalled
+    FirmwareSetup => FirmwareIdleBenign
+    UefiBootMenu => FirmwareIdleBenign
+    GrubMenu => InstallerRunning
+    ErrorScreen { summary: _ } => InstallerHung
+  }
+}
+
+fn runtime_verdict_implies_installer_awaiting_storage(
+  verdict: OsInstallRuntimeDiagnosticVerdict,
+) -> Bool {
+  match verdict {
+    InstallerAwaitingStorage => true
+    _ => false
+  }
+}

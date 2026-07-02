@@ -24,6 +24,10 @@ type AutoinstallIdentity {
   hashed_password: NonEmptyStr
 }
 
+type AutoinstallStoragePolicy
+  = StoragePolicyAbsent
+  | StoragePolicyDirectLayout
+
 type UbuntuAutoinstallPayload {
   autoinstall_version: Int
   delivery: AutoinstallDeliveryMethod
@@ -33,4 +37,12 @@ type UbuntuAutoinstallPayload {
   locale: NonEmptyStr
   keyboard_layout: NonEmptyStr
   install_openssh_server: Bool
+  storage_policy: AutoinstallStoragePolicy
+}
+
+fn autoinstall_has_storage_policy(payload: UbuntuAutoinstallPayload) -> Bool {
+  match payload.storage_policy {
+    StoragePolicyAbsent => false
+    StoragePolicyDirectLayout => true
+  }
 }
