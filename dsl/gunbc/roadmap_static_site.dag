@@ -179,29 +179,51 @@ fn roadmap_site_text_static_routes() -> List<ServedStaticRoute> {
 
 fn roadmap_site_fnv1a_digest_script() -> String {
   concat(
-    "const fnv1a64=(b)=>{let h=0xcbf29ce484222325n;for(const x of b){h^=BigInt(x);h=(h*0x100000001b3n)&0xffffffffffffffffn;}return h;};",
-    "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{const h=fnv1a64(Buffer.from(d,'utf8'));process.stdout.write('fnv1a:'+h.toString(16).padStart(16,'0'));});"
+    "const fnv1a64=(b)=>\{let h=0xcbf29ce484222325n;for(const x of b)\{h^=BigInt(x);h=(h*0x100000001b3n)&0xffffffffffffffffn;\}return h;\};",
+    "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>\{const h=fnv1a64(Buffer.from(d,'utf8'));process.stdout.write(h.toString(16).padStart(16,'0'));\});"
   )
 }
 
 fn roadmap_site_readback_curl_digest_check(url: String, expected: ContentHash) -> String {
-  concat(
+  let curl_part = concat(
+    concat("ACTUAL=$(curl -sf ", sh_single_quote(s: url)),
+    concat(" | node -e ", sh_single_quote(s: roadmap_site_fnv1a_digest_script()))
+  )
+  let curl_fail = concat(
+    concat(" || \{ echo roadmap-site-readback: curl failed url=", url),
+    " >&2; exit 1; \}; "
+  )
+  let digest_check = concat(
+    concat(concat("[ \"$ACTUAL\" = ", sh_single_quote(s: expected)), " ]"),
     concat(
-      concat("ACTUAL=$(curl -sf ", sh_single_quote(s: url)),
-      concat(" | node -e ", sh_single_quote(s: roadmap_site_fnv1a_digest_script()), " )")
-    ),
-    concat(
-      concat(concat(" || { echo roadmap-site-readback: curl failed url=", url), " >&2; exit 1; }; "),
-      concat(
-        concat(concat("[ \"$ACTUAL\" = ", sh_single_quote(s: expected)), " ]"),
-        concat(" || { echo roadmap-site-readback: digest mismatch url=", url), " >&2; exit 1; }")
-      )
+      concat(" || \{ echo roadmap-site-readback: digest mismatch url=", url),
+      " >&2; exit 1; \}"
     )
   )
+  concat(concat(curl_part, " )"), concat(curl_fail, digest_check))
 }
 
 fn sh_single_quote(s: String) -> String {
   concat("'", concat(replace(s: s, delimiter: "'", replacement: "'\\''"), "'"))
+}
+
+fn roadmap_site_deploy_receipt_line(host: String, port: Int) -> String {
+  let roadmap = roadmap_site_roadmap_md_artifact()
+  let dispatch = roadmap_site_dispatch_json_artifact()
+  let model_hash = content_hash_atom(value: "gunbc.roadmap_static_site/v1" as NonEmptyStr)
+  concat(
+    concat(
+      concat(concat("echo roadmap-site-receipt host=", host), concat(" port=", to_string(port))),
+      concat(
+        concat(concat(" url=http://127.0.0.1:", to_string(port)), roadmap_site_health_path),
+        concat(" roadmap_digest=", roadmap.digest)
+      )
+    ),
+    concat(
+      concat(concat(" dispatch_digest=", dispatch.digest), concat(" model_hash=", model_hash)),
+      " read_back_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    )
+  )
 }
 
 fn roadmap_site_readback_script(port: Int) -> String {
@@ -212,10 +234,10 @@ fn roadmap_site_readback_script(port: Int) -> String {
   concat(
     concat(
       concat(
-        concat("set -euo pipefail\n", concat("# roadmap static-site read-back host=srv1\n")),
+        concat("set -euo pipefail\n", "# roadmap static-site read-back host=srv1\n"),
         concat(
           concat("curl -sf ", sh_single_quote(s: health_url)),
-          concat(" | grep -q '\"status\":\"ok\"' || { echo roadmap-site-readback: healthz not ok >&2; exit 1; }\n")
+          concat(" | grep -q '\"status\":\"ok\"' || \{ echo roadmap-site-readback: healthz not ok >&2; exit 1; \}\n")
         )
       ),
       concat(roadmap_site_readback_curl_digest_check(url: concat(base, roadmap.url_path), expected: roadmap.digest), "\n")
@@ -223,8 +245,11 @@ fn roadmap_site_readback_script(port: Int) -> String {
     concat(
       concat(roadmap_site_readback_curl_digest_check(url: concat(base, dispatch.url_path), expected: dispatch.digest), "\n"),
       concat(
-        concat("curl -sf ", sh_single_quote(s: concat(base, dispatch.url_path))),
-        " | node -e 'JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"))' || { echo roadmap-site-readback: dispatch json parse failed >&2; exit 1; }\n"
+        concat(
+          concat("curl -sf ", sh_single_quote(s: concat(base, dispatch.url_path))),
+          " | node -e 'JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"))' || \{ echo roadmap-site-readback: dispatch json parse failed >&2; exit 1; \}\n"
+        ),
+        concat(roadmap_site_deploy_receipt_line(host: "srv1", port: port), "\n")
       )
     )
   )

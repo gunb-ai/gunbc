@@ -1,0 +1,116 @@
+module test.claim.roadmap_static_site_witness
+
+import std.content_hash { content_hash_atom }
+import std.types { NonEmptyStr, ContentHash }
+import extdeps.http.server { TextPlainUtf8, ApplicationJsonUtf8 }
+import gunbc.roadmap_authority { expected_roadmap_md }
+import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
+import gunbc.roadmap_static_site {
+  roadmap_site_static_allocation,
+  roadmap_site_text_artifacts,
+  roadmap_site_healthz_body,
+  roadmap_site_healthz_route,
+  roadmap_site_text_static_routes,
+  roadmap_site_readback_script,
+  roadmap_site_roadmap_md_artifact,
+  roadmap_site_dispatch_json_artifact,
+  roadmap_site_roadmap_url_path,
+  roadmap_site_dispatch_url_path,
+  roadmap_site_health_path,
+  RoadmapMarkdown,
+  RoadmapDispatchJson,
+}
+import gunbc.node_http_server_emit {
+  roadmap_dashboard_served_static_route_table,
+  roadmap_dashboard_node_http_server_source,
+}
+
+fn site_artifact_digest(body: String) -> ContentHash {
+  content_hash_atom(value: body as NonEmptyStr)
+}
+
+fn witness_site_artifact_model_populated() -> Bool {
+  let alloc = roadmap_site_static_allocation()
+  count(alloc.artifacts) == 2
+    && alloc.service.stateless
+    && alloc.service.health_path == roadmap_site_health_path
+    && alloc.route.dns_manual
+}
+
+fn witness_roadmap_artifact_matches_authority() -> Bool {
+  let a = roadmap_site_roadmap_md_artifact()
+  match a.kind {
+    RoadmapMarkdown => a.body == expected_roadmap_md()
+    _ => false
+  }
+}
+
+fn witness_dispatch_artifact_matches_file_content() -> Bool {
+  let a = roadmap_site_dispatch_json_artifact()
+  match a.kind {
+    RoadmapDispatchJson => a.body == roadmap_dispatch_file_content()
+    _ => false
+  }
+}
+
+fn witness_artifact_digests_are_content_hashes() -> Bool {
+  all(roadmap_site_text_artifacts(), a =>
+    a.digest == site_artifact_digest(body: a.body)
+  )
+}
+
+fn witness_healthz_route_json_ok() -> Bool {
+  let body = roadmap_site_healthz_body()
+  string_contains(s: body, pattern: "\"status\":\"ok\"")
+    && string_contains(s: body, pattern: roadmap_site_roadmap_url_path)
+    && string_contains(s: body, pattern: roadmap_site_dispatch_url_path)
+    && roadmap_site_healthz_route().content_type == ApplicationJsonUtf8
+}
+
+fn witness_text_routes_include_health_and_artifacts() -> Bool {
+  count(roadmap_site_text_static_routes()) == 3
+}
+
+fn witness_dashboard_route_table_includes_static_site() -> Bool {
+  count(roadmap_dashboard_served_static_route_table().routes) == 5
+}
+
+fn witness_emitted_server_has_static_paths() -> Bool {
+  let src = roadmap_dashboard_node_http_server_source()
+  string_contains(s: src, pattern: "/^\\/ROADMAP\\.md$/")
+    && string_contains(s: src, pattern: "/^\\/target\\/roadmap-dispatch\\.json$/")
+    && string_contains(s: src, pattern: "/^\\/healthz$/")
+}
+
+fn witness_readback_script_checks_health_and_digests() -> Bool {
+  let sh = roadmap_site_readback_script(port: 8080)
+  string_contains(s: sh, pattern: "/healthz")
+    && string_contains(s: sh, pattern: roadmap_site_roadmap_url_path)
+    && string_contains(s: sh, pattern: roadmap_site_dispatch_url_path)
+    && string_contains(s: sh, pattern: "digest mismatch")
+    && string_contains(s: sh, pattern: "JSON.parse")
+    && string_contains(s: sh, pattern: "roadmap-site-receipt")
+    && string_contains(s: sh, pattern: "read_back_ts=")
+}
+
+fn witness_roadmap_route_is_plain_text() -> Bool {
+  let routes = roadmap_site_text_static_routes()
+  let roadmap = roadmap_site_roadmap_md_artifact()
+  any(routes, r =>
+    r.body == roadmap.body
+      && r.content_type == TextPlainUtf8
+  )
+}
+
+test fn roadmap_static_site_witnesses() -> Bool {
+  witness_site_artifact_model_populated()
+    && witness_roadmap_artifact_matches_authority()
+    && witness_dispatch_artifact_matches_file_content()
+    && witness_artifact_digests_are_content_hashes()
+    && witness_healthz_route_json_ok()
+    && witness_text_routes_include_health_and_artifacts()
+    && witness_dashboard_route_table_includes_static_site()
+    && witness_emitted_server_has_static_paths()
+    && witness_readback_script_checks_health_and_digests()
+    && witness_roadmap_route_is_plain_text()
+}

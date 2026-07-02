@@ -23,6 +23,11 @@ import gunbc.live_deploy.emit {
   live_deploy_systemd_unit_for,
   deployment_ensure_dependency_script,
 }
+import gunbc.roadmap_static_site {
+  roadmap_site_health_path,
+  roadmap_site_roadmap_url_path,
+  roadmap_site_dispatch_url_path,
+}
 import extdeps.apt { package_tailscale, package_nodejs }
 
 fn witness_spec_targets_srv1() -> Bool {
@@ -123,6 +128,15 @@ fn witness_apply_script_serves_roadmap_page() -> Bool {
     && !string_contains(s: sh, pattern: ">Browse<")
 }
 
+fn witness_apply_script_includes_static_site_readback() -> Bool {
+  let sh = expected_live_deploy_apply_script()
+  string_contains(s: sh, pattern: roadmap_site_health_path)
+    && string_contains(s: sh, pattern: roadmap_site_roadmap_url_path)
+    && string_contains(s: sh, pattern: roadmap_site_dispatch_url_path)
+    && string_contains(s: sh, pattern: "roadmap-site-readback")
+    && string_contains(s: sh, pattern: "JSON.parse")
+}
+
 fn witness_systemd_unit_emitted() -> Bool {
   let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1())
   string_contains(s: unit, pattern: "ExecStart=/usr/bin/node /opt/gunbc/server.js")
@@ -149,6 +163,7 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_retract_script_owned_only()
     && witness_apply_script_contains_node_server()
     && witness_apply_script_serves_roadmap_page()
+    && witness_apply_script_includes_static_site_readback()
     && witness_systemd_unit_emitted()
     && witness_drift_gates()
 }
