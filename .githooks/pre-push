@@ -86,12 +86,8 @@ fresh_artifact_path() {
     docs/plans/reference-grounding-migration.md*) return 0 ;;
     docs/plans/typescript-gap-census.md*) return 0 ;;
     docs/plans/fleet-acceptance-criteria.md*) return 0 ;;
-<<<<<<< HEAD
     docs/plans/structural-quadratic-wall-coverage-audit.md*) return 0 ;;
-    dsl/**) return 0 ;;
-=======
     dag/**) return 0 ;;
->>>>>>> origin/main
     src/v2/**) return 0 ;;
   esac
   return 1
