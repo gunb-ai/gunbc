@@ -4,11 +4,23 @@ import std.types { String, NonEmptyStr, Bool }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.access { AccessDecision, Deny }
+import extdeps.dns.domain_name { DnsLabel }
+import std.effects {
+  EffectShape,
+  UpsertEffect,
+  KeySource,
+  CompositeKey,
+  IdempotencyEvidence,
+  LatticeEffect,
+  is_idempotent_effect,
+}
 import gunbc.host_effect {
   ShellCommand,
   NodeControlPlane,
   HostEffectTransport,
+  Policy,
   OneShotIdempotent,
+  ConvergeToFixpoint,
   HostEffectIntent,
   HostEffectEvidence,
 }
@@ -20,13 +32,16 @@ import gunbc.host_identity_observation {
 }
 import gunbc.host_identity_knob {
   HostIdentityLeafVerdict,
+  ApplyHunk,
+  Unchanged,
+  Conflict,
   host_identity_leaf_has_apply_arm,
   host_identity_leaf_is_noop,
   host_identity_leaf_is_conflict,
   host_identity_patch_from_intents,
 }
 import gunbc.deployed_intent_v0 { DeployedIntentV0, deployed_intent_observed_short_hostname }
-import gunbc.deployed_intent_v1 { DeployedIntentV1, deployed_intent_v1_desired_hostname_valid }
+import gunbc.deployed_intent_v1 { DeployedIntentV1 }
 import gunbc.host_identity_access { host_identity_srv1_access, host_identity_hostnamectl_path }
 import gunbc.ci_deploy_access {
   DeployAccess,
@@ -49,10 +64,17 @@ data host_identity_set_hostname_script_scaffold: Disposition = Scaffold {
   }
 }
 
-data host_identity_set_hostname_script_dissolution_trigger: String = "🟡 dissolve-on: host_identity_set_hostname_script — hostnamectl argv authored as String literal (medium-as-string); DISSOLVES WHEN host_effect orchestration emit models hostname mutation as HostEffect intent rows (bash grammar rows), retiring this string leaf."
+data host_identity_set_hostname_script_dissolution_trigger: String = "🟡 dissolve-on: host_identity_set_hostname_script(_cas) — hostnamectl argv authored as String literal (medium-as-string); DISSOLVES WHEN host_effect orchestration emit models hostname mutation as HostEffect intent rows (bash grammar rows), retiring this string leaf."
 
-fn host_identity_set_hostname_script(desired_hostname: String) -> String {
-  concat(concat("sudo -n ", host_identity_hostnamectl_path), concat(" set-hostname ", desired_hostname))
+fn host_identity_set_hostname_script(desired_hostname: DnsLabel) -> String {
+  concat(concat("sudo -n ", host_identity_hostnamectl_path), concat(" set-hostname ", desired_hostname as String))
+}
+
+fn host_identity_set_hostname_script_cas(base_hostname: DnsLabel, desired_hostname: DnsLabel) -> String {
+  concat(
+    concat("[ \"$(hostname -s)\" = \"", base_hostname as String, "\" ] && sudo -n "),
+    concat(host_identity_hostnamectl_path, " set-hostname ", desired_hostname as String)
+  )
 }
 
 fn host_identity_precondition_verdict(
@@ -63,24 +85,16 @@ fn host_identity_precondition_verdict(
   host_identity_patch_from_intents(
     base_hostname: deployed_intent_observed_short_hostname(d: base),
     observed_hostname: observed.short_hostname,
-    desired_hostname: desired.desired_hostname_short,
+    desired_hostname: desired.desired_hostname_short as String,
   )
-}
-
-fn host_identity_desired_hostname_valid(hostname: String) -> Bool {
-  deployed_intent_v1_desired_hostname_valid(hostname: hostname)
 }
 
 fn host_identity_precondition_allows_mutation(verdict: HostIdentityLeafVerdict) -> Bool {
   host_identity_leaf_has_apply_arm(verdict: verdict)
 }
 
-fn host_identity_precondition_permits_apply(
-  verdict: HostIdentityLeafVerdict,
-  desired_hostname: String,
-) -> Bool {
-  host_identity_desired_hostname_valid(hostname: desired_hostname)
-    && host_identity_precondition_allows_mutation(verdict: verdict)
+fn host_identity_precondition_permits_apply(verdict: HostIdentityLeafVerdict) -> Bool {
+  host_identity_precondition_allows_mutation(verdict: verdict)
 }
 
 fn host_identity_precondition_is_noop(verdict: HostIdentityLeafVerdict) -> Bool {
@@ -89,6 +103,45 @@ fn host_identity_precondition_is_noop(verdict: HostIdentityLeafVerdict) -> Bool 
 
 fn host_identity_precondition_is_conflict(verdict: HostIdentityLeafVerdict) -> Bool {
   host_identity_leaf_is_conflict(verdict: verdict)
+}
+
+type HostIdentityPlan
+  = ApplyPlan { base: DnsLabel, desired: DnsLabel }
+  | NoopPlan
+  | ConflictPlan { verdict: HostIdentityLeafVerdict }
+
+fn host_identity_plan_from_verdict(
+  verdict: HostIdentityLeafVerdict,
+  base: DnsLabel,
+  desired: DnsLabel,
+) -> HostIdentityPlan {
+  match verdict {
+    ApplyHunk { from: _, to: _ } => ApplyPlan { base: base, desired: desired }
+    Unchanged => NoopPlan
+    Conflict => ConflictPlan { verdict: verdict }
+  }
+}
+
+fn host_identity_plan_effect_script(plan: HostIdentityPlan) -> String? {
+  match plan {
+    ApplyPlan { base: b, desired: d } => Present { value: host_identity_set_hostname_script_cas(base_hostname: b, desired_hostname: d) }
+    NoopPlan => none
+    ConflictPlan { verdict: _ } => none
+  }
+}
+
+data host_identity_hostname_key_source: KeySource = CompositeKey { fields: ["host", "hostname_short"] }
+
+data host_identity_hostname_effect_shape: EffectShape = UpsertEffect { key_source: host_identity_hostname_key_source }
+
+data host_identity_hostname_idempotency_evidence: IdempotencyEvidence = LatticeEffect { shape: host_identity_hostname_effect_shape }
+
+fn host_identity_apply_policy() -> Policy {
+  if is_idempotent_effect(shape: host_identity_hostname_effect_shape) {
+    OneShotIdempotent
+  } else {
+    ConvergeToFixpoint
+  }
 }
 
 fn host_identity_apply_denied(
@@ -102,7 +155,7 @@ fn host_identity_apply_denied(
     applied: HostEffectIntent {
       target: target,
       effect: ShellCommand { script: script },
-      policy: OneShotIdempotent,
+      policy: host_identity_apply_policy(),
       transport: transport,
       privilege_denial: none,
     },
@@ -112,25 +165,31 @@ fn host_identity_apply_denied(
 fn host_identity_apply_gated(
   access: DeployAccess,
   target: NodeControlPlane,
-  desired_hostname: String,
+  plan: HostIdentityPlan,
   transport: HostEffectTransport,
   fixture_actor: DeployAccessActor?,
-) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  host_effect_apply_gated(
-    access: access,
-    target: target,
-    effect: ShellCommand { script: host_identity_set_hostname_script(desired_hostname: desired_hostname) },
-    policy: OneShotIdempotent,
-    transport: transport,
-    fixture_actor: fixture_actor,
-  )
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence>? {
+  match host_identity_plan_effect_script(plan: plan) {
+    Present { value: script } =>
+      Present {
+        value: host_effect_apply_gated(
+          access: access,
+          target: target,
+          effect: ShellCommand { script: script },
+          policy: host_identity_apply_policy(),
+          transport: transport,
+          fixture_actor: fixture_actor,
+        )
+      }
+    Absent => none
+  }
 }
 
 fn host_identity_read_back_matches(
   observed: HostIdentityObservation,
-  desired_hostname: String,
+  desired_hostname: DnsLabel,
 ) -> Bool {
-  observed.short_hostname == desired_hostname
+  observed.short_hostname == (desired_hostname as String)
 }
 
 fn host_identity_observation_live(
