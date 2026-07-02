@@ -195,7 +195,20 @@ pub type ByteSize = Rc<Measure<(), (), i64>>;
 
 pub type Kibibyte = Rc<Measure<(), (), i64>>;
 
+pub type Mebibyte = Rc<Measure<(), (), i64>>;
+
 pub type Gibibyte = Rc<Measure<(), (), i64>>;
+
+pub fn mebibyte(count: Nat) -> Mebibyte {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn mebibyte_count(m: Mebibyte) -> Nat {
+    measure_count(m)
+}
 
 pub fn gibibyte(count: Nat) -> Gibibyte {
     Rc::new(Measure {
@@ -221,6 +234,8 @@ pub fn bits_per_byte() -> Nat {
 pub type Hertz = Rc<Measure<(), (), i64>>;
 
 pub type HardwareThreadCount = Rc<Measure<(), (), i64>>;
+
+pub type Millicore = Rc<Measure<(), (), i64>>;
 
 pub type Watt = Rc<Measure<(), (), i64>>;
 
@@ -318,6 +333,17 @@ pub fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
 
 pub fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
     measure_count(t)
+}
+
+pub fn millicore(count: Nat) -> Millicore {
+    Rc::new(Measure {
+        count: count,
+        _phantom: std::marker::PhantomData,
+    })
+}
+
+pub fn millicore_count(m: Millicore) -> Nat {
+    measure_count(m)
 }
 
 pub type Bandwidth = Rc<Measure<(), (), i64>>;

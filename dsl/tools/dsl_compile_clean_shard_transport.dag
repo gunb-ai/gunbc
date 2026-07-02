@@ -14,7 +14,12 @@ import tools.host_prelude { ensure_gunbc_built }
 import tools.dsl_compile_clean_transport {
   dcc_pool_index_flags,
   dcc_source_root_flags,
-  shell_serializes_dcc_common_compile_invocation
+  shell_serializes_dcc_common_compile_invocation,
+  perturb_module_source
+}
+import tools.dsl_compile_clean_partition {
+  CompileCleanShardVerdict,
+  compile_clean_shard_verdict_from_bool
 }
 
 data shard_a_exemplar_entry_path: String = "dsl/std/logic.dag"
@@ -52,10 +57,64 @@ fn single_module_shard_compile_program(entry_rel_path: String) -> ShellProgram {
 }
 
 fn run_shard_a_exemplar_compile() -> Bool {
+  run_shard_compile(entry_rel_path: shard_a_exemplar_entry_path)
+}
+
+fn run_shard_compile(entry_rel_path: String) -> Bool {
   let result = shell.Exec.Run(
-    script: serialize_bash(p: single_module_shard_compile_program(entry_rel_path: shard_a_exemplar_entry_path))
+    script: serialize_bash(p: single_module_shard_compile_program(entry_rel_path: entry_rel_path))
   )
   result.success
+}
+
+fn run_shard_compile_verdict(entry_rel_path: String) -> CompileCleanShardVerdict {
+  compile_clean_shard_verdict_from_bool(
+    entry_path: entry_rel_path,
+    ok: run_shard_compile(entry_rel_path: entry_rel_path)
+  )
+}
+
+data broken_shard_module_source: String = perturb_module_source
+
+fn single_broken_module_shard_compile_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  let gunbc = var_ref(name: "GUNBC")
+  let stage = var_ref(name: "SHARD_STAGE")
+  let out = var_ref(name: "OUT")
+  let tmp = var_ref(name: "TMP")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), [
+      command(words: [lit(text: "cd"), root]),
+      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      assign(name: "SHARD_STAGE", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+      Heredoc {
+        path: Concat { parts: [stage, lit(text: "/_broken_shard.dag")] },
+        delimiter: "BROKEN_SHARD",
+        body: broken_shard_module_source
+      },
+      command(words: concat(
+        [gunbc, lit(text: "compile"), lit(text: "--source-root"), stage],
+        concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
+          lit(text: "--output-dir"), out,
+          lit(text: "--target"), lit(text: "dag")
+        ]))
+      )),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), stage]),
+      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
+    ])
+  }
+}
+
+fn run_broken_staged_shard_compile() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: single_broken_module_shard_compile_program()))
+  result.success
+}
+
+fn witness_broken_staged_shard_compile_red() -> Bool {
+  !run_broken_staged_shard_compile()
 }
 
 data dcc_shard_transport_invocation_substring_witness_disposition: Disposition = Scaffold {
