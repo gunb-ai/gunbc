@@ -21,6 +21,8 @@ import gunbc.ci_deploy_access {
   deploy_preflight_shell_header,
   deploy_access_apt_get_binary_path,
   deploy_access_apt_get_privileged_command,
+  deploy_access_insert_apt_after_bash,
+  grounded_principal_privileged_commands,
   srv1_live_deploy_privileged_commands,
   deploy_access_preflight_script,
   deploy_access_privileged_fixture_actor,
@@ -91,10 +93,17 @@ fn witness_declared_probe_mismatch_red() -> Bool {
 }
 
 fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
-  let cmds = srv1_live_deploy_privileged_commands()
-  (length(cmds) == 5)
-    && cmds.first().path == "/usr/bin/bash"
-    && cmds.skip(1).first().path == deploy_access_apt_get_binary_path
+  let principal = fleet_posix_principal(key: FleetAccountCiRunner)
+  let grounded = grounded_principal_privileged_commands(p: principal)
+  let composed = srv1_live_deploy_privileged_commands()
+  let expected = deploy_access_insert_apt_after_bash(grounded: grounded)
+  length(grounded) == 4
+    && length(composed) == 5
+    && composed.first().path == expected.first().path
+    && composed.skip(1).first().path == expected.skip(1).first().path
+    && composed.skip(2).first().path == expected.skip(2).first().path
+    && composed.skip(3).first().path == expected.skip(3).first().path
+    && composed.skip(4).first().path == expected.skip(4).first().path
 }
 
 fn witness_preflight_shell_is_dash_safe() -> Bool {

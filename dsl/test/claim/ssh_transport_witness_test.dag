@@ -1,16 +1,18 @@
 module test.claim.ssh_transport_witness
 
-import std.types { Bool, NonEmptyStr, Int }
+import std.types { Bool, NonEmptyStr }
+import std.measure { ByteSize, byte_size, byte_size_count }
 import gunbc.live_deploy.emit { live_deploy_apply_script_for }
 import gunbc.live_deploy.spec { deployment_spec_srv1 }
 import extdeps.diagnostic.mock_corpus { diagnostic_ssh_session_mock_case_exec_script }
 
 data ssh_exec_script_remote_receiver: NonEmptyStr = "bash -s"
 
-data ssh_argv_embed_budget_bytes: Int = 65536
+data ssh_argv_embed_budget: ByteSize = byte_size(65536)
 
 fn witness_apply_script_exceeds_argv_embed_budget() -> Bool {
-  length(live_deploy_apply_script_for(spec: deployment_spec_srv1())) > ssh_argv_embed_budget_bytes
+  length(live_deploy_apply_script_for(spec: deployment_spec_srv1()))
+    > byte_size_count(b: ssh_argv_embed_budget)
 }
 
 fn witness_exec_script_mock_enrolled() -> Bool {
