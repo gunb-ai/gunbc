@@ -3,14 +3,26 @@ module v2.extdeps.languages.bash_orchestration_emit
 import v2.extdeps.languages.bash {
   bash_named_edge,
   bash_word_pass_emitted,
-  orch_run_emitted_command,
-  orch_run_target_model,
+  bash_env_prefix,
+  bash_stmt_env_prefixed_emitted,
+  bash_stmt_env_prefixed_target_model,
+  bash_stmt_env_unset_emitted,
+  bash_stmt_env_unset_target_model,
   orch_seq2_emitted_command,
   orch_seq2_target_model,
   orch_retry_emitted_command,
   orch_retry_target_model
 }
 import v2.extdeps.languages.bash_command_fold { bash_fold_raw_line_target_model }
+import v2.std.algebra {
+  FreeMonoid,
+  list_head,
+  list_tail,
+  HeadFound,
+  HeadAbsent,
+  TailFound,
+  TailAbsent
+}
 import v2.std.collection { empty_map }
 import v2.std.compilers.lexing { VoidLexRules }
 import v2.std.compilers.target_model {
@@ -20,13 +32,15 @@ import v2.std.compilers.target_model {
 }
 import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
 import v2.std.node { Node, TypeNode, Conj, SyntheticOccurrence }
-import v2.std.orchestration { Run }
+import v2.std.orchestration { Run, EnvBinding, EnvSet, EnvUnset }
 import v2.std.orchestration_emit {
   OrchestrationEmitMedium,
-  orch_construct_run_env,
+  OrchRunEmitPlan,
   orch_construct_run_rawline,
-  orch_construct_retry,
-  orch_construct_seq2
+  orch_construct_run_env_prefixed,
+  orch_construct_run_env_unset,
+  orch_construct_seq2,
+  orch_construct_retry
 }
 import v2.std.text { String }
 
@@ -39,8 +53,12 @@ fn bash_orchestration_emit_registry_node() -> Node {
         target: bash_word_pass_emitted
       ),
       bash_named_edge(
-        name: orch_construct_run_env,
-        target: orch_run_emitted_command
+        name: orch_construct_run_env_prefixed,
+        target: bash_stmt_env_prefixed_emitted
+      ),
+      bash_named_edge(
+        name: orch_construct_run_env_unset,
+        target: bash_stmt_env_unset_emitted
       ),
       bash_named_edge(
         name: orch_construct_seq2,
@@ -75,11 +93,52 @@ fn bash_orchestration_medium_authority() -> TargetModel {
   )
 }
 
+fn bash_orch_run_env_tail(env: FreeMonoid<EnvBinding>) -> FreeMonoid<EnvBinding> {
+  match list_tail(xs: env) {
+    TailFound { tail: t } => t
+    TailAbsent => []
+  }
+}
+
+fn bash_orch_run_env_tail_command(env: FreeMonoid<EnvBinding>, command: String) -> String {
+  concat(bash_env_prefix(env: bash_orch_run_env_tail(env: env)), command)
+}
+
+fn bash_orch_run_env_plan(r: Run) -> OrchRunEmitPlan {
+  match list_head(xs: r.env) {
+    HeadFound { value: b } =>
+      match b {
+        EnvSet { name: n, value: v } =>
+          OrchRunEmitPlan {
+            construct_tag: orch_construct_run_env_prefixed,
+            target: bash_stmt_env_prefixed_target_model(
+              name: n,
+              value: v,
+              command: bash_orch_run_env_tail_command(env: r.env, command: r.command)
+            )
+          }
+        EnvUnset { name: n } =>
+          OrchRunEmitPlan {
+            construct_tag: orch_construct_run_env_unset,
+            target: bash_stmt_env_unset_target_model(
+              name: n,
+              command: bash_orch_run_env_tail_command(env: r.env, command: r.command)
+            )
+          }
+      }
+    HeadAbsent =>
+      OrchRunEmitPlan {
+        construct_tag: orch_construct_run_rawline,
+        target: bash_fold_raw_line_target_model(text: r.command)
+      }
+  }
+}
+
 fn bash_orchestration_emit_medium() -> OrchestrationEmitMedium {
   OrchestrationEmitMedium {
     authority: bash_orchestration_medium_authority(),
     realize_run_rawline: bash_fold_raw_line_target_model,
-    realize_run_env: orch_run_target_model,
+    run_env_plan: bash_orch_run_env_plan,
     realize_seq2: orch_seq2_target_model,
     realize_retry: orch_retry_target_model
   }
