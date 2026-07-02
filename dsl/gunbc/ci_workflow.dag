@@ -1,6 +1,6 @@
 module gunbc.ci_workflow
 
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
 import gunbc.ci_workflow_expressions {
   ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys
 }
@@ -294,6 +294,22 @@ fn ci_deploy_jobs() -> List<Job> {
   map(gunbc_ci_deploy_stages, s => ci_deploy_job(stage: s))
 }
 
+// EMERGENCY ROLLBACK (2026-07-02): #6127 sharded compile-clean into ~1,605 per-module
+// `gunbc compile` subprocesses, each re-resolving its full import closure (sum-of-closures
+// ≈ 30.9x the monolith's CPU) and scheduled at width 1 because the width fold priced each
+// single-module shard against a stale whole-corpus 4.24GiB RSS sample vs the 8GiB cap. The
+// live regression was measured 8h57m wall / 8h07m CPU per job. Setting the modeled rollback
+// valve to "1" restores the whole-tree monolith compile-clean until v2 amortization (the
+// in-process shard resolve pool) makes sharding cheaper than the monolith.
+// AUTHORITY: v2.workflow.compile_clean_shard_roster.compile_clean_whole_tree_rollback_env
+// (kept as a matching literal here to avoid a src/v2 ← dsl cross-root import for a scaffold).
+// DISSOLVES with that authority's compile_clean_whole_tree_rollback_dissolution_trigger.
+data ci_compile_clean_whole_tree_rollback_env: NonEmptyStr = "GUNBC_CI_COMPILE_CLEAN_WHOLE_TREE"
+
+fn ci_compile_clean_rollback_job_env() -> List<YamlKeyValue> {
+  [kv(key: ci_compile_clean_whole_tree_rollback_env as String, value: yaml_string(s: "1"))]
+}
+
 fn ci_job() -> Job {
   Job {
     id: "ci",
@@ -301,7 +317,7 @@ fn ci_job() -> Job {
     runner: gunbc_ci_runner_spec(),
     steps: concat(ci_prelude_steps(), [ci_floor_step(), ci_merge_admission_gate_step()]),
     needs: [],
-    env: none,
+    env: Present { value: ci_compile_clean_rollback_job_env() },
     outputs: none,
     if_condition: none,
     strategy: none,
