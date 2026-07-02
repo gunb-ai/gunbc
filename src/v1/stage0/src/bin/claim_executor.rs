@@ -1038,7 +1038,7 @@ fn eval_plan(
 ) -> Result<Vec<Vec<Runnable>>, String> {
     let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
-    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Hermetic);
+    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
     let plan_value = run_value(&plan_ctx, plan_function).map_err(|msg| {
         format!(
             "plan eval failed ({}::{}): {}",
