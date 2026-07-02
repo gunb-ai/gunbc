@@ -1,6 +1,13 @@
 module gunbc.host_identity_knob
 
 import std.types { String, Bool }
+import std.change {
+  KeyedLeafVerdict,
+  keyed_three_way_leaf,
+  keyed_leaf_has_apply_arm,
+  keyed_leaf_is_noop,
+  keyed_leaf_is_conflict,
+}
 import product.placement_supply { HostIdentity }
 
 type HostIdentityHostnameField
@@ -16,10 +23,7 @@ type HostIdentityKnobValue {
   hostname_short: String
 }
 
-type HostIdentityLeafVerdict
-  = Unchanged
-  | ApplyHunk { from: HostIdentityKnobValue, to: HostIdentityKnobValue }
-  | Conflict
+type HostIdentityLeafVerdict = KeyedLeafVerdict<HostIdentityKnobValue>
 
 fn host_identity_knob_key(host: HostIdentity) -> HostIdentityKnobKey {
   HostIdentityKnobKey { host: host, field: HostnameShort }
@@ -38,37 +42,24 @@ fn three_way_leaf(
   observed: HostIdentityKnobValue,
   desired: HostIdentityKnobValue,
 ) -> HostIdentityLeafVerdict {
-  if host_identity_knob_values_equal(a: observed, b: desired) {
-    Unchanged
-  } else { if host_identity_knob_values_equal(a: observed, b: base) {
-    ApplyHunk { from: base, to: desired }
-  } else {
-    Conflict
-  } }
+  keyed_three_way_leaf(
+    base: base,
+    observed: observed,
+    desired: desired,
+    equal: host_identity_knob_values_equal,
+  )
 }
 
 fn host_identity_leaf_has_apply_arm(verdict: HostIdentityLeafVerdict) -> Bool {
-  match verdict {
-    ApplyHunk { from: _, to: _ } => true
-    Unchanged => false
-    Conflict => false
-  }
+  keyed_leaf_has_apply_arm(verdict: verdict)
 }
 
 fn host_identity_leaf_is_noop(verdict: HostIdentityLeafVerdict) -> Bool {
-  match verdict {
-    Unchanged => true
-    ApplyHunk { from: _, to: _ } => false
-    Conflict => false
-  }
+  keyed_leaf_is_noop(verdict: verdict)
 }
 
 fn host_identity_leaf_is_conflict(verdict: HostIdentityLeafVerdict) -> Bool {
-  match verdict {
-    Conflict => true
-    Unchanged => false
-    ApplyHunk { from: _, to: _ } => false
-  }
+  keyed_leaf_is_conflict(verdict: verdict)
 }
 
 fn host_identity_patch_from_intents(

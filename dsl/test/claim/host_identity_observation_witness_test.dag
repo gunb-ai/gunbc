@@ -40,11 +40,9 @@ import gunbc.host_identity_adopt {
   host_identity_adopt_receipt_is_valid,
   host_identity_adopt_model_hash,
 }
+import std.change { KeyedApplyHunk }
 import gunbc.host_identity_knob {
   host_identity_knob_key,
-  ApplyHunk,
-  Unchanged,
-  Conflict,
   three_way_leaf,
   host_identity_knob_value,
   host_identity_patch_from_intents,
@@ -239,7 +237,7 @@ fn witness_patch_emits_exactly_one_modify_hunk() -> Bool {
     observed_hostname: "altrad8ud-1l2t-1",
     desired_hostname: operator_host_srv1,
   ) {
-    ApplyHunk { from: f, to: t } =>
+    KeyedApplyHunk { from: f, to: t } =>
       f.hostname_short == "altrad8ud-1l2t-1" && t.hostname_short == operator_host_srv1
     _ => false
   }

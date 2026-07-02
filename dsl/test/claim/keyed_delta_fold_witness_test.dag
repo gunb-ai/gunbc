@@ -1,0 +1,324 @@
+module test.claim.keyed_delta_fold_witness
+
+import std.types { Bool, String, List }
+import std.change {
+  KeyedRow,
+  KeyedPatch,
+  KeyedDiffKind,
+  KeyedAdded,
+  KeyedRemoved,
+  KeyedModified,
+  KeyedLeafVerdict,
+  KeyedApplyHunk,
+  KeyedConflict,
+  KeyedUnchanged,
+  KeyedConvergePlan,
+  KeyedPlanApply,
+  KeyedPlanNoop,
+  KeyedPlanConflict,
+  keyed_three_way_leaf,
+  keyed_two_way_diff,
+  keyed_three_way_fold,
+  keyed_apply_two_way_diff,
+  keyed_retract_two_way_diff,
+  keyed_patch_empty,
+  keyed_patches_equal,
+  keyed_rows_snapshot_equal,
+  keyed_patch_hunk_count,
+  keyed_plan_from_verdict,
+  keyed_plan_has_apply_arm,
+  keyed_leaf_has_apply_arm,
+  keyed_leaf_is_noop,
+  keyed_leaf_is_conflict,
+}
+
+type FixtureVal {
+  payload: String
+}
+
+fn fixture_val(payload: String) -> FixtureVal {
+  FixtureVal { payload: payload }
+}
+
+fn fixture_val_eq(a: FixtureVal, b: FixtureVal) -> Bool {
+  a.payload == b.payload
+}
+
+fn fixture_key_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn fixture_row(label: String, payload: String) -> KeyedRow<String, FixtureVal> {
+  KeyedRow { row_key: label, value: fixture_val(payload: payload) }
+}
+
+fn fixture_rows_a() -> List<KeyedRow<String, FixtureVal>> {
+  [
+    fixture_row(label: "alpha", payload: "one"),
+    fixture_row(label: "beta", payload: "two"),
+  ]
+}
+
+fn fixture_rows_b() -> List<KeyedRow<String, FixtureVal>> {
+  [
+    fixture_row(label: "alpha", payload: "one"),
+    fixture_row(label: "beta", payload: "three"),
+  ]
+}
+
+fn fixture_rows_reordered_b() -> List<KeyedRow<String, FixtureVal>> {
+  [
+    fixture_row(label: "beta", payload: "three"),
+    fixture_row(label: "alpha", payload: "one"),
+  ]
+}
+
+fn fixture_rows_added() -> List<KeyedRow<String, FixtureVal>> {
+  concat(
+    fixture_rows_a(),
+    [fixture_row(label: "gamma", payload: "new")]
+  )
+}
+
+fn fixture_rows_removed() -> List<KeyedRow<String, FixtureVal>> {
+  [fixture_row(label: "alpha", payload: "one")]
+}
+
+fn witness_diff_identity_law() -> Bool {
+  keyed_patches_equal(
+    left: keyed_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_a(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    right: keyed_patch_empty(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_apply_diff_law() -> Bool {
+  keyed_rows_snapshot_equal(
+    left: keyed_apply_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_b(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    right: fixture_rows_b(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_inverse_retract_law() -> Bool {
+  keyed_rows_snapshot_equal(
+    left: keyed_retract_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_b(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    right: fixture_rows_a(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_unchanged_rows_emit_no_hunk() -> Bool {
+  keyed_patch_hunk_count(
+    patch: keyed_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_a(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+  ) == 0
+}
+
+fn witness_reorder_invariance() -> Bool {
+  keyed_patches_equal(
+    left: keyed_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_b(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    right: keyed_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_reordered_b(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_added_hunk() -> Bool {
+  let patch = keyed_two_way_diff(
+    left: fixture_rows_a(),
+    right: fixture_rows_added(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+  keyed_patch_hunk_count(patch: patch) == 1
+    && fold(patch.hunks, init: false, f: fn(found, hunk) {
+      found || match hunk.kind {
+        KeyedAdded => hunk.hunk_key == "gamma"
+        _ => false
+      }
+    })
+}
+
+fn witness_removed_hunk() -> Bool {
+  let patch = keyed_two_way_diff(
+    left: fixture_rows_a(),
+    right: fixture_rows_removed(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+  keyed_patch_hunk_count(patch: patch) == 1
+    && fold(patch.hunks, init: false, f: fn(found, hunk) {
+      found || match hunk.kind {
+        KeyedRemoved => hunk.hunk_key == "beta"
+        _ => false
+      }
+    })
+}
+
+fn witness_modified_hunk() -> Bool {
+  let patch = keyed_two_way_diff(
+    left: fixture_rows_a(),
+    right: fixture_rows_b(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+  keyed_patch_hunk_count(patch: patch) == 1
+    && fold(patch.hunks, init: false, f: fn(found, hunk) {
+      found || match hunk.kind {
+        KeyedModified => hunk.hunk_key == "beta"
+        _ => false
+      }
+    })
+}
+
+fn witness_three_way_apply_hunk() -> Bool {
+  match keyed_three_way_leaf(
+    base: fixture_val(payload: "one"),
+    observed: fixture_val(payload: "one"),
+    desired: fixture_val(payload: "two"),
+    equal: fixture_val_eq,
+  ) {
+    KeyedApplyHunk { from: f, to: t } =>
+      f.payload == "one" && t.payload == "two"
+    _ => false
+  }
+}
+
+fn witness_three_way_noop() -> Bool {
+  keyed_leaf_is_noop(
+    verdict: keyed_three_way_leaf(
+      base: fixture_val(payload: "one"),
+      observed: fixture_val(payload: "two"),
+      desired: fixture_val(payload: "two"),
+      equal: fixture_val_eq,
+    ),
+  )
+}
+
+fn witness_three_way_conflict() -> Bool {
+  keyed_leaf_is_conflict(
+    verdict: keyed_three_way_leaf(
+      base: fixture_val(payload: "one"),
+      observed: fixture_val(payload: "drift"),
+      desired: fixture_val(payload: "two"),
+      equal: fixture_val_eq,
+    ),
+  )
+    && !keyed_leaf_has_apply_arm(
+      verdict: keyed_three_way_leaf(
+        base: fixture_val(payload: "one"),
+        observed: fixture_val(payload: "drift"),
+        desired: fixture_val(payload: "two"),
+        equal: fixture_val_eq,
+      ),
+    )
+}
+
+fn witness_conflict_plan_has_no_apply_arm() -> Bool {
+  !keyed_plan_has_apply_arm(
+    plan: keyed_plan_from_verdict(
+      verdict: KeyedConflict,
+    ),
+  )
+    && match keyed_plan_from_verdict(verdict: KeyedConflict) {
+      KeyedPlanConflict => true
+      _ => false
+    }
+}
+
+fn witness_apply_plan_has_apply_arm() -> Bool {
+  keyed_plan_has_apply_arm(
+    plan: keyed_plan_from_verdict(
+      verdict: KeyedApplyHunk {
+        from: fixture_val(payload: "a"),
+        to: fixture_val(payload: "b"),
+      },
+    ),
+  )
+    && match keyed_plan_from_verdict(
+      verdict: KeyedApplyHunk {
+        from: fixture_val(payload: "a"),
+        to: fixture_val(payload: "b"),
+      },
+    ) {
+      KeyedPlanApply { from: f, to: t } =>
+        f.payload == "a" && t.payload == "b"
+      _ => false
+    }
+}
+
+fn witness_three_way_fold_omits_unchanged() -> Bool {
+  let patch = keyed_three_way_fold(
+    base: fixture_rows_a(),
+    observed: fixture_rows_a(),
+    desired: fixture_rows_b(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+  list_length(items: patch.entries) == 1
+    && fold(patch.entries, init: false, f: fn(found, entry) {
+      found || entry.entry_key == "beta"
+    })
+}
+
+fn witness_identity_law_red_control() -> Bool {
+  keyed_patch_hunk_count(
+    patch: keyed_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_b(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+  ) != 0
+}
+
+test fn keyed_delta_fold_keystone_holds() -> Bool {
+  witness_diff_identity_law()
+    && witness_apply_diff_law()
+    && witness_inverse_retract_law()
+    && witness_unchanged_rows_emit_no_hunk()
+    && witness_reorder_invariance()
+    && witness_added_hunk()
+    && witness_removed_hunk()
+    && witness_modified_hunk()
+    && witness_three_way_apply_hunk()
+    && witness_three_way_noop()
+    && witness_three_way_conflict()
+    && witness_conflict_plan_has_no_apply_arm()
+    && witness_apply_plan_has_apply_arm()
+    && witness_three_way_fold_omits_unchanged()
+    && witness_identity_law_red_control()
+}
