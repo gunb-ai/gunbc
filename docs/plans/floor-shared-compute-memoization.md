@@ -1,4 +1,4 @@
-# Floor shared-computation memoization — design sketch
+# Floor shared-computation memoization — M1 receipt + M2 tracker
 
 **Status:** M1 LANDED + verified (2026-07-02). M2 remains a forward-only tracker (no present-day sharing opportunity — see §3). This file is no longer a pre-implementation sketch; it is the M1 receipt + M2 open-thread record. Any M2 code still returns to the operator for approval.
 
