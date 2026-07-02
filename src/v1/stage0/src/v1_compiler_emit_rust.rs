@@ -180,6 +180,7 @@ pub fn render_rust_type(
                             Rc::new(TypeEnv {
                                 bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
                                 str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                                ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
                                 parents: Rc::new(vec![]),
                                 recursive_types: Rc::new(vec![]),
                                 recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
@@ -235,6 +236,7 @@ pub fn render_rust_type_without_applied_binding(
                 Rc::new(TypeEnv {
                     bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
                     str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                    ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
                     parents: Rc::new(vec![]),
                     recursive_types: Rc::new(vec![]),
                     recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
@@ -8159,6 +8161,7 @@ pub fn render_rust_type_with_applied_binding(
                                         Rc::new(TypeEnv {
                                             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
                                             str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                                            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
                                             parents: Rc::new(vec![]),
                                             recursive_types: Rc::new(vec![]),
                                             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
@@ -8184,6 +8187,7 @@ pub fn render_rust_type_with_applied_binding(
                                 Rc::new(TypeEnv {
                                     bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
                                     str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                                    ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
                                     parents: Rc::new(vec![]),
                                     recursive_types: Rc::new(vec![]),
                                     recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
@@ -23427,6 +23431,7 @@ pub fn rust_test_signature_comment(
         let stub_env = Rc::new(TypeEnv {
             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),

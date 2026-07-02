@@ -46,6 +46,7 @@ pub fn reset_type_env_lookup_profile() {
 pub struct TypeEnv {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub parents: Rc<Vec<Rc<TypeEnv>>>,
     pub recursive_types: Rc<Vec<i64>>,
     pub recursive_type_set: Rc<HashMap<i64, bool>>,
@@ -116,7 +117,10 @@ pub fn str_bindings_from_bindings(
 
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     TYPE_ENV_LOOKUP_BY_NAME_CALLS.fetch_add(1, Ordering::Relaxed);
-    v1_rt::map_get(&env.str_bindings, name)
+    match v1_rt::map_get(&env.str_bindings, name.clone()) {
+        Some(binding) => Some(binding.clone()),
+        None => v1_rt::map_get(&env.ancestry_str_bindings, name),
+    }
 }
 
 pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
@@ -124,7 +128,7 @@ pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
         Some(binding) => Some(binding.clone()),
         None => {
             let name = intern_str(env.intern_table.clone(), ident.clone());
-            v1_rt::map_get(&env.str_bindings, name)
+            lookup_binding_by_name(env, name)
         }
     }
 }
@@ -381,6 +385,7 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
         Rc::new(TypeEnv {
             bindings: merged_bindings_by_ident,
             str_bindings: merged_bindings,
+            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             parents: Rc::new(vec![]),
             recursive_types: merged_recursive,
             recursive_type_set: merged_recursive_set,

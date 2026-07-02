@@ -6,6 +6,7 @@ import std.induction { InductiveField, RecursionShape, DirectRecursion, ListRecu
 type TypeEnv {
   bindings: Map<Int, TypeBinding>
   str_bindings: Map<String, TypeBinding>
+  ancestry_str_bindings: Map<String, TypeBinding>
   parents: List<TypeEnv>
   recursive_types: List<Int>
   recursive_type_set: Map<Int, Bool>
@@ -63,7 +64,10 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
 }
 
 fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
-  map_get(env.str_bindings, name)
+  match map_get(env.str_bindings, name) {
+    Present { value: binding } => Present { value: binding }
+    Absent => map_get(env.ancestry_str_bindings, name)
+  }
 }
 
 fn lookup_binding(env: TypeEnv, ident: Int) -> TypeBinding? {
@@ -71,7 +75,7 @@ fn lookup_binding(env: TypeEnv, ident: Int) -> TypeBinding? {
     Present { value: binding } => Present { value: binding }
     Absent =>
       let name = intern_str(table: env.intern_table, id: ident)
-      map_get(env.str_bindings, name)
+      lookup_binding_by_name(env: env, name: name)
   }
 }
 
@@ -205,5 +209,5 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_bindings_by_ident = fold(merged_bindings |> map_values, init: empty_map(), f: (acc, binding) =>
     map_insert(acc, intern(table: merged_intern_table, s: binding.name).id, binding)
   )
-  TypeEnv { bindings: merged_bindings_by_ident, str_bindings: merged_bindings, parents: [], recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
+  TypeEnv { bindings: merged_bindings_by_ident, str_bindings: merged_bindings, ancestry_str_bindings: empty_map(), parents: [], recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
 }

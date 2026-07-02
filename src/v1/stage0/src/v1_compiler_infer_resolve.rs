@@ -2989,6 +2989,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                         tp_name.clone(),
                         tp_binding,
                     ),
+                    ancestry_str_bindings: e.ancestry_str_bindings.clone(),
                     parents: e.parents.clone(),
                     recursive_types: e.recursive_types.clone(),
                     recursive_type_set: e.recursive_type_set.clone(),
