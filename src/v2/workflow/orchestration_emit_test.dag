@@ -1,10 +1,11 @@
 module v2.workflow.orchestration_emit_test
 
 import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_emit_run, orch_run_env_reduction_dissolution_trigger }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import extdeps.communication.medium { Medium }
 import v2.std.orchestration {
   Run,
-  Step,
+  PipelineStep,
   Do,
   Pipeline,
   FailFast,
@@ -13,7 +14,7 @@ import v2.std.orchestration {
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 
-fn orch_pipeline_step1() -> Step {
+fn orch_pipeline_step1() -> PipelineStep {
   Do {
     run: Run {
       command: "cargo build -p v1-compiler --release --bins",
@@ -24,7 +25,7 @@ fn orch_pipeline_step1() -> Step {
   }
 }
 
-fn orch_pipeline_step2() -> Step {
+fn orch_pipeline_step2() -> PipelineStep {
   Do {
     run: Run {
       command: "cargo test --workspace",
@@ -50,7 +51,7 @@ fn orch_pipeline_one_step() -> Pipeline {
 }
 
 test fn orch_pipeline_single_step_is_run_holds() -> Bool {
-  match orch_emit_pipeline(p: orch_pipeline_one_step()) {
+  match orch_emit_pipeline(p: orch_pipeline_one_step(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "cargo build -p v1-compiler --release --bins") && (dg == None)
     Rejected { diagnostics: _ } => false
@@ -66,7 +67,7 @@ fn orch_pipeline_two_steps_space_joined_wrong() -> String {
 }
 
 test fn orch_pipeline_two_steps_newline_joined_holds() -> Bool {
-  match orch_emit_pipeline(p: orch_pipeline_two_steps()) {
+  match orch_emit_pipeline(p: orch_pipeline_two_steps(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == orch_pipeline_two_steps_expected()) && (dg == None)
     Rejected { diagnostics: _ } => false
@@ -74,7 +75,7 @@ test fn orch_pipeline_two_steps_newline_joined_holds() -> Bool {
 }
 
 test fn orch_pipeline_join_has_teeth_holds() -> Bool {
-  match orch_emit_pipeline(p: orch_pipeline_two_steps()) {
+  match orch_emit_pipeline(p: orch_pipeline_two_steps(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: src, diagnostics: _ } =>
       src.carried != orch_pipeline_two_steps_space_joined_wrong()
     Rejected { diagnostics: _ } => false
@@ -82,7 +83,10 @@ test fn orch_pipeline_join_has_teeth_holds() -> Bool {
 }
 
 test fn orch_run_empty_env_delegates_to_shell_emit_holds() -> Bool {
-  match orch_emit_run(r: Run { command: "cargo build", env: [], redirect: Absent, capture: Absent }) {
+  match orch_emit_run(
+    r: Run { command: "cargo build", env: [], redirect: Absent, capture: Absent },
+    medium: bash_orchestration_emit_medium()
+  ) {
     Accepted { value: src, diagnostics: dg } =>
       (src.carried == "cargo build") && (dg == None)
     Rejected { diagnostics: _ } => false
