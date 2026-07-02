@@ -1,7 +1,7 @@
 //! RESIDUAL after 5-test-migration (2026-07-02): 8 of the original 10 tests are
-//! migrated to floor witnesses and deleted here —
-//! 6 into src/v2/test/claim/manual/fn_as_value_test.dag (same checks as marker-
-//! discovered `test fn`s) and the 2 fold_list checks were already covered by
+//! migrated to floor witnesses and deleted here — 6 into
+//! src/v2/test/claim/manual/fn_as_value_test.dag (same checks as marker-discovered
+//! `test fn`s) and the 2 fold_list checks were already floor-covered by
 //! src/v2/test/claim/manual/generic_instantiation_runtime_test.dag.
 //! The 2 tests below CANNOT migrate yet:
 //! - scoped_entry_resolves_import_closure_not_entire_v4_tree: exercises the Rust
@@ -32,21 +32,6 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
         msgs,
         result.graph.is_some()
     );
-}
-
-"#;
-    let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
-    assert_resolved_no_hard_errors(&resolved);
-    let graph = resolved
-        .graph
-        .as_ref()
-        .expect("graph after successful resolve");
-
-    match v1_interpreter::run(graph, resolved.source_indices.clone(), "use_via_binding") {
-        Ok(Value::Int(5)) => {}
-        other => panic!("expected Int(5), got {other:?}"),
-    }
 }
 
 #[test]
@@ -81,27 +66,6 @@ fn scoped_entry_resolves_import_closure_not_entire_v4_tree() {
     );
 
     let _ = fs::remove_dir_all(&dir);
-}
-
-
-
-
-
-"#;
-    let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
-    assert_resolved_no_hard_errors(&resolved);
-    let graph = resolved
-        .graph
-        .as_ref()
-        .expect("graph after successful resolve");
-    match v1_interpreter::run(graph, resolved.source_indices.clone(), "use_body") {
-        Ok(Value::Record {
-            type_name: _,
-            fields: _,
-        }) => {}
-        other => panic!("expected Rec from nested body field access, got {other:?}"),
-    }
 }
 
 #[test]
