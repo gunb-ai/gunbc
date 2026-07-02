@@ -8,7 +8,7 @@ use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_compiler_infer_env::{lookup_binding, lookup_type_by_name};
 use v1_compiler::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
-use v1_compiler::v1_std_core::{authored_name_at, intern_find};
+use v1_compiler::v1_std_core::{authored_name_at, intern_find, Connective};
 
 static CACHE_ENV_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -412,5 +412,189 @@ fn type_env_import_chain_flatten_parent_recurses_zero() {
         v1_compiler::v1_compiler_infer_env::flatten_visible_parent_recurses(),
         0,
         "flatten_visible_bindings must use ancestry index, not recursive parent flatten"
+    );
+}
+
+#[test]
+fn type_env_dual_import_later_overlay_wins() {
+    use v1_compiler::v1_compiler_infer_env::lookup_binding_by_name;
+
+    let sources = vec![
+        Rc::new(SourceFile {
+            path: "dual_a.dag".to_string(),
+            content: "module test.dual_import_a\ntype Collider = String\n".to_string(),
+        }),
+        Rc::new(SourceFile {
+            path: "dual_b.dag".to_string(),
+            content: "module test.dual_import_b\ntype Collider = Int\n".to_string(),
+        }),
+        Rc::new(SourceFile {
+            path: "consumer.dag".to_string(),
+            content: "module test.dual_import_consumer\nimport test.dual_import_a\nimport test.dual_import_b\nfn pick() -> Collider { 0 }\n".to_string(),
+        }),
+    ];
+    let resolved = compile_modules(sources);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let mod_a = typed_module_by_name(&graph.modules, &resolved.source_indices, "test.dual_import_a");
+    let mod_b = typed_module_by_name(&graph.modules, &resolved.source_indices, "test.dual_import_b");
+    let consumer = typed_module_by_name(
+        &graph.modules,
+        &resolved.source_indices,
+        "test.dual_import_consumer",
+    );
+    let cache_a = mod_a
+        .type_env_cache
+        .str_bindings
+        .get("Collider")
+        .expect("dual_import_a exports Collider");
+    let cache_b = mod_b
+        .type_env_cache
+        .str_bindings
+        .get("Collider")
+        .expect("dual_import_b exports Collider");
+    let visible_cache = consumer
+        .type_env_cache
+        .str_bindings
+        .get("Collider")
+        .expect("consumer visible cache must export Collider");
+    assert!(
+        Rc::ptr_eq(visible_cache, cache_b),
+        "merge_type_env_cache overlay-wins: later import (dual_import_b) must win in type_env_cache.str_bindings"
+    );
+    assert!(
+        !Rc::ptr_eq(visible_cache, cache_a),
+        "earlier import (dual_import_a) must not win when same visible name is exported twice"
+    );
+    let visible_binding = lookup_binding_by_name(consumer.type_env.clone(), "Collider".to_string())
+        .expect("consumer Collider binding");
+    assert!(
+        Rc::ptr_eq(&visible_binding.resolved, &cache_b.resolved),
+        "visible Collider must share dual_import_b's resolved Int alias node"
+    );
+    assert!(
+        !Rc::ptr_eq(&visible_binding.resolved, &cache_a.resolved),
+        "visible Collider must not share dual_import_a's resolved String alias node"
+    );
+}
+
+#[test]
+fn type_env_std_types_type_variable_filtered_from_import() {
+    use v1_compiler::v1_compiler_infer::type_env_for_import;
+    use v1_compiler::v1_compiler_infer_env::TypeBinding;
+    use v1_compiler::v1_std_core::{empty_intern_table, intern, leaf_node_with_span, make_span};
+
+    fn stub_leaf(name: &str) -> Rc<v1_compiler::v1_std_core::Node> {
+        leaf_node_with_span(name.to_string(), make_span(0, 0))
+    }
+
+    let intern_table = empty_intern_table();
+    let t_binding = Rc::new(TypeBinding {
+        name: "T".to_string(),
+        resolved: stub_leaf("T"),
+        provenance: Rc::new(v1_compiler::v1_std_core::SubValueRelation::SubValueUnknown),
+    });
+    let int_binding = Rc::new(TypeBinding {
+        name: "Int".to_string(),
+        resolved: stub_leaf("Int"),
+        provenance: Rc::new(v1_compiler::v1_std_core::SubValueRelation::SubValueUnknown),
+    });
+    let t_id = intern(intern_table.clone(), "T".to_string()).id;
+    let int_id = intern(intern_table.clone(), "Int".to_string()).id;
+    let parent = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
+        bindings: Rc::new(std::collections::HashMap::from([
+            (t_id, t_binding.clone()),
+            (int_id, int_binding.clone()),
+        ])),
+        str_bindings: Rc::new(std::collections::HashMap::from([
+            ("T".to_string(), t_binding),
+            ("Int".to_string(), int_binding),
+        ])),
+        ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
+        parents: Rc::new(vec![]),
+        recursive_types: Rc::new(vec![]),
+        recursive_type_set: Rc::new(std::collections::HashMap::new()),
+        inductive_fields: Rc::new(std::collections::HashMap::new()),
+        source_indices: Rc::new(std::collections::HashMap::from([(
+            "stub.dag".to_string(),
+            Rc::new(v1_compiler::v1_std_core::NewlineIndex {
+                file: "stub.dag".to_string(),
+                offsets: Rc::new(vec![0]),
+                char_codes: Rc::new(vec![]),
+            }),
+        )])),
+        intern_table: intern_table.clone(),
+    });
+    let filtered = type_env_for_import("std.types".to_string(), parent);
+    for tv in ["T", "K", "V", "MappedElement", "FoldAccumulator"] {
+        assert!(
+            !filtered.str_bindings.contains_key(tv),
+            "type_env_for_import(std.types) must strip type variable {tv} from str_bindings"
+        );
+        assert!(
+            !filtered.ancestry_str_bindings.contains_key(tv),
+            "type_env_for_import(std.types) must strip type variable {tv} from ancestry_str_bindings"
+        );
+    }
+    assert!(
+        filtered.str_bindings.contains_key("Int"),
+        "non-type-variable kernel bindings must survive std.types import filtering"
+    );
+}
+
+#[test]
+fn type_env_local_variant_shadows_imported_variant_local() {
+    let sources = vec![
+        Rc::new(SourceFile {
+            path: "parent.dag".to_string(),
+            content: "module test.variant_shadow_parent\ntype E = Alpha { x: Int } | Beta { y: String }\n".to_string(),
+        }),
+        Rc::new(SourceFile {
+            path: "consumer.dag".to_string(),
+            content: "module test.variant_shadow_consumer\nimport test.variant_shadow_parent\ntype F = Alpha { x: String } | Gamma { z: Int }\n".to_string(),
+        }),
+    ];
+    let resolved = compile_modules(sources);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let parent = typed_module_by_name(
+        &graph.modules,
+        &resolved.source_indices,
+        "test.variant_shadow_parent",
+    );
+    let consumer = typed_module_by_name(
+        &graph.modules,
+        &resolved.source_indices,
+        "test.variant_shadow_consumer",
+    );
+    let parent_alpha = parent
+        .type_env_cache
+        .variant_locals
+        .get("Alpha")
+        .expect("parent Alpha variant local");
+    let consumer_alpha = consumer
+        .type_env_cache
+        .variant_locals
+        .get("Alpha")
+        .expect("consumer Alpha variant local");
+    assert_eq!(
+        authored_name_at(parent.type_env.source_indices.clone(), parent_alpha.resolved.clone()),
+        "E",
+        "parent Alpha must point at imported enum E"
+    );
+    assert_eq!(
+        authored_name_at(
+            consumer.type_env.source_indices.clone(),
+            consumer_alpha.resolved.clone()
+        ),
+        "F",
+        "consumer Alpha must shadow parent variant with local enum F"
+    );
+    assert!(
+        parent_alpha.resolved.connective == Connective::Disj
+            && consumer_alpha.resolved.connective == Connective::Disj,
+        "variant locals must reference coproduct carriers"
+    );
+    assert!(
+        !Rc::ptr_eq(&parent_alpha.resolved, &consumer_alpha.resolved),
+        "parent variant locals must not replace consumer-local variant bindings"
     );
 }
