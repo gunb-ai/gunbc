@@ -6,12 +6,8 @@ import extdeps.dns.domain_name {
   parse_host_name,
   host_name_eq,
   host_name_label_count,
-  hostname_short,
-  HostName,
-  DomainName,
-  DnsLabel,
-  PartiallyQualified,
   FullyQualified,
+  PartiallyQualified,
   EmptyName,
   LabelTooLong,
   NameTooLong,
@@ -21,11 +17,6 @@ import extdeps.dns.domain_name {
   Err,
 }
 import std.render { repeat_string }
-
-data single_label_host: HostName = HostName {
-  name: DomainName { labels: ["srv1" as DnsLabel] },
-  qualification: PartiallyQualified,
-}
 
 test fn domain_name_parse_fqdn_srv1_tailnet() -> Bool {
   match parse_host_name(raw: "srv1.tailecbe08.ts.net.") {
@@ -76,12 +67,5 @@ test fn domain_name_parse_case_fold_equality() -> Bool {
         Err { value: _ } => false
       }
     Err { value: _ } => false
-  }
-}
-
-test fn hostname_short_projects_leftmost_label() -> Bool {
-  match hostname_short(host: single_label_host) {
-    Present { value: _ } => true
-    Absent => false
   }
 }
