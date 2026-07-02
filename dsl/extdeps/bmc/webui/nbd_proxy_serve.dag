@@ -100,10 +100,7 @@ fn nbd_proxy_serve_program(intent: NbdProxyServeTransportIntent) -> ShellProgram
   let port = to_string(intent.local_nbd_port)
   let wss_url = concat("wss://", concat(intent.bmc_host, intent.ws_path))
   let auth_header = concat("Authorization: Token ", intent.session_token)
-  let socat_bridge = concat(
-    "exec:'",
-    concat(socat_cli_tool.name, concat(" STDIO TCP:127.0.0.1:", concat(port, "'"))),
-  )
+  let socat_bridge = concat("tcp:127.0.0.1:", port)
   ShellProgram {
     set_e: false,
     statements: [
@@ -116,7 +113,7 @@ fn nbd_proxy_serve_program(intent: NbdProxyServeTransportIntent) -> ShellProgram
       RawLine { text: "trap 'kill \"$NBDKIT_PID\"' EXIT INT TERM" },
       RawLine {
         text: concat(
-          concat(websocat_cli_tool.name, " -b --insecure -H \""),
+          concat(websocat_cli_tool.name, " --insecure --text --header=\""),
           concat(auth_header, concat("\" ", concat(wss_url, concat(" ", socat_bridge))))),
       },
     ],
