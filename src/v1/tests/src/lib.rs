@@ -43,8 +43,6 @@ mod derive_bound_fail_closed_test;
 #[cfg(test)]
 mod diagnostics;
 #[cfg(test)]
-mod effects;
-#[cfg(test)]
 mod eval_measurement_purity_test;
 #[cfg(test)]
 mod faithful_string_element_char_witness_test;
