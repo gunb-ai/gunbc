@@ -41,10 +41,10 @@ type Outer<S> { inner: Inner<S> }
 fn pass_through<S>(o: Outer<S>) -> Outer<S> { o }
 
 test fn generic_nested_pass_through_call_field_access_holds() -> Bool {
-  pass_through(o: Outer { inner: Inner { value: Rec { v: 9 } } }).inner.value.v == 9
+  pass_through(o: Outer { inner: Inner { value: Rec { v: 9 } } }).inner.value == Rec { v: 9 }
 }
 
 test fn generic_nested_record_body_field_access_holds() -> Bool {
   let o = Outer { inner: Inner { value: Rec { v: 9 } } }
-  o.inner.value.v == 9
+  o.inner.value == Rec { v: 9 }
 }
