@@ -14,7 +14,7 @@ import v2.std.orchestration_emit {
 }
 import v2.std.orchestration {
   Run,
-  Step,
+  PipelineStep,
   Do,
   Pipeline,
   EscalationLevel,
@@ -127,7 +127,7 @@ fn orch_emit_join2(
   )
 }
 
-fn orch_emit_step(s: Step, medium: OrchestrationEmitMedium) -> Outcome<Medium<String>> {
+fn orch_emit_step(s: PipelineStep, medium: OrchestrationEmitMedium) -> Outcome<Medium<String>> {
   match s {
     Do { run: r } => orch_emit_run(r: r, medium: medium)
     If { cond: _, then_: _, else_: _ } =>
@@ -141,7 +141,7 @@ fn orch_emit_step(s: Step, medium: OrchestrationEmitMedium) -> Outcome<Medium<St
   }
 }
 
-fn orch_retry_step_command(s: Step) -> Optional<String> {
+fn orch_retry_step_command(s: PipelineStep) -> Optional<String> {
   match s {
     Do { run: r } => Present { value: r.command }
     If { cond: _, then_: _, else_: _ } => Absent
@@ -278,7 +278,7 @@ fn orch_emit_unsupported_step_diagnostics(reason: Symbol) -> Diagnostic {
 
 fn orch_emit_steps_from(
   head_str: String,
-  rest: List<Step>,
+  rest: List<PipelineStep>,
   medium: OrchestrationEmitMedium
 ) -> Outcome<Medium<String>> {
   match list_head(xs: rest) {

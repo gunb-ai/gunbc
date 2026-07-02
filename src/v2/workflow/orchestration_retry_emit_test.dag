@@ -10,7 +10,7 @@ import v2.test.manual.retry_eagain_bash {
   retry_eagain_example_command
 }
 import v2.std.orchestration {
-  Step,
+  PipelineStep,
   Retry,
   EscalationLevel,
   EnvSet,
@@ -87,7 +87,7 @@ fn orch_retry_level1_from(e: FreeMonoid<EscalationLevel>) -> EscalationLevel {
   }
 }
 
-fn orch_retry_perturbed_intent() -> Step {
+fn orch_retry_perturbed_intent() -> PipelineStep {
   match retry_eagain_intent() {
     Retry { body: b, escalations: e, on_exhausted: x } =>
       Retry {
