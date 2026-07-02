@@ -284,6 +284,55 @@ fn logical_qualified_name(module_name: &str, name: &str) -> String {
     }
 }
 
+#[derive(Debug, Clone)]
+struct ParsedTypeDecl {
+    module_path: String,
+    rel_path: String,
+    name: String,
+    item: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+}
+
+/// Parse-only type-decl extraction over `build_module_path_index` — fail-closed on parse
+/// errors (no silent skip). Shared substrate for `concept_decl_facts(pool_roots)`; distinct
+/// from `decl_facts_corpus_walk` which skips test `.dag` files and tolerates parse failure.
+fn type_decls_parse_only_fail_closed(
+    roots: &[String],
+) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
+    let ws = workspace_root();
+    let index = crate::cli_run::build_module_path_index(roots);
+    let mut modules: Vec<(String, String)> = index.into_iter().collect();
+    modules.sort();
+    let module_count = modules.len();
+    let mut out = Vec::new();
+    for (module_path, rel_path) in modules {
+        let abs = ws.join(&rel_path);
+        let parsed = parse_dag_file(&abs).ok_or_else(|| {
+            format!(
+                "concept_decl_facts: failed to parse `{rel_path}` (fail-closed; no silent skip)"
+            )
+        })?;
+        let si = parsed.source_indices;
+        for item in parsed.items.iter() {
+            if item_kind(item.clone()) != ItemKind::TypeItem {
+                continue;
+            }
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            out.push(ParsedTypeDecl {
+                module_path: module_path.clone(),
+                rel_path: rel_path.clone(),
+                name,
+                item: item.clone(),
+                source_indices: si.clone(),
+            });
+        }
+    }
+    Ok((out, module_count))
+}
+
 fn concept_decl_node(
     ctx: &InterpContext,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -309,50 +358,51 @@ pub fn eval_qualified_name_from_dotted_string(
     ))
 }
 
+fn concept_decl_record(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_name: &str,
+    name: &str,
+    item: &Rc<Node>,
+) -> InterpResult<Value> {
+    let qualified_name = logical_qualified_name(module_name, name);
+    let node = concept_decl_node(ctx, si, item)?;
+    Ok(Value::Record {
+        type_name: ctx.sym("ConceptDecl"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("qualified_name"), Value::Str(qualified_name)),
+            (ctx.sym("name"), Value::Str(name.to_string())),
+            (ctx.sym("node"), node),
+        ])),
+    })
+}
+
 pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
     let ws = crate::cli_run::workspace_root();
     let abs_pool_roots: Vec<String> = pool_roots
         .iter()
         .map(|r| ws.join(r).to_string_lossy().into_owned())
         .collect();
-    let index = crate::cli_run::build_module_path_index(&abs_pool_roots);
-    let mut modules: Vec<(String, String)> = index.into_iter().collect();
-    modules.sort();
-    let module_count = modules.len();
+    let (type_decls, module_count) = type_decls_parse_only_fail_closed(&abs_pool_roots)
+        .map_err(|msg| InterpError::TypeError { msg })?;
+    let files_parsed = module_count;
     let mut rows: Vec<Value> = Vec::new();
-    let mut files_parsed = 0usize;
-    for (module_name, rel_path) in modules {
-        let abs = ws.join(&rel_path);
-        let (items, si) = crate::module_path_index::medium_structure_census::parse_file(&abs)
-            .ok_or_else(|| InterpError::TypeError {
-                msg: format!(
-                    "concept_decl_facts: failed to parse `{rel_path}` (fail-closed; no silent skip)"
-                ),
-            })?;
-        files_parsed += 1;
-        for item in items.iter() {
-            if crate::v1_compiler_infer_items::item_kind(item.clone()) != ItemKind::TypeItem {
-                continue;
-            }
-            let name = authored_name_at(si.clone(), item.clone());
-            if name.is_empty() {
-                continue;
-            }
-            let qualified_name = logical_qualified_name(&module_name, &name);
-            let node = concept_decl_node(ctx, &si, item).map_err(|e| InterpError::TypeError {
-                msg: format!(
-                    "concept_decl_facts: failed to marshal `{qualified_name}` in `{rel_path}`: {e}"
-                ),
-            })?;
-            rows.push(Value::Record {
-                type_name: ctx.sym("ConceptDecl"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
-                    (ctx.sym("name"), Value::Str(name.clone())),
-                    (ctx.sym("node"), node),
-                ])),
-            });
-        }
+    for decl in type_decls {
+        let qualified_name = logical_qualified_name(&decl.module_path, &decl.name);
+        let row = concept_decl_record(
+            ctx,
+            &decl.source_indices,
+            &decl.module_path,
+            &decl.name,
+            &decl.item,
+        )
+        .map_err(|e| InterpError::TypeError {
+            msg: format!(
+                "concept_decl_facts: failed to marshal `{qualified_name}` in `{}`: {e}",
+                decl.rel_path
+            ),
+        })?;
+        rows.push(row);
     }
     eprintln!(
         "concept_decl_facts: {} type concepts from {module_count} modules ({files_parsed} files parsed)",
@@ -381,16 +431,13 @@ pub fn eval_concept_decl_facts_live(
             if info.kind != ItemKind::TypeItem {
                 continue;
             }
-            let qualified_name = logical_qualified_name(&info.module_name, &name);
-            let node = concept_decl_node(ctx, &si, item)?;
-            rows.push(Value::Record {
-                type_name: ctx.sym("ConceptDecl"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
-                    (ctx.sym("name"), Value::Str(name.clone())),
-                    (ctx.sym("node"), node),
-                ])),
-            });
+            rows.push(concept_decl_record(
+                ctx,
+                &si,
+                &info.module_name,
+                &name,
+                item,
+            )?);
         }
     }
     Ok(crate::v1_interpreter::list_value(rows))
