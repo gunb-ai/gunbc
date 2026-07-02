@@ -144,6 +144,16 @@ fn shell_command_leading_lit_text(stmt: ShellStmt) -> String {
   }
 }
 
+fn shell_rawline_starts_with_tool(stmt: ShellStmt, tool: NonEmptyStr) -> Bool {
+  match stmt {
+    RawLine { text: t } =>
+      string_contains(s: t, pattern: concat(tool, " "))
+        || (t == tool as String)
+    Command { words: _ } => shell_command_leading_lit_text(stmt: stmt) == tool
+    _ => false
+  }
+}
+
 fn shell_program_final_statement(p: ShellProgram) -> ShellStmt {
   fold(p.statements, init: RawLine { text: "" }, f: (_, stmt) => stmt)
 }
@@ -151,9 +161,10 @@ fn shell_program_final_statement(p: ShellProgram) -> ShellStmt {
 fn nbd_proxy_serve_program_foreground_command_is_websocat(intent: NbdProxyServeTransportIntent) -> Bool {
   let program = nbd_proxy_serve_program(intent: intent)
   nbd_proxy_serve_program_statement_count(intent: intent) == 5
-    && shell_command_leading_lit_text(
-      stmt: shell_program_final_statement(p: program)
-    ) == websocat_cli_tool.name
+    && shell_rawline_starts_with_tool(
+      stmt: shell_program_final_statement(p: program),
+      tool: websocat_cli_tool.name
+    )
 }
 
 fn nbd_proxy_serve_requires_host_as_nbd_server() -> Bool {
