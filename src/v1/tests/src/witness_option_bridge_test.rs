@@ -1,3 +1,14 @@
+//! RESIDUAL after 5-test-migration (2026-07-02): 3 of the original 6 tests are
+//! migrated to marker-discovered floor witnesses in
+//! src/v2/test/claim/manual/witness_option_bridge_test.dag (map_get hit->Present,
+//! miss->Absent, non-absent lookup failure -> Rejected fail-closed, plus the
+//! affected_set excluded-propagation proof smoke).
+//! The 3 tests below stay:
+//! - match_pattern_does_not_bridge_witness_to_some_none: scans v1_interpreter.rs
+//!   source text — a pinned-harness fact, dissolving with the v1 interpreter.
+//! - rust_emitter_lowers_*: unit tests of the v1 Rust emitter's variant-pattern
+//!   lowering — v1-EMITTER-coupled (lane ruling): they die with the Route-A
+//!   emitter retirement, not before; migrating them would cement the v1 emitter.
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
@@ -132,92 +143,4 @@ fn rust_emitter_lowers_holds_violates_only_for_witness_parent() {
         witness, "v1_rt::Witness::Holds",
         "Witness Holds must lower to the runtime Witness enum"
     );
-}
-
-#[test]
-fn map_get_matches_witness_lookup_to_present_absent() {
-    let src = r#"module test.witness_map_get
-import v2.std.collection { Absent, Present, empty_map, map_get, map_insert }
-import v2.std.diagnostic { Accepted, Rejected }
-
-fn found() -> Bool {
-  let m = empty_map() |> map_insert("k", 42)
-  match map_get(m, "k") {
-    Accepted { value: Present { value: v }, diagnostics: _ } => v == 42
-    Accepted { value: Absent, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => false
-  }
-}
-
-fn missing() -> Bool {
-  let m = empty_map()
-  match map_get(m, "k") {
-    Accepted { value: Present { value: _ }, diagnostics: _ } => false
-    Accepted { value: Absent, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
-"#;
-    match run_v4_module("test/witness_map_get.dag", src, "found") {
-        Value::Bool(true) => {}
-        other => panic!("expected Bool(true) from map_get on Witness Holds, got {other:?}"),
-    }
-    match run_v4_module("test/witness_map_get.dag", src, "missing") {
-        Value::Bool(true) => {}
-        other => panic!("expected Bool(true) from map_get on Witness Violates, got {other:?}"),
-    }
-}
-
-#[test]
-fn map_get_rejects_non_absent_lookup_failure() {
-    let src = r#"module test.witness_map_get_rejects
-import v2.std.collection { Map, Absent, Present, map_get }
-import v2.std.diagnostic { Accepted, Rejected, Diagnostic, ExternalContractUnknown, Unavailable, port_locus }
-import v2.std.witness { Violates }
-
-fn custom_lookup_failure() -> Diagnostic {
-  Diagnostic {
-    reason: ^custom_lookup_failure,
-    at: port_locus(port: ^custom_map_lookup_port),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
-}
-
-fn malformed_map() -> Map<String, Int> {
-  Map {
-    lookup: fn(_) {
-      Violates { diagnostic: custom_lookup_failure() }
-    }
-  }
-}
-
-fn rejects_custom_lookup_failure() -> Bool {
-  match map_get(malformed_map(), "k") {
-    Accepted { value: Present { value: _ }, diagnostics: _ } => false
-    Accepted { value: Absent, diagnostics: _ } => false
-    Rejected { diagnostics: _ } => true
-  }
-}
-"#;
-    match run_v4_module(
-        "test/witness_map_get_rejects.dag",
-        src,
-        "rejects_custom_lookup_failure",
-    ) {
-        Value::Bool(true) => {}
-        other => {
-            panic!("expected Bool(true) from non-absent lookup failure rejection, got {other:?}")
-        }
-    }
-}
-
-#[test]
-fn mark_excluded_no_longer_pattern_match_fails() {
-    let entry = "src/v2/lens/affected_set/excluded_propagation_proof.dag";
-    let content = std::fs::read_to_string(workspace_root().join(entry))
-        .unwrap_or_else(|e| panic!("read {entry}: {e}"));
-    match run_v4_module(entry, &content, "excluded_propagation_proof_claim_holds") {
-        Value::Bool(_) => {}
-        other => panic!("expected Bool witness from mark_excluded path, not crash; got {other:?}"),
-    }
 }
