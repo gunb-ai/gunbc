@@ -1,0 +1,72 @@
+module extdeps.router.verizon_cr1000a
+
+import std.types { NonEmptyStr, String, Int, List, Bool }
+import extdeps.router.types {
+  DhcpLeaseKind,
+  DhcpLeaseName,
+  DhcpOption12ClientHostname,
+  DhcpReservationLabel,
+  DynamicLease,
+  StaticReservation,
+  DynamicLeaseClientName,
+  StaticReservationLabel,
+  dhcp_lease_name_matches_kind,
+}
+import extdeps.vendor.verizon { verizon }
+import extdeps.vendor { Vendor }
+import extdeps.hardware { Hardware }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "scache.vzw.com/content/dam/support/pdf/user_guide/verizon-router-cr1000a-guide.pdf"
+  }
+}
+
+type Cr1000aRouterCatalogRow {
+  model_number: NonEmptyStr
+  manufacturer: Vendor<Hardware>
+}
+
+data cr1000a_catalog: Cr1000aRouterCatalogRow = Cr1000aRouterCatalogRow {
+  model_number: "CR1000A",
+  manufacturer: verizon,
+}
+
+type Cr1000aDhcpLeaseRow {
+  mac_address: String
+  ipv4_address: String
+  lease_kind: DhcpLeaseKind
+  name: DhcpLeaseName
+  lease_time_remaining_minutes: Int?
+}
+
+type Cr1000aDhcpLeaseTable {
+  rows: List<Cr1000aDhcpLeaseRow>
+}
+
+fn cr1000a_dhcp_lease_row_is_well_formed(row: Cr1000aDhcpLeaseRow) -> Bool {
+  if !dhcp_lease_name_matches_kind(name: row.name, kind: row.lease_kind) {
+    false
+  } else {
+    match row.lease_kind {
+      DynamicLease => true
+      StaticReservation =>
+        match row.lease_time_remaining_minutes {
+          Absent => true
+          Present { value: _ } => false
+        }
+    }
+  }
+}
+
+data dissolve_on_cr1000a_lease_row_address_strings: List<String> = [
+  "closure:ground_mac_ipv4_address_types|mac_address/ipv4_address are bare String; should be grounded on network address carriers once std/network or extdeps/network lands (§5 fail-closed on malformed addresses)|trigger:IpAddress and MacAddress carriers land in std/ or extdeps/network"
+]
+
+data dissolve_on_cr1000a_dhcp_lease_transport: List<String> = [
+  "closure:cr1000a_dhcp_lease_observation_transport|Cr1000aDhcpLeaseTable has cited semantic shape only; read transport for /cgi/cgi_dhcp*.js addCfg projection is not yet bound as a handler|trigger:extdeps/router/verizon_cr1000a_rest.dag or shell handler lands with a live read witness"
+]

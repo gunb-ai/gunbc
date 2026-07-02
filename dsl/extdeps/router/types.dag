@@ -1,0 +1,54 @@
+module extdeps.router.types
+
+import std.types { NonEmptyStr, Bool }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc2132#section-3.14"
+  }
+}
+
+type DhcpOption12ClientHostname = NonEmptyStr where brand("DhcpOption12ClientHostname")
+
+type DhcpReservationLabel = NonEmptyStr where brand("DhcpReservationLabel")
+
+type DhcpLeaseKind =
+    DynamicLease
+  | StaticReservation
+
+type DhcpLeaseName
+  = DynamicLeaseClientName { option_12_hostname: DhcpOption12ClientHostname? }
+  | StaticReservationLabel { label: DhcpReservationLabel }
+
+fn dhcp_lease_name_matches_kind(name: DhcpLeaseName, kind: DhcpLeaseKind) -> Bool {
+  match kind {
+    DynamicLease =>
+      match name {
+        DynamicLeaseClientName { option_12_hostname: _ } => true
+        StaticReservationLabel { label: _ } => false
+      }
+    StaticReservation =>
+      match name {
+        StaticReservationLabel { label: _ } => true
+        DynamicLeaseClientName { option_12_hostname: _ } => false
+      }
+  }
+}
+
+fn dhcp_lease_name_is_option_12_self_report(name: DhcpLeaseName) -> Bool {
+  match name {
+    DynamicLeaseClientName { option_12_hostname: _ } => true
+    StaticReservationLabel { label: _ } => false
+  }
+}
+
+fn dhcp_lease_name_is_operator_reservation_label(name: DhcpLeaseName) -> Bool {
+  match name {
+    StaticReservationLabel { label: _ } => true
+    DynamicLeaseClientName { option_12_hostname: _ } => false
+  }
+}
