@@ -40,6 +40,8 @@ type StandingIntent {
   fallback_when_unavailable: IntentFallback
 }
 
+data fallback_when_unavailable_dissolution_trigger: String = "🟡 dissolve-on: StandingIntent.fallback_when_unavailable is declared but not yet consumed by gate.dag — when contract_answers returns false (every non-LensFamily property today: the task-E ModelAnemia / SingleAuthorityConsolidation / LensHygiene* intents), the verdict lands a flat LegFails regardless of Refuse vs AuditOnlyWithReason. DISSOLVES WHEN task E wires those properties' consumers: on absent contract, apply the intent's fallback (AuditOnlyWithReason downgrades to an audit verdict with reason instead of a hard fail) rather than the uniform no-contract LegFails."
+
 data whole_corpus_scope: SubjectRoster = { entries: ["dsl", "src/v1", "src/v2"] }
 
 data standing_intent_complexity_repo_wide: StandingIntent = {
