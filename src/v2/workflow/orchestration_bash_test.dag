@@ -4,17 +4,14 @@ import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import extdeps.communication.medium { Medium }
 import v2.extdeps.languages.bash {
-  orch_run_emitted_command,
-  orch_run_target_model
+  bash_word_pass_emitted,
+  bash_word_pass_target_model,
+  bash_stmt_env_prefixed_emitted,
+  bash_stmt_env_prefixed_target_model,
+  bash_stmt_env_unset_emitted,
+  bash_stmt_env_unset_target_model
 }
-import v2.std.orchestration {
-  Run,
-  EnvSet,
-  EnvUnset,
-  StdoutAndStderr,
-  TeeTo
-}
-import v2.std.collection { Map, Optional, Present, Absent }
+import v2.std.collection { Map }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -38,45 +35,21 @@ fn orch_bash_facts_lookup(key: Node) -> Witness<InferredFacts> {
   }
 }
 
-fn orch_run_bare() -> Run {
-  Run {
-    command: "cargo build -p v1-compiler --release --bins",
-    env: [],
-    redirect: Absent,
-    capture: Absent
-  }
-}
-
-fn orch_run_env_prefixed() -> Run {
-  Run {
-    command: "cargo build -p v1-compiler --release --bins",
-    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
-    redirect: Absent,
-    capture: Absent
-  }
-}
-
-fn orch_run_env_perturbed() -> Run {
-  Run {
-    command: "cargo build -p v1-compiler --release --bins",
-    env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "2" }],
-    redirect: Absent,
-    capture: Absent
-  }
-}
-
-fn orch_run_emit(r: Run) -> Outcome<Medium<String>> {
+fn orch_emit_bash(root: Node, target: Node) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
-      root: orch_run_emitted_command,
+      root: root,
       facts: Map { lookup: orch_bash_facts_lookup }
     },
-    target: orch_run_target_model(r: r)
+    target: target
   )
 }
 
 test fn orch_run_bare_emits_command_holds() -> Bool {
-  match orch_run_emit(r: orch_run_bare()) {
+  match orch_emit_bash(
+    root: bash_word_pass_emitted,
+    target: bash_word_pass_target_model(spelling: "cargo build -p v1-compiler --release --bins")
+  ) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == "cargo build -p v1-compiler --release --bins") && (dg == None)
     Rejected { diagnostics: _ } => false
@@ -84,7 +57,14 @@ test fn orch_run_bare_emits_command_holds() -> Bool {
 }
 
 test fn orch_run_env_prefix_derived_from_intent_holds() -> Bool {
-  match orch_run_emit(r: orch_run_env_prefixed()) {
+  match orch_emit_bash(
+    root: bash_stmt_env_prefixed_emitted,
+    target: bash_stmt_env_prefixed_target_model(
+      name: "CARGO_BUILD_JOBS",
+      value: "1",
+      command: "cargo build -p v1-compiler --release --bins"
+    )
+  ) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == "CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --bins")
         && (dg == None)
@@ -93,9 +73,31 @@ test fn orch_run_env_prefix_derived_from_intent_holds() -> Bool {
 }
 
 test fn orch_run_env_value_has_teeth_holds() -> Bool {
-  match orch_run_emit(r: orch_run_env_perturbed()) {
+  match orch_emit_bash(
+    root: bash_stmt_env_prefixed_emitted,
+    target: bash_stmt_env_prefixed_target_model(
+      name: "CARGO_BUILD_JOBS",
+      value: "2",
+      command: "cargo build -p v1-compiler --release --bins"
+    )
+  ) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != "CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --bins"
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_run_env_unset_emits_env_u_holds() -> Bool {
+  match orch_emit_bash(
+    root: bash_stmt_env_unset_emitted,
+    target: bash_stmt_env_unset_target_model(
+      name: "RUSTC_WRAPPER",
+      command: "cargo build -p v1-compiler --release --bins"
+    )
+  ) {
+    Accepted { value: source, diagnostics: dg } =>
+      (source.carried == "env -u RUSTC_WRAPPER cargo build -p v1-compiler --release --bins")
+        && (dg == None)
     Rejected { diagnostics: _ } => false
   }
 }

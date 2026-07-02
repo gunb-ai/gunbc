@@ -1,6 +1,6 @@
 module v2.workflow.orchestration_emit_test
 
-import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_emit_run, orch_run_env_reduction_dissolution_trigger }
+import v2.compiler.emit_orchestration { orch_emit_pipeline, orch_emit_run }
 import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import extdeps.communication.medium { Medium }
 import v2.std.orchestration {
@@ -9,7 +9,8 @@ import v2.std.orchestration {
   Do,
   Pipeline,
   FailFast,
-  EnvSet
+  EnvSet,
+  EnvUnset
 }
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
@@ -93,8 +94,38 @@ test fn orch_run_empty_env_delegates_to_shell_emit_holds() -> Bool {
   }
 }
 
-test fn orch_run_env_reduction_trigger_recorded_holds() -> Bool {
-  string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "EnvPrefixed")
-    && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "straddle")
-    && string_contains(s: orch_run_env_reduction_dissolution_trigger, pattern: "DISSOLVES WHEN")
+test fn orch_run_env_prefixed_structured_holds() -> Bool {
+  match orch_emit_run(
+    r: Run {
+      command: "cargo test --workspace",
+      env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
+      redirect: Absent,
+      capture: Absent
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "CARGO_BUILD_JOBS=1 cargo test --workspace") && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn orch_run_env_unset_multi_binding_structured_holds() -> Bool {
+  match orch_emit_run(
+    r: Run {
+      command: "cargo test --workspace",
+      env: [
+        EnvUnset { name: "RUSTC_WRAPPER" },
+        EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }
+      ],
+      redirect: Absent,
+      capture: Absent
+    },
+    medium: bash_orchestration_emit_medium()
+  ) {
+    Accepted { value: src, diagnostics: dg } =>
+      (src.carried == "env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 cargo test --workspace")
+        && (dg == None)
+    Rejected { diagnostics: _ } => false
+  }
 }
