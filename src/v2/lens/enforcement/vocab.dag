@@ -46,6 +46,8 @@ type Timestamp {
   iso: String
 }
 
+data timestamp_iso_anemia_dissolution_trigger: String = "🟡 dissolve-on: Timestamp.iso is an anemic String leaf (DESIGN §2 deep decomposition: year/month/day/hour/… ground into std.measure). On-ledger via standing_intent_model_anemia_repo_wide (task E), not silent debt. DISSOLVES WHEN a std.measure-side wall-clock-instant carrier exists: Timestamp reuses it and iso becomes a rendering, not the authority."
+
 fn mode_rank(m: EnforcementMode) -> Int {
   match m {
     Advisory => 1
@@ -112,6 +114,8 @@ fn self_application_ok(s: SelfApplicationStatus) -> Bool {
     SelfApplicationAbsent => false
   }
 }
+
+data narrowing_reason_same_variant_dissolution_trigger: String = "🟡 dissolve-on: narrowing_reason_same_variant hand-rolls a 4×4 nested-match tag-equality over NarrowingReason (DESIGN §4 predicate/walker: one closed decision procedure, not per-shape recursion). No canonical variant-tag surface exists in std yet. DISSOLVES WHEN gunb-ai/gunbc#6172 lands a canonical variant_tag_eq / discriminator surface: replace the 16 arms with variant_tag_eq(a, b) and delete this fn."
 
 fn narrowing_reason_same_variant(a: NarrowingReason, b: NarrowingReason) -> Bool {
   match a {
