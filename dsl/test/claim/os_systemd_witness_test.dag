@@ -8,7 +8,15 @@ import extdeps.os.systemd {
   Failed,
   parse_systemd_unit_active_state,
   systemd_unit_active_state_wire_label,
+  SystemdCgroupMemoryLimit,
+  MemoryLimitUnbounded,
+  MemoryLimitBytes,
+  MemoryLimitAbsent,
+  parse_systemd_memory_limit_show,
+  systemd_memory_limit_wire_label,
 }
+import std.measure { byte_size, byte_size_count }
+import gunbc.ci_floor_measurement { gunbc_ci_runner_cgroup_memory_cap }
 import std.types { NonEmptyStr }
 
 test fn witness_active_wire_decodes_to_active() -> Bool {
@@ -27,4 +35,18 @@ test fn witness_wrong_case_does_not_decode() -> Bool {
 
 test fn witness_roundtrip_failed() -> Bool {
   systemd_unit_active_state_wire_label(s: Failed) == "failed"
+}
+
+test fn witness_memory_limit_infinity_roundtrip() -> Bool {
+  systemd_memory_limit_wire_label(lim: MemoryLimitUnbounded) == "infinity"
+}
+
+test fn witness_memory_limit_bytes_roundtrip() -> Bool {
+  let cap = gunbc_ci_runner_cgroup_memory_cap
+  let raw = to_string(byte_size_count(b: cap))
+  match parse_systemd_memory_limit_show(raw: raw) {
+    MemoryLimitBytes { bytes: b } =>
+      systemd_memory_limit_wire_label(lim: MemoryLimitBytes { bytes: b }) == raw
+    _ => false
+  }
 }

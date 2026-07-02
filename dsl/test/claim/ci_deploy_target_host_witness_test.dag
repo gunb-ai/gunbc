@@ -2,9 +2,9 @@ module test.claim.ci_deploy_target_host_witness
 
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
-  deploy_target_host_preflight_script,
   deploy_target_proof_from_access,
   deploy_access_with_ssh_transport,
+  deploy_target_host_preflight_script,
 }
 import std.types { Bool, List, String }
 import gunbc.ci_deploy_target_host {
