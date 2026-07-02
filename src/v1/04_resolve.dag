@@ -77,17 +77,13 @@ fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> Node?
 }
 
 fn collect_unit_variant_phantom_matches(env: TypeEnv, variant_name: String) -> List<Node> {
-  fold(flatten_visible_bindings(env: env) |> map_keys, init: [], f: (acc, ident) =>
-    match lookup_type(env: env, ident: ident) {
-      Present { value: ty_node } =>
-        match unit_variant_in_coproduct(
-          env: env,
-          ty: structural_type_for_variant_lookup(env: env, ty: ty_node),
-          variant_name: variant_name
-        ) {
-          Present { value: variant } => concat(acc, [variant])
-          Absent => acc
-        }
+  fold(flatten_visible_bindings(env: env) |> map_values, init: [], f: (acc, binding) =>
+    match unit_variant_in_coproduct(
+      env: env,
+      ty: structural_type_for_variant_lookup(env: env, ty: binding.resolved),
+      variant_name: variant_name
+    ) {
+      Present { value: variant } => concat(acc, [variant])
       Absent => acc
     }
   )

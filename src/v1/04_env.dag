@@ -19,57 +19,85 @@ type TypeBinding {
   provenance: SubValueRelation
 }
 
-fn lookup_type_in_parent_chain(parents: List<TypeEnv>, ident: Int) -> Node? {
+fn lookup_binding_local_by_name(env: TypeEnv, name: String) -> TypeBinding? {
+  match intern_find(table: env.intern_table, s: name) {
+    Present { value: ident } =>
+      match map_get(env.bindings, ident) {
+        Present { value: binding } => Present { value: binding }
+        Absent => Absent
+      }
+    Absent => Absent
+  }
+}
+
+fn lookup_binding_by_name_in_parent_chain(parents: List<TypeEnv>, name: String) -> TypeBinding? {
   match parents |> last {
     Absent => Absent
     Present { value: tail_parent } =>
-      match lookup_type(env: tail_parent, ident: ident) {
-        Present { value: ty } => Present { value: ty }
+      match lookup_binding_by_name(env: tail_parent, name: name) {
+        Present { value: binding } => Present { value: binding }
         Absent =>
-          lookup_type_in_parent_chain(
+          lookup_binding_by_name_in_parent_chain(
             parents: parents |> take(n: (parents |> count) - 1),
-            ident: ident
+            name: name
           )
       }
   }
 }
 
-fn lookup_binding_in_parent_chain(parents: List<TypeEnv>, ident: Int) -> TypeBinding? {
-  match parents |> last {
-    Absent => Absent
-    Present { value: tail_parent } =>
-      match lookup_binding(env: tail_parent, ident: ident) {
-        Present { value: binding } => Present { value: binding }
-        Absent =>
-          lookup_binding_in_parent_chain(
-            parents: parents |> take(n: (parents |> count) - 1),
-            ident: ident
-          )
-      }
+fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
+  match lookup_binding_local_by_name(env: env, name: name) {
+    Present { value: binding } => Present { value: binding }
+    Absent => lookup_binding_by_name_in_parent_chain(parents: env.parents, name: name)
   }
 }
 
 fn lookup_binding(env: TypeEnv, ident: Int) -> TypeBinding? {
   match map_get(env.bindings, ident) {
     Present { value: binding } => Present { value: binding }
-    Absent => lookup_binding_in_parent_chain(parents: env.parents, ident: ident)
+    Absent =>
+      let name = intern_str(table: env.intern_table, id: ident)
+      lookup_binding_by_name_in_parent_chain(parents: env.parents, name: name)
+  }
+}
+
+fn is_recursive_type_local(env: TypeEnv, ident: Int) -> Bool {
+  match map_get(env.recursive_type_set, ident) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn is_recursive_type_by_name_in_parent_chain(parents: List<TypeEnv>, name: String) -> Bool {
+  match parents |> last {
+    Absent => false
+    Present { value: tail_parent } =>
+      if is_recursive_type_by_name(env: tail_parent, name: name) {
+        true
+      } else {
+        is_recursive_type_by_name_in_parent_chain(
+          parents: parents |> take(n: (parents |> count) - 1),
+          name: name
+        )
+      }
   }
 }
 
 fn is_recursive_type(env: TypeEnv, ident: Int) -> Bool {
-  match map_get(env.recursive_type_set, ident) {
-    Present { value: _ } => true
-    Absent =>
-      fold(env.parents, init: false, f: (found, parent) =>
-        if found { true } else { is_recursive_type(env: parent, ident: ident) }
-      )
+  if is_recursive_type_local(env: env, ident: ident) {
+    true
+  } else {
+    let name = intern_str(table: env.intern_table, id: ident)
+    is_recursive_type_by_name_in_parent_chain(parents: env.parents, name: name)
   }
 }
 
 fn is_recursive_type_by_name(env: TypeEnv, name: String) -> Bool {
   match intern_find(table: env.intern_table, s: name) {
-    Present { value: id } => is_recursive_type(env: env, ident: id)
-    Absent => false
+    Present { value: id } =>
+      if is_recursive_type_local(env: env, ident: id) { true }
+      else { is_recursive_type_by_name_in_parent_chain(parents: env.parents, name: name) }
+    Absent => is_recursive_type_by_name_in_parent_chain(parents: env.parents, name: name)
   }
 }
 
@@ -81,8 +109,8 @@ fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
 }
 
 fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
-  match intern_find(table: env.intern_table, s: name) {
-    Present { value: id } => lookup_type(env: env, ident: id)
+  match lookup_binding_by_name(env: env, name: name) {
+    Present { value: binding } => Present { value: binding.resolved }
     Absent => Absent
   }
 }
@@ -161,15 +189,20 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
   )
 }
 
-fn flatten_visible_bindings(env: TypeEnv) -> Map<Int, TypeBinding> {
+fn flatten_visible_bindings(env: TypeEnv) -> Map<String, TypeBinding> {
   let from_parents = fold(env.parents, init: empty_map(), f: (acc, parent) =>
     map_merge(flatten_visible_bindings(env: parent), acc)
   )
-  map_merge(from_parents, env.bindings)
+  let local_by_name = fold(env.bindings |> map_values, init: empty_map(), f: (acc, binding) =>
+    map_insert(acc, binding.name, binding)
+  )
+  map_merge(from_parents, local_by_name)
 }
 
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
-  let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, flatten_visible_bindings(env: env)))
+  let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) =>
+    map_merge(acc, flatten_visible_bindings(env: env))
+  )
   let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))
   let merged_recursive_set = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, env.recursive_type_set))
   let merged_inductive_fields = fold(envs, init: empty_map(), f: (acc, env) => merge_inductive_fields(left: acc, right: env.inductive_fields))
@@ -178,5 +211,8 @@ fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
     Present { value: first_env } => first_env.intern_table
     Absent => empty_intern_table()
   }
-  TypeEnv { bindings: merged_bindings, parents: [], recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
+  let merged_bindings_by_ident = fold(merged_bindings |> map_values, init: empty_map(), f: (acc, binding) =>
+    map_insert(acc, intern(table: merged_intern_table, s: binding.name).id, binding)
+  )
+  TypeEnv { bindings: merged_bindings_by_ident, parents: [], recursive_types: merged_recursive, recursive_type_set: merged_recursive_set, inductive_fields: merged_inductive_fields, source_indices: merged_source_indices, intern_table: merged_intern_table }
 }
