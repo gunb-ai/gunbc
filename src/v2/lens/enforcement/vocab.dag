@@ -10,6 +10,8 @@ type SubjectRoster {
   entries: List<String>
 }
 
+data subject_roster_string_dissolution_trigger: String = "🟡 dissolve-on: SubjectRoster modeled as List<String> (StandingIntent.required_subjects + desired_scope + CoverageReceipt.discovered_subjects), not List<QualifiedName> as enforcement-intent-design SS12 sketched — because std qualified_name_from_dotted_string is an infinite-recursion OOM stub (gunb-ai/gunbc#6169). DISSOLVES WHEN #6169 grounds that std fn: restore required_subjects to List<QualifiedName> and compare against the discovered set via qualified_name_eq."
+
 type EnforcementMode = Advisory | AuditOnly | Blocking
 
 type ConsumerKind
