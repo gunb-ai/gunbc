@@ -8,14 +8,12 @@ import std.change {
   KeyedPatch,
   KeyedThreeWayPatch,
   KeyedLeafVerdict,
-  KeyedLeafVerdictFold,
   keyed_two_way_diff,
   keyed_three_way_fold,
   keyed_apply_patch,
   keyed_invert_patch,
   keyed_patch_hunk_count,
   keyed_three_way_entry_count,
-  keyed_leaf_verdict_fold,
 }
 import gunbc.host_converge {
   ConvergeKnob,

@@ -2,7 +2,7 @@ module test.claim.host_converge_delta_witness
 
 import std.types { Bool, String, List }
 import std.measure { byte_size, byte_size_count, hardware_thread_count }
-import std.change { KeyedLeafMutation, KeyedApplyHunk, KeyedConflict, KeyedLeafVerdictFold, keyed_leaf_verdict_fold }
+import std.change { KeyedApplyHunk, KeyedConflict, KeyedLeafVerdictFold, keyed_leaf_verdict_fold }
 import gunbc.ci_runner_placement {
   RunnerHostDeployment,
   BatchLatencyTolerant,
