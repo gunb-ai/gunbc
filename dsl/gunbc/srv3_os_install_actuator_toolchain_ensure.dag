@@ -36,7 +36,7 @@ data srv3_os_install_actuator_toolchain_ensure_scaffold: Disposition = Scaffold 
   }
 }
 
-data os_install_actuator_toolchain_ensure_dissolution_trigger: String = "🟡 dissolve-on: os_install_actuator_toolchain_ensure — curl/nbdkit/socat via sudo -n apt-get (privileged/gated); websocat via cited GitHub release binary to /var/lib/gunbc/bin (unprivileged curl); DISSOLVES WHEN host_effect_apply binds OsInstallActuatorToolchainEnsure without concat runner glue"
+data os_install_actuator_toolchain_ensure_dissolution_trigger: String = "🟡 dissolve-on: os_install_actuator_toolchain_ensure — curl/nbdkit/socat via sudo -n apt-get (privileged/gated); websocat via cited GitHub release binary to /var/lib/gunbc/bin (unprivileged curl); concat-built bash runner via shell_exec_via_bash + shell.Exec.Run (medium-as-string); DISSOLVES WHEN host_effect_apply binds OsInstallActuatorToolchainEnsure without concat runner glue; retire medium_structure_exception_roster entry for dsl/gunbc/srv3_os_install_actuator_toolchain_ensure.dag"
 
 data gunbc_bin_dir: NonEmptyStr = "/var/lib/gunbc/bin"
 

@@ -176,6 +176,8 @@ data medium_structure_exception_roster: List<String> = [
 
   "dsl/gunbc/srv3_os_install_actuate.dag",
 
+  "dsl/gunbc/srv3_os_install_actuator_toolchain_ensure.dag",
+
   "dsl/extdeps/os/ubuntu_install_media_fetch.dag",
   "dsl/gunbc/srv3_install_media_fetch.dag",
   "dsl/extdeps/os/ubuntu_seeded_install_media_remaster.dag",

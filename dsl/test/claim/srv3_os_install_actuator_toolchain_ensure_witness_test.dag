@@ -5,6 +5,7 @@ import gunbc.srv3_os_install_actuator_toolchain_ensure {
   os_install_actuator_toolchain_ensure_script_uses_github_release_not_apt_for_websocat,
   os_install_actuator_toolchain_ensure_is_privileged_gated_for_apt,
   os_install_actuator_toolchain_requirement_row_count,
+  os_install_actuator_toolchain_ensure_dissolution_trigger,
 }
 
 test fn srv3_actuator_toolchain_ensure_uses_github_release_for_websocat() -> Bool {
@@ -14,4 +15,12 @@ test fn srv3_actuator_toolchain_ensure_uses_github_release_for_websocat() -> Boo
 
 test fn srv3_actuator_toolchain_ensure_covers_four_tools() -> Bool {
   os_install_actuator_toolchain_requirement_row_count() == 4
+}
+
+test fn srv3_actuator_toolchain_ensure_dissolution_trigger_names_roster_retirement() -> Bool {
+  string_contains(s: os_install_actuator_toolchain_ensure_dissolution_trigger, pattern: "medium_structure_exception_roster")
+    && string_contains(
+      s: os_install_actuator_toolchain_ensure_dissolution_trigger,
+      pattern: "srv3_os_install_actuator_toolchain_ensure.dag",
+    )
 }
