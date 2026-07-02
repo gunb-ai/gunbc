@@ -1,0 +1,18 @@
+module test.claim.roadmap_site_healthz_json_parse_witness
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import gunbc.roadmap_site_healthz_validate {
+  roadmap_site_healthz_body_parses,
+  roadmap_site_healthz_json_string_parses,
+}
+import gunbc.roadmap_static_site { roadmap_site_healthz_body }
+
+func roadmap_site_healthz_json_parse_witness() -> ProcessExit {
+  let ok = roadmap_site_healthz_body_parses()
+  let bad = !roadmap_site_healthz_json_string_parses(body: concat(roadmap_site_healthz_body(), "}"))
+  return if ok && bad {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "roadmap_site_healthz_body JSON.parse witness failed")
+  }
+}

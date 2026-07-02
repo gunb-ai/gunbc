@@ -1,0 +1,96 @@
+module v2.workflow.bash_program_emit
+
+import extdeps.languages.bash.program { ShellProgram, ShellStmt }
+import v2.compiler.emit { emit }
+import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.extdeps.languages.bash_command_fold {
+  bash_fold_stmt_emitted_witness,
+  bash_fold_target_model_for_stmt_witness
+}
+import v2.std.algebra { list_head, list_tail, HeadFound, HeadAbsent, TailFound, TailAbsent }
+import v2.std.collection { List, Map }
+import v2.std.diagnostic {
+  Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
+  None,
+  Outcome,
+  Rejected,
+  Some,
+  Unavailable,
+  bind_outcome,
+  node_locus
+}
+import v2.std.node { Node }
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates, Witness }
+
+fn bash_program_fold_facts_lookup(key: Node) -> Witness<InferredFacts> {
+  Violates {
+    diagnostic: Diagnostic {
+      reason: ^bash_program_fold_facts_unexpected_consultation,
+      at: node_locus(node: key),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    }
+  }
+}
+
+fn bash_program_fold_serialize_stmt(stmt: ShellStmt) -> Outcome<String> {
+  match bash_fold_stmt_emitted_witness(stmt: stmt) {
+    Holds { value: emitted } =>
+      match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
+        Holds { value: target } =>
+          match emit(
+            tree: InferredTree {
+              root: emitted,
+              facts: Map { lookup: bash_program_fold_facts_lookup }
+            },
+            target: target
+          ) {
+            Accepted { value: source, diagnostics: d } =>
+              match d {
+                None => Accepted { value: source.carried, diagnostics: None }
+                Some { diagnostics: r } => Rejected { diagnostics: r }
+              }
+            Rejected { diagnostics: r } => Rejected { diagnostics: r }
+          }
+        Violates { diagnostic: dd } => Rejected { diagnostics: Some { diagnostics: [dd] } }
+      }
+    Violates { diagnostic: dd } => Rejected { diagnostics: Some { diagnostics: [dd] } }
+  }
+}
+
+fn bash_program_serialize_body(stmts: List<ShellStmt>) -> Outcome<String> {
+  match list_head(xs: stmts) {
+    HeadAbsent => Accepted { value: "", diagnostics: None }
+    HeadFound { value: s } =>
+      bind_outcome(
+        o: bash_program_fold_serialize_stmt(stmt: s),
+        f: fn(part) {
+          match list_tail(xs: stmts) {
+            TailFound { tail: t } =>
+              bind_outcome(
+                o: bash_program_serialize_body(stmts: t),
+                f: fn(rest) {
+                  Accepted { value: concat(concat(part, "\n"), rest), diagnostics: None }
+                }
+              )
+            TailAbsent => Accepted { value: concat(part, "\n"), diagnostics: None }
+          }
+        }
+      )
+  }
+}
+
+fn bash_program_serialize(p: ShellProgram) -> Outcome<String> {
+  bind_outcome(
+    o: bash_program_serialize_body(stmts: p.statements),
+    f: fn(body) {
+      if p.set_e {
+        Accepted { value: concat("set -e\n", body), diagnostics: None }
+      } else {
+        Accepted { value: body, diagnostics: None }
+      }
+    }
+  )
+}
