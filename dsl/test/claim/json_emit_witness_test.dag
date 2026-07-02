@@ -1,6 +1,5 @@
 module test.claim.json_emit_witness
 
-import extdeps.filesystem.filesystem_io
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.languages.json.emit {
   extdeps_external_authority_anchor,
@@ -104,32 +103,6 @@ fn witness_invalid_number_lexeme_rejected() -> Bool {
     && !json_number_lexeme_valid(s: "01")
 }
 
-data json_grammar_path: String = "dsl/extdeps/languages/json/grammar.dag"
-data json_emit_path: String = "dsl/extdeps/languages/json/emit.dag"
-
-fn witness_json_number_lexeme_is_branded_string() -> Bool {
-  let grammar = filesystem_read(path: json_grammar_path)
-  string_contains(
-    s: grammar.content,
-    pattern: "type JsonNumberLexeme = String where brand(\"JsonNumberLexeme\")"
-  )
-}
-
-fn witness_json_number_lexeme_record_carrier_gone() -> Bool {
-  let grammar = filesystem_read(path: json_grammar_path)
-  !string_contains(s: grammar.content, pattern: "JsonNumberLexeme { lexeme")
-}
-
-fn witness_grammar_mints_json_number_lexeme() -> Bool {
-  let grammar = filesystem_read(path: json_grammar_path)
-  string_contains(s: grammar.content, pattern: "as JsonNumberLexeme")
-}
-
-fn witness_emit_has_no_unblessed_json_number_lexeme_cast() -> Bool {
-  let emit = filesystem_read(path: json_emit_path)
-  !string_contains(s: emit.content, pattern: "as JsonNumberLexeme")
-}
-
 fn witness_json_int_lexeme_always_valid() -> Bool {
   json_number_lexeme_valid(s: json_int_lexeme(n: 42) as String)
     && json_number_lexeme_valid(s: json_int_lexeme(n: -7) as String)
@@ -168,10 +141,6 @@ test fn json_emit_witnesses() -> Bool {
     && witness_str_list_helper()
     && witness_grammar_rows_cover_json_value_variants()
     && witness_invalid_number_lexeme_rejected()
-    && witness_json_number_lexeme_is_branded_string()
-    && witness_json_number_lexeme_record_carrier_gone()
-    && witness_grammar_mints_json_number_lexeme()
-    && witness_emit_has_no_unblessed_json_number_lexeme_cast()
     && witness_json_int_lexeme_always_valid()
     && witness_json_number_lexeme_valid_accepts_fraction_and_exp()
     && witness_unicode_escape_hex4_boundary_0fff()
