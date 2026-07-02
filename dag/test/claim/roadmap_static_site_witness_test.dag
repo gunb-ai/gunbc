@@ -85,7 +85,7 @@ fn witness_healthz_route_json_ok() -> Bool {
   witness_healthz_body_json_well_formed()
     && witness_healthz_perturbed_body_fails_well_formed()
     && witness_healthz_body_extra_brace_perturb_red()
-    && string_contains(s: body, pattern: "\"status\":\"ok\"")
+    && string_contains(s: body, pattern: "\"status\": \"ok\"")
     && string_contains(s: body, pattern: roadmap_site_roadmap_url_path)
     && string_contains(s: body, pattern: roadmap_site_dispatch_url_path)
     && roadmap_site_healthz_route().content_type == ApplicationJsonUtf8
