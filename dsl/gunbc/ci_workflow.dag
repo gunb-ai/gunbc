@@ -294,17 +294,18 @@ fn ci_deploy_jobs() -> List<Job> {
   map(gunbc_ci_deploy_stages, s => ci_deploy_job(stage: s))
 }
 
-// EMERGENCY ROLLBACK (2026-07-02): #6127 sharded compile-clean into ~1,605 per-module
-// `gunbc compile` subprocesses, each re-resolving its full import closure (sum-of-closures
-// ≈ 30.9x the monolith's CPU) and scheduled at width 1 because the width fold priced each
-// single-module shard against a stale whole-corpus 4.24GiB RSS sample vs the 8GiB cap. The
-// live regression was measured 8h57m wall / 8h07m CPU per job. Setting the modeled rollback
-// valve to "1" restores the whole-tree monolith compile-clean until v2 amortization (the
-// in-process shard resolve pool) makes sharding cheaper than the monolith.
-// AUTHORITY: v2.workflow.compile_clean_shard_roster.compile_clean_whole_tree_rollback_env
-// (kept as a matching literal here to avoid a src/v2 ← dsl cross-root import for a scaffold).
-// DISSOLVES with that authority's compile_clean_whole_tree_rollback_dissolution_trigger.
 data ci_compile_clean_whole_tree_rollback_env: NonEmptyStr = "GUNBC_CI_COMPILE_CLEAN_WHOLE_TREE"
+
+data ci_compile_clean_rollback_dissolution_trigger: String = "EMERGENCY ROLLBACK (2026-07-02): #6127 sharded compile-clean into ~1,605 per-module `gunbc compile` subprocesses, each re-resolving its full import closure (sum-of-closures ~30.9x the monolith CPU), scheduled at width 1 because the width fold priced each single-module shard against a stale whole-corpus 4.24GiB RSS sample vs the 8GiB cap. Live regression measured 8h57m wall / 8h07m CPU per job; pre-regression monolith green runs were 28-96min. This valve set to '1' restores the whole-tree monolith compile-clean. AUTHORITY = v2.workflow.compile_clean_shard_roster.compile_clean_whole_tree_rollback_env (matching literal kept here to avoid a src/v2 <- dsl cross-root import for a scaffold). DISSOLVES with that authority's compile_clean_whole_tree_rollback_dissolution_trigger — removed once the in-process shard resolve pool makes sharding cheaper than the monolith."
+
+data ci_compile_clean_rollback_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_workflow",
+    decl_name: "ci_compile_clean_rollback_job_env",
+    field: WholeDeclaration
+  }
+}
 
 fn ci_compile_clean_rollback_job_env() -> List<YamlKeyValue> {
   [kv(key: ci_compile_clean_whole_tree_rollback_env as String, value: yaml_string(s: "1"))]

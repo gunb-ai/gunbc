@@ -97,6 +97,8 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main
           "$ROOT/target/release/gunbc" run --source-root dsl --source-root src/v2 --entry dsl/tools/merge_admission_gate.dag --function main
+    env:
+      GUNBC_CI_COMPILE_CLEAN_WHOLE_TREE: 1
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 30
