@@ -1,0 +1,128 @@
+module test.claim.resource_namespace_upsert
+
+import std.types { Bool, NonEmptyStr }
+import std.resource_namespace {
+  FileNamespace,
+  ProcessNamespace,
+  ProcessPortObservation,
+  PortOwnedForeign,
+  PortOwnedExpected,
+  PortAbsent,
+  FileAccessObservation,
+  PathOutsideNamespace,
+  ReadOnlyWithinNamespace,
+  WritableWithinNamespace,
+  SeededArtifactProbeObservation,
+  ArtifactStale,
+  ArtifactConverged,
+  ArtifactAbsent,
+  ResourceNamespaceVerdict,
+  ResourceNamespacePlan,
+  ResourceNamespaceClassification,
+  Conflict,
+  Converged,
+  Stale,
+  Absent,
+  Refuse,
+  UpsertAccess,
+  Noop,
+  Create,
+  DrainThenStart,
+  classify_process_port_upsert,
+  classify_file_access_upsert,
+  classify_seeded_artifact_upsert,
+  classify_seeded_artifact_presence,
+  seeded_artifact_converged_is_not_stale,
+  seeded_artifact_stale_is_not_converged,
+  path_within_file_namespace,
+  resource_namespace_verdict_eq,
+  resource_namespace_plan_eq,
+}
+
+data srv3_nbd_proxy_port: Int = 10809
+
+data remaster_work_namespace: FileNamespace = FileNamespace {
+  root_path: "/tmp/gunbc-remaster-work" as NonEmptyStr,
+}
+
+test fn foreign_process_on_10809_is_conflict_not_kill() -> Bool {
+  let ns = ProcessNamespace {
+    listen_port: srv3_nbd_proxy_port,
+    expected_owner_label: "gunbc-nbd-proxy" as NonEmptyStr,
+  }
+  let obs = PortOwnedForeign {
+    pid: 424242,
+    cmdline: "foreign-nbdkit" as NonEmptyStr,
+  }
+  let c = classify_process_port_upsert(ns: ns, obs: obs)
+  resource_namespace_verdict_eq(a: c.verdict, b: Conflict)
+    && resource_namespace_plan_eq(a: c.plan, b: Refuse)
+    && !resource_namespace_plan_eq(a: c.plan, b: DrainThenStart)
+}
+
+test fn expected_process_on_10809_is_converged_noop() -> Bool {
+  let ns = ProcessNamespace {
+    listen_port: srv3_nbd_proxy_port,
+    expected_owner_label: "gunbc-nbd-proxy" as NonEmptyStr,
+  }
+  let obs = PortOwnedExpected { pid: 12345 }
+  let c = classify_process_port_upsert(ns: ns, obs: obs)
+  resource_namespace_verdict_eq(a: c.verdict, b: Converged)
+    && resource_namespace_plan_eq(a: c.plan, b: Noop)
+}
+
+test fn outside_namespace_chmod_is_refused() -> Bool {
+  let ns = remaster_work_namespace
+  let outside = "/etc/passwd" as NonEmptyStr
+  !path_within_file_namespace(ns: ns, path: outside)
+    && match classify_file_access_upsert(ns: ns, obs: PathOutsideNamespace) {
+      ResourceNamespaceClassification { verdict: _, plan: p } =>
+        resource_namespace_plan_eq(a: p, b: Refuse)
+    }
+}
+
+test fn readonly_within_namespace_plans_upsert_access() -> Bool {
+  let ns = remaster_work_namespace
+  let c = classify_file_access_upsert(ns: ns, obs: ReadOnlyWithinNamespace)
+  resource_namespace_verdict_eq(a: c.verdict, b: Stale)
+    && resource_namespace_plan_eq(a: c.plan, b: UpsertAccess)
+}
+
+test fn writable_within_namespace_is_converged_noop() -> Bool {
+  let ns = remaster_work_namespace
+  let c = classify_file_access_upsert(ns: ns, obs: WritableWithinNamespace)
+  resource_namespace_verdict_eq(a: c.verdict, b: Converged)
+    && resource_namespace_plan_eq(a: c.plan, b: Noop)
+}
+
+test fn stale_seeded_iso_is_stale_not_already_present() -> Bool {
+  seeded_artifact_stale_is_not_converged()
+    && seeded_artifact_converged_is_not_stale()
+    && resource_namespace_verdict_eq(
+      a: classify_seeded_artifact_presence(obs: ArtifactStale),
+      b: Stale,
+    )
+    && !resource_namespace_verdict_eq(
+      a: classify_seeded_artifact_presence(obs: ArtifactStale),
+      b: Converged,
+    )
+}
+
+test fn converged_seeded_iso_is_not_stale() -> Bool {
+  resource_namespace_verdict_eq(
+    a: classify_seeded_artifact_presence(obs: ArtifactConverged),
+    b: Converged,
+  )
+    && match classify_seeded_artifact_upsert(obs: ArtifactConverged) {
+      ResourceNamespaceClassification { verdict: _, plan: p } =>
+        resource_namespace_plan_eq(a: p, b: Noop)
+    }
+}
+
+test fn absent_seeded_iso_plans_create() -> Bool {
+  match classify_seeded_artifact_upsert(obs: ArtifactAbsent) {
+    ResourceNamespaceClassification { verdict: v, plan: p } =>
+      resource_namespace_verdict_eq(a: v, b: Absent)
+        && resource_namespace_plan_eq(a: p, b: Create)
+  }
+}
