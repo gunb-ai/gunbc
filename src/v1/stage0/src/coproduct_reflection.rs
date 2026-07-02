@@ -1,7 +1,10 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::v1_compiler_infer_items::ItemKind;
+use crate::cli_run::{collect_dag_files_tolerant, is_test_dag, repo_rel, workspace_root};
+use crate::module_path_index::medium_structure_census::parse_dag_file;
+use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
     fields_get, sorted_fields, InterpContext, InterpError, InterpResult, Value,
 };
@@ -1279,6 +1282,145 @@ pub fn eval_data_init_decl_facts_live(
                 ])),
             });
         }
+    }
+    Ok(crate::v1_interpreter::list_value(rows))
+}
+
+type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
+
+/// Locked whole-tree declaration-fact carrier (neat-fox-279 / #5966 follow-up).
+#[derive(Debug, Clone)]
+pub struct DeclFactRaw {
+    pub qualified_name: String,
+    pub name: String,
+    pub kind: ItemKind,
+    pub node: Rc<Node>,
+    pub rel_path: String,
+    pub source_indices: SourceIndices,
+}
+
+fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
+    let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
+    if logical.is_empty() {
+        name.to_string()
+    } else {
+        format!("{logical}.{name}")
+    }
+}
+
+fn extract_module_path_from_content(content: &str) -> Option<String> {
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("module ") {
+            return Some(trimmed["module ".len()..].trim().to_string());
+        }
+        if !trimmed.is_empty() && !trimmed.starts_with("//") {
+            break;
+        }
+    }
+    None
+}
+
+fn corpus_dag_files_for_roots(roots: &[String]) -> Vec<PathBuf> {
+    let ws = workspace_root();
+    let mut files = Vec::new();
+    for root in roots {
+        let root_path = ws.join(root);
+        if root_path.is_dir() {
+            collect_dag_files_tolerant(&root_path, &mut files);
+        }
+    }
+    files.sort();
+    files
+}
+
+pub fn decl_facts_is_fn_like(kind: ItemKind) -> bool {
+    matches!(kind, ItemKind::FnItem | ItemKind::FuncItem)
+}
+
+/// Parse-only whole-tree `decl_facts(roots)` substrate — shared by host builtin and emit audits.
+pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
+    let mut out = Vec::new();
+    for file in corpus_dag_files_for_roots(pool_roots) {
+        let rel = repo_rel(&file);
+        if is_test_dag(&rel) {
+            continue;
+        }
+        let content = std::fs::read_to_string(&file).ok();
+        let module_path = content
+            .as_ref()
+            .and_then(extract_module_path_from_content)
+            .unwrap_or_default();
+        let Some(parsed) = parse_dag_file(&file) else {
+            continue;
+        };
+        let si = parsed.source_indices;
+        for item in parsed.items.iter() {
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            let kind = item_kind(item.clone());
+            out.push(DeclFactRaw {
+                qualified_name: decl_logical_qualified_name(&module_path, &name),
+                name,
+                kind,
+                node: item.clone(),
+                rel_path: rel.clone(),
+                source_indices: si.clone(),
+            });
+        }
+    }
+    out.sort_by(|a, b| {
+        (&a.rel_path, &a.name, format!("{:?}", a.kind)).cmp(&(
+            &b.rel_path,
+            &b.name,
+            format!("{:?}", b.kind),
+        ))
+    });
+    out
+}
+
+fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
+    let variant = match kind {
+        ItemKind::FnItem => "FnItem",
+        ItemKind::FuncItem => "FuncItem",
+        ItemKind::TypeItem => "TypeItem",
+        ItemKind::DataItem => "DataItem",
+        ItemKind::ServiceItem => "ServiceItem",
+        ItemKind::OtherItem => "OtherItem",
+    };
+    Value::Variant {
+        type_name: ctx.sym("DeclItemKind"),
+        variant_name: ctx.sym(variant),
+        fields: Rc::new(vec![]),
+    }
+}
+
+fn marshal_decl_fact_node(ctx: &InterpContext, item_name: &str) -> Value {
+    atom_identity_node(ctx, item_name)
+}
+
+pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
+    let facts = decl_facts_for_roots(pool_roots);
+    let mut rows = Vec::with_capacity(facts.len());
+    for fact in facts {
+        rows.push(Value::Record {
+            type_name: ctx.sym("DeclFact"),
+            fields: Rc::new(sorted_fields(vec![
+                (
+                    ctx.sym("qualified_name"),
+                    Value::Str(fact.qualified_name),
+                ),
+                (ctx.sym("name"), Value::Str(fact.name)),
+                (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
+                (
+                    ctx.sym("node"),
+                    marshal_decl_fact_node(ctx, &fact.name),
+                ),
+                (ctx.sym("rel_path"), Value::Str(fact.rel_path)),
+            ])),
+        });
     }
     Ok(crate::v1_interpreter::list_value(rows))
 }
