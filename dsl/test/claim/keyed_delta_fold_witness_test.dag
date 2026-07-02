@@ -1,0 +1,570 @@
+module test.claim.keyed_delta_fold_witness
+
+import std.types { Bool, String, List }
+import std.change {
+  KeyedRow,
+  KeyedPatch,
+  KeyedLeafVerdict,
+  KeyedApplyHunk,
+  KeyedVerdictAdded,
+  KeyedVerdictRemoved,
+  KeyedConflict,
+  KeyedUnchanged,
+  keyed_three_way_leaf,
+  keyed_two_way_diff,
+  keyed_three_way_fold,
+  keyed_apply_two_way_diff,
+  keyed_retract_two_way_diff,
+  keyed_apply_patch,
+  keyed_invert_patch,
+  keyed_patch_empty,
+  keyed_patch_append,
+  keyed_patch_singleton,
+  keyed_patch_monoid,
+  keyed_patch_fold,
+  keyed_three_way_patch_empty,
+  keyed_three_way_patch_monoid,
+  keyed_three_way_patch_singleton,
+  keyed_leaf_verdict_join,
+  keyed_patches_equal,
+  keyed_rows_snapshot_equal,
+  keyed_patch_hunk_count,
+}
+
+type FixtureVal {
+  payload: String
+}
+
+fn fixture_val(payload: String) -> FixtureVal {
+  FixtureVal { payload: payload }
+}
+
+fn fixture_val_eq(a: FixtureVal, b: FixtureVal) -> Bool {
+  a.payload == b.payload
+}
+
+fn fixture_key_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn fixture_row(label: String, payload: String) -> KeyedRow<String, FixtureVal> {
+  KeyedRow { row_key: label, value: fixture_val(payload: payload) }
+}
+
+fn fixture_rows_a() -> List<KeyedRow<String, FixtureVal>> {
+  [
+    fixture_row(label: "alpha", payload: "one"),
+    fixture_row(label: "beta", payload: "two"),
+  ]
+}
+
+fn fixture_rows_b() -> List<KeyedRow<String, FixtureVal>> {
+  [
+    fixture_row(label: "alpha", payload: "one"),
+    fixture_row(label: "beta", payload: "three"),
+  ]
+}
+
+fn fixture_rows_reordered_b() -> List<KeyedRow<String, FixtureVal>> {
+  [
+    fixture_row(label: "beta", payload: "three"),
+    fixture_row(label: "alpha", payload: "one"),
+  ]
+}
+
+fn fixture_rows_added() -> List<KeyedRow<String, FixtureVal>> {
+  concat(
+    fixture_rows_a(),
+    [fixture_row(label: "gamma", payload: "new")]
+  )
+}
+
+fn fixture_rows_removed() -> List<KeyedRow<String, FixtureVal>> {
+  [fixture_row(label: "alpha", payload: "one")]
+}
+
+fn fixture_modified_hunk() -> KeyedPatch<String, FixtureVal> {
+  keyed_two_way_diff(
+    left: fixture_rows_a(),
+    right: fixture_rows_b(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn fixture_added_hunk() -> KeyedPatch<String, FixtureVal> {
+  keyed_two_way_diff(
+    left: fixture_rows_a(),
+    right: fixture_rows_added(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn fixture_removed_hunk() -> KeyedPatch<String, FixtureVal> {
+  keyed_two_way_diff(
+    left: fixture_rows_a(),
+    right: fixture_rows_removed(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_patch_monoid_left_identity() -> Bool {
+  let monoid = keyed_patch_monoid()
+  keyed_patches_equal(
+    left: keyed_patch_append(left: monoid.identity, right: fixture_modified_hunk()),
+    right: fixture_modified_hunk(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_patch_monoid_right_identity() -> Bool {
+  let monoid = keyed_patch_monoid()
+  keyed_patches_equal(
+    left: keyed_patch_append(left: fixture_modified_hunk(), right: monoid.identity),
+    right: fixture_modified_hunk(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_patch_monoid_associativity() -> Bool {
+  let a = fixture_modified_hunk()
+  let b = fixture_added_hunk()
+  let c = fixture_removed_hunk()
+  keyed_patches_equal(
+    left: keyed_patch_append(left: keyed_patch_append(left: a, right: b), right: c),
+    right: keyed_patch_append(left: a, right: keyed_patch_append(left: b, right: c)),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_patch_fold_matches_diff() -> Bool {
+  keyed_patches_equal(
+    left: keyed_patch_fold(
+      contributions: [
+        keyed_two_way_diff(
+          left: fixture_rows_a(),
+          right: fixture_rows_b(),
+          key_eq: fixture_key_eq,
+          value_eq: fixture_val_eq,
+        ),
+      ],
+    ),
+    right: keyed_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_b(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_three_way_patch_monoid_identity() -> Bool {
+  let monoid = keyed_three_way_patch_monoid(key_eq: fixture_key_eq, value_eq: fixture_val_eq)
+  let patch = keyed_three_way_fold(
+    base: fixture_rows_a(),
+    observed: fixture_rows_a(),
+    desired: fixture_rows_b(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+  list_length(items: keyed_three_way_patch_append(
+    left: monoid.identity,
+    right: patch,
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  ).entries) == list_length(items: patch.entries)
+}
+
+fn witness_leaf_verdict_join_bottom() -> Bool {
+  match keyed_leaf_verdict_join(
+    a: KeyedUnchanged,
+    b: KeyedUnchanged,
+    equal: fixture_val_eq,
+  ) {
+    KeyedUnchanged => true
+    _ => false
+  }
+    && match keyed_leaf_verdict_join(
+      a: KeyedUnchanged,
+      b: KeyedApplyHunk {
+        from: fixture_val(payload: "a"),
+        to: fixture_val(payload: "b"),
+      },
+      equal: fixture_val_eq,
+    ) {
+      KeyedApplyHunk { from: f, to: t } =>
+        f.payload == "a" && t.payload == "b"
+      _ => false
+    }
+    && match keyed_leaf_verdict_join(
+      a: KeyedApplyHunk {
+        from: fixture_val(payload: "a"),
+        to: fixture_val(payload: "b"),
+      },
+      b: KeyedUnchanged,
+      equal: fixture_val_eq,
+    ) {
+      KeyedApplyHunk { from: f, to: t } =>
+        f.payload == "a" && t.payload == "b"
+      _ => false
+    }
+}
+
+fn witness_leaf_verdict_join_added_idempotent() -> Bool {
+  let added = fixture_verdict_added(label: "new")
+  match keyed_leaf_verdict_join(a: added, b: added, equal: fixture_val_eq) {
+    KeyedVerdictAdded { value: v } => v.payload == "new"
+    _ => false
+  }
+}
+
+fn witness_leaf_verdict_join_removed_idempotent() -> Bool {
+  let removed = fixture_verdict_removed(label: "old")
+  match keyed_leaf_verdict_join(a: removed, b: removed, equal: fixture_val_eq) {
+    KeyedVerdictRemoved { value: v } => v.payload == "old"
+    _ => false
+  }
+}
+
+fn witness_leaf_verdict_join_added_disagree_is_conflict() -> Bool {
+  match keyed_leaf_verdict_join(
+    a: fixture_verdict_added(label: "one"),
+    b: fixture_verdict_added(label: "two"),
+    equal: fixture_val_eq,
+  ) {
+    KeyedConflict => true
+    _ => false
+  }
+}
+
+fn witness_diff_identity_law() -> Bool {
+  keyed_patches_equal(
+    left: keyed_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_a(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    right: keyed_patch_empty(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_apply_diff_law_modified() -> Bool {
+  keyed_rows_snapshot_equal(
+    left: keyed_apply_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_b(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    right: fixture_rows_b(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_apply_added_is_upsert() -> Bool {
+  let patch = fixture_added_hunk()
+  let once = keyed_apply_patch(
+    rows: fixture_rows_a(),
+    patch: patch,
+    key_eq: fixture_key_eq,
+  )
+  let twice = keyed_apply_patch(
+    rows: once,
+    patch: patch,
+    key_eq: fixture_key_eq,
+  )
+  list_length(items: once) == list_length(items: twice)
+    && keyed_rows_snapshot_equal(
+      left: once,
+      right: twice,
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    )
+}
+
+fn witness_apply_diff_law_added() -> Bool {
+  keyed_rows_snapshot_equal(
+    left: keyed_apply_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_added(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    right: fixture_rows_added(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_apply_diff_law_removed() -> Bool {
+  keyed_rows_snapshot_equal(
+    left: keyed_apply_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_removed(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    right: fixture_rows_removed(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_inverse_retract_law_modified() -> Bool {
+  keyed_rows_snapshot_equal(
+    left: keyed_retract_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_b(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    right: fixture_rows_a(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_inverse_retract_law_added() -> Bool {
+  keyed_rows_snapshot_equal(
+    left: keyed_retract_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_added(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    right: fixture_rows_a(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_inverse_retract_law_removed() -> Bool {
+  keyed_rows_snapshot_equal(
+    left: keyed_retract_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_removed(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    right: fixture_rows_a(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_unchanged_rows_emit_no_hunk() -> Bool {
+  keyed_patch_hunk_count(
+    patch: keyed_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_a(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+  ) == 0
+}
+
+fn witness_reorder_invariance() -> Bool {
+  keyed_patches_equal(
+    left: keyed_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_b(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    right: keyed_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_reordered_b(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+}
+
+fn witness_added_hunk() -> Bool {
+  let patch = fixture_added_hunk()
+  keyed_patch_hunk_count(patch: patch) == 1
+    && fold(patch.hunks, init: false, f: fn(found, hunk) {
+      found || match hunk {
+        KeyedDiffAddedHunk { hunk_key: k, to: _ } => k == "gamma"
+        _ => false
+      }
+    })
+}
+
+fn witness_removed_hunk() -> Bool {
+  let patch = fixture_removed_hunk()
+  keyed_patch_hunk_count(patch: patch) == 1
+    && fold(patch.hunks, init: false, f: fn(found, hunk) {
+      found || match hunk {
+        KeyedDiffRemovedHunk { hunk_key: k, from: _ } => k == "beta"
+        _ => false
+      }
+    })
+}
+
+fn witness_modified_hunk() -> Bool {
+  let patch = fixture_modified_hunk()
+  keyed_patch_hunk_count(patch: patch) == 1
+    && fold(patch.hunks, init: false, f: fn(found, hunk) {
+      found || match hunk {
+        KeyedDiffModifiedHunk { hunk_key: k, from: _, to: _ } => k == "beta"
+        _ => false
+      }
+    })
+}
+
+fn witness_three_way_apply_hunk() -> Bool {
+  match keyed_three_way_leaf(
+    base: fixture_val(payload: "one"),
+    observed: fixture_val(payload: "one"),
+    desired: fixture_val(payload: "two"),
+    equal: fixture_val_eq,
+  ) {
+    KeyedApplyHunk { from: f, to: t } =>
+      f.payload == "one" && t.payload == "two"
+    _ => false
+  }
+}
+
+fn witness_three_way_noop() -> Bool {
+  match keyed_three_way_leaf(
+    base: fixture_val(payload: "one"),
+    observed: fixture_val(payload: "two"),
+    desired: fixture_val(payload: "two"),
+    equal: fixture_val_eq,
+  ) {
+    KeyedUnchanged => true
+    _ => false
+  }
+}
+
+fn witness_three_way_conflict() -> Bool {
+  match keyed_three_way_leaf(
+    base: fixture_val(payload: "one"),
+    observed: fixture_val(payload: "drift"),
+    desired: fixture_val(payload: "two"),
+    equal: fixture_val_eq,
+  ) {
+    KeyedConflict => true
+    KeyedApplyHunk { from: _, to: _ } => false
+    KeyedVerdictAdded { value: _ } => false
+    KeyedVerdictRemoved { value: _ } => false
+    KeyedUnchanged => false
+  }
+}
+
+fn witness_conflict_has_no_mutation_arm() -> Bool {
+  let blocked = KeyedConflict
+  match blocked {
+    KeyedConflict => true
+    KeyedUnchanged => false
+    KeyedApplyHunk { from: _, to: _ } => false
+    KeyedVerdictAdded { value: _ } => false
+    KeyedVerdictRemoved { value: _ } => false
+  }
+}
+
+fn fixture_apply_verdict(from_label: String, to_label: String) -> KeyedLeafVerdict<FixtureVal> {
+  KeyedApplyHunk {
+    from: fixture_val(payload: from_label),
+    to: fixture_val(payload: to_label),
+  }
+}
+
+fn witness_apply_verdict_has_mutation_arm() -> Bool {
+  match fixture_apply_verdict(from_label: "a", to_label: "b") {
+    KeyedApplyHunk { from: f, to: t } =>
+      f.payload == "a" && t.payload == "b"
+    _ => false
+  }
+}
+
+fn fixture_verdict_added(label: String) -> KeyedLeafVerdict<FixtureVal> {
+  KeyedVerdictAdded { value: fixture_val(payload: label) }
+}
+
+fn fixture_verdict_removed(label: String) -> KeyedLeafVerdict<FixtureVal> {
+  KeyedVerdictRemoved { value: fixture_val(payload: label) }
+}
+
+fn witness_verdict_add_is_not_remove() -> Bool {
+  match fixture_verdict_added(label: "new") {
+    KeyedVerdictAdded { value: v } => v.payload == "new"
+    _ => false
+  }
+    && match fixture_verdict_removed(label: "old") {
+      KeyedVerdictRemoved { value: v } => v.payload == "old"
+      _ => false
+    }
+}
+
+fn witness_three_way_fold_omits_unchanged() -> Bool {
+  let patch = keyed_three_way_fold(
+    base: fixture_rows_a(),
+    observed: fixture_rows_a(),
+    desired: fixture_rows_b(),
+    key_eq: fixture_key_eq,
+    value_eq: fixture_val_eq,
+  )
+  list_length(items: patch.entries) == 1
+    && fold(patch.entries, init: false, f: fn(found, entry) {
+      found || entry.entry_key == "beta"
+    })
+}
+
+fn witness_identity_law_red_control() -> Bool {
+  keyed_patch_hunk_count(
+    patch: keyed_two_way_diff(
+      left: fixture_rows_a(),
+      right: fixture_rows_b(),
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    ),
+  ) != 0
+}
+
+test fn keyed_delta_fold_keystone_holds() -> Bool {
+  witness_patch_monoid_left_identity()
+    && witness_patch_monoid_right_identity()
+    && witness_patch_monoid_associativity()
+    && witness_patch_fold_matches_diff()
+    && witness_three_way_patch_monoid_identity()
+    && witness_leaf_verdict_join_bottom()
+    && witness_leaf_verdict_join_added_idempotent()
+    && witness_leaf_verdict_join_removed_idempotent()
+    && witness_leaf_verdict_join_added_disagree_is_conflict()
+    && witness_diff_identity_law()
+    && witness_apply_diff_law_modified()
+    && witness_apply_added_is_upsert()
+    && witness_apply_diff_law_added()
+    && witness_apply_diff_law_removed()
+    && witness_inverse_retract_law_modified()
+    && witness_inverse_retract_law_added()
+    && witness_inverse_retract_law_removed()
+    && witness_unchanged_rows_emit_no_hunk()
+    && witness_reorder_invariance()
+    && witness_added_hunk()
+    && witness_removed_hunk()
+    && witness_modified_hunk()
+    && witness_three_way_apply_hunk()
+    && witness_three_way_noop()
+    && witness_three_way_conflict()
+    && witness_conflict_has_no_mutation_arm()
+    && witness_apply_verdict_has_mutation_arm()
+    && witness_verdict_add_is_not_remove()
+    && witness_three_way_fold_omits_unchanged()
+    && witness_identity_law_red_control()
+}

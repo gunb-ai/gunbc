@@ -1,0 +1,141 @@
+module gunbc.host_converge_delta
+
+import std.types { String, List, Bool }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.change {
+  KeyedRow,
+  KeyedPatch,
+  KeyedThreeWayPatch,
+  KeyedLeafVerdict,
+  keyed_two_way_diff,
+  keyed_three_way_fold,
+  keyed_apply_patch,
+  keyed_invert_patch,
+  keyed_patch_hunk_count,
+  keyed_three_way_entry_count,
+}
+import gunbc.host_converge {
+  ConvergeKnob,
+  ConvergeSlice,
+  ConvergeTarget,
+  HostConverge,
+}
+
+data gunbc_converge_knob_semantics_marker: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.host_converge_delta",
+    decl_name: "converge_knob_values_equal",
+    field: WholeDeclaration,
+  }
+}
+
+data converge_knob_values_equal_dissolution_trigger: String = "🟡 dissolve-on: converge_knob_values_equal — row equality compares desired string only (ignores slice/name/target payload axes on ConvergeKnob); DISSOLVES WHEN per-target normalization grounds full knob snapshot equality in a single converge_knob_semantics authority, retiring this string-equality leaf."
+
+type ConvergeKnobKey {
+  slice: ConvergeSlice
+  name: String
+}
+
+fn converge_knob_key(knob: ConvergeKnob) -> ConvergeKnobKey {
+  ConvergeKnobKey { slice: knob.slice, name: knob.name }
+}
+
+fn converge_knob_keys_equal(a: ConvergeKnobKey, b: ConvergeKnobKey) -> Bool {
+  a.slice == b.slice && a.name == b.name
+}
+
+fn converge_knob_values_equal(a: ConvergeKnob, b: ConvergeKnob) -> Bool {
+  a.desired == b.desired
+}
+
+fn converge_knob_row(knob: ConvergeKnob) -> KeyedRow<ConvergeKnobKey, ConvergeKnob> {
+  KeyedRow { row_key: converge_knob_key(knob: knob), value: knob }
+}
+
+fn converge_knobs_to_rows(knobs: List<ConvergeKnob>) -> List<KeyedRow<ConvergeKnobKey, ConvergeKnob>> {
+  fold(knobs, init: [], f: fn(acc, knob) { concat(acc, [converge_knob_row(knob: knob)]) })
+}
+
+fn host_converge_knobs(h: HostConverge) -> List<ConvergeKnob> {
+  h.knobs
+}
+
+fn host_converge_two_way_diff(
+  left: List<ConvergeKnob>,
+  right: List<ConvergeKnob>,
+) -> KeyedPatch<ConvergeKnobKey, ConvergeKnob> {
+  keyed_two_way_diff(
+    left: converge_knobs_to_rows(knobs: left),
+    right: converge_knobs_to_rows(knobs: right),
+    key_eq: converge_knob_keys_equal,
+    value_eq: converge_knob_values_equal,
+  )
+}
+
+fn host_converge_three_way_patch(
+  base: List<ConvergeKnob>,
+  observed: List<ConvergeKnob>,
+  desired: List<ConvergeKnob>,
+) -> KeyedThreeWayPatch<ConvergeKnobKey, ConvergeKnob> {
+  keyed_three_way_fold(
+    base: converge_knobs_to_rows(knobs: base),
+    observed: converge_knobs_to_rows(knobs: observed),
+    desired: converge_knobs_to_rows(knobs: desired),
+    key_eq: converge_knob_keys_equal,
+    value_eq: converge_knob_values_equal,
+  )
+}
+
+fn host_converge_apply_patch(
+  base: List<ConvergeKnob>,
+  patch: KeyedPatch<ConvergeKnobKey, ConvergeKnob>,
+) -> List<ConvergeKnob> {
+  let rows = keyed_apply_patch(
+    rows: converge_knobs_to_rows(knobs: base),
+    patch: patch,
+    key_eq: converge_knob_keys_equal,
+  )
+  fold(rows, init: [], f: fn(acc, row) { concat(acc, [row.value]) })
+}
+
+fn host_converge_invert_patch(
+  patch: KeyedPatch<ConvergeKnobKey, ConvergeKnob>,
+) -> KeyedPatch<ConvergeKnobKey, ConvergeKnob> {
+  keyed_invert_patch(patch: patch)
+}
+
+fn host_converge_patch_hunk_count(
+  patch: KeyedPatch<ConvergeKnobKey, ConvergeKnob>,
+) -> Int {
+  keyed_patch_hunk_count(patch: patch)
+}
+
+fn host_converge_three_way_entry_count(
+  patch: KeyedThreeWayPatch<ConvergeKnobKey, ConvergeKnob>,
+) -> Int {
+  keyed_three_way_entry_count(patch: patch)
+}
+
+fn host_converge_knob_in_patch(
+  patch: KeyedThreeWayPatch<ConvergeKnobKey, ConvergeKnob>,
+  key: ConvergeKnobKey,
+) -> Bool {
+  fold(patch.entries, init: false, f: fn(acc, entry) {
+    acc || converge_knob_keys_equal(a: entry.entry_key, b: key)
+  })
+}
+
+fn host_converge_knob_verdict(
+  patch: KeyedThreeWayPatch<ConvergeKnobKey, ConvergeKnob>,
+  key: ConvergeKnobKey,
+) -> KeyedLeafVerdict<ConvergeKnob>? {
+  fold(patch.entries, init: none, f: fn(acc, entry) {
+    if converge_knob_keys_equal(a: entry.entry_key, b: key) {
+      Present { value: entry.verdict }
+    } else {
+      acc
+    }
+  })
+}
