@@ -6,6 +6,8 @@ import extdeps.languages.yaml.types {
   kv
 }
 
+data yaml_ingest_reconciliation_scaffold: String = "scaffold: this ingest is a hand-written recursive-descent parser sharing the YamlValue IR with emit.dag but not yet emit's spelling rows read backward (DESIGN §4 one-grammar-both-directions is not yet realized for YAML — ingest selects productions forward, emit selects the same rows backward, in FormalProduction/TargetModel form). Interim guard: the round-trip witnesses in dsl/test/claim/yaml_ingest_witness_test.dag (ingest o emit = id, including the real committed ci.yml) catch drift between the two hand-written halves. dissolve-on: YAML gains v2 grammar-inverse rows (FormalProduction/TargetModel, analogous to json_emit_fold_dissolution_trigger in dsl/extdeps/languages/json/grammar.dag) wired through 06_translate, at which point this hand-written ingest/emit pair is replaced by one row-driven fold read in both directions"
+
 type YamlIngestResult
   = IngestedYaml { value: YamlValue }
   | YamlIngestRejected { reason: String }
