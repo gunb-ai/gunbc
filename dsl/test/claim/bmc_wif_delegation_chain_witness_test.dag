@@ -25,6 +25,7 @@ import gunbc.assimilate.bmc_wif_delegation_chain {
   bound_secret_read_capabilities
 }
 import gunbc.auth.secret_access_grant { grant_is_signed }
+import gunbc.auth.secret_ref_credential { secret_ref_credential_authority }
 import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource, secret_ref_hash_known }
 
 fn step_is(step: CredentialDelegationStep, tag: String) -> Bool {
@@ -122,6 +123,11 @@ test fn main_ci_workflow_grants_no_id_token() -> Bool {
     Present { value: perms } => match perms.id_token { Absent => true, _ => false }
     Absent => true
   }
+}
+
+test fn secret_ref_login_handler_added_beside_factory_login_not_over_it() -> Bool {
+  secret_ref_credential_authority.module_path == "gunbc.auth.secret_ref_credential"
+    && secret_ref_credential_authority.decl_name == "secret_ref_credential"
 }
 
 test fn bmc_smoke_workflow_scopes_id_token_write_to_its_single_designated_job() -> Bool {
