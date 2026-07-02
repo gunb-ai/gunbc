@@ -1,17 +1,7 @@
 module extdeps.router.verizon_cr1000a
 
-import std.types { NonEmptyStr, String, Int, List, Bool }
-import extdeps.router.types {
-  DhcpLeaseKind,
-  DhcpLeaseName,
-  DhcpOption12ClientHostname,
-  DhcpReservationLabel,
-  DynamicLease,
-  StaticReservation,
-  DynamicLeaseClientName,
-  StaticReservationLabel,
-  dhcp_lease_name_matches_kind,
-}
+import std.types { NonEmptyStr, String, List }
+import extdeps.router.types { DhcpLeaseObservation }
 import extdeps.vendor.verizon { verizon }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -39,28 +29,11 @@ data cr1000a_catalog: Cr1000aRouterCatalogRow = Cr1000aRouterCatalogRow {
 type Cr1000aDhcpLeaseRow {
   mac_address: String
   ipv4_address: String
-  lease_kind: DhcpLeaseKind
-  name: DhcpLeaseName
-  lease_time_remaining_minutes: Int?
+  lease: DhcpLeaseObservation
 }
 
 type Cr1000aDhcpLeaseTable {
   rows: List<Cr1000aDhcpLeaseRow>
-}
-
-fn cr1000a_dhcp_lease_row_is_well_formed(row: Cr1000aDhcpLeaseRow) -> Bool {
-  if !dhcp_lease_name_matches_kind(name: row.name, kind: row.lease_kind) {
-    false
-  } else {
-    match row.lease_kind {
-      DynamicLease => true
-      StaticReservation =>
-        match row.lease_time_remaining_minutes {
-          Absent => true
-          Present { value: _ } => false
-        }
-    }
-  }
 }
 
 data dissolve_on_cr1000a_lease_row_address_strings: List<String> = [
