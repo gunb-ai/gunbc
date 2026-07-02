@@ -1335,14 +1335,30 @@ fn corpus_dag_files_for_roots(roots: &[String]) -> Vec<PathBuf> {
     files
 }
 
+/// Whole-tree declaration-fact walk with corpus file counters (parse-only, non-test boundary).
+#[derive(Debug, Clone)]
+pub struct DeclFactsCorpusWalk {
+    pub facts: Vec<DeclFactRaw>,
+    /// Non-test `.dag` files visited (includes unparseable and zero-decl files).
+    pub files_scanned: usize,
+    /// Subset of `files_scanned` that parsed successfully.
+    pub files_parsed: usize,
+}
+
 /// Parse-only whole-tree `decl_facts(roots)` substrate — shared by host builtin and emit audits.
-pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
+///
+/// Preserves the non-test corpus boundary for emit-only audits: `is_test_dag(rel)` skips
+/// before any `DeclFactRaw` row is materialized (same exclusion as the pre-#6158 walk).
+pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     let mut out = Vec::new();
+    let mut files_scanned = 0usize;
+    let mut files_parsed = 0usize;
     for file in corpus_dag_files_for_roots(pool_roots) {
         let rel = repo_rel(&file);
         if is_test_dag(&rel) {
             continue;
         }
+        files_scanned += 1;
         let content = std::fs::read_to_string(&file).ok();
         let file_content = content.clone().unwrap_or_default();
         let module_path = content
@@ -1352,6 +1368,7 @@ pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
         let Some(parsed) = parse_dag_file(&file) else {
             continue;
         };
+        files_parsed += 1;
         let si = parsed.source_indices;
         for item in parsed.items.iter() {
             let name = authored_name_at(si.clone(), item.clone());
@@ -1371,13 +1388,29 @@ pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
         }
     }
     out.sort_by(|a, b| {
-        (&a.rel_path, &a.name, format!("{:?}", a.kind)).cmp(&(
-            &b.rel_path,
-            &b.name,
-            format!("{:?}", b.kind),
+        let kind_ord = |k: ItemKind| match k {
+            ItemKind::FnItem => 0,
+            ItemKind::FuncItem => 1,
+            ItemKind::TypeItem => 2,
+            ItemKind::DataItem => 3,
+            ItemKind::ServiceItem => 4,
+            ItemKind::OtherItem => 5,
+        };
+        (a.rel_path.as_str(), a.name.as_str(), kind_ord(a.kind)).cmp(&(
+            b.rel_path.as_str(),
+            b.name.as_str(),
+            kind_ord(b.kind),
         ))
     });
-    out
+    DeclFactsCorpusWalk {
+        facts: out,
+        files_scanned,
+        files_parsed,
+    }
+}
+
+pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
+    decl_facts_corpus_walk(pool_roots).facts
 }
 
 fn fn_item_param_names(item: &Rc<Node>, si: &SourceIndices) -> Vec<String> {

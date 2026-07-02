@@ -74,7 +74,7 @@ fn nfr_roster_bucket(site: &str) -> Option<NonFoldRosterBucket> {
         Some(NonFoldRosterBucket::Irreducible)
     }
 }
-use crate::coproduct_reflection::{decl_facts_for_roots, DeclFactRaw};
+use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::v1_compiler_infer_items::ItemKind;
 use crate::v1_std_core::{
     arm_pattern, authored_name_at, expr_var_name_at, match_arm_nodes, match_scrutinee,
@@ -373,14 +373,12 @@ fn triage_complexity(site: &str) -> &'static str {
 }
 
 pub fn audit_corpus_over_decl_facts(roots: &[String]) -> AuditSummary {
-    let facts = decl_facts_for_roots(roots);
+    let walk = decl_facts_corpus_walk(roots);
     let mut summary = AuditSummary::default();
-    let mut scanned_files = BTreeSet::new();
-    let mut parsed_files = BTreeSet::new();
+    summary.files_scanned = walk.files_scanned;
+    summary.files_parsed = walk.files_parsed;
 
-    for fact in &facts {
-        scanned_files.insert(fact.rel_path.clone());
-        parsed_files.insert(fact.rel_path.clone());
+    for fact in &walk.facts {
         if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
             continue;
         }
@@ -389,8 +387,6 @@ pub fn audit_corpus_over_decl_facts(roots: &[String]) -> AuditSummary {
             .findings
             .extend(audit_decl_fact(fact, &fact.source_indices));
     }
-    summary.files_scanned = scanned_files.len();
-    summary.files_parsed = parsed_files.len();
     summary.findings.sort();
     summary
 }
