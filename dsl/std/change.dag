@@ -211,8 +211,30 @@ fn keyed_leaf_verdict_join<V>(
       KeyedVerdictAdded { value: _ } => KeyedConflict
       KeyedVerdictRemoved { value: _ } => KeyedConflict
     }
-    KeyedVerdictAdded { value: _ } => KeyedConflict
-    KeyedVerdictRemoved { value: _ } => KeyedConflict
+    KeyedVerdictAdded { value: va } => match b {
+      KeyedUnchanged => a
+      KeyedConflict => KeyedConflict
+      KeyedVerdictAdded { value: vb } =>
+        if equal(a: va, b: vb) {
+          a
+        } else {
+          KeyedConflict
+        }
+      KeyedApplyHunk { from: _, to: _ } => KeyedConflict
+      KeyedVerdictRemoved { value: _ } => KeyedConflict
+    }
+    KeyedVerdictRemoved { value: va } => match b {
+      KeyedUnchanged => a
+      KeyedConflict => KeyedConflict
+      KeyedVerdictRemoved { value: vb } =>
+        if equal(a: va, b: vb) {
+          a
+        } else {
+          KeyedConflict
+        }
+      KeyedApplyHunk { from: _, to: _ } => KeyedConflict
+      KeyedVerdictAdded { value: _ } => KeyedConflict
+    }
   }
 }
 

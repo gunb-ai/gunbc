@@ -217,6 +217,33 @@ fn witness_leaf_verdict_join_bottom() -> Bool {
     }
 }
 
+fn witness_leaf_verdict_join_added_idempotent() -> Bool {
+  let added = fixture_verdict_added(label: "new")
+  match keyed_leaf_verdict_join(a: added, b: added, equal: fixture_val_eq) {
+    KeyedVerdictAdded { value: v } => v.payload == "new"
+    _ => false
+  }
+}
+
+fn witness_leaf_verdict_join_removed_idempotent() -> Bool {
+  let removed = fixture_verdict_removed(label: "old")
+  match keyed_leaf_verdict_join(a: removed, b: removed, equal: fixture_val_eq) {
+    KeyedVerdictRemoved { value: v } => v.payload == "old"
+    _ => false
+  }
+}
+
+fn witness_leaf_verdict_join_added_disagree_is_conflict() -> Bool {
+  match keyed_leaf_verdict_join(
+    a: fixture_verdict_added(label: "one"),
+    b: fixture_verdict_added(label: "two"),
+    equal: fixture_val_eq,
+  ) {
+    KeyedConflict => true
+    _ => false
+  }
+}
+
 fn witness_diff_identity_law() -> Bool {
   keyed_patches_equal(
     left: keyed_two_way_diff(
@@ -495,6 +522,9 @@ test fn keyed_delta_fold_keystone_holds() -> Bool {
     && witness_patch_fold_matches_diff()
     && witness_three_way_patch_monoid_identity()
     && witness_leaf_verdict_join_bottom()
+    && witness_leaf_verdict_join_added_idempotent()
+    && witness_leaf_verdict_join_removed_idempotent()
+    && witness_leaf_verdict_join_added_disagree_is_conflict()
     && witness_diff_identity_law()
     && witness_apply_diff_law_modified()
     && witness_apply_diff_law_added()
