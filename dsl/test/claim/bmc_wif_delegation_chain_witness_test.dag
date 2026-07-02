@@ -21,7 +21,8 @@ import gunbc.assimilate.bmc_wif_delegation_chain {
   wif_canary_secret_ref,
   bmc_srv3_admin_secret_ref,
   srv3_credential_path_options,
-  OperatorOneHourToken, ActorPinnedWorkflowDispatch, DedicatedActuatorIdentity,
+  OperatorOneHourToken, ActorPinnedWorkflowDispatch, DedicatedActuatorIdentity, ExistingAssimilatorSaBinding,
+  bmc_srv3_admin_legacy_binding,
   bound_secret_read_capabilities
 }
 import gunbc.auth.secret_access_grant { grant_is_signed }
@@ -101,13 +102,18 @@ test fn secret_refs_are_free_of_credential_shaped_strings() -> Bool {
 }
 
 test fn srv3_credential_path_is_an_enumerated_option_space_not_a_binding() -> Bool {
-  srv3_credential_path_options.length() == 3
+  srv3_credential_path_options.length() == 4
     && match srv3_credential_path_options.first() { OperatorOneHourToken => true, _ => false }
     && match srv3_credential_path_options.skip(n: 1).first() {
          ActorPinnedWorkflowDispatch { allowed_actor: a } => a as String == "briansrls"
          _ => false
        }
     && match srv3_credential_path_options.skip(n: 2).first() { DedicatedActuatorIdentity { note: _ } => true, _ => false }
+    && match srv3_credential_path_options.skip(n: 3).first() {
+         ExistingAssimilatorSaBinding { legacy_grant: g } =>
+           secret_ref_secret_resource(ref: g.secret_ref) == secret_ref_secret_resource(ref: bmc_srv3_admin_legacy_binding.secret_ref)
+         _ => false
+       }
 }
 
 test fn threat_model_names_both_read_capabilities() -> Bool {
