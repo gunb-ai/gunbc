@@ -171,8 +171,9 @@ fn srv3_install_diagnostic_observe_script(intent: OsInstallAttemptIntent) -> Str
   let bmc = intent.bmc_endpoint as String
   let port = intent.serve_port as String
   let iso_path = intent.iso_path as String
+  let intent_content_hash = intent.iso_content_hash as String
   let sol_log = srv3_sol_console_log_path_for_observe as String
-  concat(
+  let serve_body = concat(
     concat(
       concat(
         concat(
@@ -191,7 +192,13 @@ fn srv3_install_diagnostic_observe_script(intent: OsInstallAttemptIntent) -> Str
                       "\nISO_PATH=",
                       concat(
                         iso_path,
-                        concat("\nSOL_LOG=", sol_log),
+                        concat(
+                          "\nINTENT_CONTENT_HASH=",
+                          concat(
+                            intent_content_hash,
+                            concat("\nSOL_LOG=", sol_log),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -200,54 +207,118 @@ fn srv3_install_diagnostic_observe_script(intent: OsInstallAttemptIntent) -> Str
             ),
           ),
         ),
-        "\nif pgrep -x nbdkit >/dev/null 2>&1; then NBDKIT=present; else NBDKIT=absent; fi\nif pgrep -x websocat >/dev/null 2>&1; then WSOCAT=present; else WSOCAT=absent; fi\nif ss -ltnp 2>/dev/null | grep -q \":",
+        "\nif pgrep -x nbdkit >/dev/null 2>&1; then NBDKIT=present; else NBDKIT=absent; fi\nif pgrep -x websocat >/dev/null 2>&1; then WSOCAT=present; else WSOCAT=absent; fi\nPORT_OWNER=absent\nif ss -ltnp 2>/dev/null | grep -q \":",
       ),
       concat(
         bash_var_ref(name: "PORT"),
-        " \"; then PORT_STATE=listening; else PORT_STATE=absent; fi\nif test -s \"",
+        " \"; then\n  if ss -ltnp 2>/dev/null | grep \":",
       ),
     ),
     concat(
       concat(
         concat(
           concat(
-            bash_var_ref(name: "TOKEN_PATH"),
-            "\"; then TOKEN=present; else TOKEN=absent; fi\nif test -f \"",
+            bash_var_ref(name: "PORT"),
+            "\" | grep -q nbdkit; then\n    PORT_OWNER=expected\n  else\n    PORT_OWNER=foreign\n  fi\nfi\nISO_STATE=missing\nISO_FILE_SHA256=none\nCONTENT_HASH_OBSERVED=none\nif test -f \"",
           ),
           concat(
             bash_var_ref(name: "ISO_PATH"),
-            "\"; then ISO=file_present; else ISO=missing; fi\necho \"Srv3InstallObserveReceipt: surface=serve nbdkit=",
+            "\"; then\n  ISO_FILE_SHA256=",
+          ),
+        ),
+        concat(
+          concat("$", "(sha256sum \""),
+          concat(
+            bash_var_ref(name: "ISO_PATH"),
+            concat(
+              "\" | cut -d' ' -f1)\n  SIDE=\"",
+              concat(
+                bash_var_ref(name: "ISO_PATH"),
+                ".gunbc-content-hash\"\n  if test -f \"",
+              ),
+            ),
+          ),
+        ),
+      ),
+      concat(
+        concat(
+          concat(
+            concat(
+              bash_var_ref(name: "SIDE"),
+              "\"; then\n    CONTENT_HASH_OBSERVED=",
+            ),
+            concat("$", "(cat \""),
+          ),
+          concat(
+            bash_var_ref(name: "SIDE"),
+            concat(
+              "\")\n    if [ \"",
+              concat(
+                bash_var_ref(name: "CONTENT_HASH_OBSERVED"),
+                concat(
+                  "\" = \"",
+                  concat(
+                    bash_var_ref(name: "INTENT_CONTENT_HASH"),
+                    "\" ]; then\n      ISO_STATE=match\n    else\n      ISO_STATE=mismatch\n    fi\n  else\n    ISO_STATE=unverified\n  fi\nfi\nif test -s \"",
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
         concat(
           concat(
             concat(
               concat(
-                concat(
-                  bash_var_ref(name: "NBDKIT"),
-                  " websocat=",
-                ),
-                bash_var_ref(name: "WSOCAT"),
+                bash_var_ref(name: "TOKEN_PATH"),
+                "\"; then TOKEN=present; else TOKEN=absent; fi\necho \"Srv3InstallObserveReceipt: surface=serve nbdkit=",
               ),
-              " port=",
+              concat(
+                concat(
+                  concat(
+                    bash_var_ref(name: "NBDKIT"),
+                    " websocat=",
+                  ),
+                  bash_var_ref(name: "WSOCAT"),
+                ),
+                " port_owner=",
+              ),
             ),
-            bash_var_ref(name: "PORT_STATE"),
+            bash_var_ref(name: "PORT_OWNER"),
           ),
           concat(
             " token=",
             concat(
               bash_var_ref(name: "TOKEN"),
-              concat(" iso=", concat(bash_var_ref(name: "ISO"), "\"\nHTTP_CODE=")),
+              concat(
+                " iso=",
+                concat(
+                  bash_var_ref(name: "ISO_STATE"),
+                  concat(
+                    " iso_file_sha256=",
+                    concat(
+                      bash_var_ref(name: "ISO_FILE_SHA256"),
+                      concat(
+                        " content_hash_observed=",
+                        concat(bash_var_ref(name: "CONTENT_HASH_OBSERVED"), "\"\nHTTP_CODE="),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
       ),
+    ),
+  )
+  concat(
+    serve_body,
+    concat(
+      srv3_install_diagnostic_observe_script_curl_tail(),
       concat(
-        srv3_install_diagnostic_observe_script_curl_tail(),
-        concat(
-          srv3_install_diagnostic_observe_script_redfish_tail(),
-          srv3_install_diagnostic_observe_script_sol_tail(),
-        ),
+        srv3_install_diagnostic_observe_script_redfish_tail(),
+        srv3_install_diagnostic_observe_script_sol_tail(),
       ),
     ),
   )

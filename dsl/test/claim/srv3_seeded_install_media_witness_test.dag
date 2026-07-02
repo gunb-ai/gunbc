@@ -52,6 +52,14 @@ test fn srv3_seeded_install_media_remaster_applies_grub_kernel_cmdline() -> Bool
       s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
       pattern: srv3_seeded_install_media_artifact.grub_kernel_cmdline as String,
     )
+    && string_contains(
+      s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
+      pattern: "gunbc-content-hash",
+    )
+    && string_contains(
+      s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
+      pattern: "StaleRefusal",
+    )
 }
 
 test fn srv3_seeded_unattended_not_claimed_until_execution() -> Bool {

@@ -1104,10 +1104,39 @@ fn parse_nbdkit_process_observation(stdout: String) -> NbdServeProcessObservatio
 }
 
 fn parse_serve_port_observation(stdout: String, intent: OsInstallAttemptIntent) -> NbdServePortObservation {
-  if string_contains(s: stdout, pattern: "port=listening") {
+  if string_contains(s: stdout, pattern: "port_owner=expected") {
     ServePortListening { port: intent.serve_port, owner_matches_expected: true }
   } else {
-    ServePortAbsent
+    if string_contains(s: stdout, pattern: "port_owner=foreign") {
+      ServePortListening { port: intent.serve_port, owner_matches_expected: false }
+    } else {
+      ServePortAbsent
+    }
+  }
+}
+
+fn parse_observe_content_hash_observed(stdout: String) -> ContentHash {
+  let parts = split(s: stdout, delimiter: "content_hash_observed=")
+  if parts.length() <= 1 {
+    "content-hash-unobserved" as ContentHash
+  } else {
+    let tail = parts.skip(n: 1).first()
+    let token = split(s: tail, delimiter: " ").first()
+    token as ContentHash
+  }
+}
+
+fn parse_serve_iso_observation(stdout: String, intent: OsInstallAttemptIntent) -> IsoServeReadinessObservation {
+  if string_contains(s: stdout, pattern: "iso=missing")
+    || string_contains(s: stdout, pattern: "iso=unverified") {
+    IsoMissing
+  } else {
+    if string_contains(s: stdout, pattern: "iso=match")
+      || string_contains(s: stdout, pattern: "iso=mismatch") {
+      IsoPresent { observed_content_hash: parse_observe_content_hash_observed(stdout: stdout) }
+    } else {
+      IsoMissing
+    }
   }
 }
 
@@ -1116,14 +1145,6 @@ fn parse_serve_token_observation(stdout: String) -> BmcSessionTokenObservation {
     TokenPresent
   } else {
     TokenMissing
-  }
-}
-
-fn parse_serve_iso_observation(stdout: String, intent: OsInstallAttemptIntent) -> IsoServeReadinessObservation {
-  if string_contains(s: stdout, pattern: "iso=missing") {
-    IsoMissing
-  } else {
-    IsoPresent { observed_content_hash: intent.iso_content_hash }
   }
 }
 
@@ -1174,7 +1195,7 @@ fn parse_virtual_media_session_observation(
     ServeUnknown => VirtualMediaSessionUnknown
     ServeObserved { process: _, port: _, session: _, iso: _ } =>
       match websocket {
-        WebsocketUpgradeAccepted => AttachedToExpectedServe
+        WebsocketUpgradeAccepted => VirtualMediaSessionUnknown
         _ => NoAttachedServe
       }
   }

@@ -103,27 +103,38 @@ fn os_install_actuator_websocat_ensure_block() -> String {
   concat(
     concat(
       concat(
-        concat("if command -v ", tool_name),
-        " >/dev/null 2>&1; then\n",
+        concat("if test -x \"", install_path),
+        "\"; then\n",
       ),
       concat(
         concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Present tool=", tool_name),
-        "\"\nelse\n",
+        concat(concat(" path=", install_path), "\"\nelse\n"),
       ),
     ),
     concat(
       concat(
         concat(concat("  sudo mkdir -p ", bin_dir), "\n"),
         concat(
-          concat(concat(concat("  curl -fsSL \"", url_a64), "\" -o \""), concat(install_path, "\"\n")),
+          concat(concat("  sudo chown \"$(id -un):$(id -gn)\" ", bin_dir), "\n"),
         ),
       ),
       concat(
-        concat(concat("  chmod +x \"", install_path), "\"\n"),
         concat(
-          concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Installed tool=", tool_name),
-          concat(concat(" path=", install_path), "\"\nfi\n"),
+          concat(
+            concat(concat("  curl -fsSL \"", url_a64), "\" -o \""), concat(install_path, "\"\n")),
+          concat(concat("  chmod +x \"", install_path), "\"\n"),
         ),
+        concat(
+          concat("  test -x \"", install_path),
+          concat(
+            concat("\" || { echo \"OsInstallActuatorToolchainRefusal: websocat not executable at ", install_path),
+            "\" >&2; exit 1; }\n",
+          ),
+        ),
+      ),
+      concat(
+        concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Installed tool=", tool_name),
+        concat(concat(" path=", install_path), "\"\nfi\n"),
       ),
     ),
   )

@@ -39,12 +39,20 @@ fn ubuntu_seeded_install_media_default_nocloud_dir(hostname: NonEmptyStr) -> Non
 fn seeded_install_media_content_hash(
   stock_content_sha256: NonEmptyStr,
   autoinstall_user_data_body: NonEmptyStr,
+  grub_kernel_cmdline: NonEmptyStr,
+  nocloud_dir_on_iso: NonEmptyStr,
 ) -> ContentHash {
   content_hash_tagged(
-    tag: "ubuntu-seeded-install-media/v1",
+    tag: "ubuntu-seeded-install-media/v2",
     payload: content_hash_combine(
-      content_hash_atom(value: stock_content_sha256),
-      content_hash_atom(value: autoinstall_user_data_body),
+      content_hash_combine(
+        content_hash_combine(
+          content_hash_atom(value: stock_content_sha256),
+          content_hash_atom(value: autoinstall_user_data_body),
+        ),
+        content_hash_atom(value: grub_kernel_cmdline),
+      ),
+      content_hash_atom(value: nocloud_dir_on_iso),
     ),
   )
 }

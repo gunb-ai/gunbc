@@ -21,7 +21,6 @@ import gunbc.srv3_os_install_diagnostic {
   TokenPresent,
   IsoPresent,
   WebsocketUpgradeAccepted,
-  AttachedToExpectedServe,
   NoAttachedServe,
   NbdServeProcessObservation,
   NbdServePortObservation,
@@ -43,6 +42,8 @@ import std.measure { byte_size }
 test fn observe_script_covers_five_surfaces() -> Bool {
   srv3_install_diagnostic_observe_script_declares_five_surfaces()
     && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "pgrep -x nbdkit")
+    && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "sha256sum")
+    && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "port_owner=")
     && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "/vm/0/0")
 }
 
@@ -58,12 +59,42 @@ test fn remote_bmc_probe_needs_serve_observation() -> Bool {
 }
 
 test fn parse_stdout_disabled_boot_override_pre_boot_ready() -> Bool {
-  let stdout = "Srv3InstallObserveReceipt: surface=serve nbdkit=present websocat=present port=listening token=present iso=file_present\nSrv3InstallObserveReceipt: surface=bmc_websocket http_code=101\nSrv3InstallObserveReceipt: surface=redfish power=On boot_enabled=Disabled boot_target=None\nSrv3InstallObserveReceipt: surface=sol status=silent\nSrv3InstallObserveReceipt: surface=router status=operator_required\n"
+  let hash = srv3_seeded_install_media_content_hash as String
+  let stdout = concat(
+    concat("Srv3InstallObserveReceipt: surface=serve nbdkit=present websocat=present port_owner=expected token=present iso=match iso_file_sha256=abc123 content_hash_observed=", hash),
+    "\nSrv3InstallObserveReceipt: surface=bmc_websocket http_code=101\nSrv3InstallObserveReceipt: surface=redfish power=On boot_enabled=Disabled boot_target=None\nSrv3InstallObserveReceipt: surface=sol status=silent\nSrv3InstallObserveReceipt: surface=router status=operator_required\n",
+  )
   match diagnose_srv3_install(
     intent: srv3_os_install_attempt_intent,
     observation: parse_srv3_install_debug_observation(stdout: stdout, intent: srv3_os_install_attempt_intent),
   ) {
     ReadyToBoot => true
+    _ => false
+  }
+}
+
+test fn parse_stdout_iso_hash_mismatch_is_serve_down() -> Bool {
+  let stdout = "Srv3InstallObserveReceipt: surface=serve nbdkit=present websocat=present port_owner=expected token=present iso=mismatch iso_file_sha256=abc123 content_hash_observed=stale-hash\nSrv3InstallObserveReceipt: surface=bmc_websocket http_code=101\nSrv3InstallObserveReceipt: surface=redfish power=On boot_enabled=Disabled boot_target=None\n"
+  match diagnose_srv3_install(
+    intent: srv3_os_install_attempt_intent,
+    observation: parse_srv3_install_debug_observation(stdout: stdout, intent: srv3_os_install_attempt_intent),
+  ) {
+    ServeDown => true
+    _ => false
+  }
+}
+
+test fn parse_stdout_foreign_port_owner_is_serve_down() -> Bool {
+  let hash = srv3_seeded_install_media_content_hash as String
+  let stdout = concat(
+    concat("Srv3InstallObserveReceipt: surface=serve nbdkit=present websocat=present port_owner=foreign token=present iso=match iso_file_sha256=abc123 content_hash_observed=", hash),
+    "\nSrv3InstallObserveReceipt: surface=bmc_websocket http_code=101\n",
+  )
+  match diagnose_srv3_install(
+    intent: srv3_os_install_attempt_intent,
+    observation: parse_srv3_install_debug_observation(stdout: stdout, intent: srv3_os_install_attempt_intent),
+  ) {
+    ServeDown => true
     _ => false
   }
 }

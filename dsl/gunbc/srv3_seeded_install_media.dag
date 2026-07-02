@@ -120,6 +120,8 @@ data srv3_seeded_grub_kernel_cmdline: NonEmptyStr = ubuntu_seeded_install_media_
 data srv3_seeded_install_media_content_hash: ContentHash = seeded_install_media_content_hash(
   stock_content_sha256: noble_numbat_2404_3_live_server_arm64.content_sha256 as NonEmptyStr,
   autoinstall_user_data_body: srv3_autoinstall_user_data_body,
+  grub_kernel_cmdline: srv3_seeded_grub_kernel_cmdline,
+  nocloud_dir_on_iso: srv3_seeded_nocloud_dir_on_iso,
 )
 
 data srv3_seeded_install_media_artifact: UbuntuSeededInstallMediaArtifactRow = UbuntuSeededInstallMediaArtifactRow {

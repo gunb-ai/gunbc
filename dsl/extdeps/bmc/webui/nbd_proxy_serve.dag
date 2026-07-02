@@ -4,7 +4,7 @@ import std.types { NonEmptyStr, Int, String, List }
 import std.logic { Bool }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.tools.curl { curl_cli_tool }
-import extdeps.tools.websocat { websocat_cli_tool }
+import extdeps.tools.websocat { websocat_cli_tool, websocat_install_path }
 import extdeps.tools.nbdkit { nbdkit_cli_tool }
 import extdeps.tools.socat { socat_cli_tool }
 import extdeps.languages.bash.program {
@@ -113,7 +113,7 @@ fn nbd_proxy_serve_program(intent: NbdProxyServeTransportIntent) -> ShellProgram
       RawLine { text: "trap 'kill \"$NBDKIT_PID\"' EXIT INT TERM" },
       RawLine {
         text: concat(
-          concat(websocat_cli_tool.name, " --insecure --text --header=\""),
+          concat(websocat_install_path as String, " --insecure --text --header=\""),
           concat(auth_header, concat("\" ", concat(wss_url, concat(" ", socat_bridge))))),
       },
     ],
@@ -163,7 +163,7 @@ fn nbd_proxy_serve_program_foreground_command_is_websocat(intent: NbdProxyServeT
   nbd_proxy_serve_program_statement_count(intent: intent) == 5
     && shell_rawline_starts_with_tool(
       stmt: shell_program_final_statement(p: program),
-      tool: websocat_cli_tool.name
+      tool: websocat_install_path,
     )
 }
 

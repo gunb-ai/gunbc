@@ -15,6 +15,7 @@ import extdeps.bmc.webui.nbd_proxy {
   VmSlotIndexEndpoint,
   bmcweb_nbd_proxy_ws_path,
 }
+import extdeps.tools.websocat { websocat_install_path }
 import extdeps.bmc.webui.nbd_proxy_serve {
   nbd_proxy_serve_script,
   nbd_proxy_serve_program_statement_count,
@@ -64,7 +65,7 @@ test fn srv3_actuate_prep_paths_are_declared() -> Bool {
 
 test fn srv3_nbd_proxy_serve_script_is_emittable_from_intent() -> Bool {
   let script = nbd_proxy_serve_script(intent: srv3_nbd_proxy_serve_intent())
-  string_contains(s: script, pattern: "websocat")
+  string_contains(s: script, pattern: websocat_install_path as String)
     && string_contains(s: script, pattern: "nbdkit")
     && string_contains(s: script, pattern: "/vm/0/0")
 }
