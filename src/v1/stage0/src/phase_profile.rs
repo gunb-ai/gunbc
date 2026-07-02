@@ -166,7 +166,11 @@ impl PhaseProfile {
     }
 
     fn new_inner(register_global: bool) -> Self {
-        install_sigterm_hook();
+        // SIGTERM hook only on the production path (`install_from_env` → `new`); unit tests
+        // use `new_inner(false)` and must not rewire the process-wide handler in `cargo test`.
+        if register_global {
+            install_sigterm_hook();
+        }
         let now = Instant::now();
         let inner = Arc::new(Mutex::new(PhaseProfileInner {
             run_started: now,
