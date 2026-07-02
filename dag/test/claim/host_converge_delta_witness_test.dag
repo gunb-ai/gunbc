@@ -13,6 +13,7 @@ import gunbc.host_converge {
   ConvergeSlice,
   RunnerSlice,
   PerSlotMemoryCap,
+  SliceProperty,
   legacy_converge_knob,
   runner_host_knobs,
   runner_instance_glob,
@@ -26,6 +27,7 @@ import extdeps.os.systemd {
 import gunbc.host_converge_delta {
   ConvergeKnobKey,
   converge_knob_key,
+  converge_knob_values_equal,
   host_converge_three_way_patch,
   host_converge_two_way_diff,
   host_converge_patch_hunk_count,
@@ -198,6 +200,36 @@ fn witness_already_applied_is_noop() -> Bool {
   )
 }
 
+fn probe_effective_knob(ee: String) -> ConvergeKnob {
+  legacy_converge_knob(
+    slice: RunnerSlice,
+    name: "effective_probe",
+    desired: "same_display",
+    target: SliceProperty {
+      unit: "actions-runner.slice",
+      property: systemd_memory_max_property,
+      apply_value: "same_display",
+      expected_effective: ee,
+    },
+  )
+}
+
+fn witness_payload_drift_not_flattened() -> Bool {
+  // Same key + same `desired` display string, but the observable ConvergeTarget
+  // payload (expected_effective) drifts. The old desired-string-only equality
+  // flattened this to `true` (a §5 fail-open); the grounded per-target signature
+  // must report NOT-equal so the drift is detected.
+  !converge_knob_values_equal(
+    a: probe_effective_knob(ee: "16000000000"),
+    b: probe_effective_knob(ee: "9000000000"),
+  )
+    // identity: two byte-identical snapshots stay equal.
+    && converge_knob_values_equal(
+      a: probe_effective_knob(ee: "16000000000"),
+      b: probe_effective_knob(ee: "16000000000"),
+    )
+}
+
 test fn host_converge_delta_keystone_holds() -> Bool {
   witness_two_key_collection_fold()
     && witness_unchanged_knobs_absent_by_monoid_law()
@@ -205,4 +237,5 @@ test fn host_converge_delta_keystone_holds() -> Bool {
     && witness_drifted_knob_is_conflict()
     && witness_two_way_diff_modified_only()
     && witness_already_applied_is_noop()
+    && witness_payload_drift_not_flattened()
 }
