@@ -226,6 +226,82 @@ fn type_env_shared_type_single_local_authority() {
 }
 
 #[test]
+fn type_env_local_binding_shadows_imported_name() {
+    let sources = vec![
+        Rc::new(SourceFile {
+            path: "definer.dag".to_string(),
+            content: "module test.type_env_shadow_definer\ntype Marker = String\n".to_string(),
+        }),
+        Rc::new(SourceFile {
+            path: "consumer.dag".to_string(),
+            content: "module test.type_env_shadow_consumer\nimport test.type_env_shadow_definer\ntype Marker = Int\nfn pick() -> Marker { 0 }\n".to_string(),
+        }),
+    ];
+    let resolved = compile_modules(sources);
+    let graph = resolved.graph.as_ref().expect("graph");
+    let definer = typed_module_by_name(
+        &graph.modules,
+        &resolved.source_indices,
+        "test.type_env_shadow_definer",
+    );
+    let consumer = typed_module_by_name(
+        &graph.modules,
+        &resolved.source_indices,
+        "test.type_env_shadow_consumer",
+    );
+    let imported = lookup_type_by_name(definer.type_env.clone(), "Marker".to_string())
+        .expect("definer Marker");
+    let visible = lookup_type_by_name(consumer.type_env.clone(), "Marker".to_string())
+        .expect("consumer Marker must resolve to local shadow, not import");
+    assert!(
+        !Rc::ptr_eq(&imported, &visible),
+        "local Marker must shadow imported Marker (distinct resolved nodes)"
+    );
+    assert_eq!(
+        authored_name_at(consumer.type_env.source_indices.clone(), visible.clone()),
+        "Marker"
+    );
+    assert!(
+        consumer
+            .type_env
+            .bindings
+            .values()
+            .any(|b| b.name == "Marker"),
+        "Marker must remain a local binding on the consumer module"
+    );
+}
+
+#[test]
+fn type_env_import_resolves_via_str_bindings_index() {
+    let resolved = compile_modules(rc_identity_fixture_sources());
+    let graph = resolved.graph.as_ref().expect("graph");
+    let consumer = typed_module_by_name(
+        &graph.modules,
+        &resolved.source_indices,
+        "test.type_env_rc_consumer",
+    );
+    assert!(
+        lookup_type_by_name(consumer.type_env.clone(), "Shared".to_string()).is_some(),
+        "sanity: imported Shared must resolve via merged str_bindings index"
+    );
+
+    let stripped = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
+        bindings: consumer.type_env.bindings.clone(),
+        str_bindings: Rc::new(std::collections::HashMap::new()),
+        parents: consumer.type_env.parents.clone(),
+        recursive_types: consumer.type_env.recursive_types.clone(),
+        recursive_type_set: consumer.type_env.recursive_type_set.clone(),
+        inductive_fields: consumer.type_env.inductive_fields.clone(),
+        source_indices: consumer.type_env.source_indices.clone(),
+        intern_table: consumer.type_env.intern_table.clone(),
+    });
+    assert!(
+        lookup_type_by_name(stripped, "Shared".to_string()).is_none(),
+        "perturbation: empty str_bindings must break imported type lookup even with parents intact"
+    );
+}
+
+#[test]
 fn type_env_dropped_parent_chain_fails_lookup() {
     let resolved = compile_modules(rc_identity_fixture_sources());
     let graph = resolved.graph.as_ref().expect("graph");
@@ -241,6 +317,7 @@ fn type_env_dropped_parent_chain_fails_lookup() {
 
     let stripped = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
         bindings: consumer.type_env.bindings.clone(),
+        str_bindings: consumer.type_env.str_bindings.clone(),
         parents: Rc::new(vec![]),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
@@ -249,8 +326,22 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         intern_table: consumer.type_env.intern_table.clone(),
     });
     assert!(
-        lookup_type_by_name(stripped, "Shared".to_string()).is_none(),
-        "perturbation: stripping parents must break imported type lookup"
+        lookup_type_by_name(stripped.clone(), "Shared".to_string()).is_some(),
+        "parent chain drop must not break lookup when str_bindings index carries ancestry"
+    );
+    let stripped_index = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
+        bindings: consumer.type_env.bindings.clone(),
+        str_bindings: Rc::new(std::collections::HashMap::new()),
+        parents: Rc::new(vec![]),
+        recursive_types: consumer.type_env.recursive_types.clone(),
+        recursive_type_set: consumer.type_env.recursive_type_set.clone(),
+        inductive_fields: consumer.type_env.inductive_fields.clone(),
+        source_indices: consumer.type_env.source_indices.clone(),
+        intern_table: consumer.type_env.intern_table.clone(),
+    });
+    assert!(
+        lookup_type_by_name(stripped_index, "Shared".to_string()).is_none(),
+        "perturbation: stripping str_bindings must break imported type lookup"
     );
 }
 
