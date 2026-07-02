@@ -8,7 +8,6 @@ import std.temporal_effect {
   NoEffectApplied,
   EffectApplied,
   HeldLease,
-  HeldLeaseObservedState,
   LeasePortForeign,
   LeaseRunningStale,
   LeaseRunningExpected,
@@ -34,6 +33,7 @@ import std.temporal_effect {
 
 data witness_intent_hash: ContentHash = "temporal-spine-witness-intent-v1"
 data witness_escalation_id: NonEmptyStr = "srv3-boot-once-cd" as NonEmptyStr
+data witness_observed_at: String = "2026-07-02T23:05:00Z"
 
 data witness_intent: EffectAttemptIntent = EffectAttemptIntent {
   attempt_id: "attempt-witness-1" as NonEmptyStr,
@@ -79,6 +79,19 @@ data absent_lease: HeldLease = HeldLease {
   observed: LeaseAbsent,
 }
 
+fn converged_serve_receipt() -> EffectStepReceipt {
+  EffectStepReceipt {
+    attempt_id: witness_intent.attempt_id,
+    step_id: witness_step_serve,
+    observation_digest: "obs" as ContentHash,
+    verdict_label: "Converged" as NonEmptyStr,
+    plan_label: "Noop" as NonEmptyStr,
+    applied: EffectApplied { effect_id: "nbd-serve-effect-1" as NonEmptyStr },
+    read_back_ok: true,
+    recorded_at: "2026-07-02T23:02:00Z",
+  }
+}
+
 test fn missing_approval_awaits_not_apply() -> Bool {
   match fold_next_step_plan(
     intent: witness_intent,
@@ -88,6 +101,7 @@ test fn missing_approval_awaits_not_apply() -> Bool {
     grant: GrantAbsent,
     lease: expected_lease,
     prior: NoPriorReceipt,
+    observed_at: witness_observed_at,
   ) {
     PlanAwaitApproval { escalation_id: eid } => eid == witness_escalation_id
     _ => false
@@ -103,6 +117,7 @@ test fn foreign_lease_refuses_not_drain() -> Bool {
     grant: GrantAbsent,
     lease: foreign_lease,
     prior: NoPriorReceipt,
+    observed_at: witness_observed_at,
   ) {
     PlanRefuse { step_id: _, reason: _ } => true
     PlanDrainThenStart { step_id: _, lease_key: _ } => false
@@ -119,10 +134,29 @@ test fn stale_lease_drains_not_blind_start() -> Bool {
     grant: GrantAbsent,
     lease: stale_lease,
     prior: NoPriorReceipt,
+    observed_at: witness_observed_at,
   ) {
     PlanDrainThenStart { step_id: sid, lease_key: lk } =>
       sid == witness_step_serve && lk == witness_lease_key
     PlanApply { step_id: _ } => false
+    _ => false
+  }
+}
+
+test fn converged_receipt_stale_lease_drains_not_noop() -> Bool {
+  match fold_next_step_plan(
+    intent: witness_intent,
+    pending_step_id: witness_step_serve,
+    requires_destructive_approval: false,
+    escalation_id: witness_escalation_id,
+    grant: GrantAbsent,
+    lease: stale_lease,
+    prior: PriorReceipt { receipt: converged_serve_receipt() },
+    observed_at: witness_observed_at,
+  ) {
+    PlanDrainThenStart { step_id: sid, lease_key: lk } =>
+      sid == witness_step_serve && lk == witness_lease_key
+    PlanNoop { step_id: _ } => false
     _ => false
   }
 }
@@ -146,23 +180,14 @@ test fn applied_without_read_back_refuses() -> Bool {
     grant: GrantAbsent,
     lease: expected_lease,
     prior: PriorReceipt { receipt: bad_receipt },
+    observed_at: witness_observed_at,
   ) {
     PlanRefuse { step_id: _, reason: r } => string_contains(s: r, pattern: "read-back")
     _ => false
   }
 }
 
-test fn converged_receipt_yields_noop() -> Bool {
-  let good_receipt = EffectStepReceipt {
-    attempt_id: witness_intent.attempt_id,
-    step_id: witness_step_serve,
-    observation_digest: "obs" as ContentHash,
-    verdict_label: "Converged" as NonEmptyStr,
-    plan_label: "Noop" as NonEmptyStr,
-    applied: EffectApplied { effect_id: "nbd-serve-effect-1" as NonEmptyStr },
-    read_back_ok: true,
-    recorded_at: "2026-07-02T23:02:00Z",
-  }
+test fn converged_receipt_expected_lease_yields_noop() -> Bool {
   match fold_next_step_plan(
     intent: witness_intent,
     pending_step_id: witness_step_serve,
@@ -170,7 +195,8 @@ test fn converged_receipt_yields_noop() -> Bool {
     escalation_id: witness_escalation_id,
     grant: GrantAbsent,
     lease: expected_lease,
-    prior: PriorReceipt { receipt: good_receipt },
+    prior: PriorReceipt { receipt: converged_serve_receipt() },
+    observed_at: witness_observed_at,
   ) {
     PlanNoop { step_id: sid } => sid == witness_step_serve
     _ => false
@@ -188,7 +214,43 @@ test fn active_grant_covers_matching_intent() -> Bool {
     },
     intent: witness_intent,
     escalation_id: witness_escalation_id,
+    observed_at: witness_observed_at,
   )
+}
+
+test fn expired_grant_does_not_authorize_destructive() -> Bool {
+  !approval_grant_covers_intent(
+    grant: GrantActive {
+      escalation_id: witness_escalation_id,
+      intent_hash: witness_intent_hash,
+      granted_by: "operator" as NonEmptyStr,
+      granted_at: "2026-07-02T22:00:00Z",
+      expires_at: "2026-07-02T23:00:00Z",
+    },
+    intent: witness_intent,
+    escalation_id: witness_escalation_id,
+    observed_at: witness_observed_at,
+  )
+    && match fold_next_step_plan(
+      intent: witness_intent,
+      pending_step_id: witness_step_boot,
+      requires_destructive_approval: true,
+      escalation_id: witness_escalation_id,
+      grant: GrantActive {
+        escalation_id: witness_escalation_id,
+        intent_hash: witness_intent_hash,
+        granted_by: "operator" as NonEmptyStr,
+        granted_at: "2026-07-02T22:00:00Z",
+        expires_at: "2026-07-02T23:00:00Z",
+      },
+      lease: expected_lease,
+      prior: NoPriorReceipt,
+      observed_at: witness_observed_at,
+    ) {
+      PlanAwaitApproval { escalation_id: _ } => true
+      PlanApply { step_id: _ } => false
+      _ => false
+    }
 }
 
 test fn derived_cursor_uses_last_receipt_step() -> Bool {
@@ -234,6 +296,7 @@ test fn consumed_grant_does_not_authorize_destructive() -> Bool {
     },
     intent: witness_intent,
     escalation_id: witness_escalation_id,
+    observed_at: witness_observed_at,
   )
     && match fold_next_step_plan(
       intent: witness_intent,
@@ -247,6 +310,7 @@ test fn consumed_grant_does_not_authorize_destructive() -> Bool {
       },
       lease: expected_lease,
       prior: NoPriorReceipt,
+      observed_at: witness_observed_at,
     ) {
       PlanAwaitApproval { escalation_id: _ } => true
       PlanApply { step_id: _ } => false
@@ -263,6 +327,7 @@ test fn absent_lease_plans_apply_when_no_prior_receipt() -> Bool {
     grant: GrantAbsent,
     lease: absent_lease,
     prior: NoPriorReceipt,
+    observed_at: witness_observed_at,
   ) {
     PlanApply { step_id: sid } => sid == witness_step_serve
     _ => false

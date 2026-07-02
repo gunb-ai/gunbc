@@ -4,6 +4,8 @@ import std.types { String, NonEmptyStr, Int, Bool, ContentHash, Timestamp, List 
 
 data temporal_effect_doc: String = "Temporal realization spine — minimal durable facts (intent, receipt, lease, approval grant, base snapshot) and a receipt-derived fold for next-step plan. Not a workflow engine: cursor is derived from receipts+leases+observations, never authoritative alone. Persistence is a realization handler; these types are the single authority (roadmap 2-temporal-effect-spine-a)."
 
+data approval_grant_covers_intent_dissolution_marker: String = "🟡 v0 predicate: escalation_id + intent_hash + expires_at bound via ISO-8601 lexicographic compare on Timestamp=String; dissolve-on: grounded instant ordering authority lands in std.time (DESIGN §3 — no second grant-equality surface)."
+
 type EffectAttemptIntent {
   attempt_id: NonEmptyStr
   intent_hash: ContentHash
@@ -86,10 +88,15 @@ type PriorStepReceipt
   = NoPriorReceipt
   | PriorReceipt { receipt: EffectStepReceipt }
 
+fn grant_not_expired_at(observed_at: Timestamp, expires_at: Timestamp) -> Bool {
+  observed_at <= expires_at
+}
+
 fn approval_grant_covers_intent(
   grant: DurableApprovalGrant,
   intent: EffectAttemptIntent,
   escalation_id: NonEmptyStr,
+  observed_at: Timestamp,
 ) -> Bool {
   match grant {
     GrantAbsent => false
@@ -99,9 +106,11 @@ fn approval_grant_covers_intent(
       intent_hash: ih,
       granted_by: _,
       granted_at: _,
-      expires_at: _,
+      expires_at: exp,
     } =>
-      eid == escalation_id && ih == intent.intent_hash
+      eid == escalation_id
+        && ih == intent.intent_hash
+        && grant_not_expired_at(observed_at: observed_at, expires_at: exp)
   }
 }
 
@@ -132,19 +141,21 @@ fn fold_next_step_plan(
   grant: DurableApprovalGrant,
   lease: HeldLease,
   prior: PriorStepReceipt,
+  observed_at: Timestamp,
 ) -> NextStepPlan {
   if requires_destructive_approval
     && !approval_grant_covers_intent(
       grant: grant,
       intent: intent,
       escalation_id: escalation_id,
+      observed_at: observed_at,
     ) {
     PlanAwaitApproval { escalation_id: escalation_id }
   } else {
     match prior {
       PriorReceipt { receipt: r } =>
         if r.read_back_ok && r.step_id == pending_step_id {
-          PlanNoop { step_id: pending_step_id }
+          plan_for_held_lease_observation(lease: lease, pending_step_id: pending_step_id)
         } else {
           match r.applied {
             EffectApplied { effect_id: _ } =>
