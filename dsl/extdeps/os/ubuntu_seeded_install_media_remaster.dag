@@ -16,8 +16,32 @@ import extdeps.os.ubuntu_install_media {
   ubuntu_install_media_install_path,
 }
 import std.types { String, NonEmptyStr }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data install_media_remaster_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: install_media_remaster — xorriso/loop-mount remaster of stock ISO into seeded ISO (embed nocloud user-data + GRUB kernel cmdline) composed as RawLine shell text inside ShellProgram (medium-as-string); DISSOLVES WHEN host_effect_apply binds InstallMediaRemaster without serialize_bash RawLine payload; retire medium_structure_exception_roster entry for dsl/extdeps/os/ubuntu_seeded_install_media_remaster.dag"
+data install_media_remaster_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: install_media_remaster — xorriso remaster composed as RawLine shell inside ShellProgram (medium-as-string); AlreadyPresent/StaleRefusal classification and chmod -R u+w are string-scaffolded (see install_media_remaster_classification_scaffold + install_media_remaster_chmod_access_upsert_scaffold); DISSOLVES WHEN host_effect_apply binds InstallMediaRemaster typed intent→observation→verdict→plan without serialize_bash RawLine payload; retire medium_structure_exception_roster entry for dsl/extdeps/os/ubuntu_seeded_install_media_remaster.dag"
+
+data install_media_remaster_classification_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.os.ubuntu_seeded_install_media_remaster",
+    decl_name: "install_media_remaster_classification_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data install_media_remaster_classification_dissolution_trigger: String = "🟡 dissolve-on: install_media_remaster AlreadyPresent|StaleRefusal — xorriso extract + sidecar hash + grub/user-data probe live only inside emitted shell; no typed RemasterObservation→RemasterVerdict fold; witnesses check script substrings only; DISSOLVES WHEN InstallMediaRemaster classify_seeded_media runs without shell execution"
+
+data install_media_remaster_chmod_access_upsert_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.os.ubuntu_seeded_install_media_remaster",
+    decl_name: "install_media_remaster_chmod_access_upsert_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data install_media_remaster_chmod_access_upsert_dissolution_trigger: String = "🟡 dissolve-on: chmod -R u+w $work — emergency FileNamespace access upsert hidden in RawLine; only valid inside fresh mktemp extract tree; DISSOLVES WHEN RemasterPlan binds FileAccessObservation (ReadOnlyButOwned→ChmodOwnerWriteWithinNamespace, OutsideNamespace→Refuse) before edit; tracked: roadmap resource-namespace-upsert-a"
 
 fn install_media_remaster_script(artifact: UbuntuSeededInstallMediaArtifactRow) -> String {
   serialize_bash(p: install_media_remaster_program(artifact: artifact))
@@ -28,6 +52,16 @@ fn install_media_remaster_script_applies_grub_cmdline(artifact: UbuntuSeededInst
   string_contains(s: script, pattern: "boot/grub/grub.cfg")
     && string_contains(s: script, pattern: "$GRUB_CMD")
     && string_contains(s: script, pattern: "grub kernel cmdline not applied")
+}
+
+fn install_media_remaster_classification_is_string_scaffolded_not_typed() -> Bool {
+  string_contains(s: install_media_remaster_classification_dissolution_trigger, pattern: "dissolve-on:")
+    && string_contains(s: install_media_remaster_classification_dissolution_trigger, pattern: "no typed RemasterObservation")
+}
+
+fn install_media_remaster_chmod_is_file_access_upsert_scaffold() -> Bool {
+  string_contains(s: install_media_remaster_chmod_access_upsert_dissolution_trigger, pattern: "dissolve-on:")
+    && string_contains(s: install_media_remaster_chmod_access_upsert_dissolution_trigger, pattern: "FileNamespace")
 }
 
 fn install_media_remaster_program(artifact: UbuntuSeededInstallMediaArtifactRow) -> ShellProgram {

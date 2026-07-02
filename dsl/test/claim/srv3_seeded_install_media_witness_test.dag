@@ -17,6 +17,8 @@ import extdeps.os.ubuntu_seeded_install_media_remaster {
   install_media_remaster_bash_emit_dissolution_trigger,
   install_media_remaster_script,
   install_media_remaster_script_applies_grub_cmdline,
+  install_media_remaster_classification_is_string_scaffolded_not_typed,
+  install_media_remaster_chmod_is_file_access_upsert_scaffold,
 }
 import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
@@ -44,6 +46,11 @@ test fn srv3_seeded_install_media_path_and_delivery() -> Bool {
 test fn srv3_seeded_install_media_remaster_carries_dissolution_trigger() -> Bool {
   string_contains(s: install_media_remaster_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
     && string_contains(s: install_media_remaster_bash_emit_dissolution_trigger, pattern: "xorriso")
+}
+
+test fn install_media_remaster_classification_is_string_scaffolded_not_typed() -> Bool {
+  install_media_remaster_classification_is_string_scaffolded_not_typed()
+    && install_media_remaster_chmod_is_file_access_upsert_scaffold()
 }
 
 test fn srv3_seeded_install_media_remaster_applies_grub_kernel_cmdline() -> Bool {
