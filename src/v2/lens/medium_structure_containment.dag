@@ -147,7 +147,6 @@ data medium_structure_exception_roster: List<String> = [
   "src/v2/test/claim/ci_spec_witness_test.dag",
 
   "dsl/gunbc/fleet_converge_emit.dag",
-  "dsl/gunbc/tailscale_acl_emit.dag",
   "dsl/gunbc/live_deploy/emit.dag",
   "dsl/gunbc/live_deploy/spec.dag",
   "dsl/gunbc/roadmap_static_site.dag",
