@@ -46,7 +46,6 @@ data deploy_access_refusal_prefix: String = "deploy_access: typed refusal before
 
 data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
 
-// POSIX dash via sh -c rejects -o pipefail; preflight targets dash until bash emit lands.
 data deploy_preflight_shell_header: String = "set -eu"
 
 fn posix_sudo_grant_to_privileged(g: PosixSudoGrant) -> PrivilegedCommand {

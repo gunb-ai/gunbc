@@ -22,8 +22,11 @@ import gunbc.host_identity_access { host_identity_operator_principal_name }
 import gunbc.tailscale_acl_phase2_credential {
   tailscale_acl_operator_email,
   operator_principal_member,
+  operator_tailscale_acl_secret_bindings,
 }
 import extdeps.github.expressions { context_name, Runner }
+import gunbc.live_deploy.apply { live_deploy_access_preflight_for }
+import std.realization_reconcile { reconciliation_converged }
 
 fn witness_runner_fiction_not_in_roster() -> Bool {
   !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
@@ -82,6 +85,17 @@ fn witness_gha_runner_context_is_not_os_account() -> Bool {
     && !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
 }
 
+fn witness_operator_secret_binding_uses_fleet_gcp_member() -> Bool {
+  operator_tailscale_acl_secret_bindings.first().member == fleet_operator_gcp_iam_member()
+    && operator_principal_member() == fleet_operator_gcp_iam_member()
+}
+
+fn witness_operator_deploy_preflight_executes() -> Bool {
+  reconciliation_converged(
+    r: live_deploy_access_preflight_for(access: ci_deploy_srv1_operator_access)
+  )
+}
+
 test fn grounded_principal_witnesses() -> Bool {
   witness_runner_fiction_not_in_roster()
     && witness_ghrunner_is_ci_deploy_principal()
@@ -91,4 +105,6 @@ test fn grounded_principal_witnesses() -> Bool {
     && witness_ci_runner_sudo_grants_derive_privileged_commands()
     && witness_gha_runner_context_is_not_os_account()
     && witness_preflight_shell_is_dash_safe()
+    && witness_operator_secret_binding_uses_fleet_gcp_member()
+    && witness_operator_deploy_preflight_executes()
 }

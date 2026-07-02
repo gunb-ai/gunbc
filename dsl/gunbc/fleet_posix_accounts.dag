@@ -4,8 +4,9 @@ import extdeps.access.posix { PosixUser, posix_user_is_root }
 import std.types { NonEmptyStr, List, String, Bool }
 import std.disposition { Disposition, Terminal }
 
-// §3 layer: PosixUser is the extdeps/access authority (POSIX passwd shape).
-// Fleet-specific account rows, sudo grants, and existence witnesses live here.
+data fleet_posix_accounts_scope_disposition: Disposition = Terminal {
+  reason: "Single authority for fleet POSIX principals on srv1/srv2: grounded rows with existence witnesses; no arbitrary-string principal constructor. §3: PosixUser is extdeps/access; fleet rows live in gunbc/. Grant alignment seam (#6146): GroundedPosixPrincipal is POSIX WHO; secret_access_grant.GrantPrincipal is GCP WIF WHO; operator links via FleetAccountOperator + fleet_operator_gcp_iam_member()."
+}
 
 type PosixAccountExistenceWitness {
   probed_at: NonEmptyStr
@@ -28,10 +29,6 @@ type FleetPosixAccountKey
   = FleetAccountRoot
   | FleetAccountOperator
   | FleetAccountCiRunner
-
-data fleet_posix_accounts_scope_disposition: Disposition = Terminal {
-  reason: "Single authority for fleet POSIX principals on srv1/srv2: grounded rows with existence witnesses; no arbitrary-string principal constructor."
-}
 
 data fleet_posix_root_user: PosixUser = PosixUser {
   name: "root",
@@ -126,18 +123,17 @@ fn grounded_posix_principal_name(p: GroundedPosixPrincipal) -> NonEmptyStr {
 }
 
 fn fleet_posix_account_from_name(name: NonEmptyStr) -> GroundedPosixPrincipal? {
-  if name == fleet_posix_root_user.name {
-    Present { value: fleet_posix_principal(key: FleetAccountRoot) }
-  } else {
-    if name == fleet_posix_operator_user.name {
-      Present { value: fleet_posix_principal(key: FleetAccountOperator) }
-    } else {
-      if name == fleet_posix_ci_runner_user.name {
-        Present { value: fleet_posix_principal(key: FleetAccountCiRunner) }
-      } else {
-        Absent
+  match name == fleet_posix_root_user.name {
+    true => Present { value: fleet_posix_principal(key: FleetAccountRoot) }
+    false =>
+      match name == fleet_posix_operator_user.name {
+        true => Present { value: fleet_posix_principal(key: FleetAccountOperator) }
+        false =>
+          match name == fleet_posix_ci_runner_user.name {
+            true => Present { value: fleet_posix_principal(key: FleetAccountCiRunner) }
+            false => Absent
+          }
       }
-    }
   }
 }
 
