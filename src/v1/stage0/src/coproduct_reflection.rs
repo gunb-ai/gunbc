@@ -1315,7 +1315,7 @@ pub fn eval_coproduct_nullary_inhabitants(
     }
     let si = ctx.source_indices();
     let mut inhabitants = Vec::with_capacity(item.children.len());
-    for variant in item.children.iter() {
+    for variant in item.children.iter().skip(1) {
         if !variant_is_nullary(variant) {
             return Ok(outcome_rejected_value(
                 ctx,
