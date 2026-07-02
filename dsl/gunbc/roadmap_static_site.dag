@@ -189,6 +189,13 @@ fn roadmap_site_text_static_routes() -> List<ServedStaticRoute> {
   ]
 }
 
+fn roadmap_site_static_route_authority_paths() -> List<String> {
+  concat(
+    map(roadmap_site_text_artifacts(), a => a.url_path as String),
+    [roadmap_site_health_path as String]
+  )
+}
+
 fn served_static_route_literal_path(route: ServedStaticRoute) -> String {
   fold(route.path_pattern.tokens, init: "", f: (acc, tok) => match tok {
     LiteralToken { text: t } => concat(acc, t)

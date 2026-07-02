@@ -23,10 +23,16 @@ import gunbc.live_deploy.emit {
   live_deploy_systemd_unit_for,
   deployment_ensure_dependency_script,
 }
+import gunbc.node_http_server_emit {
+  roadmap_dashboard_served_static_route_table,
+  roadmap_dashboard_node_http_server_source,
+}
 import gunbc.roadmap_static_site {
   roadmap_site_health_path,
   roadmap_site_roadmap_url_path,
   roadmap_site_dispatch_url_path,
+  roadmap_site_text_static_routes,
+  served_static_route_literal_path,
 }
 import extdeps.apt { package_tailscale, package_nodejs }
 
@@ -139,6 +145,37 @@ fn witness_apply_script_includes_static_site_readback() -> Bool {
     && string_contains(s: sh, pattern: "dispatch json parse failed")
 }
 
+fn witness_retract_owned_process_removes_static_site_server() -> Bool {
+  let sh = expected_live_deploy_retract_script()
+  string_contains(s: sh, pattern: gunbc_roadmap_server_path)
+    && string_contains(s: sh, pattern: gunbc_roadmap_unit_name)
+    && string_contains(s: sh, pattern: "tailscale serve reset")
+    && string_contains(s: sh, pattern: "systemctl disable --now")
+    && string_contains(s: sh, pattern: "fold=retract verdict=converged")
+    && !string_contains(s: sh, pattern: "roadmap-site-readback")
+}
+
+fn witness_static_site_routes_in_dashboard_route_table() -> Bool {
+  let site = roadmap_site_text_static_routes()
+  let table = roadmap_dashboard_served_static_route_table().routes
+  count(site) == 3
+    && count(table) == count(site) + 2
+    && all(site, site_route =>
+      any(table, table_route =>
+        served_static_route_literal_path(route: site_route) == served_static_route_literal_path(route: table_route)
+          && site_route.body == table_route.body
+      )
+    )
+}
+
+fn witness_static_site_paths_only_in_retracted_server() -> Bool {
+  let src = roadmap_dashboard_node_http_server_source()
+  string_contains(s: src, pattern: "createServer")
+    && string_contains(s: src, pattern: "/^\\/ROADMAP\\.md$/")
+    && string_contains(s: src, pattern: "/^\\/target\\/roadmap-dispatch\\.json$/")
+    && string_contains(s: src, pattern: "/^\\/healthz$/")
+}
+
 fn witness_systemd_unit_emitted() -> Bool {
   let unit = live_deploy_systemd_unit_for(spec: deployment_spec_srv1())
   string_contains(s: unit, pattern: "ExecStart=/usr/bin/node /opt/gunbc/server.js")
@@ -166,6 +203,9 @@ test fn live_deploy_emit_holds() -> Bool {
     && witness_apply_script_contains_node_server()
     && witness_apply_script_serves_roadmap_page()
     && witness_apply_script_includes_static_site_readback()
+    && witness_retract_owned_process_removes_static_site_server()
+    && witness_static_site_routes_in_dashboard_route_table()
+    && witness_static_site_paths_only_in_retracted_server()
     && witness_systemd_unit_emitted()
     && witness_drift_gates()
 }

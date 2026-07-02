@@ -11,7 +11,7 @@ import gunbc.roadmap_static_site {
   roadmap_site_healthz_body,
   roadmap_site_healthz_route,
   roadmap_site_text_static_routes,
-  roadmap_site_static_route_literal_paths,
+  roadmap_site_static_route_authority_paths,
   served_static_route_literal_path,
   roadmap_site_readback_script,
   roadmap_site_readback_shell_dissolution_trigger,
@@ -25,7 +25,6 @@ import gunbc.roadmap_static_site {
 }
 import gunbc.roadmap_site_healthz_validate {
   roadmap_site_healthz_body_parses,
-  roadmap_site_healthz_json_string_parses,
 }
 import gunbc.node_http_server_emit {
   roadmap_dashboard_served_static_route_table,
@@ -67,10 +66,21 @@ fn witness_artifact_digests_are_content_hashes() -> Bool {
 }
 
 fn witness_healthz_body_json_well_formed() -> Bool {
-  let body = roadmap_site_healthz_body()
+  witness_healthz_body_json_well_formed_for(body: roadmap_site_healthz_body())
+}
+
+fn witness_healthz_body_json_well_formed_for(body: String) -> Bool {
   starts_with(s: body, prefix: "{")
     && ends_with(s: body, suffix: "}}")
     && !ends_with(s: body, suffix: "}}}")
+}
+
+fn witness_healthz_body_json_parses() -> Bool {
+  roadmap_site_healthz_body_parses()
+}
+
+fn witness_healthz_perturbed_body_fails_well_formed() -> Bool {
+  !witness_healthz_body_json_well_formed_for(body: concat(roadmap_site_healthz_body(), "}"))
 }
 
 fn witness_healthz_body_extra_brace_perturb_red() -> Bool {
@@ -80,11 +90,35 @@ fn witness_healthz_body_extra_brace_perturb_red() -> Bool {
 fn witness_healthz_route_json_ok() -> Bool {
   let body = roadmap_site_healthz_body()
   witness_healthz_body_json_well_formed()
+    && witness_healthz_body_json_parses()
+    && witness_healthz_perturbed_body_fails_well_formed()
     && witness_healthz_body_extra_brace_perturb_red()
     && string_contains(s: body, pattern: "\"status\":\"ok\"")
     && string_contains(s: body, pattern: roadmap_site_roadmap_url_path)
     && string_contains(s: body, pattern: roadmap_site_dispatch_url_path)
     && roadmap_site_healthz_route().content_type == ApplicationJsonUtf8
+}
+
+fn witness_static_site_routes_covered_by_dashboard_table() -> Bool {
+  let site = roadmap_site_text_static_routes()
+  let table = roadmap_dashboard_served_static_route_table().routes
+  all(site, site_route =>
+    any(table, table_route =>
+      served_static_route_literal_path(route: site_route) == served_static_route_literal_path(route: table_route)
+        && site_route.body == table_route.body
+        && site_route.content_type == table_route.content_type
+    )
+  )
+}
+
+fn witness_static_site_route_authority_paths_locked() -> Bool {
+  let paths = roadmap_site_static_route_authority_paths()
+  count(paths) == 3
+    && paths == [
+      roadmap_site_roadmap_url_path as String,
+      roadmap_site_dispatch_url_path as String,
+      roadmap_site_health_path as String,
+    ]
 }
 
 fn witness_text_routes_include_health_and_artifacts() -> Bool {
@@ -135,6 +169,8 @@ test fn roadmap_static_site_witnesses() -> Bool {
     && witness_dispatch_artifact_matches_file_content()
     && witness_artifact_digests_are_content_hashes()
     && witness_healthz_route_json_ok()
+    && witness_static_site_routes_covered_by_dashboard_table()
+    && witness_static_site_route_authority_paths_locked()
     && witness_text_routes_include_health_and_artifacts()
     && witness_dashboard_route_table_includes_static_site()
     && witness_emitted_server_has_static_paths()
