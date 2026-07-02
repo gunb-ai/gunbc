@@ -334,20 +334,9 @@ fn deploy_access_preflight_pass_message(access: DeployAccess) -> String {
   )
 }
 
-fn deploy_access_insert_apt_after_bash(
-  grounded: List<PrivilegedCommand>
-) -> List<PrivilegedCommand> {
-  concat(
-    [grounded.first()],
-    concat([deploy_access_apt_get_privileged_command()], grounded.skip(1))
-  )
-}
-
 fn srv1_live_deploy_privileged_commands() -> List<PrivilegedCommand> {
-  deploy_access_insert_apt_after_bash(
-    grounded: grounded_principal_privileged_commands(
-      p: fleet_posix_principal(key: FleetAccountCiRunner)
-    )
+  grounded_principal_privileged_commands(
+    p: fleet_posix_principal(key: FleetAccountCiRunner)
   )
 }
 
