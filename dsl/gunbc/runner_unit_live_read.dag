@@ -1,0 +1,148 @@
+module gunbc.runner_unit_live_read
+
+import std.types { NonEmptyStr, String, Bool }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import std.disposition { Disposition, Terminal }
+import extdeps.os.systemd {
+  SystemdCgroupMemoryLimit,
+  MemoryLimitUnbounded,
+  MemoryLimitBytes,
+  MemoryLimitAbsent,
+  parse_systemd_memory_limit_show,
+  systemd_memory_max_property,
+  systemd_memory_swap_max_property,
+  systemd_memory_high_property,
+}
+import gunbc.host_converge {
+  ConvergeTarget,
+  ConvergeVerdict,
+  Converged,
+  Drifted,
+  Absent,
+  converge_verdict,
+}
+import gunbc.ci_floor_measurement {
+  RunnerSliceCapEffectiveness,
+  CapEffective,
+  CapUnbounded,
+}
+
+type RunnerUnitLiveReadRow {
+  unit: NonEmptyStr
+  memory_max_raw: String
+  memory_swap_max_raw: String
+  memory_high_raw: String
+  probed_at: NonEmptyStr
+}
+
+type RunnerUnitMemoryLiveRead {
+  unit: NonEmptyStr
+  memory_max: SystemdCgroupMemoryLimit
+  memory_swap_max: SystemdCgroupMemoryLimit
+  memory_high: SystemdCgroupMemoryLimit
+  probed_at: NonEmptyStr
+}
+
+data gunbc_runner_unit_live_read_scope_disposition: Disposition = Terminal {
+  reason: "Slice-1 typed fixture/read carrier only: parses recorded systemctl-show wire values into SystemdCgroupMemoryLimit and projects onto ConvergeTarget PerSlotMemoryCap verdict semantics. Does NOT replace gunbc.runner_slot_show_effective_read ReadAbsent — the live fleet systemctl-show transport is a separate load-bearing node."
+}
+
+data gunbc_srv1_runner_unit_live_read_fixture: RunnerUnitLiveReadRow = RunnerUnitLiveReadRow {
+  unit: "actions-runner@srv1-01.service",
+  memory_max_raw: "infinity",
+  memory_swap_max_raw: "0",
+  memory_high_raw: "infinity",
+  probed_at: "2026-07-01",
+}
+
+fn runner_unit_live_read_typed(row: RunnerUnitLiveReadRow) -> RunnerUnitMemoryLiveRead {
+  RunnerUnitMemoryLiveRead {
+    unit: row.unit,
+    memory_max: parse_systemd_memory_limit_show(raw: row.memory_max_raw),
+    memory_swap_max: parse_systemd_memory_limit_show(raw: row.memory_swap_max_raw),
+    memory_high: parse_systemd_memory_limit_show(raw: row.memory_high_raw),
+    probed_at: row.probed_at,
+  }
+}
+
+fn memory_limit_to_cap_effectiveness(lim: SystemdCgroupMemoryLimit) -> RunnerSliceCapEffectiveness? {
+  match lim {
+    MemoryLimitUnbounded => Present { value: CapUnbounded }
+    MemoryLimitBytes { bytes: b } => Present { value: CapEffective { bytes: b } }
+    MemoryLimitAbsent => none
+  }
+}
+
+fn memory_limit_converge_verdict_for_bytes_value(
+  observed: SystemdCgroupMemoryLimit,
+  bytes_value: String,
+) -> ConvergeVerdict {
+  match observed {
+    MemoryLimitAbsent => Absent
+    MemoryLimitUnbounded => Drifted
+    MemoryLimitBytes { bytes: b } =>
+      converge_verdict(
+        effective: to_string(byte_size_count(b: b)),
+        expected: bytes_value
+      )
+  }
+}
+
+fn memory_limit_converge_verdict(
+  observed: SystemdCgroupMemoryLimit,
+  desired: ByteSize,
+) -> ConvergeVerdict {
+  memory_limit_converge_verdict_for_bytes_value(
+    observed: observed,
+    bytes_value: to_string(byte_size_count(b: desired))
+  )
+}
+
+fn per_slot_memory_limit_for_property(
+  read: RunnerUnitMemoryLiveRead,
+  property: String,
+) -> SystemdCgroupMemoryLimit? {
+  if property == systemd_memory_max_property {
+    Present { value: read.memory_max }
+  } else { if property == systemd_memory_swap_max_property {
+    Present { value: read.memory_swap_max }
+  } else { if property == systemd_memory_high_property {
+    Present { value: read.memory_high }
+  } else { none } } }
+}
+
+fn converge_target_live_verdict(
+  read: RunnerUnitMemoryLiveRead,
+  target: ConvergeTarget,
+) -> ConvergeVerdict? {
+  match target {
+    PerSlotMemoryCap { property: p, dropin_path: _, instance_glob: _, bytes_value: bv } =>
+      match per_slot_memory_limit_for_property(read: read, property: p) {
+        Present { value: observed } =>
+          Present { value: memory_limit_converge_verdict_for_bytes_value(observed: observed, bytes_value: bv) }
+        Absent => none
+      }
+    _ => none
+  }
+}
+
+fn runner_unit_memory_max_drifts_against_cap(
+  read: RunnerUnitMemoryLiveRead,
+  desired_cap: ByteSize,
+) -> Bool {
+  match memory_limit_converge_verdict(observed: read.memory_max, desired: desired_cap) {
+    Drifted => true
+    _ => false
+  }
+}
+
+fn runner_unit_swap_max_converged(read: RunnerUnitMemoryLiveRead, target: ConvergeTarget) -> Bool {
+  match converge_target_live_verdict(read: read, target: target) {
+    Present { value: Converged } => true
+    _ => false
+  }
+}
+
+fn fixture_live_read() -> RunnerUnitMemoryLiveRead {
+  runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture)
+}
