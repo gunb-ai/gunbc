@@ -102,8 +102,9 @@ type CompositionVerdict
 fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
   let non_idempotent = effects |> filter(e =>
     match e.evidence {
-      NonIdempotent => true
-      _ => false
+      NonIdempotent { shape: shape, reason: reason } => true
+      LatticeEffect { shape: shape } => false
+      IdentityEffect => false
     }
   )
   match non_idempotent |> first {

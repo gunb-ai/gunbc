@@ -283,19 +283,19 @@ test fn effects_derivation_witnesses() -> Bool {
 test fn effects_compose_witnesses() -> Bool {
   match compose_effects(effects: []) {
     IdempotentComposition => true
-    BrokenBy => false
+    BrokenBy { first_breaker: breaker } => false
   }
     && match compose_effects(effects: [op_lattice_read(name: "a"), op_lattice_read(name: "b")]) {
       IdempotentComposition => true
-      BrokenBy => false
+      BrokenBy { first_breaker: breaker } => false
     }
     && match compose_effects(effects: [
       op_lattice_read(name: "first"),
       op_non_idempotent(name: "breaker"),
       op_non_idempotent(name: "later")
     ]) {
-      BrokenBy { first_breaker: op } => op.operation_name == "breaker"
       IdempotentComposition => false
+      BrokenBy { first_breaker: breaker } => true
     }
 }
 
