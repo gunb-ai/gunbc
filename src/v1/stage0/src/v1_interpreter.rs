@@ -5453,6 +5453,14 @@ fn eval_builtin(
             )?))
         }
 
+        "decl_facts" => {
+            let pool_roots = expect_str_list(positional.first().copied(), "decl_facts")?;
+            Ok(Some(crate::coproduct_reflection::eval_decl_facts(
+                ctx,
+                &pool_roots,
+            )?))
+        }
+
         "module_declaration_facts" => {
             let pool_roots =
                 expect_str_list(positional.first().copied(), "module_declaration_facts")?;
