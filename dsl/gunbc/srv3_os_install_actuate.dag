@@ -130,11 +130,9 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
   let login_prog = bmcweb_session_login_program(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: srv3_bmcweb_login_body_path as NonEmptyStr,
+    response_path: srv3_bmcweb_login_response_path as NonEmptyStr,
   )
-  let login_script = concat(
-    concat(serialize_bash(p: login_prog), " > "),
-    srv3_bmcweb_login_response_path,
-  )
+  let login_script = serialize_bash(p: login_prog)
   let login_run = shell.Exec.Run(script: shell_exec_via_bash(body: login_script))
   if login_run.success == false {
     return exit_failure(reason: concat("bmcweb-login: curl login failed: ", login_run.stderr))

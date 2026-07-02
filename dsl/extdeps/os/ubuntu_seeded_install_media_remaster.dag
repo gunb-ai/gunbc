@@ -23,6 +23,13 @@ fn install_media_remaster_script(artifact: UbuntuSeededInstallMediaArtifactRow) 
   serialize_bash(p: install_media_remaster_program(artifact: artifact))
 }
 
+fn install_media_remaster_script_applies_grub_cmdline(artifact: UbuntuSeededInstallMediaArtifactRow) -> Bool {
+  let script = install_media_remaster_script(artifact: artifact)
+  string_contains(s: script, pattern: "boot/grub/grub.cfg")
+    && string_contains(s: script, pattern: "$GRUB_CMD")
+    && string_contains(s: script, pattern: "grub kernel cmdline not applied")
+}
+
 fn install_media_remaster_program(artifact: UbuntuSeededInstallMediaArtifactRow) -> ShellProgram {
   let stock_path = ubuntu_install_media_install_path(artifact: artifact.stock_artifact)
   let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
@@ -52,6 +59,12 @@ fn install_media_remaster_program(artifact: UbuntuSeededInstallMediaArtifactRow)
       RawLine { text: "mkdir -p \"$work/$NO_CLOUD\"" },
       RawLine { text: "printf '%s' \"$USER_DATA\" > \"$work/$NO_CLOUD/user-data\"" },
       RawLine { text: "printf 'instance-id: gunbc-srv3-seeded\\n' > \"$work/$NO_CLOUD/meta-data\"" },
+      RawLine { text: "grub_cfg=\"$work/boot/grub/grub.cfg\"" },
+      RawLine { text: "test -f \"$grub_cfg\" || { echo \"InstallMediaRemasterRefusal: missing grub.cfg at $grub_cfg\" >&2; exit 1; }" },
+      RawLine { text: "if ! grep -qF \"$GRUB_CMD\" \"$grub_cfg\"; then" },
+      RawLine { text: "  sed -i \"s|\\(linux[[:space:]].*\\) ---|\\1 $GRUB_CMD ---|g\" \"$grub_cfg\"" },
+      RawLine { text: "fi" },
+      RawLine { text: "grep -qF \"$GRUB_CMD\" \"$grub_cfg\" || { echo \"InstallMediaRemasterRefusal: grub kernel cmdline not applied\" >&2; exit 1; }" },
       RawLine { text: "xorriso -as mkisofs -r -V \"UBUNTU_SEEDED\" -o \"$PART\" -graft-points /=\"$work\" >/dev/null" },
       RawLine { text: "mv \"$PART\" \"$FINAL\"" },
       RawLine { text: "echo \"InstallMediaRemasterReceipt: outcome=Remastered path=$FINAL content_hash=$HASH stock=$STOCK\"" },

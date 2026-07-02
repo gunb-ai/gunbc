@@ -77,6 +77,7 @@ test fn bmcweb_session_login_program_uses_curl_authority_not_inline_secret() -> 
   bmcweb_session_login_program(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: "/tmp/bmcweb-login.json",
+    response_path: "/tmp/bmcweb-login-response.json",
   ).statements.length() == 1
     && curl_cli_tool.name == "curl"
 }

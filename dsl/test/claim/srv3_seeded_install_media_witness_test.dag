@@ -15,6 +15,8 @@ import gunbc.srv3_seeded_install_media {
 }
 import extdeps.os.ubuntu_seeded_install_media_remaster {
   install_media_remaster_bash_emit_dissolution_trigger,
+  install_media_remaster_script,
+  install_media_remaster_script_applies_grub_cmdline,
 }
 import gunbc.os_install_emit { autoinstall_user_data }
 import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
@@ -42,6 +44,14 @@ test fn srv3_seeded_install_media_path_and_delivery() -> Bool {
 test fn srv3_seeded_install_media_remaster_carries_dissolution_trigger() -> Bool {
   string_contains(s: install_media_remaster_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
     && string_contains(s: install_media_remaster_bash_emit_dissolution_trigger, pattern: "xorriso")
+}
+
+test fn srv3_seeded_install_media_remaster_applies_grub_kernel_cmdline() -> Bool {
+  install_media_remaster_script_applies_grub_cmdline(artifact: srv3_seeded_install_media_artifact)
+    && string_contains(
+      s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
+      pattern: srv3_seeded_install_media_artifact.grub_kernel_cmdline as String,
+    )
 }
 
 test fn srv3_seeded_unattended_not_claimed_until_execution() -> Bool {
