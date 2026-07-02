@@ -67,11 +67,18 @@ fn phase_profile_sigterm_mid_walk_flushes_last_tick() {
         kill(pid as LibcPid, SIGTERM);
     }
 
+    let stderr_pipe = child.stderr.take();
+    let status = child.wait().expect("wait for claim_executor");
     let mut stderr = String::new();
-    if let Some(mut err) = child.stderr.take() {
+    if let Some(mut err) = stderr_pipe {
         let _ = err.read_to_string(&mut stderr);
     }
-    let _ = child.wait();
+
+    assert_eq!(
+        status.code(),
+        Some(143),
+        "acceptance C: process must flush then exit 143 after SIGTERM, got {status:?}\nstderr:\n{stderr}"
+    );
 
     assert!(
         stderr.contains("[phase-profile]"),

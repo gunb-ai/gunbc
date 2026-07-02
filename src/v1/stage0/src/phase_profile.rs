@@ -78,8 +78,25 @@ static GLOBAL_INNER: OnceLock<Arc<Mutex<PhaseProfileInner>>> = OnceLock::new();
 
 static SIGTERM_HOOKED: AtomicBool = AtomicBool::new(false);
 
-/// Async-signal-safe: the handler only sets this flag; the heartbeat thread emits the flush.
+/// Async-signal-safe: the handler only sets this flag; a worker thread flushes then exits.
 static SIGTERM_RECEIVED: AtomicBool = AtomicBool::new(false);
+
+/// Ensures exactly one flush+exit path runs after SIGTERM.
+static SIGTERM_EXITING: AtomicBool = AtomicBool::new(false);
+
+/// Conventional exit code for SIGTERM (128 + 15).
+const SIGTERM_EXIT_CODE: i32 = 143;
+
+fn flush_sigterm_and_exit(inner: &Arc<Mutex<PhaseProfileInner>>) -> ! {
+    if SIGTERM_EXITING.swap(true, Ordering::SeqCst) {
+        std::process::exit(SIGTERM_EXIT_CODE);
+    }
+    if let Ok(guard) = inner.lock() {
+        guard.emit_record("sigterm", Some("SIGTERM"));
+        guard.shutdown.store(true, Ordering::Relaxed);
+    }
+    std::process::exit(SIGTERM_EXIT_CODE);
+}
 
 #[cfg(unix)]
 mod unix_sig {
@@ -160,10 +177,7 @@ impl PhaseProfile {
             loop {
                 thread::sleep(Duration::from_secs(1));
                 if SIGTERM_RECEIVED.load(Ordering::SeqCst) {
-                    let mut guard = shared.lock().expect("phase_profile lock");
-                    guard.emit_record("sigterm", Some("SIGTERM"));
-                    guard.shutdown.store(true, Ordering::Relaxed);
-                    break;
+                    flush_sigterm_and_exit(&shared);
                 }
                 let mut guard = shared.lock().expect("phase_profile lock");
                 if guard.shutdown.load(Ordering::Relaxed) {
@@ -184,10 +198,7 @@ impl PhaseProfile {
 
     pub fn set_phase(&self, phase: FloorPhase, context: &str) {
         if SIGTERM_RECEIVED.load(Ordering::SeqCst) {
-            let mut guard = self.inner.lock().expect("phase_profile lock");
-            guard.emit_record("sigterm", Some("SIGTERM"));
-            guard.shutdown.store(true, Ordering::Relaxed);
-            return;
+            flush_sigterm_and_exit(&self.inner);
         }
         let mut guard = self.inner.lock().expect("phase_profile lock");
         guard.set_phase(phase, context);
@@ -202,7 +213,6 @@ impl PhaseProfile {
     }
 
     pub fn flush_sigterm_for_test(&self) {
-        SIGTERM_RECEIVED.store(true, Ordering::SeqCst);
         let mut guard = self.inner.lock().expect("phase_profile lock");
         guard.emit_record("sigterm", Some("SIGTERM"));
         guard.shutdown.store(true, Ordering::Relaxed);
@@ -212,14 +222,13 @@ impl PhaseProfile {
 impl Drop for PhaseProfile {
     fn drop(&mut self) {
         if self.heartbeat.is_some() {
+            if SIGTERM_RECEIVED.load(Ordering::SeqCst) {
+                flush_sigterm_and_exit(&self.inner);
+            }
             {
                 let mut guard = self.inner.lock().expect("phase_profile lock");
                 guard.shutdown.store(true, Ordering::Relaxed);
-                if SIGTERM_RECEIVED.load(Ordering::SeqCst) {
-                    guard.emit_record("sigterm", Some("SIGTERM"));
-                } else {
-                    guard.emit_record("shutdown", None);
-                }
+                guard.emit_record("shutdown", None);
             }
             if let Some(handle) = self.heartbeat.take() {
                 let _ = handle.join();
@@ -231,11 +240,9 @@ impl Drop for PhaseProfile {
 pub fn set_phase(phase: FloorPhase, context: &str) {
     if SIGTERM_RECEIVED.load(Ordering::SeqCst) {
         if let Some(inner) = GLOBAL_INNER.get() {
-            let mut guard = inner.lock().expect("phase_profile lock");
-            guard.emit_record("sigterm", Some("SIGTERM"));
-            guard.shutdown.store(true, Ordering::Relaxed);
+            flush_sigterm_and_exit(inner);
         }
-        return;
+        std::process::exit(SIGTERM_EXIT_CODE);
     }
     if let Some(inner) = GLOBAL_INNER.get() {
         let mut guard = inner.lock().expect("phase_profile lock");
