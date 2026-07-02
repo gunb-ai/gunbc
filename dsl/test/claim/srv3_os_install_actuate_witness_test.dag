@@ -69,6 +69,11 @@ test fn srv3_nbd_proxy_serve_script_is_emittable_from_intent() -> Bool {
     && string_contains(s: script, pattern: "/vm/0/0")
 }
 
+test fn nbd_proxy_serve_script_token_is_shell_expandable_var_ref() -> Bool {
+  let script = nbd_proxy_serve_script(intent: srv3_nbd_proxy_serve_intent())
+  string_contains(s: script, pattern: "Authorization: Token $BMCWEB_SESSION_TOKEN")
+}
+
 test fn srv3_os_install_actuate_shell_runner_carries_dissolution_trigger() -> Bool {
   string_contains(s: srv3_os_install_actuate_shell_runner_dissolution_trigger, pattern: "dissolve-on:")
     && string_contains(s: srv3_os_install_actuate_shell_runner_dissolution_trigger, pattern: "medium_structure_exception_roster")
