@@ -301,6 +301,11 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "test_migration_debt_known_covered_module_is_not_debt".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "inert_carrier_names_live".to_string(),
             list_of_type_variable("inert_carrier_name_elem".to_string()),
         );
