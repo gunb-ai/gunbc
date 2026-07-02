@@ -215,15 +215,10 @@ fn probe_effective_knob(ee: String) -> ConvergeKnob {
 }
 
 fn witness_payload_drift_not_flattened() -> Bool {
-  // Same key + same `desired` display string, but the observable ConvergeTarget
-  // payload (expected_effective) drifts. The old desired-string-only equality
-  // flattened this to `true` (a §5 fail-open); the grounded per-target signature
-  // must report NOT-equal so the drift is detected.
   !converge_knob_values_equal(
     a: probe_effective_knob(ee: "16000000000"),
     b: probe_effective_knob(ee: "9000000000"),
   )
-    // identity: two byte-identical snapshots stay equal.
     && converge_knob_values_equal(
       a: probe_effective_knob(ee: "16000000000"),
       b: probe_effective_knob(ee: "16000000000"),
