@@ -11,7 +11,6 @@ import gunbc.host_identity_observation {
   gunbc_srv1_host_identity_observation_fixture_row,
   gunbc_srv2_host_identity_observation_fixture_row,
   host_identity_observation_typed,
-  fixture_host_identity_observation,
 }
 
 type DeployedIntentV0 {
@@ -56,19 +55,15 @@ fn deployed_intent_v0_from_observation_row(
   )
 }
 
-fn deployed_intent_v0_srv1_fixture() -> DeployedIntentV0 {
-  deployed_intent_v0_adopt_observed_base(
-    fleet_slot: operator_host_srv1,
-    target_host: srv1_host,
-    observation: fixture_host_identity_observation(),
-  )
-}
-
 data gunbc_srv1_deployed_intent_v0_persisted: DeployedIntentV0 = deployed_intent_v0_from_observation_row(
   fleet_slot: operator_host_srv1,
   target_host: srv1_host,
   row: gunbc_srv1_host_identity_observation_fixture_row,
 )
+
+data gunbc_srv2_deployed_intent_v0_persisted_disposition: Disposition = Terminal {
+  reason: "gunbc_srv2_deployed_intent_v0_persisted's row (gunbc_srv2_host_identity_observation_fixture_row, short_hostname_raw \"alstrad8d-1l2t-2\") is LIVE-VERIFIED, not a placeholder: parent session confirmed by direct ssh (2026-07-02) that srv2's hostname -s output matches this row verbatim."
+}
 
 data gunbc_srv2_deployed_intent_v0_persisted: DeployedIntentV0 = deployed_intent_v0_from_observation_row(
   fleet_slot: operator_host_srv2,
