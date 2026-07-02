@@ -6,15 +6,16 @@
 
 ## 0. What's actually in scope
 
-Six functions named in the brief, ~450 LOC in `cli_run.rs` (lines ~478–1011, 1455–1476, 2192–2290ish):
+The brief names 6 headline functions; reading the code, the actual orchestration cluster is 15 functions / ~450 LOC in `cli_run.rs` (lines ~478–1011, 1455–1476, 2192–2290ish) — the 6 headline entry points plus their load-bearing plumbing, which the fence in §4 covers too (a worker cutting Phase 2's cache change necessarily touches the plumbing that wires the cache through, not just the 6 named fns):
 
 | fn | does |
 | --- | --- |
 | `build_module_index` / `extract_module_path` / `extract_import_paths` | regex-scan every `.dag` file's `module`/`import` lines into a `module_path → SourceFile` index + raw import-path strings |
 | `resolve_transitively` | BFS the import strings to the transitive source-file closure for one or more entries |
-| `resolve_entry_graph`, `resolve_entry_with_parse_cache`, `resolved_graph_from_sources` | orchestrate parse → resolve → normalize → typecheck → ownership over a closure, with 3 independent hand-rolled caches |
-| `reconcile_with_typed_cache` | per-module typecheck reuse across batch entries (my own #4867, resolve-cost lever PR1) — keyed by `mod_name` string |
-| `whole_tree_resolved_ctx`, `discover_owned_data_decls` | whole-tree / multi-entry batch orchestration — groups entries into `DiscoveryResolveGroup`s by overlapping source closure to avoid re-resolving shared modules |
+| `resolve_entry_graph` (brief), `resolve_entry_graph_with_index`, `resolve_entry_with_index`, `resolve_entry_with_index_for_discovery_corpus`, `build_multi_entry_index`, `load_sources_for_entry_with_index` | plumbing that builds/threads `MultiEntryIndex` (the parse_cache/typed_module_cache carrier) into an entry resolve |
+| `resolve_entry_with_parse_cache`, `resolved_graph_from_sources` (brief) | orchestrate parse → resolve → normalize → typecheck → ownership over a closure, with 3 independent hand-rolled caches |
+| `reconcile_with_typed_cache` (brief) | per-module typecheck reuse across batch entries (my own #4867, resolve-cost lever PR1) — keyed by `mod_name` string |
+| `whole_tree_resolved_ctx` (brief), `discover_owned_data_decls` (brief) | whole-tree / multi-entry batch orchestration — groups entries into `DiscoveryResolveGroup`s by overlapping source closure to avoid re-resolving shared modules |
 
 Not in scope: `run_walk` and anything else deep-hawk-756 is touching (coordination note below); the parse/resolve/infer/typecheck internals themselves (already `.dag`-authored, GENERATED).
 
@@ -40,7 +41,7 @@ Each phase: seed LOC moved HAND→GENERATED in `cli_run.rs` · `regen_stage0 --v
 
 ## 4. Coordination
 
-`cli_run.rs` is also touched by the CI-repair wave (`run_walk`, M1 memo — deep-hawk-756). This lane owns exactly the 6 functions in §0; no edits outside that set without an ordering note posted first.
+`cli_run.rs` is also touched by the CI-repair wave (`run_walk`, M1 memo — deep-hawk-756). This lane owns the resolve/reconcile/discovery cluster named in §0's table (the 6 brief functions plus their listed plumbing); no edits outside that set — and in particular not `run_walk` — without an ordering note posted first.
 
 ## Dissolution trigger (DESIGN §6)
 
