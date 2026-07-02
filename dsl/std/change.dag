@@ -35,6 +35,8 @@ type KeyedLeafVerdict<V>
 
 type KeyedConvergePlan<V>
   = KeyedPlanApply { from: V, to: V }
+  | KeyedPlanAdd { value: V }
+  | KeyedPlanRemove { value: V }
   | KeyedPlanNoop
   | KeyedPlanConflict
 
