@@ -1,0 +1,47 @@
+module v2.test.claim.bash_program_fold
+
+import extdeps.languages.bash.program {
+  ShellProgram,
+  assign,
+  command,
+  lit,
+  serialize_bash
+}
+import v2.workflow.bash_program_emit { bash_program_serialize }
+import v2.std.diagnostic { Accepted, Rejected }
+
+fn bash_program_fold_sample() -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: [
+      command(words: [lit(text: "echo"), lit(text: "hi")]),
+      assign(name: "X", value: lit(text: "1"))
+    ]
+  }
+}
+
+fn bash_program_fold_sample_no_set_e() -> ShellProgram {
+  ShellProgram {
+    set_e: false,
+    statements: [
+      command(words: [lit(text: "echo"), lit(text: "hi")]),
+      assign(name: "X", value: lit(text: "1"))
+    ]
+  }
+}
+
+test fn bash_program_serialize_matches_oracle_holds() -> Bool {
+  match bash_program_serialize(p: bash_program_fold_sample()) {
+    Accepted { value: folded, diagnostics: _ } =>
+      folded == serialize_bash(p: bash_program_fold_sample())
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn bash_program_serialize_set_e_has_teeth_holds() -> Bool {
+  match bash_program_serialize(p: bash_program_fold_sample()) {
+    Accepted { value: folded, diagnostics: _ } =>
+      folded != serialize_bash(p: bash_program_fold_sample_no_set_e())
+    Rejected { diagnostics: _ } => false
+  }
+}
