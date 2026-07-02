@@ -13,6 +13,7 @@ import gunbc.fleet_posix_accounts {
   FleetAccountOperator,
   fleet_posix_principal,
   grounded_posix_principal_name,
+  fleet_apt_get_binary_path,
 }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
 import gunbc.ci_deploy_target_host {
@@ -47,7 +48,7 @@ data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
 
 data deploy_preflight_shell_header: String = "set -eu"
 
-data deploy_access_apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
+data deploy_access_apt_get_binary_path: NonEmptyStr = fleet_apt_get_binary_path
 
 fn deploy_access_apt_get_privileged_command() -> PrivilegedCommand {
   PrivilegedCommand { path: deploy_access_apt_get_binary_path, check: "--help" }
