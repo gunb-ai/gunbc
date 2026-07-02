@@ -48,7 +48,7 @@ A row, not a doc paragraph — the mark on the carrier is the authority (§6):
 ```
 type StandingIntent {
   id: String                               // "complexity.repo-wide"
-  property: PropertyClass                   // reuse the lens property vocabulary (Complexity, …)
+  property: LensIdV0                        // REUSE the existing lens-property coproduct (src/v2/lens/registry.dag:10 — Complexity | Cost | …); do NOT mint a PropertyClass nickname (§3)
   desired_scope: SubjectRoster              // default = WHOLE CORPUS (see §5)
   required_subjects: List<QualifiedName>    // the receipts that MUST be covered
   default_mode: EnforcementMode            // Advisory < AuditOnly < Blocking (§12)
@@ -101,7 +101,7 @@ The **meta relationship** is Blocking now — it is decidable and cheap: scope-m
 
 ## 8. Tasks (refined; each reuses an existing carrier)
 
-1. **standing-intent-carrier** — `StandingIntent` type + the `complexity.repo-wide`, `lenses.must-be-live`, `lenses.self-apply-or-exempt` rows. Reuses `PropertyClass`, `SubjectRoster`, `ConstructionJustification`.
+1. **standing-intent-carrier** — `StandingIntent` type + the `complexity.repo-wide`, `lenses.must-be-live`, `lenses.self-apply-or-exempt` rows. Reuses `LensIdV0` (the existing lens-property coproduct — NOT a new `PropertyClass`), `SubjectRoster`, `ConstructionJustification`.
 2. **lens-contract-extend** — grow `LensRegistryEntryV0` → `LensContract`; classify `complexity_lens` precisely (fixture-only vs live-syntactic; blocking vs advisory); record claimed scope + discovered subject counts. `build_type_env` / former `flatten` present-or-absent **by execution**.
 3. **enforcement-intent-gate** — the join (§4). RED controls: absent-`src/v1` reds; whole-corpus-claim-but-scans-only-`src/v2` reds; blocking-without-consumer reds; blocking-without-red-control reds; audit-only passes only in `AuditOnly`.
 4. **complexity-bad-shape-wall (R1)** — the first real wall: accumulator-in-copied-port (`map_merge` overlay / `list_append` left), with the v1 fixtures and the `merge_envs` negative test; floor-enrolled *through* the enforcement-intent gate so it cannot be inert.
