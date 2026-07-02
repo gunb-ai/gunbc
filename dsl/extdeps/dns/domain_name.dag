@@ -52,8 +52,16 @@ fn is_letter_code_point(cp: Int) -> Bool {
   (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90)
 }
 
+fn is_ldh_leading_code_point(cp: Int) -> Bool {
+  is_letter_code_point(cp: cp) || (cp >= 48 && cp <= 57)
+}
+
+fn is_ldh_trailing_code_point(cp: Int) -> Bool {
+  is_ldh_leading_code_point(cp: cp)
+}
+
 fn is_ldh_code_point(cp: Int) -> Bool {
-  is_letter_code_point(cp: cp) || (cp >= 48 && cp <= 57) || cp == 45
+  is_ldh_leading_code_point(cp: cp) || cp == 45
 }
 
 fn fold_dns_case_string_at(s: String, i: Int, acc: String) -> String {
@@ -97,9 +105,10 @@ fn parse_dns_label_raw(raw: String) -> Result<DnsLabel, DomainNameParseError> {
     Err { value: LabelTooLong }
   } else {
     let first_cp = code_point_int(ch: char_at(folded, 0))
-    if !is_letter_code_point(cp: first_cp) {
+    let last_cp = code_point_int(ch: char_at(folded, len - 1))
+    if !is_ldh_leading_code_point(cp: first_cp) {
       Err { value: BadLabelChar }
-    } else if code_point_int(ch: char_at(folded, len - 1)) == 45 {
+    } else if !is_ldh_trailing_code_point(cp: last_cp) {
       Err { value: EdgeHyphen }
     } else if label_has_invalid_ldh_at(s: folded, i: 0, len: len) {
       Err { value: BadLabelChar }
@@ -112,11 +121,8 @@ fn parse_dns_label_raw(raw: String) -> Result<DnsLabel, DomainNameParseError> {
 fn domain_name_wire_octet_count(labels: List<DnsLabel>) -> Int {
   fold(
     labels,
-    init: 0,
-    f: (acc, label) => {
-      let label_len = string_length(s: label)
-      if acc == 0 { label_len } else { acc + 1 + label_len }
-    },
+    init: 1,
+    f: (acc, label) => acc + 1 + string_length(s: label),
   )
 }
 

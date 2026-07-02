@@ -36,6 +36,23 @@ test fn domain_name_parse_partial_single_label() -> Bool {
   }
 }
 
+test fn domain_name_parse_accepts_digit_first_label() -> Bool {
+  match parse_host_name(raw: "3com") {
+    Ok { value: host } =>
+      host.qualification == PartiallyQualified
+        && host_name_label_count(host: host) == 1
+    Err { value: _ } => false
+  }
+}
+
+test fn domain_name_parse_rejects_trailing_hyphen() -> Bool {
+  match parse_host_name(raw: "bad-") {
+    Err { value: EdgeHyphen } => true
+    Err { value: _ } => false
+    Ok { value: _ } => false
+  }
+}
+
 test fn domain_name_parse_rejects_empty() -> Bool {
   match parse_host_name(raw: "") {
     Err { value: EmptyName } => true
