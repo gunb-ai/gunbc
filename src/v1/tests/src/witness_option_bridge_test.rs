@@ -16,7 +16,7 @@ use v1_compiler::v1_compiler_emit_rust::emit_variant_pattern;
 use v1_compiler::v1_compiler_infer_emit_info::empty_emit_graph_info;
 use v1_compiler::v1_interpreter::{self, Value};
 
-use crate::helpers::{resolve_imports_transitively_with_source_roots, workspace_root};
+use crate::helpers::resolve_imports_transitively_with_source_roots;
 
 fn v2_source_roots() -> Vec<std::path::PathBuf> {
     crate::helpers::v2_layer_roots()
