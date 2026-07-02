@@ -2,7 +2,7 @@ module test.claim.host_converge_delta_witness
 
 import std.types { Bool, String, List }
 import std.measure { byte_size, byte_size_count, hardware_thread_count }
-import std.change { KeyedApplyHunk, KeyedConflict }
+import std.change { KeyedLeafMutation, KeyedApplyHunk, KeyedConflict, KeyedLeafVerdictFold, keyed_leaf_verdict_fold }
 import gunbc.ci_runner_placement {
   RunnerHostDeployment,
   BatchLatencyTolerant,
@@ -31,7 +31,7 @@ import gunbc.host_converge_delta {
   host_converge_patch_hunk_count,
   host_converge_knob_in_patch,
   host_converge_knob_verdict,
-  host_converge_three_way_has_conflict,
+  host_converge_three_way_entry_count,
 }
 
 fn fixture_srv2_host() -> RunnerHostDeployment {
@@ -160,7 +160,18 @@ fn witness_drifted_knob_is_conflict() -> Bool {
     observed: drift_observed,
     desired: fixture_desired_knobs(),
   )
-  host_converge_three_way_has_conflict(patch: patch)
+  fold(patch.entries, init: false, f: fn(acc, entry) {
+    acc || keyed_leaf_verdict_fold(
+      verdict: entry.verdict,
+      fold: KeyedLeafVerdictFold {
+        unchanged: false,
+        conflict: true,
+        apply_hunk: fn(_, _) { false },
+        added: fn(_) { false },
+        removed: fn(_) { false },
+      },
+    )
+  })
     && match host_converge_knob_verdict(patch: patch, key: memory_max_key()) {
       Present { value: KeyedConflict } => true
       _ => false
