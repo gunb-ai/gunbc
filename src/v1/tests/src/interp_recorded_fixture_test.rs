@@ -31,7 +31,7 @@ fn fixture_store_dir(name: &str) -> PathBuf {
 }
 
 fn unique_fs_witness_entry(ws: &Path, scratch: &Path) -> PathBuf {
-    let src = fs::read_to_string(ws.join("dsl/test/claim/filesystem_write_witness.dag"))
+    let src = fs::read_to_string(ws.join("dag/test/claim/filesystem_write_witness.dag"))
         .expect("read filesystem witness dag");
     let live = scratch.join("fs_witness");
     let absent = scratch.join("fs_witness_absent_should_not_exist_42");
@@ -90,7 +90,7 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -114,7 +114,7 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -140,7 +140,7 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() {
 // registration; pre-fix it fails at record time, post-fix it records then replays.
 fn closure_scale_witness_entry(ws: &Path, scratch: &Path) -> PathBuf {
     let src =
-        fs::read_to_string(ws.join("dsl/test/claim/filesystem_write_closure_scale_witness.dag"))
+        fs::read_to_string(ws.join("dag/test/claim/filesystem_write_closure_scale_witness.dag"))
             .expect("read closure-scale witness dag");
     let live = scratch.join("fs_closure_scale_witness.txt");
     let rewritten = src.replace(
@@ -163,7 +163,7 @@ fn filesystem_write_closure_scale_record_then_hermetic_replay_holds() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -183,7 +183,7 @@ fn filesystem_write_closure_scale_record_then_hermetic_replay_holds() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -211,7 +211,7 @@ fn hermetic_fixture_staleness_fails_closed() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -239,7 +239,7 @@ fn hermetic_fixture_staleness_fails_closed() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -431,7 +431,7 @@ fn hermetic_replay_rejects_corrupted_fixture_response() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -465,7 +465,7 @@ fn hermetic_replay_rejects_corrupted_fixture_response() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -505,7 +505,7 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -522,7 +522,7 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -550,7 +550,7 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -580,9 +580,9 @@ fn filesystem_read_hermetic_without_fixture_fails_closed() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
-        ws.join("dsl/test/claim/filesystem_read_hermetic_witness.dag")
+        ws.join("dag/test/claim/filesystem_read_hermetic_witness.dag")
             .to_str()
             .expect("entry"),
         "--function",
@@ -611,8 +611,8 @@ fn filesystem_read_record_then_hermetic_replay_holds() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("fs-read-builtin-record-replay");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let dsl_root = ws.join("dsl");
-    let entry = ws.join("dsl/test/claim/filesystem_read_hermetic_witness.dag");
+    let dag_root = ws.join("dag");
+    let entry = ws.join("dag/test/claim/filesystem_read_hermetic_witness.dag");
     let store_path = store_dir.to_str().expect("store path");
 
     let common = |mode_flag: &str| -> std::process::Output {
@@ -620,7 +620,7 @@ fn filesystem_read_record_then_hermetic_replay_holds() {
             "--source-root",
             ws.to_str().expect("workspace"),
             "--source-root",
-            dsl_root.to_str().expect("dsl root"),
+            dag_root.to_str().expect("dag root"),
             "--entry",
             entry.to_str().expect("entry"),
             "--function",
@@ -660,9 +660,9 @@ fn m4_governed_service_published_realizes_unpublished_fails_closed() {
             "--source-root",
             ws.to_str().expect("workspace"),
             "--source-root",
-            ws.join("dsl").to_str().expect("dsl root"),
+            ws.join("dag").to_str().expect("dag root"),
             "--entry",
-            ws.join("dsl/test/claim/m4_governed_service_witness.dag")
+            ws.join("dag/test/claim/m4_governed_service_witness.dag")
                 .to_str()
                 .expect("entry"),
             "--function",
@@ -697,14 +697,14 @@ fn m4_governed_service_published_realizes_unpublished_fails_closed() {
 #[test]
 fn gcp_oauth_access_token_materializer_holds() {
     let ws = workspace_root();
-    let entry = ws.join("dsl/test/claim/gcp_oauth_access_token_witness.dag");
-    let store = ws.join("dsl/test/fixture/gcp_oauth_access_token_store");
+    let entry = ws.join("dag/test/claim/gcp_oauth_access_token_witness.dag");
+    let store = ws.join("dag/test/fixture/gcp_oauth_access_token_store");
     let common = |func: &str| -> std::process::Output {
         run_claim_batch(&[
             "--source-root",
             ws.to_str().expect("workspace"),
             "--source-root",
-            ws.join("dsl").to_str().expect("dsl root"),
+            ws.join("dag").to_str().expect("dag root"),
             "--entry",
             entry.to_str().expect("entry"),
             "--function",
@@ -738,9 +738,9 @@ fn m4_universal_corpus_published_realizes_unpublished_fails_closed() {
             "--source-root",
             ws.to_str().expect("workspace"),
             "--source-root",
-            ws.join("dsl").to_str().expect("dsl root"),
+            ws.join("dag").to_str().expect("dag root"),
             "--entry",
-            ws.join("dsl/test/claim/m4_universal_corpus_witness.dag")
+            ws.join("dag/test/claim/m4_universal_corpus_witness.dag")
                 .to_str()
                 .expect("entry"),
             "--function",
@@ -783,7 +783,7 @@ fn clock_now_record_then_hermetic_replay_holds() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("clock-record-replay");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/clock_freshness_witness.dag");
+    let entry = ws.join("dag/test/claim/clock_freshness_witness.dag");
     assert!(
         entry.is_file(),
         "witness dag must exist at {}",
@@ -794,7 +794,7 @@ fn clock_now_record_then_hermetic_replay_holds() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -818,7 +818,7 @@ fn clock_now_record_then_hermetic_replay_holds() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -840,13 +840,13 @@ fn hermetic_clock_fixture_staleness_fails_closed() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("clock-stale");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/clock_freshness_witness.dag");
+    let entry = ws.join("dag/test/claim/clock_freshness_witness.dag");
 
     let record = run_claim_batch(&[
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -874,7 +874,7 @@ fn hermetic_clock_fixture_staleness_fails_closed() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -905,13 +905,13 @@ fn env_get_record_then_hermetic_replay_holds() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("env-record-replay");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/env_freshness_witness.dag");
+    let entry = ws.join("dag/test/claim/env_freshness_witness.dag");
 
     let record = run_claim_batch(&[
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -930,7 +930,7 @@ fn env_get_record_then_hermetic_replay_holds() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -952,13 +952,13 @@ fn hermetic_env_fixture_staleness_fails_closed() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("env-stale");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/env_freshness_witness.dag");
+    let entry = ws.join("dag/test/claim/env_freshness_witness.dag");
 
     let record = run_claim_batch(&[
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -986,7 +986,7 @@ fn hermetic_env_fixture_staleness_fails_closed() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -1015,12 +1015,12 @@ fn hermetic_env_fixture_staleness_fails_closed() {
 #[test]
 fn env_hermetic_without_fixture_store_fails_closed() {
     let ws = workspace_root();
-    let entry = ws.join("dsl/test/claim/env_freshness_witness.dag");
+    let entry = ws.join("dag/test/claim/env_freshness_witness.dag");
     let hermetic = run_claim_batch(&[
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -1047,7 +1047,7 @@ fn diagnostic_redfish_record_then_hermetic_replay_holds() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("diagnostic-redfish-record-replay");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/diagnostic_redfish_witness.dag");
+    let entry = ws.join("dag/test/claim/diagnostic_redfish_witness.dag");
     assert!(
         entry.is_file(),
         "witness dag must exist at {}",
@@ -1058,7 +1058,7 @@ fn diagnostic_redfish_record_then_hermetic_replay_holds() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -1077,7 +1077,7 @@ fn diagnostic_redfish_record_then_hermetic_replay_holds() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -1097,12 +1097,12 @@ fn diagnostic_redfish_record_then_hermetic_replay_holds() {
 #[test]
 fn diagnostic_redfish_hermetic_without_fixture_store_fails_closed() {
     let ws = workspace_root();
-    let entry = ws.join("dsl/test/claim/diagnostic_redfish_witness.dag");
+    let entry = ws.join("dag/test/claim/diagnostic_redfish_witness.dag");
     let hermetic = run_claim_batch(&[
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -1130,7 +1130,7 @@ fn http_pilot_rest_record_then_hermetic_replay_holds() {
     let ws = workspace_root();
     let store_dir = fixture_store_dir("http-pilot-record-replay");
     fs::create_dir_all(&store_dir).expect("fixture dir");
-    let entry = ws.join("dsl/test/claim/http_pilot_rest_witness.dag");
+    let entry = ws.join("dag/test/claim/http_pilot_rest_witness.dag");
     assert!(
         entry.is_file(),
         "witness dag must exist at {}",
@@ -1141,7 +1141,7 @@ fn http_pilot_rest_record_then_hermetic_replay_holds() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -1166,7 +1166,7 @@ fn http_pilot_rest_record_then_hermetic_replay_holds() {
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -1189,13 +1189,13 @@ fn hermetic_http_pilot_fixture_staleness_fails_closed() {
     let store_dir = fixture_store_dir("http-pilot-stale");
     fs::create_dir_all(&store_dir).expect("fixture dir");
     write_http_pilot_fixture(&store_dir, 0);
-    let entry = ws.join("dsl/test/claim/http_pilot_rest_witness.dag");
+    let entry = ws.join("dag/test/claim/http_pilot_rest_witness.dag");
 
     let hermetic = run_claim_batch(&[
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",
@@ -1224,12 +1224,12 @@ fn hermetic_http_pilot_fixture_staleness_fails_closed() {
 #[test]
 fn hermetic_http_pilot_without_fixture_store_fails_closed() {
     let ws = workspace_root();
-    let entry = ws.join("dsl/test/claim/http_pilot_rest_witness.dag");
+    let entry = ws.join("dag/test/claim/http_pilot_rest_witness.dag");
     let hermetic = run_claim_batch(&[
         "--source-root",
         ws.to_str().expect("workspace"),
         "--source-root",
-        ws.join("dsl").to_str().expect("dsl root"),
+        ws.join("dag").to_str().expect("dag root"),
         "--entry",
         entry.to_str().expect("entry"),
         "--function",

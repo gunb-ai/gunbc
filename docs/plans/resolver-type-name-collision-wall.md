@@ -2,7 +2,7 @@
 
 Status: **MODEL — SIGNED (parent bright-stag, 2026-06-23).** The model (mechanism + Q2 policy + activation) is signed; **no resolver edit lands** until the §4 grounding de-fork is clean — the resolver guard is a separate, operator-gated future PR that lands on the de-forked tree. This document is the signed model; §3/§4 record the final ruling.
 
-Owner: jolly-ant-231 (deepest resolver context from the A1 diagnosis). Capstone of the std de-fork lane. Q2 evidence: `docs/plans/dsl-v2-defork-audit.md` §2A (executed distribution).
+Owner: jolly-ant-231 (deepest resolver context from the A1 diagnosis). Capstone of the std de-fork lane. Q2 evidence: `docs/plans/dag-v2-defork-audit.md` §2A (executed distribution).
 
 ---
 
@@ -14,7 +14,7 @@ Mechanism (proven by execution during the diagnosis; receipt below):
 
 - The per-module type scope (`TypeEnv.bindings`) is a `HashMap<i64, Rc<TypeBinding>>` keyed by the **interned id of the UNQUALIFIED type name** — the intern table is global, so two module-level types sharing a short name (`v2.std.verification.TestClaim` the Disj coproduct vs `std.verification.TestClaim` the Conj record) hash to the **same key**.
 - `import_bindings` is assembled by folding each imported module's bindings with a blind `v1_rt::rc_map_merge` (`v1_compiler_infer.rs` ~11799 and the duplicate ~12393). **Map merge overwrites on duplicate key — last writer wins, no diagnostic.** One authority silently shadows the other.
-- Because variant-constructor registration (`build_module_context`'s `variant_fold`, ~12894) only fires for `Disj` bindings, when the **record** won the `TestClaim` slot the coproduct's constructors (`EqualsClaim`, `StructuralEqualsClaim`, …) were never registered → "not found in scope". A1 was an innocent trigger: it merely grew the test's import-closure to include `std.verification(dsl)` (via `gunbc.ci_failure_class → extdeps.cache.sccache → std.cache_interface → std.verification`).
+- Because variant-constructor registration (`build_module_context`'s `variant_fold`, ~12894) only fires for `Disj` bindings, when the **record** won the `TestClaim` slot the coproduct's constructors (`EqualsClaim`, `StructuralEqualsClaim`, …) were never registered → "not found in scope". A1 was an innocent trigger: it merely grew the test's import-closure to include `std.verification(dag)` (via `gunbc.ci_failure_class → extdeps.cache.sccache → std.cache_interface → std.verification`).
 
 The existing **`VariantCollision`** guard (`v1_std_core.rs:420`, `VariantCollision { variant, enum1, enum2, span }`; emitted in `variant_fold` ~12908) already fails-closed on two imported coproducts sharing a **variant** name. It does **not** cover the level above: two modules contributing the same **type/enum name** to one closure. The wall is that guard lifted one level up — the §5 principle of making the bad state *unwritable* rather than letting it resolve to a plausible wrong binding.
 
@@ -74,7 +74,7 @@ This is one mechanism; §3 (the policy) and §4 (activation) are knobs on it, no
 
 ### RULED — `flag-ANY` (parent bright-stag, signed 2026-06-23)
 
-**`require_structural_divergence = FALSE`.** Settled against the measured distribution (the executed per-basename audit in `docs/plans/dsl-v2-defork-audit.md` §2A — `structural_inequality` run over all 9 std basename pairs + a 351-entry floor-closure reachability BFS). The audit confirmed the cant-unify-yet set (basenames needing a milestone *later than* the grounding de-fork) is **{node, coercion} exactly** — no third stuck mirror — so flag-ANY does not block on an un-unifiable pair.
+**`require_structural_divergence = FALSE`.** Settled against the measured distribution (the executed per-basename audit in `docs/plans/dag-v2-defork-audit.md` §2A — `structural_inequality` run over all 9 std basename pairs + a 351-entry floor-closure reachability BFS). The audit confirmed the cant-unify-yet set (basenames needing a milestone *later than* the grounding de-fork) is **{node, coercion} exactly** — no third stuck mirror — so flag-ANY does not block on an un-unifiable pair.
 
 Two consequences parent reconfirmed:
 
@@ -100,7 +100,7 @@ The guard PR is mergeable iff the full floor corpus resolves clean **with the gu
 
 Per DESIGN §5 ("done" = a real consumer green by execution + a discriminating input that goes red when the behavior is wrong):
 
-- **GREEN-by-execution:** with the de-fork complete, run the exact floor closure (`claim_executor --source-root dsl --source-root src/v2`, both orders) — full corpus resolves clean **with the guard active**. (Baseline receipt already in hand from #1: post-rename, `affected_set_floor_runner_test` PASSes both orders, 56 modules.)
+- **GREEN-by-execution:** with the de-fork complete, run the exact floor closure (`claim_executor --source-root dag --source-root src/v2`, both orders) — full corpus resolves clean **with the guard active**. (Baseline receipt already in hand from #1: post-rename, `affected_set_floor_runner_test` PASSes both orders, 56 modules.)
 - **Discriminating RED (the falsifier):** re-introduce a single synthetic same-name pair into a test's closure and assert the guard emits `TypeNameCollision` and fails closed — and that *removing* it returns green. Run it **twice** to pin the flag-ANY semantics: once with a **divergent** pair (different bodies) and once with a **byte-identical mirror** pair — *both* must fire (flag-ANY excuses neither). A flag-DIVERGENT build would let the mirror through; that it does **not** is the §3-fidelity control.
 - **No-regression control:** a type legitimately re-exported through multiple import paths (one declaring file, many hops) must stay green — proves `same_authority` (span.file identity) correctly excuses re-exports and the wall is not over-broad.
 
@@ -109,12 +109,12 @@ Per DESIGN §5 ("done" = a real consumer green by execution + a discriminating i
 ## 6. Scope guard / what this is NOT
 
 - **No resolver edit lands** here — model only until checkpoint-sign + de-fork clean.
-- Does **not** touch the dsl↔v2 std module-**basename** reorganization (Route C / v1-delete) — orthogonal, operator-strategic. The wall keys on shared **type-name** identity within a closure, so the zero-shared-type-name basenames `{node, coercion, logic, verification}` are off its surface entirely (this is why the roster carries no `{node, coercion}` entry, §3). Their basename de-fork stays tracked in the audit's category-(c) (`dissolve-on = v1-delete`), a different mechanism. The wall is compatible with whatever Route C decides.
+- Does **not** touch the dag↔v2 std module-**basename** reorganization (Route C / v1-delete) — orthogonal, operator-strategic. The wall keys on shared **type-name** identity within a closure, so the zero-shared-type-name basenames `{node, coercion, logic, verification}` are off its surface entirely (this is why the roster carries no `{node, coercion}` entry, §3). Their basename de-fork stays tracked in the audit's category-(c) (`dissolve-on = v1-delete`), a different mechanism. The wall is compatible with whatever Route C decides.
 - Mirrors the existing `VariantCollision` precedent; introduces no new resolver concept beyond lifting that guard one level and dissolving the duplicate import-binding folds into one checked-merge helper (a §2 win bundled in).
 
 ## 7. Open items
 
-- **RESOLVED** — Q2 policy: `flag-ANY` signed (§3); per-basename audit executed and homed in `docs/plans/dsl-v2-defork-audit.md` §2A; activation gate set to the five-basename grounding de-fork (§4). Roster: deliberately empty (§3).
+- **RESOLVED** — Q2 policy: `flag-ANY` signed (§3); per-basename audit executed and homed in `docs/plans/dag-v2-defork-audit.md` §2A; activation gate set to the five-basename grounding de-fork (§4). Roster: deliberately empty (§3).
 - Carried to the future resolver PR (not this model): confirm both import-binding assembly sites (~11761, ~12355) are the only type-binding merge loci (the `std.types`-special-cased branch folds key-by-key already and is naturally covered by the same checked-merge helper).
 - Dependency owned elsewhere: the five-basename grounding de-fork (`algebra` authority ruled; `nat`/`integer`/`float` via #5428 numeric tower; `effects` axis decision) must complete before the guard PR can land green. `{node, coercion}` basename de-fork stays on the Route-C / v1-delete surface (audit category-(c)), unaffected by this guard.
 

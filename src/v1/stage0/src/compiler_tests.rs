@@ -3,15 +3,15 @@ mod compiler_tests {
     use crate::v1_compiler_tokenize::tokenize;
     use std::collections::HashMap;
 
-    /// Find workspace root by walking up from the current directory looking for Cargo.toml + dsl/
+    /// Find workspace root by walking up from the current directory looking for Cargo.toml + dag/
     fn workspace_root() -> std::path::PathBuf {
         let mut dir = std::env::current_dir().expect("no current dir");
         loop {
-            if dir.join("Cargo.toml").exists() && dir.join("dsl").exists() {
+            if dir.join("Cargo.toml").exists() && dir.join("dag").exists() {
                 return dir;
             }
             if !dir.pop() {
-                panic!("could not find workspace root (no Cargo.toml + dsl/ found)");
+                panic!("could not find workspace root (no Cargo.toml + dag/ found)");
             }
         }
     }
@@ -176,9 +176,9 @@ mod compiler_tests {
         result
     }
 
-    /// Build the self-compile source closure from src/v1 entry modules with dsl as a dependency pool.
+    /// Build the self-compile source closure from src/v1 entry modules with dag as a dependency pool.
     fn self_compile_sources() -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {
-        resolve_source_closure(discover_dag_files("src/v1"), &["src/v1", "dsl"])
+        resolve_source_closure(discover_dag_files("src/v1"), &["src/v1", "dag"])
     }
 
     #[test]
@@ -429,8 +429,8 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let entry_pairs = discover_dag_files("dsl/extdeps/llm");
-                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dsl"]));
+                let entry_pairs = discover_dag_files("dag/extdeps/llm");
+                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dag"]));
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,
                     crate::v1_compiler_artifact::RenderTarget::Rust,

@@ -1,0 +1,50 @@
+module extdeps.transports.fidelity
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import std.types { FermiDepth }
+import std.list { List }
+import std.fidelity {
+  TransportClass,
+  TransportFidelity,
+  DerivedClassification,
+  classify_fidelities,
+}
+import extdeps.transports.shell { shell_transport_fidelity }
+import extdeps.transports.file { file_transport_fidelity }
+import extdeps.transports.rest { rest_transport_fidelity }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/transports"
+  }
+}
+
+data local_direct_transport_fidelity: TransportFidelity = TransportFidelity { depth: Xs, hermetic: true }
+data interface_stub_transport_fidelity: TransportFidelity = TransportFidelity { depth: Xs, hermetic: true }
+data unknown_transport_fidelity: TransportFidelity = TransportFidelity { depth: Xl, hermetic: false }
+
+fn transport_fidelity(tc: TransportClass) -> TransportFidelity {
+  match tc {
+    LocalDirect    => local_direct_transport_fidelity
+    InterfaceStub  => interface_stub_transport_fidelity
+    ShellLocal     => shell_transport_fidelity
+    FileBoundary   => file_transport_fidelity
+    RestNetwork    => rest_transport_fidelity
+    Unknown        => unknown_transport_fidelity
+  }
+}
+
+fn transport_depth(tc: TransportClass) -> FermiDepth {
+  transport_fidelity(tc: tc).depth
+}
+
+fn transport_hermetic(tc: TransportClass) -> Bool {
+  transport_fidelity(tc: tc).hermetic
+}
+
+fn classify_transports(transports: List<TransportClass>) -> DerivedClassification {
+  classify_fidelities(fidelities: map(transports, tc => transport_fidelity(tc: tc)))
+}

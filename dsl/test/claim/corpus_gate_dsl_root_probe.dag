@@ -1,3 +1,0 @@
-module test.claim.corpus_gate_dsl_root_probe
-
-fn witness_dsl_root_gate_probe() -> Bool { true }

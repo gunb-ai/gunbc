@@ -1,0 +1,131 @@
+module extdeps.realization.hermetic_fixture
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  CasContentEncoding,
+  ContentAddressLookup,
+  ExactKeyOnly,
+  WriteOnce,
+  OverwriteAllowed,
+  MissIsDiagnostic,
+  StructuredArtifact,
+  PerHostFilesystem,
+  InProcess,
+  Ttl,
+  Never,
+  PerFile,
+  FilesystemPerms,
+  None,
+  LocalDiskUs,
+  InProcessNs,
+  ReadYourWrites,
+  Strong,
+  OperatorObserved,
+  TtlExpiry,
+  ManualPurge,
+  Repo,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
+  }
+}
+
+data hermetic_fixture_file_store_id: CacheInterfaceId = "hermetic_fixture_file_store"
+data hermetic_fixture_in_process_id: CacheInterfaceId = "hermetic_fixture_in_process"
+
+data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
+  identity: hermetic_fixture_file_store_id
+  backing_surface: "gunbc-recorded-fixture-on-disk"
+  transport_encoding: CasContentEncoding
+  key_derivation: {
+
+    key_inputs: ContentAddressed
+    overwritable: false
+    prefix_fallback_allowed: false
+    content_verified_on_read: true
+    visibility_scope: Repo
+    invalidation_triggers: [TtlExpiry, ManualPurge]
+  }
+  io: {
+    lookup_semantics: ContentAddressLookup
+    write_semantics: WriteOnce
+    miss_semantics: MissIsDiagnostic
+  }
+  placement: {
+    value_shape: StructuredArtifact
+    locality: PerHostFilesystem
+    eviction: Ttl { days: 30 }
+    atomicity: PerFile
+    auth: FilesystemPerms
+    read_latency: LocalDiskUs
+    consistency: ReadYourWrites
+  }
+  evidence: [
+    {
+      field: "key_derivation"
+      evidence: OperatorObserved {
+        note: "input_hash = content_hash_service_inputs(op, bound inputs); stored inputs verified on lookup (collision safety) — recorded_fixture.rs RecordedFixtureStore::lookup"
+        observed_at: 0
+      }
+    },
+    {
+      field: "write_semantics"
+      evidence: OperatorObserved {
+        note: "WriteOnce: re-record with a different response for the same input_hash => FixtureError::ResponseDrift (cache-purity oracle); freshness window FIXTURE_FRESHNESS_SECS = 30d"
+        observed_at: 0
+      }
+    },
+  ]
+}
+
+data hermetic_fixture_in_process_facts: CacheInterfaceCatalogFacts = {
+  identity: hermetic_fixture_in_process_id
+  backing_surface: "gunbc-effect-io-fixture-in-memory"
+  transport_encoding: CasContentEncoding
+  key_derivation: {
+
+    key_inputs: ContentAddressed
+    overwritable: true
+    prefix_fallback_allowed: false
+    content_verified_on_read: true
+    visibility_scope: Repo
+    invalidation_triggers: [ManualPurge]
+  }
+  io: {
+    lookup_semantics: ExactKeyOnly
+    write_semantics: OverwriteAllowed
+    miss_semantics: MissIsDiagnostic
+  }
+  placement: {
+    value_shape: StructuredArtifact
+    locality: InProcess
+    eviction: Never
+    atomicity: PerFile
+    auth: None
+    read_latency: InProcessNs
+    consistency: Strong
+  }
+  evidence: [
+    {
+      field: "key_derivation"
+      evidence: OperatorObserved {
+        note: "locator identity = content_hash(runtime_value_node_projection(arg)) — v2_effect_io_pure.dag effect_io_pure_locator_identity; the same content digest the v1 on-disk handler keys on (converged node://adhoc-7e32be31-47c); RuntimeValue with no faithful reification fails closed"
+        observed_at: 0
+      }
+    },
+    {
+      field: "miss_semantics"
+      evidence: OperatorObserved {
+        note: "Absent entry => ^effect_io_pure_resource_absent rejected (fail-closed) — effect_io_pure_store_lookup"
+        observed_at: 0
+      }
+    },
+  ]
+}

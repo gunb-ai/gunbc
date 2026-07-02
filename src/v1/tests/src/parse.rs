@@ -391,12 +391,12 @@ type Pair<KeyT, ValueU> = Map<KeyT, ValueU>
 
 #[test]
 fn stack_parses_strict() {
-    assert_parses_strict("dsl/std/stack.dag");
+    assert_parses_strict("dag/std/stack.dag");
 }
 
 #[test]
 fn unicode_parses_strict() {
-    assert_parses_strict("dsl/std/unicode.dag");
+    assert_parses_strict("dag/std/unicode.dag");
 }
 
 #[test]
@@ -451,12 +451,12 @@ fn ownership_parses_strict() {
 
 #[test]
 fn shared_behavioral_parses_strict() {
-    assert_parses_strict("dsl/std/behavioral.dag");
+    assert_parses_strict("dag/std/behavioral.dag");
 }
 
 #[test]
 fn shared_primitives_parses_strict() {
-    assert_parses_strict("dsl/std/primitives.dag");
+    assert_parses_strict("dag/std/primitives.dag");
 }
 
 #[test]
@@ -834,19 +834,19 @@ fn parse_fn_lambda_in_call_arg() {
 #[test]
 fn gist_transitive_closure_parse() {
     let files = [
-        "dsl/std/types.dag",
-        "dsl/std/error_primitives.dag",
-        "dsl/std/resources.dag",
-        "dsl/extdeps/cloud/cloud.dag",
-        "dsl/extdeps/cloud/gcp/errors.dag",
-        "dsl/extdeps/cloud/gcp/gcp.dag",
-        "dsl/extdeps/cloud/gcp/secret_manager.dag",
-        "dsl/extdeps/github/errors.dag",
-        "dsl/extdeps/github/github.dag",
-        "dsl/extdeps/github/auth.dag",
-        "dsl/extdeps/github/gists.dag",
-        "dsl/extdeps/git/git.dag",
-        "dsl/gunbc/auth/credentials.dag",
+        "dag/std/types.dag",
+        "dag/std/error_primitives.dag",
+        "dag/std/resources.dag",
+        "dag/extdeps/cloud/cloud.dag",
+        "dag/extdeps/cloud/gcp/errors.dag",
+        "dag/extdeps/cloud/gcp/gcp.dag",
+        "dag/extdeps/cloud/gcp/secret_manager.dag",
+        "dag/extdeps/github/errors.dag",
+        "dag/extdeps/github/github.dag",
+        "dag/extdeps/github/auth.dag",
+        "dag/extdeps/github/gists.dag",
+        "dag/extdeps/git/git.dag",
+        "dag/gunbc/auth/credentials.dag",
     ];
     for path in &files {
         assert_parses_strict(path);

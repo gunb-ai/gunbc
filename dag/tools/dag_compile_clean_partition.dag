@@ -1,0 +1,124 @@
+module tools.dag_compile_clean_partition
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import std.list { List }
+import std.types { String, Bool }
+import std.reducible {
+  ReduceVerdict, Reduced, Irreducible, Unknown,
+  reduce_verdicts_located, verdict_eq
+}
+
+type CompileCleanPartitionBoundary {
+  entry_root: String
+  pool_roots: List<String>
+}
+
+type CompileCleanModuleShard {
+  entry_path: String
+}
+
+type CompileCleanShardVerdict
+  = ShardClean
+  | ShardFailed { entry_path: String }
+
+fn compile_clean_partition_boundary() -> CompileCleanPartitionBoundary {
+  CompileCleanPartitionBoundary {
+    entry_root: witness_layer_roots.first(),
+    pool_roots: witness_layer_roots
+  }
+}
+
+fn compile_clean_shard_verdict_combine(
+  a: CompileCleanShardVerdict,
+  b: CompileCleanShardVerdict
+) -> CompileCleanShardVerdict {
+  match a {
+    ShardFailed { entry_path: p } => ShardFailed { entry_path: p }
+    ShardClean => b
+  }
+}
+
+fn compose_compile_clean_shard_verdicts(
+  verdicts: List<CompileCleanShardVerdict>
+) -> CompileCleanShardVerdict {
+  fold(
+    verdicts,
+    init: ShardClean,
+    f: fn(acc, v) { compile_clean_shard_verdict_combine(a: acc, b: v) }
+  )
+}
+
+fn compile_clean_shard_verdict_to_reduce(v: CompileCleanShardVerdict) -> ReduceVerdict {
+  match v {
+    ShardClean => Reduced { last_parts: 0 }
+    ShardFailed { entry_path: p } => Irreducible { witness: p }
+  }
+}
+
+fn compile_clean_shard_verdict_list_nonempty(
+  xs: List<CompileCleanShardVerdict>
+) -> Bool {
+  fold(xs, init: false, f: fn(_, _) { true })
+}
+
+fn compose_compile_clean_shard_verdicts_as_reduce(
+  verdicts: List<CompileCleanShardVerdict>
+) -> ReduceVerdict {
+  if compile_clean_shard_verdict_list_nonempty(xs: verdicts) {
+    compile_clean_shard_verdict_to_reduce(
+      v: compose_compile_clean_shard_verdicts(verdicts: verdicts)
+    )
+  } else {
+    Unknown { missing: "compile-clean-shard:empty" }
+  }
+}
+
+fn witness_partition_entry_root_is_first_witness_layer_root() -> Bool {
+  compile_clean_partition_boundary().entry_root == witness_layer_roots.first()
+}
+
+fn witness_partition_pool_roots_are_witness_layer_roots() -> Bool {
+  compile_clean_partition_boundary().pool_roots == witness_layer_roots
+}
+
+fn witness_compose_all_clean_is_clean() -> Bool {
+  compose_compile_clean_shard_verdicts(
+    verdicts: [ShardClean, ShardClean, ShardClean]
+  ) == ShardClean
+}
+
+fn witness_compose_any_failure_fails_closed() -> Bool {
+  let failed = ShardFailed { entry_path: "dag/std/logic.dag" }
+  compose_compile_clean_shard_verdicts(verdicts: [ShardClean, failed, ShardClean]) == failed
+    && compose_compile_clean_shard_verdicts(verdicts: [failed, ShardClean]) == failed
+}
+
+fn witness_compose_associativity() -> Bool {
+  let a = ShardClean
+  let b = ShardFailed { entry_path: "dag/a.dag" }
+  let c = ShardClean
+  compile_clean_shard_verdict_combine(
+    a: compile_clean_shard_verdict_combine(a: a, b: b),
+    b: c
+  ) == compile_clean_shard_verdict_combine(
+    a: a,
+    b: compile_clean_shard_verdict_combine(a: b, b: c)
+  )
+}
+
+fn witness_reduce_projection_preserves_compose() -> Bool {
+  let vs = [ShardClean, ShardFailed { entry_path: "dag/x.dag" }]
+  verdict_eq(
+    a: compose_compile_clean_shard_verdicts_as_reduce(verdicts: vs),
+    b: compile_clean_shard_verdict_to_reduce(
+      v: compose_compile_clean_shard_verdicts(verdicts: vs)
+    )
+  )
+}
+
+fn witness_empty_compose_is_unknown_reduce() -> Bool {
+  verdict_eq(
+    a: reduce_verdicts_located(verdicts: [], empty_missing: "compile-clean-shard:empty"),
+    b: compose_compile_clean_shard_verdicts_as_reduce(verdicts: [])
+  )
+}

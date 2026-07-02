@@ -9,31 +9,31 @@ use v1_compiler::v1_compiler_compile::SourceFile;
 use v1_compiler::v1_std_core::CompilerDiagnostic;
 
 #[test]
-#[ignore = "run with: cargo test -p v1-compiler-tests full_dsl_compiles -- --ignored"]
-fn full_dsl_compiles() {
+#[ignore = "run with: cargo test -p v1-compiler-tests full_dag_compiles -- --ignored"]
+fn full_dag_compiles() {
     let ws = workspace_root();
 
-    let dsl_dir = ws.join("dsl");
-    let mut dsl_sources: Vec<Rc<SourceFile>> = Vec::new();
-    collect_dag_sources(&ws, &dsl_dir, &mut dsl_sources);
+    let dag_dir = ws.join("dag");
+    let mut dag_sources: Vec<Rc<SourceFile>> = Vec::new();
+    collect_dag_sources(&ws, &dag_dir, &mut dag_sources);
 
     assert!(
-        !dsl_sources.is_empty(),
-        "no .dag files found in dsl/ — something is wrong"
+        !dag_sources.is_empty(),
+        "no .dag files found in dag/ — something is wrong"
     );
 
-    let dsl_result = v1_compiler::v1_compiler_compile::compile_sources(
-        Rc::new(dsl_sources.clone()),
+    let dag_result = v1_compiler::v1_compiler_compile::compile_sources(
+        Rc::new(dag_sources.clone()),
         RenderTarget::Rust,
     );
 
-    let hard_diags: Vec<_> = diagnostic_messages(&dsl_result)
+    let hard_diags: Vec<_> = diagnostic_messages(&dag_result)
         .into_iter()
         .filter(|m| !m.starts_with("complexity: "))
         .collect();
     if !hard_diags.is_empty() {
         panic!(
-            "dsl/ compilation produced {} hard diagnostics (expected 0):\n{}",
+            "dag/ compilation produced {} hard diagnostics (expected 0):\n{}",
             hard_diags.len(),
             hard_diags
                 .iter()
@@ -87,8 +87,8 @@ fn full_dsl_compiles() {
     }
 
     eprintln!(
-        "full_dsl_compiles: {} dsl (compiled) + {} v2 (parsed), 0 diagnostics",
-        dsl_sources.len(),
+        "full_dag_compiles: {} dag (compiled) + {} v2 (parsed), 0 diagnostics",
+        dag_sources.len(),
         v1_count
     );
 }
@@ -261,7 +261,7 @@ fn std_os_types_resolves_with_t_question_and_leading_pipe() {
         .map(|p| p.to_string_lossy().to_string())
         .collect();
     let entry = workspace_root()
-        .join("dsl/std/os/types.dag")
+        .join("dag/std/os/types.dag")
         .to_string_lossy()
         .to_string();
     let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &entry)
@@ -281,7 +281,7 @@ fn std_os_types_resolves_with_t_question_and_leading_pipe() {
 
 #[test]
 fn extdeps_cpu_types_uses_kernel_t_question() {
-    let content = read_v2_file("dsl/extdeps/cpu/types.dag");
+    let content = read_v2_file("dag/extdeps/cpu/types.dag");
     assert!(
         !content.contains("Option"),
         "extdeps.cpu.types must use kernel T? (M9), not import std.types Option"
@@ -1238,11 +1238,11 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
     let ws = workspace_root();
     std::env::set_current_dir(&ws).expect("chdir to workspace root");
     let roots = vec![
-        ws.join("dsl").to_string_lossy().into_owned(),
+        ws.join("dag").to_string_lossy().into_owned(),
         ws.join("src/v2").to_string_lossy().into_owned(),
     ];
     let scan_dirs = vec![
-        "dsl/test/claim".to_string(),
+        "dag/test/claim".to_string(),
         "src/v2/test/claim/manual".to_string(),
     ];
     let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
@@ -4376,9 +4376,9 @@ fn same_source_emits_to_rust_and_python() {
 fn weather_python_emit_match_is_statement_not_return_match() {
     let ws = crate::helpers::workspace_root();
     let weather_src =
-        std::fs::read_to_string(ws.join("dsl/examples/weather/weather.dag")).expect("weather.dag");
+        std::fs::read_to_string(ws.join("dag/examples/weather/weather.dag")).expect("weather.dag");
     let result = crate::helpers::compile_dag_named(
-        "dsl/examples/weather/weather.dag",
+        "dag/examples/weather/weather.dag",
         &weather_src,
         v1_compiler::v1_compiler_artifact::RenderTarget::Python,
     );
@@ -4403,9 +4403,9 @@ fn weather_python_emit_match_is_statement_not_return_match() {
 fn weather_go_emit_match_is_type_switch_not_return_match() {
     let ws = crate::helpers::workspace_root();
     let weather_src =
-        std::fs::read_to_string(ws.join("dsl/examples/weather/weather.dag")).expect("weather.dag");
+        std::fs::read_to_string(ws.join("dag/examples/weather/weather.dag")).expect("weather.dag");
     let result = crate::helpers::compile_dag_named(
-        "dsl/examples/weather/weather.dag",
+        "dag/examples/weather/weather.dag",
         &weather_src,
         v1_compiler::v1_compiler_artifact::RenderTarget::Go,
     );
@@ -4430,9 +4430,9 @@ fn weather_go_emit_match_is_type_switch_not_return_match() {
 fn weather_rust_emit_match_arms_are_expressions_not_return_prefixed() {
     let ws = crate::helpers::workspace_root();
     let weather_src =
-        std::fs::read_to_string(ws.join("dsl/examples/weather/weather.dag")).expect("weather.dag");
+        std::fs::read_to_string(ws.join("dag/examples/weather/weather.dag")).expect("weather.dag");
     let result = crate::helpers::compile_dag_named(
-        "dsl/examples/weather/weather.dag",
+        "dag/examples/weather/weather.dag",
         &weather_src,
         v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
     );
@@ -7044,9 +7044,9 @@ service test.Api {
 #[test]
 fn github_token_returns_typed_auth_token_from_credential_source() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/github/auth.dag");
+    let source_path = ws.join("dag/extdeps/github/auth.dag");
     let source = std::fs::read_to_string(&source_path).expect("read github auth.dag");
-    let result = compile_dag_named("dsl/extdeps/github/auth.dag", &source, RenderTarget::Rust);
+    let result = compile_dag_named("dag/extdeps/github/auth.dag", &source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_github_auth.rs");
 
@@ -7085,9 +7085,9 @@ fn github_token_returns_typed_auth_token_from_credential_source() {
 #[test]
 fn github_create_review_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/github/pulls.dag");
+    let source_path = ws.join("dag/extdeps/github/pulls.dag");
     let source = std::fs::read_to_string(&source_path).expect("read github pulls.dag");
-    let result = compile_dag_named("dsl/extdeps/github/pulls.dag", &source, RenderTarget::Rust);
+    let result = compile_dag_named("dag/extdeps/github/pulls.dag", &source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_github_pulls.rs");
 
@@ -7150,9 +7150,9 @@ fn github_create_review_200_body_round_trip_representative_wire() {
 #[test]
 fn github_oidc_get_token_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/cloud/gcp/sts.dag");
+    let source_path = ws.join("dag/extdeps/cloud/gcp/sts.dag");
     let source = std::fs::read_to_string(&source_path).expect("read gcp sts.dag");
-    let result = compile_dag_named("dsl/extdeps/cloud/gcp/sts.dag", &source, RenderTarget::Rust);
+    let result = compile_dag_named("dag/extdeps/cloud/gcp/sts.dag", &source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_cloud_gcp_sts.rs");
 
@@ -7191,9 +7191,9 @@ fn github_oidc_get_token_200_body_round_trip_representative_wire() {
 #[test]
 fn gcp_iam_generate_access_token_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/cloud/gcp/iam.dag");
+    let source_path = ws.join("dag/extdeps/cloud/gcp/iam.dag");
     let source = std::fs::read_to_string(&source_path).expect("read gcp iam.dag");
-    let result = compile_dag_named("dsl/extdeps/cloud/gcp/iam.dag", &source, RenderTarget::Rust);
+    let result = compile_dag_named("dag/extdeps/cloud/gcp/iam.dag", &source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_cloud_gcp_iam.rs");
 
@@ -7236,9 +7236,9 @@ fn gcp_iam_generate_access_token_200_body_round_trip_representative_wire() {
 #[test]
 fn google_oauth_refresh_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/cloud/gcp/gcp.dag");
+    let source_path = ws.join("dag/extdeps/cloud/gcp/gcp.dag");
     let source = std::fs::read_to_string(&source_path).expect("read gcp.dag");
-    let result = compile_dag_named("dsl/extdeps/cloud/gcp/gcp.dag", &source, RenderTarget::Rust);
+    let result = compile_dag_named("dag/extdeps/cloud/gcp/gcp.dag", &source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_cloud_gcp_gcp.rs");
 
@@ -7395,14 +7395,14 @@ fn scoped_closure_is_smaller_than_whole_v2_tree() {
 #[ignore = "Boundary: N_v1 — v1 emitter (`compile_dag_named_with_source_roots`) on scoped v2 closure."]
 fn v1_emits_v2_scoped_compiler_closure_cargo_check_error_count() {
     let ws = crate::helpers::workspace_root();
-    let dsl_root = ws.join("dsl");
+    let dag_root = ws.join("dag");
     let v2_root = ws.join("src/v2");
-    let overlay_roots = vec![dsl_root.clone(), v2_root.clone()];
+    let overlay_roots = vec![dag_root.clone(), v2_root.clone()];
     let entry_path = ws.join("src/v2/compiler/00_compile.dag");
     let entry = entry_path.to_str().expect("entry path utf8");
     let entry_content = std::fs::read_to_string(&entry_path).expect("read compiler entry");
     let roots = vec![
-        dsl_root.to_string_lossy().to_string(),
+        dag_root.to_string_lossy().to_string(),
         v2_root.to_string_lossy().to_string(),
     ];
     let module_count = v1_compiler::cli_run::load_sources_for_entry(&roots, entry)
@@ -7524,11 +7524,11 @@ fn v2_trivial_import_emits_rust_that_cargo_checks() {
 #[ignore = "Expensive: reads from disk, writes temp project, runs cargo check"]
 fn review_dag_compiles_to_rust() {
     let ws = crate::helpers::workspace_root();
-    let review_path = ws.join("dsl/gunbc/tools/review.dag");
+    let review_path = ws.join("dag/gunbc/tools/review.dag");
     let review_content = std::fs::read_to_string(&review_path).expect("failed to read review.dag");
 
     let result = compile_dag_named(
-        "dsl/gunbc/tools/review.dag",
+        "dag/gunbc/tools/review.dag",
         &review_content,
         RenderTarget::Rust,
     );
@@ -7611,10 +7611,10 @@ fn review_dag_compiles_to_rust() {
 #[ignore = "Expensive: reads review.dag from disk, resolves transitive imports"]
 fn review_dag_has_review_subcommand() {
     let ws = crate::helpers::workspace_root();
-    let review_path = ws.join("dsl/gunbc/tools/review.dag");
+    let review_path = ws.join("dag/gunbc/tools/review.dag");
     let review_content = std::fs::read_to_string(&review_path).expect("failed to read review.dag");
     let result = compile_dag_named(
-        "dsl/gunbc/tools/review.dag",
+        "dag/gunbc/tools/review.dag",
         &review_content,
         RenderTarget::Rust,
     );
@@ -7629,10 +7629,10 @@ fn review_dag_has_review_subcommand() {
 #[ignore = "Expensive: reads review.dag from disk, resolves transitive imports"]
 fn review_dag_emits_cargo_with_deps() {
     let ws = crate::helpers::workspace_root();
-    let review_path = ws.join("dsl/gunbc/tools/review.dag");
+    let review_path = ws.join("dag/gunbc/tools/review.dag");
     let review_content = std::fs::read_to_string(&review_path).expect("failed to read review.dag");
     let result = compile_dag_named(
-        "dsl/gunbc/tools/review.dag",
+        "dag/gunbc/tools/review.dag",
         &review_content,
         RenderTarget::Rust,
     );
@@ -7647,11 +7647,11 @@ fn review_dag_emits_cargo_with_deps() {
 #[ignore = "Expensive: full cargo build + binary execution (~60-120s)"]
 fn review_dag_builds_and_runs_dry_run() {
     let ws = crate::helpers::workspace_root();
-    let review_path = ws.join("dsl/gunbc/tools/review.dag");
+    let review_path = ws.join("dag/gunbc/tools/review.dag");
     let review_content = std::fs::read_to_string(&review_path).expect("failed to read review.dag");
 
     let result = compile_dag_named(
-        "dsl/gunbc/tools/review.dag",
+        "dag/gunbc/tools/review.dag",
         &review_content,
         RenderTarget::Rust,
     );
@@ -7933,9 +7933,9 @@ fn shell_emit_cron_upsert_script() {
 #[ignore = "failing: untagged OpenAiChatMessageContent variants not emitted as newtype variants (content wire mismatch). Pre-existing (never run in CI under the 3-test allowlist), surfaced by the run-all widening #5427; fix as follow-up. bucket=emit-projection"]
 fn openai_chat_message_role_wire_matches_llm_snake_contract() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/llm/openai.dag");
+    let source_path = ws.join("dag/extdeps/llm/openai.dag");
     let source = std::fs::read_to_string(&source_path).expect("read openai.dag");
-    let result = compile_dag_named("dsl/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
+    let result = compile_dag_named("dag/extdeps/llm/openai.dag", &source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_llm_openai.rs");
 
@@ -8059,9 +8059,9 @@ fn openai_chat_message_role_wire_matches_llm_snake_contract() {
 #[test]
 fn github_review_enums_wire_matches_screaming_snake_contract() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/github/pulls.dag");
+    let source_path = ws.join("dag/extdeps/github/pulls.dag");
     let source = std::fs::read_to_string(&source_path).expect("read pulls.dag");
-    let result = compile_dag_named("dsl/extdeps/github/pulls.dag", &source, RenderTarget::Rust);
+    let result = compile_dag_named("dag/extdeps/github/pulls.dag", &source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_github_pulls.rs");
 
@@ -8147,9 +8147,9 @@ fn enum_block<'a>(content: &'a str, enum_decl: &str) -> &'a str {
 #[test]
 fn anthropic_request_coproduct_wire_contracts_emit_targeted_serde() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source_path = ws.join("dag/extdeps/llm/anthropic.dag");
     let source = std::fs::read_to_string(&source_path).expect("read anthropic.dag");
-    let result = compile_dag_named("dsl/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
+    let result = compile_dag_named("dag/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
     assert_no_diagnostics(&result);
     let content = find_file(&result, "src/extdeps_llm_anthropic.rs");
 
@@ -8853,10 +8853,10 @@ fn anthropic_messages_200_role_json_matches_messages_wire_tag() {
 #[test]
 fn openai_chat_completion_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/llm/openai_rest.dag");
+    let source_path = ws.join("dag/extdeps/llm/openai_rest.dag");
     let source = std::fs::read_to_string(&source_path).expect("read openai_rest.dag");
     let result = compile_dag_named(
-        "dsl/extdeps/llm/openai_rest.dag",
+        "dag/extdeps/llm/openai_rest.dag",
         &source,
         RenderTarget::Rust,
     );
@@ -9067,10 +9067,10 @@ fn openai_chat_completion_200_residual_fields_round_trip_representative_wire() {
 #[test]
 fn openai_responses_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/llm/openai_rest.dag");
+    let source_path = ws.join("dag/extdeps/llm/openai_rest.dag");
     let source = std::fs::read_to_string(&source_path).expect("read openai_rest.dag");
     let result = compile_dag_named(
-        "dsl/extdeps/llm/openai_rest.dag",
+        "dag/extdeps/llm/openai_rest.dag",
         &source,
         RenderTarget::Rust,
     );
@@ -9355,10 +9355,10 @@ service test.Llm {
 #[ignore = "failing: Anthropic Messages output fields do not project from the typed 200 body. Pre-existing (never run in CI under the 3-test allowlist), surfaced by the run-all widening #5427; fix as follow-up. bucket=emit-projection"]
 fn anthropic_messages_uses_typed_200_body_projection() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/llm/anthropic_rest.dag");
+    let source_path = ws.join("dag/extdeps/llm/anthropic_rest.dag");
     let source = std::fs::read_to_string(&source_path).expect("read anthropic_rest.dag");
     let result = compile_dag_named(
-        "dsl/extdeps/llm/anthropic_rest.dag",
+        "dag/extdeps/llm/anthropic_rest.dag",
         &source,
         RenderTarget::Rust,
     );
@@ -9644,9 +9644,9 @@ service test.Llm {
 #[ignore = "Expensive: reads from disk, resolves transitive imports"]
 fn anthropic_dag_compiles_to_rust() {
     let ws = crate::helpers::workspace_root();
-    let source_path = ws.join("dsl/extdeps/llm/anthropic.dag");
+    let source_path = ws.join("dag/extdeps/llm/anthropic.dag");
     let source = std::fs::read_to_string(&source_path).expect("failed to read anthropic.dag");
-    let result = compile_dag_named("dsl/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
+    let result = compile_dag_named("dag/extdeps/llm/anthropic.dag", &source, RenderTarget::Rust);
     let hard_diags: Vec<_> = diagnostic_messages(&result)
         .into_iter()
         .filter(|d| !d.contains("complexity:"))
@@ -11214,7 +11214,7 @@ fn depth(w: Wrapper) -> Int {
 fn dump_complexity_report() {
     let ws = workspace_root();
     let mut all_sources: Vec<Rc<SourceFile>> = Vec::new();
-    collect_dag_sources(&ws, &ws.join("dsl"), &mut all_sources);
+    collect_dag_sources(&ws, &ws.join("dag"), &mut all_sources);
     collect_dag_sources(&ws, &ws.join("src/v1"), &mut all_sources);
 
     eprintln!("Compiling {} .dag files...", all_sources.len());

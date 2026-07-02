@@ -1,0 +1,85 @@
+module gunbc.install_server_emit
+
+import std.types { String, NonEmptyStr, List }
+import gunbc.os_install {
+  InstallServerSpec,
+  Srv3OsInstallPlan,
+  OsInstallDelivery,
+  NetworkBoot,
+  VirtualMediaIso,
+}
+import extdeps.provisioning.network_boot { NetworkBootChain, network_uefi_bootloader_artifact }
+import extdeps.provisioning.dhcp_client_arch {
+  dhcp_client_processor_architecture,
+  dhcp_processor_architecture_code,
+}
+import extdeps.uri { uri_wire }
+import extdeps.formats.dnsmasq {
+  DnsmasqDirective,
+  DnsmasqComment, DnsmasqPort, DnsmasqDhcpRangeProxy,
+  DnsmasqDhcpMatchSet, DnsmasqDhcpOptionForceTag, DnsmasqDhcpBootTag,
+  serialize_dnsmasq,
+}
+
+data install_server_boot_tag: String = "efihttp"
+
+fn network_address_of_cidr(cidr: String) -> String {
+  match split(s: cidr, delimiter: "/") |> first {
+    Present { value: network } => network
+    Absent => cidr
+  }
+}
+
+fn install_plan_network_boot_chain(plan: Srv3OsInstallPlan) -> NetworkBootChain? {
+  match plan.delivery {
+    NetworkBoot { delivery: d } => Present { value: d.chain }
+    VirtualMediaIso { autoinstall: _ } => Absent
+  }
+}
+
+fn install_server_boot_steering(spec: InstallServerSpec) -> List<DnsmasqDirective> {
+  let arch = spec.plan.host_architecture
+  match install_plan_network_boot_chain(plan: spec.plan) {
+    Absent => [DnsmasqComment { text: "install-server emit refused: plan delivery is not network-boot (solver chose virtual-media path)" }]
+    Present { value: chain } =>
+      match dhcp_client_processor_architecture(arch: arch, mode: chain.boot_mode) {
+        Absent => [DnsmasqComment { text: "no UEFI HTTP-boot client-arch mapped for this host architecture and boot-mode" }]
+        Present { value: pa } =>
+          match network_uefi_bootloader_artifact(arch: arch) {
+            Absent => [DnsmasqComment { text: "no UEFI network bootloader artifact for this host architecture" }]
+            Present { value: loader } =>
+              [
+                DnsmasqDhcpMatchSet {
+                  tag: install_server_boot_tag,
+                  option: "option:client-arch",
+                  value: to_string(dhcp_processor_architecture_code(a: pa)),
+                },
+                DnsmasqDhcpOptionForceTag {
+                  tag: install_server_boot_tag,
+                  option: "60",
+                  value: "HTTPClient",
+                },
+                DnsmasqDhcpBootTag {
+                  tag: install_server_boot_tag,
+                  target: concat(uri_wire(uri: chain.image_http_root), loader),
+                },
+              ]
+          }
+      }
+  }
+}
+
+fn install_server_dnsmasq_directives(spec: InstallServerSpec) -> List<DnsmasqDirective> {
+  concat(
+    [
+      DnsmasqComment { text: "gunbc install-server proxyDHCP UEFI HTTP-boot, generated from dag/gunbc/os_install.dag, do not hand-edit" },
+      DnsmasqPort { value: 0 },
+      DnsmasqDhcpRangeProxy { network_address: network_address_of_cidr(cidr: spec.serving_segment.cidr) },
+    ],
+    install_server_boot_steering(spec: spec)
+  )
+}
+
+fn install_server_dnsmasq_conf(spec: InstallServerSpec) -> String {
+  serialize_dnsmasq(directives: install_server_dnsmasq_directives(spec: spec))
+}

@@ -98,7 +98,7 @@ The whole 50 min is one step (`gunbc ci`, 49m58s). By phase, then one level deep
 | --- | --- | --- |
 | Setup | ~15s | checkout (fetch-depth 0, ~1s) · setup-rust (rustfmt already current, ~10s) · cargo-cache restore |
 | Build `v1-compiler --release` | ~1m45s | `cargo build … --bins` at **`CARGO_BUILD_JOBS=1`**; **sccache warm (847/859 hits)** so fast anyway. Produces the seed bins: `gunbc` · `claim_executor` · `discover_source_root_ingest` |
-| **Batch 1** — compile-clean gate | ~22s | `gunbc compile --target rust` over `dsl`+`src/v2` (whole substrate must compile clean) **+ a RED control** (a deliberately-perturbed compile must fail) |
+| **Batch 1** — compile-clean gate | ~22s | `gunbc compile --target rust` over `dag`+`src/v2` (whole substrate must compile clean) **+ a RED control** (a deliberately-perturbed compile must fail) |
 | **Batch 2** (width 8, 7 nodes) | **~43m20s** | one *atomic* node dominates — split below |
 | **Batch 3** — ingest + self-host | ~4m29s | 2 **serial** (width-1) sub-shells: ① `discover_source_root_ingest` + 3 program-assembly ingest witnesses (~2m16s) · ② self-host closure + gap4-parse + closure module-count witnesses (~2m13s) |
 | Teardown | ~19s | save cargo cache (tar+zstd, 233 MB) |

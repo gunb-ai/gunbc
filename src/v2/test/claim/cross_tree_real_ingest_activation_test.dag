@@ -14,7 +14,7 @@ import v2.compiler.source_authority {
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.algebra { Cons, Empty }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { DslTree, V2Tree }
+import v2.std.cross_tree.import_model { DagTree, V2Tree }
 import v2.std.cross_tree.resolution {
   CrossTreeEdgeDecision,
   EdgeCrossAdmitted,
@@ -31,7 +31,7 @@ data ct_real_v2_subject_source: Medium<String> = Medium {
   fidelity: Lossless
 }
 
-data ct_real_dsl_target_source: Medium<String> = Medium {
+data ct_real_dag_target_source: Medium<String> = Medium {
   carried: "module ct_real_target\n",
   fidelity: Lossless
 }
@@ -42,48 +42,48 @@ data ct_real_v2_subject_artifact: Artifact = Artifact {
   file_path: "src/v2/ct_real_subject.dag"
 }
 
-data ct_real_dsl_target_artifact: Artifact = Artifact {
+data ct_real_dag_target_artifact: Artifact = Artifact {
   kind: SourceFile,
-  id: ^ct_real_dsl_target_artifact,
-  file_path: "dsl/ct_real_target.dag"
+  id: ^ct_real_dag_target_artifact,
+  file_path: "dag/ct_real_target.dag"
 }
 
-data ct_real_v2_to_dsl_subject_read: DagSourceReadWitness = DagSourceReadWitness {
+data ct_real_v2_to_dag_subject_read: DagSourceReadWitness = DagSourceReadWitness {
   source: ct_real_v2_subject_source,
   artifact: ct_real_v2_subject_artifact,
   compilation_unit: ^ct_real_subject_cu,
   source_root: V2Tree
 }
 
-data ct_real_v2_to_dsl_target_read: DagSourceReadWitness = DagSourceReadWitness {
-  source: ct_real_dsl_target_source,
-  artifact: ct_real_dsl_target_artifact,
+data ct_real_v2_to_dag_target_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: ct_real_dag_target_source,
+  artifact: ct_real_dag_target_artifact,
   compilation_unit: ^ct_real_target_cu,
-  source_root: DslTree
+  source_root: DagTree
 }
 
-data ct_real_v2_to_dsl_ingest: SourceRootIngest = Cons {
-  head: ct_real_v2_to_dsl_subject_read,
-  tail: Cons { head: ct_real_v2_to_dsl_target_read, tail: Empty }
+data ct_real_v2_to_dag_ingest: SourceRootIngest = Cons {
+  head: ct_real_v2_to_dag_subject_read,
+  tail: Cons { head: ct_real_v2_to_dag_target_read, tail: Empty }
 }
 
-data ct_real_dsl_to_v2_subject_read: DagSourceReadWitness = DagSourceReadWitness {
+data ct_real_dag_to_v2_subject_read: DagSourceReadWitness = DagSourceReadWitness {
   source: ct_real_v2_subject_source,
   artifact: ct_real_v2_subject_artifact,
   compilation_unit: ^ct_real_subject_cu,
-  source_root: DslTree
+  source_root: DagTree
 }
 
-data ct_real_dsl_to_v2_target_read: DagSourceReadWitness = DagSourceReadWitness {
-  source: ct_real_dsl_target_source,
-  artifact: ct_real_dsl_target_artifact,
+data ct_real_dag_to_v2_target_read: DagSourceReadWitness = DagSourceReadWitness {
+  source: ct_real_dag_target_source,
+  artifact: ct_real_dag_target_artifact,
   compilation_unit: ^ct_real_target_cu,
   source_root: V2Tree
 }
 
-data ct_real_dsl_to_v2_ingest: SourceRootIngest = Cons {
-  head: ct_real_dsl_to_v2_subject_read,
-  tail: Cons { head: ct_real_dsl_to_v2_target_read, tail: Empty }
+data ct_real_dag_to_v2_ingest: SourceRootIngest = Cons {
+  head: ct_real_dag_to_v2_subject_read,
+  tail: Cons { head: ct_real_dag_to_v2_target_read, tail: Empty }
 }
 
 fn ct_real_subject_qn() -> QualifiedName {
@@ -107,8 +107,8 @@ fn ct_real_edge_decision(ingest: SourceRootIngest) -> CrossTreeEdgeDecision {
   }
 }
 
-fn cross_tree_real_ingest_v2_to_dsl_admitted_holds() -> Bool {
-  match ct_real_edge_decision(ingest: ct_real_v2_to_dsl_ingest) {
+fn cross_tree_real_ingest_v2_to_dag_admitted_holds() -> Bool {
+  match ct_real_edge_decision(ingest: ct_real_v2_to_dag_ingest) {
     EdgeCrossAdmitted => true
     EdgeCrossDenied => false
     EdgeNormalResolution => false
@@ -116,8 +116,8 @@ fn cross_tree_real_ingest_v2_to_dsl_admitted_holds() -> Bool {
   }
 }
 
-fn cross_tree_real_ingest_dsl_to_v2_denied_holds() -> Bool {
-  match ct_real_edge_decision(ingest: ct_real_dsl_to_v2_ingest) {
+fn cross_tree_real_ingest_dag_to_v2_denied_holds() -> Bool {
+  match ct_real_edge_decision(ingest: ct_real_dag_to_v2_ingest) {
     EdgeCrossDenied => true
     EdgeCrossAdmitted => false
     EdgeNormalResolution => false
@@ -126,6 +126,6 @@ fn cross_tree_real_ingest_dsl_to_v2_denied_holds() -> Bool {
 }
 
 test fn cross_tree_real_ingest_activation_witnesses() -> Bool {
-  cross_tree_real_ingest_v2_to_dsl_admitted_holds()
-    && cross_tree_real_ingest_dsl_to_v2_denied_holds()
+  cross_tree_real_ingest_v2_to_dag_admitted_holds()
+    && cross_tree_real_ingest_dag_to_v2_denied_holds()
 }

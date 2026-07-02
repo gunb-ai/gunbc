@@ -1,0 +1,40 @@
+module test.claim.gitignore_gate
+
+import gunbc.gitignore_emit { expected_gitignore, gitignore_drifted }
+
+fn witness_has_cargo_patterns() -> Bool {
+  let eg = expected_gitignore()
+  string_contains(s: eg, pattern: "/target/")
+    && string_contains(s: eg, pattern: "/target-codex/")
+}
+
+fn witness_has_editor_and_os_patterns() -> Bool {
+  let eg = expected_gitignore()
+  string_contains(s: eg, pattern: ".idea/")
+    && string_contains(s: eg, pattern: ".DS_Store")
+    && string_contains(s: eg, pattern: "node_modules/")
+}
+
+fn witness_has_header() -> Bool {
+  let eg = expected_gitignore()
+  string_contains(s: eg, pattern: "generated from dag/gunbc/gitignore_authority.dag")
+    && string_contains(s: eg, pattern: "do not hand-edit")
+}
+
+fn witness_clean_does_not_drift() -> Bool {
+  !(gitignore_drifted(committed: expected_gitignore()))
+}
+
+fn witness_drift_receipt() -> Bool {
+  let eg = expected_gitignore()
+  !gitignore_drifted(committed: eg)
+    && gitignore_drifted(committed: concat(eg, "\n# drift-receipt-perturb"))
+}
+
+test fn gitignore_witnesses() -> Bool {
+  witness_has_cargo_patterns()
+    && witness_has_editor_and_os_patterns()
+    && witness_has_header()
+    && witness_clean_does_not_drift()
+    && witness_drift_receipt()
+}
