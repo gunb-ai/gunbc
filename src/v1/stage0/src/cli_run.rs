@@ -8306,6 +8306,128 @@ pub fn doc_graph_doc_count() -> i64 {
     doc_graph_report().doc_count as i64
 }
 
+// Live derivation of docs/plans/seed-shrink-census.md §5B ("T2 coverage debt"): that table was a
+// hand-maintained snapshot of v1 test modules with no floor `*_test.dag` equivalent. This walks
+// `src/v1/tests/src/*.rs` (modules containing `#[test]`) and `corpus_dag_files()` (the same
+// witness-layer-roots roster the floor uses) and diffs them by stem, so the debt roster tracks
+// the live tree instead of drifting the moment either side changes.
+struct TestMigrationDebtEntry {
+    module: String,
+    loc: i64,
+    test_fn_count: i64,
+}
+
+struct TestMigrationDebtReport {
+    entries: Vec<TestMigrationDebtEntry>,
+}
+
+fn test_migration_debt_v1_test_dir() -> PathBuf {
+    workspace_root().join("src/v1/tests/src")
+}
+
+fn test_migration_debt_stem(name: &str) -> String {
+    let stem = name.strip_suffix(".rs").unwrap_or(name);
+    stem.strip_suffix("_test").unwrap_or(stem).to_string()
+}
+
+fn test_migration_debt_floor_stems() -> Vec<String> {
+    let mut stems: Vec<String> = corpus_dag_files()
+        .into_iter()
+        .map(|(path, _)| path)
+        .filter(|p| is_test_dag(p))
+        .map(|p| {
+            let file_name = std::path::Path::new(&p)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(&p)
+                .to_string();
+            test_migration_debt_stem(&file_name)
+        })
+        .collect();
+    stems.sort();
+    stems.dedup();
+    stems
+}
+
+fn test_migration_debt_stem_covered(v1_stem: &str, floor_stems: &[String]) -> bool {
+    const MIN_SUBSTRING_MATCH_LEN: usize = 6;
+    floor_stems.iter().any(|floor_stem| {
+        floor_stem == v1_stem
+            || (v1_stem.len() >= MIN_SUBSTRING_MATCH_LEN && floor_stem.contains(v1_stem.as_str()))
+            || (floor_stem.len() >= MIN_SUBSTRING_MATCH_LEN && v1_stem.contains(floor_stem.as_str()))
+    })
+}
+
+fn build_test_migration_debt_report() -> TestMigrationDebtReport {
+    let dir = test_migration_debt_v1_test_dir();
+    let floor_stems = test_migration_debt_floor_stems();
+    let mut entries = Vec::new();
+    let read_dir = match std::fs::read_dir(&dir) {
+        Ok(rd) => rd,
+        Err(_) => return TestMigrationDebtReport { entries },
+    };
+    let mut paths: Vec<std::path::PathBuf> = read_dir
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().map(|e| e == "rs").unwrap_or(false))
+        .collect();
+    paths.sort();
+    for path in paths {
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        let test_fn_count = content.matches("#[test]").count() as i64;
+        if test_fn_count == 0 {
+            continue;
+        }
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default()
+            .to_string();
+        let stem = test_migration_debt_stem(&file_name);
+        if test_migration_debt_stem_covered(&stem, &floor_stems) {
+            continue;
+        }
+        entries.push(TestMigrationDebtEntry {
+            module: file_name,
+            loc: content.lines().count() as i64,
+            test_fn_count,
+        });
+    }
+    TestMigrationDebtReport { entries }
+}
+
+fn test_migration_debt_report() -> &'static TestMigrationDebtReport {
+    static REPORT: OnceLock<TestMigrationDebtReport> = OnceLock::new();
+    REPORT.get_or_init(build_test_migration_debt_report)
+}
+
+pub fn test_migration_debt_module_count() -> i64 {
+    test_migration_debt_report().entries.len() as i64
+}
+
+pub fn test_migration_debt_total_loc() -> i64 {
+    test_migration_debt_report().entries.iter().map(|e| e.loc).sum()
+}
+
+pub fn test_migration_debt_total_test_fns() -> i64 {
+    test_migration_debt_report()
+        .entries
+        .iter()
+        .map(|e| e.test_fn_count)
+        .sum()
+}
+
+pub fn test_migration_debt_module_names() -> Vec<String> {
+    test_migration_debt_report()
+        .entries
+        .iter()
+        .map(|e| e.module.clone())
+        .collect()
+}
+
 // Host-fed fact extraction for `v2.lens.host_language_transport_script` — the lens `.dag` table
 // owns verdict logic; this bridge only projects `shell.Exec.Run` script-arg shapes from parsed
 // modules. DISSOLUTION: node-tree reader at gunbc#5364; until then one shared host seam (Chunk D).
