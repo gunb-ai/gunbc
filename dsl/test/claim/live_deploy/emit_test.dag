@@ -134,6 +134,7 @@ fn witness_apply_script_includes_static_site_readback() -> Bool {
     && string_contains(s: sh, pattern: roadmap_site_roadmap_url_path)
     && string_contains(s: sh, pattern: roadmap_site_dispatch_url_path)
     && string_contains(s: sh, pattern: "roadmap-site-readback")
+    && string_contains(s: sh, pattern: "roadmap-site-receipt")
     && string_contains(s: sh, pattern: "JSON.parse")
 }
 
