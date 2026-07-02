@@ -1,6 +1,6 @@
 module gunbc.ci_workflow
 
-import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv, YamlKeyValue }
+import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import gunbc.ci_workflow_expressions {
   ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys
 }
@@ -294,23 +294,6 @@ fn ci_deploy_jobs() -> List<Job> {
   map(gunbc_ci_deploy_stages, s => ci_deploy_job(stage: s))
 }
 
-data ci_compile_clean_whole_tree_rollback_env: NonEmptyStr = "GUNBC_CI_COMPILE_CLEAN_WHOLE_TREE"
-
-data ci_compile_clean_rollback_dissolution_trigger: String = "EMERGENCY ROLLBACK (2026-07-02): #6127 sharded compile-clean into ~1,605 per-module `gunbc compile` subprocesses, each re-resolving its full import closure (sum-of-closures ~30.9x the monolith CPU), scheduled at width 1 because the width fold priced each single-module shard against a stale whole-corpus 4.24GiB RSS sample vs the 8GiB cap. Live regression measured 8h57m wall / 8h07m CPU per job; pre-regression monolith green runs were 28-96min. This valve set to '1' restores the whole-tree monolith compile-clean. AUTHORITY = v2.workflow.compile_clean_shard_roster.compile_clean_whole_tree_rollback_env (matching literal kept here to avoid a src/v2 <- dsl cross-root import for a scaffold). DISSOLVES with that authority's compile_clean_whole_tree_rollback_dissolution_trigger — removed once the in-process shard resolve pool makes sharding cheaper than the monolith."
-
-data ci_compile_clean_rollback_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_workflow",
-    decl_name: "ci_compile_clean_rollback_job_env",
-    field: WholeDeclaration
-  }
-}
-
-fn ci_compile_clean_rollback_job_env() -> List<YamlKeyValue> {
-  [kv(key: ci_compile_clean_whole_tree_rollback_env as String, value: yaml_string(s: "1"))]
-}
-
 fn ci_job() -> Job {
   Job {
     id: "ci",
@@ -318,7 +301,7 @@ fn ci_job() -> Job {
     runner: gunbc_ci_runner_spec(),
     steps: concat(ci_prelude_steps(), [ci_floor_step(), ci_merge_admission_gate_step()]),
     needs: [],
-    env: Present { value: ci_compile_clean_rollback_job_env() },
+    env: none,
     outputs: none,
     if_condition: none,
     strategy: none,
