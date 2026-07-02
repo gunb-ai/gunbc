@@ -1,8 +1,7 @@
 module extdeps.dns.domain_name
 
-import std.types { NonEmptyStr, String, List, Bool, Int, Char }
+import std.types { NonEmptyStr, String, List, Bool, Int }
 import std.error_primitives { Result, Ok, Err }
-import std.unicode { char_in_class, IdentStart, Digit, IdentContinue }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -45,34 +44,48 @@ type DomainNameParseError =
   | BadLabelChar
   | EdgeHyphen
 
-fn dns_label_char_code(c: Char) -> Int {
-  code_point(c)
+fn code_point_int(ch: String) -> Int {
+  code_point(ch)
 }
 
-fn is_dns_hyphen(c: Char) -> Bool {
-  dns_label_char_code(c: c) == 45
+fn is_letter_code_point(cp: Int) -> Bool {
+  (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90)
 }
 
-fn is_dns_ldh_char(c: Char) -> Bool {
-  char_in_class(c: c, class: IdentStart)
-    || char_in_class(c: c, class: Digit)
-    || is_dns_hyphen(c: c)
+fn is_ldh_code_point(cp: Int) -> Bool {
+  is_letter_code_point(cp: cp) || (cp >= 48 && cp <= 57) || cp == 45
+}
+
+fn fold_dns_case_string_at(s: String, i: Int, acc: String) -> String {
+  if i >= string_length(s: s) {
+    acc
+  } else {
+    let ch = char_at(s, i)
+    let cp = code_point_int(ch: ch)
+    let out = if cp >= 65 && cp <= 90 {
+      from_code_point(cp + 32)
+    } else {
+      ch
+    }
+    fold_dns_case_string_at(s: s, i: i + 1, acc: concat(acc, out))
+  }
 }
 
 fn fold_dns_case_string(s: String) -> String {
-  fold(
-    chars(s),
-    init: "",
-    f: (acc, c) => {
-      let cp = dns_label_char_code(c: c)
-      let out = if cp >= 65 && cp <= 90 {
-        from_code_point(cp + 32)
-      } else {
-        from_code_point(cp)
-      }
-      concat(acc, out)
-    },
-  )
+  fold_dns_case_string_at(s: s, i: 0, acc: "")
+}
+
+fn label_has_invalid_ldh_at(s: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    false
+  } else {
+    let cp = code_point_int(ch: char_at(s, i))
+    if !is_ldh_code_point(cp: cp) {
+      true
+    } else {
+      label_has_invalid_ldh_at(s: s, i: i + 1, len: len)
+    }
+  }
 }
 
 fn parse_dns_label_raw(raw: String) -> Result<DnsLabel, DomainNameParseError> {
@@ -83,22 +96,15 @@ fn parse_dns_label_raw(raw: String) -> Result<DnsLabel, DomainNameParseError> {
   } else if len > 63 {
     Err { value: LabelTooLong }
   } else {
-    let first = char_at(folded, 0)
-    if !char_in_class(c: first, class: IdentStart) {
+    let first_cp = code_point_int(ch: char_at(folded, 0))
+    if !is_letter_code_point(cp: first_cp) {
       Err { value: BadLabelChar }
-    } else if is_dns_hyphen(c: char_at(folded, len - 1)) {
+    } else if code_point_int(ch: char_at(folded, len - 1)) == 45 {
       Err { value: EdgeHyphen }
+    } else if label_has_invalid_ldh_at(s: folded, i: 0, len: len) {
+      Err { value: BadLabelChar }
     } else {
-      let invalid = fold(
-        chars(folded),
-        init: false,
-        f: (acc, c) => acc || !is_dns_ldh_char(c: c),
-      )
-      if invalid {
-        Err { value: BadLabelChar }
-      } else {
-        Ok { value: folded as DnsLabel }
-      }
+      Ok { value: folded as DnsLabel }
     }
   }
 }

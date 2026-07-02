@@ -1,7 +1,19 @@
 module extdeps.router.verizon_cr1000a
 
-import std.types { NonEmptyStr, String, List }
-import extdeps.router.types { DhcpLeaseObservation }
+import std.types { NonEmptyStr, String, List, Int }
+import extdeps.dhcp.v4 {
+  DhcpLeaseObservation,
+  DhcpLeaseAssignment,
+  DhcpLeaseStatus,
+  MacAddress,
+  Ipv4Address,
+  DynamicLease,
+  StaticReservation,
+  DynamicDhcpLease,
+  StaticDhcpReservation,
+  Active,
+  Inactive,
+}
 import extdeps.vendor.verizon { verizon }
 import extdeps.vendor { Vendor }
 import extdeps.hardware { Hardware }
@@ -16,6 +28,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+type Cr1000aAdminTransport =
+    WebUiManual
+  | UnknownTransport
+
 type Cr1000aRouterCatalogRow {
   model_number: NonEmptyStr
   manufacturer: Vendor<Hardware>
@@ -26,9 +42,29 @@ data cr1000a_catalog: Cr1000aRouterCatalogRow = Cr1000aRouterCatalogRow {
   manufacturer: verizon,
 }
 
+type Cr1000aRouterStatusSnapshot {
+  firmware_version: NonEmptyStr
+  hardware_version: NonEmptyStr
+  model_name: NonEmptyStr
+  lan_ipv4_address: Ipv4Address
+  broadband_physical_connection: NonEmptyStr
+  ipv6_source: NonEmptyStr
+  delegated_prefix_length: Int?
+}
+
+type Cr1000aIpv4AddressDistributionRow {
+  host_name_raw: String
+  ip: Ipv4Address
+  mac: MacAddress
+  lease_type: DhcpLeaseAssignment
+  connection_name: NonEmptyStr?
+  status: DhcpLeaseStatus
+  expires_in: NonEmptyStr?
+}
+
 type Cr1000aDhcpLeaseRow {
-  mac_address: String
-  ipv4_address: String
+  mac_address: MacAddress
+  ipv4_address: Ipv4Address
   lease: DhcpLeaseObservation
 }
 
@@ -36,10 +72,15 @@ type Cr1000aDhcpLeaseTable {
   rows: List<Cr1000aDhcpLeaseRow>
 }
 
-data dissolve_on_cr1000a_lease_row_address_strings: List<String> = [
-  "closure:ground_mac_ipv4_address_types|mac_address/ipv4_address are bare String; should be grounded on network address carriers once std/network or extdeps/network lands (§5 fail-closed on malformed addresses)|trigger:IpAddress and MacAddress carriers land in std/ or extdeps/network"
-]
+type Cr1000aBroadbandIpv6Snapshot {
+  delegated_prefix_length: Int
+  prefix: NonEmptyStr?
+}
 
 data dissolve_on_cr1000a_dhcp_lease_transport: List<String> = [
   "closure:cr1000a_dhcp_lease_observation_transport|Cr1000aDhcpLeaseTable has cited semantic shape only; read transport for /cgi/cgi_dhcp*.js addCfg projection is not yet bound as a handler|trigger:extdeps/router/verizon_cr1000a_rest.dag or shell handler lands with a live read witness"
+]
+
+data dissolve_on_cr1000a_host_name_raw_parse: List<String> = [
+  "closure:cr1000a_host_name_raw_to_host_name|Cr1000aIpv4AddressDistributionRow.host_name_raw is cited router UI text; parse via parse_host_name at observation boundary when transport lands|trigger:cr1000a lease-table read transport binds host_name_raw through parse_host_name"
 ]

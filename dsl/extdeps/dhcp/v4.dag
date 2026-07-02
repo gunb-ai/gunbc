@@ -1,0 +1,72 @@
+module extdeps.dhcp.v4
+
+import std.types { NonEmptyStr, String, Int, Bool }
+import std.error_primitives { Result, Ok, Err }
+import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "datatracker.ietf.org/doc/html/rfc2132#section-3.14"
+  }
+}
+
+type MacAddress = NonEmptyStr where brand("MacAddress")
+
+type Ipv4Address = NonEmptyStr where brand("Ipv4Address")
+
+type DhcpClientHostNameOption12 = HostName
+
+type DhcpLeaseAssignment =
+    DynamicLease
+  | StaticReservation
+
+type DhcpLeaseStatus =
+    Active
+  | Inactive
+  | Expired
+
+type DhcpAddressOrigin =
+    DhcpClient
+  | StaticConfig
+
+type DhcpLeaseObservation
+  = DynamicDhcpLease {
+      client_hostname: DhcpClientHostNameOption12?
+      lease_time_remaining_minutes: Int
+      assignment_policy: DhcpLeaseAssignment
+      status: DhcpLeaseStatus
+    }
+  | StaticDhcpReservation {
+      reservation_label: NonEmptyStr
+      assignment_policy: DhcpLeaseAssignment
+      status: DhcpLeaseStatus
+    }
+
+fn dhcp_mac_pinned_reservation_not_contradictory(
+  address_origin: DhcpAddressOrigin,
+  assignment_policy: DhcpLeaseAssignment,
+) -> Bool {
+  match address_origin {
+    DhcpClient =>
+      match assignment_policy {
+        DynamicLease => true
+        StaticReservation => true
+      }
+    StaticConfig =>
+      match assignment_policy {
+        StaticReservation => true
+        DynamicLease => false
+      }
+  }
+}
+
+fn parse_dhcp_client_hostname_option12(raw: String) -> Result<DhcpClientHostNameOption12, DomainNameParseError> {
+  match parse_host_name(raw: raw) {
+    Ok { value: host } => Ok { value: host }
+    Err { value: e } => Err { value: e }
+  }
+}
