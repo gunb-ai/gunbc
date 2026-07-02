@@ -7,7 +7,7 @@ import extdeps.languages.bash.program {
   lit,
   serialize_bash
 }
-import v2.extdeps.languages.bash_program_fold { bash_program_serialize }
+import v2.workflow.bash_program_emit { bash_program_serialize }
 import v2.std.diagnostic { Accepted, Rejected }
 
 fn bash_program_fold_sample() -> ShellProgram {

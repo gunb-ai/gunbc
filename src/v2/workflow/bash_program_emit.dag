@@ -1,4 +1,4 @@
-module v2.extdeps.languages.bash_program_fold
+module v2.workflow.bash_program_emit
 
 import extdeps.languages.bash.program { ShellProgram, ShellStmt }
 import v2.compiler.emit { emit }
