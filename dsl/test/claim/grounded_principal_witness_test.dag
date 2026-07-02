@@ -4,11 +4,14 @@ import std.types { NonEmptyStr, Bool }
 import gunbc.fleet_posix_accounts {
   FleetAccountCiRunner,
   FleetAccountOperator,
+  FleetAccountRoot,
+  GroundedPosixPrincipal,
+  PosixAccountDeclaredProbe,
   fleet_posix_principal,
   grounded_posix_principal_name,
   fleet_posix_account_from_name,
   fleet_posix_account_exists,
-  grounded_posix_principal_has_existence_witness,
+  posix_declared_probe_names_principal,
   fleet_operator_email,
   fleet_operator_gcp_iam_member,
 }
@@ -65,13 +68,24 @@ fn witness_briansrls_fork_dissolved() -> Bool {
     )
 }
 
-fn witness_grounded_rows_carry_existence_witness() -> Bool {
-  grounded_posix_principal_has_existence_witness(
-    p: fleet_posix_principal(key: FleetAccountCiRunner)
-  )
-    && grounded_posix_principal_has_existence_witness(
-      p: fleet_posix_principal(key: FleetAccountOperator)
-    )
+fn witness_declared_probe_names_principal() -> Bool {
+  posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountCiRunner))
+    && posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountOperator))
+    && posix_declared_probe_names_principal(p: fleet_posix_principal(key: FleetAccountRoot))
+}
+
+fn witness_declared_probe_mismatch_red() -> Bool {
+  let p = fleet_posix_principal(key: FleetAccountCiRunner)
+  let poisoned = GroundedPosixPrincipal {
+    posix: p.posix,
+    sudo_grants: p.sudo_grants,
+    declared_probe: PosixAccountDeclaredProbe {
+      probed_at: p.declared_probe.probed_at,
+      probe_command: "id runner",
+      host: p.declared_probe.host,
+    },
+  }
+  !posix_declared_probe_names_principal(p: poisoned)
 }
 
 fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
@@ -141,7 +155,8 @@ test fn grounded_principal_witnesses() -> Bool {
     && witness_ghrunner_is_ci_deploy_principal()
     && witness_operator_is_manual_deploy_principal()
     && witness_briansrls_fork_dissolved()
-    && witness_grounded_rows_carry_existence_witness()
+    && witness_declared_probe_names_principal()
+    && witness_declared_probe_mismatch_red()
     && witness_ci_runner_sudo_grants_derive_privileged_commands()
     && witness_gha_runner_context_is_not_os_account()
     && witness_preflight_shell_is_dash_safe()
