@@ -142,7 +142,17 @@ type ByteSize = Measure<Memory, One, Nat>
 
 type Kibibyte = Measure<Memory, Kibi, Nat>
 
+type Mebibyte = Measure<Memory, Mebi, Nat>
+
 type Gibibyte = Measure<Memory, Gibi, Nat>
+
+fn mebibyte(count: Nat) -> Mebibyte {
+  Mebibyte { count: count }
+}
+
+fn mebibyte_count(m: Mebibyte) -> Nat {
+  measure_count(m)
+}
 
 fn gibibyte(count: Nat) -> Gibibyte {
   Gibibyte { count: count }
@@ -165,6 +175,8 @@ fn bits_per_byte() -> Nat {
 type Hertz = Measure<Frequency, One, Nat>
 
 type HardwareThreadCount = Measure<Count, One, Nat>
+
+type Millicore = Measure<Count, Milli, Nat>
 
 type Watt = Measure<Power, One, Nat>
 
@@ -238,6 +250,14 @@ fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
 
 fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
   measure_count(t)
+}
+
+fn millicore(count: Nat) -> Millicore {
+  Millicore { count: count }
+}
+
+fn millicore_count(m: Millicore) -> Nat {
+  measure_count(m)
 }
 
 type Bandwidth = Measure<DataRate, One, Nat>
