@@ -2,21 +2,12 @@ module tools.roadmap_dispatch
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
-import gunbc.roadmap_spawner { roadmap_dispatch_json, json_str }
+import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
 
 data roadmap_dispatch_output_path: String = "target/roadmap-dispatch.json"
 
-data dispatch_brief_template: String = "Node: <node_id>\nWhy now: <displaced cost / what it unblocks>\nNon-goals: <explicitly out of scope>\nM0 evidence: <prove current state / reproduce the gap>\nM1 smallest change: <first implementation slice>\nM2 RED control: <perturbation that goes red>\nM3 green receipt: <execution on the real path>\nStop and return if: <named hand-back conditions>\nFiles likely touched: <paths>\nCommands to run: <repro/verify commands>\nExpected artifact: <what comes back even if the fix does not land>"
-
-fn roadmap_dispatch_content() -> String {
-  concat("{\"schema\": \"roadmap-dispatch-file/v1\", \"brief_template\": ",
-    concat(json_str(s: dispatch_brief_template),
-    concat(", \"dispatch\": ", concat(roadmap_dispatch_json(doc: roadmap_authority(), merged: authored_merged_prs()), "}"))))
-}
-
 func main() -> ProcessExit {
-  let w = Filesystem.Write(path: roadmap_dispatch_output_path, content: roadmap_dispatch_content())
+  let w = Filesystem.Write(path: roadmap_dispatch_output_path, content: roadmap_dispatch_file_content())
   if w.success {
     ExitSuccess
   } else {
