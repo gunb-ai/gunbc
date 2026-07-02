@@ -17,6 +17,7 @@ import gunbc.live_deploy.spec {
   gunbc_roadmap_systemd_unit_path,
 }
 import gunbc.node_http_server_emit { roadmap_dashboard_node_http_server_source }
+import gunbc.roadmap_static_site { roadmap_site_readback_script }
 
 data live_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
 
@@ -108,6 +109,9 @@ fn emit_apply_script_body(spec: DeploymentSpec) -> Doc {
       doc_line_of(text: concat("if ! tailscale serve status 2>/dev/null | grep -q ':", to_string(port), "'; then")),
       doc_line_of(text: concat("  tailscale serve --bg ", to_string(port))),
       doc_line_of(text: "fi"),
+      doc_line_of(text: ""),
+      doc_line_of(text: roadmap_site_readback_script(port: port)),
+      doc_line_of(text: ""),
       doc_line_of(text: concat("echo live-deploy-receipt host=", spec.target.host.identity, " fold=apply verdict=converged")),
     ]
   )))

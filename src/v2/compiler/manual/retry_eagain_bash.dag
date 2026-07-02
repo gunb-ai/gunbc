@@ -1,7 +1,7 @@
 module v2.test.manual.retry_eagain_bash
 
 import v2.std.orchestration {
-  Step,
+  PipelineStep,
   Do,
   Retry,
   Run,
@@ -69,7 +69,7 @@ fn retry_eagain_level2() -> EscalationLevel {
   }
 }
 
-fn retry_eagain_intent() -> Step {
+fn retry_eagain_intent() -> PipelineStep {
   Retry {
     body: Pipeline {
       steps: [Do { run: retry_eagain_example_run() }],

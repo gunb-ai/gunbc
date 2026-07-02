@@ -7,7 +7,7 @@ import gunbc.node_http_server_emit {
 }
 
 fn witness_route_table_serves_daily_and_roadmap() -> Bool {
-  count(roadmap_dashboard_served_static_route_table().routes) == 2
+  count(roadmap_dashboard_served_static_route_table().routes) == 5
 }
 
 fn witness_emitted_source_has_root_daily_workspace() -> Bool {

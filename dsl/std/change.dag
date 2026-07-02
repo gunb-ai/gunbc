@@ -1,0 +1,668 @@
+module std.change
+
+import std.types { List, Bool }
+import std.algebra { Monoid }
+
+data keyed_change_doc: String = "Keyed delta fold carrier — generic keyed zip-fold into an algebraic codomain. Unchanged vanishes by monoid identity (never by filtering). Three-way uses a join-semilattice with KeyedUnchanged as the benign bottom (safety inversion of std.termination.DescentEvidence, whose bottom is the fail state). KeyedLeafVerdict is the single three-way authority (verdict is the plan). Codomain carries NO Unknown element."
+
+type KeyedRow<K, V> {
+  row_key: K
+  value: V
+}
+
+type KeyedDiffHunk<K, V>
+  = KeyedDiffAddedHunk { hunk_key: K, to: V }
+  | KeyedDiffRemovedHunk { hunk_key: K, from: V }
+  | KeyedDiffModifiedHunk { hunk_key: K, from: V, to: V }
+
+type KeyedPatch<K, V> {
+  hunks: List<KeyedDiffHunk<K, V>>
+}
+
+type KeyedLeafVerdict<V>
+  = KeyedUnchanged
+  | KeyedConflict
+  | KeyedApplyHunk { from: V, to: V }
+  | KeyedVerdictAdded { value: V }
+  | KeyedVerdictRemoved { value: V }
+
+type KeyedLeafVerdictFold<V, R> {
+  unchanged: R
+  conflict: R
+  apply_hunk: fn(V, V) -> R
+  added: fn(V) -> R
+  removed: fn(V) -> R
+}
+
+fn keyed_leaf_verdict_fold<V, R>(
+  verdict: KeyedLeafVerdict<V>,
+  fold: KeyedLeafVerdictFold<V, R>,
+) -> R {
+  match verdict {
+    KeyedUnchanged => fold.unchanged
+    KeyedConflict => fold.conflict
+    KeyedApplyHunk { from: f, to: t } => fold.apply_hunk(f, t)
+    KeyedVerdictAdded { value: v } => fold.added(v)
+    KeyedVerdictRemoved { value: v } => fold.removed(v)
+  }
+}
+
+type KeyedThreeWayEntry<K, V> {
+  entry_key: K
+  verdict: KeyedLeafVerdict<V>
+}
+
+type KeyedThreeWayPatch<K, V> {
+  entries: List<KeyedThreeWayEntry<K, V>>
+}
+
+type KeyedThreeWayInsertAcc<K, V> {
+  replaced: Bool
+  entries: List<KeyedThreeWayEntry<K, V>>
+}
+
+fn keyed_patch_empty<K, V>() -> KeyedPatch<K, V> {
+  KeyedPatch { hunks: [] }
+}
+
+fn keyed_three_way_patch_empty<K, V>() -> KeyedThreeWayPatch<K, V> {
+  KeyedThreeWayPatch { entries: [] }
+}
+
+fn keyed_patch_append_hunk<K, V>(
+  patch: KeyedPatch<K, V>,
+  hunk: KeyedDiffHunk<K, V>,
+) -> KeyedPatch<K, V> {
+  KeyedPatch { hunks: concat(patch.hunks, [hunk]) }
+}
+
+fn keyed_patch_append<K, V>(
+  left: KeyedPatch<K, V>,
+  right: KeyedPatch<K, V>,
+) -> KeyedPatch<K, V> {
+  KeyedPatch { hunks: concat(left.hunks, right.hunks) }
+}
+
+fn keyed_patch_monoid<K, V>() -> Monoid<KeyedPatch<K, V>> {
+  Monoid {
+    op: keyed_patch_append,
+    identity: keyed_patch_empty(),
+  }
+}
+
+fn keyed_patch_fold<K, V>(contributions: List<KeyedPatch<K, V>>) -> KeyedPatch<K, V> {
+  let monoid = keyed_patch_monoid()
+  fold(contributions, init: monoid.identity, f: fn(acc, patch) {
+    monoid.op(acc, patch)
+  })
+}
+
+fn keyed_patch_singleton<K, V>(hunk: KeyedDiffHunk<K, V>) -> KeyedPatch<K, V> {
+  KeyedPatch { hunks: [hunk] }
+}
+
+fn keyed_three_way_patch_append<K, V>(
+  left: KeyedThreeWayPatch<K, V>,
+  right: KeyedThreeWayPatch<K, V>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedThreeWayPatch<K, V> {
+  fold(right.entries, init: left, f: fn(acc, incoming) {
+    keyed_three_way_patch_insert_entry(
+      patch: acc,
+      entry: incoming,
+      key_eq: key_eq,
+      value_eq: value_eq,
+    )
+  })
+}
+
+fn keyed_three_way_patch_insert_entry<K, V>(
+  patch: KeyedThreeWayPatch<K, V>,
+  entry: KeyedThreeWayEntry<K, V>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedThreeWayPatch<K, V> {
+  let acc = fold(patch.entries, init: KeyedThreeWayInsertAcc {
+    replaced: false,
+    entries: [],
+  }, f: fn(state, existing) {
+    if key_eq(a: existing.entry_key, b: entry.entry_key) {
+      KeyedThreeWayInsertAcc {
+        replaced: true,
+        entries: concat(state.entries, [KeyedThreeWayEntry {
+          entry_key: entry.entry_key,
+          verdict: keyed_leaf_verdict_join(
+            a: existing.verdict,
+            b: entry.verdict,
+            equal: value_eq,
+          ),
+        }]),
+      }
+    } else {
+      KeyedThreeWayInsertAcc {
+        replaced: state.replaced,
+        entries: concat(state.entries, [existing]),
+      }
+    }
+  })
+  if acc.replaced {
+    KeyedThreeWayPatch { entries: acc.entries }
+  } else {
+    KeyedThreeWayPatch { entries: concat(acc.entries, [entry]) }
+  }
+}
+
+fn keyed_three_way_patch_monoid<K, V>(
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> Monoid<KeyedThreeWayPatch<K, V>> {
+  Monoid {
+    op: fn(left, right) {
+      keyed_three_way_patch_append(
+        left: left,
+        right: right,
+        key_eq: key_eq,
+        value_eq: value_eq,
+      )
+    },
+    identity: keyed_three_way_patch_empty(),
+  }
+}
+
+fn keyed_three_way_patch_singleton<K, V>(
+  entry: KeyedThreeWayEntry<K, V>,
+) -> KeyedThreeWayPatch<K, V> {
+  KeyedThreeWayPatch { entries: [entry] }
+}
+
+fn keyed_three_way_leaf<V>(
+  base: V,
+  observed: V,
+  desired: V,
+  equal: fn(V, V) -> Bool,
+) -> KeyedLeafVerdict<V> {
+  if equal(a: observed, b: desired) {
+    KeyedUnchanged
+  } else { if equal(a: observed, b: base) {
+    KeyedApplyHunk { from: base, to: desired }
+  } else {
+    KeyedConflict
+  } }
+}
+
+fn keyed_leaf_verdict_join<V>(
+  a: KeyedLeafVerdict<V>,
+  b: KeyedLeafVerdict<V>,
+  equal: fn(V, V) -> Bool,
+) -> KeyedLeafVerdict<V> {
+  match a {
+    KeyedUnchanged => b
+    KeyedConflict => KeyedConflict
+    KeyedApplyHunk { from: fa, to: ta } => match b {
+      KeyedUnchanged => a
+      KeyedConflict => KeyedConflict
+      KeyedApplyHunk { from: fb, to: tb } =>
+        if equal(a: fa, b: fb) && equal(a: ta, b: tb) {
+          a
+        } else {
+          KeyedConflict
+        }
+      KeyedVerdictAdded { value: _ } => KeyedConflict
+      KeyedVerdictRemoved { value: _ } => KeyedConflict
+    }
+    KeyedVerdictAdded { value: va } => match b {
+      KeyedUnchanged => a
+      KeyedConflict => KeyedConflict
+      KeyedVerdictAdded { value: vb } =>
+        if equal(a: va, b: vb) {
+          a
+        } else {
+          KeyedConflict
+        }
+      KeyedApplyHunk { from: _, to: _ } => KeyedConflict
+      KeyedVerdictRemoved { value: _ } => KeyedConflict
+    }
+    KeyedVerdictRemoved { value: va } => match b {
+      KeyedUnchanged => a
+      KeyedConflict => KeyedConflict
+      KeyedVerdictRemoved { value: vb } =>
+        if equal(a: va, b: vb) {
+          a
+        } else {
+          KeyedConflict
+        }
+      KeyedApplyHunk { from: _, to: _ } => KeyedConflict
+      KeyedVerdictAdded { value: _ } => KeyedConflict
+    }
+  }
+}
+
+fn keyed_row_find<K, V>(
+  rows: List<KeyedRow<K, V>>,
+  wanted_key: K,
+  key_eq: fn(K, K) -> Bool,
+) -> KeyedRow<K, V>? {
+  fold(rows, init: none, f: fn(acc, row) {
+    if key_eq(a: row.row_key, b: wanted_key) {
+      Present { value: row }
+    } else {
+      acc
+    }
+  })
+}
+
+fn keyed_merge_row_lists<K, V>(
+  left: List<KeyedRow<K, V>>,
+  right: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+) -> List<KeyedRow<K, V>> {
+  fold(right, init: left, f: fn(acc, row) {
+    match keyed_row_find(rows: acc, wanted_key: row.row_key, key_eq: key_eq) {
+      Present { value: _ } => acc
+      Absent => concat(acc, [row])
+    }
+  })
+}
+
+fn keyed_collect_keys<K, V>(
+  rows: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+) -> List<K> {
+  fold(rows, init: [], f: fn(acc, row) {
+    if fold(acc, init: false, f: fn(found, k) { found || key_eq(a: k, b: row.row_key) }) {
+      acc
+    } else {
+      concat(acc, [row.row_key])
+    }
+  })
+}
+
+fn keyed_union_keys<K, V>(
+  a: List<KeyedRow<K, V>>,
+  b: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+) -> List<K> {
+  keyed_collect_keys(
+    rows: keyed_merge_row_lists(left: a, right: b, key_eq: key_eq),
+    key_eq: key_eq,
+  )
+}
+
+fn keyed_union_keys_three<K, V>(
+  a: List<KeyedRow<K, V>>,
+  b: List<KeyedRow<K, V>>,
+  c: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+) -> List<K> {
+  keyed_collect_keys(
+    rows: keyed_merge_row_lists(
+      left: keyed_merge_row_lists(left: a, right: b, key_eq: key_eq),
+      right: c,
+      key_eq: key_eq,
+    ),
+    key_eq: key_eq,
+  )
+}
+
+fn keyed_two_way_row<K, V>(
+  wanted_key: K,
+  left: List<KeyedRow<K, V>>,
+  right: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedDiffHunk<K, V>? {
+  let l = keyed_row_find(rows: left, wanted_key: wanted_key, key_eq: key_eq)
+  let r = keyed_row_find(rows: right, wanted_key: wanted_key, key_eq: key_eq)
+  match l {
+    Present { value: lr } => match r {
+      Present { value: rr } =>
+        if value_eq(a: lr.value, b: rr.value) {
+          none
+        } else {
+          Present {
+            value: KeyedDiffModifiedHunk {
+              hunk_key: wanted_key,
+              from: lr.value,
+              to: rr.value,
+            }
+          }
+        }
+      Absent =>
+        Present {
+          value: KeyedDiffRemovedHunk {
+            hunk_key: wanted_key,
+            from: lr.value,
+          }
+        }
+    }
+    Absent => match r {
+      Present { value: rr } =>
+        Present {
+          value: KeyedDiffAddedHunk {
+            hunk_key: wanted_key,
+            to: rr.value,
+          }
+        }
+      Absent => none
+    }
+  }
+}
+
+fn keyed_two_way_row_patch<K, V>(
+  wanted_key: K,
+  left: List<KeyedRow<K, V>>,
+  right: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedPatch<K, V> {
+  match keyed_two_way_row(
+    wanted_key: wanted_key,
+    left: left,
+    right: right,
+    key_eq: key_eq,
+    value_eq: value_eq,
+  ) {
+    Present { value: hunk } => keyed_patch_singleton(hunk: hunk)
+    Absent => keyed_patch_empty()
+  }
+}
+
+fn keyed_two_way_diff<K, V>(
+  left: List<KeyedRow<K, V>>,
+  right: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedPatch<K, V> {
+  let keys = keyed_union_keys(a: left, b: right, key_eq: key_eq)
+  let monoid = keyed_patch_monoid()
+  fold(keys, init: monoid.identity, f: fn(acc, wanted_key) {
+    monoid.op(
+      acc,
+      keyed_two_way_row_patch(
+        wanted_key: wanted_key,
+        left: left,
+        right: right,
+        key_eq: key_eq,
+        value_eq: value_eq,
+      ),
+    )
+  })
+}
+
+fn keyed_three_way_row_verdict<K, V>(
+  wanted_key: K,
+  base: List<KeyedRow<K, V>>,
+  observed: List<KeyedRow<K, V>>,
+  desired: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedLeafVerdict<V> {
+  let b = keyed_row_find(rows: base, wanted_key: wanted_key, key_eq: key_eq)
+  let o = keyed_row_find(rows: observed, wanted_key: wanted_key, key_eq: key_eq)
+  let d = keyed_row_find(rows: desired, wanted_key: wanted_key, key_eq: key_eq)
+  match b {
+    Present { value: brow } => match o {
+      Present { value: orow } => match d {
+        Present { value: drow } =>
+          keyed_three_way_leaf(
+            base: brow.value,
+            observed: orow.value,
+            desired: drow.value,
+            equal: value_eq,
+          )
+        Absent =>
+          if value_eq(a: orow.value, b: brow.value) {
+            KeyedVerdictRemoved { value: brow.value }
+          } else {
+            KeyedConflict
+          }
+      }
+      Absent => match d {
+        Present { value: _ } => KeyedConflict
+        Absent => KeyedUnchanged
+      }
+    }
+    Absent => match o {
+      Present { value: orow } => match d {
+        Present { value: drow } =>
+          if value_eq(a: orow.value, b: drow.value) {
+            KeyedUnchanged
+          } else {
+            KeyedConflict
+          }
+        Absent => KeyedConflict
+      }
+      Absent => match d {
+        Present { value: drow } =>
+          KeyedVerdictAdded { value: drow.value }
+        Absent => KeyedUnchanged
+      }
+    }
+  }
+}
+
+fn keyed_three_way_row_patch<K, V>(
+  wanted_key: K,
+  base: List<KeyedRow<K, V>>,
+  observed: List<KeyedRow<K, V>>,
+  desired: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedThreeWayPatch<K, V> {
+  let verdict = keyed_three_way_row_verdict(
+    wanted_key: wanted_key,
+    base: base,
+    observed: observed,
+    desired: desired,
+    key_eq: key_eq,
+    value_eq: value_eq,
+  )
+  match verdict {
+    KeyedUnchanged => keyed_three_way_patch_empty()
+    _ =>
+      keyed_three_way_patch_singleton(
+        entry: KeyedThreeWayEntry { entry_key: wanted_key, verdict: verdict },
+      )
+  }
+}
+
+fn keyed_three_way_fold<K, V>(
+  base: List<KeyedRow<K, V>>,
+  observed: List<KeyedRow<K, V>>,
+  desired: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedThreeWayPatch<K, V> {
+  let keys = keyed_union_keys_three(a: base, b: observed, c: desired, key_eq: key_eq)
+  let monoid = keyed_three_way_patch_monoid(key_eq: key_eq, value_eq: value_eq)
+  fold(keys, init: monoid.identity, f: fn(acc, wanted_key) {
+    monoid.op(
+      acc,
+      keyed_three_way_row_patch(
+        wanted_key: wanted_key,
+        base: base,
+        observed: observed,
+        desired: desired,
+        key_eq: key_eq,
+        value_eq: value_eq,
+      ),
+    )
+  })
+}
+
+fn keyed_apply_row<K, V>(
+  row: KeyedRow<K, V>,
+  hunk: KeyedDiffHunk<K, V>,
+) -> KeyedRow<K, V> {
+  match hunk {
+    KeyedDiffAddedHunk { hunk_key: _, to: v } =>
+      KeyedRow { row_key: row.row_key, value: v }
+    KeyedDiffRemovedHunk { hunk_key: _, from: _ } => row
+    KeyedDiffModifiedHunk { hunk_key: _, from: _, to: v } =>
+      KeyedRow { row_key: row.row_key, value: v }
+  }
+}
+
+fn keyed_apply_patch<K, V>(
+  rows: List<KeyedRow<K, V>>,
+  patch: KeyedPatch<K, V>,
+  key_eq: fn(K, K) -> Bool,
+) -> List<KeyedRow<K, V>> {
+  fold(patch.hunks, init: rows, f: fn(acc, hunk) {
+    match hunk {
+      KeyedDiffAddedHunk { hunk_key: k, to: v } =>
+        concat(
+          filter(acc, fn(row) { !key_eq(a: row.row_key, b: k) }),
+          [KeyedRow { row_key: k, value: v }],
+        )
+      KeyedDiffRemovedHunk { hunk_key: k, from: _ } =>
+        filter(acc, fn(row) { !key_eq(a: row.row_key, b: k) })
+      KeyedDiffModifiedHunk { hunk_key: k, from: _, to: v } =>
+        match keyed_row_find(rows: acc, wanted_key: k, key_eq: key_eq) {
+          Present { value: row } =>
+            concat(
+              filter(acc, fn(candidate) { !key_eq(a: candidate.row_key, b: k) }),
+              [keyed_apply_row(row: row, hunk: hunk)],
+            )
+          Absent => acc
+        }
+    }
+  })
+}
+
+fn keyed_invert_hunk<K, V>(hunk: KeyedDiffHunk<K, V>) -> KeyedDiffHunk<K, V> {
+  match hunk {
+    KeyedDiffAddedHunk { hunk_key: k, to: v } =>
+      KeyedDiffRemovedHunk { hunk_key: k, from: v }
+    KeyedDiffRemovedHunk { hunk_key: k, from: v } =>
+      KeyedDiffAddedHunk { hunk_key: k, to: v }
+    KeyedDiffModifiedHunk { hunk_key: k, from: f, to: t } =>
+      KeyedDiffModifiedHunk { hunk_key: k, from: t, to: f }
+  }
+}
+
+fn keyed_invert_patch<K, V>(patch: KeyedPatch<K, V>) -> KeyedPatch<K, V> {
+  KeyedPatch {
+    hunks: fold(patch.hunks, init: [], f: fn(acc, hunk) {
+      concat(acc, [keyed_invert_hunk(hunk: hunk)])
+    }),
+  }
+}
+
+fn keyed_patch_hunk_count<K, V>(patch: KeyedPatch<K, V>) -> Int {
+  list_length(items: patch.hunks)
+}
+
+fn keyed_three_way_entry_count<K, V>(patch: KeyedThreeWayPatch<K, V>) -> Int {
+  list_length(items: patch.entries)
+}
+
+fn keyed_diff_hunks_equal<K, V>(
+  left: KeyedDiffHunk<K, V>,
+  right: KeyedDiffHunk<K, V>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> Bool {
+  match left {
+    KeyedDiffAddedHunk { hunk_key: lk, to: lv } => match right {
+      KeyedDiffAddedHunk { hunk_key: rk, to: rv } =>
+        key_eq(a: lk, b: rk) && value_eq(a: lv, b: rv)
+      _ => false
+    }
+    KeyedDiffRemovedHunk { hunk_key: lk, from: lv } => match right {
+      KeyedDiffRemovedHunk { hunk_key: rk, from: rv } =>
+        key_eq(a: lk, b: rk) && value_eq(a: lv, b: rv)
+      _ => false
+    }
+    KeyedDiffModifiedHunk { hunk_key: lk, from: lf, to: lt } => match right {
+      KeyedDiffModifiedHunk { hunk_key: rk, from: rf, to: rt } =>
+        key_eq(a: lk, b: rk)
+          && value_eq(a: lf, b: rf)
+          && value_eq(a: lt, b: rt)
+      _ => false
+    }
+  }
+}
+
+fn keyed_patch_contains_hunk<K, V>(
+  patch: KeyedPatch<K, V>,
+  hunk: KeyedDiffHunk<K, V>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> Bool {
+  fold(patch.hunks, init: false, f: fn(acc, candidate) {
+    acc || keyed_diff_hunks_equal(left: candidate, right: hunk, key_eq: key_eq, value_eq: value_eq)
+  })
+}
+
+fn keyed_patches_equal<K, V>(
+  left: KeyedPatch<K, V>,
+  right: KeyedPatch<K, V>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> Bool {
+  list_length(items: left.hunks) == list_length(items: right.hunks)
+    && fold(left.hunks, init: true, f: fn(ok, hunk) {
+      ok && keyed_patch_contains_hunk(patch: right, hunk: hunk, key_eq: key_eq, value_eq: value_eq)
+    })
+}
+
+fn keyed_rows_snapshot_equal<K, V>(
+  left: List<KeyedRow<K, V>>,
+  right: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> Bool {
+  let keys = keyed_union_keys(a: left, b: right, key_eq: key_eq)
+  fold(keys, init: true, f: fn(ok, wanted_key) {
+    match keyed_row_find(rows: left, wanted_key: wanted_key, key_eq: key_eq) {
+      Present { value: lr } => match keyed_row_find(rows: right, wanted_key: wanted_key, key_eq: key_eq) {
+        Present { value: rr } => ok && value_eq(a: lr.value, b: rr.value)
+        Absent => false
+      }
+      Absent => match keyed_row_find(rows: right, wanted_key: wanted_key, key_eq: key_eq) {
+        Present { value: _ } => false
+        Absent => ok
+      }
+    }
+  })
+}
+
+fn keyed_apply_two_way_diff<K, V>(
+  left: List<KeyedRow<K, V>>,
+  right: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> List<KeyedRow<K, V>> {
+  keyed_apply_patch(
+    rows: left,
+    patch: keyed_two_way_diff(
+      left: left,
+      right: right,
+      key_eq: key_eq,
+      value_eq: value_eq,
+    ),
+    key_eq: key_eq,
+  )
+}
+
+fn keyed_retract_two_way_diff<K, V>(
+  left: List<KeyedRow<K, V>>,
+  right: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> List<KeyedRow<K, V>> {
+  keyed_apply_patch(
+    rows: right,
+    patch: keyed_invert_patch(
+      patch: keyed_two_way_diff(
+        left: left,
+        right: right,
+        key_eq: key_eq,
+        value_eq: value_eq,
+      ),
+    ),
+    key_eq: key_eq,
+  )
+}

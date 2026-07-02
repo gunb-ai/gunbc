@@ -236,7 +236,10 @@ data host_standup_spine: List<HostStandupStep> = [
         decl_ref(module_path: "gunbc.host_identity_knob", decl_name: "three_way_leaf"),
         decl_ref(module_path: "gunbc.host_identity_converge", decl_name: "host_identity_apply_gated"),
         decl_ref(module_path: "gunbc.host_identity_assimilation", decl_name: "host_identity_assimilate_srv1_wet"),
+        decl_ref(module_path: "gunbc.host_identity_assimilation", decl_name: "host_identity_converge_from_base"),
+        decl_ref(module_path: "gunbc.host_identity_converge", decl_name: "host_identity_plan_from_verdict"),
         decl_ref(module_path: "gunbc.deployed_intent_v0", decl_name: "deployed_intent_v0_adopt_observed_base"),
+        decl_ref(module_path: "gunbc.deployed_intent_v0", decl_name: "gunbc_srv1_deployed_intent_v0_persisted"),
         decl_ref(module_path: "gunbc.deployed_intent_v1", decl_name: "deployed_intent_v1_srv1"),
       ]
     },
@@ -335,7 +338,7 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
   GapLedgerRow {
     phase_label: "P0:host-identity-converge",
     modeling: "modeled",
-    authority_or_interim: "gunbc.host_identity_assimilation — adopt observed base (DeployedIntentV0) -> three_way_leaf -> gated hostnamectl apply -> independent read-back -> noop re-run"
+    authority_or_interim: "gunbc.host_identity_adopt (adopt-once, persists DeployedIntentV0) + gunbc.host_identity_assimilation.host_identity_converge_from_base (closed-loop: persisted base -> three_way_leaf -> ConflictPlan no-shell-on-conflict -> gated hostnamectl apply -> independent read-back -> noop re-run)"
   },
   GapLedgerRow {
     phase_label: "P0:reach-secrets-network",
