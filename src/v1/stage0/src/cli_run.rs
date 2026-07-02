@@ -8349,13 +8349,14 @@ fn test_migration_debt_floor_stems() -> Vec<String> {
     stems
 }
 
+// Exact-stem equality only. A substring match (either direction) was tried and reviewed
+// unsound: e.g. v1 stem "pipeline" (the single largest debt module, 418 `#[test]` fns) is a
+// substring of the floor stem "typescript_import_pipeline", so a fuzzy match falsely marked
+// the whole module covered — hiding debt rather than counting it. Exact equality is decidable
+// and cannot understate debt; it may list a module the operator judges topically covered by a
+// differently-named floor witness, which is a correct false-debt (never a false-coverage) bias.
 fn test_migration_debt_stem_covered(v1_stem: &str, floor_stems: &[String]) -> bool {
-    const MIN_SUBSTRING_MATCH_LEN: usize = 6;
-    floor_stems.iter().any(|floor_stem| {
-        floor_stem == v1_stem
-            || (v1_stem.len() >= MIN_SUBSTRING_MATCH_LEN && floor_stem.contains(v1_stem))
-            || (floor_stem.len() >= MIN_SUBSTRING_MATCH_LEN && v1_stem.contains(floor_stem))
-    })
+    floor_stems.iter().any(|floor_stem| floor_stem == v1_stem)
 }
 
 fn build_test_migration_debt_report() -> TestMigrationDebtReport {
