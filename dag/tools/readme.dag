@@ -20,7 +20,7 @@ fn render_tool_table(tools: List<ReadmeTool>) -> String {
 }
 
 fn render_title() -> String {
-  "# gunbc\n\nA DSL-first workflow compiler where everything is a DAG."
+  "# gunbc\n\nA DAG-first workflow compiler where everything is a DAG."
 }
 
 fn render_install() -> String {
@@ -28,7 +28,7 @@ fn render_install() -> String {
 }
 
 fn render_overview() -> String {
-  "## Overview\n\n`.dag` files declare types, data, and workflows. The compiler lowers them to executable graphs.\n\n```\nPipeline: .dag -> parse -> typecheck -> lower -> emit\n```\n\nRust is the substrate -- it compiles, executes, and emits artifacts. Domain logic, policy data, and rendering live in the DSL.\n\n| Path | Purpose |\n|------|---------|\n| `dag/` | Primary authoring surface -- all `.dag` source files |\n| `core/daglang/` | DSL compiler: parse, typecheck, lower, emit |\n| `core/ir/` | Core IR types, patterns, transport model |\n| `core/exec/` | Execution engine |\n| `core/codegen/` | CLI and test generation |\n| `lib/transport/` | Canonical I/O boundary |\n| `gunbc-app/` | Repo-specific DAGs and CLI entrypoints |\n| `docs/` | Design documentation |"
+  "## Overview\n\n`.dag` files declare types, data, and workflows. The compiler lowers them to executable graphs.\n\n```\nPipeline: .dag -> parse -> typecheck -> lower -> emit\n```\n\nRust is the substrate -- it compiles, executes, and emits artifacts. Domain logic, policy data, and rendering live in the DAG source.\n\n| Path | Purpose |\n|------|---------|\n| `dag/` | Primary authoring surface -- all `.dag` source files |\n| `core/daglang/` | DAG compiler: parse, typecheck, lower, emit |\n| `core/ir/` | Core IR types, patterns, transport model |\n| `core/exec/` | Execution engine |\n| `core/codegen/` | CLI and test generation |\n| `lib/transport/` | Canonical I/O boundary |\n| `gunbc-app/` | Repo-specific DAGs and CLI entrypoints |\n| `docs/` | Design documentation |"
 }
 
 fn render_tools(tools: List<ReadmeTool>) -> String {
@@ -40,7 +40,7 @@ fn render_testing() -> String {
 }
 
 fn render_docs() -> String {
-  "## Documentation\n\n- `CLAUDE.md` -- contributor and agent guide (auto-loaded by Claude Code)\n- `docs/start-here.md` -- repo orientation and feature development process\n- `docs/design/v2/dag-design.md` -- DSL language specification\n- `SPEC.md` -- formal IR specification\n- `docs/handbook.md` -- conceptual map and e2e examples"
+  "## Documentation\n\n- `CLAUDE.md` -- contributor and agent guide (auto-loaded by Claude Code)\n- `docs/start-here.md` -- repo orientation and feature development process\n- `docs/design/v2/dag-design.md` -- DAG language specification\n- `SPEC.md` -- formal IR specification\n- `docs/handbook.md` -- conceptual map and e2e examples"
 }
 
 fn render_footer() -> String {
