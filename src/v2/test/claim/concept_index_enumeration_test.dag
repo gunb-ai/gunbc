@@ -15,6 +15,10 @@ type ConceptIndexWitnessRecordPerturb {
   beta: Int
 }
 
+type ConceptIndexWitnessCoproduct =
+  | NullaryArm
+  | NamedFieldArm { alpha: String, beta: Bool }
+
 data concept_index_enumeration_pool_roots: List<String> = ["src/v2/test/claim"]
 
 fn idx() -> List<QualifiedConcept> {
@@ -160,6 +164,38 @@ fn witness_parse_only_extract_nonempty_in_scoped_pool() -> Bool {
     )
 }
 
+fn witness_coproduct_arms_live() -> Bool {
+  concept_matches(
+    target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessCoproduct",
+    short_name: "ConceptIndexWitnessCoproduct",
+    field_count: 2,
+    check: fn(fields) {
+      fields_contains(fields: fields, fname: "NullaryArm", tname: "coproduct_nullary_payload")
+        && fields_contains(
+          fields: fields,
+          fname: "NamedFieldArm",
+          tname: "{ alpha: String, beta: Bool }"
+        )
+    }
+  )
+}
+
+fn witness_coproduct_arms_parse_only() -> Bool {
+  parse_only_concept_matches(
+    target_qn: "v2.test.claim.concept_index_enumeration.ConceptIndexWitnessCoproduct",
+    short_name: "ConceptIndexWitnessCoproduct",
+    field_count: 2,
+    check: fn(fields) {
+      fields_contains(fields: fields, fname: "NullaryArm", tname: "coproduct_nullary_payload")
+        && fields_contains(
+          fields: fields,
+          fname: "NamedFieldArm",
+          tname: "{ alpha: String, beta: Bool }"
+        )
+    }
+  )
+}
+
 test fn concept_index_enumeration_witnesses() -> Bool {
   witness_enumeration_nonempty()
     && witness_fieldref_self_projection()
@@ -170,4 +206,6 @@ test fn concept_index_enumeration_witnesses() -> Bool {
     && witness_parse_only_extract_reflects_canonical_field_types()
     && witness_parse_only_extract_reflects_perturbed_field_type()
     && witness_parse_only_extract_stale_field_type_red_on_canonical()
+    && witness_coproduct_arms_live()
+    && witness_coproduct_arms_parse_only()
 }
