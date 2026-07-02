@@ -11,9 +11,9 @@ import extdeps.languages.rust.emit {
 import extdeps.languages.python.emit { python_method_templates_flat }
 import extdeps.languages.go.emit { go_method_templates_flat }
 
-data v1_source_audit_witness_provenance: String = "Floor witnesses migrated from src/v1/tests/src/source_audit.rs (41-test v1 source_audit module, 1238 LOC). Grep-style source audits over the v1 pipeline .dag sources and their stage0 .rs mirror ported to filesystem_read + string_contains; the eight registry/spec derivation-parity tests ported to executable checks over the v2 extdeps.languages.{rust,python,go}.emit single-authority folds. Two teeth intentionally not carried, see notes below. Deletes the Rust source_audit module (mod removed from src/v1/tests/src/lib.rs)."
+data v1_source_audit_witness_provenance: String = "Floor witnesses migrated from src/v1/tests/src/source_audit.rs (41-test v1 source_audit module, 1238 LOC). Grep-style source audits over the v1 pipeline .dag sources and their stage0 .rs mirror ported to filesystem_read + string_contains; the eight registry/spec derivation-parity tests ported to executable checks over the v2 extdeps.languages rust/python/go emit single-authority folds. Two teeth intentionally not carried, see notes below. Deletes the Rust source_audit module (mod removed from src/v1/tests/src/lib.rs)."
 
-data v1_source_audit_witness_notes: String = "Not carried: (1) emit_backends_do_not_consume_inductive_fields was #[ignore]d (failing, never run in CI) in the Rust module, so porting it green would fabricate a passing witness; it is dropped, matching its live status. (2) no_expr_data_before_catch_all_in_core asserted match-arm ORDERING within a function body (NoExprData arm before the catch-all so it is not shadowed); pure string_contains cannot express positional ordering, so the witness carries only the presence of the NoExprData arm. is_copy_checkpoint_parity is carried as a source-presence witness (checkpoint authority + is_copy definition) rather than an executing call, to avoid importing the v1 coercion module into the v2 witness (de-fork name-collision hazard)."
+data v1_source_audit_witness_notes: String = "Not carried: (1) emit_backends_do_not_consume_inductive_fields was #[ignore]d (failing, never run in CI) in the Rust module, so porting it green would fabricate a passing witness; it is dropped, matching its live status. (2) no_expr_data_before_catch_all_in_core asserted match-arm ORDERING within a function body (NoExprData arm before the catch-all so it is not shadowed); pure string_contains cannot express positional ordering, so the witness carries only the presence of the NoExprData arm. (3) emit_handles_for_loop additionally compiled a for-loop snippet and asserted the emitted Rust contained iter().cloned(); that is a behavioral emit-output assertion, not a source property, and is covered by the floor emit-host MVP smokes, so the witness carries only the emit_typed_for_each source presence. is_copy_checkpoint_parity is carried as a source-presence witness (checkpoint authority + is_copy definition) rather than an executing call, to avoid importing the v1 coercion module into the v2 witness (de-fork name-collision hazard)."
 
 data core_path: String = "src/v1/00_core.dag"
 data parse_path: String = "src/v1/02_parse.dag"
@@ -54,6 +54,20 @@ fn src_lacks(path: String, needle: String) -> Bool {
   !string_contains(s: r.content, pattern: needle)
 }
 
+fn map_has_key(m: Map<String, Bool>, key: String) -> Bool {
+  match map_get(m, key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn str_map_has_key(m: Map<String, String>, key: String) -> Bool {
+  match map_get(m, key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
 test fn pipe_arrow_token_exists() -> Bool {
   src_has(core_path, "PipeArrow")
 }
@@ -83,7 +97,6 @@ test fn emit_handles_null_coalesce() -> Bool {
 
 test fn emit_handles_for_loop() -> Bool {
   src_has(emit_rust_path, "emit_typed_for_each")
-    && src_has(emit_rust_path, "iter().cloned()")
 }
 
 test fn emit_generates_cargo_toml() -> Bool {
@@ -335,9 +348,9 @@ test fn no_expr_data_arm_present_in_core() -> Bool {
 }
 
 test fn rt_functions_derived_from_registry() -> Bool {
-  map_contains_key(rt_functions(), "filesystem_read")
-    && map_contains_key(rt_functions(), "concat")
-    && map_contains_key(rt_functions(), "index_by")
+  map_has_key(rt_functions(), "filesystem_read")
+    && map_has_key(rt_functions(), "concat")
+    && map_has_key(rt_functions(), "index_by")
 }
 
 test fn rt_bridge_function_names_derived_from_registry() -> Bool {
@@ -345,36 +358,36 @@ test fn rt_bridge_function_names_derived_from_registry() -> Bool {
     Present { value: b } => b == "rc_index_by"
     Absent => false
   }
-  overridden && !map_contains_key(rt_bridge_function_names(), "concat")
+  overridden && !str_map_has_key(rt_bridge_function_names(), "concat")
 }
 
 test fn rt_wraps_result_derived_from_registry() -> Bool {
-  map_contains_key(rt_wraps_result(), "append")
-    && map_contains_key(rt_wraps_result(), "map_keys")
-    && !map_contains_key(rt_wraps_result(), "concat")
+  map_has_key(rt_wraps_result(), "append")
+    && map_has_key(rt_wraps_result(), "map_keys")
+    && !map_has_key(rt_wraps_result(), "concat")
 }
 
 test fn method_wraps_result_derived_from_specs() -> Bool {
-  map_contains_key(rust_method_wraps_result(), "split")
-    && !map_contains_key(rust_method_wraps_result(), "last")
+  map_has_key(rust_method_wraps_result(), "split")
+    && !map_has_key(rust_method_wraps_result(), "last")
 }
 
 test fn method_templates_derived_from_specs() -> Bool {
-  map_contains_key(rust_method_templates(), "split")
-    && map_contains_key(rust_method_templates(), "last")
-    && map_contains_key(rust_method_templates(), "first")
+  str_map_has_key(rust_method_templates(), "split")
+    && str_map_has_key(rust_method_templates(), "last")
+    && str_map_has_key(rust_method_templates(), "first")
 }
 
 test fn python_flat_method_templates_exclude_bridge_routed() -> Bool {
-  !map_contains_key(python_method_templates_flat(), "map")
-    && !map_contains_key(python_method_templates_flat(), "fold")
-    && !map_contains_key(python_method_templates_flat(), "concat")
+  !str_map_has_key(python_method_templates_flat(), "map")
+    && !str_map_has_key(python_method_templates_flat(), "fold")
+    && !str_map_has_key(python_method_templates_flat(), "concat")
 }
 
 test fn go_flat_method_templates_exclude_bridge_routed() -> Bool {
-  !map_contains_key(go_method_templates_flat(), "map")
-    && !map_contains_key(go_method_templates_flat(), "fold")
-    && !map_contains_key(go_method_templates_flat(), "concat")
+  !str_map_has_key(go_method_templates_flat(), "map")
+    && !str_map_has_key(go_method_templates_flat(), "fold")
+    && !str_map_has_key(go_method_templates_flat(), "concat")
 }
 
 test fn is_copy_checkpoint_authority_present() -> Bool {
