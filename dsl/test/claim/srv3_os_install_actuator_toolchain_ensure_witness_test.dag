@@ -26,6 +26,7 @@ test fn srv3_actuator_toolchain_ensure_websocat_installs_to_modeled_path_with_na
     && string_contains(s: script, pattern: concat("test -x \"", websocat_install_path as String))
 }
 
+test fn srv3_actuator_toolchain_ensure_dissolution_trigger_names_roster_retirement() -> Bool {
   string_contains(s: os_install_actuator_toolchain_ensure_dissolution_trigger, pattern: "medium_structure_exception_roster")
     && string_contains(
       s: os_install_actuator_toolchain_ensure_dissolution_trigger,
