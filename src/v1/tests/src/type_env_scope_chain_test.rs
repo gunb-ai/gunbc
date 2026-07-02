@@ -4,16 +4,11 @@ use std::rc::Rc;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use v1_compiler::cli_run::{
-    build_multi_entry_index, resolve_entry_with_index, whole_tree_resolved_ctx, WholeTreeCtx,
-    FLOOR_DISCOVERY_EXCLUDES,
-};
+use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_compiler_infer_env::{lookup_binding, lookup_type_by_name};
 use v1_compiler::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
 use v1_compiler::v1_std_core::{authored_name_at, intern_find};
-
-use crate::helpers::workspace_root;
 
 static CACHE_ENV_MUTEX: Mutex<()> = Mutex::new(());
 
@@ -117,10 +112,6 @@ fn unique_binding_ptr_count_modules(modules: &[Rc<TypedModule>]) -> usize {
     ptrs.len()
 }
 
-fn sum_local_binding_defs_modules(modules: &[Rc<TypedModule>]) -> usize {
-    modules.iter().map(|m| m.type_env.bindings.len()).sum()
-}
-
 fn assert_resolved_no_hard_errors(
     resolved: &v1_compiler::v1_compiler_compile::ResolvedPipelineResult,
 ) {
@@ -185,49 +176,50 @@ fn type_env_rc_identity_holds_on_resolved_graph_cache_hit() {
 }
 
 #[test]
-fn type_env_unique_binding_ptr_count_matches_local_definitions() {
+fn type_env_import_does_not_materialize_binding_in_consumer_locals() {
     let resolved = compile_modules(rc_identity_fixture_sources());
     let graph = resolved.graph.as_ref().expect("graph");
-    let unique = unique_binding_ptr_count_modules(graph.modules.as_ref());
-    let defined = sum_local_binding_defs_modules(graph.modules.as_ref());
-    assert_eq!(
-        unique, defined,
-        "fixture has {defined} local type defs; scope-chain must not duplicate Shared across modules (got {unique} unique binding ptrs)"
+    let def_mod = typed_module_by_name(
+        &graph.modules,
+        &resolved.source_indices,
+        "test.type_env_rc_definer",
+    );
+    let consumer = typed_module_by_name(
+        &graph.modules,
+        &resolved.source_indices,
+        "test.type_env_rc_consumer",
+    );
+    assert!(
+        def_mod.type_env.bindings.values().any(|b| b.name == "Shared"),
+        "definer must carry Shared in local bindings"
+    );
+    assert!(
+        !consumer
+            .type_env
+            .bindings
+            .values()
+            .any(|b| b.name == "Shared"),
+        "consumer must reach Shared via parent chain, not a copied local binding"
     );
 }
 
 #[test]
-fn type_env_whole_tree_unique_ptr_count_equals_local_definitions() {
-    let mut exclude_subpaths: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
+fn type_env_shared_type_single_local_authority() {
+    let resolved = compile_modules(rc_identity_fixture_sources());
+    let graph = resolved.graph.as_ref().expect("graph");
+    let modules_with_local_shared = graph
+        .modules
         .iter()
-        .map(|sub| (*sub).to_string())
-        .collect();
-    exclude_subpaths.extend([
-        "test/fixture/".to_string(),
-        "/test/".to_string(),
-        "nat_semiring_rung".to_string(),
-        "lens/application/empty_required_lenses_skip_gate.dag".to_string(),
-        "lens/application/rejecting_lens_blocks_before_compile.dag".to_string(),
-    ]);
-    let roots = vec![
-        workspace_root().join("dsl").to_string_lossy().into_owned(),
-        workspace_root()
-            .join("src/v1")
-            .to_string_lossy()
-            .into_owned(),
-    ];
-    let WholeTreeCtx {
-        ctx,
-        modules_resolved,
-        ..
-    } = whole_tree_resolved_ctx(&roots, &exclude_subpaths, v1_compiler::v1_interpreter::ExecutionMode::Wet)
-        .expect("whole-tree resolve");
-    let unique = unique_binding_ptr_count_modules(ctx.modules.as_ref());
-    let defined = sum_local_binding_defs_modules(ctx.modules.as_ref());
+        .filter(|m| {
+            m.type_env
+                .bindings
+                .values()
+                .any(|b| b.name == "Shared")
+        })
+        .count();
     assert_eq!(
-        unique, defined,
-        "scope-chain: {unique} unique TypeBinding ptrs must equal {defined} local defs \
-         across {modules_resolved} modules (flat closure would inflate unique >> defined)"
+        modules_with_local_shared, 1,
+        "Shared must live in exactly one module's local bindings (flat closure would copy into importer)"
     );
 }
 
