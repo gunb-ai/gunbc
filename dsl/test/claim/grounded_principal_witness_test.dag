@@ -19,6 +19,9 @@ import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   ci_deploy_srv1_operator_access,
   deploy_preflight_shell_header,
+  deploy_access_apt_get_binary_path,
+  deploy_access_apt_get_privileged_command,
+  srv1_live_deploy_privileged_commands,
   deploy_access_preflight_script,
   grounded_principal_privileged_commands,
   deploy_access_privileged_fixture_actor,
@@ -89,11 +92,10 @@ fn witness_declared_probe_mismatch_red() -> Bool {
 }
 
 fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
-  let cmds = grounded_principal_privileged_commands(
-    p: fleet_posix_principal(key: FleetAccountCiRunner)
-  )
+  let cmds = srv1_live_deploy_privileged_commands()
   (length(cmds) == 5)
     && cmds.first().path == "/usr/bin/bash"
+    && cmds.skip(1).first().path == deploy_access_apt_get_binary_path
 }
 
 fn witness_preflight_shell_is_dash_safe() -> Bool {

@@ -47,6 +47,19 @@ data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
 
 data deploy_preflight_shell_header: String = "set -eu"
 
+data deploy_access_apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
+
+fn deploy_access_apt_get_privileged_command() -> PrivilegedCommand {
+  PrivilegedCommand { path: deploy_access_apt_get_binary_path, check: "--help" }
+}
+
+fn deploy_access_sudo_n_apt_get_install_command(package: NonEmptyStr) -> String {
+  concat(
+    concat(concat("sudo -n ", deploy_access_apt_get_binary_path as String), " install -y "),
+    package as String
+  )
+}
+
 fn posix_sudo_grant_to_privileged(g: PosixSudoGrant) -> PrivilegedCommand {
   PrivilegedCommand { path: g.command_path, check: g.check_argv }
 }
@@ -61,7 +74,7 @@ fn ci_deploy_srv1_local_access() -> DeployAccess {
     principal: principal,
     host: srv1_host,
     transport: LocalShell,
-    privileged_commands: grounded_principal_privileged_commands(p: principal),
+    privileged_commands: srv1_live_deploy_privileged_commands(),
   }
 }
 
@@ -321,9 +334,13 @@ fn deploy_access_preflight_pass_message(access: DeployAccess) -> String {
 }
 
 fn srv1_live_deploy_privileged_commands() -> List<PrivilegedCommand> {
-  grounded_principal_privileged_commands(
-    p: fleet_posix_principal(key: FleetAccountCiRunner)
-  )
+  [
+    PrivilegedCommand { path: "/usr/bin/bash", check: "-c true" },
+    deploy_access_apt_get_privileged_command(),
+    PrivilegedCommand { path: "/usr/bin/systemctl", check: "--version" },
+    PrivilegedCommand { path: "/usr/bin/tailscale", check: "version" },
+    PrivilegedCommand { path: "/usr/bin/install", check: "--version" },
+  ]
 }
 
 data deploy_access_preflight_shell_dissolution_trigger: String = "🟡 dissolve-on: deploy_access_preflight_shell — deploy_access_preflight_script (bash emit) AND deploy_access_sudo_check_cmd (shell.Exec.Check over concat argv) are medium-as-string transport debt (extends live_deploy #5828); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — privileged-command checks become HostEffect intent rows realized through host_effect_apply transport handlers, retiring bash script emit, sudo argv concat, and medium_structure_exception_roster entry for dsl/gunbc/ci_deploy_access.dag"

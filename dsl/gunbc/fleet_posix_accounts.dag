@@ -88,7 +88,6 @@ fn fleet_posix_operator_sudo_grants() -> List<PosixSudoGrant> {
 fn fleet_posix_ci_runner_sudo_grants() -> List<PosixSudoGrant> {
   [
     PosixSudoGrant { command_path: "/usr/bin/bash", check_argv: "-c true" },
-    PosixSudoGrant { command_path: "/usr/bin/apt-get", check_argv: "--help" },
     PosixSudoGrant { command_path: "/usr/bin/systemctl", check_argv: "--version" },
     PosixSudoGrant { command_path: "/usr/bin/tailscale", check_argv: "version" },
     PosixSudoGrant { command_path: "/usr/bin/install", check_argv: "--version" },
