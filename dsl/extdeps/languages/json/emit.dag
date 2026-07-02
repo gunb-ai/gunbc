@@ -2,7 +2,6 @@ module extdeps.languages.json.emit
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
-import std.unicode { code_point }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -90,7 +89,7 @@ fn json_escape_code_point(cp: Int) -> String {
 }
 
 fn escape_json_string(s: String) -> String {
-  fold(chars(s: s), init: "", f: (acc, c) => concat(acc, json_escape_code_point(cp: code_point(c: c))))
+  fold(chars(s: s), init: "", f: (acc, cp) => concat(acc, json_escape_code_point(cp: cp)))
 }
 
 fn quote_json_string(s: String) -> String {
