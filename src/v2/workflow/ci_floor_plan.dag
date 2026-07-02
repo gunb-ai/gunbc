@@ -128,7 +128,7 @@ fn compile_clean_shard_nodes() -> List<Node> {
 }
 
 fn compile_clean_shard_node_count() -> Int {
-  length(xs: compile_clean_shard_nodes())
+  compile_clean_shard_roster_count()
 }
 
 fn floor_compile_clean_shard_nodes() -> List<Node> {
@@ -144,13 +144,8 @@ fn floor_compile_root_node() -> Node {
 }
 
 fn floor_is_compile_clean_shard_node(node: Node) -> Bool {
-  if compile_clean_sharding_enabled() {
-    fold(floor_compile_clean_shard_nodes(), init: false, f: fn(found, shard_node) {
-      found || (node == shard_node)
-    })
-  } else {
-    false
-  }
+  compile_clean_sharding_enabled()
+    && (node.kind == floor_compile_clean_shard_node(index: 0).kind)
 }
 
 fn floor_resource_anchor_node(node: Node) -> Bool {
