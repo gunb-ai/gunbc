@@ -6,11 +6,11 @@ import extdeps.access.posix { FilePermissions, PermissionBits }
 import extdeps.access.rbac { RbacPolicy, Permission }
 
 fn decision_is_permit(d: AccessDecision) -> Bool {
-  match d { Permit => true  Deny => false }
+  match d { Permit => true  Deny { reason: _ } => false }
 }
 
 fn decision_is_deny(d: AccessDecision) -> Bool {
-  match d { Deny => true  Permit => false }
+  match d { Deny { reason: _ } => true  Permit => false }
 }
 
 type PosixSubject {
@@ -47,7 +47,7 @@ fn posix_decide(request: AccessRequest<PosixSubject, PosixAction, FilePermission
   if posix_bit(bits: posix_class_bits(perms: request.object, subject: request.subject), action: request.action) {
     Permit
   } else {
-    Deny
+    Deny { reason: none }
   }
 }
 
@@ -112,7 +112,7 @@ fn rbac_decide(policy: RbacPolicy, request: AccessRequest<NonEmptyStr, NonEmptyS
   if rbac_user_has_permission(policy: policy, user: request.subject, perm: { operation: request.action, object: request.object }) {
     Permit
   } else {
-    Deny
+    Deny { reason: none }
   }
 }
 

@@ -1,12 +1,17 @@
 module gunbc.ci_deploy_access
 
 import std.types { NonEmptyStr, List, String, Bool }
+import std.access { AccessDecision, Permit, Deny, decision_meet }
+import extdeps.shell
 import gunbc.fleet_intent { ComputeHost, srv1_host }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
 import gunbc.ci_deploy_target_host {
   DeployTargetHostProof,
   deploy_target_proof,
   deploy_target_host_preflight_block,
+  DeployTargetHostObservation,
+  deploy_target_host_check,
+  deploy_target_host_check_observed,
 }
 
 type PrivilegedCommand {
@@ -20,6 +25,13 @@ type DeployAccess {
   transport: HostEffectTransport
   privileged_commands: List<PrivilegedCommand>
 }
+
+type DeployAccessActor {
+  principal: NonEmptyStr
+  sudo_granted: Bool
+}
+
+data deploy_access_refusal_prefix: String = "deploy_access: typed refusal before mutation"
 
 data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
 
@@ -124,4 +136,142 @@ fn deploy_access_is_local_apply(access: DeployAccess) -> Bool {
   }
 }
 
-data deploy_access_preflight_shell_dissolution_trigger: String = "🟡 dissolve-on: deploy_access_preflight_shell — bash preflight script built with concat/string shell (extends live_deploy medium-as-string debt, #5828); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — privileged-command checks modeled as HostEffect intent rows realized through host_effect_apply transport handlers, retiring bash script emit and medium_structure_exception_roster entry for dsl/gunbc/ci_deploy_access.dag"
+fn deploy_access_sudo_check_cmd(cmd: PrivilegedCommand) -> Bool {
+  shell.Exec.Check(
+    command: concat(concat(concat("sudo -n ", cmd.path), " "), cmd.check)
+  ).exists
+}
+
+fn deploy_access_sudo_all_granted(access: DeployAccess) -> Bool {
+  fold(
+    access.privileged_commands,
+    init: true,
+    f: (acc, cmd) => if !acc { false } else { deploy_access_sudo_check_cmd(cmd: cmd) }
+  )
+}
+
+fn deploy_access_observed_principal() -> NonEmptyStr? {
+  let result = shell.Exec.Run(script: "whoami")
+  if !result.success {
+    none
+  } else {
+    let line = trim(result.stdout)
+    if line == "" { none } else { Present { value: line as NonEmptyStr } }
+  }
+}
+
+fn deploy_access_observed_actor(access: DeployAccess) -> DeployAccessActor? {
+  match deploy_access_observed_principal() {
+    Present { value: principal } =>
+      Present {
+        value: DeployAccessActor {
+          principal: principal,
+          sudo_granted: deploy_access_sudo_all_granted(access: access),
+        }
+      }
+    Absent => Absent
+  }
+}
+
+fn deploy_access_privileged_fixture_actor(access: DeployAccess) -> DeployAccessActor {
+  DeployAccessActor { principal: access.principal, sudo_granted: true }
+}
+
+data deploy_access_unprivileged_fixture_principal: NonEmptyStr = "nobody"
+
+fn deploy_access_unprivileged_fixture_actor() -> DeployAccessActor {
+  DeployAccessActor { principal: deploy_access_unprivileged_fixture_principal, sudo_granted: false }
+}
+
+fn deploy_access_sudo_miss_reason(access: DeployAccess) -> String {
+  let sample = access.privileged_commands.first()
+  concat(
+    concat(
+      concat(deploy_access_refusal_prefix, " — privileged commands not granted (sudo -n preflight miss)\n"),
+      concat(concat("Add to ", gunbc_deploy_sudoers_dropin), ":\n")
+    ),
+    deploy_access_sudoers_line(access: access, cmd: sample)
+  )
+}
+
+fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> AccessDecision {
+  if actor.principal != access.principal {
+    Deny {
+      reason: Present {
+        value: concat(
+          concat(
+            concat(deploy_access_refusal_prefix, " — principal mismatch expected="),
+            access.principal
+          ),
+          concat(" actual=", actor.principal)
+        )
+      }
+    }
+  } else {
+    if actor.sudo_granted {
+      Permit
+    } else {
+      Deny {
+        reason: Present {
+          value: deploy_access_sudo_miss_reason(access: access)
+        }
+      }
+    }
+  }
+}
+
+fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
+  match deploy_access_observed_actor(access: access) {
+    Present { value: actor } => deploy_access_check(access: access, actor: actor)
+    Absent =>
+      Deny {
+        reason: Present {
+          value: concat(
+            deploy_access_refusal_prefix,
+            " — could not observe principal (whoami failed)"
+          )
+        }
+      }
+  }
+}
+
+fn deploy_access_decision_reason(d: AccessDecision) -> String {
+  match d {
+    Permit => ""
+    Deny { reason: r } =>
+      match r {
+        Present { value: why } => why
+        Absent => deploy_access_refusal_prefix
+      }
+  }
+}
+
+fn deploy_mutation_gate_observed(access: DeployAccess) -> AccessDecision {
+  let proof = deploy_target_proof_from_access(access: access)
+  let host_decision = deploy_target_host_check_observed(proof: proof)
+  let access_decision = deploy_access_check_observed(access: access)
+  decision_meet(a: host_decision, b: access_decision)
+}
+
+fn deploy_mutation_gate(
+  access: DeployAccess,
+  fixture_actor: DeployAccessActor?,
+  fixture_host: DeployTargetHostObservation?
+) -> AccessDecision {
+  let proof = deploy_target_proof_from_access(access: access)
+  let host_decision = match fixture_host {
+    Present { value: obs } => deploy_target_host_check(proof: proof, observed: obs)
+    Absent => deploy_target_host_check_observed(proof: proof)
+  }
+  let access_decision = match fixture_actor {
+    Present { value: actor } => deploy_access_check(access: access, actor: actor)
+    Absent => deploy_access_check_observed(access: access)
+  }
+  decision_meet(a: host_decision, b: access_decision)
+}
+
+fn deploy_access_preflight_pass_message(access: DeployAccess) -> String {
+  concat("deploy-access-preflight: PASS principal=", access.principal)
+}
+
+data deploy_access_preflight_shell_dissolution_trigger: String = "🟡 dissolve-on: deploy_access_preflight_shell — deploy_access_preflight_script (bash emit) AND deploy_access_sudo_check_cmd (shell.Exec.Check over concat argv) are medium-as-string transport debt (extends live_deploy #5828); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — privileged-command checks become HostEffect intent rows realized through host_effect_apply transport handlers, retiring bash script emit, sudo argv concat, and medium_structure_exception_roster entry for dsl/gunbc/ci_deploy_access.dag"

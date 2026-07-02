@@ -16,6 +16,12 @@ import extdeps.shell
 import extdeps.diagnostic.ssh { ssh_session_exec }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
+import std.access { AccessDecision, Permit, Deny }
+import gunbc.ci_deploy_access {
+  DeployAccess, DeployAccessActor,
+  deploy_access_check, deploy_access_check_observed,
+  deploy_access_decision_reason,
+}
 import std.types { String, NonEmptyStr }
 
 type ResolvedHostEffectCell =
@@ -106,12 +112,66 @@ fn realize_shell_on_host(script: String, transport: HostEffectTransport, intent:
 }
 
 fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, policy: Policy, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let intent = HostEffectIntent { target: target, effect: effect, policy: policy, transport: transport }
+  let intent = HostEffectIntent {
+    target: target,
+    effect: effect,
+    policy: policy,
+    transport: transport,
+    privilege_denial: none,
+  }
   match resolve_host_effect_cell(target: target, effect: effect) {
     ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
     RedfishOnBmc { node: _, action: _ } =>
       NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
     IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
+  }
+}
+
+fn host_effect_privilege_verdict(
+  access: DeployAccess,
+  fixture_actor: DeployAccessActor?
+) -> AccessDecision {
+  match fixture_actor {
+    Present { value: actor } => deploy_access_check(access: access, actor: actor)
+    Absent => deploy_access_check_observed(access: access)
+  }
+}
+
+fn host_effect_apply_gated(
+  access: DeployAccess,
+  target: NodeControlPlane,
+  effect: HostEffect,
+  policy: Policy,
+  transport: HostEffectTransport,
+  fixture_actor: DeployAccessActor?
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let intent = HostEffectIntent {
+    target: target,
+    effect: effect,
+    policy: policy,
+    transport: transport,
+    privilege_denial: none,
+  }
+  let verdict = host_effect_privilege_verdict(access: access, fixture_actor: fixture_actor)
+  match verdict {
+    Permit =>
+      match resolve_host_effect_cell(target: target, effect: effect) {
+        ShellOnHost { node: _, script: s } => realize_shell_on_host(script: s, transport: transport, intent: intent)
+        RedfishOnBmc { node: _, action: _ } =>
+          NotConverged { reason: "host_effect_apply: RedfishAction realization is a fail-closed Unimplemented stub in Phase A; neat-boar-71 realizes it over RedfishRest in Phase C. No plausible no-op for a power/boot action (DESIGN section 5).", applied: intent }
+        IncompatibleCell { reason: why } => NotConverged { reason: why, applied: intent }
+      }
+    Deny { reason: _ } =>
+      NotConverged {
+        reason: deploy_access_decision_reason(d: verdict),
+        applied: HostEffectIntent {
+          target: target,
+          effect: effect,
+          policy: policy,
+          transport: transport,
+          privilege_denial: Present { value: verdict },
+        },
+      }
   }
 }
 
@@ -127,11 +187,16 @@ fn not_converged_directive(policy: Policy) -> ConvergeDirective {
 fn host_effect_policy_directive(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ConvergeDirective {
   match r {
     Converged { evidence: _, applied: _ } => Settled
-    NotConverged { reason: _, applied: intent } =>
-      match resolve_host_effect_cell(target: intent.target, effect: intent.effect) {
-        IncompatibleCell { reason: why } => Refused { reason: why }
-        ShellOnHost { node: _, script: _ } => not_converged_directive(policy: intent.policy)
-        RedfishOnBmc { node: _, action: _ } => not_converged_directive(policy: intent.policy)
+    NotConverged { reason: why, applied: intent } =>
+      match intent.privilege_denial {
+        Present { value: Deny { reason: _ } } => Refused { reason: why }
+        Present { value: Permit } => not_converged_directive(policy: intent.policy)
+        Absent =>
+          match resolve_host_effect_cell(target: intent.target, effect: intent.effect) {
+            IncompatibleCell { reason: inner_why } => Refused { reason: inner_why }
+            ShellOnHost { node: _, script: _ } => not_converged_directive(policy: intent.policy)
+            RedfishOnBmc { node: _, action: _ } => not_converged_directive(policy: intent.policy)
+          }
       }
   }
 }
