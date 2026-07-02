@@ -12,6 +12,7 @@ import v2.extdeps.languages.bash {
   bash_stmt_env_unset_target_model
 }
 import v2.std.collection { Map }
+import v2.std.compilers.target_model { TargetModel }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
@@ -35,7 +36,7 @@ fn orch_bash_facts_lookup(key: Node) -> Witness<InferredFacts> {
   }
 }
 
-fn orch_emit_bash(root: Node, target: Node) -> Outcome<Medium<String>> {
+fn orch_emit_bash(root: Node, target: TargetModel) -> Outcome<Medium<String>> {
   emit(
     tree: InferredTree {
       root: root,
