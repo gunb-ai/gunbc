@@ -166,8 +166,10 @@ fn unit_type_node(ctx: &InterpContext) -> Value {
     )
 }
 
-fn type_expr_authored_name(ctx: &InterpContext, type_expr: &Rc<Node>) -> String {
-    let si = ctx.source_indices();
+fn type_expr_authored_name(
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_expr: &Rc<Node>,
+) -> String {
     let name = authored_name_at(si.clone(), type_expr.clone());
     if !name.is_empty() {
         return name;
@@ -191,8 +193,12 @@ fn type_expr_authored_name(ctx: &InterpContext, type_expr: &Rc<Node>) -> String 
     String::new()
 }
 
-fn marshal_type_expr_ref(ctx: &InterpContext, type_expr: &Rc<Node>) -> InterpResult<Value> {
-    let name = type_expr_authored_name(ctx, type_expr);
+fn marshal_type_expr_ref(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_expr: &Rc<Node>,
+) -> InterpResult<Value> {
+    let name = type_expr_authored_name(si, type_expr);
     if name.is_empty() {
         return Err(InterpError::TypeError {
             msg: "marshal_type_expr_ref: empty authored type name".to_string(),
@@ -205,11 +211,14 @@ fn marshal_type_expr_ref(ctx: &InterpContext, type_expr: &Rc<Node>) -> InterpRes
     ))
 }
 
-fn marshal_variant_arm_target(ctx: &InterpContext, variant: &Rc<Node>) -> InterpResult<Value> {
+fn marshal_variant_arm_target(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    variant: &Rc<Node>,
+) -> InterpResult<Value> {
     if variant.children.is_empty() {
         return Ok(unit_type_node(ctx));
     }
-    let si = ctx.source_indices();
     let mut edges = Vec::with_capacity(variant.children.len());
     for field in variant.children.iter() {
         let field_name = authored_name_at(si.clone(), field.clone());
@@ -218,7 +227,7 @@ fn marshal_variant_arm_target(ctx: &InterpContext, variant: &Rc<Node>) -> Interp
             .as_ref()
             .and_then(|inf| inferred_to_node(inf.clone()))
             .unwrap_or_else(|| field_node_type_expr(field.clone()));
-        let target = marshal_type_expr_ref(ctx, &type_expr)?;
+        let target = marshal_type_expr_ref(ctx, si, &type_expr)?;
         edges.push(edge_named(ctx, &field_name, target));
     }
     Ok(node_record(
@@ -228,17 +237,20 @@ fn marshal_variant_arm_target(ctx: &InterpContext, variant: &Rc<Node>) -> Interp
     ))
 }
 
-pub fn marshal_disj_type_item(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value> {
+pub fn marshal_disj_type_item(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: &Rc<Node>,
+) -> InterpResult<Value> {
     if item.connective != Connective::Disj {
         return Err(InterpError::TypeError {
             msg: "resolve_type_node: type is not a closed coproduct (Disj)".to_string(),
         });
     }
-    let si = ctx.source_indices();
     let mut edges = Vec::with_capacity(item.children.len());
     for child in item.children.iter() {
         let label = authored_name_at(si.clone(), child.clone());
-        let target = marshal_variant_arm_target(ctx, child)?;
+        let target = marshal_variant_arm_target(ctx, si, child)?;
         edges.push(edge_named(ctx, &label, target));
     }
     Ok(node_record(
@@ -462,7 +474,7 @@ pub fn eval_resolve_type_node(
 ) -> InterpResult<Value> {
     let type_name = expect_symbol(args.first().map(|(_, v)| v), "resolve_type_node")?;
     let (item, _) = type_item_by_name(ctx, type_name)?;
-    marshal_disj_type_item(ctx, item)
+    marshal_disj_type_item(ctx, &ctx.source_indices(), item)
 }
 
 fn logical_qualified_name(module_name: &str, name: &str) -> String {
@@ -473,10 +485,14 @@ fn logical_qualified_name(module_name: &str, name: &str) -> String {
     }
 }
 
-fn concept_decl_node(ctx: &InterpContext, item: &Rc<Node>) -> InterpResult<Value> {
+fn concept_decl_node(
+    ctx: &InterpContext,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    item: &Rc<Node>,
+) -> InterpResult<Value> {
     match item.connective {
-        Connective::Disj => marshal_disj_type_item(ctx, item),
-        Connective::Conj => marshal_variant_arm_target(ctx, item),
+        Connective::Disj => marshal_disj_type_item(ctx, si, item),
+        Connective::Conj => marshal_variant_arm_target(ctx, si, item),
         _ => Ok(unit_type_node(ctx)),
     }
 }
