@@ -8326,7 +8326,10 @@ fn test_migration_debt_v1_test_dir() -> PathBuf {
 }
 
 fn test_migration_debt_stem(name: &str) -> String {
-    let stem = name.strip_suffix(".rs").unwrap_or(name);
+    let stem = name
+        .strip_suffix(".rs")
+        .or_else(|| name.strip_suffix(".dag"))
+        .unwrap_or(name);
     stem.strip_suffix("_test").unwrap_or(stem).to_string()
 }
 
@@ -8378,7 +8381,12 @@ fn build_test_migration_debt_report() -> TestMigrationDebtReport {
             Ok(c) => c,
             Err(_) => continue,
         };
-        let test_fn_count = content.matches("#[test]").count() as i64;
+        // Line-anchored so `#[test]` mentioned in a comment/string/doc example doesn't inflate
+        // the count (a `content.matches` substring scan would).
+        let test_fn_count = content
+            .lines()
+            .filter(|line| line.trim() == "#[test]")
+            .count() as i64;
         if test_fn_count == 0 {
             continue;
         }
@@ -8427,6 +8435,17 @@ pub fn test_migration_debt_module_names() -> Vec<String> {
         .iter()
         .map(|e| e.module.clone())
         .collect()
+}
+
+// Discriminating red witness for the stem matcher: `witness_option_bridge_test.rs` has a live
+// floor counterpart (`witness_option_bridge_test.dag`) and must NOT appear in the debt roster.
+// This goes red if the matcher regresses to comparing an un-stripped `.dag` suffix against a
+// stripped `.rs` stem (as it did before this function existed), since every module would then
+// spuriously report as debt.
+pub fn test_migration_debt_known_covered_module_is_not_debt() -> bool {
+    !test_migration_debt_module_names()
+        .iter()
+        .any(|m| m == "witness_option_bridge_test.rs")
 }
 
 // Host-fed fact extraction for `v2.lens.host_language_transport_script` — the lens `.dag` table

@@ -192,12 +192,12 @@ The 88 v1 integration-test modules (~30k LOC, **939 `#[test]` fns**, `pipeline.r
 
 ### 5B. T2 coverage debt — derived live, not hand-maintained
 
-**This is no longer a hand-authored table** (that was a parallel ledger — DESIGN §6 forbids it; the old static snapshot drifted from the tree the moment either side changed). The debt roster is now **computed from the live tree** by `v2.lens.test_migration_debt` (`src/v2/lens/test_migration_debt.dag`), which diffs `src/v1/tests/src/*.rs` modules containing `#[test]` against the floor `*_test.dag` witness roster (the same `witness_layer_roots` corpus the CI floor discovers from) by stem — a module is debt iff no floor witness stem matches it.
+**This is no longer a hand-authored table** (that was a parallel ledger — DESIGN §6 forbids it; the old static snapshot drifted from the tree the moment either side changed). The debt roster is now **computed from the live tree** by `v2.lens.test_migration_debt` (`src/v2/lens/test_migration_debt.dag`), which diffs `src/v1/tests/src/*.rs` modules containing a line-anchored `#[test]` against the floor `*_test.dag` witness roster (the same `witness_layer_roots` corpus the CI floor discovers from) by **exact stem equality** — a module is debt iff no floor witness has the identical stem. (A fuzzy substring match was tried and rejected in review: it let the single largest debt module, `pipeline` — 418 test fns — silently match the unrelated floor stem `typescript_import_pipeline`, hiding rather than counting debt. Exact equality can only ever *overstate* debt by missing a topically-covered-but-differently-named witness, never understate it.)
 
 - **Live counts:** `test_migration_debt_module_count()` / `test_migration_debt_total_loc()` / `test_migration_debt_total_test_fns()` (builtins in `cli_run.rs`, dispatched via `v1_interpreter.rs`).
 - **Live roster:** `test_migration_debt_module_names()` returns the current debt module list — run this instead of reading a table to see which v1 modules still need a floor witness.
 - **Floor gate:** `src/v2/test/claim/manual/test_migration_debt_test.dag` enrolls three shrink-only ratchet witnesses (module count / total LOC / total test-fn count each `<=` their baseline) — floor-discovered and green-by-execution like every other witness. Debt may shrink freely; it must never silently grow.
-- **Baselines** (set at this table's dissolution, re-verify by running the lens): 66 modules / 13,441 LOC / 418 `#[test]` fns.
+- **Baselines** (set at this table's dissolution, re-verify by running the lens): 77 modules / 28,546 LOC / 912 `#[test]` fns.
 
 **Migration rule (unchanged):** for each v1 test module, the floor `*_test.dag` witness must be **green-by-execution** in `claim_executor` before the v1 `#[test]` module deletes. Bulk-delete of `src/v1/tests` is forbidden. When `test_migration_debt_module_count()` reaches 0, §5 test-migration is done — no table to keep in sync.
 

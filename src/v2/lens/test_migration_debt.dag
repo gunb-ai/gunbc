@@ -6,15 +6,9 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-// Derives docs/plans/seed-shrink-census.md §5B ("T2 coverage debt") from the live tree instead
-// of a hand-maintained table: diffs `src/v1/tests/src/*.rs` modules that contain `#[test]`
-// against the floor `*_test.dag` witness roster (same `witness_layer_roots` corpus the CI floor
-// discovers from), by stem. A module is debt iff no floor witness stem matches it. Baselines are
-// a shrink-only ratchet (DESIGN §6): debt must not grow, and the doc's static snapshot is
-// replaced by re-running this lens rather than hand-editing a table.
-data test_migration_debt_module_count_baseline: Int = 66
-data test_migration_debt_total_loc_baseline: Int = 13441
-data test_migration_debt_total_test_fns_baseline: Int = 418
+data test_migration_debt_module_count_baseline: Int = 77
+data test_migration_debt_total_loc_baseline: Int = 28546
+data test_migration_debt_total_test_fns_baseline: Int = 912
 
 fn test_migration_debt_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
   live_count <= baseline
