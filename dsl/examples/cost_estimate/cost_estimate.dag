@@ -11,7 +11,7 @@ type CostProjection {
 }
 
 fn billable_hours(p: CostProjection) -> Float {
-  p.expected_hours + p.utilization
+  p.expected_hours * p.utilization
 }
 
 fn demo_projection() -> CostProjection {
