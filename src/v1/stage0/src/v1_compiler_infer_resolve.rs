@@ -179,6 +179,18 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
     })
 }
 
+pub fn is_transparent_primitive_alias_rhs(
+    structural: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (((structural.connective.clone() == Connective::NoConnective)
+        && ((structural.children.clone().len() as i64) == 0))
+        && is_kernel_type(authored_name_at(
+            source_indices.clone(),
+            structural.clone(),
+        )))
+}
+
 pub fn preserve_nominal_brand_on_resolve(
     identity: Rc<Node>,
     structural: Rc<Node>,
@@ -186,8 +198,13 @@ pub fn preserve_nominal_brand_on_resolve(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     if (((brand_name.clone() != "".to_string())
-        && (brand_name.clone() != authored_name_at(source_indices, structural.clone())))
-        && !is_declared_container_alias_spelling(brand_name.clone()))
+        && (brand_name.clone()
+            != authored_name_at(source_indices.clone(), structural.clone())))
+        && !is_declared_container_alias_spelling(brand_name.clone())
+        && !is_transparent_primitive_alias_rhs(
+            structural.clone(),
+            source_indices.clone(),
+        ))
     {
         with_authored_identity(identity, structural.clone())
     } else {
@@ -231,7 +248,11 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                 if (((brand.clone() != "".to_string())
                     && (brand.clone()
                         != authored_name_at(source_indices.clone(), structural.clone())))
-                    && !is_declared_container_alias_spelling(brand.clone()))
+                    && !is_declared_container_alias_spelling(brand.clone())
+                    && !is_transparent_primitive_alias_rhs(
+                        structural.clone(),
+                        source_indices.clone(),
+                    ))
                 {
                     with_authored_identity(n.clone(), structural.clone())
                 } else {

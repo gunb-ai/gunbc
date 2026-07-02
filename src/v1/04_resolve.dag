@@ -114,6 +114,11 @@ fn with_authored_identity(identity: Node, structural: Node) -> Node {
   }
 }
 
+fn is_transparent_primitive_alias_rhs(structural: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  structural.connective == NoConnective && structural.children |> count == 0
+    && is_kernel_type(name: authored_name_at(source_indices: source_indices, node: structural))
+}
+
 fn preserve_nominal_brand_on_resolve(
   identity: Node,
   structural: Node,
@@ -121,7 +126,8 @@ fn preserve_nominal_brand_on_resolve(
   source_indices: Map<String, NewlineIndex>
 ) -> Node {
   if brand_name != "" && brand_name != authored_name_at(source_indices: source_indices, node: structural)
-    && !is_declared_container_alias_spelling(name: brand_name) {
+    && !is_declared_container_alias_spelling(name: brand_name)
+    && !is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices) {
     with_authored_identity(identity: identity, structural: structural)
   } else { structural }
 }
@@ -141,7 +147,8 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
         resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0).resolved
       }
       if brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
-        && !is_declared_container_alias_spelling(name: brand) {
+        && !is_declared_container_alias_spelling(name: brand)
+        && !is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices) {
         with_authored_identity(identity: n, structural: structural)
       } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {

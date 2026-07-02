@@ -62,7 +62,7 @@ pub use crate::v1_compiler_infer_emit_info::{
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, RustCorpusRepr, TypeRepr, TypeSummary,
 };
-pub use crate::v1_compiler_infer_env::{authored_name, lookup_type_by_name, lookup_type_for};
+pub use crate::v1_compiler_infer_env::{authored_name, is_recursive_type_by_name, lookup_type_by_name, lookup_type_for};
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
@@ -7592,8 +7592,11 @@ pub fn needs_box_wrapping(
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
+        let name = authored_name_at(source_indices.clone(), n.clone());
+        if v1_rt::set_contains(&recursive_types, name.clone()) {
+            break true;
+        }
         if ((n.children.clone().len() as i64) == 0) {
-            let name = authored_name_at(source_indices, n.clone());
             if v1_rt::set_contains(&shared_types, name.clone()) {
                 break false;
             } else {
@@ -12437,17 +12440,24 @@ pub fn field_access_field_is_boxed(
                     field_ty.clone(),
                 );
                 let grounds_to_host_scalar =
-                    (rust_seed_host_numeric_alias(field_ty_name, emit_info.corpus_repr.clone())
+                    (rust_seed_host_numeric_alias(field_ty_name.clone(), emit_info.corpus_repr.clone())
                         != None);
                 if grounds_to_host_scalar {
                     false
                 } else {
-                    needs_box_wrapping(
-                        field_ty.clone(),
-                        emit_info.recursive_type_set.clone(),
-                        shared_types,
-                        scope.type_env.clone().source_indices.clone(),
-                    )
+                    let faithful_nat_field = matches!(
+                        emit_info.corpus_repr.clone(),
+                        FaithfulFreeMonoid
+                    ) && (field_ty_name.clone() == "Nat".to_string()
+                        || v1_rt::substring(&field_ty_name, 0, 4) == "Nat<".to_string());
+                    faithful_nat_field
+                        || needs_box_wrapping(
+                            field_ty.clone(),
+                            emit_info.recursive_type_set.clone(),
+                            shared_types,
+                            scope.type_env.clone().source_indices.clone(),
+                        )
+                        || is_recursive_type_by_name(scope.type_env.clone(), field_ty_name.clone())
                 }
             }
             None => false,
