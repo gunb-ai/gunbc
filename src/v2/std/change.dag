@@ -6,7 +6,6 @@ import std.change {
   KeyedDiffKind,
   KeyedDiffHunk,
   KeyedLeafVerdict,
-  KeyedLeafMutationKind,
   KeyedThreeWayPatch,
   KeyedThreeWayEntry,
   keyed_three_way_leaf,

@@ -3,7 +3,9 @@ module gunbc.host_identity_knob
 import std.types { String, Bool }
 import std.change {
   KeyedLeafVerdict,
-  KeyedLeafMutation,
+  KeyedApplyHunk,
+  KeyedVerdictAdded,
+  KeyedVerdictRemoved,
   KeyedUnchanged,
   KeyedConflict,
   keyed_three_way_leaf,
@@ -52,7 +54,9 @@ fn three_way_leaf(
 
 fn host_identity_leaf_has_apply_arm(verdict: HostIdentityLeafVerdict) -> Bool {
   match verdict {
-    KeyedLeafMutation { mutation: _ } => true
+    KeyedApplyHunk { from: _, to: _ } => true
+    KeyedVerdictAdded { value: _ } => true
+    KeyedVerdictRemoved { value: _ } => true
     KeyedUnchanged => false
     KeyedConflict => false
   }
@@ -61,7 +65,9 @@ fn host_identity_leaf_has_apply_arm(verdict: HostIdentityLeafVerdict) -> Bool {
 fn host_identity_leaf_is_noop(verdict: HostIdentityLeafVerdict) -> Bool {
   match verdict {
     KeyedUnchanged => true
-    KeyedLeafMutation { mutation: _ } => false
+    KeyedApplyHunk { from: _, to: _ } => false
+    KeyedVerdictAdded { value: _ } => false
+    KeyedVerdictRemoved { value: _ } => false
     KeyedConflict => false
   }
 }
@@ -70,7 +76,9 @@ fn host_identity_leaf_is_conflict(verdict: HostIdentityLeafVerdict) -> Bool {
   match verdict {
     KeyedConflict => true
     KeyedUnchanged => false
-    KeyedLeafMutation { mutation: _ } => false
+    KeyedApplyHunk { from: _, to: _ } => false
+    KeyedVerdictAdded { value: _ } => false
+    KeyedVerdictRemoved { value: _ } => false
   }
 }
 

@@ -26,15 +26,12 @@ type KeyedPatch<K, V> {
   hunks: List<KeyedDiffHunk<K, V>>
 }
 
-type KeyedLeafMutationKind<V>
-  = KeyedApplyHunk { from: V, to: V }
-  | KeyedVerdictAdded { value: V }
-  | KeyedVerdictRemoved { value: V }
-
 type KeyedLeafVerdict<V>
   = KeyedUnchanged
   | KeyedConflict
-  | KeyedLeafMutation { mutation: KeyedLeafMutationKind<V> }
+  | KeyedApplyHunk { from: V, to: V }
+  | KeyedVerdictAdded { value: V }
+  | KeyedVerdictRemoved { value: V }
 
 type KeyedThreeWayEntry<K, V> {
   entry_key: K
@@ -174,9 +171,7 @@ fn keyed_three_way_leaf<V>(
   if equal(a: observed, b: desired) {
     KeyedUnchanged
   } else { if equal(a: observed, b: base) {
-    KeyedLeafMutation {
-      mutation: KeyedApplyHunk { from: base, to: desired },
-    }
+    KeyedApplyHunk { from: base, to: desired }
   } else {
     KeyedConflict
   } }
@@ -190,24 +185,20 @@ fn keyed_leaf_verdict_join<V>(
   match a {
     KeyedUnchanged => b
     KeyedConflict => KeyedConflict
-    KeyedLeafMutation { mutation: ma } => match b {
+    KeyedApplyHunk { from: fa, to: ta } => match b {
       KeyedUnchanged => a
       KeyedConflict => KeyedConflict
-      KeyedLeafMutation { mutation: mb } => match ma {
-        KeyedApplyHunk { from: fa, to: ta } => match mb {
-          KeyedApplyHunk { from: fb, to: tb } =>
-            if equal(a: fa, b: fb) && equal(a: ta, b: tb) {
-              a
-            } else {
-              KeyedConflict
-            }
-          KeyedVerdictAdded { value: _ } => KeyedConflict
-          KeyedVerdictRemoved { value: _ } => KeyedConflict
+      KeyedApplyHunk { from: fb, to: tb } =>
+        if equal(a: fa, b: fb) && equal(a: ta, b: tb) {
+          a
+        } else {
+          KeyedConflict
         }
-        KeyedVerdictAdded { value: _ } => KeyedConflict
-        KeyedVerdictRemoved { value: _ } => KeyedConflict
-      }
+      KeyedVerdictAdded { value: _ } => KeyedConflict
+      KeyedVerdictRemoved { value: _ } => KeyedConflict
     }
+    KeyedVerdictAdded { value: _ } => KeyedConflict
+    KeyedVerdictRemoved { value: _ } => KeyedConflict
   }
 }
 
@@ -391,9 +382,7 @@ fn keyed_three_way_row_verdict<K, V>(
           )
         Absent =>
           if value_eq(a: orow.value, b: brow.value) {
-            KeyedLeafMutation {
-              mutation: KeyedVerdictRemoved { value: brow.value },
-            }
+            KeyedVerdictRemoved { value: brow.value }
           } else {
             KeyedConflict
           }
@@ -415,9 +404,7 @@ fn keyed_three_way_row_verdict<K, V>(
       }
       Absent => match d {
         Present { value: drow } =>
-          KeyedLeafMutation {
-            mutation: KeyedVerdictAdded { value: drow.value },
-          }
+          KeyedVerdictAdded { value: drow.value }
         Absent => KeyedUnchanged
       }
     }
@@ -599,7 +586,9 @@ fn keyed_three_way_has_conflict<K, V>(patch: KeyedThreeWayPatch<K, V>) -> Bool {
     acc || match entry.verdict {
       KeyedConflict => true
       KeyedUnchanged => false
-      KeyedLeafMutation { mutation: _ } => false
+      KeyedApplyHunk { from: _, to: _ } => false
+      KeyedVerdictAdded { value: _ } => false
+      KeyedVerdictRemoved { value: _ } => false
     }
   })
 }
@@ -607,7 +596,9 @@ fn keyed_three_way_has_conflict<K, V>(patch: KeyedThreeWayPatch<K, V>) -> Bool {
 fn keyed_three_way_has_apply<K, V>(patch: KeyedThreeWayPatch<K, V>) -> Bool {
   fold(patch.entries, init: false, f: fn(acc, entry) {
     acc || match entry.verdict {
-      KeyedLeafMutation { mutation: _ } => true
+      KeyedApplyHunk { from: _, to: _ } => true
+      KeyedVerdictAdded { value: _ } => true
+      KeyedVerdictRemoved { value: _ } => true
       KeyedUnchanged => false
       KeyedConflict => false
     }

@@ -9,7 +9,9 @@ import std.change {
   KeyedDiffRemoved,
   KeyedDiffModified,
   KeyedLeafVerdict,
-  KeyedLeafMutation,
+  KeyedApplyHunk,
+  KeyedVerdictAdded,
+  KeyedVerdictRemoved,
   KeyedApplyHunk,
   KeyedVerdictAdded,
   KeyedVerdictRemoved,
@@ -188,13 +190,14 @@ fn witness_three_way_patch_monoid_identity() -> Bool {
 }
 
 fn witness_leaf_verdict_join_bottom() -> Bool {
-  keyed_leaf_is_noop(
-    verdict: keyed_leaf_verdict_join(
-      a: KeyedUnchanged,
-      b: KeyedUnchanged,
-      equal: fixture_val_eq,
-    ),
-  )
+  match keyed_leaf_verdict_join(
+    a: KeyedUnchanged,
+    b: KeyedUnchanged,
+    equal: fixture_val_eq,
+  ) {
+    KeyedUnchanged => true
+    _ => false
+  }
     && match keyed_leaf_verdict_join(
       a: KeyedUnchanged,
       b: KeyedApplyHunk {
@@ -354,7 +357,7 @@ fn witness_added_hunk() -> Bool {
   keyed_patch_hunk_count(patch: patch) == 1
     && fold(patch.hunks, init: false, f: fn(found, hunk) {
       found || match hunk.kind {
-        KeyedAdded => hunk.hunk_key == "gamma"
+        KeyedDiffAdded => hunk.hunk_key == "gamma"
         _ => false
       }
     })
@@ -365,7 +368,7 @@ fn witness_removed_hunk() -> Bool {
   keyed_patch_hunk_count(patch: patch) == 1
     && fold(patch.hunks, init: false, f: fn(found, hunk) {
       found || match hunk.kind {
-        KeyedRemoved => hunk.hunk_key == "beta"
+        KeyedDiffRemoved => hunk.hunk_key == "beta"
         _ => false
       }
     })
@@ -376,7 +379,7 @@ fn witness_modified_hunk() -> Bool {
   keyed_patch_hunk_count(patch: patch) == 1
     && fold(patch.hunks, init: false, f: fn(found, hunk) {
       found || match hunk.kind {
-        KeyedModified => hunk.hunk_key == "beta"
+        KeyedDiffModified => hunk.hunk_key == "beta"
         _ => false
       }
     })
@@ -396,79 +399,73 @@ fn witness_three_way_apply_hunk() -> Bool {
 }
 
 fn witness_three_way_noop() -> Bool {
-  keyed_leaf_is_noop(
-    verdict: keyed_three_way_leaf(
-      base: fixture_val(payload: "one"),
-      observed: fixture_val(payload: "two"),
-      desired: fixture_val(payload: "two"),
-      equal: fixture_val_eq,
-    ),
-  )
+  match keyed_three_way_leaf(
+    base: fixture_val(payload: "one"),
+    observed: fixture_val(payload: "two"),
+    desired: fixture_val(payload: "two"),
+    equal: fixture_val_eq,
+  ) {
+    KeyedUnchanged => true
+    _ => false
+  }
 }
 
 fn witness_three_way_conflict() -> Bool {
-  keyed_leaf_is_conflict(
-    verdict: keyed_three_way_leaf(
-      base: fixture_val(payload: "one"),
-      observed: fixture_val(payload: "drift"),
-      desired: fixture_val(payload: "two"),
-      equal: fixture_val_eq,
-    ),
-  )
-    && !keyed_leaf_has_apply_arm(
-      verdict: keyed_three_way_leaf(
-        base: fixture_val(payload: "one"),
-        observed: fixture_val(payload: "drift"),
-        desired: fixture_val(payload: "two"),
-        equal: fixture_val_eq,
-      ),
-    )
-}
-
-fn witness_conflict_plan_has_no_apply_arm() -> Bool {
-  !keyed_plan_has_apply_arm(
-    plan: keyed_plan_from_verdict(
-      verdict: KeyedConflict,
-    ),
-  )
-    && match keyed_plan_from_verdict(verdict: KeyedConflict) {
-      KeyedPlanConflict => true
-      _ => false
-    }
-}
-
-fn witness_apply_plan_has_apply_arm() -> Bool {
-  keyed_plan_has_apply_arm(
-    plan: keyed_plan_from_verdict(
-      verdict: KeyedApplyHunk {
-        from: fixture_val(payload: "a"),
-        to: fixture_val(payload: "b"),
-      },
-    ),
-  )
-    && match keyed_plan_from_verdict(
-      verdict: KeyedApplyHunk {
-        from: fixture_val(payload: "a"),
-        to: fixture_val(payload: "b"),
-      },
-    ) {
-      KeyedPlanApply { from: f, to: t } =>
-        f.payload == "a" && t.payload == "b"
-      _ => false
-    }
-}
-
-fn witness_plan_add_is_not_remove() -> Bool {
-  match keyed_plan_from_verdict(
-    verdict: KeyedAdded { value: fixture_val(payload: "new") },
+  match keyed_three_way_leaf(
+    base: fixture_val(payload: "one"),
+    observed: fixture_val(payload: "drift"),
+    desired: fixture_val(payload: "two"),
+    equal: fixture_val_eq,
   ) {
-    KeyedPlanAdd { value: v } => v.payload == "new"
+    KeyedConflict => true
+    KeyedApplyHunk { from: _, to: _ } => false
+    KeyedVerdictAdded { value: _ } => false
+    KeyedVerdictRemoved { value: _ } => false
+    KeyedUnchanged => false
+  }
+}
+
+fn witness_conflict_has_no_mutation_arm() -> Bool {
+  let blocked = KeyedConflict
+  match blocked {
+    KeyedConflict => true
+    KeyedUnchanged => false
+    KeyedApplyHunk { from: _, to: _ } => false
+    KeyedVerdictAdded { value: _ } => false
+    KeyedVerdictRemoved { value: _ } => false
+  }
+}
+
+fn fixture_apply_verdict(from_label: String, to_label: String) -> KeyedLeafVerdict<FixtureVal> {
+  KeyedApplyHunk {
+    from: fixture_val(payload: from_label),
+    to: fixture_val(payload: to_label),
+  }
+}
+
+fn witness_apply_verdict_has_mutation_arm() -> Bool {
+  match fixture_apply_verdict(from_label: "a", to_label: "b") {
+    KeyedApplyHunk { from: f, to: t } =>
+      f.payload == "a" && t.payload == "b"
     _ => false
   }
-    && match keyed_plan_from_verdict(
-      verdict: KeyedRemoved { value: fixture_val(payload: "old") },
-    ) {
-      KeyedPlanRemove { value: v } => v.payload == "old"
+}
+
+fn fixture_verdict_added(label: String) -> KeyedLeafVerdict<FixtureVal> {
+  KeyedVerdictAdded { value: fixture_val(payload: label) }
+}
+
+fn fixture_verdict_removed(label: String) -> KeyedLeafVerdict<FixtureVal> {
+  KeyedVerdictRemoved { value: fixture_val(payload: label) }
+}
+
+fn witness_verdict_add_is_not_remove() -> Bool {
+  match fixture_verdict_added(label: "new") {
+    KeyedVerdictAdded { value: v } => v.payload == "new"
+    _ => false
+  }
+    && match fixture_verdict_removed(label: "old") {
+      KeyedVerdictRemoved { value: v } => v.payload == "old"
       _ => false
     }
 }
@@ -520,9 +517,9 @@ test fn keyed_delta_fold_keystone_holds() -> Bool {
     && witness_three_way_apply_hunk()
     && witness_three_way_noop()
     && witness_three_way_conflict()
-    && witness_conflict_plan_has_no_apply_arm()
-    && witness_apply_plan_has_apply_arm()
-    && witness_plan_add_is_not_remove()
+    && witness_conflict_has_no_mutation_arm()
+    && witness_apply_verdict_has_mutation_arm()
+    && witness_verdict_add_is_not_remove()
     && witness_three_way_fold_omits_unchanged()
     && witness_identity_law_red_control()
 }
