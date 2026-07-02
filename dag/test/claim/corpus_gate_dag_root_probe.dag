@@ -1,0 +1,3 @@
+module test.claim.corpus_gate_dag_root_probe
+
+fn witness_dag_root_gate_probe() -> Bool { true }

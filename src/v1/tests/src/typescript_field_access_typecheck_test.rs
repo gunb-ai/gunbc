@@ -5,7 +5,7 @@
 //! --experimental-strip-types` run (which only strips types and needs node
 //! 22.6 or newer), `tsc --noEmit` actually TYPE-CHECKS the emitted source, so
 //! it is a stronger oracle and runs on the CI runner that already provisions
-//! `npx`/`node` for the emit-host smoke gate (`dsl/tools/emit_host_gate.dag`,
+//! `npx`/`node` for the emit-host smoke gate (`dag/tools/emit_host_gate.dag`,
 //! which runs `npx -y -p typescript@5.9.2 tsc ...` in the CI floor job).
 //!
 //! It covers BOTH the typed `add` fn (this dissolves #5695's `node
@@ -203,7 +203,7 @@ fn emitted_typescript_typechecks_under_tsc_noemit() {
         // (the emit-host gate proves npx on the self-hosted runner).
         eprintln!(
             "[tsc-oracle] SKIP: npx not on PATH. DISSOLVE this skip when the runner provisions npx \
-             (it already does for dsl/tools/emit_host_gate.dag)."
+             (it already does for dag/tools/emit_host_gate.dag)."
         );
         return;
     }
@@ -234,7 +234,7 @@ fn emitted_typescript_record_construct_typechecks_under_tsc_noemit() {
     if !npx_available() {
         eprintln!(
             "[tsc-oracle] SKIP: npx not on PATH. DISSOLVE this skip when the runner provisions npx \
-             (it already does for dsl/tools/emit_host_gate.dag)."
+             (it already does for dag/tools/emit_host_gate.dag)."
         );
         return;
     }
@@ -282,7 +282,7 @@ fn tsc_noemit_rejects_fold_emitted_prepend_record() {
     if !npx_available() {
         eprintln!(
             "[tsc-oracle] SKIP: npx not on PATH. DISSOLVE this skip when the runner provisions npx \
-             (it already does for dsl/tools/emit_host_gate.dag)."
+             (it already does for dag/tools/emit_host_gate.dag)."
         );
         return;
     }
@@ -311,7 +311,7 @@ fn tsc_noemit_rejects_rust_shaped_member_access() {
     if !npx_available() {
         eprintln!(
             "[tsc-oracle] SKIP: npx not on PATH. DISSOLVE this skip when the runner provisions npx \
-             (it already does for dsl/tools/emit_host_gate.dag)."
+             (it already does for dag/tools/emit_host_gate.dag)."
         );
         return;
     }

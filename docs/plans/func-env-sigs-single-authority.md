@@ -144,7 +144,7 @@ flowchart TD
 
 ### (1) Shadowing order — discriminating GREEN
 
-Witness module `dsl/test/claim/func_env_scope_chain_shadow_test.dag` (name TBD), three-file fixture:
+Witness module `dag/test/claim/func_env_scope_chain_shadow_test.dag` (name TBD), three-file fixture:
 
 ```
 // shadow_first.dag — defines fn marker() -> i32 { 1 }
@@ -169,7 +169,7 @@ let use_sig = lookup_func_sig(consumer.func_env, "some_fn")
 assert rc_ptr_eq(def_sig, use_sig)    // SAME Rc allocation
 ```
 
-Count oracle (whole dsl corpus): unique `ResolvedFuncSig` pointers reachable from all `func_env`s ≈ **count of distinct functions defined** (not Σ closure sizes). Main-branch control: strictly higher count (copy still present). **Ptr-eq is the proof the copy is gone**; count alone only shows shrinkage.
+Count oracle (whole dag corpus): unique `ResolvedFuncSig` pointers reachable from all `func_env`s ≈ **count of distinct functions defined** (not Σ closure sizes). Main-branch control: strictly higher count (copy still present). **Ptr-eq is the proof the copy is gone**; count alone only shows shrinkage.
 
 ### (3) Discriminating RED — dropped parent breaks resolution
 
@@ -196,7 +196,7 @@ GREEN: `lookup_func_sig` finds sig, typecheck passes. **RED perturbation**: buil
 
 **Regenerated (emit output, not hand-edited):** `v1_compiler_infer_sigs.rs`, `v1_compiler_infer_lookup.rs`, `v1_compiler_infer.rs`, `v1_compiler_emit.rs`, and other bins that import `ResolvedFuncEnv`.
 
-**Witness data (landed):** Rust oracles in `src/v1/tests/src/func_env_scope_chain_test.rs` and `func_env_semantic_equivalence_test.rs`, enrolled via `rust_gates_ci.dag` → `cargo nextest run -p v1-compiler-tests` (v1 seed bootstrap path). Thin `dsl/test/claim/func_env_scope_chain_*_test.dag` wrappers are optional v2 realize debt, not blocking this lane.
+**Witness data (landed):** Rust oracles in `src/v1/tests/src/func_env_scope_chain_test.rs` and `func_env_semantic_equivalence_test.rs`, enrolled via `rust_gates_ci.dag` → `cargo nextest run -p v1-compiler-tests` (v1 seed bootstrap path). Thin `dag/test/claim/func_env_scope_chain_*_test.dag` wrappers are optional v2 realize debt, not blocking this lane.
 
 **Explicitly NOT edited:**
 

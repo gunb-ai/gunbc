@@ -14,7 +14,7 @@ import v2.extdeps.languages.dag {
   dag_named_edge
 }
 import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
-import v2.std.cross_tree.import_model { DslTree, SourceRootSet, V2Tree }
+import v2.std.cross_tree.import_model { DagTree, SourceRootSet, V2Tree }
 import v2.std.cross_tree.resolution {
   SourceRootIndex,
   source_root_index_empty,
@@ -133,20 +133,20 @@ fn ct_qn_v2_std() -> QualifiedName {
 }
 
 fn ct_both_trees() -> SourceRootSet {
-  Cons { head: V2Tree, tail: Cons { head: DslTree, tail: Empty } }
+  Cons { head: V2Tree, tail: Cons { head: DagTree, tail: Empty } }
 }
 
-fn ct_dsl_same_tree_roots() -> FreeMonoid<Node> {
+fn ct_dag_same_tree_roots() -> FreeMonoid<Node> {
   Cons {
     head: ct_subject_with_import_use(
-      qn_spine: ct_qn_node(seg: ^ct_dsl_subject_seg),
-      import_use_sym: ^ct_dsl_import_use_sym,
-      imported_decl: ^ct_dsl_imported_decl
+      qn_spine: ct_qn_node(seg: ^ct_dag_subject_seg),
+      import_use_sym: ^ct_dag_import_use_sym,
+      imported_decl: ^ct_dag_imported_decl
     ),
     tail: Cons {
       head: ct_module_root(
-        qn_spine: ct_qn_node(seg: ^ct_dsl_peer_seg),
-        export_sym: ^ct_dsl_imported_decl,
+        qn_spine: ct_qn_node(seg: ^ct_dag_peer_seg),
+        export_sym: ^ct_dag_imported_decl,
         export_atom: ^dag_c3_surface_sugar_service
       ),
       tail: Empty
@@ -154,12 +154,12 @@ fn ct_dsl_same_tree_roots() -> FreeMonoid<Node> {
   }
 }
 
-fn ct_dsl_same_tree_admission() -> Admission {
+fn ct_dag_same_tree_admission() -> Admission {
   Admission {
-    subject: ResolutionSubject { name: ct_qn_one(seg: ^ct_dsl_subject_seg) },
+    subject: ResolutionSubject { name: ct_qn_one(seg: ^ct_dag_subject_seg) },
     imports: Cons {
       head: Import {
-        target: ct_qn_one(seg: ^ct_dsl_peer_seg),
+        target: ct_qn_one(seg: ^ct_dag_peer_seg),
         visibility: ImportVisible
       },
       tail: Empty
@@ -209,12 +209,12 @@ fn ct_cross_tree_roots() -> FreeMonoid<Node> {
         segments: Cons { head: ^v2, tail: Cons { head: ^ct_cross_v2_subject_seg, tail: Empty } }
       ),
       import_use_sym: ^ct_cross_import_use_sym,
-      imported_decl: ^ct_cross_dsl_export_sym
+      imported_decl: ^ct_cross_dag_export_sym
     ),
     tail: Cons {
       head: ct_module_root(
-        qn_spine: ct_qn_node(seg: ^ct_cross_dsl_target_seg),
-        export_sym: ^ct_cross_dsl_export_sym,
+        qn_spine: ct_qn_node(seg: ^ct_cross_dag_target_seg),
+        export_sym: ^ct_cross_dag_export_sym,
         export_atom: ^dag_c3_surface_sugar_service
       ),
       tail: Empty
@@ -229,7 +229,7 @@ fn ct_cross_tree_admission() -> Admission {
     },
     imports: Cons {
       head: Import {
-        target: ct_qn_one(seg: ^ct_cross_dsl_target_seg),
+        target: ct_qn_one(seg: ^ct_cross_dag_target_seg),
         visibility: ImportVisible
       },
       tail: Empty
@@ -237,22 +237,22 @@ fn ct_cross_tree_admission() -> Admission {
   }
 }
 
-fn ct_v2_to_dsl_index() -> SourceRootIndex {
+fn ct_v2_to_dag_index() -> SourceRootIndex {
   source_root_index_insert(
     index: source_root_index_insert(
       index: source_root_index_empty(),
       module: ct_qn_v2(seg_b: ^ct_cross_v2_subject_seg),
       root: V2Tree
     ),
-    module: ct_qn_one(seg: ^ct_cross_dsl_target_seg),
-    root: DslTree
+    module: ct_qn_one(seg: ^ct_cross_dag_target_seg),
+    root: DagTree
   )
 }
 
-fn ct_dsl_to_v2_roots() -> FreeMonoid<Node> {
+fn ct_dag_to_v2_roots() -> FreeMonoid<Node> {
   Cons {
     head: ct_subject_with_import_use(
-      qn_spine: ct_qn_node(seg: ^ct_inv_dsl_subject_seg),
+      qn_spine: ct_qn_node(seg: ^ct_inv_dag_subject_seg),
       import_use_sym: ^ct_inv_import_use_sym,
       imported_decl: ^ct_inv_v2_export_sym
     ),
@@ -269,10 +269,10 @@ fn ct_dsl_to_v2_roots() -> FreeMonoid<Node> {
   }
 }
 
-fn ct_dsl_to_v2_admission() -> Admission {
+fn ct_dag_to_v2_admission() -> Admission {
   Admission {
     subject: ResolutionSubject {
-      name: ct_qn_one(seg: ^ct_inv_dsl_subject_seg)
+      name: ct_qn_one(seg: ^ct_inv_dag_subject_seg)
     },
     imports: Cons {
       head: Import {
@@ -284,22 +284,22 @@ fn ct_dsl_to_v2_admission() -> Admission {
   }
 }
 
-fn ct_dsl_to_v2_index() -> SourceRootIndex {
+fn ct_dag_to_v2_index() -> SourceRootIndex {
   source_root_index_insert(
     index: source_root_index_insert(
       index: source_root_index_empty(),
-      module: ct_qn_one(seg: ^ct_inv_dsl_subject_seg),
-      root: DslTree
+      module: ct_qn_one(seg: ^ct_inv_dag_subject_seg),
+      root: DagTree
     ),
     module: ct_qn_v2_std(),
     root: V2Tree
   )
 }
 
-fn witness_dsl_same_tree_import_resolves_holds() -> Bool {
+fn witness_dag_same_tree_import_resolves_holds() -> Bool {
   match assemble_program_from_module_roots(
-    roots: ct_dsl_same_tree_roots(),
-    admission: ct_dsl_same_tree_admission(),
+    roots: ct_dag_same_tree_roots(),
+    admission: ct_dag_same_tree_admission(),
     lm: dag_language_model_surface_empty_prelude()
   ) {
     Accepted { value: _, diagnostics: _ } => true
@@ -318,12 +318,12 @@ fn witness_v2_same_tree_import_resolves_holds() -> Bool {
   }
 }
 
-fn witness_cross_tree_v2_to_dsl_grounded_resolves_holds() -> Bool {
+fn witness_cross_tree_v2_to_dag_grounded_resolves_holds() -> Bool {
   match resolve_with_admission_grounded(
     lm: dag_language_model_surface_empty_prelude(),
     roots: ct_cross_tree_roots(),
     admission: ct_cross_tree_admission(),
-    index: ct_v2_to_dsl_index(),
+    index: ct_v2_to_dag_index(),
     active_roots: ct_both_trees()
   ) {
     Accepted { value: _, diagnostics: _ } => true
@@ -331,12 +331,12 @@ fn witness_cross_tree_v2_to_dsl_grounded_resolves_holds() -> Bool {
   }
 }
 
-fn witness_cross_tree_dsl_to_v2_grounded_denied_holds() -> Bool {
+fn witness_cross_tree_dag_to_v2_grounded_denied_holds() -> Bool {
   match resolve_with_admission_grounded(
     lm: dag_language_model_surface_empty_prelude(),
-    roots: ct_dsl_to_v2_roots(),
-    admission: ct_dsl_to_v2_admission(),
-    index: ct_dsl_to_v2_index(),
+    roots: ct_dag_to_v2_roots(),
+    admission: ct_dag_to_v2_admission(),
+    index: ct_dag_to_v2_index(),
     active_roots: ct_both_trees()
   ) {
     Accepted { value: _, diagnostics: _ } => false
@@ -350,8 +350,8 @@ fn witness_cross_tree_dsl_to_v2_grounded_denied_holds() -> Bool {
 }
 
 test fn name_resolve_cross_tree_resolution_witnesses() -> Bool {
-  witness_dsl_same_tree_import_resolves_holds()
+  witness_dag_same_tree_import_resolves_holds()
     && witness_v2_same_tree_import_resolves_holds()
-    && witness_cross_tree_v2_to_dsl_grounded_resolves_holds()
-    && witness_cross_tree_dsl_to_v2_grounded_denied_holds()
+    && witness_cross_tree_v2_to_dag_grounded_resolves_holds()
+    && witness_cross_tree_dag_to_v2_grounded_denied_holds()
 }

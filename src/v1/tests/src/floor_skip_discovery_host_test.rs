@@ -20,7 +20,7 @@ fn floor_skip_source_roots() -> Vec<String> {
     let ws = workspace_root();
     vec![
         ws.join("src/v2").to_string_lossy().into_owned(),
-        ws.join("dsl").to_string_lossy().into_owned(),
+        ws.join("dag").to_string_lossy().into_owned(),
     ]
 }
 
@@ -85,7 +85,7 @@ fn budget_roster_resolves_after_frontier_warmup() {
     let roots = floor_skip_source_roots();
     let index = build_multi_entry_index(&roots);
     for path in [
-        "dsl/std/realization_schedule.dag",
+        "dag/std/realization_schedule.dag",
         "src/v2/workflow/affected_set_floor_runner.dag",
         "src/v2/workflow/affected_set_floor_runner_test.dag",
     ] {

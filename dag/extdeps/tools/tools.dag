@@ -1,0 +1,61 @@
+module extdeps.tools
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import std.types { FilePath, NonEmptyStr }
+import extdeps.shell
+import extdeps.gnu_coreutils
+import extdeps.rustup { rustup_install_url }
+import extdeps.brew   { brew_install_url }
+import extdeps.apt
+import extdeps.version { VersionConstraint }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/tools"
+  }
+}
+
+type InstallSource
+  = SourceCoreutils
+  | SourceRustup
+  | SourceBrew { formula: NonEmptyStr }
+  | SourceApt { package: NonEmptyStr }
+
+type CliTool {
+  name: NonEmptyStr
+  min_version: VersionConstraint?
+  installable_via: List<InstallSource>
+}
+
+type ResolvedTool {
+  tool: CliTool
+  path: FilePath
+}
+
+type ResolveResult
+  = Resolved { resolved: ResolvedTool }
+  | NotFound { tool: CliTool, hint: String }
+
+fn one_hint(source: InstallSource) -> String {
+  match source {
+    SourceCoreutils => "expected from system coreutils (GNU on Linux, BSD on macOS)"
+    SourceRustup => concat("install rustup from ", rustup_install_url)
+    SourceBrew { formula: f } => concat("brew install ", f)
+    SourceApt { package: p } => concat("apt install ", p)
+  }
+}
+
+fn install_hint(sources: List<InstallSource>) -> String {
+  sources |> map(s => one_hint(source: s)) |> join(separator: " | ")
+}
+
+func resolve(tool: CliTool) -> ResolveResult {
+  let check = shell.Which.Check(command: tool.name)
+  match check.path {
+    Present { value: p } => Resolved { resolved: { tool: tool, path: p } }
+    Absent => NotFound { tool: tool, hint: install_hint(sources: tool.installable_via) }
+  }
+}

@@ -6,7 +6,7 @@ import v2.std.cross_tree.import_model {
   CrossTreeAdmitted,
   CrossTreeDenied,
   CrossTreeImport,
-  DslTree,
+  DagTree,
   LessFundamental,
   MoreFundamental,
   SourceRootRef,
@@ -92,12 +92,12 @@ fn tree_fundamentality_order(
     V2Tree =>
       match to_tree {
         V2Tree => CoFundamental
-        DslTree => MoreFundamental
+        DagTree => MoreFundamental
       }
-    DslTree =>
+    DagTree =>
       match to_tree {
         V2Tree => LessFundamental
-        DslTree => CoFundamental
+        DagTree => CoFundamental
       }
   }
 }

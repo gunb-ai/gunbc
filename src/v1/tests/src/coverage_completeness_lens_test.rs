@@ -3,7 +3,7 @@
 //! The rust gate runs the WHOLE `v1-compiler-tests` suite (no allowlist filter):
 //! coverage = "every test runs" holds BY CONSTRUCTION — cargo's default is
 //! run-all-EXCEPT-`#[ignore]`d, so a new test is covered the moment it is written
-//! (`dsl/gunbc/ci_spec.dag` `ci_rust_gate_test_command`). The single authority for
+//! (`dag/gunbc/ci_spec.dag` `ci_rust_gate_test_command`). The single authority for
 //! "excused from the gate" is therefore the `#[ignore = "..."]` attribute in the
 //! source itself — visible and reviewable.
 //!

@@ -4,7 +4,7 @@ One-line: the fleet-red that hit `main` three times is **stale-green** — a PR 
 
 ## 1. Root cause — receipts (the #5429 timeline)
 
-`main` was green at 14:44, went red at 15:04 on #5429's merge, and stayed red until #5465. Bisected to #5429 ("warm==cold cache purity", adds `dsl/extdeps/realization/cache_purity.dag`). But the gate that fired (`extdeps_external_authority`, #5418) was **already on main** — so why did #5429's own PR not catch it? Because the green was **stale**:
+`main` was green at 14:44, went red at 15:04 on #5429's merge, and stayed red until #5465. Bisected to #5429 ("warm==cold cache purity", adds `dag/extdeps/realization/cache_purity.dag`). But the gate that fired (`extdeps_external_authority`, #5418) was **already on main** — so why did #5429's own PR not catch it? Because the green was **stale**:
 
 - #5429 PR CI = **SUCCESS @ 06:11:18Z** (head `f66c26b1`).
 - #5418 (the external-authority gate) merged to `main` **@ 06:33:24Z** — 22 minutes *after* #5429's CI completed.

@@ -12,7 +12,7 @@ the realization is a seed that shrinks to zero; host-effect-orchestration.md Pha
 Two *different kinds* of fact, each with exactly one home — they are not two copies of one fact:
 
 - **Graph structure** — what work exists, dependencies, sizing, acceptance conditions. Home:
-  the gunbc `.dag` authority (`dsl/gunbc/roadmap_authority.dag` + `roadmap_model.dag`). Edited
+  the gunbc `.dag` authority (`dag/gunbc/roadmap_authority.dag` + `roadmap_model.dag`). Edited
   by committing the `.dag` to main. ctrl never authors structure.
 - **Runtime state** — is a node actually done, is a session live. Home: ctrl/GitHub. Flows
   **one direction, ctrl → gunbc, read-only**, as acceptance *evidence* (PR merged, session

@@ -1,6 +1,6 @@
 # Resource budget tree — grounding notes
 
-Carriers: [dsl/extdeps/accounting/budget.dag](../../dsl/extdeps/accounting/budget.dag) (the §3 authority), [dsl/product/budget_tree.dag](../../dsl/product/budget_tree.dag) (the memory instantiation). Roadmap node: §1 `1-budget-tree`. PR #5582.
+Carriers: [dag/extdeps/accounting/budget.dag](../../dag/extdeps/accounting/budget.dag) (the §3 authority), [dag/product/budget_tree.dag](../../dag/product/budget_tree.dag) (the memory instantiation). Roadmap node: §1 `1-budget-tree`. PR #5582.
 
 Rationale is homed here, not in-file: ctrl#1793 strips `.dag` comments tree-wide, so a comment-heavy carrier would red main when that wall lands. These are the planning-level grounding facts the carrier cannot carry; the model itself lives on the carrier (§6).
 
@@ -69,7 +69,7 @@ A third measured field calibrates **INTER-run** co-residence (distinct from the 
 
 **Values — provenance.** typical/reservation ← **B4 (quick-lynx-78) verified** (`11592347648`, run 28003119550); worst-observed ← **deep-otter-528's srv2 cgroup `memory.peak` monitor** (`32434110464`); within-run runner cap ← `gunbc_ci_runner_cgroup_memory_cap` (8 GiB); dashboard session cap ← `gunbc_ci_dashboard_session_container_cap` (31.27 GiB). The two-driver invariant (parent): the reservation side is driven by typical claim_executor batches (B4 measures it), the cap/worst side by rust-gate rustc *children* (only deep-otter's rust-gate-present monitor sees it; B4's no-rust-gate run under-reports it). NOTE: B4's #5619 dedup moves the *typical* self-RSS only ~0.57 GiB (8.7→8.1, NOT the earlier-retracted 8.7→4.2) and never touches the cap side. NOTE 2: `gunbc_ci_floor_runner_margin_num/den` (6/5 = 20%) was documented here as applying to the reservation, but its only code consumer was `within_run_spawn_budget()` (RETIRED in #5831 — was computing the wrong budget for within-run spawn-width, not the reservation). The margin constants (`gunbc_ci_floor_runner_margin_num/den`) and `gunbc_ci_floor_whole_run_peak_rss_bytes` are now deleted alongside `within_run_spawn_budget()` (no remaining consumers); the reservation reconciliation with deep-otter-528 is a separate runway.
 
-Carriers: [dsl/gunbc/ci_budget_tree.dag](../../dsl/gunbc/ci_budget_tree.dag) (the two-pool tree + two-number leaf accessors), [dsl/gunbc/ci_floor_measurement.dag](../../dsl/gunbc/ci_floor_measurement.dag) (the measured carriers), witness [dsl/test/claim/ci_budget_tree_witness_test.dag](../../dsl/test/claim/ci_budget_tree_witness_test.dag).
+Carriers: [dag/gunbc/ci_budget_tree.dag](../../dag/gunbc/ci_budget_tree.dag) (the two-pool tree + two-number leaf accessors), [dag/gunbc/ci_floor_measurement.dag](../../dag/gunbc/ci_floor_measurement.dag) (the measured carriers), witness [dag/test/claim/ci_budget_tree_witness_test.dag](../../dag/test/claim/ci_budget_tree_witness_test.dag).
 
 ## Dissolution trigger (DESIGN §6)
 

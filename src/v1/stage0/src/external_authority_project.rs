@@ -197,7 +197,7 @@ fn backfill_pending_module_paths() -> &'static std::collections::HashSet<String>
     static PATHS: OnceLock<HashSet<String>> = OnceLock::new();
     PATHS.get_or_init(|| {
         let ws = crate::cli_run::workspace_root();
-        let path = ws.join("dsl/extdeps/external_authority_backfill_pending.txt");
+        let path = ws.join("dag/extdeps/external_authority_backfill_pending.txt");
         let content = std::fs::read_to_string(&path)
             .unwrap_or_else(|e| panic!("read backfill_pending snapshot {:?}: {e}", path));
         content

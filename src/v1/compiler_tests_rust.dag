@@ -16,15 +16,15 @@ fn ct_module_header() -> String {
 
 fn ct_workspace_helpers() -> String {
   concat(
-    "    /// Find workspace root by walking up from the current directory looking for Cargo.toml + dsl/\n",
+    "    /// Find workspace root by walking up from the current directory looking for Cargo.toml + dag/\n",
     "    fn workspace_root() -> std::path::PathBuf {\n",
     "        let mut dir = std::env::current_dir().expect(\"no current dir\");\n",
     "        loop {\n",
-    "            if dir.join(\"Cargo.toml\").exists() && dir.join(\"dsl\").exists() {\n",
+    "            if dir.join(\"Cargo.toml\").exists() && dir.join(\"dag\").exists() {\n",
     "                return dir;\n",
     "            }\n",
     "            if !dir.pop() {\n",
-    "                panic!(\"could not find workspace root (no Cargo.toml + dsl/ found)\");\n",
+    "                panic!(\"could not find workspace root (no Cargo.toml + dag/ found)\");\n",
     "            }\n",
     "        }\n",
     "    }\n\n",
@@ -190,9 +190,9 @@ fn ct_source_builders() -> String {
 
 fn ct_self_compile_sources() -> String {
   concat(
-    "    /// Build the self-compile source closure from src/v1 entry modules with dsl as a dependency pool.\n",
+    "    /// Build the self-compile source closure from src/v1 entry modules with dag as a dependency pool.\n",
     "    fn self_compile_sources() -> Vec<std::rc::Rc<crate::v1_compiler_compile::SourceFile>> {\n",
-    "        resolve_source_closure(discover_dag_files(\"src/v1\"), &[\"src/v1\", \"dsl\"])\n",
+    "        resolve_source_closure(discover_dag_files(\"src/v1\"), &[\"src/v1\", \"dag\"])\n",
     "    }\n\n")
 }
 
@@ -1356,8 +1356,8 @@ fn ct_contracts_sidecar_witness_test() -> String {
     "        let result = std::thread::Builder::new()\n",
     "            .stack_size(64 * 1024 * 1024)\n",
     "            .spawn(|| {\n",
-    "                let entry_pairs = discover_dag_files(\"dsl/extdeps/llm\");\n",
-    "                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &[\"dsl\"]));\n",
+    "                let entry_pairs = discover_dag_files(\"dag/extdeps/llm\");\n",
+    "                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &[\"dag\"]));\n",
     "                let result = crate::v1_compiler_compile::compile_sources(\n",
     "                    sources,\n",
     "                    crate::v1_compiler_artifact::RenderTarget::Rust,\n",

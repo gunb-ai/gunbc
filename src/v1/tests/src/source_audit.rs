@@ -921,10 +921,10 @@ fn unescape_dag_string_literal(mut rest: &str) -> String {
 #[test]
 fn second_syntax_spec_exists() {
     let ws = crate::helpers::workspace_root();
-    let rust_spec = ws.join("dsl/extdeps/languages/rust/syntax.dag");
+    let rust_spec = ws.join("dag/extdeps/languages/rust/syntax.dag");
     assert!(
         rust_spec.exists(),
-        "Rust SyntaxSpec must exist at dsl/extdeps/languages/rust/syntax.dag"
+        "Rust SyntaxSpec must exist at dag/extdeps/languages/rust/syntax.dag"
     );
     let content = std::fs::read_to_string(&rust_spec).expect("should read Rust syntax spec");
     assert!(

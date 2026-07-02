@@ -18,7 +18,7 @@ The decidable part (`is_bare_string` AND `name_coincides`) is a candidate signal
 
 ## 3. Whole-tree EXTRACT (#5933 follow-up)
 
-`concept_decl_facts_live()` reflects only the **resolved closure** of the run entry (~3 hits on `src/v2`-only). Production use requires `concept_decl_facts(roots)` — a fail-closed host builtin that walks `dsl` + `src/v2` via **parse-only** projection (`medium_structure_project::parse_file`), not whole-tree resolve (blocked: unresolved imports → `graph: None`).
+`concept_decl_facts_live()` reflects only the **resolved closure** of the run entry (~3 hits on `src/v2`-only). Production use requires `concept_decl_facts(roots)` — a fail-closed host builtin that walks `dag` + `src/v2` via **parse-only** projection (`medium_structure_project::parse_file`), not whole-tree resolve (blocked: unresolved imports → `graph: None`).
 
 **§5 cardinal rule:** never `Err(_) => continue` on marshal — that silently drops concepts whose compound fields (`List<T>`, …) cannot fully marshal. The host marshals **head type-names** only (the lens matches exact `"String"` / `"NonEmptyStr"`). Unrepresentable concepts fail **loud**.
 

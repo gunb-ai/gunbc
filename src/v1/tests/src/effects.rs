@@ -267,14 +267,14 @@ fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<
 
 fn all_parsed_extdep_rest_ops() -> Vec<RestOp> {
     const FILES: &[&str] = &[
-        "dsl/extdeps/github/pulls.dag",
-        "dsl/extdeps/github/gists.dag",
-        "dsl/extdeps/llm/anthropic_rest.dag",
-        "dsl/extdeps/llm/openai_rest.dag",
-        "dsl/extdeps/cloud/gcp/iam.dag",
-        "dsl/extdeps/cloud/gcp/secret_manager.dag",
-        "dsl/extdeps/cloud/gcp/sts.dag",
-        "dsl/extdeps/cloud/gcp/gcp.dag",
+        "dag/extdeps/github/pulls.dag",
+        "dag/extdeps/github/gists.dag",
+        "dag/extdeps/llm/anthropic_rest.dag",
+        "dag/extdeps/llm/openai_rest.dag",
+        "dag/extdeps/cloud/gcp/iam.dag",
+        "dag/extdeps/cloud/gcp/secret_manager.dag",
+        "dag/extdeps/cloud/gcp/sts.dag",
+        "dag/extdeps/cloud/gcp/gcp.dag",
     ];
     let mut parsed: Vec<RestOp> = Vec::new();
     for path in FILES {

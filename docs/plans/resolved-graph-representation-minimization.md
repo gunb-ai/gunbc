@@ -18,7 +18,7 @@ witness (`ci_floor_test_threads`):
 | after the witness resolve | 1,535 MB |
 
 The entire jump is `precompute_whole_tree_published_mock_keys` (`cli_run.rs`): it
-Strict-resolved the **entire 608-module dsl tree** into one `ResolvedGraph` just
+Strict-resolved the **entire 608-module dag tree** into one `ResolvedGraph` just
 to extract **58 published-mock operation keys**, then discarded the graph. Only
 **13 of 608** modules declare `PublishedMockCase`. This is §2 *irrelevant work*:
 600+ modules resolved to read from 13.

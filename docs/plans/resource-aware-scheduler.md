@@ -60,7 +60,7 @@ Cost = `symbolic_cost(graph structure)` evaluated at a declared input envelope. 
   Current implementation: derives `per_shard = floor_rss / width` (a sound approximation); Node D refinement: parse per-shard lines from child stderr and take `max`.
 
 **Authority chain (design-locked 2026-06-25 with sharp-stag-782):**
-- `PerformanceReceipt.cost: CostAccount<Nano>` is the single measured authority (`cost.time` = wall_duration, `cost.space` = per-shard VmHWM, `cost.power` = unmeasured Watt(0), `basis = Measured`). Lives in `dsl/product/compute_fabric.dag`.
+- `PerformanceReceipt.cost: CostAccount<Nano>` is the single measured authority (`cost.time` = wall_duration, `cost.space` = per-shard VmHWM, `cost.power` = unmeasured Watt(0), `basis = Measured`). Lives in `dag/product/compute_fabric.dag`.
 - `wall_duration` field removed from `PerformanceReceipt` — becomes a pure projection `fn performance_receipt_wall_duration(r) -> r.cost.time` (no stored state that can drift).
 - `cache_state_summary` stays top-level on `PerformanceReceipt` — it is a measurement-context tag, not a cost axis. A cache-hit peak and a cold peak are different facts (§5 cache-impurity).
 - `PerformanceReceiptSpaceContext { space: ByteSize, cache_state: NonEmptyStr? }` accessor gives sharp-stag-782's `ci_budget_tree` a paired (space, cache_state) without join risk.
@@ -143,7 +143,7 @@ A and B can proceed concurrently; B can use provisional values until D closes th
 
 The `per_runnable_peak` this scheduler divides into available memory is not a free parameter — it was driven down by two landed root fixes, each its own analysis. Both feed directly into the width invariant above (a smaller per-shard peak → larger derived `spawn_width`):
 
-- [`resolved-graph-representation-minimization.md`](resolved-graph-representation-minimization.md) — the per-shard RSS root cause: `precompute_whole_tree_published_mock_keys` Strict-resolved all 608 dsl modules to read 58 keys declared by only 13 (§2 irrelevant work). Scoping it to the declarers' closures cut the per-shard peak 8.7× (landed `7ce82319e5`). This *is* the floor's `per_shard` number.
+- [`resolved-graph-representation-minimization.md`](resolved-graph-representation-minimization.md) — the per-shard RSS root cause: `precompute_whole_tree_published_mock_keys` Strict-resolved all 608 dag modules to read 58 keys declared by only 13 (§2 irrelevant work). Scoping it to the declarers' closures cut the per-shard peak 8.7× (landed `7ce82319e5`). This *is* the floor's `per_shard` number.
 - [`emit-host-batch-isolation.md`](emit-host-batch-isolation.md) — the batch-placement constraint: `EmitHostGate` spawns rustc children (~1.5 GiB) yet got no serialize edge, so it co-located with the wide corpus shards and the concurrent peak blew the cgroup. Giving it a serialize edge keeps the host-compiler cost off the wide batch (landed #5837). The §3 distinction it preserves — *heavy whole-tree resolve* vs *spawns a host compiler* — is two grounded contributors to one "gate cost," not one nicknamed axis.
 
 ## Dissolution trigger (DESIGN §6)

@@ -7,12 +7,12 @@ import v2.std.text { String }
 
 data layer_root_src_v2_std: String = "src/v2/std"
 data layer_root_src_v2_extdeps: String = "src/v2/extdeps"
-data layer_root_dsl_extdeps: String = "dsl/extdeps"
+data layer_root_dag_extdeps: String = "dag/extdeps"
 
 data layer_roots: List<String> = [
   layer_root_src_v2_std,
   layer_root_src_v2_extdeps,
-  layer_root_dsl_extdeps
+  layer_root_dag_extdeps
 ]
 
 data form_v2_compiler_exact: String = "v2.compiler exact"
@@ -49,12 +49,12 @@ data perturb_row_extdeps_prefix: LayeringImportsScannerPerturbReceiptRow = Layer
   scanner_function: "scanner_extdeps_v4_prefix_detects_holds"
 }
 
-data perturb_row_dsl_extdeps_exact: LayeringImportsScannerPerturbReceiptRow = LayeringImportsScannerPerturbReceiptRow {
-  label: "dsl/extdeps × v2.compiler exact",
-  layer_root: layer_root_dsl_extdeps,
+data perturb_row_dag_extdeps_exact: LayeringImportsScannerPerturbReceiptRow = LayeringImportsScannerPerturbReceiptRow {
+  label: "dag/extdeps × v2.compiler exact",
+  layer_root: layer_root_dag_extdeps,
   forbidden_form: form_v2_compiler_exact,
-  scanner_entry: "src/v2/test/claim/layering_imports/scanner/dsl_extdeps_v4_exact.dag",
-  scanner_function: "scanner_dsl_extdeps_v4_exact_detects_holds"
+  scanner_entry: "src/v2/test/claim/layering_imports/scanner/dag_extdeps_v4_exact.dag",
+  scanner_function: "scanner_dag_extdeps_v4_exact_detects_holds"
 }
 
 data perturb_row_parse_level_pre_resolve: LayeringImportsScannerPerturbReceiptRow = LayeringImportsScannerPerturbReceiptRow {
@@ -76,7 +76,7 @@ data perturb_row_std_imports_extdeps: LayeringImportsScannerPerturbReceiptRow = 
 data layering_imports_scanner_perturb_receipt_rows: List<LayeringImportsScannerPerturbReceiptRow> = [
   perturb_row_std_prefix,
   perturb_row_extdeps_prefix,
-  perturb_row_dsl_extdeps_exact,
+  perturb_row_dag_extdeps_exact,
   perturb_row_parse_level_pre_resolve,
   perturb_row_std_imports_extdeps
 ]
@@ -98,7 +98,7 @@ fn rows_cover_form(form: String) -> Bool {
 test fn coverage_domain_equivalence_argument_holds() -> Bool {
   rows_cover_root(root: layer_root_src_v2_std)
     && rows_cover_root(root: layer_root_src_v2_extdeps)
-    && rows_cover_root(root: layer_root_dsl_extdeps)
+    && rows_cover_root(root: layer_root_dag_extdeps)
     && rows_cover_form(form: form_v2_compiler_exact)
     && rows_cover_form(form: form_v2_compiler_prefix)
     && rows_cover_form(form: form_std_imports_extdeps)

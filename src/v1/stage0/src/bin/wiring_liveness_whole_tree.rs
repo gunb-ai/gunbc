@@ -28,7 +28,7 @@
 //! is proven green-by-execution by `v1-compiler-tests`
 //! `whole_tree_wiring_enum_test`. DISSOLVES INTO a live floor gate (flip the
 //! existing per-entry `wiring_liveness_corpus_is_clean` to whole-tree) the moment
-//! that resolve grounding lands and `--source-root src/v2 --source-root dsl`
+//! that resolve grounding lands and `--source-root src/v2 --source-root dag`
 //! resolves clean.
 
 use std::process::ExitCode;

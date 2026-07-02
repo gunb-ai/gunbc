@@ -4,7 +4,7 @@ Operator-gated procedure to settle whether OpenBMC **nbd-proxy virtual media** i
 srv3's bmcweb **before** any Layer-2 seed client work or `CapabilityNbdProxyVirtualMedia` row flip.
 
 **Authority:** [srv3 virtual-media design (architecture B)](../plans/srv3-webui-kvm-virtual-media.md) §6;
-modeled interface facts in `dsl/extdeps/bmc/webui/nbd_proxy.dag`.
+modeled interface facts in `dag/extdeps/bmc/webui/nbd_proxy.dag`.
 
 ## Why this gate exists
 
@@ -29,9 +29,9 @@ non-upgrade GET (inconclusive — ws routes commonly 404 without an `Upgrade` he
 ## Prerequisites
 
 - Management-network reachability to srv3 BMC: **192.168.1.192** (cited in
-  `dsl/gunbc/bmc_onboarding.dag`).
-- OpenBMC 2.07.00 (srv3 cited row in `dsl/extdeps/bmc/capability.dag`).
-- BMC credentials: factory `root` / `0penBmc` until rotated (`dsl/extdeps/bmc/openbmc.dag`), or
+  `dag/gunbc/bmc_onboarding.dag`).
+- OpenBMC 2.07.00 (srv3 cited row in `dag/extdeps/bmc/capability.dag`).
+- BMC credentials: factory `root` / `0penBmc` until rotated (`dag/extdeps/bmc/openbmc.dag`), or
   operator netrc per [BMC Redfish operator access](bmc-redfish-operator-access.md).
 - `websocat` or `wscat` on the operator workstation.
 - `curl` and `jq` for bmcweb session token.
@@ -140,10 +140,10 @@ srv3 nbd-proxy §6 dry-run receipt
 | Reading | Action |
 | ------- | ------ |
 | **Present** | Operator signs §6(1). Follow-on work (separate PRs): flip srv3 `openbmc_2_07_00_capabilities` to include `CapabilityNbdProxyVirtualMedia`; implement L2 wss+NBD seed client. |
-| **Absent** | Do **not** flip capability row or start L2. Solver stays on `PxeHttpInstall` for srv3 (`dsl/test/claim/bmc_capability_solve_witness_test.dag` `srv3_install_mechanism_is_pxe_until_dry_run`). Escalate firmware-update path only if operator chooses `FirmwareUpdateThenVirtualMedia`. |
+| **Absent** | Do **not** flip capability row or start L2. Solver stays on `PxeHttpInstall` for srv3 (`dag/test/claim/bmc_capability_solve_witness_test.dag` `srv3_install_mechanism_is_pxe_until_dry_run`). Escalate firmware-update path only if operator chooses `FirmwareUpdateThenVirtualMedia`. |
 
 ## Related model files
 
-- `dsl/extdeps/bmc/webui/nbd_proxy.dag` — cited NBD-over-wss interface shape (L1)
-- `dsl/extdeps/bmc/capability.dag` — srv3 row (no `CapabilityNbdProxyVirtualMedia` until receipt)
+- `dag/extdeps/bmc/webui/nbd_proxy.dag` — cited NBD-over-wss interface shape (L1)
+- `dag/extdeps/bmc/capability.dag` — srv3 row (no `CapabilityNbdProxyVirtualMedia` until receipt)
 - `docs/plans/srv3-webui-kvm-virtual-media.md` — architecture B design + §6 gate

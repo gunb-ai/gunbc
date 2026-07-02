@@ -11,7 +11,7 @@ import v2.std.logic { Bool }
 data std_to_extdeps_fixture_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dsl/std/_perturb_std_to_extdeps.dag",
+    path: "dag/std/_perturb_std_to_extdeps.dag",
     import_module: "extdeps.shell"
   }
 ]
@@ -23,7 +23,7 @@ fn detects_std_to_extdeps_import_holds() -> Bool {
 data extdeps_to_extdeps_control_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixExtdeps,
-    path: "dsl/extdeps/_perturb_extdeps_to_extdeps.dag",
+    path: "dag/extdeps/_perturb_extdeps_to_extdeps.dag",
     import_module: "extdeps.shell"
   }
 ]

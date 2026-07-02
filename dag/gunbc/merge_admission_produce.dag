@@ -1,0 +1,188 @@
+module gunbc.merge_admission_produce
+
+import std.types { ContentHash, CommitSha, String, Int, List, Bool }
+import extdeps.github.checks {
+  CheckConclusion,
+  check_conclusion_wire_label,
+  parse_check_conclusion,
+  Success,
+  Failure,
+}
+import gunbc.merge_admission {
+  MergeAdmissionReceipt,
+  mint_merge_admission_receipt,
+  current_gate_roster_hash,
+}
+import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
+
+data merge_admission_merge_base_ref: String = "origin/main"
+
+data merge_admission_receipt_schema: String = "gunbc.merge_admission_receipt.v1"
+
+data merge_admission_receipt_rel_path: String = ".gunbc/merge-admission-receipt.wire"
+
+fn merge_admission_receipt_path(root: String) -> String {
+  concat(concat(root, "/"), merge_admission_receipt_rel_path)
+}
+
+fn shell_stdout_line(raw: String) -> String {
+  trim(raw)
+}
+
+fn render_receipt_wire_with_pr_line(receipt: MergeAdmissionReceipt, pr_line: String) -> String {
+  concat(
+    concat(
+      concat(
+        concat(receipt.base_tree_hash, "\n"),
+        concat(receipt.gate_roster_hash, "\n")
+      ),
+      concat(check_conclusion_wire_label(c: receipt.conclusion), "\n")
+    ),
+    concat(concat(receipt.head_sha, "\n"), pr_line)
+  )
+}
+
+fn render_receipt_wire(receipt: MergeAdmissionReceipt) -> String {
+  let core = concat(
+    concat(
+      concat(
+        concat(receipt.base_tree_hash, "\n"),
+        concat(receipt.gate_roster_hash, "\n")
+      ),
+      concat(check_conclusion_wire_label(c: receipt.conclusion), "\n")
+    ),
+    receipt.head_sha
+  )
+  match receipt.pr_number {
+    Present { value: n } => render_receipt_wire_with_pr_line(receipt: receipt, pr_line: to_string(n))
+    Absent => core
+  }
+}
+
+fn receipt_wire_lines(text: String) -> List<String> {
+  split(s: text, delimiter: "\n")
+}
+
+fn wire_pr_number_from_lines(lines: List<String>) -> Int? {
+  if length(lines) >= 5 {
+    parse_int(s: lines.skip(n: 4).first())
+  } else {
+    none
+  }
+}
+
+fn parse_receipt_wire(text: String) -> MergeAdmissionReceipt? {
+  let lines = receipt_wire_lines(text: text)
+  if length(lines) < 4 {
+    none
+  } else {
+    match parse_check_conclusion(raw: lines.skip(n: 2).first()) {
+      Present { value: conclusion } =>
+        Present {
+          value: MergeAdmissionReceipt {
+            pr_number: wire_pr_number_from_lines(lines: lines),
+            head_sha: lines.skip(n: 3).first(),
+            base_tree_hash: lines.first(),
+            gate_roster_hash: lines.skip(n: 1).first(),
+            conclusion: conclusion,
+          }
+        }
+      Absent => none
+    }
+  }
+}
+
+data merge_admission_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: merge_admission CI shell transport — ci_merge_admission_stamp_script / ci_merge_admission_gate_script concat-built bash runners; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-emission) realizes these through host_effect_apply transport handlers and medium_structure_exception_roster entries for merge_admission_produce + tools retire"
+
+fn ci_repo_root_shell() -> String {
+  "$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+}
+
+fn gunbc_run_bin_shell() -> String {
+  "\"$ROOT/target/release/gunbc\" run"
+}
+
+fn merge_admission_stamp_invoke() -> String {
+  concat(
+    concat(
+      concat(gunbc_run_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)),
+      " --entry dag/tools/merge_admission_stamp.dag --function main"
+    ),
+    "\n"
+  )
+}
+
+fn merge_admission_gate_invoke() -> String {
+  concat(
+    concat(
+      concat(gunbc_run_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)),
+      " --entry dag/tools/merge_admission_gate.dag --function main"
+    ),
+    "\n"
+  )
+}
+
+fn ci_merge_admission_stamp_script() -> String {
+  concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    merge_admission_stamp_invoke()
+  )
+}
+
+fn ci_merge_admission_gate_script() -> String {
+  concat(
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      concat(git_fetch_script_for_gate(), "\n")
+    ),
+    merge_admission_gate_invoke()
+  )
+}
+
+fn git_fetch_script_for_gate() -> String {
+  let parts = split(s: merge_admission_merge_base_ref, delimiter: "/")
+  let remote = parts.first()
+  let ref_name = fold(parts.skip(n: 1), init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
+  concat(
+    concat(concat("git fetch --no-tags ", remote), " "),
+    ref_name
+  )
+}
+
+fn floor_exit_to_check_conclusion(exit_code: Int) -> CheckConclusion {
+  if exit_code == 0 { Success } else { Failure }
+}
+
+fn stamp_floor_receipt(
+  pr_number: Int?,
+  head_sha: CommitSha,
+  base_tree_hash: ContentHash,
+  floor_exit_code: Int,
+) -> MergeAdmissionReceipt {
+  mint_merge_admission_receipt(
+    pr_number: pr_number,
+    head_sha: head_sha,
+    base_tree_hash: base_tree_hash,
+    gate_roster_hash: current_gate_roster_hash,
+    conclusion: floor_exit_to_check_conclusion(exit_code: floor_exit_code),
+  )
+}
+
+fn ci_floor_stamp_merge_admission_script() -> String {
+  concat(
+    concat(
+      "FLOOR_EXIT=$?\n",
+      concat("ROOT=", ci_repo_root_shell(), "\n")
+    ),
+    concat(
+      concat(
+        concat("CI_FLOOR_EXIT=$FLOOR_EXIT ", merge_admission_stamp_invoke()),
+        "STAMP_EXIT=$?\n"
+      ),
+      concat(
+        "if [ \"$FLOOR_EXIT\" -ne 0 ]; then exit \"$FLOOR_EXIT\"; fi\n",
+        "exit \"$STAMP_EXIT\"\n"
+      )
+    )
+  )
+}
