@@ -1,0 +1,91 @@
+module test.claim.json_emit_witness
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.languages.json.emit {
+  extdeps_external_authority_anchor,
+  escape_json_string,
+  quote_json_string,
+  serialize_json,
+  json_null,
+  json_bool,
+  json_int,
+  json_string,
+  json_array,
+  json_object,
+  json_kv,
+  json_int_list,
+  json_str_list,
+}
+
+fn witness_json_cites_rfc8259() -> Bool {
+  match extdeps_external_authority_anchor {
+    ExternalAuthority { uri } => uri.locator == "www.rfc-editor.org/rfc/rfc8259"
+  }
+}
+
+fn witness_escape_backslash_and_quote() -> Bool {
+  escape_json_string(s: "a\"b\\c") == "a\\\"b\\\\c"
+}
+
+fn witness_escape_newline() -> Bool {
+  escape_json_string(s: "line one\nline two") == "line one\\nline two"
+}
+
+fn witness_quote_json_string() -> Bool {
+  quote_json_string(s: "hello") == "\"hello\""
+    && quote_json_string(s: "a\"b") == "\"a\\\"b\""
+}
+
+fn witness_serialize_null() -> Bool {
+  serialize_json(v: json_null()) == "null"
+}
+
+fn witness_serialize_bool() -> Bool {
+  serialize_json(v: json_bool(b: true)) == "true"
+    && serialize_json(v: json_bool(b: false)) == "false"
+}
+
+fn witness_serialize_int() -> Bool {
+  serialize_json(v: json_int(n: 42)) == "42"
+}
+
+fn witness_serialize_object() -> Bool {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "host", value: json_string(s: "srv1")),
+    json_kv(key: "runner_count", value: json_int(n: 4)),
+  ])) == "{\"host\": \"srv1\", \"runner_count\": 4}"
+}
+
+fn witness_serialize_nested_object() -> Bool {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "Password", value: json_string(s: "secret")),
+  ])) == "{\"Password\": \"secret\"}"
+}
+
+fn witness_serialize_array() -> Bool {
+  serialize_json(v: json_array(elements: [json_string(s: "a"), json_string(s: "b")]))
+    == "[\"a\", \"b\"]"
+}
+
+fn witness_int_list_helper() -> Bool {
+  json_int_list(nums: [1, 2, 3]) == "[1, 2, 3]"
+}
+
+fn witness_str_list_helper() -> Bool {
+  json_str_list(items: ["x", "y"]) == "[\"x\", \"y\"]"
+}
+
+test fn json_emit_witnesses() -> Bool {
+  witness_json_cites_rfc8259()
+    && witness_escape_backslash_and_quote()
+    && witness_escape_newline()
+    && witness_quote_json_string()
+    && witness_serialize_null()
+    && witness_serialize_bool()
+    && witness_serialize_int()
+    && witness_serialize_object()
+    && witness_serialize_nested_object()
+    && witness_serialize_array()
+    && witness_int_list_helper()
+    && witness_str_list_helper()
+}

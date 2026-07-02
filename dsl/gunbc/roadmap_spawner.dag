@@ -15,12 +15,24 @@ import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.languages.json.emit {
+  JsonValue, JsonNull,
+  serialize_json,
+  quote_json_string,
+  json_null,
+  json_string,
+  json_int,
+  json_array,
+  json_object,
+  json_kv,
+  json_str_list,
+}
 
 data json_emit_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "std.primitives",
-    decl_name: "to_json",
+    module_path: "extdeps.languages.json.emit",
+    decl_name: "serialize_json",
     field: WholeDeclaration
   }
 }
@@ -114,24 +126,8 @@ fn spawn_frontier(doc: RoadmapDocument, merged: List<Int>) -> SpawnFrontier {
   }
 }
 
-fn json_escape(s: String) -> String {
-  replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
-}
-
 fn json_str(s: String) -> String {
-  concat("\"", concat(json_escape(s: s), "\""))
-}
-
-fn json_int_list(nums: List<Int>) -> String {
-  concat("[",
-    concat(
-      fold(nums, init: { s: "", first: true }, f: (acc, n) => {
-        s: if acc.first { to_string(n) } else { concat(acc.s, concat(", ", to_string(n))) },
-        first: false
-      }).s,
-      "]"
-    )
-  )
+  quote_json_string(s: s)
 }
 
 fn intricacy_str(i: Intricacy) -> String {
@@ -150,17 +146,29 @@ fn volume_str(v: Volume) -> String {
   }
 }
 
-fn acceptance_json(a: Acceptance, line: RoadmapItem) -> String {
+fn acceptance_json_value(a: Acceptance, line: RoadmapItem) -> JsonValue {
   match a {
     PrsMerged => match line {
       DerivableLine { prs, title: _, description: _ } =>
-        concat("{\"kind\": \"prs_merged\", \"prs\": ", concat(json_int_list(nums: prs), "}"))
+        json_object(members: [
+          json_kv(key: "kind", value: json_string(s: "prs_merged")),
+          json_kv(key: "prs", value: json_array(elements: prs |> map(n => json_int(n: n)))),
+        ])
       AuthoredLine { done: _, content: _ } =>
-        "{\"kind\": \"prs_merged_model_error\", \"prs\": []}"
+        json_object(members: [
+          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
+          json_kv(key: "prs", value: json_array(elements: [])),
+        ])
       PlainLine { content: _ } =>
-        "{\"kind\": \"prs_merged_model_error\", \"prs\": []}"
+        json_object(members: [
+          json_kv(key: "kind", value: json_string(s: "prs_merged_model_error")),
+          json_kv(key: "prs", value: json_array(elements: [])),
+        ])
     }
-    ManualAcceptance => "{\"kind\": \"manual\"}"
+    ManualAcceptance =>
+      json_object(members: [
+        json_kv(key: "kind", value: json_string(s: "manual")),
+      ])
   }
 }
 
@@ -172,29 +180,37 @@ fn node_title(item: RoadmapItem) -> String {
   }
 }
 
-fn node_plan_doc_json(carriers: List<Pointer>) -> String {
+fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
   let plans = carriers |> filter(p => p.label == "plan")
   if count(plans) > 0 {
-    fold(plans, init: "null", f: (acc, p) => if acc == "null" { json_str(s: p.path) } else { acc })
+    fold(plans, init: json_null(), f: (acc, p) => match acc {
+      JsonNull => json_string(s: p.path)
+      _ => acc
+    })
   } else {
-    "null"
+    json_null()
   }
 }
 
 fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> String {
-  let parent_id_json = match roadmap_parent(edges: edges, node: n.node) {
-    TopLevel => "null"
-    UnderParent { parent: pid } => json_str(s: pid)
+  let parent_id_value = match roadmap_parent(edges: edges, node: n.node) {
+    TopLevel => json_null()
+    UnderParent { parent: pid } => json_string(s: pid)
   }
-  let plan_json = node_plan_doc_json(carriers: n.carriers)
+  let owner_value = if n.owner == "" { json_null() } else { json_string(s: n.owner) }
   let title = node_title(item: n.line)
-  let f1 = concat("\"node_id\": ", concat(json_str(s: n.node), concat(", \"title\": ", json_str(s: title))))
-  let f2 = concat(", \"repo\": ", concat(json_str(s: repo), concat(", \"intricacy\": ", json_str(s: intricacy_str(i: intricacy)))))
-  let f3 = concat(", \"volume\": ", concat(json_str(s: volume_str(v: volume)), concat(", \"parent_node_id\": ", parent_id_json)))
-  let f3b = concat(", \"parent_node_ids\": ", json_str_list(items: node_parent_ids(edges: edges, id: n.node)))
-  let f3c = concat(", \"owner\": ", if n.owner == "" { "null" } else { json_str(s: n.owner) })
-  let f4 = concat(", \"plan_doc\": ", concat(plan_json, concat(", \"acceptance\": ", acceptance_json(a: acceptance, line: n.line))))
-  concat("{", concat(f1, concat(f2, concat(f3, concat(f3b, concat(f3c, concat(f4, "}")))))))
+  serialize_json(v: json_object(members: [
+    json_kv(key: "node_id", value: json_string(s: n.node)),
+    json_kv(key: "title", value: json_string(s: title)),
+    json_kv(key: "repo", value: json_string(s: repo)),
+    json_kv(key: "intricacy", value: json_string(s: intricacy_str(i: intricacy))),
+    json_kv(key: "volume", value: json_string(s: volume_str(v: volume))),
+    json_kv(key: "parent_node_id", value: parent_id_value),
+    json_kv(key: "parent_node_ids", value: json_array(elements: node_parent_ids(edges: edges, id: n.node) |> map(id => json_string(s: id)))),
+    json_kv(key: "owner", value: owner_value),
+    json_kv(key: "plan_doc", value: node_plan_doc_json(carriers: n.carriers)),
+    json_kv(key: "acceptance", value: acceptance_json_value(a: acceptance, line: n.line)),
+  ]))
 }
 
 fn join_strings(items: List<String>) -> String {

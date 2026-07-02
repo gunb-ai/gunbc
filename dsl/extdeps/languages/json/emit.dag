@@ -1,0 +1,111 @@
+module extdeps.languages.json.emit
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc8259"
+  }
+}
+
+type JsonKeyValue {
+  key: String
+  value: JsonValue
+}
+
+type JsonValue
+  = JsonNull
+  | JsonBool { value: Bool }
+  | JsonNumber { lexeme: String }
+  | JsonString { value: String }
+  | JsonArray { elements: List<JsonValue> }
+  | JsonObject { members: List<JsonKeyValue> }
+
+fn json_kv(key: String, value: JsonValue) -> JsonKeyValue {
+  JsonKeyValue { key: key, value: value }
+}
+
+fn json_null() -> JsonValue {
+  JsonNull
+}
+
+fn json_bool(b: Bool) -> JsonValue {
+  JsonBool { value: b }
+}
+
+fn json_number(lexeme: String) -> JsonValue {
+  JsonNumber { lexeme: lexeme }
+}
+
+fn json_int(n: Int) -> JsonValue {
+  JsonNumber { lexeme: to_string(n) }
+}
+
+fn json_string(s: String) -> JsonValue {
+  JsonString { value: s }
+}
+
+fn json_array(elements: List<JsonValue>) -> JsonValue {
+  JsonArray { elements: elements }
+}
+
+fn json_object(members: List<JsonKeyValue>) -> JsonValue {
+  JsonObject { members: members }
+}
+
+fn escape_json_string(s: String) -> String {
+  replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
+}
+
+fn quote_json_string(s: String) -> String {
+  concat("\"", concat(escape_json_string(s: s), "\""))
+}
+
+fn serialize_json_string(s: String) -> String {
+  quote_json_string(s: s)
+}
+
+fn join_json_values(items: List<JsonValue>) -> String {
+  fold(items, init: "", f: (acc, v) => {
+    let part = serialize_json(v: v)
+    if acc == "" { part } else { concat(acc, concat(", ", part)) }
+  })
+}
+
+fn serialize_json_array(elements: List<JsonValue>) -> String {
+  concat("[", concat(join_json_values(items: elements), "]"))
+}
+
+fn serialize_json_object(members: List<JsonKeyValue>) -> String {
+  concat(
+    "{",
+    concat(
+      fold(members, init: "", f: (acc, kv) => {
+        let part = concat(concat(quote_json_string(s: kv.key), ": "), serialize_json(v: kv.value))
+        if acc == "" { part } else { concat(acc, concat(", ", part)) }
+      }),
+      "}"
+    )
+  )
+}
+
+fn serialize_json(v: JsonValue) -> String {
+  match v {
+    JsonNull => "null"
+    JsonBool { value: b } => if b { "true" } else { "false" }
+    JsonNumber { lexeme: l } => l
+    JsonString { value: s } => quote_json_string(s: s)
+    JsonArray { elements: els } => serialize_json_array(elements: els)
+    JsonObject { members: m } => serialize_json_object(members: m)
+  }
+}
+
+fn json_int_list(nums: List<Int>) -> String {
+  serialize_json_array(elements: nums |> map(n => json_int(n: n)))
+}
+
+fn json_str_list(items: List<String>) -> String {
+  serialize_json_array(elements: items |> map(s => json_string(s: s)))
+}
