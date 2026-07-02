@@ -142,3 +142,73 @@ Signed off with these deltas:
   This is confirmed by silent-ferret's #6162 characterization: `complexity.repo-wide` already reds today on **three contract legs** — claimed_scope (4 exemplars + 3 synthetic, not repo-wide), consumer (witness-only, no FloorGate), self_application (false) — with **no `decl_facts` dependency**. The gate's first honest RED needs nothing new; the whole-corpus *subject-discovery* leg waits on the `decl_facts(roots)` reflection builtin (#5966 / gunbc#5364), and the gate's job is precisely to red on that gap rather than hide it.
 
 - **Task order (manager):** 1 `StandingIntent` rows · 2 `LensContract` extension · 3 `enforcement_intent_gate` · 4 `complexity.repo-wide` first proof · 5 `model.anemia.repo-wide` + `single-authority.consolidation` next proof · 6 *only then* R1/R2 object rules. Do 1–3 before adding object rules, else task 6 is one more possibly-inert lens.
+
+## 12. Type refinements (operator review 2026-07-02)
+
+Concrete carriers so the gate consumes **receipts, not prose**. These supersede the sketchy inline enums in §3–§5.
+
+### Consumer — not hardwired to the floor
+
+```
+type ConsumerKind
+  = FloorGate | MergeAdmission | PrePushHook | PeriodicActuator
+  | RoadmapDriftGate | DeployReadback | WitnessOnly | None
+
+type ConsumerRequirement                       // lives on StandingIntent
+  = AnyLiveConsumer
+  | OneOf { acceptable: List<ConsumerKind> }
+  | Exact { kind: ConsumerKind }
+
+fn consumer_satisfies(actual: ConsumerKind, required: ConsumerRequirement) -> Bool
+```
+
+Rationale: the roadmap already has load-bearing enforcement *off* the floor — merge-admission freshness, pre-push doc/drift hooks, periodic converge, deploy read-back, generated-artifact gates. A gate that knows only `FloorGate` would reject valid enforcement or pressure everything into the floor. `complexity.repo-wide` sets `required_consumer = Exact { FloorGate }`; a merge-admission intent may set `OneOf`/`AnyLiveConsumer`.
+
+### Enforcement mode — model the order, no overloaded `>=`
+
+```
+type EnforcementMode = Advisory | AuditOnly | Blocking     // Advisory < AuditOnly < Blocking
+fn enforcement_mode_satisfies(actual: EnforcementMode, required: EnforcementMode) -> Bool
+```
+
+REDs: required `Blocking` + actual `AuditOnly` → red · required `AuditOnly` + actual `Advisory` → red · required `Advisory` + actual `AuditOnly` → green.
+
+### Scope satisfaction — typed narrowing, not a stringly hatch
+
+```
+type ScopeSatisfaction
+  = ScopeCovers
+  | ScopeNarrowed { missing: SubjectRoster, reason: NarrowingReason }
+  | ScopeMissing
+
+type NarrowingReason
+  = BootstrapBlocked { blocker: String }           // e.g. src/v1 pending self-host
+  | TypeReflectionUnavailable { blocker: String }   // e.g. decl_facts(roots) not yet landed
+  | ExternalRuntimeOnly { reason: String }          // e.g. the interpreter's off-substrate Rust loop
+  | ExplicitOperatorExemption { signoff: String }
+```
+
+Rollout: `Blocking` intent + `ScopeNarrowed` → Refused unless the reason kind is on the intent's allow-list; `AuditOnly` intent + `ScopeNarrowed` → Report. `complexity.repo-wide`'s v1-reach gap carries `TypeReflectionUnavailable { blocker: "decl_facts(roots) #5966/gunbc#5364" }` today.
+
+### CoverageReceipt — the gate reads receipts, never self-declared claims
+
+```
+type CoverageReceipt {
+  contract_id: LensIdV0
+  discovered_subjects: SubjectRoster             // what the live producer ACTUALLY found
+  consumer_observed: ConsumerKind
+  consumer_receipt_ref: ReceiptRef
+  red_control_status: RedControlStatus
+  self_application_status: SelfApplicationStatus
+  probed_at: Timestamp                           // supply via args; no argless clock in-substrate
+}
+
+type RedControlStatus
+  = RedControlPassed | RedControlMissing | RedControlNotRun | RedControlFailedToFlip
+```
+
+The gate consumes `CoverageReceipt`, never the `LensContract`'s self-declared claim: a contract claiming `red_control: Present` whose receipt says `RedControlFailedToFlip` still reds. This is §5 "green by execution, not by declaration" — applied to the gate itself (§7).
+
+### StandingIntent admission (restated as a check)
+
+A candidate row must satisfy all five: recurs across PRs · named displaced cost (§6) · has a scope · names a mechanism class · can produce a receipt. Fail any → it is a preference, not a `StandingIntent`. This is itself the anti-purity-trap guard (§6) turned on the governance carrier.
