@@ -21,6 +21,12 @@ import std.resources { Network }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.disposition { Disposition, Scaffold, SingleAuthority, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.languages.json.emit {
+  serialize_json,
+  json_object,
+  json_kv,
+  json_string,
+}
 
 data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
 data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"
@@ -38,30 +44,29 @@ data srv3_gcp_project: GcpProjectId = "gunbai-secrets"
 
 data bmc_credential_bytes: ByteSize = byte_size(20)
 
-data bmc_redfish_json_concat_debt: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "std.primitives",
-    decl_name: "to_json_contract",
-    field: WholeDeclaration
-  }
-}
-
 fn netrc_content(host: String, account: String, password: String) -> String {
   concat("machine ", concat(host, concat(" login ", concat(account, concat(" password ", concat(password, "\n"))))))
 }
 
 fn account_password_body(new_password: String) -> String {
-  concat("{\"Password\": \"", concat(new_password, "\"}"))
+  serialize_json(v: json_object(members: [
+    json_kv(key: "Password", value: json_string(s: new_password)),
+  ]))
 }
 
 fn boot_override_body(target: String, enabled: String) -> String {
-  concat("{\"Boot\": {\"BootSourceOverrideTarget\": \"",
-    concat(target, concat("\", \"BootSourceOverrideEnabled\": \"", concat(enabled, "\"}}"))))
+  serialize_json(v: json_object(members: [
+    json_kv(key: "Boot", value: json_object(members: [
+      json_kv(key: "BootSourceOverrideTarget", value: json_string(s: target)),
+      json_kv(key: "BootSourceOverrideEnabled", value: json_string(s: enabled)),
+    ])),
+  ]))
 }
 
 fn reset_body(reset_type: String) -> String {
-  concat("{\"ResetType\": \"", concat(reset_type, "\"}"))
+  serialize_json(v: json_object(members: [
+    json_kv(key: "ResetType", value: json_string(s: reset_type)),
+  ]))
 }
 
 fn gcp_secret_full_name(project: String, secret_id: String) -> String {

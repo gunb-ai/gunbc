@@ -1,0 +1,43 @@
+module test.claim.json_emit_corpus_witness
+
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import extdeps.filesystem.filesystem_io
+
+data json_grammar_path: String = "dsl/extdeps/languages/json/grammar.dag"
+data json_emit_path: String = "dsl/extdeps/languages/json/emit.dag"
+
+fn json_number_lexeme_branded_in_grammar(grammar_content: String) -> Bool {
+  string_contains(
+    s: grammar_content,
+    pattern: "type JsonNumberLexeme = String where brand(\"JsonNumberLexeme\")"
+  )
+}
+
+fn json_number_lexeme_record_carrier_gone(grammar_content: String) -> Bool {
+  !string_contains(s: grammar_content, pattern: "JsonNumberLexeme { lexeme")
+}
+
+fn grammar_mints_json_number_lexeme(grammar_content: String) -> Bool {
+  string_contains(s: grammar_content, pattern: "as JsonNumberLexeme")
+}
+
+fn emit_has_no_unblessed_json_number_lexeme_cast(emit_content: String) -> Bool {
+  !string_contains(s: emit_content, pattern: "as JsonNumberLexeme")
+}
+
+fn all_json_emit_corpus_grep_witnesses() -> Bool {
+  let grammar = filesystem_read(path: json_grammar_path)
+  let emit = filesystem_read(path: json_emit_path)
+  json_number_lexeme_branded_in_grammar(grammar_content: grammar.content)
+    && json_number_lexeme_record_carrier_gone(grammar_content: grammar.content)
+    && grammar_mints_json_number_lexeme(grammar_content: grammar.content)
+    && emit_has_no_unblessed_json_number_lexeme_cast(emit_content: emit.content)
+}
+
+func json_emit_corpus_grep_witness() -> ProcessExit {
+  return if all_json_emit_corpus_grep_witnesses() {
+    ExitSuccess
+  } else {
+    exit_failure(reason: "json emit corpus grep witness failed")
+  }
+}

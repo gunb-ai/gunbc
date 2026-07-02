@@ -1,152 +1,70 @@
 module gunbc.tailscale_acl_emit
 
-import std.types { String, NonEmptyStr, List }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr, List }
+import extdeps.languages.json.emit {
+  JsonValue, JsonKeyValue,
+  serialize_json,
+  json_string,
+  json_array,
+  json_object,
+  json_kv,
+}
 import extdeps.tailscale.acl {
   TailscaleGrant,
   TailscaleSshRule,
   TailscaleNodeAttr,
   TailscaleTagOwnerRow,
   TailscaleAclSelector,
+  TailscaleAclPolicy,
   render_tailscale_acl_selector,
   operator_tailscale_acl_policy,
 }
 
-data tailscale_acl_json_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "std.primitives",
-    decl_name: "to_json",
-    field: WholeDeclaration
-  }
+fn selector_array_json(items: List<TailscaleAclSelector>) -> JsonValue {
+  json_array(elements: items |> map(s => json_string(s: render_tailscale_acl_selector(s: s))))
 }
 
-data tailscale_acl_json_emit_dissolution_trigger: String = "dissolve-on: tailscale_acl_json_emit concat serializer — JSON body built via nested string concat (medium-as-string) instead of grammar-row emit from extdeps.tailscale.acl authority; DISSOLVES WHEN Tailscale ACL policy emits through to_json/grammar rows with ingest o emit = id over operator_tailscale_acl_policy; retire medium_structure_exception_roster entry for dsl/gunbc/tailscale_acl_emit.dag"
-
-fn join_json_quoted(items: List<NonEmptyStr>) -> String {
-  fold(items, init: "", f: (acc, x) => if acc == "" { concat("\"", concat(x, "\"")) } else { concat(concat(acc, ", \""), concat(x, "\"")) })
+fn string_array_json(items: List<NonEmptyStr>) -> JsonValue {
+  json_array(elements: items |> map(s => json_string(s: s)))
 }
 
-fn join_json_quoted_selectors(items: List<TailscaleAclSelector>) -> String {
-  fold(
-    items,
-    init: "",
-    f: (acc, x) => {
-      let rendered = render_tailscale_acl_selector(s: x)
-      if acc == "" {
-        concat("\"", concat(rendered, "\""))
-      } else {
-        concat(concat(acc, ", \""), concat(rendered, "\""))
-      }
-    }
-  )
+fn grant_json(g: TailscaleGrant) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "src", value: selector_array_json(items: g.src)),
+    json_kv(key: "dst", value: selector_array_json(items: g.dst)),
+    json_kv(key: "ip", value: selector_array_json(items: g.ip)),
+  ])
 }
 
-fn json_string_array(items: List<NonEmptyStr>) -> String {
-  concat("[", concat(join_json_quoted(items: items), "]"))
+fn ssh_rule_json(r: TailscaleSshRule) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "action", value: json_string(s: r.action)),
+    json_kv(key: "src", value: selector_array_json(items: r.src)),
+    json_kv(key: "dst", value: selector_array_json(items: r.dst)),
+    json_kv(key: "users", value: selector_array_json(items: r.users)),
+  ])
 }
 
-fn json_selector_array(items: List<TailscaleAclSelector>) -> String {
-  concat("[", concat(join_json_quoted_selectors(items: items), "]"))
+fn node_attr_json(n: TailscaleNodeAttr) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "target", value: string_array_json(items: n.target)),
+    json_kv(key: "attr", value: string_array_json(items: n.attr)),
+  ])
 }
 
-fn emit_grant_row(g: TailscaleGrant) -> String {
-  concat(
-    concat(
-      concat(
-        concat("{\"src\": ", json_selector_array(items: g.src)),
-        concat(", \"dst\": ", json_selector_array(items: g.dst))
-      ),
-      concat(", \"ip\": ", json_selector_array(items: g.ip))
-    ),
-    "}"
-  )
+fn tag_owner_json(row: TailscaleTagOwnerRow) -> JsonKeyValue {
+  json_kv(key: row.tag, value: string_array_json(items: row.owners))
 }
 
-fn emit_grant_rows(grants: List<TailscaleGrant>) -> String {
-  fold(grants, init: "", f: (acc, g) => if acc == "" { emit_grant_row(g: g) } else { concat(concat(acc, ",\n        "), emit_grant_row(g: g)) })
-}
-
-fn emit_ssh_rule(r: TailscaleSshRule) -> String {
-  concat(
-    concat(
-      concat(
-        concat(
-          concat(
-            concat("{\n            \"action\": \"", r.action),
-            concat("\",\n            \"src\":    ", json_selector_array(items: r.src))
-          ),
-          concat(",\n            \"dst\":    ", json_selector_array(items: r.dst))
-        ),
-        concat(",\n            \"users\":  ", json_selector_array(items: r.users))
-      ),
-      "\n        }"
-    ),
-    ""
-  )
-}
-
-fn emit_ssh_rows(rules: List<TailscaleSshRule>) -> String {
-  fold(rules, init: "", f: (acc, r) => if acc == "" { emit_ssh_rule(r: r) } else { concat(concat(acc, ",\n        "), emit_ssh_rule(r: r)) })
-}
-
-fn emit_node_attr_row(n: TailscaleNodeAttr) -> String {
-  concat(
-    concat(
-      concat("{\"target\": ", json_string_array(items: n.target)),
-      concat(", \"attr\": ", json_string_array(items: n.attr))
-    ),
-    "}"
-  )
-}
-
-fn emit_node_attr_rows(attrs: List<TailscaleNodeAttr>) -> String {
-  fold(attrs, init: "", f: (acc, n) => if acc == "" { emit_node_attr_row(n: n) } else { concat(concat(acc, ",\n        "), emit_node_attr_row(n: n)) })
-}
-
-fn emit_tag_owner_row(row: TailscaleTagOwnerRow) -> String {
-  concat(
-    concat(concat("        \"", row.tag), concat("\": ", json_string_array(items: row.owners))),
-    ""
-  )
-}
-
-fn emit_tag_owners(rows: List<TailscaleTagOwnerRow>) -> String {
-  fold(rows, init: "", f: (acc, row) => if acc == "" { emit_tag_owner_row(row: row) } else { concat(concat(acc, ",\n"), emit_tag_owner_row(row: row)) })
+fn tailscale_acl_policy_json(policy: TailscaleAclPolicy) -> JsonValue {
+  json_object(members: [
+    json_kv(key: "grants", value: json_array(elements: policy.grants |> map(g => grant_json(g: g)))),
+    json_kv(key: "ssh", value: json_array(elements: policy.ssh |> map(r => ssh_rule_json(r: r)))),
+    json_kv(key: "nodeAttrs", value: json_array(elements: policy.node_attrs |> map(n => node_attr_json(n: n)))),
+    json_kv(key: "tagOwners", value: json_object(members: policy.tag_owners |> map(row => tag_owner_json(row: row)))),
+  ])
 }
 
 fn expected_tailscale_acl_json() -> String {
-  let policy = operator_tailscale_acl_policy
-  concat(
-    concat(
-      concat(
-        concat(
-          concat(
-            concat(
-              concat(
-                concat(
-                  "{\n    \"grants\": [\n        ",
-                  emit_grant_rows(grants: policy.grants)
-                ),
-                "\n    ],\n    \"ssh\": [\n        "
-              ),
-              emit_ssh_rows(rules: policy.ssh)
-            ),
-            "\n    ],\n    \"nodeAttrs\": [\n        "
-          ),
-          emit_node_attr_rows(attrs: policy.node_attrs)
-        ),
-        concat(
-          concat(
-            "\n    ],\n    \"tagOwners\": {\n",
-            emit_tag_owners(rows: policy.tag_owners)
-          ),
-          "\n    }\n}\n"
-        )
-      ),
-      ""
-    ),
-    ""
-  )
+  concat(serialize_json(v: tailscale_acl_policy_json(policy: operator_tailscale_acl_policy)), "\n")
 }
