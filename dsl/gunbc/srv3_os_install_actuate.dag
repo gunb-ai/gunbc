@@ -81,8 +81,18 @@ fn srv3_bmcweb_login_body_content() -> String {
 }
 
 fn srv3_bmcweb_login_body_content_for_resolution(resolution: BmcCredentialResolution, password: String) -> String {
-  let intent = srv3_os_install_actuate_credential_intent()
-  bmcweb_login_body_content(username: intent.account, password: password)
+  match resolution {
+    UseFactoryCredential { login: l } =>
+      bmcweb_login_body_content(username: l.username, password: password)
+    UseRotatedSecretRef { secret_ref: _ } => {
+      let intent = srv3_os_install_actuate_credential_intent()
+      bmcweb_login_body_content(username: intent.account, password: password)
+    }
+    CredentialResolutionRefused { reason: _ } => {
+      let intent = srv3_os_install_actuate_credential_intent()
+      bmcweb_login_body_content(username: intent.account, password: password)
+    }
+  }
 }
 
 func srv3_os_install_actuate_emit_nbd_script() -> ProcessExit {
