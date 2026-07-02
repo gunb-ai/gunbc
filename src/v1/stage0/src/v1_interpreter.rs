@@ -26,10 +26,10 @@ use crate::v1_std_core::{
     is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
     let_binding_name_at, let_body, let_value, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, param_node_default_value, param_node_name_at, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, transport_stdin, unaryop_operand, CallSemantics, Cardinality,
-    Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
-    MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, UnaryOpKind,
-    VarBindingKind,
+    return_value, slice_base, slice_end, slice_start, transport_stdin, unaryop_operand,
+    CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary,
+    FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan,
+    StringPart, UnaryOpKind, VarBindingKind,
 };
 use crate::wire_value_serialize::value_to_wire_json;
 
@@ -4026,14 +4026,21 @@ fn dispatch_shell(
             })?;
 
         if let Some(mut stdin) = child.stdin.take() {
-            stdin.write_all(&stdin_bytes).map_err(|e| InterpError::TypeError {
-                msg: format!("failed to write shell transport stdin for '{}': {}", argv[0], e),
-            })?;
+            stdin
+                .write_all(&stdin_bytes)
+                .map_err(|e| InterpError::TypeError {
+                    msg: format!(
+                        "failed to write shell transport stdin for '{}': {}",
+                        argv[0], e
+                    ),
+                })?;
         }
 
-        child.wait_with_output().map_err(|e| InterpError::TypeError {
-            msg: format!("failed to wait on '{}': {}", argv[0], e),
-        })?
+        child
+            .wait_with_output()
+            .map_err(|e| InterpError::TypeError {
+                msg: format!("failed to wait on '{}': {}", argv[0], e),
+            })?
     } else {
         std::process::Command::new(&argv[0])
             .args(&argv[1..])
