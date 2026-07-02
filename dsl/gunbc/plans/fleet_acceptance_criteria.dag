@@ -1,0 +1,207 @@
+module gunbc.plans.fleet_acceptance_criteria
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, ol, quote }
+
+fn fac_rule() -> List<MarkdownBlock> {
+  [
+    p(text: "Home: ROADMAP §2 (compute fabric). Every §2 node's **Accept:** line summarizes a checklist here; this doc is the checklist, the node is the summary, and ROADMAP.md is generated from both — one authority, two zoom levels (operator-set, 2026-07-02)."),
+    quote(blocks: [p(text: "A roadmap item is not complete because its algebra exists. It is complete only when a **named consumer** uses it on the **live path** and produces a **receipt**.")]),
+    p(text: "This is DESIGN §5 applied to roadmap admission: a typecheck or a grep is not a consumer; done means a real consumer runs green **and** a discriminating perturbation goes red. The bar for real progress on this pillar: *can srv1/srv2 runner allocation be changed through the model, read back, re-run safely, and retracted?* Until yes, the work is scaffolding — valuable scaffolding, but not the operational milestone."),
+    h2(text: "Completion tiers"),
+    ul(items: [
+      li(text: "**T0 — modeled only**: types and folds exist, nothing consumes them."),
+      li(text: "**T1 — fixture/synthetic witness**: green by execution on synthetic rows; a fixture RED exists."),
+      li(text: "**T2 — wired to the intended consumer**: the named consumer computes through the new carrier on its real code path (proof by consumption — remove the carrier and the consumer's witness fails to resolve — never by grep)."),
+      li(text: "**T3 — live dry-run receipt**: the real host/CI path runs read-only or plan-only and emits a receipt."),
+      li(text: "**T4 — live apply + independent read-back receipt**: the mutation happened on the real host and an independent read (never our own write echoed back) proves the effective state."),
+      li(text: "**T5 — periodic/CI consumer keeps it alive**: a timer or CI gate re-executes it on cadence, so a regression or hand-edit reds without anyone remembering to check."),
+    ]),
+    p(text: "Every dispatchable node names its required tier in its **Accept:** line. A roadmap checkbox does not close below the named tier. For fabric/control-plane items the required tier is almost always **T4 or T5** — anything below is a useful subtask, never completion."),
+    h2(text: "The acceptance block for dispatch briefs"),
+    p(text: "Paste into every work item; a brief without one is not ready to dispatch:"),
+    ul(items: [
+      li(text: "**Consumer:** the named live consumer that calls the new carrier."),
+      li(text: "**Green:** the real command / CI job / host apply that succeeds and emits a receipt."),
+      li(text: "**RED:** the specific perturbation that fails for the intended reason."),
+      li(text: "**No inert landing:** no alternate path still uses the old mechanism."),
+      li(text: "**Receipt location:** the artifact/log/file/commit recording observed before/after state."),
+      li(text: "**Re-run behavior:** re-running is a noop or a typed conflict, never a blind rewrite."),
+    ]),
+  ]
+}
+
+fn fac_keyed_delta_fold() -> List<MarkdownBlock> {
+  [
+    h2(text: "2-keyed-delta-fold — required tier T2 (wired)"),
+    p(text: "The fold/diff carrier does NOT close because a generic algebra exists. It closes only when `gunbc.host_converge` computes a real converge patch through it. T4 arrives only via 2-converge-reland. Complete only when ALL hold:"),
+    ol(items: [
+      li(text: "Reuse or consciously extend `v2.std.change` (`ChangeKind` = NodeChanged | NodeAdded | NodeRemoved | ProjectionChanged | ArtifactChanged; `ChangeSet` — already consumed by `v2.lens.affected_set`); a parallel Hunk/Patch vocabulary requires the PR to explain why attaching failed. The algebra anchor (Monoid/lattice/inverse) picks ONE std authority consciously — `algebra` is pillar-1's FIRST de-fork target (LIVE fail-open), and the standing ruling applies: coproduct = structural authority, grounded-realization wins; never a third surface."),
+      li(text: "Generic keyed delta fold exists with law witnesses: diff(A, A) = identity; unchanged keyed rows emit NO hunk by the monoid identity (absence by law, never by filtering); key order does not change the produced patch."),
+      li(text: "Three-way fold over (base, observed, desired): observed == base and desired != base gives an apply hunk; observed == desired gives already-applied (a clean noop, not an error); observed != base and observed != desired gives `Conflict`. `Conflict` has NO apply arm — structurally unreachable mutation, not a runtime guard."),
+      li(text: "The codomain carries NO Unknown element. Bottom is the BENIGN `Unchanged` (the safety inversion of the `DescentEvidence` precedent, whose bottom is the fail state): an Unknown at bottom would join-fold unreadable state to \"no change\" — a §5 fail-open. Unreadable state is refused upstream at the typed-read wall, never folded."),
+      li(text: "Hunk vocabulary covers Added, Removed, and Modified (three-way union, not modified-only)."),
+      li(text: "apply(diff(A, B), A) = B is witnessed by execution."),
+      li(text: "invert(diff(A, B)) applied to B retracts to A — the inverse law. The structure is a groupoid, NOT a total Group: apply is partial (refuses off-base) and `Conflict` has no inverse; a total apply derived from Group inhabitance would silently compose through drift."),
+      li(text: "A `gunbc.host_converge` consumer uses the generic fold: base = current `ConvergeKnob` rows; desired = an srv2 override changing runner memory/swap; the patch contains exactly the expected memory/swap hunks and no unrelated hunks."),
+      li(text: "Per-target equality/normalization is supplied by `host_converge`, never the generic carrier — all SIX `ConvergeTarget` variants have their own semantics witness: `SliceProperty` (apply-value vs expected-effective split — written string != effective string even inside one variant), `PerSlotMemoryCap` (byte normalization), `RunnerWidth`, `JobserverTokens`, `VerifyOnlyCap` (no apply value at all), `GunbcPinnedTree` (converges on pin-coherence + marker, not value equality). One string-equality over these is a semantic flattening."),
+      li(text: "RED controls: reorder knobs → same patch; add/remove a knob → Added/Removed hunk appears; observed drift → `Conflict` and no apply plan; wrong per-target semantics → witness fails."),
+      li(text: "The closed-loop converge PR imports this carrier; NO bespoke differ remains on the converge path. Proof by consumption: remove the carrier and the re-land witness fails to resolve."),
+    ]),
+  ]
+}
+
+fn fac_live_read_seam() -> List<MarkdownBlock> {
+  [
+    h2(text: "2-live-read-seam — required tier T3/T4 (read side live on both hosts)"),
+    p(text: "The first slice (one srv2 unit's memory knobs, node 2-live-read-runner-memory) is its own narrow node and may close alone; it does NOT close the full seam. The full seam is complete only when:"),
+    ol(items: [
+      li(text: "Live reads run on srv1 AND srv2, not just fixtures."),
+      li(text: "Reads cover at least: active runner units (glob `actions-runner@<host>-*.service`), `MemoryMax`, `MemoryHigh`, `MemorySwapMax`, `TasksMax`, `CPUWeight`, runner count, and the jobserver token value (`CTRL_JOBSERVER_TOKENS`)."),
+      li(text: "Read output is typed rows, never string blobs (no string flattening past the parse boundary)."),
+      li(text: "Fixture RED: absent property → typed Absent; `infinity` where bytes are expected → drift verdict; wrong bytes → drift verdict."),
+      li(text: "Live green: one real srv2 runner unit read grounds into the `ConvergeTarget` semantics."),
+      li(text: "Full-host receipt: srv1 and srv2 receipts each list ALL runner units and their effective knobs."),
+      li(text: "NO mutation occurs anywhere in this node."),
+      li(text: "The closed-loop converge precondition consumes these live reads (T2-style proof by consumption)."),
+    ]),
+  ]
+}
+
+fn fac_converge_reland() -> List<MarkdownBlock> {
+  [
+    h2(text: "2-converge-reland — required tier T4 (live apply + independent read-back)"),
+    p(text: "Complete only when this end-to-end flow runs on a real host. Target: srv2, one real runner unit or the runner template drop-in; knobs `MemoryMax`, `MemoryHigh`, `MemorySwapMax` (preferred also: jobserver tokens). Names like the committed-base snapshot and the override edit layer are the #6096 re-land design's intent — no such carriers exist in-tree yet; the effective base is `host_converge`'s `ConvergeKnob` rows, never `fleet_intent` (physical inventory)."),
+    ol(items: [
+      li(text: "**Snapshot** — a committed base exists, derived from effective `host_converge` `ConvergeKnob` rows; its content hash is recorded."),
+      li(text: "**Edit** — the operator changes the srv2 runner allocation through the model's override layer; NO edit to raw emitted bash, NO edit to `fleet_intent` for mutable runtime knobs."),
+      li(text: "**Diff** — the three-way diff produces a reviewable patch listing ONLY the changed srv2 knobs; no srv1/srv3 hunks appear."),
+      li(text: "**Admission** — post-patch values feed RAM/swap/pids/CPU-token accounting; an unsound plan fails; the plan names Strict or Burst mode explicitly."),
+      li(text: "**Precondition live read** — observed srv2 state is read BEFORE mutation; if observed != base and observed != desired the plan returns `Conflict`, emits NO shell, and calls no host apply."),
+      li(text: "**Apply** — privileged mutation goes through the gated host-effect path: unprivileged actor refused before mutation, wrong host refused before mutation; the command writes the intended systemd drop-in or property."),
+      li(text: "**Independent read-back** — srv2 is read again after apply; green ONLY if observed effective values equal desired. Shell exit-0 is not sufficient."),
+      li(text: "**Commit** — the new base is committed/materialized; the receipt records old hash, new hash, host, unit, changed knobs, observed-before, observed-after."),
+      li(text: "**Re-apply** — running the same plan again is already-applied/noop; NO shell mutation is emitted on noop."),
+      li(text: "**Retract** — the inverse patch restores the previous values; read-back proves restoration; re-running retract is a noop."),
+      li(text: "**Persistence** — `systemctl daemon-reload` does not lose desired values; a restarted or newly spawned matching runner unit inherits the intended drop-in values."),
+      li(text: "**RED controls** — manually perturb srv2 `MemoryMax` before apply → `Conflict`, no shell; remove the live read → `NotConverged`, no shell; unprivileged actor → typed refusal, no shell; unsound desired allocation → admission rejects."),
+    ]),
+  ]
+}
+
+fn fac_runner_allocation_v0() -> List<MarkdownBlock> {
+  [
+    h2(text: "2-runner-allocation-v0 — required tier T4, held by T5 (the operational milestone)"),
+    p(text: "This is the milestone that says: **srv1/srv2 are no longer hand-configured for runner allocation.** Complete only when both hosts are configured through the model and read back:"),
+    ol(items: [
+      li(text: "**Model** — `RunShape`/workload classes exist for at least ci_floor, rust_heavy, deploy_srv1; HostSupply exists for srv1 and srv2 (RAM, swap, pids, CPU tokens, reserved host/session headroom)."),
+      li(text: "**Policy** — StrictLease is the default; runner count does NOT equal heavy-job concurrency; per-slot cgroup caps are containment ceilings; admitted concurrency derives from HostSupply × WorkloadClassDemand."),
+      li(text: "**Desired allocation declared** — per host: runner slots, labels, per-slot `MemoryMax`/`MemoryHigh`/`MemorySwapMax`/`TasksMax`, jobserver/build tokens."),
+      li(text: "**Apply** — converge applies the desired allocation to srv1 and srv2; no hand-edited systemd files are required after apply."),
+      li(text: "**Read-back** — all active runner units on BOTH hosts match desired effective values; a newly started runner unit inherits the desired template drop-ins; the jobserver token value matches desired."),
+      li(text: "**Backpressure** — GitHub cannot schedule more rust_heavy jobs than admitted heavy capacity: either only admitted heavy slots carry the heavy shape label, or a control-plane admission gate blocks excess; generic self-hosted labels cannot bypass heavy admission."),
+      li(text: "**Receipt** — records host, runner unit count, labels, effective memory/swap/pids values, jobserver token value, model hash, timestamp."),
+      li(text: "**RED controls** — hand-edit one srv2 cap → receipt reds or converge conflicts; remove/wrong label → dispatch witness fails; desired heavy concurrency above admission → plan rejected; unprivileged apply → refused before mutation."),
+      li(text: "**Workload proof** — one real CI run lands on the intended shape; the cgroup receipt shows no oom_kill increase; memory.swap.events shows no unexpected fail; peak memory is recorded and fed back as a measurement row."),
+    ]),
+  ]
+}
+
+fn fac_host_admission() -> List<MarkdownBlock> {
+  [
+    h2(text: "2-host-admission — Σ-accounting, both modes enforceable"),
+    ol(items: [
+      li(text: "Admission computes from POST-PATCH desired values, never fleet-wide literals; feeding old/base values instead of post-patch values fails the witness."),
+      li(text: "Inputs include: host RAM, host swap, reserved host memory, reserved session memory, pids budget, CPU-token budget, per-workload measured RAM/swap/pids demand."),
+      li(text: "Guaranteed-mode witness: Σ(memory_max) ≤ RAM budget and Σ(swap_max) ≤ swap budget; an overcommitted plan fails."),
+      li(text: "Burst-mode witness: admitted_count × ram_margin + headroom ≤ host_ram; admitted_count × swap_margin + reserve ≤ host_swap; caps are ceilings, not reservations; a plan that passes ONLY by assuming every slot simultaneously consumes its burst ceiling is rejected or explicitly marked Guaranteed-mode."),
+      li(text: "Live receipt: one srv2 run records pre/post memory.events — oom_kill did not increase, memory.swap.events fail did not increase."),
+      li(text: "RED: admitted heavy jobs above the RAM budget → rejected; swap demand above the host swap reserve → rejected. This closes the exact failure that made single-slot-swap ≤ host-swap too weak in #6096."),
+    ]),
+  ]
+}
+
+fn fac_periodic_actuation() -> List<MarkdownBlock> {
+  [
+    h2(text: "2-periodic-actuation — required tier T5"),
+    p(text: "A timer existing is not acceptance. Complete only when the timer catches or corrects real drift according to per-knob policy:"),
+    ol(items: [
+      li(text: "srv1 and srv2 each have an installed systemd timer (or ctrl thin-run) executing the emitted converge under the privilege model — no implicit root hope."),
+      li(text: "Each run emits a receipt: host, model hash, observed hash, applied/noop/conflict verdict, changed knobs — landing where CI/dashboard can read it."),
+      li(text: "A no-change run is a green noop."),
+      li(text: "A hand-edit to a managed runner cap is detected: an auto-correct knob is restored with read-back proof; a verify-only knob (the `VerifyOnlyCap` semantics) refuses with a conflict and does NOT mutate."),
+      li(text: "RED: broken sudo → typed refusal; removed live-read access → `NotConverged`; a hand-edit inside the managed keyspace is never silently ignored."),
+    ]),
+  ]
+}
+
+fn fac_strictlease_labels() -> List<MarkdownBlock> {
+  [
+    h2(text: "2-strictlease + 2-shape-labels + 2-provider-offer — dispatch without a scheduler"),
+    ol(items: [
+      li(text: "`RunShape` includes arch, OS, CPU tokens, RAM, swap, pids, trust class, workload class."),
+      li(text: "`ProviderOffer` rows exist for the srv1 strict slot, the srv2 strict slot, and the DORMANT Ubicloud ephemeral offer."),
+      li(text: "Allocation witnesses: srv1 and srv2 offers each satisfy a shape; the Ubicloud offer satisfies a shape WITHOUT host-mutation support."),
+      li(text: "Host mutation refuses Ubicloud offers structurally (no cgroup target to mutate)."),
+      li(text: "CI YAML consumes shape labels, not host labels, for non-deploy jobs; deploy-to-srv1 stays host-proofed, never shape-only."),
+      li(text: "Backpressure: available shape labels equal admitted capacity; extra generic runners cannot accept heavy jobs."),
+      li(text: "RED: a shape needing host mutation on Ubicloud → refused; a deploy job on a non-srv1 shape → refused; a heavy job without the heavy label → not scheduled. One real CI job runs under a StrictLease allocation whose Receipt proves effective limits equal the offer's declared limits, read back from the live cgroup; a second job requesting more than remaining capacity is refused a lease."),
+    ]),
+  ]
+}
+
+fn fac_service_receipt() -> List<MarkdownBlock> {
+  [
+    h2(text: "2-service-receipt — required tier T4"),
+    p(text: "Complete only when a real service on srv1/srv2 is applied AND retracted:"),
+    ol(items: [
+      li(text: "Apply starts the service; independent read-back proves: process running, expected port listening, route installed, served artifact digest equals desired digest; the health endpoint answers as expected."),
+      li(text: "Re-apply is a noop."),
+      li(text: "Retract removes route, service/process, and owned artifact; read-back after retract proves ABSENCE."),
+      li(text: "RED: process running with wrong digest → `NotConverged`; route present but port dead → `NotConverged`; apply exits 0 but read-back fails → `NotConverged`."),
+    ]),
+  ]
+}
+
+fn fac_compile_clean_sharding() -> List<MarkdownBlock> {
+  [
+    h2(text: "2-compile-clean-shard-b — the floor consumes the shards"),
+    p(text: "Shard A's partition/composition proof + one exemplar is a first receipt, NOT \"compile-clean is sharded\". Complete only when:"),
+    ol(items: [
+      li(text: "The floor plan uses compile-clean shards, not only exemplar witnesses."),
+      li(text: "Every shard derives from the same source-root authority as the whole-tree gate."),
+      li(text: "compose(shard verdicts) is equivalent to the whole-tree gate on a green tree; a planted failure in one shard fails the composed verdict; an empty shard list is Unknown/fail-closed, never green."),
+      li(text: "CI receipt shows old batch-1 wall-clock, new batch-1 wall-clock, shard count, and no coverage loss."),
+      li(text: "RED: drop one shard from the roster → the coverage witness fails; a planted bad module in an omitted shard cannot pass."),
+    ]),
+  ]
+}
+
+fn fac_wave_summary() -> List<MarkdownBlock> {
+  [
+    h2(text: "What \"complete\" honestly means after the current wave"),
+    p(text: "Rails (honestly completable now): CD target-host proof first slice · privilege refusal before mutation · runner memory live-read carrier first slice · mechanism inventory baseline · resolver profile receipt · compile-clean shard algebra/exemplar."),
+    p(text: "NOT complete until their named tier: srv1/srv2 runner allocation · full live host read seam · keyed-delta fold consumed by converge · closed-loop converge · periodic actuation · compute-fabric dispatch. The first set builds rails; the second set is where infra actually changes."),
+  ]
+}
+
+fn fleet_acceptance_criteria_body() -> List<MarkdownBlock> {
+  concat(fac_rule(),
+  concat(fac_keyed_delta_fold(),
+  concat(fac_live_read_seam(),
+  concat(fac_converge_reland(),
+  concat(fac_runner_allocation_v0(),
+  concat(fac_host_admission(),
+  concat(fac_periodic_actuation(),
+  concat(fac_strictlease_labels(),
+  concat(fac_service_receipt(),
+  concat(fac_compile_clean_sharding(), fac_wave_summary()))))))))))
+}
+
+data fleet_acceptance_criteria_plan: Plan = Plan {
+  slug: "fleet-acceptance-criteria",
+  title: "Fleet acceptance criteria — completion tiers and per-node operational acceptance",
+  body: fleet_acceptance_criteria_body(),
+  dissolution: HasTrigger { text: "Dissolves when acceptance is carried as typed fields on RoadmapNode (a modeled completion tier + acceptance record) consumed by the dispatch surface, or when every §2 node named here has closed at its required tier — whichever comes first. Until then, an Accept: edit on a node and its checklist here land in the same PR (the node is the summary, this doc is the checklist; both project into generated artifacts)." },
+}
