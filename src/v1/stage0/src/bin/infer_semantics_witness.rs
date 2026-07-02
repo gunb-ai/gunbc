@@ -311,6 +311,7 @@ fn unit_expr() -> Rc<Node> {
 fn empty_type_env() -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
         bindings: Rc::new(std::collections::HashMap::new()),
+        str_bindings: Rc::new(std::collections::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
@@ -989,6 +990,7 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
         Rc::new(vec![variant_arm("Present")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
+            str_bindings: Rc::new(std::collections::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
@@ -1012,6 +1014,7 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
         Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
+            str_bindings: Rc::new(std::collections::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
@@ -1035,6 +1038,7 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
         Rc::new(vec![variant_arm("Present"), variant_arm("Absent")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
+            str_bindings: Rc::new(std::collections::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
@@ -1082,14 +1086,19 @@ fn resolve_node_uses_node_name_for_lookup() {
         v1_compiler::v1_std_core::empty_intern_table(),
         "User".to_string(),
     );
+    let user_binding = Rc::new(TypeBinding {
+        name: "User".to_string(),
+        resolved: leaf_node("User".to_string()),
+        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+    });
     let env = Rc::new(TypeEnv {
         bindings: Rc::new(std::collections::HashMap::from([(
             user_intern.id,
-            Rc::new(TypeBinding {
-                name: "User".to_string(),
-                resolved: leaf_node("User".to_string()),
-                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-            }),
+            user_binding.clone(),
+        )])),
+        str_bindings: Rc::new(std::collections::HashMap::from([(
+            "User".to_string(),
+            user_binding,
         )])),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
@@ -1593,14 +1602,19 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         expr_data: Rc::new(ExprData::NoExprData),
     });
     let box_intern = intern(empty_intern_table(), "Box".to_string());
+    let box_binding = Rc::new(TypeBinding {
+        name: "Box".to_string(),
+        resolved: box_decl.clone(),
+        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+    });
     let env = Rc::new(TypeEnv {
         bindings: Rc::new(std::collections::HashMap::from([(
             box_intern.id,
-            Rc::new(TypeBinding {
-                name: "Box".to_string(),
-                resolved: box_decl.clone(),
-                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-            }),
+            box_binding.clone(),
+        )])),
+        str_bindings: Rc::new(std::collections::HashMap::from([(
+            "Box".to_string(),
+            box_binding,
         )])),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
