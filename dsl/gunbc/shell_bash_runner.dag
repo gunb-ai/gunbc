@@ -1,8 +1,21 @@
 module gunbc.shell_bash_runner
 
 import std.types { String }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data gunbc_bash_heredoc_delimiter: String = "GUNBC_BASH_EOF"
+
+data shell_bash_runner_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.shell_bash_runner",
+    decl_name: "shell_bash_runner_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data shell_bash_runner_dissolution_trigger: String = "🟡 dissolve-on: shell_exec_via_bash — bash heredoc wrapper built with concat (medium-as-string) so multiline scripts run under shell.Exec.Run without sh -c first-line truncation; DISSOLVES WHEN host_effect_apply / bash_fold emit binds multiline shell transport without concat heredoc framing; retire medium_structure_exception_roster entry for dsl/gunbc/shell_bash_runner.dag"
 
 fn shell_exec_via_bash(body: String) -> String {
   concat(
