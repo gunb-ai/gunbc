@@ -19,6 +19,7 @@ import extdeps.http.server {
 }
 import gunbc.gunbhub_serve { gunbhub_served_static_route_table }
 import gunbc.roadmap_page { roadmap_page_for_authority, roadmap_daily_workspace_page_for_authority }
+import gunbc.roadmap_static_site { roadmap_site_text_static_routes }
 import extdeps.languages.typescript.program {
   TsProgram,
   TsExpr,
@@ -400,7 +401,12 @@ fn roadmap_dashboard_served_static_route_table() -> ServedStaticRouteTable {
     path: roadmap_dashboard_roadmap_path_template(),
     page: roadmap_page_for_authority(),
   )
-  ServedStaticRouteTable { routes: concat(daily, full) }
+  ServedStaticRouteTable {
+    routes: concat(
+      concat(roadmap_site_text_static_routes(), daily),
+      full
+    )
+  }
 }
 
 fn roadmap_dashboard_node_http_static_server_spec() -> NodeHttpStaticServerSpec {

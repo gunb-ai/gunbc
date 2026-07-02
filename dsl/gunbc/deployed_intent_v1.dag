@@ -3,43 +3,66 @@ module gunbc.deployed_intent_v1
 import std.types { String }
 import std.disposition { Disposition, Terminal }
 import product.placement_supply { HostIdentity }
-import gunbc.fleet_intent { ComputeHost, srv1_host }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_intent { ComputeHost, srv1_host, srv2_host, srv3_host }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2, operator_host_srv3 }
+import extdeps.dns.domain_name { DnsLabel, parse_dns_label_raw }
+import std.error_primitives { Result, Ok, Err }
 
 type DeployedIntentV1 {
   fleet_slot: HostIdentity
   target_host: ComputeHost
-  desired_hostname_short: String
+  desired_hostname_short: DnsLabel
 }
 
 data gunbc_deployed_intent_v1_scope_disposition: Disposition = Terminal {
-  reason: "Phase-1 desired-intent carrier: hostname_short derives from modeled fleet identity (operator_host_srv*), never a duplicated literal. v1 pairs with DeployedIntentV0 observed base for keyed three-way fold."
+  reason: "Phase-1 desired-intent carrier: hostname_short derives from modeled fleet identity (operator_host_srv*) parsed through the DNS-label authority (extdeps.dns.domain_name) so a desired name outside the hostnamectl-safe grammar is unwritable — construction fails closed to Absent rather than a runtime String check. v1 pairs with DeployedIntentV0 persisted base for keyed three-way fold."
 }
 
-fn deployed_intent_v1_desired_hostname_short(fleet_slot: HostIdentity) -> String {
-  fleet_slot
-}
-
-fn deployed_intent_v1_desired_hostname_valid(hostname: String) -> Bool {
-  hostname != ""
+fn deployed_intent_v1_desired_hostname_short(fleet_slot: HostIdentity) -> DnsLabel? {
+  match parse_dns_label_raw(raw: fleet_slot as String) {
+    Ok { value: label } => Present { value: label }
+    Err { value: _ } => none
+  }
 }
 
 fn deployed_intent_v1_from_fleet_slot(
   fleet_slot: HostIdentity,
   target_host: ComputeHost,
-) -> DeployedIntentV1 {
-  DeployedIntentV1 {
-    fleet_slot: fleet_slot,
-    target_host: target_host,
-    desired_hostname_short: deployed_intent_v1_desired_hostname_short(fleet_slot: fleet_slot),
+) -> DeployedIntentV1? {
+  match deployed_intent_v1_desired_hostname_short(fleet_slot: fleet_slot) {
+    Present { value: label } =>
+      Present {
+        value: DeployedIntentV1 {
+          fleet_slot: fleet_slot,
+          target_host: target_host,
+          desired_hostname_short: label,
+        }
+      }
+    Absent => none
   }
 }
 
-fn deployed_intent_v1_srv1() -> DeployedIntentV1 {
+fn deployed_intent_v1_srv1() -> DeployedIntentV1? {
   deployed_intent_v1_from_fleet_slot(
     fleet_slot: operator_host_srv1,
     target_host: srv1_host,
   )
 }
 
-data gunbc_srv1_deployed_intent_v1: DeployedIntentV1 = deployed_intent_v1_srv1()
+fn deployed_intent_v1_srv2() -> DeployedIntentV1? {
+  deployed_intent_v1_from_fleet_slot(
+    fleet_slot: operator_host_srv2,
+    target_host: srv2_host,
+  )
+}
+
+fn deployed_intent_v1_srv3() -> DeployedIntentV1? {
+  deployed_intent_v1_from_fleet_slot(
+    fleet_slot: operator_host_srv3,
+    target_host: srv3_host,
+  )
+}
+
+data gunbc_srv1_deployed_intent_v1: DeployedIntentV1? = deployed_intent_v1_srv1()
+data gunbc_srv2_deployed_intent_v1: DeployedIntentV1? = deployed_intent_v1_srv2()
+data gunbc_srv3_deployed_intent_v1: DeployedIntentV1? = deployed_intent_v1_srv3()

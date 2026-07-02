@@ -45,7 +45,6 @@ mod derive_bound_fail_closed_test;
 #[cfg(test)]
 mod diagnostics;
 #[cfg(test)]
-#[cfg(test)]
 mod effects;
 #[cfg(test)]
 mod eval_measurement_purity_test;
@@ -55,7 +54,6 @@ mod faithful_string_element_char_witness_test;
 mod floor_skip_discovery_host_test;
 #[cfg(test)]
 mod fn_as_value_test;
-#[cfg(test)]
 #[cfg(test)]
 mod fold_unused_element_clone_elision_test;
 #[cfg(test)]
@@ -111,7 +109,6 @@ mod money_carrier_cost_witness_test;
 #[cfg(test)]
 mod nested_list_alias_emit_test;
 #[cfg(test)]
-#[cfg(test)]
 mod nodefold_generic_instantiation_test;
 #[cfg(test)]
 mod optional_carrier_signature_test;
@@ -129,7 +126,6 @@ mod pd3_adversarial;
 mod peano_materialization_cap_test;
 #[cfg(test)]
 mod pipeline;
-#[cfg(test)]
 #[cfg(test)]
 mod rc_probe_wire_decode_call_test;
 #[cfg(test)]

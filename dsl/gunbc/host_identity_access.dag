@@ -1,18 +1,17 @@
 module gunbc.host_identity_access
 
 import std.types { List, NonEmptyStr }
-import gunbc.fleet_intent { srv1_host }
-import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_intent { ComputeHost, srv1_host, srv2_host }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import gunbc.host_effect { HostEffectTransport, SshShell }
 import gunbc.ci_deploy_access {
   DeployAccess,
   PrivilegedCommand,
-  deploy_access_with_ssh_transport,
 }
 
 data host_identity_hostnamectl_path: NonEmptyStr = "/usr/bin/hostnamectl"
 
-data host_identity_srv1_ssh_principal: NonEmptyStr = "briansrls"
+data host_identity_ssh_principal: NonEmptyStr = "briansrls"
 
 fn host_identity_privileged_commands() -> List<PrivilegedCommand> {
   [
@@ -20,13 +19,21 @@ fn host_identity_privileged_commands() -> List<PrivilegedCommand> {
   ]
 }
 
-fn host_identity_srv1_ssh_access() -> DeployAccess {
+fn host_identity_ssh_access(host: ComputeHost, ssh_host: NonEmptyStr) -> DeployAccess {
   DeployAccess {
-    principal: host_identity_srv1_ssh_principal,
-    host: srv1_host,
-    transport: SshShell { ssh_host: operator_host_srv1 as NonEmptyStr },
+    principal: host_identity_ssh_principal,
+    host: host,
+    transport: SshShell { ssh_host: ssh_host },
     privileged_commands: host_identity_privileged_commands(),
   }
 }
 
-data host_identity_srv1_access: DeployAccess = host_identity_srv1_ssh_access()
+data host_identity_srv1_access: DeployAccess = host_identity_ssh_access(
+  host: srv1_host,
+  ssh_host: operator_host_srv1 as NonEmptyStr,
+)
+
+data host_identity_srv2_access: DeployAccess = host_identity_ssh_access(
+  host: srv2_host,
+  ssh_host: operator_host_srv2 as NonEmptyStr,
+)
