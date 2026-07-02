@@ -1,0 +1,15 @@
+module test.claim.render_repeat_string_witness_test
+
+import std.render_repeat_string_bootstrap { repeat_string }
+import std.logic { Bool }
+
+data render_repeat_witness_provenance: String = "Floor witnesses migrated from src/v1/tests/src/render_repeat_test.rs (5-test-migration lane): repeat_string count semantics and indent-style padding, marker-discovered instead of the v1 Rust harness."
+
+test fn repeat_string_returns_n_copies() -> Bool {
+  repeat_string(s: "x", n: 3) == "xxx"
+}
+
+test fn pads_then_text_like_indent() -> Bool {
+  let pad = repeat_string(s: " ", n: 2)
+  concat(pad, "a") == "  a"
+}
