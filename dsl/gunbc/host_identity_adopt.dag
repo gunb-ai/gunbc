@@ -1,9 +1,9 @@
 module gunbc.host_identity_adopt
 
-import std.types { String, NonEmptyStr, Bool }
+import std.types { String, NonEmptyStr, Bool, ContentHash }
 import std.disposition { Disposition, Terminal }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
-import std.content_hash { content_hash_atom, ContentHash }
+import std.content_hash { content_hash_atom }
 import extdeps.shell
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent { ComputeHost, srv1_host }
@@ -12,9 +12,10 @@ import gunbc.host_effect {
   NodeControlPlane,
   HostOs,
   HostEffectTransport,
+  LocalShell,
   SshShell,
-  OneShotIdempotent,
 }
+import gunbc.host_identity_knob { HostIdentityKnobKey, host_identity_knob_key }
 import gunbc.host_identity_observation {
   HostIdentityObservation,
   host_identity_observation_apply,
@@ -28,13 +29,6 @@ import gunbc.deployed_intent_v0 {
   deployed_intent_observed_short_hostname,
 }
 import std.realization_reconcile { reconciliation_converged }
-
-type HostIdentityHostnameField = HostnameShort
-
-type HostIdentityKnobKey {
-  host: HostIdentity
-  field: HostIdentityHostnameField
-}
 
 type HostIdentityAdoptReceipt {
   host: HostIdentity
@@ -52,10 +46,6 @@ data gunbc_host_identity_adopt_scope_disposition: Disposition = Terminal {
 }
 
 data gunbc_host_identity_adopt_model_marker: NonEmptyStr = "gunbc.host_identity_adopt.v0"
-
-fn host_identity_knob_key(host: HostIdentity) -> HostIdentityKnobKey {
-  HostIdentityKnobKey { host: host, field: HostnameShort }
-}
 
 fn srv1_host_identity_ssh_transport() -> HostEffectTransport {
   SshShell { ssh_host: operator_host_srv1 as NonEmptyStr }
@@ -133,28 +123,6 @@ fn host_identity_adopt_receipt_is_valid(receipt: HostIdentityAdoptReceipt) -> Bo
   receipt.read_converged
     && host_identity_observation_nonempty(obs: receipt.deployed_intent.observation)
     && deployed_intent_observed_differs_from_fleet_slot(d: receipt.deployed_intent)
-}
-
-fn host_identity_adopt_receipt_message(receipt: HostIdentityAdoptReceipt) -> String {
-  concat(
-    concat(
-      concat(
-        concat(
-          concat("host_identity_adopt: PASS host=", receipt.host),
-          concat(" key=", receipt.key.host)
-        ),
-        concat(" observed=", receipt.observed_short_hostname)
-      ),
-      concat(
-        concat(" fleet_slot=", receipt.deployed_intent.fleet_slot),
-        concat(" transport=", receipt.transport_label)
-      )
-    ),
-    concat(
-      concat(" probed_at=", receipt.probed_at),
-      concat(" model_hash=", to_string(receipt.model_hash))
-    )
-  )
 }
 
 fn host_identity_adopt_srv1_exit(receipt: HostIdentityAdoptReceipt) -> ProcessExit {
