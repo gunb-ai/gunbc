@@ -29,3 +29,125 @@ data json_production_rows: List<JsonProductionRow> = [
 ]
 
 data json_emit_fold_dissolution_trigger: String = "dissolve-on: v2 grammar-inverse ingest for JSON — dsl/extdeps/languages/json/grammar.dag plus emit.dag is the single dsl-tree authority (RFC 8259 rows + JsonValue fold); DISSOLVES WHEN src/v2/extdeps/languages/json.dag lands FormalProduction/TargetModel rows wired through 06_translate with ingest o emit = id on json_production_rows witnesses"
+
+type JsonNumberLexeme {
+  lexeme: String
+}
+
+type JsonNumberParseRest {
+  rest: String
+  ok: Bool
+}
+
+fn is_json_digit(cp: Int) -> Bool {
+  cp >= 48 && cp <= 57
+}
+
+fn is_json_digit1(cp: Int) -> Bool {
+  cp >= 49 && cp <= 57
+}
+
+fn json_number_consume_digit_run(s: String) -> JsonNumberParseRest {
+  if s.length() == 0 {
+    JsonNumberParseRest { rest: "", ok: true }
+  } else {
+    let first = code_point_int(ch: char_at(s, 0))
+    if !is_json_digit(cp: first) {
+      JsonNumberParseRest { rest: s, ok: true }
+    } else {
+      let inner = json_number_consume_digit_run(s: substring(s: s, start: 1, end: s.length()))
+      JsonNumberParseRest { rest: inner.rest, ok: inner.ok }
+    }
+  }
+}
+
+fn json_number_consume_int(s: String) -> JsonNumberParseRest {
+  if s == "0" {
+    JsonNumberParseRest { rest: "", ok: true }
+  } else if s.length() == 0 {
+    JsonNumberParseRest { rest: s, ok: false }
+  } else {
+    let first = code_point_int(ch: char_at(s, 0))
+    if !is_json_digit1(cp: first) {
+      JsonNumberParseRest { rest: s, ok: false }
+    } else {
+      json_number_consume_digit_run(s: s)
+    }
+  }
+}
+
+fn json_number_consume_frac_digits(s: String) -> JsonNumberParseRest {
+  if s.length() == 0 {
+    JsonNumberParseRest { rest: "", ok: false }
+  } else {
+    let first = code_point_int(ch: char_at(s, 0))
+    if !is_json_digit(cp: first) {
+      JsonNumberParseRest { rest: s, ok: false }
+    } else {
+      json_number_consume_digit_run(s: s)
+    }
+  }
+}
+
+fn json_number_consume_optional_frac(s: String) -> JsonNumberParseRest {
+  if s.length() == 0 {
+    JsonNumberParseRest { rest: "", ok: true }
+  } else if char_at(s, 0) != "." {
+    JsonNumberParseRest { rest: s, ok: true }
+  } else {
+    let after = substring(s: s, start: 1, end: s.length())
+    let parsed = json_number_consume_frac_digits(s: after)
+    JsonNumberParseRest { rest: parsed.rest, ok: parsed.ok }
+  }
+}
+
+fn json_number_consume_optional_exp(s: String) -> Bool {
+  if s.length() == 0 {
+    true
+  } else {
+    let marker = code_point_int(ch: char_at(s, 0))
+    if marker != 69 && marker != 101 {
+      false
+    } else {
+      let after = substring(s: s, start: 1, end: s.length())
+      let signed = if after.length() > 0 && (char_at(after, 0) == "+" || char_at(after, 0) == "-") {
+        substring(s: after, start: 1, end: after.length())
+      } else {
+        after
+      }
+      let parsed = json_number_consume_frac_digits(s: signed)
+      parsed.ok && parsed.rest.length() == 0
+    }
+  }
+}
+
+fn json_number_lexeme_valid(s: String) -> Bool {
+  if s.length() == 0 {
+    false
+  } else {
+    let body = if starts_with(s: s, prefix: "-") {
+      substring(s: s, start: 1, end: s.length())
+    } else {
+      s
+    }
+    if starts_with(s: s, prefix: "-") && body.length() == 0 {
+      false
+    } else {
+      let int_parsed = json_number_consume_int(s: body)
+      if !int_parsed.ok {
+        false
+      } else {
+        let frac_parsed = json_number_consume_optional_frac(s: int_parsed.rest)
+        if !frac_parsed.ok {
+          false
+        } else {
+          json_number_consume_optional_exp(s: frac_parsed.rest)
+        }
+      }
+    }
+  }
+}
+
+fn json_int_lexeme(n: Int) -> JsonNumberLexeme {
+  JsonNumberLexeme { lexeme: to_string(n) }
+}

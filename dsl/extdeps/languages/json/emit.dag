@@ -1,6 +1,7 @@
 module extdeps.languages.json.emit
 
 import extdeps.external_authority { ExternalAuthority }
+import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme }
 import extdeps.uri { Uri, Https }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
@@ -18,7 +19,7 @@ type JsonKeyValue {
 type JsonValue
   = JsonNull
   | JsonBool { value: Bool }
-  | JsonNumber { lexeme: String }
+  | JsonNumber { lexeme: JsonNumberLexeme }
   | JsonString { value: String }
   | JsonArray { elements: List<JsonValue> }
   | JsonObject { members: List<JsonKeyValue> }
@@ -35,12 +36,8 @@ fn json_bool(b: Bool) -> JsonValue {
   JsonBool { value: b }
 }
 
-fn json_number(lexeme: String) -> JsonValue {
-  JsonNumber { lexeme: lexeme }
-}
-
 fn json_int(n: Int) -> JsonValue {
-  JsonNumber { lexeme: to_string(n) }
+  JsonNumber { lexeme: json_int_lexeme(n: n) }
 }
 
 fn json_string(s: String) -> JsonValue {
@@ -70,10 +67,13 @@ fn int_to_upper_hex(n: Int) -> String {
   else { int_to_upper_hex_inner(n: n, acc: "") }
 }
 
-fn json_hex4(cp: Int) -> String {
+fn json_unicode_escape_hex4(cp: Int) -> String {
   let h = int_to_upper_hex(n: cp)
-  if cp <= 15 { concat("000", h) }
-  else { concat("00", h) }
+  let len = h.length()
+  if len == 1 { concat("000", h) }
+  else if len == 2 { concat("00", h) }
+  else if len == 3 { concat("0", h) }
+  else { h }
 }
 
 fn json_escape_code_point(cp: Int) -> String {
@@ -84,7 +84,7 @@ fn json_escape_code_point(cp: Int) -> String {
   else if cp == 13 { "\\r" }
   else if cp == 34 { "\\\"" }
   else if cp == 92 { "\\\\" }
-  else if cp >= 0 && cp <= 31 { concat("\\u", json_hex4(cp: cp)) }
+  else if cp >= 0 && cp <= 31 { concat("\\u", json_unicode_escape_hex4(cp: cp)) }
   else { from_code_point(cp: cp) }
 }
 
@@ -128,7 +128,7 @@ fn serialize_json(v: JsonValue) -> String {
   match v {
     JsonNull => "null"
     JsonBool { value: b } => if b { "true" } else { "false" }
-    JsonNumber { lexeme: l } => l
+    JsonNumber { lexeme: l } => l.lexeme
     JsonString { value: s } => quote_json_string(s: s)
     JsonArray { elements: els } => serialize_json_array(elements: els)
     JsonObject { members: m } => serialize_json_object(members: m)
