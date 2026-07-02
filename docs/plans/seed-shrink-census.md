@@ -114,7 +114,7 @@ Copied through regen, excluded from `regen --verify`. Each row = **operator sign
 | **C** | `v1_compiler_dag_collect*.rs` | 521 | Emitter delegation; delete `patch_bootstrap_dag_collect` | emitter |
 | **D** | Lens projections (10 files) | ~3,908 | Interpreter consumes `.dag` lens tables | lens + interpreter |
 | **E** | `v1_interpreter.rs` | 6,373 | v2-emitted evaluator + host-effects | runtime |
-| **F** | `cli_run.rs` | 4,165 | CI floor → workflow host-effect `apply()` | workflow |
+| **F** | `cli_run.rs` | 4,165 | CI floor → workflow host-effect `apply()`; resolve/reconcile/discovery engine scoped in [docs/plans/cli-run-reconcile-defork.md](cli-run-reconcile-defork.md) | workflow |
 | **G** | `coproduct_reflection.rs` | 1,297 | Model↔realization fork grounded | de-fork |
 | **H** | Runtime support | ~1,500 | `recorded_fixture`, `resolved_graph_cache`, `wire_value_serialize`, … | runtime |
 
