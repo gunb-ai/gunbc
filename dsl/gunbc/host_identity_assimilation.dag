@@ -154,6 +154,87 @@ fn host_identity_assimilation_receipt_is_valid(receipt: HostIdentityAssimilation
     })
 }
 
+fn host_identity_converge_with_observation(
+  target: HostIdentityAssimilationTarget,
+  desired: DeployedIntentV1,
+  precondition_obs: HostIdentityObservation,
+  probed_at: NonEmptyStr,
+) -> HostIdentityAssimilationReceipt? {
+  let patch = host_identity_precondition_verdict(
+    base: target.persisted_base,
+    observed: precondition_obs,
+    desired: desired,
+  )
+  let plan = host_identity_plan_from_verdict(
+    verdict: patch,
+    base: deployed_intent_observed_short_hostname(d: target.persisted_base) as DnsLabel,
+    desired: desired.desired_hostname_short,
+  )
+  if host_identity_precondition_is_conflict(verdict: patch) {
+    none
+  } else { if host_identity_precondition_is_noop(verdict: patch) {
+    let read_back_ok = host_identity_read_back_matches(
+      observed: precondition_obs,
+      desired_hostname: desired.desired_hostname_short,
+    )
+    Present {
+      value: host_identity_assimilation_receipt(
+        target: target,
+        desired: desired,
+        patch: patch,
+        precondition_observed: precondition_obs.short_hostname,
+        apply_converged: false,
+        read_back_observed: precondition_obs.short_hostname,
+        read_back_converged: read_back_ok,
+        reapply_noop: true,
+        probed_at: probed_at,
+      )
+    }
+  } else {
+    match host_identity_apply_gated(
+      access: target.access,
+      target: target.control_plane,
+      plan: plan,
+      transport: target.transport,
+      fixture_actor: Absent,
+    ) {
+      Absent => none
+      Present { value: apply_r } =>
+        if !host_identity_apply_converged(r: apply_r) {
+          none
+        } else {
+          match host_identity_observation_live(target: target.control_plane, transport: target.transport, probed_at: probed_at) {
+            Present { value: read_back_obs } => {
+              let read_back_ok = host_identity_read_back_matches(
+                observed: read_back_obs,
+                desired_hostname: desired.desired_hostname_short,
+              )
+              let reapply_patch = host_identity_precondition_verdict(
+                base: target.persisted_base,
+                observed: read_back_obs,
+                desired: desired,
+              )
+              Present {
+                value: host_identity_assimilation_receipt(
+                  target: target,
+                  desired: desired,
+                  patch: patch,
+                  precondition_observed: precondition_obs.short_hostname,
+                  apply_converged: true,
+                  read_back_observed: read_back_obs.short_hostname,
+                  read_back_converged: read_back_ok,
+                  reapply_noop: host_identity_leaf_is_noop(verdict: reapply_patch),
+                  probed_at: probed_at,
+                )
+              }
+            }
+            Absent => none
+          }
+        }
+    }
+  } }
+}
+
 fn host_identity_converge_from_base(
   target: HostIdentityAssimilationTarget,
   probed_at: NonEmptyStr,
@@ -163,81 +244,13 @@ fn host_identity_converge_from_base(
     Present { value: desired } =>
       match host_identity_observation_live(target: target.control_plane, transport: target.transport, probed_at: probed_at) {
         Absent => none
-        Present { value: precondition_obs } => {
-          let patch = host_identity_precondition_verdict(
-            base: target.persisted_base,
-            observed: precondition_obs,
+        Present { value: precondition_obs } =>
+          host_identity_converge_with_observation(
+            target: target,
             desired: desired,
+            precondition_obs: precondition_obs,
+            probed_at: probed_at,
           )
-          let plan = host_identity_plan_from_verdict(
-            verdict: patch,
-            base: deployed_intent_observed_short_hostname(d: target.persisted_base) as DnsLabel,
-            desired: desired.desired_hostname_short,
-          )
-          if host_identity_precondition_is_conflict(verdict: patch) {
-            none
-          } else { if host_identity_precondition_is_noop(verdict: patch) {
-            let read_back_ok = host_identity_read_back_matches(
-              observed: precondition_obs,
-              desired_hostname: desired.desired_hostname_short,
-            )
-            Present {
-              value: host_identity_assimilation_receipt(
-                target: target,
-                desired: desired,
-                patch: patch,
-                precondition_observed: precondition_obs.short_hostname,
-                apply_converged: false,
-                read_back_observed: precondition_obs.short_hostname,
-                read_back_converged: read_back_ok,
-                reapply_noop: true,
-                probed_at: probed_at,
-              )
-            }
-          } else {
-            match host_identity_apply_gated(
-              access: target.access,
-              target: target.control_plane,
-              plan: plan,
-              transport: target.transport,
-              fixture_actor: Absent,
-            ) {
-              Absent => none
-              Present { value: apply_r } =>
-                if !host_identity_apply_converged(r: apply_r) {
-                  none
-                } else {
-                  match host_identity_observation_live(target: target.control_plane, transport: target.transport, probed_at: probed_at) {
-                    Present { value: read_back_obs } => {
-                      let read_back_ok = host_identity_read_back_matches(
-                        observed: read_back_obs,
-                        desired_hostname: desired.desired_hostname_short,
-                      )
-                      let reapply_patch = host_identity_precondition_verdict(
-                        base: target.persisted_base,
-                        observed: read_back_obs,
-                        desired: desired,
-                      )
-                      Present {
-                        value: host_identity_assimilation_receipt(
-                          target: target,
-                          desired: desired,
-                          patch: patch,
-                          precondition_observed: precondition_obs.short_hostname,
-                          apply_converged: true,
-                          read_back_observed: read_back_obs.short_hostname,
-                          read_back_converged: read_back_ok,
-                          reapply_noop: host_identity_leaf_is_noop(verdict: reapply_patch),
-                          probed_at: probed_at,
-                        )
-                      }
-                    }
-                    Absent => none
-                  }
-                }
-            }
-          } }
-        }
       }
   }
 }

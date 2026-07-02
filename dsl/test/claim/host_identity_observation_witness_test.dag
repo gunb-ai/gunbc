@@ -71,6 +71,7 @@ import gunbc.host_identity_assimilation {
   HostIdentityAssimilationTarget,
   host_identity_assimilation_target_srv1,
   host_identity_converge_from_base,
+  host_identity_converge_with_observation,
 }
 import gunbc.host_identity_access { host_identity_srv1_access }
 import gunbc.ci_deploy_access { deploy_access_unprivileged_fixture_actor }
