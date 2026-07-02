@@ -1,0 +1,164 @@
+module gunbc.srv3_install_diagnostic_checklist
+
+import extdeps.shell
+import extdeps.filesystem.filesystem_io { Filesystem }
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import gunbc.srv3_os_install_actuate { srv3_bmcweb_token_path }
+import gunbc.srv3_os_install_diagnostic {
+  srv3_os_install_attempt_intent,
+  OsInstallAttemptIntent,
+  Srv3InstallDebugObservation,
+  Srv3InstallDiagnostic,
+  NbdServeObservation,
+  BmcWebsocketObservation,
+  ServeUnknown,
+  ServeObserved,
+  WebsocketUpgradeAccepted,
+  WebsocketUnavailable,
+  WebsocketUnknown,
+  diagnose_srv3_install,
+  srv3_install_diagnostic_wire,
+  srv3_install_diagnostic_recommended_action_wire,
+  parse_srv3_install_debug_observation,
+}
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { String, NonEmptyStr }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data srv3_install_diagnostic_checklist_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_install_diagnostic_checklist",
+    decl_name: "srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger: String = "🟡 dissolve-on: srv3_install_diagnostic_checklist — observe script via shell_exec_via_bash + stdout parse into Srv3InstallDebugObservation then diagnose_srv3_install; DISSOLVES WHEN host_effect_apply binds Srv3InstallDiagnosticObserve without concat runner glue; retire medium_structure_exception_roster entry for dsl/gunbc/srv3_install_diagnostic_checklist.dag"
+
+data srv3_install_diagnostic_observe_script_path: String = "/tmp/srv3_install_diagnostic_observe.sh"
+
+data srv3_sol_console_log_path_for_observe: NonEmptyStr = "/var/lib/gunbc/logs/srv3-install-sol-console.log" as NonEmptyStr
+
+fn srv3_install_diagnostic_observe_script(intent: OsInstallAttemptIntent) -> String {
+  let token_path = srv3_bmcweb_token_path
+  let bmc = intent.bmc_endpoint as String
+  let port = intent.serve_port as String
+  let iso_path = intent.iso_path as String
+  let sol_log = srv3_sol_console_log_path_for_observe as String
+  concat(
+    "#!/usr/bin/env bash\nset -uo pipefail\nTOKEN_PATH=",
+    concat(
+      token_path,
+      concat(
+        "\nBMC=",
+        concat(
+          bmc,
+          concat(
+            "\nPORT=",
+            concat(
+              port,
+              concat(
+                "\nISO_PATH=",
+                concat(
+                  iso_path,
+                  concat(
+                    "\nSOL_LOG=",
+                    concat(
+                      sol_log,
+                      "\nif pgrep -x nbdkit >/dev/null 2>&1; then NBDKIT=present; else NBDKIT=absent; fi\nif pgrep -x websocat >/dev/null 2>&1; then WSOCAT=present; else WSOCAT=absent; fi\nif ss -ltnp 2>/dev/null | grep -q \":${PORT} \"; then PORT_STATE=listening; else PORT_STATE=absent; fi\nif test -s \"${TOKEN_PATH}\"; then TOKEN=present; else TOKEN=absent; fi\nif test -f \"${ISO_PATH}\"; then ISO=file_present; else ISO=missing; fi\necho \"Srv3InstallObserveReceipt: surface=serve nbdkit=${NBDKIT} websocat=${WSOCAT} port=${PORT_STATE} token=${TOKEN} iso=${ISO}\"\nHTTP_CODE=$(curl -sk -o /dev/null -w \"%{http_code}\" -H \"Connection: Upgrade\" -H \"Upgrade: websocket\" -H \"Sec-WebSocket-Version: 13\" -H \"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\" \"https://${BMC}/vm/0/0\" 2>/dev/null || echo 000)\necho \"Srv3InstallObserveReceipt: surface=bmc_websocket http_code=${HTTP_CODE}\"\nif test -s \"${TOKEN_PATH}\"; then\n  RF=$(curl -sk -H \"Authorization: Token $(cat \"${TOKEN_PATH}\")\" \"https://${BMC}/redfish/v1/Systems/system\")\n  POWER=$(echo \"$RF\" | jq -r .PowerState)\n  BOOT_ENABLED=$(echo \"$RF\" | jq -r .Boot.BootSourceOverrideEnabled)\n  BOOT_TARGET=$(echo \"$RF\" | jq -r .Boot.BootSourceOverrideTarget)\n  echo \"Srv3InstallObserveReceipt: surface=redfish power=${POWER} boot_enabled=${BOOT_ENABLED} boot_target=${BOOT_TARGET}\"\nelse\n  echo \"Srv3InstallObserveReceipt: surface=redfish status=token_missing\"\nfi\nif test -s \"${SOL_LOG}\"; then\n  echo \"Srv3InstallObserveReceipt: surface=sol status=present\"\n  grep -qi grub \"${SOL_LOG}\" && echo \"Srv3InstallObserveReceipt: surface=sol marker=grub\" || true\n  grep -qi subiquity \"${SOL_LOG}\" && echo \"Srv3InstallObserveReceipt: surface=sol marker=subiquity\" || true\n  grep -qi autoinstall \"${SOL_LOG}\" && echo \"Srv3InstallObserveReceipt: surface=sol marker=autoinstall\" || true\n  grep -qi -E 'error|fail' \"${SOL_LOG}\" && echo \"Srv3InstallObserveReceipt: surface=sol marker=error\" || true\nelse\n  echo \"Srv3InstallObserveReceipt: surface=sol status=silent\"\nfi\necho \"Srv3InstallObserveReceipt: surface=router status=operator_required\"\n",
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+func srv3_install_diagnostic_emit_observe_script() -> ProcessExit {
+  let script = srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent)
+  let write = Filesystem.Write(path: srv3_install_diagnostic_observe_script_path, content: script)
+  if write.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("srv3-install-diagnostic-emit: write failed: ", write.error))
+  }
+}
+
+func srv3_install_diagnostic_checklist() -> ProcessExit {
+  let intent = srv3_os_install_attempt_intent
+  let observe_script = srv3_install_diagnostic_observe_script(intent: intent)
+  let observe_run = shell.Exec.Run(script: shell_exec_via_bash(body: observe_script))
+  if !observe_run.success {
+    exit_failure(reason: concat("srv3-install-diagnostic-observe: ", observe_run.stderr))
+  }
+  let observation = parse_srv3_install_debug_observation(
+    stdout: observe_run.stdout,
+    intent: intent,
+  )
+  let verdict = diagnose_srv3_install(intent: intent, observation: observation)
+  let receipt = srv3_install_diagnostic_receipt_line(verdict: verdict, observation: observation)
+  let action = srv3_install_diagnostic_recommended_action_wire(verdict: verdict)
+  let echo_body = concat(
+    concat(receipt, "\n"),
+    concat("Srv3InstallDiagnosticAction: ", action, "\n"),
+  )
+  let echo_run = shell.Exec.Run(script: shell_exec_via_bash(body: echo_body))
+  if echo_run.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("srv3-install-diagnostic-receipt: ", echo_run.stderr))
+  }
+}
+
+fn srv3_install_diagnostic_receipt_line(
+  verdict: Srv3InstallDiagnostic,
+  observation: Srv3InstallDebugObservation,
+) -> String {
+  concat(
+    concat("Srv3InstallDiagnosticReceipt: verdict=", srv3_install_diagnostic_wire(verdict: verdict)),
+    concat(
+      " serve=",
+      concat(
+        srv3_install_diagnostic_serve_observation_wire(observation: observation.actuator_serve),
+        concat(
+          " bmc_websocket=",
+          srv3_install_diagnostic_websocket_wire(observation: observation.bmc_websocket),
+        ),
+      ),
+    ),
+  )
+}
+
+fn srv3_install_diagnostic_serve_observation_wire(observation: NbdServeObservation) -> String {
+  match observation {
+    ServeUnknown => "unknown"
+    ServeObserved { process: _, port: _, session: _, iso: _ } => "observed"
+  }
+}
+
+fn srv3_install_diagnostic_websocket_wire(observation: BmcWebsocketObservation) -> String {
+  match observation {
+    WebsocketUpgradeAccepted => "upgrade_accepted"
+    WebsocketUnavailable => "unavailable"
+    WebsocketUnknown => "unknown"
+  }
+}
+
+fn srv3_install_diagnostic_checklist_entrypoint_is_declared() -> Bool {
+  string_contains(s: srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger, pattern: "diagnose_srv3_install")
+}
+
+fn srv3_install_diagnostic_observe_script_declares_five_surfaces() -> Bool {
+  let script = srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent)
+  string_contains(s: script, pattern: "surface=serve")
+    && string_contains(s: script, pattern: "surface=bmc_websocket")
+    && string_contains(s: script, pattern: "surface=redfish")
+    && string_contains(s: script, pattern: "surface=sol")
+    && string_contains(s: script, pattern: "surface=router")
+}

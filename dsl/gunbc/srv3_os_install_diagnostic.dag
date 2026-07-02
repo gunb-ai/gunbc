@@ -8,13 +8,20 @@ import extdeps.bmc.types {
   RedfishBootSourceOverrideTarget,
   RedfishBootSourceOverrideEnabled,
   BootTargetCd,
+  BootTargetNone,
   BootOverrideOnce,
   BootOverrideDisabled,
   On,
   Off,
 }
-import extdeps.bmc.webui.nbd_proxy_serve { srv3_nbd_proxy_local_port }
-import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
+import extdeps.bmc.webui.nbd_proxy {
+  VmSlotIndexEndpoint,
+  bmcweb_nbd_proxy_ws_path,
+}
+import extdeps.boards.asrock_rack {
+  asrock_srv3_live_bmc_host,
+  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
+}
 import extdeps.dhcp.v4 {
   DhcpLeaseObservation,
   DynamicDhcpLease,
@@ -33,6 +40,10 @@ import gunbc.network_identity_subsumption {
 import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
 import gunbc.srv3_seeded_install_media { srv3_seeded_install_media_content_hash }
 import product.placement_supply { HostIdentity }
+import gunbc.srv3_os_install_actuate { srv3_bmcweb_token_path }
+import gunbc.srv3_sol_console_capture { srv3_sol_console_log_path }
+
+data srv3_nbd_proxy_local_port: Int = 10809
 
 data gunbc_srv3_os_install_diagnostic_scope_disposition: Disposition = Terminal {
   reason: "srv3 OS install actuation diagnostic fold — multi-surface observation (nbd serve, BMC session, Redfish system boot/power, virtual media, SOL console, router DHCP lease, weak KVM) over InstallAttemptIntent → InstallDiagnosticVerdict; KVM frozen/keyboard-dead is weak evidence only."
@@ -219,6 +230,56 @@ type InstallDiagnosticVerdict
   | KvmUntrustedVerdict
   | Inconclusive
 
+type BmcWebsocketObservation
+  = WebsocketUpgradeAccepted
+  | WebsocketUnavailable
+  | WebsocketUnknown
+
+type VirtualMediaSessionObservation
+  = AttachedToExpectedServe
+  | NoAttachedServe
+  | VirtualMediaSessionUnknown
+
+type NbdServeObservation
+  = ServeUnknown
+  | ServeObserved {
+      process: NbdServeProcessObservation
+      port: NbdServePortObservation
+      session: BmcSessionTokenObservation
+      iso: IsoServeReadinessObservation
+    }
+
+type RedfishBootObservation {
+  power_state: RedfishPowerState
+  boot_override_enabled: RedfishBootSourceOverrideEnabled
+  boot_override_target: RedfishBootSourceOverrideTarget
+  boot_progress: RedfishBootProgressLastState
+}
+
+type Srv3InstallDebugObservation {
+  actuator_serve: NbdServeObservation
+  bmc_websocket: BmcWebsocketObservation
+  redfish_boot: RedfishBootObservation
+  virtual_media_session: VirtualMediaSessionObservation
+  sol: SolConsoleContentObservation?
+  router_lease_table: Cr1000aDhcpLeaseTable?
+  kvm: KvmObservation?
+  elapsed_since_boot_once_ms: Milliseconds?
+}
+
+type Srv3InstallDiagnostic
+  = ReadyToBoot
+  | ServeDown
+  | BmcWebsocketUnavailable
+  | BootOverrideNotArmed
+  | BootOverrideConsumedNoInstallEvidence
+  | InstallerProbablyRunning
+  | InstallerHung
+  | OsInstalled
+  | KvmUntrusted
+  | Inconclusive
+  | InconclusiveNeedsServeObservation
+
 fn classify_nbd_serve_readiness(
   process: NbdServeProcessObservation,
   port: NbdServePortObservation,
@@ -267,6 +328,21 @@ fn nbd_serve_readiness_is_ready(verdict: NbdServeReadinessVerdict) -> Bool {
   }
 }
 
+fn redfish_power_on_boot_verdict(
+  target: RedfishBootSourceOverrideTarget,
+  enabled: RedfishBootSourceOverrideEnabled,
+) -> RedfishSystemBootVerdict {
+  match enabled {
+    BootOverrideDisabled => BootOverrideDisabledAfterAttempt
+    BootOverrideOnce =>
+      match target {
+        BootTargetCd => BootOverrideCdOnceArmed
+        _ => PowerOnFirmware
+      }
+    _ => PowerOnFirmware
+  }
+}
+
 fn classify_redfish_system_boot(obs: RedfishSystemBootObservation) -> RedfishSystemBootVerdict {
   match obs.boot_progress {
     BootProgressOsRunning => BootProgressOsRunningVerdict
@@ -275,33 +351,19 @@ fn classify_redfish_system_boot(obs: RedfishSystemBootObservation) -> RedfishSys
     BootProgressNone =>
       match obs.power_state {
         Off => PowerOff
-        On =>
-          match obs.boot_override_enabled {
-            BootOverrideOnce =>
-              if obs.boot_override_target == BootTargetCd {
-                BootOverrideCdOnceArmed
-              } else {
-                PowerOnFirmware
-              }
-            BootOverrideDisabled => BootOverrideDisabledAfterAttempt
-            _ => PowerOnFirmware
-          }
+        On => redfish_power_on_boot_verdict(
+          target: obs.boot_override_target,
+          enabled: obs.boot_override_enabled,
+        )
         _ => PowerOnFirmware
       }
     BootProgressUnknown =>
       match obs.power_state {
         Off => PowerOff
-        On =>
-          match obs.boot_override_enabled {
-            BootOverrideOnce =>
-              if obs.boot_override_target == BootTargetCd {
-                BootOverrideCdOnceArmed
-              } else {
-                PowerOnFirmware
-              }
-            BootOverrideDisabled => BootOverrideDisabledAfterAttempt
-            _ => PowerOnFirmware
-          }
+        On => redfish_power_on_boot_verdict(
+          target: obs.boot_override_target,
+          enabled: obs.boot_override_enabled,
+        )
         _ => PowerOnFirmware
       }
   }
@@ -313,19 +375,23 @@ fn classify_bmc_virtual_media(
 ) -> BmcVirtualMediaVerdict {
   if !obs.bmc_session_valid {
     BmcSessionExpired
-  } else if !obs.inserted_or_connected {
-    VirtualMediaAbsent
-  } else if !obs.connected_to_expected_port {
-    VirtualMediaDisconnected
   } else {
-    match obs.image_or_endpoint {
-      Present { value: endpoint } =>
-        if string_contains(s: endpoint as String, pattern: intent.iso_path as String) {
-          VirtualMediaMountedExpectedIso
-        } else {
-          VirtualMediaWrongIso
+    if !obs.inserted_or_connected {
+      VirtualMediaAbsent
+    } else {
+      if !obs.connected_to_expected_port {
+        VirtualMediaDisconnected
+      } else {
+        match obs.image_or_endpoint {
+          Present { value: endpoint } =>
+            if string_contains(s: endpoint as String, pattern: intent.iso_path as String) {
+              VirtualMediaMountedExpectedIso
+            } else {
+              VirtualMediaWrongIso
+            }
+          Absent => VirtualMediaAbsent
         }
-      Absent => VirtualMediaAbsent
+      }
     }
   }
 }
@@ -333,18 +399,28 @@ fn classify_bmc_virtual_media(
 fn classify_sol_console(obs: SolConsoleContentObservation) -> SolConsoleDiagnosticVerdict {
   if !obs.capture_available {
     SolCaptureUnavailable
-  } else if obs.contains_error {
-    SolErrorSeen
-  } else if obs.contains_autoinstall {
-    SolAutoinstallSeen
-  } else if obs.contains_subiquity {
-    SolInstallerSeen
-  } else if obs.contains_grub {
-    SolGrubSeen
-  } else if obs.contains_firmware_menu {
-    SolFirmwareMenu
   } else {
-    SolSilent
+    if obs.contains_error {
+      SolErrorSeen
+    } else {
+      if obs.contains_autoinstall {
+        SolAutoinstallSeen
+      } else {
+        if obs.contains_subiquity {
+          SolInstallerSeen
+        } else {
+          if obs.contains_grub {
+            SolGrubSeen
+          } else {
+            if obs.contains_firmware_menu {
+              SolFirmwareMenu
+            } else {
+              SolSilent
+            }
+          }
+        }
+      }
+    }
   }
 }
 
@@ -386,12 +462,16 @@ fn classify_router_lease_table(
 ) -> RouterLeaseDiagnosticVerdict {
   if lease_table_has_os_up_subsumption(table: table, fleet_slot: fleet_slot) {
     Srv3OsLeasePresent
-  } else if router_table_is_only_static_reservations(table: table) {
-    OnlyBmcLeasePresent
-  } else if router_table_has_wrong_dynamic_hostname(table: table, fleet_slot: fleet_slot) {
-    WrongHostnameLeasePresent
   } else {
-    Srv3OsLeaseAbsent
+    if router_table_is_only_static_reservations(table: table) {
+      OnlyBmcLeasePresent
+    } else {
+      if router_table_has_wrong_dynamic_hostname(table: table, fleet_slot: fleet_slot) {
+        WrongHostnameLeasePresent
+      } else {
+        Srv3OsLeaseAbsent
+      }
+    }
   }
 }
 
@@ -422,6 +502,189 @@ fn sol_has_autoinstall_evidence(verdict: SolConsoleDiagnosticVerdict) -> Bool {
   }
 }
 
+fn diagnose_when_router_not_installed(
+  intent: OsInstallAttemptIntent,
+  observations: OsInstallActuationObservations,
+  serve: NbdServeReadinessVerdict,
+  redfish: RedfishSystemBootVerdict,
+  virtual_media: BmcVirtualMediaVerdict,
+  sol: SolConsoleDiagnosticVerdict,
+  router: RouterLeaseDiagnosticVerdict,
+) -> InstallDiagnosticVerdict {
+  match serve {
+    IsoHashMismatch => VirtualMediaServeDown
+    ServeReady =>
+      match virtual_media {
+        VirtualMediaAbsent => VirtualMediaNotMounted
+        VirtualMediaDisconnected => VirtualMediaNotMounted
+        BmcSessionExpired => VirtualMediaServeDown
+        _ =>
+          diagnose_when_serve_ready(
+            intent: intent,
+            observations: observations,
+            redfish: redfish,
+            virtual_media: virtual_media,
+            sol: sol,
+            router: router,
+          )
+      }
+    _ => VirtualMediaServeDown
+  }
+}
+
+fn diagnose_when_serve_ready(
+  intent: OsInstallAttemptIntent,
+  observations: OsInstallActuationObservations,
+  redfish: RedfishSystemBootVerdict,
+  virtual_media: BmcVirtualMediaVerdict,
+  sol: SolConsoleDiagnosticVerdict,
+  router: RouterLeaseDiagnosticVerdict,
+) -> InstallDiagnosticVerdict {
+  match redfish {
+    BootOverrideCdOnceArmed => BootAttemptInProgress
+    BootOverrideDisabledAfterAttempt =>
+      match virtual_media {
+        VirtualMediaMountedExpectedIso =>
+          if observations.elapsed_since_boot_once_ms == 0 {
+            ReadyToBoot
+          } else {
+            diagnose_when_not_pre_boot_ready(
+              observations: observations,
+              redfish: redfish,
+              sol: sol,
+              router: router,
+            )
+          }
+        _ =>
+          diagnose_when_not_pre_boot_ready(
+            observations: observations,
+            redfish: redfish,
+            sol: sol,
+            router: router,
+          )
+      }
+    _ =>
+      diagnose_when_not_pre_boot_ready(
+        observations: observations,
+        redfish: redfish,
+        sol: sol,
+        router: router,
+      )
+  }
+}
+
+fn diagnose_when_not_pre_boot_ready(
+  observations: OsInstallActuationObservations,
+  redfish: RedfishSystemBootVerdict,
+  sol: SolConsoleDiagnosticVerdict,
+  router: RouterLeaseDiagnosticVerdict,
+) -> InstallDiagnosticVerdict {
+  if sol_has_autoinstall_evidence(verdict: sol) {
+    if observations.elapsed_since_boot_once_ms < srv3_install_hang_no_router_lease_ms {
+      AutoinstallRunning
+    } else {
+      diagnose_install_hung_or_idle(
+        observations: observations,
+        redfish: redfish,
+        sol: sol,
+        router: router,
+      )
+    }
+  } else {
+    diagnose_install_hung_or_idle(
+      observations: observations,
+      redfish: redfish,
+      sol: sol,
+      router: router,
+    )
+  }
+}
+
+fn router_lacks_os_installed_lease(router: RouterLeaseDiagnosticVerdict) -> Bool {
+  match router {
+    Srv3OsLeasePresent => false
+    _ => true
+  }
+}
+
+fn diagnose_install_hung_or_idle(
+  observations: OsInstallActuationObservations,
+  redfish: RedfishSystemBootVerdict,
+  sol: SolConsoleDiagnosticVerdict,
+  router: RouterLeaseDiagnosticVerdict,
+) -> InstallDiagnosticVerdict {
+  if sol_has_installer_evidence(verdict: sol) {
+    if observations.elapsed_since_boot_once_ms >= srv3_install_hang_no_installer_progress_ms {
+      if router_lacks_os_installed_lease(router: router) {
+        InstallerHung
+      } else {
+        InstallerBooted
+      }
+    } else {
+      InstallerBooted
+    }
+  } else {
+    diagnose_boot_override_consumed_or_weak(
+      observations: observations,
+      redfish: redfish,
+      sol: sol,
+      router: router,
+    )
+  }
+}
+
+fn diagnose_boot_override_consumed_or_weak(
+  observations: OsInstallActuationObservations,
+  redfish: RedfishSystemBootVerdict,
+  sol: SolConsoleDiagnosticVerdict,
+  router: RouterLeaseDiagnosticVerdict,
+) -> InstallDiagnosticVerdict {
+  match redfish {
+    BootOverrideDisabledAfterAttempt =>
+      if router_lacks_os_installed_lease(router: router) {
+        match sol {
+          SolFirmwareMenu => BootOverrideConsumedNoInstall
+          SolSilent =>
+            if observations.elapsed_since_boot_once_ms >= srv3_install_hang_no_router_lease_ms {
+              InstallerHung
+            } else {
+              if observations.sol_console.duration_ms >= srv3_install_hang_no_installer_progress_ms {
+                Inconclusive
+              } else {
+                BootOverrideConsumedNoInstall
+              }
+            }
+          _ => BootOverrideConsumedNoInstall
+        }
+      } else {
+        FirmwareIdle
+      }
+    _ =>
+      diagnose_weak_kvm_or_inconclusive(observations: observations, sol: sol)
+  }
+}
+
+fn diagnose_weak_kvm_or_inconclusive(
+  observations: OsInstallActuationObservations,
+  sol: SolConsoleDiagnosticVerdict,
+) -> InstallDiagnosticVerdict {
+  match sol {
+    SolGrubSeen => InstallerBooted
+    SolInstallerSeen => InstallerBooted
+    SolSilent => FirmwareIdle
+    _ =>
+      match observations.kvm.video_state {
+        KvmFirmwareMenu =>
+          if !observations.kvm.keyboard_accepted {
+            KvmUntrustedVerdict
+          } else {
+            Inconclusive
+          }
+        _ => Inconclusive
+      }
+  }
+}
+
 fn diagnose_os_install_actuation(
   intent: OsInstallAttemptIntent,
   observations: OsInstallActuationObservations,
@@ -442,58 +705,18 @@ fn diagnose_os_install_actuation(
   )
   let _kvm = classify_kvm(obs: observations.kvm)
 
-  if router == Srv3OsLeasePresent {
-    OsInstalled
-  } else if serve == IsoHashMismatch {
-    VirtualMediaServeDown
-  } else if serve != ServeReady {
-    VirtualMediaServeDown
-  } else if virtual_media == VirtualMediaAbsent || virtual_media == VirtualMediaDisconnected {
-    VirtualMediaNotMounted
-  } else if virtual_media == BmcSessionExpired {
-    VirtualMediaServeDown
-  } else if redfish == BootOverrideCdOnceArmed {
-    BootAttemptInProgress
-  } else if serve == ServeReady
-    && virtual_media == VirtualMediaMountedExpectedIso
-    && redfish == BootOverrideDisabledAfterAttempt
-    && observations.elapsed_since_boot_once_ms == 0 {
-    ReadyToBoot
-  } else if redfish == BootOverrideDisabledAfterAttempt
-    && observations.elapsed_since_boot_once_ms == 0
-    && serve != ServeReady {
-    BootOverrideNotSet
-  } else if sol_has_autoinstall_evidence(verdict: sol)
-    && observations.elapsed_since_boot_once_ms < srv3_install_hang_no_router_lease_ms {
-    AutoinstallRunning
-  } else if sol_has_installer_evidence(verdict: sol)
-    && observations.elapsed_since_boot_once_ms >= srv3_install_hang_no_installer_progress_ms
-    && router == Srv3OsLeaseAbsent {
-    InstallerHung
-  } else if redfish == BootOverrideDisabledAfterAttempt
-    && !sol_has_installer_evidence(verdict: sol)
-    && router != Srv3OsLeasePresent {
-    BootOverrideConsumedNoInstall
-  } else if sol == SolFirmwareMenu
-    && redfish == BootOverrideDisabledAfterAttempt
-    && router == Srv3OsLeaseAbsent {
-    BootOverrideConsumedNoInstall
-  } else if sol == SolSilent
-    && observations.elapsed_since_boot_once_ms >= srv3_install_hang_no_router_lease_ms
-    && router == Srv3OsLeaseAbsent {
-    InstallerHung
-  } else if sol == SolSilent
-    && observations.sol_console.duration_ms >= srv3_install_hang_no_installer_progress_ms
-    && router == Srv3OsLeaseAbsent {
-    Inconclusive
-  } else if sol == SolGrubSeen || sol == SolInstallerSeen {
-    InstallerBooted
-  } else if redfish == BootOverrideDisabledAfterAttempt && sol == SolSilent {
-    FirmwareIdle
-  } else if observations.kvm.video_state == KvmFirmwareMenu && !observations.kvm.keyboard_accepted {
-    KvmUntrustedVerdict
-  } else {
-    Inconclusive
+  match router {
+    Srv3OsLeasePresent => OsInstalled
+    _ =>
+      diagnose_when_router_not_installed(
+        intent: intent,
+        observations: observations,
+        serve: serve,
+        redfish: redfish,
+        virtual_media: virtual_media,
+        sol: sol,
+        router: router,
+      )
   }
 }
 
@@ -524,4 +747,516 @@ fn bmc_install_debug_checklist_surface_count_is_seven() -> Bool {
 
 fn srv3_os_install_diagnostic_runbook_is_declared() -> Bool {
   string_contains(s: srv3_os_install_diagnostic_runbook_section as String, pattern: "install-debug-diagnostic-fold")
+}
+
+data srv3_remote_bmc_probe_observation: Srv3InstallDebugObservation = Srv3InstallDebugObservation {
+  actuator_serve: ServeUnknown,
+  bmc_websocket: WebsocketUpgradeAccepted,
+  redfish_boot: RedfishBootObservation {
+    power_state: On,
+    boot_override_enabled: BootOverrideDisabled,
+    boot_override_target: BootTargetNone,
+    boot_progress: BootProgressNone,
+  },
+  virtual_media_session: VirtualMediaSessionUnknown,
+  sol: Absent,
+  router_lease_table: Absent,
+  kvm: Absent,
+  elapsed_since_boot_once_ms: Absent,
+}
+
+fn redfish_boot_observation_from_system(obs: RedfishSystemBootObservation) -> RedfishBootObservation {
+  RedfishBootObservation {
+    power_state: obs.power_state,
+    boot_override_enabled: obs.boot_override_enabled,
+    boot_override_target: obs.boot_override_target,
+    boot_progress: obs.boot_progress,
+  }
+}
+
+fn srv3_install_debug_observation_from_actuation(
+  observations: OsInstallActuationObservations,
+  bmc_websocket: BmcWebsocketObservation,
+  virtual_media_session: VirtualMediaSessionObservation,
+) -> Srv3InstallDebugObservation {
+  Srv3InstallDebugObservation {
+    actuator_serve: ServeObserved {
+      process: observations.serve_process,
+      port: observations.serve_port,
+      session: observations.bmc_session,
+      iso: observations.iso_readiness,
+    },
+    bmc_websocket: bmc_websocket,
+    redfish_boot: redfish_boot_observation_from_system(obs: observations.redfish_system),
+    virtual_media_session: virtual_media_session,
+    sol: Present { value: observations.sol_console },
+    router_lease_table: Present { value: observations.router_lease_table },
+    kvm: Present { value: observations.kvm },
+    elapsed_since_boot_once_ms: Present { value: observations.elapsed_since_boot_once_ms },
+  }
+}
+
+fn redfish_boot_override_is_disabled_none(obs: RedfishBootObservation) -> Bool {
+  match obs.boot_override_enabled {
+    BootOverrideDisabled =>
+      match obs.boot_override_target {
+        BootTargetNone => true
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn install_has_progress_evidence(
+  sol: SolConsoleDiagnosticVerdict,
+  router: RouterLeaseDiagnosticVerdict,
+) -> Bool {
+  sol_has_installer_evidence(verdict: sol)
+    || sol_has_autoinstall_evidence(verdict: sol)
+    || match router {
+      Srv3OsLeasePresent => true
+      _ => false
+    }
+}
+
+fn classify_serve_observation_readiness(
+  serve: NbdServeObservation,
+  intent: OsInstallAttemptIntent,
+) -> NbdServeReadinessVerdict {
+  match serve {
+    ServeUnknown => ServeAbsent
+    ServeObserved { process: p, port: port, session: s, iso: i } =>
+      classify_nbd_serve_readiness(process: p, port: port, session: s, iso: i, intent: intent)
+  }
+}
+
+fn sol_console_from_optional(sol: SolConsoleContentObservation?) -> SolConsoleContentObservation {
+  match sol {
+    Present { value: v } => v
+    Absent =>
+      SolConsoleContentObservation {
+        bytes_captured: byte_size(0),
+        duration_ms: 0,
+        contains_grub: false,
+        contains_subiquity: false,
+        contains_autoinstall: false,
+        contains_firmware_menu: false,
+        contains_error: false,
+        capture_available: false,
+      }
+  }
+}
+
+fn router_table_from_optional(table: Cr1000aDhcpLeaseTable?) -> Cr1000aDhcpLeaseTable {
+  match table {
+    Present { value: v } => v
+    Absent => srv3_pre_install_lease_table
+  }
+}
+
+fn elapsed_ms_from_optional(elapsed: Milliseconds?) -> Milliseconds {
+  match elapsed {
+    Present { value: v } => v
+    Absent => 0
+  }
+}
+
+fn diagnose_srv3_install(
+  intent: OsInstallAttemptIntent,
+  observation: Srv3InstallDebugObservation,
+) -> Srv3InstallDiagnostic {
+  let serve_readiness = classify_serve_observation_readiness(
+    serve: observation.actuator_serve,
+    intent: intent,
+  )
+  let redfish_system = RedfishSystemBootObservation {
+    power_state: observation.redfish_boot.power_state,
+    boot_override_enabled: observation.redfish_boot.boot_override_enabled,
+    boot_override_target: observation.redfish_boot.boot_override_target,
+    boot_progress: observation.redfish_boot.boot_progress,
+  }
+  let redfish = classify_redfish_system_boot(obs: redfish_system)
+  let sol_obs = sol_console_from_optional(sol: observation.sol)
+  let sol = classify_sol_console(obs: sol_obs)
+  let router_table = router_table_from_optional(table: observation.router_lease_table)
+  let router = classify_router_lease_table(table: router_table, fleet_slot: intent.target_host)
+  let elapsed = elapsed_ms_from_optional(elapsed: observation.elapsed_since_boot_once_ms)
+
+  match router {
+    Srv3OsLeasePresent => OsInstalled
+    _ =>
+      match observation.actuator_serve {
+        ServeUnknown =>
+          if redfish_boot_override_is_disabled_none(obs: observation.redfish_boot)
+            && !install_has_progress_evidence(sol: sol, router: router) {
+            InconclusiveNeedsServeObservation
+          } else {
+            Inconclusive
+          }
+        ServeObserved { process: _, port: _, session: _, iso: _ } =>
+          diagnose_srv3_install_when_serve_observed(
+            intent: intent,
+            observation: observation,
+            serve_readiness: serve_readiness,
+            redfish: redfish,
+            sol: sol,
+            router: router,
+            elapsed: elapsed,
+          )
+      }
+  }
+}
+
+fn diagnose_srv3_install_when_serve_observed(
+  intent: OsInstallAttemptIntent,
+  observation: Srv3InstallDebugObservation,
+  serve_readiness: NbdServeReadinessVerdict,
+  redfish: RedfishSystemBootVerdict,
+  sol: SolConsoleDiagnosticVerdict,
+  router: RouterLeaseDiagnosticVerdict,
+  elapsed: Milliseconds,
+) -> Srv3InstallDiagnostic {
+  match observation.bmc_websocket {
+    WebsocketUnavailable => BmcWebsocketUnavailable
+    _ =>
+      match serve_readiness {
+        IsoHashMismatch => ServeDown
+        ServeReady =>
+          diagnose_srv3_install_when_serve_ready(
+            observation: observation,
+            redfish: redfish,
+            sol: sol,
+            router: router,
+            elapsed: elapsed,
+          )
+        _ => ServeDown
+      }
+  }
+}
+
+fn diagnose_srv3_install_when_serve_ready(
+  observation: Srv3InstallDebugObservation,
+  redfish: RedfishSystemBootVerdict,
+  sol: SolConsoleDiagnosticVerdict,
+  router: RouterLeaseDiagnosticVerdict,
+  elapsed: Milliseconds,
+) -> Srv3InstallDiagnostic {
+  match redfish {
+    BootOverrideCdOnceArmed => InstallerProbablyRunning
+    BootOverrideDisabledAfterAttempt =>
+      match observation.virtual_media_session {
+        AttachedToExpectedServe =>
+          if elapsed == 0 {
+            ReadyToBoot
+          } else {
+            diagnose_srv3_install_post_boot(
+              observation: observation,
+              redfish: redfish,
+              sol: sol,
+              router: router,
+              elapsed: elapsed,
+            )
+          }
+        _ =>
+          diagnose_srv3_install_post_boot(
+            observation: observation,
+            redfish: redfish,
+            sol: sol,
+            router: router,
+            elapsed: elapsed,
+          )
+      }
+    _ =>
+      diagnose_srv3_install_post_boot(
+        observation: observation,
+        redfish: redfish,
+        sol: sol,
+        router: router,
+        elapsed: elapsed,
+      )
+  }
+}
+
+fn diagnose_srv3_install_post_boot(
+  observation: Srv3InstallDebugObservation,
+  redfish: RedfishSystemBootVerdict,
+  sol: SolConsoleDiagnosticVerdict,
+  router: RouterLeaseDiagnosticVerdict,
+  elapsed: Milliseconds,
+) -> Srv3InstallDiagnostic {
+  if sol_has_autoinstall_evidence(verdict: sol) {
+    if elapsed < srv3_install_hang_no_router_lease_ms {
+      InstallerProbablyRunning
+    } else {
+      InstallerHung
+    }
+  } else {
+    if sol_has_installer_evidence(verdict: sol) {
+      if elapsed >= srv3_install_hang_no_installer_progress_ms
+        && router_lacks_os_installed_lease(router: router) {
+        InstallerHung
+      } else {
+        InstallerProbablyRunning
+      }
+    } else {
+      match redfish {
+        BootOverrideDisabledAfterAttempt =>
+          if router_lacks_os_installed_lease(router: router) {
+            match sol {
+              SolFirmwareMenu => BootOverrideConsumedNoInstallEvidence
+              SolSilent =>
+                if elapsed >= srv3_install_hang_no_router_lease_ms {
+                  InstallerHung
+                } else {
+                  if elapsed == 0
+                    && redfish_boot_override_is_disabled_none(obs: observation.redfish_boot) {
+                    BootOverrideNotArmed
+                  } else {
+                    BootOverrideConsumedNoInstallEvidence
+                  }
+                }
+              _ => BootOverrideConsumedNoInstallEvidence
+            }
+          } else {
+            Inconclusive
+          }
+        _ =>
+          match observation.kvm {
+            Present { value: kvm } =>
+              match kvm.video_state {
+                KvmFirmwareMenu =>
+                  if !kvm.keyboard_accepted {
+                    KvmUntrusted
+                  } else {
+                    Inconclusive
+                  }
+                _ => Inconclusive
+              }
+            Absent => Inconclusive
+          }
+      }
+    }
+  }
+}
+
+fn observe_stdout_has_serve_surface(stdout: String) -> Bool {
+  string_contains(s: stdout, pattern: "Srv3InstallObserveReceipt: surface=serve")
+}
+
+fn parse_bmc_websocket_observation(stdout: String) -> BmcWebsocketObservation {
+  if string_contains(s: stdout, pattern: "http_code=101") {
+    WebsocketUpgradeAccepted
+  } else {
+    if string_contains(s: stdout, pattern: "surface=bmc_websocket") {
+      WebsocketUnavailable
+    } else {
+      WebsocketUnknown
+    }
+  }
+}
+
+fn parse_redfish_boot_observation(stdout: String) -> RedfishBootObservation {
+  if string_contains(s: stdout, pattern: "boot_enabled=Once") {
+    if string_contains(s: stdout, pattern: "boot_target=Cd") {
+      RedfishBootObservation {
+        power_state: On,
+        boot_override_enabled: BootOverrideOnce,
+        boot_override_target: BootTargetCd,
+        boot_progress: BootProgressNone,
+      }
+    } else {
+      RedfishBootObservation {
+        power_state: On,
+        boot_override_enabled: BootOverrideOnce,
+        boot_override_target: BootTargetNone,
+        boot_progress: BootProgressNone,
+      }
+    }
+  } else {
+    if string_contains(s: stdout, pattern: "boot_enabled=Disabled") {
+      RedfishBootObservation {
+        power_state: On,
+        boot_override_enabled: BootOverrideDisabled,
+        boot_override_target: BootTargetNone,
+        boot_progress: BootProgressNone,
+      }
+    } else {
+      RedfishBootObservation {
+        power_state: On,
+        boot_override_enabled: BootOverrideDisabled,
+        boot_override_target: BootTargetNone,
+        boot_progress: BootProgressUnknown,
+      }
+    }
+  }
+}
+
+fn parse_nbdkit_process_observation(stdout: String) -> NbdServeProcessObservation {
+  if string_contains(s: stdout, pattern: "nbdkit=absent") {
+    NbdkitAbsent
+  } else {
+    if string_contains(s: stdout, pattern: "websocat=absent") {
+      WebsocatAbsent
+    } else {
+      ServeProcessesPresent
+    }
+  }
+}
+
+fn parse_serve_port_observation(stdout: String, intent: OsInstallAttemptIntent) -> NbdServePortObservation {
+  if string_contains(s: stdout, pattern: "port=listening") {
+    ServePortListening { port: intent.serve_port, owner_matches_expected: true }
+  } else {
+    ServePortAbsent
+  }
+}
+
+fn parse_serve_token_observation(stdout: String) -> BmcSessionTokenObservation {
+  if string_contains(s: stdout, pattern: "token=present") {
+    TokenPresent
+  } else {
+    TokenMissing
+  }
+}
+
+fn parse_serve_iso_observation(stdout: String, intent: OsInstallAttemptIntent) -> IsoServeReadinessObservation {
+  if string_contains(s: stdout, pattern: "iso=missing") {
+    IsoMissing
+  } else {
+    IsoPresent { observed_content_hash: intent.iso_content_hash }
+  }
+}
+
+fn parse_actuator_serve_observation(stdout: String, intent: OsInstallAttemptIntent) -> NbdServeObservation {
+  if !observe_stdout_has_serve_surface(stdout: stdout) {
+    ServeUnknown
+  } else {
+    ServeObserved {
+      process: parse_nbdkit_process_observation(stdout: stdout),
+      port: parse_serve_port_observation(stdout: stdout, intent: intent),
+      session: parse_serve_token_observation(stdout: stdout),
+      iso: parse_serve_iso_observation(stdout: stdout, intent: intent),
+    }
+  }
+}
+
+fn parse_sol_console_observation(stdout: String) -> SolConsoleContentObservation {
+  if string_contains(s: stdout, pattern: "surface=sol status=silent") {
+    SolConsoleContentObservation {
+      bytes_captured: byte_size(0),
+      duration_ms: 0,
+      contains_grub: false,
+      contains_subiquity: false,
+      contains_autoinstall: false,
+      contains_firmware_menu: false,
+      contains_error: false,
+      capture_available: true,
+    }
+  } else {
+    SolConsoleContentObservation {
+      bytes_captured: byte_size(1),
+      duration_ms: 0,
+      contains_grub: string_contains(s: stdout, pattern: "marker=grub"),
+      contains_subiquity: string_contains(s: stdout, pattern: "marker=subiquity"),
+      contains_autoinstall: string_contains(s: stdout, pattern: "marker=autoinstall"),
+      contains_firmware_menu: false,
+      contains_error: string_contains(s: stdout, pattern: "marker=error"),
+      capture_available: true,
+    }
+  }
+}
+
+fn parse_virtual_media_session_observation(
+  serve: NbdServeObservation,
+  websocket: BmcWebsocketObservation,
+) -> VirtualMediaSessionObservation {
+  match serve {
+    ServeUnknown => VirtualMediaSessionUnknown
+    ServeObserved { process: _, port: _, session: _, iso: _ } =>
+      match websocket {
+        WebsocketUpgradeAccepted => AttachedToExpectedServe
+        _ => NoAttachedServe
+      }
+  }
+}
+
+fn parse_srv3_install_debug_observation(
+  stdout: String,
+  intent: OsInstallAttemptIntent,
+) -> Srv3InstallDebugObservation {
+  let serve = parse_actuator_serve_observation(stdout: stdout, intent: intent)
+  let websocket = parse_bmc_websocket_observation(stdout: stdout)
+  Srv3InstallDebugObservation {
+    actuator_serve: serve,
+    bmc_websocket: websocket,
+    redfish_boot: parse_redfish_boot_observation(stdout: stdout),
+    virtual_media_session: parse_virtual_media_session_observation(serve: serve, websocket: websocket),
+    sol: Present { value: parse_sol_console_observation(stdout: stdout) },
+    router_lease_table: Absent,
+    kvm: Absent,
+    elapsed_since_boot_once_ms: Absent,
+  }
+}
+
+fn srv3_install_diagnostic_wire(verdict: Srv3InstallDiagnostic) -> String {
+  match verdict {
+    ReadyToBoot => "ReadyToBoot"
+    ServeDown => "ServeDown"
+    BmcWebsocketUnavailable => "BmcWebsocketUnavailable"
+    BootOverrideNotArmed => "BootOverrideNotArmed"
+    BootOverrideConsumedNoInstallEvidence => "BootOverrideConsumedNoInstallEvidence"
+    InstallerProbablyRunning => "InstallerProbablyRunning"
+    InstallerHung => "InstallerHung"
+    OsInstalled => "OsInstalled"
+    KvmUntrusted => "KvmUntrusted"
+    Inconclusive => "Inconclusive"
+    InconclusiveNeedsServeObservation => "InconclusiveNeedsServeObservation"
+  }
+}
+
+fn srv3_install_diagnostic_is_ready_to_boot(verdict: Srv3InstallDiagnostic) -> Bool {
+  match verdict {
+    ReadyToBoot => true
+    _ => false
+  }
+}
+
+fn srv3_install_diagnostic_is_os_installed(verdict: Srv3InstallDiagnostic) -> Bool {
+  match verdict {
+    OsInstalled => true
+    _ => false
+  }
+}
+
+fn srv3_install_diagnostic_is_boot_override_consumed(verdict: Srv3InstallDiagnostic) -> Bool {
+  match verdict {
+    BootOverrideConsumedNoInstallEvidence => true
+    _ => false
+  }
+}
+
+fn srv3_install_diagnostic_recommended_action_wire(verdict: Srv3InstallDiagnostic) -> String {
+  match verdict {
+    ReadyToBoot => "run srv3_boot_once_cd_operator_approved after serve stable"
+    ServeDown => "start or repair srv3_nbd_proxy_serve held session on srv1 before boot-once"
+    BmcWebsocketUnavailable => "verify BMC /vm/0/0 websocket path before virtual media"
+    BootOverrideNotArmed => "re-arm boot-once CD when serve is ReadyToBoot"
+    BootOverrideConsumedNoInstallEvidence => "serve alive: re-arm boot-once CD + force restart; verify SOL/router"
+    InstallerProbablyRunning => "monitor SOL and router DHCP option-12 srv3"
+    InstallerHung => "declare hang per runbook thresholds; repair serve/boot path before retry"
+    OsInstalled => "confirm router dynamic lease option-12 srv3; proceed post-install witnesses"
+    KvmUntrusted => "do not use KVM as success oracle; read SOL and router lease"
+    Inconclusive => "collect missing observation surfaces before next actuation"
+    InconclusiveNeedsServeObservation => "run srv3_install_diagnostic_checklist on srv1 actuator host"
+  }
+}
+
+fn srv3_remote_bmc_probe_diagnostic_is_needs_serve_observation() -> Bool {
+  match diagnose_srv3_install(
+    intent: srv3_os_install_attempt_intent,
+    observation: srv3_remote_bmc_probe_observation,
+  ) {
+    InconclusiveNeedsServeObservation => true
+    _ => false
+  }
 }

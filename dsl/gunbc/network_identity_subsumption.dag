@@ -42,7 +42,11 @@ fn dynamic_lease_hostname_subsumes_fleet_slot(
   reported: HostName,
   fleet_slot: HostIdentity,
 ) -> Bool {
-  domain_name_wire(name: reported.name) == deployed_intent_v1_desired_hostname_short(fleet_slot: fleet_slot)
+  match deployed_intent_v1_desired_hostname_short(fleet_slot: fleet_slot) {
+    Present { value: desired } =>
+      domain_name_wire(name: reported.name) == (desired as String)
+    Absent => false
+  }
 }
 
 fn network_identity_subsumes_fleet_slot(

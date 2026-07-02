@@ -178,6 +178,40 @@ Post-install target: dynamic lease row whose option-12 short hostname subsumes `
 
 Router UI: Verizon CR1000A → Network → DHCP lease table. Record MAC, IPv4, and hostname column.
 
+## Install debug diagnostic fold
+
+Model authority: `gunbc.srv3_os_install_diagnostic` (`diagnose_srv3_install` over `Srv3InstallDebugObservation`).
+
+**Executable checklist (run on srv1 actuator host):**
+
+```bash
+gunbc run --source-root dsl \
+  --entry dsl/gunbc/srv3_install_diagnostic_checklist.dag \
+  --function srv3_install_diagnostic_checklist
+```
+
+Emits `Srv3InstallObserveReceipt:` lines per surface, then `Srv3InstallDiagnosticReceipt: verdict=…` and `Srv3InstallDiagnosticAction: …`. Review-only script emit: `--function srv3_install_diagnostic_emit_observe_script` → `/tmp/srv3_install_diagnostic_observe.sh`.
+
+From a **non-srv1** shell, BMC websocket `101` + Redfish `BootSourceOverrideEnabled=Disabled` / `BootSourceOverrideTarget=None` without serve observation classifies as **`InconclusiveNeedsServeObservation`** — not installer-running proof. Run the checklist on srv1 next.
+
+KVM frozen / keyboard-dead is **weak evidence only** (`KvmUntrusted`); stronger surfaces are serve process/port, BMC websocket (endpoint only), Redfish `Boot`/`PowerState`, virtual media session, SOL bytes, and router DHCP option-12.
+
+| Surface | Operator read-back | Modeled verdict (examples) |
+| ------- | ------------------ | -------------------------- |
+| A. Serve/session | `pgrep -a nbdkit`; `pgrep -a websocat`; `ss -ltnp \| grep 10809`; `test -s /tmp/srv3_bmcweb_token`; seeded ISO path + hash | `ServeReady`, `ServeDown`, `InconclusiveNeedsServeObservation` |
+| B. Redfish system | `curl …/Systems/system \| jq '.PowerState, .Boot, .BootProgress'` | `BootOverrideNotArmed`, `BootOverrideConsumedNoInstallEvidence`, `InstallerProbablyRunning` |
+| C. BMC websocket | `/vm/0/0` HTTP 101 (endpoint only) | `WebsocketUpgradeAccepted` — separate from virtual-media session attach |
+| D. SOL console | `gunbc … srv3_sol_console_capture`; grep log for GRUB/subiquity/autoinstall | `SolGrubSeen`, `SolSubiquitySeen`, `SolAutoinstallSeen`, `SolSilent` |
+| E. Router DHCP | CR1000A lease table option-12 | `OsInstalled` (dynamic `srv3`), `OnlyBmcLeasePresent` |
+
+**Fold rules (selected):**
+
+- Serve absent (observed on srv1) → `ServeDown` (not `ReadyToBoot`)
+- Serve unknown (non-actuator probe) + boot override disabled/none → `InconclusiveNeedsServeObservation`
+- `BootSourceOverrideEnabled=Disabled` + `BootSourceOverrideTarget=None` + no SOL/router install evidence → `BootOverrideNotArmed` or `BootOverrideConsumedNoInstallEvidence`
+- Router dynamic lease option-12 `srv3` → `OsInstalled` (dominates KVM)
+- SOL silent ≥15 min or no router lease ≥75 min after boot-once → `InstallerHung` / `Inconclusive` (not success)
+
 ## Operator receipt template
 
 ```
@@ -198,6 +232,8 @@ srv3 os-install-actuated receipt
 
 - `dsl/gunbc/srv3_os_install_actuate.dag` — runnable prep + serve/login funcs
 - `dsl/gunbc/srv3_boot_once_cd.dag` — Redfish boot-once CD + force restart
+- `dsl/gunbc/srv3_os_install_diagnostic.dag` — `Srv3InstallDebugObservation` + `diagnose_srv3_install`
+- `dsl/gunbc/srv3_install_diagnostic_checklist.dag` — executable observe + classify on srv1
 - `dsl/gunbc/network_identity_subsumption.dag` — DHCP option-12 subsumption checks
 - `dsl/gunbc/host_standup.dag` — `prefix:os-install-actuated` spine gap
 - `docs/plans/srv3-webui-kvm-virtual-media.md` — architecture B design
