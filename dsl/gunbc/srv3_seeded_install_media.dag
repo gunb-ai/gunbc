@@ -21,6 +21,7 @@ import extdeps.apt { package_xorriso }
 import extdeps.os.ubuntu_autoinstall { NoCloudLocal, NoCloudNet }
 import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
 import gunbc.os_install_emit { autoinstall_user_data }
+import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
 import gunbc.fleet_intent { srv1_host, ComputeHost }
 import gunbc.ci_deploy_access {
@@ -137,7 +138,7 @@ func srv3_seeded_install_media_toolchain_ensure() -> ProcessExit
   uses net: Network
 {
   let script = install_media_remaster_toolchain_ensure_script()
-  let run = shell.Exec.Run(script: script)
+  let run = shell.Exec.Run(script: shell_exec_via_bash(body: script))
   if run.success {
     ExitSuccess
   } else {
@@ -149,13 +150,13 @@ func srv3_seeded_install_media_remaster() -> ProcessExit
   uses net: Network
 {
   let ensure_script = install_media_remaster_toolchain_ensure_script()
-  let ensure_run = shell.Exec.Run(script: ensure_script)
+  let ensure_run = shell.Exec.Run(script: shell_exec_via_bash(body: ensure_script))
   if ensure_run.success == false {
     return exit_failure(reason: concat("seeded-install-media-remaster: toolchain ensure failed: ", ensure_run.stderr))
   }
 
   let script = install_media_remaster_script(artifact: srv3_seeded_install_media_artifact)
-  let run = shell.Exec.Run(script: script)
+  let run = shell.Exec.Run(script: shell_exec_via_bash(body: script))
   if run.success {
     ExitSuccess
   } else {

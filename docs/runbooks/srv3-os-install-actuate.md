@@ -7,8 +7,8 @@ Modeled seed-delivery gap (`gunbc.srv3_os_install_actuate_scope`) stays fail-clo
 (`srv3_seeded_os_install_plan` + on-ISO `NoCloudLocal`) and the seeded ISO path authority. Unattended install is still
 **NOT proven by execution** until boot-once + SOL receipt + OS-up witness green.
 The **seeded-ISO pivot** (`gunbc.srv3_seeded_install_media`) embeds autoinstall user-data on media with GRUB `autoinstall ds=nocloud` (fully remote/CLI, no KVM). SOL console capture (`gunbc.srv3_sol_console_capture`) provides CLI observability during install.
-Model authority: `gunbc.srv3_install_media_fetch`, `gunbc.srv3_seeded_install_media`, `gunbc.srv3_sol_console_capture`, `gunbc.srv3_os_install_actuate`,
-`gunbc.os_install_actuator_selection`, `gunbc.srv3_os_install_actuate_scope`,
+Model authority: `gunbc.srv3_install_media_fetch`, `gunbc.srv3_seeded_install_media`, `gunbc.srv3_os_install_actuator_toolchain_ensure`, `gunbc.srv3_sol_console_capture`, `gunbc.srv3_os_install_actuate`,
+`gunbc.srv3_bmc_credential_resolve`, `gunbc.srv3_os_install_actuate_workflow`, `gunbc.os_install_actuator_selection`, `gunbc.srv3_os_install_actuate_scope`,
 `gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan`, `gunbc.srv3_boot_once_cd`.
 
 **Precondition:** BMC Redfish reachable at **192.168.1.192** (HTTP 200). nbd-proxy ws-upgrade dry-run
@@ -29,6 +29,20 @@ with the toolchain grant (curl, websocat, nbdkit, socat).
 3. **`srv3_nbd_proxy_serve` is long-running** — runs foreground until Ctrl-C or installer disconnect. Open a second
    terminal for boot-once.
 4. **Record receipts** — paste command output and router lease observation into the operator sign-off thread.
+
+## Step 0a — actuator toolchain ensure (srv1)
+
+websocat is **not** in Ubuntu Noble apt; the modeled ensure installs curl/nbdkit/socat via apt and websocat from the cited [vi/websocat v1.14.0](https://github.com/vi/websocat/releases/tag/v1.14.0) GitHub release binary to `/var/lib/gunbc/bin/websocat`. Add that directory to `PATH` for the serve session if `which websocat` does not find it after ensure:
+
+```bash
+export PATH="/var/lib/gunbc/bin:$PATH"
+
+gunbc run --source-root dsl \
+  --entry dsl/gunbc/srv3_os_install_actuator_toolchain_ensure.dag \
+  --function srv3_os_install_actuator_toolchain_ensure
+```
+
+Expected stdout includes `OsInstallActuatorToolchainReceipt:` lines with `outcome=Present` or `outcome=Installed` for each tool.
 
 ## Step 0 — modeled ISO fetch (srv1 actuator host)
 
@@ -92,28 +106,11 @@ gunbc run --source-root dsl \
   --function srv3_os_install_actuate_emit_nbd_script
 ```
 
-### BMCweb login — credential source (read before live)
+### BMCweb login — credential resolution (read before live)
 
-**Modeled today (`srv3_bmcweb_session_login`):** reads **`openbmc_factory_login`** only (`root` / `0penBmc` from `extdeps/bmc/openbmc.dag`). **Credential debt:** not a reusable modeled install actuator until BMC credential source is `SecretRef` (ROADMAP §4 `shelf-privacy` — parked, not built here). Password is written to **`/tmp/srv3_bmcweb_login_body.json`** (file on disk); curl posts it to `https://192.168.1.192/login`. On **success**, gunbc emits no password — only writes token to **`/tmp/srv3_bmcweb_token`**. On **failure**, stderr may include curl body — do not paste logs containing credentials.
+**Modeled (`srv3_bmcweb_session_login`):** probes BMC with `bmc_probe_credential_phase`, resolves intent vs observation via `gunbc.srv3_bmc_credential_resolve`, then materializes password from factory login or `fetch_secret_ref_credential(bmc_srv3_admin_secret_ref)`. Password is written to **`/tmp/srv3_bmcweb_login_body.json`** (file on disk); curl posts it to `https://192.168.1.192/login`. On **success**, gunbc emits no password — only writes token to **`/tmp/srv3_bmcweb_token`**. On **failure**, stderr may include curl body — do not paste logs containing credentials.
 
-**If BMC is in `RotatedCredentialActive` state** (expected after `bmc_converge_credential_idempotent`), the modeled login **will fail**. Use this manual path instead (password never echoed; sourced from GCP Secret Manager):
-
-```bash
-BMC_HOST=192.168.1.192
-printf '{"username":"root","password":"%s"}' \
-  "$(gcloud secrets versions access latest --secret=bmc-srv3-admin --project=gunbai-secrets)" \
-  > /tmp/srv3_bmcweb_login_body.json
-chmod 600 /tmp/srv3_bmcweb_login_body.json
-curl -sk -X POST "https://${BMC_HOST}/login" \
-  -H 'Content-Type: application/json' \
-  --data-binary @/tmp/srv3_bmcweb_login_body.json \
-  > /tmp/srv3_bmcweb_login_response.json
-jq -r '.token // empty' /tmp/srv3_bmcweb_login_response.json > /tmp/srv3_bmcweb_token
-test -s /tmp/srv3_bmcweb_token
-rm -f /tmp/srv3_bmcweb_login_body.json   # drop password file once token extracted
-```
-
-Or, if factory creds still active:
+Requires **gcloud auth** on the actuator host when BMC is in `RotatedCredentialActive` state.
 
 ```bash
 gunbc run --source-root dsl \
@@ -135,7 +132,9 @@ gunbc run --source-root dsl \
 
 Leave running. The BMC should mount the ISO as virtual CD when the NBD handshake completes.
 
-### Terminal B — boot once from CD + force restart
+### Terminal B — boot once from CD + force restart (workflow escalation)
+
+The modeled workflow (`gunbc.srv3_os_install_actuate_workflow`) places **`WorkflowOperatorApproval`** before **`WorkflowBootOnceCd`**. The default entrypoint `srv3_boot_once_cd` is **fail-closed** (`PendingApproval`). After explicit operator ack, use the granted entrypoint:
 
 After serve is stable (give nbd-proxy ~10s to attach):
 
@@ -143,12 +142,14 @@ After serve is stable (give nbd-proxy ~10s to attach):
 cd "$GUNBC_ROOT"
 gunbc run --source-root dsl \
   --entry dsl/gunbc/srv3_boot_once_cd.dag \
-  --function srv3_boot_once_cd
+  --function srv3_boot_once_cd_operator_approved
 ```
+
+(`srv3_boot_once_cd` without approval refuses with `operator approval required before srv3-boot-once-cd`.)
 
 **Boot-once semantics:** modeled `BootOverrideOnce` → Redfish wire **`"Once"`** (not `Continuous`). Applies to the **next boot only**; firmware clears the override after it is consumed. A failed install does **not** leave srv3 in a permanent CD-loop from Redfish — worst case is one retry if the host reboots back to virtual media before override clears. Post-success install reboots to disk (HDD/NVMe) and override is gone.
 
-**`srv3_boot_once_cd` credential debt:** same as login — uses `new_altra_onboarding_plan.factory_login` (factory password in `/tmp/bmc_onboard_netrc`), not GCP rotated secret. If rotated, Redfish PATCH/POST will 401; build netrc from GCP secret per `docs/runbooks/bmc-redfish-operator-access.md` §2 and run Redfish calls manually, or fix in follow-up PR.
+**Credentials:** same resolution path as login (`srv3_bmc_credential_resolve`); netrc written to `/tmp/bmc_onboard_netrc`.
 
 Host should power-cycle and boot the Ubuntu installer from virtual media.
 

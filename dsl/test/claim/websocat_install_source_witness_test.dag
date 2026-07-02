@@ -1,0 +1,20 @@
+module test.claim.websocat_install_source
+
+import std.logic { Bool }
+import extdeps.tools { SourceGitHubRelease }
+import extdeps.tools.websocat {
+  websocat_cli_tool,
+  websocat_github_repo,
+  websocat_github_tag,
+  websocat_install_path,
+}
+
+test fn websocat_cli_tool_installs_via_github_release_not_apt() -> Bool {
+  match websocat_cli_tool.installable_via.first() {
+    SourceGitHubRelease { repo: r, tag: t, install_path: p, asset_aarch64: _, asset_x86_64: _ } =>
+      r == websocat_github_repo
+        && t == websocat_github_tag
+        && p == websocat_install_path
+    _ => false
+  }
+}

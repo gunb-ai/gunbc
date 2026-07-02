@@ -51,7 +51,7 @@ test fn srv3_nbd_proxy_serve_intent_targets_vm_slot_index() -> Bool {
     && string_contains(s: intent.iso_path as String, pattern: "srv3-seeded.iso")
 }
 
-test fn srv3_bmcweb_login_body_uses_factory_credentials_not_inline_in_script() -> Bool {
+test fn srv3_bmcweb_login_body_snapshot_uses_factory_when_unresolved() -> Bool {
   string_contains(s: srv3_bmcweb_login_body_content(), pattern: "\"username\":\"root\"")
     && string_contains(s: srv3_bmcweb_login_body_content(), pattern: "\"password\":\"0penBmc\"")
 }

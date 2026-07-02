@@ -17,7 +17,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { NonEmptyStr, Int, Bool, String }
 
 data gunbc_srv3_os_install_actuate_scope_boundary: Disposition = Terminal {
-  reason: "prefix:os-install-actuated boundary — actuator prep (stock ISO fetch, seeded-ISO remaster, derived actuator host, NBD serve/boot-once/SOL capture runnable entrypoints) + operator runbook ONLY; NOT srv3 OS install solved. Legacy solver plan (srv3_os_install_plan, NoCloudNet) seed gap stays fail-closed; actuator prep binds srv3_seeded_os_install_plan + srv3_actuator_virtual_media_iso_install_path (NoCloudLocal on-ISO). BMC runtime login still factory-login scaffold; typed credential target is bmc_srv3_admin_secret_ref (#6146 landed) until secret_ref_credential handler replaces openbmc_factory_login."
+  reason: "prefix:os-install-actuated boundary — actuator prep (stock ISO fetch, seeded-ISO remaster, derived actuator host, NBD serve/boot-once/SOL capture runnable entrypoints) + operator runbook ONLY; NOT srv3 OS install solved. Legacy solver plan (srv3_os_install_plan, NoCloudNet) seed gap stays fail-closed; actuator prep binds srv3_seeded_os_install_plan + srv3_actuator_virtual_media_iso_install_path (NoCloudLocal on-ISO). BMC runtime login resolves intent vs observed credential phase (gunbc.srv3_bmc_credential_resolve); destructive boot-once gated by workflow escalation (gunbc.srv3_os_install_actuate_workflow)."
 }
 
 data srv3_actuator_virtual_media_iso_install_path: NonEmptyStr = srv3_seeded_ubuntu_install_media_install_path
@@ -71,11 +71,12 @@ data srv3_os_install_actuate_credential_source_scaffold: Disposition = Scaffold 
   }
 }
 
-data srv3_os_install_actuate_credential_debt_marker: String = "🟡 debt: srv3_os_install_actuate BMC login/boot use openbmc_factory_login at runtime — typed credential target is gunbc.assimilate.bmc_wif_delegation_chain.bmc_srv3_admin_secret_ref (secret bmc-srv3-admin, SecretRef shelf landed #6146); operator runbook documents manual gcloud Secret Manager fallback for RotatedCredentialActive; NOT a reusable modeled install actuator until secret_ref_credential handler replaces factory login in srv3_bmcweb_session_login; dissolve-on binds live SecretVersionAccess readback, not built in prefix:os-install-actuated"
+data srv3_os_install_actuate_credential_debt_marker: String = "🟡 partial-dissolve: srv3_os_install_actuate BMC login/boot wired through gunbc.srv3_bmc_credential_resolve — observe bmc_probe_credential_phase, resolve intent vs FactoryCredentialActive|RotatedCredentialActive, materialize via factory login or fetch_secret_ref_credential(bmc_srv3_admin_secret_ref); boot-once destructive step gated by WorkflowOperatorApproval escalation (srv3_boot_once_cd_gated); remaining debt: host_effect_apply transport (netrc/login body on disk), dissolve when live execution receipt green"
 
-fn srv3_os_install_actuate_credential_debt_references_secretref_shelf() -> Bool {
-  string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "bmc_srv3_admin_secret_ref")
-    && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "secret_ref_credential")
+fn srv3_os_install_actuate_credential_resolution_is_wired() -> Bool {
+  string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "srv3_bmc_credential_resolve")
+    && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "fetch_secret_ref_credential")
+    && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "bmc_srv3_admin_secret_ref")
 }
 
 fn srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref() -> Bool {
@@ -103,7 +104,7 @@ fn srv3_actuator_prep_binds_seeded_iso_path() -> Bool {
 
 fn srv3_os_install_actuate_is_actuator_prep_not_install_solved() -> Bool {
   srv3_autoinstall_seed_gap_is_fail_closed()
-    && srv3_os_install_actuate_credential_debt_references_secretref_shelf()
+    && srv3_os_install_actuate_credential_resolution_is_wired()
     && srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref()
     && srv3_actuator_prep_uses_seeded_autoinstall_delivery()
     && srv3_actuator_prep_binds_seeded_iso_path()

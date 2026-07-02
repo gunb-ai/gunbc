@@ -2,7 +2,6 @@ module gunbc.srv3_os_install_actuate
 
 import extdeps.shell
 import extdeps.filesystem.filesystem_io
-import extdeps.bmc.openbmc { openbmc_factory_login }
 import extdeps.boards.asrock_rack {
   asrock_srv3_live_bmc_host,
   asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
@@ -20,6 +19,16 @@ import extdeps.bmc.webui.nbd_proxy_serve {
 }
 import extdeps.languages.bash.program { serialize_bash }
 import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
+import gunbc.srv3_bmc_credential_resolve {
+  srv3_os_install_actuate_credential_intent,
+  observe_and_resolve_srv3_bmc_credential,
+  materialize_bmc_login_password,
+  bmcweb_login_body_content,
+  BmcCredentialResolution,
+  CredentialResolutionRefused,
+  UseFactoryCredential,
+  UseRotatedSecretRef,
+}
 import gunbc.nbd_proxy_virtual_media_install {
   srv3_os_install_actuator_plan,
   os_install_actuator_step_count,
@@ -63,12 +72,16 @@ fn srv3_nbd_proxy_serve_intent() -> NbdProxyServeTransportIntent {
 }
 
 fn srv3_bmcweb_login_body_content() -> String {
-  concat(
-  concat(
-    concat("{\"username\":\"", openbmc_factory_login.username as String),
-    concat("\",\"password\":\"", openbmc_factory_login.published_password as String)),
-    "\"}"
+  let intent = srv3_os_install_actuate_credential_intent()
+  bmcweb_login_body_content(
+    username: intent.account,
+    password: intent.factory_login.published_password as String,
   )
+}
+
+fn srv3_bmcweb_login_body_content_for_resolution(resolution: BmcCredentialResolution, password: String) -> String {
+  let intent = srv3_os_install_actuate_credential_intent()
+  bmcweb_login_body_content(username: intent.account, password: password)
 }
 
 func srv3_os_install_actuate_emit_nbd_script() -> ProcessExit {
@@ -84,9 +97,30 @@ func srv3_os_install_actuate_emit_nbd_script() -> ProcessExit {
 func srv3_bmcweb_session_login() -> ProcessExit
   uses net: Network
 {
+  let resolution = observe_and_resolve_srv3_bmc_credential()
+  return match resolution {
+    CredentialResolutionRefused { reason: r } =>
+      exit_failure(reason: concat("bmcweb-login: credential resolution refused: ", r))
+    _ => srv3_bmcweb_session_login_resolved(resolution: resolution)
+  }
+}
+
+func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> ProcessExit
+  uses net: Network
+{
+  let password = match materialize_bmc_login_password(resolution: resolution) {
+    Absent =>
+      return exit_failure(reason: "bmcweb-login: could not materialize BMC password from resolution")
+    Present { value: p } => p
+  }
+
+  let body_content = srv3_bmcweb_login_body_content_for_resolution(
+    resolution: resolution,
+    password: password,
+  )
   let body_write = Filesystem.Write(
     path: srv3_bmcweb_login_body_path,
-    content: srv3_bmcweb_login_body_content(),
+    content: body_content,
   )
   if body_write.success == false {
     return exit_failure(reason: concat("bmcweb-login: body write failed: ", body_write.error))
