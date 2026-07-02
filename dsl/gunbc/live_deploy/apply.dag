@@ -12,6 +12,7 @@ import gunbc.live_deploy.emit {
 }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
+  ci_deploy_srv1_operator_access,
   DeployAccess,
   DeployAccessActor,
   deploy_mutation_gate,
@@ -139,8 +140,7 @@ fn live_deploy_retract_via_transport(
   )
 }
 
-fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let access = ci_deploy_srv1_access
+fn live_deploy_access_preflight_for(access: DeployAccess) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let proof = deploy_target_proof_from_access(access: access)
   if !deploy_target_ssh_proof_structurally_valid(proof: proof) {
     NotConverged {
@@ -196,8 +196,11 @@ fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffect
   }
 }
 
-fn live_deploy_apply_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let access = ci_deploy_srv1_access
+fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_access_preflight_for(access: ci_deploy_srv1_access)
+}
+
+fn live_deploy_apply_srv1_with_access(access: DeployAccess) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_apply_via_transport(
     spec: deployment_spec_srv1(),
     transport: access.transport,
@@ -205,13 +208,20 @@ fn live_deploy_apply_srv1() -> Reconciliation<HostEffectIntent, HostEffectEviden
   )
 }
 
-fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  let access = ci_deploy_srv1_access
+fn live_deploy_retract_srv1_with_access(access: DeployAccess) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   live_deploy_retract_via_transport(
     spec: deployment_spec_srv1(),
     transport: access.transport,
     access: access
   )
+}
+
+fn live_deploy_apply_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_apply_srv1_with_access(access: ci_deploy_srv1_access)
+}
+
+fn live_deploy_retract_srv1() -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  live_deploy_retract_srv1_with_access(access: ci_deploy_srv1_access)
 }
 
 fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ProcessExit {
@@ -225,20 +235,36 @@ fn live_deploy_reconciliation_exit(r: Reconciliation<HostEffectIntent, HostEffec
   }
 }
 
-func live_deploy_apply_srv1_wet() -> ProcessExit {
-  let preflight = live_deploy_access_preflight()
+fn live_deploy_wet_with_access(access: DeployAccess) -> ProcessExit {
+  let preflight = live_deploy_access_preflight_for(access: access)
   if !reconciliation_converged(r: preflight) {
     live_deploy_reconciliation_exit(r: preflight)
   } else {
-    live_deploy_reconciliation_exit(r: live_deploy_apply_srv1())
+    live_deploy_reconciliation_exit(r: live_deploy_apply_srv1_with_access(access: access))
   }
 }
 
-func live_deploy_retract_srv1_wet() -> ProcessExit {
-  let preflight = live_deploy_access_preflight()
+fn live_deploy_retract_wet_with_access(access: DeployAccess) -> ProcessExit {
+  let preflight = live_deploy_access_preflight_for(access: access)
   if !reconciliation_converged(r: preflight) {
     live_deploy_reconciliation_exit(r: preflight)
   } else {
-    live_deploy_reconciliation_exit(r: live_deploy_retract_srv1())
+    live_deploy_reconciliation_exit(r: live_deploy_retract_srv1_with_access(access: access))
   }
+}
+
+func live_deploy_apply_srv1_wet() -> ProcessExit {
+  live_deploy_wet_with_access(access: ci_deploy_srv1_access)
+}
+
+func live_deploy_apply_srv1_operator_wet() -> ProcessExit {
+  live_deploy_wet_with_access(access: ci_deploy_srv1_operator_access)
+}
+
+func live_deploy_retract_srv1_wet() -> ProcessExit {
+  live_deploy_retract_wet_with_access(access: ci_deploy_srv1_access)
+}
+
+func live_deploy_retract_srv1_operator_wet() -> ProcessExit {
+  live_deploy_retract_wet_with_access(access: ci_deploy_srv1_operator_access)
 }

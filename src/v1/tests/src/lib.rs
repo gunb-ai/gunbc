@@ -137,6 +137,7 @@ mod route_a_emit_fresh_cargo_green_test;
 #[cfg(test)]
 mod route_a_final_six_test;
 #[cfg(test)]
+mod shell_transport_stdin_wet_test;
 mod source_audit;
 #[cfg(test)]
 mod source_root_ingest_manifest_host_test;

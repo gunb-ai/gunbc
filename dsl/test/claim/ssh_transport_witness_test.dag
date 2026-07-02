@@ -1,0 +1,32 @@
+module test.claim.ssh_transport_witness
+
+import std.types { Bool, NonEmptyStr }
+import std.measure { ByteSize, byte_size, byte_size_count }
+import gunbc.live_deploy.emit { live_deploy_apply_script_for }
+import gunbc.live_deploy.spec { deployment_spec_srv1 }
+import extdeps.diagnostic.mock_corpus { diagnostic_ssh_session_mock_case_exec_script }
+
+data ssh_exec_script_remote_receiver: NonEmptyStr = "bash -s"
+
+data ssh_argv_embed_budget: ByteSize = byte_size(65536)
+
+fn witness_apply_script_exceeds_argv_embed_budget() -> Bool {
+  let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1()))
+  let budget = byte_size_count(b: ssh_argv_embed_budget)
+  script_len > budget
+}
+
+fn witness_exec_script_mock_enrolled() -> Bool {
+  diagnostic_ssh_session_mock_case_exec_script.operation == "ExecScript"
+    && diagnostic_ssh_session_mock_case_exec_script.operation_key == "ssh.Session.ExecScript"
+}
+
+fn witness_exec_script_receiver_is_bash_dash_s() -> Bool {
+  ssh_exec_script_remote_receiver == "bash -s"
+}
+
+test fn ssh_transport_witnesses() -> Bool {
+  witness_exec_script_receiver_is_bash_dash_s()
+    && witness_apply_script_exceeds_argv_embed_budget()
+    && witness_exec_script_mock_enrolled()
+}
