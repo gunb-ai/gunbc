@@ -13,6 +13,8 @@ use crate::v1_std_core::{
     source_text_at, Connective, ExprData, NewlineIndex, Node, VarBindingKind,
 };
 
+type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
+
 fn expect_symbol<'a>(value: Option<&'a Value>, what: &str) -> InterpResult<&'a str> {
     match value {
         Some(Value::Str(s)) => Ok(s.as_str()),
@@ -411,12 +413,17 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
-pub fn eval_concept_decl_facts_live(
+/// Shared live-corpus item walk for reflection builtins (`*_decl_facts_live`).
+/// Resolves authored names through each module's `item_registry` and filters by kind.
+fn for_each_live_registry_item<F>(
     ctx: &InterpContext,
-    _args: &[(Option<String>, Value)],
-) -> InterpResult<Value> {
+    kind_ok: impl Fn(ItemKind) -> bool,
+    mut f: F,
+) -> InterpResult<()>
+where
+    F: FnMut(&str, &str, &Rc<Node>) -> InterpResult<()>,
+{
     let si = ctx.source_indices();
-    let mut rows: Vec<Value> = Vec::new();
     for module in ctx.modules.iter() {
         for item in module.items.iter() {
             let name = authored_name_at(si.clone(), item.clone());
@@ -428,18 +435,25 @@ pub fn eval_concept_decl_facts_live(
                 .get(&name)
                 .or_else(|| module.item_registry.get(&item.name));
             let Some(info) = info else { continue };
-            if info.kind != ItemKind::TypeItem {
+            if !kind_ok(info.kind) {
                 continue;
             }
-            rows.push(concept_decl_record(
-                ctx,
-                &si,
-                &info.module_name,
-                &name,
-                item,
-            )?);
+            f(&info.module_name, &name, item)?;
         }
     }
+    Ok(())
+}
+
+pub fn eval_concept_decl_facts_live(
+    ctx: &InterpContext,
+    _args: &[(Option<String>, Value)],
+) -> InterpResult<Value> {
+    let si = ctx.source_indices();
+    let mut rows: Vec<Value> = Vec::new();
+    for_each_live_registry_item(ctx, |k| k == ItemKind::TypeItem, |module_name, name, item| {
+        rows.push(concept_decl_record(ctx, &si, module_name, name, item)?);
+        Ok(())
+    })?;
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
@@ -701,6 +715,50 @@ fn fn_arrow_param_record(ctx: &InterpContext, param_name: &str) -> Value {
     }
 }
 
+fn fn_item_param_names(item: &Rc<Node>, si: &SourceIndices) -> Vec<String> {
+    let mut param_names = Vec::new();
+    for p in item.params.iter() {
+        if param_is_type_param(p, si) {
+            continue;
+        }
+        let pn = param_node_name_at(p.clone(), si.clone());
+        // A `_`-prefixed name is the established declared-inert convention (e.g.
+        // node.dag `step: fn(acc, _edge, sub)`): the author has declared the input
+        // genuinely irrelevant, so it is not a dead wire (plan section 4). Skip it.
+        if pn.is_empty() || pn.starts_with('_') || param_names.iter().any(|q| q == &pn) {
+            continue;
+        }
+        param_names.push(pn);
+    }
+    param_names
+}
+
+fn fn_arrow_decl_record(
+    ctx: &InterpContext,
+    si: &SourceIndices,
+    module_name: &str,
+    name: &str,
+    item: &Rc<Node>,
+) -> Option<Value> {
+    let body = item.body.as_ref()?;
+    let param_names = fn_item_param_names(item, si);
+    let output = marshal_fn_body_skeleton(ctx, body, &param_names, si);
+    let params: Vec<Value> = param_names
+        .iter()
+        .map(|pn| fn_arrow_param_record(ctx, pn))
+        .collect();
+    let qualified_name = logical_qualified_name(module_name, name);
+    Some(Value::Record {
+        type_name: ctx.sym("FnArrowDecl"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("qualified_name"), Value::Str(qualified_name)),
+            (ctx.sym("name"), Value::Str(name.to_string())),
+            (ctx.sym("output"), output),
+            (ctx.sym("params"), crate::v1_interpreter::list_value(params)),
+        ])),
+    })
+}
+
 // Corpus-wide fn/arrow reflection: the gunbc#5364 widen trigger named in
 // `v2.lens.wiring_liveness`'s construction_justification. Sibling of
 // `eval_concept_decl_facts_live` (which filters to `ItemKind::TypeItem`); this yields
@@ -715,54 +773,16 @@ pub fn eval_fn_arrow_decl_facts_live(
 ) -> InterpResult<Value> {
     let si = ctx.source_indices();
     let mut rows: Vec<Value> = Vec::new();
-    for module in ctx.modules.iter() {
-        for item in module.items.iter() {
-            let name = authored_name_at(si.clone(), item.clone());
-            if name.is_empty() {
-                continue;
+    for_each_live_registry_item(
+        ctx,
+        |k| k == ItemKind::FnItem || k == ItemKind::FuncItem,
+        |module_name, name, item| {
+            if let Some(row) = fn_arrow_decl_record(ctx, &si, module_name, name, item) {
+                rows.push(row);
             }
-            let info = module
-                .item_registry
-                .get(&name)
-                .or_else(|| module.item_registry.get(&item.name));
-            let Some(info) = info else { continue };
-            if info.kind != ItemKind::FnItem && info.kind != ItemKind::FuncItem {
-                continue;
-            }
-            let Some(body) = item.body.as_ref() else {
-                continue;
-            };
-            let mut param_names: Vec<String> = Vec::new();
-            for p in item.params.iter() {
-                if param_is_type_param(p, &si) {
-                    continue;
-                }
-                let pn = param_node_name_at(p.clone(), si.clone());
-                // A `_`-prefixed name is the established declared-inert convention (e.g.
-                // node.dag `step: fn(acc, _edge, sub)`): the author has declared the input
-                // genuinely irrelevant, so it is not a dead wire (plan section 4). Skip it.
-                if pn.is_empty() || pn.starts_with('_') || param_names.iter().any(|q| q == &pn) {
-                    continue;
-                }
-                param_names.push(pn);
-            }
-            let output = marshal_fn_body_skeleton(ctx, body, &param_names, &si);
-            let params: Vec<Value> = param_names
-                .iter()
-                .map(|pn| fn_arrow_param_record(ctx, pn))
-                .collect();
-            let qualified_name = logical_qualified_name(&info.module_name, &name);
-            rows.push(Value::Record {
-                type_name: ctx.sym("FnArrowDecl"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
-                    (ctx.sym("name"), Value::Str(name.clone())),
-                    (ctx.sym("output"), output),
-                    (ctx.sym("params"), crate::v1_interpreter::list_value(params)),
-                ])),
-            });
-        }
-    }
+            Ok(())
+        },
+    )?;
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
@@ -802,6 +822,27 @@ fn data_init_literal_fingerprint(
     }
 }
 
+fn data_init_decl_record(
+    ctx: &InterpContext,
+    si: &SourceIndices,
+    module_name: &str,
+    name: &str,
+    item: &Rc<Node>,
+) -> Option<Value> {
+    let body = item.body.as_ref()?;
+    let literal_fp = data_init_literal_fingerprint(body, si)?;
+    let qualified_name = logical_qualified_name(module_name, name);
+    Some(Value::Record {
+        type_name: ctx.sym("DataInitDecl"),
+        fields: Rc::new(sorted_fields(vec![
+            (ctx.sym("qualified_name"), Value::Str(qualified_name)),
+            (ctx.sym("module"), Value::Str(module_name.to_string())),
+            (ctx.sym("name"), Value::Str(name.to_string())),
+            (ctx.sym("literal_fp"), Value::Str(literal_fp)),
+        ])),
+    })
+}
+
 // Corpus-wide data-init reflection: sibling of `eval_fn_arrow_decl_facts_live` and
 // `eval_concept_decl_facts_live`. Yields one `DataInitDecl` per `ItemKind::DataItem` whose
 // initializer is a literal, carrying `literal_fp` for literal-mirror detection in
@@ -817,42 +858,14 @@ pub fn eval_data_init_decl_facts_live(
 ) -> InterpResult<Value> {
     let si = ctx.source_indices();
     let mut rows: Vec<Value> = Vec::new();
-    for module in ctx.modules.iter() {
-        for item in module.items.iter() {
-            let name = authored_name_at(si.clone(), item.clone());
-            if name.is_empty() {
-                continue;
-            }
-            let info = module
-                .item_registry
-                .get(&name)
-                .or_else(|| module.item_registry.get(&item.name));
-            let Some(info) = info else { continue };
-            if info.kind != ItemKind::DataItem {
-                continue;
-            }
-            let Some(body) = item.body.as_ref() else {
-                continue;
-            };
-            let Some(literal_fp) = data_init_literal_fingerprint(body, &si) else {
-                continue;
-            };
-            let qualified_name = logical_qualified_name(&info.module_name, &name);
-            rows.push(Value::Record {
-                type_name: ctx.sym("DataInitDecl"),
-                fields: Rc::new(sorted_fields(vec![
-                    (ctx.sym("qualified_name"), Value::Str(qualified_name)),
-                    (ctx.sym("module"), Value::Str(info.module_name.clone())),
-                    (ctx.sym("name"), Value::Str(name.clone())),
-                    (ctx.sym("literal_fp"), Value::Str(literal_fp)),
-                ])),
-            });
+    for_each_live_registry_item(ctx, |k| k == ItemKind::DataItem, |module_name, name, item| {
+        if let Some(row) = data_init_decl_record(ctx, &si, module_name, name, item) {
+            rows.push(row);
         }
-    }
+        Ok(())
+    })?;
     Ok(crate::v1_interpreter::list_value(rows))
 }
-
-type SourceIndices = Rc<HashMap<String, Rc<NewlineIndex>>>;
 
 /// Locked whole-tree declaration-fact carrier (neat-fox-279 / #5966 follow-up).
 #[derive(Debug, Clone)]
@@ -975,21 +988,6 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
 /// Declaration facts for `roots`; preserves the non-test corpus boundary (delegates to `decl_facts_corpus_walk`).
 pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
     decl_facts_corpus_walk(pool_roots).facts
-}
-
-fn fn_item_param_names(item: &Rc<Node>, si: &SourceIndices) -> Vec<String> {
-    let mut param_names = Vec::new();
-    for p in item.params.iter() {
-        if param_is_type_param(p, si) {
-            continue;
-        }
-        let pn = param_node_name_at(p.clone(), si.clone());
-        if pn.is_empty() || pn.starts_with('_') || param_names.iter().any(|q| q == &pn) {
-            continue;
-        }
-        param_names.push(pn);
-    }
-    param_names
 }
 
 fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
