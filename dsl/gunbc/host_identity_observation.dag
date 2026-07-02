@@ -1,7 +1,8 @@
 module gunbc.host_identity_observation
 
 import std.types { String, NonEmptyStr, Bool }
-import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.host_effect {
   ShellCommand,
   NodeControlPlane,
@@ -20,6 +21,17 @@ import std.realization_reconcile {
 }
 
 data host_identity_short_hostname_script: String = "hostname -s 2>/dev/null || hostname"
+
+data host_identity_short_hostname_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data host_identity_short_hostname_script_dissolution_trigger: String = "🟡 dissolve-on: host_identity_short_hostname_script — hostname-read authored as String literal handed to ShellCommand { script } (medium-as-string; parallel shell-syntax authority for -s/2>/dev/null/||); DISSOLVES WHEN host_effect Phase B / orchestration emit (#6106 / shell-emission-model) models hostname-read as HostEffect orchestration intent rows (bash grammar rows), retiring this string leaf and medium_structure_exception_roster entry for dsl/gunbc/host_identity_observation.dag"
 
 type HostIdentityObservationRow {
   short_hostname_raw: String

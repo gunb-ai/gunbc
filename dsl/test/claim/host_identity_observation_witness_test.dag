@@ -23,10 +23,7 @@ import gunbc.host_identity_observation {
   fixture_host_identity_observation,
 }
 import gunbc.deployed_intent_v0 {
-  ObservedBase,
-  DesignIntentBase,
   gunbc_srv1_deployed_intent_v0_fixture,
-  deployed_intent_records_observed_base,
   deployed_intent_observed_differs_from_fleet_slot,
   deployed_intent_observed_short_hostname,
   deployed_intent_v0_from_observation_row,
@@ -89,15 +86,13 @@ fn witness_fixture_row_materializes_deployed_intent_v0() -> Bool {
     target_host: srv1_host,
     row: gunbc_srv1_host_identity_observation_fixture_row,
   )
-  deployed_intent_records_observed_base(d: d)
-    && deployed_intent_observed_short_hostname(d: d) == "altrad8ud-1l2t-1"
+  deployed_intent_observed_short_hostname(d: d) == "altrad8ud-1l2t-1"
     && deployed_intent_observed_differs_from_fleet_slot(d: d)
 }
 
 fn witness_deployed_intent_v0_records_observed_base_not_design() -> Bool {
   let d = gunbc_srv1_deployed_intent_v0_fixture
-  deployed_intent_records_observed_base(d: d)
-    && deployed_intent_observed_short_hostname(d: d) == "altrad8ud-1l2t-1"
+  deployed_intent_observed_short_hostname(d: d) == "altrad8ud-1l2t-1"
     && d.fleet_slot == operator_host_srv1
     && deployed_intent_observed_differs_from_fleet_slot(d: d)
 }
@@ -116,13 +111,6 @@ fn witness_design_intent_conflation_red() -> Bool {
     && deployed_intent_observed_short_hostname(d: conflated) == operator_host_srv1
 }
 
-fn witness_observed_base_kind_is_not_design_intent() -> Bool {
-  match gunbc_srv1_deployed_intent_v0_fixture.base_kind {
-    ObservedBase => true
-    DesignIntentBase => false
-  }
-}
-
 test fn host_identity_observation_holds() -> Bool {
   witness_hostname_script_is_modeled_constant()
     && witness_fixture_observation_types_srv1_observed_hostname()
@@ -133,5 +121,4 @@ test fn host_identity_observation_holds() -> Bool {
     && witness_fixture_row_materializes_deployed_intent_v0()
     && witness_deployed_intent_v0_records_observed_base_not_design()
     && witness_design_intent_conflation_red()
-    && witness_observed_base_kind_is_not_design_intent()
 }

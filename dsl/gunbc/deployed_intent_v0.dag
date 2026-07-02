@@ -13,19 +13,14 @@ import gunbc.host_identity_observation {
   fixture_host_identity_observation,
 }
 
-type DeployedIntentBaseKind
-  = ObservedBase
-  | DesignIntentBase
-
 type DeployedIntentV0 {
   fleet_slot: HostIdentity
   target_host: ComputeHost
   observation: HostIdentityObservation
-  base_kind: DeployedIntentBaseKind
 }
 
 data gunbc_deployed_intent_v0_scope_disposition: Disposition = Terminal {
-  reason: "ADOPT-BASE phase-0 carrier: records the OBSERVED hostname base from a live read, explicitly NOT the fleet design-intent identity (operator_host_srv*). Converge toward design intent is a later phase; v0 materializes observed-only base rows."
+  reason: "ADOPT-BASE phase-0 carrier: the DeployedIntentV0 type IS the observed-base shape — records live-read hostname observation, explicitly NOT fleet design-intent identity (operator_host_srv*). Design intent is a later-phase type; no base_kind tag (§2: v0 is observed-only by construction, not by predicate over a dead coproduct arm)."
 }
 
 fn deployed_intent_v0_adopt_observed_base(
@@ -37,19 +32,11 @@ fn deployed_intent_v0_adopt_observed_base(
     fleet_slot: fleet_slot,
     target_host: target_host,
     observation: observation,
-    base_kind: ObservedBase,
   }
 }
 
 fn deployed_intent_observed_short_hostname(d: DeployedIntentV0) -> String {
   d.observation.short_hostname
-}
-
-fn deployed_intent_records_observed_base(d: DeployedIntentV0) -> Bool {
-  match d.base_kind {
-    ObservedBase => true
-    DesignIntentBase => false
-  }
 }
 
 fn deployed_intent_observed_differs_from_fleet_slot(d: DeployedIntentV0) -> Bool {
