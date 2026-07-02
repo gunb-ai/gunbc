@@ -19,9 +19,9 @@ data websocat_github_repo: NonEmptyStr = "vi/websocat"
 
 data websocat_github_tag: NonEmptyStr = "v1.14.0"
 
-data websocat_asset_aarch64: NonEmptyStr = "websocat.aarch64-unknown-linux-musl"
+data websocat_asset_aarch64: NonEmptyStr = "websocat_max.aarch64-unknown-linux-musl"
 
-data websocat_asset_x86_64: NonEmptyStr = "websocat.x86_64-unknown-linux-musl"
+data websocat_asset_x86_64: NonEmptyStr = "websocat_max.x86_64-unknown-linux-musl"
 
 data websocat_install_path: NonEmptyStr = "/var/lib/gunbc/bin/websocat"
 

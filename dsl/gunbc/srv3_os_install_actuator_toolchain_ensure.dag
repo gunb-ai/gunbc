@@ -8,7 +8,6 @@ import extdeps.tools.websocat {
   websocat_cli_tool,
   websocat_github_tag,
   websocat_asset_aarch64,
-  websocat_asset_x86_64,
   websocat_install_path,
   websocat_github_release_download_url,
 }
@@ -41,6 +40,23 @@ data os_install_actuator_toolchain_ensure_dissolution_trigger: String = "🟡 di
 data gunbc_bin_dir: NonEmptyStr = "/var/lib/gunbc/bin"
 
 fn os_install_actuator_apt_tool_ensure_block(tool_name: String, package: NonEmptyStr) -> String {
+  os_install_actuator_apt_tool_ensure_block_with_check(
+    tool_name: tool_name,
+    package: package,
+    present_check: concat(
+      concat(concat("command -v ", tool_name), " >/dev/null 2>&1 && "),
+      concat(tool_name, " --version >/dev/null 2>&1"),
+    ),
+    post_install_check: concat(tool_name, " --version >/dev/null"),
+  )
+}
+
+fn os_install_actuator_apt_tool_ensure_block_with_check(
+  tool_name: String,
+  package: NonEmptyStr,
+  present_check: String,
+  post_install_check: String,
+) -> String {
   let apt_preflight = deploy_access_preflight_check_block(
     access: ci_deploy_srv1_operator_access,
     cmd: deploy_access_apt_get_privileged_command(),
@@ -48,13 +64,7 @@ fn os_install_actuator_apt_tool_ensure_block(tool_name: String, package: NonEmpt
   let privileged_install = deploy_access_sudo_n_apt_get_install_command(package: package)
   concat(
     concat(
-      concat(
-        concat("if command -v ", tool_name),
-        " >/dev/null 2>&1 && ",
-      ),
-      concat(tool_name, " --version >/dev/null 2>&1; then\n"),
-    ),
-    concat(
+      concat(concat("if ", present_check), "; then\n"),
       concat(
         concat(
           concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Present tool=", tool_name),
@@ -62,20 +72,26 @@ fn os_install_actuator_apt_tool_ensure_block(tool_name: String, package: NonEmpt
         ),
         "\"\nelse\n",
       ),
+    ),
+    concat(
       concat(
-        concat(
-          concat(
-            concat(apt_preflight, privileged_install),
-            "\n",
-          ),
-          concat(tool_name, " --version >/dev/null\n"),
-        ),
-        concat(
-          concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Installed tool=", tool_name),
-          concat(concat(" package=", package as String), "\"\nfi\n"),
-        ),
+        concat(concat(apt_preflight, privileged_install), "\n"),
+        concat(post_install_check, "\n"),
+      ),
+      concat(
+        concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Installed tool=", tool_name),
+        concat(concat(" package=", package as String), "\"\nfi\n"),
       ),
     ),
+  )
+}
+
+fn os_install_actuator_socat_ensure_block() -> String {
+  os_install_actuator_apt_tool_ensure_block_with_check(
+    tool_name: socat_cli_tool.name as String,
+    package: package_socat,
+    present_check: "command -v socat >/dev/null 2>&1",
+    post_install_check: "command -v socat >/dev/null 2>&1",
   )
 }
 
@@ -97,7 +113,7 @@ fn os_install_actuator_websocat_ensure_block() -> String {
     ),
     concat(
       concat(
-        concat(concat("  mkdir -p ", bin_dir), "\n"),
+        concat(concat("  sudo mkdir -p ", bin_dir), "\n"),
         concat(
           concat(concat(concat("  curl -fsSL \"", url_a64), "\" -o \""), concat(install_path, "\"\n")),
         ),
@@ -123,7 +139,7 @@ fn os_install_actuator_toolchain_ensure_script() -> String {
         ),
         os_install_actuator_apt_tool_ensure_block(tool_name: nbdkit_cli_tool.name as String, package: package_nbdkit),
       ),
-      os_install_actuator_apt_tool_ensure_block(tool_name: socat_cli_tool.name as String, package: package_socat),
+      os_install_actuator_socat_ensure_block(),
     ),
     os_install_actuator_websocat_ensure_block(),
   )
