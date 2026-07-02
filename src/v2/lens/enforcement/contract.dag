@@ -1,0 +1,58 @@
+module v2.lens.enforcement.contract
+
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.std.qualified_name { QualifiedName, qualified_name_singleton }
+import v2.lens.registry { LensRegistryEntryV0, lens_registry_v0_cost, lens_registry_v0_complexity }
+import v2.lens.enforcement.vocab {
+  EnforcementMode, Blocking, AuditOnly, Advisory,
+  LensConsumer, FloorGate, WitnessOnly, NoConsumer,
+  RedControl, RedControlPresent, RedControlAbsent,
+  SelfApplication, SelfApplies, SelfExempt, SelfAbsent
+}
+import v2.lens.common.construction_justification { ConstructionJustification, WallNow, RatchetForever }
+import std.disposition { SubstrateMandatoryTag }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+type LensContract {
+  entry: LensRegistryEntryV0
+  claimed_scope: List<String>
+  mode: EnforcementMode
+  consumer: LensConsumer
+  red_control: RedControl
+  self_application: SelfApplication
+  exemptions: List<String>
+  boundary: ConstructionJustification
+}
+
+data lens_contract_cost: LensContract = {
+  entry: lens_registry_v0_cost,
+  claimed_scope: ["fixture:mvp1-exemplars"],
+  mode: Blocking,
+  consumer: WitnessOnly,
+  red_control: RedControlPresent { witness: qualified_name_singleton(sym: ^loop_iteration_floor_holds) },
+  self_application: SelfAbsent,
+  exemptions: [],
+  boundary: ConstructionJustification {
+    class: WallNow {
+      mechanism: SubstrateMandatoryTag,
+      authority: DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: WholeDeclaration }
+    }
+  }
+}
+
+data lens_contract_complexity: LensContract = {
+  entry: lens_registry_v0_complexity,
+  claimed_scope: ["fixture:mvp1-exemplars"],
+  mode: AuditOnly,
+  consumer: WitnessOnly,
+  red_control: RedControlPresent { witness: qualified_name_singleton(sym: ^complexity_lens_projects_bound_holds) },
+  self_application: SelfAbsent,
+  exemptions: [],
+  boundary: ConstructionJustification { class: RatchetForever }
+}
+
+data lens_contract_registry: List<LensContract> = [
+  lens_contract_cost,
+  lens_contract_complexity
+]

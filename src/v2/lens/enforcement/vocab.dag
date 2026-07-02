@@ -1,0 +1,57 @@
+module v2.lens.enforcement.vocab
+
+import v2.std.logic { Bool }
+import v2.std.arithmetic { Int }
+import v2.std.text { String }
+import v2.std.qualified_name { QualifiedName }
+
+type EnforcementMode = Blocking | AuditOnly | Advisory
+
+type LensConsumer = FloorGate | WitnessOnly | NoConsumer
+
+type RedControl = RedControlPresent { witness: QualifiedName } | RedControlAbsent
+
+type SelfApplication = SelfApplies | SelfExempt { reason: String } | SelfAbsent
+
+fn mode_rank(m: EnforcementMode) -> Int {
+  match m {
+    Blocking => 3
+    AuditOnly => 2
+    Advisory => 1
+  }
+}
+
+fn mode_at_least(have: EnforcementMode, need: EnforcementMode) -> Bool {
+  mode_rank(m: have) >= mode_rank(m: need)
+}
+
+fn consumer_is_live(c: LensConsumer) -> Bool {
+  match c {
+    FloorGate => true
+    WitnessOnly => false
+    NoConsumer => false
+  }
+}
+
+fn consumer_absent(c: LensConsumer) -> Bool {
+  match c {
+    NoConsumer => true
+    FloorGate => false
+    WitnessOnly => false
+  }
+}
+
+fn red_control_present(r: RedControl) -> Bool {
+  match r {
+    RedControlPresent { witness } => true
+    RedControlAbsent => false
+  }
+}
+
+fn self_application_satisfied(s: SelfApplication) -> Bool {
+  match s {
+    SelfApplies => true
+    SelfExempt { reason } => true
+    SelfAbsent => false
+  }
+}

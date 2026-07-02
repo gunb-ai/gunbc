@@ -1,0 +1,143 @@
+module v2.lens.enforcement.gate
+
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.std.arithmetic { Int }
+import v2.std.algebra { for_all, any, filter, contains, non_empty, length, list_head, HeadFound, HeadAbsent }
+import v2.lens.registry {
+  LensIdV0, Complexity, Cost, Parallelism, EffectEnumeration, Idempotency,
+  Provenance, UnusedParameters, StructuralResolution, TableDecisionTree
+}
+import v2.lens.enforcement.vocab {
+  EnforcementMode, Blocking, AuditOnly, Advisory,
+  LensConsumer, SelfApplication,
+  consumer_is_live, red_control_present, self_application_satisfied, mode_at_least
+}
+import v2.lens.enforcement.contract { LensContract, lens_contract_registry }
+import v2.lens.enforcement.standing_intent {
+  StandingIntent, IntentProperty, LensFamily, LensHygieneLiveness,
+  LensHygieneSelfApply, ModelAnemia, SingleAuthorityConsolidation,
+  standing_intent_complexity_repo_wide
+}
+
+type LegVerdict = LegHolds | LegFails { reason: String }
+
+type IntentVerdict {
+  intent_id: String
+  claimed: LegVerdict
+  scope_covered: LegVerdict
+  live_consumer: LegVerdict
+  red_control: LegVerdict
+  self_application: LegVerdict
+}
+
+fn leg_holds(l: LegVerdict) -> Bool {
+  match l {
+    LegHolds => true
+    LegFails { reason } => false
+  }
+}
+
+fn leg_fails(l: LegVerdict) -> Bool {
+  !leg_holds(l: l)
+}
+
+fn leg_of(ok: Bool, reason: String) -> LegVerdict {
+  if ok { LegHolds } else { LegFails { reason: reason } }
+}
+
+fn intent_string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn scope_covers(claimed: List<String>, desired: List<String>) -> Bool {
+  for_all(xs: desired, predicate: fn(r) { contains(xs: claimed, item: r, eq: intent_string_eq) })
+}
+
+fn self_ok(required: Bool, s: SelfApplication) -> Bool {
+  if required { self_application_satisfied(s: s) } else { true }
+}
+
+fn lens_id_rank(l: LensIdV0) -> Int {
+  match l {
+    Complexity => 1
+    Cost => 2
+    Parallelism => 3
+    EffectEnumeration => 4
+    Idempotency => 5
+    Provenance => 6
+    UnusedParameters => 7
+    StructuralResolution => 8
+    TableDecisionTree => 9
+  }
+}
+
+fn lens_id_eq(a: LensIdV0, b: LensIdV0) -> Bool {
+  lens_id_rank(l: a) == lens_id_rank(l: b)
+}
+
+fn contract_answers(c: LensContract, p: IntentProperty) -> Bool {
+  match p {
+    LensFamily { lens } => lens_id_eq(a: c.entry.lens_id, b: lens)
+    LensHygieneLiveness => false
+    LensHygieneSelfApply => false
+    ModelAnemia => false
+    SingleAuthorityConsolidation => false
+  }
+}
+
+fn contract_internally_consistent(c: LensContract) -> Bool {
+  match c.mode {
+    Blocking => consumer_is_live(c: c.consumer)
+    AuditOnly => true
+    Advisory => true
+  }
+}
+
+fn enforcement_consistency_holds(contracts: List<LensContract>) -> Bool {
+  for_all(xs: contracts, predicate: fn(c) { contract_internally_consistent(c: c) })
+}
+
+fn lenses_self_apply_or_exempt_holds(contracts: List<LensContract>) -> Bool {
+  for_all(xs: contracts, predicate: fn(c) { self_application_satisfied(s: c.self_application) })
+}
+
+fn intent_family_verdict(intent: StandingIntent, contracts: List<LensContract>) -> IntentVerdict {
+  match list_head(xs: filter(xs: contracts, predicate: fn(c) {
+    contract_answers(c: c, p: intent.property) && mode_at_least(have: c.mode, need: intent.default_mode)
+  })) {
+    HeadAbsent => IntentVerdict {
+      intent_id: intent.id,
+      claimed: LegFails { reason: "no contract claims this property at the required mode" },
+      scope_covered: LegFails { reason: "unproven: no answering contract" },
+      live_consumer: LegFails { reason: "unproven: no answering contract" },
+      red_control: LegFails { reason: "unproven: no answering contract" },
+      self_application: LegFails { reason: "unproven: no answering contract" }
+    }
+    HeadFound { value: c } => IntentVerdict {
+      intent_id: intent.id,
+      claimed: LegHolds,
+      scope_covered: leg_of(ok: scope_covers(claimed: c.claimed_scope, desired: intent.desired_scope), reason: "claimed_scope does not cover desired repo-wide scope"),
+      live_consumer: leg_of(ok: consumer_is_live(c: c.consumer), reason: "consumer is not a FloorGate (witness-only or none)"),
+      red_control: leg_of(ok: red_control_present(r: c.red_control), reason: "no discriminating red control"),
+      self_application: leg_of(ok: self_ok(required: intent.self_application_required, s: c.self_application), reason: "lens does not self-apply and carries no exemption")
+    }
+  }
+}
+
+fn intent_verdict_holds(v: IntentVerdict) -> Bool {
+  leg_holds(l: v.claimed)
+    && leg_holds(l: v.scope_covered)
+    && leg_holds(l: v.live_consumer)
+    && leg_holds(l: v.red_control)
+    && leg_holds(l: v.self_application)
+}
+
+fn intent_family_holds(intent: StandingIntent, contracts: List<LensContract>) -> Bool {
+  intent_verdict_holds(v: intent_family_verdict(intent: intent, contracts: contracts))
+}
+
+fn complexity_repo_wide_verdict() -> IntentVerdict {
+  intent_family_verdict(intent: standing_intent_complexity_repo_wide, contracts: lens_contract_registry)
+}

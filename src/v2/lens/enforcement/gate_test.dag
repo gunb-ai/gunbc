@@ -1,0 +1,85 @@
+module v2.test.lens_enforcement.gate_test
+
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.qualified_name { qualified_name_singleton }
+import v2.lens.registry { Parallelism, lens_registry_v0_parallelism }
+import v2.lens.enforcement.vocab {
+  Blocking, FloorGate, RedControlPresent, SelfApplies
+}
+import v2.lens.enforcement.contract { LensContract, lens_contract_cost, lens_contract_registry }
+import v2.lens.enforcement.standing_intent { StandingIntent, LensFamily, Refuse, standing_intent_complexity_repo_wide }
+import v2.lens.enforcement.gate {
+  leg_holds, leg_fails, intent_family_holds, intent_family_verdict,
+  complexity_repo_wide_verdict, contract_internally_consistent,
+  enforcement_consistency_holds, lenses_self_apply_or_exempt_holds
+}
+import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
+
+data synthetic_consistent_contract: LensContract = {
+  entry: lens_registry_v0_parallelism,
+  claimed_scope: ["dsl", "src/v1", "src/v2"],
+  mode: Blocking,
+  consumer: FloorGate,
+  red_control: RedControlPresent { witness: qualified_name_singleton(sym: ^synthetic_red_control) },
+  self_application: SelfApplies,
+  exemptions: [],
+  boundary: ConstructionJustification { class: RatchetForever }
+}
+
+data synthetic_narrow_contract: LensContract = {
+  entry: lens_registry_v0_parallelism,
+  claimed_scope: ["src/v2"],
+  mode: Blocking,
+  consumer: FloorGate,
+  red_control: RedControlPresent { witness: qualified_name_singleton(sym: ^synthetic_red_control) },
+  self_application: SelfApplies,
+  exemptions: [],
+  boundary: ConstructionJustification { class: RatchetForever }
+}
+
+data synthetic_repo_wide_intent: StandingIntent = {
+  id: "synthetic.parallelism.repo-wide",
+  property: LensFamily { lens: Parallelism },
+  desired_scope: ["dsl", "src/v1", "src/v2"],
+  required_subjects: [],
+  default_mode: Blocking,
+  self_application_required: true,
+  fallback_when_unavailable: Refuse
+}
+
+data synthetic_consistent_contracts: List<LensContract> = [synthetic_consistent_contract]
+data synthetic_narrow_contracts: List<LensContract> = [synthetic_narrow_contract]
+
+test fn complexity_repo_wide_reds_on_scope_consumer_self() -> Bool {
+  return leg_holds(l: complexity_repo_wide_verdict().claimed)
+    && leg_holds(l: complexity_repo_wide_verdict().red_control)
+    && leg_fails(l: complexity_repo_wide_verdict().scope_covered)
+    && leg_fails(l: complexity_repo_wide_verdict().live_consumer)
+    && leg_fails(l: complexity_repo_wide_verdict().self_application)
+}
+
+test fn complexity_repo_wide_intent_does_not_hold() -> Bool {
+  return !intent_family_holds(intent: standing_intent_complexity_repo_wide, contracts: lens_contract_registry)
+}
+
+test fn gate_passes_a_fully_consistent_intent() -> Bool {
+  return intent_family_holds(intent: synthetic_repo_wide_intent, contracts: synthetic_consistent_contracts)
+}
+
+test fn narrow_scope_contract_reds_scope_leg() -> Bool {
+  return leg_holds(l: intent_family_verdict(intent: synthetic_repo_wide_intent, contracts: synthetic_narrow_contracts).claimed)
+    && leg_fails(l: intent_family_verdict(intent: synthetic_repo_wide_intent, contracts: synthetic_narrow_contracts).scope_covered)
+}
+
+test fn cost_contract_blocking_without_floorgate_is_inconsistent() -> Bool {
+  return !contract_internally_consistent(c: lens_contract_cost)
+}
+
+test fn live_registry_fails_consistency_today() -> Bool {
+  return !enforcement_consistency_holds(contracts: lens_contract_registry)
+}
+
+test fn live_registry_fails_self_apply_today() -> Bool {
+  return !lenses_self_apply_or_exempt_holds(contracts: lens_contract_registry)
+}

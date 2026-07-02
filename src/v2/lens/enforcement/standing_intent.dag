@@ -1,0 +1,90 @@
+module v2.lens.enforcement.standing_intent
+
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.std.qualified_name { QualifiedName, qualified_name_singleton }
+import v2.lens.registry { LensIdV0, Cost }
+import v2.lens.enforcement.vocab { EnforcementMode, Blocking, AuditOnly, Advisory }
+
+type IntentProperty
+  = LensFamily { lens: LensIdV0 }
+  | LensHygieneLiveness
+  | LensHygieneSelfApply
+  | ModelAnemia
+  | SingleAuthorityConsolidation
+
+type IntentFallback
+  = Refuse
+  | UnknownFallback
+  | AuditOnlyWithReason { reason: String }
+
+type StandingIntent {
+  id: String
+  property: IntentProperty
+  desired_scope: List<String>
+  required_subjects: List<QualifiedName>
+  default_mode: EnforcementMode
+  self_application_required: Bool
+  fallback_when_unavailable: IntentFallback
+}
+
+data whole_corpus_scope: List<String> = ["dsl", "src/v1", "src/v2"]
+
+data standing_intent_complexity_repo_wide: StandingIntent = {
+  id: "complexity.repo-wide",
+  property: LensFamily { lens: Cost },
+  desired_scope: whole_corpus_scope,
+  required_subjects: [qualified_name_singleton(sym: ^build_type_env)],
+  default_mode: Blocking,
+  self_application_required: true,
+  fallback_when_unavailable: Refuse
+}
+
+data standing_intent_lenses_must_be_live: StandingIntent = {
+  id: "lenses.must-be-live",
+  property: LensHygieneLiveness,
+  desired_scope: whole_corpus_scope,
+  required_subjects: [],
+  default_mode: Blocking,
+  self_application_required: false,
+  fallback_when_unavailable: Refuse
+}
+
+data standing_intent_lenses_self_apply_or_exempt: StandingIntent = {
+  id: "lenses.self-apply-or-exempt",
+  property: LensHygieneSelfApply,
+  desired_scope: whole_corpus_scope,
+  required_subjects: [],
+  default_mode: Blocking,
+  self_application_required: false,
+  fallback_when_unavailable: Refuse
+}
+
+data standing_intent_model_anemia_repo_wide: StandingIntent = {
+  id: "model.anemia.repo-wide",
+  property: ModelAnemia,
+  desired_scope: whole_corpus_scope,
+  required_subjects: [],
+  default_mode: AuditOnly,
+  self_application_required: false,
+  fallback_when_unavailable: AuditOnlyWithReason { reason: "object anemia lens is task 5; declared now so the intent cannot be silently lost" }
+}
+
+data standing_intent_single_authority_consolidation: StandingIntent = {
+  id: "single-authority.consolidation",
+  property: SingleAuthorityConsolidation,
+  desired_scope: whole_corpus_scope,
+  required_subjects: [],
+  default_mode: AuditOnly,
+  self_application_required: false,
+  fallback_when_unavailable: AuditOnlyWithReason { reason: "object consolidation lens is task 5; declared now so the intent cannot be silently lost" }
+}
+
+data standing_intent_registry: List<StandingIntent> = [
+  standing_intent_complexity_repo_wide,
+  standing_intent_lenses_must_be_live,
+  standing_intent_lenses_self_apply_or_exempt,
+  standing_intent_model_anemia_repo_wide,
+  standing_intent_single_authority_consolidation
+]
