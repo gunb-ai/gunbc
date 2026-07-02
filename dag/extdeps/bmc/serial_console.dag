@@ -57,7 +57,7 @@ fn sol_console_transport_authority_for(transport: SolConsoleTransport) -> Extern
   }
 }
 
-data sol_console_capture_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: sol_console_capture — obmc-console/Redfish SerialInterface log stream composed as shell transport (medium-as-string); DISSOLVES WHEN host_effect_apply binds SolConsoleCapture without concat-built runner glue; retire medium_structure_exception_roster entry for dsl/extdeps/bmc/serial_console.dag"
+data sol_console_capture_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: sol_console_capture — obmc-console/Redfish SerialInterface log stream composed as shell transport (medium-as-string); DISSOLVES WHEN host_effect_apply binds SolConsoleCapture without concat-built runner glue; retire medium_structure_exception_roster entry for dag/extdeps/bmc/serial_console.dag"
 
 fn sol_console_capture_script(intent: SolConsoleCaptureIntent) -> String {
   let transport_wire = sol_console_transport_wire(transport: intent.transport)

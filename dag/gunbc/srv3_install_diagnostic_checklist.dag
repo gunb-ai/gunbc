@@ -35,7 +35,7 @@ data srv3_install_diagnostic_checklist_scaffold: Disposition = Scaffold {
   }
 }
 
-data srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger: String = "🟡 dissolve-on: srv3_install_diagnostic_checklist — observe script via shell_exec_via_bash + stdout parse into Srv3InstallDebugObservation then diagnose_srv3_install; DISSOLVES WHEN host_effect_apply binds Srv3InstallDiagnosticObserve without concat runner glue; retire medium_structure_exception_roster entry for dsl/gunbc/srv3_install_diagnostic_checklist.dag"
+data srv3_install_diagnostic_checklist_shell_runner_dissolution_trigger: String = "🟡 dissolve-on: srv3_install_diagnostic_checklist — observe script via shell_exec_via_bash + stdout parse into Srv3InstallDebugObservation then diagnose_srv3_install; DISSOLVES WHEN host_effect_apply binds Srv3InstallDiagnosticObserve without concat runner glue; retire medium_structure_exception_roster entry for dag/gunbc/srv3_install_diagnostic_checklist.dag"
 
 data srv3_install_diagnostic_observe_script_path: String = "/tmp/srv3_install_diagnostic_observe.sh"
 

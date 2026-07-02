@@ -19,7 +19,7 @@ import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
-data install_media_remaster_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: install_media_remaster — xorriso remaster composed as RawLine shell inside ShellProgram (medium-as-string); AlreadyPresent/StaleRefusal classification and chmod -R u+w are string-scaffolded (see install_media_remaster_classification_scaffold + install_media_remaster_chmod_access_upsert_scaffold); DISSOLVES WHEN host_effect_apply binds InstallMediaRemaster typed intent→observation→verdict→plan without serialize_bash RawLine payload; retire medium_structure_exception_roster entry for dsl/extdeps/os/ubuntu_seeded_install_media_remaster.dag"
+data install_media_remaster_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: install_media_remaster — xorriso remaster composed as RawLine shell inside ShellProgram (medium-as-string); AlreadyPresent/StaleRefusal classification and chmod -R u+w are string-scaffolded (see install_media_remaster_classification_scaffold + install_media_remaster_chmod_access_upsert_scaffold); DISSOLVES WHEN host_effect_apply binds InstallMediaRemaster typed intent→observation→verdict→plan without serialize_bash RawLine payload; retire medium_structure_exception_roster entry for dag/extdeps/os/ubuntu_seeded_install_media_remaster.dag"
 
 data install_media_remaster_classification_scaffold: Disposition = Scaffold {
   dissolves_to: SingleAuthority,

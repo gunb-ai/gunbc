@@ -43,7 +43,7 @@ data srv3_install_media_fetch_shell_runner_scaffold: Disposition = Scaffold {
   }
 }
 
-data srv3_install_media_fetch_shell_runner_dissolution_trigger: String = "🟡 dissolve-on: srv3_install_media_fetch shell runner glue — srv3_install_media_fetch orchestrates via shell.Exec.Run over install_media_fetch_script; DISSOLVES WHEN host_effect_apply binds InstallMediaFetch without serialize_bash runner glue; retire medium_structure_exception_roster entry for dsl/gunbc/srv3_install_media_fetch.dag"
+data srv3_install_media_fetch_shell_runner_dissolution_trigger: String = "🟡 dissolve-on: srv3_install_media_fetch shell runner glue — srv3_install_media_fetch orchestrates via shell.Exec.Run over install_media_fetch_script; DISSOLVES WHEN host_effect_apply binds InstallMediaFetch without serialize_bash runner glue; retire medium_structure_exception_roster entry for dag/gunbc/srv3_install_media_fetch.dag"
 
 data srv3_ubuntu_install_media_artifact: UbuntuInstallMediaArtifactRow = noble_numbat_2404_3_live_server_arm64
 
