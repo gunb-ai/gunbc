@@ -1409,6 +1409,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
     }
 }
 
+/// Declaration facts for `roots`; preserves the non-test corpus boundary (delegates to `decl_facts_corpus_walk`).
 pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
     decl_facts_corpus_walk(pool_roots).facts
 }
