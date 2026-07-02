@@ -160,17 +160,3 @@ fn classify_seeded_artifact_upsert(
     plan: plan_for_verdict(v: verdict),
   }
 }
-
-fn seeded_artifact_converged_is_not_stale() -> Bool {
-  match classify_seeded_artifact_presence(obs: ArtifactConverged) {
-    Stale => false
-    _ => true
-  }
-}
-
-fn seeded_artifact_stale_is_not_converged() -> Bool {
-  match classify_seeded_artifact_presence(obs: ArtifactStale) {
-    Converged => false
-    _ => true
-  }
-}

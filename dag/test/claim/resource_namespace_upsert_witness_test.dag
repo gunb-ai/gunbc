@@ -29,8 +29,6 @@ import std.resource_namespace {
   classify_file_access_upsert,
   classify_seeded_artifact_upsert,
   classify_seeded_artifact_presence,
-  seeded_artifact_converged_is_not_stale,
-  seeded_artifact_stale_is_not_converged,
   path_within_file_namespace,
 }
 
@@ -107,13 +105,15 @@ test fn writable_within_namespace_is_converged_noop() -> Bool {
 }
 
 test fn stale_seeded_iso_is_stale_not_already_present() -> Bool {
-  seeded_artifact_stale_is_not_converged()
-    && seeded_artifact_converged_is_not_stale()
-    && match classify_seeded_artifact_presence(obs: ArtifactStale) {
-      Stale => true
-      Converged => false
+  match classify_seeded_artifact_presence(obs: ArtifactStale) {
+    Stale => match classify_seeded_artifact_presence(obs: ArtifactConverged) {
+      Converged => true
+      Stale => false
       _ => false
     }
+    Converged => false
+    _ => false
+  }
 }
 
 test fn converged_seeded_iso_is_not_stale() -> Bool {
