@@ -1,0 +1,50 @@
+module v2.test.manual.fn_as_value
+
+data fn_as_value_provenance: String = "Floor witnesses migrated from src/v1/tests/src/fn_as_value_test.rs (5-test-migration lane): first-class fn references and generic instantiation regressions, re-expressed as marker-discovered test fns on the same interpreter execution path."
+
+type Rec { v: Int }
+
+fn add(a: Int, b: Int) -> Int { a + b }
+
+fn use_via_binding() -> Int {
+  let f = add
+  f(a: 2, b: 3)
+}
+
+test fn fn_item_bound_and_called_via_first_class_reference() -> Bool {
+  use_via_binding() == 5
+}
+
+fn apply_rec<T>(x: T, g: fn(T) -> Int) -> Int { g(x) }
+
+test fn generic_call_instantiates_lambda_param_and_evaluates() -> Bool {
+  apply_rec(x: Rec { v: 7 }, g: fn(r) { r.v }) == 7
+}
+
+fn id_rec<T>(x: T) -> T { x }
+
+test fn generic_call_return_type_field_access_holds() -> Bool {
+  id_rec(x: Rec { v: 9 }).v == 9
+}
+
+type Wrap<S> { value: S }
+
+fn get<S>(w: Wrap<S>) -> S { w.value }
+
+test fn generic_one_level_wrap_call_return_field_access_holds() -> Bool {
+  get(w: Wrap { value: Rec { v: 9 } }).v == 9
+}
+
+type Inner<S> { value: S }
+type Outer<S> { inner: Inner<S> }
+
+fn pass_through<S>(o: Outer<S>) -> Outer<S> { o }
+
+test fn generic_nested_pass_through_call_field_access_holds() -> Bool {
+  pass_through(o: Outer { inner: Inner { value: Rec { v: 9 } } }).inner.value == Rec { v: 9 }
+}
+
+test fn generic_nested_record_body_field_access_holds() -> Bool {
+  let o = Outer { inner: Inner { value: Rec { v: 9 } } }
+  o.inner.value == Rec { v: 9 }
+}
