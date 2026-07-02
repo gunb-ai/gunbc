@@ -19,6 +19,31 @@ type TypeBinding {
   provenance: SubValueRelation
 }
 
+type TypeEnvCache {
+  deps_map: Map<String, List<String>>
+  str_bindings: Map<String, TypeBinding>
+  cycle_set_str: Map<String, Bool>
+  variant_locals: Map<String, TypeBinding>
+}
+
+fn empty_type_env_cache() -> TypeEnvCache {
+  TypeEnvCache {
+    deps_map: empty_map(),
+    str_bindings: empty_map(),
+    cycle_set_str: empty_map(),
+    variant_locals: empty_map()
+  }
+}
+
+fn merge_type_env_cache(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
+  TypeEnvCache {
+    deps_map: map_merge(base.deps_map, overlay.deps_map),
+    str_bindings: map_merge(base.str_bindings, overlay.str_bindings),
+    cycle_set_str: map_merge(base.cycle_set_str, overlay.cycle_set_str),
+    variant_locals: map_merge(base.variant_locals, overlay.variant_locals)
+  }
+}
+
 fn lookup_binding_local_by_name(env: TypeEnv, name: String) -> TypeBinding? {
   match intern_find(table: env.intern_table, s: name) {
     Present { value: ident } =>

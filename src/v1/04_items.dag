@@ -17,7 +17,7 @@ import v1.compiler.infer_types {
 }
 import std.induction { SubValueUnknown }
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding
+  TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache
 }
 import v1.compiler.infer_sigs {
   ResolvedFuncEnv
@@ -43,6 +43,7 @@ type TypedModule {
   module: Node
   items: List<Node>
   type_env: TypeEnv
+  type_env_cache: TypeEnvCache
   func_env: ResolvedFuncEnv
   item_registry: Map<String, ItemInfo>
 }

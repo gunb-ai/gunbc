@@ -55,8 +55,6 @@ mod fold_unused_element_clone_elision_test;
 #[cfg(test)]
 mod func_env_scope_chain_test;
 #[cfg(test)]
-mod type_env_scope_chain_test;
-#[cfg(test)]
 mod func_env_semantic_equivalence_test;
 #[cfg(test)]
 mod generator_match_arm_test;
@@ -142,6 +140,8 @@ mod sub_value_lattice_factor_test;
 mod target_model_runtime_import_repro;
 #[cfg(test)]
 mod type_alias_phantom_param_test;
+#[cfg(test)]
+mod type_env_scope_chain_test;
 #[cfg(test)]
 mod type_param_casing_test;
 #[cfg(test)]

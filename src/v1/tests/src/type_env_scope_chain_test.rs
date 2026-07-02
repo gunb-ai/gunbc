@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::rc::Rc;
 use std::sync::Mutex;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
@@ -85,8 +85,8 @@ fn assert_rc_identity_across_import_chain(
     let use_mod = typed_module_by_name(&graph.modules, source_indices, "test.type_env_rc_consumer");
     let def_id = intern_find(def_mod.type_env.intern_table.clone(), "Shared".to_string())
         .expect("definer intern Shared");
-    let def_binding = lookup_binding(def_mod.type_env.clone(), def_id)
-        .expect("definer local Shared");
+    let def_binding =
+        lookup_binding(def_mod.type_env.clone(), def_id).expect("definer local Shared");
     let use_ty = lookup_type_by_name(use_mod.type_env.clone(), "Shared".to_string())
         .expect("consumer lookup Shared");
     assert!(
@@ -95,7 +95,10 @@ fn assert_rc_identity_across_import_chain(
     );
 }
 
-fn collect_binding_ptrs(env: &v1_compiler::v1_compiler_infer_env::TypeEnv, out: &mut HashSet<*const v1_compiler::v1_compiler_infer_env::TypeBinding>) {
+fn collect_binding_ptrs(
+    env: &v1_compiler::v1_compiler_infer_env::TypeEnv,
+    out: &mut HashSet<*const v1_compiler::v1_compiler_infer_env::TypeBinding>,
+) {
     for binding in env.bindings.values() {
         out.insert(Rc::as_ptr(binding));
     }
@@ -190,7 +193,11 @@ fn type_env_import_does_not_materialize_binding_in_consumer_locals() {
         "test.type_env_rc_consumer",
     );
     assert!(
-        def_mod.type_env.bindings.values().any(|b| b.name == "Shared"),
+        def_mod
+            .type_env
+            .bindings
+            .values()
+            .any(|b| b.name == "Shared"),
         "definer must carry Shared in local bindings"
     );
     assert!(
@@ -210,12 +217,7 @@ fn type_env_shared_type_single_local_authority() {
     let modules_with_local_shared = graph
         .modules
         .iter()
-        .filter(|m| {
-            m.type_env
-                .bindings
-                .values()
-                .any(|b| b.name == "Shared")
-        })
+        .filter(|m| m.type_env.bindings.values().any(|b| b.name == "Shared"))
         .count();
     assert_eq!(
         modules_with_local_shared, 1,
@@ -249,5 +251,56 @@ fn type_env_dropped_parent_chain_fails_lookup() {
     assert!(
         lookup_type_by_name(stripped, "Shared".to_string()).is_none(),
         "perturbation: stripping parents must break imported type lookup"
+    );
+}
+
+fn synthetic_import_chain_sources(depth: usize) -> Vec<Rc<SourceFile>> {
+    (0..depth)
+        .map(|i| {
+            let content = if i == 0 {
+                format!("module test.chain_{i}\ntype T{i} = Int\n")
+            } else {
+                format!(
+                    "module test.chain_{i}\nimport test.chain_{}\ntype T{i} = T{}\n",
+                    i - 1,
+                    i - 1
+                )
+            };
+            Rc::new(SourceFile {
+                path: format!("chain_{i}.dag"),
+                content,
+            })
+        })
+        .collect()
+}
+
+fn time_import_chain_resolve(depth: usize) -> Duration {
+    let sources = synthetic_import_chain_sources(depth);
+    let start = Instant::now();
+    compile_modules(sources);
+    start.elapsed()
+}
+
+#[test]
+fn type_env_import_chain_scaling_not_quadratic() {
+    let d16 = time_import_chain_resolve(16);
+    let d32 = time_import_chain_resolve(32);
+    let d64 = time_import_chain_resolve(64);
+    let d128 = time_import_chain_resolve(128);
+
+    let ratio_64_32 = d64.as_secs_f64() / d32.as_secs_f64().max(1e-9);
+    let ratio_128_64 = d128.as_secs_f64() / d64.as_secs_f64().max(1e-9);
+
+    eprintln!(
+        "import-chain scaling: d16={d16:?} d32={d32:?} d64={d64:?} d128={d128:?} ratio_64/32={ratio_64_32:.2} ratio_128/64={ratio_128_64:.2}"
+    );
+
+    assert!(
+        ratio_128_64 < 3.0,
+        "import-chain resolve must stay sub-quadratic: time(128)/time(64)={ratio_128_64:.2} (budget <3.0)"
+    );
+    assert!(
+        ratio_64_32 < 3.0,
+        "import-chain resolve must stay sub-quadratic: time(64)/time(32)={ratio_64_32:.2} (budget <3.0)"
     );
 }
