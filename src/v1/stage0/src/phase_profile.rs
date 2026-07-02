@@ -1,4 +1,11 @@
-//! Periodic phase-local heartbeat records for long `claim_executor` floor walks.
+//! Phase-local heartbeat for long `claim_executor` floor walks — **not** a per-thread trace.
+//!
+//! Answers "what is this stuck/long-running executor doing right now?" via a **single-slot,
+//! process-global, last-writer-wins sampler** (`GLOBAL_INNER` behind one `Mutex`). Under
+//! `spawn_width>1`, concurrent batch threads all update the same slot; each emitted tick
+//! reports the **most-recently-entered** phase/context across threads — exactly right for
+//! heartbeat use ("is it stuck in resolve or eval?") and explicitly **not** per-thread or
+//! distributed attribution.
 //!
 //! **Transport only** (DESIGN §4): stderr `[phase-profile]` k=v lines are the Lossless wire
 //! projection crossing the Rust→log boundary — same pattern as `[gantt]`, `[measurement]`,

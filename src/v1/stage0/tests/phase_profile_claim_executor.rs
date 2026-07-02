@@ -1,4 +1,4 @@
-//! Acceptance witnesses for `GUNBC_FLOOR_PHASE_PROFILE` (claim_executor heartbeat).
+//! Acceptance witnesses for `GUNBC_FLOOR_PHASE_PROFILE` (process-global phase heartbeat).
 #![cfg(unix)]
 
 use std::io::{BufRead, BufReader};
