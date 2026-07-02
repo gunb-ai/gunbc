@@ -53,6 +53,9 @@ service ssh.Session {
       0 => Unit
       nonzero => String "ssh remote script failed"
     }
+    mock_response {
+      0 => { exit_code: 0, success: true, stdout: "mock ssh stdin script executed", stderr: "" } "ok"
+    }
   }
 
   operation Reachability {

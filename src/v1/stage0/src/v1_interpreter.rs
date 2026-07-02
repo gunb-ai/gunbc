@@ -26,7 +26,7 @@ use crate::v1_std_core::{
     is_file_transport, is_rest_transport, is_shell_transport, lambda_body, lambda_param_names_at,
     let_binding_name_at, let_body, let_value, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, param_node_default_value, param_node_name_at, record_lit_type_name_at,
-    return_value, slice_base, slice_end, slice_start, unaryop_operand, CallSemantics, Cardinality,
+    return_value, slice_base, slice_end, slice_start, transport_stdin, unaryop_operand, CallSemantics, Cardinality,
     Connective, ErrorNode, ExprData, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode,
     MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, UnaryOpKind,
     VarBindingKind,
@@ -3979,6 +3979,15 @@ fn render_shell_trace(argv: &[String]) {
     }
 }
 
+fn shell_stdin_payload(val: &Value) -> InterpResult<Vec<u8>> {
+    match val {
+        Value::Str(s) => Ok(s.as_bytes().to_vec()),
+        _ => Err(InterpError::TypeError {
+            msg: format!("shell transport stdin must be String, got {val}"),
+        }),
+    }
+}
+
 fn dispatch_shell(
     transport: &Rc<Node>,
     param_env: &Rc<Env>,
@@ -3999,12 +4008,40 @@ fn dispatch_shell(
 
     render_shell_trace(&argv);
 
-    let output = std::process::Command::new(&argv[0])
-        .args(&argv[1..])
-        .output()
-        .map_err(|e| InterpError::TypeError {
-            msg: format!("failed to execute '{}': {}", argv[0], e),
-        })?;
+    let output = if let Some(stdin_node) = transport_stdin(transport.clone(), ctx.si()) {
+        use std::io::Write;
+        use std::process::Stdio;
+
+        let stdin_val = eval_expr(&stdin_node, param_env, ctx)?;
+        let stdin_bytes = shell_stdin_payload(&stdin_val)?;
+
+        let mut child = std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| InterpError::TypeError {
+                msg: format!("failed to execute '{}': {}", argv[0], e),
+            })?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            stdin.write_all(&stdin_bytes).map_err(|e| InterpError::TypeError {
+                msg: format!("failed to write shell transport stdin for '{}': {}", argv[0], e),
+            })?;
+        }
+
+        child.wait_with_output().map_err(|e| InterpError::TypeError {
+            msg: format!("failed to wait on '{}': {}", argv[0], e),
+        })?
+    } else {
+        std::process::Command::new(&argv[0])
+            .args(&argv[1..])
+            .output()
+            .map_err(|e| InterpError::TypeError {
+                msg: format!("failed to execute '{}': {}", argv[0], e),
+            })?
+    };
 
     Ok(ShellResult {
         exit_code: output.status.code().unwrap_or(-1),
