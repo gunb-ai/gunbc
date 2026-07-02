@@ -18,8 +18,8 @@ import gunbc.host_identity_knob {
   HostIdentityKnobKey,
   HostIdentityLeafVerdict,
   host_identity_knob_key,
-  host_identity_leaf_is_noop,
 }
+import std.change { KeyedLeafVerdictFold, keyed_leaf_verdict_fold }
 import gunbc.host_identity_observation {
   HostIdentityObservation,
   host_identity_observation_nonempty,

@@ -8,14 +8,14 @@ import std.change {
   KeyedPatch,
   KeyedThreeWayPatch,
   KeyedLeafVerdict,
+  KeyedLeafVerdictFold,
   keyed_two_way_diff,
   keyed_three_way_fold,
   keyed_apply_patch,
   keyed_invert_patch,
   keyed_patch_hunk_count,
   keyed_three_way_entry_count,
-  keyed_three_way_has_conflict,
-  keyed_three_way_has_apply,
+  keyed_leaf_verdict_fold,
 }
 import gunbc.host_converge {
   ConvergeKnob,
@@ -121,13 +121,35 @@ fn host_converge_three_way_entry_count(
 fn host_converge_three_way_has_conflict(
   patch: KeyedThreeWayPatch<ConvergeKnobKey, ConvergeKnob>,
 ) -> Bool {
-  keyed_three_way_has_conflict(patch: patch)
+  fold(patch.entries, init: false, f: fn(acc, entry) {
+    acc || keyed_leaf_verdict_fold(
+      verdict: entry.verdict,
+      fold: KeyedLeafVerdictFold {
+        unchanged: false,
+        conflict: true,
+        apply_hunk: fn(_, _) { false },
+        added: fn(_) { false },
+        removed: fn(_) { false },
+      },
+    )
+  })
 }
 
 fn host_converge_three_way_has_apply(
   patch: KeyedThreeWayPatch<ConvergeKnobKey, ConvergeKnob>,
 ) -> Bool {
-  keyed_three_way_has_apply(patch: patch)
+  fold(patch.entries, init: false, f: fn(acc, entry) {
+    acc || keyed_leaf_verdict_fold(
+      verdict: entry.verdict,
+      fold: KeyedLeafVerdictFold {
+        unchanged: false,
+        conflict: false,
+        apply_hunk: fn(_, _) { true },
+        added: fn(_) { true },
+        removed: fn(_) { true },
+      },
+    )
+  })
 }
 
 fn host_converge_knob_in_patch(
