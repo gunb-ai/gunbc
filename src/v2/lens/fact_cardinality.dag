@@ -8,7 +8,7 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 
 type FactCardinalityTree
-  = Dsl
+  = Dag
   | V2
 
 type FactCardinalityDeclFact {

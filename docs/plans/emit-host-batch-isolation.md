@@ -13,7 +13,7 @@ corpus* edge (`floor_corpus_serializes`, a `ResourceDependsOn`) **only if**
 `gate_is_heavy_resolve(g) == true`. Today:
 
 ```
-gate_is_heavy_resolve: SourceRootIngestGate => true, DslCompileCleanGate => true,
+gate_is_heavy_resolve: SourceRootIngestGate => true, DagCompileCleanGate => true,
                        EmitHostGate => false, ...
 ```
 

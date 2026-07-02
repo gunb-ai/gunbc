@@ -18,12 +18,12 @@ fn sample_outcome(entry: &str, function: &str, outcome: ClaimOutcome) -> Discove
 #[test]
 fn wet_hermetic_comparator_reports_outcome_divergence() {
     let wet = [sample_outcome(
-        "dsl/test/claim/example_witness_test.dag",
+        "dag/test/claim/example_witness_test.dag",
         "witness_holds",
         ClaimOutcome::Pass,
     )];
     let hermetic = [sample_outcome(
-        "dsl/test/claim/example_witness_test.dag",
+        "dag/test/claim/example_witness_test.dag",
         "witness_holds",
         ClaimOutcome::Fail,
     )];
@@ -61,7 +61,7 @@ fn wet_hermetic_comparator_empty_when_outcomes_match() {
 fn ci_witness_layer_roots() -> Vec<String> {
     let ws = workspace_root();
     vec![
-        ws.join("dsl").to_string_lossy().into_owned(),
+        ws.join("dag").to_string_lossy().into_owned(),
         ws.join("src/v2").to_string_lossy().into_owned(),
     ]
 }
@@ -69,7 +69,7 @@ fn ci_witness_layer_roots() -> Vec<String> {
 fn ci_witness_scan_dirs() -> Vec<String> {
     let ws = workspace_root();
     vec![
-        ws.join("dsl/test/claim").to_string_lossy().into_owned(),
+        ws.join("dag/test/claim").to_string_lossy().into_owned(),
         ws.join("src/v2/test/claim/manual")
             .to_string_lossy()
             .into_owned(),
@@ -132,7 +132,7 @@ fn wet_hermetic_scaffold_roster_filter_uses_dag_prefix_authority() {
     }
     let outsider = DiscoveryRow {
         label: "outsider".into(),
-        entry: "dsl/test/claim/unrelated_witness_test.dag".into(),
+        entry: "dag/test/claim/unrelated_witness_test.dag".into(),
         function: "witness_holds".into(),
     };
     assert!(

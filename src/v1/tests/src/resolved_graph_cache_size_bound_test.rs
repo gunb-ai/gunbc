@@ -116,11 +116,11 @@ fn cap_matches_modeled_authority() {
     let ws = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .find(|p| {
-            p.join("dsl/extdeps/realization/resolved_graph.dag")
+            p.join("dag/extdeps/realization/resolved_graph.dag")
                 .exists()
         })
         .expect("locate workspace root containing the resolved_graph .dag authority");
-    let dag = fs::read_to_string(ws.join("dsl/extdeps/realization/resolved_graph.dag"))
+    let dag = fs::read_to_string(ws.join("dag/extdeps/realization/resolved_graph.dag"))
         .expect("read resolved_graph.dag");
 
     // data resolved_graph_cache_cap_bytes: ByteSize = byte_size(count: 10737418240)

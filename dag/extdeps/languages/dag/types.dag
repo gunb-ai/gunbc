@@ -1,0 +1,20 @@
+module extdeps.languages.dag.types
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import std.coercion { TypeCheckpoint }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag"
+  }
+}
+
+data dag_type_checkpoints: List<TypeCheckpoint> = [
+  { dag_name: "Int",    target_type: "Int",    default_expr: "0",    is_copy: none, literal_suffix: none },
+  { dag_name: "Float",  target_type: "Float",  default_expr: "0.0",  is_copy: none, literal_suffix: none },
+  { dag_name: "Bool",   target_type: "Bool",   default_expr: "false", is_copy: none, literal_suffix: none },
+  { dag_name: "String", target_type: "String", default_expr: "\"\"", is_copy: none, literal_suffix: none }
+]

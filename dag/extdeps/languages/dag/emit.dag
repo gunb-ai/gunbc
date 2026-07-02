@@ -1,0 +1,57 @@
+module extdeps.languages.dag.emit
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag"
+  }
+}
+
+data dag_keywords: Map<String, String> = {
+  "true": "true", "false": "false", "null": "none",
+  "and": "&&", "or": "||", "not": "!",
+  "div": "/"
+}
+
+data dag_container_templates: Map<String, String> = {
+  "list": "List<\{0\}>", "set": "Set<\{0\}>",
+  "non_empty_list": "NonEmptyList<\{0\}>", "non_empty_set": "NonEmptySet<\{0\}>",
+  "optional": "\{0\}?", "map": "Map<\{0\}, \{1\}>",
+  "free_monoid": "List<\{0\}>", "partial_function": "Map<\{0\}, \{1\}>",
+  "boolean_algebra": "Bool"
+}
+
+data dag_reserved: List<String> = []
+
+data dag_string_types: List<String> = ["String", "Secret"]
+
+data dag_func_keyword: String = "fn"
+data dag_async_prefix: String = ""
+data dag_struct_keyword: String = "type"
+data dag_enum_keyword: String = "type"
+data dag_type_alias_keyword: String = "type"
+data dag_param_separator: String = ", "
+data dag_return_arrow: String = " -> "
+data dag_param_type_sep: String = ": "
+data dag_module_keyword: String = "module"
+data dag_import_keyword: String = "import"
+data dag_import_from_keyword: String = ""
+
+data dag_lambda_template: String = "({0}) => {1}"
+data dag_error_expr_template: String = "error({0})"
+data dag_list_literal_empty: String = "[]"
+data dag_list_literal_template: String = "[{0}]"
+data dag_null_coalesce_template: String = "{0} ?? {1}"
+data dag_error_type_template: String = "__EMIT_BUG_{0}__"
+data dag_type_arg_open: String = "<"
+data dag_type_arg_close: String = ">"
+data dag_void_type: String = "()"
+data dag_tuple_empty: String = "()"
+data dag_tuple_pair_template: String = "({0}, {1})"
+data dag_tuple_multi_template: String = "({0})"
+data dag_tuple_separator: String = ", "
+
+data dag_source_extension: String = ".dag"

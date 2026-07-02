@@ -50,7 +50,7 @@ fn assert_resolved(resolved: &ResolvedPipelineResult) {
 
 fn with_receipts_ctx<R>(body: impl FnOnce(&v1_interpreter::InterpContext) -> R) -> R {
     let ws = workspace_root();
-    let roots = [ws.join("src/v2"), ws.join("dsl")];
+    let roots = [ws.join("src/v2"), ws.join("dag")];
     let sources =
         resolve_imports_transitively_with_source_roots("test.dag", RECEIPTS_SOURCE, &roots);
     let resolved = compile_to_resolved(Rc::new(sources));

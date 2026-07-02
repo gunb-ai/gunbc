@@ -1,6 +1,6 @@
 # Interpreter memory chronicle — post-#5910 (execution receipt)
 
-**Status:** timestamped profiling receipt (2026-06-28). **DESIGN.md + `dsl/gunbc/ci_floor_measurement.dag` remain the authority** — this doc chronicles measured numbers; it does not replace carrier rows.
+**Status:** timestamped profiling receipt (2026-06-28). **DESIGN.md + `dag/gunbc/ci_floor_measurement.dag` remain the authority** — this doc chronicles measured numbers; it does not replace carrier rows.
 
 **Owner:** calm-ram-408 / stern-moth-225 phase-0 metrics. **Base:** `529fd65044` (main, includes #5910).
 
@@ -15,7 +15,7 @@
 | **Cgroup peak** (job tree) | — | — | **6.27 GiB** < 8 GiB cap | **5.31 GiB** (5,699,862,528 B) < 8 GiB cap | **no exit-137**; under cap with margin |
 | **spawn_width** @ 8 GiB runner cap | — | — | **1** (witnessed) | **1** | matches #5910 |
 
-¹ Strict `whole_tree_resolved_ctx` over live `dsl`+`src/v2` **fails** (test scaffolds / eval workflows) — same open thread as `wiring_liveness_whole_tree`. The historical 5.5 GiB probe (silent-moth-532) used a dedicated all-modules resolve, not replayable as one strict graph today.
+¹ Strict `whole_tree_resolved_ctx` over live `dag`+`src/v2` **fails** (test scaffolds / eval workflows) — same open thread as `wiring_liveness_whole_tree`. The historical 5.5 GiB probe (silent-moth-532) used a dedicated all-modules resolve, not replayable as one strict graph today.
 
 ² Canonical 8 GiB docker floor running at session end (`calm-ram-408-floor-8g-v2.log`); dashboard session partial (31 GiB, w=5): self **8.15 GiB**, per-shard **1.63 GiB**, cgroup **12.36 GiB** — wrong grain for #5910 comparison.
 
@@ -64,7 +64,7 @@ Discovery ran 1111/1112 witnesses before one `doc_reachability` failure; peak RS
 
 **Inflation caveat:** mock-precompute RSS is **not** additive with per-shard resolve peaks in `claim_executor` (scoped precompute, shared index) — the old ~6× conflation was the unscoped 1.5 GiB transient graph; that path is gone.
 
-**Strict whole-tree** (`measure_whole_tree_resolve`, dsl production only, 468 modules): **274,763,776 B (~262 MiB)** — not comparable to 5.5 GiB (no `src/v2` in one graph).
+**Strict whole-tree** (`measure_whole_tree_resolve`, dag production only, 468 modules): **274,763,776 B (~262 MiB)** — not comparable to 5.5 GiB (no `src/v2` in one graph).
 
 **Serial discovery corpus** (`claim_batch --roster-from-discovery`, 1112 witnesses, host session):
 

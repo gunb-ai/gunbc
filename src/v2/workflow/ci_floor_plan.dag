@@ -4,7 +4,7 @@ import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, 
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
-  ExtdepsExternalAuthorityGate, DslCompileCleanGate, GeneratedArtifactDriftGate,
+  ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
 }
 import v2.std.algebra { length, list_snoc_item, skip, zip_map }
@@ -62,9 +62,9 @@ import v2.workflow.executor {
 
 data ci_floor_target_digest: ContentHash = "gunbc-ci-floor-v1"
 
-data ci_floor_compile_gate_fn: String = "dsl_compile_clean_gate_passes"
+data ci_floor_compile_gate_fn: String = "dag_compile_clean_gate_passes"
 
-data floor_gate_witness_entry: String = "dsl/tools/floor_effect_gate_witness.dag"
+data floor_gate_witness_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 
 data floor_source_root_ingest_gate_entry: String = "src/v2/workflow/source_root_ingest_gate.dag"
 
@@ -90,7 +90,7 @@ fn gate_node(g: Gate) -> Node {
     EmitHostGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_emit } }, children: [] }
     LayeringImportsGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_layering } }, children: [] }
     ExtdepsExternalAuthorityGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_extdeps_external_authority } }, children: [] }
-    DslCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
+    DagCompileCleanGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_compile } }, children: [] }
     GeneratedArtifactDriftGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_generated_artifact } }, children: [] }
     SourceRootIngestGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_sourceingest } }, children: [] }
     RegenVerifyGate => Node { kind: TypeNode { connective: Atom { identity: ^gunbc_floor_gate_regen_verify } }, children: [] }
@@ -100,7 +100,7 @@ fn gate_node(g: Gate) -> Node {
 }
 
 fn floor_compile_root_node() -> Node {
-  gate_node(g: DslCompileCleanGate)
+  gate_node(g: DagCompileCleanGate)
 }
 
 fn floor_resource_anchor_node(node: Node) -> Bool {
@@ -111,7 +111,7 @@ fn gate_runnable_profile(g: Gate) -> RunnableResourceProfile {
   let per_shard = runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
   let host_compiler = runnable_memory_substantial(predicted_peak: gunbc_ci_floor_host_compiler_spawn_peak)
   match g {
-    DslCompileCleanGate =>
+    DagCompileCleanGate =>
       runnable_resource_profile(
         heavy_whole_tree_resolve: true,
         spawns_host_compiler: false,
@@ -161,7 +161,7 @@ fn gate_runnable(g: Gate) -> Runnable {
     EmitHostGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "emit_host_gate_passes", profile: profile }
     LayeringImportsGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "layering_imports_gate_passes", profile: profile }
     ExtdepsExternalAuthorityGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "extdeps_external_authority_gate_passes", profile: profile }
-    DslCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dsl_compile_clean_gate_passes", profile: profile }
+    DagCompileCleanGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "dag_compile_clean_gate_passes", profile: profile }
     GeneratedArtifactDriftGate => RunnableSingleClaim { entry: floor_gate_witness_entry, function: "generated_artifact_drift_gate_passes", profile: profile }
     SourceRootIngestGate => RunnableSingleClaim {
       entry: floor_source_root_ingest_gate_entry,
@@ -320,7 +320,7 @@ fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
     ],
     f: fn(acc, g) {
       match g {
-        DslCompileCleanGate => acc
+        DagCompileCleanGate => acc
         _ => list_snoc_item(
           xs: acc,
           item: floor_depends_on_compile(dependent: gate_node(g: g))
@@ -569,8 +569,8 @@ fn witness_floor_corpus_exclusion_edges_exist() -> Bool {
 }
 
 fn witness_floor_compile_gate_honest_heavy_profile() -> Bool {
-  runnable_heavy_whole_tree_resolve(profile: gate_runnable_profile(g: DslCompileCleanGate))
-    && runnable_excludes_corpus_co_residence(profile: gate_runnable_profile(g: DslCompileCleanGate))
+  runnable_heavy_whole_tree_resolve(profile: gate_runnable_profile(g: DagCompileCleanGate))
+    && runnable_excludes_corpus_co_residence(profile: gate_runnable_profile(g: DagCompileCleanGate))
 }
 
 fn witness_floor_no_corpus_resource_edge_to_compile_anchor() -> Bool {

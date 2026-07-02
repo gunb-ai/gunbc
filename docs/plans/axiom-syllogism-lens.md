@@ -60,7 +60,7 @@ The three structural verdicts are **derived, not stored** (§3 single-authority:
 - `argument_is_acyclic(a)` — `graph_has_multi_node_scc` over the `because` graph is `false` (the §4 test).
 - `argument_axiom_set_is_closed(a)` — every node with empty `because` is in `{A1,A2,A3}`; no fourth root.
 
-**(b) The instance — the DESIGN rows.** The actual A1–A3 + §1–§7 content is a fact *about gunbc's own DESIGN.md*, not a universal framework — so, exactly as `doc_reachability_project` homes the doc-graph instance outside `std/`, the **DESIGN argument rows** home in a gunbc-layer module (proposed `dsl/gunbc/design_argument.dag`) as data:
+**(b) The instance — the DESIGN rows.** The actual A1–A3 + §1–§7 content is a fact *about gunbc's own DESIGN.md*, not a universal framework — so, exactly as `doc_reachability_project` homes the doc-graph instance outside `std/`, the **DESIGN argument rows** home in a gunbc-layer module (proposed `dag/gunbc/design_argument.dag`) as data:
 
 | node | kind | because |
 | --- | --- | --- |
@@ -122,7 +122,7 @@ The open thread names the first target explicitly: *"with this document as the f
 - **GREEN now:** `argument_has_no_orphan(design)` ∧ `argument_is_acyclic(design)` ∧ `argument_axiom_set_is_closed(design)` over the transcribed DESIGN rows.
 - **RED on revert (the discriminator):** delete a `because` edge from any §-row → that claim becomes an orphan → `argument_has_no_orphan` goes RED. Add a `because` edge that points "forward" (a later § derived from an earlier claim that in turn cites it) → a cycle → `argument_is_acyclic` RED. Add a fourth root → `argument_axiom_set_is_closed` RED. **Non-vacuity floor** (inert-lens §, doc-reachability §5): an empty `Argument` is itself RED (a zero-claim universe fail-opens the orphan check).
 
-The witness homes at `dsl/test/claim/design_argument_witness_test.dag`, floor-discovered by the `*_test.dag` + `test fn` marker convention (CLAUDE.md "Building & checks") — naming it enrolls it; no hand-wiring.
+The witness homes at `dag/test/claim/design_argument_witness_test.dag`, floor-discovered by the `*_test.dag` + `test fn` marker convention (CLAUDE.md "Building & checks") — naming it enrolls it; no hand-wiring.
 
 ## 5. Reuse map (do not fork — §3)
 
@@ -142,7 +142,7 @@ The single biggest anti-fork: **the reachability rule is one concept across four
 ## 6. Frontier placement, wiring, dissolution
 
 - **Frontier placement:** the **rooted-DAG shape is a ① wall** (decidable, construction-enforceable once claims are substrate nodes); the **prose↔model binding is ② residue** (a determined-fix reader at the grounding seam); **inference soundness / completeness / axiom-independence are ③, permanent review.**
-- **Wiring (when built, not now):** `std/argument.dag` (framework) + `dsl/gunbc/design_argument.dag` (the DESIGN rows) + `dsl/test/claim/design_argument_witness_test.dag` (the three fail-closed `test fn`s + non-vacuity floor). No `cli_run.rs` edit if the rows are pure `.dag` (the orphan/cycle checks are pure folds over `graph.dag` — unlike the doc-graph's orphan half, the argument's universe is the *declared row set*, not a filesystem walk, so **no host bridge is needed**: this is strictly cheaper than the doc-graph wall, which needed a dir-walk census).
+- **Wiring (when built, not now):** `std/argument.dag` (framework) + `dag/gunbc/design_argument.dag` (the DESIGN rows) + `dag/test/claim/design_argument_witness_test.dag` (the three fail-closed `test fn`s + non-vacuity floor). No `cli_run.rs` edit if the rows are pure `.dag` (the orphan/cycle checks are pure folds over `graph.dag` — unlike the doc-graph's orphan half, the argument's universe is the *declared row set*, not a filesystem walk, so **no host bridge is needed**: this is strictly cheaper than the doc-graph wall, which needed a dir-walk census).
 - **Dissolution:** the lens never dissolves (a serial argument is a standing property). Its **staging dissolves**: the ② "hand-transcribed rows" arc empties when the rows are *derived from* DESIGN's §-anchors via the [invert-hand-maintained](invert-hand-maintained.md) drift-gate (emit-from-authority + prove the rows match the doc), at which point the binding seam closes and the shape verdicts flip from ② observing → ① wall. The ROADMAP item stays `[ ]` until the witness *runs executably over this doc* (the open thread's own bar — "stays `[ ]` until it runs executably over this doc").
 
 ## 7. The vertical slice (the smallest executable proof, for the nod)
@@ -150,8 +150,8 @@ The single biggest anti-fork: **the reachability rule is one concept across four
 The minimal slice that proves the wall on **real DESIGN claims** — sized to §1-minimal, not the whole chain:
 
 1. **`std/argument.dag`** — the three carriers (`Axiom`, `Claim`, `Argument`) + three folds (`argument_has_no_orphan`, `argument_is_acyclic`, `argument_axiom_set_is_closed`), each projecting onto `std/graph.dag`. ~no new graph code — the folds adapt `Argument → CallGraph` and call the existing `graph_has_multi_node_scc` / a reverse-reachability BFS.
-2. **`dsl/gunbc/design_argument.dag`** — **only DESIGN §1**: the 3 axioms + the ~5 §1 consequence rows ("minimal/safe/efficient" ← A1,A2 · "grounding intersubjective" ← A2,A3 · "reduce to physics" ← A1,A2, grounding). The smallest *non-vacuous* argument — enough to exercise orphan, cycle, and closed-axiom on genuine claims, not synthetic ones.
-3. **`dsl/test/claim/design_argument_witness_test.dag`** — four `test fn`s: the three shape verdicts GREEN over §1, plus the non-vacuity floor (`claim_count > 0`). Floor-discovered by marker.
+2. **`dag/gunbc/design_argument.dag`** — **only DESIGN §1**: the 3 axioms + the ~5 §1 consequence rows ("minimal/safe/efficient" ← A1,A2 · "grounding intersubjective" ← A2,A3 · "reduce to physics" ← A1,A2, grounding). The smallest *non-vacuous* argument — enough to exercise orphan, cycle, and closed-axiom on genuine claims, not synthetic ones.
+3. **`dag/test/claim/design_argument_witness_test.dag`** — four `test fn`s: the three shape verdicts GREEN over §1, plus the non-vacuity floor (`claim_count > 0`). Floor-discovered by marker.
 
 **The discriminating receipt (§5 green-by-execution, not grep):**
 
@@ -175,4 +175,4 @@ That is the whole nod-able artifact: **three carriers, one §1 instance, one wit
 
 ## Dissolution trigger (DESIGN §6)
 
-Delete this doc when the axiom + syllogism lens is built and runs executably over DESIGN.md's own §1–§7 argument: std/argument.dag (the Axiom/Claim/Argument carriers plus the three fail-closed folds), dsl/gunbc/design_argument.dag (the transcribed DESIGN rows), and a discovered design_argument_witness_test.dag are green-by-execution with the orphan/cycle/smuggled-axiom discriminators going RED — at which point this scope-only design is superseded by the running wall and DESIGN open thread #1 is closed.
+Delete this doc when the axiom + syllogism lens is built and runs executably over DESIGN.md's own §1–§7 argument: std/argument.dag (the Axiom/Claim/Argument carriers plus the three fail-closed folds), dag/gunbc/design_argument.dag (the transcribed DESIGN rows), and a discovered design_argument_witness_test.dag are green-by-execution with the orphan/cycle/smuggled-axiom discriminators going RED — at which point this scope-only design is superseded by the running wall and DESIGN open thread #1 is closed.

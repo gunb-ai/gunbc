@@ -32,7 +32,7 @@ The under-side and the over-side are the **same defect** seen twice: width bound
 
 ## 3. The move: one ResourceEnvelope, every knob derived (§3 single authority)
 
-Collapse the N hand-tuned dimensions into **one authority** — the host `ResourceEnvelope` (cores, memory, pids capacity; already a type in `dsl/product/compute_fabric.dag`) — and make **every knob a function of it**. Then the dimensions stop being N things to juggle: they are one measured fact with derivations, and the fleet gets **exactly one coherent operating point**. It *cannot* be both starved and thrashing, because both the width floor and the fan-out ceiling come from the same envelope.
+Collapse the N hand-tuned dimensions into **one authority** — the host `ResourceEnvelope` (cores, memory, pids capacity; already a type in `dag/product/compute_fabric.dag`) — and make **every knob a function of it**. Then the dimensions stop being N things to juggle: they are one measured fact with derivations, and the fleet gets **exactly one coherent operating point**. It *cannot* be both starved and thrashing, because both the width floor and the fan-out ceiling come from the same envelope.
 
 | Knob | Derivation from the envelope | Tier (§4) | Owner | Status |
 | --- | --- | --- | --- | --- |
@@ -55,7 +55,7 @@ So the same-envelope coupling is **packing × fan-out** (build phase); width-up 
 
 Per §3, the agnostic **shape** is central; the **measured realization** and the **dispatch** are peripheral. Applied here:
 
-- **PUBLIC (central, topology):** the envelope *shape*, the width *derivation*, the codegen-units cap — all live in `dsl/product/compute_fabric.dag` / `std/realization_width.dag` / the `[profile.test]` block. These are host-agnostic functions: "given an envelope, here is the width / the fan-out."
+- **PUBLIC (central, topology):** the envelope *shape*, the width *derivation*, the codegen-units cap — all live in `dag/product/compute_fabric.dag` / `std/realization_width.dag` / the `[profile.test]` block. These are host-agnostic functions: "given an envelope, here is the width / the fan-out."
 - **CTRL (peripheral, realization):** the *measured host facts* (128c/128GB), `TasksMax`, `MemoryMax`, runner count, the systemd-cgroup knobs, the unit generation. These are srv1/srv2 *instances* of the shape. **gunbc owns the shapes; ctrl owns the instances and *generates* the units** from the public derivation (the units are emitted, never hand-typed — that's what kills the drift).
 
 So the doc maps both tiers, but routes implementation accordingly: width/fan-out → public PRs; host-fact grounding + unit generation → ctrl.

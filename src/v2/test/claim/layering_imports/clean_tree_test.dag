@@ -5,8 +5,8 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data layering_std_roots: List<String> = ["src/v2/std", "dsl/std"]
-data layering_extdeps_roots: List<String> = ["src/v2/extdeps", "dsl/extdeps"]
+data layering_std_roots: List<String> = ["src/v2/std", "dag/std"]
+data layering_extdeps_roots: List<String> = ["src/v2/extdeps", "dag/extdeps"]
 
 test fn clean_tree_no_wrong_direction_imports_holds() -> Bool {
   layering_imports_clean_holds(facts: layer_import_facts_live(

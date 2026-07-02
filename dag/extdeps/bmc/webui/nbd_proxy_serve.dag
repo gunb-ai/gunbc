@@ -1,0 +1,176 @@
+module extdeps.bmc.webui.nbd_proxy_serve
+
+import std.types { NonEmptyStr, Int, String, List }
+import std.logic { Bool }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.tools.curl { curl_cli_tool }
+import extdeps.tools.websocat { websocat_cli_tool, websocat_install_path }
+import extdeps.tools.nbdkit { nbdkit_cli_tool }
+import extdeps.tools.socat { socat_cli_tool }
+import extdeps.languages.bash.program {
+  ShellWord,
+  ShellStmt,
+  ShellProgram,
+  Lit,
+  Command,
+  RawLine,
+  WithRedir,
+  RedirToFile,
+  lit,
+  command,
+  assign,
+  serialize_bash,
+}
+import extdeps.bmc.webui.nbd_proxy {
+  nbd_proxy_role_assignment,
+  NbdServer,
+}
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/jsnbd"
+  }
+}
+
+data bmcweb_session_token_env_ref: NonEmptyStr = concat("$", "BMCWEB_SESSION_TOKEN") as NonEmptyStr
+
+data srv3_nbd_proxy_local_port: Int = 10809
+
+data nbd_proxy_serve_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: nbd_proxy_serve — held-open nbdkit→websocat pipeline serialized via extdeps.languages.bash.program ShellProgram (SCAFFOLD ahead of grammar-row bash_fold emit + host_effect NbdProxyServe transport handler); live-bringup interim uses RawLine concat for nbdkit (-p/--readonly global flags) and websocat (--insecure --text --header=) because those argv shapes are not yet grammar-row inhabitants — opposite direction from Command-words-literal modeling and must dissolve back to structured rows; Background (&), Trap, and quoted-arg forms still ride as opaque text — DISSOLVES WHEN bash_fold grammar adds those nodes and ingest ∘ emit = id with host_effect_apply binding NbdProxyServe without serialize_bash; retire medium_structure_exception_roster entry for dag/extdeps/bmc/webui/nbd_proxy_serve.dag"
+
+type NbdProxyServeTransportIntent {
+  bmc_host: NonEmptyStr
+  session_token: NonEmptyStr
+  ws_path: NonEmptyStr
+  iso_path: NonEmptyStr
+  local_nbd_port: Int
+}
+
+data nbd_proxy_serve_cited_tool_names: List<NonEmptyStr> = [
+  nbdkit_cli_tool.name,
+  websocat_cli_tool.name,
+  socat_cli_tool.name,
+]
+
+fn nbd_proxy_serve_transport_intent(
+  bmc_host: NonEmptyStr,
+  session_token: NonEmptyStr,
+  ws_path: NonEmptyStr,
+  iso_path: NonEmptyStr,
+  local_nbd_port: Int,
+) -> NbdProxyServeTransportIntent {
+  NbdProxyServeTransportIntent {
+    bmc_host: bmc_host,
+    session_token: session_token,
+    ws_path: ws_path,
+    iso_path: iso_path,
+    local_nbd_port: local_nbd_port,
+  }
+}
+
+fn bmcweb_session_login_program(
+  bmc_host: NonEmptyStr,
+  request_body_file: NonEmptyStr,
+  response_path: NonEmptyStr,
+) -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: [
+      WithRedir {
+        stmt: command(words: [
+          lit(text: curl_cli_tool.name),
+          lit(text: "-sk"),
+          lit(text: "-X"),
+          lit(text: "POST"),
+          lit(text: concat("https://", concat(bmc_host, "/login"))),
+          lit(text: "-H"),
+          lit(text: "Content-Type: application/json"),
+          lit(text: "--data"),
+          lit(text: concat("@", request_body_file)),
+        ]),
+        redir: RedirToFile { path: lit(text: response_path as String) },
+      },
+    ],
+  }
+}
+
+fn nbd_proxy_serve_program(intent: NbdProxyServeTransportIntent) -> ShellProgram {
+  let port = to_string(intent.local_nbd_port)
+  let wss_url = concat("wss://", concat(intent.bmc_host, intent.ws_path))
+  let auth_header = concat("Authorization: Token ", intent.session_token)
+  let socat_bridge = concat("tcp:127.0.0.1:", port)
+  ShellProgram {
+    set_e: false,
+    statements: [
+      RawLine { text: "set -euo pipefail" },
+      RawLine {
+        text: concat(
+          concat(nbdkit_cli_tool.name, concat(" -p ", concat(port, concat(" --readonly file file=", concat(intent.iso_path as String, " &")))))),
+      },
+      RawLine { text: "NBDKIT_PID=$!" },
+      RawLine { text: "trap 'kill \"$NBDKIT_PID\"' EXIT INT TERM" },
+      RawLine {
+        text: concat(
+          concat(websocat_install_path as String, " --insecure --text --header=\""),
+          concat(auth_header, concat("\" ", concat(wss_url, concat(" ", socat_bridge))))),
+      },
+    ],
+  }
+}
+
+fn nbd_proxy_serve_script(intent: NbdProxyServeTransportIntent) -> String {
+  serialize_bash(p: nbd_proxy_serve_program(intent: intent))
+}
+
+fn nbd_proxy_serve_program_statement_count(intent: NbdProxyServeTransportIntent) -> Int {
+  nbd_proxy_serve_program(intent: intent).statements.length()
+}
+
+fn shell_command_leading_lit_text(stmt: ShellStmt) -> String {
+  match stmt {
+    Command { words: ws } => fold(ws, init: "", f: (acc, w) => {
+      if acc != "" {
+        acc
+      } else {
+        match w {
+          Lit { text: t } => t
+          _ => ""
+        }
+      }
+    })
+    _ => ""
+  }
+}
+
+fn shell_rawline_starts_with_tool(stmt: ShellStmt, tool: NonEmptyStr) -> Bool {
+  match stmt {
+    RawLine { text: t } =>
+      string_contains(s: t, pattern: concat(tool, " "))
+        || (t == tool as String)
+    Command { words: _ } => shell_command_leading_lit_text(stmt: stmt) == tool
+    _ => false
+  }
+}
+
+fn shell_program_final_statement(p: ShellProgram) -> ShellStmt {
+  fold(p.statements, init: RawLine { text: "" }, f: (_, stmt) => stmt)
+}
+
+fn nbd_proxy_serve_program_foreground_command_is_websocat(intent: NbdProxyServeTransportIntent) -> Bool {
+  let program = nbd_proxy_serve_program(intent: intent)
+  nbd_proxy_serve_program_statement_count(intent: intent) == 5
+    && shell_rawline_starts_with_tool(
+      stmt: shell_program_final_statement(p: program),
+      tool: websocat_install_path,
+    )
+}
+
+fn nbd_proxy_serve_requires_host_as_nbd_server() -> Bool {
+  nbd_proxy_role_assignment.host_program_role == NbdServer
+}
+
+fn nbd_proxy_serve_cited_tool_row_count() -> Int {
+  nbd_proxy_serve_cited_tool_names.length()
+}

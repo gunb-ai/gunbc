@@ -7,7 +7,7 @@ import v2.std.text { String }
 
 type SourceRootRef
   = V2Tree
-  | DslTree
+  | DagTree
 
 type SourceRootSet = FreeMonoid<SourceRootRef>
 
@@ -41,8 +41,8 @@ type CrossTreeAdmissionVerdict
 
 fn source_root_ref_eq(a: SourceRootRef, b: SourceRootRef) -> Bool {
   match a {
-    V2Tree => match b { V2Tree => true, DslTree => false }
-    DslTree => match b { V2Tree => false, DslTree => true }
+    V2Tree => match b { V2Tree => true, DagTree => false }
+    DagTree => match b { V2Tree => false, DagTree => true }
   }
 }
 

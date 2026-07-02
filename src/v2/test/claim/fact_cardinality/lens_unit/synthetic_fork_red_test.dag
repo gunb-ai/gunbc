@@ -6,10 +6,10 @@ import v2.lens.fact_cardinality {
 }
 import v2.std.logic { Bool }
 
-data synthetic_fork_dsl: FactCardinalityDeclFact = FactCardinalityDeclFact {
+data synthetic_fork_dag: FactCardinalityDeclFact = FactCardinalityDeclFact {
   rel_path_decl_key: "std/algebra.dag:FreeMonoid",
-  tree: Dsl,
-  content_hash: "dsl_free_monoid_record"
+  tree: Dag,
+  content_hash: "dag_free_monoid_record"
 }
 
 data synthetic_fork_v2: FactCardinalityDeclFact = FactCardinalityDeclFact {
@@ -20,7 +20,7 @@ data synthetic_fork_v2: FactCardinalityDeclFact = FactCardinalityDeclFact {
 
 test fn synthetic_fork_red_holds() -> Bool {
   fact_cardinality_cross_tree_diverged_fork(
-    left: synthetic_fork_dsl,
+    left: synthetic_fork_dag,
     right: synthetic_fork_v2
   )
 }

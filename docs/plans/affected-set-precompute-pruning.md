@@ -2,7 +2,7 @@
 
 **Status: PARTIAL IMPLEMENTATION — prep (#6065) + witness (a) partial (#6072) landed; Steps 4–5 blocked.**
 
-**ROADMAP:** `1-affected-set-defork` (`dsl/gunbc/roadmap_authority.dag:173`).
+**ROADMAP:** `1-affected-set-defork` (`dag/gunbc/roadmap_authority.dag:173`).
 
 **Merge sequence:** PR #6065 (disposition-kernel prep) merges first; #6072 rebases onto fresh `main` so its diff collapses to witness-(a)-delta only. Do **not** merge #6072 before #6065.
 

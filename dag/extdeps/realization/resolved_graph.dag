@@ -1,0 +1,81 @@
+module extdeps.realization.resolved_graph
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  CasContentEncoding,
+  ContentAddressLookup,
+  WriteOnce,
+  MissThenCreate,
+  StructuredArtifact,
+  PerHostFilesystem,
+  SizeBounded,
+  WriteThenRename,
+  FilesystemPerms,
+  LocalDiskUs,
+  ReadYourWrites,
+  OperatorObserved,
+  ToolchainChange,
+  ManualPurge,
+  Org,
+}
+import std.measure { ByteSize, byte_size }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
+  }
+}
+
+data resolved_graph_cache_cap_bytes: ByteSize = byte_size(count: 10737418240)
+
+data resolved_graph_cache_id: CacheInterfaceId = "resolved_graph_cache"
+
+data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
+  identity: resolved_graph_cache_id
+  backing_surface: "gunbc-resolved-graph-per-host-cache"
+  transport_encoding: CasContentEncoding
+  key_derivation: {
+
+    key_inputs: ContentAddressed
+    overwritable: false
+    prefix_fallback_allowed: false
+    content_verified_on_read: true
+    visibility_scope: Org
+    invalidation_triggers: [ToolchainChange, ManualPurge]
+  }
+  io: {
+    lookup_semantics: ContentAddressLookup
+    write_semantics: WriteOnce
+    miss_semantics: MissThenCreate
+  }
+  placement: {
+    value_shape: StructuredArtifact
+    locality: PerHostFilesystem
+    eviction: SizeBounded { cap_bytes: resolved_graph_cache_cap_bytes }
+    atomicity: WriteThenRename
+    auth: FilesystemPerms
+    read_latency: LocalDiskUs
+    consistency: ReadYourWrites
+  }
+  evidence: [
+    {
+      field: "atomicity"
+      evidence: OperatorObserved {
+        note: "resolved_graph_cache.rs temp-file + rename write path (WriteOnce under race)"
+        observed_at: 0
+      }
+    },
+    {
+      field: "lookup_semantics"
+      evidence: OperatorObserved {
+        note: "subject_digest content-addresses the closure content AND the resolve transform via the ToolchainSpec input (content(toolchain)) — NOT hand-authored resolve-logic/intern-seed version strings (cache-key-by-construction)"
+        observed_at: 0
+      }
+    },
+  ]
+}

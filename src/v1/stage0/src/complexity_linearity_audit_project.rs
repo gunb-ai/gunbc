@@ -44,7 +44,7 @@ const NON_FOLD_MIGRATION_DEBT_ROSTER: &[&str] = &[
     "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
     "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
     // (a) other un-migrated modeling awaiting total fold.
-    "dsl/extdeps/languages/markdown.dag::md_nested",
+    "dag/extdeps/languages/markdown.dag::md_nested",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
     "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
@@ -364,13 +364,13 @@ fn triage_complexity(site: &str) -> &'static str {
     if is_kernel_permanent_fn(fn_name) {
         return "kernel-permanent";
     }
-    if site.starts_with("dsl/extdeps/")
-        || site.starts_with("dsl/ctrl/")
-        || site.starts_with("dsl/gunbc/plans/")
-        || site.starts_with("dsl/test/")
+    if site.starts_with("dag/extdeps/")
+        || site.starts_with("dag/ctrl/")
+        || site.starts_with("dag/gunbc/plans/")
+        || site.starts_with("dag/test/")
     {
         "open-domain"
-    } else if site.starts_with("dsl/std/") || site.starts_with("dsl/gunbc/") {
+    } else if site.starts_with("dag/std/") || site.starts_with("dag/gunbc/") {
         "kernel-permanent"
     } else {
         "open-domain"

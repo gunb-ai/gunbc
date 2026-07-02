@@ -14,7 +14,7 @@ type DeterminismClass
   = Deterministic
   | NonDeterministic { source: NonDetSource }
 
-data determinism_class_compiler_refinement_activation_marker: String = "Compiler refinement of std.determinism DeterminismAxis — refines NonDeterministic with NonDetSource; Deterministic arm is shared verbatim from the core (§3 single authority, not a parallel re-declaration of the predicate). Core home: dsl/std/determinism.dag DeterminismAxis. Activation: primitive roster + determinism_compose algebra + witness data (P1 #5944). Dissolves when: infer derives composite DeterminismClass by construction (#3468 InferredFacts bundle, P4/FLAG-A); hand roster shrinks per determinism_primitive_roster_dissolution_marker."
+data determinism_class_compiler_refinement_activation_marker: String = "Compiler refinement of std.determinism DeterminismAxis — refines NonDeterministic with NonDetSource; Deterministic arm is shared verbatim from the core (§3 single authority, not a parallel re-declaration of the predicate). Core home: dag/std/determinism.dag DeterminismAxis. Activation: primitive roster + determinism_compose algebra + witness data (P1 #5944). Dissolves when: infer derives composite DeterminismClass by construction (#3468 InferredFacts bundle, P4/FLAG-A); hand roster shrinks per determinism_primitive_roster_dissolution_marker."
 
 type DeterminismFact {
   signature: Symbol,

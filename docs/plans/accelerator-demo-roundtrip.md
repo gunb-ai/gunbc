@@ -112,7 +112,7 @@ Fixture: a pure elementwise chain — `y = relu(a*b + c)` (mul → add → max).
 
 ## 6. Sequencing — seam first, silicon last
 
-> **Authoring note.** This doc landed on main with the modeling lane (#5970) and is kept reachable by the live doc-graph wall (`doc_reachability_project.rs`, which scans `bind:` provenance edges as well as markdown links) via the `bind: docs/plans/accelerator-demo-roundtrip.md` pointer in `dsl/gunbc/accelerator_demo_plan.dag` — so it is not an orphan. The optional ROADMAP *tracking* node (`accel-*`) lives in the roadmap-authority reconciliation (loyal-bee-794), separate from reachability.
+> **Authoring note.** This doc landed on main with the modeling lane (#5970) and is kept reachable by the live doc-graph wall (`doc_reachability_project.rs`, which scans `bind:` provenance edges as well as markdown links) via the `bind: docs/plans/accelerator-demo-roundtrip.md` pointer in `dag/gunbc/accelerator_demo_plan.dag` — so it is not an orphan. The optional ROADMAP *tracking* node (`accel-*`) lives in the roadmap-authority reconciliation (loyal-bee-794), separate from reachability.
 
 1. **Modeling lane** — `+LocalAccelerator` placement variant; the recognizer's output as a `RealizationPlan<S>`; the `NumericalContract` type + its `DecodeFidelity` coupling; the refusal diagnostic. All in `std/` + `extdeps/languages/<accel>/`. Lands consumed-or-marked (Ergonomics-lane "wire the seams" rule).
 2. **Execution lane** — the recognizer pass (elementwise-array-fold detection over the core graph) + the SoA fused-kernel handler (CPU contiguous loop) in the v2 interpreter; the differential harness; the **integer bit-exact witness** + the **refusal witness**, green-by-execution with a red-on-revert discriminator.

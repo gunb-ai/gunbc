@@ -265,7 +265,7 @@ fn func_env_whole_tree_unique_ptr_count_equals_local_definitions() {
         "lens/application/rejecting_lens_blocks_before_compile.dag".to_string(),
     ]);
     let roots = vec![
-        workspace_root().join("dsl").to_string_lossy().into_owned(),
+        workspace_root().join("dag").to_string_lossy().into_owned(),
         workspace_root()
             .join("src/v1")
             .to_string_lossy()

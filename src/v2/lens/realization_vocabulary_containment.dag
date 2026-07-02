@@ -23,7 +23,7 @@ data target_ast_vocab_modules: List<String> = [
 ]
 
 data realization_edge_path_prefixes: List<String> = [
-  "dsl/extdeps/languages/",
+  "dag/extdeps/languages/",
   "src/v2/extdeps/languages/",
   "src/v2/compiler/05_emit",
   "src/v2/compiler/06_translate",
@@ -35,19 +35,19 @@ data realization_edge_path_prefixes: List<String> = [
 ]
 
 data realization_vocab_exception_roster: List<String> = [
-  "dsl/gunbc/node_http_server_emit.dag",
-  "dsl/gunbc/ci_yaml_validate.dag",
-  "dsl/tools/build_step.dag",
-  "dsl/tools/build_step_transport.dag",
-  "dsl/tools/dsl_compile_clean_transport.dag",
-  "dsl/tools/emit_determinism_transport.dag",
-  "dsl/tools/emit_host_transport.dag",
-  "dsl/tools/extdeps_external_authority_transport.dag",
-  "dsl/tools/host_prelude.dag",
-  "dsl/tools/layering_imports_transport.dag",
-  "dsl/tools/regen_verify_transport.dag",
-  "dsl/tools/self_host_realized_comparison_transport.dag",
-  "dsl/tools/v1_dag_parse_transport.dag",
+  "dag/gunbc/node_http_server_emit.dag",
+  "dag/gunbc/ci_yaml_validate.dag",
+  "dag/tools/build_step.dag",
+  "dag/tools/build_step_transport.dag",
+  "dag/tools/dag_compile_clean_transport.dag",
+  "dag/tools/emit_determinism_transport.dag",
+  "dag/tools/emit_host_transport.dag",
+  "dag/tools/extdeps_external_authority_transport.dag",
+  "dag/tools/host_prelude.dag",
+  "dag/tools/layering_imports_transport.dag",
+  "dag/tools/regen_verify_transport.dag",
+  "dag/tools/self_host_realized_comparison_transport.dag",
+  "dag/tools/v1_dag_parse_transport.dag",
   "src/v2/workflow/compiler_closure_ingest_transport.dag",
   "src/v2/workflow/floor_diff_observe.dag",
   "src/v2/workflow/self_host_realized_comparison_gate.dag",
@@ -55,11 +55,11 @@ data realization_vocab_exception_roster: List<String> = [
 ]
 
 data realization_vocab_consumer_scan_roots: List<String> = [
-  "dsl/std",
-  "dsl/extdeps",
-  "dsl/compiler",
-  "dsl/tools",
-  "dsl/gunbc",
+  "dag/std",
+  "dag/extdeps",
+  "dag/compiler",
+  "dag/tools",
+  "dag/gunbc",
   "src/v2/std",
   "src/v2/extdeps",
   "src/v2/compiler",

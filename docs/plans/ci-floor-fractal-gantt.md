@@ -40,7 +40,7 @@ Total CI wall (build + executor)  ~915s (~15m15s)
 
 ### Batch 1 drill-down (52s)
 
-One SingleClaim in `dsl/tools/floor_effect_gate_witness.dag` → `dsl_compile_clean_gate_passes`. This gate invokes the .dag compile pass (not cargo). Breakdown not visible without `GUNBC_FLOOR_GANTT=1` on a live run; per-claim timing is now captured in the new ClaimResult fields. Estimated: resolve ~30-40s (heavy closure, ~106 modules), eval ~12-20s (the compile pass itself).
+One SingleClaim in `dag/tools/floor_effect_gate_witness.dag` → `dag_compile_clean_gate_passes`. This gate invokes the .dag compile pass (not cargo). Breakdown not visible without `GUNBC_FLOOR_GANTT=1` on a live run; per-claim timing is now captured in the new ClaimResult fields. Estimated: resolve ~30-40s (heavy closure, ~106 modules), eval ~12-20s (the compile pass itself).
 
 ### Batch 2 drill-down (538s = 9 min — the dominant hot spot)
 

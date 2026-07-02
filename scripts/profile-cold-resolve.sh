@@ -47,7 +47,7 @@ trap 'rm -f "$log"' EXIT
 # Otherwise require claim_batch exit 0 (fail-closed for eval witnesses).
 run_pair_entry() {
   local label="$1" entry="$2" fn="$3" resolve_only="${4:-0}"
-  local -a cmd=( "$BIN" --source-root src/v2 --source-root dsl --entry "$entry" --function "$fn" )
+  local -a cmd=( "$BIN" --source-root src/v2 --source-root dag --entry "$entry" --function "$fn" )
   if [[ "$resolve_only" == "0" ]]; then
     cmd+=( --claim-run --wet )
   fi
@@ -93,9 +93,9 @@ echo "profile-cold-resolve: discovery roster — per-entry resolve (typed_module
 echo "profile-cold-resolve: log → $log" >&2
 
 "$BIN" \
-  --source-root src/v2 --source-root dsl \
+  --source-root src/v2 --source-root dag \
   --scan-dir src/v2/test/claim \
-  --scan-dir dsl/test/claim \
+  --scan-dir dag/test/claim \
   --roster-from-discovery \
   --claim-run --wet \
   2>&1 | tee "$log"

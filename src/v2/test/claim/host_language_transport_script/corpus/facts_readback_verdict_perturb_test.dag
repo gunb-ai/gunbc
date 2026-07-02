@@ -9,7 +9,7 @@ import v2.lens.host_language_transport_script {
 import std.lens_verdict { Holds, Violation, NotApplicable, Unrealized }
 import v2.std.logic { Bool }
 
-data corpus_computed_path: String = "dsl/tools/dsl_compile_clean_transport.dag"
+data corpus_computed_path: String = "dag/tools/dag_compile_clean_transport.dag"
 data perturb_literal_path: String = "src/v2/test/fixture/transport_script_scan/bare_string_literal/plant.dag"
 
 fn witness_computed_facts_readback_holds() -> Bool {

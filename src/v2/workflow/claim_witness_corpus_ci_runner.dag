@@ -329,100 +329,100 @@ data corpus_ci_gate_row_effect_io_eval_unbound_fail_closed: ClaimWitnessCorpusCl
   expected: ExpectPass
 }
 
-data corpus_ci_gate_row_dsl_root_probe: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
-  label: "dsl root parametric gate probe",
-  entry: "dsl/test/claim/corpus_gate_dsl_root_probe.dag",
-  function: "witness_dsl_root_gate_probe",
+data corpus_ci_gate_row_dag_root_probe: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
+  label: "dag root parametric gate probe",
+  entry: "dag/test/claim/corpus_gate_dag_root_probe.dag",
+  function: "witness_dag_root_gate_probe",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_probe_selector_cf_import_resolves: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "probe-selector compute_fabric import resolves",
-  entry: "dsl/test/claim/probe_selector_compute_fabric_import_repro.dag",
+  entry: "dag/test/claim/probe_selector_compute_fabric_import_repro.dag",
   function: "probe_selector_compute_fabric_import_repro_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_markup_serializer_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "markup fragment-ir serializer keystone",
-  entry: "dsl/test/claim/markup_serializer_witness.dag",
+  entry: "dag/test/claim/markup_serializer_witness.dag",
   function: "markup_serializer_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_html_markup_xss_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "html markup xss reject keystone",
-  entry: "dsl/test/claim/html_markup_xss_witness.dag",
+  entry: "dag/test/claim/html_markup_xss_witness.dag",
   function: "html_markup_xss_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_html_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "html emit consumer + XSS reject keystone",
-  entry: "dsl/test/claim/html_emit_witness_test.dag",
+  entry: "dag/test/claim/html_emit_witness_test.dag",
   function: "html_emit_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_markdown_markup_xss_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "markdown markup consumer + XSS reject keystone",
-  entry: "dsl/test/claim/markdown_markup_xss_witness.dag",
+  entry: "dag/test/claim/markdown_markup_xss_witness.dag",
   function: "markdown_markup_xss_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_gunbhub_serve_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "gunbhub serve render surface keystone",
-  entry: "dsl/test/claim/gunbhub_serve_witness.dag",
+  entry: "dag/test/claim/gunbhub_serve_witness.dag",
   function: "gunbhub_serve_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_filesystem_write_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "live filesystem write effect keystone",
-  entry: "dsl/test/claim/filesystem_write_witness.dag",
+  entry: "dag/test/claim/filesystem_write_witness.dag",
   function: "filesystem_write_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_gunbhub_react_browse_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "gunbhub react browse page serialize keystone",
-  entry: "dsl/test/claim/gunbhub_react_browse_witness.dag",
+  entry: "dag/test/claim/gunbhub_react_browse_witness.dag",
   function: "gunbhub_browse_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_react_jsx_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "react JSX emit via TS fold keystone",
-  entry: "dsl/test/claim/react_jsx_emit_test.dag",
+  entry: "dag/test/claim/react_jsx_emit_test.dag",
   function: "react_jsx_emit_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_js_site_emit_keystone: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "js site 3-page MarkupNode dual emit keystone",
-  entry: "dsl/test/claim/js_site_emit_test.dag",
+  entry: "dag/test/claim/js_site_emit_test.dag",
   function: "js_site_emit_keystone_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_measure_nat_magnitude_roundtrip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "measure carrier M=Nat magnitude round-trip",
-  entry: "dsl/test/claim/measure_magnitude_carrier.dag",
+  entry: "dag/test/claim/measure_magnitude_carrier.dag",
   function: "measure_nat_magnitude_roundtrip_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_measure_signed_magnitude_roundtrip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "measure carrier signed M=Int magnitude round-trip",
-  entry: "dsl/test/claim/measure_magnitude_carrier.dag",
+  entry: "dag/test/claim/measure_magnitude_carrier.dag",
   function: "measure_signed_magnitude_roundtrip_holds",
   expected: ExpectPass
 }
 
 data corpus_ci_gate_row_measure_two_hop_alias_count_roundtrip: ClaimWitnessCorpusClaimRunRow = ClaimWitnessCorpusClaimRunRow {
   label: "measure carrier two-hop alias .count round-trip",
-  entry: "dsl/test/claim/measure_magnitude_carrier.dag",
+  entry: "dag/test/claim/measure_magnitude_carrier.dag",
   function: "measure_two_hop_alias_count_roundtrip_holds",
   expected: ExpectPass
 }
@@ -553,7 +553,7 @@ data claim_witness_corpus_shard_b_rows: List<ClaimWitnessCorpusClaimRunRow> = [
   corpus_ci_gate_row_ts_effect_io_emit,
   corpus_ci_gate_row_effect_io_eval_roundtrip,
   corpus_ci_gate_row_effect_io_eval_unbound_fail_closed,
-  corpus_ci_gate_row_dsl_root_probe,
+  corpus_ci_gate_row_dag_root_probe,
   corpus_ci_gate_row_probe_selector_cf_import_resolves,
   corpus_ci_gate_row_markup_serializer_keystone,
   corpus_ci_gate_row_html_markup_xss_keystone,

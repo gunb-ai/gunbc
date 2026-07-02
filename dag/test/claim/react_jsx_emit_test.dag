@@ -1,0 +1,49 @@
+module test.claim.react_jsx_emit
+
+import gunbc.gunbhub_serve { gunbhub_browse_page, gunbhub_hostile_page }
+import extdeps.languages.react_jsx {
+  serialize_jsx_component,
+  try_serialize_jsx_component,
+  JsxEmitResult,
+  JsxOk,
+  JsxRejected,
+}
+import std.markup { ElementNode, TextNode, MarkupAttr }
+
+fn browse_page_jsx() -> String {
+  serialize_jsx_component(fn_name: "GunbhubBrowsePage", node: gunbhub_browse_page())
+}
+
+fn witness_browse_page_jsx_exact_bytes() -> Bool {
+  browse_page_jsx() ==
+    "export function GunbhubBrowsePage(): JSX.Element { return <html><head><title>gunbc</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Browse</a></nav></header><main><ul><li><a href=\"/dag\">dag</a></li><li><a href=\"/src\">src</a></li><li><a href=\"/ROADMAP.md\">ROADMAP.md</a></li></ul></main></body></html>; }"
+}
+
+fn witness_fn_name_in_output() -> Bool {
+  let a = serialize_jsx_component(fn_name: "PageA", node: gunbhub_browse_page())
+  let b = serialize_jsx_component(fn_name: "PageB", node: gunbhub_browse_page())
+  starts_with(s: a, prefix: "export function PageA():") &&
+  starts_with(s: b, prefix: "export function PageB():") &&
+  !(a == b)
+}
+
+fn witness_hostile_href_rejected() -> Bool {
+  match try_serialize_jsx_component(fn_name: "HostilePage", node: gunbhub_hostile_page()) {
+    JsxRejected { reason: _ } => true
+    JsxOk { tsx: _ } => false
+  }
+}
+
+fn witness_safe_page_emits_ok() -> Bool {
+  match try_serialize_jsx_component(fn_name: "GunbhubBrowsePage", node: gunbhub_browse_page()) {
+    JsxOk { tsx: s } => starts_with(s: s, prefix: "export function GunbhubBrowsePage():")
+    JsxRejected { reason: _ } => false
+  }
+}
+
+test fn react_jsx_emit_keystone_holds() -> Bool {
+  witness_browse_page_jsx_exact_bytes()
+    && witness_fn_name_in_output()
+    && witness_hostile_href_rejected()
+    && witness_safe_page_emits_ok()
+}
