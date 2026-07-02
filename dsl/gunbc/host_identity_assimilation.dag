@@ -1,0 +1,265 @@
+module gunbc.host_identity_assimilation
+
+import std.types { String, NonEmptyStr, Bool, ContentHash }
+import std.disposition { Disposition, Terminal }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { content_hash_atom }
+import extdeps.shell
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent { ComputeHost, srv1_host }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.host_effect {
+  NodeControlPlane,
+  HostOs,
+  HostEffectTransport,
+}
+import gunbc.host_identity_knob {
+  HostIdentityKnobKey,
+  HostIdentityLeafVerdict,
+  host_identity_knob_key,
+  host_identity_leaf_is_noop,
+}
+import gunbc.host_identity_observation {
+  HostIdentityObservation,
+  host_identity_observation_nonempty,
+}
+import gunbc.host_identity_adopt {
+  HostIdentityAdoptReceipt,
+  host_identity_adopt_srv1_live,
+  host_identity_adopt_receipt_is_valid,
+  srv1_host_identity_ssh_transport,
+  srv1_host_identity_os_target,
+  host_identity_transport_label,
+  host_identity_adopt_model_hash,
+}
+import gunbc.deployed_intent_v0 {
+  DeployedIntentV0,
+  deployed_intent_observed_short_hostname,
+  deployed_intent_observed_differs_from_fleet_slot,
+}
+import gunbc.deployed_intent_v1 {
+  DeployedIntentV1,
+  gunbc_srv1_deployed_intent_v1,
+}
+import gunbc.host_identity_converge {
+  host_identity_precondition_verdict,
+  host_identity_precondition_permits_apply,
+  host_identity_precondition_is_noop,
+  host_identity_precondition_is_conflict,
+  host_identity_apply_gated,
+  host_identity_apply_denied,
+  host_identity_observation_live,
+  host_identity_read_back_matches,
+  host_identity_apply_converged,
+  host_identity_set_hostname_script,
+}
+import gunbc.host_identity_access { host_identity_srv1_access }
+import gunbc.ci_deploy_access { DeployAccessActor }
+
+type HostIdentityAssimilationReceipt {
+  host: HostIdentity
+  key: HostIdentityKnobKey
+  adopted_base: DeployedIntentV0
+  desired_hostname_short: String
+  patch: HostIdentityLeafVerdict
+  precondition_observed: String
+  apply_converged: Bool
+  read_back_observed: String
+  read_back_converged: Bool
+  reapply_noop: Bool
+  probed_at: NonEmptyStr
+  transport_label: String
+  model_hash: ContentHash
+}
+
+data gunbc_host_identity_assimilation_scope_disposition: Disposition = Terminal {
+  reason: "Live srv1 host-identity assimilation consumer: adopt observed base -> keyed three-way patch -> precondition re-read -> gated hostnamectl apply -> independent read-back -> noop re-run. Extends host_standup assimilation spine; not a parallel lane."
+}
+
+data gunbc_host_identity_assimilation_model_marker: NonEmptyStr = "gunbc.host_identity_assimilation.v0"
+
+fn host_identity_assimilation_model_hash() -> ContentHash {
+  content_hash_atom(value: gunbc_host_identity_assimilation_model_marker)
+}
+
+fn host_identity_observed_probed_at() -> NonEmptyStr {
+  let result = shell.Exec.Run(script: "date -Iseconds")
+  if result.success {
+    let line = trim(result.stdout)
+    if line == "" { "unknown" as NonEmptyStr } else { line as NonEmptyStr }
+  } else {
+    "unknown" as NonEmptyStr
+  }
+}
+
+fn host_identity_assimilation_receipt(
+  adopt: HostIdentityAdoptReceipt,
+  desired: DeployedIntentV1,
+  patch: HostIdentityLeafVerdict,
+  precondition_observed: String,
+  apply_converged: Bool,
+  read_back_observed: String,
+  read_back_converged: Bool,
+  reapply_noop: Bool,
+  probed_at: NonEmptyStr,
+  transport: HostEffectTransport,
+) -> HostIdentityAssimilationReceipt {
+  HostIdentityAssimilationReceipt {
+    host: adopt.host,
+    key: adopt.key,
+    adopted_base: adopt.deployed_intent,
+    desired_hostname_short: desired.desired_hostname_short,
+    patch: patch,
+    precondition_observed: precondition_observed,
+    apply_converged: apply_converged,
+    read_back_observed: read_back_observed,
+    read_back_converged: read_back_converged,
+    reapply_noop: reapply_noop,
+    probed_at: probed_at,
+    transport_label: host_identity_transport_label(transport: transport),
+    model_hash: host_identity_assimilation_model_hash(),
+  }
+}
+
+fn host_identity_assimilation_receipt_is_valid(receipt: HostIdentityAssimilationReceipt) -> Bool {
+  receipt.read_back_converged
+    && receipt.reapply_noop
+    && (if receipt.apply_converged {
+      deployed_intent_observed_differs_from_fleet_slot(d: receipt.adopted_base)
+    } else {
+      true
+    })
+}
+
+fn host_identity_assimilate_srv1_live(probed_at: NonEmptyStr) -> HostIdentityAssimilationReceipt? {
+  let transport = srv1_host_identity_ssh_transport()
+  let target = srv1_host_identity_os_target()
+  let access = host_identity_srv1_access
+  let desired = gunbc_srv1_deployed_intent_v1
+  match host_identity_adopt_srv1_live(probed_at: probed_at) {
+    Present { value: adopt } =>
+      match host_identity_observation_live(target: target, transport: transport, probed_at: probed_at) {
+        Present { value: precondition_obs } => {
+          let patch = host_identity_precondition_verdict(
+            base: adopt.deployed_intent,
+            observed: precondition_obs,
+            desired: desired,
+          )
+          if host_identity_precondition_is_conflict(verdict: patch) {
+            none
+          } else { if host_identity_precondition_is_noop(verdict: patch) {
+            let read_back_ok = host_identity_read_back_matches(
+              observed: precondition_obs,
+              desired_hostname: desired.desired_hostname_short,
+            )
+            Present {
+              value: host_identity_assimilation_receipt(
+                adopt: adopt,
+                desired: desired,
+                patch: patch,
+                precondition_observed: precondition_obs.short_hostname,
+                apply_converged: false,
+                read_back_observed: precondition_obs.short_hostname,
+                read_back_converged: read_back_ok,
+                reapply_noop: true,
+                probed_at: probed_at,
+                transport: transport,
+              )
+            }
+          } else {
+            if !host_identity_precondition_permits_apply(
+              verdict: patch,
+              desired_hostname: desired.desired_hostname_short,
+            ) {
+              none
+            } else {
+            let apply_r = host_identity_apply_gated(
+              access: access,
+              target: target,
+              desired_hostname: desired.desired_hostname_short,
+              transport: transport,
+              fixture_actor: Absent,
+            )
+            if !host_identity_apply_converged(r: apply_r) {
+              none
+            } else {
+              match host_identity_observation_live(target: target, transport: transport, probed_at: probed_at) {
+                Present { value: read_back_obs } => {
+                  let read_back_ok = host_identity_read_back_matches(
+                    observed: read_back_obs,
+                    desired_hostname: desired.desired_hostname_short,
+                  )
+                  let reapply_patch = host_identity_precondition_verdict(
+                    base: adopt.deployed_intent,
+                    observed: read_back_obs,
+                    desired: desired,
+                  )
+                  Present {
+                    value: host_identity_assimilation_receipt(
+                      adopt: adopt,
+                      desired: desired,
+                      patch: patch,
+                      precondition_observed: precondition_obs.short_hostname,
+                      apply_converged: true,
+                      read_back_observed: read_back_obs.short_hostname,
+                      read_back_converged: read_back_ok,
+                      reapply_noop: host_identity_leaf_is_noop(verdict: reapply_patch),
+                      probed_at: probed_at,
+                      transport: transport,
+                    )
+                  }
+                }
+                Absent => none
+              }
+            }
+            }
+          } }
+        }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
+fn host_identity_assimilation_receipt_message(receipt: HostIdentityAssimilationReceipt) -> String {
+  concat(
+    concat(
+      concat(
+        concat("host_identity_assimilation: PASS host=", receipt.host),
+        concat(" adopted=", deployed_intent_observed_short_hostname(d: receipt.adopted_base))
+      ),
+      concat(
+        concat(" desired=", receipt.desired_hostname_short),
+        concat(" precondition=", receipt.precondition_observed)
+      )
+    ),
+    concat(
+      concat(
+        concat(" read_back=", receipt.read_back_observed),
+        concat(" reapply_noop=", to_string(receipt.reapply_noop))
+      ),
+      concat(" transport=", receipt.transport_label)
+    )
+  )
+}
+
+func host_identity_assimilate_srv1_wet() -> ProcessExit {
+  let probed_at = host_identity_observed_probed_at()
+  match host_identity_assimilate_srv1_live(probed_at: probed_at) {
+    Present { value: receipt } =>
+      if host_identity_assimilation_receipt_is_valid(receipt: receipt) {
+        ExitSuccess
+      } else {
+        exit_failure(
+          reason: concat(
+            "host_identity_assimilation: FAIL receipt invalid read_back=",
+            receipt.read_back_observed
+          )
+        )
+      }
+    Absent =>
+      exit_failure(
+        reason: "host_identity_assimilation: FAIL adopt/precondition/apply/read-back chain did not converge"
+      )
+  }
+}

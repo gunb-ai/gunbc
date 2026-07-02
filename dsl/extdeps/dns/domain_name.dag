@@ -1,0 +1,234 @@
+module extdeps.dns.domain_name
+
+import std.types { NonEmptyStr, String, List, Bool, Int }
+import std.error_primitives { Result, Ok, Err }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc1035"
+  }
+}
+
+data rfc1123_host_name_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc1123#section-2.1"
+  }
+}
+
+type DnsLabel = NonEmptyStr where brand("DnsLabel")
+
+data empty_dns_labels: List<DnsLabel> = []
+
+type DomainName {
+  labels: List<DnsLabel>
+}
+
+type NameQualification =
+    FullyQualified
+  | PartiallyQualified
+
+type HostName {
+  name: DomainName
+  qualification: NameQualification
+}
+
+type DomainNameParseError =
+    EmptyName
+  | LabelTooLong
+  | NameTooLong
+  | BadLabelChar
+  | EdgeHyphen
+
+fn code_point_int(ch: String) -> Int {
+  code_point(ch)
+}
+
+fn is_letter_code_point(cp: Int) -> Bool {
+  (cp >= 97 && cp <= 122) || (cp >= 65 && cp <= 90)
+}
+
+fn is_ldh_leading_code_point(cp: Int) -> Bool {
+  is_letter_code_point(cp: cp) || (cp >= 48 && cp <= 57)
+}
+
+fn is_ldh_trailing_code_point(cp: Int) -> Bool {
+  is_ldh_leading_code_point(cp: cp)
+}
+
+fn is_ldh_code_point(cp: Int) -> Bool {
+  is_ldh_leading_code_point(cp: cp) || cp == 45
+}
+
+fn fold_dns_case_string_at(s: String, i: Int, acc: String) -> String {
+  if i >= string_length(s: s) {
+    acc
+  } else {
+    let ch = char_at(s, i)
+    let cp = code_point_int(ch: ch)
+    let out = if cp >= 65 && cp <= 90 {
+      from_code_point(cp + 32)
+    } else {
+      ch
+    }
+    fold_dns_case_string_at(s: s, i: i + 1, acc: concat(acc, out))
+  }
+}
+
+fn fold_dns_case_string(s: String) -> String {
+  fold_dns_case_string_at(s: s, i: 0, acc: "")
+}
+
+fn label_has_invalid_ldh_at(s: String, i: Int, len: Int) -> Bool {
+  if i >= len {
+    false
+  } else {
+    let cp = code_point_int(ch: char_at(s, i))
+    if !is_ldh_code_point(cp: cp) {
+      true
+    } else {
+      label_has_invalid_ldh_at(s: s, i: i + 1, len: len)
+    }
+  }
+}
+
+fn parse_dns_label_raw(raw: String) -> Result<DnsLabel, DomainNameParseError> {
+  let folded = fold_dns_case_string(s: raw)
+  let len = string_length(s: folded)
+  if len == 0 {
+    Err { value: EmptyName }
+  } else if len > 63 {
+    Err { value: LabelTooLong }
+  } else {
+    let first_cp = code_point_int(ch: char_at(folded, 0))
+    let last_cp = code_point_int(ch: char_at(folded, len - 1))
+    if !is_ldh_leading_code_point(cp: first_cp) {
+      Err { value: BadLabelChar }
+    } else if !is_ldh_trailing_code_point(cp: last_cp) {
+      Err { value: EdgeHyphen }
+    } else if label_has_invalid_ldh_at(s: folded, i: 0, len: len) {
+      Err { value: BadLabelChar }
+    } else {
+      Ok { value: folded as DnsLabel }
+    }
+  }
+}
+
+fn domain_name_wire_octet_count(labels: List<DnsLabel>) -> Int {
+  fold(
+    labels,
+    init: 1,
+    f: (acc, label) => acc + 1 + string_length(s: label),
+  )
+}
+
+fn parse_dns_label_list(segments: List<String>) -> Result<List<DnsLabel>, DomainNameParseError> {
+  fold(
+    segments,
+    init: Ok { value: empty_dns_labels },
+    f: (acc, seg) =>
+      match acc {
+        Err { value: e } => Err { value: e }
+        Ok { value: labels } =>
+          if seg == "" {
+            Err { value: EmptyName }
+          } else {
+            match parse_dns_label_raw(raw: seg) {
+              Err { value: e } => Err { value: e }
+              Ok { value: label } => Ok { value: labels |> list_push(label) }
+            }
+          }
+      },
+  )
+}
+
+fn parse_host_name(raw: String) -> Result<HostName, DomainNameParseError> {
+  if raw == "" {
+    Err { value: EmptyName }
+  } else if ends_with(s: raw, suffix: ".") {
+    let body = substring(s: raw, start: 0, end: string_length(s: raw) - 1)
+    if body == "" {
+      Err { value: EmptyName }
+    } else {
+      match parse_dns_label_list(segments: body |> split(delimiter: ".")) {
+        Err { value: e } => Err { value: e }
+        Ok { value: labels } =>
+          if domain_name_wire_octet_count(labels: labels) > 255 {
+            Err { value: NameTooLong }
+          } else {
+            Ok {
+              value: HostName {
+                name: DomainName { labels: labels },
+                qualification: FullyQualified,
+              },
+            }
+          }
+      }
+    }
+  } else {
+    match parse_dns_label_list(segments: raw |> split(delimiter: ".")) {
+      Err { value: e } => Err { value: e }
+      Ok { value: labels } =>
+        if domain_name_wire_octet_count(labels: labels) > 255 {
+          Err { value: NameTooLong }
+        } else {
+          Ok {
+            value: HostName {
+              name: DomainName { labels: labels },
+              qualification: PartiallyQualified,
+            },
+          }
+        }
+    }
+  }
+}
+
+fn hostname_short(host: HostName) -> DnsLabel? {
+  match host.name.labels.first() {
+    Present { value: label } => Present { value: label }
+    Absent => none
+  }
+}
+
+fn parent_domain(host: HostName) -> DomainName? {
+  if host.name.labels.length() <= 1 {
+    none
+  } else {
+    Present {
+      value: DomainName { labels: host.name.labels |> skip(n: 1) },
+    }
+  }
+}
+
+fn domain_name_wire(name: DomainName) -> String {
+  fold(
+    name.labels,
+    init: "",
+    f: (acc, label) =>
+      if acc == "" {
+        label as String
+      } else {
+        concat(acc, ".", label as String)
+      },
+  )
+}
+
+fn qualify(host: DnsLabel, zone: DomainName) -> HostName {
+  HostName {
+    name: DomainName { labels: [host] |> concat(zone.labels) },
+    qualification: FullyQualified,
+  }
+}
+
+fn host_name_eq(a: HostName, b: HostName) -> Bool {
+  (a.qualification == b.qualification)
+    && (domain_name_wire(name: a.name) == domain_name_wire(name: b.name))
+}
+
+fn host_name_label_count(host: HostName) -> Int {
+  host.name.labels.length()
+}

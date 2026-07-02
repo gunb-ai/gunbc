@@ -1,0 +1,325 @@
+module test.claim.host_identity_observation_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.fleet_intent { srv1_host }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.host_effect {
+  NodeControlPlane,
+  HostOs,
+  LocalShell,
+  ShellCommand,
+  OneShotIdempotent,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import std.realization_reconcile { reconciliation_converged }
+import gunbc.host_identity_observation {
+  HostIdentityObservationRow,
+  host_identity_short_hostname_script,
+  gunbc_srv1_host_identity_observation_fixture_row,
+  host_identity_observation_from_stdout,
+  host_identity_observation_apply,
+  host_identity_observation_from_apply,
+  host_identity_observation_nonempty,
+  fixture_host_identity_observation,
+}
+import gunbc.deployed_intent_v0 {
+  gunbc_srv1_deployed_intent_v0_fixture,
+  deployed_intent_observed_differs_from_fleet_slot,
+  deployed_intent_observed_short_hostname,
+  deployed_intent_v0_from_observation_row,
+}
+import gunbc.host_identity_adopt {
+  srv1_host_identity_ssh_transport,
+  host_identity_transport_label,
+  host_identity_adopt_receipt,
+  host_identity_adopt_receipt_is_valid,
+  host_identity_adopt_model_hash,
+}
+import gunbc.host_identity_knob {
+  host_identity_knob_key,
+  ApplyHunk,
+  Unchanged,
+  Conflict,
+  three_way_leaf,
+  host_identity_knob_value,
+  host_identity_patch_from_intents,
+  host_identity_leaf_is_conflict,
+  host_identity_leaf_has_apply_arm,
+  host_identity_leaf_is_noop,
+}
+import gunbc.host_identity_converge {
+  host_identity_precondition_verdict,
+  host_identity_precondition_is_conflict,
+  host_identity_precondition_permits_apply,
+  host_identity_precondition_is_noop,
+  host_identity_apply_gated,
+  host_identity_unprivileged_refusal_has_no_marker,
+  host_identity_read_back_matches,
+}
+import gunbc.deployed_intent_v1 {
+  gunbc_srv1_deployed_intent_v1,
+  deployed_intent_v1_desired_hostname_short,
+  deployed_intent_v1_desired_hostname_valid,
+}
+import gunbc.host_identity_access { host_identity_srv1_access }
+import gunbc.ci_deploy_access { deploy_access_unprivileged_fixture_actor }
+import gunbc.host_effect { SshShell }
+
+fn srv1_os_target() -> NodeControlPlane {
+  HostOs { node: srv1_host }
+}
+
+fn witness_hostname_script_is_modeled_constant() -> Bool {
+  host_identity_short_hostname_script == "hostname -s 2>/dev/null || hostname"
+}
+
+fn witness_fixture_observation_types_srv1_observed_hostname() -> Bool {
+  let obs = fixture_host_identity_observation()
+  obs.short_hostname == "altrad8ud-1l2t-1"
+    && obs.probed_at == "2026-07-02"
+    && host_identity_observation_nonempty(obs: obs)
+}
+
+fn witness_empty_stdout_is_absent() -> Bool {
+  match host_identity_observation_from_stdout(stdout: "  \n", probed_at: "2026-07-02") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn witness_trimmed_stdout_is_typed() -> Bool {
+  match host_identity_observation_from_stdout(stdout: "  altrad8ud-1l2t-1\n", probed_at: "2026-07-02") {
+    Present { value: obs } => obs.short_hostname == "altrad8ud-1l2t-1"
+    Absent => false
+  }
+}
+
+fn witness_host_effect_apply_hostname_read_converges() -> Bool {
+  reconciliation_converged(r: host_identity_observation_apply(
+    target: srv1_os_target(),
+    transport: LocalShell
+  ))
+}
+
+fn witness_host_effect_apply_failure_is_not_observation() -> Bool {
+  match host_identity_observation_from_apply(
+    r: host_effect_apply(
+      target: srv1_os_target(),
+      effect: ShellCommand { script: "exit 1" },
+      policy: OneShotIdempotent,
+      transport: LocalShell
+    ),
+    probed_at: "2026-07-02"
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn witness_fixture_row_materializes_deployed_intent_v0() -> Bool {
+  let d = deployed_intent_v0_from_observation_row(
+    fleet_slot: operator_host_srv1,
+    target_host: srv1_host,
+    row: gunbc_srv1_host_identity_observation_fixture_row,
+  )
+  deployed_intent_observed_short_hostname(d: d) == "altrad8ud-1l2t-1"
+    && deployed_intent_observed_differs_from_fleet_slot(d: d)
+}
+
+fn witness_deployed_intent_v0_records_observed_base_not_design() -> Bool {
+  let d = gunbc_srv1_deployed_intent_v0_fixture
+  deployed_intent_observed_short_hostname(d: d) == "altrad8ud-1l2t-1"
+    && d.fleet_slot == operator_host_srv1
+    && deployed_intent_observed_differs_from_fleet_slot(d: d)
+}
+
+fn witness_design_intent_conflation_red() -> Bool {
+  let wrong_row = HostIdentityObservationRow {
+    short_hostname_raw: operator_host_srv1,
+    probed_at: "2026-07-02",
+  }
+  let conflated = deployed_intent_v0_from_observation_row(
+    fleet_slot: operator_host_srv1,
+    target_host: srv1_host,
+    row: wrong_row,
+  )
+  !deployed_intent_observed_differs_from_fleet_slot(d: conflated)
+    && deployed_intent_observed_short_hostname(d: conflated) == operator_host_srv1
+}
+
+fn witness_srv1_ssh_transport_targets_operator_host() -> Bool {
+  match srv1_host_identity_ssh_transport() {
+    SshShell { ssh_host: h } => h == operator_host_srv1
+    LocalShell => false
+  }
+}
+
+fn witness_adopt_receipt_materializes_fixture_observation() -> Bool {
+  let obs = fixture_host_identity_observation()
+  let receipt = host_identity_adopt_receipt(
+    fleet_slot: operator_host_srv1,
+    target_host: srv1_host,
+    observation: obs,
+    transport: srv1_host_identity_ssh_transport(),
+    read_converged: true,
+  )
+  host_identity_adopt_receipt_is_valid(receipt: receipt)
+    && receipt.observed_short_hostname == "altrad8ud-1l2t-1"
+    && receipt.key.host == operator_host_srv1
+    && host_identity_transport_label(transport: srv1_host_identity_ssh_transport()) == "SshShell:srv1"
+}
+
+fn witness_adopt_receipt_rejects_design_intent_conflation() -> Bool {
+  let wrong_row = HostIdentityObservationRow {
+    short_hostname_raw: operator_host_srv1,
+    probed_at: "2026-07-02",
+  }
+  let conflated_obs = host_identity_observation_from_stdout(
+    stdout: operator_host_srv1,
+    probed_at: "2026-07-02"
+  )
+  match conflated_obs {
+    Present { value: obs } =>
+      !host_identity_adopt_receipt_is_valid(
+        receipt: host_identity_adopt_receipt(
+          fleet_slot: operator_host_srv1,
+          target_host: srv1_host,
+          observation: obs,
+          transport: srv1_host_identity_ssh_transport(),
+          read_converged: true,
+        )
+      )
+    Absent => false
+  }
+}
+
+fn witness_adopt_model_hash_is_stable() -> Bool {
+  host_identity_knob_key(host: operator_host_srv1).host == operator_host_srv1
+    && host_identity_adopt_model_hash() == host_identity_adopt_model_hash()
+}
+
+fn witness_desired_intent_from_modeled_fleet_slot() -> Bool {
+  let desired = gunbc_srv1_deployed_intent_v1.desired_hostname_short
+  desired == deployed_intent_v1_desired_hostname_short(fleet_slot: operator_host_srv1)
+    && desired == operator_host_srv1
+}
+
+fn witness_patch_emits_exactly_one_modify_hunk() -> Bool {
+  match host_identity_patch_from_intents(
+    base_hostname: "altrad8ud-1l2t-1",
+    observed_hostname: "altrad8ud-1l2t-1",
+    desired_hostname: operator_host_srv1,
+  ) {
+    ApplyHunk { from: f, to: t } =>
+      f.hostname_short == "altrad8ud-1l2t-1" && t.hostname_short == operator_host_srv1
+    _ => false
+  }
+}
+
+fn witness_patch_noop_when_already_converged() -> Bool {
+  host_identity_leaf_is_noop(
+    verdict: host_identity_patch_from_intents(
+      base_hostname: operator_host_srv1,
+      observed_hostname: operator_host_srv1,
+      desired_hostname: operator_host_srv1,
+    )
+  )
+}
+
+fn witness_drift_conflict_red_no_apply_arm() -> Bool {
+  host_identity_leaf_is_conflict(
+    verdict: host_identity_patch_from_intents(
+      base_hostname: "altrad8ud-1l2t-1",
+      observed_hostname: "unexpected-host",
+      desired_hostname: operator_host_srv1,
+    )
+  )
+    && !host_identity_leaf_has_apply_arm(
+      verdict: host_identity_patch_from_intents(
+        base_hostname: "altrad8ud-1l2t-1",
+        observed_hostname: "unexpected-host",
+        desired_hostname: operator_host_srv1,
+      )
+    )
+}
+
+fn witness_precondition_conflict_blocks_mutation() -> Bool {
+  let base = gunbc_srv1_deployed_intent_v0_fixture
+  let desired = gunbc_srv1_deployed_intent_v1
+  let drift_obs = host_identity_observation_from_stdout(
+    stdout: "unexpected-host",
+    probed_at: "2026-07-02"
+  )
+  match drift_obs {
+    Present { value: obs } =>
+      host_identity_precondition_is_conflict(
+        verdict: host_identity_precondition_verdict(base: base, observed: obs, desired: desired)
+      )
+    Absent => false
+  }
+}
+
+data host_identity_mutation_marker: String = "host-identity-mutation-marker-9c2e"
+
+fn witness_unprivileged_refusal_no_shell() -> Bool {
+  host_identity_unprivileged_refusal_has_no_marker(
+    r: host_identity_apply_gated(
+      access: host_identity_srv1_access,
+      target: srv1_os_target(),
+      desired_hostname: operator_host_srv1,
+      transport: srv1_host_identity_ssh_transport(),
+      fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
+    ),
+    marker: host_identity_mutation_marker,
+  )
+}
+
+fn witness_stale_readback_not_converged() -> Bool {
+  match host_identity_observation_from_stdout(
+    stdout: "altrad8ud-1l2t-1",
+    probed_at: "2026-07-02"
+  ) {
+    Present { value: obs } =>
+      !host_identity_read_back_matches(
+        observed: obs,
+        desired_hostname: operator_host_srv1,
+      )
+    Absent => false
+  }
+}
+
+fn witness_empty_desired_rejected_before_apply() -> Bool {
+  !deployed_intent_v1_desired_hostname_valid(hostname: "")
+    && !host_identity_precondition_permits_apply(
+      verdict: host_identity_patch_from_intents(
+        base_hostname: "altrad8ud-1l2t-1",
+        observed_hostname: "altrad8ud-1l2t-1",
+        desired_hostname: "",
+      ),
+      desired_hostname: "",
+    )
+}
+
+test fn host_identity_observation_holds() -> Bool {
+  witness_hostname_script_is_modeled_constant()
+    && witness_fixture_observation_types_srv1_observed_hostname()
+    && witness_empty_stdout_is_absent()
+    && witness_trimmed_stdout_is_typed()
+    && witness_host_effect_apply_hostname_read_converges()
+    && witness_host_effect_apply_failure_is_not_observation()
+    && witness_fixture_row_materializes_deployed_intent_v0()
+    && witness_deployed_intent_v0_records_observed_base_not_design()
+    && witness_design_intent_conflation_red()
+    && witness_srv1_ssh_transport_targets_operator_host()
+    && witness_adopt_receipt_materializes_fixture_observation()
+    && witness_adopt_receipt_rejects_design_intent_conflation()
+    && witness_adopt_model_hash_is_stable()
+    && witness_desired_intent_from_modeled_fleet_slot()
+    && witness_patch_emits_exactly_one_modify_hunk()
+    && witness_patch_noop_when_already_converged()
+    && witness_drift_conflict_red_no_apply_arm()
+    && witness_precondition_conflict_blocks_mutation()
+    && witness_unprivileged_refusal_no_shell()
+    && witness_stale_readback_not_converged()
+    && witness_empty_desired_rejected_before_apply()
+}

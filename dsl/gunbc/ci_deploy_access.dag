@@ -3,6 +3,7 @@ module gunbc.ci_deploy_access
 import std.types { NonEmptyStr, List, String, Bool }
 import std.access { AccessDecision, Permit, Deny, decision_meet }
 import extdeps.shell
+import extdeps.diagnostic.ssh { ssh_session_exec }
 import gunbc.fleet_intent { ComputeHost, srv1_host }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
 import gunbc.ci_deploy_target_host {
@@ -136,32 +137,46 @@ fn deploy_access_is_local_apply(access: DeployAccess) -> Bool {
   }
 }
 
-fn deploy_access_sudo_check_cmd(cmd: PrivilegedCommand) -> Bool {
-  shell.Exec.Check(
-    command: concat(concat(concat("sudo -n ", cmd.path), " "), cmd.check)
-  ).exists
+fn deploy_access_sudo_check_cmd(access: DeployAccess, cmd: PrivilegedCommand) -> Bool {
+  let probe = concat(concat(concat("sudo -n ", cmd.path), " "), cmd.check)
+  match access.transport {
+    LocalShell => shell.Exec.Check(command: probe).exists
+    SshShell { ssh_host: h } => ssh_session_exec(host: h, command: probe as NonEmptyStr).success
+  }
 }
 
 fn deploy_access_sudo_all_granted(access: DeployAccess) -> Bool {
   fold(
     access.privileged_commands,
     init: true,
-    f: (acc, cmd) => if !acc { false } else { deploy_access_sudo_check_cmd(cmd: cmd) }
+    f: (acc, cmd) => if !acc { false } else { deploy_access_sudo_check_cmd(access: access, cmd: cmd) }
   )
 }
 
-fn deploy_access_observed_principal() -> NonEmptyStr? {
-  let result = shell.Exec.Run(script: "whoami")
-  if !result.success {
+fn deploy_access_principal_line(success: Bool, stdout: String) -> NonEmptyStr? {
+  if !success {
     none
   } else {
-    let line = trim(result.stdout)
+    let line = trim(stdout)
     if line == "" { none } else { Present { value: line as NonEmptyStr } }
   }
 }
 
+fn deploy_access_observed_principal(access: DeployAccess) -> NonEmptyStr? {
+  match access.transport {
+    LocalShell => {
+      let result = shell.Exec.Run(script: "whoami")
+      deploy_access_principal_line(success: result.success, stdout: result.stdout)
+    }
+    SshShell { ssh_host: h } => {
+      let result = ssh_session_exec(host: h, command: "whoami" as NonEmptyStr)
+      deploy_access_principal_line(success: result.success, stdout: result.stdout)
+    }
+  }
+}
+
 fn deploy_access_observed_actor(access: DeployAccess) -> DeployAccessActor? {
-  match deploy_access_observed_principal() {
+  match deploy_access_observed_principal(access: access) {
     Present { value: principal } =>
       Present {
         value: DeployAccessActor {

@@ -1,0 +1,78 @@
+module test.claim.cr1000a_dhcp_lease_naming
+
+import std.logic { Bool }
+import std.types { NonEmptyStr }
+import extdeps.dhcp.v4 {
+  MacAddress,
+  Ipv4Address,
+  DynamicDhcpLease,
+  StaticDhcpReservation,
+  Active,
+  dhcp_lease_remaining_from_cited_minutes,
+  dhcp_lease_remaining_cited_minutes,
+}
+import extdeps.dns.domain_name {
+  HostName,
+  DomainName,
+  DnsLabel,
+  PartiallyQualified,
+}
+import extdeps.router.verizon_cr1000a {
+  Cr1000aDhcpLeaseRow,
+  cr1000a_catalog,
+}
+import extdeps.vendor.verizon { verizon }
+
+data srv1_option12_host_name: HostName = HostName {
+  name: DomainName { labels: ["srv1" as DnsLabel] },
+  qualification: PartiallyQualified,
+}
+
+data sample_dynamic_srv1_lease: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "48:21:0B:81:C6:EA" as MacAddress,
+  ipv4_address: "192.168.1.185" as Ipv4Address,
+  lease: DynamicDhcpLease {
+    client_hostname: Present { value: srv1_option12_host_name },
+    lease_time_remaining: dhcp_lease_remaining_from_cited_minutes(minutes: 120),
+    status: Active,
+  },
+}
+
+data sample_static_srv3_reservation: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "48:21:0B:81:C5:14" as MacAddress,
+  ipv4_address: "192.168.1.192" as Ipv4Address,
+  lease: StaticDhcpReservation {
+    reservation_label: "bmc-altrad8ud-1l2t-3" as NonEmptyStr,
+    status: Active,
+  },
+}
+
+test fn cr1000a_catalog_grounds_verizon_cr1000a() -> Bool {
+  cr1000a_catalog.model_number == "CR1000A"
+    && cr1000a_catalog.manufacturer == verizon
+}
+
+test fn dhcp_lease_observation_discriminates_option_12_vs_reservation_label() -> Bool {
+  match sample_dynamic_srv1_lease.lease {
+    DynamicDhcpLease { client_hostname: Present { value: h }, lease_time_remaining: remaining, status: Active } =>
+      h == srv1_option12_host_name
+        && dhcp_lease_remaining_cited_minutes(remaining: remaining) == 120
+    StaticDhcpReservation { reservation_label: _, status: _ } => false
+  }
+    && match sample_static_srv3_reservation.lease {
+      StaticDhcpReservation { reservation_label: l, status: Active } =>
+        l == ("bmc-altrad8ud-1l2t-3" as NonEmptyStr)
+      DynamicDhcpLease { client_hostname: _, lease_time_remaining: _, status: _ } => false
+    }
+}
+
+test fn dhcp_lease_observation_construction_excludes_misbound_name_kind() -> Bool {
+  match sample_dynamic_srv1_lease.lease {
+    DynamicDhcpLease { client_hostname: _, lease_time_remaining: _, status: _ } => true
+    StaticDhcpReservation { reservation_label: _, status: _ } => false
+  }
+    && match sample_static_srv3_reservation.lease {
+      StaticDhcpReservation { reservation_label: _, status: _ } => true
+      DynamicDhcpLease { client_hostname: _, lease_time_remaining: _, status: _ } => false
+    }
+}

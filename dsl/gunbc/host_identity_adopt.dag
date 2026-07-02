@@ -1,0 +1,150 @@
+module gunbc.host_identity_adopt
+
+import std.types { String, NonEmptyStr, Bool, ContentHash }
+import std.disposition { Disposition, Terminal }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.content_hash { content_hash_atom }
+import extdeps.shell
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent { ComputeHost, srv1_host }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.host_effect {
+  NodeControlPlane,
+  HostOs,
+  HostEffectTransport,
+  LocalShell,
+  SshShell,
+}
+import gunbc.host_identity_knob { HostIdentityKnobKey, host_identity_knob_key }
+import gunbc.host_identity_observation {
+  HostIdentityObservation,
+  host_identity_observation_apply,
+  host_identity_observation_from_apply,
+  host_identity_observation_nonempty,
+}
+import gunbc.deployed_intent_v0 {
+  DeployedIntentV0,
+  deployed_intent_v0_adopt_observed_base,
+  deployed_intent_observed_differs_from_fleet_slot,
+  deployed_intent_observed_short_hostname,
+}
+import std.realization_reconcile { reconciliation_converged }
+
+type HostIdentityAdoptReceipt {
+  host: HostIdentity
+  key: HostIdentityKnobKey
+  observed_short_hostname: String
+  probed_at: NonEmptyStr
+  transport_label: String
+  model_hash: ContentHash
+  deployed_intent: DeployedIntentV0
+  read_converged: Bool
+}
+
+data gunbc_host_identity_adopt_scope_disposition: Disposition = Terminal {
+  reason: "ADOPT-BASE phase-0 live consumer: modeled hostname -s read over host_effect SshShell transport -> HostIdentityObservation -> DeployedIntentV0 recording OBSERVED base. Adoption records actual base so a later converge diff is honest; adoption != drift correction."
+}
+
+data gunbc_host_identity_adopt_model_marker: NonEmptyStr = "gunbc.host_identity_adopt.v0"
+
+fn srv1_host_identity_ssh_transport() -> HostEffectTransport {
+  SshShell { ssh_host: operator_host_srv1 as NonEmptyStr }
+}
+
+fn srv1_host_identity_os_target() -> NodeControlPlane {
+  HostOs { node: srv1_host }
+}
+
+fn host_identity_transport_label(transport: HostEffectTransport) -> String {
+  match transport {
+    SshShell { ssh_host: h } => concat("SshShell:", h)
+    LocalShell => "LocalShell"
+  }
+}
+
+fn host_identity_adopt_model_hash() -> ContentHash {
+  content_hash_atom(value: gunbc_host_identity_adopt_model_marker)
+}
+
+fn host_identity_observed_probed_at() -> NonEmptyStr {
+  let result = shell.Exec.Run(script: "date -Iseconds")
+  if result.success {
+    let line = trim(result.stdout)
+    if line == "" { "unknown" as NonEmptyStr } else { line as NonEmptyStr }
+  } else {
+    "unknown" as NonEmptyStr
+  }
+}
+
+fn host_identity_adopt_receipt(
+  fleet_slot: HostIdentity,
+  target_host: ComputeHost,
+  observation: HostIdentityObservation,
+  transport: HostEffectTransport,
+  read_converged: Bool,
+) -> HostIdentityAdoptReceipt {
+  HostIdentityAdoptReceipt {
+    host: fleet_slot,
+    key: host_identity_knob_key(host: fleet_slot),
+    observed_short_hostname: observation.short_hostname,
+    probed_at: observation.probed_at,
+    transport_label: host_identity_transport_label(transport: transport),
+    model_hash: host_identity_adopt_model_hash(),
+    deployed_intent: deployed_intent_v0_adopt_observed_base(
+      fleet_slot: fleet_slot,
+      target_host: target_host,
+      observation: observation,
+    ),
+    read_converged: read_converged,
+  }
+}
+
+fn host_identity_adopt_srv1_live(probed_at: NonEmptyStr) -> HostIdentityAdoptReceipt? {
+  let transport = srv1_host_identity_ssh_transport()
+  let target = srv1_host_identity_os_target()
+  let r = host_identity_observation_apply(target: target, transport: transport)
+  let converged = reconciliation_converged(r: r)
+  match host_identity_observation_from_apply(r: r, probed_at: probed_at) {
+    Present { value: obs } =>
+      Present {
+        value: host_identity_adopt_receipt(
+          fleet_slot: operator_host_srv1,
+          target_host: srv1_host,
+          observation: obs,
+          transport: transport,
+          read_converged: converged,
+        )
+      }
+    Absent => none
+  }
+}
+
+fn host_identity_adopt_receipt_is_valid(receipt: HostIdentityAdoptReceipt) -> Bool {
+  receipt.read_converged
+    && host_identity_observation_nonempty(obs: receipt.deployed_intent.observation)
+    && deployed_intent_observed_differs_from_fleet_slot(d: receipt.deployed_intent)
+}
+
+fn host_identity_adopt_srv1_exit(receipt: HostIdentityAdoptReceipt) -> ProcessExit {
+  if host_identity_adopt_receipt_is_valid(receipt: receipt) {
+    ExitSuccess
+  } else {
+    exit_failure(
+      reason: concat(
+        "host_identity_adopt: FAIL invalid adopt receipt — observed=",
+        deployed_intent_observed_short_hostname(d: receipt.deployed_intent)
+      )
+    )
+  }
+}
+
+func host_identity_adopt_srv1_wet() -> ProcessExit {
+  let probed_at = host_identity_observed_probed_at()
+  match host_identity_adopt_srv1_live(probed_at: probed_at) {
+    Present { value: receipt } => host_identity_adopt_srv1_exit(receipt: receipt)
+    Absent =>
+      exit_failure(
+        reason: "host_identity_adopt: FAIL hostname read did not converge to a typed observation"
+      )
+  }
+}
