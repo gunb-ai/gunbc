@@ -65,12 +65,17 @@ fn witness_plan_shard_count_matches_roster() -> Bool {
 }
 
 test fn compile_clean_shard_b_floor_plan_enrollment() -> Bool {
-  compile_clean_sharding_enabled()
-    && witness_floor_batch_one_uses_compile_clean_shards()
-    && witness_floor_batch_one_has_no_compile_gate_monolith()
-    && witness_plan_shard_count_matches_roster()
-    && witness_floor_shard_roster_coverage_in_plan()
-    && gunbc_ci_floor_schedule_lens_holds()
+  if compile_clean_sharding_enabled() {
+    witness_floor_batch_one_uses_compile_clean_shards()
+      && witness_floor_batch_one_has_no_compile_gate_monolith()
+      && witness_plan_shard_count_matches_roster()
+      && witness_floor_shard_roster_coverage_in_plan()
+      && gunbc_ci_floor_schedule_lens_holds()
+  } else {
+    !witness_floor_batch_one_uses_compile_clean_shards()
+      && !witness_floor_batch_one_has_no_compile_gate_monolith()
+      && gunbc_ci_floor_schedule_lens_holds()
+  }
 }
 
 test fn compile_clean_shard_b_verdict_algebra_and_transport() -> Bool {

@@ -270,7 +270,7 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 data gunbc_ci_job_timeout_policy_minutes: Int = 30
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
-  reason: "gunbc CI policy (operator, 2026-07-02): jobs time out at 30 minutes. A healthy floor is ~9min solo; a job past 30min is pathological and must fail fast and release its runner slot rather than squat toward the platform ceiling. default_job_timeout_minutes (extdeps/github/actions.dag) faithfully models GitHub's 360min platform default and is deliberately NOT changed — this is the workflow-layer policy on top of the modeled platform fact."
+  reason: "gunbc CI policy (operator, 2026-07-02): CI jobs time out at 30 minutes. This is set deliberately BELOW today's floor wall: green monolith runs were 28-96min (the sharded #6127 regression hit 8h57m), and the resolver single-thread fix targets a sub-5-minute floor. Until that lands, 30min is a fail-fast SMOKE ALARM — it releases the runner slot and surfaces the pathology instead of squatting toward the platform ceiling; verification runs locally meanwhile. It becomes generous once the floor is fixed. default_job_timeout_minutes (extdeps/github/actions.dag) faithfully models GitHub's 360min platform default and is deliberately NOT changed — this is the workflow-layer policy on top of the modeled platform fact."
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
