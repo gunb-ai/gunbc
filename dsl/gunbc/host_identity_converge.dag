@@ -32,13 +32,16 @@ import gunbc.host_identity_observation {
 }
 import gunbc.host_identity_knob {
   HostIdentityLeafVerdict,
-  ApplyHunk,
-  Unchanged,
-  Conflict,
-  host_identity_leaf_has_apply_arm,
-  host_identity_leaf_is_noop,
-  host_identity_leaf_is_conflict,
   host_identity_patch_from_intents,
+}
+import std.change {
+  KeyedApplyHunk,
+  KeyedUnchanged,
+  KeyedConflict,
+  KeyedVerdictAdded,
+  KeyedVerdictRemoved,
+  KeyedLeafVerdictFold,
+  keyed_leaf_verdict_fold,
 }
 import gunbc.deployed_intent_v0 { DeployedIntentV0, deployed_intent_observed_short_hostname }
 import gunbc.deployed_intent_v1 { DeployedIntentV1 }
@@ -90,7 +93,16 @@ fn host_identity_precondition_verdict(
 }
 
 fn host_identity_precondition_allows_mutation(verdict: HostIdentityLeafVerdict) -> Bool {
-  host_identity_leaf_has_apply_arm(verdict: verdict)
+  keyed_leaf_verdict_fold(
+    verdict: verdict,
+    fold: KeyedLeafVerdictFold {
+      unchanged: false,
+      conflict: false,
+      apply_hunk: fn(_, _) { true },
+      added: fn(_) { true },
+      removed: fn(_) { true },
+    },
+  )
 }
 
 fn host_identity_precondition_permits_apply(verdict: HostIdentityLeafVerdict) -> Bool {
@@ -98,11 +110,29 @@ fn host_identity_precondition_permits_apply(verdict: HostIdentityLeafVerdict) ->
 }
 
 fn host_identity_precondition_is_noop(verdict: HostIdentityLeafVerdict) -> Bool {
-  host_identity_leaf_is_noop(verdict: verdict)
+  keyed_leaf_verdict_fold(
+    verdict: verdict,
+    fold: KeyedLeafVerdictFold {
+      unchanged: true,
+      conflict: false,
+      apply_hunk: fn(_, _) { false },
+      added: fn(_) { false },
+      removed: fn(_) { false },
+    },
+  )
 }
 
 fn host_identity_precondition_is_conflict(verdict: HostIdentityLeafVerdict) -> Bool {
-  host_identity_leaf_is_conflict(verdict: verdict)
+  keyed_leaf_verdict_fold(
+    verdict: verdict,
+    fold: KeyedLeafVerdictFold {
+      unchanged: false,
+      conflict: true,
+      apply_hunk: fn(_, _) { false },
+      added: fn(_) { false },
+      removed: fn(_) { false },
+    },
+  )
 }
 
 type HostIdentityPlan
@@ -116,9 +146,11 @@ fn host_identity_plan_from_verdict(
   desired: DnsLabel,
 ) -> HostIdentityPlan {
   match verdict {
-    ApplyHunk { from: _, to: _ } => ApplyPlan { base: base, desired: desired }
-    Unchanged => NoopPlan
-    Conflict => ConflictPlan { verdict: verdict }
+    KeyedApplyHunk { from: _, to: _ } => ApplyPlan { base: base, desired: desired }
+    KeyedUnchanged => NoopPlan
+    KeyedConflict => ConflictPlan { verdict: verdict }
+    KeyedVerdictAdded { value: _ } => ConflictPlan { verdict: verdict }
+    KeyedVerdictRemoved { value: _ } => ConflictPlan { verdict: verdict }
   }
 }
 

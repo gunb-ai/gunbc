@@ -5,6 +5,12 @@ import std.measure {
   ByteSize,
   byte_size,
   byte_size_count,
+  Mebibyte,
+  mebibyte,
+  mebibyte_count,
+  Millicore,
+  millicore,
+  millicore_count,
   ElectricPotential,
   Micro,
   celsius,
@@ -17,6 +23,8 @@ import std.logic { Bool }
 
 test fn measure_nat_magnitude_roundtrip_holds() -> Bool {
   byte_size_count(byte_size(42)) == 42
+    && mebibyte_count(mebibyte(128)) == 128
+    && millicore_count(millicore(100)) == 100
 }
 
 fn signed_microvolts(n: Int) -> Measure<ElectricPotential, Micro, Int> {

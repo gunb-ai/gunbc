@@ -18,8 +18,8 @@ import gunbc.host_identity_knob {
   HostIdentityKnobKey,
   HostIdentityLeafVerdict,
   host_identity_knob_key,
-  host_identity_leaf_is_noop,
 }
+import std.change { KeyedLeafVerdictFold, keyed_leaf_verdict_fold }
 import gunbc.host_identity_observation {
   HostIdentityObservation,
   host_identity_observation_nonempty,
@@ -223,7 +223,16 @@ fn host_identity_converge_with_observation(
                   apply_converged: true,
                   read_back_observed: read_back_obs.short_hostname,
                   read_back_converged: read_back_ok,
-                  reapply_noop: host_identity_leaf_is_noop(verdict: reapply_patch),
+                  reapply_noop: keyed_leaf_verdict_fold(
+                    verdict: reapply_patch,
+                    fold: KeyedLeafVerdictFold {
+                      unchanged: true,
+                      conflict: false,
+                      apply_hunk: fn(_, _) { false },
+                      added: fn(_) { false },
+                      removed: fn(_) { false },
+                    },
+                  ),
                   probed_at: probed_at,
                 )
               }
