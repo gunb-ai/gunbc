@@ -121,20 +121,17 @@ pub fn collect_unit_variant_phantom_matches(
     env: Rc<TypeEnv>,
     variant_name: String,
 ) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(v1_rt::map_keys(&flatten_visible_bindings(env.clone())))
+    Rc::new(v1_rt::map_values(&flatten_visible_bindings(env.clone())))
         .iter()
         .cloned()
         .fold(
             Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<Node>>>, ident: i64| match lookup_type(env.clone(), ident.clone()) {
-                Some(ty_node) => match unit_variant_in_coproduct(
-                    env.clone(),
-                    structural_type_for_variant_lookup(env.clone(), ty_node.clone()),
-                    variant_name.clone(),
-                ) {
-                    Some(variant) => v1_rt::concat(acc.clone(), Rc::new(vec![variant.clone()])),
-                    None => acc.clone(),
-                },
+            |acc: Rc<Vec<Rc<Node>>>, binding: Rc<TypeBinding>| match unit_variant_in_coproduct(
+                env.clone(),
+                structural_type_for_variant_lookup(env.clone(), binding.resolved.clone()),
+                variant_name.clone(),
+            ) {
+                Some(variant) => v1_rt::concat(acc.clone(), Rc::new(vec![variant.clone()])),
                 None => acc.clone(),
             },
         )

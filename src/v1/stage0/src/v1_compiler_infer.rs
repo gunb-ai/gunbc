@@ -45,12 +45,12 @@ pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, RustCorpusRepr, TypeRepr, TypeSummary,
 };
 pub use crate::v1_compiler_infer_env::{
-    flatten_visible_bindings, inductive_fields_for, inductive_fields_list_to_map,
-    is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name,
-    lookup_type_for, merge_envs, merge_inductive_fields, put_inductive_field,
-    put_inductive_field_cross,
+    empty_type_env_cache, flatten_visible_bindings, inductive_fields_for,
+    inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name, lookup_type,
+    lookup_type_by_name, lookup_type_for, merge_envs, merge_inductive_fields, merge_type_env_cache,
+    put_inductive_field, put_inductive_field_cross,
 };
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv, TypeEnvCache};
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
@@ -186,6 +186,7 @@ pub struct ModuleContext {
     pub func_env: Rc<ResolvedFuncEnv>,
     pub svc_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     pub locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
@@ -317,6 +318,7 @@ pub struct FieldInferResult {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct BuildTypeEnvResult {
     pub env: Rc<TypeEnv>,
+    pub cache: Rc<TypeEnvCache>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
@@ -11708,6 +11710,178 @@ pub fn deps_excluding_leaf_self(
     }
 }
 
+pub fn compiler_recursive_name_set() -> Rc<HashMap<String, bool>> {
+    Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
+        .iter()
+        .cloned()
+        .fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v1_rt::rc_map_insert(acc, name.clone(), true)
+            },
+        )
+}
+
+pub fn type_env_cache_from_bindings(
+    bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    cycle_set_str: Rc<HashMap<String, bool>>,
+) -> Rc<TypeEnvCache> {
+    {
+        let str_bindings = Rc::new(v1_rt::map_values(&bindings)).iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, b: Rc<TypeBinding>| {
+                v1_rt::rc_map_insert(acc, b.name.clone(), b.clone())
+            },
+        );
+        let deps_map = Rc::new(v1_rt::map_values(&bindings)).iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+            |acc: Rc<HashMap<String, Rc<Vec<String>>>>, b: Rc<TypeBinding>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    b.name.clone(),
+                    deps_excluding_leaf_self(b.clone(), source_indices.clone()),
+                )
+            },
+        );
+        Rc::new(TypeEnvCache {
+            deps_map: deps_map,
+            str_bindings: str_bindings,
+            cycle_set_str: cycle_set_str,
+            variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        })
+    }
+}
+
+pub fn union_parent_type_env_caches(
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+) -> Rc<TypeEnvCache> {
+    resolved_imports.iter().cloned().fold(
+        empty_type_env_cache(),
+        |acc: Rc<TypeEnvCache>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
+            &parent_index,
+            imp.module_path.clone(),
+        ) {
+            Some(parent) => merge_type_env_cache(acc.clone(), parent.type_env_cache.clone()),
+            None => acc.clone(),
+        },
+    )
+}
+
+pub fn union_parent_variant_locals(
+    resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    resolved_imports.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
+            &parent_index,
+            imp.module_path.clone(),
+        ) {
+            Some(parent) => v1_rt::rc_map_merge(
+                acc.clone(),
+                parent.type_env_cache.clone().variant_locals.clone(),
+            ),
+            None => acc.clone(),
+        },
+    )
+}
+
+pub fn fold_local_coproduct_variant_locals(
+    bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
+    imported_variants: Rc<HashMap<String, String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    init_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<VariantFoldState> {
+    Rc::new({
+        let mut __sorted: Vec<_> = Rc::new(v1_rt::map_values(&bindings))
+            .iter()
+            .cloned()
+            .collect();
+        __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
+            let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
+            let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
+            __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        __sorted
+    })
+    .iter()
+    .cloned()
+    .fold(
+        Rc::new(VariantFoldState {
+            locals: init_locals,
+            collision_errors: Rc::new(vec![]),
+        }),
+        |acc: Rc<VariantFoldState>, binding: Rc<TypeBinding>| {
+            let is_coproduct = (binding.resolved.clone().connective.clone() == Connective::Disj);
+            if is_coproduct.clone() {
+                {
+                    let binding_enum_name =
+                        authored_name_at(source_indices.clone(), binding.resolved.clone());
+                    binding
+                        .resolved
+                        .clone()
+                        .children
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .fold(
+                            acc.clone(),
+                            |vacc: Rc<VariantFoldState>, child: Rc<Node>| {
+                                let child_name =
+                                    authored_name_at(source_indices.clone(), child.clone());
+                                let curr_child_is_imported = is_imported_variant_owned_by(
+                                    imported_variants.clone(),
+                                    child_name.clone(),
+                                    binding_enum_name.clone(),
+                                );
+                                match v1_rt::map_get(&vacc.locals.clone(), child_name.clone()) {
+                                    Some(_prev) => {
+                                        if curr_child_is_imported.clone() {
+                                            Rc::new(VariantFoldState {
+                                                locals: v1_rt::rc_map_insert(
+                                                    vacc.locals.clone(),
+                                                    child_name.clone(),
+                                                    Rc::new(TypeBinding {
+                                                        name: child_name.clone(),
+                                                        resolved: binding.resolved.clone(),
+                                                        provenance: Rc::new(
+                                                            SubValueRelation::SubValueUnknown,
+                                                        ),
+                                                    }),
+                                                ),
+                                                collision_errors: vacc.collision_errors.clone(),
+                                            })
+                                        } else {
+                                            vacc.clone()
+                                        }
+                                    }
+                                    None => Rc::new(VariantFoldState {
+                                        locals: v1_rt::rc_map_insert(
+                                            vacc.locals.clone(),
+                                            child_name.clone(),
+                                            Rc::new(TypeBinding {
+                                                name: child_name.clone(),
+                                                resolved: binding.resolved.clone(),
+                                                provenance: Rc::new(
+                                                    SubValueRelation::SubValueUnknown,
+                                                ),
+                                            }),
+                                        ),
+                                        collision_errors: vacc.collision_errors.clone(),
+                                    }),
+                                }
+                            },
+                        )
+                }
+            } else {
+                acc.clone()
+            }
+        },
+    )
+}
+
 pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<TypeEnv> {
     if (module_path == "std.types".to_string()) {
         {
@@ -12265,17 +12439,15 @@ pub fn build_type_env(
                 },
             );
         let all_local_bindings = v1_rt::rc_map_merge(local_bindings.clone(), param_bindings);
-        let pre_local_env = Rc::new(TypeEnv {
-            bindings: all_local_bindings.clone(),
-            parents: scope_parents.clone(),
-            recursive_types: Rc::new(vec![]),
-            recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-            inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-            source_indices: source_indices.clone(),
-            intern_table: intern_table.clone(),
-        });
-        let visible_bindings = flatten_visible_bindings(pre_local_env);
-        let all_deps_map = Rc::new(v1_rt::map_values(&visible_bindings))
+        let kernel_cache = type_env_cache_from_bindings(
+            kernel_bindings.clone(),
+            source_indices.clone(),
+            compiler_recursive_name_set(),
+        );
+        let import_cache =
+            union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone());
+        let ancestry_cache = merge_type_env_cache(kernel_cache, import_cache);
+        let local_deps_map = Rc::new(v1_rt::map_values(&all_local_bindings))
             .iter()
             .cloned()
             .fold(
@@ -12288,7 +12460,7 @@ pub fn build_type_env(
                     )
                 },
             );
-        let str_bindings = Rc::new(v1_rt::map_values(&visible_bindings))
+        let local_str_bindings = Rc::new(v1_rt::map_values(&all_local_bindings))
             .iter()
             .cloned()
             .fold(
@@ -12297,38 +12469,48 @@ pub fn build_type_env(
                     v1_rt::rc_map_insert(acc, b.name.clone(), b.clone())
                 },
             );
-        let cycle_set_str = detect_type_cycles_kahn(all_deps_map.clone(), str_bindings);
+        let all_deps_map = v1_rt::rc_map_merge(ancestry_cache.deps_map.clone(), local_deps_map);
+        let new_cycle_names =
+            detect_type_cycles_kahn(all_deps_map.clone(), local_str_bindings.clone());
+        let new_cycle_set_str = new_cycle_names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v1_rt::rc_map_insert(acc, name.clone(), true)
+            },
+        );
+        let cycle_set_str = v1_rt::rc_map_merge(
+            v1_rt::rc_map_merge(ancestry_cache.cycle_set_str.clone(), new_cycle_set_str),
+            compiler_recursive_name_set(),
+        );
         let cycle_set = Rc::new({
             let mut __result = Vec::new();
-            for name in cycle_set_str.clone().iter().cloned() {
+            for name in Rc::new(v1_rt::map_keys(&cycle_set_str)).iter().cloned() {
                 __result.push(intern(intern_table.clone(), name.clone()).id.clone());
             }
             __result
         });
-        let cross_type_all_names = v1_rt::concat(
-            cycle_set_str.clone(),
-            Rc::new(v1_rt::map_keys(&compiler_recursive_types())),
-        );
-        let cross_type_set_str = cross_type_all_names
-            .clone()
+        let cross_type_set = Rc::new(v1_rt::map_keys(&cycle_set_str))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<i64, bool>(),
+                |acc: Rc<HashMap<i64, bool>>, name: String| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        intern(intern_table.clone(), name.clone()).id.clone(),
+                        true,
+                    )
+                },
+            );
+        let cycle_set_for_inductive = Rc::new(v1_rt::map_keys(&cycle_set_str))
             .iter()
             .cloned()
             .fold(v1_rt::rc_empty_set::<_>(), |acc: _, name: String| {
                 v1_rt::rc_set_insert(acc, name.clone())
             });
-        let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<i64, bool>(),
-            |acc: Rc<HashMap<i64, bool>>, name: String| {
-                v1_rt::rc_map_insert(
-                    acc,
-                    intern(intern_table.clone(), name.clone()).id.clone(),
-                    true,
-                )
-            },
-        );
         let local_inductive_fields = build_item_inductive_fields(
             module_items(module.module.clone()),
-            cross_type_set_str,
+            cycle_set_for_inductive,
             source_indices.clone(),
         );
         let parent_inductive_fields = scope_parents.clone().iter().cloned().fold(
@@ -12365,8 +12547,19 @@ pub fn build_type_env(
             source_indices: resolved_env_out.source_indices.clone(),
             intern_table: intern_table.clone(),
         });
+        let merged_str_bindings = v1_rt::rc_map_merge(
+            ancestry_cache.str_bindings.clone(),
+            local_str_bindings.clone(),
+        );
+        let type_env_cache = Rc::new(TypeEnvCache {
+            deps_map: all_deps_map.clone(),
+            str_bindings: merged_str_bindings,
+            cycle_set_str: cycle_set_str.clone(),
+            variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        });
         Rc::new(BuildTypeEnvResult {
             env: final_env,
+            cache: type_env_cache,
             diagnostics: v1_rt::concat(import_diags, resolved_diags),
         })
     }
@@ -12673,17 +12866,15 @@ pub fn build_type_env_unresolved(
                 }
             },
         );
-        let pre_local_env = Rc::new(TypeEnv {
-            bindings: local_bindings.clone(),
-            parents: scope_parents.clone(),
-            recursive_types: Rc::new(vec![]),
-            recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
-            inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-            source_indices: source_indices.clone(),
-            intern_table: intern_table.clone(),
-        });
-        let visible_bindings = flatten_visible_bindings(pre_local_env);
-        let all_deps_map = Rc::new(v1_rt::map_values(&visible_bindings))
+        let kernel_cache = type_env_cache_from_bindings(
+            kernel_bindings.clone(),
+            source_indices.clone(),
+            compiler_recursive_name_set(),
+        );
+        let import_cache =
+            union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone());
+        let ancestry_cache = merge_type_env_cache(kernel_cache, import_cache);
+        let local_deps_map = Rc::new(v1_rt::map_values(&local_bindings))
             .iter()
             .cloned()
             .fold(
@@ -12696,7 +12887,7 @@ pub fn build_type_env_unresolved(
                     )
                 },
             );
-        let str_bindings = Rc::new(v1_rt::map_values(&visible_bindings))
+        let local_str_bindings = Rc::new(v1_rt::map_values(&local_bindings))
             .iter()
             .cloned()
             .fold(
@@ -12705,38 +12896,48 @@ pub fn build_type_env_unresolved(
                     v1_rt::rc_map_insert(acc, b.name.clone(), b.clone())
                 },
             );
-        let cycle_set_str = detect_type_cycles_kahn(all_deps_map, str_bindings);
+        let all_deps_map = v1_rt::rc_map_merge(ancestry_cache.deps_map.clone(), local_deps_map);
+        let new_cycle_names =
+            detect_type_cycles_kahn(all_deps_map.clone(), local_str_bindings.clone());
+        let new_cycle_set_str = new_cycle_names.iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, bool>(),
+            |acc: Rc<HashMap<String, bool>>, name: String| {
+                v1_rt::rc_map_insert(acc, name.clone(), true)
+            },
+        );
+        let cycle_set_str = v1_rt::rc_map_merge(
+            v1_rt::rc_map_merge(ancestry_cache.cycle_set_str.clone(), new_cycle_set_str),
+            compiler_recursive_name_set(),
+        );
         let cycle_set = Rc::new({
             let mut __result = Vec::new();
-            for name in cycle_set_str.clone().iter().cloned() {
+            for name in Rc::new(v1_rt::map_keys(&cycle_set_str)).iter().cloned() {
                 __result.push(intern(intern_table.clone(), name.clone()).id.clone());
             }
             __result
         });
-        let cross_type_all_names = v1_rt::concat(
-            cycle_set_str.clone(),
-            Rc::new(v1_rt::map_keys(&compiler_recursive_types())),
-        );
-        let cross_type_set_str = cross_type_all_names
-            .clone()
+        let cross_type_set = Rc::new(v1_rt::map_keys(&cycle_set_str))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<i64, bool>(),
+                |acc: Rc<HashMap<i64, bool>>, name: String| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        intern(intern_table.clone(), name.clone()).id.clone(),
+                        true,
+                    )
+                },
+            );
+        let cycle_set_for_inductive = Rc::new(v1_rt::map_keys(&cycle_set_str))
             .iter()
             .cloned()
             .fold(v1_rt::rc_empty_set::<_>(), |acc: _, name: String| {
                 v1_rt::rc_set_insert(acc, name.clone())
             });
-        let cross_type_set = cross_type_all_names.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<i64, bool>(),
-            |acc: Rc<HashMap<i64, bool>>, name: String| {
-                v1_rt::rc_map_insert(
-                    acc,
-                    intern(intern_table.clone(), name.clone()).id.clone(),
-                    true,
-                )
-            },
-        );
         let local_inductive_fields = build_item_inductive_fields(
             module_items(module.module.clone()),
-            cross_type_set_str,
+            cycle_set_for_inductive,
             source_indices.clone(),
         );
         let parent_inductive_fields = scope_parents.clone().iter().cloned().fold(
@@ -12756,8 +12957,19 @@ pub fn build_type_env_unresolved(
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
         });
+        let merged_str_bindings = v1_rt::rc_map_merge(
+            ancestry_cache.str_bindings.clone(),
+            local_str_bindings.clone(),
+        );
+        let type_env_cache = Rc::new(TypeEnvCache {
+            deps_map: all_deps_map.clone(),
+            str_bindings: merged_str_bindings,
+            cycle_set_str: cycle_set_str.clone(),
+            variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        });
         Rc::new(BuildTypeEnvResult {
             env: unresolved_env,
+            cache: type_env_cache,
             diagnostics: Rc::new(vec![]),
         })
     }
@@ -13129,93 +13341,13 @@ pub fn build_module_context(
             parent_index.clone(),
             env.source_indices.clone(),
         );
-        let variant_fold = Rc::new({
-            let mut __sorted: Vec<_> =
-                Rc::new(v1_rt::map_values(&flatten_visible_bindings(env.clone())))
-                    .iter()
-                    .cloned()
-                    .collect();
-            __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
-                let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
-                let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
-            });
-            __sorted
-        })
-        .iter()
-        .cloned()
-        .fold(
-            Rc::new(VariantFoldState {
-                locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                collision_errors: Rc::new(vec![]),
-            }),
-            |acc: Rc<VariantFoldState>, binding: Rc<TypeBinding>| {
-                let is_coproduct =
-                    (binding.resolved.clone().connective.clone() == Connective::Disj);
-                if is_coproduct.clone() {
-                    {
-                        let binding_enum_name =
-                            authored_name_at(env.source_indices.clone(), binding.resolved.clone());
-                        binding
-                            .resolved
-                            .clone()
-                            .children
-                            .clone()
-                            .iter()
-                            .cloned()
-                            .fold(
-                                acc.clone(),
-                                |vacc: Rc<VariantFoldState>, child: Rc<Node>| {
-                                    let child_name =
-                                        authored_name_at(env.source_indices.clone(), child.clone());
-                                    let curr_child_is_imported = is_imported_variant_owned_by(
-                                        imported_variants.clone(),
-                                        child_name.clone(),
-                                        binding_enum_name.clone(),
-                                    );
-                                    match v1_rt::map_get(&vacc.locals.clone(), child_name.clone()) {
-                                        Some(_prev) => {
-                                            if curr_child_is_imported.clone() {
-                                                Rc::new(VariantFoldState {
-                                                    locals: v1_rt::rc_map_insert(
-                                                        vacc.locals.clone(),
-                                                        child_name.clone(),
-                                                        Rc::new(TypeBinding {
-                                                            name: child_name.clone(),
-                                                            resolved: binding.resolved.clone(),
-                                                            provenance: Rc::new(
-                                                                SubValueRelation::SubValueUnknown,
-                                                            ),
-                                                        }),
-                                                    ),
-                                                    collision_errors: vacc.collision_errors.clone(),
-                                                })
-                                            } else {
-                                                vacc.clone()
-                                            }
-                                        }
-                                        None => Rc::new(VariantFoldState {
-                                            locals: v1_rt::rc_map_insert(
-                                                vacc.locals.clone(),
-                                                child_name.clone(),
-                                                Rc::new(TypeBinding {
-                                                    name: child_name.clone(),
-                                                    resolved: binding.resolved.clone(),
-                                                    provenance: Rc::new(
-                                                        SubValueRelation::SubValueUnknown,
-                                                    ),
-                                                }),
-                                            ),
-                                            collision_errors: vacc.collision_errors.clone(),
-                                        }),
-                                    }
-                                },
-                            )
-                    }
-                } else {
-                    acc.clone()
-                }
-            },
+        let parent_variant_locals =
+            union_parent_variant_locals(resolved_imports.clone(), parent_index.clone());
+        let variant_fold = fold_local_coproduct_variant_locals(
+            env.bindings.clone(),
+            imported_variants,
+            env.source_indices.clone(),
+            parent_variant_locals,
         );
         let imported_variant_locals = variant_fold.locals.clone();
         let variant_collision_errors = variant_fold.collision_errors.clone();
@@ -13256,7 +13388,7 @@ pub fn build_module_context(
             .iter()
             .cloned()
             .fold(
-                env_variant_locals,
+                env_variant_locals.clone(),
                 |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
                     v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone())
                 },
@@ -13266,6 +13398,7 @@ pub fn build_module_context(
             func_env: resolve_result.func_env.clone(),
             svc_registry: merged_scope.svc_registry.clone(),
             locals: all_locals,
+            variant_locals: env_variant_locals.clone(),
             item_registry: local.item_registry.clone(),
             diagnostics: v1_rt::concat(
                 v1_rt::concat(
@@ -13304,6 +13437,7 @@ pub fn typecheck_module(
             intern_table,
         );
         let env = env_result.env.clone();
+        let env_cache = env_result.cache.clone();
         let env_diags = env_result.diagnostics.clone();
         let env_errors = Rc::new({
             let mut __result = Vec::new();
@@ -13321,6 +13455,7 @@ pub fn typecheck_module(
                     module: resolved.module.clone(),
                     items: Rc::new(vec![]),
                     type_env: env.clone(),
+                    type_env_cache: env_cache.clone(),
                     func_env: Rc::new(ResolvedFuncEnv {
                         local: v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
                         parents: Rc::new(vec![]),
@@ -13456,6 +13591,12 @@ pub fn typecheck_module(
                 module: typed_module,
                 items: reannotated_items,
                 type_env: env.clone(),
+                type_env_cache: Rc::new(TypeEnvCache {
+                    deps_map: env_cache.deps_map.clone(),
+                    str_bindings: env_cache.str_bindings.clone(),
+                    cycle_set_str: env_cache.cycle_set_str.clone(),
+                    variant_locals: ctx.variant_locals.clone(),
+                }),
                 func_env: updated_func_env.clone(),
                 item_registry: ctx.item_registry.clone(),
             }),
@@ -14185,6 +14326,7 @@ pub fn rewire_type_env_parent_links(
                             source_indices: m.type_env.clone().source_indices.clone(),
                             intern_table: m.type_env.clone().intern_table.clone(),
                         }),
+                        type_env_cache: m.type_env_cache.clone(),
                         func_env: m.func_env.clone(),
                         item_registry: m.item_registry.clone(),
                     })
@@ -14236,6 +14378,7 @@ pub fn rewire_func_env_parent_links(
                         module: m.module.clone(),
                         items: m.items.clone(),
                         type_env: m.type_env.clone(),
+                        type_env_cache: m.type_env_cache.clone(),
                         func_env: Rc::new(ResolvedFuncEnv {
                             local: m.func_env.clone().local.clone(),
                             parents: parents.clone(),

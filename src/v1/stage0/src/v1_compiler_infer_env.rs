@@ -36,45 +36,58 @@ pub struct TypeBinding {
     pub provenance: Rc<SubValueRelation>,
 }
 
-pub fn lookup_type_in_parent_chain(
-    mut parents: Rc<Vec<Rc<TypeEnv>>>,
-    mut ident: i64,
-) -> Option<Rc<Node>> {
-    loop {
-        match parents.clone().last().cloned() {
-            None => {
-                break None;
-            }
-            Some(tail_parent) => match lookup_type(tail_parent.clone(), ident.clone()) {
-                Some(ty) => {
-                    break Some(ty.clone());
-                }
-                None => {
-                    let __tco_0 = Rc::new(
-                        parents
-                            .iter()
-                            .cloned()
-                            .take(((parents.len() as i64) - 1) as usize)
-                            .collect::<Vec<_>>(),
-                    );
-                    parents = __tco_0;
-                    continue;
-                }
-            },
-        }
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypeEnvCache {
+    pub deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
+    pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    pub cycle_set_str: Rc<HashMap<String, bool>>,
+    pub variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+}
+
+pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
+    Rc::new(TypeEnvCache {
+        deps_map: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
+        str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        cycle_set_str: v1_rt::rc_empty_map::<String, bool>(),
+        variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+    })
+}
+
+pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
+    Rc::new(TypeEnvCache {
+        deps_map: v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone()),
+        str_bindings: v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone()),
+        cycle_set_str: v1_rt::rc_map_merge(
+            base.cycle_set_str.clone(),
+            overlay.cycle_set_str.clone(),
+        ),
+        variant_locals: v1_rt::rc_map_merge(
+            base.variant_locals.clone(),
+            overlay.variant_locals.clone(),
+        ),
+    })
+}
+
+pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    match intern_find(env.intern_table.clone(), name) {
+        Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
+            Some(binding) => Some(binding.clone()),
+            None => None,
+        },
+        None => None,
     }
 }
 
-pub fn lookup_binding_in_parent_chain(
+pub fn lookup_binding_by_name_in_parent_chain(
     mut parents: Rc<Vec<Rc<TypeEnv>>>,
-    mut ident: i64,
+    mut name: String,
 ) -> Option<Rc<TypeBinding>> {
     loop {
         match parents.clone().last().cloned() {
             None => {
                 break None;
             }
-            Some(tail_parent) => match lookup_binding(tail_parent.clone(), ident.clone()) {
+            Some(tail_parent) => match lookup_binding_by_name(tail_parent.clone(), name.clone()) {
                 Some(binding) => {
                     break Some(binding.clone());
                 }
@@ -94,35 +107,81 @@ pub fn lookup_binding_in_parent_chain(
     }
 }
 
+pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    match lookup_binding_local_by_name(env.clone(), name.clone()) {
+        Some(binding) => Some(binding.clone()),
+        None => lookup_binding_by_name_in_parent_chain(env.parents.clone(), name.clone()),
+    }
+}
+
 pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
         Some(binding) => Some(binding.clone()),
-        None => lookup_binding_in_parent_chain(env.parents.clone(), ident.clone()),
+        None => {
+            let name = intern_str(env.intern_table.clone(), ident.clone());
+            lookup_binding_by_name_in_parent_chain(env.parents.clone(), name)
+        }
+    }
+}
+
+pub fn is_recursive_type_local(env: Rc<TypeEnv>, ident: i64) -> bool {
+    match v1_rt::map_get(&env.recursive_type_set.clone(), ident) {
+        Some(_) => true,
+        None => false,
+    }
+}
+
+pub fn is_recursive_type_by_name_in_parent_chain(
+    mut parents: Rc<Vec<Rc<TypeEnv>>>,
+    mut name: String,
+) -> bool {
+    loop {
+        match parents.clone().last().cloned() {
+            None => {
+                break false;
+            }
+            Some(tail_parent) => {
+                if is_recursive_type_by_name(tail_parent.clone(), name.clone()) {
+                    break true;
+                } else {
+                    {
+                        let __tco_0 = Rc::new(
+                            parents
+                                .iter()
+                                .cloned()
+                                .take(((parents.len() as i64) - 1) as usize)
+                                .collect::<Vec<_>>(),
+                        );
+                        parents = __tco_0;
+                        continue;
+                    }
+                }
+            }
+        }
     }
 }
 
 pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match v1_rt::map_get(&env.recursive_type_set.clone(), ident.clone()) {
-            Some(_) => true,
-            None => env.parents.clone().iter().cloned().fold(
-                false,
-                |found: bool, parent: Rc<TypeEnv>| {
-                    if found {
-                        true
-                    } else {
-                        is_recursive_type(parent.clone(), ident.clone())
-                    }
-                },
-            ),
+    if is_recursive_type_local(env.clone(), ident.clone()) {
+        true
+    } else {
+        {
+            let name = intern_str(env.intern_table.clone(), ident.clone());
+            is_recursive_type_by_name_in_parent_chain(env.parents.clone(), name)
         }
-    })
+    }
 }
 
 pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
-    match intern_find(env.intern_table.clone(), name) {
-        Some(id) => is_recursive_type(env.clone(), id.clone()),
-        None => false,
+    match intern_find(env.intern_table.clone(), name.clone()) {
+        Some(id) => {
+            if is_recursive_type_local(env.clone(), id.clone()) {
+                true
+            } else {
+                is_recursive_type_by_name_in_parent_chain(env.parents.clone(), name.clone())
+            }
+        }
+        None => is_recursive_type_by_name_in_parent_chain(env.parents.clone(), name.clone()),
     }
 }
 
@@ -134,8 +193,8 @@ pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
 }
 
 pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
-    match intern_find(env.intern_table.clone(), name) {
-        Some(id) => lookup_type(env.clone(), id.clone()),
+    match lookup_binding_by_name(env, name) {
+        Some(binding) => Some(binding.resolved.clone()),
         None => None,
     }
 }
@@ -299,23 +358,32 @@ pub fn inductive_fields_list_to_map(
     )
 }
 
-pub fn flatten_visible_bindings(env: Rc<TypeEnv>) -> Rc<HashMap<i64, Rc<TypeBinding>>> {
+pub fn flatten_visible_bindings(env: Rc<TypeEnv>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let from_parents = env.parents.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
+            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
                 v1_rt::rc_map_merge(flatten_visible_bindings(parent.clone()), acc)
             },
         );
-        v1_rt::rc_map_merge(from_parents, env.bindings.clone())
+        let local_by_name = Rc::new(v1_rt::map_values(&env.bindings.clone()))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+                |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
+                    v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone())
+                },
+            );
+        v1_rt::rc_map_merge(from_parents, local_by_name)
     })
 }
 
 pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
     {
         let merged_bindings = envs.clone().iter().cloned().fold(
-            v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, env: Rc<TypeEnv>| {
+            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, env: Rc<TypeEnv>| {
                 v1_rt::rc_map_merge(acc, flatten_visible_bindings(env.clone()))
             },
         );
@@ -348,14 +416,29 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
             Some(first_env) => first_env.intern_table.clone(),
             None => empty_intern_table(),
         };
+        let merged_bindings_by_ident = Rc::new(v1_rt::map_values(&merged_bindings))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
+                    v1_rt::rc_map_insert(
+                        acc,
+                        intern(merged_intern_table.clone(), binding.name.clone())
+                            .id
+                            .clone(),
+                        binding.clone(),
+                    )
+                },
+            );
         Rc::new(TypeEnv {
-            bindings: merged_bindings,
+            bindings: merged_bindings_by_ident,
             parents: Rc::new(vec![]),
             recursive_types: merged_recursive,
             recursive_type_set: merged_recursive_set,
             inductive_fields: merged_inductive_fields,
             source_indices: merged_source_indices,
-            intern_table: merged_intern_table,
+            intern_table: merged_intern_table.clone(),
         })
     }
 }

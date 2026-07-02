@@ -5537,6 +5537,19 @@ fn fold_local_coproduct_variant_locals(
   )
 }
 
+fn kernel_coproduct_variant_locals(env: TypeEnv) -> Map<String, TypeBinding> {
+  match env.parents |> last {
+    Present { value: kernel } =>
+      fold_local_coproduct_variant_locals(
+        bindings: kernel.bindings,
+        imported_variants: empty_map(),
+        source_indices: env.source_indices,
+        init_locals: empty_map()
+      ).locals
+    Absent => empty_map()
+  }
+}
+
 fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
   if module_path == "std.types" {
     let filtered = fold(map_keys(parent_env.bindings), init: empty_map(), f: (acc, ident) =>
@@ -5977,7 +5990,11 @@ fn build_module_context(contributions: List<ItemContribution>,
     source_indices: env.source_indices
   )
   let imported_variants = build_imported_variants(resolved_imports: resolved_imports, parent_index: parent_index, source_indices: env.source_indices)
-  let parent_variant_locals = union_parent_variant_locals(resolved_imports: resolved_imports, parent_index: parent_index)
+  let kernel_variant_locals = kernel_coproduct_variant_locals(env: env)
+  let parent_variant_locals = map_merge(
+    kernel_variant_locals,
+    union_parent_variant_locals(resolved_imports: resolved_imports, parent_index: parent_index)
+  )
   let variant_fold = fold_local_coproduct_variant_locals(
     bindings: env.bindings,
     imported_variants: imported_variants,

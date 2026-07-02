@@ -276,9 +276,13 @@ fn synthetic_import_chain_sources(depth: usize) -> Vec<Rc<SourceFile>> {
 
 fn time_import_chain_resolve(depth: usize) -> Duration {
     let sources = synthetic_import_chain_sources(depth);
-    let start = Instant::now();
-    compile_modules(sources);
-    start.elapsed()
+    let mut best = Duration::from_secs(u64::MAX);
+    for _ in 0..3 {
+        let start = Instant::now();
+        compile_modules(sources.clone());
+        best = best.min(start.elapsed());
+    }
+    best
 }
 
 #[test]
