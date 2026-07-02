@@ -213,8 +213,11 @@ test fn derived_cursor_uses_last_receipt_step() -> Bool {
       recorded_at: "2026-07-02T22:59:00Z",
     },
   ]
-  derived_pending_step_id(receipts: receipts, default_step: "toolchain-ensure" as NonEmptyStr)
-    == witness_step_serve
+  let pending = derived_pending_step_id(
+    receipts: receipts,
+    default_step: "toolchain-ensure" as NonEmptyStr,
+  )
+  pending == witness_step_serve
     && match prior_receipt_for_step(receipts: receipts, step_id: witness_step_serve) {
       PriorReceipt { receipt: r } => r.step_id == witness_step_serve
       _ => false

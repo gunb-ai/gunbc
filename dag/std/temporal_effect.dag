@@ -167,10 +167,12 @@ fn fold_next_step_plan(
   }
 }
 
+data cursor_unset_step: NonEmptyStr = "cursor-unset" as NonEmptyStr
+
 fn receipt_log_last_step_id(receipts: List<EffectStepReceipt>) -> NonEmptyStr {
   fold(
     receipts,
-    init: "cursor-unset" as NonEmptyStr,
+    init: cursor_unset_step,
     f: (acc, r) => r.step_id,
   )
 }
@@ -180,7 +182,7 @@ fn derived_pending_step_id(
   default_step: NonEmptyStr,
 ) -> NonEmptyStr {
   let last = receipt_log_last_step_id(receipts: receipts)
-  if last == "cursor-unset" as NonEmptyStr {
+  if last == cursor_unset_step {
     default_step
   } else {
     last
