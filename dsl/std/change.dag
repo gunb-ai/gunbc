@@ -512,7 +512,10 @@ fn keyed_apply_patch<K, V>(
   fold(patch.hunks, init: rows, f: fn(acc, hunk) {
     match hunk {
       KeyedDiffAddedHunk { hunk_key: k, to: v } =>
-        concat(acc, [KeyedRow { row_key: k, value: v }])
+        concat(
+          filter(acc, fn(row) { !key_eq(a: row.row_key, b: k) }),
+          [KeyedRow { row_key: k, value: v }],
+        )
       KeyedDiffRemovedHunk { hunk_key: k, from: _ } =>
         filter(acc, fn(row) { !key_eq(a: row.row_key, b: k) })
       KeyedDiffModifiedHunk { hunk_key: k, from: _, to: v } =>

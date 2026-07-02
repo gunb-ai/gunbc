@@ -33,6 +33,8 @@ data gunbc_converge_knob_semantics_marker: Disposition = Scaffold {
   }
 }
 
+data converge_knob_values_equal_dissolution_trigger: String = "🟡 dissolve-on: converge_knob_values_equal — row equality compares desired string only (ignores slice/name/target payload axes on ConvergeKnob); DISSOLVES WHEN per-target normalization grounds full knob snapshot equality in a single converge_knob_semantics authority, retiring this string-equality leaf."
+
 type ConvergeKnobKey {
   slice: ConvergeSlice
   name: String

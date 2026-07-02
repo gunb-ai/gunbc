@@ -272,6 +272,27 @@ fn witness_apply_diff_law_modified() -> Bool {
   )
 }
 
+fn witness_apply_added_is_upsert() -> Bool {
+  let patch = fixture_added_hunk()
+  let once = keyed_apply_patch(
+    rows: fixture_rows_a(),
+    patch: patch,
+    key_eq: fixture_key_eq,
+  )
+  let twice = keyed_apply_patch(
+    rows: once,
+    patch: patch,
+    key_eq: fixture_key_eq,
+  )
+  list_length(items: once) == list_length(items: twice)
+    && keyed_rows_snapshot_equal(
+      left: once,
+      right: twice,
+      key_eq: fixture_key_eq,
+      value_eq: fixture_val_eq,
+    )
+}
+
 fn witness_apply_diff_law_added() -> Bool {
   keyed_rows_snapshot_equal(
     left: keyed_apply_two_way_diff(
@@ -527,6 +548,7 @@ test fn keyed_delta_fold_keystone_holds() -> Bool {
     && witness_leaf_verdict_join_added_disagree_is_conflict()
     && witness_diff_identity_law()
     && witness_apply_diff_law_modified()
+    && witness_apply_added_is_upsert()
     && witness_apply_diff_law_added()
     && witness_apply_diff_law_removed()
     && witness_inverse_retract_law_modified()
