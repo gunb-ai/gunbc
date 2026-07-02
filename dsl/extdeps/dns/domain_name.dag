@@ -181,11 +181,8 @@ fn parse_host_name(raw: String) -> Result<HostName, DomainNameParseError> {
   }
 }
 
-fn hostname_short(host: HostName) -> DnsLabel {
-  match host.name.labels.first() {
-    Present { value: label } => label
-    Absent => "" as DnsLabel
-  }
+fn hostname_short(host: HostName) -> DnsLabel? {
+  host.name.labels.first()
 }
 
 fn parent_domain(host: HostName) -> DomainName? {

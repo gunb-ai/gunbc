@@ -84,3 +84,11 @@ data dissolve_on_cr1000a_dhcp_lease_transport: List<String> = [
 data dissolve_on_cr1000a_host_name_raw_parse: List<String> = [
   "closure:cr1000a_host_name_raw_to_host_name|Cr1000aIpv4AddressDistributionRow.host_name_raw is cited router UI text; parse via parse_host_name at observation boundary when transport lands|trigger:cr1000a lease-table read transport binds host_name_raw through parse_host_name"
 ]
+
+data dissolve_on_cr1000a_delegated_prefix_length_scalar: List<String> = [
+  "closure:ground_delegated_prefix_length|delegated_prefix_length is a cited IPv6 PD prefix bit-count on bare Int/Int?; should ground on std.measure BitWidth once the CR1000A observation transport lands|trigger:Cr1000aBroadbandIpv6Snapshot read transport parses prefix length through bit_width"
+]
+
+data dissolve_on_cr1000a_expires_in_ui_text: List<String> = [
+  "closure:ground_expires_in_duration|expires_in is cited router UI duration text on bare NonEmptyStr?; parse to Second (or Minute carrier) at observation boundary when transport lands|trigger:cr1000a lease-table read transport binds expires_in through a typed duration parser"
+]
