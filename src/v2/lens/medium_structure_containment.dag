@@ -184,7 +184,8 @@ data medium_structure_exception_roster: List<String> = [
   "dsl/gunbc/srv3_install_media_fetch.dag",
   "dsl/extdeps/os/ubuntu_seeded_install_media_remaster.dag",
   "dsl/gunbc/srv3_seeded_install_media.dag",
-  "dsl/extdeps/bmc/serial_console.dag"
+  "dsl/extdeps/bmc/serial_console.dag",
+  "dsl/gunbc/srv3_install_diagnostic_checklist.dag"
 ]
 
 fn char_eq(a: Char, b: Char) -> Bool {

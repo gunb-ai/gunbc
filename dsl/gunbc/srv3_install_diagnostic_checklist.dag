@@ -41,6 +41,131 @@ data srv3_install_diagnostic_observe_script_path: String = "/tmp/srv3_install_di
 
 data srv3_sol_console_log_path_for_observe: NonEmptyStr = "/var/lib/gunbc/logs/srv3-install-sol-console.log" as NonEmptyStr
 
+fn bash_var_ref(name: String) -> String {
+  concat("$", concat("{", concat(name, "}")))
+}
+
+fn curl_http_code_writeout() -> String {
+  concat("%", concat("{", concat("http_code", "}")))
+}
+
+fn srv3_install_diagnostic_observe_script_curl_tail() -> String {
+  concat(
+    concat("$", "(curl -sk -o /dev/null -w \""),
+    concat(
+      curl_http_code_writeout(),
+      concat(
+        "\" -H \"Connection: Upgrade\" -H \"Upgrade: websocket\" -H \"Sec-WebSocket-Version: 13\" -H \"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\" \"https://",
+        concat(
+          bash_var_ref(name: "BMC"),
+          concat(
+            "/vm/0/0\" 2>/dev/null || echo 000)\necho \"Srv3InstallObserveReceipt: surface=bmc_websocket http_code=",
+            concat(
+              bash_var_ref(name: "HTTP_CODE"),
+              "\"\nif test -s \"",
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn srv3_install_diagnostic_observe_script_redfish_tail() -> String {
+  concat(
+    "\"; then\n  RF=",
+    concat(
+      concat("$", "(curl -sk -H \"Authorization: Token "),
+      concat(
+        concat("$", "(cat \""),
+        concat(
+          bash_var_ref(name: "TOKEN_PATH"),
+          concat(
+            "\")\" \"https://",
+            concat(
+              bash_var_ref(name: "BMC"),
+              concat(
+                "/redfish/v1/Systems/system\")\n  POWER=",
+                concat(
+                  concat("$", "(echo \""),
+                  concat(
+                    bash_var_ref(name: "RF"),
+                    concat(
+                      "\" | jq -r .PowerState)\n  BOOT_ENABLED=",
+                      concat(
+                        concat("$", "(echo \""),
+                        concat(
+                          bash_var_ref(name: "RF"),
+                          concat(
+                            "\" | jq -r .Boot.BootSourceOverrideEnabled)\n  BOOT_TARGET=",
+                            concat(
+                              concat("$", "(echo \""),
+                              concat(
+                                bash_var_ref(name: "RF"),
+                                concat(
+                                  "\" | jq -r .Boot.BootSourceOverrideTarget)\n  echo \"Srv3InstallObserveReceipt: surface=redfish power=",
+                                  concat(
+                                    bash_var_ref(name: "POWER"),
+                                    concat(
+                                      " boot_enabled=",
+                                      concat(
+                                        bash_var_ref(name: "BOOT_ENABLED"),
+                                        concat(
+                                          " boot_target=",
+                                          concat(
+                                            bash_var_ref(name: "BOOT_TARGET"),
+                                            "\"\nelse\n  echo \"Srv3InstallObserveReceipt: surface=redfish status=token_missing\"\nfi\nif test -s \"",
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
+fn srv3_install_diagnostic_observe_script_sol_tail() -> String {
+  concat(
+    "\"; then\n  echo \"Srv3InstallObserveReceipt: surface=sol status=present\"\n  grep -qi grub \"",
+    concat(
+      bash_var_ref(name: "SOL_LOG"),
+      concat(
+        "\" && echo \"Srv3InstallObserveReceipt: surface=sol marker=grub\" || true\n  grep -qi subiquity \"",
+        concat(
+          bash_var_ref(name: "SOL_LOG"),
+          concat(
+            "\" && echo \"Srv3InstallObserveReceipt: surface=sol marker=subiquity\" || true\n  grep -qi autoinstall \"",
+            concat(
+              bash_var_ref(name: "SOL_LOG"),
+              concat(
+                "\" && echo \"Srv3InstallObserveReceipt: surface=sol marker=autoinstall\" || true\n  grep -qi -E 'error|fail' \"",
+                concat(
+                  bash_var_ref(name: "SOL_LOG"),
+                  "\" && echo \"Srv3InstallObserveReceipt: surface=sol marker=error\" || true\nelse\n  echo \"Srv3InstallObserveReceipt: surface=sol status=silent\"\nfi\necho \"Srv3InstallObserveReceipt: surface=router status=operator_required\"\n",
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  )
+}
+
 fn srv3_install_diagnostic_observe_script(intent: OsInstallAttemptIntent) -> String {
   let token_path = srv3_bmcweb_token_path
   let bmc = intent.bmc_endpoint as String
@@ -48,32 +173,80 @@ fn srv3_install_diagnostic_observe_script(intent: OsInstallAttemptIntent) -> Str
   let iso_path = intent.iso_path as String
   let sol_log = srv3_sol_console_log_path_for_observe as String
   concat(
-    "#!/usr/bin/env bash\nset -uo pipefail\nTOKEN_PATH=",
     concat(
-      token_path,
       concat(
-        "\nBMC=",
         concat(
-          bmc,
+          "#!/usr/bin/env bash\nset -uo pipefail\nTOKEN_PATH=",
           concat(
-            "\nPORT=",
+            token_path,
             concat(
-              port,
+              "\nBMC=",
               concat(
-                "\nISO_PATH=",
+                bmc,
                 concat(
-                  iso_path,
+                  "\nPORT=",
                   concat(
-                    "\nSOL_LOG=",
+                    port,
                     concat(
-                      sol_log,
-                      "\nif pgrep -x nbdkit >/dev/null 2>&1; then NBDKIT=present; else NBDKIT=absent; fi\nif pgrep -x websocat >/dev/null 2>&1; then WSOCAT=present; else WSOCAT=absent; fi\nif ss -ltnp 2>/dev/null | grep -q \":${PORT} \"; then PORT_STATE=listening; else PORT_STATE=absent; fi\nif test -s \"${TOKEN_PATH}\"; then TOKEN=present; else TOKEN=absent; fi\nif test -f \"${ISO_PATH}\"; then ISO=file_present; else ISO=missing; fi\necho \"Srv3InstallObserveReceipt: surface=serve nbdkit=${NBDKIT} websocat=${WSOCAT} port=${PORT_STATE} token=${TOKEN} iso=${ISO}\"\nHTTP_CODE=$(curl -sk -o /dev/null -w \"%{http_code}\" -H \"Connection: Upgrade\" -H \"Upgrade: websocket\" -H \"Sec-WebSocket-Version: 13\" -H \"Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\" \"https://${BMC}/vm/0/0\" 2>/dev/null || echo 000)\necho \"Srv3InstallObserveReceipt: surface=bmc_websocket http_code=${HTTP_CODE}\"\nif test -s \"${TOKEN_PATH}\"; then\n  RF=$(curl -sk -H \"Authorization: Token $(cat \"${TOKEN_PATH}\")\" \"https://${BMC}/redfish/v1/Systems/system\")\n  POWER=$(echo \"$RF\" | jq -r .PowerState)\n  BOOT_ENABLED=$(echo \"$RF\" | jq -r .Boot.BootSourceOverrideEnabled)\n  BOOT_TARGET=$(echo \"$RF\" | jq -r .Boot.BootSourceOverrideTarget)\n  echo \"Srv3InstallObserveReceipt: surface=redfish power=${POWER} boot_enabled=${BOOT_ENABLED} boot_target=${BOOT_TARGET}\"\nelse\n  echo \"Srv3InstallObserveReceipt: surface=redfish status=token_missing\"\nfi\nif test -s \"${SOL_LOG}\"; then\n  echo \"Srv3InstallObserveReceipt: surface=sol status=present\"\n  grep -qi grub \"${SOL_LOG}\" && echo \"Srv3InstallObserveReceipt: surface=sol marker=grub\" || true\n  grep -qi subiquity \"${SOL_LOG}\" && echo \"Srv3InstallObserveReceipt: surface=sol marker=subiquity\" || true\n  grep -qi autoinstall \"${SOL_LOG}\" && echo \"Srv3InstallObserveReceipt: surface=sol marker=autoinstall\" || true\n  grep -qi -E 'error|fail' \"${SOL_LOG}\" && echo \"Srv3InstallObserveReceipt: surface=sol marker=error\" || true\nelse\n  echo \"Srv3InstallObserveReceipt: surface=sol status=silent\"\nfi\necho \"Srv3InstallObserveReceipt: surface=router status=operator_required\"\n",
+                      "\nISO_PATH=",
+                      concat(
+                        iso_path,
+                        concat("\nSOL_LOG=", sol_log),
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
           ),
+        ),
+        "\nif pgrep -x nbdkit >/dev/null 2>&1; then NBDKIT=present; else NBDKIT=absent; fi\nif pgrep -x websocat >/dev/null 2>&1; then WSOCAT=present; else WSOCAT=absent; fi\nif ss -ltnp 2>/dev/null | grep -q \":",
+      ),
+      concat(
+        bash_var_ref(name: "PORT"),
+        " \"; then PORT_STATE=listening; else PORT_STATE=absent; fi\nif test -s \"",
+      ),
+    ),
+    concat(
+      concat(
+        concat(
+          concat(
+            bash_var_ref(name: "TOKEN_PATH"),
+            "\"; then TOKEN=present; else TOKEN=absent; fi\nif test -f \"",
+          ),
+          concat(
+            bash_var_ref(name: "ISO_PATH"),
+            "\"; then ISO=file_present; else ISO=missing; fi\necho \"Srv3InstallObserveReceipt: surface=serve nbdkit=",
+          ),
+        ),
+        concat(
+          concat(
+            concat(
+              concat(
+                concat(
+                  bash_var_ref(name: "NBDKIT"),
+                  " websocat=",
+                ),
+                bash_var_ref(name: "WSOCAT"),
+              ),
+              " port=",
+            ),
+            bash_var_ref(name: "PORT_STATE"),
+          ),
+          concat(
+            " token=",
+            concat(
+              bash_var_ref(name: "TOKEN"),
+              concat(" iso=", concat(bash_var_ref(name: "ISO"), "\"\nHTTP_CODE=")),
+            ),
+          ),
+        ),
+      ),
+      concat(
+        srv3_install_diagnostic_observe_script_curl_tail(),
+        concat(
+          srv3_install_diagnostic_observe_script_redfish_tail(),
+          srv3_install_diagnostic_observe_script_sol_tail(),
         ),
       ),
     ),
