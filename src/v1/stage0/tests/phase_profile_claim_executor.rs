@@ -1,10 +1,12 @@
 //! Acceptance witnesses for `GUNBC_FLOOR_PHASE_PROFILE` (claim_executor heartbeat).
 #![cfg(unix)]
 
-use std::io::Read;
+use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 fn workspace_root() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -56,7 +58,55 @@ fn phase_profile_sigterm_mid_walk_flushes_last_tick() {
         .spawn()
         .expect("spawn claim_executor");
 
-    thread::sleep(Duration::from_secs(3));
+    let tick_count = Arc::new(AtomicUsize::new(0));
+    let stderr_buf = Arc::new(Mutex::new(String::new()));
+    let ticks = Arc::clone(&tick_count);
+    let buf = Arc::clone(&stderr_buf);
+    let stderr_pipe = child.stderr.take().expect("stderr pipe");
+    let reader = thread::spawn(move || {
+        let mut reader = BufReader::new(stderr_pipe);
+        let mut line = String::new();
+        loop {
+            line.clear();
+            match reader.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    if line.contains("[phase-profile]") {
+                        ticks.fetch_add(1, Ordering::Relaxed);
+                    }
+                    if let Ok(mut guard) = buf.lock() {
+                        guard.push_str(&line);
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        if let Some(status) = child.try_wait().expect("try_wait claim_executor") {
+            reader.join().expect("stderr reader");
+            let stderr = stderr_buf.lock().expect("stderr buf").clone();
+            panic!(
+                "claim_executor exited early with {status:?} before SIGTERM mid-walk \
+                 (got {} profile ticks); stderr:\n{stderr}",
+                tick_count.load(Ordering::Relaxed)
+            );
+        }
+        if tick_count.load(Ordering::Relaxed) >= 2 {
+            break;
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            reader.join().expect("stderr reader");
+            let stderr = stderr_buf.lock().expect("stderr buf").clone();
+            panic!("timed out waiting for 2 profile ticks; stderr:\n{stderr}");
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+
     let pid = child.id();
     extern "C" {
         fn kill(pid: LibcPid, sig: i32) -> i32;
@@ -67,12 +117,9 @@ fn phase_profile_sigterm_mid_walk_flushes_last_tick() {
         kill(pid as LibcPid, SIGTERM);
     }
 
-    let stderr_pipe = child.stderr.take();
     let status = child.wait().expect("wait for claim_executor");
-    let mut stderr = String::new();
-    if let Some(mut err) = stderr_pipe {
-        let _ = err.read_to_string(&mut stderr);
-    }
+    reader.join().expect("stderr reader");
+    let stderr = stderr_buf.lock().expect("stderr buf").clone();
 
     assert_eq!(
         status.code(),
