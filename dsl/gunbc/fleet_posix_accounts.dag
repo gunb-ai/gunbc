@@ -126,10 +126,8 @@ fn grounded_posix_principal_name(p: GroundedPosixPrincipal) -> NonEmptyStr {
 }
 
 fn posix_declared_probe_names_principal(p: GroundedPosixPrincipal) -> Bool {
-  string_contains(
-    s: p.declared_probe.probe_command as String,
-    pattern: p.posix.name as String
-  )
+  let expected = concat("id ", p.posix.name as String) as NonEmptyStr
+  p.declared_probe.probe_command == expected
 }
 
 fn fleet_posix_account_from_name(name: NonEmptyStr) -> GroundedPosixPrincipal? {
