@@ -533,20 +533,6 @@ fn keyed_three_way_entry_count<K, V>(patch: KeyedThreeWayPatch<K, V>) -> Int {
   list_length(items: patch.entries)
 }
 
-fn keyed_optional_value_equal<V>(
-  left: V?,
-  right: V?,
-  value_eq: fn(V, V) -> Bool,
-) -> Bool {
-  match left {
-    Absent => match right { Absent => true, Present { value: _ } => false }
-    Present { value: lv } => match right {
-      Absent => false
-      Present { value: rv } => value_eq(a: lv, b: rv)
-    }
-  }
-}
-
 fn keyed_diff_hunks_equal<K, V>(
   left: KeyedDiffHunk<K, V>,
   right: KeyedDiffHunk<K, V>,

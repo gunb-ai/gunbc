@@ -4,14 +4,7 @@ import std.types { Bool, String, List }
 import std.change {
   KeyedRow,
   KeyedPatch,
-  KeyedDiffKind,
-  KeyedDiffAdded,
-  KeyedDiffRemoved,
-  KeyedDiffModified,
   KeyedLeafVerdict,
-  KeyedApplyHunk,
-  KeyedVerdictAdded,
-  KeyedVerdictRemoved,
   KeyedApplyHunk,
   KeyedVerdictAdded,
   KeyedVerdictRemoved,
@@ -356,8 +349,8 @@ fn witness_added_hunk() -> Bool {
   let patch = fixture_added_hunk()
   keyed_patch_hunk_count(patch: patch) == 1
     && fold(patch.hunks, init: false, f: fn(found, hunk) {
-      found || match hunk.kind {
-        KeyedDiffAdded => hunk.hunk_key == "gamma"
+      found || match hunk {
+        KeyedDiffAddedHunk { hunk_key: k, to: _ } => k == "gamma"
         _ => false
       }
     })
@@ -367,8 +360,8 @@ fn witness_removed_hunk() -> Bool {
   let patch = fixture_removed_hunk()
   keyed_patch_hunk_count(patch: patch) == 1
     && fold(patch.hunks, init: false, f: fn(found, hunk) {
-      found || match hunk.kind {
-        KeyedDiffRemoved => hunk.hunk_key == "beta"
+      found || match hunk {
+        KeyedDiffRemovedHunk { hunk_key: k, from: _ } => k == "beta"
         _ => false
       }
     })
@@ -378,8 +371,8 @@ fn witness_modified_hunk() -> Bool {
   let patch = fixture_modified_hunk()
   keyed_patch_hunk_count(patch: patch) == 1
     && fold(patch.hunks, init: false, f: fn(found, hunk) {
-      found || match hunk.kind {
-        KeyedDiffModified => hunk.hunk_key == "beta"
+      found || match hunk {
+        KeyedDiffModifiedHunk { hunk_key: k, from: _, to: _ } => k == "beta"
         _ => false
       }
     })

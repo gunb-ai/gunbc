@@ -3,9 +3,9 @@ module v2.std.change
 import std.change {
   KeyedRow,
   KeyedPatch,
-  KeyedDiffKind,
   KeyedDiffHunk,
   KeyedLeafVerdict,
+  KeyedLeafVerdictFold,
   KeyedThreeWayPatch,
   KeyedThreeWayEntry,
   keyed_three_way_leaf,
@@ -23,6 +23,7 @@ import std.change {
   keyed_three_way_patch_append,
   keyed_three_way_patch_monoid,
   keyed_three_way_patch_singleton,
+  keyed_leaf_verdict_fold,
   keyed_leaf_verdict_join,
   keyed_patches_equal,
   keyed_rows_snapshot_equal,

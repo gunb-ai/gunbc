@@ -46,9 +46,6 @@ import gunbc.host_identity_knob {
   three_way_leaf,
   host_identity_knob_value,
   host_identity_patch_from_intents,
-  host_identity_leaf_is_conflict,
-  host_identity_leaf_has_apply_arm,
-  host_identity_leaf_is_noop,
 }
 import gunbc.host_identity_converge {
   ApplyPlan,
@@ -244,7 +241,7 @@ fn witness_patch_emits_exactly_one_modify_hunk() -> Bool {
 }
 
 fn witness_patch_noop_when_already_converged() -> Bool {
-  host_identity_leaf_is_noop(
+  host_identity_precondition_is_noop(
     verdict: host_identity_patch_from_intents(
       base_hostname: operator_host_srv1,
       observed_hostname: operator_host_srv1,
@@ -254,19 +251,20 @@ fn witness_patch_noop_when_already_converged() -> Bool {
 }
 
 fn witness_drift_conflict_red_no_apply_arm() -> Bool {
-  host_identity_leaf_is_conflict(
+  host_identity_precondition_is_conflict(
     verdict: host_identity_patch_from_intents(
       base_hostname: "altrad8ud-1l2t-1",
       observed_hostname: "unexpected-host",
       desired_hostname: operator_host_srv1,
     )
   )
-    && !host_identity_leaf_has_apply_arm(
+    && !host_identity_precondition_permits_apply(
       verdict: host_identity_patch_from_intents(
         base_hostname: "altrad8ud-1l2t-1",
         observed_hostname: "unexpected-host",
         desired_hostname: operator_host_srv1,
-      )
+      ),
+      desired_hostname: operator_host_srv1,
     )
 }
 
