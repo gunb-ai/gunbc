@@ -2107,6 +2107,7 @@ mod tests {
                     out.push((String::new(), function.clone()));
                 }
                 BatchUnit::Discovery { .. } => {}
+                BatchUnit::CompileCleanShardBatch { .. } => {}
             }
         }
         out
