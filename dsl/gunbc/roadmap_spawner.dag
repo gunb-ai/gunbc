@@ -12,6 +12,7 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -245,6 +246,14 @@ fn upcoming_array_json(frontier_upcoming: List<RoadmapNode>, nodes: List<Roadmap
 
 fn done_ids_json(frontier_done: List<RoadmapNode>) -> String {
   json_str_list(items: frontier_done |> map(n => n.node))
+}
+
+data dispatch_brief_template: String = "Node: <node_id>\nWhy now: <displaced cost / what it unblocks>\nNon-goals: <explicitly out of scope>\nM0 evidence: <prove current state / reproduce the gap>\nM1 smallest change: <first implementation slice>\nM2 RED control: <perturbation that goes red>\nM3 green receipt: <execution on the real path>\nStop and return if: <named hand-back conditions>\nFiles likely touched: <paths>\nCommands to run: <repro/verify commands>\nExpected artifact: <what comes back even if the fix does not land>"
+
+fn roadmap_dispatch_file_content() -> String {
+  concat("{\"schema\": \"roadmap-dispatch-file/v1\", \"brief_template\": ",
+    concat(json_str(s: dispatch_brief_template),
+    concat(", \"dispatch\": ", concat(roadmap_dispatch_json(doc: roadmap_authority(), merged: authored_merged_prs()), "}"))))
 }
 
 fn roadmap_dispatch_json(doc: RoadmapDocument, merged: List<Int>) -> String {
