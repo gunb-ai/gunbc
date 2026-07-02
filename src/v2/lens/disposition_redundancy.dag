@@ -32,7 +32,7 @@ fn decl_ref_eq(a: DeclarationRef, b: DeclarationRef) -> Bool {
 fn disposition_binds_present(d: Disposition, present: List<DeclarationRef>) -> Bool {
   match d {
     Scaffold { dissolves_to: _, bind } =>
-      false
+      any(xs: present, predicate: fn(p) { decl_ref_eq(a: p, b: bind) })
     Terminal { reason: _ } => false
   }
 }
