@@ -801,6 +801,28 @@ fn emit_slowest_witness_attribution(source_roots: &[String], summary: &Discovery
 }
 
 const COMPILE_CLEAN_SHARD_TRANSPORT: &str = "dsl/tools/dsl_compile_clean_shard_transport.dag";
+const PERTURB_SHARD_BROKEN_SOURCE_DATA: &str = "broken_shard_module_source";
+
+fn perturb_shard_broken_module_source(source_roots: &[String]) -> Result<String, String> {
+    let (graph, source_indices) = resolve_entry_graph(source_roots, COMPILE_CLEAN_SHARD_TRANSPORT)
+        .map_err(|msg| format!("resolve {COMPILE_CLEAN_SHARD_TRANSPORT}: {msg}"))?;
+    let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Hermetic);
+    let value = eval_data_item_value(&ctx, PERTURB_SHARD_BROKEN_SOURCE_DATA).map_err(|e| {
+        format!(
+            "eval {PERTURB_SHARD_BROKEN_SOURCE_DATA} from {COMPILE_CLEAN_SHARD_TRANSPORT}: {e}"
+        )
+    })?;
+    match value {
+        Some(Value::Str(s)) => Ok(s),
+        Some(other) => Err(format!(
+            "{PERTURB_SHARD_BROKEN_SOURCE_DATA} is {}, not String",
+            ctx.format_value(&other)
+        )),
+        None => Err(format!(
+            "{PERTURB_SHARD_BROKEN_SOURCE_DATA} not found in {COMPILE_CLEAN_SHARD_TRANSPORT}"
+        )),
+    }
+}
 
 fn run_single_shard_compile(ctx: &InterpContext, entry_path: &str) -> Result<bool, String> {
     let value = run_in_context_with_args(
@@ -1676,8 +1698,6 @@ fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> 
 
 const PERTURB_SHARD_BROKEN_ENTRY: &str = "_perturb_compile_clean_shard_red.dag";
 
-const PERTURB_SHARD_BROKEN_MODULE: &str = "module test.perturb_compile_clean_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}\n";
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum PerturbPlant {
     SingleClaim {
@@ -1766,7 +1786,15 @@ fn run_perturb_check(
         }
         PerturbPlant::CompileCleanShardBrokenEntry { rel_path } => {
             let broken_path = temp_src.join(rel_path);
-            if let Err(e) = fs::write(&broken_path, PERTURB_SHARD_BROKEN_MODULE) {
+            let module_source = match perturb_shard_broken_module_source(source_roots) {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = fs::remove_dir_all(&tmp);
+                    eprintln!("claim_executor: --perturb-check: {e}");
+                    return Err(ExitCode::from(2));
+                }
+            };
+            if let Err(e) = fs::write(&broken_path, module_source) {
                 let _ = fs::remove_dir_all(&tmp);
                 eprintln!(
                     "claim_executor: --perturb-check: plant broken shard entry failed: {e}"
@@ -2380,6 +2408,26 @@ mod tests {
         assert_eq!(
             second[0].resolve_nanos, 0,
             "second call must cache-hit — resolve_entry_graph must NOT fire again"
+        );
+    }
+
+    #[test]
+    fn perturb_shard_broken_module_source_reads_dag_authority() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("dsl").to_string_lossy().into_owned(),
+            root.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        std::env::set_current_dir(&root).expect("chdir to workspace root");
+        let source = perturb_shard_broken_module_source(&source_roots)
+            .expect("read broken_shard_module_source from shard transport");
+        assert!(
+            source.contains("perturb_compile_clean_red"),
+            "expected authority module body"
+        );
+        assert!(
+            source.contains("Some { value: s }"),
+            "expected broken Optional skew from perturb_module_source authority"
         );
     }
 }
