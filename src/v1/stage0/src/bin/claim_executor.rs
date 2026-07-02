@@ -237,7 +237,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 Some(v) => str_list_from_value(v, ctx)?,
                 None => {
                     return Err(
-                        "RunnableCompileCleanShardBatch missing field `entry_paths`".to_string(),
+                        "RunnableCompileCleanShardBatch missing field `entry_paths`".to_string()
                     )
                 }
             };
@@ -808,9 +808,7 @@ fn perturb_shard_broken_module_source(source_roots: &[String]) -> Result<String,
         .map_err(|msg| format!("resolve {COMPILE_CLEAN_SHARD_TRANSPORT}: {msg}"))?;
     let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Hermetic);
     let value = eval_data_item_value(&ctx, PERTURB_SHARD_BROKEN_SOURCE_DATA).map_err(|e| {
-        format!(
-            "eval {PERTURB_SHARD_BROKEN_SOURCE_DATA} from {COMPILE_CLEAN_SHARD_TRANSPORT}: {e}"
-        )
+        format!("eval {PERTURB_SHARD_BROKEN_SOURCE_DATA} from {COMPILE_CLEAN_SHARD_TRANSPORT}: {e}")
     })?;
     match value {
         Some(Value::Str(s)) => Ok(s),
@@ -855,6 +853,19 @@ fn run_compile_clean_shard_batch_node(
     let label = format!("compile-clean-shard-batch[{shard_count} modules, width={width}]");
     let batch_start = Instant::now();
 
+    if entry_paths.is_empty() {
+        return ClaimResult {
+            function: label,
+            ok: false,
+            detail: "compile-clean-shard:empty entry_paths — fail-closed".to_string(),
+            wall_nanos: batch_start.elapsed().as_nanos(),
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+        };
+    }
+
     let mut shards: Vec<Vec<String>> = vec![Vec::new(); width];
     for (i, path) in entry_paths.iter().enumerate() {
         shards[i % width].push(path.clone());
@@ -867,15 +878,15 @@ fn run_compile_clean_shard_batch_node(
         }
         let roots = source_roots.to_vec();
         handles.push(thread::spawn(move || {
-            let (graph, source_indices) = match resolve_entry_graph(&roots, COMPILE_CLEAN_SHARD_TRANSPORT)
-            {
-                Ok(pair) => pair,
-                Err(msg) => {
-                    return vec![format!(
-                        "resolve failed for {COMPILE_CLEAN_SHARD_TRANSPORT}: {msg}"
-                    )];
-                }
-            };
+            let (graph, source_indices) =
+                match resolve_entry_graph(&roots, COMPILE_CLEAN_SHARD_TRANSPORT) {
+                    Ok(pair) => pair,
+                    Err(msg) => {
+                        return vec![format!(
+                            "resolve failed for {COMPILE_CLEAN_SHARD_TRANSPORT}: {msg}"
+                        )];
+                    }
+                };
             let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
             let mut failures = Vec::new();
             for path in shard {
@@ -1700,13 +1711,8 @@ const PERTURB_SHARD_BROKEN_ENTRY: &str = "_perturb_compile_clean_shard_red.dag";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum PerturbPlant {
-    SingleClaim {
-        entry: String,
-        function: String,
-    },
-    CompileCleanShardBrokenEntry {
-        rel_path: String,
-    },
+    SingleClaim { entry: String, function: String },
+    CompileCleanShardBrokenEntry { rel_path: String },
 }
 
 fn perturb_plant_target(batch: &[Runnable]) -> Result<PerturbPlant, String> {
@@ -1796,9 +1802,7 @@ fn run_perturb_check(
             };
             if let Err(e) = fs::write(&broken_path, module_source) {
                 let _ = fs::remove_dir_all(&tmp);
-                eprintln!(
-                    "claim_executor: --perturb-check: plant broken shard entry failed: {e}"
-                );
+                eprintln!("claim_executor: --perturb-check: plant broken shard entry failed: {e}");
                 return Err(ExitCode::from(2));
             }
         }
@@ -2107,7 +2111,10 @@ mod tests {
 
     #[test]
     fn perturb_plant_target_uses_single_claim_for_monolith_batch() {
-        let batch = vec![single("dsl/tools/dsl_compile_clean_gate.dag", "dsl_compile_clean_gate_passes")];
+        let batch = vec![single(
+            "dsl/tools/dsl_compile_clean_gate.dag",
+            "dsl_compile_clean_gate_passes",
+        )];
         assert_eq!(
             perturb_plant_target(&batch),
             Ok(PerturbPlant::SingleClaim {
