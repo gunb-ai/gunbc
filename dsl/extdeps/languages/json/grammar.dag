@@ -28,4 +28,4 @@ data json_production_rows: List<JsonProductionRow> = [
   JsonProductionRow { rfc_section: "3", lhs: "literal", rhs: "'null' | 'true' | 'false'", value_variant: "JsonNull|JsonBool" },
 ]
 
-data json_emit_fold_dissolution_trigger: String = "dissolve-on: v2 grammar-inverse ingest for JSON — dsl/extdeps/languages/json/{grammar,emit}.dag is the single dsl-tree authority (RFC 8259 rows + JsonValue fold); DISSOLVES WHEN src/v2/extdeps/languages/json.dag lands FormalProduction/TargetModel rows wired through 06_translate with ingest ∘ emit = id on json_production_rows witnesses"
+data json_emit_fold_dissolution_trigger: String = "dissolve-on: v2 grammar-inverse ingest for JSON — dsl/extdeps/languages/json/grammar.dag plus emit.dag is the single dsl-tree authority (RFC 8259 rows + JsonValue fold); DISSOLVES WHEN src/v2/extdeps/languages/json.dag lands FormalProduction/TargetModel rows wired through 06_translate with ingest o emit = id on json_production_rows witnesses"

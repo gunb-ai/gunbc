@@ -66,5 +66,5 @@ fn tailscale_acl_policy_json(policy: TailscaleAclPolicy) -> JsonValue {
 }
 
 fn expected_tailscale_acl_json() -> String {
-  serialize_json(v: tailscale_acl_policy_json(policy: operator_tailscale_acl_policy))
+  concat(serialize_json(v: tailscale_acl_policy_json(policy: operator_tailscale_acl_policy)), "\n")
 }

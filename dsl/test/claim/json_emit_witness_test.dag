@@ -64,8 +64,7 @@ fn witness_serialize_nested_object() -> Bool {
 }
 
 fn witness_serialize_array() -> Bool {
-  serialize_json(v: json_array(elements: [json_string(s: "a"), json_string(s: "b")]))
-    == "[\"a\", \"b\"]"
+  serialize_json(v: json_array(elements: [json_string(s: "a"), json_string(s: "b")])) == "[\"a\", \"b\"]"
 }
 
 fn witness_int_list_helper() -> Bool {
