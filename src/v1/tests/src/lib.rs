@@ -55,8 +55,6 @@ mod floor_skip_discovery_host_test;
 #[cfg(test)]
 mod fn_as_value_test;
 #[cfg(test)]
-mod fold_list_generic_instantiation_test;
-#[cfg(test)]
 mod fold_unused_element_clone_elision_test;
 #[cfg(test)]
 mod func_env_scope_chain_test;

@@ -5,7 +5,7 @@ import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_me
 import extdeps.communication.medium { Medium }
 import v2.std.orchestration {
   Run,
-  Step,
+  PipelineStep,
   Do,
   Pipeline,
   FailFast,
@@ -14,7 +14,7 @@ import v2.std.orchestration {
 import v2.std.collection { Absent }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected }
 
-fn orch_pipeline_step1() -> Step {
+fn orch_pipeline_step1() -> PipelineStep {
   Do {
     run: Run {
       command: "cargo build -p v1-compiler --release --bins",
@@ -25,7 +25,7 @@ fn orch_pipeline_step1() -> Step {
   }
 }
 
-fn orch_pipeline_step2() -> Step {
+fn orch_pipeline_step2() -> PipelineStep {
   Do {
     run: Run {
       command: "cargo test --workspace",

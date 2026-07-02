@@ -1,0 +1,208 @@
+module test.claim.host_converge_delta_witness
+
+import std.types { Bool, String, List }
+import std.measure { byte_size, byte_size_count, hardware_thread_count }
+import std.change { KeyedApplyHunk, KeyedConflict, KeyedLeafVerdictFold, keyed_leaf_verdict_fold }
+import gunbc.ci_runner_placement {
+  RunnerHostDeployment,
+  BatchLatencyTolerant,
+}
+import extdeps.github.actions { SelfHosted }
+import gunbc.host_converge {
+  ConvergeKnob,
+  ConvergeSlice,
+  RunnerSlice,
+  PerSlotMemoryCap,
+  legacy_converge_knob,
+  runner_host_knobs,
+  runner_instance_glob,
+  gunbc_runner_per_slot_dropin_path,
+  gunbc_runner_per_slot_swap_dropin_path,
+}
+import extdeps.os.systemd {
+  systemd_memory_max_property,
+  systemd_memory_swap_max_property,
+}
+import gunbc.host_converge_delta {
+  ConvergeKnobKey,
+  converge_knob_key,
+  host_converge_three_way_patch,
+  host_converge_two_way_diff,
+  host_converge_patch_hunk_count,
+  host_converge_knob_in_patch,
+  host_converge_knob_verdict,
+  host_converge_three_way_entry_count,
+}
+
+fn fixture_srv2_host() -> RunnerHostDeployment {
+  RunnerHostDeployment {
+    identity: "srv2",
+    runner_count: 7,
+    runner_slice_cap: byte_size(70391285350),
+    per_runner_memory_cap: byte_size(30000000000),
+    build_tokens: hardware_thread_count(count: 12),
+    runner: SelfHosted { labels: ["self-hosted", "linux", "arm64"] },
+    workload_class: BatchLatencyTolerant,
+  }
+}
+
+fn fixture_base_knobs() -> List<ConvergeKnob> {
+  runner_host_knobs(h: fixture_srv2_host())
+}
+
+fn fixture_desired_knobs() -> List<ConvergeKnob> {
+  let glob = runner_instance_glob(host: "srv2")
+  fold(fixture_base_knobs(), init: [], f: fn(acc, knob) {
+    if knob.name == "per_slot_memory_max_bytes" {
+      concat(acc, [
+        legacy_converge_knob(
+          slice: RunnerSlice,
+          name: "per_slot_memory_max_bytes",
+          desired: "32000000000",
+          target: PerSlotMemoryCap {
+            dropin_path: gunbc_runner_per_slot_dropin_path,
+            instance_glob: glob,
+            property: systemd_memory_max_property,
+            bytes_value: "32000000000",
+          }
+        ),
+      ])
+    } else { if knob.name == "per_slot_memory_swap_max_bytes" {
+      concat(acc, [
+        legacy_converge_knob(
+          slice: RunnerSlice,
+          name: "per_slot_memory_swap_max_bytes",
+          desired: "1073741824",
+          target: PerSlotMemoryCap {
+            dropin_path: gunbc_runner_per_slot_swap_dropin_path,
+            instance_glob: glob,
+            property: systemd_memory_swap_max_property,
+            bytes_value: "1073741824",
+          }
+        ),
+      ])
+    } else {
+      concat(acc, [knob])
+    } }
+  })
+}
+
+fn memory_max_key() -> ConvergeKnobKey {
+  ConvergeKnobKey { slice: RunnerSlice, name: "per_slot_memory_max_bytes" }
+}
+
+fn swap_max_key() -> ConvergeKnobKey {
+  ConvergeKnobKey { slice: RunnerSlice, name: "per_slot_memory_swap_max_bytes" }
+}
+
+fn witness_two_key_collection_fold() -> Bool {
+  let patch = host_converge_three_way_patch(
+    base: fixture_base_knobs(),
+    observed: fixture_base_knobs(),
+    desired: fixture_desired_knobs(),
+  )
+  host_converge_knob_in_patch(patch: patch, key: memory_max_key())
+    && host_converge_knob_in_patch(patch: patch, key: swap_max_key())
+    && list_length(items: patch.entries) == 2
+}
+
+fn witness_unchanged_knobs_absent_by_monoid_law() -> Bool {
+  let patch = host_converge_three_way_patch(
+    base: fixture_base_knobs(),
+    observed: fixture_base_knobs(),
+    desired: fixture_desired_knobs(),
+  )
+  !host_converge_knob_in_patch(
+    patch: patch,
+    key: ConvergeKnobKey { slice: RunnerSlice, name: "runner_count" },
+  )
+    && !host_converge_knob_in_patch(
+      patch: patch,
+      key: ConvergeKnobKey { slice: RunnerSlice, name: "cpu_weight" },
+    )
+}
+
+fn witness_memory_swap_hunks_are_apply() -> Bool {
+  let patch = host_converge_three_way_patch(
+    base: fixture_base_knobs(),
+    observed: fixture_base_knobs(),
+    desired: fixture_desired_knobs(),
+  )
+  match host_converge_knob_verdict(patch: patch, key: memory_max_key()) {
+    Present { value: KeyedApplyHunk { from: _, to: t } } =>
+      t.desired == "32000000000"
+    _ => false
+  }
+    && match host_converge_knob_verdict(patch: patch, key: swap_max_key()) {
+      Present { value: KeyedApplyHunk { from: _, to: t } } =>
+        t.desired == "1073741824"
+      _ => false
+    }
+}
+
+fn witness_drifted_knob_is_conflict() -> Bool {
+  let drift_observed = fold(fixture_base_knobs(), init: [], f: fn(acc, knob) {
+    if knob.name == "per_slot_memory_max_bytes" {
+      concat(acc, [
+        legacy_converge_knob(
+          slice: knob.slice,
+          name: knob.name,
+          desired: "99999999999",
+          target: knob.target,
+        ),
+      ])
+    } else {
+      concat(acc, [knob])
+    }
+  })
+  let patch = host_converge_three_way_patch(
+    base: fixture_base_knobs(),
+    observed: drift_observed,
+    desired: fixture_desired_knobs(),
+  )
+  fold(patch.entries, init: false, f: fn(acc, entry) {
+    acc || keyed_leaf_verdict_fold(
+      verdict: entry.verdict,
+      fold: KeyedLeafVerdictFold {
+        unchanged: false,
+        conflict: true,
+        apply_hunk: fn(_, _) { false },
+        added: fn(_) { false },
+        removed: fn(_) { false },
+      },
+    )
+  })
+    && match host_converge_knob_verdict(patch: patch, key: memory_max_key()) {
+      Present { value: KeyedConflict } => true
+      _ => false
+    }
+}
+
+fn witness_two_way_diff_modified_only() -> Bool {
+  host_converge_patch_hunk_count(
+    patch: host_converge_two_way_diff(
+      left: fixture_base_knobs(),
+      right: fixture_desired_knobs(),
+    ),
+  ) == 2
+}
+
+fn witness_already_applied_is_noop() -> Bool {
+  !host_converge_knob_in_patch(
+    patch: host_converge_three_way_patch(
+      base: fixture_base_knobs(),
+      observed: fixture_desired_knobs(),
+      desired: fixture_desired_knobs(),
+    ),
+    key: memory_max_key(),
+  )
+}
+
+test fn host_converge_delta_keystone_holds() -> Bool {
+  witness_two_key_collection_fold()
+    && witness_unchanged_knobs_absent_by_monoid_law()
+    && witness_memory_swap_hunks_are_apply()
+    && witness_drifted_knob_is_conflict()
+    && witness_two_way_diff_modified_only()
+    && witness_already_applied_is_noop()
+}
