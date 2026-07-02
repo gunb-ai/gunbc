@@ -52,7 +52,7 @@ The reading: anemic-modeling and complexity are not analogous by coincidence —
 
 ## 4. The methodology (and its two failure modes)
 
-For any discipline D we propose to enforce: **partition D's instances into ① ② ③ *before* building enforcement.** The partition is the deliverable; the gate is downstream of it.
+For any discipline D we propose to enforce: **partition D's instances into ① ② ③ *before* building enforcement.** The partition is the deliverable; the gate is downstream of it. The worked instance for algorithmic complexity is the [structural-quadratic wall coverage audit](structural-quadratic-wall-coverage-audit.md) — every live cost/complexity mechanism located on these three regions, with an execution receipt.
 
 The two ways to get the partition wrong are exactly DESIGN's two named traps:
 
