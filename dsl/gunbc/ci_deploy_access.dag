@@ -36,9 +36,7 @@ data deploy_access_refusal_prefix: String = "deploy_access: typed refusal before
 
 data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
 
-data ci_deploy_runner_principal: NonEmptyStr = "ghrunner"
-
-data ci_deploy_operator_principal: NonEmptyStr = "briansrls"
+data ci_deploy_runner_principal: NonEmptyStr = "runner"
 
 fn srv1_live_deploy_privileged_commands() -> List<PrivilegedCommand> {
   [
@@ -60,17 +58,6 @@ fn ci_deploy_srv1_local_access() -> DeployAccess {
 }
 
 data ci_deploy_srv1_access: DeployAccess = ci_deploy_srv1_local_access()
-
-fn ci_deploy_srv1_manual_operator_local_access() -> DeployAccess {
-  DeployAccess {
-    principal: ci_deploy_operator_principal,
-    host: srv1_host,
-    transport: LocalShell,
-    privileged_commands: srv1_live_deploy_privileged_commands(),
-  }
-}
-
-data ci_deploy_srv1_manual_operator_access: DeployAccess = ci_deploy_srv1_manual_operator_local_access()
 
 fn deploy_access_sudoers_line(access: DeployAccess, cmd: PrivilegedCommand) -> String {
   concat(concat(access.principal, " ALL=(ALL) NOPASSWD: "), cmd.path)
