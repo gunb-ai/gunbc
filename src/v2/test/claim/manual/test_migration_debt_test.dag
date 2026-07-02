@@ -1,0 +1,20 @@
+module v2.test.lens_test_migration_debt.test_migration_debt_test
+
+import v2.lens.test_migration_debt {
+  test_migration_debt_module_count_ratchet_holds,
+  test_migration_debt_total_loc_ratchet_holds,
+  test_migration_debt_total_test_fns_ratchet_holds
+}
+import v2.std.logic { Bool }
+
+test fn test_migration_debt_module_count_does_not_grow() -> Bool {
+  return test_migration_debt_module_count_ratchet_holds()
+}
+
+test fn test_migration_debt_total_loc_does_not_grow() -> Bool {
+  return test_migration_debt_total_loc_ratchet_holds()
+}
+
+test fn test_migration_debt_total_test_fns_does_not_grow() -> Bool {
+  return test_migration_debt_total_test_fns_ratchet_holds()
+}

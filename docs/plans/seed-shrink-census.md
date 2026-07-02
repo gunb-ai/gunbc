@@ -190,41 +190,16 @@ The 88 v1 integration-test modules (~30k LOC, **939 `#[test]` fns**, `pipeline.r
 | **cache / fixture** | 916 | ~15 | `cache_purity_verdict_test.dag`, `cache_key_completeness_test.dag` |
 | **cross-cutting** | 917 | ~15 | `generated_conformance_floor_test.dag` (cross_rep), `generic_alias_coproduct_instantiation_test.dag` |
 
-### 5B. T2 coverage debt — no floor equivalent (collapse cannot proceed past)
+### 5B. T2 coverage debt — derived live, not hand-maintained
 
-These v1 modules have **no identified `*_test.dag` witness** (by stem or topic scan). Each needs a floor witness authored **before** the v1 test deletes:
+**This is no longer a hand-authored table** (that was a parallel ledger — DESIGN §6 forbids it; the old static snapshot drifted from the tree the moment either side changed). The debt roster is now **computed from the live tree** by `v2.lens.test_migration_debt` (`src/v2/lens/test_migration_debt.dag`), which diffs `src/v1/tests/src/*.rs` modules containing `#[test]` against the floor `*_test.dag` witness roster (the same `witness_layer_roots` corpus the CI floor discovers from) by stem — a module is debt iff no floor witness stem matches it.
 
-| LOC | v1 module | v1 tests | Required floor witness (to author) |
-| ---: | --- | ---: | --- |
-| 1,530 | `infer_semantics` | 51 | Infer semantics oracle suite → `src/v2/test/claim/infer_semantics_*_test.dag` |
-| 1,300 | `interp_recorded_fixture_test` | 24 | Recorded-fixture replay witnesses |
-| 1,238 | `source_audit` | 41 | Source-audit / dep-graph witnesses |
-| 733 | `effects` | 36 | Effect-shape / idempotency witnesses |
-| 458 | `resolve_cross_process_cache_test` | 10 | Resolve-cache cross-process witnesses |
-| 364 | `extdeps_shape_transport_policy_lens_test` | 7 | Lens already in `.dag`; needs floor `*_test.dag` consumer |
-| 330 | `floor_skip_discovery_host_test` | 9 | Floor-skip discovery witnesses |
-| 296 | `fn_as_value_test` | 10 | Fn-as-value infer witnesses |
-| 274 | `auth_declared_but_unwired_witness_test` | 7 | Auth wiring witnesses |
-| 242 | `measure_field_access_test` | 9 | Measure emit/access witnesses |
-| 234 | `coverage_completeness_lens_test` | 6 | Coverage-completeness lens floor witness |
-| 223 | `witness_option_bridge_test` | 6 | Optional/`Value::Null` bridge witnesses |
-| 221 | `list_free_monoid_chokepoint_test` | 8 | FreeMonoid generic-inference witnesses |
-| 208 | `consumed_input_closure_drift_test` | 2 | Wiring-liveness witnesses |
-| 206 | `ir_fixture_seam_soundness_test` | 3 | IR-fixture seam witnesses |
-| 187 | `sub_value_lattice_factor_test` | 8 | Sub-value lattice witnesses |
-| 186 | `pd3_adversarial` | 8 | Adversarial parse witnesses |
-| 181 | `route_a_final_six_test` | 6 | Route-A emit regression witnesses |
-| 179 | `variant_owner_disambiguation_test` | 3 | Variant-owner resolve witnesses |
-| 175 | `map_lookup_dual_dispatch_test` | 6 | Map-lookup dispatch witnesses |
-| 114 | `r2_emit_add_named_test` | 0 | Emit add-named witnesses |
-| 79 | `type_alias_phantom_param_test` | 2 | PhantomData type-alias emit witnesses |
-| 81 | `languages_consumer_census_lens_test` | 1 | Lens has `.dag`; floor witness missing |
-| 85 | `fact_cardinality_lens_test` | 1 | Lens has `.dag`; floor witness missing |
-| … | *(46 more modules < 200 LOC each)* | … | Per-module `*_test.dag` or fold into concern-suite above |
+- **Live counts:** `test_migration_debt_module_count()` / `test_migration_debt_total_loc()` / `test_migration_debt_total_test_fns()` (builtins in `cli_run.rs`, dispatched via `v1_interpreter.rs`).
+- **Live roster:** `test_migration_debt_module_names()` returns the current debt module list — run this instead of reading a table to see which v1 modules still need a floor witness.
+- **Floor gate:** `src/v2/test/claim/manual/test_migration_debt_test.dag` enrolls three shrink-only ratchet witnesses (module count / total LOC / total test-fn count each `<=` their baseline) — floor-discovered and green-by-execution like every other witness. Debt may shrink freely; it must never silently grow.
+- **Baselines** (set at this table's dissolution, re-verify by running the lens): 66 modules / 13,441 LOC / 418 `#[test]` fns.
 
-**Debt total:** ~71 modules / ~13k LOC / ~400+ `#[test]` fns without floor equivalent.
-
-**Migration rule:** for each v1 test module, the floor `*_test.dag` witness must be **green-by-execution** in `claim_executor` before the v1 `#[test]` module deletes. Bulk-delete of `src/v1/tests` is forbidden.
+**Migration rule (unchanged):** for each v1 test module, the floor `*_test.dag` witness must be **green-by-execution** in `claim_executor` before the v1 `#[test]` module deletes. Bulk-delete of `src/v1/tests` is forbidden. When `test_migration_debt_module_count()` reaches 0, §5 test-migration is done — no table to keep in sync.
 
 ---
 

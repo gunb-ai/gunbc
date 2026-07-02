@@ -8353,8 +8353,8 @@ fn test_migration_debt_stem_covered(v1_stem: &str, floor_stems: &[String]) -> bo
     const MIN_SUBSTRING_MATCH_LEN: usize = 6;
     floor_stems.iter().any(|floor_stem| {
         floor_stem == v1_stem
-            || (v1_stem.len() >= MIN_SUBSTRING_MATCH_LEN && floor_stem.contains(v1_stem.as_str()))
-            || (floor_stem.len() >= MIN_SUBSTRING_MATCH_LEN && v1_stem.contains(floor_stem.as_str()))
+            || (v1_stem.len() >= MIN_SUBSTRING_MATCH_LEN && floor_stem.contains(v1_stem))
+            || (floor_stem.len() >= MIN_SUBSTRING_MATCH_LEN && v1_stem.contains(floor_stem))
     })
 }
 
