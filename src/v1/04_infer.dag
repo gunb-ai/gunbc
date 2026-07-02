@@ -6007,11 +6007,32 @@ fn build_module_context(contributions: List<ItemContribution>,
     source_indices: env.source_indices
   )
   let imported_variants = build_imported_variants(resolved_imports: resolved_imports, parent_index: parent_index, source_indices: env.source_indices)
-  let variant_fold = fold_local_coproduct_variant_locals(
-    bindings: env.bindings,
-    imported_variants: imported_variants,
-    source_indices: env.source_indices,
-    init_locals: empty_map()
+  let variant_fold = fold(
+    flatten_visible_bindings(env: env) |> map_values |> sort_by(b => b.name),
+    init: VariantFoldState { locals: empty_map(), collision_errors: [] },
+    f: (acc, binding) =>
+      let is_coproduct = binding.resolved.connective == Disj
+      if is_coproduct {
+        let binding_enum_name = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
+        fold(binding.resolved.children, init: acc, f: (vacc, child) =>
+          let child_name = authored_name_at(source_indices: env.source_indices, node: child)
+          let curr_child_is_imported = is_imported_variant_owned_by(imported_variants: imported_variants, variant_name: child_name, enum_name: binding_enum_name)
+          match map_get(vacc.locals, child_name) {
+            Present { value: _prev } =>
+              if curr_child_is_imported {
+                VariantFoldState {
+                  locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
+                  collision_errors: vacc.collision_errors
+                }
+              } else { vacc }
+            Absent =>
+              VariantFoldState {
+                locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
+                collision_errors: vacc.collision_errors
+              }
+          }
+        )
+      } else { acc }
   )
   let imported_variant_locals = variant_fold.locals
   let variant_collision_errors = variant_fold.collision_errors
