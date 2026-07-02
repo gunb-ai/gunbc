@@ -34,7 +34,9 @@ service shell.Env {
       0 => Unit
       1 => Unit "Variable not set"
     }
-
+    mock_response {
+      1 => { value: none } "hermetic Env.Get unset — default compile-clean sharding ON"
+    }
   }
 }
 
