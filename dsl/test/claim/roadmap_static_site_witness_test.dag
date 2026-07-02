@@ -12,6 +12,7 @@ import gunbc.roadmap_static_site {
   roadmap_site_healthz_route,
   roadmap_site_text_static_routes,
   roadmap_site_readback_script,
+  roadmap_site_readback_shell_dissolution_trigger,
   roadmap_site_roadmap_md_artifact,
   roadmap_site_dispatch_json_artifact,
   roadmap_site_roadmap_url_path,
@@ -82,6 +83,12 @@ fn witness_emitted_server_has_static_paths() -> Bool {
     && string_contains(s: src, pattern: "/^\\/healthz$/")
 }
 
+fn witness_readback_shell_marked_scaffold() -> Bool {
+  string_contains(s: roadmap_site_readback_shell_dissolution_trigger, pattern: "dissolve-on: roadmap_site_readback_shell")
+    && string_contains(s: roadmap_site_readback_shell_dissolution_trigger, pattern: "live_deploy_emit_shell_dissolution_trigger")
+    && string_contains(s: roadmap_site_readback_shell_dissolution_trigger, pattern: "medium_structure_exception_roster")
+}
+
 fn witness_readback_script_checks_health_and_digests() -> Bool {
   let sh = roadmap_site_readback_script(port: 8080)
   string_contains(s: sh, pattern: "/healthz")
@@ -111,6 +118,7 @@ test fn roadmap_static_site_witnesses() -> Bool {
     && witness_text_routes_include_health_and_artifacts()
     && witness_dashboard_route_table_includes_static_site()
     && witness_emitted_server_has_static_paths()
+    && witness_readback_shell_marked_scaffold()
     && witness_readback_script_checks_health_and_digests()
     && witness_roadmap_route_is_plain_text()
 }

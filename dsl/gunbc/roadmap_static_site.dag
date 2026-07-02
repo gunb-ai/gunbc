@@ -56,6 +56,17 @@ data roadmap_site_roadmap_url_path: NonEmptyStr = "/ROADMAP.md"
 data roadmap_site_dispatch_url_path: NonEmptyStr = "/target/roadmap-dispatch.json"
 data roadmap_site_service_name: String = "gunbc-roadmap"
 
+data roadmap_site_readback_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data roadmap_site_readback_shell_dissolution_trigger: String = "🟡 dissolve-on: roadmap_site_readback_shell — readback script (set -euo pipefail, curl, grep, node -e digest checks) built with concat/string shell (extends live_deploy #5828); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — independent artifact digest read-back modeled as HostEffect intent rows realized through host_effect_apply transport handlers, retiring bash concat emit and medium_structure_exception_roster entry for dsl/gunbc/roadmap_static_site.dag"
+
 fn site_artifact_digest(body: String) -> ContentHash {
   content_hash_atom(value: body as NonEmptyStr)
 }
