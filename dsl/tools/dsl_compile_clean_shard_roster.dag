@@ -1,9 +1,9 @@
 module tools.dsl_compile_clean_shard_roster
 
+import extdeps.shell
 import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dsl_compile_clean_partition {
   CompileCleanModuleShard,
-  CompileCleanPartitionBoundary,
   compile_clean_partition_boundary,
   compose_compile_clean_shard_verdicts,
   compose_compile_clean_shard_verdicts_as_reduce,
@@ -21,9 +21,21 @@ import std.realization_schedule {
   runnable_memory_substantial
 }
 import gunbc.ci_floor_measurement { gunbc_ci_floor_per_shard_peak_rss_bytes }
-import std.realization_schedule { compile_clean_shard_batch_label }
-import std.reducible { ReduceVerdict, verdict_eq }
-import std.types { String, Bool, Int, List }
+import std.reducible { verdict_eq }
+import std.types { String, Bool, Int, List, list_length, NonEmptyStr }
+
+data compile_clean_whole_tree_rollback_env: NonEmptyStr = "GUNBC_CI_COMPILE_CLEAN_WHOLE_TREE"
+
+fn compile_clean_whole_tree_rollback_active() -> Bool {
+  match shell.Env.Get(name: compile_clean_whole_tree_rollback_env).value {
+    Present { value: v } => (v == "1") || (v == "true")
+    Absent => false
+  }
+}
+
+fn compile_clean_sharding_enabled() -> Bool {
+  !compile_clean_whole_tree_rollback_active()
+}
 
 data compile_clean_shard_transport_entry: String = "dsl/tools/dsl_compile_clean_shard_transport.dag"
 
@@ -36,14 +48,14 @@ fn compile_clean_module_shard_roster() -> List<CompileCleanModuleShard> {
     module_declaration_facts_live(pool_roots: witness_layer_roots),
     init: [],
     f: fn(acc, decl) {
-      list_snoc_item(xs: acc, item: compile_clean_module_shard_from_decl(decl: decl))
+      concat(acc, [compile_clean_module_shard_from_decl(decl: decl)])
     }
   )
 }
 
 fn compile_clean_shard_entry_paths() -> List<String> {
   fold(compile_clean_module_shard_roster(), init: [], f: fn(acc, shard) {
-    list_snoc_item(xs: acc, item: shard.entry_path)
+    concat(acc, [shard.entry_path])
   })
 }
 
@@ -68,7 +80,7 @@ fn compile_clean_shard_batch_runnable(spawn_width_cap: Int) -> Runnable {
 }
 
 fn compile_clean_shard_roster_count() -> Int {
-  length(xs: compile_clean_module_shard_roster())
+  list_length(xs: compile_clean_module_shard_roster())
 }
 
 fn compile_clean_shard_roster_nonempty() -> Bool {
@@ -84,34 +96,35 @@ fn witness_shard_roster_derives_from_witness_layer_roots() -> Bool {
   boundary.pool_roots == witness_layer_roots
 }
 
+fn list_contains_path(xs: List<String>, target: String) -> Bool {
+  fold(xs, init: false, f: fn(found, p) { found || (p == target) })
+}
+
+fn path_occurrence_count(xs: List<String>, target: String) -> Int {
+  fold(xs, init: 0, f: fn(n, p) { if p == target { n + 1 } else { n } })
+}
+
 fn witness_shard_roster_paths_duplicate_free() -> Bool {
   let paths = compile_clean_shard_entry_paths()
   fold(paths, init: true, f: fn(ok, path) {
-    ok && (fold(paths, init: 0, f: fn(n, p) { if p == path { n + 1 } else { n } }) == 1)
+    ok && (path_occurrence_count(xs: paths, target: path) == 1)
   })
 }
 
 fn witness_shard_roster_coverage(full: List<String>, plan_paths: List<String>) -> Bool {
   fold(full, init: true, f: fn(ok, path) {
-    ok && fold(plan_paths, init: false, f: fn(found, p) { found || (p == path) })
+    ok && list_contains_path(xs: plan_paths, target: path)
   })
 }
 
 fn witness_dropped_shard_breaks_coverage(full: List<String>, plan_paths: List<String>) -> Bool {
-  if length(xs: full) < 2 {
+  if list_length(xs: full) < 2 {
     false
   } else {
     let dropped = full.skip(n: 1)
     witness_shard_roster_coverage(full: full, plan_paths: plan_paths)
       && !witness_shard_roster_coverage(full: dropped, plan_paths: plan_paths)
   }
-}
-
-fn witness_empty_roster_is_unknown_reduce() -> Bool {
-  verdict_eq(
-    a: compose_compile_clean_shard_verdicts_as_reduce(verdicts: []),
-    b: compose_compile_clean_shard_verdicts_as_reduce(verdicts: [])
-  )
 }
 
 fn witness_compose_all_clean_matches_reduce() -> Bool {

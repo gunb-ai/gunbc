@@ -35,6 +35,10 @@ enum Runnable {
         discovery_scope_dirs: Vec<String>,
         spawn_width_cap: usize,
     },
+    CompileCleanShardBatch {
+        entry_paths: Vec<String>,
+        spawn_width_cap: usize,
+    },
 }
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -223,6 +227,28 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 spawn_width_cap,
             })
         }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "RunnableCompileCleanShardBatch") => {
+            let entry_paths = match ctx.field(fields, "entry_paths") {
+                Some(v) => str_list_from_value(v, ctx)?,
+                None => {
+                    return Err(
+                        "RunnableCompileCleanShardBatch missing field `entry_paths`".to_string(),
+                    )
+                }
+            };
+            let spawn_width_cap = match ctx.field(fields, "spawn_width_cap") {
+                Some(Value::Int(n)) => (*n).max(0) as usize,
+                Some(_) | None => 0,
+            };
+            Ok(Runnable::CompileCleanShardBatch {
+                entry_paths,
+                spawn_width_cap,
+            })
+        }
         other => Err(format!(
             "expected a ClaimRef record or Runnable variant, got {}",
             ctx.format_value(other)
@@ -287,6 +313,10 @@ enum BatchUnit {
         discovery_scope_dirs: Vec<String>,
         spawn_width_cap: usize,
     },
+    CompileCleanShardBatch {
+        entry_paths: Vec<String>,
+        spawn_width_cap: usize,
+    },
 }
 
 /// Partition a batch's runnables into resolve-groups, preserving first-appearance order so the
@@ -347,6 +377,13 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 skip_unaffected_node_frontier: *skip_unaffected_node_frontier,
                 exclude_substrings: exclude_substrings.clone(),
                 discovery_scope_dirs: discovery_scope_dirs.clone(),
+                spawn_width_cap: *spawn_width_cap,
+            }),
+            Runnable::CompileCleanShardBatch {
+                entry_paths,
+                spawn_width_cap,
+            } => units.push(BatchUnit::CompileCleanShardBatch {
+                entry_paths: entry_paths.clone(),
                 spawn_width_cap: *spawn_width_cap,
             }),
         }
@@ -436,6 +473,15 @@ fn run_batch_unit(
             skip_unaffected_node_frontier,
             exclude_substrings,
             discovery_scope_dirs,
+            spawn_width,
+            spawn_width_cap,
+        )],
+        BatchUnit::CompileCleanShardBatch {
+            entry_paths,
+            spawn_width_cap,
+        } => vec![run_compile_clean_shard_batch_node(
+            &source_roots,
+            entry_paths,
             spawn_width,
             spawn_width_cap,
         )],
@@ -750,6 +796,117 @@ fn emit_slowest_witness_attribution(source_roots: &[String], summary: &Discovery
             }
         }
         Err(msg) => eprintln!("{msg}"),
+    }
+}
+
+const COMPILE_CLEAN_SHARD_TRANSPORT: &str = "dsl/tools/dsl_compile_clean_shard_transport.dag";
+
+fn run_single_shard_compile(ctx: &InterpContext, entry_path: &str) -> Result<bool, String> {
+    let value = run_in_context_with_args(
+        ctx,
+        "run_shard_compile",
+        &[(
+            Some("entry_rel_path".to_string()),
+            Value::Str(entry_path.to_string()),
+        )],
+        false,
+    )
+    .map_err(|e| format!("run_shard_compile({entry_path}): {e}"))?;
+    match value {
+        Value::Bool(b) => Ok(b),
+        other => Err(format!(
+            "run_shard_compile({entry_path}) returned {}, not Bool",
+            ctx.format_value(&other)
+        )),
+    }
+}
+
+fn run_compile_clean_shard_batch_node(
+    source_roots: &[String],
+    entry_paths: Vec<String>,
+    spawn_width: usize,
+    spawn_width_cap: usize,
+) -> ClaimResult {
+    let width = spawn_width.max(1).min(spawn_width_cap.max(1));
+    let shard_count = entry_paths.len();
+    let label = format!("compile-clean-shard-batch[{shard_count} modules, width={width}]");
+    let batch_start = Instant::now();
+
+    let mut shards: Vec<Vec<String>> = vec![Vec::new(); width];
+    for (i, path) in entry_paths.iter().enumerate() {
+        shards[i % width].push(path.clone());
+    }
+
+    let mut handles = Vec::new();
+    for shard in shards {
+        if shard.is_empty() {
+            continue;
+        }
+        let roots = source_roots.to_vec();
+        handles.push(thread::spawn(move || {
+            let (graph, source_indices) = match resolve_entry_graph(&roots, COMPILE_CLEAN_SHARD_TRANSPORT)
+            {
+                Ok(pair) => pair,
+                Err(msg) => {
+                    return vec![format!(
+                        "resolve failed for {COMPILE_CLEAN_SHARD_TRANSPORT}: {msg}"
+                    )];
+                }
+            };
+            let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+            let mut failures = Vec::new();
+            for path in shard {
+                match run_single_shard_compile(&ctx, &path) {
+                    Ok(true) => {}
+                    Ok(false) => failures.push(format!("{path}: compile returned false")),
+                    Err(msg) => failures.push(msg),
+                }
+            }
+            failures
+        }));
+    }
+
+    let mut all_failures = Vec::new();
+    for handle in handles {
+        match handle.join() {
+            Ok(failures) => all_failures.extend(failures),
+            Err(_) => all_failures.push("compile-clean shard thread panicked".to_string()),
+        }
+    }
+
+    let wall_nanos = batch_start.elapsed().as_nanos();
+    let wall_ms = wall_nanos / 1_000_000;
+    eprintln!(
+        "[measurement] compile-clean shard batch: {shard_count} module shard(s), width={width}, wall {wall_ms}ms"
+    );
+
+    if all_failures.is_empty() {
+        ClaimResult {
+            function: label,
+            ok: true,
+            detail: String::new(),
+            wall_nanos,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: shard_count,
+        }
+    } else {
+        ClaimResult {
+            function: label,
+            ok: false,
+            detail: format!(
+                "{} of {} compile-clean shard(s) failed: {}",
+                all_failures.len(),
+                shard_count,
+                all_failures.join("; ")
+            ),
+            wall_nanos,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: shard_count,
+        }
     }
 }
 
@@ -1608,6 +1765,13 @@ fn run_perturb_check(
                         skip_unaffected_node_frontier: *skip_unaffected_node_frontier,
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
+                        spawn_width_cap: *spawn_width_cap,
+                    },
+                    Runnable::CompileCleanShardBatch {
+                        entry_paths,
+                        spawn_width_cap,
+                    } => Runnable::CompileCleanShardBatch {
+                        entry_paths: entry_paths.clone(),
                         spawn_width_cap: *spawn_width_cap,
                     },
                 })

@@ -268,7 +268,7 @@ fn schedule_lens_violation_diagnostic(
   }
 }
 
-fn schedule_lens_verdict_for_ci_floor<S>(plan: RealizationPlan<S>, compile_gate_fn: String) -> LensVerdict {
+fn schedule_lens_verdict_for_ci_floor<S>(plan: RealizationPlan<S>, compile_gate_fn: String, compile_clean_sharded: Bool) -> LensVerdict {
   if plan.schedule.count() == 0 {
     Violation {
       diagnostic: schedule_lens_violation_diagnostic(
@@ -282,6 +282,42 @@ fn schedule_lens_verdict_for_ci_floor<S>(plan: RealizationPlan<S>, compile_gate_
         kind: SingleBatchOnly,
         compile_gate_fn: compile_gate_fn
       )
+    }
+  } else if !compile_clean_sharded {
+    let batch0 = plan.schedule.first()
+    if batch0.count() != 1 {
+      Violation {
+        diagnostic: schedule_lens_violation_diagnostic(
+          kind: CompileGateNotFirst { expected: compile_gate_fn },
+          compile_gate_fn: compile_gate_fn
+        )
+      }
+    } else if !schedule_batch_contains_label(batch: batch0, target: compile_gate_fn) {
+      Violation {
+        diagnostic: schedule_lens_violation_diagnostic(
+          kind: CompileGateNotFirst { expected: compile_gate_fn },
+          compile_gate_fn: compile_gate_fn
+        )
+      }
+    } else if schedule_batch_contains_label(batch: batch0, target: "__discovery_corpus__") {
+      Violation {
+        diagnostic: schedule_lens_violation_diagnostic(
+          kind: CorpusBeforeCompile,
+          compile_gate_fn: compile_gate_fn
+        )
+      }
+    } else {
+      let batch1 = plan.schedule.skip(n: 1).first()
+      if batch1.count() < 2 {
+        Violation {
+          diagnostic: schedule_lens_violation_diagnostic(
+            kind: SingleBatchOnly,
+            compile_gate_fn: compile_gate_fn
+          )
+        }
+      } else {
+        Holds
+      }
     }
   } else {
     let batch0 = plan.schedule.first()
