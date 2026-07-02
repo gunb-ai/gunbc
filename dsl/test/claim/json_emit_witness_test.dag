@@ -32,6 +32,18 @@ fn witness_escape_newline() -> Bool {
   escape_json_string(s: "line one\nline two") == "line one\\nline two"
 }
 
+fn witness_escape_tab() -> Bool {
+  escape_json_string(s: concat("a", concat(from_code_point(cp: 9), "b"))) == "a\\tb"
+}
+
+fn witness_escape_carriage_return() -> Bool {
+  escape_json_string(s: concat("x", concat(from_code_point(cp: 13), "y"))) == "x\\ry"
+}
+
+fn witness_escape_control_u0001() -> Bool {
+  escape_json_string(s: from_code_point(cp: 1)) == "\\u0001"
+}
+
 fn witness_quote_json_string() -> Bool {
   quote_json_string(s: "hello") == "\"hello\""
     && quote_json_string(s: "a\"b") == "\"a\\\"b\""
@@ -83,6 +95,9 @@ test fn json_emit_witnesses() -> Bool {
   witness_json_cites_rfc8259()
     && witness_escape_backslash_and_quote()
     && witness_escape_newline()
+    && witness_escape_tab()
+    && witness_escape_carriage_return()
+    && witness_escape_control_u0001()
     && witness_quote_json_string()
     && witness_serialize_null()
     && witness_serialize_bool()

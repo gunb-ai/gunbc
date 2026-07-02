@@ -2,6 +2,7 @@ module extdeps.languages.json.emit
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import std.unicode { code_point }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
@@ -55,8 +56,41 @@ fn json_object(members: List<JsonKeyValue>) -> JsonValue {
   JsonObject { members: members }
 }
 
+fn hex_digit_char(d: Int) -> String {
+  if d < 10 { from_code_point(cp: 48 + d) }
+  else { from_code_point(cp: 55 + d) }
+}
+
+fn int_to_upper_hex_inner(n: Int, acc: String) -> String {
+  if n == 0 { acc }
+  else { int_to_upper_hex_inner(n: n / 16, acc: concat(hex_digit_char(d: n % 16), acc)) }
+}
+
+fn int_to_upper_hex(n: Int) -> String {
+  if n == 0 { "0" }
+  else { int_to_upper_hex_inner(n: n, acc: "") }
+}
+
+fn json_hex4(cp: Int) -> String {
+  let h = int_to_upper_hex(n: cp)
+  if cp <= 15 { concat("000", h) }
+  else { concat("00", h) }
+}
+
+fn json_escape_code_point(cp: Int) -> String {
+  if cp == 8 { "\\b" }
+  else if cp == 9 { "\\t" }
+  else if cp == 10 { "\\n" }
+  else if cp == 12 { "\\f" }
+  else if cp == 13 { "\\r" }
+  else if cp == 34 { "\\\"" }
+  else if cp == 92 { "\\\\" }
+  else if cp >= 0 && cp <= 31 { concat("\\u", json_hex4(cp: cp)) }
+  else { from_code_point(cp: cp) }
+}
+
 fn escape_json_string(s: String) -> String {
-  replace(replace(replace(s, "\\", "\\\\"), "\"", "\\\""), "\n", "\\n")
+  fold(chars(s: s), init: "", f: (acc, c) => concat(acc, json_escape_code_point(cp: code_point(c: c))))
 }
 
 fn quote_json_string(s: String) -> String {
