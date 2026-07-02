@@ -1,6 +1,8 @@
 module tools.dsl_compile_clean_shard_roster
 
 import extdeps.shell
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dsl_compile_clean_partition {
   CompileCleanModuleShard,
@@ -25,6 +27,17 @@ import std.reducible { verdict_eq }
 import std.types { String, Bool, Int, List, list_length, NonEmptyStr }
 
 data compile_clean_whole_tree_rollback_env: NonEmptyStr = "GUNBC_CI_COMPILE_CLEAN_WHOLE_TREE"
+
+data compile_clean_whole_tree_rollback_dissolution_trigger: String = "dissolve-on: GUNBC_CI_COMPILE_CLEAN_WHOLE_TREE rollback removed after sharded compile-clean floor passes clean on main for N consecutive runs without rollback; delete monolith branch from floor_nodes, runnables_for_batch, and schedule_lens."
+
+data compile_clean_whole_tree_rollback_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "tools.dsl_compile_clean_shard_roster",
+    decl_name: "compile_clean_sharding_enabled",
+    field: WholeDeclaration
+  }
+}
 
 fn compile_clean_whole_tree_rollback_active() -> Bool {
   match shell.Env.Get(name: compile_clean_whole_tree_rollback_env).value {

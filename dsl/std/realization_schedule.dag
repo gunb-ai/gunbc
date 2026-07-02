@@ -211,15 +211,25 @@ fn runnable_step_label(r: Runnable) -> String {
   }
 }
 
-fn runnable_compile_clean_shard_count(r: Runnable) -> Int {
+fn runnable_compile_clean_shard_entry_paths(r: Runnable) -> List<String> {
   match r {
-    RunnableCompileCleanShardBatch { entry_paths: paths, spawn_width_cap: _, profile: _ } => length(xs: paths)
-    _ => 0
+    RunnableCompileCleanShardBatch { entry_paths: paths, spawn_width_cap: _, profile: _ } => paths
+    _ => []
   }
 }
 
+fn runnable_compile_clean_shard_count(r: Runnable) -> Int {
+  length(xs: runnable_compile_clean_shard_entry_paths(r: r))
+}
+
+fn schedule_batch_compile_clean_shard_entry_paths(batch: List<Runnable>) -> List<String> {
+  fold(batch, init: [], f: fn(acc, r) {
+    concat(acc, runnable_compile_clean_shard_entry_paths(r: r))
+  })
+}
+
 fn schedule_batch_compile_clean_shard_count(batch: List<Runnable>) -> Int {
-  fold(batch, init: 0, f: fn(acc, r) { acc + runnable_compile_clean_shard_count(r: r) })
+  length(xs: schedule_batch_compile_clean_shard_entry_paths(batch: batch))
 }
 
 fn schedule_batch_contains_label(batch: List<Runnable>, target: String) -> Bool {

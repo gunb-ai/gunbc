@@ -42,6 +42,7 @@ import std.realization_schedule {
   RunnableCompileCleanShardBatch,
   compile_clean_shard_batch_label,
   schedule_batch_contains_label,
+  schedule_batch_compile_clean_shard_entry_paths,
   RunnableResourceProfile,
   runnable_resource_profile,
   runnable_resource_profile_negligible,
@@ -649,8 +650,12 @@ fn floor_batch_heavy_gate_resolve_count(batch: List<Runnable>) -> Int {
   })
 }
 
+fn floor_batch_zero_compile_clean_shard_entry_paths() -> List<String> {
+  schedule_batch_compile_clean_shard_entry_paths(batch: gunbc_ci_floor_batches().first())
+}
+
 fn gunbc_ci_floor_compile_clean_shard_count() -> Int {
-  compile_clean_shard_roster_count()
+  length(xs: floor_batch_zero_compile_clean_shard_entry_paths())
 }
 
 fn witness_floor_batch_one_uses_compile_clean_shards() -> Bool {
@@ -666,14 +671,14 @@ fn witness_floor_batch_one_has_no_compile_gate_monolith() -> Bool {
 fn witness_floor_shard_roster_coverage_in_plan() -> Bool {
   witness_shard_roster_coverage(
     full: compile_clean_shard_entry_paths(),
-    plan_paths: compile_clean_shard_entry_paths()
+    plan_paths: floor_batch_zero_compile_clean_shard_entry_paths()
   )
 }
 
 fn witness_floor_dropped_shard_red_control() -> Bool {
   witness_dropped_shard_breaks_coverage(
     full: compile_clean_shard_entry_paths(),
-    plan_paths: compile_clean_shard_entry_paths()
+    plan_paths: floor_batch_zero_compile_clean_shard_entry_paths()
   )
 }
 

@@ -18,6 +18,7 @@ import tools.dsl_compile_clean_shard_transport {
 import tools.dsl_compile_clean_shard_roster {
   compile_clean_sharding_enabled,
   compile_clean_whole_tree_rollback_env,
+  compile_clean_whole_tree_rollback_disposition,
   compile_clean_shard_roster_has_multiple,
   compile_clean_shard_roster_count,
   witness_shard_roster_derives_from_witness_layer_roots,
@@ -28,7 +29,7 @@ import tools.dsl_compile_clean_shard_roster {
   witness_compose_all_clean_matches_reduce,
   witness_compose_failure_is_fail_closed
 }
-import std.reducible { verdict_eq, Unknown, Irreducible }
+import std.disposition { Scaffold }
 import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_batches,
   witness_floor_batch_one_uses_compile_clean_shards,
@@ -94,4 +95,8 @@ test fn compile_clean_shard_b_roster_and_coverage_red() -> Bool {
 
 test fn compile_clean_whole_tree_rollback_env_is_named() -> Bool {
   compile_clean_whole_tree_rollback_env == "GUNBC_CI_COMPILE_CLEAN_WHOLE_TREE"
+    && match compile_clean_whole_tree_rollback_disposition {
+      Scaffold { dissolves_to: _, bind: _ } => true
+      _ => false
+    }
 }
