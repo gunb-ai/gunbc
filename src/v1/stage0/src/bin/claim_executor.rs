@@ -539,6 +539,10 @@ fn run_memo_shared_claims(
     functions
         .iter()
         .map(|function| {
+            set_phase(
+                FloorPhase::Gate,
+                &format!("{entry}::{function}"),
+            );
             let claim_start = Instant::now();
             let outcome = run_claim(ctx, function);
             let wall_nanos = claim_start.elapsed().as_nanos();
@@ -1364,6 +1368,10 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
         // spans the whole batch), so it is sound under `spawn_width > 1`.
         let grouped = v1_compiler::v1_interpreter::host_trace_grouping_active();
         if grouped {
+            set_phase(
+                FloorPhase::HostEffect,
+                &format!("batch-{}-host-effects", bi + 1),
+            );
             v1_compiler::v1_interpreter::group_begin(&format!("batch {} host-effects", bi + 1));
         }
         let handles: Vec<_> = thread_units
@@ -1721,6 +1729,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!("claim_executor: provide at least one --source-root");
         return Err(ExitCode::from(2));
     }
+    let _phase_profile = PhaseProfile::install_from_env();
     let plan_entry = match plan_entry {
         Some(e) => e,
         None => {

@@ -1,0 +1,25 @@
+module v2.workflow.phase_profile_proof_plan
+
+import std.realization_schedule {
+  Runnable,
+  RunnableSingleClaim,
+  runnable_resource_profile_negligible
+}
+import std.measure { HardwareThreadCount, hardware_thread_count }
+import std.types { List }
+
+data phase_profile_gate_entry: String = "dsl/tools/floor_effect_gate_witness.dag"
+
+fn phase_profile_proof_batches() -> List<List<Runnable>> {
+  [[
+    RunnableSingleClaim {
+      entry: phase_profile_gate_entry,
+      function: "layering_imports_gate_passes",
+      profile: runnable_resource_profile_negligible()
+    }
+  ]]
+}
+
+fn phase_profile_proof_plan_spawn_width() -> HardwareThreadCount {
+  hardware_thread_count(count: 1)
+}

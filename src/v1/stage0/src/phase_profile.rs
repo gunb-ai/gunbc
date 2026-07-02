@@ -40,7 +40,6 @@ struct PhaseProfileInner {
     phase: FloorPhase,
     context: String,
     tick: AtomicU64,
-    sigterm_pending: AtomicBool,
     shutdown: AtomicBool,
 }
 
@@ -79,6 +78,9 @@ static GLOBAL_INNER: OnceLock<Arc<Mutex<PhaseProfileInner>>> = OnceLock::new();
 
 static SIGTERM_HOOKED: AtomicBool = AtomicBool::new(false);
 
+/// Async-signal-safe: the handler only sets this flag; the heartbeat thread emits the flush.
+static SIGTERM_RECEIVED: AtomicBool = AtomicBool::new(false);
+
 #[cfg(unix)]
 mod unix_sig {
     use std::os::raw::c_int;
@@ -99,13 +101,7 @@ mod unix_sig {
 
 #[cfg(unix)]
 extern "C" fn sigterm_handler(_signum: std::os::raw::c_int) {
-    if let Some(inner) = GLOBAL_INNER.get() {
-        inner
-            .lock()
-            .expect("phase_profile lock")
-            .sigterm_pending
-            .store(true, Ordering::SeqCst);
-    }
+    SIGTERM_RECEIVED.store(true, Ordering::SeqCst);
 }
 
 pub fn phase_profile_enabled() -> bool {
@@ -140,6 +136,10 @@ impl PhaseProfile {
     }
 
     fn new() -> Self {
+        Self::new_inner(true)
+    }
+
+    fn new_inner(register_global: bool) -> Self {
         install_sigterm_hook();
         let now = Instant::now();
         let inner = Arc::new(Mutex::new(PhaseProfileInner {
@@ -148,25 +148,32 @@ impl PhaseProfile {
             phase: FloorPhase::Gate,
             context: "startup".to_string(),
             tick: AtomicU64::new(0),
-            sigterm_pending: AtomicBool::new(false),
             shutdown: AtomicBool::new(false),
         }));
-        let _ = GLOBAL_INNER.set(Arc::clone(&inner));
+        if register_global {
+            let _ = GLOBAL_INNER.set(Arc::clone(&inner));
+        }
         let shared = Arc::clone(&inner);
         let interval = heartbeat_interval();
         let heartbeat = thread::spawn(move || {
+            let mut elapsed = Duration::ZERO;
             loop {
-                thread::sleep(interval);
-                let mut guard = shared.lock().expect("phase_profile lock");
-                if guard.shutdown.load(Ordering::Relaxed) {
-                    break;
-                }
-                if guard.sigterm_pending.swap(false, Ordering::SeqCst) {
+                thread::sleep(Duration::from_secs(1));
+                if SIGTERM_RECEIVED.load(Ordering::SeqCst) {
+                    let mut guard = shared.lock().expect("phase_profile lock");
                     guard.emit_record("sigterm", Some("SIGTERM"));
                     guard.shutdown.store(true, Ordering::Relaxed);
                     break;
                 }
-                guard.emit_record("heartbeat", None);
+                let mut guard = shared.lock().expect("phase_profile lock");
+                if guard.shutdown.load(Ordering::Relaxed) {
+                    break;
+                }
+                elapsed += Duration::from_secs(1);
+                if elapsed >= interval {
+                    elapsed = Duration::ZERO;
+                    guard.emit_record("heartbeat", None);
+                }
             }
         });
         Self {
@@ -176,12 +183,13 @@ impl PhaseProfile {
     }
 
     pub fn set_phase(&self, phase: FloorPhase, context: &str) {
-        let mut guard = self.inner.lock().expect("phase_profile lock");
-        if guard.sigterm_pending.swap(false, Ordering::SeqCst) {
+        if SIGTERM_RECEIVED.load(Ordering::SeqCst) {
+            let mut guard = self.inner.lock().expect("phase_profile lock");
             guard.emit_record("sigterm", Some("SIGTERM"));
             guard.shutdown.store(true, Ordering::Relaxed);
             return;
         }
+        let mut guard = self.inner.lock().expect("phase_profile lock");
         guard.set_phase(phase, context);
     }
 
@@ -194,8 +202,8 @@ impl PhaseProfile {
     }
 
     pub fn flush_sigterm_for_test(&self) {
+        SIGTERM_RECEIVED.store(true, Ordering::SeqCst);
         let mut guard = self.inner.lock().expect("phase_profile lock");
-        guard.sigterm_pending.store(true, Ordering::SeqCst);
         guard.emit_record("sigterm", Some("SIGTERM"));
         guard.shutdown.store(true, Ordering::Relaxed);
     }
@@ -207,7 +215,7 @@ impl Drop for PhaseProfile {
             {
                 let mut guard = self.inner.lock().expect("phase_profile lock");
                 guard.shutdown.store(true, Ordering::Relaxed);
-                if guard.sigterm_pending.swap(false, Ordering::SeqCst) {
+                if SIGTERM_RECEIVED.load(Ordering::SeqCst) {
                     guard.emit_record("sigterm", Some("SIGTERM"));
                 } else {
                     guard.emit_record("shutdown", None);
@@ -221,13 +229,16 @@ impl Drop for PhaseProfile {
 }
 
 pub fn set_phase(phase: FloorPhase, context: &str) {
-    if let Some(inner) = GLOBAL_INNER.get() {
-        let mut guard = inner.lock().expect("phase_profile lock");
-        if guard.sigterm_pending.swap(false, Ordering::SeqCst) {
+    if SIGTERM_RECEIVED.load(Ordering::SeqCst) {
+        if let Some(inner) = GLOBAL_INNER.get() {
+            let mut guard = inner.lock().expect("phase_profile lock");
             guard.emit_record("sigterm", Some("SIGTERM"));
             guard.shutdown.store(true, Ordering::Relaxed);
-            return;
         }
+        return;
+    }
+    if let Some(inner) = GLOBAL_INNER.get() {
+        let mut guard = inner.lock().expect("phase_profile lock");
         guard.set_phase(phase, context);
     }
 }
@@ -248,9 +259,8 @@ mod tests {
 
     #[test]
     fn emits_multiple_ticks_and_sigterm_flush() {
-        std::env::set_var("GUNBC_FLOOR_PHASE_PROFILE", "1");
         std::env::set_var("GUNBC_FLOOR_PHASE_PROFILE_INTERVAL_SECS", "1");
-        let profile = PhaseProfile::install_from_env().expect("profile enabled");
+        let profile = PhaseProfile::new_inner(false);
         profile.set_phase(FloorPhase::Resolve, "test-entry.dag");
         profile.set_phase(FloorPhase::Typecheck, "test-entry.dag");
         profile.set_phase(FloorPhase::Eval, "witness_fn");
@@ -261,8 +271,6 @@ mod tests {
             "expected >=2 phase-profile ticks on a held fixture, got {}",
             profile.tick_count()
         );
-        drop(profile);
-        std::env::remove_var("GUNBC_FLOOR_PHASE_PROFILE");
         std::env::remove_var("GUNBC_FLOOR_PHASE_PROFILE_INTERVAL_SECS");
     }
 }

@@ -29,6 +29,7 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
+#[path = "phase_profile.rs"]
 mod phase_profile;
 pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
 
@@ -722,7 +723,9 @@ fn resolve_entry_graph_with_index(
     ),
     String,
 > {
+    set_phase(FloorPhase::Resolve, entry_file);
     let sources = load_sources_for_entry_with_index(index, entry_file)?;
+    set_phase(FloorPhase::Typecheck, entry_file);
     resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
 }
 
