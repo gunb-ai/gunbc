@@ -119,16 +119,12 @@ fn classify_file_access(ns: FileNamespace, obs: FileAccessObservation) -> Resour
   }
 }
 
-fn plan_for_file_access(obs: FileAccessObservation, v: ResourceNamespaceVerdict) -> ResourceNamespacePlan {
+fn plan_for_file_access(obs: FileAccessObservation) -> ResourceNamespacePlan {
   match obs {
     PathOutsideNamespace => Refuse
     ReadOnlyWithinNamespace => UpsertAccess
     WritableWithinNamespace => Noop
-    PathAbsent =>
-      match v {
-        Absent => Create
-        _ => Refuse
-      }
+    PathAbsent => Create
   }
 }
 
@@ -139,7 +135,7 @@ fn classify_file_access_upsert(
   let verdict = classify_file_access(ns: ns, obs: obs)
   ResourceNamespaceClassification {
     verdict: verdict,
-    plan: plan_for_file_access(obs: obs, v: verdict),
+    plan: plan_for_file_access(obs: obs),
   }
 }
 
