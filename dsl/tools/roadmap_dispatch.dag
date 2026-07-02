@@ -2,29 +2,10 @@ module tools.roadmap_dispatch
 
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import extdeps.filesystem.filesystem_io { Filesystem }
-<<<<<<< HEAD
 import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
 
 data roadmap_dispatch_output_path: String = "target/roadmap-dispatch.json"
 
-=======
-import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
-import gunbc.roadmap_spawner { roadmap_dispatch_json_value }
-import extdeps.languages.json.emit { serialize_json, json_object, json_kv, json_string }
-
-data roadmap_dispatch_output_path: String = "target/roadmap-dispatch.json"
-
-data dispatch_brief_template: String = "Node: <node_id>\nWhy now: <displaced cost / what it unblocks>\nNon-goals: <explicitly out of scope>\nM0 evidence: <prove current state / reproduce the gap>\nM1 smallest change: <first implementation slice>\nM2 RED control: <perturbation that goes red>\nM3 green receipt: <execution on the real path>\nStop and return if: <named hand-back conditions>\nFiles likely touched: <paths>\nCommands to run: <repro/verify commands>\nExpected artifact: <what comes back even if the fix does not land>"
-
-fn roadmap_dispatch_content() -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-file/v1")),
-    json_kv(key: "brief_template", value: json_string(s: dispatch_brief_template)),
-    json_kv(key: "dispatch", value: roadmap_dispatch_json_value(doc: roadmap_authority(), merged: authored_merged_prs())),
-  ]))
-}
-
->>>>>>> a68ecc417e (WIP: 2-emit-partition (c) — JSON grammar authority: one JSON emit authority i)
 func main() -> ProcessExit {
   let w = Filesystem.Write(path: roadmap_dispatch_output_path, content: roadmap_dispatch_file_content())
   if w.success {

@@ -12,12 +12,7 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
-<<<<<<< HEAD
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-=======
->>>>>>> a68ecc417e (WIP: 2-emit-partition (c) — JSON grammar authority: one JSON emit authority i)
 import extdeps.languages.json.emit {
   JsonValue, JsonNull,
   serialize_json,
@@ -261,19 +256,9 @@ fn done_ids_json(frontier_done: List<RoadmapNode>) -> String {
   json_str_list(items: frontier_done |> map(n => n.node))
 }
 
-<<<<<<< HEAD
 data dispatch_brief_template: String = "Node: <node_id>\nWhy now: <displaced cost / what it unblocks>\nNon-goals: <explicitly out of scope>\nM0 evidence: <prove current state / reproduce the gap>\nM1 smallest change: <first implementation slice>\nM2 RED control: <perturbation that goes red>\nM3 green receipt: <execution on the real path>\nStop and return if: <named hand-back conditions>\nFiles likely touched: <paths>\nCommands to run: <repro/verify commands>\nExpected artifact: <what comes back even if the fix does not land>"
 
-fn roadmap_dispatch_file_content() -> String {
-  concat("{\"schema\": \"roadmap-dispatch-file/v1\", \"brief_template\": ",
-    concat(json_str(s: dispatch_brief_template),
-    concat(", \"dispatch\": ", concat(roadmap_dispatch_json(doc: roadmap_authority(), merged: authored_merged_prs()), "}"))))
-}
-
-fn roadmap_dispatch_json(doc: RoadmapDocument, merged: List<Int>) -> String {
-=======
 fn roadmap_dispatch_json_value(doc: RoadmapDocument, merged: List<Int>) -> JsonValue {
->>>>>>> a68ecc417e (WIP: 2-emit-partition (c) — JSON grammar authority: one JSON emit authority i)
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   let frontier = spawn_frontier(doc: doc, merged: merged)
@@ -297,4 +282,12 @@ fn roadmap_dispatch_json_value(doc: RoadmapDocument, merged: List<Int>) -> JsonV
 
 fn roadmap_dispatch_json(doc: RoadmapDocument, merged: List<Int>) -> String {
   serialize_json(v: roadmap_dispatch_json_value(doc: doc, merged: merged))
+}
+
+fn roadmap_dispatch_file_content() -> String {
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-dispatch-file/v1")),
+    json_kv(key: "brief_template", value: json_string(s: dispatch_brief_template)),
+    json_kv(key: "dispatch", value: roadmap_dispatch_json_value(doc: roadmap_authority(), merged: authored_merged_prs())),
+  ]))
 }
