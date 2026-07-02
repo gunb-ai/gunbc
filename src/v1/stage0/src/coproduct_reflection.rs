@@ -1349,7 +1349,7 @@ pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
         let content = std::fs::read_to_string(&file).ok();
         let module_path = content
             .as_ref()
-            .and_then(extract_module_path_from_content)
+            .and_then(|c| extract_module_path_from_content(c))
             .unwrap_or_default();
         let Some(parsed) = parse_dag_file(&file) else {
             continue;
@@ -1405,6 +1405,7 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
     let facts = decl_facts_for_roots(pool_roots);
     let mut rows = Vec::with_capacity(facts.len());
     for fact in facts {
+        let item_name = fact.name.clone();
         rows.push(Value::Record {
             type_name: ctx.sym("DeclFact"),
             fields: Rc::new(sorted_fields(vec![
@@ -1416,7 +1417,7 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
                 (
                     ctx.sym("node"),
-                    marshal_decl_fact_node(ctx, &fact.name),
+                    marshal_decl_fact_node(ctx, &item_name),
                 ),
                 (ctx.sym("rel_path"), Value::Str(fact.rel_path)),
             ])),
