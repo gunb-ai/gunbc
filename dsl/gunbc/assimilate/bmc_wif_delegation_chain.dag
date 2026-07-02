@@ -1,6 +1,5 @@
 module gunbc.assimilate.bmc_wif_delegation_chain
 
-import std.logic { Bool }
 import std.types { NonEmptyStr, String, List }
 import extdeps.cloud.gcp.gcp { WifPool, WifProvider, ServiceAccountEmail, wif_provider_resource }
 import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
@@ -23,7 +22,7 @@ import gunbc.assimilate.bmc_token_federation {
 
 data bmc_srv3_admin_secret_ref: SecretRef = SecretRef {
   project: bmc_secrets_project_id,
-  secret: bmc_srv3_secret_name,
+  secret: bmc_srv3_secret_name as NonEmptyStr,
   version: "latest",
   hash_state: HashPending
 }

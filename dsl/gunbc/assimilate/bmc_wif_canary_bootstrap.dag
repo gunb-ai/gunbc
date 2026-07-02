@@ -1,0 +1,96 @@
+module gunbc.assimilate.bmc_wif_canary_bootstrap
+
+import std.resources { Network }
+import std.types { String, List }
+import extdeps.cloud.gcp.gcp { GcpService, gcp_service_api_id }
+import extdeps.cloud.gcp.serviceusage
+import extdeps.cloud.gcp.iam_admin
+import extdeps.cloud.gcp.secret_manager
+import gunbc.assimilate.bmc_token_federation {
+  bmc_secrets_project_id,
+  bmc_assimilator_account_id,
+  bmc_assimilator_display_name,
+  bmc_wif_pool_id,
+  bmc_wif_pool_display_name,
+  bmc_wif_provider_id,
+  bmc_wif_issuer_uri,
+  bmc_wif_attribute_mapping,
+  bmc_wif_attribute_condition
+}
+import gunbc.assimilate.bmc_wif_delegation_chain {
+  wif_canary_secret_name,
+  bmc_wif_bootstrap_bindings
+}
+
+data bmc_wif_bootstrap_service_deps: List<GcpService> = [
+  GcpServiceUsage,
+  GcpIam,
+  GcpIamCredentials,
+  GcpSts,
+  GcpSecretManager
+]
+
+data bmc_wif_bootstrap_required_apis: List<String> = map(bmc_wif_bootstrap_service_deps, s => gcp_service_api_id(service: s))
+
+pattern bmc_wif_canary_bootstrap() -> {
+  sa_email: ServiceAccountEmail,
+  canary_secret_name: String,
+  canary_binding_etag: String,
+  pool_op: String,
+  provider_op: String
+}
+  uses net: Network
+{
+  node auth: shell.GCloud.AuthPrintAccessToken()
+
+  node enabled: gcp.ServiceUsage.BatchEnableServices(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    service_ids: bmc_wif_bootstrap_required_apis
+  )
+
+  node sa: gcp.IamAdmin.CreateServiceAccount(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    account_id: bmc_assimilator_account_id,
+    display_name: bmc_assimilator_display_name
+  )
+
+  node canary: gcp.SecretManager.CreateSecret(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    secret_id: wif_canary_secret_name
+  )
+
+  node bind: gcp.SecretManager.SetSecretIamPolicy(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    secret: wif_canary_secret_name,
+    bindings: bmc_wif_bootstrap_bindings()
+  )
+
+  node pool: gcp.IamAdmin.CreateWorkloadIdentityPool(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    pool_id: bmc_wif_pool_id,
+    display_name: bmc_wif_pool_display_name
+  )
+
+  node provider: gcp.IamAdmin.CreateWorkloadIdentityPoolProvider(
+    access_token: auth.access_token,
+    project_id: bmc_secrets_project_id,
+    pool_id: bmc_wif_pool_id,
+    provider_id: bmc_wif_provider_id,
+    issuer_uri: bmc_wif_issuer_uri,
+    attribute_mapping: bmc_wif_attribute_mapping,
+    attribute_condition: bmc_wif_attribute_condition()
+  )
+
+  return {
+    sa_email: sa.email,
+    canary_secret_name: canary.name,
+    canary_binding_etag: bind.ok_etag,
+    pool_op: pool.operation_name,
+    provider_op: provider.operation_name
+  }
+}
