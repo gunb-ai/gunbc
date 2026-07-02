@@ -1,0 +1,155 @@
+module v2.lens.enforcement.vocab
+
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.text { String }
+import v2.std.collection { List }
+import v2.std.algebra { for_all, contains }
+
+type SubjectRoster {
+  entries: List<String>
+}
+
+data subject_roster_string_dissolution_trigger: String = "🟡 dissolve-on: SubjectRoster modeled as List<String> (StandingIntent.required_subjects + desired_scope + CoverageReceipt.discovered_subjects), not List<QualifiedName> as enforcement-intent-design SS12 sketched — because std qualified_name_from_dotted_string is an infinite-recursion OOM stub (gunb-ai/gunbc#6169). DISSOLVES WHEN #6169 grounds that std fn: restore required_subjects to List<QualifiedName> and compare against the discovered set via qualified_name_eq."
+
+type EnforcementMode = Advisory | AuditOnly | Blocking
+
+type ConsumerKind
+  = FloorGate | MergeAdmission | PrePushHook | PeriodicActuator
+  | RoadmapDriftGate | DeployReadback | WitnessOnly | NoConsumer
+
+type ConsumerRequirement
+  = AnyLiveConsumer
+  | OneOf { acceptable: List<ConsumerKind> }
+  | Exact { kind: ConsumerKind }
+
+type NarrowingReason
+  = BootstrapBlocked { blocker: String }
+  | TypeReflectionUnavailable { blocker: String }
+  | ExternalRuntimeOnly { reason: String }
+  | ExplicitOperatorExemption { signoff: String }
+
+type ScopeSatisfaction
+  = ScopeCovers
+  | ScopeNarrowed { missing: SubjectRoster, reason: NarrowingReason }
+  | ScopeMissing
+
+type RedControlStatus
+  = RedControlPassed | RedControlMissing | RedControlNotRun | RedControlFailedToFlip
+
+type SelfApplicationStatus
+  = SelfAppliesObserved | SelfExemptObserved { reason: String } | SelfApplicationAbsent
+
+type ReceiptRef = HasReceiptRef { ref: String } | NoReceiptRef
+
+type Timestamp {
+  iso: String
+}
+
+data timestamp_iso_anemia_dissolution_trigger: String = "🟡 dissolve-on: Timestamp.iso is an anemic String leaf (DESIGN §2 deep decomposition: year/month/day/hour/… ground into std.measure). On-ledger via standing_intent_model_anemia_repo_wide (task E), not silent debt. DISSOLVES WHEN a std.measure-side wall-clock-instant carrier exists: Timestamp reuses it and iso becomes a rendering, not the authority."
+
+fn mode_rank(m: EnforcementMode) -> Int {
+  match m {
+    Advisory => 1
+    AuditOnly => 2
+    Blocking => 3
+  }
+}
+
+fn enforcement_mode_satisfies(actual: EnforcementMode, required: EnforcementMode) -> Bool {
+  mode_rank(m: actual) >= mode_rank(m: required)
+}
+
+fn consumer_rank(k: ConsumerKind) -> Int {
+  match k {
+    FloorGate => 1
+    MergeAdmission => 2
+    PrePushHook => 3
+    PeriodicActuator => 4
+    RoadmapDriftGate => 5
+    DeployReadback => 6
+    WitnessOnly => 7
+    NoConsumer => 8
+  }
+}
+
+fn consumer_kind_eq(a: ConsumerKind, b: ConsumerKind) -> Bool {
+  consumer_rank(k: a) == consumer_rank(k: b)
+}
+
+fn consumer_is_live(k: ConsumerKind) -> Bool {
+  match k {
+    FloorGate => true
+    MergeAdmission => true
+    PrePushHook => true
+    PeriodicActuator => true
+    RoadmapDriftGate => true
+    DeployReadback => true
+    WitnessOnly => false
+    NoConsumer => false
+  }
+}
+
+fn consumer_satisfies(actual: ConsumerKind, required: ConsumerRequirement) -> Bool {
+  match required {
+    AnyLiveConsumer => consumer_is_live(k: actual)
+    Exact { kind } => consumer_kind_eq(a: actual, b: kind)
+    OneOf { acceptable } => contains(xs: acceptable, item: actual, eq: consumer_kind_eq)
+  }
+}
+
+fn red_control_passed(s: RedControlStatus) -> Bool {
+  match s {
+    RedControlPassed => true
+    RedControlMissing => false
+    RedControlNotRun => false
+    RedControlFailedToFlip => false
+  }
+}
+
+fn self_application_ok(s: SelfApplicationStatus) -> Bool {
+  match s {
+    SelfAppliesObserved => true
+    SelfExemptObserved { reason } => true
+    SelfApplicationAbsent => false
+  }
+}
+
+data narrowing_reason_same_variant_dissolution_trigger: String = "🟡 dissolve-on: narrowing_reason_same_variant hand-rolls a 4×4 nested-match tag-equality over NarrowingReason (DESIGN §4 predicate/walker: one closed decision procedure, not per-shape recursion). No canonical variant-tag surface exists in std yet. DISSOLVES WHEN gunb-ai/gunbc#6172 lands a canonical variant_tag_eq / discriminator surface: replace the 16 arms with variant_tag_eq(a, b) and delete this fn."
+
+fn narrowing_reason_same_variant(a: NarrowingReason, b: NarrowingReason) -> Bool {
+  match a {
+    BootstrapBlocked { blocker: a1 } => match b {
+      BootstrapBlocked { blocker: b1 } => true
+      TypeReflectionUnavailable { blocker: b2 } => false
+      ExternalRuntimeOnly { reason: b3 } => false
+      ExplicitOperatorExemption { signoff: b4 } => false
+    }
+    TypeReflectionUnavailable { blocker: a2 } => match b {
+      BootstrapBlocked { blocker: b1 } => false
+      TypeReflectionUnavailable { blocker: b2 } => true
+      ExternalRuntimeOnly { reason: b3 } => false
+      ExplicitOperatorExemption { signoff: b4 } => false
+    }
+    ExternalRuntimeOnly { reason: a3 } => match b {
+      BootstrapBlocked { blocker: b1 } => false
+      TypeReflectionUnavailable { blocker: b2 } => false
+      ExternalRuntimeOnly { reason: b3 } => true
+      ExplicitOperatorExemption { signoff: b4 } => false
+    }
+    ExplicitOperatorExemption { signoff: a4 } => match b {
+      BootstrapBlocked { blocker: b1 } => false
+      TypeReflectionUnavailable { blocker: b2 } => false
+      ExternalRuntimeOnly { reason: b3 } => false
+      ExplicitOperatorExemption { signoff: b4 } => true
+    }
+  }
+}
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn subject_roster_covers(claimed: SubjectRoster, desired: SubjectRoster) -> Bool {
+  for_all(xs: desired.entries, predicate: fn(r) { contains(xs: claimed.entries, item: r, eq: string_eq) })
+}

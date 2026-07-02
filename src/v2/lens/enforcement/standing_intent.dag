@@ -1,0 +1,133 @@
+module v2.lens.enforcement.standing_intent
+
+import v2.std.logic { Bool }
+import v2.std.collection { List }
+import v2.std.text { String }
+import v2.lens.registry { LensIdV0, Cost }
+import v2.lens.enforcement.vocab {
+  SubjectRoster,
+  EnforcementMode, Advisory, AuditOnly, Blocking,
+  ConsumerRequirement, AnyLiveConsumer, OneOf, Exact,
+  ConsumerKind, FloorGate, MergeAdmission, PrePushHook, RoadmapDriftGate,
+  NarrowingReason, BootstrapBlocked, TypeReflectionUnavailable
+}
+
+type IntentProperty
+  = LensFamily { lens: LensIdV0 }
+  | LensHygieneLiveness
+  | LensHygieneSelfApply
+  | ModelAnemia
+  | SingleAuthorityConsolidation
+
+type IntentFallback
+  = Refuse
+  | UnknownFallback
+  | AuditOnlyWithReason { reason: String }
+
+type StandingIntent {
+  id: String
+  property: IntentProperty
+  displaced_cost: String
+  mechanism_class: String
+  recurring: Bool
+  receiptable: Bool
+  desired_scope: SubjectRoster
+  required_subjects: SubjectRoster
+  default_mode: EnforcementMode
+  required_consumer: ConsumerRequirement
+  self_application_required: Bool
+  allowed_narrowing: List<NarrowingReason>
+  fallback_when_unavailable: IntentFallback
+}
+
+data fallback_when_unavailable_dissolution_trigger: String = "🟡 dissolve-on: StandingIntent.fallback_when_unavailable is declared but not yet consumed by gate.dag — when contract_answers returns false (every non-LensFamily property today: the task-E ModelAnemia / SingleAuthorityConsolidation / LensHygiene* intents), the verdict lands a flat LegFails regardless of Refuse vs AuditOnlyWithReason. DISSOLVES WHEN task E wires those properties' consumers: on absent contract, apply the intent's fallback (AuditOnlyWithReason downgrades to an audit verdict with reason instead of a hard fail) rather than the uniform no-contract LegFails."
+
+data whole_corpus_scope: SubjectRoster = { entries: ["dsl", "src/v1", "src/v2"] }
+
+data standing_intent_complexity_repo_wide: StandingIntent = {
+  id: "complexity.repo-wide",
+  property: LensFamily { lens: Cost },
+  displaced_cost: "operator re-performs the whole-corpus complexity join (what/where/which lens/is it live/reaches v1/self-applies) on every new lens, gate, and PR",
+  mechanism_class: "cost/complexity lens family (v2.lens.cost asymptotic engine)",
+  recurring: true,
+  receiptable: true,
+  desired_scope: whole_corpus_scope,
+  required_subjects: SubjectRoster { entries: ["build_type_env"] },
+  default_mode: Blocking,
+  required_consumer: Exact { kind: FloorGate },
+  self_application_required: true,
+  allowed_narrowing: [],
+  fallback_when_unavailable: Refuse
+}
+
+data standing_intent_lenses_must_be_live: StandingIntent = {
+  id: "lenses.must-be-live",
+  property: LensHygieneLiveness,
+  displaced_cost: "an inert lens (machinery present, nothing gates on it) is coverage-by-illusion; someone re-audits wired-vs-declared by hand",
+  mechanism_class: "lens registry liveness (a Blocking claim must have a live consumer)",
+  recurring: true,
+  receiptable: true,
+  desired_scope: whole_corpus_scope,
+  required_subjects: SubjectRoster { entries: [] },
+  default_mode: Blocking,
+  required_consumer: AnyLiveConsumer,
+  self_application_required: false,
+  allowed_narrowing: [],
+  fallback_when_unavailable: Refuse
+}
+
+data standing_intent_lenses_self_apply_or_exempt: StandingIntent = {
+  id: "lenses.self-apply-or-exempt",
+  property: LensHygieneSelfApply,
+  displaced_cost: "a lens that does not analyze itself hides its own violations one layer up (the fractal gap); rediscovered per lens",
+  mechanism_class: "lens self-application (each lens self-applies or carries an explicit exemption)",
+  recurring: true,
+  receiptable: true,
+  desired_scope: whole_corpus_scope,
+  required_subjects: SubjectRoster { entries: [] },
+  default_mode: Blocking,
+  required_consumer: AnyLiveConsumer,
+  self_application_required: false,
+  allowed_narrowing: [],
+  fallback_when_unavailable: Refuse
+}
+
+data standing_intent_model_anemia_repo_wide: StandingIntent = {
+  id: "model.anemia.repo-wide",
+  property: ModelAnemia,
+  displaced_cost: "a String leaf hiding named parts bills every consumer plus the eventual de-fork; caught late in review",
+  mechanism_class: "anemia lens (decompress -> map -> reduce; suggest a decomposition target)",
+  recurring: true,
+  receiptable: true,
+  desired_scope: whole_corpus_scope,
+  required_subjects: SubjectRoster { entries: [] },
+  default_mode: AuditOnly,
+  required_consumer: AnyLiveConsumer,
+  self_application_required: false,
+  allowed_narrowing: [BootstrapBlocked { blocker: "" }, TypeReflectionUnavailable { blocker: "" }],
+  fallback_when_unavailable: AuditOnlyWithReason { reason: "object anemia lens is task E; declared now so the intent cannot be silently lost" }
+}
+
+data standing_intent_single_authority_consolidation: StandingIntent = {
+  id: "single-authority.consolidation",
+  property: SingleAuthorityConsolidation,
+  displaced_cost: "two names for one concept fork every derived artifact (testgen, emit, lenses) and are consolidated later; the extdeps.shell fork reddened main",
+  mechanism_class: "consolidation lens (suggest the single authority; realization/transport/external-source needs an explicit direction)",
+  recurring: true,
+  receiptable: true,
+  desired_scope: whole_corpus_scope,
+  required_subjects: SubjectRoster { entries: [] },
+  default_mode: AuditOnly,
+  required_consumer: AnyLiveConsumer,
+  self_application_required: false,
+  allowed_narrowing: [BootstrapBlocked { blocker: "" }, TypeReflectionUnavailable { blocker: "" }],
+  fallback_when_unavailable: AuditOnlyWithReason { reason: "object consolidation lens is task E; declared now so the intent cannot be silently lost" }
+}
+
+data standing_intent_registry: List<StandingIntent> = [
+  standing_intent_complexity_repo_wide,
+  standing_intent_lenses_must_be_live,
+  standing_intent_lenses_self_apply_or_exempt,
+  standing_intent_model_anemia_repo_wide,
+  standing_intent_single_authority_consolidation
+]
