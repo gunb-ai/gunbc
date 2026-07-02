@@ -72,7 +72,7 @@ fn os_install_actuator_apt_tool_ensure_block(tool_name: String, package: NonEmpt
         ),
         concat(
           concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Installed tool=", tool_name),
-          concat(" package=", package as String, "\"\nfi\n"),
+          concat(concat(" package=", package as String), "\"\nfi\n"),
         ),
       ),
     ),
@@ -83,11 +83,7 @@ fn os_install_actuator_websocat_ensure_block() -> String {
   let tool_name = websocat_cli_tool.name as String
   let install_path = websocat_install_path as String
   let bin_dir = gunbc_bin_dir as String
-  let tag = websocat_github_tag as String
-  let asset_a64 = websocat_asset_aarch64 as String
-  let asset_x64 = websocat_asset_x86_64 as String
   let url_a64 = websocat_github_release_download_url(tag: websocat_github_tag, asset: websocat_asset_aarch64)
-  let url_x64 = websocat_github_release_download_url(tag: websocat_github_tag, asset: websocat_asset_x86_64)
   concat(
     concat(
       concat(
@@ -101,37 +97,19 @@ fn os_install_actuator_websocat_ensure_block() -> String {
     ),
     concat(
       concat(
+        concat(concat("  mkdir -p ", bin_dir), "\n"),
         concat(
-          concat(concat("  mkdir -p ", bin_dir), "\n"),
-          "  case \"$(uname -m)\" in\n",
-        ),
-        concat(
-          concat(
-            concat(concat(concat("    aarch64|arm64) curl -fsSL \"", url_a64), "\" -o \""),
-            concat(install_path, "\" ;;\n"),
-          ),
-          concat(
-            concat(concat(concat("    x86_64|amd64) curl -fsSL \"", url_x64), "\" -o \""),
-            concat(install_path, "\" ;;\n"),
-          ),
+          concat(concat(concat("  curl -fsSL \"", url_a64), "\" -o \""),
+          concat(install_path, "\"\n"),
         ),
       ),
       concat(
+        concat(concat("  chmod +x \"", install_path), "\"\n"),
         concat(
-          concat(
-            concat("    *) echo \"OsInstallActuatorToolchainReceipt: outcome=Refused tool=", tool_name),
-            " reason=unsupported-arch\" >&2; exit 1 ;;\n",
-          ),
-          concat(concat("  esac\n  chmod +x \"", install_path), "\"\n"),
-        ),
-        concat(
-          concat(
-            concat("  export PATH=\"", concat(bin_dir, ":$PATH\"")),
-            "\n",
-          ),
+          concat(concat("  export PATH=", bin_dir), ":$PATH\n"),
           concat(
             concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Installed tool=", tool_name),
-            concat(" path=", install_path, "\"\nfi\n"),
+            concat(concat(" path=", install_path), "\"\nfi\n"),
           ),
         ),
       ),
