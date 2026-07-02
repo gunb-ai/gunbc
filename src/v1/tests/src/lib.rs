@@ -55,6 +55,8 @@ mod fold_unused_element_clone_elision_test;
 #[cfg(test)]
 mod func_env_scope_chain_test;
 #[cfg(test)]
+mod type_env_scope_chain_test;
+#[cfg(test)]
 mod func_env_semantic_equivalence_test;
 #[cfg(test)]
 mod generator_match_arm_test;

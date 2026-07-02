@@ -179,6 +179,7 @@ pub fn render_rust_type(
                             v1_rt::rc_empty_map::<String, String>(),
                             Rc::new(TypeEnv {
                                 bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                                parents: Rc::new(vec![]),
                                 recursive_types: Rc::new(vec![]),
                                 recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
                                 inductive_fields: v1_rt::rc_empty_map::<
@@ -232,6 +233,7 @@ pub fn render_rust_type_without_applied_binding(
                 v1_rt::rc_empty_map::<String, String>(),
                 Rc::new(TypeEnv {
                     bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                    parents: Rc::new(vec![]),
                     recursive_types: Rc::new(vec![]),
                     recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
                     inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
@@ -8154,6 +8156,7 @@ pub fn render_rust_type_with_applied_binding(
                                         v1_rt::rc_empty_map::<String, String>(),
                                         Rc::new(TypeEnv {
                                             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                                            parents: Rc::new(vec![]),
                                             recursive_types: Rc::new(vec![]),
                                             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
                                             inductive_fields: v1_rt::rc_empty_map::<
@@ -8177,6 +8180,7 @@ pub fn render_rust_type_with_applied_binding(
                                 v1_rt::rc_empty_map::<String, String>(),
                                 Rc::new(TypeEnv {
                                     bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+                                    parents: Rc::new(vec![]),
                                     recursive_types: Rc::new(vec![]),
                                     recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
                                     inductive_fields: v1_rt::rc_empty_map::<
@@ -23418,6 +23422,7 @@ pub fn rust_test_signature_comment(
     {
         let stub_env = Rc::new(TypeEnv {
             bindings: v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: v1_rt::rc_empty_map::<i64, bool>(),
             inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),

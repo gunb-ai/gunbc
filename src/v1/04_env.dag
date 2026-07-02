@@ -168,15 +168,6 @@ fn flatten_visible_bindings(env: TypeEnv) -> Map<Int, TypeBinding> {
   map_merge(from_parents, env.bindings)
 }
 
-fn fold_visible_bindings(env: TypeEnv, f: (TypeBinding) -> Bool, acc: Bool) -> Bool {
-  let acc = env.bindings |> map_values |> fold(init: acc, f: (inner, binding) =>
-    if f(binding) { true } else { inner }
-  )
-  fold(env.parents, init: acc, f: (inner, parent) =>
-    if inner { true } else { fold_visible_bindings(env: parent, f: f, acc: inner) }
-  )
-}
-
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {
   let merged_bindings = fold(envs, init: empty_map(), f: (acc, env) => map_merge(acc, flatten_visible_bindings(env: env)))
   let merged_recursive = fold(envs, init: [], f: (acc, env) => concat(acc, env.recursive_types))

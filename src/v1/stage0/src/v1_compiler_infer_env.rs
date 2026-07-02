@@ -21,6 +21,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
+    pub parents: Rc<Vec<Rc<TypeEnv>>>,
     pub recursive_types: Rc<Vec<i64>>,
     pub recursive_type_set: Rc<HashMap<i64, bool>>,
     pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
@@ -35,11 +36,87 @@ pub struct TypeBinding {
     pub provenance: Rc<SubValueRelation>,
 }
 
-pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
-    match v1_rt::map_get(&env.recursive_type_set.clone(), ident) {
-        Some(_) => true,
-        _ => false,
+pub fn lookup_type_in_parent_chain(
+    mut parents: Rc<Vec<Rc<TypeEnv>>>,
+    mut ident: i64,
+) -> Option<Rc<Node>> {
+    loop {
+        match parents.clone().last().cloned() {
+            None => {
+                break None;
+            }
+            Some(tail_parent) => match lookup_type(tail_parent.clone(), ident.clone()) {
+                Some(ty) => {
+                    break Some(ty.clone());
+                }
+                None => {
+                    let __tco_0 = Rc::new(
+                        parents
+                            .iter()
+                            .cloned()
+                            .take(((parents.len() as i64) - 1) as usize)
+                            .collect::<Vec<_>>(),
+                    );
+                    parents = __tco_0;
+                    continue;
+                }
+            },
+        }
     }
+}
+
+pub fn lookup_binding_in_parent_chain(
+    mut parents: Rc<Vec<Rc<TypeEnv>>>,
+    mut ident: i64,
+) -> Option<Rc<TypeBinding>> {
+    loop {
+        match parents.clone().last().cloned() {
+            None => {
+                break None;
+            }
+            Some(tail_parent) => match lookup_binding(tail_parent.clone(), ident.clone()) {
+                Some(binding) => {
+                    break Some(binding.clone());
+                }
+                None => {
+                    let __tco_0 = Rc::new(
+                        parents
+                            .iter()
+                            .cloned()
+                            .take(((parents.len() as i64) - 1) as usize)
+                            .collect::<Vec<_>>(),
+                    );
+                    parents = __tco_0;
+                    continue;
+                }
+            },
+        }
+    }
+}
+
+pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
+    match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
+        Some(binding) => Some(binding.clone()),
+        None => lookup_binding_in_parent_chain(env.parents.clone(), ident.clone()),
+    }
+}
+
+pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match v1_rt::map_get(&env.recursive_type_set.clone(), ident.clone()) {
+            Some(_) => true,
+            None => env.parents.clone().iter().cloned().fold(
+                false,
+                |found: bool, parent: Rc<TypeEnv>| {
+                    if found {
+                        true
+                    } else {
+                        is_recursive_type(parent.clone(), ident.clone())
+                    }
+                },
+            ),
+        }
+    })
 }
 
 pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
@@ -50,7 +127,7 @@ pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
 }
 
 pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
-    match v1_rt::map_get(&env.bindings.clone(), ident) {
+    match lookup_binding(env, ident) {
         Some(binding) => Some(binding.resolved.clone()),
         None => None,
     }
@@ -82,10 +159,21 @@ pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
 }
 
 pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<InductiveField>>> {
-    match v1_rt::map_get(&env.inductive_fields.clone(), type_name) {
-        Some(fields) => fields.clone(),
-        None => Rc::new(vec![]),
-    }
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match v1_rt::map_get(&env.inductive_fields.clone(), type_name.clone()) {
+            Some(fields) => fields.clone(),
+            None => env.parents.clone().iter().cloned().fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<Rc<InductiveField>>>, parent: Rc<TypeEnv>| {
+                    if ((acc.clone().len() as i64) > 0) {
+                        acc.clone()
+                    } else {
+                        inductive_fields_for(parent.clone(), type_name.clone())
+                    }
+                },
+            ),
+        }
+    })
 }
 
 pub fn is_inductive_field(
@@ -211,12 +299,24 @@ pub fn inductive_fields_list_to_map(
     )
 }
 
+pub fn flatten_visible_bindings(env: Rc<TypeEnv>) -> Rc<HashMap<i64, Rc<TypeBinding>>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let from_parents = env.parents.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
+            |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
+                v1_rt::rc_map_merge(flatten_visible_bindings(parent.clone()), acc)
+            },
+        );
+        v1_rt::rc_map_merge(from_parents, env.bindings.clone())
+    })
+}
+
 pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
     {
         let merged_bindings = envs.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
             |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, env: Rc<TypeEnv>| {
-                v1_rt::rc_map_merge(acc, env.bindings.clone())
+                v1_rt::rc_map_merge(acc, flatten_visible_bindings(env.clone()))
             },
         );
         let merged_recursive = envs
@@ -250,6 +350,7 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
         };
         Rc::new(TypeEnv {
             bindings: merged_bindings,
+            parents: Rc::new(vec![]),
             recursive_types: merged_recursive,
             recursive_type_set: merged_recursive_set,
             inductive_fields: merged_inductive_fields,

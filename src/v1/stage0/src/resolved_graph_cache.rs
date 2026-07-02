@@ -7,7 +7,7 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::v1_compiler_compile::SourceFile;
-use crate::v1_compiler_infer::rewire_func_env_parent_links;
+use crate::v1_compiler_infer::{rewire_func_env_parent_links, rewire_type_env_parent_links};
 use crate::v1_compiler_infer_items::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
 use crate::v1_std_core::NewlineIndex;
@@ -271,7 +271,8 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
             .collect(),
     );
     let decoded = Rc::new(payload.graph);
-    let modules = rewire_func_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let modules = rewire_func_env_parent_links(modules, source_indices.clone());
     let graph = Rc::new(ResolvedGraph {
         modules,
         item_registry: decoded.item_registry.clone(),
@@ -467,7 +468,8 @@ pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolv
             .collect(),
     );
     let decoded = Rc::new(payload.graph);
-    let modules = rewire_func_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let modules = rewire_func_env_parent_links(modules, source_indices.clone());
     Ok(CachedResolvedGraph {
         graph: Rc::new(ResolvedGraph {
             modules,

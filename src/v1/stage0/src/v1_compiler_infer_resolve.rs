@@ -9,8 +9,8 @@ use crate::std_syntax::LiteralValue::LitInt;
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for,
-    lookup_type, lookup_type_by_name, lookup_type_for,
+    authored_name, flatten_visible_bindings, is_recursive_type, is_recursive_type_by_name,
+    is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
@@ -121,7 +121,7 @@ pub fn collect_unit_variant_phantom_matches(
     env: Rc<TypeEnv>,
     variant_name: String,
 ) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(v1_rt::map_keys(&env.bindings.clone()))
+    Rc::new(v1_rt::map_keys(&flatten_visible_bindings(env.clone())))
         .iter()
         .cloned()
         .fold(
@@ -2986,6 +2986,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                             provenance: Rc::new(SubValueRelation::SubValueUnknown),
                         }),
                     ),
+                    parents: e.parents.clone(),
                     recursive_types: e.recursive_types.clone(),
                     recursive_type_set: e.recursive_type_set.clone(),
                     inductive_fields: e.inductive_fields.clone(),

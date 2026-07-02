@@ -311,6 +311,7 @@ fn unit_expr() -> Rc<Node> {
 fn empty_type_env() -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
         bindings: Rc::new(std::collections::HashMap::new()),
+        parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
         inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -988,6 +989,7 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
         Rc::new(vec![variant_arm("Present")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
+            parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
             inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -1010,6 +1012,7 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
         Rc::new(vec![variant_arm("Some"), variant_arm("None")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
+            parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
             inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -1032,6 +1035,7 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
         Rc::new(vec![variant_arm("Present"), variant_arm("Absent")]),
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
+            parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
             inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -1087,6 +1091,7 @@ fn resolve_node_uses_node_name_for_lookup() {
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         )])),
+        parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
         inductive_fields: Rc::new(std::collections::HashMap::new()),
@@ -1597,6 +1602,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
                 provenance: Rc::new(SubValueRelation::SubValueUnknown),
             }),
         )])),
+        parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
         inductive_fields: Rc::new(std::collections::HashMap::new()),

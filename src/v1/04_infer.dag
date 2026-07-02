@@ -82,7 +82,7 @@ import v1.compiler.infer_env {
   TypeEnv, TypeBinding,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
-  inductive_fields_list_to_map, flatten_visible_bindings, fold_visible_bindings
+  inductive_fields_list_to_map, flatten_visible_bindings
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.induction {
@@ -2831,7 +2831,7 @@ fn record_lit_construction_field_names(type_name: String, scope: InferScope) -> 
 
 fn field_in_any_variant_named(type_name: String, field: String, scope: InferScope) -> Bool {
   let si = scope.type_env.source_indices
-  fold_visible_bindings(env: scope.type_env, f: (binding) =>
+  flatten_visible_bindings(env: scope.type_env) |> map_values |> any(binding =>
     let node = binding.resolved
     if (node.connective == Disj) {
       node.children |> any(arm =>
@@ -2841,8 +2841,8 @@ fn field_in_any_variant_named(type_name: String, field: String, scope: InferScop
           fields |> any(f => authored_name_at(source_indices: si, node: f) == field)
         } else { false }
       )
-    } else { false },
-  acc: false)
+    } else { false }
+  )
 }
 
 fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
@@ -5441,21 +5441,6 @@ fn substitute_generics_apply(n: Node, subst: Map<String, Node>, source_indices: 
   }
 }
 
-fn collect_parent_bindings_filtered(envs: List<TypeEnv>) -> Map<Int, TypeBinding> {
-  fold(envs, init: empty_map(), f: (acc, env) =>
-    fold(map_keys(env.bindings), init: acc, f: (bacc, ident) =>
-      let name = intern_str(table: env.intern_table, id: ident)
-      if is_type_variable_name(name: name) { bacc }
-      else {
-        match map_get(env.bindings, ident) {
-          Present { value: binding } => map_insert(bacc, ident, binding)
-          Absent => bacc
-        }
-      }
-    )
-  )
-}
-
 fn kernel_span(name: String) -> SourceSpan {
   SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
 }
@@ -6304,7 +6289,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
     let import_parents = flat_map(module_imports(n: m.module), imp =>
       let path = import_module_path_at(imp: imp, source_indices: source_indices)
       match map_get(index, path) {
-        Present { value: parent } => [parent.type_env]
+        Present { value: parent } => [type_env_for_import(module_path: path, parent_env: parent.type_env)]
         Absent => []
       }
     )
