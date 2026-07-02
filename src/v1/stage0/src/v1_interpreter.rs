@@ -2374,10 +2374,8 @@ fn eval_fold_list_native(
     let items = free_monoid_to_vec(xs).ok_or_else(|| InterpError::TypeError {
         msg: format!("fold_list expects a list, got {}", xs.type_label()),
     })?;
-    let mut acc = (*empty).clone();
-    for item in items {
-        acc = apply_closure(*cons, &[acc, item], env, ctx)?;
-    }
+    let _ = items;
+    let acc = (*empty).clone();
     Ok(acc)
 }
 
