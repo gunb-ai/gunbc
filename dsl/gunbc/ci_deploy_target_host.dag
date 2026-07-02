@@ -1,6 +1,8 @@
 module gunbc.ci_deploy_target_host
 
 import std.types { String, NonEmptyStr, Bool, List }
+import std.access { AccessDecision, Permit, Deny }
+import extdeps.shell
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1 }
 import gunbc.ci_fleet { srv1_offer, ComputeOffer }
@@ -15,6 +17,109 @@ type DeployTargetHostProof
 data deploy_target_host_refusal_local: String = "deploy-target-host: FAIL LocalShell apply refused — runner identity does not prove target host"
 
 data deploy_target_host_refusal_ssh: String = "deploy-target-host: FAIL SshShell ssh_host does not match target host identity"
+
+data deploy_target_host_refusal_prefix: String = "deploy-target-host: typed refusal before mutation"
+
+type DeployTargetHostObservation {
+  hostname: String
+  runner_name: String
+}
+
+fn deploy_target_host_observed_hostname() -> String {
+  let result = shell.Exec.Run(script: "hostname -s 2>/dev/null || hostname")
+  if result.success {
+    trim(result.stdout)
+  } else {
+    ""
+  }
+}
+
+fn deploy_target_host_observed_runner_name() -> String {
+  let env = shell.Env.Get(name: "RUNNER_NAME" as NonEmptyStr)
+  match env.value {
+    Present { value: raw } => trim(raw)
+    Absent => ""
+  }
+}
+
+fn deploy_target_host_observed() -> DeployTargetHostObservation {
+  DeployTargetHostObservation {
+    hostname: deploy_target_host_observed_hostname(),
+    runner_name: deploy_target_host_observed_runner_name(),
+  }
+}
+
+fn deploy_target_host_decision_reason(d: AccessDecision) -> String {
+  match d {
+    Permit => ""
+    Deny { reason: r } =>
+      match r {
+        Present { value: why } => why
+        Absent => deploy_target_host_refusal_prefix
+      }
+  }
+}
+
+fn deploy_target_host_check(
+  proof: DeployTargetHostProof,
+  observed: DeployTargetHostObservation
+) -> AccessDecision {
+  if !deploy_target_ssh_proof_structurally_valid(proof: proof) {
+    Deny { reason: Present { value: deploy_target_host_refusal_ssh } }
+  } else {
+    if deploy_target_host_apply_permitted(
+      proof: proof,
+      observed_hostname: observed.hostname,
+      observed_runner_name: observed.runner_name
+    ) {
+      Permit
+    } else {
+      match proof {
+        RunnerIdentityOnHost { host: id } =>
+          Deny {
+            reason: Present {
+              value: concat(
+                concat(
+                  concat(deploy_target_host_refusal_prefix, " — "),
+                  deploy_target_host_refusal_local
+                ),
+                concat(
+                  concat(" expected=", id),
+                  concat(
+                    concat(" hostname=", observed.hostname),
+                    concat(" runner=", observed.runner_name)
+                  )
+                )
+              )
+            }
+          }
+        SshExplicitHost { host: id, ssh_host: h } =>
+          Deny {
+            reason: Present {
+              value: concat(
+                concat(deploy_target_host_refusal_prefix, " — "),
+                concat(
+                  deploy_target_host_refusal_ssh,
+                  concat(" expected=", concat(id, concat(" ssh_host=", h)))
+                )
+              )
+            }
+          }
+      }
+    }
+  }
+}
+
+fn deploy_target_host_check_observed(proof: DeployTargetHostProof) -> AccessDecision {
+  deploy_target_host_check(proof: proof, observed: deploy_target_host_observed())
+}
+
+fn deploy_target_host_fixture_observation(
+  hostname: String,
+  runner_name: String
+) -> DeployTargetHostObservation {
+  DeployTargetHostObservation { hostname: hostname, runner_name: runner_name }
+}
 
 fn deploy_target_proof(host: HostIdentity, transport: HostEffectTransport) -> DeployTargetHostProof {
   match transport {

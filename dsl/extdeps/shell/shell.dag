@@ -67,6 +67,9 @@ service shell.Exec {
       0 => Unit
       nonzero => String "Script failed"
     }
+    mock_response {
+      0 => { exit_code: 0, success: true, stdout: "", stderr: "" } "hermetic shell.Exec.Run success"
+    }
   }
 
   operation Check {
@@ -78,6 +81,9 @@ service shell.Exec {
     exit {
       0 => Unit
       nonzero => String "Command failed"
+    }
+    mock_response {
+      0 => { exists: true } "hermetic shell.Exec.Check success"
     }
   }
 }

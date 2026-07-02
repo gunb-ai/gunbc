@@ -1,6 +1,7 @@
 module gunbc.host_effect
 
 import std.types { String, Int, NonEmptyStr }
+import std.access { AccessDecision }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
 
@@ -23,6 +24,7 @@ type HostEffectIntent {
   effect: HostEffect
   policy: Policy
   transport: HostEffectTransport
+  privilege_denial: AccessDecision?
 }
 
 type HostEffectEvidence =

@@ -153,6 +153,7 @@ fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffec
           },
           policy: OneShotIdempotent,
           transport: LocalShell,
+          privilege_denial: none,
         }
       }
     ActuatorForceRestart { reset_type: r } =>
@@ -164,6 +165,7 @@ fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffec
           },
           policy: OneShotIdempotent,
           transport: LocalShell,
+          privilege_denial: none,
         }
       }
     ActuatorNbdProxyServe { endpoint: ep, slot: s, index: i, export: _ } =>
@@ -183,6 +185,7 @@ fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffec
           },
           policy: OneShotIdempotent,
           transport: LocalShell,
+          privilege_denial: none,
         }
       }
     ActuatorRedfishInsertMedia => Absent

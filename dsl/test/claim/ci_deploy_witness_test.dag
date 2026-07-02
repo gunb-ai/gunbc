@@ -12,7 +12,15 @@ import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   ci_deploy_runner_principal,
   deploy_access_is_local_apply,
-  deploy_access_preflight_script,
+  deploy_access_refusal_prefix,
+  deploy_access_check_observed,
+  deploy_access_check,
+  deploy_access_preflight_pass_message,
+  deploy_access_decision_reason,
+  deploy_access_sudo_miss_reason,
+  Permit,
+  Deny,
+  DeployAccessActor,
   gunbc_deploy_sudoers_dropin,
   deploy_access_sudoers_line,
   srv1_live_deploy_privileged_commands,
@@ -41,15 +49,50 @@ fn witness_deploy_access_uses_local_apply_on_srv1() -> Bool {
 }
 
 fn witness_deploy_access_preflight_is_fail_closed() -> Bool {
-  let script = deploy_access_preflight_script(access: ci_deploy_srv1_access)
-  string_contains(s: script, pattern: "whoami=$(whoami)")
-    && string_contains(s: script, pattern: "sudo -n /usr/bin/systemctl --version")
-    && string_contains(s: script, pattern: concat("Add to ", gunbc_deploy_sudoers_dropin))
-    && string_contains(s: script, pattern: deploy_access_sudoers_line(
+  let d = deploy_access_check_observed(access: ci_deploy_srv1_access)
+  match d {
+    Permit =>
+      string_contains(
+        s: deploy_access_preflight_pass_message(access: ci_deploy_srv1_access),
+        pattern: "deploy-access-preflight: PASS"
+      )
+        && string_contains(
+          s: deploy_access_preflight_pass_message(access: ci_deploy_srv1_access),
+          pattern: ci_deploy_runner_principal
+        )
+    Deny { reason: _ } =>
+      string_contains(s: deploy_access_decision_reason(d: d), pattern: deploy_access_refusal_prefix)
+  }
+}
+
+fn witness_deploy_access_sudo_miss_surfaces_sudoers_hint() -> Bool {
+  let actor = DeployAccessActor {
+    principal: ci_deploy_runner_principal,
+    sudo_granted: false,
+  }
+  match deploy_access_check(access: ci_deploy_srv1_access, actor: actor) {
+    Permit => false
+    Deny { reason: _ } =>
+      let why = deploy_access_sudo_miss_reason(access: ci_deploy_srv1_access)
+      string_contains(s: why, pattern: gunbc_deploy_sudoers_dropin)
+        && string_contains(
+          s: why,
+          pattern: deploy_access_sudoers_line(
+            access: ci_deploy_srv1_access,
+            cmd: srv1_live_deploy_privileged_commands().first()
+          )
+        )
+  }
+}
+
+fn witness_deploy_access_sudoers_line_authority() -> Bool {
+  string_contains(
+    s: deploy_access_sudoers_line(
       access: ci_deploy_srv1_access,
       cmd: srv1_live_deploy_privileged_commands().first()
-    ))
-    && string_contains(s: script, pattern: "deploy-access-preflight: PASS")
+    ),
+    pattern: ci_deploy_runner_principal
+  )
 }
 
 fn witness_ci_spec_carries_deploy_stages() -> Bool {
@@ -88,6 +131,8 @@ test fn ci_deploy_witnesses() -> Bool {
   witness_deploy_stage_targets_live_deploy_wet()
     && witness_deploy_access_uses_local_apply_on_srv1()
     && witness_deploy_access_preflight_is_fail_closed()
+    && witness_deploy_access_sudo_miss_surfaces_sudoers_hint()
+    && witness_deploy_access_sudoers_line_authority()
     && witness_ci_spec_carries_deploy_stages()
     && witness_deploy_run_script_invokes_gunbc_wet()
     && witness_workflow_has_deploy_job_gated_on_ci()
