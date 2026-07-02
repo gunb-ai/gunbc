@@ -3,28 +3,24 @@ module gunbc.host_identity_access
 import std.types { List, NonEmptyStr }
 import gunbc.fleet_intent { ComputeHost, srv1_host, srv2_host }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import gunbc.fleet_posix_accounts {
+  FleetAccountOperator,
+  fleet_posix_principal,
+  grounded_posix_principal_name,
+}
 import gunbc.host_effect { HostEffectTransport, SshShell }
 import gunbc.ci_deploy_access {
   DeployAccess,
-  PrivilegedCommand,
-}
-
-data host_identity_hostnamectl_path: NonEmptyStr = "/usr/bin/hostnamectl"
-
-data host_identity_ssh_principal: NonEmptyStr = "briansrls"
-
-fn host_identity_privileged_commands() -> List<PrivilegedCommand> {
-  [
-    PrivilegedCommand { path: host_identity_hostnamectl_path, check: "--version" },
-  ]
+  grounded_principal_privileged_commands,
 }
 
 fn host_identity_ssh_access(host: ComputeHost, ssh_host: NonEmptyStr) -> DeployAccess {
+  let principal = fleet_posix_principal(key: FleetAccountOperator)
   DeployAccess {
-    principal: host_identity_ssh_principal,
+    principal: principal,
     host: host,
     transport: SshShell { ssh_host: ssh_host },
-    privileged_commands: host_identity_privileged_commands(),
+    privileged_commands: grounded_principal_privileged_commands(p: principal),
   }
 }
 
@@ -37,3 +33,9 @@ data host_identity_srv2_access: DeployAccess = host_identity_ssh_access(
   host: srv2_host,
   ssh_host: operator_host_srv2 as NonEmptyStr,
 )
+
+fn host_identity_operator_principal_name() -> NonEmptyStr {
+  grounded_posix_principal_name(
+    p: fleet_posix_principal(key: FleetAccountOperator)
+  )
+}

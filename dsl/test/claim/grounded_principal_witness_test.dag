@@ -1,0 +1,94 @@
+module test.claim.grounded_principal_witness
+
+import std.types { NonEmptyStr, Bool }
+import gunbc.fleet_posix_accounts {
+  FleetAccountCiRunner,
+  FleetAccountOperator,
+  fleet_posix_principal,
+  grounded_posix_principal_name,
+  fleet_posix_account_from_name,
+  fleet_posix_account_exists,
+  grounded_posix_principal_has_existence_witness,
+  fleet_operator_email,
+  fleet_operator_gcp_iam_member,
+}
+import gunbc.ci_deploy_access {
+  ci_deploy_srv1_access,
+  ci_deploy_srv1_operator_access,
+  deploy_preflight_shell_header,
+  grounded_principal_privileged_commands,
+}
+import gunbc.host_identity_access { host_identity_operator_principal_name }
+import gunbc.tailscale_acl_phase2_credential {
+  tailscale_acl_operator_email,
+  operator_principal_member,
+}
+import extdeps.github.expressions { context_name, Runner }
+
+fn witness_runner_fiction_not_in_roster() -> Bool {
+  !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
+    && match fleet_posix_account_from_name(name: "runner" as NonEmptyStr) {
+      Present { value: _ } => false
+      Absent => true
+    }
+}
+
+fn witness_ghrunner_is_ci_deploy_principal() -> Bool {
+  grounded_posix_principal_name(p: ci_deploy_srv1_access.principal) == "ghrunner"
+    && grounded_posix_principal_name(p: ci_deploy_srv1_access.principal)
+      == grounded_posix_principal_name(p: fleet_posix_principal(key: FleetAccountCiRunner))
+}
+
+fn witness_operator_is_manual_deploy_principal() -> Bool {
+  grounded_posix_principal_name(p: ci_deploy_srv1_operator_access.principal) == "briansrls"
+    && ci_deploy_srv1_operator_access.principal
+      == fleet_posix_principal(key: FleetAccountOperator)
+}
+
+fn witness_briansrls_fork_dissolved() -> Bool {
+  host_identity_operator_principal_name() == "briansrls"
+    && tailscale_acl_operator_email() == fleet_operator_email
+    && operator_principal_member() == fleet_operator_gcp_iam_member()
+    && string_contains(
+      s: operator_principal_member(),
+      pattern: host_identity_operator_principal_name() as String
+    )
+}
+
+fn witness_grounded_rows_carry_existence_witness() -> Bool {
+  grounded_posix_principal_has_existence_witness(
+    p: fleet_posix_principal(key: FleetAccountCiRunner)
+  )
+    && grounded_posix_principal_has_existence_witness(
+      p: fleet_posix_principal(key: FleetAccountOperator)
+    )
+}
+
+fn witness_ci_runner_sudo_grants_derive_privileged_commands() -> Bool {
+  let cmds = grounded_principal_privileged_commands(
+    p: fleet_posix_principal(key: FleetAccountCiRunner)
+  )
+  (length(cmds) == 5)
+    && cmds.first().path == "/usr/bin/bash"
+}
+
+fn witness_preflight_shell_is_dash_safe() -> Bool {
+  deploy_preflight_shell_header == "set -eu"
+    && !string_contains(s: deploy_preflight_shell_header, pattern: "pipefail")
+}
+
+fn witness_gha_runner_context_is_not_os_account() -> Bool {
+  context_name(context: Runner) == "runner"
+    && !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
+}
+
+test fn grounded_principal_witnesses() -> Bool {
+  witness_runner_fiction_not_in_roster()
+    && witness_ghrunner_is_ci_deploy_principal()
+    && witness_operator_is_manual_deploy_principal()
+    && witness_briansrls_fork_dissolved()
+    && witness_grounded_rows_carry_existence_witness()
+    && witness_ci_runner_sudo_grants_derive_privileged_commands()
+    && witness_gha_runner_context_is_not_os_account()
+    && witness_preflight_shell_is_dash_safe()
+}

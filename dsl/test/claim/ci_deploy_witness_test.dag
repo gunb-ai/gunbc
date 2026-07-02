@@ -10,7 +10,6 @@ import gunbc.ci_spec {
 }
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
-  ci_deploy_runner_principal,
   deploy_access_is_local_apply,
   deploy_access_refusal_prefix,
   deploy_access_check_observed,
@@ -24,12 +23,21 @@ import gunbc.ci_deploy_access {
   gunbc_deploy_sudoers_dropin,
   deploy_access_sudoers_line,
   srv1_live_deploy_privileged_commands,
+  grounded_posix_principal_name,
+}
+import gunbc.fleet_posix_accounts {
+  FleetAccountCiRunner,
+  fleet_posix_principal,
 }
 import gunbc.ci_workflow { ci_workflow }
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.ci_yaml_emit { expected_ci_yml }
 import gunbc.fleet_intent { srv1_host }
 import gunbc.host_effect { LocalShell }
+
+fn ci_deploy_runner_principal_name() -> String {
+  grounded_posix_principal_name(p: ci_deploy_srv1_access.principal) as String
+}
 
 fn witness_deploy_stage_targets_live_deploy_wet() -> Bool {
   gunbc_ci_deploy_srv1_stage.entry == live_deploy_apply_entry
@@ -40,7 +48,7 @@ fn witness_deploy_stage_targets_live_deploy_wet() -> Bool {
 fn witness_deploy_access_uses_local_apply_on_srv1() -> Bool {
   let access = ci_deploy_srv1_access
   access.host == srv1_host
-    && access.principal == ci_deploy_runner_principal
+    && grounded_posix_principal_name(p: access.principal) == "ghrunner"
     && deploy_access_is_local_apply(access: access)
     && match access.transport {
       LocalShell => true
@@ -58,7 +66,7 @@ fn witness_deploy_access_preflight_is_fail_closed() -> Bool {
       )
         && string_contains(
           s: deploy_access_preflight_pass_message(access: ci_deploy_srv1_access),
-          pattern: ci_deploy_runner_principal
+          pattern: ci_deploy_runner_principal_name()
         )
     Deny { reason: _ } =>
       string_contains(s: deploy_access_decision_reason(d: d), pattern: deploy_access_refusal_prefix)
@@ -67,7 +75,7 @@ fn witness_deploy_access_preflight_is_fail_closed() -> Bool {
 
 fn witness_deploy_access_sudo_miss_surfaces_sudoers_hint() -> Bool {
   let actor = DeployAccessActor {
-    principal: ci_deploy_runner_principal,
+    observed_name: fleet_posix_principal(key: FleetAccountCiRunner).posix.name,
     sudo_granted: false,
   }
   match deploy_access_check(access: ci_deploy_srv1_access, actor: actor) {
@@ -91,7 +99,7 @@ fn witness_deploy_access_sudoers_line_authority() -> Bool {
       access: ci_deploy_srv1_access,
       cmd: srv1_live_deploy_privileged_commands().first()
     ),
-    pattern: ci_deploy_runner_principal
+    pattern: ci_deploy_runner_principal_name()
   )
 }
 
