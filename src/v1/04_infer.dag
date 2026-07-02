@@ -5550,6 +5550,23 @@ fn kernel_coproduct_variant_locals(env: TypeEnv) -> Map<String, TypeBinding> {
   }
 }
 
+fn merge_kernel_variant_locals_low_priority(
+  env: TypeEnv,
+  locals: Map<String, TypeBinding>
+) -> Map<String, TypeBinding> {
+  let kernel_locals = kernel_coproduct_variant_locals(env: env)
+  fold(kernel_locals |> map_keys, init: locals, f: (acc, variant_name) =>
+    match map_get(acc, variant_name) {
+      Present { value: _ } => acc
+      Absent =>
+        match map_get(kernel_locals, variant_name) {
+          Present { value: binding } => map_insert(acc, variant_name, binding)
+          Absent => acc
+        }
+    }
+  )
+}
+
 fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
   if module_path == "std.types" {
     let filtered = fold(map_keys(parent_env.bindings), init: empty_map(), f: (acc, ident) =>
@@ -5990,16 +6007,11 @@ fn build_module_context(contributions: List<ItemContribution>,
     source_indices: env.source_indices
   )
   let imported_variants = build_imported_variants(resolved_imports: resolved_imports, parent_index: parent_index, source_indices: env.source_indices)
-  let kernel_variant_locals = kernel_coproduct_variant_locals(env: env)
-  let parent_variant_locals = map_merge(
-    kernel_variant_locals,
-    union_parent_variant_locals(resolved_imports: resolved_imports, parent_index: parent_index)
-  )
   let variant_fold = fold_local_coproduct_variant_locals(
     bindings: env.bindings,
     imported_variants: imported_variants,
     source_indices: env.source_indices,
-    init_locals: parent_variant_locals
+    init_locals: empty_map()
   )
   let imported_variant_locals = variant_fold.locals
   let variant_collision_errors = variant_fold.collision_errors

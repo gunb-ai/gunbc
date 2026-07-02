@@ -11804,6 +11804,26 @@ pub fn kernel_coproduct_variant_locals(
     }
 }
 
+pub fn merge_kernel_variant_locals_low_priority(
+    env: Rc<TypeEnv>,
+    locals: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    let kernel_locals = kernel_coproduct_variant_locals(env.clone());
+    Rc::new(v1_rt::map_keys(&kernel_locals))
+        .iter()
+        .cloned()
+        .fold(locals, |acc: Rc<HashMap<String, Rc<TypeBinding>>>, variant_name: String| {
+            if v1_rt::map_contains_key(&acc, variant_name.clone()) {
+                acc
+            } else {
+                match v1_rt::map_get(&kernel_locals, variant_name.clone()) {
+                    Some(binding) => v1_rt::rc_map_insert(acc, variant_name, binding.clone()),
+                    None => acc,
+                }
+            }
+        })
+}
+
 pub fn fold_local_coproduct_variant_locals(
     bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
     imported_variants: Rc<HashMap<String, String>>,
@@ -13357,15 +13377,11 @@ pub fn build_module_context(
             parent_index.clone(),
             env.source_indices.clone(),
         );
-        let parent_variant_locals = v1_rt::rc_map_merge(
-            kernel_coproduct_variant_locals(env.clone()),
-            union_parent_variant_locals(resolved_imports.clone(), parent_index.clone()),
-        );
         let variant_fold = fold_local_coproduct_variant_locals(
             env.bindings.clone(),
             imported_variants,
             env.source_indices.clone(),
-            parent_variant_locals,
+            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         );
         let imported_variant_locals = variant_fold.locals.clone();
         let variant_collision_errors = variant_fold.collision_errors.clone();
