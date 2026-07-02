@@ -108,3 +108,7 @@ fn host_identity_observation_nonempty(obs: HostIdentityObservation) -> Bool {
 fn fixture_host_identity_observation() -> HostIdentityObservation {
   host_identity_observation_typed(row: gunbc_srv1_host_identity_observation_fixture_row)
 }
+
+fn fixture_host_identity_observation_srv2() -> HostIdentityObservation {
+  host_identity_observation_typed(row: gunbc_srv2_host_identity_observation_fixture_row)
+}
