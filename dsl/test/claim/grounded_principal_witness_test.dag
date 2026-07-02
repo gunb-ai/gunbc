@@ -23,7 +23,6 @@ import gunbc.ci_deploy_access {
   deploy_access_apt_get_privileged_command,
   srv1_live_deploy_privileged_commands,
   deploy_access_preflight_script,
-  grounded_principal_privileged_commands,
   deploy_access_privileged_fixture_actor,
   deploy_mutation_gate,
   Permit,
