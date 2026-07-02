@@ -11788,6 +11788,22 @@ pub fn union_parent_variant_locals(
     )
 }
 
+pub fn kernel_coproduct_variant_locals(
+    env: Rc<TypeEnv>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    match env.parents.last() {
+        Some(kernel) => fold_local_coproduct_variant_locals(
+            kernel.bindings.clone(),
+            v1_rt::rc_empty_map::<String, String>(),
+            env.source_indices.clone(),
+            v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        )
+        .locals
+        .clone(),
+        None => v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+    }
+}
+
 pub fn fold_local_coproduct_variant_locals(
     bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
     imported_variants: Rc<HashMap<String, String>>,
@@ -13341,8 +13357,10 @@ pub fn build_module_context(
             parent_index.clone(),
             env.source_indices.clone(),
         );
-        let parent_variant_locals =
-            union_parent_variant_locals(resolved_imports.clone(), parent_index.clone());
+        let parent_variant_locals = v1_rt::rc_map_merge(
+            kernel_coproduct_variant_locals(env.clone()),
+            union_parent_variant_locals(resolved_imports.clone(), parent_index.clone()),
+        );
         let variant_fold = fold_local_coproduct_variant_locals(
             env.bindings.clone(),
             imported_variants,
