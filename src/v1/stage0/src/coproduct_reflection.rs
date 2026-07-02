@@ -810,7 +810,6 @@ pub struct DeclFactRaw {
     pub node: Rc<Node>,
     pub rel_path: String,
     pub source_indices: SourceIndices,
-    pub file_content: String,
 }
 
 fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
@@ -873,7 +872,6 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
         }
         files_scanned += 1;
         let content = std::fs::read_to_string(&file).ok();
-        let file_content = content.clone().unwrap_or_default();
         let module_path = content
             .as_ref()
             .and_then(|c| extract_module_path_from_content(c))
@@ -896,7 +894,6 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
                 node: item.clone(),
                 rel_path: rel.clone(),
                 source_indices: si.clone(),
-                file_content: file_content.clone(),
             });
         }
     }
@@ -963,10 +960,9 @@ fn marshal_decl_fact_node(
     item: &Rc<Node>,
     kind: ItemKind,
     si: &SourceIndices,
-    file_content: &str,
 ) -> InterpResult<Value> {
     match kind {
-        ItemKind::TypeItem => concept_decl_node_parse_only_from_source(ctx, item, si, file_content),
+        ItemKind::TypeItem => concept_decl_node(ctx, si, item),
         ItemKind::FnItem | ItemKind::FuncItem => {
             if let Some(body) = item.body.as_ref() {
                 let param_names = fn_item_param_names(item, si);
@@ -990,12 +986,13 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
     let facts = decl_facts_for_roots(pool_roots);
     let mut rows = Vec::with_capacity(facts.len());
     for fact in facts {
-        let node = marshal_decl_fact_node(
-            ctx,
-            &fact.node,
-            fact.kind,
-            &fact.source_indices,
-            &fact.file_content,
+        let node = marshal_decl_fact_node(ctx, &fact.node, fact.kind, &fact.source_indices).map_err(
+            |e| InterpError::TypeError {
+                msg: format!(
+                    "decl_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",
+                    fact.qualified_name, fact.kind, fact.rel_path
+                ),
+            },
         )?;
         rows.push(Value::Record {
             type_name: ctx.sym("DeclFact"),
