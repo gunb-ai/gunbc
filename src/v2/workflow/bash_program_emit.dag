@@ -25,17 +25,21 @@ import v2.std.node { Node }
 import v2.std.text { String }
 import v2.std.witness { Holds, Violates, Witness }
 
-fn bash_program_fold_facts_lookup(key: Node) -> Witness<InferredFacts> {
+data bash_program_serialize_single_authority_reconciliation: String = "bash_program_serialize(ShellProgram) -> Outcome<String> is the SINGLE v2 authority for whole-program bash serialization — the grammar-emit surface that folds statements through bash_command_fold's grammar rows and emit(). It SUPERSEDES the hand-shell text serializer serialize_bash in extdeps.languages.bash.program, which is hereby the SCAFFOLD-TO-DELETE (DESIGN §3 single-authority; the coexisting pair is parallel-representation debt held ONLY during the incremental de-fork). serialize_bash in bash_program_emit_test is cited as the git-historical byte-oracle the grammar surface is proven identical against, not a co-equal authority. DISSOLVES WHEN the ~17 consumers of serialize_bash migrate to bash_program_serialize (node 2-emit-partition (b3)) and serialize_bash + its ShellProgram serialize path are deleted."
+
+data bash_program_serialize_medium_join_scaffold: String = "SCAFFOLD — bash_program_serialize composes the whole-program spelling with String literals: the set-e prefix (concat(\"set -e\\n\", body)) and the statement separator (concat(part, \"\\n\")) are hand-written bash medium syntax, NOT grammar rows. This is the DESIGN §3 medium-as-string pattern, interim. DISSOLVES WHEN the program-assembly join and set-e prefix become bash grammar productions emitted backward through the fold — mirroring the orchestration seq2 join (orch_construct_seq2 / orch_seq2_target_model wired in bash_orchestration_emit.dag): a whole ShellProgram gets a grammar production whose token spellings carry the separator and set-e prefix, so bash_program_serialize emits with zero concat. Tracked as the (b1b) follow-on to the bash grammar de-fork (node 2-emit-partition (b))."
+
+fn bash_program_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
   Violates {
     diagnostic: Diagnostic {
-      reason: ^bash_program_fold_facts_unexpected_consultation,
+      reason: ^bash_program_emit_facts_unexpected_consultation,
       at: node_locus(node: key),
       correction: Unavailable { reason: ExternalContractUnknown }
     }
   }
 }
 
-fn bash_program_fold_serialize_stmt(stmt: ShellStmt) -> Outcome<String> {
+fn bash_program_serialize_stmt(stmt: ShellStmt) -> Outcome<String> {
   match bash_fold_stmt_emitted_witness(stmt: stmt) {
     Holds { value: emitted } =>
       match bash_fold_target_model_for_stmt_witness(stmt: stmt) {
@@ -43,7 +47,7 @@ fn bash_program_fold_serialize_stmt(stmt: ShellStmt) -> Outcome<String> {
           match emit(
             tree: InferredTree {
               root: emitted,
-              facts: Map { lookup: bash_program_fold_facts_lookup }
+              facts: Map { lookup: bash_program_emit_facts_lookup }
             },
             target: target
           ) {
@@ -65,7 +69,7 @@ fn bash_program_serialize_body(stmts: List<ShellStmt>) -> Outcome<String> {
     HeadAbsent => Accepted { value: "", diagnostics: None }
     HeadFound { value: s } =>
       bind_outcome(
-        o: bash_program_fold_serialize_stmt(stmt: s),
+        o: bash_program_serialize_stmt(stmt: s),
         f: fn(part) {
           match list_tail(xs: stmts) {
             TailFound { tail: t } =>
