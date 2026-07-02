@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
-use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
+use v1_compiler::v1_interpreter::{ExecutionMode, Value};
 
 use crate::helpers::resolve_imports_transitively_with_source_roots;
 

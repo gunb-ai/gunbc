@@ -1,5 +1,6 @@
 use std::path::{Path, PathBuf};
 
+#[cfg(test)]
 use crate::helpers::read_v2_file;
 
 fn live_source(source: &str) -> String {
