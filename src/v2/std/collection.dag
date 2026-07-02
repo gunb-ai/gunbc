@@ -88,7 +88,7 @@ fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
     Holds { value: v } => outcome_accepted(value: Present { value: v })
     Violates { diagnostic: d } =>
       if d.reason == ^map_key_absent {
-        outcome_rejected(d: d)
+        outcome_accepted(value: Absent)
       } else {
         outcome_rejected(d: d)
       }
