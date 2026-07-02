@@ -128,7 +128,7 @@ fn serialize_json(v: JsonValue) -> String {
   match v {
     JsonNull => "null"
     JsonBool { value: b } => if b { "true" } else { "false" }
-    JsonNumber { lexeme: l } => l.lexeme
+    JsonNumber { lexeme: l } => l
     JsonString { value: s } => quote_json_string(s: s)
     JsonArray { elements: els } => serialize_json_array(elements: els)
     JsonObject { members: m } => serialize_json_object(members: m)

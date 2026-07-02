@@ -1,5 +1,6 @@
 module extdeps.languages.json.grammar
 
+import std.types { String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -30,9 +31,7 @@ data json_production_rows: List<JsonProductionRow> = [
 
 data json_emit_fold_dissolution_trigger: String = "dissolve-on: v2 grammar-inverse ingest for JSON — dsl/extdeps/languages/json/grammar.dag plus emit.dag is the single dsl-tree authority (RFC 8259 rows + JsonValue fold); DISSOLVES WHEN src/v2/extdeps/languages/json.dag lands FormalProduction/TargetModel rows wired through 06_translate with ingest o emit = id on json_production_rows witnesses"
 
-type JsonNumberLexeme {
-  lexeme: String
-}
+type JsonNumberLexeme = String where brand("JsonNumberLexeme")
 
 type JsonNumberParseRest {
   rest: String
@@ -146,5 +145,5 @@ fn json_number_lexeme_valid(s: String) -> Bool {
 }
 
 fn json_int_lexeme(n: Int) -> JsonNumberLexeme {
-  JsonNumberLexeme { lexeme: to_string(n) }
+  to_string(n) as JsonNumberLexeme
 }
