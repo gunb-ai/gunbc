@@ -15,6 +15,7 @@ import std.effects {
   derive_op_effect, check_modifier_vs_derivation,
   compose_effects, OperationEffect, CompositionVerdict,
   IdempotentComposition, BrokenBy,
+  composition_is_idempotent, composition_first_breaker_name,
   IdempotencyEvidence, LatticeEffect, NonIdempotent,
   ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
   is_idempotent_effect, create_effect_is_dedupable, create_double_init_collapsible,
@@ -281,22 +282,18 @@ test fn effects_derivation_witnesses() -> Bool {
 }
 
 test fn effects_compose_witnesses() -> Bool {
-  match compose_effects(effects: []) {
-    IdempotentComposition => true
-    BrokenBy { first_breaker: breaker } => false
-  }
-    && match compose_effects(effects: [op_lattice_read(name: "a"), op_lattice_read(name: "b")]) {
-      IdempotentComposition => true
-      BrokenBy { first_breaker: breaker } => false
-    }
-    && match compose_effects(effects: [
+  composition_is_idempotent(v: compose_effects(effects: []))
+    && composition_is_idempotent(v: compose_effects(effects: [op_lattice_read(name: "a"), op_lattice_read(name: "b")]))
+    && !composition_is_idempotent(v: compose_effects(effects: [
       op_lattice_read(name: "first"),
       op_non_idempotent(name: "breaker"),
       op_non_idempotent(name: "later")
-    ]) {
-      IdempotentComposition => false
-      BrokenBy { first_breaker: breaker } => true
-    }
+    ]))
+    && composition_first_breaker_name(v: compose_effects(effects: [
+      op_lattice_read(name: "first"),
+      op_non_idempotent(name: "breaker"),
+      op_non_idempotent(name: "later")
+    ])) == "breaker"
 }
 
 test fn effects_idempotency_obligation_witnesses() -> Bool {

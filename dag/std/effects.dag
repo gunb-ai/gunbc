@@ -100,16 +100,30 @@ type CompositionVerdict
   | BrokenBy { first_breaker: OperationEffect }
 
 fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
-  let non_idempotent = effects |> filter(e =>
-    match e.evidence {
-      NonIdempotent { shape: shape, reason: reason } => true
-      LatticeEffect { shape: shape } => false
-      IdentityEffect => false
+  fold(effects, init: IdempotentComposition, f: (acc, e) =>
+    match acc {
+      BrokenBy { first_breaker: breaker } => acc
+      IdempotentComposition =>
+        match e.evidence {
+          NonIdempotent { shape: shape, reason: reason } => BrokenBy { first_breaker: e }
+          LatticeEffect { shape: shape } => IdempotentComposition
+          IdentityEffect => IdempotentComposition
+        }
     }
   )
-  match non_idempotent |> first {
-    Present { value: op } => BrokenBy { first_breaker: op }
-    Absent => IdempotentComposition
+}
+
+fn composition_is_idempotent(v: CompositionVerdict) -> Bool {
+  match v {
+    IdempotentComposition => true
+    BrokenBy { first_breaker: breaker } => false
+  }
+}
+
+fn composition_first_breaker_name(v: CompositionVerdict) -> String {
+  match v {
+    BrokenBy { first_breaker: breaker } => breaker.operation_name
+    IdempotentComposition => ""
   }
 }
 
