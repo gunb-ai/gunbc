@@ -475,10 +475,7 @@ fn run_shared_entry_claims(
     functions
         .iter()
         .map(|function| {
-            set_phase(
-                FloorPhase::Gate,
-                &format!("{entry}::{function}"),
-            );
+            set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
             let outcome = run_claim(&ctx, function);
             let wall_nanos = claim_start.elapsed().as_nanos();
@@ -539,10 +536,7 @@ fn run_memo_shared_claims(
     functions
         .iter()
         .map(|function| {
-            set_phase(
-                FloorPhase::Gate,
-                &format!("{entry}::{function}"),
-            );
+            set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
             let outcome = run_claim(ctx, function);
             let wall_nanos = claim_start.elapsed().as_nanos();
