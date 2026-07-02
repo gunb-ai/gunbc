@@ -149,3 +149,31 @@ The `fail_closed_lockdown.dag` INERT marker on `affected_set.dag` is removed whe
 **(c) Real gunbc floor wall-clock + peak-RSS drop on scoped diff** — `gunbc test` on a 1-file diff with empty node frontier AND empty `edited_test_fns`: floor runs 0 witnesses AND skips the precompute. Logged wall-clock and peak-RSS drop materially vs a full-corpus baseline. On the REAL floor with live glob-discovery, not a synthetic fixture.
 
 Sign-off on this sketch = commitment to deliver all three receipts green before merge.
+
+---
+
+## FENCED FOLLOW-ON — the "REAL fix" (behind resolver-B #6155)
+
+**Status: FENCED — do not start until resolver-B (#6155) lands a green receipt.** Captured 2026-07-02 by the CI-repair dispatch lane so this is a discoverable dispatchable item, not tribal memory. The prior runtime-provenance PR (#6105, `Provenance ingest at CI floor runtime`) was **CLOSED** as not-landable; its branch **`session/quick-carp-343`** is preserved as harvest material (the runtime overlay, `affected_set_floor_runner.dag`, and the `pa_ingest` fixtures).
+
+### Why #6105 was closed — measured, not asserted
+
+A floor-repair scout instrumented `#6105`'s HEAD (`af155b04`) with resolve/typecheck counters and ran the `pa_ingest` single-witness fixture. **Affected-set pruning as built is work-neutral theater — it INCREASES resolve+typecheck and only saves the witness EVAL:**
+
+| Arm | entry_resolve | typecheck_module | witness_evals | total_resolve_ms |
+|-----|--------------:|-----------------:|--------------:|-----------------:|
+| **PRESENT** (live overlay, witness skipped) | **6** | **28** | 0 | **3885** |
+| **RUN-ALL** (skip disabled) | **1** | **27** | 1 | **2042** |
+
+Root cause: the node-frontier skip in `run_discovery_rows` fires **after** the witness-entry closure is already resolved (resolve at entry change → `should_skip` → `continue` skips only the EVAL), and `resolve_floor_runner_context` + `floor_runner_eval_context` each resolve the full `affected_set_floor_runner.dag` closure (2× duplicate). Wall/skip-count look like a win; total work multiplied — the #6127 width-1 shard trap in miniature.
+
+### Acceptance witness (c) is strengthened by the operator standing rule (2026-07-02)
+
+Wall-clock + peak-RSS (current (c)) are NOT sufficient — they can improve while total work explodes (exactly how #6127's 30.9× CPU regression hid under a fine-looking wall). **Any scheduling/pruning change must carry a before/after RESOLVE-COUNT + TYPECHECK-COUNT receipt** showing the PRESENT arm **strictly fewer** than run-all, and the fail-closed arm **equal** to run-all. The current overlay fails this. Add this count receipt to (c).
+
+### The two-part REAL fix
+
+1. **Move the skip BEFORE witness-entry resolve.** The frontier/provenance skip decision must be made from the changed-paths closure alone, so a skipped witness's own import closure is never resolved. A skip that still resolves saves nothing on the axis that matters.
+2. **Share the duplicate `floor_runner` resolves.** `resolve_floor_runner_context` and `floor_runner_eval_context` resolve the same `affected_set_floor_runner.dag` closure twice per run; memoize/share it (the M1 `walk_memo` in `claim_executor` is the precedent — a `heavy_whole_tree_resolve`-keyed in-process memo).
+
+**Fence rationale:** both parts amplify or are amplified by the resolve-duplication that resolver-B (#6155, compositional `build_type_env` — kill the whole-ancestry-per-module quadratic) is removing. Landing pruning on top of the current quadratic resolve would multiply the very work #6155 is deleting. Start this only after #6155 lands green; harvest `session/quick-carp-343`; deliver acceptance (a)(b)(c)+count-receipt.

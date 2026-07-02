@@ -1,0 +1,42 @@
+module test.claim.srv3_network_identity_subsumption
+
+import std.logic { Bool }
+import gunbc.network_identity_subsumption {
+  srv3_pre_install_has_no_os_up_subsumption,
+  srv3_post_install_fixture_subsumes_fleet_slot,
+  bmc_static_reservation_does_not_subsume_os_fleet_slot,
+  network_identity_subsumes_fleet_slot,
+  srv3_os_lan_mac_dissolution_trigger,
+  srv3_os_lan_ipv4_dissolution_trigger,
+  srv3_bmc_static_lease_row,
+  srv3_os_up_dynamic_lease_row,
+}
+import gunbc.fleet_intent_network { operator_host_srv3 }
+
+test fn srv3_pre_install_has_no_os_up_on_lan() -> Bool {
+  srv3_pre_install_has_no_os_up_subsumption()
+}
+
+test fn srv3_bmc_static_row_is_not_os_identity_subsumption() -> Bool {
+  bmc_static_reservation_does_not_subsume_os_fleet_slot()
+}
+
+test fn srv3_post_install_fixture_subsumes_operator_host_srv3() -> Bool {
+  srv3_post_install_fixture_subsumes_fleet_slot()
+}
+
+test fn network_identity_subsumption_discriminates_static_vs_dynamic() -> Bool {
+  !network_identity_subsumes_fleet_slot(
+    fleet_slot: operator_host_srv3,
+    lease: srv3_bmc_static_lease_row.lease,
+  )
+    && network_identity_subsumes_fleet_slot(
+      fleet_slot: operator_host_srv3,
+      lease: srv3_os_up_dynamic_lease_row.lease,
+    )
+}
+
+test fn srv3_os_lan_placeholders_carry_dissolution_triggers() -> Bool {
+  string_contains(s: srv3_os_lan_mac_dissolution_trigger, pattern: "dissolve-on:")
+    && string_contains(s: srv3_os_lan_ipv4_dissolution_trigger, pattern: "dissolve-on:")
+}

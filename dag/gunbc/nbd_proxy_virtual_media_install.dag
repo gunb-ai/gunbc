@@ -30,7 +30,9 @@ import extdeps.bmc.webui.nbd_proxy_serve {
 import extdeps.bmc.os_install_actuator_toolchain {
   srv3_os_install_actuator_toolchain_grant,
 }
-import gunbc.fleet_intent { srv1_host, srv3_host, ComputeHost }
+import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
+import gunbc.fleet_intent { srv3_host, ComputeHost }
+import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
 import gunbc.os_install_mechanism {
   OsInstallMechanism,
   VirtualMediaInstall,
@@ -125,13 +127,7 @@ fn os_install_actuator_plan(mechanism: OsInstallMechanism, export: NbdProxyServe
   }
 }
 
-data srv3_os_install_actuator_host: ComputeHost = srv1_host
-
-data srv3_nbd_proxy_iso_path_dissolution_trigger: String = "🟡 dissolve-on: srv3_nbd_proxy_iso_path_placeholder — static Ubuntu 24.04 ARM64 ISO path scaffold; DISSOLVES WHEN fleet artifact registry supplies grounded NobleNumbat2404Lts ISO path for srv3 actuator host"
-
-data srv3_nbd_proxy_iso_path_placeholder: NonEmptyStr = "/var/lib/gunbc/artifacts/ubuntu-24.04-live-server-arm64.iso"
-
-data srv3_nbd_proxy_export_dissolution_trigger: String = "🟡 dissolve-on: srv3_nbd_proxy_export_placeholder — byte_size(0) NbdProxyServeInterface scaffold; DISSOLVES WHEN live serve binds export_byte_count from grounded ISO artifact ByteSize"
+data srv3_nbd_proxy_export_dissolution_trigger: String = "🟡 dissolve-on: srv3_nbd_proxy_export_placeholder — byte_size(0) NbdProxyServeInterface scaffold; DISSOLVES WHEN live serve binds export_byte_count from grounded ISO artifact ByteSize after install_media_fetch receipt"
 
 data srv3_nbd_proxy_export_placeholder: NbdProxyServeInterface = NbdProxyServeInterface {
   export_byte_count: byte_size(0),
@@ -178,7 +174,7 @@ fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffec
                 bmc_host: asrock_srv3_live_bmc_host,
                 session_token: bmcweb_session_token_env_ref,
                 ws_path: bmcweb_nbd_proxy_ws_path(variant: ep, slot: s, index: i),
-                iso_path: srv3_nbd_proxy_iso_path_placeholder,
+                iso_path: srv3_actuator_virtual_media_iso_install_path,
                 local_nbd_port: srv3_nbd_proxy_local_port,
               )
             )

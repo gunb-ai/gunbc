@@ -1,6 +1,6 @@
 module extdeps.bmc.os_install_actuator_toolchain
 
-import std.types { NonEmptyStr, List }
+import std.types { NonEmptyStr, List, Bool }
 import extdeps.tools { CliTool }
 import extdeps.tools.curl { curl_cli_tool }
 import extdeps.tools.websocat { websocat_cli_tool }
@@ -16,15 +16,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type ActuatorHostToolchainGrant {
-  host_label: NonEmptyStr
+type ActuatorToolchainRequirement {
   required_tools: List<CliTool>
 }
 
-data srv3_os_install_actuator_host_label: NonEmptyStr = "install-actuator-host"
-
-data srv3_os_install_actuator_toolchain_grant: ActuatorHostToolchainGrant = ActuatorHostToolchainGrant {
-  host_label: srv3_os_install_actuator_host_label,
+data os_install_actuator_toolchain_requirement: ActuatorToolchainRequirement = ActuatorToolchainRequirement {
   required_tools: [
     curl_cli_tool,
     websocat_cli_tool,
@@ -33,29 +29,42 @@ data srv3_os_install_actuator_toolchain_grant: ActuatorHostToolchainGrant = Actu
   ],
 }
 
-fn actuator_toolchain_grant_includes_tool(grant: ActuatorHostToolchainGrant, tool_name: NonEmptyStr) -> Bool {
+data srv3_os_install_actuator_host_label: NonEmptyStr = "install-actuator-host"
+
+data srv3_os_install_actuator_toolchain_grant: ActuatorToolchainRequirement = os_install_actuator_toolchain_requirement
+
+fn actuator_toolchain_requirement_includes_tool(
+  requirement: ActuatorToolchainRequirement,
+  tool_name: NonEmptyStr,
+) -> Bool {
   fold(
-    grant.required_tools,
+    requirement.required_tools,
     init: false,
     f: (acc, tool) => acc || tool.name == tool_name
   )
 }
 
-fn srv3_os_install_actuator_toolchain_is_complete() -> Bool {
-  actuator_toolchain_grant_includes_tool(
-    grant: srv3_os_install_actuator_toolchain_grant,
-    tool_name: curl_cli_tool.name
+fn actuator_toolchain_requirement_is_complete(requirement: ActuatorToolchainRequirement) -> Bool {
+  actuator_toolchain_requirement_includes_tool(
+    requirement: requirement,
+    tool_name: curl_cli_tool.name,
   )
-    && actuator_toolchain_grant_includes_tool(
-      grant: srv3_os_install_actuator_toolchain_grant,
-      tool_name: websocat_cli_tool.name
+    && actuator_toolchain_requirement_includes_tool(
+      requirement: requirement,
+      tool_name: websocat_cli_tool.name,
     )
-    && actuator_toolchain_grant_includes_tool(
-      grant: srv3_os_install_actuator_toolchain_grant,
-      tool_name: nbdkit_cli_tool.name
+    && actuator_toolchain_requirement_includes_tool(
+      requirement: requirement,
+      tool_name: nbdkit_cli_tool.name,
     )
-    && actuator_toolchain_grant_includes_tool(
-      grant: srv3_os_install_actuator_toolchain_grant,
-      tool_name: socat_cli_tool.name
+    && actuator_toolchain_requirement_includes_tool(
+      requirement: requirement,
+      tool_name: socat_cli_tool.name,
     )
+}
+
+fn srv3_os_install_actuator_toolchain_is_complete() -> Bool {
+  actuator_toolchain_requirement_is_complete(
+    requirement: os_install_actuator_toolchain_requirement,
+  )
 }

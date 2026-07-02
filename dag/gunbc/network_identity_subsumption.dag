@@ -1,0 +1,124 @@
+module gunbc.network_identity_subsumption
+
+import std.types { NonEmptyStr, Bool, List, String }
+import std.disposition { Disposition, Terminal }
+import extdeps.dhcp.v4 {
+  DhcpLeaseObservation,
+  DynamicDhcpLease,
+  StaticDhcpReservation,
+  Active,
+  Inactive,
+  Expired,
+  MacAddress,
+  Ipv4Address,
+  dhcp_lease_remaining_from_cited_minutes,
+}
+import extdeps.dns.domain_name {
+  HostName,
+  DomainName,
+  DnsLabel,
+  PartiallyQualified,
+  domain_name_wire,
+}
+import extdeps.router.verizon_cr1000a { Cr1000aDhcpLeaseRow, Cr1000aDhcpLeaseTable }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent_network { operator_host_srv3 }
+import gunbc.deployed_intent_v1 { deployed_intent_v1_desired_hostname_short }
+
+data gunbc_network_identity_subsumption_scope_disposition: Disposition = Terminal {
+  reason: "Slice-1 network-identity subsumption: DHCP option-12 dynamic lease client_hostname short label must subsume fleet_intent HostIdentity slot — discriminates BMC static reservation labels (operator-typed) from OS self-report (option-12). Pre-install: no dynamic row subsumes srv3; post-install: dynamic row with hostname srv3 subsumes operator_host_srv3."
+}
+
+data srv3_os_lan_mac_dissolution_trigger: String = "🟡 dissolve-on: srv3_host_lan_mac_placeholder — OS NIC MAC unknown until first post-install router lease observation; DISSOLVES WHEN live CR1000A lease-table read grounds srv3 host LAN MAC distinct from BMC 48:21:0B:81:C5:14"
+
+data srv3_os_lan_ipv4_dissolution_trigger: String = "🟡 dissolve-on: srv3_host_lan_ipv4_placeholder — fleet_intent_network lacks srv3_host_lan_endpoint until OsInstalled; DISSOLVES WHEN post-install lease observation grounds HostOperatingSystem endpoint row"
+
+data srv3_fleet_slot_host_name: HostName = HostName {
+  name: DomainName { labels: ["srv3" as DnsLabel] },
+  qualification: PartiallyQualified,
+}
+
+fn dynamic_lease_hostname_subsumes_fleet_slot(
+  reported: HostName,
+  fleet_slot: HostIdentity,
+) -> Bool {
+  match deployed_intent_v1_desired_hostname_short(fleet_slot: fleet_slot) {
+    Present { value: desired } =>
+      domain_name_wire(name: reported.name) == (desired as String)
+    Absent => false
+  }
+}
+
+fn network_identity_subsumes_fleet_slot(
+  fleet_slot: HostIdentity,
+  lease: DhcpLeaseObservation,
+) -> Bool {
+  match lease {
+    DynamicDhcpLease { client_hostname: Present { value: reported }, lease_time_remaining: _, status: Active } =>
+      dynamic_lease_hostname_subsumes_fleet_slot(reported: reported, fleet_slot: fleet_slot)
+    DynamicDhcpLease { client_hostname: Absent, lease_time_remaining: _, status: _ } => false
+    DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: Inactive } => false
+    DynamicDhcpLease { client_hostname: Present { value: _ }, lease_time_remaining: _, status: Expired } => false
+    StaticDhcpReservation { reservation_label: _, status: _ } => false
+  }
+}
+
+fn lease_table_has_os_up_subsumption(
+  table: Cr1000aDhcpLeaseTable,
+  fleet_slot: HostIdentity,
+) -> Bool {
+  fold(
+    table.rows,
+    init: false,
+    f: (acc, row) =>
+      acc || network_identity_subsumes_fleet_slot(fleet_slot: fleet_slot, lease: row.lease)
+  )
+}
+
+data srv3_bmc_static_lease_row: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "48:21:0B:81:C5:14" as MacAddress,
+  ipv4_address: "192.168.1.192" as Ipv4Address,
+  lease: StaticDhcpReservation {
+    reservation_label: "bmc-altrad8ud-1l2t-3" as NonEmptyStr,
+    status: Active,
+  },
+}
+
+data srv3_os_up_dynamic_lease_row: Cr1000aDhcpLeaseRow = Cr1000aDhcpLeaseRow {
+  mac_address: "00:00:00:00:00:00" as MacAddress,
+  ipv4_address: "192.168.1.193" as Ipv4Address,
+  lease: DynamicDhcpLease {
+    client_hostname: Present { value: srv3_fleet_slot_host_name },
+    lease_time_remaining: dhcp_lease_remaining_from_cited_minutes(minutes: 120),
+    status: Active,
+  },
+}
+
+data srv3_pre_install_lease_table: Cr1000aDhcpLeaseTable = Cr1000aDhcpLeaseTable {
+  rows: [srv3_bmc_static_lease_row],
+}
+
+data srv3_post_install_lease_table_fixture: Cr1000aDhcpLeaseTable = Cr1000aDhcpLeaseTable {
+  rows: [srv3_bmc_static_lease_row, srv3_os_up_dynamic_lease_row],
+}
+
+fn srv3_pre_install_has_no_os_up_subsumption() -> Bool {
+  !lease_table_has_os_up_subsumption(
+    table: srv3_pre_install_lease_table,
+    fleet_slot: operator_host_srv3,
+  )
+}
+
+fn srv3_post_install_fixture_subsumes_fleet_slot() -> Bool {
+  lease_table_has_os_up_subsumption(
+    table: srv3_post_install_lease_table_fixture,
+    fleet_slot: operator_host_srv3,
+  )
+}
+
+fn bmc_static_reservation_does_not_subsume_os_fleet_slot() -> Bool {
+  !network_identity_subsumes_fleet_slot(
+    fleet_slot: operator_host_srv3,
+    lease: srv3_bmc_static_lease_row.lease,
+  )
+}

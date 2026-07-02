@@ -1,6 +1,8 @@
-# Floor shared-computation memoization — design sketch
+# Floor shared-computation memoization — M1 receipt + M2 tracker
 
-**Status:** DESIGN SKETCH — no implementation. Returns to stern-moth-225 + operator for approval before any code.
+**Status:** M1 LANDED + verified (2026-07-02). M2 remains a forward-only tracker (no present-day sharing opportunity — see §3). This file is no longer a pre-implementation sketch; it is the M1 receipt + M2 open-thread record. Any M2 code still returns to the operator for approval.
+
+**M1 — within-walk resolve memo — is implemented as construction, not the sketch's proposed validation.** `claim_executor.rs` `run_walk` maintains a cross-batch `walk_memo: HashMap<entry, InterpContext>` keyed directly off `RunnableResourceProfile.heavy_whole_tree_resolve` (see §3-M1's `use_walk_memo`), so a heavy whole-tree resolve that runs isolated per batch is **unwritable** — stronger than the sketch's proposed `ResolveScope = Isolated | Shared` field, which would have needed a lens to forbid the heavy+isolated combination. The construction guarantee lives at the carrier; no `ResolveScope` field and no lens were added. Receipt: two purity oracles in the `claim_executor` bin tests — `memo_warm_cold_results_are_identical` (warm memo path is byte-identical to the cold `run_shared_entry_claims` path — the §5 purity oracle) and `memo_deduplicates_resolve_count` (resolve fires exactly once across batch boundaries; goes RED if the memo is bypassed). Run: `cargo test -p v1-compiler --bin claim_executor memo_` — 2 pass, 0.37s (2026-07-02).
 
 **Grounded 2026-06-29.** Root measurement: 537s clean-tree compile. Design principle: DESIGN.md §2 (minimize redundancy), §5 (correctness by construction, not validation).
 
@@ -43,7 +45,7 @@ Eight of nine gates use `floor_gate_witness_entry = "dag/tools/floor_effect_gate
 
 Calls 2–4 are redundant: same `(source_roots, entry)` pair, same pure function, same output. Three resolves are wasted across three separate batch boundaries within one `claim_executor` process.
 
-M1 eliminates calls 2, 3, and 4 by memoizing the resolved graph from call 1 across the walk. Any future `heavy_whole_tree_resolve` gate added to `floor_effect_gate_witness.dag` in its own serialized batch would silently add a 5th call — the behavior is not unwritable today.
+M1 (landed) eliminates calls 2, 3, and 4 by memoizing the resolved graph from call 1 across the walk. A future `heavy_whole_tree_resolve` gate added to `floor_effect_gate_witness.dag` in its own serialized batch **cannot** silently re-resolve: because the memo keys off `heavy_whole_tree_resolve` itself, any such gate joins the shared memo by construction (see §3-M1).
 
 ---
 
@@ -51,27 +53,29 @@ M1 eliminates calls 2, 3, and 4 by memoizing the resolved graph from call 1 acro
 
 The plan in `std.realization_schedule` represents runnables as independent units. `RunnableSingleClaim` carries `entry`, `function`, and `profile` — but has no concept of a produced artifact that other runnables consume. `DataDependsOn` edges declare ordering but carry no payload.
 
-For Axis B (in-process resolve): this means two batches in the same `claim_executor` process can call `resolve_entry_graph` for the same `(source_roots, entry)` pair without the executor knowing they're the same work. Fixing it by adding a memo to `claim_executor` without model surface would concede the bad state is writable: a future gate added to `floor_effect_gate_witness.dag` would silently double-pay again.
+For Axis B (in-process resolve): before M1, two batches in the same `claim_executor` process could call `resolve_entry_graph` for the same `(source_roots, entry)` pair without the executor knowing they're the same work. **M1 closed this** — but not by adding an implicit memo with no model surface (which would concede the bad state is writable). It keys the memo off the *existing* model field `RunnableResourceProfile.heavy_whole_tree_resolve`: a heavy resolve is the exact class that must share, so declaring the field IS the declaration to share, and heavy+isolated is unwritable. The model surface was already there; M1 read it.
 
 For Axis A (subprocess compiles): the current gate set has no sharing opportunity (each gate uses a distinct tuple), so the missing shared-output primitive has no displacement value today. Its value is forward: if a future gate uses the same compile tuple as an existing gate, the model should make the sharing explicit and the duplication unwritable.
 
 ---
 
-## 3. Proposed design — two complementary mechanisms
+## 3. Design — M1 (landed) and M2 (forward-only tracker)
 
-### M1 — Within-walk resolve memo (Axis B)
+### M1 — Within-walk resolve memo (Axis B) — **LANDED**
 
-**Mechanism:** `run_walk` in `claim_executor` maintains a `HashMap<(source_roots_hash, entry), Arc<ResolvedGraph>>` across all batch executions. When a `SharedClaims` group resolves its entry, the result is stored. If a later batch resolves the same `(source_roots, entry)`, it gets the `Arc` clone — zero re-parse, zero re-typecheck.
+**Mechanism (as landed):** `run_walk` in `claim_executor` maintains a `walk_memo: HashMap<entry, InterpContext>` across all batch executions. Keying by `entry` alone is sufficient — a given entry always resolves against the same `source_roots` within one walk (documented at the `walk_memo` decl). On the first heavy-resolve batch the entry is resolved once and its `InterpContext` stored; a later batch for the same entry reuses the cached context — zero re-parse, zero re-typecheck. (The original sketch proposed `HashMap<(source_roots_hash, entry), Arc<ResolvedGraph>>`; the landed form is the simpler entry-keyed context.)
 
-**Correctness:** Pure function of `(source_roots, entry)` — the source files don't change during a single `run_walk`. The Batch 1 → Batch 2 execution is sequential (no concurrent mutation), so `Arc` is safe with no locking.
+**Correctness:** Pure function of `(source_roots, entry)` — the source files don't change during a single `run_walk`, and within a walk `entry` determines `source_roots`. The batches on the memo path run sequentially on the main thread (no concurrent mutation). Verified by `memo_warm_cold_results_are_identical` (warm==cold byte-identity, the §5 purity oracle).
 
 **Memory:** The resolved graph for `floor_effect_gate_witness.dag` is ~0.9 GiB. Since the heavy-resolve chain already serializes these batches (Batch 1 finishes before Batch 2 starts), both batches hold the graph at different times — the memo doesn't increase peak memory, it keeps the Batch 1 graph alive slightly longer. This is acceptable.
 
-**Model surface needed (DESIGN.md §5 "model before implement"):** The `RunnableResourceProfile` already carries `heavy_whole_tree_resolve: Bool`. A new field `resolve_scope: ResolveScope` where `ResolveScope = ResolveScopeIsolated | ResolveScopeShared` lets the model explicitly declare which runnables participate in the shared resolve pool:
+**Model surface (as landed — supersedes the proposal below):** No new field was added. The memo keys directly off the existing `RunnableResourceProfile.heavy_whole_tree_resolve: Bool` — the executor treats every heavy whole-tree resolve as memo-shared, and a same-entry non-heavy claim in a later batch also joins the memo (clause (b) in `run_walk`). This is *stronger* than the proposal: the invariant "a heavy resolve is never correctly isolated" (which the proposed lens below would have enforced) is discharged by construction — heavy+isolated cannot be expressed. The `ResolveScope` design below is retained only as the rejected alternative.
+
+**~~Proposed model surface~~ (rejected in favour of the direct key above):** A new field `resolve_scope: ResolveScope` where `ResolveScope = ResolveScopeIsolated | ResolveScopeShared` would have let the model explicitly declare which runnables participate in the shared resolve pool:
 - `ResolveScopeShared` — the executor provides the memoized `ResolvedGraph` from the first resolve of this `(source_roots, entry)` in the walk; a second resolve is structurally impossible (the executor owns it). This is the construction guarantee.
 - `ResolveScopeIsolated` (default) — the executor resolves independently; no sharing. Fail-closed: a new gate that omits `ResolveScopeShared` re-resolves rather than silently sharing stale data. The wrong behavior is safe (extra work), not silent (shared stale result).
 
-The memo does NOT apply automatically to all same-entry resolves — only to `ResolveScopeShared` entries. This preserves the construction authority in the model rather than making the executor's behavior implicit. The lens verifies: every `heavy_whole_tree_resolve: true` runnable must declare `ResolveScopeShared` (the combination is never correct to isolate — a heavy resolve that runs independently in each batch is the violation this mechanism walls off).
+Under the rejected proposal the memo would have applied only to `ResolveScopeShared` entries, backed by a lens requiring every `heavy_whole_tree_resolve: true` runnable to declare `ResolveScopeShared`. The landed design collapses that: since the combination heavy+isolated is never correct, the memo fires directly on `heavy_whole_tree_resolve` and no `ResolveScopeShared` field or lens exists — the invariant the lens would have checked is discharged by construction instead.
 
 ### M2 — Compile artifact as a first-class plan node (Axis A)
 
@@ -121,16 +125,13 @@ A lens enforces: no two `RunnableCompile` nodes in the same plan share the same 
 
 ---
 
-## 5. Operator decisions required before implementation
+## 5. Operator decisions — D1/D2 RESOLVED (M1 landed); D3/D4 still open (M2)
 
-**D1 — Where does `ResolveScope` live?**
-Option A: Add `resolve_scope: ResolveScope` to `RunnableResourceProfile` in `std.realization_schedule`. Clean: the profile already describes resource semantics.
-Option B: Keep it implicit — the executor memos all same-entry resolves with no model surface. Simpler but concedes the bad state is writable (a new gate won't know it's sharing).
-**Recommendation: A** (model before implement, §5).
+**D1 — Where does `ResolveScope` live? — RESOLVED.**
+Neither of the sketch's options was taken. Instead of adding a `resolve_scope` field (Option A) or keeping an implicit memo with no model surface (Option B), M1 keys directly off the *existing* `RunnableResourceProfile.heavy_whole_tree_resolve` field. That field already carries the exact semantics ("this runnable does the heavy whole-tree resolve"), and a heavy resolve is never correctly isolated, so declaring the field IS the declaration to share — a model surface without a new field, and the bad state (heavy+isolated) unwritable. This is stronger than Option A and avoids Option B's writable-bad-state concession.
 
-**D2 — Does M2 land in this PR or a follow-on?**
-M1 (within-walk resolve memo) is lower-risk and immediately addressable. M2 (`RunnableCompile`) requires a new substrate type, a new executor code path, and a refactor of three gate transports to consume an artifact handle instead of shelling out. These are independently beneficial.
-**Recommendation: M1 first (one PR, small, purely additive); M2 as a follow-on with operator approval of the substrate shape.**
+**D2 — Does M2 land in this PR or a follow-on? — RESOLVED for M1.**
+M1 landed on its own (small, purely additive, entry-keyed context memo). M2 (`RunnableCompile`) remains a separate follow-on requiring a new substrate type, a new executor code path, and a refactor of three gate transports — and stays gated on operator approval of the substrate shape (see D3/D4 and §7).
 
 **D3 — Does `EmitDeterminismGate` survive M2?**
 Yes, unchanged. Its x2 compiles are the empirical oracle for non-reproducible emit (a live bug). The gate dissolves only when `v2.std.determinism` (#5941) makes non-determinism unwritable by construction; at that point the pair becomes definitionally redundant and can be replaced by a construction-side check.
@@ -150,7 +151,7 @@ All three gates use different `(source_roots, binary)` tuples and therefore each
 | `gunbc compile` × 4 per run (~537s each) | × 4 (M1 doesn't help subprocess) | × 3 (oracle pair 2→1; other two tuples unchanged) |
 | **Total compile cost per run** | ~2148s – ~105s ≈ same subprocess cost, saved resolve | **~1611s + ~105s → 3× compile, 1× resolve** |
 
-M1 saves ~105s per run (3 redundant Axis-B resolves × ~35s each). The mechanism is a construction wall. Unblocked today.
+M1 saves ~105s per run (3 redundant Axis-B resolves × ~35s each). The mechanism is a construction wall. **Landed** (keyed off `heavy_whole_tree_resolve`; oracles green).
 
 M2 saves **0 compiles today** — the current gate set has no duplicate `(source_roots, binary)` tuples (each gate uses a distinct one, verified). M2's value is forward-proofing: once the plan explicitly declares `RunnableCompile` nodes, a future gate that accidentally duplicates an existing tuple is caught by the lens before it silently adds another ~537s to CI.
 
@@ -166,10 +167,10 @@ M2 saves **0 compiles today** — the current gate set has no duplicate `(source
 
 ## 7. Dissolution triggers
 
-M1 (`ResolveScopeShared` memo):
+M1 (landed — `heavy_whole_tree_resolve`-keyed `walk_memo`):
 - Terminal within its scope: the within-walk resolve memo addresses Axis-B (in-process resolve deduplication across batches); it does not dissolve into M2, because M2 addresses Axis-A (subprocess compile declarations). The two are orthogonal.
 - Dissolution trigger: when v2 streaming-infer (resource-aware-scheduler Node B/C) replaces the v1 whole-tree resolve with a dependency-batched resolve, per-entry memoization becomes a sub-case of the streaming boundary and M1's memo can be removed.
-- Intermediate milestone: lens verifies all `heavy_whole_tree_resolve: true` runnables carry `ResolveScopeShared`.
+- No lens milestone: the sketch's planned "lens verifies all `heavy_whole_tree_resolve: true` runnables carry `ResolveScopeShared`" was obviated — with the memo keyed directly on `heavy_whole_tree_resolve`, the isolated-heavy state is unwritable, so there is nothing for a lens to check.
 
 M2 (`RunnableCompile`):
 - **Gated on**: `v2.std.determinism` (#5941) closing non-reproducible emit. Content-addressing the artifact is unsound until emit is deterministic. Do not land M2 before this gate closes.

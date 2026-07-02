@@ -1,0 +1,67 @@
+module gunbc.workflow_escalation
+
+import std.types { NonEmptyStr, String, Bool }
+
+type WorkflowEscalation {
+  escalation_id: NonEmptyStr
+  rationale: NonEmptyStr
+  destructive: Bool
+}
+
+type WorkflowApprovalState
+  = PendingApproval { escalation: WorkflowEscalation }
+  | ApprovalGranted { escalation_id: NonEmptyStr, granted_by: NonEmptyStr }
+
+type WorkflowStepDisposition
+  = StepRunnable
+  | StepBlocked { reason: String }
+  | StepAwaitingApproval { escalation: WorkflowEscalation }
+
+fn workflow_approval_is_granted(state: WorkflowApprovalState) -> Bool {
+  match state {
+    PendingApproval { escalation: _ } => false
+    ApprovalGranted { escalation_id: _, granted_by: _ } => true
+  }
+}
+
+fn workflow_step_disposition_for_approval(
+  escalation: WorkflowEscalation,
+  approval: WorkflowApprovalState,
+) -> WorkflowStepDisposition {
+  match approval {
+    PendingApproval { escalation: pending } =>
+      if pending.escalation_id == escalation.escalation_id {
+        StepAwaitingApproval { escalation: escalation }
+      } else {
+        StepBlocked {
+          reason: concat(
+            "approval escalation_id mismatch: expected ",
+            concat(escalation.escalation_id as String, concat(" got ", pending.escalation_id as String)),
+          ),
+        }
+      }
+    ApprovalGranted { escalation_id: id, granted_by: _ } =>
+      if id == escalation.escalation_id {
+        StepRunnable
+      } else {
+        StepBlocked {
+          reason: concat(
+            "approval escalation_id mismatch: expected ",
+            concat(escalation.escalation_id as String, concat(" got ", id as String)),
+          ),
+        }
+      }
+  }
+}
+
+fn workflow_destructive_step_refusal_reason(disposition: WorkflowStepDisposition) -> String {
+  match disposition {
+    StepRunnable => ""
+    StepBlocked { reason: r } => r
+    StepAwaitingApproval { escalation: e } =>
+      concat(
+        "operator approval required before ",
+        concat(e.escalation_id as String, concat(": ", e.rationale as String)),
+      )
+  }
+}

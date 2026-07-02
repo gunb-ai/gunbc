@@ -1,0 +1,85 @@
+module test.claim.srv3_seeded_install_media
+
+import gunbc.srv3_seeded_install_media {
+  srv3_seeded_install_media_artifact,
+  srv3_seeded_ubuntu_install_media_install_path,
+  srv3_seeded_install_media_actuator_host_is_srv1,
+  srv3_seeded_install_media_install_path_is_versioned,
+  srv3_seeded_autoinstall_delivery_is_on_iso,
+  srv3_seeded_grub_cmdline_names_nocloud,
+  srv3_seeded_install_media_unattended_not_proven_yet,
+  srv3_autoinstall_user_data_body,
+  srv3_seeded_install_media_remaster_toolchain_is_modeled,
+  srv3_seeded_install_media_toolchain_ensure_is_privileged_gated,
+  install_media_remaster_toolchain_ensure_script,
+}
+import extdeps.os.ubuntu_seeded_install_media_remaster {
+  install_media_remaster_bash_emit_dissolution_trigger,
+  install_media_remaster_script,
+  install_media_remaster_script_applies_grub_cmdline,
+  install_media_remaster_classification_is_string_scaffolded_not_typed,
+  install_media_remaster_chmod_is_file_access_upsert_scaffold,
+}
+import gunbc.os_install_emit { autoinstall_user_data }
+import gunbc.os_install { srv3_ubuntu_autoinstall_on_iso }
+
+test fn srv3_seeded_autoinstall_user_data_is_cloud_config() -> Bool {
+  let ud = srv3_autoinstall_user_data_body as String
+  string_contains(s: ud, pattern: "#cloud-config")
+    && string_contains(s: ud, pattern: "autoinstall:")
+    && string_contains(s: ud, pattern: "hostname: srv3")
+    && ud == autoinstall_user_data(payload: srv3_ubuntu_autoinstall_on_iso)
+}
+
+test fn srv3_seeded_install_media_content_hash_is_derived() -> Bool {
+  srv3_seeded_install_media_artifact.content_hash != ""
+    && srv3_seeded_install_media_artifact.stock_artifact.content_sha256 != ""
+}
+
+test fn srv3_seeded_install_media_path_and_delivery() -> Bool {
+  srv3_seeded_install_media_install_path_is_versioned()
+    && srv3_seeded_autoinstall_delivery_is_on_iso()
+    && srv3_seeded_grub_cmdline_names_nocloud()
+    && srv3_seeded_install_media_actuator_host_is_srv1()
+}
+
+test fn srv3_seeded_install_media_remaster_carries_dissolution_trigger() -> Bool {
+  string_contains(s: install_media_remaster_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
+    && string_contains(s: install_media_remaster_bash_emit_dissolution_trigger, pattern: "xorriso")
+}
+
+test fn install_media_remaster_classification_is_string_scaffolded_not_typed() -> Bool {
+  install_media_remaster_classification_is_string_scaffolded_not_typed()
+    && install_media_remaster_chmod_is_file_access_upsert_scaffold()
+}
+
+test fn srv3_seeded_install_media_remaster_applies_grub_kernel_cmdline() -> Bool {
+  install_media_remaster_script_applies_grub_cmdline(artifact: srv3_seeded_install_media_artifact)
+    && string_contains(
+      s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
+      pattern: srv3_seeded_install_media_artifact.grub_kernel_cmdline as String,
+    )
+    && string_contains(
+      s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
+      pattern: "gunbc-content-hash",
+    )
+    && string_contains(
+      s: install_media_remaster_script(artifact: srv3_seeded_install_media_artifact),
+      pattern: "StaleRefusal",
+    )
+}
+
+test fn srv3_seeded_unattended_not_claimed_until_execution() -> Bool {
+  srv3_seeded_install_media_unattended_not_proven_yet()
+}
+
+test fn srv3_seeded_remaster_toolchain_ensure_is_privileged_gated() -> Bool {
+  srv3_seeded_install_media_remaster_toolchain_is_modeled()
+    && srv3_seeded_install_media_toolchain_ensure_is_privileged_gated()
+    && string_contains(
+      s: install_media_remaster_toolchain_ensure_script(),
+      pattern: "InstallMediaRemasterToolchainReceipt",
+    )
+    && string_contains(s: install_media_remaster_toolchain_ensure_script(), pattern: "sudo -n /usr/bin/apt-get install -y xorriso")
+    && string_contains(s: install_media_remaster_toolchain_ensure_script(), pattern: "xorriso --version")
+}

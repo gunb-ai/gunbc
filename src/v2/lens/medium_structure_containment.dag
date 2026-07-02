@@ -134,6 +134,7 @@ data medium_check_side_scan_roots: List<String> = [
 data medium_structure_exception_roster: List<String> = [
 
   "dag/gunbc/ci_workflow.dag",
+  "dag/extdeps/formats/yaml.dag",
 
   "dag/test/claim/ci_yaml_serializer_witness_test.dag",
   "dag/test/claim/ci_deploy_witness_test.dag",
@@ -171,7 +172,20 @@ data medium_structure_exception_roster: List<String> = [
   "dag/test/claim/srv3_os_install_emit_test.dag",
   "dag/test/claim/srv3_install_server_emit_test.dag",
 
-  "dag/extdeps/bmc/webui/nbd_proxy_serve.dag"
+  "dag/extdeps/bmc/webui/nbd_proxy_serve.dag",
+
+  "dag/gunbc/srv3_os_install_actuate.dag",
+
+  "dag/gunbc/shell_bash_runner.dag",
+
+  "dag/gunbc/srv3_os_install_actuator_toolchain_ensure.dag",
+
+  "dag/extdeps/os/ubuntu_install_media_fetch.dag",
+  "dag/gunbc/srv3_install_media_fetch.dag",
+  "dag/extdeps/os/ubuntu_seeded_install_media_remaster.dag",
+  "dag/gunbc/srv3_seeded_install_media.dag",
+  "dag/extdeps/bmc/serial_console.dag",
+  "dag/gunbc/srv3_install_diagnostic_checklist.dag"
 ]
 
 fn char_eq(a: Char, b: Char) -> Bool {
