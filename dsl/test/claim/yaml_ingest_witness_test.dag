@@ -19,7 +19,7 @@ fn witness_scalar_mapping_round_trips() -> Bool {
   round_trips(v: yaml_mapping(entries: [
     kv(key: "name", value: yaml_string(s: "ci")),
     kv(key: "fetch-depth", value: yaml_int(n: 0)),
-    kv(key: "quoted", value: yaml_bool(value: true))
+    kv(key: "quoted", value: yaml_bool(b: true))
   ]))
 }
 

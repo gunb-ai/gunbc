@@ -1,0 +1,37 @@
+module test.claim.yaml_debug
+
+import extdeps.languages.yaml.ingest { yaml_parse_block, ParsedYamlBlock, YamlBlockRejected, yaml_lines_from_source, yaml_line_at }
+import gunbc.ci_yaml_emit { expected_ci_yml }
+
+fn debug_ni() -> Int {
+  let lines = yaml_lines_from_source(src: expected_ci_yml())
+  match yaml_parse_block(lines: lines, index: 0, indent: 0) {
+    ParsedYamlBlock { value: v, next_index: ni } => ni
+    YamlBlockRejected { reason: r } => -1
+  }
+}
+
+fn debug_total_lines() -> Int {
+  yaml_lines_from_source(src: expected_ci_yml()).length()
+}
+
+test fn debug_ni_holds() -> Bool {
+  debug_ni() == debug_total_lines()
+}
+
+test fn debug_ni_lt_100() -> Bool { debug_ni() < 100 }
+test fn debug_ni_lt_50() -> Bool { debug_ni() < 50 }
+test fn debug_ni_lt_25() -> Bool { debug_ni() < 25 }
+test fn debug_ni_lt_10() -> Bool { debug_ni() < 10 }
+test fn debug_ni_lt_5() -> Bool { debug_ni() < 5 }
+
+test fn debug_ni_lt_37() -> Bool { debug_ni() < 37 }
+test fn debug_ni_lt_31() -> Bool { debug_ni() < 31 }
+test fn debug_ni_lt_28() -> Bool { debug_ni() < 28 }
+test fn debug_ni_lt_26() -> Bool { debug_ni() < 26 }
+
+test fn debug_ni_lt_34() -> Bool { debug_ni() < 34 }
+test fn debug_ni_lt_32() -> Bool { debug_ni() < 32 }
+
+test fn debug_ni_eq_32() -> Bool { debug_ni() == 32 }
+test fn debug_ni_eq_33() -> Bool { debug_ni() == 33 }

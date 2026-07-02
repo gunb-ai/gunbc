@@ -129,7 +129,9 @@ fn yaml_parse_scalar_text(text: String) -> YamlValue {
 }
 
 fn yaml_collect_literal_lines_from(lines: List<String>, index: Int, content_indent: Int, acc: List<String>) -> YamlLiteralCollectResult {
-  if yaml_has_line_at(lines: lines, index: index) && (yaml_indent_at(lines: lines, index: index) == content_indent) {
+  if yaml_has_line_at(lines: lines, index: index) && (yaml_line_at(lines: lines, index: index) == "") {
+    yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: content_indent, acc: concat(acc, [""]))
+  } else if yaml_has_line_at(lines: lines, index: index) && (yaml_indent_at(lines: lines, index: index) >= content_indent) {
     let stripped = yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: content_indent)
     yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: content_indent, acc: concat(acc, [stripped]))
   } else {
@@ -197,16 +199,18 @@ fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: 
 }
 
 fn yaml_parse_mapping_entries(lines: List<String>, index: Int, indent: Int, acc: List<YamlKeyValue>) -> YamlBlockResult {
-  if yaml_has_line_at(lines: lines, index: index) &&
-    (yaml_indent_at(lines: lines, index: index) == indent) &&
-    !starts_with(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent), prefix: "- ") {
+  if !yaml_has_line_at(lines: lines, index: index) {
+    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: index }
+  } else if yaml_indent_at(lines: lines, index: index) != indent {
+    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: index }
+  } else if starts_with(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent), prefix: "- ") {
+    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: index }
+  } else {
     match yaml_parse_mapping_entry(lines: lines, index: index, indent: indent) {
       ParsedYamlEntry { entry: e, next_index: ni } =>
         yaml_parse_mapping_entries(lines: lines, index: ni, indent: indent, acc: concat(acc, [e]))
       YamlEntryRejected { reason: r } => YamlBlockRejected { reason: r }
     }
-  } else {
-    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: index }
   }
 }
 
@@ -233,16 +237,18 @@ fn yaml_parse_seq_item(lines: List<String>, index: Int, indent: Int) -> YamlSeqI
 }
 
 fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<YamlValue>) -> YamlBlockResult {
-  if yaml_has_line_at(lines: lines, index: index) &&
-    (yaml_indent_at(lines: lines, index: index) == indent) &&
-    starts_with(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent), prefix: "- ") {
+  if !yaml_has_line_at(lines: lines, index: index) {
+    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: index }
+  } else if yaml_indent_at(lines: lines, index: index) != indent {
+    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: index }
+  } else if !starts_with(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent), prefix: "- ") {
+    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: index }
+  } else {
     match yaml_parse_seq_item(lines: lines, index: index, indent: indent) {
       ParsedYamlSeqItem { value: v, next_index: ni } =>
         yaml_parse_seq_items(lines: lines, index: ni, indent: indent, acc: concat(acc, [v]))
       YamlSeqItemRejected { reason: r } => YamlBlockRejected { reason: r }
     }
-  } else {
-    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: index }
   }
 }
 
