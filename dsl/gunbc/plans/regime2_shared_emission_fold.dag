@@ -18,7 +18,7 @@ fn regime2_shared_emission_fold_body() -> List<MarkdownBlock> {
       header: row(cells: [cell(text: "emitter"), cell(text: "file"), cell(text: "IR today"), cell(text: "serialize fn")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "yaml (ci.yml)"), cell(text: "`dsl/extdeps/formats/yaml.dag` + `dsl/gunbc/ci_yaml_emit.dag`"), cell(text: "`YamlValue` (a real structured IR)"), cell(text: "`serialize_yaml` — hand-rolled recursive `match` (block/flow seq, scalar quoting, indent)")]),
+        row(cells: [cell(text: "yaml (ci.yml)"), cell(text: "`dsl/extdeps/languages/yaml/types.dag` + `dsl/extdeps/languages/yaml/emit.dag` + `dsl/gunbc/ci_yaml_emit.dag`"), cell(text: "`YamlValue` (a real structured IR)"), cell(text: "`serialize_yaml` — hand-rolled recursive `match` (block/flow seq, scalar quoting, indent)")]),
         row(cells: [cell(text: "gitignore"), cell(text: "`dsl/gunbc/gitignore_emit.dag`"), cell(text: "**none** — raw `concat`"), cell(text: "`serialize_gitignore` — hand fold over `IgnoreGroup`")]),
         row(cells: [cell(text: "runner_deploy"), cell(text: "`dsl/gunbc/runner_deploy_emit.dag`"), cell(text: "**none** — raw `concat`"), cell(text: "`expected_runner_deploy_manifest` — hand fold over hosts")]),
       ],

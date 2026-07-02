@@ -1,0 +1,80 @@
+module test.claim.yaml_ingest_witness
+
+import extdeps.languages.yaml.types {
+  YamlValue, yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv
+}
+import extdeps.languages.yaml.emit { serialize_yaml }
+import extdeps.languages.yaml.ingest { ingest_yaml_source, yaml_source_parses, IngestedYaml, YamlIngestRejected }
+import gunbc.ci_yaml_emit { expected_ci_yml }
+
+fn round_trips(v: YamlValue) -> Bool {
+  let original = serialize_yaml(v: v)
+  match ingest_yaml_source(src: original) {
+    IngestedYaml { value: reparsed } => serialize_yaml(v: reparsed) == original
+    YamlIngestRejected { reason: _ } => false
+  }
+}
+
+fn witness_scalar_mapping_round_trips() -> Bool {
+  round_trips(v: yaml_mapping(entries: [
+    kv(key: "name", value: yaml_string(s: "ci")),
+    kv(key: "fetch-depth", value: yaml_int(n: 0)),
+    kv(key: "quoted", value: yaml_bool(b: true))
+  ]))
+}
+
+fn witness_nested_sequence_of_mappings_round_trips() -> Bool {
+  round_trips(v: yaml_mapping(entries: [
+    kv(key: "jobs", value: yaml_sequence(elements: [
+      yaml_mapping(entries: [
+        kv(key: "uses", value: yaml_string(s: "actions/checkout@v4")),
+        kv(key: "with", value: yaml_mapping(entries: [
+          kv(key: "fetch-depth", value: yaml_int(n: 1))
+        ]))
+      ])
+    ]))
+  ]))
+}
+
+fn witness_block_literal_round_trips() -> Bool {
+  round_trips(v: yaml_mapping(entries: [
+    kv(key: "run", value: yaml_string(s: "line one\nline two"))
+  ]))
+}
+
+fn witness_empty_string_scalar_round_trips() -> Bool {
+  round_trips(v: yaml_mapping(entries: [kv(key: "rustflags", value: yaml_string(s: ""))]))
+}
+
+fn witness_real_ci_yml_parses() -> Bool {
+  yaml_source_parses(src: expected_ci_yml())
+}
+
+fn witness_empty_document_rejected() -> Bool {
+  yaml_source_parses(src: "") == false
+}
+
+fn witness_malformed_scalar_line_rejected() -> Bool {
+  yaml_source_parses(src: "just a bare word\n") == false
+}
+
+fn witness_bad_nested_indent_rejected() -> Bool {
+  yaml_source_parses(src: "a:\n   b: 1\n") == false
+}
+
+fn witness_rejection_discriminates_from_valid() -> Bool {
+  yaml_source_parses(src: "a: 1\n") &&
+    !yaml_source_parses(src: "just a bare word\n")
+}
+
+test fn yaml_ingest_keystone_holds() -> Bool {
+  witness_scalar_mapping_round_trips() &&
+    witness_nested_sequence_of_mappings_round_trips() &&
+    witness_block_literal_round_trips() &&
+    witness_empty_string_scalar_round_trips() &&
+    witness_real_ci_yml_parses() &&
+    witness_empty_document_rejected() &&
+    witness_malformed_scalar_line_rejected() &&
+    witness_bad_nested_indent_rejected() &&
+    witness_rejection_discriminates_from_valid()
+}

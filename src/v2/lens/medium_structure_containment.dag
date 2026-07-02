@@ -134,7 +134,6 @@ data medium_check_side_scan_roots: List<String> = [
 data medium_structure_exception_roster: List<String> = [
 
   "dsl/gunbc/ci_workflow.dag",
-  "dsl/extdeps/formats/yaml.dag",
 
   "dsl/test/claim/ci_yaml_serializer_witness_test.dag",
   "dsl/test/claim/ci_deploy_witness_test.dag",

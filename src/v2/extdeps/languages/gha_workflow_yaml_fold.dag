@@ -1,6 +1,6 @@
 module v2.extdeps.languages.gha_workflow_yaml_fold
 
-import extdeps.formats.yaml { emit_inline_scalar_text }
+import extdeps.languages.yaml.emit { emit_inline_scalar_text }
 import extdeps.github.actions {
   ActionRef,
   Job,

@@ -1,9 +1,9 @@
 module v2.test.claim.gha_workflow_yaml_fold_serialize
 
-import extdeps.formats.yaml { serialize_yaml }
+import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.github.actions { Job }
 import gunbc.gha_yaml_fold_pilot { gha_fold_pilot_job }
-import gunbc.workflow_yaml_project { job_yaml }
+import extdeps.languages.yaml.gha_workflow { job_yaml }
 import v2.compiler.translate { target_serialize_source_from_model }
 import v2.extdeps.languages.gha_workflow_yaml_fold {
   gha_fold_flat_steps_wrong_emitted,

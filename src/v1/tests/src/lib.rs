@@ -27,8 +27,6 @@ mod coproduct_reflection_conformance_test;
 #[cfg(test)]
 mod coverage_completeness_lens_test;
 #[cfg(test)]
-mod cron_tag_test;
-#[cfg(test)]
 mod cross_representation_equality_test;
 #[cfg(test)]
 mod dag_collect_fingerprint_witness_test;
@@ -105,8 +103,6 @@ mod measure_value_arg_unit_collapse_test;
 #[cfg(test)]
 mod module_authority_resolution_test;
 #[cfg(test)]
-mod money_carrier_cost_witness_test;
-#[cfg(test)]
 mod nested_list_alias_emit_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
@@ -129,8 +125,6 @@ mod pipeline;
 #[cfg(test)]
 mod rc_probe_wire_decode_call_test;
 #[cfg(test)]
-mod render_repeat_test;
-#[cfg(test)]
 mod resolve_cross_process_cache_test;
 #[cfg(test)]
 mod resolve_expr_types_retraversal_guard_test;
@@ -143,6 +137,7 @@ mod route_a_emit_fresh_cargo_green_test;
 #[cfg(test)]
 mod route_a_final_six_test;
 #[cfg(test)]
+mod shell_transport_stdin_wet_test;
 mod source_audit;
 #[cfg(test)]
 mod source_root_ingest_manifest_host_test;

@@ -16,7 +16,8 @@ use v1_compiler::cli_run::{
     DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::v1_interpreter::{
-    color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
+    color_enabled, eval_data_item_value, paint, run_in_context_with_args, sgr, ExecutionMode,
+    InterpContext, Value,
 };
 
 #[derive(Clone)]
@@ -33,6 +34,10 @@ enum Runnable {
         skip_unaffected_node_frontier: bool,
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
+        spawn_width_cap: usize,
+    },
+    CompileCleanShardBatch {
+        entry_paths: Vec<String>,
         spawn_width_cap: usize,
     },
 }
@@ -223,6 +228,28 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 spawn_width_cap,
             })
         }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "RunnableCompileCleanShardBatch") => {
+            let entry_paths = match ctx.field(fields, "entry_paths") {
+                Some(v) => str_list_from_value(v, ctx)?,
+                None => {
+                    return Err(
+                        "RunnableCompileCleanShardBatch missing field `entry_paths`".to_string()
+                    )
+                }
+            };
+            let spawn_width_cap = match ctx.field(fields, "spawn_width_cap") {
+                Some(Value::Int(n)) => (*n).max(0) as usize,
+                Some(_) | None => 0,
+            };
+            Ok(Runnable::CompileCleanShardBatch {
+                entry_paths,
+                spawn_width_cap,
+            })
+        }
         other => Err(format!(
             "expected a ClaimRef record or Runnable variant, got {}",
             ctx.format_value(other)
@@ -287,6 +314,10 @@ enum BatchUnit {
         discovery_scope_dirs: Vec<String>,
         spawn_width_cap: usize,
     },
+    CompileCleanShardBatch {
+        entry_paths: Vec<String>,
+        spawn_width_cap: usize,
+    },
 }
 
 /// Partition a batch's runnables into resolve-groups, preserving first-appearance order so the
@@ -347,6 +378,13 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 skip_unaffected_node_frontier: *skip_unaffected_node_frontier,
                 exclude_substrings: exclude_substrings.clone(),
                 discovery_scope_dirs: discovery_scope_dirs.clone(),
+                spawn_width_cap: *spawn_width_cap,
+            }),
+            Runnable::CompileCleanShardBatch {
+                entry_paths,
+                spawn_width_cap,
+            } => units.push(BatchUnit::CompileCleanShardBatch {
+                entry_paths: entry_paths.clone(),
                 spawn_width_cap: *spawn_width_cap,
             }),
         }
@@ -436,6 +474,15 @@ fn run_batch_unit(
             skip_unaffected_node_frontier,
             exclude_substrings,
             discovery_scope_dirs,
+            spawn_width,
+            spawn_width_cap,
+        )],
+        BatchUnit::CompileCleanShardBatch {
+            entry_paths,
+            spawn_width_cap,
+        } => vec![run_compile_clean_shard_batch_node(
+            &source_roots,
+            entry_paths,
             spawn_width,
             spawn_width_cap,
         )],
@@ -753,6 +800,150 @@ fn emit_slowest_witness_attribution(source_roots: &[String], summary: &Discovery
     }
 }
 
+const COMPILE_CLEAN_SHARD_TRANSPORT: &str = "dsl/tools/dsl_compile_clean_shard_transport.dag";
+const PERTURB_SHARD_BROKEN_SOURCE_DATA: &str = "broken_shard_module_source";
+
+fn perturb_shard_broken_module_source(source_roots: &[String]) -> Result<String, String> {
+    let (graph, source_indices) = resolve_entry_graph(source_roots, COMPILE_CLEAN_SHARD_TRANSPORT)
+        .map_err(|msg| format!("resolve {COMPILE_CLEAN_SHARD_TRANSPORT}: {msg}"))?;
+    let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Hermetic);
+    let value = eval_data_item_value(&ctx, PERTURB_SHARD_BROKEN_SOURCE_DATA).map_err(|e| {
+        format!("eval {PERTURB_SHARD_BROKEN_SOURCE_DATA} from {COMPILE_CLEAN_SHARD_TRANSPORT}: {e}")
+    })?;
+    match value {
+        Some(Value::Str(s)) => Ok(s),
+        Some(other) => Err(format!(
+            "{PERTURB_SHARD_BROKEN_SOURCE_DATA} is {}, not String",
+            ctx.format_value(&other)
+        )),
+        None => Err(format!(
+            "{PERTURB_SHARD_BROKEN_SOURCE_DATA} not found in {COMPILE_CLEAN_SHARD_TRANSPORT}"
+        )),
+    }
+}
+
+fn run_single_shard_compile(ctx: &InterpContext, entry_path: &str) -> Result<bool, String> {
+    let value = run_in_context_with_args(
+        ctx,
+        "run_shard_compile",
+        &[(
+            Some("entry_rel_path".to_string()),
+            Value::Str(entry_path.to_string()),
+        )],
+        false,
+    )
+    .map_err(|e| format!("run_shard_compile({entry_path}): {e}"))?;
+    match value {
+        Value::Bool(b) => Ok(b),
+        other => Err(format!(
+            "run_shard_compile({entry_path}) returned {}, not Bool",
+            ctx.format_value(&other)
+        )),
+    }
+}
+
+fn run_compile_clean_shard_batch_node(
+    source_roots: &[String],
+    entry_paths: Vec<String>,
+    spawn_width: usize,
+    spawn_width_cap: usize,
+) -> ClaimResult {
+    let width = spawn_width.max(1).min(spawn_width_cap.max(1));
+    let shard_count = entry_paths.len();
+    let label = format!("compile-clean-shard-batch[{shard_count} modules, width={width}]");
+    let batch_start = Instant::now();
+
+    if entry_paths.is_empty() {
+        return ClaimResult {
+            function: label,
+            ok: false,
+            detail: "compile-clean-shard:empty entry_paths — fail-closed".to_string(),
+            wall_nanos: batch_start.elapsed().as_nanos(),
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: 0,
+        };
+    }
+
+    let mut shards: Vec<Vec<String>> = vec![Vec::new(); width];
+    for (i, path) in entry_paths.iter().enumerate() {
+        shards[i % width].push(path.clone());
+    }
+
+    let mut handles = Vec::new();
+    for shard in shards {
+        if shard.is_empty() {
+            continue;
+        }
+        let roots = source_roots.to_vec();
+        handles.push(thread::spawn(move || {
+            let (graph, source_indices) =
+                match resolve_entry_graph(&roots, COMPILE_CLEAN_SHARD_TRANSPORT) {
+                    Ok(pair) => pair,
+                    Err(msg) => {
+                        return vec![format!(
+                            "resolve failed for {COMPILE_CLEAN_SHARD_TRANSPORT}: {msg}"
+                        )];
+                    }
+                };
+            let ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
+            let mut failures = Vec::new();
+            for path in shard {
+                match run_single_shard_compile(&ctx, &path) {
+                    Ok(true) => {}
+                    Ok(false) => failures.push(format!("{path}: compile returned false")),
+                    Err(msg) => failures.push(msg),
+                }
+            }
+            failures
+        }));
+    }
+
+    let mut all_failures = Vec::new();
+    for handle in handles {
+        match handle.join() {
+            Ok(failures) => all_failures.extend(failures),
+            Err(_) => all_failures.push("compile-clean shard thread panicked".to_string()),
+        }
+    }
+
+    let wall_nanos = batch_start.elapsed().as_nanos();
+    let wall_ms = wall_nanos / 1_000_000;
+    eprintln!(
+        "[measurement] compile-clean shard batch: {shard_count} module shard(s), width={width}, wall {wall_ms}ms"
+    );
+
+    if all_failures.is_empty() {
+        ClaimResult {
+            function: label,
+            ok: true,
+            detail: String::new(),
+            wall_nanos,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: shard_count,
+        }
+    } else {
+        ClaimResult {
+            function: label,
+            ok: false,
+            detail: format!(
+                "{} of {} compile-clean shard(s) failed: {}",
+                all_failures.len(),
+                shard_count,
+                all_failures.join("; ")
+            ),
+            wall_nanos,
+            resolve_nanos: 0,
+            corpus_resolve_nanos: 0,
+            corpus_eval_nanos: 0,
+            corpus_witnesses: shard_count,
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run_discovery_batch_node(
     source_roots: Vec<String>,
@@ -847,7 +1038,7 @@ fn eval_plan(
 ) -> Result<Vec<Vec<Runnable>>, String> {
     let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
-    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Hermetic);
+    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
     let plan_value = run_value(&plan_ctx, plan_function).map_err(|msg| {
         format!(
             "plan eval failed ({}::{}): {}",
@@ -1516,6 +1707,43 @@ fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> 
     fs::write(path, out).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
+const PERTURB_SHARD_BROKEN_ENTRY: &str = "_perturb_compile_clean_shard_red.dag";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum PerturbPlant {
+    SingleClaim { entry: String, function: String },
+    CompileCleanShardBrokenEntry { rel_path: String },
+}
+
+fn perturb_plant_target(batch: &[Runnable]) -> Result<PerturbPlant, String> {
+    match batch.first() {
+        Some(Runnable::CompileCleanShardBatch { .. }) => {
+            Ok(PerturbPlant::CompileCleanShardBrokenEntry {
+                rel_path: PERTURB_SHARD_BROKEN_ENTRY.to_string(),
+            })
+        }
+        Some(Runnable::SingleClaim {
+            entry, function, ..
+        }) if !entry.is_empty() => Ok(PerturbPlant::SingleClaim {
+            entry: entry.clone(),
+            function: function.clone(),
+        }),
+        _ => Err(
+            "batch 1 has no plantable gating node (SingleClaim or CompileCleanShardBatch)"
+                .to_string(),
+        ),
+    }
+}
+
+fn perturb_plant_label(plant: &PerturbPlant) -> String {
+    match plant {
+        PerturbPlant::SingleClaim { function, .. } => function.clone(),
+        PerturbPlant::CompileCleanShardBrokenEntry { rel_path } => {
+            format!("compile-clean-shard-batch[{rel_path}]")
+        }
+    }
+}
+
 fn run_perturb_check(
     source_roots: &[String],
     plan_entry: &str,
@@ -1536,14 +1764,10 @@ fn run_perturb_check(
         );
         return Err(ExitCode::from(2));
     }
-    let (gating_entry, gating_function) = match batches[0].first() {
-        Some(Runnable::SingleClaim {
-            entry, function, ..
-        }) if !entry.is_empty() => (entry.clone(), function.clone()),
-        _ => {
-            eprintln!(
-                "claim_executor: --perturb-check: batch 1 has no plantable SingleClaim gating node"
-            );
+    let plant = match perturb_plant_target(&batches[0]) {
+        Ok(p) => p,
+        Err(msg) => {
+            eprintln!("claim_executor: --perturb-check: {msg}");
             return Err(ExitCode::from(2));
         }
     };
@@ -1557,11 +1781,31 @@ fn run_perturb_check(
         return Err(ExitCode::from(2));
     }
 
-    let gating_path = remap_entry_for_temp(primary, &temp_src, &gating_entry);
-    if let Err(e) = perturb_function_to_false(&gating_path, &gating_function) {
-        let _ = fs::remove_dir_all(&tmp);
-        eprintln!("claim_executor: --perturb-check: plant gating->false failed: {e}");
-        return Err(ExitCode::from(2));
+    match &plant {
+        PerturbPlant::SingleClaim { entry, function } => {
+            let gating_path = remap_entry_for_temp(primary, &temp_src, entry);
+            if let Err(e) = perturb_function_to_false(&gating_path, function) {
+                let _ = fs::remove_dir_all(&tmp);
+                eprintln!("claim_executor: --perturb-check: plant gating->false failed: {e}");
+                return Err(ExitCode::from(2));
+            }
+        }
+        PerturbPlant::CompileCleanShardBrokenEntry { rel_path } => {
+            let broken_path = temp_src.join(rel_path);
+            let module_source = match perturb_shard_broken_module_source(source_roots) {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = fs::remove_dir_all(&tmp);
+                    eprintln!("claim_executor: --perturb-check: {e}");
+                    return Err(ExitCode::from(2));
+                }
+            };
+            if let Err(e) = fs::write(&broken_path, module_source) {
+                let _ = fs::remove_dir_all(&tmp);
+                eprintln!("claim_executor: --perturb-check: plant broken shard entry failed: {e}");
+                return Err(ExitCode::from(2));
+            }
+        }
     }
 
     let temp_root = temp_src.to_string_lossy().into_owned();
@@ -1610,6 +1854,21 @@ fn run_perturb_check(
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
                         spawn_width_cap: *spawn_width_cap,
                     },
+                    Runnable::CompileCleanShardBatch {
+                        entry_paths,
+                        spawn_width_cap,
+                    } => match &plant {
+                        PerturbPlant::CompileCleanShardBrokenEntry { rel_path } => {
+                            Runnable::CompileCleanShardBatch {
+                                entry_paths: vec![rel_path.clone()],
+                                spawn_width_cap: *spawn_width_cap,
+                            }
+                        }
+                        _ => Runnable::CompileCleanShardBatch {
+                            entry_paths: entry_paths.clone(),
+                            spawn_width_cap: *spawn_width_cap,
+                        },
+                    },
                 })
                 .collect()
         })
@@ -1617,7 +1876,7 @@ fn run_perturb_check(
 
     eprintln!(
         "claim_executor: --perturb-check: planted batch-1 gating witness `{}` -> false; re-walking",
-        gating_function
+        perturb_plant_label(&plant)
     );
     let outcome = run_walk(&[temp_root], &remapped, 1);
     let _ = fs::remove_dir_all(&tmp);
@@ -1832,6 +2091,39 @@ mod tests {
         }
     }
 
+    fn compile_clean_shard_batch() -> Runnable {
+        Runnable::CompileCleanShardBatch {
+            entry_paths: vec!["dsl/std/logic.dag".to_string()],
+            spawn_width_cap: 4,
+        }
+    }
+
+    #[test]
+    fn perturb_plant_target_prefers_shard_batch_when_first() {
+        let batch = vec![compile_clean_shard_batch(), single("gate.dag", "g1")];
+        assert_eq!(
+            perturb_plant_target(&batch),
+            Ok(PerturbPlant::CompileCleanShardBrokenEntry {
+                rel_path: PERTURB_SHARD_BROKEN_ENTRY.to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn perturb_plant_target_uses_single_claim_for_monolith_batch() {
+        let batch = vec![single(
+            "dsl/tools/dsl_compile_clean_gate.dag",
+            "dsl_compile_clean_gate_passes",
+        )];
+        assert_eq!(
+            perturb_plant_target(&batch),
+            Ok(PerturbPlant::SingleClaim {
+                entry: "dsl/tools/dsl_compile_clean_gate.dag".to_string(),
+                function: "dsl_compile_clean_gate_passes".to_string(),
+            })
+        );
+    }
+
     /// Flatten the grouped units back to the (entry, function) claims they will execute, in the
     /// order each unit runs them. `Discovery` contributes no SingleClaim pairs; an empty-entry
     /// sentinel surfaces as `("", function)`. This is the verdict-preservation oracle: grouping is
@@ -1851,6 +2143,7 @@ mod tests {
                     out.push((String::new(), function.clone()));
                 }
                 BatchUnit::Discovery { .. } => {}
+                BatchUnit::CompileCleanShardBatch { .. } => {}
             }
         }
         out
@@ -2122,6 +2415,37 @@ mod tests {
         assert_eq!(
             second[0].resolve_nanos, 0,
             "second call must cache-hit — resolve_entry_graph must NOT fire again"
+        );
+    }
+
+    #[test]
+    fn perturb_shard_broken_module_source_reads_dag_authority() {
+        let root = workspace_root();
+        let source_roots = vec![
+            root.join("dsl").to_string_lossy().into_owned(),
+            root.join("src/v2").to_string_lossy().into_owned(),
+        ];
+        std::env::set_current_dir(&root).expect("chdir to workspace root");
+        let source = perturb_shard_broken_module_source(&source_roots)
+            .expect("read broken_shard_module_source from shard transport");
+        assert!(
+            source.contains("perturb_compile_clean_red"),
+            "expected authority module body"
+        );
+        assert!(
+            source.contains("Some { value: s }"),
+            "expected broken Optional skew from perturb_module_source authority"
+        );
+    }
+
+    #[test]
+    fn compile_clean_shard_batch_empty_entry_paths_fails_closed() {
+        let result = run_compile_clean_shard_batch_node(&[], vec![], 1, 4);
+        assert!(!result.ok, "empty shard roster must fail closed");
+        assert!(
+            result.detail.contains("empty entry_paths"),
+            "detail must name empty roster: {}",
+            result.detail
         );
     }
 }

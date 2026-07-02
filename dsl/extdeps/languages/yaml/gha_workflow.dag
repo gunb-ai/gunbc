@@ -1,6 +1,6 @@
-module gunbc.workflow_yaml_project
+module extdeps.languages.yaml.gha_workflow
 
-import extdeps.formats.yaml {
+import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv,
   empty_yaml_values

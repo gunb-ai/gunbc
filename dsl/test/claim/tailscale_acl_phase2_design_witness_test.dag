@@ -7,7 +7,6 @@ import gunbc.tailscale_acl_phase2_credential {
   tailscale_acl_gcp_secret_credential_authority,
   tailscale_acl_adc_refresh_credential_authority,
   tailscale_acl_optional_impersonation_authority,
-  tailscale_acl_operator_principal,
   tailscale_acl_operator_email,
   operator_principal_member,
   operator_tailscale_acl_secret_bindings,
@@ -35,6 +34,7 @@ import gunbc.tailscale_acl_phase2_credential {
   TokenAbsent,
   TokenExpired,
 }
+import gunbc.fleet_posix_accounts { fleet_operator_gcp_iam_member, fleet_operator_email }
 import gunbc.assimilate.bmc_token_federation {
   SecretAccessBinding,
   bmc_secrets_project_id,
@@ -56,8 +56,9 @@ fn witness_secret_homed_in_gunbai_secrets() -> Bool {
 fn witness_operator_user_principal_accessor_only() -> Bool {
   operator_bindings_are_user_principal_accessor_only(bindings: operator_tailscale_acl_secret_bindings)
     && operator_tailscale_acl_secret_bindings.first().role == role_secretmanager_secret_accessor
-    && operator_principal_member() == (tailscale_acl_operator_principal as String)
-    && string_contains(s: operator_principal_member(), pattern: tailscale_acl_operator_email as String)
+    && operator_principal_member() == fleet_operator_gcp_iam_member()
+    && string_contains(s: operator_principal_member(), pattern: tailscale_acl_operator_email() as String)
+    && tailscale_acl_operator_email() == fleet_operator_email
 }
 
 fn witness_excludes_repo_scoped_wif_structurally() -> Bool {

@@ -1,0 +1,153 @@
+module test.claim.bmc_wif_delegation_chain_witness
+
+import std.logic { Bool }
+import std.types { List, String }
+import gunbc.ci_workflow { ci_workflow }
+import gunbc.assimilate.bmc_token_federation {
+  bmc_wif_attribute_condition,
+  bmc_assimilator_sa_email,
+  bmc_role_allowed,
+  bmc_token_smoke_workflow,
+  bmc_token_smoke_job
+}
+import gunbc.assimilate.bmc_wif_delegation_chain {
+  CredentialDelegationStep,
+  GhaOidcIssuance, WifTokenExchange, ServiceAccountImpersonation, SecretVersionAccess,
+  bmc_wif_canary_delegation_chain,
+  bmc_wif_signed_grants,
+  bmc_wif_bootstrap_bindings,
+  bmc_wif_canary_grant,
+  bmc_srv3_admin_access_grant,
+  wif_canary_secret_ref,
+  bmc_srv3_admin_secret_ref,
+  srv3_credential_path_options,
+  OperatorOneHourToken, ActorPinnedWorkflowDispatch, DedicatedActuatorIdentity, ExistingAssimilatorSaBinding,
+  bmc_srv3_admin_legacy_binding,
+  bound_secret_read_capabilities
+}
+import gunbc.auth.secret_access_grant { grant_is_signed, grant_is_legacy }
+import gunbc.auth.secret_ref_credential { secret_ref_credential_authority }
+import extdeps.cloud.gcp.secret_ref { secret_ref_secret_resource, secret_ref_hash_known }
+
+fn step_is(step: CredentialDelegationStep, tag: String) -> Bool {
+  match step {
+    GhaOidcIssuance { audience: _, designated_job: _ } => tag == "oidc"
+    WifTokenExchange { pool: _, provider: _, attribute_condition: _ } => tag == "exchange"
+    ServiceAccountImpersonation { impersonated_sa: _, granted_roles: _ } => tag == "impersonation"
+    SecretVersionAccess { secret_ref: _ } => tag == "secret_access"
+  }
+}
+
+test fn chain_has_four_steps_in_delegation_order() -> Bool {
+  let steps = bmc_wif_canary_delegation_chain.steps
+  steps.length() == 4
+    && step_is(step: steps.first(), tag: "oidc")
+    && step_is(step: steps.skip(n: 1).first(), tag: "exchange")
+    && step_is(step: steps.skip(n: 2).first(), tag: "impersonation")
+    && step_is(step: steps.skip(n: 3).first(), tag: "secret_access")
+}
+
+test fn exchange_step_pins_repo_attribute_condition() -> Bool {
+  match bmc_wif_canary_delegation_chain.steps.skip(n: 1).first() {
+    WifTokenExchange { pool: _, provider: _, attribute_condition: cond } =>
+      string_contains(s: cond as String, pattern: "assertion.repository == 'gunb-ai/gunbc'")
+        && cond as String == bmc_wif_attribute_condition()
+    _ => false
+  }
+}
+
+test fn impersonation_step_targets_the_scoped_assimilator_sa() -> Bool {
+  match bmc_wif_canary_delegation_chain.steps.skip(n: 2).first() {
+    ServiceAccountImpersonation { impersonated_sa: sa, granted_roles: roles } =>
+      sa == bmc_assimilator_sa_email
+        && fold(roles, init: true, f: (acc, r) => acc && bmc_role_allowed(role: r))
+    _ => false
+  }
+}
+
+test fn secret_access_step_targets_canary_not_bmc_secret() -> Bool {
+  match bmc_wif_canary_delegation_chain.steps.skip(n: 3).first() {
+    SecretVersionAccess { secret_ref: ref } =>
+      secret_ref_secret_resource(ref: ref) == secret_ref_secret_resource(ref: wif_canary_secret_ref)
+        && secret_ref_secret_resource(ref: ref) != secret_ref_secret_resource(ref: bmc_srv3_admin_secret_ref)
+    _ => false
+  }
+}
+
+test fn bootstrap_grants_zero_bindings_for_bmc_secret() -> Bool {
+  !grant_is_signed(grant: bmc_srv3_admin_access_grant)
+    && grant_is_signed(grant: bmc_wif_canary_grant)
+    && bmc_wif_signed_grants().length() == 1
+    && bmc_wif_bootstrap_bindings().length() == 1
+    && bmc_wif_bootstrap_bindings().first().members.length() == 1
+}
+
+test fn unsigned_grant_row_count_matches_zero_derived_bindings() -> Bool {
+  bmc_wif_bootstrap_bindings().length() == bmc_wif_signed_grants().length()
+    && !grant_is_signed(grant: bmc_srv3_admin_access_grant)
+}
+
+test fn secret_refs_carry_no_hash_material_they_are_pending() -> Bool {
+  !secret_ref_hash_known(ref: wif_canary_secret_ref)
+    && !secret_ref_hash_known(ref: bmc_srv3_admin_secret_ref)
+}
+
+test fn secret_refs_are_free_of_credential_shaped_strings() -> Bool {
+  let canary_res = secret_ref_secret_resource(ref: wif_canary_secret_ref)
+  let bmc_res = secret_ref_secret_resource(ref: bmc_srv3_admin_secret_ref)
+  !string_contains(s: canary_res, pattern: "0penBmc")
+    && !string_contains(s: bmc_res, pattern: "0penBmc")
+    && !string_contains(s: canary_res, pattern: "BEGIN PRIVATE KEY")
+    && !string_contains(s: bmc_res, pattern: "BEGIN PRIVATE KEY")
+}
+
+test fn srv3_credential_path_is_an_enumerated_option_space_not_a_binding() -> Bool {
+  srv3_credential_path_options.length() == 4
+    && match srv3_credential_path_options.first() { OperatorOneHourToken => true, _ => false }
+    && match srv3_credential_path_options.skip(n: 1).first() {
+         ActorPinnedWorkflowDispatch { allowed_actor: a } => a as String == "briansrls"
+         _ => false
+       }
+    && match srv3_credential_path_options.skip(n: 2).first() { DedicatedActuatorIdentity { note: _ } => true, _ => false }
+    && match srv3_credential_path_options.skip(n: 3).first() {
+         ExistingAssimilatorSaBinding { legacy_grant: g } =>
+           secret_ref_secret_resource(ref: g.secret_ref) == secret_ref_secret_resource(ref: bmc_srv3_admin_legacy_binding.secret_ref)
+         _ => false
+       }
+}
+
+test fn legacy_binding_is_flagged_out_of_band_and_not_signed_by_this_pr() -> Bool {
+  grant_is_legacy(grant: bmc_srv3_admin_legacy_binding)
+    && !grant_is_legacy(grant: bmc_wif_canary_grant)
+    && !grant_is_legacy(grant: bmc_srv3_admin_access_grant)
+    && !grant_is_signed(grant: bmc_srv3_admin_legacy_binding)
+}
+
+test fn threat_model_names_both_read_capabilities() -> Bool {
+  bound_secret_read_capabilities.length() == 2
+    && fold(bound_secret_read_capabilities, init: false, f: (acc, c) =>
+         acc || match c { MergeToMainAuthorViaDesignatedJobEdit => true, _ => false })
+    && fold(bound_secret_read_capabilities, init: false, f: (acc, c) =>
+         acc || match c { CodeExecOnRunnerHostDuringJobWindow => true, _ => false })
+}
+
+test fn main_ci_workflow_grants_no_id_token() -> Bool {
+  match ci_workflow.permissions {
+    Present { value: perms } => match perms.id_token { Absent => true, _ => false }
+    Absent => true
+  }
+}
+
+test fn secret_ref_login_handler_added_beside_factory_login_not_over_it() -> Bool {
+  secret_ref_credential_authority.module_path == "gunbc.auth.secret_ref_credential"
+    && secret_ref_credential_authority.decl_name == "secret_ref_credential"
+}
+
+test fn bmc_smoke_workflow_scopes_id_token_write_to_its_single_designated_job() -> Bool {
+  bmc_token_smoke_workflow.jobs.length() == 1
+    && bmc_token_smoke_workflow.jobs.first().id == bmc_token_smoke_job().id
+    && match bmc_token_smoke_workflow.permissions {
+         Present { value: perms } => match perms.id_token { Present { value: _ } => true, Absent => false }
+         Absent => false
+       }
+}

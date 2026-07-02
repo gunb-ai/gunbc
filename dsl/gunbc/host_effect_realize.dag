@@ -13,7 +13,7 @@ import std.realization_reconcile {
   reconcile_grounded
 }
 import extdeps.shell
-import extdeps.diagnostic.ssh { ssh_session_exec }
+import extdeps.diagnostic.ssh { ssh_session_exec, ssh_session_exec_script }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
 import std.access { AccessDecision, Permit, Deny }
@@ -85,12 +85,12 @@ fn run_shell_transport(script: String, transport: HostEffectTransport) -> ShellE
           stderr: "",
         }
       } else {
-        let result = ssh_session_exec(host: h, command: script as NonEmptyStr)
+        let result = ssh_session_exec_script(host: h, script: script)
         ShellExecObserved {
           exit_code: result.exit_code,
           success: result.success,
           stdout: result.stdout,
-          stderr: "",
+          stderr: result.stderr,
         }
       }
     }
