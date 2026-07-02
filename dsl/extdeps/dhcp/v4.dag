@@ -1,6 +1,8 @@
 module extdeps.dhcp.v4
 
-import std.types { NonEmptyStr, String, Int, Bool }
+import std.types { NonEmptyStr, String, Bool }
+import std.nat { Nat }
+import std.measure { Second, second, second_count }
 import std.error_primitives { Result, Ok, Err }
 import extdeps.dns.domain_name { HostName, DomainNameParseError, parse_host_name }
 
@@ -36,15 +38,21 @@ type DhcpAddressOrigin =
 type DhcpLeaseObservation
   = DynamicDhcpLease {
       client_hostname: DhcpClientHostNameOption12?
-      lease_time_remaining_minutes: Int
-      assignment_policy: DhcpLeaseAssignment
+      lease_time_remaining: Second
       status: DhcpLeaseStatus
     }
   | StaticDhcpReservation {
       reservation_label: NonEmptyStr
-      assignment_policy: DhcpLeaseAssignment
       status: DhcpLeaseStatus
     }
+
+fn dhcp_lease_remaining_from_cited_minutes(minutes: Nat) -> Second {
+  second(minutes * 60)
+}
+
+fn dhcp_lease_remaining_cited_minutes(remaining: Second) -> Nat {
+  second_count(remaining) / 60
+}
 
 fn dhcp_mac_pinned_reservation_not_contradictory(
   address_origin: DhcpAddressOrigin,
