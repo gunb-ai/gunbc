@@ -13,7 +13,6 @@ import gunbc.fleet_posix_accounts {
   FleetAccountOperator,
   fleet_posix_principal,
   grounded_posix_principal_name,
-  fleet_posix_account_from_name,
 }
 import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
 import gunbc.ci_deploy_target_host {
