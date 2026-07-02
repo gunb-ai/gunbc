@@ -47,7 +47,7 @@ fn zz_disc(roster: List<ScheduleWitnessEntry>) -> Runnable {
     source_roots: witness_layer_roots,
     scan_dirs: [],
     explicit_entries: roster,
-    skip_unaffected_node_frontier: false,
+    skip_unaffected_node_frontier: true,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     spawn_width_cap: 1,
