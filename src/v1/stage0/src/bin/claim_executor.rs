@@ -2437,4 +2437,15 @@ mod tests {
             "expected broken Optional skew from perturb_module_source authority"
         );
     }
+
+    #[test]
+    fn compile_clean_shard_batch_empty_entry_paths_fails_closed() {
+        let result = run_compile_clean_shard_batch_node(&[], vec![], 1, 4);
+        assert!(!result.ok, "empty shard roster must fail closed");
+        assert!(
+            result.detail.contains("empty entry_paths"),
+            "detail must name empty roster: {}",
+            result.detail
+        );
+    }
 }
