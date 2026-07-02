@@ -18,7 +18,7 @@ import v2.lens.enforcement.contract {
 }
 import v2.lens.enforcement.standing_intent {
   StandingIntent, LensFamily, Refuse,
-  standing_intent_complexity_repo_wide, standing_intent_registry
+  standing_intent_complexity_repo_wide, standing_intent_model_anemia_repo_wide, standing_intent_registry
 }
 import v2.lens.enforcement.gate {
   leg_holds, leg_fails, intent_family_holds, intent_family_verdict,
@@ -137,6 +137,14 @@ test fn complexity_repo_wide_reds_on_scope_subjects_consumer_self() -> Bool {
 test fn subjects_leg_discriminates() -> Bool {
   return leg_holds(l: intent_family_verdict(intent: synthetic_intent_with_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
     && leg_fails(l: intent_family_verdict(intent: synthetic_intent_missing_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
+}
+
+test fn model_anemia_intent_now_has_live_consumer() -> Bool {
+  return leg_holds(l: intent_family_verdict(intent: standing_intent_model_anemia_repo_wide, contracts: lens_contract_registry, receipts: coverage_receipt_registry).live_consumer)
+}
+
+test fn model_anemia_intent_holds_with_anemia_consumer() -> Bool {
+  return intent_family_holds(intent: standing_intent_model_anemia_repo_wide, contracts: lens_contract_registry, receipts: coverage_receipt_registry)
 }
 
 test fn complexity_repo_wide_intent_does_not_hold() -> Bool {

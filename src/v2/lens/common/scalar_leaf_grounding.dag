@@ -1,0 +1,160 @@
+module v2.lens.common.scalar_leaf_grounding
+
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.node {
+  Node,
+  Edge,
+  Named,
+  Positional,
+  TypeNode,
+  ComputationNode,
+  Symbol,
+  node_subtree_nodes,
+  node_offset_atom
+}
+import v2.std.node_query { edge_field_type_name }
+import v2.std.collection {
+  List,
+  Map,
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent,
+  optional_prefer_first_present,
+  empty_map,
+  map_insert,
+  map_get
+}
+import v2.std.diagnostic {
+  Diagnostic,
+  Correction,
+  Suggested,
+  Unavailable,
+  ExternalContractUnknown,
+  Outcome,
+  Accepted,
+  outcome_accepted,
+  outcome_rejected,
+  node_locus
+}
+import v2.std.witness { Holds, Witness }
+
+data scalar_leaf_grounding_authority_doc: String = "scalar_leaf_grounding is the single authority (DESIGN §2 one-concept-every-breadth) for 'a scalar leaf whose field-name has a grounded home concept it should map onto'. Two breadths instantiate this ONE mechanism: numeric magnitude (v2.lens.unit_modeling, Int leaf -> Hertz/ByteSize/BitWidth) and string concept (v2.lens.model_anemia, String/NonEmptyStr leaf -> QualifiedName). Detection is identical (reflect fields -> Named-label guard -> leaf-type check -> field-name→carrier table -> exemption set -> first-violation fold); only the leaf_type_names set and carrier_rows differ. A GroundingProfile is the parameterization that makes them instances, not forks."
+
+type CarrierRow {
+  field: Symbol
+  carrier: Symbol
+}
+
+data unknown_carrier_policy_doc: String = "UnknownCarrierPolicy: what to do with a matching scalar leaf whose field name has NO grounded carrier. unit_modeling flags it (FlagUnknownCarrier, blocked-pending-carrier); anemia ignores it (IgnoreUnknownCarrier) — only the curated decidable field-name→existing-concept subset is a wall."
+
+type UnknownCarrierPolicy
+  = FlagUnknownCarrier { reason: Symbol }
+  | IgnoreUnknownCarrier
+
+type GroundingProfile {
+  leaf_type_names: List<Symbol>
+  carrier_rows: List<CarrierRow>
+  exemptions: List<Symbol>
+  fixable_reason: Symbol
+  unknown_carrier: UnknownCarrierPolicy
+}
+
+fn sym_set(xs: List<Symbol>) -> Map<Symbol, Symbol> {
+  fold(xs, init: empty_map(), f: fn(acc, s) {
+    map_insert(m: acc, key: s, value: s)
+  })
+}
+
+fn carrier_map(rows: List<CarrierRow>) -> Map<Symbol, Symbol> {
+  fold(rows, init: empty_map(), f: fn(acc, row) {
+    map_insert(m: acc, key: row.field, value: row.carrier)
+  })
+}
+
+fn sym_member(m: Map<Symbol, Symbol>, s: Symbol) -> Bool {
+  match map_get(m: m, key: s) {
+    Accepted { value: Present { value: _ } } => true
+    _ => false
+  }
+}
+
+fn leaf_type_matches(profile: GroundingProfile, target: Node) -> Bool {
+  sym_member(m: sym_set(xs: profile.leaf_type_names), s: edge_field_type_name(target: target))
+}
+
+fn name_is_exempt(profile: GroundingProfile, name: Symbol) -> Bool {
+  sym_member(m: sym_set(xs: profile.exemptions), s: name)
+}
+
+fn carrier_for(profile: GroundingProfile, name: Symbol) -> Optional<Symbol> {
+  match map_get(m: carrier_map(rows: profile.carrier_rows), key: name) {
+    Accepted { value: Present { value: c } } => optional_present(value: c)
+    _ => optional_absent()
+  }
+}
+
+fn grounding_diagnostic(carrier_node: Node, reason: Symbol, suggested: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: reason,
+    at: node_locus(node: carrier_node),
+    correction: Suggested { node: node_offset_atom(sym: suggested) }
+  }
+}
+
+fn unknown_carrier_diagnostic(carrier_node: Node, policy: UnknownCarrierPolicy) -> Optional<Diagnostic> {
+  match policy {
+    FlagUnknownCarrier { reason: r } => optional_present(value: Diagnostic {
+      reason: r,
+      at: node_locus(node: carrier_node),
+      correction: Unavailable { reason: ExternalContractUnknown }
+    })
+    IgnoreUnknownCarrier => optional_absent()
+  }
+}
+
+fn field_grounding_violation(profile: GroundingProfile, carrier_node: Node, edge: Edge) -> Optional<Diagnostic> {
+  match edge.label {
+    Named { name: nm } =>
+      if leaf_type_matches(profile: profile, target: edge.target) {
+        if name_is_exempt(profile: profile, name: nm) {
+          optional_absent()
+        } else {
+          match carrier_for(profile: profile, name: nm) {
+            Present { value: c } =>
+              optional_present(value: grounding_diagnostic(carrier_node: carrier_node, reason: profile.fixable_reason, suggested: c))
+            Absent =>
+              unknown_carrier_diagnostic(carrier_node: carrier_node, policy: profile.unknown_carrier)
+          }
+        }
+      } else {
+        optional_absent()
+      }
+    Positional => optional_absent()
+  }
+}
+
+fn carrier_first_grounding_violation(profile: GroundingProfile, carrier_node: Node) -> Optional<Diagnostic> {
+  match carrier_node.kind {
+    TypeNode { connective: _ } =>
+      fold(carrier_node.children, init: Absent, f: fn(acc, edge) {
+        optional_prefer_first_present(left: acc, right: field_grounding_violation(profile: profile, carrier_node: carrier_node, edge: edge))
+      })
+    ComputationNode { behavior: _ } => Absent
+  }
+}
+
+fn subtree_first_grounding_violation(profile: GroundingProfile, node: Node) -> Optional<Diagnostic> {
+  fold(node_subtree_nodes(root: node), init: Absent, f: fn(acc, n) {
+    optional_prefer_first_present(left: acc, right: carrier_first_grounding_violation(profile: profile, carrier_node: n))
+  })
+}
+
+fn scalar_leaf_grounding_gate(profile: GroundingProfile, node: Node) -> Outcome<Witness<Node>> {
+  match subtree_first_grounding_violation(profile: profile, node: node) {
+    Present { value: d } => outcome_rejected(d)
+    Absent => outcome_accepted(value: Holds { value: node })
+  }
+}

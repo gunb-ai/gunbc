@@ -1,0 +1,18 @@
+module v2.test.lens_model_anemia.model_number_not_flagged
+
+import v2.lens.model_anemia { model_anemia_gate, concept_node_by_name }
+import v2.std.node { Node }
+import v2.std.collection { Present, Absent }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import extdeps.cpu.types { CpuModelCatalogRow }
+
+test fn cpu_model_number_not_flagged() -> Bool {
+  match concept_node_by_name(want: "CpuModelCatalogRow") {
+    Present { value: n } => match model_anemia_gate(node: n) {
+      Accepted { value: _, diagnostics: _ } => true
+      Rejected { diagnostics: _ } => false
+    }
+    Absent => false
+  }
+}

@@ -20,7 +20,7 @@ import v2.lens.enforcement.contract {
 }
 import v2.lens.enforcement.standing_intent {
   StandingIntent, IntentProperty, LensFamily, LensHygieneLiveness,
-  LensHygieneSelfApply, ModelAnemia, SingleAuthorityConsolidation,
+  LensHygieneSelfApply, SingleAuthorityConsolidation,
   standing_intent_complexity_repo_wide
 }
 
@@ -60,7 +60,6 @@ fn contract_answers(c: LensContract, p: IntentProperty) -> Bool {
     LensFamily { lens } => lens_id_v0_eq(left: c.entry.lens_id, right: lens)
     LensHygieneLiveness => false
     LensHygieneSelfApply => false
-    ModelAnemia => false
     SingleAuthorityConsolidation => false
   }
 }

@@ -1,0 +1,63 @@
+module v2.lens.model_anemia
+
+import v2.std.node { Node }
+import v2.std.text { String }
+import v2.std.collection {
+  List,
+  Optional,
+  Present,
+  Absent,
+  optional_present,
+  optional_absent,
+  optional_prefer_first_present
+}
+import v2.std.concept_index { concept_decl_facts_live, ConceptDecl }
+import v2.std.diagnostic { Outcome }
+import v2.std.witness { Witness }
+import v2.lens.common.scalar_leaf_grounding {
+  GroundingProfile,
+  CarrierRow,
+  UnknownCarrierPolicy,
+  IgnoreUnknownCarrier,
+  scalar_leaf_grounding_gate
+}
+import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
+
+data model_anemia_authority_doc: String = "model_anemia is the STRING-breadth instance of v2.lens.common.scalar_leaf_grounding (the numeric breadth is v2.lens.unit_modeling). It flags a bare-scalar String/NonEmptyStr leaf whose field-name has a grounded home CONCEPT (carrier) it should map onto, and suggests that concept (DESIGN §2 decompress->map->reduce / §3 single-authority). Scoped to the DECIDABLE subset: only field-names in anemia_carrier_rows flag (IgnoreUnknownCarrier), so a genuinely-opaque leaf with no grounded concept is never flagged (the wall-vs-ratchet control). Value-pattern decode ('LGA4926'->CpuSocket) is tier-2, deferred until literal-value reflection lands (only literal_fp is available today)."
+
+data anemia_carrier_rows: List<CarrierRow> = [
+  CarrierRow { field: ^module_path, carrier: ^QualifiedName },
+  CarrierRow { field: ^module_path_segment, carrier: ^QualifiedName }
+]
+
+data anemia_profile: GroundingProfile = {
+  leaf_type_names: [^String, ^NonEmptyStr],
+  carrier_rows: anemia_carrier_rows,
+  exemptions: [],
+  fixable_reason: ^model_anemia_scalar_leaf_has_grounded_concept,
+  unknown_carrier: IgnoreUnknownCarrier
+}
+
+fn model_anemia_gate(node: Node) -> Outcome<Witness<Node>> {
+  scalar_leaf_grounding_gate(profile: anemia_profile, node: node)
+}
+
+data concept_node_by_name_doc: String = "concept_node_by_name reflects a concept by simple name to its declared Node so the lens runs against a REAL live-corpus site (not a synthetic fixture). concept_decl_facts_live reflects only the RESOLVED CLOSURE, so a caller (e.g. a witness) must import the concept it names to bring it into scope."
+
+fn concept_node_match(cd: ConceptDecl, want: String) -> Optional<Node> {
+  if cd.name == want {
+    optional_present(value: cd.node)
+  } else {
+    optional_absent()
+  }
+}
+
+fn concept_node_by_name(want: String) -> Optional<Node> {
+  fold(concept_decl_facts_live(), init: Absent, f: fn(acc, cd) {
+    optional_prefer_first_present(left: acc, right: concept_node_match(cd: cd, want: want))
+  })
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: RatchetForever
+}

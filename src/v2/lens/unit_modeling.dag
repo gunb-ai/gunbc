@@ -1,5 +1,6 @@
 module v2.lens.unit_modeling
 import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
+import v2.std.text { String }
 
 import v2.std.node {
   Node,
@@ -36,6 +37,8 @@ import v2.std.diagnostic {
   node_locus
 }
 import v2.std.witness { Holds, Witness }
+
+data unit_modeling_consolidation_trigger: String = "🟡 dissolve-on: unit_modeling and v2.lens.model_anemia are the SAME mechanism at two breadths (DESIGN §2 one-concept-every-breadth) — reflect fields -> Named-label guard -> leaf-type check -> field-name-to-carrier table -> exemption set -> first-violation fold, identical; only the leaf-type token (^dag_binding_type_int vs ^String/^NonEmptyStr) and carrier_rows differ. The single authority is v2.lens.common.scalar_leaf_grounding (a GroundingProfile parameterizes each instance). model_anemia already instantiates it; unit_modeling still carries its own copy. DISSOLVES WHEN unit_modeling's internals are migrated onto scalar_leaf_grounding_gate (own PR: gated on all unit_modeling witnesses green + unit_modeling_gate output byte-identical pre/post + no always_required_lenses floor-behavior change)."
 
 type UnitFieldRow {
   field: Symbol

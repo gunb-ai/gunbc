@@ -7,7 +7,7 @@ import v2.std.collection { List }
 import v2.std.node { Symbol }
 import v2.std.text { String }
 
-type LensIdV0 = Complexity | Cost | Parallelism | EffectEnumeration | Idempotency | Provenance | UnusedParameters | StructuralResolution | TableDecisionTree
+type LensIdV0 = Complexity | Cost | Parallelism | EffectEnumeration | Idempotency | Provenance | UnusedParameters | StructuralResolution | TableDecisionTree | Anemia
 
 type LensModulePathV0 = Bound { path: String } | Unbound
 
@@ -74,6 +74,11 @@ data lens_registry_v0_table_decision_tree: LensRegistryEntryV0 = {
   module_path: Bound { path: "v2.lens.table_decision_tree" }
 }
 
+data lens_registry_v0_anemia: LensRegistryEntryV0 = {
+  lens_id: Anemia
+  module_path: Bound { path: "v2.lens.model_anemia" }
+}
+
 data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_complexity,
   lens_registry_v0_cost,
@@ -83,7 +88,8 @@ data lens_registry_v0: List<LensRegistryEntryV0> = [
   lens_registry_v0_provenance,
   lens_registry_v0_unused_parameters,
   lens_registry_v0_structural_resolution,
-  lens_registry_v0_table_decision_tree
+  lens_registry_v0_table_decision_tree,
+  lens_registry_v0_anemia
 ]
 
 fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
@@ -122,6 +128,10 @@ fn lens_id_v0_eq(left: LensIdV0, right: LensIdV0) -> Bool {
     }
     TableDecisionTree => match right {
       TableDecisionTree => true
+      _ => false
+    }
+    Anemia => match right {
+      Anemia => true
       _ => false
     }
   }

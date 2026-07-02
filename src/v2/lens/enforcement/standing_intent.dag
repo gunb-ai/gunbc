@@ -3,7 +3,7 @@ module v2.lens.enforcement.standing_intent
 import v2.std.logic { Bool }
 import v2.std.collection { List }
 import v2.std.text { String }
-import v2.lens.registry { LensIdV0, Cost }
+import v2.lens.registry { LensIdV0, Cost, Anemia }
 import v2.lens.enforcement.vocab {
   SubjectRoster,
   EnforcementMode, Advisory, AuditOnly, Blocking,
@@ -16,7 +16,6 @@ type IntentProperty
   = LensFamily { lens: LensIdV0 }
   | LensHygieneLiveness
   | LensHygieneSelfApply
-  | ModelAnemia
   | SingleAuthorityConsolidation
 
 type IntentFallback
@@ -40,7 +39,7 @@ type StandingIntent {
   fallback_when_unavailable: IntentFallback
 }
 
-data fallback_when_unavailable_dissolution_trigger: String = "🟡 dissolve-on: StandingIntent.fallback_when_unavailable is declared but not yet consumed by gate.dag — when contract_answers returns false (every non-LensFamily property today: the task-E ModelAnemia / SingleAuthorityConsolidation / LensHygiene* intents), the verdict lands a flat LegFails regardless of Refuse vs AuditOnlyWithReason. DISSOLVES WHEN task E wires those properties' consumers: on absent contract, apply the intent's fallback (AuditOnlyWithReason downgrades to an audit verdict with reason instead of a hard fail) rather than the uniform no-contract LegFails."
+data fallback_when_unavailable_dissolution_trigger: String = "🟡 dissolve-on: StandingIntent.fallback_when_unavailable is declared but not yet consumed by gate.dag — when no contract answers a property (still true for SingleAuthorityConsolidation and the LensHygiene* meta-intents), the verdict lands a flat LegFails regardless of Refuse vs AuditOnlyWithReason. model.anemia is now a real LensFamily{Anemia} consumer (task E first landing), so it no longer takes this path. DISSOLVES WHEN the remaining properties' consumers are wired: on absent contract, apply the intent's fallback (AuditOnlyWithReason downgrades to an audit verdict with reason instead of a hard fail) rather than the uniform no-contract LegFails."
 
 data whole_corpus_scope: SubjectRoster = { entries: ["dsl", "src/v1", "src/v2"] }
 
@@ -94,7 +93,7 @@ data standing_intent_lenses_self_apply_or_exempt: StandingIntent = {
 
 data standing_intent_model_anemia_repo_wide: StandingIntent = {
   id: "model.anemia.repo-wide",
-  property: ModelAnemia,
+  property: LensFamily { lens: Anemia },
   displaced_cost: "a String leaf hiding named parts bills every consumer plus the eventual de-fork; caught late in review",
   mechanism_class: "anemia lens (decompress -> map -> reduce; suggest a decomposition target)",
   recurring: true,

@@ -1,0 +1,28 @@
+module v2.test.lens_model_anemia.module_path_flagged
+
+import v2.lens.model_anemia { model_anemia_gate, concept_node_by_name }
+import v2.std.node { Node, Symbol, TypeNode, Atom }
+import v2.std.collection { Present, Absent }
+import v2.std.diagnostic { Accepted, Rejected, Diagnostic, Correction, Suggested, Unavailable, NonEmptyDiagnostics }
+import v2.std.logic { Bool }
+import std.decl_ref { DeclarationRef }
+
+fn suggested_carrier_is(diag: Diagnostic, sym: Symbol) -> Bool {
+  match diag.correction {
+    Suggested { node: n } => match n.kind {
+      TypeNode { connective: Atom { identity: id } } => id == sym
+      _ => false
+    }
+    Unavailable { reason: _ } => false
+  }
+}
+
+test fn declaration_ref_module_path_flagged_suggests_qualified_name() -> Bool {
+  match concept_node_by_name(want: "DeclarationRef") {
+    Present { value: n } => match model_anemia_gate(node: n) {
+      Rejected { diagnostics: ds } => suggested_carrier_is(diag: ds.head, sym: ^QualifiedName)
+      Accepted { value: _, diagnostics: _ } => false
+    }
+    Absent => false
+  }
+}
