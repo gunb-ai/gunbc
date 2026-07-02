@@ -52,8 +52,12 @@ fn single_module_shard_compile_program(entry_rel_path: String) -> ShellProgram {
 }
 
 fn run_shard_a_exemplar_compile() -> Bool {
+  run_shard_compile(entry_rel_path: shard_a_exemplar_entry_path)
+}
+
+fn run_shard_compile(entry_rel_path: String) -> Bool {
   let result = shell.Exec.Run(
-    script: serialize_bash(p: single_module_shard_compile_program(entry_rel_path: shard_a_exemplar_entry_path))
+    script: serialize_bash(p: single_module_shard_compile_program(entry_rel_path: entry_rel_path))
   )
   result.success
 }

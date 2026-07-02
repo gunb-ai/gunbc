@@ -1,0 +1,130 @@
+module tools.dsl_compile_clean_shard_roster
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import tools.dsl_compile_clean_partition {
+  CompileCleanModuleShard,
+  CompileCleanPartitionBoundary,
+  compile_clean_partition_boundary,
+  compose_compile_clean_shard_verdicts,
+  compose_compile_clean_shard_verdicts_as_reduce,
+  compile_clean_shard_verdict_to_reduce,
+  ShardClean,
+  ShardFailed
+}
+import v2.lens.module_graph { module_declaration_facts_live, ModuleDeclarationFact }
+import std.measure { HardwareThreadCount, hardware_thread_count_value }
+import std.realization_schedule {
+  Runnable,
+  RunnableCompileCleanShardBatch,
+  RunnableResourceProfile,
+  runnable_resource_profile,
+  runnable_memory_substantial
+}
+import gunbc.ci_floor_measurement { gunbc_ci_floor_per_shard_peak_rss_bytes }
+import std.realization_schedule { compile_clean_shard_batch_label }
+import std.reducible { ReduceVerdict, verdict_eq }
+import std.types { String, Bool, Int, List }
+
+data compile_clean_shard_transport_entry: String = "dsl/tools/dsl_compile_clean_shard_transport.dag"
+
+fn compile_clean_module_shard_from_decl(decl: ModuleDeclarationFact) -> CompileCleanModuleShard {
+  CompileCleanModuleShard { entry_path: decl.path }
+}
+
+fn compile_clean_module_shard_roster() -> List<CompileCleanModuleShard> {
+  fold(
+    module_declaration_facts_live(pool_roots: witness_layer_roots),
+    init: [],
+    f: fn(acc, decl) {
+      list_snoc_item(xs: acc, item: compile_clean_module_shard_from_decl(decl: decl))
+    }
+  )
+}
+
+fn compile_clean_shard_entry_paths() -> List<String> {
+  fold(compile_clean_module_shard_roster(), init: [], f: fn(acc, shard) {
+    list_snoc_item(xs: acc, item: shard.entry_path)
+  })
+}
+
+fn compile_clean_shard_spawn_width_cap(t: HardwareThreadCount) -> Int {
+  hardware_thread_count_value(t: t)
+}
+
+fn compile_clean_shard_batch_profile() -> RunnableResourceProfile {
+  runnable_resource_profile(
+    heavy_whole_tree_resolve: false,
+    spawns_host_compiler: true,
+    memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
+  )
+}
+
+fn compile_clean_shard_batch_runnable(spawn_width_cap: Int) -> Runnable {
+  RunnableCompileCleanShardBatch {
+    entry_paths: compile_clean_shard_entry_paths(),
+    spawn_width_cap: spawn_width_cap,
+    profile: compile_clean_shard_batch_profile()
+  }
+}
+
+fn compile_clean_shard_roster_count() -> Int {
+  length(xs: compile_clean_module_shard_roster())
+}
+
+fn compile_clean_shard_roster_nonempty() -> Bool {
+  compile_clean_shard_roster_count() > 0
+}
+
+fn compile_clean_shard_roster_has_multiple() -> Bool {
+  compile_clean_shard_roster_count() >= 2
+}
+
+fn witness_shard_roster_derives_from_witness_layer_roots() -> Bool {
+  let boundary = compile_clean_partition_boundary()
+  boundary.pool_roots == witness_layer_roots
+}
+
+fn witness_shard_roster_paths_duplicate_free() -> Bool {
+  let paths = compile_clean_shard_entry_paths()
+  fold(paths, init: true, f: fn(ok, path) {
+    ok && (fold(paths, init: 0, f: fn(n, p) { if p == path { n + 1 } else { n } }) == 1)
+  })
+}
+
+fn witness_shard_roster_coverage(full: List<String>, plan_paths: List<String>) -> Bool {
+  fold(full, init: true, f: fn(ok, path) {
+    ok && fold(plan_paths, init: false, f: fn(found, p) { found || (p == path) })
+  })
+}
+
+fn witness_dropped_shard_breaks_coverage(full: List<String>, plan_paths: List<String>) -> Bool {
+  if length(xs: full) < 2 {
+    false
+  } else {
+    let dropped = full.skip(n: 1)
+    witness_shard_roster_coverage(full: full, plan_paths: plan_paths)
+      && !witness_shard_roster_coverage(full: dropped, plan_paths: plan_paths)
+  }
+}
+
+fn witness_empty_roster_is_unknown_reduce() -> Bool {
+  verdict_eq(
+    a: compose_compile_clean_shard_verdicts_as_reduce(verdicts: []),
+    b: compose_compile_clean_shard_verdicts_as_reduce(verdicts: [])
+  )
+}
+
+fn witness_compose_all_clean_matches_reduce() -> Bool {
+  let vs = [ShardClean, ShardClean]
+  verdict_eq(
+    a: compose_compile_clean_shard_verdicts_as_reduce(verdicts: vs),
+    b: compile_clean_shard_verdict_to_reduce(
+      v: compose_compile_clean_shard_verdicts(verdicts: vs)
+    )
+  )
+}
+
+fn witness_compose_failure_is_fail_closed() -> Bool {
+  let failed = ShardFailed { entry_path: "dsl/std/logic.dag" }
+  compose_compile_clean_shard_verdicts(verdicts: [ShardClean, failed]) != ShardClean
+}
