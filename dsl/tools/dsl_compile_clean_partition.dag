@@ -48,14 +48,6 @@ fn compose_compile_clean_shard_verdicts(
   )
 }
 
-fn compile_clean_shard_verdict_from_bool(entry_path: String, ok: Bool) -> CompileCleanShardVerdict {
-  if ok {
-    ShardClean
-  } else {
-    ShardFailed { entry_path: entry_path }
-  }
-}
-
 fn compile_clean_shard_verdict_to_reduce(v: CompileCleanShardVerdict) -> ReduceVerdict {
   match v {
     ShardClean => Reduced { last_parts: 0 }

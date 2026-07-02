@@ -51,8 +51,7 @@ fn perturbed_schedule_wrong_order(correct: List<List<Runnable>>) -> List<List<Ru
 fn witness_schedule_lens_green_on_synthetic_plan() -> Bool {
   match schedule_lens_verdict_for_ci_floor(
     plan: synthetic_correct_plan(),
-    compile_gate_fn: compile_gate_fn,
-    compile_clean_sharded: false
+    compile_gate_fn: compile_gate_fn
   ) {
     Holds => true
     Violation { diagnostic: _ } => false
@@ -68,7 +67,7 @@ fn witness_schedule_lens_red_when_corpus_runs_first_on_synthetic() -> Bool {
     schedule: perturbed_schedule_wrong_order(correct: synthetic_correct_schedule())
     total: cost_account_predicted_zero()
   }
-  match schedule_lens_verdict_for_ci_floor(plan: perturbed, compile_gate_fn: compile_gate_fn, compile_clean_sharded: false) {
+  match schedule_lens_verdict_for_ci_floor(plan: perturbed, compile_gate_fn: compile_gate_fn) {
     Holds => false
     Violation { diagnostic: _ } => true
     NotApplicable { diagnostic: _ } => false
