@@ -78,6 +78,93 @@ fn keyed_patch_monoid<K, V>() -> Monoid<KeyedPatch<K, V>> {
   }
 }
 
+fn keyed_patch_fold<K, V>(contributions: List<KeyedPatch<K, V>>) -> KeyedPatch<K, V> {
+  let monoid = keyed_patch_monoid()
+  fold(contributions, init: monoid.identity, f: fn(acc, patch) {
+    monoid.op(acc, patch)
+  })
+}
+
+fn keyed_patch_singleton<K, V>(hunk: KeyedDiffHunk<K, V>) -> KeyedPatch<K, V> {
+  KeyedPatch { hunks: [hunk] }
+}
+
+fn keyed_three_way_patch_append<K, V>(
+  left: KeyedThreeWayPatch<K, V>,
+  right: KeyedThreeWayPatch<K, V>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedThreeWayPatch<K, V> {
+  fold(right.entries, init: left, f: fn(acc, incoming) {
+    keyed_three_way_patch_insert_entry(
+      patch: acc,
+      entry: incoming,
+      key_eq: key_eq,
+      value_eq: value_eq,
+    )
+  })
+}
+
+fn keyed_three_way_patch_insert_entry<K, V>(
+  patch: KeyedThreeWayPatch<K, V>,
+  entry: KeyedThreeWayEntry<K, V>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedThreeWayPatch<K, V> {
+  match fold(patch.entries, init: none, f: fn(found, existing) {
+    if key_eq(a: existing.entry_key, b: entry.entry_key) {
+      Present {
+        value: KeyedThreeWayEntry {
+          entry_key: entry.entry_key,
+          verdict: keyed_leaf_verdict_join(
+            a: existing.verdict,
+            b: entry.verdict,
+            equal: value_eq,
+          ),
+        }
+      }
+    } else {
+      found
+    }
+  }) {
+    Present { value: merged } =>
+      KeyedThreeWayPatch {
+        entries: fold(patch.entries, init: [], f: fn(kept, existing) {
+          if key_eq(a: existing.entry_key, b: entry.entry_key) {
+            concat(kept, [merged])
+          } else {
+            concat(kept, [existing])
+          }
+        }),
+      }
+    Absent =>
+      KeyedThreeWayPatch { entries: concat(patch.entries, [entry]) }
+  }
+}
+
+fn keyed_three_way_patch_monoid<K, V>(
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> Monoid<KeyedThreeWayPatch<K, V>> {
+  Monoid {
+    op: fn(left, right) {
+      keyed_three_way_patch_append(
+        left: left,
+        right: right,
+        key_eq: key_eq,
+        value_eq: value_eq,
+      )
+    },
+    identity: keyed_three_way_patch_empty(),
+  }
+}
+
+fn keyed_three_way_patch_singleton<K, V>(
+  entry: KeyedThreeWayEntry<K, V>,
+) -> KeyedThreeWayPatch<K, V> {
+  KeyedThreeWayPatch { entries: [entry] }
+}
+
 fn keyed_three_way_leaf<V>(
   base: V,
   observed: V,
@@ -97,8 +184,8 @@ fn keyed_plan_from_verdict<V>(verdict: KeyedLeafVerdict<V>) -> KeyedConvergePlan
   match verdict {
     KeyedUnchanged => KeyedPlanNoop
     KeyedApplyHunk { from: f, to: t } => KeyedPlanApply { from: f, to: t }
-    KeyedAdded { value: v } => KeyedPlanApply { from: v, to: v }
-    KeyedRemoved { value: v } => KeyedPlanApply { from: v, to: v }
+    KeyedAdded { value: v } => KeyedPlanAdd { value: v }
+    KeyedRemoved { value: v } => KeyedPlanRemove { value: v }
     KeyedConflict => KeyedPlanConflict
   }
 }
@@ -106,6 +193,8 @@ fn keyed_plan_from_verdict<V>(verdict: KeyedLeafVerdict<V>) -> KeyedConvergePlan
 fn keyed_plan_has_apply_arm<V>(plan: KeyedConvergePlan<V>) -> Bool {
   match plan {
     KeyedPlanApply { from: _, to: _ } => true
+    KeyedPlanAdd { value: _ } => true
+    KeyedPlanRemove { value: _ } => true
     KeyedPlanNoop => false
     KeyedPlanConflict => false
   }
@@ -294,6 +383,25 @@ fn keyed_two_way_row<K, V>(
   }
 }
 
+fn keyed_two_way_row_patch<K, V>(
+  wanted_key: K,
+  left: List<KeyedRow<K, V>>,
+  right: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedPatch<K, V> {
+  match keyed_two_way_row(
+    wanted_key: wanted_key,
+    left: left,
+    right: right,
+    key_eq: key_eq,
+    value_eq: value_eq,
+  ) {
+    Present { value: hunk } => keyed_patch_singleton(hunk: hunk)
+    Absent => keyed_patch_empty()
+  }
+}
+
 fn keyed_two_way_diff<K, V>(
   left: List<KeyedRow<K, V>>,
   right: List<KeyedRow<K, V>>,
@@ -301,34 +409,33 @@ fn keyed_two_way_diff<K, V>(
   value_eq: fn(V, V) -> Bool,
 ) -> KeyedPatch<K, V> {
   let keys = keyed_union_keys(a: left, b: right, key_eq: key_eq)
-  KeyedPatch {
-    hunks: fold(keys, init: [], f: fn(acc, wanted_key) {
-      match keyed_two_way_row(
+  let monoid = keyed_patch_monoid()
+  fold(keys, init: monoid.identity, f: fn(acc, wanted_key) {
+    monoid.op(
+      acc,
+      keyed_two_way_row_patch(
         wanted_key: wanted_key,
         left: left,
         right: right,
         key_eq: key_eq,
         value_eq: value_eq,
-      ) {
-        Present { value: hunk } => concat(acc, [hunk])
-        Absent => acc
-      }
-    }),
-  }
+      ),
+    )
+  })
 }
 
-fn keyed_three_way_row<K, V>(
+fn keyed_three_way_row_verdict<K, V>(
   wanted_key: K,
   base: List<KeyedRow<K, V>>,
   observed: List<KeyedRow<K, V>>,
   desired: List<KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
-) -> KeyedThreeWayEntry<K, V>? {
+) -> KeyedLeafVerdict<V> {
   let b = keyed_row_find(rows: base, wanted_key: wanted_key, key_eq: key_eq)
   let o = keyed_row_find(rows: observed, wanted_key: wanted_key, key_eq: key_eq)
   let d = keyed_row_find(rows: desired, wanted_key: wanted_key, key_eq: key_eq)
-  let verdict = match b {
+  match b {
     Present { value: brow } => match o {
       Present { value: orow } => match d {
         Present { value: drow } =>
@@ -367,10 +474,65 @@ fn keyed_three_way_row<K, V>(
       }
     }
   }
-  if keyed_leaf_is_noop(verdict: verdict) {
+}
+
+fn keyed_three_way_row_patch<K, V>(
+  wanted_key: K,
+  base: List<KeyedRow<K, V>>,
+  observed: List<KeyedRow<K, V>>,
+  desired: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedThreeWayPatch<K, V> {
+  let verdict = keyed_three_way_row_verdict(
+    wanted_key: wanted_key,
+    base: base,
+    observed: observed,
+    desired: desired,
+    key_eq: key_eq,
+    value_eq: value_eq,
+  )
+  match verdict {
+    KeyedUnchanged => keyed_three_way_patch_empty()
+    _ =>
+      keyed_three_way_patch_singleton(
+        entry: KeyedThreeWayEntry { entry_key: wanted_key, verdict: verdict },
+      )
+  }
+}
+
+fn keyed_three_way_row<K, V>(
+  wanted_key: K,
+  base: List<KeyedRow<K, V>>,
+  observed: List<KeyedRow<K, V>>,
+  desired: List<KeyedRow<K, V>>,
+  key_eq: fn(K, K) -> Bool,
+  value_eq: fn(V, V) -> Bool,
+) -> KeyedThreeWayEntry<K, V>? {
+  let patch = keyed_three_way_row_patch(
+    wanted_key: wanted_key,
+    base: base,
+    observed: observed,
+    desired: desired,
+    key_eq: key_eq,
+    value_eq: value_eq,
+  )
+  if list_length(items: patch.entries) == 0 {
     none
   } else {
-    Present { value: KeyedThreeWayEntry { entry_key: wanted_key, verdict: verdict } }
+    Present {
+      value: KeyedThreeWayEntry {
+        entry_key: wanted_key,
+        verdict: keyed_three_way_row_verdict(
+          wanted_key: wanted_key,
+          base: base,
+          observed: observed,
+          desired: desired,
+          key_eq: key_eq,
+          value_eq: value_eq,
+        ),
+      }
+    }
   }
 }
 
@@ -382,21 +544,20 @@ fn keyed_three_way_fold<K, V>(
   value_eq: fn(V, V) -> Bool,
 ) -> KeyedThreeWayPatch<K, V> {
   let keys = keyed_union_keys_three(a: base, b: observed, c: desired, key_eq: key_eq)
-  KeyedThreeWayPatch {
-    entries: fold(keys, init: [], f: fn(acc, wanted_key) {
-      match keyed_three_way_row(
+  let monoid = keyed_three_way_patch_monoid(key_eq: key_eq, value_eq: value_eq)
+  fold(keys, init: monoid.identity, f: fn(acc, wanted_key) {
+    monoid.op(
+      acc,
+      keyed_three_way_row_patch(
         wanted_key: wanted_key,
         base: base,
         observed: observed,
         desired: desired,
         key_eq: key_eq,
         value_eq: value_eq,
-      ) {
-        Present { value: entry } => concat(acc, [entry])
-        Absent => acc
-      }
-    }),
-  }
+      ),
+    )
+  })
 }
 
 fn keyed_apply_row<K, V>(
