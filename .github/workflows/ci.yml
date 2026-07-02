@@ -17,7 +17,7 @@ env:
   RUSTFLAGS: -D warnings
 jobs:
   ci:
-    runs-on: ubicloud-standard-16-arm
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 360
     steps:
       - name: Checkout
@@ -63,14 +63,14 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! (cargo build -p v1-compiler --release --features text_lookup_work_counter --bins) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
-              if ! ( CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --features text_lookup_work_counter --bins ) 2>&1 | tee "$RETRY_LOG"; then
+              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins ) 2>&1 | tee "$RETRY_LOG"; then
                 if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
-                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
+                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
                 else
                   exit 1
                 fi
@@ -98,7 +98,7 @@ jobs:
           git fetch --no-tags origin main
           "$ROOT/target/release/gunbc" run --source-root dsl --source-root src/v2 --entry dsl/tools/merge_admission_gate.dag --function main
   rust_tests:
-    runs-on: ubicloud-standard-16-arm
+    runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 360
     steps:
       - name: Checkout
@@ -152,14 +152,14 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! (cargo build -p v1-compiler --release --features text_lookup_work_counter --bins) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
-              if ! ( CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --features text_lookup_work_counter --bins ) 2>&1 | tee "$RETRY_LOG"; then
+              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins ) 2>&1 | tee "$RETRY_LOG"; then
                 if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
-                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
+                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
                 else
                   exit 1
                 fi
@@ -199,7 +199,7 @@ jobs:
           if [ -x "$BIN" ]; then "$BIN" --measure-cgroup-peak; else echo "[measurement] cgroup peak: unavailable (claim_executor not built)"; fi
         if: always()
   deploy_dashboard_srv1:
-    runs-on: ubicloud-standard-16-arm
+    runs-on: [self-hosted, linux, arm64, srv1]
     needs: [ci]
     timeout-minutes: 360
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -247,14 +247,14 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! (cargo build -p v1-compiler --release --features text_lookup_work_counter --bins) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
-              if ! ( CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --features text_lookup_work_counter --bins ) 2>&1 | tee "$RETRY_LOG"; then
+              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins ) 2>&1 | tee "$RETRY_LOG"; then
                 if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
-                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 cargo build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
+                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
                 else
                   exit 1
                 fi

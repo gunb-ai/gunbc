@@ -272,7 +272,7 @@ fn ci_deploy_job(stage: DeployStage) -> Job {
   Job {
     id: stage.id,
     name: none,
-    runner: gunbc_ci_runner_spec(),
+    runner: stage.runner,
     steps: concat(ci_prelude_steps(), [ci_deploy_step(stage: stage)]),
     needs: stage.needs,
     env: none,

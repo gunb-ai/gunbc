@@ -54,7 +54,7 @@ fn witness_ignored_paths_excluded() -> Bool {
     && path_is_ignored(path: "node_modules/pkg/index.js")
     && path_is_ignored(path: ".github/fleet-runner-deploy.manifest")
     && path_is_ignored(path: "provisioning/srv3/user-data")
-    && path_is_ignored(path: "provisioning/srv3/dnsmasq.conf")
+    && !path_is_ignored(path: "provisioning/srv3/dnsmasq.conf")
 }
 
 fn witness_registry_complete() -> Bool {

@@ -13,14 +13,21 @@ import gunbc.live_deploy.emit {
 import gunbc.ci_deploy_access {
   ci_deploy_srv1_access,
   DeployAccess,
-  deploy_access_check_observed,
+  DeployAccessActor,
+  deploy_mutation_gate,
+  deploy_mutation_gate_observed,
   deploy_access_preflight_pass_message,
   deploy_access_decision_reason,
 }
+import gunbc.ci_deploy_target_host {
+  DeployTargetHostObservation,
+}
+import std.types { String }
 import std.access { AccessDecision, Permit, Deny }
 import gunbc.host_effect {
   ShellCommand,
   HostOs,
+  NodeControlPlane,
   OneShotIdempotent,
   HostEffectTransport,
   HostEffectIntent,
@@ -31,35 +38,71 @@ import gunbc.host_effect_realize { host_effect_apply_gated }
 import std.realization_reconcile { Reconciliation, reconciliation_converged, Converged, NotConverged }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 
-fn live_deploy_ensure_dependency(
-  spec: DeploymentSpec,
-  dep: DeploymentEnsuredStep,
+fn live_deploy_mutation_denied(
+  target: NodeControlPlane,
+  script: String,
   transport: HostEffectTransport,
-  access: DeployAccess
+  gate: AccessDecision
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  host_effect_apply_gated(
-    access: access,
-    target: HostOs { node: spec.target.host },
-    effect: ShellCommand { script: deployment_ensure_dependency_script(dep: dep) },
-    policy: OneShotIdempotent,
-    transport: transport,
-    fixture_actor: Absent
-  )
+  NotConverged {
+    reason: deploy_access_decision_reason(d: gate),
+    applied: HostEffectIntent {
+      target: target,
+      effect: ShellCommand { script: script },
+      policy: OneShotIdempotent,
+      transport: transport,
+      privilege_denial: Present { value: gate },
+    },
+  }
 }
 
 fn live_deploy_fold(
   spec: DeploymentSpec,
   script: String,
   transport: HostEffectTransport,
+  access: DeployAccess,
+  fixture_actor: DeployAccessActor?,
+  fixture_host: DeployTargetHostObservation?
+) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+  let target = HostOs { node: spec.target.host }
+  let gate = deploy_mutation_gate(
+    access: access,
+    fixture_actor: fixture_actor,
+    fixture_host: fixture_host
+  )
+  match gate {
+    Deny { reason: _ } =>
+      live_deploy_mutation_denied(
+        target: target,
+        script: script,
+        transport: transport,
+        gate: gate
+      )
+    Permit =>
+      host_effect_apply_gated(
+        access: access,
+        target: target,
+        effect: ShellCommand { script: script },
+        policy: OneShotIdempotent,
+        transport: transport,
+        fixture_actor: fixture_actor
+      )
+  }
+}
+
+fn live_deploy_ensure_dependency(
+  spec: DeploymentSpec,
+  dep: DeploymentEnsuredStep,
+  transport: HostEffectTransport,
   access: DeployAccess
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
-  host_effect_apply_gated(
-    access: access,
-    target: HostOs { node: spec.target.host },
-    effect: ShellCommand { script: script },
-    policy: OneShotIdempotent,
+  live_deploy_fold(
+    spec: spec,
+    script: deployment_ensure_dependency_script(dep: dep),
     transport: transport,
-    fixture_actor: Absent
+    access: access,
+    fixture_actor: Absent,
+    fixture_host: Absent
   )
 }
 
@@ -72,7 +115,9 @@ fn live_deploy_apply_via_transport(
     spec: spec,
     script: live_deploy_apply_script_for(spec: spec),
     transport: transport,
-    access: access
+    access: access,
+    fixture_actor: Absent,
+    fixture_host: Absent
   )
 }
 
@@ -85,7 +130,9 @@ fn live_deploy_retract_via_transport(
     spec: spec,
     script: live_deploy_retract_script_for(spec: spec),
     transport: transport,
-    access: access
+    access: access,
+    fixture_actor: Absent,
+    fixture_host: Absent
   )
 }
 
@@ -98,7 +145,7 @@ fn live_deploy_access_preflight() -> Reconciliation<HostEffectIntent, HostEffect
     transport: access.transport,
     privilege_denial: none,
   }
-  let verdict = deploy_access_check_observed(access: access)
+  let verdict = deploy_mutation_gate_observed(access: access)
   match verdict {
     Permit =>
       Converged {

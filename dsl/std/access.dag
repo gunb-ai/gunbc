@@ -6,7 +6,7 @@ type AccessDecision
 
 fn decision_meet(a: AccessDecision, b: AccessDecision) -> AccessDecision {
   match a {
-    Deny { reason: _ } => Deny { reason: none }
+    Deny { reason: r } => Deny { reason: r }
     Permit => b
   }
 }

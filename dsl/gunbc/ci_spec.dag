@@ -17,7 +17,9 @@ import gunbc.commit_workflow {
 }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
+import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce { ci_floor_stamp_merge_admission_script }
+import extdeps.github.actions { RunnerSpec }
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -34,6 +36,7 @@ type DeployStage {
   function: String
   needs: List<String>
   access: DeployAccess
+  runner: RunnerSpec
 }
 
 type CiSpec {
@@ -59,6 +62,7 @@ data gunbc_ci_deploy_srv1_stage: DeployStage = {
   function: live_deploy_apply_srv1_wet_function,
   needs: ["ci"],
   access: ci_deploy_srv1_access,
+  runner: gunbc_ci_deploy_srv1_runner_spec(),
 }
 
 data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
@@ -83,7 +87,7 @@ fn ci_repo_root_shell() -> String {
 fn ci_release_build_line() -> String {
   concat(
     concat(
-      "cargo build -p v1-compiler --release --features ",
+      "\"$CARGO_HOME/bin/cargo\" build -p v1-compiler --release --features ",
       ci_release_features
     ),
     " --bins"
