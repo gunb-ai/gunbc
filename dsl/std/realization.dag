@@ -11,8 +11,6 @@ import std.realization_schedule {
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
-  RunnableCompileCleanShardBatch,
-  compile_clean_shard_batch_label,
   ScheduleWitnessEntry,
   Schedule,
   CostAccount,
