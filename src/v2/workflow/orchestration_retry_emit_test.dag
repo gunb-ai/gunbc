@@ -1,6 +1,7 @@
 module v2.workflow.orchestration_retry_emit_test
 
 import v2.compiler.emit_orchestration { orch_emit_step }
+import v2.extdeps.languages.bash_orchestration_emit { bash_orchestration_emit_medium }
 import v2.compiler.emit { emit }
 import v2.compiler.infer { InferredFacts, InferredTree }
 import v2.extdeps.languages.bash { orch_retry_emitted_command, orch_retry_target_model }
@@ -102,7 +103,7 @@ fn orch_retry_perturbed_intent() -> Step {
 }
 
 test fn orch_retry_byte_identical_to_hand_authored_holds() -> Bool {
-  match orch_emit_step(s: retry_eagain_intent()) {
+  match orch_emit_step(s: retry_eagain_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == ci_cargo_eagain_retry_core(command: retry_eagain_example_command))
         && (dg == None)
@@ -111,7 +112,7 @@ test fn orch_retry_byte_identical_to_hand_authored_holds() -> Bool {
 }
 
 test fn orch_retry_env_value_has_teeth_holds() -> Bool {
-  match orch_emit_step(s: orch_retry_perturbed_intent()) {
+  match orch_emit_step(s: orch_retry_perturbed_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: _ } =>
       source.carried != ci_cargo_eagain_retry_core(command: retry_eagain_example_command)
     Rejected { diagnostics: _ } => false

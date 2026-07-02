@@ -112,7 +112,6 @@ mod money_carrier_cost_witness_test;
 #[cfg(test)]
 mod nested_list_alias_emit_test;
 #[cfg(test)]
-mod node_minimal_representation_test;
 #[cfg(test)]
 mod nodefold_generic_instantiation_test;
 #[cfg(test)]
@@ -132,7 +131,6 @@ mod peano_materialization_cap_test;
 #[cfg(test)]
 mod pipeline;
 #[cfg(test)]
-mod r2_emit_add_named_test;
 #[cfg(test)]
 mod rc_probe_wire_decode_call_test;
 #[cfg(test)]

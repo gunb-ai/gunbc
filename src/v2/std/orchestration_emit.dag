@@ -1,0 +1,26 @@
+module v2.std.orchestration_emit
+
+import v2.std.compilers.target_model { TargetModel }
+import v2.std.node { Symbol }
+import v2.std.orchestration { Run }
+import v2.std.text { String }
+
+data orch_construct_run_rawline: Symbol = ^orch_construct_run_rawline
+data orch_construct_run_env: Symbol = ^orch_construct_run_env
+data orch_construct_seq2: Symbol = ^orch_construct_seq2
+data orch_construct_retry: Symbol = ^orch_construct_retry
+
+type OrchestrationEmitMedium {
+  authority: TargetModel
+  realize_run_rawline: fn(String) -> TargetModel
+  realize_run_env: fn(Run) -> TargetModel
+  realize_seq2: fn(String, String) -> TargetModel
+  realize_retry: fn(
+    String,
+    String,
+    String,
+    String,
+    String,
+    String
+  ) -> TargetModel
+}
