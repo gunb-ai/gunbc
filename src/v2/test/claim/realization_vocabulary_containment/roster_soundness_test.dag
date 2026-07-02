@@ -13,7 +13,7 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
-data planted_stale_roster_entry: String = "dsl/tools/_stale_migrated_off_consumer.dag"
+data planted_stale_roster_entry: String = "dag/tools/_stale_migrated_off_consumer.dag"
 
 test fn realization_vocab_roster_soundness_planted_stale_red_holds() -> Bool {
   realization_vocab_roster_sound(

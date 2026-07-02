@@ -17,7 +17,7 @@ Shell is emitted as **raw strings** everywhere — even `host_effect.dag` carrie
 
 **ADOPT:** `intent(std)` → `bash(extdeps)` via `emit(intent, Bash)`, extending the existing dispatcher.
 
-**REJECT:** a new `ShellProgram` AST — `dsl/extdeps/languages/bash/program.dag` is already rostered for dissolution ([emission-ingestion-inverse.md](emission-ingestion-inverse.md) §2).
+**REJECT:** a new `ShellProgram` AST — `dag/extdeps/languages/bash/program.dag` is already rostered for dissolution ([emission-ingestion-inverse.md](emission-ingestion-inverse.md) §2).
 
 **CUT:** host-op vocab (`EnsurePackage`/`EnableService`/`ServePort`) — single consumer (`live_deploy`) + idempotency is already a `host_effect.Policy` fact (`OneShotIdempotent`). Desugar `live_deploy` verbs **inline** to `If{Not{ExitZero{…}}, Do{…}}` intent; no minted verb.
 
@@ -41,7 +41,7 @@ Load-bearing: `host_effect.dag` is a DESIGN-named seam. **Gated** on srv3 `OsIns
 
 Shell-orchestration sites are **emit-only** (regime-2 class): no round-trip oracle. Faithfulness = **byte-identity vs the current committed emitted output** + a discriminating one-byte-perturbation RED tooth.
 
-**Critical honesty — `live_deploy`:** has **no committed artifact**. Its "drift gate" (`dsl/test/claim/live_deploy/emit_test.dag:123-128`) compares `expected_live_deploy_apply_script()` to **itself** (the emit fn) = a self-referential fabricated-green trap (#6023 disease). `live_deploy` must **freeze** its current output as a committed golden literal **before** it is provable.
+**Critical honesty — `live_deploy`:** has **no committed artifact**. Its "drift gate" (`dag/test/claim/live_deploy/emit_test.dag:123-128`) compares `expected_live_deploy_apply_script()` to **itself** (the emit fn) = a self-referential fabricated-green trap (#6023 disease). `live_deploy` must **freeze** its current output as a committed golden literal **before** it is provable.
 
 **Committed real goldens that exist:** `.github/workflows/ci.yml`, `.github/fleet-converge.sh`.
 
@@ -49,7 +49,7 @@ Shell-orchestration sites are **emit-only** (regime-2 class): no round-trip orac
 
 ## 5. Slice sequence (each gated by a frozen committed byte oracle)
 
-1. **Slice 0 — CI EAGAIN-retry cutover:** route `dsl/gunbc/ci_spec.dag` `ci_cargo_eagain_retry_core` (nested-concat blob, :68) through `render(emit(Retry,Bash))`; proven by committed `ci.yml` drift-gate staying byte-identical + existing teeth witness `orch_retry_env_value_has_teeth_holds`. Env is welded (`orch_emit_run_env_welded`, dissolves gunbc#5846) but byte-exact.
+1. **Slice 0 — CI EAGAIN-retry cutover:** route `dag/gunbc/ci_spec.dag` `ci_cargo_eagain_retry_core` (nested-concat blob, :68) through `render(emit(Retry,Bash))`; proven by committed `ci.yml` drift-gate staying byte-identical + existing teeth witness `orch_retry_env_value_has_teeth_holds`. Env is welded (`orch_emit_run_env_welded`, dissolves gunbc#5846) but byte-exact.
 2. **Slice 1 — control-flow emission (greenfield):** `If` first (new `orch_emit_step::If` arm + parameterized `orch_if_target_model` bridge + bash round-trip fixture + byte golden), then `For`/`While`. The real greenfield work + the §4 payoff for control flow.
 3. **Slice 2 — fleet_converge:** `fleet_converge_emit.dag` (~21KB) → committed golden `.github/fleet-converge.sh` — the biggest displaced cost.
 4. **Slice 3 — live_deploy:** ONLY after Q1 execution-gates clear **and** after freezing output as a committed golden. Heredoc foreign-media bodies (JS server, systemd unit) stay opaque `FailClosed` — a **permanent ratchet**, not migration debt.
@@ -57,7 +57,7 @@ Shell-orchestration sites are **emit-only** (regime-2 class): no round-trip orac
 
 ## 6. Sidecar dissolution (parallel)
 
-`dsl/extdeps/languages/bash/program.dag` (`ShellProgram`/`serialize_bash`) has **11 live importers** (`ci_spec`, `ci_yaml_validate`, `local_tidy_spec`, `dsl/tools/{build_step,dsl_compile_clean_transport,emit_determinism_transport,emit_host_transport,extdeps_external_authority_transport,layering_imports_transport}`, + 2 test witnesses). Migrate all onto the v2 bidirectional bash language, then delete `program.dag`+`serialize_bash`.
+`dag/extdeps/languages/bash/program.dag` (`ShellProgram`/`serialize_bash`) has **11 live importers** (`ci_spec`, `ci_yaml_validate`, `local_tidy_spec`, `dag/tools/{build_step,dag_compile_clean_transport,emit_determinism_transport,emit_host_transport,extdeps_external_authority_transport,layering_imports_transport}`, + 2 test witnesses). Migrate all onto the v2 bidirectional bash language, then delete `program.dag`+`serialize_bash`.
 
 Tracked in [emission-ingestion-inverse.md](emission-ingestion-inverse.md) / `emission_ingestion_inverse.dag` ("11 importers shrinking to 0") — **cross-link only, do not duplicate** the roster here.
 
@@ -70,7 +70,7 @@ Tracked in [emission-ingestion-inverse.md](emission-ingestion-inverse.md) / `emi
 ## 8. Open questions (unresolved)
 
 - **Q3:** commit to dissolving `05_emit_orchestration` dispatch into `06_translate` rules, or accept per-construct bridges as steady state?
-- **Q4:** cross-tree — `dsl/extdeps/shell/shell.dag` AND `src/v2/extdeps/shell.dag` both declare module `extdeps.shell` (flat-intern collision), and `bash_command_fold.dag:3` imports the dsl `program.dag` — resolve via `--dependency-pool-index` precedence now, or fold into the dsl/v2 consolidation thread?
+- **Q4:** cross-tree — `dag/extdeps/shell/shell.dag` AND `src/v2/extdeps/shell.dag` both declare module `extdeps.shell` (flat-intern collision), and `bash_command_fold.dag:3` imports the dag `program.dag` — resolve via `--dependency-pool-index` precedence now, or fold into the dag/v2 consolidation thread?
 
 ## Dissolution trigger (DESIGN §6)
 

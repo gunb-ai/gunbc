@@ -25,13 +25,13 @@ use crate::helpers::compile_multi_target;
 fn shared_variant_resolves_to_locally_defined_owner_not_transitive() {
     // Module that provides ATransitiveOwner (wrong candidate, sorts first alphabetically).
     let transitive = (
-        "dsl/test/disc_transitive.dag",
+        "dag/test/disc_transitive.dag",
         "module test.disc_transitive\ntype ATransitiveOwner = SharedV | TransitiveOnly",
     );
     // Source module: imports ATransitiveOwner from transitive (pollutes its type_env),
     // then locally defines ZLocalOwner (the correct owner of SharedV).
     let source = (
-        "dsl/test/disc_source.dag",
+        "dag/test/disc_source.dag",
         "module test.disc_source\n\
          import test.disc_transitive { SharedV, ATransitiveOwner }\n\
          type ZLocalOwner = SharedV | LocalOnly",
@@ -40,7 +40,7 @@ fn shared_variant_resolves_to_locally_defined_owner_not_transitive() {
     // Wrong owner → ATransitiveOwner::SharedV → type mismatch in inference → diagnostic.
     // Correct owner → ZLocalOwner::SharedV → valid, emitted code contains ZLocalOwner::SharedV.
     let consumer = (
-        "dsl/test/disc_consumer.dag",
+        "dag/test/disc_consumer.dag",
         "module test.disc_consumer\n\
          import test.disc_source { SharedV, ZLocalOwner }\n\
          fn make_shared() -> ZLocalOwner { SharedV }",
@@ -91,7 +91,7 @@ fn shared_variant_resolves_by_expected_type_not_alpha_order() {
     // ZLaterEnum defined first, AEarlyEnum second → AEarlyEnum wins scope (last-write).
     // fn make_z return type is ZLaterEnum → expected-type override must fire.
     let source = (
-        "dsl/test/disc_ambig.dag",
+        "dag/test/disc_ambig.dag",
         "module test.disc_ambig\n\
          type ZLaterEnum = SharedVarAmbig | ZLaterOnly\n\
          type AEarlyEnum = SharedVarAmbig | AEarlyOnly\n\
@@ -143,7 +143,7 @@ fn shared_variant_resolves_per_site_independently() {
     // make_early return type matches scope winner → no override, correct trivially.
     // make_late return type is ZLaterEnum → override fires for that site only.
     let source = (
-        "dsl/test/disc_per_site.dag",
+        "dag/test/disc_per_site.dag",
         "module test.disc_per_site\n\
          type ZLaterEnum = SharedVarField | ZLaterOnlyF\n\
          type AEarlyEnum = SharedVarField | AEarlyOnlyF\n\

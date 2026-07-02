@@ -4,14 +4,14 @@
 
 ## 1. Trigger: an anemic CI helper
 
-`dsl/tools/build_step.dag`'s `build_verify_echo` hand-authors bash (`echo … >&2`) **and** the GitHub-Actions `::error::` annotation prefix in one function. It fuses three separate medium authorities — the print *verb* (`echo`, bash), the *stream* (`>&2`, bash), and the *annotation format* (`::error::`, GitHub Actions, a medium layered on bash). The intent is simply *"emit an Error-severity diagnostic."* Because the medium is welded in, the code **cannot re-emit to Rust** (no stdout→stderr redirect analog; Rust uses `eprintln!`). It is medium-agnostic intent expressed in a target AST.
+`dag/tools/build_step.dag`'s `build_verify_echo` hand-authors bash (`echo … >&2`) **and** the GitHub-Actions `::error::` annotation prefix in one function. It fuses three separate medium authorities — the print *verb* (`echo`, bash), the *stream* (`>&2`, bash), and the *annotation format* (`::error::`, GitHub Actions, a medium layered on bash). The intent is simply *"emit an Error-severity diagnostic."* Because the medium is welded in, the code **cannot re-emit to Rust** (no stdout→stderr redirect analog; Rust uses `eprintln!`). It is medium-agnostic intent expressed in a target AST.
 
 ## 2. The audit: a bash-only bypass of a half-connected stack
 
 Sweep of the corpus found `.dag` consumers that import the bash-AST sidecar `extdeps.languages.bash.program` (`ShellStmt`/`ShellWord`/`serialize_bash`) to express portable intent. **11 importers at authoring time, shrinking to 0 as the bash-sidecar arc migrates them.** The prose list below is *informational* and will rot — re-grep for the live number; it is **not** the lens's enforcement set:
 
-- `dsl/tools/`: `build_step`, `host_prelude`, `dsl_compile_clean_transport`, `emit_host_transport`, `layering_imports_transport`, `extdeps_external_authority_transport` (the last landed via #5418's external-authority arc, after #5445's roster snapshot — the introduction race, reconciled by #5453)
-- `dsl/gunbc/`: `ci_yaml_validate`, `ci_spec` (the #5432 build-verification wiring)
+- `dag/tools/`: `build_step`, `host_prelude`, `dag_compile_clean_transport`, `emit_host_transport`, `layering_imports_transport`, `extdeps_external_authority_transport` (the last landed via #5418's external-authority arc, after #5445's roster snapshot — the introduction race, reconciled by #5453)
+- `dag/gunbc/`: `ci_yaml_validate`, `ci_spec` (the #5432 build-verification wiring)
 - `src/v2/workflow/`: `compiler_closure_ingest_transport`, `source_root_ingest_transport`
 
 **The lens's enforcement roster is a FROZEN grandfather set, deliberately NOT derived.** The predicate is `leak = non-edge importer AND NOT in roster`; if the roster were a live grep of current importers it would always contain every importer, `leak_count` would always be 0, and the guard would **never fire** — a vacuous lens (DESIGN §5/§6 coverage-by-illusion). The frozen list is load-bearing precisely so a *new* unrostered importer goes RED, forcing intent-migration or a conscious roster add. Do not conflate the informational prose count above (where a frozen number rots for readers) with this enforcement roster (which must be frozen to have teeth). Steady-state hardening against an *introduction race* (a sidecar importer landing while the guard's branch is cut, as #5418 did vs #5445): a **roster-completeness assertion** — the frozen roster must cover every current importer at merge time — which catches the race **without** deriving the roster (optional follow-up; #5453 already closed the one live instance).
@@ -22,10 +22,10 @@ The intent primitives **already exist** but are not wired to a realization path,
 
 | Intent (exists) | Where | Its realization (exists, **unconnected**) |
 | --- | --- | --- |
-| `Diagnostic{reason, Locus, correction}` + `Severity` + `Outcome<T>` (monoid, fail-closed) | `src/v2/std/diagnostic.dag` | `LogAnnotation` (`::error::`/`::warning::`) — `dsl/extdeps/github/log_annotations.dag` |
-| `EffectShape` (idempotency by construction) | `dsl/std/effects.dag` | — |
-| filesystem predicates (exists/mtime/kind) | `dsl/std/filesystem.dag` (+ posix/ntfs) | `find -newer` / `[ -x ]` (hand-typed) |
-| `ProcessExit` | `dsl/std/process.dag` | cli_run.rs host tap |
+| `Diagnostic{reason, Locus, correction}` + `Severity` + `Outcome<T>` (monoid, fail-closed) | `src/v2/std/diagnostic.dag` | `LogAnnotation` (`::error::`/`::warning::`) — `dag/extdeps/github/log_annotations.dag` |
+| `EffectShape` (idempotency by construction) | `dag/std/effects.dag` | — |
+| filesystem predicates (exists/mtime/kind) | `dag/std/filesystem.dag` (+ posix/ntfs) | `find -newer` / `[ -x ]` (hand-typed) |
+| `ProcessExit` | `dag/std/process.dag` | cli_run.rs host tap |
 
 The single missing seam: the medium-agnostic `Diagnostic` and its GHA realization `log_annotations` both exist, but **no `emit(Diagnostic, target)` row connects them.** `render_log_annotation` is a *hand-rolled forward emitter* — the exact thing the language layer abolished (see §3).
 
@@ -87,8 +87,8 @@ The §5 guard catches a module *importing* a target AST it shouldn't. But there 
 
 **Two faces, one leak** (DESIGN §2-horizontal):
 
-- *emit-side* — inline target syntax in a string literal outside the realization edge (`"${{ runner.temp }}"` in `dsl/gunbc/ci_workflow.dag`; `RunsOnExpression { expression: String }` 🟡 in `extdeps/github/actions.dag` — the GHA expression language modeled as an opaque `String`);
-- *check-side* — string ops over an emitted-medium value (`string_contains(expected_ci_yml(), …)`, ~30 of them in `dsl/test/claim/ci_yaml_serializer_witness_test.dag`, incl. the operator's `witness_no_runner_env_vars_accessed_via_env_context`).
+- *emit-side* — inline target syntax in a string literal outside the realization edge (`"${{ runner.temp }}"` in `dag/gunbc/ci_workflow.dag`; `RunsOnExpression { expression: String }` 🟡 in `extdeps/github/actions.dag` — the GHA expression language modeled as an opaque `String`);
+- *check-side* — string ops over an emitted-medium value (`string_contains(expected_ci_yml(), …)`, ~30 of them in `dag/test/claim/ci_yaml_serializer_witness_test.dag`, incl. the operator's `witness_no_runner_env_vars_accessed_via_env_context`).
 
 **The audit census (worst → best — the spectrum is the finding):**
 
@@ -131,7 +131,7 @@ The ② lens-residue emitters above (`serialize_yaml`, plus the `serialize_gitig
 
 ## 6. Independent §3-hygiene cleanup (not a roadmap item)
 
-Found in the same sweep, fixable now with existing authority (dispatched separately): `lit(text: "dsl")` hardcoded as a policy literal in `compiler_closure_ingest_transport` (×3) + `source_root_ingest_transport` (×1) — should fold `witness_layer_roots`, the way `layering_imports_transport`'s `source_root_flags()` already does. A §3 policy-leak (an argv carrying a literal it should receive as a parameter).
+Found in the same sweep, fixable now with existing authority (dispatched separately): `lit(text: "dag")` hardcoded as a policy literal in `compiler_closure_ingest_transport` (×3) + `source_root_ingest_transport` (×1) — should fold `witness_layer_roots`, the way `layering_imports_transport`'s `source_root_flags()` already does. A §3 policy-leak (an argv carrying a literal it should receive as a parameter).
 
 ## Dissolution trigger (DESIGN §6)
 

@@ -18,9 +18,9 @@ Three gates invoke compile-like subprocesses, each with a **distinct (source_roo
 
 | Gate | Binary | Source roots | Notes |
 |---|---|---|---|
-| `DslCompileCleanGate` | `gunbc compile` | `dsl src/v2` | `witness_layer_roots` via `dsl_compile_clean_transport.dag` |
-| `EmitDeterminismGate` | `gunbc compile` | `dsl` only | `emit_determinism_corpus_roots = ["dsl"]` — intentionally narrower scope |
-| `RegenVerifyGate` | `regen_stage0 --verify` | `src/v1 + dsl` (internal) | Different binary; verifies committed v1 seed against a fresh regen |
+| `DagCompileCleanGate` | `gunbc compile` | `dag src/v2` | `witness_layer_roots` via `dag_compile_clean_transport.dag` |
+| `EmitDeterminismGate` | `gunbc compile` | `dag` only | `emit_determinism_corpus_roots = ["dag"]` — intentionally narrower scope |
+| `RegenVerifyGate` | `regen_stage0 --verify` | `src/v1 + dag` (internal) | Different binary; verifies committed v1 seed against a fresh regen |
 
 Because each gate uses a **different (source_roots OR binary) tuple**, none of the three produce byte-identical output. There is no artifact sharing opportunity between them today. The four compile invocations are not four calls to the same pure function — they are three distinct functions.
 
@@ -32,11 +32,11 @@ The **only true redundancy** on Axis A is `EmitDeterminismGate`'s intentional or
 
 `claim_executor`'s `run_walk` runs batches sequentially. The current batch-local `SharedClaims` deduplication does not persist across batch boundaries.
 
-Eight of nine gates use `floor_gate_witness_entry = "dsl/tools/floor_effect_gate_witness.dag"` as their `.dag` claim entry (`ci_floor_plan.dag:139-143,150-151`). Only `SourceRootIngestGate` uses a different entry (`source_root_ingest_gate.dag`). The heavy-resolve serialization (`floor_heavy_resolve_chain_resource_edges`) places `RegenVerifyGate` and `EmitDeterminismGate` each in their own batch, alone, so `resolve_entry_graph` is called **4 times** on the same `floor_effect_gate_witness.dag` closure (~106 modules) per CI run:
+Eight of nine gates use `floor_gate_witness_entry = "dag/tools/floor_effect_gate_witness.dag"` as their `.dag` claim entry (`ci_floor_plan.dag:139-143,150-151`). Only `SourceRootIngestGate` uses a different entry (`source_root_ingest_gate.dag`). The heavy-resolve serialization (`floor_heavy_resolve_chain_resource_edges`) places `RegenVerifyGate` and `EmitDeterminismGate` each in their own batch, alone, so `resolve_entry_graph` is called **4 times** on the same `floor_effect_gate_witness.dag` closure (~106 modules) per CI run:
 
 | Call | Batch | Claim(s) | Resolve shared? |
 |---|---|---|---|
-| 1 | Batch 1 (compile anchor, alone) | `dsl_compile_clean_gate_passes` | — (first call) |
+| 1 | Batch 1 (compile anchor, alone) | `dag_compile_clean_gate_passes` | — (first call) |
 | 2 | Batch 2 Group A (5 negligible gates) | rust, emit_host, layering, extdeps, drift | SharedClaims within batch → 1 call for 5 claims |
 | 3 | Later batch (alone, serialized) | `regen_verify_gate_passes` | re-resolves; no cross-batch sharing |
 | 4 | Later batch (alone, serialized) | `emit_determinism_gate_passes` | re-resolves; no cross-batch sharing |
@@ -79,11 +79,11 @@ The memo does NOT apply automatically to all same-entry resolves — only to `Re
 
 | Gate | Tuple |
 |---|---|
-| `DslCompileCleanGate` | `(["dsl","src/v2"], gunbc compile)` |
-| `EmitDeterminismGate` | `(["dsl"], gunbc compile)` — ×2 oracle pair |
-| `RegenVerifyGate` | `(["src/v1","dsl"], regen_stage0 --verify)` — different binary |
+| `DagCompileCleanGate` | `(["dag","src/v2"], gunbc compile)` |
+| `EmitDeterminismGate` | `(["dag"], gunbc compile)` — ×2 oracle pair |
+| `RegenVerifyGate` | `(["src/v1","dag"], regen_stage0 --verify)` — different binary |
 
-No two gates share a tuple, so no artifact sharing is possible across gates today. Each `RunnableCompile` node is independent; `DslCompileCleanGate` and `EmitDeterminismGate` are different source-root sets and cannot share an artifact without re-introducing the narrower-vs-wider corpus skew.
+No two gates share a tuple, so no artifact sharing is possible across gates today. Each `RunnableCompile` node is independent; `DagCompileCleanGate` and `EmitDeterminismGate` are different source-root sets and cannot share an artifact without re-introducing the narrower-vs-wider corpus skew.
 
 **The EmitDeterminismGate oracle pair survives unchanged.** Its two cold compiles use the same tuple and are the empirical oracle for non-reproducible emit. Content-addressing assumes determinism; it does not prove it. Emit is KNOWN-NONDETERMINISTIC today (`v2.std.determinism` at P1), so memoizing the pair would delete the only live check for that bug (§5 coverage-by-illusion). The x2 compiles remain in any M2 shape.
 
@@ -173,6 +173,6 @@ M1 (`ResolveScopeShared` memo):
 
 M2 (`RunnableCompile`):
 - **Gated on**: `v2.std.determinism` (#5941) closing non-reproducible emit. Content-addressing the artifact is unsound until emit is deterministic. Do not land M2 before this gate closes.
-- After determinism closes: `EmitDeterminismGate` dissolves from an empirical oracle into a construction-verified witness; the 2× oracle pair becomes 1×, reducing total compiles from 4× to 3× (DslCompileClean, EmitDeterminism×1, RegenVerify each use distinct tuples and all remain necessary). Further reduction below 3× would require either collapsing two of the existing tuples to the same `(source_roots, binary)` or removing a gate — neither is in scope here.
+- After determinism closes: `EmitDeterminismGate` dissolves from an empirical oracle into a construction-verified witness; the 2× oracle pair becomes 1×, reducing total compiles from 4× to 3× (DagCompileClean, EmitDeterminism×1, RegenVerify each use distinct tuples and all remain necessary). Further reduction below 3× would require either collapsing two of the existing tuples to the same `(source_roots, binary)` or removing a gate — neither is in scope here.
 - Dissolves into the v2 scheduler (resource-aware-scheduler.md Node B/C) once the scheduler derives `Runnable.cost` from the compile node's output rather than static measurement rows.
 - Dissolves into the Realization pattern (#4867) for cross-run caching once M2's content-addressed artifact is stored on disk between runs.

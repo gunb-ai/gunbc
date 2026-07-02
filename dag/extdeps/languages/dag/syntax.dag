@@ -1,0 +1,106 @@
+module extdeps.languages.dag.syntax
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import std.syntax {
+  ItemForm, ItemFormKind, FuncForm, StructForm, EnumForm, TypeAliasForm, ModuleForm, OtherForm,
+  BodyKind,
+  ExprBody, BlockBody, TypeBody, ValueBody, NoBody,
+  ResourceBody, ServiceBody,
+  OperatorSpec, SyntaxSpec,
+  BinOp, Add, Sub, Mul, Div, Mod,
+  Eq, Ne, Lt, Gt, Le, Ge, And, Or, NullCoalesce,
+  LiteralValue, LitBool, LitNull
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/languages/dag"
+  }
+}
+
+data dag_item_forms: List<ItemForm> = [
+  ItemForm { kind: TypeAliasForm, keyword: "type", has_type_params: true, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: TypeBody },
+  ItemForm { kind: FuncForm, keyword: "fn", has_type_params: true, has_params: true,
+    has_return_type: true, return_required: true,
+    has_uses: false, body_kind: ExprBody },
+  ItemForm { kind: FuncForm, keyword: "func", has_type_params: false, has_params: true,
+    has_return_type: true, return_required: false,
+    has_uses: true, body_kind: BlockBody },
+  ItemForm { kind: OtherForm, keyword: "resource", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: ResourceBody },
+  ItemForm { kind: OtherForm, keyword: "service", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: ServiceBody },
+  ItemForm { kind: OtherForm, keyword: "data", has_type_params: false, has_params: false,
+    has_return_type: false, return_required: false,
+    has_uses: false, body_kind: ValueBody },
+  ItemForm { kind: OtherForm, keyword: "pattern", has_type_params: false, has_params: true,
+    has_return_type: true, return_required: false,
+    has_uses: true, body_kind: BlockBody },
+  ItemForm { kind: OtherForm, keyword: "interface", has_type_params: false, has_params: true,
+    has_return_type: true, return_required: false,
+    has_uses: false, body_kind: BlockBody }
+]
+
+data dag_keyword_literals: Map<String, LiteralValue> = {
+  "true": LitBool { value: true },
+  "false": LitBool { value: false },
+  "none": LitNull,
+  "null": LitNull
+}
+
+data dag_keyword_set: Map<String, Bool> = {
+  "module": true, "import": true, "type": true, "fn": true, "func": true,
+  "resource": true, "service": true, "data": true,
+  "interface": true, "pipeline": true, "profile": true, "pattern": true,
+  "let": true, "return": true, "match": true, "if": true, "then": true, "else": true,
+  "for": true, "in": true, "where": true, "with": true,
+  "true": true, "false": true, "none": true, "null": true,
+  "acquire": true, "release": true, "capability": true, "operation": true,
+  "input": true, "output": true,
+  "idempotent": true, "readonly": true, "hermetic": true
+}
+
+data dag_non_name_keywords: Map<String, Bool> = {
+  "true": true, "false": true, "none": true, "null": true,
+  "acquire": true, "release": true
+}
+
+data dag_operators: List<OperatorSpec> = [
+  OperatorSpec { symbol: "||", left_bp: 5, right_bp: 6, binop: Or, algebra_field: none },
+  OperatorSpec { symbol: "&&", left_bp: 7, right_bp: 8, binop: And, algebra_field: none },
+  OperatorSpec { symbol: "??", left_bp: 8, right_bp: 9, binop: NullCoalesce, algebra_field: none },
+  OperatorSpec { symbol: "==", left_bp: 9, right_bp: 10, binop: Eq, algebra_field: none },
+  OperatorSpec { symbol: "!=", left_bp: 9, right_bp: 10, binop: Ne, algebra_field: none },
+  OperatorSpec { symbol: "<", left_bp: 11, right_bp: 12, binop: Lt, algebra_field: none },
+  OperatorSpec { symbol: ">", left_bp: 11, right_bp: 12, binop: Gt, algebra_field: none },
+  OperatorSpec { symbol: "<=", left_bp: 11, right_bp: 12, binop: Le, algebra_field: none },
+  OperatorSpec { symbol: ">=", left_bp: 11, right_bp: 12, binop: Ge, algebra_field: none },
+  OperatorSpec { symbol: "+", left_bp: 13, right_bp: 14, binop: Add, algebra_field: none },
+  OperatorSpec { symbol: "-", left_bp: 13, right_bp: 14, binop: Sub, algebra_field: none },
+  OperatorSpec { symbol: "*", left_bp: 15, right_bp: 16, binop: Mul, algebra_field: none },
+  OperatorSpec { symbol: "/", left_bp: 15, right_bp: 16, binop: Div, algebra_field: none },
+  OperatorSpec { symbol: "%", left_bp: 15, right_bp: 16, binop: Mod, algebra_field: none },
+  OperatorSpec { symbol: "|>", left_bp: 17, right_bp: 18, binop: none, algebra_field: none },
+  OperatorSpec { symbol: ".", left_bp: 19, right_bp: 20, binop: none, algebra_field: none }
+]
+
+data v3_supported_dag_operators: Map<String, Bool> = {
+  "||": true, "&&": true,
+  "==": true, "!=": true, "<": true, ">": true, "<=": true, ">=": true,
+  "+": true, "-": true, "*": true, "/": true,
+  "|>": true, ".": true
+}
+
+data dag_syntax_spec: SyntaxSpec = SyntaxSpec {
+  item_forms: dag_item_forms,
+  operators: dag_operators,
+  keyword_literals: dag_keyword_literals,
+  keyword_set: dag_keyword_set
+}

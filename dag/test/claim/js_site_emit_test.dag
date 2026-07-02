@@ -1,0 +1,132 @@
+module test.claim.js_site_emit
+
+import examples.js_site {
+  JsSitePage,
+  js_site_pages,
+  js_site_page_count,
+  Home,
+  About,
+  Browse,
+}
+import examples.js_site_emit {
+  js_site_emit_html,
+  js_site_emit_tsx,
+  js_site_page_html,
+  js_site_page_tsx,
+  js_site_html_artifact_path,
+  js_site_tsx_artifact_path,
+}
+import gunbc.gunbhub_serve { gunbhub_hostile_page }
+import extdeps.languages.html { EmitOk, EmitRejected }
+import extdeps.languages.react_jsx { JsxOk, JsxRejected }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+fn js_site_hostile_page() -> JsSitePage {
+  JsSitePage {
+    id: Home,
+    path: "/hostile",
+    tsx_fn_name: "JsSiteHostilePage",
+    node: gunbhub_hostile_page(),
+  }
+}
+
+fn witness_hostile_html_rejected() -> Bool {
+  match js_site_emit_html(page: js_site_hostile_page()) {
+    EmitRejected { reason: _ } => true
+    EmitOk { html: _ } => false
+  }
+}
+
+fn witness_hostile_tsx_rejected() -> Bool {
+  match js_site_emit_tsx(page: js_site_hostile_page()) {
+    JsxRejected { reason: _ } => true
+    JsxOk { tsx: _ } => false
+  }
+}
+
+data expected_home_html: String = "<html><head><title>gunbc — Home</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><p>DAG-modeled compiler. One MarkupNode source, two realizations.</p></main></body></html>"
+
+data expected_browse_html: String = "<html><head><title>gunbc — Browse</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><ul><li><a href=\"/dag\">dag</a></li><li><a href=\"/src\">src</a></li><li><a href=\"/DESIGN.md\">DESIGN.md</a></li><li><a href=\"/ROADMAP.md\">ROADMAP.md</a></li></ul></main></body></html>"
+
+data expected_about_html: String = "<html><head><title>gunbc — About</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><p>gunbc models programs as dependency graphs. Rust is bootstrap seed.</p></main></body></html>"
+
+data expected_home_tsx: String = "export function JsSiteHomePage(): JSX.Element { return <html><head><title>gunbc — Home</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><p>DAG-modeled compiler. One MarkupNode source, two realizations.</p></main></body></html>; }"
+
+data expected_browse_tsx: String = "export function JsSiteBrowsePage(): JSX.Element { return <html><head><title>gunbc — Browse</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><ul><li><a href=\"/dag\">dag</a></li><li><a href=\"/src\">src</a></li><li><a href=\"/DESIGN.md\">DESIGN.md</a></li><li><a href=\"/ROADMAP.md\">ROADMAP.md</a></li></ul></main></body></html>; }"
+
+data expected_about_tsx: String = "export function JsSiteAboutPage(): JSX.Element { return <html><head><title>gunbc — About</title></head><body><header><h1>gunbc</h1><nav><a href=\"/\">Home</a><a href=\"/about\">About</a><a href=\"/browse\">Browse</a></nav></header><main><p>gunbc models programs as dependency graphs. Rust is bootstrap seed.</p></main></body></html>; }"
+
+fn witness_three_page_source() -> Bool {
+  js_site_page_count() == 3
+}
+
+fn witness_home_html_emit() -> Bool {
+  js_site_page_html(page: js_site_pages().first()) == expected_home_html
+}
+
+fn witness_browse_html_emit() -> Bool {
+  js_site_page_html(page: js_site_pages().skip(n: 1).first()) == expected_browse_html
+}
+
+fn witness_about_html_emit() -> Bool {
+  js_site_page_html(page: js_site_pages().skip(n: 2).first()) == expected_about_html
+}
+
+fn witness_home_tsx_emit() -> Bool {
+  js_site_page_tsx(page: js_site_pages().first()) == expected_home_tsx
+}
+
+fn witness_browse_tsx_emit() -> Bool {
+  js_site_page_tsx(page: js_site_pages().skip(n: 1).first()) == expected_browse_tsx
+}
+
+fn witness_about_tsx_emit() -> Bool {
+  js_site_page_tsx(page: js_site_pages().skip(n: 2).first()) == expected_about_tsx
+}
+
+fn artifact_matches_emit(path: String, expected: String) -> Bool {
+  let r = Filesystem.Read(path: path)
+  r.success && r.content == expected
+}
+
+fn witness_committed_home_html() -> Bool {
+  artifact_matches_emit(path: js_site_html_artifact_path(id: Home), expected: expected_home_html)
+}
+
+fn witness_committed_browse_html() -> Bool {
+  artifact_matches_emit(path: js_site_html_artifact_path(id: Browse), expected: expected_browse_html)
+}
+
+fn witness_committed_about_html() -> Bool {
+  artifact_matches_emit(path: js_site_html_artifact_path(id: About), expected: expected_about_html)
+}
+
+fn witness_committed_home_tsx() -> Bool {
+  artifact_matches_emit(path: js_site_tsx_artifact_path(id: Home), expected: expected_home_tsx)
+}
+
+fn witness_committed_browse_tsx() -> Bool {
+  artifact_matches_emit(path: js_site_tsx_artifact_path(id: Browse), expected: expected_browse_tsx)
+}
+
+fn witness_committed_about_tsx() -> Bool {
+  artifact_matches_emit(path: js_site_tsx_artifact_path(id: About), expected: expected_about_tsx)
+}
+
+test fn js_site_emit_keystone_holds() -> Bool {
+  witness_three_page_source()
+    && witness_home_html_emit()
+    && witness_browse_html_emit()
+    && witness_about_html_emit()
+    && witness_home_tsx_emit()
+    && witness_browse_tsx_emit()
+    && witness_about_tsx_emit()
+    && witness_committed_home_html()
+    && witness_committed_browse_html()
+    && witness_committed_about_html()
+    && witness_committed_home_tsx()
+    && witness_committed_browse_tsx()
+    && witness_committed_about_tsx()
+    && witness_hostile_html_rejected()
+    && witness_hostile_tsx_rejected()
+}

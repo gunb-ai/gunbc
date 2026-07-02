@@ -42,7 +42,7 @@ define the real requirement surface.
 
 ### 1.1 `ci_spec.ci_cargo_eagain_retry_core` — nested-concat bash string
 
-`dsl/gunbc/ci_spec.dag:77` builds, by a 14-deep `concat` tree, this shape (elided):
+`dag/gunbc/ci_spec.dag:77` builds, by a 14-deep `concat` tree, this shape (elided):
 
 ```bash
 BUILD_LOG=$(mktemp)
@@ -75,7 +75,7 @@ condition*, env-prefix (`CARGO_BUILD_JOBS=1`) and env-unset (`env -u RUSTC_WRAPP
 
 ### 1.2 `fleet_converge_emit` — bash-as-string-literal `Doc` projection
 
-`dsl/gunbc/fleet_converge_emit.dag` is worse: bash authored as a `List<String>` of raw lines
+`dag/gunbc/fleet_converge_emit.dag` is worse: bash authored as a `List<String>` of raw lines
 (`converge_script_header`, `host_converge_doc`, …), never even reaching `program.dag`'s AST. It
 defines **shell functions** (`decide_verdict`), uses **for-loops** (`for unit in $(systemctl
 list-units … | awk '{print $1}'); do … done`), **while-read loops** (`… | while IFS= read -r unit;

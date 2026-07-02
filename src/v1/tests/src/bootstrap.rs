@@ -45,14 +45,14 @@ fn run_self_compile_with_extra_source_roots(
     output_dir: &std::path::Path,
     extra_source_roots: &[std::path::PathBuf],
 ) -> std::process::Output {
-    let [v1_root, dsl_root] = crate::helpers::source_roots();
+    let [v1_root, dag_root] = crate::helpers::source_roots();
     let mut command = std::process::Command::new(binary);
     command
         .arg("compile")
         .arg("--source-root")
         .arg(&v1_root)
         .arg("--source-root")
-        .arg(&dsl_root);
+        .arg(&dag_root);
     for root in extra_source_roots {
         command.arg("--source-root").arg(root);
     }
@@ -665,31 +665,31 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
 
 #[test]
 #[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
-fn ci_full_dsl() {
-    ci_timing("ci_full_dsl: start");
+fn ci_full_dag() {
+    ci_timing("ci_full_dag: start");
     let ws = crate::helpers::workspace_root();
-    let dsl_dir = ws.join("dsl");
-    let mut dsl_sources: Vec<std::rc::Rc<v1_compiler::v1_compiler_compile::SourceFile>> =
+    let dag_dir = ws.join("dag");
+    let mut dag_sources: Vec<std::rc::Rc<v1_compiler::v1_compiler_compile::SourceFile>> =
         Vec::new();
-    crate::pipeline::collect_dag_sources(&ws, &dsl_dir, &mut dsl_sources);
+    crate::pipeline::collect_dag_sources(&ws, &dag_dir, &mut dag_sources);
 
     assert!(
-        !dsl_sources.is_empty(),
-        "no .dag files found in dsl/ — something is wrong"
+        !dag_sources.is_empty(),
+        "no .dag files found in dag/ — something is wrong"
     );
 
-    let dsl_result = v1_compiler::v1_compiler_compile::compile_sources(
-        std::rc::Rc::new(dsl_sources.clone()),
+    let dag_result = v1_compiler::v1_compiler_compile::compile_sources(
+        std::rc::Rc::new(dag_sources.clone()),
         v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
     );
 
-    let hard_diags: Vec<_> = crate::helpers::diagnostic_messages(&dsl_result)
+    let hard_diags: Vec<_> = crate::helpers::diagnostic_messages(&dag_result)
         .into_iter()
         .filter(|m| !m.starts_with("complexity: "))
         .collect();
     assert!(
         hard_diags.is_empty(),
-        "dsl/ compilation produced {} hard diagnostics (expected 0):\n{}",
+        "dag/ compilation produced {} hard diagnostics (expected 0):\n{}",
         hard_diags.len(),
         hard_diags
             .iter()
@@ -699,7 +699,7 @@ fn ci_full_dsl() {
             .join("\n")
     );
 
-    ci_timing(&format!("ci_full_dsl: done ({} files)", dsl_sources.len()));
+    ci_timing(&format!("ci_full_dag: done ({} files)", dag_sources.len()));
 }
 
 #[test]
@@ -770,11 +770,11 @@ fn bootstrap_l4_structural() {
         .stack_size(64 * 1024 * 1024)
         .spawn(|| {
             let ws = crate::helpers::workspace_root();
-            let weather_src = std::fs::read_to_string(ws.join("dsl/examples/weather/weather.dag"))
+            let weather_src = std::fs::read_to_string(ws.join("dag/examples/weather/weather.dag"))
                 .expect("weather.dag should exist");
 
             let result = crate::helpers::compile_dag_named(
-                "dsl/examples/weather/weather.dag",
+                "dag/examples/weather/weather.dag",
                 &weather_src,
                 v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
             );

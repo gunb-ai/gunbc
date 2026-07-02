@@ -95,7 +95,7 @@ Surveyed all 39 top-level lens modules. Each falls into one of four buckets. The
 | `identical_variant_payload` | coproduct arms with tag-not-recoverable identical payloads | merged arm | scaffold (`Unrealized`); gated on `structural_similarity`'s producer (`CarrierCloneTrigger`) |
 | `table_decision_tree` | fn-encoded total table as an if/else ladder | substrate `TotalMap`/`TotalPolicy` data row (**not** a fold — §S3 taxonomy) | scaffold (`Unrealized`); gated on the decision-tree-shape producer |
 | `cost` | decidable `(pattern → cheaper-form)` cost-recurrence entries | **RunTime**-axis rows (same `fold_node` catamorphism, different §1-time axis) | realized `WallNow`; the cost fold *is* the row's `detect` |
-| `fact_cardinality` | same fact forked across the Dsl/V2 trees (divergent cross-tree clone) | one consolidated decl (shrinking ratchet → 0) | realized; fork-family — merge needs canonical pick, so it stays a *consolidation ratchet*, not auto-apply |
+| `fact_cardinality` | same fact forked across the Dag/V2 trees (divergent cross-tree clone) | one consolidated decl (shrinking ratchet → 0) | realized; fork-family — merge needs canonical pick, so it stays a *consolidation ratchet*, not auto-apply |
 | `languages_consumer_census` | N per-language duplicate rows that should be one parameterized `LanguageSpec` | type parameter (the migration target) | realized; duplication census — a migration-progress ratchet, not an auto-applier |
 | `extdeps_shape_transport_policy` *(partial)* | `TransportFusionFork` — one endpoint identity forked across two services | one shape + N bound handlers (§3) | realized; the fusion-fork tell is fork-family (its policy-literal/dead-param tells are B-shaped deletions) |
 

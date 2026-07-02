@@ -6,11 +6,11 @@ import v2.std.logic { Bool }
 type FilesystemReadResult { content: String }
 
 func filesystem_read_dag_module_decl_holds() -> Bool {
-  let result = filesystem_read(path: "dsl/std/filesystem.dag")
+  let result = filesystem_read(path: "dag/std/filesystem.dag")
   string_contains(result.content, "module std.filesystem")
 }
 
 func filesystem_read_primitives_contract_holds() -> Bool {
-  let result = filesystem_read(path: "dsl/std/primitives.dag")
+  let result = filesystem_read(path: "dag/std/primitives.dag")
   string_contains(result.content, "filesystem_read")
 }

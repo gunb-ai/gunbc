@@ -37,7 +37,7 @@ and claim runner)** — dissolution trigger for an automated `v1-compiler run`
 TestClaim CI lane.
 
 There is **no** `ProcessExit` duplicate under `src/v2/` — canonical carrier
-remains **`dsl/std/process.dag`** only (P2 single authority). A prior test-only
+remains **`dag/std/process.dag`** only (P2 single authority). A prior test-only
 shim was removed once it had zero consumers; reintroduce only with an explicit
 Practice-4 receipt **and** a real `dag run` entry consumer, or after T-22 when
 v2 owns eval without cross-root duplication.

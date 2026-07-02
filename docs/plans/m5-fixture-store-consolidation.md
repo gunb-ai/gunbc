@@ -46,9 +46,9 @@ These three gaps are the model work the load-bearing follow-up adds to `std.cach
 
 ## 3. What this spike lands (NON-load-bearing — additive only)
 
-1. `dsl/extdeps/realization/hermetic_fixture.dag` — the two cited `CacheInterfaceCatalogFacts` rows (`hermetic_fixture_file_facts`, `hermetic_fixture_in_process_facts`), parallel to `parse_table_memo.dag` / `resolved_graph.dag`. They describe each handler **as it is today** — the fork shows up as a key_derivation divergence (`ContentAddressedByValue` + `content_verified_on_read` vs `HandAuthoredString` + not).
-2. `dsl/std/cache_identity.dag` — one additive `hermetic_fixture_artifact_kind` data decl (the shared artifact-kind both handlers realize). No fold touched (the only `match` over `CacheInterfaceProduct` is untouched).
-3. `dsl/test/claim/hermetic_fixture_realization_test.dag` — executing witness:
+1. `dag/extdeps/realization/hermetic_fixture.dag` — the two cited `CacheInterfaceCatalogFacts` rows (`hermetic_fixture_file_facts`, `hermetic_fixture_in_process_facts`), parallel to `parse_table_memo.dag` / `resolved_graph.dag`. They describe each handler **as it is today** — the fork shows up as a key_derivation divergence (`ContentAddressedByValue` + `content_verified_on_read` vs `HandAuthoredString` + not).
+2. `dag/std/cache_identity.dag` — one additive `hermetic_fixture_artifact_kind` data decl (the shared artifact-kind both handlers realize). No fold touched (the only `match` over `CacheInterfaceProduct` is untouched).
+3. `dag/test/claim/hermetic_fixture_realization_test.dag` — executing witness:
   - file handler is the content-addressed reference;
   - in-process handler is the fork **today** (RED-on-fabricated-convergence — fails closed if the row is marked converged before the fold lands);
   - both share kernel invariants (same value-shape, `MissIsDiagnostic` fail-closed);

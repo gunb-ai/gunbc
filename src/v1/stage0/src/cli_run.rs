@@ -74,7 +74,7 @@ pub const NODE_CORPUS_TYPE: &str = "NodeCorpus";
 
 // cargo's build-output dir (a `target` dir beside a Cargo.toml) is realization
 // output, not source: a corpus copy materialized under it (e.g.
-// target/func_env_semantic_baseline_corpus/dsl/**) must never enter a module
+// target/func_env_semantic_baseline_corpus/dag/**) must never enter a module
 // index alongside the tree it was copied from. A source root passed FROM
 // inside target/ is still walked — only descent into the output dir is refused.
 pub(crate) fn is_cargo_target_output_dir(
@@ -205,7 +205,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
     index
 }
 
-const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dsl/gunbc/ci_layer_roots.dag";
+const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
 
@@ -1031,7 +1031,7 @@ pub fn install_output_policy(source_roots: &[String]) {
         v1_interpreter::Verbosity::Quiet => (false, true),
         v1_interpreter::Verbosity::Normal => (false, false),
     };
-    let entry = "dsl/gunbc/output_policy.dag";
+    let entry = "dag/gunbc/output_policy.dag";
     let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
         Ok(g) => g,
         Err(_) => return,
@@ -1087,7 +1087,7 @@ pub fn install_group_syntax(source_roots: &[String]) {
     let github_actions = std::env::var("GITHUB_ACTIONS")
         .map(|v| v == "true")
         .unwrap_or(false);
-    let entry = "dsl/extdeps/render/surface.dag";
+    let entry = "dag/extdeps/render/surface.dag";
     let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
         Ok(g) => g,
         Err(_) => return,
@@ -1169,34 +1169,34 @@ pub fn make_eval_context_with_runtime_options(
     )
 }
 
-fn dsl_source_roots(source_roots: &[String]) -> Vec<String> {
-    let mut dsl: Vec<String> = source_roots
+fn dag_source_roots(source_roots: &[String]) -> Vec<String> {
+    let mut dag: Vec<String> = source_roots
         .iter()
         .filter(|r| {
             let p = Path::new(r.as_str());
-            p.ends_with("dsl") || p.file_name().is_some_and(|n| n == "dsl")
+            p.ends_with("dag") || p.file_name().is_some_and(|n| n == "dag")
         })
         .cloned()
         .collect();
     for root in source_roots {
-        let child = Path::new(root).join("dsl");
+        let child = Path::new(root).join("dag");
         if child.is_dir() {
-            dsl.push(child.to_string_lossy().into_owned());
+            dag.push(child.to_string_lossy().into_owned());
         }
     }
-    dsl.sort();
-    dsl.dedup();
-    dsl
+    dag.sort();
+    dag.dedup();
+    dag
 }
 
 pub fn precompute_whole_tree_published_mock_keys(
     source_roots: &[String],
 ) -> Result<std::collections::HashSet<String>, String> {
-    let dsl_roots = dsl_source_roots(source_roots);
-    if dsl_roots.is_empty() {
+    let dag_roots = dag_source_roots(source_roots);
+    if dag_roots.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let index = build_module_index(&dsl_roots);
+    let index = build_module_index(&dag_roots);
     // Only modules that DECLARE a `PublishedMockCase` corpus can contribute keys —
     // `resolve_published_mock_keys` reads them by exact type annotation. Strict-
     // resolving the whole 600+ module tree to find the ~13 declarers is §2
@@ -1529,7 +1529,7 @@ pub fn handle_ci() {
     handle_run_with_options(
         witness_layer_roots(),
         "main".to_string(),
-        Some("dsl/tools/gunbc_ci.dag".to_string()),
+        Some("dag/tools/gunbc_ci.dag".to_string()),
         false,
         false,
     );
@@ -2630,7 +2630,7 @@ pub fn compute_percentiles(mut values: Vec<u128>) -> TimingPercentiles {
 
 // SCAFFOLD (§7 hand-Rust shrink-to-zero, dissolution named): the v1 evaluator measures its own
 // per-witness resolve+eval percentiles here — seed-side justified (the evaluator cannot measure
-// itself without circularity). The *rendering* of these timings now lives in `dsl/gunbc/ci_render.dag`
+// itself without circularity). The *rendering* of these timings now lives in `dag/gunbc/ci_render.dag`
 // (boxed Frames over `std.render`, width-parameterized by the medium's `Viewport.width`); this Rust
 // only produces the measured data. Full dissolution: ROADMAP lane "CI observability" emits the
 // `TimingPercentiles` rows as a substrate value so a .dag witness measures + histograms natively,
@@ -2756,7 +2756,7 @@ pub fn compute_histogram_data(summary: &DiscoverySummary) -> Result<HistogramDat
 }
 
 pub const WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY: &str =
-    "dsl/test/claim/wet_hermetic_equivalence_witness_test.dag";
+    "dag/test/claim/wet_hermetic_equivalence_witness_test.dag";
 pub const WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA: &str =
     "wet_hermetic_equivalence_representative_prefix";
 
@@ -4658,7 +4658,7 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let fixture = fixture_path();
         let roots = vec![
             ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dsl").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
         ];
         let index = build_multi_entry_index(&roots);
         let (graph, source_indices) = super::resolve_entry_with_index(&index, &fixture)
@@ -4729,7 +4729,7 @@ mod floor_disposition_kernel_alignment {
     fn setup_roots(ws: &PathBuf) -> Vec<String> {
         vec![
             ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dsl").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
         ]
     }
 
@@ -5033,7 +5033,7 @@ mod floor_witness_a_prove {
     fn setup_roots(ws: &PathBuf) -> Vec<String> {
         vec![
             ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dsl").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
         ]
     }
 
@@ -5559,7 +5559,7 @@ mod node_frontier_plumbing_controls {
     fn setup_roots(ws: &PathBuf) -> Vec<String> {
         vec![
             ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dsl").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
         ]
     }
 
@@ -5857,11 +5857,11 @@ pub struct SourceRootReadRecord {
 fn source_root_ref_variant_for_root(root: &str) -> Result<String, String> {
     match root.trim_end_matches('/') {
         "src/v2" => Ok("V2Tree".to_string()),
-        "dsl" => Ok("DslTree".to_string()),
+        "dag" => Ok("DagTree".to_string()),
         other => Err(format!(
             "source_root tagging: unknown --source-root '{other}' \
-             (authority gunbc.ci_layer_roots.witness_layer_roots = [src/v2, dsl] -> \
-             SourceRootRef {{V2Tree, DslTree}})"
+             (authority gunbc.ci_layer_roots.witness_layer_roots = [src/v2, dag] -> \
+             SourceRootRef {{V2Tree, DagTree}})"
         )),
     }
 }
@@ -6021,14 +6021,14 @@ mod manifest_emit_tests {
 
     #[test]
     fn source_root_token_grounds_in_filesystem_location() {
-        let roots = vec!["src/v2".to_string(), "dsl".to_string()];
+        let roots = vec!["src/v2".to_string(), "dag".to_string()];
         assert_eq!(
             source_root_ref_token_for_path("src/v2/std/algebra.dag", &roots).unwrap(),
             "V2Tree"
         );
         assert_eq!(
-            source_root_ref_token_for_path("dsl/std/algebra.dag", &roots).unwrap(),
-            "DslTree"
+            source_root_ref_token_for_path("dag/std/algebra.dag", &roots).unwrap(),
+            "DagTree"
         );
         assert_eq!(
             source_root_ref_token_for_path("src/v2/extdeps/shell.dag", &roots).unwrap(),
@@ -6043,7 +6043,7 @@ mod manifest_emit_tests {
         let ws = super::workspace_root();
         let abs_roots = vec![
             ws.join("src/v2").to_string_lossy().into_owned(),
-            ws.join("dsl").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
         ];
         assert_eq!(
             source_root_ref_token_for_path(
@@ -6055,15 +6055,15 @@ mod manifest_emit_tests {
         );
         assert_eq!(
             source_root_ref_token_for_path(
-                ws.join("dsl/std/algebra.dag").to_str().unwrap(),
+                ws.join("dag/std/algebra.dag").to_str().unwrap(),
                 &abs_roots
             )
             .unwrap(),
-            "DslTree"
+            "DagTree"
         );
         assert_eq!(
-            source_root_ref_token_for_path("dsl/std/algebra.dag", &abs_roots).unwrap(),
-            "DslTree"
+            source_root_ref_token_for_path("dag/std/algebra.dag", &abs_roots).unwrap(),
+            "DagTree"
         );
         assert!(source_root_ref_token_for_path(
             ws.join("src/v1/stage0/x.dag").to_str().unwrap(),
@@ -6486,11 +6486,11 @@ mod construction_justification_hygiene_tests {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir to workspace root");
         let roots = vec![
-            ws.join("dsl").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
             ws.join("src/v2").to_string_lossy().into_owned(),
         ];
         let scan_dirs = vec![
-            "dsl/test/claim".to_string(),
+            "dag/test/claim".to_string(),
             "src/v2/test/claim/manual".to_string(),
         ];
         let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
@@ -6515,7 +6515,7 @@ mod construction_justification_hygiene_tests {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir to workspace root");
         let roots = vec![
-            ws.join("dsl").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
             ws.join("src/v2").to_string_lossy().into_owned(),
         ];
         let unresolved =
@@ -7076,31 +7076,31 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
-    "dsl/extdeps/languages/markdown.dag::md_nested",
-    "dsl/gunbc/generated_artifact.dag::artifact_eq",
-    "dsl/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
-    "dsl/gunbc/commit_workflow.dag::gate_eq",
-    "dsl/gunbc/commit_workflow.dag::local_tidy_check_eq",
-    "dsl/std/computation.dag::constant_bound_value",
-    "dsl/std/computation.dag::is_constant_bound",
-    "dsl/std/effects.dag::create_double_init_collapsible",
-    "dsl/std/effects.dag::create_effect_is_dedupable",
-    "dsl/std/effects.dag::key_source_eq",
-    "dsl/std/encoding.dag::encoding_lattice_join",
-    "dsl/std/encoding.dag::encoding_lattice_meet",
-    "dsl/std/filesystem.dag::is_text_encoding",
-    "dsl/std/induction.dag::compose_sub_value",
-    "dsl/std/induction.dag::compose_sub_value_relations",
-    "dsl/std/induction.dag::is_strict_style_structural",
-    "dsl/std/induction.dag::recursion_shape_eq",
-    "dsl/std/induction.dag::shrink_factor_eq",
-    "dsl/std/induction.dag::sub_value_structural_eq",
-    "dsl/std/reducible.dag::reduce_verdict_combine",
-    "dsl/std/termination.dag::descent_evidence_lattice_join",
-    "dsl/std/termination.dag::descent_evidence_lattice_meet",
-    "dsl/std/termination.dag::promote_to_strict",
-    "dsl/tools/ci_gates.dag::exit_ok",
-    "dsl/tools/generated_artifact_gate.dag::exit_ok",
+    "dag/extdeps/languages/markdown.dag::md_nested",
+    "dag/gunbc/generated_artifact.dag::artifact_eq",
+    "dag/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
+    "dag/gunbc/commit_workflow.dag::gate_eq",
+    "dag/gunbc/commit_workflow.dag::local_tidy_check_eq",
+    "dag/std/computation.dag::constant_bound_value",
+    "dag/std/computation.dag::is_constant_bound",
+    "dag/std/effects.dag::create_double_init_collapsible",
+    "dag/std/effects.dag::create_effect_is_dedupable",
+    "dag/std/effects.dag::key_source_eq",
+    "dag/std/encoding.dag::encoding_lattice_join",
+    "dag/std/encoding.dag::encoding_lattice_meet",
+    "dag/std/filesystem.dag::is_text_encoding",
+    "dag/std/induction.dag::compose_sub_value",
+    "dag/std/induction.dag::compose_sub_value_relations",
+    "dag/std/induction.dag::is_strict_style_structural",
+    "dag/std/induction.dag::recursion_shape_eq",
+    "dag/std/induction.dag::shrink_factor_eq",
+    "dag/std/induction.dag::sub_value_structural_eq",
+    "dag/std/reducible.dag::reduce_verdict_combine",
+    "dag/std/termination.dag::descent_evidence_lattice_join",
+    "dag/std/termination.dag::descent_evidence_lattice_meet",
+    "dag/std/termination.dag::promote_to_strict",
+    "dag/tools/ci_gates.dag::exit_ok",
+    "dag/tools/generated_artifact_gate.dag::exit_ok",
     "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer",
     "src/v2/compiler/05_eval.dag::eval_branch_node_eval",
     "src/v2/compiler/05_eval.dag::eval_loop_node",
@@ -7595,7 +7595,7 @@ mod nfr_tests {
     }
 }
 
-const LANGUAGES_AUTHORITY_REL: &str = "dsl/std/languages.dag";
+const LANGUAGES_AUTHORITY_REL: &str = "dag/std/languages.dag";
 
 fn languages_census_collect_source_files(dir: &Path, out: &mut Vec<PathBuf>) {
     let entries = match std::fs::read_dir(dir) {
@@ -7698,7 +7698,7 @@ fn languages_decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
     let decl_name_set: HashSet<String> = decl_names.iter().cloned().collect();
 
     let mut files = Vec::new();
-    for tree in &["dsl", "src"] {
+    for tree in &["dag", "src"] {
         let root = ws.join(tree);
         if root.is_dir() {
             languages_census_collect_source_files(&root, &mut files);
@@ -8558,19 +8558,19 @@ mod module_path_index_tests {
     #[test]
     fn cargo_build_resolves_by_module_path_not_directory_nickname() {
         let path = source_path_for_module_path("extdeps.cargo_build".to_string());
-        assert_eq!(path, "dsl/extdeps/rust/cargo_build.dag");
+        assert_eq!(path, "dag/extdeps/rust/cargo_build.dag");
     }
 
     #[test]
     fn git_module_resolves() {
         let path = source_path_for_module_path("extdeps.git".to_string());
-        assert_eq!(path, "dsl/extdeps/git/git.dag");
+        assert_eq!(path, "dag/extdeps/git/git.dag");
     }
 
     #[test]
-    fn extdeps_shell_resolves_to_the_dsl_authority() {
+    fn extdeps_shell_resolves_to_the_dag_authority() {
         let path = source_path_for_module_path("extdeps.shell".to_string());
-        assert_eq!(path, "dsl/extdeps/shell/shell.dag");
+        assert_eq!(path, "dag/extdeps/shell/shell.dag");
     }
 
     #[test]
@@ -8660,8 +8660,8 @@ mod module_path_index_tests {
     fn reader_projects_live_authority_value() {
         assert_eq!(
             witness_layer_roots(),
-            vec!["dsl".to_string(), "src/v2".to_string()],
-            "live authority value drifted from the expected [dsl, src/v2]"
+            vec!["dag".to_string(), "src/v2".to_string()],
+            "live authority value drifted from the expected [dag, src/v2]"
         );
         assert!(
             census_corpus_roots_follow_layer_authority(),
@@ -8675,7 +8675,7 @@ mod module_path_index_tests {
         assert_eq!(
             default_source_roots(),
             vec![
-                ws.join("dsl").to_string_lossy().into_owned(),
+                ws.join("dag").to_string_lossy().into_owned(),
                 ws.join("src/v2").to_string_lossy().into_owned(),
             ]
         );
@@ -8697,7 +8697,7 @@ mod module_path_index_tests {
         assert_eq!(
             witness_discovery_scan_dirs(),
             vec![
-                "dsl/test/claim".to_string(),
+                "dag/test/claim".to_string(),
                 "src/v2/test/claim/manual".to_string(),
             ],
             "live authority scan-dir value drifted"
@@ -8709,7 +8709,7 @@ mod module_path_index_tests {
         const LENS: &str = "src/v2/lens/medium_structure_containment.dag";
         let roster = lens_string_list_data(LENS, "medium_structure_exception_roster", false);
         assert!(
-            roster.iter().any(|p| p == "dsl/gunbc/ci_workflow.dag"),
+            roster.iter().any(|p| p == "dag/gunbc/ci_workflow.dag"),
             "live lens authority roster must include a known exception path; got {roster:?}"
         );
     }

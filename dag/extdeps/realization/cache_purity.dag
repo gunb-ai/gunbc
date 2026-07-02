@@ -1,0 +1,40 @@
+module extdeps.realization.cache_purity
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import std.types { NonEmptyStr, ContentHash, Bool }
+import std.perturbation {
+  ForwardSameInSameOut,
+  ResponseConsistent,
+  ResponseViolation,
+  perturbation_verdict,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
+  }
+}
+
+type CachePurityViolation {
+  content_key: ContentHash
+  unkeyed_axis: NonEmptyStr
+  warm_digest: ContentHash
+  cold_digest: ContentHash
+}
+
+type CachePurityVerdict
+  = Pure
+  | Impure { violation: CachePurityViolation }
+
+fn cache_purity_verdict(warm_equals_cold: Bool, violation: CachePurityViolation) -> CachePurityVerdict {
+  match perturbation_verdict(
+    reading: ForwardSameInSameOut,
+    output_responded: warm_equals_cold == false
+  ) {
+    ResponseConsistent => Pure
+    ResponseViolation => Impure { violation: violation }
+  }
+}

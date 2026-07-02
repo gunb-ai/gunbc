@@ -200,7 +200,7 @@ fn measure_dag_rust_emit_terminates() {
         .iter()
         .map(|p| p.to_string_lossy().to_string())
         .collect();
-    let entry = crate::helpers::workspace_root().join("dsl/std/measure.dag");
+    let entry = crate::helpers::workspace_root().join("dag/std/measure.dag");
     let entry = entry.to_string_lossy().to_string();
     let sources = cli_run::load_sources_for_entry(&roots, &entry)
         .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
@@ -228,7 +228,7 @@ fn measure_dag_v2_loads_without_field_errors() {
         .iter()
         .map(|p| p.to_string_lossy().to_string())
         .collect();
-    let entry = crate::helpers::workspace_root().join("dsl/std/measure.dag");
+    let entry = crate::helpers::workspace_root().join("dag/std/measure.dag");
     let entry = entry.to_string_lossy().to_string();
     let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &entry)
         .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));

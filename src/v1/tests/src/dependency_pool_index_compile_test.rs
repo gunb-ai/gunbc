@@ -147,27 +147,27 @@ fn strict_dependency_pool_index_panics_on_cross_root_collision() {
 }
 
 #[test]
-fn primary_precedence_keeps_dsl_extdeps_shell_for_dsl_only_services() {
+fn primary_precedence_keeps_dag_extdeps_shell_for_dag_only_services() {
     let Some(gunbc) = gunbc_bin() else {
         eprintln!("skipping: release gunbc binary not found");
         return;
     };
     let ws = workspace_root();
-    let entry_root = temp_dir("dsl-shell-primary-entry");
+    let entry_root = temp_dir("dag-shell-primary-entry");
     fs::write(
         entry_root.join("probe.dag"),
-        "module test.probe.dsl_shell_env_primary\n\
+        "module test.probe.dag_shell_env_primary\n\
          import extdeps.shell\n\
          fn probe() -> String? {\n\
            shell.Env.Get(name: \"PATH\")\n\
          }\n",
     )
     .expect("write probe.dag");
-    let out = temp_dir("dsl-shell-primary-out");
+    let out = temp_dir("dag-shell-primary-out");
     let output = compile_with_roots(
         &gunbc,
         &ws,
-        &[&entry_root, &ws.join("dsl"), &ws.join("src/v2")],
+        &[&entry_root, &ws.join("dag"), &ws.join("src/v2")],
         "primary-precedence",
         &out,
     );
@@ -175,7 +175,7 @@ fn primary_precedence_keeps_dsl_extdeps_shell_for_dsl_only_services() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         panic!(
-            "shell.Env.Get probe must compile under primary-precedence (dsl extdeps.shell wins over v2 overlay); exit {:?}\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}",
+            "shell.Env.Get probe must compile under primary-precedence (dag extdeps.shell wins over v2 overlay); exit {:?}\n--- stdout ---\n{stdout}\n--- stderr ---\n{stderr}",
             output.status.code()
         );
     }
@@ -194,7 +194,7 @@ fn primary_precedence_two_root_compile_with_shadow_masked_fixture_succeeds() {
     let output = compile_with_roots(
         &gunbc,
         &ws,
-        &[&ws.join("dsl"), &ws.join("src/v2")],
+        &[&ws.join("dag"), &ws.join("src/v2")],
         "primary-precedence",
         &out,
     );

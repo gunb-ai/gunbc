@@ -17,7 +17,7 @@ const MAGIC: &[u8; 8] = b"gunbgrpc";
 
 /// Single-authority mirror of the modeled `SizeBounded` cap:
 /// `extdeps.realization.resolved_graph.resolved_graph_cache_cap_bytes`
-/// (`dsl/extdeps/realization/resolved_graph.dag`, eviction = SizeBounded). Kept
+/// (`dag/extdeps/realization/resolved_graph.dag`, eviction = SizeBounded). Kept
 /// in lockstep by `cap_matches_modeled_authority` in the size-bound test.
 const RESOLVED_GRAPH_CACHE_CAP_BYTES: u64 = 10_737_418_240;
 

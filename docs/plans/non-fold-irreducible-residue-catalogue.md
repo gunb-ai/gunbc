@@ -62,15 +62,15 @@ This document is the **per-site catalogue** for operator permanent-residue sign-
 
 | Site | Line | Scrutinee type | Wildcard arm | Why irreducible | Recognition rule |
 |------|-----:|----------------|--------------|-----------------|------------------|
-| `dsl/gunbc/generated_artifact.dag::artifact_eq` | 82 | `GeneratedArtifact` | `_ => false` | Same-constructor arms compare fields; cross-constructor pairs are unequal by definition. | Roster + `_eq`; `match a: GeneratedArtifact` top-level wildcard. |
-| `dsl/gunbc/commit_workflow.dag::commit_workflow_surface_eq` | 114 | `CommitWorkflowSurface` | `_ => false` | Surface variants equal only on identical constructors. | Roster + `_eq`. |
-| `dsl/gunbc/commit_workflow.dag::gate_eq` | 133 | `Gate` | `_ => false` | Gate identity is diagonal on matching variants. | Roster + `_eq`. |
-| `dsl/gunbc/commit_workflow.dag::local_tidy_check_eq` | 169 | `LocalTidyCheck` | `_ => false` | Workflow tidy rows equal only on same constructor. | Roster + `_eq`. |
-| `dsl/std/effects.dag::key_source_eq` | 45 | `KeySource` | `_ => false` | Key provenance equal only on matching source constructors. | Roster + `_eq`. |
+| `dag/gunbc/generated_artifact.dag::artifact_eq` | 82 | `GeneratedArtifact` | `_ => false` | Same-constructor arms compare fields; cross-constructor pairs are unequal by definition. | Roster + `_eq`; `match a: GeneratedArtifact` top-level wildcard. |
+| `dag/gunbc/commit_workflow.dag::commit_workflow_surface_eq` | 114 | `CommitWorkflowSurface` | `_ => false` | Surface variants equal only on identical constructors. | Roster + `_eq`. |
+| `dag/gunbc/commit_workflow.dag::gate_eq` | 133 | `Gate` | `_ => false` | Gate identity is diagonal on matching variants. | Roster + `_eq`. |
+| `dag/gunbc/commit_workflow.dag::local_tidy_check_eq` | 169 | `LocalTidyCheck` | `_ => false` | Workflow tidy rows equal only on same constructor. | Roster + `_eq`. |
+| `dag/std/effects.dag::key_source_eq` | 45 | `KeySource` | `_ => false` | Key provenance equal only on matching source constructors. | Roster + `_eq`. |
 | `src/v2/std/effects.dag::key_source_eq` | 117 | `KeySource` | `_ => false` | (duplicate authority row — v2 std re-export) | Roster + `_eq`. |
-| `dsl/std/induction.dag::recursion_shape_eq` | 38 | `RecursionShape` | `_ => false` | Recursion-shape equality is diagonal-only. | Roster + `_eq`. |
-| `dsl/std/induction.dag::shrink_factor_eq` | 95 | `ShrinkFactor` | `_ => false` | Shrink-factor equality compares same-constructor payloads. | Roster + `_eq`. |
-| `dsl/std/induction.dag::sub_value_structural_eq` | 114 | `SubValueRelation` | `_ => false` | Structural sub-value equality names diagonal constructors; cross-variant unequal. | Roster + `_eq`. |
+| `dag/std/induction.dag::recursion_shape_eq` | 38 | `RecursionShape` | `_ => false` | Recursion-shape equality is diagonal-only. | Roster + `_eq`. |
+| `dag/std/induction.dag::shrink_factor_eq` | 95 | `ShrinkFactor` | `_ => false` | Shrink-factor equality compares same-constructor payloads. | Roster + `_eq`. |
+| `dag/std/induction.dag::sub_value_structural_eq` | 114 | `SubValueRelation` | `_ => false` | Structural sub-value equality names diagonal constructors; cross-variant unequal. | Roster + `_eq`. |
 | `src/v2/lens/idempotency.dag::idempotency_verdict_eq` | 126 | `IdempotencyVerdict` | `_ => false` | Verdict equality is diagonal on identical constructors. | Roster + `_eq`. |
 | `src/v2/lens/ownership.dag::ownership_mode_eq` | 102 | `OwnershipMode` | `_ => false` | Ownership modes equal only on same mode. | Roster + `_mode_eq` heuristic. |
 | `src/v2/lens/parallelism.dag::parallelism_relation_eq` | 198 | `ParallelismRelation` | `_ => false` | Parallelism relation equality is diagonal. | Roster + `_relation_eq`. |
@@ -97,12 +97,12 @@ This document is the **per-site catalogue** for operator permanent-residue sign-
 
 | Site | Line | Scrutinee type | Wildcard arm | Why irreducible | Recognition rule |
 |------|-----:|----------------|--------------|-----------------|------------------|
-| `dsl/std/encoding.dag::encoding_lattice_join` | 72 | `Encoding` | `_ => Unknown` | Encoding join top is Unknown for incompatible pairs. | Roster + `lattice_join`. |
-| `dsl/std/encoding.dag::encoding_lattice_meet` | 40 | `Encoding` | `_ => ASCII` | Meet bottoms at ASCII for unlisted pairs. | Roster + `lattice_meet`. |
-| `dsl/std/reducible.dag::reduce_verdict_combine` | 11 | `ReduceVerdict` | `_ => match b { … }` | Unknown poisons; non-Unknown `a` defers to `b` — semigroup combine wildcard. | Roster; `match a: ReduceVerdict`. |
-| `dsl/std/termination.dag::descent_evidence_lattice_join` | 34 | `DescentEvidence` | `_ => NonIncreasing` / absorb | Join on {Strict, NonIncreasing, DescentUnknown} with Strict top. | Roster + `lattice_join`. |
-| `dsl/std/termination.dag::descent_evidence_lattice_meet` | 18 | `DescentEvidence` | `_ => DescentUnknown` | Meet bottoms at DescentUnknown. | Roster + `lattice_meet`. |
-| `dsl/std/termination.dag::promote_to_strict` | 52 | `DescentEvidence` | `_ => DescentUnknown` | Promotion preserves Strict/NonIncreasing; unknown stays unknown. | Roster; `match evidence`. |
+| `dag/std/encoding.dag::encoding_lattice_join` | 72 | `Encoding` | `_ => Unknown` | Encoding join top is Unknown for incompatible pairs. | Roster + `lattice_join`. |
+| `dag/std/encoding.dag::encoding_lattice_meet` | 40 | `Encoding` | `_ => ASCII` | Meet bottoms at ASCII for unlisted pairs. | Roster + `lattice_meet`. |
+| `dag/std/reducible.dag::reduce_verdict_combine` | 11 | `ReduceVerdict` | `_ => match b { … }` | Unknown poisons; non-Unknown `a` defers to `b` — semigroup combine wildcard. | Roster; `match a: ReduceVerdict`. |
+| `dag/std/termination.dag::descent_evidence_lattice_join` | 34 | `DescentEvidence` | `_ => NonIncreasing` / absorb | Join on {Strict, NonIncreasing, DescentUnknown} with Strict top. | Roster + `lattice_join`. |
+| `dag/std/termination.dag::descent_evidence_lattice_meet` | 18 | `DescentEvidence` | `_ => DescentUnknown` | Meet bottoms at DescentUnknown. | Roster + `lattice_meet`. |
+| `dag/std/termination.dag::promote_to_strict` | 52 | `DescentEvidence` | `_ => DescentUnknown` | Promotion preserves Strict/NonIncreasing; unknown stays unknown. | Roster; `match evidence`. |
 | `src/v2/lens/cost.dag::multiply_classes` | 507 | `AsymptoticClass` | `_ => ClassExponential` (nested on `b`) | Sparse class multiplication table; exponential absorbs product on unmatched `b`. | Roster; nested `match b: AsymptoticClass`. |
 | `src/v2/lens/cost.dag::symbolic_max` | 254 | `SymbolicCost` | `_ => false` | Max false when neither dominates — incomparable off-diagonal. | Roster; join on SymbolicCost. |
 | `src/v2/lens/cost.dag::symbolic_product` | 239 | `SymbolicCost` | `_ => ProductCost { lhs: a, rhs: b }` | Default binary product when shapes are not already decomposed. | Roster; `match a: SymbolicCost`. |
@@ -114,8 +114,8 @@ This document is the **per-site catalogue** for operator permanent-residue sign-
 
 | Site | Line | Scrutinee type | Wildcard arm | Why irreducible | Recognition rule |
 |------|-----:|----------------|--------------|-----------------|------------------|
-| `dsl/tools/ci_gates.dag::exit_ok` | 19 | `ProcessExit` | `_ => false` | Only `ExitSuccess` is ok; all failure exits are not ok. | Roster + `fn_name == exit_ok`. |
-| `dsl/tools/generated_artifact_gate.dag::exit_ok` | 18 | `ProcessExit` | `_ => false` | (same kernel — generated gate re-export) | Roster + `exit_ok`. |
+| `dag/tools/ci_gates.dag::exit_ok` | 19 | `ProcessExit` | `_ => false` | Only `ExitSuccess` is ok; all failure exits are not ok. | Roster + `fn_name == exit_ok`. |
+| `dag/tools/generated_artifact_gate.dag::exit_ok` | 18 | `ProcessExit` | `_ => false` | (same kernel — generated gate re-export) | Roster + `exit_ok`. |
 
 ---
 
@@ -123,16 +123,16 @@ This document is the **per-site catalogue** for operator permanent-residue sign-
 
 | Site | Line | Scrutinee type | Wildcard arm | Why irreducible | Recognition rule |
 |------|-----:|----------------|--------------|-----------------|------------------|
-| `dsl/std/effects.dag::create_double_init_collapsible` | 73 | `EffectShape` | `_ => false` | Only `CreateDoubleInit` is collapsible. | Roster; `match a: EffectShape`. |
-| `dsl/std/effects.dag::create_effect_is_dedupable` | 62 | `EffectShape` | `_ => false` | Dedupability is a Create-only property. | Roster; `match shape: EffectShape`. |
-| `dsl/std/filesystem.dag::is_text_encoding` | 35 | `Encoding` | `_ => false` | Text-safe encoding predicate true only on listed encodings. | Roster; `match e: Encoding`. |
+| `dag/std/effects.dag::create_double_init_collapsible` | 73 | `EffectShape` | `_ => false` | Only `CreateDoubleInit` is collapsible. | Roster; `match a: EffectShape`. |
+| `dag/std/effects.dag::create_effect_is_dedupable` | 62 | `EffectShape` | `_ => false` | Dedupability is a Create-only property. | Roster; `match shape: EffectShape`. |
+| `dag/std/filesystem.dag::is_text_encoding` | 35 | `Encoding` | `_ => false` | Text-safe encoding predicate true only on listed encodings. | Roster; `match e: Encoding`. |
 | `src/v2/lens/fact_density.dag::connective_is_kernel_ambient_atom` | 64 | `Connective` | `_ => false` | True only on kernel-ambient Atom connectives. | Roster; `match c: Connective`. |
 | `src/v2/program.dag::program_runtime_bool_false` | 261 | `RuntimeValue` | `_ => false` | False only from `Bool` false literal. | Roster; runtime bool collapse. |
 | `src/v2/program.dag::program_runtime_bool_true` | 253 | `RuntimeValue` | `_ => false` | True only from `Bool` true literal. | Roster; runtime bool collapse. |
 | `src/v2/std/float.dag::float_body_is_nan` | 70 | `FloatBody` | `_ => false` | NaN only on the NaN body variant. | Roster; `match x: FloatBody`. |
-| `dsl/std/computation.dag::constant_bound_value` | 130 | `SizeBound` | `_ => none` | **CANDIDATE** — see §8. | Roster; partial SizeBound arms. |
-| `dsl/std/computation.dag::is_constant_bound` | 119 | `SizeBound` | `_ => false` | **CANDIDATE** — see §8. | Roster; partial SizeBound arms. |
-| `dsl/std/induction.dag::is_strict_style_structural` | 141 | `SubValueRelation` | `_ => false` | **CANDIDATE** — see §8. | Roster; `match r: SubValueRelation`. |
+| `dag/std/computation.dag::constant_bound_value` | 130 | `SizeBound` | `_ => none` | **CANDIDATE** — see §8. | Roster; partial SizeBound arms. |
+| `dag/std/computation.dag::is_constant_bound` | 119 | `SizeBound` | `_ => false` | **CANDIDATE** — see §8. | Roster; partial SizeBound arms. |
+| `dag/std/induction.dag::is_strict_style_structural` | 141 | `SubValueRelation` | `_ => false` | **CANDIDATE** — see §8. | Roster; `match r: SubValueRelation`. |
 
 ---
 
@@ -154,8 +154,8 @@ This document is the **per-site catalogue** for operator permanent-residue sign-
 | `src/v2/lens/complexity.dag::complexity_bound_from_class` | 213 | `AsymptoticClass` | `_ => match variables { … }` | Sized classes delegate to witness-held variables; wildcard bucket is witness-gated unknown handling. | Roster; top-level `_ =>` on `class`. |
 | `src/v2/lens/cost.dag::symbolic_cost_witness` | 147 | `SymbolicCost` | `_ => Holds { value: c }` | Only `UnknownCost` violates; constructed costs witness reflexively. | Roster; `match c: SymbolicCost`. |
 | `src/v2/std/qualified_name.dag::qn_fold_step` | 83 | `QnFoldStatus` | `_ => QnFoldError { … }` | Fold propagates first error; wildcard is invalid-structure sink. | Roster; `match acc: QnFoldStatus`. |
-| `dsl/std/induction.dag::compose_sub_value` | 226 | `SubValueRelation` | `_ => StrictSubValue { … }` | **CANDIDATE** — see §8. | Roster; default strict step on non-unknown base. |
-| `dsl/std/induction.dag::compose_sub_value_relations` | 234 | `SubValueRelation` | `_ => NonIncreasingValue` (nested) | **CANDIDATE** — see §8. | Roster; nested relation composition wildcards. |
+| `dag/std/induction.dag::compose_sub_value` | 226 | `SubValueRelation` | `_ => StrictSubValue { … }` | **CANDIDATE** — see §8. | Roster; default strict step on non-unknown base. |
+| `dag/std/induction.dag::compose_sub_value_relations` | 234 | `SubValueRelation` | `_ => NonIncreasingValue` (nested) | **CANDIDATE** — see §8. | Roster; nested relation composition wildcards. |
 
 ---
 
@@ -165,11 +165,11 @@ These sites are on the irreducible roster today but **fail the operator failure 
 
 | Site | Concern |
 |------|---------|
-| `dsl/std/computation.dag::constant_bound_value` | `SizeBound` has 8 variants; only 3 named — wildcard `none` masks 5 structural bounds (CollectionSize, TreeSize, …). Likely intentional filter, not off-diagonal semantics. |
-| `dsl/std/computation.dag::is_constant_bound` | Same partial coverage as `constant_bound_value`. |
-| `dsl/std/induction.dag::compose_sub_value` | Catch-all `_ => StrictSubValue` default for every non-unknown base — composition table should be explicit. |
-| `dsl/std/induction.dag::compose_sub_value_relations` | Nested wildcards route unmatched arg relations to `NonIncreasingValue` — relation algebra may need explicit per-pair arms. |
-| `dsl/std/induction.dag::is_strict_style_structural` | Predicate false on all non-listed `SubValueRelation` shapes — verify each variant before permanent residue. |
+| `dag/std/computation.dag::constant_bound_value` | `SizeBound` has 8 variants; only 3 named — wildcard `none` masks 5 structural bounds (CollectionSize, TreeSize, …). Likely intentional filter, not off-diagonal semantics. |
+| `dag/std/computation.dag::is_constant_bound` | Same partial coverage as `constant_bound_value`. |
+| `dag/std/induction.dag::compose_sub_value` | Catch-all `_ => StrictSubValue` default for every non-unknown base — composition table should be explicit. |
+| `dag/std/induction.dag::compose_sub_value_relations` | Nested wildcards route unmatched arg relations to `NonIncreasingValue` — relation algebra may need explicit per-pair arms. |
+| `dag/std/induction.dag::is_strict_style_structural` | Predicate false on all non-listed `SubValueRelation` shapes — verify each variant before permanent residue. |
 
 **Action:** reclassify to `NON_FOLD_MIGRATION_DEBT_ROSTER` when drain lane picks them up, or prove irreducibility and move back to CONFIDENT with operator re-sign.
 

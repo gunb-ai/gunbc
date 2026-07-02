@@ -7,7 +7,7 @@ import v2.compiler.source_authority {
   source_root_set_from_ingest
 }
 import v2.std.artifact { Artifact, SourceFile }
-import v2.std.cross_tree.import_model { DslTree, V2Tree, source_root_set_contains }
+import v2.std.cross_tree.import_model { DagTree, V2Tree, source_root_set_contains }
 import v2.std.logic { Bool }
 
 data sr_tag_v2_read: DagSourceReadWitness = DagSourceReadWitness {
@@ -21,25 +21,25 @@ data sr_tag_v2_read: DagSourceReadWitness = DagSourceReadWitness {
   source_root: V2Tree
 }
 
-data sr_tag_dsl_read: DagSourceReadWitness = DagSourceReadWitness {
+data sr_tag_dag_read: DagSourceReadWitness = DagSourceReadWitness {
   source: Medium { carried: "module std.sr_tag_fixture", fidelity: Lossless },
   artifact: Artifact {
     kind: SourceFile,
-    id: ^sr_tag_dsl_artifact,
-    file_path: "dsl/std/sr_tag_fixture.dag"
+    id: ^sr_tag_dag_artifact,
+    file_path: "dag/std/sr_tag_fixture.dag"
   },
-  compilation_unit: ^sr_tag_dsl_cu,
-  source_root: DslTree
+  compilation_unit: ^sr_tag_dag_cu,
+  source_root: DagTree
 }
 
-data sr_tag_mixed_ingest: SourceRootIngest = [sr_tag_v2_read, sr_tag_dsl_read]
+data sr_tag_mixed_ingest: SourceRootIngest = [sr_tag_v2_read, sr_tag_dag_read]
 data sr_tag_v2_only_ingest: SourceRootIngest = [sr_tag_v2_read]
 
 test fn source_root_tag_carried_and_folded_to_grounded_set() -> Bool {
   let mixed = source_root_set_from_ingest(ingest: sr_tag_mixed_ingest)
   let v2_only = source_root_set_from_ingest(ingest: sr_tag_v2_only_ingest)
   source_root_set_contains(roots: mixed, r: V2Tree)
-    && source_root_set_contains(roots: mixed, r: DslTree)
+    && source_root_set_contains(roots: mixed, r: DagTree)
     && source_root_set_contains(roots: v2_only, r: V2Tree)
-    && !source_root_set_contains(roots: v2_only, r: DslTree)
+    && !source_root_set_contains(roots: v2_only, r: DagTree)
 }

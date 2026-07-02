@@ -5,7 +5,7 @@ Enable and verify out-of-band Redfish telemetry on the self-hosted CI fleet host
 ## Prerequisites
 
 - Management-network reachability to each host's **dedicated BMC NIC** (not the host OS IP).
-- ASRock Rack ALTRAD8UD-1L2T boards ship **OpenBMC** (Redfish + IPMI). Factory login is cited in `dsl/extdeps/bmc/openbmc.dag` (`root` / `0penBmc`) until first-contact rotation.
+- ASRock Rack ALTRAD8UD-1L2T boards ship **OpenBMC** (Redfish + IPMI). Factory login is cited in `dag/extdeps/bmc/openbmc.dag` (`root` / `0penBmc`) until first-contact rotation.
 - `curl` on your operator workstation (or use the gunbc tool below).
 
 ## 1. Confirm Redfish is enabled
@@ -79,15 +79,15 @@ curl -sk --netrc-file "$BMC_NETRC_FILE" \
 From the gunbc repo worktree (rotated cred — requires netrc):
 
 ```bash
-BMC_HOST=<srvN-bmc-ip> BMC_NETRC_FILE=~/.bmc-netrc gunbc run --source-root dsl \
-  --entry dsl/gunbc/tools/bmc_read_telemetry.dag --function bmc_read_telemetry
+BMC_HOST=<srvN-bmc-ip> BMC_NETRC_FILE=~/.bmc-netrc gunbc run --source-root dag \
+  --entry dag/gunbc/tools/bmc_read_telemetry.dag --function bmc_read_telemetry
 ```
 
 Exit 0 means Systems/system + Chassis sensors GET succeeded. Factory first-contact only (unrotated):
 
 ```bash
-BMC_HOST=<srvN-bmc-ip> gunbc run --source-root dsl \
-  --entry dsl/gunbc/tools/bmc_first_contact.dag --function bmc_first_contact
+BMC_HOST=<srvN-bmc-ip> gunbc run --source-root dag \
+  --entry dag/gunbc/tools/bmc_first_contact.dag --function bmc_first_contact
 ```
 
 ## 5. Power control (limits) — read before write
@@ -129,7 +129,7 @@ For each host:
 
 ## Related model files
 
-- `dsl/extdeps/bmc/types.dag` — Redfish resource shapes
-- `dsl/extdeps/bmc/redfish.dag` — projection / grounding seam
-- `dsl/extdeps/bmc/http.dag` — curl transport operations
-- `dsl/test/claim/bmc_redfish_grounding_witness_test.dag` — projection witness
+- `dag/extdeps/bmc/types.dag` — Redfish resource shapes
+- `dag/extdeps/bmc/redfish.dag` — projection / grounding seam
+- `dag/extdeps/bmc/http.dag` — curl transport operations
+- `dag/test/claim/bmc_redfish_grounding_witness_test.dag` — projection witness

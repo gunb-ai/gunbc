@@ -63,7 +63,7 @@ The `Vendor<Hardware>` analog applies as **one shared core + domain refinements*
 **Adopted decomposition (§2-deep):**
 
 ```dag
-// ONE core authority (home: dsl/std — universal, layer-stable)
+// ONE core authority (home: dag/std — universal, layer-stable)
 type DeterminismAxis = Deterministic | NonDeterministic
 
 // Compiler refinement — std REFINES NonDeterministic with leak detail
@@ -80,9 +80,9 @@ type OperationDeterminism
 
 | layer | type | relationship to core |
 | --- | --- | --- |
-| `dsl/std` | `DeterminismAxis` | **the** single core — two arms only |
+| `dag/std` | `DeterminismAxis` | **the** single core — two arms only |
 | `src/v2/std/determinism` | `DeterminismClass` | refines `NonDeterministic` with `NonDetSource`; `Deterministic` is shared verbatim |
-| `dsl/std/behavioral` | `OperationDeterminism` | projects `Deterministic`/`NonDeterministic` from core; adds `EventuallyConsistent` as service-domain sibling |
+| `dag/std/behavioral` | `OperationDeterminism` | projects `Deterministic`/`NonDeterministic` from core; adds `EventuallyConsistent` as service-domain sibling |
 
 **Projection rules (P5):**
 
@@ -96,7 +96,7 @@ type OperationDeterminism
 
 ```mermaid
 flowchart TB
-  subgraph core ["dsl/std — ONE core"]
+  subgraph core ["dag/std — ONE core"]
     DA["DeterminismAxis\nDeterministic | NonDeterministic"]
   end
 
@@ -137,9 +137,9 @@ flowchart TB
 
 - **Granularity:** per `Symbol` signature (function / primitive / pipeline step).
 - **Taxonomy:** `DeterminismClass` refines core `NonDeterministic` with closed `NonDetSource` (four grounded atoms).
-- **Home:** `src/v2/std/determinism.dag` (v2 compiler std layer). `DeterminismAxis` lands in `dsl/std` at P1 (shape-sign).
+- **Home:** `src/v2/std/determinism.dag` (v2 compiler std layer). `DeterminismAxis` lands in `dag/std` at P1 (shape-sign).
 
-### 2.2 `dsl/std/behavioral.OperationDeterminism` — **service extension of the core**
+### 2.2 `dag/std/behavioral.OperationDeterminism` — **service extension of the core**
 
 - **Granularity:** per capability / REST operation (`OperationBehavior`).
 - **Adds:** `EventuallyConsistent` only — not a compiler leak, not a `NonDetSource` arm.
@@ -155,7 +155,7 @@ flowchart TB
 
 ### 2.4 `emit_determinism_gate` — **corpus backstop, not the mechanism**
 
-- Proves: whole `dsl` emit tree is byte-identical across two sequential runs.
+- Proves: whole `dag` emit tree is byte-identical across two sequential runs.
 - Does not prove: *which* function introduced drift.
 - **Sequencing:** mechanism diagnoses → gate verifies. Gate stays in CI floor permanently as §5 fail-closed backstop (like `CrossRepresentationEquality` kept after numeric tower grounded).
 
@@ -291,7 +291,7 @@ diagnose (determinism lens/facts) → fix located NonDetSource
 verify  (emit_determinism_gate x2 diff) → corpus green
 ```
 
-The gate message today: `"two sequential 'gunbc compile dsl --target rust' runs produced non-identical output trees"`. Enriched diagnostic (future): attach the **first** `DeterminismFact` leak on the emit dependency chain.
+The gate message today: `"two sequential 'gunbc compile dag --target rust' runs produced non-identical output trees"`. Enriched diagnostic (future): attach the **first** `DeterminismFact` leak on the emit dependency chain.
 
 ### 5.2 `source_authority` serializer law
 
@@ -315,7 +315,7 @@ Existing witness: unordered classifier → `^naming_the_leak`. Add horizontal li
 | Phase | deliverable | consumer | gate |
 | --- | --- | --- | --- |
 | **P0** (now) | this design doc | operator shape-sign | — |
-| **P1** | `DeterminismAxis` core in `dsl/std` + extend `v2.std.determinism` with roster (incl. #5913 instances) + `determinism_compose` + witness data | `*_test.dag` claims (mirror idempotency_contract) | compile-clean |
+| **P1** | `DeterminismAxis` core in `dag/std` + extend `v2.std.determinism` with roster (incl. #5913 instances) + `determinism_compose` + witness data | `*_test.dag` claims (mirror idempotency_contract) | compile-clean |
 | **P2** | `determinism_facts_live` host bridge + `v2.lens.determinism` (observing, ranked report) | floor witness (manual) | advisory only |
 | **P3** | wire emit/serializer consumers; enrich `emit_determinism_gate` failure diagnostics | `emit_determinism_gate` | fail-closed on new leaks |
 | **P4** | infer-derived facts (#3468); delete host bridge | `04_infer` | lens dissolves to construction |
@@ -372,4 +372,4 @@ Delete or fold this doc when:
 4. `emit_determinism_gate` failures surface the first located `NonDetSource` on the emit chain;
 5. `DeterminismAxis` is the single core; `OperationDeterminism` projects from `DeterminismFact` without re-declaring `Deterministic | NonDeterministic`.
 
-P1 substrate authoring (`dsl/std/determinism.dag`, `v2.std.determinism` roster/compose/witnesses, `determinism_contract_test.dag`) proceeds under this signed shape; lens wiring remains P2+.
+P1 substrate authoring (`dag/std/determinism.dag`, `v2.std.determinism` roster/compose/witnesses, `determinism_contract_test.dag`) proceeds under this signed shape; lens wiring remains P2+.

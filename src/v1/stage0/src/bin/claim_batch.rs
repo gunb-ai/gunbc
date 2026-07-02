@@ -533,7 +533,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             if keys.is_empty() {
                 eprintln!(
-                    "claim_batch: whole-tree published mock corpus — no dsl/ corpora precomputed; \
+                    "claim_batch: whole-tree published mock corpus — no dag/ corpora precomputed; \
                      using entry-closure fallback per witness"
                 );
                 None

@@ -264,7 +264,7 @@ struct ClaimResult {
 /// (and typechecked) EXACTLY ONCE and every claim runs on that one shared interpreter context,
 /// instead of each claim re-resolving the identical graph on its own thread. This is the floor's
 /// dominant footprint win — batch-2's gate witnesses all live in one file
-/// (`dsl/tools/floor_effect_gate_witness.dag`, ~0.9 GiB / 106 modules per resolve), so the
+/// (`dag/tools/floor_effect_gate_witness.dag`, ~0.9 GiB / 106 modules per resolve), so the
 /// per-thread-resolve scheme held that graph ~6x concurrently (~4.5 GiB of pure duplication,
 /// roughly half the self-RSS). Resolve is a pure function of `(source_roots, entry)`, so sharing
 /// the graph across same-entry claims is semantically identical — correctness by construction
@@ -566,14 +566,14 @@ fn clamp_nanos_to_i64(n: u128) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
 }
 
-/// Render the timing histogram boxes through `dsl/gunbc/ci_render.dag` (`render_percentile_box`),
+/// Render the timing histogram boxes through `dag/gunbc/ci_render.dag` (`render_percentile_box`),
 /// the single authority for boxed-Frame width. The seed only supplies measured data + the host
 /// viewport width; all layout (borders, padding, duration formatting) lives in `.dag`.
 fn render_timing_histogram(
     source_roots: &[String],
     data: &HistogramData,
 ) -> Result<String, String> {
-    let entry = "dsl/gunbc/ci_render.dag";
+    let entry = "dag/gunbc/ci_render.dag";
     let (graph, indices) = resolve_entry_graph(source_roots, entry)
         .map_err(|m| format!("resolve failed for {entry}:\n{m}"))?;
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
@@ -655,7 +655,7 @@ fn str_list_value(lines: &[String]) -> Value {
     ))
 }
 
-/// Render the top-N slowest witnesses through `dsl/gunbc/ci_render.dag`.
+/// Render the top-N slowest witnesses through `dag/gunbc/ci_render.dag`.
 fn render_slowest_witnesses(
     source_roots: &[String],
     rows: &[WitnessTimingRow],
@@ -663,7 +663,7 @@ fn render_slowest_witnesses(
     if rows.is_empty() {
         return Ok(String::new());
     }
-    let entry = "dsl/gunbc/ci_render.dag";
+    let entry = "dag/gunbc/ci_render.dag";
     let (graph, indices) = resolve_entry_graph(source_roots, entry)
         .map_err(|m| format!("resolve failed for {entry}:\n{m}"))?;
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
@@ -2043,10 +2043,10 @@ mod tests {
         let root = workspace_root();
         let source_roots = vec![
             root.join("src/v2").to_string_lossy().into_owned(),
-            root.join("dsl").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
         ];
         let entry = root
-            .join("dsl/test/claim/runnable_resource_profile_witness_test.dag")
+            .join("dag/test/claim/runnable_resource_profile_witness_test.dag")
             .to_string_lossy()
             .into_owned();
         let functions: &[String] = &[
@@ -2091,10 +2091,10 @@ mod tests {
         let root = workspace_root();
         let source_roots = vec![
             root.join("src/v2").to_string_lossy().into_owned(),
-            root.join("dsl").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
         ];
         let entry = root
-            .join("dsl/test/claim/runnable_resource_profile_witness_test.dag")
+            .join("dag/test/claim/runnable_resource_profile_witness_test.dag")
             .to_string_lossy()
             .into_owned();
 

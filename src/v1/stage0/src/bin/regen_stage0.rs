@@ -619,7 +619,7 @@ fn assert_registry_is_partitioned() -> Result<(), String> {
 }
 
 fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
-    let roots = vec![workspace.join("src/v1"), workspace.join("dsl")];
+    let roots = vec![workspace.join("src/v1"), workspace.join("dag")];
     let sources = source_files_for_roots(&roots, workspace)?;
     let result = compile_sources(Rc::new(sources), RenderTarget::Rust);
 

@@ -8,7 +8,7 @@ Home: ROADMAP §1 (CI as the substrate integration dogfood). This is the **▸ N
 
 srv1 + srv2 (128c / 125GiB each) sit at ~10-34% CPU, ~24-32% MEM, with only **~3 runner slots per host** — so PRs **queue while the cores idle**. The throttle is the runner-slot count, which is set by the per-host **memory budget allocation**, not by saturation, not by fleet capacity, not by OOM.
 
-The slot count is starved because the budget model (`dsl/gunbc/fleet_host_budget.dag`) derives `runner_slice_cap ≈ 0`: build memory is subtracted as a `build_pool` **and** re-charged inside the per-job whole-tree-peak divisor. A GHA-CI runner job *is* a build — its `rustc` lives **inside** `system-actions-runner.slice` — so the build memory must be counted **once**, not twice.
+The slot count is starved because the budget model (`dag/gunbc/fleet_host_budget.dag`) derives `runner_slice_cap ≈ 0`: build memory is subtracted as a `build_pool` **and** re-charged inside the per-job whole-tree-peak divisor. A GHA-CI runner job *is* a build — its `rustc` lives **inside** `system-actions-runner.slice` — so the build memory must be counted **once**, not twice.
 
 ## oomd demoted (operator §5 insight)
 

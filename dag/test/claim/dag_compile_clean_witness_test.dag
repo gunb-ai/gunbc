@@ -1,0 +1,11 @@
+module test.claim.dag_compile_clean_witness
+
+import tools.dag_compile_clean_transport {
+  dag_compile_clean_transport_programs_serialize_compile_invocations,
+  red_empty_shell_program_fails_dcc_invocation_check
+}
+
+test fn dag_compile_clean_transport_serializes_compile_invocations_holds() -> Bool {
+  dag_compile_clean_transport_programs_serialize_compile_invocations()
+    && red_empty_shell_program_fails_dcc_invocation_check()
+}

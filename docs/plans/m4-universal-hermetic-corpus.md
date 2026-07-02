@@ -11,14 +11,14 @@
 ## 0. Thesis — governance is universal, not opt-in
 
 ```
-  dsl/ whole-tree published mock corpora     ← SINGLE authority (same modules M2 lens imports)
-    → precompute operation-key set ONCE per batch (whole-tree compile of dsl/ roots)
+  dag/ whole-tree published mock corpora     ← SINGLE authority (same modules M2 lens imports)
+    → precompute operation-key set ONCE per batch (whole-tree compile of dag/ roots)
       → InterpContext carries immutable published_mock_keys + governed_services (O(1))
         → eval_service_call: corpus-governed service + unpublished op → §5 fail-closed
           → fixture replay OR inline mock (corpus-free services only)
 ```
 
-The entry import closure decides **which code runs**; it must NOT decide **which operations are hermetically realizable**. That fact is global over the dsl/ tree.
+The entry import closure decides **which code runs**; it must NOT decide **which operations are hermetically realizable**. That fact is global over the dag/ tree.
 
 ---
 
@@ -26,10 +26,10 @@ The entry import closure decides **which code runs**; it must NOT decide **which
 
 | Artifact | Role |
 | --- | --- |
-| `dsl/std/hermetic_replay.dag` | Add `service` + `operation` fields on `PublishedMockCase` (alongside `operation_key` until dissolve) |
-| `dsl/test/fixture/m4_universal_governed_probe.dag` | Service-only module (no corpus) |
-| `dsl/test/fixture/m4_universal_governed_corpus.dag` | Corpus-only module (NOT imported by witness entry) |
-| `dsl/test/claim/m4_universal_corpus_witness.dag` | §5 discriminating pair: GREEN published / RED unpublished **without** corpus in closure |
+| `dag/std/hermetic_replay.dag` | Add `service` + `operation` fields on `PublishedMockCase` (alongside `operation_key` until dissolve) |
+| `dag/test/fixture/m4_universal_governed_probe.dag` | Service-only module (no corpus) |
+| `dag/test/fixture/m4_universal_governed_corpus.dag` | Corpus-only module (NOT imported by witness entry) |
+| `dag/test/claim/m4_universal_corpus_witness.dag` | §5 discriminating pair: GREEN published / RED unpublished **without** corpus in closure |
 | `interp_recorded_fixture_test.rs` | Subprocess proof on real `claim_batch` path |
 
 **RED before runtime:** witness entry imports probe service only → M4.0 closure scan misses corpus → `Forbidden` silently uses inline mock (vacuous). **GREEN after M4.1:** whole-tree precompute finds corpus → fail-closed on unpublished op.
@@ -39,8 +39,8 @@ The entry import closure decides **which code runs**; it must NOT decide **which
 ## Phase 2 — Runtime (load-bearing `v1_interpreter.rs` + `cli_run.rs`)
 
 1. **`precompute_whole_tree_published_mock_keys(source_roots)`** in `cli_run.rs`
-  - Scan dsl source roots (paths ending in `/dsl` or named `dsl`)
-  - `resolved_graph_from_sources(all modules)` — same tree `dsl_compile_clean` validates
+  - Scan dag source roots (paths ending in `/dag` or named `dag`)
+  - `resolved_graph_from_sources(all modules)` — same tree `dag_compile_clean` validates
   - Evaluate every `data` item declared over `PublishedMockCase` (existing shape gate)
   - Return `HashSet<String>` of operation keys
 2. **`InterpContext` extensions**

@@ -7,7 +7,7 @@ import v2.std.cross_tree.import_model {
   CrossTreeAdmissionVerdict,
   CrossTreeDenied,
   CrossTreeImport,
-  DslTree,
+  DagTree,
   FundamentalityUnknown,
   ImportClosure,
   LessFundamental,
@@ -20,40 +20,40 @@ import v2.std.cross_tree.import_model {
 import v2.std.layer { LayerPrefixCompiler, LayerPrefixStd, LayerPrefixWorkflow }
 import v2.std.logic { Bool }
 
-data both_roots: SourceRootSet = [V2Tree, DslTree]
+data both_roots: SourceRootSet = [V2Tree, DagTree]
 
-data dsl_only_roots: SourceRootSet = [DslTree]
+data dag_only_roots: SourceRootSet = [DagTree]
 
-data dsl_std_to_v2_std_edge: CrossTreeImport = CrossTreeImport {
-  from_tree: DslTree,
+data dag_std_to_v2_std_edge: CrossTreeImport = CrossTreeImport {
+  from_tree: DagTree,
   from_layer: LayerPrefixStd,
-  from_module: "dsl.std.freeMonoid",
+  from_module: "dag.std.freeMonoid",
   to_tree: V2Tree,
   to_layer: LayerPrefixStd,
   to_module: "v2.std.algebra"
 }
 
-data dsl_std_to_v2_compiler_edge: CrossTreeImport = CrossTreeImport {
-  from_tree: DslTree,
+data dag_std_to_v2_compiler_edge: CrossTreeImport = CrossTreeImport {
+  from_tree: DagTree,
   from_layer: LayerPrefixStd,
-  from_module: "dsl.std.bad",
+  from_module: "dag.std.bad",
   to_tree: V2Tree,
   to_layer: LayerPrefixCompiler,
   to_module: "v2.compiler.tokenize"
 }
 
-data v2_workflow_to_dsl_std_edge: CrossTreeImport = CrossTreeImport {
+data v2_workflow_to_dag_std_edge: CrossTreeImport = CrossTreeImport {
   from_tree: V2Tree,
   from_layer: LayerPrefixWorkflow,
   from_module: "v2.workflow.ci_floor_plan",
-  to_tree: DslTree,
+  to_tree: DagTree,
   to_layer: LayerPrefixStd,
-  to_module: "dsl.std.types"
+  to_module: "dag.std.types"
 }
 
-fn witness_dsl_std_to_v2_std_more_fundamental_admitted_holds() -> Bool {
+fn witness_dag_std_to_v2_std_more_fundamental_admitted_holds() -> Bool {
   match cross_tree_import_admitted(
-    edge: dsl_std_to_v2_std_edge,
+    edge: dag_std_to_v2_std_edge,
     roots: both_roots,
     order: MoreFundamental
   ) {
@@ -62,9 +62,9 @@ fn witness_dsl_std_to_v2_std_more_fundamental_admitted_holds() -> Bool {
   }
 }
 
-fn witness_dsl_std_to_v2_std_co_fundamental_admitted_holds() -> Bool {
+fn witness_dag_std_to_v2_std_co_fundamental_admitted_holds() -> Bool {
   match cross_tree_import_admitted(
-    edge: dsl_std_to_v2_std_edge,
+    edge: dag_std_to_v2_std_edge,
     roots: both_roots,
     order: CoFundamental
   ) {
@@ -73,9 +73,9 @@ fn witness_dsl_std_to_v2_std_co_fundamental_admitted_holds() -> Bool {
   }
 }
 
-fn witness_v2_workflow_to_dsl_std_more_fundamental_admitted_holds() -> Bool {
+fn witness_v2_workflow_to_dag_std_more_fundamental_admitted_holds() -> Bool {
   match cross_tree_import_admitted(
-    edge: v2_workflow_to_dsl_std_edge,
+    edge: v2_workflow_to_dag_std_edge,
     roots: both_roots,
     order: MoreFundamental
   ) {
@@ -85,7 +85,7 @@ fn witness_v2_workflow_to_dsl_std_more_fundamental_admitted_holds() -> Bool {
 }
 
 fn witness_import_closure_all_admitted_holds() -> Bool {
-  let closure = [dsl_std_to_v2_std_edge, v2_workflow_to_dsl_std_edge]
+  let closure = [dag_std_to_v2_std_edge, v2_workflow_to_dag_std_edge]
   match cross_tree_import_closure_admitted(
     closure: closure,
     roots: both_roots,
@@ -98,7 +98,7 @@ fn witness_import_closure_all_admitted_holds() -> Bool {
 
 fn witness_layer_direction_violated_denied_holds() -> Bool {
   match cross_tree_import_admitted(
-    edge: dsl_std_to_v2_compiler_edge,
+    edge: dag_std_to_v2_compiler_edge,
     roots: both_roots,
     order: MoreFundamental
   ) {
@@ -109,7 +109,7 @@ fn witness_layer_direction_violated_denied_holds() -> Bool {
 
 fn witness_fundamentality_unknown_denied_holds() -> Bool {
   match cross_tree_import_admitted(
-    edge: dsl_std_to_v2_std_edge,
+    edge: dag_std_to_v2_std_edge,
     roots: both_roots,
     order: FundamentalityUnknown
   ) {
@@ -120,8 +120,8 @@ fn witness_fundamentality_unknown_denied_holds() -> Bool {
 
 fn witness_missing_root_denied_holds() -> Bool {
   match cross_tree_import_admitted(
-    edge: dsl_std_to_v2_std_edge,
-    roots: dsl_only_roots,
+    edge: dag_std_to_v2_std_edge,
+    roots: dag_only_roots,
     order: MoreFundamental
   ) {
     CrossTreeAdmitted => false
@@ -131,7 +131,7 @@ fn witness_missing_root_denied_holds() -> Bool {
 
 fn witness_less_fundamental_denied_holds() -> Bool {
   match cross_tree_import_admitted(
-    edge: dsl_std_to_v2_std_edge,
+    edge: dag_std_to_v2_std_edge,
     roots: both_roots,
     order: LessFundamental
   ) {
@@ -141,7 +141,7 @@ fn witness_less_fundamental_denied_holds() -> Bool {
 }
 
 fn witness_closure_denied_on_bad_edge_holds() -> Bool {
-  let closure = [dsl_std_to_v2_std_edge, dsl_std_to_v2_compiler_edge]
+  let closure = [dag_std_to_v2_std_edge, dag_std_to_v2_compiler_edge]
   match cross_tree_import_closure_admitted(
     closure: closure,
     roots: both_roots,
@@ -153,9 +153,9 @@ fn witness_closure_denied_on_bad_edge_holds() -> Bool {
 }
 
 test fn cross_tree_import_model_witnesses() -> Bool {
-  witness_dsl_std_to_v2_std_more_fundamental_admitted_holds()
-    && witness_dsl_std_to_v2_std_co_fundamental_admitted_holds()
-    && witness_v2_workflow_to_dsl_std_more_fundamental_admitted_holds()
+  witness_dag_std_to_v2_std_more_fundamental_admitted_holds()
+    && witness_dag_std_to_v2_std_co_fundamental_admitted_holds()
+    && witness_v2_workflow_to_dag_std_more_fundamental_admitted_holds()
     && witness_import_closure_all_admitted_holds()
     && witness_layer_direction_violated_denied_holds()
     && witness_fundamentality_unknown_denied_holds()

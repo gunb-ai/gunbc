@@ -2,7 +2,7 @@
 //!
 //! Proves the post-refactor compiler is byte-identical to commit db559b42814 on
 //! diagnostics, per-module emit repr, and full `EmitGraphInfo` when run over
-//! the frozen baseline corpus (`git archive db559b42814 dsl src/v1`). Fixture
+//! the frozen baseline corpus (`git archive db559b42814 dag src/v1`). Fixture
 //! captured via capture_func_env_semantic_oracle on that tree.
 
 use std::fs;
@@ -98,13 +98,13 @@ fn baseline_corpus_dir() -> PathBuf {
     let dir = workspace_root()
         .join("target")
         .join("func_env_semantic_baseline_corpus");
-    if dir.join("dsl").is_dir() && dir.join("src/v1").is_dir() {
+    if dir.join("dag").is_dir() && dir.join("src/v1").is_dir() {
         return dir;
     }
     fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("create baseline corpus dir {dir:?}: {e}"));
     ensure_baseline_commit_available(&git_root);
     let archive = Command::new("git")
-        .args(["archive", BASELINE_COMMIT, "dsl", "src/v1"])
+        .args(["archive", BASELINE_COMMIT, "dag", "src/v1"])
         .current_dir(&git_root)
         .output()
         .unwrap_or_else(|e| panic!("git archive {BASELINE_COMMIT}: {e}"));
@@ -134,7 +134,7 @@ fn baseline_corpus_dir() -> PathBuf {
 
 fn baseline_corpus_roots(corpus_dir: &Path) -> Vec<String> {
     vec![
-        corpus_dir.join("dsl").to_string_lossy().into_owned(),
+        corpus_dir.join("dag").to_string_lossy().into_owned(),
         corpus_dir.join("src/v1").to_string_lossy().into_owned(),
     ]
 }
