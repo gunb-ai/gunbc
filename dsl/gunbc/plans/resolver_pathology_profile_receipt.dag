@@ -1,0 +1,41 @@
+module gunbc.plans.resolver_pathology_profile_receipt
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock, CodeBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, h3, p, li, ul, cell, row, hr }
+
+fn resolver_pathology_profile_receipt_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** measurement doc only (no resolver refactor). Timestamped profiling receipt for ROADMAP §1 *profile the 518s resolve*. DESIGN.md remains authority."),
+    p(text: "**Owner:** vivid-carp-798. Shell entrypoint: `scripts/profile-cold-resolve.sh` (SCAFFOLD — dissolve-on: substrate-emitted resolve timings / gunbc bash-emit #5828)."),
+    hr(),
+    h2(text: "1. Reproducible commands"),
+    CodeBlock { code: "unset GUNBC_RESOLVED_GRAPH_CACHE_DIR\n./scripts/profile-cold-resolve.sh          # corpus + top-15\n./scripts/profile-cold-resolve.sh --pair   # budget_roster vs fold_list twin\n" },
+    hr(),
+    h2(text: "2. Measured top resolve offenders (warm typed_module_cache)"),
+    TableBlock {
+      header: row(cells: [cell(text: "Rank"), cell(text: "ms"), cell(text: "items"), cell(text: "entry")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "1"), cell(text: "9410"), cell(text: "1973"), cell(text: "v2/compiler/manual/dag_import_block_lexeme_stamp_test.dag")]),
+        row(cells: [cell(text: "2"), cell(text: "6164"), cell(text: "2594"), cell(text: "v2/test/claim/emit_host_gate/target_coverage_completeness_test.dag")]),
+        row(cells: [cell(text: "12"), cell(text: "1556"), cell(text: "2412"), cell(text: "complexity_gate/budget_roster_completeness_test.dag")]),
+      ]
+    },
+    hr(),
+    h2(text: "3. Pathological pair"),
+    p(text: "**Pathological:** `budget_roster_completeness_test.dag` — cold resolve 5513ms, 2412 registry items. **Structural twin:** `fold_list_generic_instantiation.dag` — 159ms, 226 items. **Ratio:** 34.7× wall (operator ~450× targets typecheck/item work; see prose receipt)."),
+    hr(),
+    h2(text: "4. Hypothesis"),
+    p(text: "**`reconcile_with_typed_cache` / `typecheck_module`** — fn-typed `List<LensSubjectComplexityBudgetRow>` roster rows pulling source-bridged `v2.compiler.*` modules. Not `resolve_modules` wiring (twins share 57-module closure at ~5.5s cold)."),
+  ]
+}
+
+data resolver_pathology_profile_receipt_plan: Plan = Plan {
+  slug: "resolver-pathology-profile-receipt",
+  title: "Resolver pathology — cold-resolve profile receipt",
+  body: resolver_pathology_profile_receipt_body(),
+  dissolution: HasTrigger {
+    text: "Delete when resolve-phase timings are substrate-emitted and ROADMAP 1-resolver-pathology closes with a fix PR."
+  }
+}
