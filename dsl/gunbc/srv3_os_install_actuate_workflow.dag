@@ -73,12 +73,12 @@ fn srv3_boot_once_cd_is_runnable_with_approval(approval: WorkflowApprovalState) 
 fn srv3_os_install_actuate_workflow_includes_operator_approval_before_boot() -> Bool {
   let steps = srv3_os_install_actuate_workflow_steps()
   srv3_os_install_actuate_workflow_step_count() == 8
-    && match steps.skip(n: 4).first() {
+    && match steps.skip(n: 5).first() {
       WorkflowOperatorApproval { escalation: e } =>
         e.escalation_id == srv3_boot_once_cd_escalation.escalation_id
       _ => false
     }
-    && match steps.skip(n: 5).first() {
+    && match steps.skip(n: 6).first() {
       WorkflowBootOnceCd => true
       _ => false
     }
