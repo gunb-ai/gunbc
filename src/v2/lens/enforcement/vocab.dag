@@ -27,12 +27,6 @@ type NarrowingReason
   | ExternalRuntimeOnly { reason: String }
   | ExplicitOperatorExemption { signoff: String }
 
-type NarrowingReasonKind
-  = KindBootstrapBlocked
-  | KindTypeReflectionUnavailable
-  | KindExternalRuntimeOnly
-  | KindExplicitOperatorExemption
-
 type ScopeSatisfaction
   = ScopeCovers
   | ScopeNarrowed { missing: SubjectRoster, reason: NarrowingReason }
@@ -117,26 +111,33 @@ fn self_application_ok(s: SelfApplicationStatus) -> Bool {
   }
 }
 
-fn narrowing_reason_kind(r: NarrowingReason) -> NarrowingReasonKind {
-  match r {
-    BootstrapBlocked { blocker } => KindBootstrapBlocked
-    TypeReflectionUnavailable { blocker } => KindTypeReflectionUnavailable
-    ExternalRuntimeOnly { reason } => KindExternalRuntimeOnly
-    ExplicitOperatorExemption { signoff } => KindExplicitOperatorExemption
+fn narrowing_reason_same_variant(a: NarrowingReason, b: NarrowingReason) -> Bool {
+  match a {
+    BootstrapBlocked { blocker: a1 } => match b {
+      BootstrapBlocked { blocker: b1 } => true
+      TypeReflectionUnavailable { blocker: b2 } => false
+      ExternalRuntimeOnly { reason: b3 } => false
+      ExplicitOperatorExemption { signoff: b4 } => false
+    }
+    TypeReflectionUnavailable { blocker: a2 } => match b {
+      BootstrapBlocked { blocker: b1 } => false
+      TypeReflectionUnavailable { blocker: b2 } => true
+      ExternalRuntimeOnly { reason: b3 } => false
+      ExplicitOperatorExemption { signoff: b4 } => false
+    }
+    ExternalRuntimeOnly { reason: a3 } => match b {
+      BootstrapBlocked { blocker: b1 } => false
+      TypeReflectionUnavailable { blocker: b2 } => false
+      ExternalRuntimeOnly { reason: b3 } => true
+      ExplicitOperatorExemption { signoff: b4 } => false
+    }
+    ExplicitOperatorExemption { signoff: a4 } => match b {
+      BootstrapBlocked { blocker: b1 } => false
+      TypeReflectionUnavailable { blocker: b2 } => false
+      ExternalRuntimeOnly { reason: b3 } => false
+      ExplicitOperatorExemption { signoff: b4 } => true
+    }
   }
-}
-
-fn narrowing_reason_kind_rank(k: NarrowingReasonKind) -> Int {
-  match k {
-    KindBootstrapBlocked => 1
-    KindTypeReflectionUnavailable => 2
-    KindExternalRuntimeOnly => 3
-    KindExplicitOperatorExemption => 4
-  }
-}
-
-fn narrowing_reason_kind_eq(a: NarrowingReasonKind, b: NarrowingReasonKind) -> Bool {
-  narrowing_reason_kind_rank(k: a) == narrowing_reason_kind_rank(k: b)
 }
 
 fn string_eq(a: String, b: String) -> Bool {

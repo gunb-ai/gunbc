@@ -4,7 +4,7 @@ import v2.std.logic { Bool }
 import v2.std.collection { List }
 import v2.std.text { String }
 import v2.std.integer { Int }
-import v2.std.algebra { for_all, filter, contains, non_empty, list_head, HeadFound, HeadAbsent }
+import v2.std.algebra { for_all, any, filter, contains, non_empty, list_head, HeadFound, HeadAbsent }
 import v2.lens.registry {
   LensRegistryEntryV0,
   LensIdV0, Complexity, Cost, Parallelism, EffectEnumeration, Idempotency,
@@ -15,7 +15,7 @@ import v2.lens.enforcement.vocab {
   EnforcementMode, Advisory, AuditOnly, Blocking, enforcement_mode_satisfies,
   ConsumerKind, ConsumerRequirement, WitnessOnly, consumer_is_live, consumer_satisfies,
   ScopeSatisfaction, ScopeCovers, ScopeNarrowed, ScopeMissing,
-  NarrowingReason, NarrowingReasonKind, narrowing_reason_kind, narrowing_reason_kind_eq,
+  NarrowingReason, narrowing_reason_same_variant,
   RedControlStatus, red_control_passed,
   SelfApplicationStatus, self_application_ok
 }
@@ -97,8 +97,8 @@ fn find_receipt(cid: LensIdV0, receipts: List<CoverageReceipt>) -> ReceiptLookup
   }
 }
 
-fn narrowing_allowed(reason: NarrowingReason, allowed: List<NarrowingReasonKind>) -> Bool {
-  contains(xs: allowed, item: narrowing_reason_kind(r: reason), eq: narrowing_reason_kind_eq)
+fn narrowing_allowed(reason: NarrowingReason, allowed: List<NarrowingReason>) -> Bool {
+  any(xs: allowed, predicate: fn(a) { narrowing_reason_same_variant(a: a, b: reason) })
 }
 
 fn scope_leg(intent: StandingIntent, s: ScopeSatisfaction) -> LegVerdict {

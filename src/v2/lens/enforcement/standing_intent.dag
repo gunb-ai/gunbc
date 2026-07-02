@@ -10,7 +10,7 @@ import v2.lens.enforcement.vocab {
   EnforcementMode, Advisory, AuditOnly, Blocking,
   ConsumerRequirement, AnyLiveConsumer, OneOf, Exact,
   ConsumerKind, FloorGate, MergeAdmission, PrePushHook, RoadmapDriftGate,
-  NarrowingReasonKind, KindBootstrapBlocked, KindTypeReflectionUnavailable, KindExternalRuntimeOnly, KindExplicitOperatorExemption
+  NarrowingReason, BootstrapBlocked, TypeReflectionUnavailable
 }
 
 type IntentProperty
@@ -37,7 +37,7 @@ type StandingIntent {
   default_mode: EnforcementMode
   required_consumer: ConsumerRequirement
   self_application_required: Bool
-  allowed_narrowing: List<NarrowingReasonKind>
+  allowed_narrowing: List<NarrowingReason>
   fallback_when_unavailable: IntentFallback
 }
 
@@ -103,7 +103,7 @@ data standing_intent_model_anemia_repo_wide: StandingIntent = {
   default_mode: AuditOnly,
   required_consumer: AnyLiveConsumer,
   self_application_required: false,
-  allowed_narrowing: [KindBootstrapBlocked, KindTypeReflectionUnavailable],
+  allowed_narrowing: [BootstrapBlocked { blocker: "" }, TypeReflectionUnavailable { blocker: "" }],
   fallback_when_unavailable: AuditOnlyWithReason { reason: "object anemia lens is task E; declared now so the intent cannot be silently lost" }
 }
 
@@ -119,7 +119,7 @@ data standing_intent_single_authority_consolidation: StandingIntent = {
   default_mode: AuditOnly,
   required_consumer: AnyLiveConsumer,
   self_application_required: false,
-  allowed_narrowing: [KindBootstrapBlocked, KindTypeReflectionUnavailable],
+  allowed_narrowing: [BootstrapBlocked { blocker: "" }, TypeReflectionUnavailable { blocker: "" }],
   fallback_when_unavailable: AuditOnlyWithReason { reason: "object consolidation lens is task E; declared now so the intent cannot be silently lost" }
 }
 
