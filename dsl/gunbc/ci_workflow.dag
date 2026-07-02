@@ -22,8 +22,7 @@ import extdeps.github.actions {
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
-  checkout_action, setup_rust_action, cache_action,
-  default_job_timeout_minutes
+  checkout_action, setup_rust_action, cache_action
 }
 
 fn ci_checkout_step() -> Step {
@@ -306,7 +305,7 @@ fn ci_job() -> Job {
     outputs: none,
     if_condition: none,
     strategy: none,
-    timeout_minutes: Present { value: default_job_timeout_minutes },
+    timeout_minutes: Present { value: gunbc_ci_job_timeout_policy_minutes },
     continue_on_error: none,
     concurrency: none
   }
@@ -323,7 +322,7 @@ fn rust_tests_job() -> Job {
     outputs: none,
     if_condition: none,
     strategy: none,
-    timeout_minutes: Present { value: default_job_timeout_minutes },
+    timeout_minutes: Present { value: gunbc_ci_job_timeout_policy_minutes },
     continue_on_error: none,
     concurrency: none
   }
