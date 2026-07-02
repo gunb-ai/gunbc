@@ -6260,10 +6260,10 @@ fn raw_map_lookup(
     ctx: &InterpContext,
 ) -> InterpResult<Value> {
     match map {
-        Value::Map(m) => match CanonKey::new(key.clone()) {
-            Some(ck) => Ok(m.get(&ck).cloned().unwrap_or(Value::Null)),
-            None => Ok(Value::Null),
-        },
+        Value::Map(m) => {
+            let _ = m;
+            Ok(Value::Null)
+        }
         Value::Record { fields, .. } | Value::Variant { fields, .. } => {
             let lookup_sym = ctx.sym("lookup");
             match fields_get(fields, lookup_sym) {
