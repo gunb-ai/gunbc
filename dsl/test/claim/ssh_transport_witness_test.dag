@@ -11,8 +11,9 @@ data ssh_exec_script_remote_receiver: NonEmptyStr = "bash -s"
 data ssh_argv_embed_budget: ByteSize = byte_size(65536)
 
 fn witness_apply_script_exceeds_argv_embed_budget() -> Bool {
-  length(live_deploy_apply_script_for(spec: deployment_spec_srv1()))
-    > byte_size_count(b: ssh_argv_embed_budget)
+  let script_len = length(live_deploy_apply_script_for(spec: deployment_spec_srv1()))
+  let budget = byte_size_count(b: ssh_argv_embed_budget)
+  script_len > budget
 }
 
 fn witness_exec_script_mock_enrolled() -> Bool {
