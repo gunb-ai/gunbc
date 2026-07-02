@@ -107,32 +107,18 @@ fn nbd_proxy_serve_program(intent: NbdProxyServeTransportIntent) -> ShellProgram
   ShellProgram {
     set_e: false,
     statements: [
-      command(words: [
-        lit(text: "set"),
-        lit(text: "-euo"),
-        lit(text: "pipefail"),
-      ]),
+      RawLine { text: "set -euo pipefail" },
       RawLine {
         text: concat(
           concat(nbdkit_cli_tool.name, concat(" -p ", concat(port, concat(" --readonly file file=", concat(intent.iso_path as String, " &")))))),
       },
-      assign(name: "NBDKIT_PID", value: lit(text: "$!")),
-      command(words: [
-        lit(text: "trap"),
-        lit(text: "'kill \"$NBDKIT_PID\"'"),
-        lit(text: "EXIT"),
-        lit(text: "INT"),
-        lit(text: "TERM"),
-      ]),
-      command(words: [
-        lit(text: websocat_cli_tool.name),
-        lit(text: "-b"),
-        lit(text: "--insecure"),
-        lit(text: "-H"),
-        lit(text: auth_header),
-        lit(text: wss_url),
-        lit(text: socat_bridge),
-      ]),
+      RawLine { text: "NBDKIT_PID=$!" },
+      RawLine { text: "trap 'kill \"$NBDKIT_PID\"' EXIT INT TERM" },
+      RawLine {
+        text: concat(
+          concat(websocat_cli_tool.name, " -b --insecure -H \""),
+          concat(auth_header, concat("\" ", concat(wss_url, concat(" ", socat_bridge))))),
+      },
     ],
   }
 }
