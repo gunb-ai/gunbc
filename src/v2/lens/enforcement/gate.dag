@@ -3,13 +3,8 @@ module v2.lens.enforcement.gate
 import v2.std.logic { Bool }
 import v2.std.collection { List }
 import v2.std.text { String }
-import v2.std.integer { Int }
 import v2.std.algebra { for_all, any, filter, contains, non_empty, list_head, HeadFound, HeadAbsent }
-import v2.lens.registry {
-  LensRegistryEntryV0,
-  LensIdV0, Complexity, Cost, Parallelism, EffectEnumeration, Idempotency,
-  Provenance, UnusedParameters, StructuralResolution, TableDecisionTree
-}
+import v2.lens.registry { LensRegistryEntryV0, LensIdV0, lens_id_v0_eq }
 import v2.lens.enforcement.vocab {
   SubjectRoster,
   EnforcementMode, Advisory, AuditOnly, Blocking, enforcement_mode_satisfies,
@@ -60,27 +55,9 @@ fn leg_of(ok: Bool, reason: String) -> LegVerdict {
   if ok { LegHolds } else { LegFails { reason: reason } }
 }
 
-fn lens_id_rank(l: LensIdV0) -> Int {
-  match l {
-    Complexity => 1
-    Cost => 2
-    Parallelism => 3
-    EffectEnumeration => 4
-    Idempotency => 5
-    Provenance => 6
-    UnusedParameters => 7
-    StructuralResolution => 8
-    TableDecisionTree => 9
-  }
-}
-
-fn lens_id_eq(a: LensIdV0, b: LensIdV0) -> Bool {
-  lens_id_rank(l: a) == lens_id_rank(l: b)
-}
-
 fn contract_answers(c: LensContract, p: IntentProperty) -> Bool {
   match p {
-    LensFamily { lens } => lens_id_eq(a: c.entry.lens_id, b: lens)
+    LensFamily { lens } => lens_id_v0_eq(left: c.entry.lens_id, right: lens)
     LensHygieneLiveness => false
     LensHygieneSelfApply => false
     ModelAnemia => false
@@ -89,7 +66,7 @@ fn contract_answers(c: LensContract, p: IntentProperty) -> Bool {
 }
 
 fn receipt_matches(r: CoverageReceipt, cid: LensIdV0) -> Bool {
-  lens_id_eq(a: r.contract_id, b: cid)
+  lens_id_v0_eq(left: r.contract_id, right: cid)
 }
 
 fn find_receipt(cid: LensIdV0, receipts: List<CoverageReceipt>) -> ReceiptLookup {
