@@ -80,7 +80,7 @@ fn compile_clean_shard_batch_runnable(spawn_width_cap: Int) -> Runnable {
 }
 
 fn compile_clean_shard_roster_count() -> Int {
-  list_length(xs: compile_clean_module_shard_roster())
+  list_length(items: compile_clean_module_shard_roster())
 }
 
 fn compile_clean_shard_roster_nonempty() -> Bool {
@@ -118,12 +118,12 @@ fn witness_shard_roster_coverage(full: List<String>, plan_paths: List<String>) -
 }
 
 fn witness_dropped_shard_breaks_coverage(full: List<String>, plan_paths: List<String>) -> Bool {
-  if list_length(xs: full) < 2 {
+  if list_length(items: full) < 2 {
     false
   } else {
-    let dropped = full.skip(n: 1)
+    let truncated_plan = plan_paths.skip(n: 1)
     witness_shard_roster_coverage(full: full, plan_paths: plan_paths)
-      && !witness_shard_roster_coverage(full: dropped, plan_paths: plan_paths)
+      && !witness_shard_roster_coverage(full: full, plan_paths: truncated_plan)
   }
 }
 
