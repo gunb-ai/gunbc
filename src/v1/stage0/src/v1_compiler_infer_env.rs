@@ -17,6 +17,30 @@ use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static TYPE_ENV_LOOKUP_BY_NAME_CALLS: AtomicU64 = AtomicU64::new(0);
+static TYPE_ENV_PARENT_CHAIN_STEPS: AtomicU64 = AtomicU64::new(0);
+
+pub fn maybe_print_type_env_lookup_profile() {
+    if std::env::var("GUNBC_TYPE_ENV_LOOKUP_PROFILE").ok().as_deref() == Some("1") {
+        let calls = TYPE_ENV_LOOKUP_BY_NAME_CALLS.load(Ordering::Relaxed);
+        let steps = TYPE_ENV_PARENT_CHAIN_STEPS.load(Ordering::Relaxed);
+        let avg_depth = if calls > 0 {
+            (steps as f64) / (calls as f64)
+        } else {
+            0.0
+        };
+        eprintln!(
+            "[type-env-profile] lookup_by_name_calls={calls} parent_chain_steps={steps} avg_chain_steps_per_lookup={avg_depth:.2}"
+        );
+    }
+}
+
+pub fn reset_type_env_lookup_profile() {
+    TYPE_ENV_LOOKUP_BY_NAME_CALLS.store(0, Ordering::Relaxed);
+    TYPE_ENV_PARENT_CHAIN_STEPS.store(0, Ordering::Relaxed);
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
@@ -83,6 +107,7 @@ pub fn lookup_binding_by_name_in_parent_chain(
     mut name: String,
 ) -> Option<Rc<TypeBinding>> {
     loop {
+        TYPE_ENV_PARENT_CHAIN_STEPS.fetch_add(1, Ordering::Relaxed);
         match parents.clone().last().cloned() {
             None => {
                 break None;
@@ -108,6 +133,7 @@ pub fn lookup_binding_by_name_in_parent_chain(
 }
 
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    TYPE_ENV_LOOKUP_BY_NAME_CALLS.fetch_add(1, Ordering::Relaxed);
     match lookup_binding_local_by_name(env.clone(), name.clone()) {
         Some(binding) => Some(binding.clone()),
         None => lookup_binding_by_name_in_parent_chain(env.parents.clone(), name.clone()),
