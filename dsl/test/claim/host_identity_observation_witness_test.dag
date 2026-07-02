@@ -69,8 +69,6 @@ import gunbc.deployed_intent_v1 {
 }
 import gunbc.host_identity_assimilation {
   HostIdentityAssimilationTarget,
-  host_identity_assimilation_target_srv1,
-  host_identity_converge_from_base,
   host_identity_converge_with_observation,
 }
 import gunbc.host_identity_access { host_identity_srv1_access }
@@ -328,9 +326,22 @@ fn witness_converge_from_base_conflict_is_none_red() -> Bool {
     persisted_base: gunbc_srv1_deployed_intent_v0_persisted,
     desired: gunbc_srv1_deployed_intent_v1,
   }
-  match host_identity_converge_from_base(target: target, probed_at: "2026-07-02" as NonEmptyStr) {
-    Absent => true
-    Present { value: _ } => false
+  match gunbc_srv1_deployed_intent_v1 {
+    Present { value: desired } =>
+      match host_identity_observation_from_stdout(stdout: "unexpected-host", probed_at: "2026-07-02") {
+        Present { value: obs } =>
+          match host_identity_converge_with_observation(
+            target: target,
+            desired: desired,
+            precondition_obs: obs,
+            probed_at: "2026-07-02" as NonEmptyStr,
+          ) {
+            Absent => true
+            Present { value: _ } => false
+          }
+        Absent => false
+      }
+    Absent => false
   }
 }
 
