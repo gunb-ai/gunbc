@@ -8,6 +8,7 @@ import extdeps.bmc.serial_console {
 }
 import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
 import extdeps.shell
+import gunbc.shell_bash_runner { shell_exec_via_bash }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
@@ -32,7 +33,7 @@ data srv3_sol_console_capture_intent: SolConsoleCaptureIntent = SolConsoleCaptur
 
 func srv3_sol_console_capture() -> ProcessExit {
   let script = sol_console_capture_script(intent: srv3_sol_console_capture_intent)
-  let run = shell.Exec.Run(script: script)
+  let run = shell.Exec.Run(script: shell_exec_via_bash(body: script))
   if run.success {
     ExitSuccess
   } else {

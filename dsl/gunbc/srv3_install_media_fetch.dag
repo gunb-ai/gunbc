@@ -16,6 +16,7 @@ import extdeps.os.ubuntu_install_media_fetch {
 }
 import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
 import gunbc.fleet_intent { srv1_host, ComputeHost }
+import gunbc.shell_bash_runner { shell_exec_via_bash }
 import std.effects {
   EffectShape,
   CreateEffect,
@@ -134,7 +135,7 @@ func srv3_install_media_fetch() -> ProcessExit
   uses net: Network
 {
   let script = install_media_fetch_script(artifact: srv3_ubuntu_install_media_artifact)
-  let run = shell.Exec.Run(script: script)
+  let run = shell.Exec.Run(script: shell_exec_via_bash(body: script))
   if run.success {
     ExitSuccess
   } else {
