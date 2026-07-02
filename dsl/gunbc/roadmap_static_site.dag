@@ -5,7 +5,7 @@ import std.content_hash { content_hash_atom }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.measure { Mebibyte, Millicore, mebibyte, millicore }
-import std.http_path { PathTemplate, LiteralToken }
+import std.http_path { PathTemplate, LiteralToken, ParamToken }
 import extdeps.uri_path { ParsedPathTemplate, MalformedPathTemplate, parse_path_template }
 import extdeps.http.server {
   HttpContentType,
@@ -187,6 +187,17 @@ fn roadmap_site_text_static_routes() -> List<ServedStaticRoute> {
     ),
     roadmap_site_healthz_route(),
   ]
+}
+
+fn served_static_route_literal_path(route: ServedStaticRoute) -> String {
+  fold(route.path_pattern.tokens, init: "", f: (acc, tok) => match tok {
+    LiteralToken { text: t } => concat(acc, t)
+    ParamToken { name: _ } => acc
+  })
+}
+
+fn roadmap_site_static_route_literal_paths() -> List<String> {
+  map(roadmap_site_text_static_routes(), r => served_static_route_literal_path(route: r))
 }
 
 fn roadmap_site_fnv1a_digest_script() -> String {
