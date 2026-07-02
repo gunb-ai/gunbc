@@ -1,0 +1,138 @@
+module test.claim.host_identity_observation_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import gunbc.fleet_intent { srv1_host }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.host_effect {
+  NodeControlPlane,
+  HostOs,
+  LocalShell,
+  ShellCommand,
+  OneShotIdempotent,
+}
+import gunbc.host_effect_realize { host_effect_apply }
+import std.realization_reconcile { reconciliation_converged }
+import gunbc.host_identity_observation {
+  HostIdentityObservationRow,
+  host_identity_short_hostname_script,
+  host_identity_observation_from_stdout,
+  host_identity_observation_apply,
+  host_identity_observation_from_apply,
+  host_identity_observation_nonempty,
+  fixture_host_identity_observation,
+}
+import gunbc.deployed_intent_v0 {
+  ObservedBase,
+  DesignIntentBase,
+  gunbc_srv1_deployed_intent_v0_fixture,
+  deployed_intent_records_observed_base,
+  deployed_intent_observed_differs_from_fleet_slot,
+  deployed_intent_observed_short_hostname,
+  deployed_intent_v0_from_observation_row,
+}
+
+fn srv1_os_target() -> NodeControlPlane {
+  HostOs { node: srv1_host }
+}
+
+fn witness_hostname_script_is_modeled_constant() -> Bool {
+  host_identity_short_hostname_script == "hostname -s 2>/dev/null || hostname"
+}
+
+fn witness_fixture_observation_types_srv1_observed_hostname() -> Bool {
+  let obs = fixture_host_identity_observation()
+  obs.short_hostname == "altrad8ud-1l2t-1"
+    && obs.probed_at == "2026-07-02"
+    && host_identity_observation_nonempty(obs: obs)
+}
+
+fn witness_empty_stdout_is_absent() -> Bool {
+  match host_identity_observation_from_stdout(stdout: "  \n", probed_at: "2026-07-02") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn witness_trimmed_stdout_is_typed() -> Bool {
+  match host_identity_observation_from_stdout(stdout: "  altrad8ud-1l2t-1\n", probed_at: "2026-07-02") {
+    Present { value: obs } => obs.short_hostname == "altrad8ud-1l2t-1"
+    Absent => false
+  }
+}
+
+fn witness_host_effect_apply_hostname_read_converges() -> Bool {
+  reconciliation_converged(r: host_identity_observation_apply(
+    target: srv1_os_target(),
+    transport: LocalShell
+  ))
+}
+
+fn witness_host_effect_apply_failure_is_not_observation() -> Bool {
+  match host_identity_observation_from_apply(
+    r: host_effect_apply(
+      target: srv1_os_target(),
+      effect: ShellCommand { script: "exit 1" },
+      policy: OneShotIdempotent,
+      transport: LocalShell
+    ),
+    probed_at: "2026-07-02"
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn witness_apply_success_grounds_observation() -> Bool {
+  match host_identity_observation_from_apply(
+    r: host_identity_observation_apply(
+      target: srv1_os_target(),
+      transport: LocalShell
+    ),
+    probed_at: "2026-07-02"
+  ) {
+    Present { value: obs } => host_identity_observation_nonempty(obs: obs)
+    Absent => false
+  }
+}
+
+fn witness_deployed_intent_v0_records_observed_base_not_design() -> Bool {
+  let d = gunbc_srv1_deployed_intent_v0_fixture
+  deployed_intent_records_observed_base(d: d)
+    && deployed_intent_observed_short_hostname(d: d) == "altrad8ud-1l2t-1"
+    && d.fleet_slot == operator_host_srv1
+    && deployed_intent_observed_differs_from_fleet_slot(d: d)
+}
+
+fn witness_design_intent_conflation_red() -> Bool {
+  let wrong_row = HostIdentityObservationRow {
+    short_hostname_raw: operator_host_srv1,
+    probed_at: "2026-07-02",
+  }
+  let conflated = deployed_intent_v0_from_observation_row(
+    fleet_slot: operator_host_srv1,
+    target_host: srv1_host,
+    row: wrong_row,
+  )
+  !deployed_intent_observed_differs_from_fleet_slot(d: conflated)
+    && deployed_intent_observed_short_hostname(d: conflated) == operator_host_srv1
+}
+
+fn witness_observed_base_kind_is_not_design_intent() -> Bool {
+  match gunbc_srv1_deployed_intent_v0_fixture.base_kind {
+    ObservedBase => true
+    DesignIntentBase => false
+  }
+}
+
+test fn host_identity_observation_holds() -> Bool {
+  witness_hostname_script_is_modeled_constant()
+    && witness_fixture_observation_types_srv1_observed_hostname()
+    && witness_empty_stdout_is_absent()
+    && witness_trimmed_stdout_is_typed()
+    && witness_host_effect_apply_hostname_read_converges()
+    && witness_host_effect_apply_failure_is_not_observation()
+    && witness_apply_success_grounds_observation()
+    && witness_deployed_intent_v0_records_observed_base_not_design()
+    && witness_design_intent_conflation_red()
+    && witness_observed_base_kind_is_not_design_intent()
+}
