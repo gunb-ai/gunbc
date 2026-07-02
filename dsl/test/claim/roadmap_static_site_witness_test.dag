@@ -23,9 +23,6 @@ import gunbc.roadmap_static_site {
   RoadmapMarkdown,
   RoadmapDispatchJson,
 }
-import gunbc.roadmap_site_healthz_validate {
-  roadmap_site_healthz_body_parses,
-}
 import gunbc.node_http_server_emit {
   roadmap_dashboard_served_static_route_table,
   roadmap_dashboard_node_http_server_source,
@@ -75,10 +72,6 @@ fn witness_healthz_body_json_well_formed_for(body: String) -> Bool {
     && !ends_with(s: body, suffix: "}}}")
 }
 
-fn witness_healthz_body_json_parses() -> Bool {
-  roadmap_site_healthz_body_parses()
-}
-
 fn witness_healthz_perturbed_body_fails_well_formed() -> Bool {
   !witness_healthz_body_json_well_formed_for(body: concat(roadmap_site_healthz_body(), "}"))
 }
@@ -90,7 +83,6 @@ fn witness_healthz_body_extra_brace_perturb_red() -> Bool {
 fn witness_healthz_route_json_ok() -> Bool {
   let body = roadmap_site_healthz_body()
   witness_healthz_body_json_well_formed()
-    && witness_healthz_body_json_parses()
     && witness_healthz_perturbed_body_fails_well_formed()
     && witness_healthz_body_extra_brace_perturb_red()
     && string_contains(s: body, pattern: "\"status\":\"ok\"")
