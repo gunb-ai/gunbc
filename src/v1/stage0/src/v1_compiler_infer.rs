@@ -11330,9 +11330,6 @@ pub fn unify_generics(
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut acc: Rc<HashMap<String, Rc<Node>>>,
 ) -> Rc<HashMap<String, Rc<Node>>> {
-    if true {
-        return acc;
-    }
     loop {
         let bind_name = type_node_label(formal.clone(), source_indices.clone());
         let f_bare = (((formal.children.clone().len() as i64) == 0)
