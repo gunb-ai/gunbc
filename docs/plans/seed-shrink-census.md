@@ -1,6 +1,6 @@
 # Plan — Rust seed-shrink census toward `5-collapse-v1` (DRAFT)
 
-**Status:** DRAFT · **design-for-sign** · **do-not-merge** until operator review (parallel to determinism #5937). Carrier-grounded audit + per-chunk sign-off queue · **DESIGN.md + the carriers remain the authority** — this doc is an audit/tracker, not a fact ledger (DESIGN §6). A chunk's real state is its branch/PR + operator sign, not this file. Entry point: [v2-self-hosting.md](v2-self-hosting.md) Track Z (milestone `5-collapse-v1` in `dsl/gunbc/roadmap_authority.dag`; `ROADMAP.md` is emitted realization and is not linked here). **Endorsed** by jolly-cat-29 (Section 5 self-host manager, 2026-06-29).
+**Status:** DRAFT · **design-for-sign** · **do-not-merge** until operator review (parallel to determinism #5937). Carrier-grounded audit + per-chunk sign-off queue · **DESIGN.md + the carriers remain the authority** — this doc is an audit/tracker, not a fact ledger (DESIGN §6). A chunk's real state is its branch/PR + operator sign, not this file. Entry point: [v2-self-hosting.md](v2-self-hosting.md) Track Z (milestone `5-collapse-v1` in `dag/gunbc/roadmap_authority.dag`; `ROADMAP.md` is emitted realization and is not linked here). **Endorsed** by jolly-cat-29 (Section 5 self-host manager, 2026-06-29).
 
 **Re-verified against the live tree on 2026-06-29 by execution** (session bright-lark-472, receipt `main @ 5acbff0f8b`). Re-run §1 receipt before acting on LOC figures — the seed drifts with every merge.
 
@@ -35,7 +35,7 @@ The honest work is smaller than the headline: **24 grounding PRs + test-migratio
 | CLI bins (`stage0/src/bin`) | 10 | 4,843 | Bootstrap kernel (§6) |
 | Integration tests (`src/v1/tests`) | 88 | 29,934 | `pipeline.rs` alone 11,842 |
 | `src/v2` | 795 `.dag` | **0 `.rs`** | Authority |
-| `dsl/` | 632 `.dag` | — | Std + extdeps + CI spec |
+| `dag/` | 632 `.dag` | — | Std + extdeps + CI spec |
 | Floor witnesses (`*_test.dag`) | 342 | 822 `test fn` | Auto-discovered by `claim_executor` |
 
 ---
@@ -85,7 +85,7 @@ v2-emitted compiler pipeline + std mirrors + extdeps language rows. At collapse:
 | `v1_compiler_complexity.rs` | 9,895 | infer complexity |
 | `v1_compiler_emit.rs` | 6,214 | `05_emit` |
 | `v1_test_non_ascii_perf_fixture.rs` | 6,029 | perf fixture |
-| `std_*` mirrors (28 files) | ~10,401 | `dsl/std/*` (de-fork target) |
+| `std_*` mirrors (28 files) | ~10,401 | `dag/std/*` (de-fork target) |
 
 **Pipeline stage LOC:**
 
@@ -94,7 +94,7 @@ v2-emitted compiler pipeline + std mirrors + extdeps language rows. At collapse:
 | `05_emit` | `05_emit.dag` + orchestration | 38,558 |
 | `04_infer` | `04_infer.dag` | 36,463 |
 | `02_parse` | `02_parse.dag` | 13,911* |
-| std mirrors | `dsl/std/*` | 10,401 |
+| std mirrors | `dag/std/*` | 10,401 |
 | `00_compile` | `00_compile.dag` | 2,500 |
 | `01_tokenize` | `01_tokenize.dag` | 1,031 |
 | `03_resolve` | `03_resolve.dag` | 982 |
@@ -155,9 +155,9 @@ Copied through regen, excluded from `regen --verify`. Each row = **operator sign
 
 ## 5. Test-migration sub-lane (§5 trap — coverage before delete)
 
-The 88 v1 integration-test modules (~30k LOC, **939 `#[test]` fns**, `pipeline.rs` alone **418 tests / 11,842 LOC**) exercise the v1 compiler and interpreter. They delete **with** v1 at collapse — but their **coverage must migrate to `.dag` floor witnesses** (`*_test.dag` under `dsl/test/claim` + `src/v2/test`, auto-enrolled by `claim_executor`) **before** each module can go, or collapse silently drops coverage (§5 fail-open).
+The 88 v1 integration-test modules (~30k LOC, **939 `#[test]` fns**, `pipeline.rs` alone **418 tests / 11,842 LOC**) exercise the v1 compiler and interpreter. They delete **with** v1 at collapse — but their **coverage must migrate to `.dag` floor witnesses** (`*_test.dag` under `dag/test/claim` + `src/v2/test`, auto-enrolled by `claim_executor`) **before** each module can go, or collapse silently drops coverage (§5 fail-open).
 
-**Floor discovery authority:** `gunbc.ci_layer_roots` — `witness_layer_roots = [dsl, src/v2]`, `witness_discovery_scan_dirs = [dsl/test/claim, src/v2/test/claim/manual]`; plus tree-wide `*_test.dag` walk under both witness layer roots.
+**Floor discovery authority:** `gunbc.ci_layer_roots` — `witness_layer_roots = [dag, src/v2]`, `witness_discovery_scan_dirs = [dag/test/claim, src/v2/test/claim/manual]`; plus tree-wide `*_test.dag` walk under both witness layer roots.
 
 ### 5A. Migration status summary
 
@@ -180,7 +180,7 @@ The 88 v1 integration-test modules (~30k LOC, **939 `#[test]` fns**, `pipeline.r
 
 | Concern | v1 LOC | v1 tests | Example floor witnesses (not exhaustive) |
 | --- | ---: | ---: | --- |
-| **pipeline bulk** | 11,842 | 418 | `dsl_compile_clean_witness_test.dag`, `rust_gates_ci_witness_test.dag`, `generated_conformance_floor_test.dag` — covers compile-clean + gate roster, **not** each of 418 pipeline cases |
+| **pipeline bulk** | 11,842 | 418 | `dag_compile_clean_witness_test.dag`, `rust_gates_ci_witness_test.dag`, `generated_conformance_floor_test.dag` — covers compile-clean + gate roster, **not** each of 418 pipeline cases |
 | **infer / resolve** | 4,716 | ~120 | `branch_infer_test.dag`, `match_infer_fail_open_audit_test.dag`, `name_resolve_cross_tree_resolution_test.dag` |
 | **parse / tokenize** | 1,312 | ~60 | `parse_table_claims_test.dag`, `gap4_parse_tokens_remain_test.dag` |
 | **emit / TypeScript** | 2,150 | ~30 | `typescript_add_emit_translate_test.dag`, `typescript_enum_union_emit_by_execution_test.dag` |

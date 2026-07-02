@@ -10,9 +10,9 @@ Layout (line/indent/newline) is [regime-2 shared emission fold](regime2-shared-e
 
 | model | where | role | verdict |
 | --- | --- | --- | --- |
-| `ConfigFormat` | `dsl/std/languages.dag` | format **identity** (id, name, extensions, comment) | **keep** |
-| `FormatModel` | `dsl/std/languages.dag:36` | indent, max_line_width, import_grouping, trailing_newline | **uninhabited dead scaffold** — delete |
-| `OutputFormat` | `dsl/std/render.dag:160` | name, indent_unit, kv_separator, list_prefix, comment_prefix, section_separator, trailing_newline | **only live knob record** — sole consumer `gitignore_output_format`; `comment_prefix` is a §3 nickname of `CommentSyntax.line_prefix` |
+| `ConfigFormat` | `dag/std/languages.dag` | format **identity** (id, name, extensions, comment) | **keep** |
+| `FormatModel` | `dag/std/languages.dag:36` | indent, max_line_width, import_grouping, trailing_newline | **uninhabited dead scaffold** — delete |
+| `OutputFormat` | `dag/std/render.dag:160` | name, indent_unit, kv_separator, list_prefix, comment_prefix, section_separator, trailing_newline | **only live knob record** — sole consumer `gitignore_output_format`; `comment_prefix` is a §3 nickname of `CommentSyntax.line_prefix` |
 
 No text format today routes record serialization through any of these types — emitters hand-roll `concat` / `match` per site.
 
@@ -47,12 +47,12 @@ The **same** record projection renders as manifest text **and** JSON by swapping
 
 ## 4. Ordered scope (C1–C6)
 
-1. **C1 (keystone — still-wolf-292 / PR #6045):** `SerializationKnobs` residue in `std.languages` + recursive `serialize_record` → `Doc` + delete `FormatModel`; migrate runner manifest (`dsl/gunbc/runner_deploy_emit.dag` — `manifest_host_text` / `session_host_text` / `operating_row_text`) byte-identically; JSON knobs instance + swap-test witness.
+1. **C1 (keystone — still-wolf-292 / PR #6045):** `SerializationKnobs` residue in `std.languages` + recursive `serialize_record` → `Doc` + delete `FormatModel`; migrate runner manifest (`dag/gunbc/runner_deploy_emit.dag` — `manifest_host_text` / `session_host_text` / `operating_row_text`) byte-identically; JSON knobs instance + swap-test witness.
 2. **C2 (folded into C1):** runner manifest + JSON as the first proving instance — not a separate roadmap row.
-3. **C3:** gitignore de-fork — migrate live `OutputFormat` consumer (`dsl/gunbc/gitignore_emit.dag` + `extdeps/git/gitignore.dag`) onto `SerializationKnobs` + `ConfigFormat`, derive `#` via `CommentSyntax`, then **delete `OutputFormat`** and orphan `extdeps/git/gitignore_render.dag` (declares knobs then ignores them).
+3. **C3:** gitignore de-fork — migrate live `OutputFormat` consumer (`dag/gunbc/gitignore_emit.dag` + `extdeps/git/gitignore.dag`) onto `SerializationKnobs` + `ConfigFormat`, derive `#` via `CommentSyntax`, then **delete `OutputFormat`** and orphan `extdeps/git/gitignore_render.dag` (declares knobs then ignores them).
 4. **C4:** dnsmasq emit — add dnsmasq `ConfigFormat` + knobs; keep cited positional micro-syntax honest (do not force pure key=value).
-5. **C5 (low):** digest/accelerator kv blocks (`dsl/gunbc/digest_render.dag` and friends) — route through `serialize_record`; supersedes broken `std.render` kv helpers.
-6. **C6 (cosmetic):** CSS declaration blocks — `dsl/gunbc/roadmap_style.dag` `css_rule(selector, props)` has `props` as raw `String` (`css_rule_props_scaffold`); flat `property:value` records (assign `: `, separator `; `) are `serialize_record` candidates; selector nesting stays structural. Plus yaml/markdown/html identity-link cosmetics.
+5. **C5 (low):** digest/accelerator kv blocks (`dag/gunbc/digest_render.dag` and friends) — route through `serialize_record`; supersedes broken `std.render` kv helpers.
+6. **C6 (cosmetic):** CSS declaration blocks — `dag/gunbc/roadmap_style.dag` `css_rule(selector, props)` has `props` as raw `String` (`css_rule_props_scaffold`); flat `property:value` records (assign `: `, separator `; `) are `serialize_record` candidates; selector nesting stays structural. Plus yaml/markdown/html identity-link cosmetics.
 
 ## 5. Audit receipts (live tree 2026-06-30)
 

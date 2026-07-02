@@ -1,0 +1,10 @@
+module extdeps.tools.sha256sum
+
+import std.types { NonEmptyStr }
+import extdeps.tools { CliTool, SourceCoreutils }
+
+data sha256sum_cli_tool: CliTool = CliTool {
+  name: "sha256sum",
+  min_version: none,
+  installable_via: [SourceCoreutils],
+}

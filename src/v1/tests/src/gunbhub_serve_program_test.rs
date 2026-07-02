@@ -9,11 +9,11 @@ fn gunbhub_serve_program_runs_green() {
         "release gunbc binary required for gunbhub_serve_program (built in ci_floor / ci_floor_parity)"
     );
 
-    let entry = ws.join("dsl/examples/gunbhub_serve_program/gunbhub_serve_program.dag");
-    let program_root = ws.join("dsl/examples/gunbhub_serve_program");
-    let std_root = ws.join("dsl/std");
-    let gunbc_root = ws.join("dsl/gunbc");
-    let extdeps_root = ws.join("dsl/extdeps");
+    let entry = ws.join("dag/examples/gunbhub_serve_program/gunbhub_serve_program.dag");
+    let program_root = ws.join("dag/examples/gunbhub_serve_program");
+    let std_root = ws.join("dag/std");
+    let gunbc_root = ws.join("dag/gunbc");
+    let extdeps_root = ws.join("dag/extdeps");
 
     let output = std::process::Command::new(&gunbc)
         .arg("run")

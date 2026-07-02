@@ -1,0 +1,408 @@
+module gunbc.os_install_actuator_selection
+
+import gunbc.fleet_intent { srv1_host, srv2_host, ComputeHost }
+import gunbc.fleet_intent_network {
+  operator_host_srv1,
+  operator_host_srv2,
+  srv3_bmc_endpoint,
+  operator_lan_segment,
+}
+import product.network_topology {
+  HostLan,
+  BmcManagement,
+  network_reachability,
+  Lan,
+}
+import product.placement_supply { HostIdentity }
+import extdeps.bmc.os_install_actuator_toolchain {
+  ActuatorToolchainRequirement,
+  os_install_actuator_toolchain_requirement,
+  actuator_toolchain_requirement_is_complete,
+}
+import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
+import std.types { List, NonEmptyStr, Bool, Int, String }
+
+type OsInstallActuatorRequirementKind
+  = BmcNetworkReach
+  | ActuatorToolchainGrant
+  | InstallMediaArtifactRealizable
+  | InstallWindowAvailability
+
+type OsInstallActuatorReachFacts {
+  srv1_reaches_target_bmc: Bool
+  srv2_reaches_target_bmc: Bool
+}
+
+type OsInstallActuatorTieBreakPolicy
+  = OperatorHostPreference { order: List<HostIdentity> }
+  | LeastLoadedHost
+
+type OsInstallActuatorSelection
+  = ActuatorSelected { host: ComputeHost }
+  | ActuatorUnsatisfiable { reason: String }
+
+data os_install_actuator_requirement_kinds: List<OsInstallActuatorRequirementKind> = [
+  BmcNetworkReach,
+  ActuatorToolchainGrant,
+  InstallMediaArtifactRealizable,
+  InstallWindowAvailability,
+]
+
+data srv3_os_install_actuator_candidate_hosts: List<ComputeHost> = [srv1_host, srv2_host]
+
+data srv3_install_target_bmc_address: NonEmptyStr = asrock_srv3_live_bmc_host
+
+type ActuatorToolchainHostObservation {
+  host: HostIdentity
+  satisfied: Bool
+}
+
+data srv1_actuator_toolchain_observation: ActuatorToolchainHostObservation = ActuatorToolchainHostObservation {
+  host: operator_host_srv1,
+  satisfied: true,
+}
+
+data srv1_install_window_load: Int = 13
+data srv2_install_window_load: Int = 13
+
+data srv2_actuator_toolchain_observation: ActuatorToolchainHostObservation = ActuatorToolchainHostObservation {
+  host: operator_host_srv2,
+  satisfied: true,
+}
+
+data srv3_os_install_actuator_per_host_observation_forks_dissolution_trigger: String = "🟡 dissolve-on: per-host actuator observation forks — OsInstallActuatorReachFacts srv1_/srv2_ reach bools, srv1_/srv2_install_window_load ints, and reach_fact_for_host/install_window_load_for_host identity==dispatch; DISSOLVES WHEN reach and load observations are List rows keyed by HostIdentity so new actuator candidates do not force schema edits"
+
+data srv3_os_install_actuator_host_unsatisfiable_fallback_dissolution_trigger: String = "🟡 dissolve-on: srv3_os_install_actuator_host ActuatorUnsatisfiable arm fabricates srv1_host (§5 fail-open — typed refusal dropped); DISSOLVES WHEN consumers match OsInstallActuatorSelection or srv3_os_install_actuator_host becomes ComputeHost? so unsatisfiable is unrepresentable-as-host; live fleet pinned by srv3_os_install_actuator_selection_is_selected_on_live_fleet witness"
+
+data live_srv3_actuator_reach_facts: OsInstallActuatorReachFacts = OsInstallActuatorReachFacts {
+  srv1_reaches_target_bmc: true,
+  srv2_reaches_target_bmc: true,
+}
+
+data srv3_os_install_actuator_tie_break_policy: OsInstallActuatorTieBreakPolicy = OperatorHostPreference {
+  order: [operator_host_srv1, operator_host_srv2],
+}
+
+fn host_identity_is_actuator_candidate(identity: HostIdentity) -> Bool {
+  identity == operator_host_srv1 || identity == operator_host_srv2
+}
+
+fn host_identity_on_operator_lan(identity: HostIdentity) -> Bool {
+  host_identity_is_actuator_candidate(identity: identity)
+}
+
+fn reach_fact_for_host(facts: OsInstallActuatorReachFacts, identity: HostIdentity) -> Bool {
+  if identity == operator_host_srv1 {
+    facts.srv1_reaches_target_bmc
+  } else if identity == operator_host_srv2 {
+    facts.srv2_reaches_target_bmc
+  } else {
+    false
+  }
+}
+
+fn os_install_actuator_requirement_bmc_network_reach(
+  candidate: ComputeHost,
+  facts: OsInstallActuatorReachFacts,
+) -> Bool {
+  host_identity_on_operator_lan(identity: candidate.identity)
+    && reach_fact_for_host(facts: facts, identity: candidate.identity)
+    && network_reachability(from: HostLan, to: BmcManagement)
+    && srv3_bmc_endpoint.address == srv3_install_target_bmc_address
+    && srv3_bmc_endpoint.locality == Lan
+    && operator_lan_segment.locality == Lan
+}
+
+fn optional_actuator_toolchain_observation_when_matching(
+  row: ActuatorToolchainHostObservation,
+  host: HostIdentity,
+) -> ActuatorToolchainHostObservation? {
+  if row.host == host {
+    Present { value: row }
+  } else {
+    none
+  }
+}
+
+fn actuator_toolchain_observation_for_host(
+  host: HostIdentity,
+) -> ActuatorToolchainHostObservation? {
+  fold(
+    [srv1_actuator_toolchain_observation, srv2_actuator_toolchain_observation],
+    init: none,
+    f: (acc, row) => {
+      match acc {
+        Present { value: _ } => acc
+        Absent => optional_actuator_toolchain_observation_when_matching(row: row, host: host)
+      }
+    },
+  )
+}
+
+fn actuator_host_satisfies_toolchain_requirement(
+  host: HostIdentity,
+  requirement: ActuatorToolchainRequirement,
+) -> Bool {
+  match actuator_toolchain_observation_for_host(host: host) {
+    Present { value: row } =>
+      row.satisfied
+        && actuator_toolchain_requirement_is_complete(requirement: requirement)
+    Absent => false
+  }
+}
+
+fn os_install_actuator_requirement_toolchain_grant(candidate: ComputeHost) -> Bool {
+  actuator_host_satisfies_toolchain_requirement(
+    host: candidate.identity,
+    requirement: os_install_actuator_toolchain_requirement,
+  )
+}
+
+fn os_install_actuator_requirement_install_media_realizable(candidate: ComputeHost) -> Bool {
+  host_identity_is_actuator_candidate(identity: candidate.identity)
+}
+
+fn install_window_load_for_host(identity: HostIdentity) -> Int {
+  if identity == operator_host_srv1 {
+    srv1_install_window_load
+  } else if identity == operator_host_srv2 {
+    srv2_install_window_load
+  } else {
+    0
+  }
+}
+
+fn os_install_actuator_requirement_install_window_availability(candidate: ComputeHost) -> Bool {
+  install_window_load_for_host(identity: candidate.identity) >= 0
+}
+
+fn os_install_actuator_requirement_satisfied(
+  kind: OsInstallActuatorRequirementKind,
+  candidate: ComputeHost,
+  reach_facts: OsInstallActuatorReachFacts,
+) -> Bool {
+  match kind {
+    BmcNetworkReach =>
+      os_install_actuator_requirement_bmc_network_reach(candidate: candidate, facts: reach_facts)
+    ActuatorToolchainGrant =>
+      os_install_actuator_requirement_toolchain_grant(candidate: candidate)
+    InstallMediaArtifactRealizable =>
+      os_install_actuator_requirement_install_media_realizable(candidate: candidate)
+    InstallWindowAvailability =>
+      os_install_actuator_requirement_install_window_availability(candidate: candidate)
+  }
+}
+
+fn accumulate_os_install_actuator_requirement_satisfaction(
+  acc: Bool,
+  kind: OsInstallActuatorRequirementKind,
+  candidate: ComputeHost,
+  reach_facts: OsInstallActuatorReachFacts,
+) -> Bool {
+  acc && os_install_actuator_requirement_satisfied(
+    kind: kind,
+    candidate: candidate,
+    reach_facts: reach_facts,
+  )
+}
+
+fn host_satisfies_os_install_actuator_requirements(
+  candidate: ComputeHost,
+  reach_facts: OsInstallActuatorReachFacts,
+) -> Bool {
+  fold(
+    os_install_actuator_requirement_kinds,
+    init: true,
+    f: (acc, kind) => accumulate_os_install_actuator_requirement_satisfaction(
+      acc: acc,
+      kind: kind,
+      candidate: candidate,
+      reach_facts: reach_facts,
+    ),
+  )
+}
+
+fn os_install_actuator_requirement_kind_count() -> Int {
+  os_install_actuator_requirement_kinds.length()
+}
+
+fn optional_compute_host_when_identity_matches(
+  host: ComputeHost,
+  identity: HostIdentity,
+) -> ComputeHost? {
+  if host.identity == identity {
+    Present { value: host }
+  } else {
+    none
+  }
+}
+
+fn find_host_by_identity(hosts: List<ComputeHost>, identity: HostIdentity) -> ComputeHost? {
+  fold(
+    hosts,
+    init: none,
+    f: (acc, host) => {
+      match acc {
+        Present { value: _ } => acc
+        Absent => optional_compute_host_when_identity_matches(host: host, identity: identity)
+      }
+    },
+  )
+}
+
+fn accumulate_satisfying_actuator_hosts(
+  acc: List<ComputeHost>,
+  candidate: ComputeHost,
+  reach_facts: OsInstallActuatorReachFacts,
+) -> List<ComputeHost> {
+  if host_satisfies_os_install_actuator_requirements(candidate: candidate, reach_facts: reach_facts) {
+    concat(acc, [candidate])
+  } else {
+    acc
+  }
+}
+
+fn satisfying_os_install_actuator_hosts(
+  candidates: List<ComputeHost>,
+  reach_facts: OsInstallActuatorReachFacts,
+) -> List<ComputeHost> {
+  fold(
+    candidates,
+    init: [],
+    f: (acc, candidate) => accumulate_satisfying_actuator_hosts(
+      acc: acc,
+      candidate: candidate,
+      reach_facts: reach_facts,
+    ),
+  )
+}
+
+fn select_by_operator_host_preference(
+  satisfying: List<ComputeHost>,
+  order: List<HostIdentity>,
+) -> ComputeHost? {
+  fold(
+    order,
+    init: none,
+    f: (acc, preferred_id) => {
+      match acc {
+        Present { value: _ } => acc
+        Absent => find_host_by_identity(hosts: satisfying, identity: preferred_id)
+      }
+    },
+  )
+}
+
+fn prefer_least_loaded_actuator_host(current: ComputeHost, candidate: ComputeHost) -> ComputeHost? {
+  if install_window_load_for_host(identity: candidate.identity) < install_window_load_for_host(identity: current.identity) {
+    Present { value: candidate }
+  } else {
+    Present { value: current }
+  }
+}
+
+fn select_by_least_loaded_host(satisfying: List<ComputeHost>) -> ComputeHost? {
+  fold(
+    satisfying,
+    init: none,
+    f: (acc, host) => {
+      match acc {
+        Absent => Present { value: host }
+        Present { value: current } => prefer_least_loaded_actuator_host(current: current, candidate: host)
+      }
+    },
+  )
+}
+
+fn apply_os_install_actuator_tie_break(
+  satisfying: List<ComputeHost>,
+  policy: OsInstallActuatorTieBreakPolicy,
+) -> ComputeHost? {
+  match policy {
+    OperatorHostPreference { order: order } =>
+      select_by_operator_host_preference(satisfying: satisfying, order: order)
+    LeastLoadedHost =>
+      select_by_least_loaded_host(satisfying: satisfying)
+  }
+}
+
+fn select_os_install_actuator_host(
+  candidates: List<ComputeHost>,
+  reach_facts: OsInstallActuatorReachFacts,
+  tie_break: OsInstallActuatorTieBreakPolicy,
+) -> OsInstallActuatorSelection {
+  let satisfying = satisfying_os_install_actuator_hosts(
+    candidates: candidates,
+    reach_facts: reach_facts,
+  )
+  if satisfying.length() == 0 {
+    ActuatorUnsatisfiable {
+      reason: "no candidate host satisfies OsInstallActuatorRequirement conjunction for srv3 install",
+    }
+  } else {
+    match apply_os_install_actuator_tie_break(satisfying: satisfying, policy: tie_break) {
+      Present { value: host } => ActuatorSelected { host: host }
+      Absent =>
+        ActuatorUnsatisfiable {
+          reason: "tie-break policy failed to select among satisfying actuator hosts",
+        }
+    }
+  }
+}
+
+data srv3_os_install_actuator_selection: OsInstallActuatorSelection = select_os_install_actuator_host(
+  candidates: srv3_os_install_actuator_candidate_hosts,
+  reach_facts: live_srv3_actuator_reach_facts,
+  tie_break: srv3_os_install_actuator_tie_break_policy,
+)
+
+data srv3_os_install_actuator_host: ComputeHost = match srv3_os_install_actuator_selection {
+  ActuatorSelected { host: h } => h
+  ActuatorUnsatisfiable { reason: _ } => srv1_host
+}
+
+fn srv3_os_install_actuator_selection_is_selected_on_live_fleet() -> Bool {
+  match srv3_os_install_actuator_selection {
+    ActuatorSelected { host: _ } => true
+    ActuatorUnsatisfiable { reason: _ } => false
+  }
+}
+
+fn srv3_os_install_actuator_host_is_derived_srv1() -> Bool {
+  match srv3_os_install_actuator_selection {
+    ActuatorSelected { host: h } => h == srv1_host
+    ActuatorUnsatisfiable { reason: _ } => false
+  }
+}
+
+fn srv3_os_install_actuator_host_selected_because_requirements_and_policy() -> Bool {
+  host_satisfies_os_install_actuator_requirements(
+    candidate: srv1_host,
+    reach_facts: live_srv3_actuator_reach_facts,
+  )
+    && host_satisfies_os_install_actuator_requirements(
+      candidate: srv2_host,
+      reach_facts: live_srv3_actuator_reach_facts,
+    )
+    && srv1_install_window_load == srv2_install_window_load
+    && match srv3_os_install_actuator_tie_break_policy {
+      OperatorHostPreference { order: order } => order.first() == operator_host_srv1
+      LeastLoadedHost => false
+    }
+    && srv3_os_install_actuator_host_is_derived_srv1()
+}
+
+fn srv3_os_install_actuator_host_failover_fixture_selects_srv2() -> Bool {
+  let failover_reach = OsInstallActuatorReachFacts {
+    srv1_reaches_target_bmc: false,
+    srv2_reaches_target_bmc: true,
+  }
+  match select_os_install_actuator_host(
+    candidates: srv3_os_install_actuator_candidate_hosts,
+    reach_facts: failover_reach,
+    tie_break: srv3_os_install_actuator_tie_break_policy,
+  ) {
+    ActuatorSelected { host: h } => h == srv2_host
+    ActuatorUnsatisfiable { reason: _ } => false
+  }
+}

@@ -66,10 +66,10 @@ path = "src/bin/discover_source_root_ingest.rs"
 name = "v2_whole_tree_parse_scan"
 path = "src/bin/v2_whole_tree_parse_scan.rs"
 
-# Parse-only regression scanner for src/v1/*.dag (cheap half of full_dsl_compiles,
+# Parse-only regression scanner for src/v1/*.dag (cheap half of full_dag_compiles,
 # which is #[ignore]; this lifts the v1 parse gate onto the CI floor non-ignored).
 # SCAFFOLD — dissolves when src/v1 is fully migrated to .dag substrate authority
-# and the floor covers it via the standard dsl_compile_clean_gate.
+# and the floor covers it via the standard dag_compile_clean_gate.
 [[bin]]
 name = "v1_src_dag_parse"
 path = "src/bin/v1_src_dag_parse.rs"

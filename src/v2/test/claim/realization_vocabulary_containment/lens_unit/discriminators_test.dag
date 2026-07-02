@@ -16,7 +16,7 @@ data sidecar_module: String = "extdeps.languages.bash.program"
 data fresh_leak_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dsl/tools/_perturb_fresh_consumer.dag",
+    path: "dag/tools/_perturb_fresh_consumer.dag",
     import_module: sidecar_module
   }
 ]
@@ -40,7 +40,7 @@ test fn realization_edge_import_is_not_leak_holds() -> Bool {
 data rostered_import_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dsl/tools/host_prelude.dag",
+    path: "dag/tools/host_prelude.dag",
     import_module: sidecar_module
   }
 ]
@@ -50,11 +50,11 @@ test fn rostered_consumer_import_is_not_leak_holds() -> Bool {
 }
 
 data roster_without_host_prelude: List<String> = [
-  "dsl/gunbc/ci_yaml_validate.dag",
-  "dsl/tools/build_step.dag",
-  "dsl/tools/dsl_compile_clean_transport.dag",
-  "dsl/tools/emit_host_transport.dag",
-  "dsl/tools/layering_imports_transport.dag",
+  "dag/gunbc/ci_yaml_validate.dag",
+  "dag/tools/build_step.dag",
+  "dag/tools/dag_compile_clean_transport.dag",
+  "dag/tools/emit_host_transport.dag",
+  "dag/tools/layering_imports_transport.dag",
   "src/v2/workflow/compiler_closure_ingest_transport.dag",
   "src/v2/workflow/source_root_ingest_transport.dag"
 ]
@@ -69,7 +69,7 @@ test fn de_rostered_consumer_import_is_leak_holds() -> Bool {
 data non_vocab_import_facts: List<LayerImportFact> = [
   LayerImportFact {
     layer: LayerPrefixStd,
-    path: "dsl/tools/_perturb_fresh_consumer.dag",
+    path: "dag/tools/_perturb_fresh_consumer.dag",
     import_module: "extdeps.shell"
   }
 ]
@@ -83,12 +83,12 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
 }
 
 test fn ci_spec_excused_from_bash_roster_holds() -> Bool {
-  !list_contains_str(xs: realization_vocab_exception_roster, target: "dsl/gunbc/ci_spec.dag")
+  !list_contains_str(xs: realization_vocab_exception_roster, target: "dag/gunbc/ci_spec.dag")
 }
 
 test fn node_http_server_emit_rostered_for_typescript_sidecar_holds() -> Bool {
   list_contains_str(
     xs: realization_vocab_exception_roster,
-    target: "dsl/gunbc/node_http_server_emit.dag"
+    target: "dag/gunbc/node_http_server_emit.dag"
   )
 }

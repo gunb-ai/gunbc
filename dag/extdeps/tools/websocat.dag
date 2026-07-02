@@ -1,0 +1,47 @@
+module extdeps.tools.websocat
+
+import std.types { NonEmptyStr }
+import extdeps.version { VersionConstraint }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tools { CliTool, SourceGitHubRelease }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/vi/websocat/releases/tag/v1.14.0"
+  }
+}
+
+data websocat_pinned_version: VersionConstraint = ">= 1.12"
+
+data websocat_github_repo: NonEmptyStr = "vi/websocat"
+
+data websocat_github_tag: NonEmptyStr = "v1.14.0"
+
+data websocat_asset_aarch64: NonEmptyStr = "websocat_max.aarch64-unknown-linux-musl"
+
+data websocat_asset_x86_64: NonEmptyStr = "websocat_max.x86_64-unknown-linux-musl"
+
+data websocat_install_path: NonEmptyStr = "/var/lib/gunbc/bin/websocat"
+
+data websocat_cli_tool: CliTool = CliTool {
+  name: "websocat",
+  min_version: Present { value: websocat_pinned_version },
+  installable_via: [
+    SourceGitHubRelease {
+      repo: websocat_github_repo,
+      tag: websocat_github_tag,
+      asset_aarch64: websocat_asset_aarch64,
+      asset_x86_64: websocat_asset_x86_64,
+      install_path: websocat_install_path,
+    },
+  ],
+}
+
+fn websocat_github_release_download_url(tag: NonEmptyStr, asset: NonEmptyStr) -> String {
+  concat(
+    concat("https://github.com/", websocat_github_repo as String),
+    concat("/releases/download/", concat(tag as String, concat("/", asset as String))),
+  )
+}

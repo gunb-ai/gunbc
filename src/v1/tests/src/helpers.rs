@@ -24,12 +24,12 @@ pub fn read_v2_file(relative_path: &str) -> String {
 
 pub fn source_roots() -> [std::path::PathBuf; 2] {
     let ws = workspace_root();
-    [ws.join("src/v1"), ws.join("dsl")]
+    [ws.join("src/v1"), ws.join("dag")]
 }
 
 pub fn v2_layer_roots() -> Vec<std::path::PathBuf> {
     let ws = workspace_root();
-    vec![ws.join("src/v2"), ws.join("dsl")]
+    vec![ws.join("src/v2"), ws.join("dag")]
 }
 
 pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {

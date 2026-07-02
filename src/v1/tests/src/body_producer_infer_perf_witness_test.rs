@@ -19,7 +19,7 @@ fn pbp_wrong(cond: Bool) -> Int {
 
 fn source_roots() -> [std::path::PathBuf; 2] {
     let ws = workspace_root();
-    [ws.join("src/v2"), ws.join("dsl")]
+    [ws.join("src/v2"), ws.join("dag")]
 }
 
 fn sources_for(entry: &str) -> Vec<Rc<SourceFile>> {

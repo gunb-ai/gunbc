@@ -1,0 +1,190 @@
+
+module gunbc.design_document
+
+import std.markdown {
+  MarkdownDocument, MarkdownBlock, MarkdownListItem,
+  HeadingBlock, ParagraphBlock, UnorderedListBlock, ThematicBreak,
+  TextInline, H1, H2,
+}
+import extdeps.languages.markdown { serialize_markdown_source }
+
+fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
+fn h2(text: String) -> MarkdownBlock { HeadingBlock { level: H2, inlines: [TextInline { text: text }] } }
+fn p(text: String) -> MarkdownBlock { ParagraphBlock { inlines: [TextInline { text: text }] } }
+fn rule() -> MarkdownBlock { ThematicBreak }
+
+fn li(text: String) -> MarkdownListItem { MarkdownListItem { blocks: [p(text: text)] } }
+fn li_blocks(blocks: List<MarkdownBlock>) -> MarkdownListItem { MarkdownListItem { blocks: blocks } }
+fn ul(items: List<MarkdownListItem>) -> MarkdownBlock { UnorderedListBlock { items: items } }
+
+fn preamble_blocks() -> List<MarkdownBlock> {
+  [
+    h1(text: "gunbc — Design"),
+    p(text: "`README.md` and `CLAUDE.md` symlink here — this is the single source of truth. (v1 ships the `gunbc` CLI and is v2's seed · v3 was removed, migrated into v1 · v2 is active.)"),
+    p(text: "This document is reasoned **serially**: §1 fixes the axioms, and each later section is a consequence of the ones before it (or an independent peer) — never a restatement of it. The principles below apply recursively, including to this document. It is a living draft rebuilt from first principles (the prior ~30k-line doc corpus was bankrupted 2026-06-16; it remains in git history). Examples are verified against the live tree or a git-history receipt; open threads are collected at the end."),
+    rule(),
+  ]
+}
+
+fn section_1_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "1. The objective (the axioms)"),
+    p(text: "The assumptions everything else rests on. Three **axioms** — assumed, not derived:"),
+    ul(items: [
+      li(text: "**A1 — there is a goal.** To *solve a problem* presupposes an agent with a goal to satisfy; with no goal there is nothing to optimize."),
+      li(text: "**A2 — time is the value.** Every agent intrinsically values time — it is finite and is the substance of acting at all: **time is life**. It is the one value we may assume is *shared*."),
+      li(text: "**A3 — agreement is temporal.** Intersubjective agreement — two parties holding the same fact — is possible only *across* time, and only on what stays stable under it."),
+    ]),
+    p(text: "Three things follow, in order:"),
+    ul(items: [
+      li_blocks(blocks: [
+        p(text: "**From A1 and A2 — the solution is minimal, safe, efficient.** A solution is good exactly insofar as it spends less of the only thing valued, time; and time is spent three ways:"),
+        ul(items: [
+          li(text: "**cost** — time to run (cheap to run and to feed);"),
+          li(text: "**safety** — time to recover from a silent wrong answer, paid later at interest (harm reduction);"),
+          li(text: "**complexity** — time to change (it stays cheap to maintain)."),
+        ]),
+        p(text: "So the three are not preferences layered on — they are A2 applied to A1, and the project optimizes them jointly."),
+      ]),
+      li(text: "**From A2 and A3 — grounding is intersubjective.** Because time is the *only* assumed-shared value, a fact is grounded only by pointing at a shared, time-stable framework (§4), never an internal taxonomy."),
+      li(text: "**At the limit — reduce intersubjectivity to physics.** The deepest such framework — the efficient, time-bound description of interactions that satisfies a goal — is **physics** (A1–A2 turned on grounding itself). So the aim, at its limit, is to *reduce intersubjectivity to physics*: replace convention with necessity until nothing arbitrary survives. This is the deep reason §3 models the universal frameworks and real upstream rather than re-coining them — a nickname is convention standing where physics was available."),
+    ]),
+  ]
+}
+
+fn section_2_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "2. Minimize redundancy (the master move for cost and complexity)"),
+    p(text: "Redundant work — **duplicated, unnecessary, or irrelevant** — loses on all three of §1's quantities at once: it costs more to run, it widens the surface where harm hides, and it adds complexity to maintain. So a perfectly DRY process is, *by the meaning of redundant*, the minimal/efficient one; minimizing redundancy is therefore the master move for §1's cost and complexity axes (the safety axis is §5). Through §1's time lens this is *why* DRY matters at all: redundant work **defers** cost into the future — it shoves a problem onto a later fixer, or builds a process destined to be thrown out — so DRY is the refusal to spend someone's future time to buy the author's present convenience; it values time **holistically**, across every party and all of it, not just the here-and-now. Redundancy is removed along exactly two directions — not separate \"DRY rules,\" but one move seen two ways:"),
+    ul(items: [
+      li_blocks(blocks: [
+        p(text: "**Horizontal — one concept, every scale and breadth.** Model a concept once; derive every use (model-local / derive-global). At the right layer there is nothing fundamentally different between scales, so the *same* concept spans nanosecond memoization and broad infra deployment — the Realization pattern (content-addressed pure-spec → host-effect; one kernel, N handlers)."),
+        ul(items: [
+          li(text: "*e.g.* `dag/std/integer.dag`: `Int8`…`UInt128` are 10 `Compose<Int, MachineWidth<N>>` rows, one axis not 10 types. Realization spans resolve-cost (ns) → sccache → §10 OS provisioning on one content-hash. Cost of *not* doing it: eleven hand-rolled v1 `HashMap` caches, and v2 still recurs (`ParseTable`)."),
+        ]),
+      ]),
+      li_blocks(blocks: [
+        p(text: "**Deep — every concept decomposed to grounded atoms.** Nothing is opaque that isn't *genuinely* atomic. The move is `decompress → map → reduce`: reveal the structure the source names, **map** each part onto the concept that already exists (DFS the concept DAG first), **reduce** duplicates. A `String` leaf hiding named parts is anemic modeling."),
+        ul(items: [
+          li(text: "*e.g.* `\"LGA4926\"` → `CpuSocket \{ package: LandGridArray, contact_count: 4926 \}` (the number is a grounded `Int`) and `\"HMA82GR7AFR4N-VK\"` → `DramModuleCatalogRow \{ chip_width: bit_width(4), rank_count: 1, buffering: Registered \}` (the numeric organization axes decoded from the part number ground into existing magnitudes — `chip_width` reuses `BitWidth`, `rank_count` is a cardinal `Int` — not a fresh enum re-inventing bit-width; the categorical axis stays a closed enum); `Cost = Time|Space|Energy` → a record (every cost has all three); and `\"WDS200T2X0E\"` → `NvmeDeviceCatalogRow \{ pcie_link: PcieLink \{ generation: Gen4, lane_count: 4 \}, form_factor: M2_2280, .. \}` (storage's rank/width: `lane_count` a cardinal `Int`, `PcieGeneration` a closed enum, per-lane bandwidth *derived* not stored — cited to the PCI Express authority in `extdeps/storage/types.dag` and surfaced through `product.compute_fabric`'s `StorageDevice` coproduct on its `NvmeDevice.catalog` variant, parallel to the DRAM row above). (`GpuFacts.vendor`, once a bare `NonEmptyStr` where `CpuVendor` was a closed enum, is now grounded on the single `Vendor<Hardware>` authority — see §3.)"),
+        ]),
+      ]),
+    ]),
+    p(text: "The test that an edit actually *reduced* redundancy rather than moving it: **net concepts must not grow by re-invention.** Decomposing a leaf by minting a fresh authority for a concept that already exists is a failed decomposition."),
+  ]
+}
+
+fn section_3_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "3. Single authority (what keeps §2 from being undone)"),
+    p(text: "Minimization holds only if each fact lives in exactly one place. The recurring violation is **nicknaming — a second name for one concept** — which duplicates work at the meaning layer and, since we generate from concepts, duplicates it again in everything derived (testgen, emit, lenses). A fork always gets consolidated later, so it is a correctness concern, not a style one. We cannot enforce this programmatically yet; until then it is diligence — faithfully model the accepted universal frameworks (classical logic, set theory, algebra), and in `extdeps/` the real upstream spec (cite the source, keep its real names, declare its version, model what the API actually returns), rather than re-coining them. Corollaries: the layer DAG is strict (`std ← extdeps ← compiler ← workflow`, imports point toward std); a fact's home is its *layer*, not its file (paths are discriminators, not gospel); below-boundary representation is opaque (the rename test). A direct consequence for `extdeps/` service operations, three separable facts that must not be fused into one row: (a) the **interface shape** — the dependency's parameterized contract (inputs → outputs, exit/error semantics) — is what extdeps owns; (b) the **transport** (shell / REST / SDK) is a §2 Realization *handler* bound to that shape, *one of N*, not a fact about the dependency — a single hardwired transport is the §4 N×M-adapter trap (`git diff` argv models the git CLI, a nickname for git's diff *semantics*; libgit2 and the compare API are the other handlers); (c) **business policy** (which base ref, which flag, an idempotency protocol the dependency doesn't provide) is a *workflow* fact and modeling it in extdeps is a layer inversion (extdeps depending upward). The tell that (c) has leaked is an argv carrying a literal it should receive as a parameter (`origin/main...HEAD`, `--all-targets`); the tell that (b) has fused is the same operation forked once per transport (GCP's OAuth2 refresh modeled three ways) instead of one shape with N bound handlers. Scaffolded by `v2.lens.extdeps_shape_transport_policy`: lens-unit +/- on synthetic fact rows; corpus RED witnesses execute against live `dag/extdeps/**` via `filesystem_read` (dissolve-on: Node-tree argv projection supersedes text scan). This holds at *any* interface↔realization seam, not only service ops: the cited data behind an agnostic std surface de-fuses exactly as a transport does, and its directional reading is the same — the *dispatch* that selects a realization is itself realization, so it sits peripheral (`extdeps/`), never in the interface (a §2 pure-spec is dispatch-free; a std projection that *matched* over its realizations would have to name them, inverting the import arrow above). What migrates outward is each realization's grounded specifics — cited rows, *or* a per-OS taxonomy reduced to the shape — together with the dispatch; only the agnostic shape stays central. A std type that privileged one realization's taxonomy (POSIX `st_mode` over the `Ntfs`/`Apfs` that `FileSystemSemantics` already enumerates) is itself that inversion."),
+    ul(items: [
+      li(text: "*e.g.* `CpuArchitecture` and `TargetArchitecture` are byte-identical enums (the latter's header denies the parallel it declares); `ModulePath` was a nickname for `QualifiedName` (renamed, `ModulePathSegment` deleted); one \"vendor\" concept once forked three ways by rigor — `CpuVendor`/`DramManufacturer` closed enums vs `GpuFacts.vendor` stringly — now dissolved into a single generic `Vendor<Domain>` whose cited company entities live one-file-each in `extdeps/vendor/` (referencing a company *grounds* it as a real upstream entity with its legal name, not a minted enum nickname; the domain is a type argument, so `Vendor<Hardware>` is the §2-horizontal \"one concept, every breadth\"). Counter-example done right: a CPU/DRAM model is a hardware *domain* model, not a universal framework, so its catalog *shape* lives downstream of std in `extdeps/\{cpu,memory\}` beside its cited vendor rows (`extdeps/cpu/ampere`) — std keeps only the frameworks they build on (`measure`, `types`); `compute_fabric` is a product-layer domain model. Likewise `std/os.dag` projects per-vendor rows with no `match` (\"projection only\"), while the cited rows and the product→vendor dispatch (`cited_operating_system_surface`) live in `extdeps/os/\{ubuntu,windows,macos,os\}.dag` (\"dispatch lives in extdeps/, not std/\", promoted from that hub header)."),
+      li(text: "**§3 convergence thread — fnv1a64 dual surface:** `v1.compiler.dag_collect_support.dag_node_surface_fingerprint_rec` calls the raw v1 intrinsics `atom_identity_hash`/`hash_combine` (fnv1a64 primitives registered in `04_method.dag` builtins); `std.content_hash` (v2 layer) is the modeled surface over the same underlying authority. These are two surfaces on one concept, not two authorities. The unifying home is a grounded std type once the v2 content-hash carrier is inhabited — tracked here so the fork does not widen into a third surface. Dissolution: ground `v1.compiler.dag_collect_support` fingerprint calls through `std.content_hash` when v2 adoption for this stage is cleared."),
+    ]),
+  ]
+}
+
+fn section_4_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "4. The closed, grounded substrate (what makes §2–§3 decidable)"),
+    p(text: "You can unify and decompose *mechanically* only in a closed, grounded system — so the substrate is built for it. A program is a dependency graph over two primitives (`Node` + `Edge`) and a closed vocabulary (6 connectives + 5 behaviors); surface syntax is sugar that adds no power. Execution is **bounded and forward** (cyclic relations via acyclic encodings, never cyclic values; recursion is sugar over `Loop`), so decidability and termination *fall out* rather than being separately proved. **Grounding is intersubjective** — point at a shared framework, not an internal taxonomy — and in a closed system **a heuristic is never necessary**: the richer source always exists or can be written. This is *why* the structure is acyclic — a DAG in the substrate, serial reasoning in this document (recursively, per the preamble): intersubjective agreement holds only **across time** (§1), which demands claims that stay stable under it, so each is written syllogistically — a consequence-chain you can re-interrogate and that never wavers (algebra), never a cycle that could quietly redefine itself."),
+    p(text: "Because the substrate is closed and grounded, the wins of §2 fall out for free: operations come from *inhabitance* (no per-type ops); and emission, ingestion, and coercion are **one** total decision procedure run in different directions (the epistemic chain *is* the emission algorithm — N models, not N×M adapters; every refusal a located, typed mismatch)."),
+    ul(items: [
+      li(text: "*e.g.* `dag/std/algebra.dag` derives `Int.add` from `Int` inhabiting a ring (ops aren't listed per type); idempotency dissolved from an `idempotent: Bool` flag into the `EffectShape` variant; termination is *checked, not discovered* — `DescentEvidence = Strict | NonIncreasing | DescentUnknown` inhabits a `BoundedLattice` with bottom = fail-closed."),
+      li(text: "*e.g.* **one grammar, read in both directions** (§2 horizontal, not an adapter pair): ingest selects a production *forward* to fold surface syntax into a core `Node`; emit (`serialize_target ∘ translate`) selects from the *same* `target_model_edge_translation_rules` rows *backward* — the structural inverse, not a second emitter — so a new target language is rows authored in `extdeps/languages/`, never an edit to the fold (N rows, not N×M parser/emitter pairs). Coercion is that same move turned sideways: whether one model inhabits another is a homomorphism check (`coercion_fold` via `find_witness`), the same epistemic chain the emitter walks. One procedure asked in three directions, not three procedures."),
+    ]),
+  ]
+}
+
+fn section_5_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "5. Fail-closed (§1's safety axis — harm reduction)"),
+    p(text: "Minimizing cost and complexity (§2–§4) is worthless if a wrong thing passes silently — this is §1's safety axis made concrete. This code is digital: a wrong answer is a **loud error, never a warning** — a bridge collapses, it does not warn. Every path succeeds fully or fails with a typed, located diagnostic; no fabricated plausible output (a bounded \"forever\" ≠ an \"unknown\" error). Relax toward application-layer leniency only under protest, and lean to infra so others can build on your work. Stronger than *catching* a wrong state is making it **unwritable** — **correctness by construction, not validation.** A check that re-states a constraint the model already carries is a *second representation* of it (§2/§3): so prefer a single authority from which the realization is *derived* — the bad state cannot be written — over a check that flags it after the fact, which concedes the bad state *is* writable. The tell that a check was validation standing where construction was available: it can be satisfied by editing the *declaration* while the realization still lies (a key-completeness check went green when the spec was edited while the realizer kept faking the cache key). Reserve post-hoc checks for the genuinely **unstructurable** residue (§6 complexity / necessity — you cannot structurally forbid an *unnecessary* loop). Construction makes a class unwritable only when membership is **decidable**, so every class is one of three: a *wall now* (decidable and grounded — nicknaming, dead scaffolds, effect leaks); a *wall after grounding* (decidable but waiting on its single authority — the cross-representation `==` straddle is one only once `Int = GroupCompletion<Nat>` grounds it); or a *ratchet forever* (undecidable — optimality, by Rice, never reaches \"never\"). The word **\"never\" is the trap**: it lets a ratchet masquerade as a wall, so check decidability before claiming one — the undecidable residue is the §6 lens, honestly and permanently. The deepest trap is **specification-without-execution**: a typecheck and a `.contains()` grep are *not* consumers — \"done\" means a real consumer **green by execution** plus a discriminating input that goes *red* when the behavior is wrong. (For the LLM agent: fluent, type-checking, grep-passing output is precisely the artifact that looks finished without running. Treat your own output as unverified until a consumer runs it green.)"),
+    ul(items: [
+      li(text: "*e.g.* a compiler-sized `.dag` corpus typechecked and passed its grep claims, yet `emit` hung >600s on `fn add` → rebuilt `emit = serialize_target ∘ translate` (43 lines), proven by *running* `emit(add)` against the literal `fn add(x: i32, y: i32) -> i32 \{ x + y \}`. Removing a scan-all-keys fail-open heuristic (`0331b526ee`) exposed 8 real inference deficits its fabrication had hidden; the parser's dummy `LitNull` nodes once fed inference bogus types."),
+    ]),
+  ]
+}
+
+fn section_6_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "6. How to work (given §1–§5 — these coexist)"),
+    ul(items: [
+      li(text: "**Model:** DFS the concept DAG before inventing vocabulary; fact-bundle modeling (invent or reuse on proven coincidence, never bare-alias); a finished stage is one fold (any non-fold residue is either a named irreducible kernel or un-migrated modeling — there is no third); model just-in-time and let the mark on the carrier be the authority (no parallel-ledger docs); every scaffold lands with a named dissolution trigger."),
+      li(text: "**Prioritize holistically, not by the bottleneck:** balance the quantitative and the qualitative — don't anchor on one KPI (you'll hit it at a cost) or on pure taste. Map the cause→effect across sections; a 5ms step doesn't get a pass for not being the 80s one (it might be a 5ns step). Root-cause to the language layer and fix related systems *together* — a local subsystem patch is the forked-logic trap. **Denominate the benefit:** the deliverable is a *displaced cost* (§1's time — a pain someone pays to remove); the lens/substrate is the *mechanism* (the moat), not the product. A lens — or any construction wall — is on-dial exactly insofar as it is the cheapest path to such a pain. Priced in elegance instead, the work is self-referential and unbounded (the purity trap — the economic twin of \"never\" in §5; an extensible substrate's infinite improvability dissolving its own bound)."),
+      li(text: "**Enforce with lenses,** not grep — but **construction first** (§5): a lens is *validation* (it concedes the bad state is writable), so make the class unwritable by single authority where you can and reserve the lens for the unstructurable residue. As a residue mechanism it earns its keep: a pure reader over the same `Node` tree, storing nothing, so a new analysis costs zero substrate edits. Beware the tier where the machinery exists but nothing gates on it — coverage by illusion; an inert lens is itself a lie, so an **executable** hygiene check must keep every lens either wired (a discovered fail-closed witness) or deleted — that backstop runs over the corpus and is *not* superseded by the authoring-time construction-justification judgment, which layers on top of it."),
+      li(text: "*e.g.* one catamorphism `fold_node` is reused by all 7 v2 stages; #4699 dissolved `06_translate` 4,912→3,973 lines (`_go` accumulators 35→0); a 6-line `merge_envs` root fix cut reconcile from 81% of the pipeline to 6% (~2× self-compile) — the symptom recurs wherever the root is unfixed (v2 still hand-rolls `ParseTable` because the Realization carrier is staged, not inhabited)."),
+    ]),
+  ]
+}
+
+fn section_7_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "7. Self-hosting (the principles applied to the compiler itself)"),
+    p(text: "The compiler is a pure transform and an ordinary substrate fact, analyzable by its own lenses. It is written in itself, self-emits to a bit-identical fixed point (the `.dag` graph is the truth; Rust is one realization, a seed that shrinks to zero), and its tests are data. Its ontology dissolves into `std/` — no dual representation at the compiler/user boundary. This is the recursion: every principle above governs the system that implements them, and this document."),
+    p(text: "The recursion's payoff is that **language design itself opens up.** It is normally locked — not by lack of will but by cost: a new check means owning a *compiler fork*, and a new language means an *adoption* problem. Both are dissolved here at once: a wall is a **row** (§2, no fork), and because the substrate is medium-agnostic — one grammar read in both directions over many media (§4) — that row applies *on top of an existing language* (no adoption). So language design collapses (compiler-fork × language) → (row + medium): a domain's bug-class can be made extinct in Rust or TypeScript without forking their compilers. It is sound exactly where ingest is `Lossless` and **fail-closed** where it is not (the `DecodeFidelity` boundary, §4) — \"any language, with a typed honesty boundary about where the wall holds,\" not a vibe. This is §1's *reduce convention to necessity* at the meta-level, and the place the purity trap bites hardest: bounded by §5 (\"never\" = decidability) and §6 (priced in displaced cost, not elegance)."),
+    rule(),
+  ]
+}
+
+fn failure_modes_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "Recurring failure modes (instances of §3–§5, kept for pattern-matching)"),
+    p(text: "hollow alias (minimality ≠ grounding) · state-space conflation (an `Option`/`None` meaning >2 things — split into named variants) · cache impurity (key on declared-input content; byte-identical cached-vs-cold is the purity oracle) · reflection evidence ≠ structural proof (prove a read axis by execution, with a no-host-enumeration control) · coercion proven by normalized round-trip, not a golden string · parallel-representation debt (an honestly-marked scaffold duplicating a canonical fact is still a violation) · internal review finds missing tests, external review finds missing checks."),
+  ]
+}
+
+fn open_threads_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "Open threads"),
+    ul(items: [
+      li(text: "`v2.std.determinism` — §5 determinism mechanism P1 landed (#5941; operator shape-signed, FLAG A/C locked): [determinism mechanism design](docs/plans/determinism-mechanism-design.md)"),
+      li(text: "model §1's axioms (A1–A3) explicitly in `.dag` and have a lens **enforce the syllogism** — every claim a consequence-chain back to an axiom, no orphan and no cycle (the §4 acyclicity test turned on the argument itself; the §7 recursion, with this document as the first target). (operator's next project) → candidate articulation for review: [intent-linearity draft](docs/plans/intent-linearity-design-draft.md)"),
+      li(text: "**enforcement intent — ask once, compile forever.** The operator's recurring standing directives (enforce complexity repo-wide; lenses must be live; lenses must self-apply; scope must not silently narrow; model must not carry dual representations) are redundant governance work (§2) re-paid each conversation — the operator performing the missing meta-lens by hand. Model each as a durable `StandingIntent` row and gate the relationship (intent ⇄ `LensContract` ⇄ coverage receipt) fail-closed: a mechanism *claiming enforcement* is complete only when it satisfies the `StandingIntent` — named live consumer, declared scope not narrowed, red control, self-application or explicit exemption — else Unknown/Refused, never silently green. One new authority (`StandingIntent`); everything else extends existing machinery — the registry (`LensRegistryEntryV0` → `LensContract`), reusing `ConstructionJustification` / `subject_roster` and consuming `intent_linearity` / `self_applying_lenses` for the fractal (§7) layer (the same property applied to the code, the lens, the subject producer, the registry, and the acceptance template). Default enforcement scope = whole corpus; under-scope is a failing receipt unless explicitly justified. → [enforcement-intent design](docs/plans/enforcement-intent-design.md)"),
+      li(text: "can a lens mechanically diagnose the *leaf-side* of decomposition (§2)? (operator-parked)"),
+      li(text: "the model↔realization fork is systemic, and where unfinished it fails open: every primitive is modeled as a coproduct and realized as a native `Value`, reconciled by per-site bridges, so coverage is accidental and non-compositional. `match` bridges `Int→Zero/Succ` but `Value::eq` has no `Int↔Variant` arm, so `nat_add(85, 32) == 117` silently compared `false` at its `_ => false` chokepoint — a §5 fail-open, not the §2/§7 redundancy the 🟡 dissolve-on markers track. **Landed:** the *numeric tower* fork now fails closed — `eval_binop`'s `BinOp::Eq`/`Ne` raises `InterpError::CrossRepresentationEquality` when a `false` result is *explained* by a native `Int`/`Float` vs `Nat`-coproduct straddle (recursive: catches `nat_add == nat_add` and `[nat_add(1,1)] == [2]`), with `Value::eq` left infallible so it stays the single `CanonKey` map-key authority. The discriminating witness is `cross_representation_equality_test` (forks → typed error; reconciled/native → `true`; genuine diffs `1 == 2`/`Succ\{..\} == Zero` → `false`, not error). **Remaining:** (a) the same straddle for `Bool True|False` over `Value::Bool` (no `==` site in the corpus today) and `Optional/Witness` over `Value::Null` — the latter resists a blanket guard because `Value::Null` is the overloaded `None`/`Absent`/miss sentinel and `present == None` (131 sites) is a *legitimate* `false`, so it needs grounding, not an error arm; (b) the root fix (§1/§2/§7) — ground each primitive into its realization. **Numeric tower: GROUNDED** (#5428, 2026-06-21) — Nat construction-side grounded (`Zero → Int(0)`, `Succ\{prev:Int(k)\} → Int(k+1)`); native form == modeled form; `eval_binop` `CrossRepresentationEquality` guard is dead-in-corpus for numerics, kept as fail-closed backstop until the `Value::Null` split lands (guard removal bundled with that work, fenced out of this window). **Remaining:** `Value::Null` split — Optional/Witness/miss into own carriers (~131 sites; the deeper root, its own runway). (operator: `==` fail-closed, 2026-06-20)"),
+      li(text: "the remaining deleted-`docs/` references in `.dag` comments — provenance / `bind:` pointers into the bankrupted `docs/` tree (e.g. `docs/planning/*`, `design-*.md`) — fold into the dep-graph reform, not a blind repoint. (The named-corpus ledger marks — `Practice N`, and `INVARIANTS` / `THESIS` / `MODELING` / `RELEASE_TODO` / … citations — were swept: dropped, or re-homed to DESIGN.md §-anchors.)"),
+      li(text: "floor shared-computation memoization — make the double-paid full-tree compile UNREPEATABLE by construction (M1: within-walk resolve memo ~105s; M2: RunnableCompile node gated on v2.std.determinism #5941): [design sketch](docs/plans/floor-shared-compute-memoization.md)"),
+    ]),
+  ]
+}
+
+fn building_checks_blocks() -> List<MarkdownBlock> {
+  [
+    h2(text: "Building & checks"),
+    ul(items: [
+      li(text: "`cargo test --workspace` · `cargo clippy --all-targets -- -D warnings` · `cargo fmt --all --check`"),
+      li(text: "one-time: `git config core.hooksPath .githooks` (pre-push runs `cargo fmt`)"),
+      li(text: "CI (`gunbc ci` generates `.github/workflows/ci.yml`; all `v1-compiler` seed bins, no shell gate): **one** composed floor pass — `claim_executor --source-root src/v2 --source-root dag --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches`. The v2 scheduler decides the batches from the single-authority spec (`gunbc.ci_spec`); the only structural fact the plan adds is *compile-clean gates the rest* (batch-1 `dag_compile_clean_gate` → batch-2 everything else, a dependency edge). Witness **discovery is tree-wide and marker-driven** (roster derived from `gunbc.ci_layer_roots`: `witness_layer_roots = [src/v2, dag]`, `witness_discovery_scan_dirs = [dag/test/claim]`): the source-root pass walks every `*_test.dag` under **both** trees and auto-enrolls each `test fn` — fail-closed, a `test fn` in a non-`_test.dag` file is a hygiene violation, so a witness cannot silently hide; the scan-dir pass adds `unified_claim_*` BoolWitnessClaim decls. So a new witness is floor-covered by *naming it* `<x>_test.dag` with a `test fn`, not by hand-enrolling it (`discover_floor_corpus_rows` in `cli_run.rs`). Batch-2 also carries the effectful gates: rust fmt/clippy monolith gate (when a `.rs` changes), emit-host MVP smokes, layering-imports scan + perturb receipts, source-root-ingest, and the `ci.yml` drift+parse gate (ci.yml == `gunbc ci` output). The compile-clean gate is `--target dag`. Parse is grammar-owned: `ingest_yaml_source` (`dag/extdeps/languages/yaml/ingest.dag`), no shell/host parser."),
+    ]),
+  ]
+}
+
+fn design_blocks() -> List<MarkdownBlock> {
+  flat_map([
+    preamble_blocks(),
+    section_1_blocks(),
+    section_2_blocks(),
+    section_3_blocks(),
+    section_4_blocks(),
+    section_5_blocks(),
+    section_6_blocks(),
+    section_7_blocks(),
+    failure_modes_blocks(),
+    open_threads_blocks(),
+    building_checks_blocks(),
+  ], bs => bs)
+}
+
+fn design_document() -> MarkdownDocument {
+  MarkdownDocument { blocks: design_blocks() }
+}
+
+fn expected_design_md() -> String {
+  serialize_markdown_source(doc: design_document())
+}
+
+fn design_drifted(committed: String) -> Bool {
+  !(committed == expected_design_md())
+}

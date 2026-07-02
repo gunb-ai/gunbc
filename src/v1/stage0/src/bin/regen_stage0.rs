@@ -117,7 +117,6 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
     "complexity_linearity_audit_project.rs",
-    "decl_facts_project.rs",
     "coproduct_reflection.rs",
     "external_authority_project.rs",
     "recorded_fixture.rs",
@@ -619,7 +618,7 @@ fn assert_registry_is_partitioned() -> Result<(), String> {
 }
 
 fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
-    let roots = vec![workspace.join("src/v1"), workspace.join("dsl")];
+    let roots = vec![workspace.join("src/v1"), workspace.join("dag")];
     let sources = source_files_for_roots(&roots, workspace)?;
     let result = compile_sources(Rc::new(sources), RenderTarget::Rust);
 
@@ -849,12 +848,6 @@ fn patch_complexity_linearity_audit_mod(src_dir: &Path) -> Result<(), String> {
         lib_text = lib_text.replace(
             "pub mod cli_run;\n",
             "pub mod cli_run;\npub mod complexity_linearity_audit_project;\n",
-        );
-    }
-    if !lib_text.contains("pub mod decl_facts_project;") {
-        lib_text = lib_text.replace(
-            "pub mod complexity_linearity_audit_project;\n",
-            "pub mod complexity_linearity_audit_project;\npub mod decl_facts_project;\n",
         );
     }
     fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;

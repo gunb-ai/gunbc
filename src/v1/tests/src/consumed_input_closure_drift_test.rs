@@ -1,7 +1,7 @@
 // Deliverable 1 of the intent-linearity ImportGraph representation: the
 // consumed-input-closure DRIFT WALL.
 //
-// `dsl/tools/rust_stage0_gates.dag` declares `declared_consumed_input_closures`
+// `dag/tools/rust_stage0_gates.dag` declares `declared_consumed_input_closures`
 // -- a `ConsumedInputClosure { unit, consumed_dag_paths: List<String> }` whose
 // path list is HAND-TYPED (rust_stage0_gates.dag:22 `slice1_status` admits the
 // fail-open: "declaration drift silently re-opens the .dag->rust fail-open").
@@ -25,7 +25,7 @@ use crate::helpers::{
     resolve_imports_transitively_with_source_roots, v2_layer_roots, workspace_root,
 };
 
-const GATES_ENTRY: &str = "dsl/tools/rust_stage0_gates.dag";
+const GATES_ENTRY: &str = "dag/tools/rust_stage0_gates.dag";
 const DECLARED_DATA: &str = "declared_consumed_input_closures";
 
 struct DeclaredClosure {
@@ -126,7 +126,7 @@ fn entry_path_for(closure: &DeclaredClosure) -> String {
 /// The minimal/derived side: the transitive import-graph closure the compiler
 /// already walks, as the same workspace-relative .dag path set.
 ///
-/// Derived over `v2_layer_roots()` = [src/v2, dsl] -- deliberately the SAME root
+/// Derived over `v2_layer_roots()` = [src/v2, dag] -- deliberately the SAME root
 /// set the unit is actually compiled under (the coproduct conformance test's
 /// `cert_sources` resolves via `v2_layer_roots()` too), so derived and declared
 /// describe the same module universe. NOTE (the Axis-2 dependency cool-cat-421

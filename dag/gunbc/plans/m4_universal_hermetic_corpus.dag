@@ -1,0 +1,94 @@
+module gunbc.plans.m4_universal_hermetic_corpus
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock, MarkdownListItem, TableBlock, AlignNone, ThematicBreak }
+import gunbc.plans.md_helpers { h2, p, li, ul, ol, cell, row }
+
+fn m4_universal_hermetic_corpus_body() -> List<MarkdownBlock> {
+  [
+    p(text: "**Status:** PLAN-FIRST · worker `fierce-crab-852` · DESIGN.md §3/§5/§6 authority — this doc is a dispatch tracker, not a fact ledger."),
+    p(text: "**Predecessor:** M4.0 (#5188) — `eval_service_call` reads the published mock corpus as the single authority for hermetic realizability, but only from the **entry import closure** (`item_registry`). Filesystem co-locates its corpus via `import extdeps.filesystem.mock_corpus` in `filesystem_io.dag` (M4.0 per-layer opt-in). GovernedProbe keeps corpus in the same module as the service."),
+    p(text: "**Problem:** Closure-scoped corpus resolution lets an entry **opt out** of governance by omitting the corpus import — the runtime and the M2 `mock_totality_lens` then read **different** models. §3 nicknaming trap: co-location is a transport workaround, not the authority fact."),
+    ThematicBreak,
+    h2(text: "0. Thesis — governance is universal, not opt-in"),
+    CodeBlock { code: "  dag/ whole-tree published mock corpora     ← SINGLE authority (same modules M2 lens imports)\n    → precompute operation-key set ONCE per batch (whole-tree compile of dag/ roots)\n      → InterpContext carries immutable published_mock_keys + governed_services (O(1))\n        → eval_service_call: corpus-governed service + unpublished op → §5 fail-closed\n          → fixture replay OR inline mock (corpus-free services only)\n" },
+    p(text: "The entry import closure decides **which code runs**; it must NOT decide **which operations are hermetically realizable**. That fact is global over the dag/ tree."),
+    ThematicBreak,
+    h2(text: "Phase 1 — PLAN-FIRST (model + witnesses before runtime)"),
+    TableBlock {
+      header: row(cells: [cell(text: "Artifact"), cell(text: "Role")]),
+      alignments: [AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "`dag/std/hermetic_replay.dag`"), cell(text: "Add `service` + `operation` fields on `PublishedMockCase` (alongside `operation_key` until dissolve)")]),
+        row(cells: [cell(text: "`dag/test/fixture/m4_universal_governed_probe.dag`"), cell(text: "Service-only module (no corpus)")]),
+        row(cells: [cell(text: "`dag/test/fixture/m4_universal_governed_corpus.dag`"), cell(text: "Corpus-only module (NOT imported by witness entry)")]),
+        row(cells: [cell(text: "`dag/test/claim/m4_universal_corpus_witness.dag`"), cell(text: "§5 discriminating pair: GREEN published / RED unpublished **without** corpus in closure")]),
+        row(cells: [cell(text: "`interp_recorded_fixture_test.rs`"), cell(text: "Subprocess proof on real `claim_batch` path")]),
+      ],
+    },
+    p(text: "**RED before runtime:** witness entry imports probe service only → M4.0 closure scan misses corpus → `Forbidden` silently uses inline mock (vacuous). **GREEN after M4.1:** whole-tree precompute finds corpus → fail-closed on unpublished op."),
+    ThematicBreak,
+    h2(text: "Phase 2 — Runtime (load-bearing `v1_interpreter.rs` + `cli_run.rs`)"),
+    ol(items: [
+      MarkdownListItem { blocks: [
+        p(text: "**`precompute_whole_tree_published_mock_keys(source_roots)`** in `cli_run.rs`"),
+        ul(items: [
+          li(text: "Scan dag source roots (paths ending in `/dag` or named `dag`)"),
+          li(text: "`resolved_graph_from_sources(all modules)` — same tree `dag_compile_clean` validates"),
+          li(text: "Evaluate every `data` item declared over `PublishedMockCase` (existing shape gate)"),
+          li(text: "Return `HashSet<String>` of operation keys"),
+        ]),
+      ] },
+      MarkdownListItem { blocks: [
+        p(text: "**`InterpContext` extensions**"),
+        ul(items: [
+          li(text: "`whole_tree_published_keys: Option<Rc<HashSet<String>>>` — when set, supersedes closure scan"),
+          li(text: "`governed_services: RefCell<Option<Rc<HashSet<String>>>>` — service names extracted once; `eval_service_call` uses `governed_services.contains(service_name)` (O(1)) instead of scanning all keys per call"),
+        ]),
+      ] },
+      MarkdownListItem { blocks: [
+        p(text: "**`make_eval_context_with_published_keys`** — thread precomputed keys from `claim_batch` / `handle_run_with_options` (precompute once per invocation, not per witness)"),
+      ] },
+      MarkdownListItem { blocks: [
+        p(text: "**Key extraction** — prefer `service` + `operation` fields when present; fall back to `operation_key` during migration"),
+      ] },
+    ]),
+    ThematicBreak,
+    h2(text: "Phase 3 — Dissolve M4.0 opt-in"),
+    TableBlock {
+      header: row(cells: [cell(text: "Mark"), cell(text: "Action")]),
+      alignments: [AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "`feature:m4-universal-hermetic-corpus-load`"), cell(text: "Delete `import extdeps.filesystem.mock_corpus` from `filesystem_io.dag`")]),
+        row(cells: [cell(text: "`feature:hermetic-published-mock-operation-ref`"), cell(text: "Delete `operation_key: String` once all rows carry `service` + `operation`")]),
+      ],
+    },
+    ThematicBreak,
+    h2(text: "§5 proof obligations"),
+    TableBlock {
+      header: row(cells: [cell(text: "Witness"), cell(text: "GREEN"), cell(text: "RED (teeth)")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "`m4_governed_service_witness` (M4.0, corpus co-located)"), cell(text: "`Allowed` realizes"), cell(text: "`Forbidden` fail-closed")]),
+        row(cells: [cell(text: "`m4_universal_corpus_witness` (M4.1, corpus **outside** closure)"), cell(text: "`Allowed` realizes"), cell(text: "`Forbidden` fail-closed")]),
+        row(cells: [cell(text: "`filesystem` hermetic tests"), cell(text: "Read/Write governed without co-location import"), cell(text: "absent op fail-closed")]),
+      ],
+    },
+    ThematicBreak,
+    h2(text: "Open / deferred"),
+    ul(items: [
+      li(text: "**M5:** RecordedFixture store fork dissolution (unchanged from M4.0)"),
+      li(text: "**Projection lens:** `feature:filesystem-mock-corpus-from-service-decl` — corpus projected from `service Filesystem` operation set (bind `node://adhoc-a9399cb3-628`)"),
+      li(text: "**v2 std resolve:** delete `src/v2/std/hermetic_replay.dag` mirror when cross-tree import lands"),
+    ]),
+  ]
+}
+
+data m4_universal_hermetic_corpus_plan: Plan = Plan {
+  slug: "m4-universal-hermetic-corpus",
+  title: "Plan — M4.1: universal hermetic corpus governance",
+  body: m4_universal_hermetic_corpus_body(),
+  dissolution: HasTrigger {
+    text: "Dissolve this tracker when M4.1 universal governance has landed and M4.0 opt-in is gone — `precompute_whole_tree_published_mock_keys` is the single authority, `m4_universal_corpus_witness` is green-by-execution on the floor, and the Phase-3 marks (`feature:m4-universal-hermetic-corpus-load`, `feature:hermetic-published-mock-operation-ref`) have fired (corpus co-location import + `operation_key` deleted) — at which point governance is universal-by-construction and this doc is redundant."
+  }
+}

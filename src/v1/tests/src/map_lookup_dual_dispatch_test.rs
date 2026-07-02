@@ -1,6 +1,6 @@
 //! RESIDUAL after 5-test-migration (2026-07-02): 4 of the original 6 tests are
 //! migrated to marker-discovered floor witnesses in
-//! dsl/test/claim/map_lookup_dual_dispatch_witness_test.dag (method get, index
+//! dag/test/claim/map_lookup_dual_dispatch_witness_test.dag (method get, index
 //! sugar, lookup builtin, std.graph adjacency smoke — a chokepoint perturbation
 //! reds all four, proving the routing claim by execution).
 //! The 2 tests below stay:

@@ -46,9 +46,9 @@ type Box = 64
 
 #[test]
 fn v1_std_integer_dag_resolves_with_literal_machine_width() {
-    let content = read_v2_file("dsl/std/integer.dag");
+    let content = read_v2_file("dag/std/integer.dag");
     let sources = resolve_imports_transitively_with_source_roots(
-        "dsl/std/integer.dag",
+        "dag/std/integer.dag",
         &content,
         &source_roots(),
     );
@@ -62,9 +62,9 @@ fn v1_std_integer_dag_resolves_with_literal_machine_width() {
 
 #[test]
 fn v1_std_float_dag_resolves_with_literal_machine_width() {
-    let content = read_v2_file("dsl/std/float.dag");
+    let content = read_v2_file("dag/std/float.dag");
     let sources = resolve_imports_transitively_with_source_roots(
-        "dsl/std/float.dag",
+        "dag/std/float.dag",
         &content,
         &source_roots(),
     );
@@ -88,7 +88,7 @@ fn machine_width_phantom_arg_rust_emit_peels_literal_width_to_unit() {
         .map(|p| p.to_string_lossy().to_string())
         .collect();
     let entry = crate::helpers::workspace_root()
-        .join("dsl/std/integer.dag")
+        .join("dag/std/integer.dag")
         .to_string_lossy()
         .to_string();
     let sources = cli_run::load_sources_for_entry(&roots, &entry)

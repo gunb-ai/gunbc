@@ -8,7 +8,7 @@
 
 **The path-heuristic `real-debt` / `open-domain` site classifiers are retired from `triage_wildcard`.** `complexity_linearity_audit_project.rs` no longer uses `is_real_debt_site` or `is_open_domain_site`. Syntactic triage is grounded on **closed-coproduct param resolution** at the AST walk:
 
-**Residual emit-only path buckets:** `triage_complexity` (used only by `syntactic_high_match_fanout` cost findings, not floor gates) still partitions by `starts_with("dsl/extdeps/")` / `dsl/std/` etc. — scaffold residue named in dissolution trigger #2; delete on `#5966` on-carrier swap.
+**Residual emit-only path buckets:** `triage_complexity` (used only by `syntactic_high_match_fanout` cost findings, not floor gates) still partitions by `starts_with("dag/extdeps/")` / `dag/std/` etc. — scaffold residue named in dissolution trigger #2; delete on `#5966` on-carrier swap.
 
 1. Any `match` with a top-level `_ =>` arm is a syntactic finding.
 2. `triage_wildcard(site, fn_name, has_closed_coproduct_wildcard)` gates on whether the scrutinee is a **bare fn param** whose declared type head is in the corpus closed-coproduct index (`fn_param_type_heads` + `non_fold_residue_closed_coproduct_type_names()`).
@@ -66,9 +66,9 @@ Wildcard `match` where scrutinee is **not** a closed-coproduct fn param (open `N
 |---|------|-------------------|---------------|---------------|
 | 1 | `src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim` | Yes (`ManualAnchorKey`) | migration-debt | migration-debt |
 | 2 | `src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer` | Yes | migration-debt | migration-debt |
-| 3 | `dsl/extdeps/cron/schedule_model.dag::render_cron_field` | No | — | open-domain |
+| 3 | `dag/extdeps/cron/schedule_model.dag::render_cron_field` | No | — | open-domain |
 | 4 | `src/v2/lens/cost.dag::asymptotic_class_dominates` | Yes | irreducible | kernel-permanent |
-| 5 | `dsl/tools/generated_artifact_gate.dag::exit_ok` | Yes | irreducible | kernel-permanent |
+| 5 | `dag/tools/generated_artifact_gate.dag::exit_ok` | Yes | irreducible | kernel-permanent |
 
 Witness: `syntactic_audit_witness_test.dag` executes interpreter builtins over witness roots; site-pinned rows are intentional dissolution ratchets.
 

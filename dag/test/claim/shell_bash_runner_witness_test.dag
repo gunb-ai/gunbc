@@ -1,0 +1,20 @@
+module test.claim.shell_bash_runner
+
+import gunbc.shell_bash_runner {
+  shell_bash_runner_dissolution_trigger,
+  shell_exec_via_bash,
+  gunbc_bash_heredoc_delimiter,
+}
+
+test fn shell_bash_runner_carries_dissolution_trigger() -> Bool {
+  string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "dissolve-on:")
+    && string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "medium_structure_exception_roster")
+    && string_contains(s: shell_bash_runner_dissolution_trigger, pattern: "shell_exec_via_bash")
+}
+
+test fn shell_exec_via_bash_wraps_body_in_heredoc() -> Bool {
+  let wrapped = shell_exec_via_bash(body: "set -e\necho ok")
+  string_contains(s: wrapped, pattern: "bash <<'")
+    && string_contains(s: wrapped, pattern: gunbc_bash_heredoc_delimiter)
+    && string_contains(s: wrapped, pattern: "set -e")
+}

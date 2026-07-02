@@ -11,9 +11,9 @@ use std::time::Instant;
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     compute_histogram_data, compute_witness_timing_rows, make_eval_context, resolve_entry_graph,
-    run_claim, run_discovery_corpus_with_options, run_value, top_n_slowest_witnesses, ClaimOutcome,
-    DiscoveryCorpusOptions, DiscoverySummary, HistogramData, TimingPercentiles, WitnessTimingRow,
-    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    run_claim, run_discovery_corpus_with_options, run_value, set_phase, top_n_slowest_witnesses,
+    ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, FloorPhase, HistogramData,
+    PhaseProfile, TimingPercentiles, WitnessTimingRow, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
@@ -264,7 +264,7 @@ struct ClaimResult {
 /// (and typechecked) EXACTLY ONCE and every claim runs on that one shared interpreter context,
 /// instead of each claim re-resolving the identical graph on its own thread. This is the floor's
 /// dominant footprint win — batch-2's gate witnesses all live in one file
-/// (`dsl/tools/floor_effect_gate_witness.dag`, ~0.9 GiB / 106 modules per resolve), so the
+/// (`dag/tools/floor_effect_gate_witness.dag`, ~0.9 GiB / 106 modules per resolve), so the
 /// per-thread-resolve scheme held that graph ~6x concurrently (~4.5 GiB of pure duplication,
 /// roughly half the self-RSS). Resolve is a pure function of `(source_roots, entry)`, so sharing
 /// the graph across same-entry claims is semantically identical — correctness by construction
@@ -475,6 +475,7 @@ fn run_shared_entry_claims(
     functions
         .iter()
         .map(|function| {
+            set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
             let outcome = run_claim(&ctx, function);
             let wall_nanos = claim_start.elapsed().as_nanos();
@@ -535,6 +536,7 @@ fn run_memo_shared_claims(
     functions
         .iter()
         .map(|function| {
+            set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
             let outcome = run_claim(ctx, function);
             let wall_nanos = claim_start.elapsed().as_nanos();
@@ -566,14 +568,14 @@ fn clamp_nanos_to_i64(n: u128) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
 }
 
-/// Render the timing histogram boxes through `dsl/gunbc/ci_render.dag` (`render_percentile_box`),
+/// Render the timing histogram boxes through `dag/gunbc/ci_render.dag` (`render_percentile_box`),
 /// the single authority for boxed-Frame width. The seed only supplies measured data + the host
 /// viewport width; all layout (borders, padding, duration formatting) lives in `.dag`.
 fn render_timing_histogram(
     source_roots: &[String],
     data: &HistogramData,
 ) -> Result<String, String> {
-    let entry = "dsl/gunbc/ci_render.dag";
+    let entry = "dag/gunbc/ci_render.dag";
     let (graph, indices) = resolve_entry_graph(source_roots, entry)
         .map_err(|m| format!("resolve failed for {entry}:\n{m}"))?;
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
@@ -655,7 +657,7 @@ fn str_list_value(lines: &[String]) -> Value {
     ))
 }
 
-/// Render the top-N slowest witnesses through `dsl/gunbc/ci_render.dag`.
+/// Render the top-N slowest witnesses through `dag/gunbc/ci_render.dag`.
 fn render_slowest_witnesses(
     source_roots: &[String],
     rows: &[WitnessTimingRow],
@@ -663,7 +665,7 @@ fn render_slowest_witnesses(
     if rows.is_empty() {
         return Ok(String::new());
     }
-    let entry = "dsl/gunbc/ci_render.dag";
+    let entry = "dag/gunbc/ci_render.dag";
     let (graph, indices) = resolve_entry_graph(source_roots, entry)
         .map_err(|m| format!("resolve failed for {entry}:\n{m}"))?;
     let ctx = make_eval_context(&graph, indices, ExecutionMode::Wet);
@@ -764,6 +766,7 @@ fn run_discovery_batch_node(
     spawn_width: usize,
     spawn_width_cap: usize,
 ) -> ClaimResult {
+    set_phase(FloorPhase::Discovery, "discovery-corpus");
     let label = format!(
         "discovery-corpus[{} root(s)+{} explicit, width={}]",
         source_roots.len(),
@@ -845,6 +848,7 @@ fn eval_plan(
     plan_entry: &str,
     plan_function: &str,
 ) -> Result<Vec<Vec<Runnable>>, String> {
+    set_phase(FloorPhase::Gate, &format!("{plan_entry}::{plan_function}"));
     let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
     let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Hermetic);
@@ -1358,6 +1362,10 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
         // spans the whole batch), so it is sound under `spawn_width > 1`.
         let grouped = v1_compiler::v1_interpreter::host_trace_grouping_active();
         if grouped {
+            set_phase(
+                FloorPhase::HostEffect,
+                &format!("batch-{}-host-effects", bi + 1),
+            );
             v1_compiler::v1_interpreter::group_begin(&format!("batch {} host-effects", bi + 1));
         }
         let handles: Vec<_> = thread_units
@@ -1715,6 +1723,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!("claim_executor: provide at least one --source-root");
         return Err(ExitCode::from(2));
     }
+    let _phase_profile = PhaseProfile::install_from_env();
     let plan_entry = match plan_entry {
         Some(e) => e,
         None => {
@@ -2043,10 +2052,10 @@ mod tests {
         let root = workspace_root();
         let source_roots = vec![
             root.join("src/v2").to_string_lossy().into_owned(),
-            root.join("dsl").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
         ];
         let entry = root
-            .join("dsl/test/claim/runnable_resource_profile_witness_test.dag")
+            .join("dag/test/claim/runnable_resource_profile_witness_test.dag")
             .to_string_lossy()
             .into_owned();
         let functions: &[String] = &[
@@ -2091,10 +2100,10 @@ mod tests {
         let root = workspace_root();
         let source_roots = vec![
             root.join("src/v2").to_string_lossy().into_owned(),
-            root.join("dsl").to_string_lossy().into_owned(),
+            root.join("dag").to_string_lossy().into_owned(),
         ];
         let entry = root
-            .join("dsl/test/claim/runnable_resource_profile_witness_test.dag")
+            .join("dag/test/claim/runnable_resource_profile_witness_test.dag")
             .to_string_lossy()
             .into_owned();
 

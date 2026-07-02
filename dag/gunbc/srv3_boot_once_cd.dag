@@ -1,0 +1,148 @@
+module gunbc.srv3_boot_once_cd
+
+import extdeps.bmc.http
+import extdeps.filesystem.filesystem_io
+import std.types { NonEmptyStr, String }
+import std.resources { Network }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.bmc.types {
+  RedfishBootSourceOverrideTarget,
+  BootTargetCd,
+  RedfishBootSourceOverrideEnabled,
+  BootOverrideOnce,
+  RedfishResetType,
+  ResetForceRestart,
+  redfish_boot_target_wire,
+  redfish_boot_override_enabled_wire,
+  redfish_reset_type_wire,
+}
+import extdeps.boards.asrock_rack { asrock_altrad8ud_redfish_system_id }
+import gunbc.tools.bmc_onboard {
+  bmc_onboard_netrc_path,
+  netrc_content,
+  boot_override_body,
+  reset_body,
+}
+import gunbc.bmc_onboarding { new_altra_onboarding_plan }
+import gunbc.workflow_escalation {
+  WorkflowApprovalState,
+  workflow_destructive_step_refusal_reason,
+}
+import gunbc.srv3_os_install_actuate_workflow {
+  srv3_boot_once_cd_escalation,
+  srv3_boot_once_cd_default_approval,
+  srv3_boot_once_cd_operator_granted_approval,
+  srv3_boot_once_cd_workflow_disposition,
+}
+import gunbc.srv3_bmc_credential_resolve {
+  observe_and_resolve_srv3_bmc_credential,
+  materialize_bmc_login_password,
+  CredentialResolutionRefused,
+  BmcCredentialResolution,
+}
+
+data srv3_boot_once_cd_secret_debt: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.filesystem.filesystem_io",
+    decl_name: "Filesystem",
+    field: WholeDeclaration
+  }
+}
+
+data srv3_boot_cd_body_path: String = "/tmp/srv3_boot_cd_body.json"
+data srv3_reset_body_path: String = "/tmp/srv3_reset_body.json"
+
+data srv3_boot_cd_target: RedfishBootSourceOverrideTarget = BootTargetCd
+data srv3_boot_cd_enabled: RedfishBootSourceOverrideEnabled = BootOverrideOnce
+data srv3_boot_cd_reset_type: RedfishResetType = ResetForceRestart
+
+func srv3_boot_once_cd() -> ProcessExit
+  uses net: Network
+{
+  srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_default_approval)
+}
+
+func srv3_boot_once_cd_operator_approved() -> ProcessExit
+  uses net: Network
+{
+  srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_operator_granted_approval)
+}
+
+func srv3_boot_once_cd_gated(approval: WorkflowApprovalState) -> ProcessExit
+  uses net: Network
+{
+  let disposition = srv3_boot_once_cd_workflow_disposition(approval: approval)
+  let refusal = workflow_destructive_step_refusal_reason(disposition: disposition)
+  if refusal != "" {
+    return exit_failure(reason: concat("boot-once-cd: ", refusal))
+  }
+
+  let resolution = observe_and_resolve_srv3_bmc_credential()
+  return match resolution {
+    CredentialResolutionRefused { reason: r } =>
+      exit_failure(reason: concat("boot-once-cd: credential resolution refused: ", r))
+    _ => srv3_boot_once_cd_resolved(resolution: resolution)
+  }
+}
+
+func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
+  uses net: Network
+{
+  let plan = new_altra_onboarding_plan
+  let host = plan.bmc.host
+  let account = plan.factory_login.username
+
+  let password = match materialize_bmc_login_password(resolution: resolution) {
+    Absent =>
+      return exit_failure(reason: "boot-once-cd: could not materialize BMC password from resolution")
+    Present { value: p } => p
+  }
+
+  let netrc_write = Filesystem.Write(
+    path: bmc_onboard_netrc_path,
+    content: netrc_content(host: host, account: account, password: password)
+  )
+  if netrc_write.success == false {
+    return exit_failure(reason: concat("boot-once-cd: netrc stage failed: ", netrc_write.error))
+  }
+
+  let boot_body = boot_override_body(
+    target: redfish_boot_target_wire(t: srv3_boot_cd_target),
+    enabled: redfish_boot_override_enabled_wire(e: srv3_boot_cd_enabled)
+  )
+  let boot_write = Filesystem.Write(path: srv3_boot_cd_body_path, content: boot_body)
+  if boot_write.success == false {
+    return exit_failure(reason: concat("boot-once-cd: boot body write failed: ", boot_write.error))
+  }
+
+  let patch = redfish.Http.SetBootSourceOverride(
+    bmc_host: host,
+    netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+    system_id: asrock_altrad8ud_redfish_system_id,
+    request_body_file: srv3_boot_cd_body_path as NonEmptyStr
+  )
+  if patch.success == false {
+    return exit_failure(reason: concat("boot-once-cd: PATCH boot override failed: ", patch.body))
+  }
+
+  let rst_body = reset_body(reset_type: redfish_reset_type_wire(r: srv3_boot_cd_reset_type))
+  let rst_write = Filesystem.Write(path: srv3_reset_body_path, content: rst_body)
+  if rst_write.success == false {
+    return exit_failure(reason: concat("boot-once-cd: reset body write failed: ", rst_write.error))
+  }
+
+  let rst = redfish.Http.ResetSystem(
+    bmc_host: host,
+    netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+    system_id: asrock_altrad8ud_redfish_system_id,
+    request_body_file: srv3_reset_body_path as NonEmptyStr
+  )
+  return if rst.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("boot-once-cd: reset POST failed: ", rst.body))
+  }
+}

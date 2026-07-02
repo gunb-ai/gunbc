@@ -13,9 +13,9 @@ The boutique pain is entirely in **regime 2**: three hand-rolled serializers, ea
 
 | emitter | file | IR today | serialize fn |
 | --- | --- | --- | --- |
-| yaml (ci.yml) | `dsl/extdeps/languages/yaml/types.dag` + `dsl/extdeps/languages/yaml/emit.dag` + `dsl/gunbc/ci_yaml_emit.dag` | `YamlValue` (a real structured IR) | `serialize_yaml` — hand-rolled recursive `match` (block/flow seq, scalar quoting, indent) |
-| gitignore | `dsl/gunbc/gitignore_emit.dag` | **none** — raw `concat` | `serialize_gitignore` — hand fold over `IgnoreGroup` |
-| runner_deploy | `dsl/gunbc/runner_deploy_emit.dag` | **none** — raw `concat` | `expected_runner_deploy_manifest` — hand fold over hosts |
+| yaml (ci.yml) | `dag/extdeps/languages/yaml/types.dag` + `dag/extdeps/languages/yaml/emit.dag` + `dag/gunbc/ci_yaml_emit.dag` | `YamlValue` (a real structured IR) | `serialize_yaml` — hand-rolled recursive `match` (block/flow seq, scalar quoting, indent) |
+| gitignore | `dag/gunbc/gitignore_emit.dag` | **none** — raw `concat` | `serialize_gitignore` — hand fold over `IgnoreGroup` |
+| runner_deploy | `dag/gunbc/runner_deploy_emit.dag` | **none** — raw `concat` | `expected_runner_deploy_manifest` — hand fold over hosts |
 
 That's the §2 violation: layout logic duplicated three ways.
 

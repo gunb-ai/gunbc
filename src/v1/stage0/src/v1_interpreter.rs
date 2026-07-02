@@ -3755,10 +3755,10 @@ pub fn materialize_shell_argv_for_operation(
 }
 
 /// SGR foreground parameters per `SemanticColor`, mirroring the
-/// `extdeps.render.ansi` authority (`ansi_mappings` in `dsl/extdeps/render/ansi.dag`).
+/// `extdeps.render.ansi` authority (`ansi_mappings` in `dag/extdeps/render/ansi.dag`).
 /// Seed realization until the interpreter consumes that table directly; the
 /// dissolution is the single checkable receipt ROADMAP §1 "interpreter
-/// terminal-output de-fork" (`dsl/gunbc/roadmap_authority.dag`).
+/// terminal-output de-fork" (`dag/gunbc/roadmap_authority.dag`).
 pub mod sgr {
     pub const SUCCESS: &str = "38;5;34";
     pub const ERROR: &str = "38;5;196";
@@ -3802,7 +3802,7 @@ pub fn paint(text: &str, sgr_params: &str) -> String {
 }
 
 /// CLI output verbosity. Seed realization of the `gunbc.output_policy.Verbosity`
-/// authority (`dsl/gunbc/output_policy.dag`); resolution precedence mirrors that
+/// authority (`dag/gunbc/output_policy.dag`); resolution precedence mirrors that
 /// module's `resolve_verbosity` (verbose wins over quiet, default Normal). When
 /// the interpreter self-hosts, this dissolves into consuming the .dag policy.
 #[derive(Clone, Copy, PartialEq)]
@@ -5453,6 +5453,14 @@ fn eval_builtin(
             )?))
         }
 
+        "decl_facts" => {
+            let pool_roots = expect_str_list(positional.first().copied(), "decl_facts")?;
+            Ok(Some(crate::coproduct_reflection::eval_decl_facts(
+                ctx,
+                &pool_roots,
+            )?))
+        }
+
         "module_declaration_facts" => {
             let pool_roots =
                 expect_str_list(positional.first().copied(), "module_declaration_facts")?;
@@ -5512,7 +5520,7 @@ fn eval_builtin(
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 let tree = match f.tree.as_str() {
-                    "dsl" => "Dsl",
+                    "dag" => "Dag",
                     "v2" => "V2",
                     other => panic!("fact_cardinality_decl_facts: unknown tree {other:?}"),
                 };

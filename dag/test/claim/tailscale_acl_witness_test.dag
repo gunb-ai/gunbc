@@ -1,0 +1,81 @@
+module test.claim.tailscale_acl_witness
+
+import extdeps.tailscale.acl {
+  operator_tailscale_acl_policy,
+  tag_ci,
+  tag_dashboard,
+  dashboard_cutover_mac_ip,
+  dashboard_cutover_mac_dissolution_trigger,
+  tag_ci_quarantine_holds,
+  tag_dashboard_admin_plane_holds,
+  dashboard_cutover_ip_is_transient_in_tag_ci_grant,
+  ssh_members_reach_ci_nonroot_only,
+  ssh_dashboard_reaches_ci_root_and_nonroot,
+  operator_acl_security_spine_holds,
+  extdeps_external_authority_anchor,
+}
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Https }
+import gunbc.tailscale_acl_emit { expected_tailscale_acl_json }
+import extdeps.filesystem.filesystem_io { Filesystem }
+
+data tailscale_acl_reference_fixture_path: String = "dag/test/fixture/tailscale_acl_reference.json"
+
+fn witness_acl_cites_tailscale_grants_authority() -> Bool {
+  match extdeps_external_authority_anchor {
+    ExternalAuthority { uri } => uri.scheme == Https && uri.locator == "tailscale.com/kb/1018"
+  }
+}
+
+fn witness_operator_policy_row_counts() -> Bool {
+  let policy = operator_tailscale_acl_policy
+  (length(policy.grants) == 4)
+    && (length(policy.ssh) == 3)
+    && (length(policy.node_attrs) == 1)
+    && (length(policy.tag_owners) == 2)
+}
+
+fn witness_tag_ci_quarantine_spine() -> Bool {
+  tag_ci_quarantine_holds(policy: operator_tailscale_acl_policy)
+}
+
+fn witness_tag_dashboard_admin_exception() -> Bool {
+  tag_dashboard_admin_plane_holds(policy: operator_tailscale_acl_policy)
+}
+
+fn witness_dashboard_cutover_ip_transient() -> Bool {
+  dashboard_cutover_ip_is_transient_in_tag_ci_grant(policy: operator_tailscale_acl_policy)
+    && string_contains(s: dashboard_cutover_mac_dissolution_trigger, pattern: dashboard_cutover_mac_ip)
+    && string_contains(s: dashboard_cutover_mac_dissolution_trigger, pattern: "tag:dashboard")
+}
+
+fn witness_ssh_principal_spine() -> Bool {
+  ssh_members_reach_ci_nonroot_only(policy: operator_tailscale_acl_policy)
+    && ssh_dashboard_reaches_ci_root_and_nonroot(policy: operator_tailscale_acl_policy)
+}
+
+fn witness_security_spine() -> Bool {
+  operator_acl_security_spine_holds(policy: operator_tailscale_acl_policy)
+}
+
+fn witness_emit_matches_reference_fixture() -> Bool {
+  let read = Filesystem.Read(path: tailscale_acl_reference_fixture_path)
+  read.success && (expected_tailscale_acl_json() == read.content)
+}
+
+fn witness_dashboard_tag_not_ci_in_acl_model() -> Bool {
+  tag_dashboard != tag_ci
+    && !string_contains(s: tag_dashboard, pattern: "tag:ci")
+}
+
+test fn tailscale_acl_witnesses() -> Bool {
+  witness_acl_cites_tailscale_grants_authority()
+    && witness_operator_policy_row_counts()
+    && witness_tag_ci_quarantine_spine()
+    && witness_tag_dashboard_admin_exception()
+    && witness_dashboard_cutover_ip_transient()
+    && witness_ssh_principal_spine()
+    && witness_security_spine()
+    && witness_emit_matches_reference_fixture()
+    && witness_dashboard_tag_not_ci_in_acl_model()
+}

@@ -2,7 +2,7 @@
 
 > **Sub-move (i) ONLY.** This sketch covers the per-kind sum-type split. The arena/`u32`-index **container** is sub-move (ii), a separate later lane — not modeled here.
 >
-> Grounding: [`representation-minimization.md`](representation-minimization.md) item 3 · [`dsl/gunbc/plans/representation_minimization.dag`](../dsl/gunbc/plans/representation_minimization.dag) · parent node anatomy (`Node` @ `src/v1/stage0/src/v1_std_core.rs:742`).
+> Grounding: [`representation-minimization.md`](representation-minimization.md) item 3 · [`dag/gunbc/plans/representation_minimization.dag`](../dag/gunbc/plans/representation_minimization.dag) · parent node anatomy (`Node` @ `src/v1/stage0/src/v1_std_core.rs:742`).
 >
 > Executable companion (same branch, PR #5936): `src/v2/std/node_minimal.dag` + `src/v2/test/claim/manual/node_minimal_representation_test.dag`.
 

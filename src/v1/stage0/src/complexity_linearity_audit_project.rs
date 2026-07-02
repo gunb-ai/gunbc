@@ -3,12 +3,11 @@
 // (row `3-gates-whole`, gated on fn-body reflection / `decl_facts(roots)` host builtin #5966).
 //
 // AUDIT-FIRST BRIDGE: parse-only walk over `witness_layer_roots` until whole-corpus fn-body
-// reflection grounds. Substrate: `decl_facts_project::decl_facts_parse_only(roots)` — locked carrier
-// shape `{qualified_name, name, kind, node}` stubbed with parse-only walk until the additive
-// host builtin merges (#5966 follow-up).
+// reflection grounds. Substrate: `coproduct_reflection::decl_facts_for_roots(roots)` — locked carrier
+// shape `{qualified_name, name, kind, node}` via the `decl_facts(roots)` host builtin (#5966).
 //
 // DISSOLUTION TRIGGER (named, checkable):
-//   1. Swap `decl_facts_parse_only` body for real `decl_facts(roots)` when #5966 lands.
+//   1. ~~Swap `decl_facts_parse_only` body for real `decl_facts(roots)` when #5966 lands.~~ DONE.
 //   2. Move `triage_wildcard` / `triage_complexity` site-classification tables on-carrier
 //      alongside decl_facts — do not let hand-Rust substring heuristics survive the swap.
 //   3. Fold SYNTACTIC projections into a pure `.dag` Node-tree reader when compile-graph access
@@ -23,9 +22,8 @@ use std::rc::Rc;
 use std::sync::OnceLock;
 
 use crate::cli_run::{
-    is_test_dag, non_fold_residue_count, non_fold_residue_live_sites, non_fold_residue_roster_size,
-    non_fold_residue_site_is_rostered, non_fold_residue_unrostered_count, repo_rel,
-    witness_layer_roots,
+    non_fold_residue_count, non_fold_residue_live_sites, non_fold_residue_roster_size,
+    non_fold_residue_site_is_rostered, non_fold_residue_unrostered_count, witness_layer_roots,
 };
 
 // Migration-debt sub-roster — subset of NON_FOLD_RESIDUE_ROSTER in cli_run.
@@ -44,7 +42,7 @@ const NON_FOLD_MIGRATION_DEBT_ROSTER: &[&str] = &[
     "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
     "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
     // (a) other un-migrated modeling awaiting total fold.
-    "dsl/extdeps/languages/markdown.dag::md_nested",
+    "dag/extdeps/languages/markdown.dag::md_nested",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
     "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
     "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
@@ -76,11 +74,8 @@ fn nfr_roster_bucket(site: &str) -> Option<NonFoldRosterBucket> {
         Some(NonFoldRosterBucket::Irreducible)
     }
 }
-use crate::decl_facts_project::{
-    decl_facts_is_fn_like, logical_qualified_name_from_module, DeclFact,
-};
-use crate::module_path_index::medium_structure_census::parse_dag_file;
-use crate::v1_compiler_infer_items::item_kind;
+use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
+use crate::v1_compiler_infer_items::ItemKind;
 use crate::v1_std_core::{
     arm_pattern, authored_name_at, expr_var_name_at, match_arm_nodes, match_scrutinee,
     param_node_name_at, param_node_type_expr, ExprData, MatchPattern, Node,
@@ -145,7 +140,7 @@ fn is_closed_coproduct_param_scrutinee(
 }
 
 fn audit_decl_fact(
-    fact: &DeclFact,
+    fact: &DeclFactRaw,
     si: &Rc<std::collections::HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> Vec<AuditFinding> {
     let Some(body) = fact.node.body.as_ref() else {
@@ -364,13 +359,13 @@ fn triage_complexity(site: &str) -> &'static str {
     if is_kernel_permanent_fn(fn_name) {
         return "kernel-permanent";
     }
-    if site.starts_with("dsl/extdeps/")
-        || site.starts_with("dsl/ctrl/")
-        || site.starts_with("dsl/gunbc/plans/")
-        || site.starts_with("dsl/test/")
+    if site.starts_with("dag/extdeps/")
+        || site.starts_with("dag/ctrl/")
+        || site.starts_with("dag/gunbc/plans/")
+        || site.starts_with("dag/test/")
     {
         "open-domain"
-    } else if site.starts_with("dsl/std/") || site.starts_with("dsl/gunbc/") {
+    } else if site.starts_with("dag/std/") || site.starts_with("dag/gunbc/") {
         "kernel-permanent"
     } else {
         "open-domain"
@@ -378,43 +373,19 @@ fn triage_complexity(site: &str) -> &'static str {
 }
 
 pub fn audit_corpus_over_decl_facts(roots: &[String]) -> AuditSummary {
+    let walk = decl_facts_corpus_walk(roots);
     let mut summary = AuditSummary::default();
+    summary.files_scanned = walk.files_scanned;
+    summary.files_parsed = walk.files_parsed;
 
-    for file in crate::decl_facts_project::corpus_dag_files_for_roots(roots) {
-        let rel = repo_rel(&file);
-        if is_test_dag(&rel) {
+    for fact in &walk.facts {
+        if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
             continue;
         }
-        summary.files_scanned += 1;
-        let content = std::fs::read_to_string(&file).ok();
-        let module_path = content
-            .as_ref()
-            .and_then(|c| crate::decl_facts_project::extract_module_path_from_content(c))
-            .unwrap_or_default();
-        let Some(parsed) = parse_dag_file(&file) else {
-            continue;
-        };
-        summary.files_parsed += 1;
-        let si = parsed.source_indices;
-        for item in parsed.items.iter() {
-            let kind = item_kind(item.clone());
-            if !decl_facts_is_fn_like(kind) {
-                continue;
-            }
-            let name = authored_name_at(si.clone(), item.clone());
-            if name.is_empty() {
-                continue;
-            }
-            summary.fns_scanned += 1;
-            let fact = DeclFact {
-                qualified_name: logical_qualified_name_from_module(&module_path, &name),
-                name,
-                kind,
-                node: item.clone(),
-                rel_path: rel.clone(),
-            };
-            summary.findings.extend(audit_decl_fact(&fact, &si));
-        }
+        summary.fns_scanned += 1;
+        summary
+            .findings
+            .extend(audit_decl_fact(fact, &fact.source_indices));
     }
     summary.findings.sort();
     summary

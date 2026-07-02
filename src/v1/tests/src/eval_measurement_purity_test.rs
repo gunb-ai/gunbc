@@ -16,9 +16,9 @@ fn outcome_tag(o: &ClaimOutcome) -> &'static str {
 #[test]
 fn eval_measurement_does_not_change_witness_verdict() {
     let ws = crate::helpers::workspace_root();
-    let source_roots = vec![ws.join("dsl").to_string_lossy().into_owned()];
+    let source_roots = vec![ws.join("dag").to_string_lossy().into_owned()];
     let entry = ws
-        .join("dsl/test/claim/realization_measurement_keystone_test.dag")
+        .join("dag/test/claim/realization_measurement_keystone_test.dag")
         .to_string_lossy()
         .into_owned();
     let function = "realization_measurement_keystone_witnesses";

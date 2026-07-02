@@ -1,4 +1,4 @@
-# gunbc .gitignore — generated from dsl/gunbc/gitignore_authority.dag — do not hand-edit.
+# gunbc .gitignore — generated from dag/gunbc/gitignore_authority.dag — do not hand-edit.
 #
 # Rule: Ignore anything that is (a) reproducible from committed source-of-truth files, or (b) environment-specific and not shared across developers.
 

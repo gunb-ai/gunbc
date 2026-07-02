@@ -1,0 +1,343 @@
+module gunbc.ci_deploy_access
+
+import std.types { NonEmptyStr, List, String, Bool }
+import std.access { AccessDecision, Permit, Deny, decision_meet }
+import extdeps.shell
+import extdeps.diagnostic.ssh { ssh_session_exec }
+import gunbc.fleet_intent { ComputeHost, srv1_host }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.fleet_posix_accounts {
+  GroundedPosixPrincipal,
+  PosixSudoGrant,
+  FleetAccountCiRunner,
+  FleetAccountOperator,
+  fleet_posix_principal,
+  grounded_posix_principal_name,
+  fleet_apt_get_binary_path,
+}
+import gunbc.host_effect { HostEffectTransport, LocalShell, SshShell }
+import gunbc.ci_deploy_target_host {
+  DeployTargetHostProof,
+  deploy_target_proof,
+  deploy_target_host_preflight_block,
+  DeployTargetHostObservation,
+  deploy_target_host_check,
+  deploy_target_host_check_observed,
+}
+
+type PrivilegedCommand {
+  path: NonEmptyStr
+  check: NonEmptyStr
+}
+
+type DeployAccess {
+  principal: GroundedPosixPrincipal
+  host: ComputeHost
+  transport: HostEffectTransport
+  privileged_commands: List<PrivilegedCommand>
+}
+
+type DeployAccessActor {
+  observed_name: NonEmptyStr
+  sudo_granted: Bool
+}
+
+data deploy_access_refusal_prefix: String = "deploy_access: typed refusal before mutation"
+
+data gunbc_deploy_sudoers_dropin: NonEmptyStr = "/etc/sudoers.d/gunbc-deploy"
+
+data deploy_preflight_shell_header: String = "set -eu"
+
+data deploy_access_apt_get_binary_path: NonEmptyStr = fleet_apt_get_binary_path
+
+fn deploy_access_apt_get_privileged_command() -> PrivilegedCommand {
+  PrivilegedCommand { path: deploy_access_apt_get_binary_path, check: "--help" }
+}
+
+fn deploy_access_sudo_n_apt_get_install_command(package: NonEmptyStr) -> String {
+  concat(
+    concat(concat("sudo -n ", deploy_access_apt_get_binary_path as String), " install -y "),
+    package as String
+  )
+}
+
+fn posix_sudo_grant_to_privileged(g: PosixSudoGrant) -> PrivilegedCommand {
+  PrivilegedCommand { path: g.command_path, check: g.check_argv }
+}
+
+fn grounded_principal_privileged_commands(p: GroundedPosixPrincipal) -> List<PrivilegedCommand> {
+  map(p.sudo_grants, g => posix_sudo_grant_to_privileged(g: g))
+}
+
+fn ci_deploy_srv1_local_access() -> DeployAccess {
+  let principal = fleet_posix_principal(key: FleetAccountCiRunner)
+  DeployAccess {
+    principal: principal,
+    host: srv1_host,
+    transport: LocalShell,
+    privileged_commands: srv1_live_deploy_privileged_commands(),
+  }
+}
+
+data ci_deploy_srv1_access: DeployAccess = ci_deploy_srv1_local_access()
+
+fn ci_deploy_srv1_operator_ssh_access() -> DeployAccess {
+  let principal = fleet_posix_principal(key: FleetAccountOperator)
+  DeployAccess {
+    principal: principal,
+    host: srv1_host,
+    transport: SshShell { ssh_host: operator_host_srv1 as NonEmptyStr },
+    privileged_commands: grounded_principal_privileged_commands(p: principal),
+  }
+}
+
+data ci_deploy_srv1_operator_access: DeployAccess = ci_deploy_srv1_operator_ssh_access()
+
+fn deploy_access_sudoers_line(access: DeployAccess, cmd: PrivilegedCommand) -> String {
+  concat(
+    concat(grounded_posix_principal_name(p: access.principal) as String, " ALL=(ALL) NOPASSWD: "),
+    cmd.path
+  )
+}
+
+fn deploy_access_preflight_check_block(access: DeployAccess, cmd: PrivilegedCommand) -> String {
+  let sudoers = deploy_access_sudoers_line(access: access, cmd: cmd)
+  concat(
+    concat(
+      concat(concat("if ! sudo -n ", cmd.path), concat(" ", cmd.check)),
+      concat(" >/dev/null 2>&1; then\n  echo \"deploy-access-preflight: FAIL sudo -n ", cmd.path)
+    ),
+    concat(
+      concat(concat(" ", cmd.check), "\"\n"),
+      concat(
+        concat(concat("  echo \"Add to ", gunbc_deploy_sudoers_dropin), ":\"\n"),
+        concat(concat("  echo \"", sudoers), "\"\n  exit 1\nfi\n")
+      )
+    )
+  )
+}
+
+fn deploy_target_proof_from_access(access: DeployAccess) -> DeployTargetHostProof {
+  deploy_target_proof(host: access.host.identity, transport: access.transport)
+}
+
+fn deploy_target_host_preflight_script(access: DeployAccess) -> String {
+  let proof = deploy_target_proof_from_access(access: access)
+  concat(
+    concat(concat(deploy_preflight_shell_header, "\n"), deploy_target_host_preflight_block(proof: proof)),
+    ""
+  )
+}
+
+fn deploy_access_with_ssh_transport(access: DeployAccess, ssh_host: NonEmptyStr) -> DeployAccess {
+  DeployAccess {
+    principal: access.principal,
+    host: access.host,
+    transport: SshShell { ssh_host: ssh_host },
+    privileged_commands: access.privileged_commands,
+  }
+}
+
+fn deploy_access_preflight_script(access: DeployAccess) -> String {
+  let expected = grounded_posix_principal_name(p: access.principal) as String
+  let checks = fold(
+    access.privileged_commands,
+    init: "",
+    f: (acc, cmd) => concat(acc, deploy_access_preflight_check_block(access: access, cmd: cmd))
+  )
+  concat(
+    concat(
+      concat(concat(deploy_preflight_shell_header, "\n"), "echo \"deploy-access-preflight: whoami=$(whoami)\"\n"),
+      concat(
+        concat(
+          concat("if [ \"$(whoami)\" != \"", expected),
+          "\" ]; then\n"
+        ),
+        concat(
+          concat(
+            concat(
+              concat("  echo \"deploy-access-preflight: FAIL principal mismatch expected=", expected),
+              " actual=$(whoami)\""
+            ),
+            concat("\n  exit 1\nfi\n", checks)
+          )
+        )
+      )
+    ),
+    concat("echo \"deploy-access-preflight: PASS\"\n", "")
+  )
+}
+
+fn deploy_access_is_local_apply(access: DeployAccess) -> Bool {
+  match access.transport {
+    LocalShell => true
+    SshShell { ssh_host: _ } => false
+  }
+}
+
+fn deploy_access_sudo_check_cmd(access: DeployAccess, cmd: PrivilegedCommand) -> Bool {
+  let probe = concat(concat(concat("sudo -n ", cmd.path), " "), cmd.check)
+  match access.transport {
+    LocalShell => shell.Exec.Check(command: probe).exists
+    SshShell { ssh_host: h } => ssh_session_exec(host: h, command: probe as NonEmptyStr).success
+  }
+}
+
+fn deploy_access_sudo_all_granted(access: DeployAccess) -> Bool {
+  fold(
+    access.privileged_commands,
+    init: true,
+    f: (acc, cmd) => if !acc { false } else { deploy_access_sudo_check_cmd(access: access, cmd: cmd) }
+  )
+}
+
+fn deploy_access_principal_line(success: Bool, stdout: String) -> NonEmptyStr? {
+  if !success {
+    none
+  } else {
+    let line = trim(stdout)
+    if line == "" { none } else { Present { value: line as NonEmptyStr } }
+  }
+}
+
+fn deploy_access_observed_principal(access: DeployAccess) -> NonEmptyStr? {
+  match access.transport {
+    LocalShell => {
+      let result = shell.Exec.Run(script: "whoami")
+      deploy_access_principal_line(success: result.success, stdout: result.stdout)
+    }
+    SshShell { ssh_host: h } => {
+      let result = ssh_session_exec(host: h, command: "whoami" as NonEmptyStr)
+      deploy_access_principal_line(success: result.success, stdout: result.stdout)
+    }
+  }
+}
+
+fn deploy_access_observed_actor(access: DeployAccess) -> DeployAccessActor? {
+  match deploy_access_observed_principal(access: access) {
+    Present { value: observed_name } =>
+      Present {
+        value: DeployAccessActor {
+          observed_name: observed_name,
+          sudo_granted: deploy_access_sudo_all_granted(access: access),
+        }
+      }
+    Absent => Absent
+  }
+}
+
+fn deploy_access_privileged_fixture_actor(access: DeployAccess) -> DeployAccessActor {
+  DeployAccessActor {
+    observed_name: grounded_posix_principal_name(p: access.principal),
+    sudo_granted: true,
+  }
+}
+
+data deploy_access_unprivileged_fixture_principal: NonEmptyStr = "nobody"
+
+fn deploy_access_unprivileged_fixture_actor() -> DeployAccessActor {
+  DeployAccessActor { observed_name: deploy_access_unprivileged_fixture_principal, sudo_granted: false }
+}
+
+fn deploy_access_sudo_miss_reason(access: DeployAccess) -> String {
+  let sample = access.privileged_commands.first()
+  concat(
+    concat(
+      concat(deploy_access_refusal_prefix, " — privileged commands not granted (sudo -n preflight miss)\n"),
+      concat(concat("Add to ", gunbc_deploy_sudoers_dropin), ":\n")
+    ),
+    deploy_access_sudoers_line(access: access, cmd: sample)
+  )
+}
+
+fn deploy_access_check(access: DeployAccess, actor: DeployAccessActor) -> AccessDecision {
+  let expected = grounded_posix_principal_name(p: access.principal)
+  if actor.observed_name != expected {
+    Deny {
+      reason: Present {
+        value: concat(
+          concat(
+            concat(deploy_access_refusal_prefix, " — principal mismatch expected="),
+            expected
+          ),
+          concat(" actual=", actor.observed_name)
+        )
+      }
+    }
+  } else {
+    if actor.sudo_granted {
+      Permit
+    } else {
+      Deny {
+        reason: Present {
+          value: deploy_access_sudo_miss_reason(access: access)
+        }
+      }
+    }
+  }
+}
+
+fn deploy_access_check_observed(access: DeployAccess) -> AccessDecision {
+  match deploy_access_observed_actor(access: access) {
+    Present { value: actor } => deploy_access_check(access: access, actor: actor)
+    Absent =>
+      Deny {
+        reason: Present {
+          value: concat(
+            deploy_access_refusal_prefix,
+            " — could not observe principal (whoami failed)"
+          )
+        }
+      }
+  }
+}
+
+fn deploy_access_decision_reason(d: AccessDecision) -> String {
+  match d {
+    Permit => ""
+    Deny { reason: r } =>
+      match r {
+        Present { value: why } => why
+        Absent => deploy_access_refusal_prefix
+      }
+  }
+}
+
+fn deploy_mutation_gate_observed(access: DeployAccess) -> AccessDecision {
+  let proof = deploy_target_proof_from_access(access: access)
+  let host_decision = deploy_target_host_check_observed(proof: proof)
+  let access_decision = deploy_access_check_observed(access: access)
+  decision_meet(a: host_decision, b: access_decision)
+}
+
+fn deploy_mutation_gate(
+  access: DeployAccess,
+  fixture_actor: DeployAccessActor?,
+  fixture_host: DeployTargetHostObservation?
+) -> AccessDecision {
+  let proof = deploy_target_proof_from_access(access: access)
+  let host_decision = match fixture_host {
+    Present { value: obs } => deploy_target_host_check(proof: proof, observed: obs)
+    Absent => deploy_target_host_check_observed(proof: proof)
+  }
+  let access_decision = match fixture_actor {
+    Present { value: actor } => deploy_access_check(access: access, actor: actor)
+    Absent => deploy_access_check_observed(access: access)
+  }
+  decision_meet(a: host_decision, b: access_decision)
+}
+
+fn deploy_access_preflight_pass_message(access: DeployAccess) -> String {
+  concat(
+    "deploy-access-preflight: PASS principal=",
+    grounded_posix_principal_name(p: access.principal) as String
+  )
+}
+
+fn srv1_live_deploy_privileged_commands() -> List<PrivilegedCommand> {
+  grounded_principal_privileged_commands(
+    p: fleet_posix_principal(key: FleetAccountCiRunner)
+  )
+}
+
+data deploy_access_preflight_shell_dissolution_trigger: String = "🟡 dissolve-on: deploy_access_preflight_shell — deploy_access_preflight_script (bash emit) AND deploy_access_sudo_check_cmd (shell.Exec.Check over concat argv) are medium-as-string transport debt (extends live_deploy #5828); DISSOLVES WHEN live_deploy_emit_shell_dissolution_trigger lands — privileged-command checks become HostEffect intent rows realized through host_effect_apply transport handlers, retiring bash script emit, sudo argv concat, and medium_structure_exception_roster entry for dag/gunbc/ci_deploy_access.dag"

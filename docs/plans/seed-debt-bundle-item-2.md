@@ -21,9 +21,9 @@ Both `main.rs` and `v1_compiler_parse.rs` are **`HAND_MAINTAINED_STAGE0_FILES`**
 
 **Symptom:** `gunbc compile --source-root A --source-root B` semantics are load-bearing for tree-scoped builtin registry partition. The committed CLI implements two policies; the emitter authority does not.
 
-**Construction direction (landed #5894):** `dsl/gunbc/compile_source_model.dag` — `DependencyPoolIndex`, `SourceRootRole`, and pure policy fns (`source_root_role`, `pool_fill_only_for_role`, `skip_pool_module_when_indexed`, `duplicate_module_path_across_index_is_error`, `duplicate_module_path_within_root_scan_is_error`, `compile_entry_source_root_index`).
+**Construction direction (landed #5894):** `dag/gunbc/compile_source_model.dag` — `DependencyPoolIndex`, `SourceRootRole`, and pure policy fns (`source_root_role`, `pool_fill_only_for_role`, `skip_pool_module_when_indexed`, `duplicate_module_path_across_index_is_error`, `duplicate_module_path_within_root_scan_is_error`, `compile_entry_source_root_index`).
 
-**Floor witness:** `dsl/test/claim/compile_source_model_witness_test.dag` — executes in the floor with **no transport** (`dsl/` is a witness-layer-root). RED if policy fns regress.
+**Floor witness:** `dag/test/claim/compile_source_model_witness_test.dag` — executes in the floor with **no transport** (`dag/` is a witness-layer-root). RED if policy fns regress.
 
 **Follow-on (emitter PR):** see §3 emit-wiring shape → regen cutover PR.
 
@@ -36,7 +36,7 @@ Both `main.rs` and `v1_compiler_parse.rs` are **`HAND_MAINTAINED_STAGE0_FILES`**
 3. **Index helpers:** replace strict-only `emit_build_module_index_fn` with `build_module_index(source_roots, pool_index)` + `index_source_root(..., pool_fill_only)` + `insert_module_path` — inline emit matching hand `main.rs`, model is authority checklist.
 4. **Compile arm:** `emit_compile_match_arm` passes parsed pool index into `build_module_index`; entry-root scan unchanged.
 5. **Registry flip:** `main.rs` from `HAND_MAINTAINED_STAGE0_FILES` → `GENERATED_STAGE0_FILES`.
-6. **Oracle:** `regen_stage0 --verify` byte-identical vs hand `main.rs`; `gunbc compile --source-root src/v1 --source-root dsl --dependency-pool-index primary-precedence` green.
+6. **Oracle:** `regen_stage0 --verify` byte-identical vs hand `main.rs`; `gunbc compile --source-root src/v1 --source-root dag --dependency-pool-index primary-precedence` green.
 
 **Sequencing:** after cool-hawk-908 cargo-green `05_emit_rust` merges; no concurrent seed PRs in `05_emit_rust`/`02_parse`. jolly-cat slots merge order. **parse.rs emit authors LAST** (operator sign-off on intent; shape review before authoring; strong oracle: regen --verify vs #5864 O(N) seed + corpus green + cursor witness RED on broken advance).
 
@@ -48,7 +48,7 @@ While both files remain HAND_MAINTAINED, faithful regen diverges from committed 
 
 ## 5. Discriminating witness (cutover PR)
 
-- **Dep-pool:** `gunbc compile --source-root src/v1 --source-root dsl --dependency-pool-index primary-precedence` succeeds with entry=`src/v1` modules after emit-wiring.
+- **Dep-pool:** `gunbc compile --source-root src/v1 --source-root dag --dependency-pool-index primary-precedence` succeeds with entry=`src/v1` modules after emit-wiring.
 
 ## Dissolution trigger (DESIGN §6)
 

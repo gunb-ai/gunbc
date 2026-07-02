@@ -331,8 +331,8 @@ fn main() {
 
                 // Entry modules: all .dag files in the FIRST source root.
                 // Additional roots are dependency pools resolved via imports.
-                // This is intentional: --source-root src/v1 --source-root dsl
-                // means 'compile src/v1, using dsl as a dependency pool.'
+                // This is intentional: --source-root src/v1 --source-root dag
+                // means 'compile src/v1, using dag as a dependency pool.'
                 let first_root = std::path::Path::new(&source_roots[0]);
                 let mut entry_files = Vec::new();
                 if first_root.is_dir() {

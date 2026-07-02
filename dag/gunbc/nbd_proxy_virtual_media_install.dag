@@ -1,0 +1,199 @@
+module gunbc.nbd_proxy_virtual_media_install
+
+import std.types { List, Int, NonEmptyStr, String }
+import std.measure { ByteSize, byte_size }
+import extdeps.bmc.types {
+  RedfishBootSourceOverrideTarget,
+  RedfishBootSourceOverrideEnabled,
+  BootOverrideOnce,
+  RedfishResetType,
+  ResetForceRestart,
+  RedfishSystemAction,
+  SetBootSourceOverride,
+  ResetSystem,
+}
+import extdeps.bmc.webui.nbd_proxy {
+  NbdProxyServeInterface,
+  BmcwebNbdProxyEndpointVariant,
+  bmcweb_nbd_proxy_ws_path,
+}
+import extdeps.boards.asrock_rack {
+  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
+  asrock_srv3_live_bmc_host,
+}
+import extdeps.bmc.webui.nbd_proxy_serve {
+  nbd_proxy_serve_transport_intent,
+  nbd_proxy_serve_script,
+  bmcweb_session_token_env_ref,
+  srv3_nbd_proxy_local_port,
+}
+import extdeps.bmc.os_install_actuator_toolchain {
+  srv3_os_install_actuator_toolchain_grant,
+}
+import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
+import gunbc.fleet_intent { srv3_host, ComputeHost }
+import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
+import gunbc.os_install_mechanism {
+  OsInstallMechanism,
+  VirtualMediaInstall,
+  NbdProxyVirtualMediaInstall,
+  PxeHttpInstall,
+  FirmwareUpdateThenVirtualMedia,
+  srv3_install_mechanism,
+  install_boot_target_for,
+}
+import gunbc.host_effect {
+  RedfishAction,
+  BmcController,
+  HostOs,
+  ShellCommand,
+  OneShotIdempotent,
+  HostEffectIntent,
+  LocalShell,
+}
+
+type OsInstallActuatorStep
+  = ActuatorNbdProxyServe {
+      endpoint: BmcwebNbdProxyEndpointVariant
+      slot: Int
+      index: Int
+      export: NbdProxyServeInterface
+    }
+  | ActuatorRedfishInsertMedia
+  | ActuatorPxeNetworkBootStaging
+  | ActuatorFirmwareUpdate
+  | ActuatorBootOnce {
+      target: RedfishBootSourceOverrideTarget
+      enabled: RedfishBootSourceOverrideEnabled
+    }
+  | ActuatorForceRestart { reset_type: RedfishResetType }
+
+type OsInstallActuatorPlan {
+  mechanism: OsInstallMechanism
+  steps: List<OsInstallActuatorStep>
+}
+
+fn boot_once_step(target: RedfishBootSourceOverrideTarget) -> OsInstallActuatorStep {
+  ActuatorBootOnce {
+    target: target,
+    enabled: BootOverrideOnce,
+  }
+}
+
+fn force_restart_step() -> OsInstallActuatorStep {
+  ActuatorForceRestart { reset_type: ResetForceRestart }
+}
+
+fn nbd_proxy_serve_step(export: NbdProxyServeInterface) -> OsInstallActuatorStep {
+  ActuatorNbdProxyServe {
+    endpoint: asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
+    slot: 0,
+    index: 0,
+    export: export,
+  }
+}
+
+fn os_install_actuator_steps(mechanism: OsInstallMechanism, export: NbdProxyServeInterface) -> List<OsInstallActuatorStep> {
+  let boot_target = install_boot_target_for(mechanism: mechanism)
+  match mechanism {
+    VirtualMediaInstall => [
+      ActuatorRedfishInsertMedia,
+      boot_once_step(target: boot_target),
+      force_restart_step(),
+    ]
+    NbdProxyVirtualMediaInstall => [
+      nbd_proxy_serve_step(export: export),
+      boot_once_step(target: boot_target),
+      force_restart_step(),
+    ]
+    PxeHttpInstall => [
+      ActuatorPxeNetworkBootStaging,
+      boot_once_step(target: boot_target),
+      force_restart_step(),
+    ]
+    FirmwareUpdateThenVirtualMedia => [
+      ActuatorFirmwareUpdate,
+      ActuatorRedfishInsertMedia,
+      boot_once_step(target: boot_target),
+      force_restart_step(),
+    ]
+  }
+}
+
+fn os_install_actuator_plan(mechanism: OsInstallMechanism, export: NbdProxyServeInterface) -> OsInstallActuatorPlan {
+  OsInstallActuatorPlan {
+    mechanism: mechanism,
+    steps: os_install_actuator_steps(mechanism: mechanism, export: export),
+  }
+}
+
+data srv3_nbd_proxy_export_dissolution_trigger: String = "🟡 dissolve-on: srv3_nbd_proxy_export_placeholder — byte_size(0) NbdProxyServeInterface scaffold; DISSOLVES WHEN live serve binds export_byte_count from grounded ISO artifact ByteSize after install_media_fetch receipt"
+
+data srv3_nbd_proxy_export_placeholder: NbdProxyServeInterface = NbdProxyServeInterface {
+  export_byte_count: byte_size(0),
+}
+
+data srv3_os_install_actuator_plan: OsInstallActuatorPlan = os_install_actuator_plan(
+  mechanism: srv3_install_mechanism,
+  export: srv3_nbd_proxy_export_placeholder
+)
+
+fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffectIntent? {
+  match step {
+    ActuatorBootOnce { target: t, enabled: e } =>
+      Present {
+        value: HostEffectIntent {
+          target: BmcController { node: srv3_host },
+          effect: RedfishAction {
+            action: SetBootSourceOverride { target: t, enabled: e }
+          },
+          policy: OneShotIdempotent,
+          transport: LocalShell,
+          privilege_denial: none,
+        }
+      }
+    ActuatorForceRestart { reset_type: r } =>
+      Present {
+        value: HostEffectIntent {
+          target: BmcController { node: srv3_host },
+          effect: RedfishAction {
+            action: ResetSystem { reset_type: r }
+          },
+          policy: OneShotIdempotent,
+          transport: LocalShell,
+          privilege_denial: none,
+        }
+      }
+    ActuatorNbdProxyServe { endpoint: ep, slot: s, index: i, export: _ } =>
+      Present {
+        value: HostEffectIntent {
+          target: HostOs { node: srv3_os_install_actuator_host },
+          effect: ShellCommand {
+            script: nbd_proxy_serve_script(
+              intent: nbd_proxy_serve_transport_intent(
+                bmc_host: asrock_srv3_live_bmc_host,
+                session_token: bmcweb_session_token_env_ref,
+                ws_path: bmcweb_nbd_proxy_ws_path(variant: ep, slot: s, index: i),
+                iso_path: srv3_actuator_virtual_media_iso_install_path,
+                local_nbd_port: srv3_nbd_proxy_local_port,
+              )
+            )
+          },
+          policy: OneShotIdempotent,
+          transport: LocalShell,
+          privilege_denial: none,
+        }
+      }
+    ActuatorRedfishInsertMedia => Absent
+    ActuatorPxeNetworkBootStaging => Absent
+    ActuatorFirmwareUpdate => Absent
+  }
+}
+
+fn os_install_actuator_step_count(plan: OsInstallActuatorPlan) -> Int {
+  plan.steps.length()
+}
+
+fn srv3_os_install_actuator_toolchain_grant_row_count() -> Int {
+  srv3_os_install_actuator_toolchain_grant.required_tools.length()
+}

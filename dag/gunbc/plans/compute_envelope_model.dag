@@ -1,0 +1,101 @@
+module gunbc.plans.compute_envelope_model
+
+import gunbc.plan { Plan, DissolutionTrigger, HasTrigger }
+import std.markdown { MarkdownBlock, TableBlock, AlignNone }
+import gunbc.plans.md_helpers { h2, p, li, ul, ol, quote, cell, row }
+
+fn compute_envelope_model_body() -> List<MarkdownBlock> {
+  [
+    quote(blocks: [
+      p(text: "Plan doc. Resolves the §1 ROADMAP pointer **\"CI on compute fabric\"**. Co-owned: **warm-lark-306** (authoring + operator context) and **quick-ant-298** (§1 CI-floor lead; owns the spawn-width slice). CC **bright-stag-194** (ROADMAP owner + test-profile owner for the fan-out cap). DESIGN refs: §1 (time = cost/safety), §2 (Realization — the parallelization arm), §3 (single authority + the measured-peripheral split), §5 (fail-closed; *derive*, don't hand-set)."),
+      p(text: "A few live numbers below are marked **[confirm]** — quick-ant has the freshest values from the §1 investigation; the *model* is the point, not those scalars."),
+    ]),
+    h2(text: "1. The symptom: a fleet with no operating point"),
+    p(text: "Two 128-core hosts (srv1, srv2) that are **either oversubscribed/crashing or sitting at ~1% doing nothing — never the sane middle.** That bimodal swing *is* the diagnosis. A system that swings between starvation and thrashing, with no stable middle, is a system with **no modeled operating point**: nothing answers \"how much work fits this host,\" so the fleet falls to one extreme or the other."),
+    p(text: "Live evidence (srv1, 2026-06-21):"),
+    ul(items: [
+      li(text: "**Under side (~1%):** 128 cores, loadavg **1.27** (~1% util), **9 / 125 GB** mem used, 1 `Runner.Worker` executing but **0 rustc / 0 cargo**. The box is nearly empty during CI."),
+      li(text: "**Over side (crash):** a single debug build's thread fan-out (`CARGO_BUILD_JOBS=15` × rustc codegen-units 256 × LLVM × sccache) bursts **one** runner cgroup past `TasksMax=4096` → `clone()` rejected by the pids controller → **EAGAIN** false build failure — a spike on an otherwise-idle host."),
+    ]),
+    p(text: "Neither extreme is a capacity problem. The host has enormous headroom on both axes; the failures are **coordination** failures."),
+    h2(text: "2. The root: N hand-tuned dimensions, no single authority (§3)"),
+    p(text: "Every resource/parallelism knob is set **independently, by a different hand, blind to the others** — the textbook §3 violation (one fact, many homes). There is no `ResourceEnvelope` the knobs derive from, so they cannot be mutually consistent:"),
+    TableBlock {
+      header: row(cells: [cell(text: "Dimension"), cell(text: "Set today by"), cell(text: "Blind to")]),
+      alignments: [AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "floor **spawn width** (RUN)"), cell(text: "a **pinned constant 4** (`gunbc_ci_floor_spawn_width`, `ci_floor_plan.dag:292`) — the memory-aware derivation was *removed* as unwired (#5419); #5444 (not yet on main) re-adds the memory term"), cell(text: "the true core count (envelope says 64c — **a lie**, it's 128c); the ~124 idle cores; the free memory")]),
+        row(cells: [cell(text: "**host packing** (BUILD)"), cell(text: "implicit — ~one PR's CI runs at a time across 50 runner units"), cell(text: "the idle 120+ cores; the pids it jointly bursts with fan-out")]),
+        row(cells: [cell(text: "per-build **fan-out** (BUILD)"), cell(text: "`CARGO_BUILD_JOBS` × codegen-units (debug 256) × LLVM"), cell(text: "the pids cap it bursts (× concurrent builds)")]),
+        row(cells: [cell(text: "cgroup **pids cap**"), cell(text: "`TasksMax=4096` hand-set drop-in (ctrl)"), cell(text: "the fan-out that legitimately needs >4096")]),
+        row(cells: [cell(text: "**jobserver tokens**"), cell(text: "`~120` magic constant (ctrl)"), cell(text: "cores, the pids cap")]),
+        row(cells: [cell(text: "cgroup **`MemoryMax`**"), cell(text: "per-host hand edit — **drifted** (srv1 ≠ srv2) [confirm]"), cell(text: "the other host")]),
+        row(cells: [cell(text: "watchdog / isolation / runner count"), cell(text: "hand-set systemd"), cell(text: "the envelope")]),
+      ],
+    },
+    p(text: "The under-side and the over-side are the **same defect** seen twice: width bounded *below* the envelope (idle) and fan-out bursting *above* a cap that the envelope never informed (crash)."),
+    h2(text: "3. The move: one ResourceEnvelope, every knob derived (§3 single authority)"),
+    p(text: "Collapse the N hand-tuned dimensions into **one authority** — the host `ResourceEnvelope` (cores, memory, pids capacity; already a type in `dag/product/compute_fabric.dag`) — and make **every knob a function of it**. Then the dimensions stop being N things to juggle: they are one measured fact with derivations, and the fleet gets **exactly one coherent operating point**. It *cannot* be both starved and thrashing, because both the width floor and the fan-out ceiling come from the same envelope."),
+    TableBlock {
+      header: row(cells: [cell(text: "Knob"), cell(text: "Derivation from the envelope"), cell(text: "Tier (§4)"), cell(text: "Owner"), cell(text: "Status")]),
+      alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
+      rows: [
+        row(cells: [cell(text: "measured host facts"), cell(text: "**the envelope itself** — cores, mem, pids capacity, *measured*"), cell(text: "ctrl realization"), cell(text: "ctrl"), cell(text: "model is **wrong** (64c/256GB; real 128c/128GB) — **fix first**")]),
+        row(cells: [cell(text: "spawn width (**RUN** phase)"), cell(text: "`min(shard_demand, cores, mem_budget ÷ per-shard-peak)` — replace the **pinned 4** with a derivation that lifts **both** the pin **and** the `shard_demand` cap from the envelope (cores ∧ mem), building on #5444's mem term (+#5421's layer-at-once, done) so the corpus actually uses the 128c/115GB-free headroom. Discovery shards run witnesses against the **prebuilt** release binary — light on pids, no rustc — so **no pids term**; width-up is pids-safe on its own"), cell(text: "public"), cell(text: "quick-ant (slice)"), cell(text: "§5 below")]),
+        row(cells: [cell(text: "host packing (**BUILD** phase concurrency)"), cell(text: "`concurrent_builds` — how many PRs' builds co-run on a host; the factor that multiplies the build-phase pids fan-out (see invariant)"), cell(text: "public/ctrl"), cell(text: "quick-ant + ctrl"), cell(text: "§5 below")]),
+        row(cells: [cell(text: "per-build fan-out (**BUILD** phase)"), cell(text: "codegen-units / `CARGO_BUILD_JOBS` capped so `concurrent_builds × per_build_pids ≤ pids_cap`"), cell(text: "public (test profile)"), cell(text: "bright-stag (#5456 area)"), cell(text: "§5 below")]),
+        row(cells: [cell(text: "pids cap (`TasksMax`)"), cell(text: "`≥ peak_per_build_pids × safety`, bounded by `kernel_threads_max ÷ runner_count`"), cell(text: "ctrl realization"), cell(text: "ctrl"), cell(text: "tourniquet applied (4096→16384, 2026-06-21); should become **derived**")]),
+        row(cells: [cell(text: "jobserver tokens"), cell(text: "a function of cores (the cooperative compile limit), consistent with the pids cap"), cell(text: "ctrl realization"), cell(text: "ctrl"), cell(text: "derive, don't magic-constant")]),
+        row(cells: [cell(text: "`MemoryMax`"), cell(text: "one value from the envelope, identical across same-spec hosts"), cell(text: "ctrl realization"), cell(text: "ctrl"), cell(text: "de-drift")]),
+      ],
+    },
+    p(text: "**The invariant that forecloses both failures — but mind the two phases (they don't multiply each other):** a PR's CI is a **BUILD** phase (rustc fans out, once) followed by a **RUN** phase (the discovery corpus shards run witnesses against the *prebuilt* binary). They touch different resources:"),
+    ul(items: [
+      li(text: "**RUN phase — spawn width** is cores ∧ mem bound. Discovery shards barely touch pids (no rustc), so width does **not** multiply the build fan-out. **Width-up is pids-safe on its own** — you can raise it toward the envelope without crash risk. (Premise: shards consume the prebuilt binary — exactly what #5450's Pop-B build-once enforces; a shard that still rebuilds is a *defect to fix*, not a reason to pids-bound width.)"),
+      li(text: "**BUILD phase — the pids crash** is `concurrent_builds × per_build_pids ≤ pids_cap`. This couples **host-packing** (how many PRs build at once) with **per-build fan-out** (codegen-units) — *not* spawn_width. That is where by-construction crash-prevention lives."),
+    ]),
+    p(text: "So the same-envelope coupling is **packing × fan-out** (build phase); width-up (run phase) is an *independent* cores∧mem lever. You can't tune either into a crash, because each is bounded by the envelope on its own axis — but they are **two invariants, not one product.**"),
+    h2(text: "4. The PUBLIC / CTRL split (§3 measured-peripheral — the doc's spine)"),
+    p(text: "Per §3, the agnostic **shape** is central; the **measured realization** and the **dispatch** are peripheral. Applied here:"),
+    ul(items: [
+      li(text: "**PUBLIC (central, topology):** the envelope *shape*, the width *derivation*, the codegen-units cap — all live in `dag/product/compute_fabric.dag` / `std/realization_width.dag` / the `[profile.test]` block. These are host-agnostic functions: \"given an envelope, here is the width / the fan-out.\""),
+      li(text: "**CTRL (peripheral, realization):** the *measured host facts* (128c/128GB), `TasksMax`, `MemoryMax`, runner count, the systemd-cgroup knobs, the unit generation. These are srv1/srv2 *instances* of the shape. **gunbc owns the shapes; ctrl owns the instances and *generates* the units** from the public derivation (the units are emitted, never hand-typed — that's what kills the drift)."),
+    ]),
+    p(text: "So the doc maps both tiers, but routes implementation accordingly: width/fan-out → public PRs; host-fact grounding + unit generation → ctrl."),
+    h2(text: "5. Sequencing (operator wants this ASAP)"),
+    ol(items: [
+      li(text: "**Ground the envelope in measured truth** — kill the 64c/256GB lie (real: 128c/128GB, both hosts). *Everything downstream inherits this; you cannot derive width from a lying envelope.* (ctrl + the `compute_fabric` host facts.)"),
+      li(text: "**Spawn width up (RUN phase)** — derive width from the grounded envelope on **cores ∧ mem** (no pids term — discovery shards run the *prebuilt* binary), raising it toward the host's real capacity instead of the low bound that leaves ~124 cores idle. **Current width is a pinned constant 4** (`ci_floor_plan.dag:292`; the memory-aware model was removed as unwired in #5419) — on 128c that is ~3% of cores from width alone. The lever lifts **both** the pin **and** the `shard_count` cap. **This is pids-safe on its own** (run phase ≠ build phase — see the §3 invariant), so width can go up independently of the crash-side discipline. Builds on **#5444** (memory term, re-adds it; not yet on main) + **#5421** (even-width removal — *landed*); a **refinement**, not a re-derivation. **Owned by quick-ant** (single fresh slice — see §6; do **not** fork). *(Premise: shards consume the prebuilt binary — #5450 Pop-B build-once; a rebuilding shard is a defect to fix, not a reason to pids-bound width.)*"),
+      li(text: "**Cap the per-build fan-out + bound host-packing (BUILD phase)** — codegen-units so `concurrent_builds × per_build_pids ≤ pids_cap`. This is the crash-side discipline: it couples host-packing (#2's BUILD-phase concurrency) with fan-out, **not** spawn_width. Codegen-units composes into **one** `[profile.test]` block with bright-stag's **#5456** opt-level work (not a fork)."),
+      li(text: "**(2) and (3) each derive from the same envelope on their own axis** ⇒ the coherent operating point — *two* invariants (run-phase cores∧mem; build-phase packing×fan-out≤pids), not one product. Then generate the ctrl units (`TasksMax`/`MemoryMax`/jobserver) from the envelope too, retiring the hand-set drop-ins."),
+    ]),
+    p(text: "The top lever is **(2)**: it converts the idle 120 cores into real utilization — the biggest single CI-slow win. (1) is its precondition."),
+    h2(text: "6. Ownership + the no-fork rule"),
+    ul(items: [
+      li(text: "**spawn width** is **quick-ant's lane** — a single slice on top of #5444/#5421. `warm-crane-135` (an earlier candidate owner) is **archived** (closed 2026-06-20); there is no parallel item, and one must not be opened — a forked width fix would be the exact §3 violation this doc exists to fix. Note: `adhoc-240256ec-32b` is **done** (it = merged #5421) — *not* the open slice; no existing open item covers \"derive width up (unpin + lift the `shard_count` cap) + host-packing across PRs\", so quick-ant **reopen-scopes a fresh slice** (confirmed), sequenced after envelope-grounding (#1) and built on #5444 + #5421."),
+      li(text: "**fan-out cap** → bright-stag (test-profile owner), composed with #5456."),
+      li(text: "**host-fact grounding + unit generation** → ctrl."),
+      li(text: "**this doc + the §1 ROADMAP bullets** → bright-stag applies (author→owner pattern); quick-ant co-signs the §1 substance."),
+    ]),
+    h2(text: "7. Landed / in-flight context (so this builds on, not re-derives)"),
+    ul(items: [
+      li(text: "**#5421** (merged) — per-node resource demand + stop the executor's even-width division (CI 24m→~10m)."),
+      li(text: "**#5375 → superseded by #5419** — #5375's memory-aware scheduling was removed as unwired complexity by #5419's pin (#5375 < #5419, so #5419 reverted it); **#5444 re-adds** the memory term. Current state = **pinned 4**, not memory-aware."),
+      li(text: "**#5419** (merged) — pinned floor width (the bound (2) raises)."),
+      li(text: "**#5444** (merging) — width value from measured-RAM-budget ÷ measured-per-shard-peak (the **memory term** of the envelope derivation)."),
+      li(text: "**#5431** (merged) — the measured-peak source the memory term reads."),
+      li(text: "**#5456** (merged) — `[profile.test] opt-level=3` for `v1-compiler` (the fan-out cap composes here)."),
+      li(text: "**TasksMax 4096→16384** applied on srv1+srv2 (2026-06-21) — the tourniquet; should become *derived*."),
+    ]),
+    p(text: "This is the §2 **parallelization-by-realization** arm (Schedule/Placement/Width of `std/realization.dag`) made coherent with its measured substrate — the structural twin of the §2 caching arm, both derived from one authority."),
+  ]
+}
+
+data compute_envelope_model_plan: Plan = Plan {
+  slug: "compute-envelope-model",
+  title: "Compute envelope — one authority for the CI fleet's resource dimensions",
+  body: compute_envelope_model_body(),
+  dissolution: HasTrigger {
+    text: "Delete this doc when the host `ResourceEnvelope` is grounded in measured truth (128c/128GB, both hosts) and every knob — spawn width, host packing, per-build fan-out, `TasksMax`, jobserver tokens, `MemoryMax` — is *derived* from that single authority (the ctrl units generated, never hand-typed), at which point the coherent operating point is a witnessed by-construction property (§3/§5) and this planning tracker is redundant."
+  }
+}
