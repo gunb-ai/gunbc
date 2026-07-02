@@ -7,7 +7,6 @@ import std.resource_namespace {
   ProcessPortObservation,
   PortOwnedForeign,
   PortOwnedExpected,
-  PortAbsent,
   FileAccessObservation,
   PathOutsideNamespace,
   ReadOnlyWithinNamespace,
@@ -16,8 +15,6 @@ import std.resource_namespace {
   ArtifactStale,
   ArtifactConverged,
   ArtifactAbsent,
-  ResourceNamespaceVerdict,
-  ResourceNamespacePlan,
   ResourceNamespaceClassification,
   Conflict,
   Converged,
@@ -35,8 +32,6 @@ import std.resource_namespace {
   seeded_artifact_converged_is_not_stale,
   seeded_artifact_stale_is_not_converged,
   path_within_file_namespace,
-  resource_namespace_verdict_eq,
-  resource_namespace_plan_eq,
 }
 
 data srv3_nbd_proxy_port: Int = 10809
@@ -54,10 +49,11 @@ test fn foreign_process_on_10809_is_conflict_not_kill() -> Bool {
     pid: 424242,
     cmdline: "foreign-nbdkit" as NonEmptyStr,
   }
-  let c = classify_process_port_upsert(ns: ns, obs: obs)
-  resource_namespace_verdict_eq(a: c.verdict, b: Conflict)
-    && resource_namespace_plan_eq(a: c.plan, b: Refuse)
-    && !resource_namespace_plan_eq(a: c.plan, b: DrainThenStart)
+  match classify_process_port_upsert(ns: ns, obs: obs) {
+    ResourceNamespaceClassification { verdict: Conflict, plan: Refuse } => true
+    ResourceNamespaceClassification { verdict: _, plan: DrainThenStart } => false
+    _ => false
+  }
 }
 
 test fn expected_process_on_10809_is_converged_noop() -> Bool {
@@ -66,9 +62,10 @@ test fn expected_process_on_10809_is_converged_noop() -> Bool {
     expected_owner_label: "gunbc-nbd-proxy" as NonEmptyStr,
   }
   let obs = PortOwnedExpected { pid: 12345 }
-  let c = classify_process_port_upsert(ns: ns, obs: obs)
-  resource_namespace_verdict_eq(a: c.verdict, b: Converged)
-    && resource_namespace_plan_eq(a: c.plan, b: Noop)
+  match classify_process_port_upsert(ns: ns, obs: obs) {
+    ResourceNamespaceClassification { verdict: Converged, plan: Noop } => true
+    _ => false
+  }
 }
 
 test fn outside_namespace_chmod_is_refused() -> Bool {
@@ -76,53 +73,62 @@ test fn outside_namespace_chmod_is_refused() -> Bool {
   let outside = "/etc/passwd" as NonEmptyStr
   !path_within_file_namespace(ns: ns, path: outside)
     && match classify_file_access_upsert(ns: ns, obs: PathOutsideNamespace) {
-      ResourceNamespaceClassification { verdict: _, plan: p } =>
-        resource_namespace_plan_eq(a: p, b: Refuse)
+      ResourceNamespaceClassification { verdict: _, plan: Refuse } => true
+      _ => false
     }
+}
+
+test fn substring_trap_path_fails_prefix_containment() -> Bool {
+  let ns = remaster_work_namespace
+  let trap = "/attacker/tmp/gunbc-remaster-work/x" as NonEmptyStr
+  !path_within_file_namespace(ns: ns, path: trap)
+}
+
+test fn dotdot_path_rejected_by_containment() -> Bool {
+  let ns = remaster_work_namespace
+  let escape = "/tmp/gunbc-remaster-work/../etc/passwd" as NonEmptyStr
+  !path_within_file_namespace(ns: ns, path: escape)
 }
 
 test fn readonly_within_namespace_plans_upsert_access() -> Bool {
   let ns = remaster_work_namespace
-  let c = classify_file_access_upsert(ns: ns, obs: ReadOnlyWithinNamespace)
-  resource_namespace_verdict_eq(a: c.verdict, b: Stale)
-    && resource_namespace_plan_eq(a: c.plan, b: UpsertAccess)
+  match classify_file_access_upsert(ns: ns, obs: ReadOnlyWithinNamespace) {
+    ResourceNamespaceClassification { verdict: Stale, plan: UpsertAccess } => true
+    _ => false
+  }
 }
 
 test fn writable_within_namespace_is_converged_noop() -> Bool {
   let ns = remaster_work_namespace
-  let c = classify_file_access_upsert(ns: ns, obs: WritableWithinNamespace)
-  resource_namespace_verdict_eq(a: c.verdict, b: Converged)
-    && resource_namespace_plan_eq(a: c.plan, b: Noop)
+  match classify_file_access_upsert(ns: ns, obs: WritableWithinNamespace) {
+    ResourceNamespaceClassification { verdict: Converged, plan: Noop } => true
+    _ => false
+  }
 }
 
 test fn stale_seeded_iso_is_stale_not_already_present() -> Bool {
   seeded_artifact_stale_is_not_converged()
     && seeded_artifact_converged_is_not_stale()
-    && resource_namespace_verdict_eq(
-      a: classify_seeded_artifact_presence(obs: ArtifactStale),
-      b: Stale,
-    )
-    && !resource_namespace_verdict_eq(
-      a: classify_seeded_artifact_presence(obs: ArtifactStale),
-      b: Converged,
-    )
+    && match classify_seeded_artifact_presence(obs: ArtifactStale) {
+      Stale => true
+      Converged => false
+      _ => false
+    }
 }
 
 test fn converged_seeded_iso_is_not_stale() -> Bool {
-  resource_namespace_verdict_eq(
-    a: classify_seeded_artifact_presence(obs: ArtifactConverged),
-    b: Converged,
-  )
-    && match classify_seeded_artifact_upsert(obs: ArtifactConverged) {
-      ResourceNamespaceClassification { verdict: _, plan: p } =>
-        resource_namespace_plan_eq(a: p, b: Noop)
+  match classify_seeded_artifact_presence(obs: ArtifactConverged) {
+    Converged => match classify_seeded_artifact_upsert(obs: ArtifactConverged) {
+      ResourceNamespaceClassification { verdict: _, plan: Noop } => true
+      _ => false
     }
+    _ => false
+  }
 }
 
 test fn absent_seeded_iso_plans_create() -> Bool {
   match classify_seeded_artifact_upsert(obs: ArtifactAbsent) {
-    ResourceNamespaceClassification { verdict: v, plan: p } =>
-      resource_namespace_verdict_eq(a: v, b: Absent)
-        && resource_namespace_plan_eq(a: p, b: Create)
+    ResourceNamespaceClassification { verdict: Absent, plan: Create } => true
+    _ => false
   }
 }

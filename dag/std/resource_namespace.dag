@@ -1,6 +1,6 @@
 module std.resource_namespace
 
-import std.types { String, NonEmptyStr, Int, Bool, ContentHash }
+import std.types { String, NonEmptyStr, Int, Bool }
 
 data resource_namespace_doc: String = "Resource-namespace upsert vocabulary — shared verdict/plan algebra for File/Tool/Process/SecretFile namespaces. Observation→verdict→plan is the single authority (roadmap 2-resource-namespace-upsert-a); consumers (nbd-serve lease, install-media remaster chmod, seeded ISO classify) dissolve string-scaffolded shell when host_effect_apply binds typed folds."
 
@@ -58,34 +58,24 @@ type SeededArtifactProbeObservation
   | ArtifactConverged
   | ArtifactStale
 
-fn resource_namespace_verdict_eq(a: ResourceNamespaceVerdict, b: ResourceNamespaceVerdict) -> Bool {
-  match a {
-    Converged => match b { Converged => true, _ => false }
-    Absent => match b { Absent => true, _ => false }
-    Stale => match b { Stale => true, _ => false }
-    Conflict => match b { Conflict => true, _ => false }
-    Inaccessible => match b { Inaccessible => true, _ => false }
-    UnknownRefused => match b { UnknownRefused => true, _ => false }
-  }
-}
-
-fn resource_namespace_plan_eq(a: ResourceNamespacePlan, b: ResourceNamespacePlan) -> Bool {
-  match a {
-    Noop => match b { Noop => true, _ => false }
-    Create => match b { Create => true, _ => false }
-    UpsertAccess => match b { UpsertAccess => true, _ => false }
-    DrainThenStart => match b { DrainThenStart => true, _ => false }
-    Refuse => match b { Refuse => true, _ => false }
-  }
+fn path_has_dotdot_segment(path: String) -> Bool {
+  path == ".."
+    || starts_with(s: path, prefix: "../")
+    || string_contains(s: path, pattern: "/../")
+    || string_contains(s: path, pattern: "/..")
 }
 
 fn path_within_file_namespace(ns: FileNamespace, path: NonEmptyStr) -> Bool {
   let root = ns.root_path as String
   let candidate = path as String
-  if candidate == root {
-    true
+  if path_has_dotdot_segment(path: candidate) {
+    false
   } else {
-    string_contains(s: candidate, pattern: concat(root, "/"))
+    if candidate == root {
+      true
+    } else {
+      starts_with(s: candidate, prefix: concat(root, "/"))
+    }
   }
 }
 
@@ -98,7 +88,7 @@ fn classify_process_port(ns: ProcessNamespace, obs: ProcessPortObservation) -> R
   }
 }
 
-fn plan_for_process_port_verdict(v: ResourceNamespaceVerdict) -> ResourceNamespacePlan {
+fn plan_for_verdict(v: ResourceNamespaceVerdict) -> ResourceNamespacePlan {
   match v {
     Converged => Noop
     Absent => Create
@@ -116,7 +106,7 @@ fn classify_process_port_upsert(
   let verdict = classify_process_port(ns: ns, obs: obs)
   ResourceNamespaceClassification {
     verdict: verdict,
-    plan: plan_for_process_port_verdict(v: verdict),
+    plan: plan_for_verdict(v: verdict),
   }
 }
 
@@ -161,37 +151,26 @@ fn classify_seeded_artifact_presence(obs: SeededArtifactProbeObservation) -> Res
   }
 }
 
-fn plan_for_seeded_artifact_verdict(v: ResourceNamespaceVerdict) -> ResourceNamespacePlan {
-  match v {
-    Converged => Noop
-    Absent => Create
-    Stale => DrainThenStart
-    Conflict => Refuse
-    Inaccessible => Refuse
-    UnknownRefused => Refuse
-  }
-}
-
 fn classify_seeded_artifact_upsert(
   obs: SeededArtifactProbeObservation,
 ) -> ResourceNamespaceClassification {
   let verdict = classify_seeded_artifact_presence(obs: obs)
   ResourceNamespaceClassification {
     verdict: verdict,
-    plan: plan_for_seeded_artifact_verdict(v: verdict),
+    plan: plan_for_verdict(v: verdict),
   }
 }
 
 fn seeded_artifact_converged_is_not_stale() -> Bool {
-  !resource_namespace_verdict_eq(
-    a: classify_seeded_artifact_presence(obs: ArtifactConverged),
-    b: Stale,
-  )
+  match classify_seeded_artifact_presence(obs: ArtifactConverged) {
+    Stale => false
+    _ => true
+  }
 }
 
 fn seeded_artifact_stale_is_not_converged() -> Bool {
-  !resource_namespace_verdict_eq(
-    a: classify_seeded_artifact_presence(obs: ArtifactStale),
-    b: Converged,
-  )
+  match classify_seeded_artifact_presence(obs: ArtifactStale) {
+    Converged => false
+    _ => true
+  }
 }
