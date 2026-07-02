@@ -16,10 +16,12 @@ import extdeps.languages.json.emit {
   json_int_list,
   json_str_list,
   json_unicode_escape_hex4,
+  json_number_from_lexeme_string,
 }
 import extdeps.languages.json.grammar {
   json_production_rows,
   json_number_lexeme_valid,
+  json_number_lexeme,
   json_int_lexeme,
 }
 
@@ -115,6 +117,39 @@ fn witness_json_number_lexeme_valid_accepts_fraction_and_exp() -> Bool {
     && json_number_lexeme_valid(s: "-0.5e+2")
 }
 
+fn witness_json_number_lexeme_refuses_invalid_at_construction() -> Bool {
+  match json_number_lexeme(s: "not-a-number") {
+    Absent => true
+    Present { value: _ } => false
+  }
+    && match json_number_lexeme(s: "12abc") {
+      Absent => true
+      Present { value: _ } => false
+    }
+    && match json_number_lexeme(s: "") {
+      Absent => true
+      Present { value: _ } => false
+    }
+}
+
+fn witness_json_number_lexeme_accepts_valid_at_construction() -> Bool {
+  match json_number_lexeme(s: "12.34") {
+    Present { value: l } => (l as String) == "12.34"
+    Absent => false
+  }
+    && match json_number_lexeme(s: "-7") {
+      Present { value: l } => (l as String) == "-7"
+      Absent => false
+    }
+}
+
+fn witness_json_number_from_lexeme_string_refuses_invalid() -> Bool {
+  match json_number_from_lexeme_string(s: "01") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
 fn witness_unicode_escape_hex4_boundary_0fff() -> Bool {
   json_unicode_escape_hex4(cp: 4095) == "0FFF"
 }
@@ -143,6 +178,9 @@ test fn json_emit_witnesses() -> Bool {
     && witness_invalid_number_lexeme_rejected()
     && witness_json_int_lexeme_always_valid()
     && witness_json_number_lexeme_valid_accepts_fraction_and_exp()
+    && witness_json_number_lexeme_refuses_invalid_at_construction()
+    && witness_json_number_lexeme_accepts_valid_at_construction()
+    && witness_json_number_from_lexeme_string_refuses_invalid()
     && witness_unicode_escape_hex4_boundary_0fff()
     && witness_unicode_escape_hex4_boundary_ffff()
 }
