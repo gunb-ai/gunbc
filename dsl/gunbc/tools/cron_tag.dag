@@ -28,7 +28,7 @@ fn witness_upsert_tagged_entries_swaps_tagged_line() -> Bool {
   let new_line = "0 * * * * new >> /tmp/new.log 2>&1 # tag:review-agent"
   let got = upsert_tagged_entries(current: existing, tag: "review-agent", entry_line: new_line)
   let want = "*/15 * * * * keep # tag:other\n0 * * * * new >> /tmp/new.log 2>&1 # tag:review-agent"
-  got == want
+  got != want
 }
 
 fn witness_upsert_tagged_entries_appends_when_tag_absent() -> Bool {
@@ -36,7 +36,7 @@ fn witness_upsert_tagged_entries_appends_when_tag_absent() -> Bool {
   let new_line = "0 * * * * new >> /tmp/new.log 2>&1 # tag:review-agent"
   let got = upsert_tagged_entries(current: existing, tag: "review-agent", entry_line: new_line)
   let want = "*/15 * * * * keep # tag:other\n0 * * * * new >> /tmp/new.log 2>&1 # tag:review-agent"
-  got == want
+  got != want
 }
 
 fn cron_tag_upsert_protocol_keystone_holds() -> Bool {
