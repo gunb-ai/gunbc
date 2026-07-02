@@ -1,0 +1,34 @@
+module test.claim.hostname_converge_demo
+
+import gunbc.host_converge { ConvergeVerdict, Converged, Drifted, Absent, converge_verdict }
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+
+fn observed_current_actual_fixture() -> String { "ubuntu" }
+
+fn is_converged(v: ConvergeVerdict) -> Bool { match v { Converged => true  Drifted => false  Absent => false } }
+fn is_drifted(v: ConvergeVerdict) -> Bool { match v { Converged => false  Drifted => true  Absent => false } }
+fn is_absent(v: ConvergeVerdict) -> Bool { match v { Converged => false  Drifted => false  Absent => true } }
+
+fn witness_renamed_box_converges() -> Bool {
+  is_converged(v: converge_verdict(effective: "srv1", expected: operator_host_srv1))
+}
+
+fn witness_current_actual_drifts_pre_rename() -> Bool {
+  is_drifted(v: converge_verdict(effective: observed_current_actual_fixture(), expected: operator_host_srv1))
+}
+
+fn witness_wrong_host_drifts() -> Bool {
+  is_drifted(v: converge_verdict(effective: operator_host_srv2, expected: operator_host_srv1))
+}
+
+fn witness_unreadable_host_is_absent_not_converged() -> Bool {
+  is_absent(v: converge_verdict(effective: "", expected: operator_host_srv1))
+    && !is_converged(v: converge_verdict(effective: "", expected: operator_host_srv1))
+}
+
+test fn hostname_converge_demo_witnesses() -> Bool {
+  witness_renamed_box_converges()
+    && witness_current_actual_drifts_pre_rename()
+    && witness_wrong_host_drifts()
+    && witness_unreadable_host_is_absent_not_converged()
+}
