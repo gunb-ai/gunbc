@@ -1,0 +1,31 @@
+module extdeps.languages.json.grammar
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.rfc-editor.org/rfc/rfc8259"
+  }
+}
+
+type JsonProductionRow {
+  rfc_section: String
+  lhs: String
+  rhs: String
+  value_variant: String
+}
+
+data json_production_rows: List<JsonProductionRow> = [
+  JsonProductionRow { rfc_section: "3", lhs: "JSON-text", rhs: "ws value ws", value_variant: "JsonValue" },
+  JsonProductionRow { rfc_section: "3", lhs: "value", rhs: "object | array | string | number | literal", value_variant: "JsonValue" },
+  JsonProductionRow { rfc_section: "3", lhs: "object", rhs: "'{' ws member (',' ws member)* '}' | '{' ws '}'", value_variant: "JsonObject" },
+  JsonProductionRow { rfc_section: "3", lhs: "member", rhs: "string ws ':' ws value", value_variant: "JsonKeyValue" },
+  JsonProductionRow { rfc_section: "3", lhs: "array", rhs: "'[' ws value (',' ws value)* ']' | '[' ws ']'", value_variant: "JsonArray" },
+  JsonProductionRow { rfc_section: "3", lhs: "string", rhs: "'\"' char* '\"'", value_variant: "JsonString" },
+  JsonProductionRow { rfc_section: "3", lhs: "number", rhs: "minus? int frac? exp?", value_variant: "JsonNumber" },
+  JsonProductionRow { rfc_section: "3", lhs: "literal", rhs: "'null' | 'true' | 'false'", value_variant: "JsonNull|JsonBool" },
+]
+
+data json_emit_fold_dissolution_trigger: String = "dissolve-on: v2 grammar-inverse ingest for JSON — dsl/extdeps/languages/json/{grammar,emit}.dag is the single dsl-tree authority (RFC 8259 rows + JsonValue fold); DISSOLVES WHEN src/v2/extdeps/languages/json.dag lands FormalProduction/TargetModel rows wired through 06_translate with ingest ∘ emit = id on json_production_rows witnesses"

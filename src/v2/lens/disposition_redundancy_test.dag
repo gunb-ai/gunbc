@@ -21,7 +21,6 @@ import extdeps.entropy {
 }
 import gunbc.tools.bmc_onboard {
   bmc_onboard_secret_on_disk_debt,
-  bmc_redfish_json_concat_debt
 }
 import gunbc.ci_runner_placement {
   gunbc_ci_cpu_weight_unit_modeling_marker,
@@ -232,7 +231,6 @@ test fn redundancy_region_entropy_fires_on_bytesize_present() -> Bool {
 
 data redundancy_region_bmc_marks: List<Disposition> = [
   bmc_onboard_secret_on_disk_debt,
-  bmc_redfish_json_concat_debt
 ]
 
 data redundancy_region_bmc_all_successors_present: List<DeclarationRef> = [
@@ -241,11 +239,6 @@ data redundancy_region_bmc_all_successors_present: List<DeclarationRef> = [
     decl_name: "Filesystem",
     field: WholeDeclaration
   },
-  DeclarationRef {
-    module_path: "std.primitives",
-    decl_name: "to_json_contract",
-    field: WholeDeclaration
-  }
 ]
 
 test fn redundancy_region_bmc_marks_nonempty() -> Bool {

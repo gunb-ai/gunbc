@@ -2,6 +2,7 @@ module extdeps.languages.json.emit
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import extdeps.languages.json.grammar { json_production_rows }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {

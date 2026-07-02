@@ -12,9 +12,12 @@ import gunbc.roadmap_model {
 }
 import gunbc.roadmap_status { RoadmapItem, DerivableLine, AuthoredLine, PlainLine, item_is_done }
 import gunbc.roadmap_document { RoadmapDocument, RoadmapSection }
+<<<<<<< HEAD
 import gunbc.roadmap_authority { roadmap_authority, authored_merged_prs }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+=======
+>>>>>>> a68ecc417e (WIP: 2-emit-partition (c) — JSON grammar authority: one JSON emit authority i)
 import extdeps.languages.json.emit {
   JsonValue, JsonNull,
   serialize_json,
@@ -26,15 +29,6 @@ import extdeps.languages.json.emit {
   json_object,
   json_kv,
   json_str_list,
-}
-
-data json_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "extdeps.languages.json.emit",
-    decl_name: "serialize_json",
-    field: WholeDeclaration
-  }
 }
 
 fn element_nodes(e: SectionElement) -> List<RoadmapNode> {
@@ -192,14 +186,14 @@ fn node_plan_doc_json(carriers: List<Pointer>) -> JsonValue {
   }
 }
 
-fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> String {
+fn node_json_value(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> JsonValue {
   let parent_id_value = match roadmap_parent(edges: edges, node: n.node) {
     TopLevel => json_null()
     UnderParent { parent: pid } => json_string(s: pid)
   }
   let owner_value = if n.owner == "" { json_null() } else { json_string(s: n.owner) }
   let title = node_title(item: n.line)
-  serialize_json(v: json_object(members: [
+  json_object(members: [
     json_kv(key: "node_id", value: json_string(s: n.node)),
     json_kv(key: "title", value: json_string(s: title)),
     json_kv(key: "repo", value: json_string(s: repo)),
@@ -210,36 +204,11 @@ fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String,
     json_kv(key: "owner", value: owner_value),
     json_kv(key: "plan_doc", value: node_plan_doc_json(carriers: n.carriers)),
     json_kv(key: "acceptance", value: acceptance_json_value(a: acceptance, line: n.line)),
-  ]))
+  ])
 }
 
-fn join_strings(items: List<String>) -> String {
-  fold(items, init: { s: "", first: true }, f: (acc, item) => {
-    s: if acc.first { item } else { concat(acc.s, concat(", ", item)) },
-    first: false
-  }).s
-}
-
-fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {
-  let items = nodes |> map(n => match n.sizing {
-    Unsized => "{}"
-    Sized { intricacy, volume, repo, acceptance } =>
-      node_json(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges)
-  })
-  concat("[", concat(join_strings(items: items), "]"))
-}
-
-fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_commit: String) -> String {
-  let nodes = next_spawnable(doc: doc, merged: merged)
-  let edges = doc_all_edges(doc: doc)
-  concat("{",
-    concat("\"schema\": \"roadmap-spawn-request/v1\"",
-    concat(", \"anchor_commit\": ", concat(json_str(s: anchor_commit),
-    concat(", \"ready\": ", concat(ready_array_json(nodes: nodes, edges: edges), "}"))))))
-}
-
-fn json_str_list(items: List<String>) -> String {
-  concat("[", concat(join_strings(items: items |> map(s => json_str(s: s))), "]"))
+fn node_json(n: RoadmapNode, intricacy: Intricacy, volume: Volume, repo: String, acceptance: Acceptance, edges: List<RoadmapEdge>) -> String {
+  serialize_json(v: node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges))
 }
 
 fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id: ProcessNodeId, merged: List<Int>) -> List<ProcessNodeId> {
@@ -247,23 +216,52 @@ fn node_unmet_parent_ids(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, id:
     |> filter(pid => !any(nodes, n => n.node == pid && item_is_done(item: n.line, merged: merged)))
 }
 
+fn ready_array_json(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> String {
+  serialize_json(v: json_array(elements: nodes |> map(n => match n.sizing {
+    Unsized => json_object(members: [])
+    Sized { intricacy, volume, repo, acceptance } =>
+      node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges)
+  })))
+}
+
+fn roadmap_spawn_request_json(doc: RoadmapDocument, merged: List<Int>, anchor_commit: String) -> String {
+  let nodes = next_spawnable(doc: doc, merged: merged)
+  let edges = doc_all_edges(doc: doc)
+  serialize_json(v: json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-spawn-request/v1")),
+    json_kv(key: "anchor_commit", value: json_string(s: anchor_commit)),
+    json_kv(key: "ready", value: json_array(elements: nodes |> map(n => match n.sizing {
+      Unsized => json_object(members: [])
+      Sized { intricacy, volume, repo, acceptance } =>
+        node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges)
+    }))),
+  ]))
+}
+
 fn upcoming_node_json(n: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
   let unmet = node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node, merged: merged)
-  concat("{\"node_id\": ", concat(json_str(s: n.node),
-    concat(", \"title\": ", concat(json_str(s: node_title(item: n.line)),
-    concat(", \"unmet_parents\": ", concat(json_str_list(items: unmet), "}"))))))
+  serialize_json(v: json_object(members: [
+    json_kv(key: "node_id", value: json_string(s: n.node)),
+    json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
+    json_kv(key: "unmet_parents", value: json_array(elements: unmet |> map(id => json_string(s: id)))),
+  ]))
 }
 
 fn upcoming_array_json(frontier_upcoming: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>) -> String {
-  concat("[",
-    concat(join_strings(items: frontier_upcoming |> map(n =>
-      upcoming_node_json(n: n, nodes: nodes, edges: edges, merged: merged))), "]"))
+  serialize_json(v: json_array(elements: frontier_upcoming |> map(n =>
+    json_object(members: [
+      json_kv(key: "node_id", value: json_string(s: n.node)),
+      json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
+      json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node, merged: merged) |> map(id => json_string(s: id)))),
+    ])
+  )))
 }
 
 fn done_ids_json(frontier_done: List<RoadmapNode>) -> String {
   json_str_list(items: frontier_done |> map(n => n.node))
 }
 
+<<<<<<< HEAD
 data dispatch_brief_template: String = "Node: <node_id>\nWhy now: <displaced cost / what it unblocks>\nNon-goals: <explicitly out of scope>\nM0 evidence: <prove current state / reproduce the gap>\nM1 smallest change: <first implementation slice>\nM2 RED control: <perturbation that goes red>\nM3 green receipt: <execution on the real path>\nStop and return if: <named hand-back conditions>\nFiles likely touched: <paths>\nCommands to run: <repro/verify commands>\nExpected artifact: <what comes back even if the fix does not land>"
 
 fn roadmap_dispatch_file_content() -> String {
@@ -273,12 +271,30 @@ fn roadmap_dispatch_file_content() -> String {
 }
 
 fn roadmap_dispatch_json(doc: RoadmapDocument, merged: List<Int>) -> String {
+=======
+fn roadmap_dispatch_json_value(doc: RoadmapDocument, merged: List<Int>) -> JsonValue {
+>>>>>>> a68ecc417e (WIP: 2-emit-partition (c) — JSON grammar authority: one JSON emit authority i)
   let nodes = doc_all_nodes(doc: doc)
   let edges = doc_all_edges(doc: doc)
   let frontier = spawn_frontier(doc: doc, merged: merged)
-  concat("{",
-    concat("\"schema\": \"roadmap-dispatch/v1\"",
-    concat(", \"ready\": ", concat(ready_array_json(nodes: frontier.ready, edges: edges),
-    concat(", \"upcoming\": ", concat(upcoming_array_json(frontier_upcoming: frontier.upcoming, nodes: nodes, edges: edges, merged: merged),
-    concat(", \"done\": ", concat(done_ids_json(frontier_done: frontier.done), "}"))))))))
+  json_object(members: [
+    json_kv(key: "schema", value: json_string(s: "roadmap-dispatch/v1")),
+    json_kv(key: "ready", value: json_array(elements: frontier.ready |> map(n => match n.sizing {
+      Unsized => json_object(members: [])
+      Sized { intricacy, volume, repo, acceptance } =>
+        node_json_value(n: n, intricacy: intricacy, volume: volume, repo: repo, acceptance: acceptance, edges: edges)
+    }))),
+    json_kv(key: "upcoming", value: json_array(elements: frontier.upcoming |> map(n =>
+      json_object(members: [
+        json_kv(key: "node_id", value: json_string(s: n.node)),
+        json_kv(key: "title", value: json_string(s: node_title(item: n.line))),
+        json_kv(key: "unmet_parents", value: json_array(elements: node_unmet_parent_ids(nodes: nodes, edges: edges, id: n.node, merged: merged) |> map(id => json_string(s: id)))),
+      ])
+    ))),
+    json_kv(key: "done", value: json_array(elements: frontier.done |> map(n => json_string(s: n.node)))),
+  ])
+}
+
+fn roadmap_dispatch_json(doc: RoadmapDocument, merged: List<Int>) -> String {
+  serialize_json(v: roadmap_dispatch_json_value(doc: doc, merged: merged))
 }

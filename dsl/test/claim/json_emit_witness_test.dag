@@ -16,6 +16,7 @@ import extdeps.languages.json.emit {
   json_int_list,
   json_str_list,
 }
+import extdeps.languages.json.grammar { json_production_rows }
 
 fn witness_json_cites_rfc8259() -> Bool {
   match extdeps_external_authority_anchor {
@@ -75,6 +76,10 @@ fn witness_str_list_helper() -> Bool {
   json_str_list(items: ["x", "y"]) == "[\"x\", \"y\"]"
 }
 
+fn witness_grammar_rows_cover_json_value_variants() -> Bool {
+  length(xs: json_production_rows) >= 8
+}
+
 test fn json_emit_witnesses() -> Bool {
   witness_json_cites_rfc8259()
     && witness_escape_backslash_and_quote()
@@ -88,4 +93,5 @@ test fn json_emit_witnesses() -> Bool {
     && witness_serialize_array()
     && witness_int_list_helper()
     && witness_str_list_helper()
+    && witness_grammar_rows_cover_json_value_variants()
 }
