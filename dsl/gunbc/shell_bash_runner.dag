@@ -1,0 +1,12 @@
+module gunbc.shell_bash_runner
+
+import std.types { String }
+
+data gunbc_bash_heredoc_delimiter: String = "GUNBC_BASH_EOF"
+
+fn shell_exec_via_bash(body: String) -> String {
+  concat(
+    concat(concat("bash <<'", gunbc_bash_heredoc_delimiter), "'\n"),
+    concat(body, concat("\n", concat(gunbc_bash_heredoc_delimiter, "\n"))),
+  )
+}
