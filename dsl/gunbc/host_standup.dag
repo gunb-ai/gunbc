@@ -27,7 +27,8 @@ type HostStandupPrefixPhase
   | HostConvergePolicyDerived
 
 type HostStandupAssimilationPhase
-  = ReachSecretsNetwork
+  = HostIdentityConverge
+  | ReachSecretsNetwork
   | RunnerDeploySlot
   | ComputeFabricEnroll
   | GreenPlaceReadiness
@@ -226,6 +227,22 @@ data host_standup_spine: List<HostStandupStep> = [
     effect_policy: ConvergeToFixpoint
   ),
   host_standup_assimilation_step(
+    phase: HostIdentityConverge,
+    label: "P0:host-identity-converge",
+    disposition: ModeledCompose {
+      authorities: [
+        decl_ref(module_path: "gunbc.host_identity_observation", decl_name: "host_identity_observation_apply"),
+        decl_ref(module_path: "gunbc.host_identity_adopt", decl_name: "host_identity_adopt_srv1_live"),
+        decl_ref(module_path: "gunbc.host_identity_knob", decl_name: "three_way_leaf"),
+        decl_ref(module_path: "gunbc.host_identity_converge", decl_name: "host_identity_apply_gated"),
+        decl_ref(module_path: "gunbc.host_identity_assimilation", decl_name: "host_identity_assimilate_srv1_wet"),
+        decl_ref(module_path: "gunbc.deployed_intent_v0", decl_name: "deployed_intent_v0_adopt_observed_base"),
+        decl_ref(module_path: "gunbc.deployed_intent_v1", decl_name: "deployed_intent_v1_srv1"),
+      ]
+    },
+    effect_policy: OneShotIdempotent
+  ),
+  host_standup_assimilation_step(
     phase: ReachSecretsNetwork,
     label: "P0:reach-secrets-network",
     disposition: DeclaredGap {
@@ -314,6 +331,11 @@ data host_standup_gap_ledger: List<GapLedgerRow> = [
     phase_label: "prefix:host-converge",
     modeling: "modeled",
     authority_or_interim: "gunbc.host_converge.fleet_converge_policy + gunbc.fleet_converge_emit.expected_fleet_converge_sh"
+  },
+  GapLedgerRow {
+    phase_label: "P0:host-identity-converge",
+    modeling: "modeled",
+    authority_or_interim: "gunbc.host_identity_assimilation — adopt observed base (DeployedIntentV0) -> three_way_leaf -> gated hostnamectl apply -> independent read-back -> noop re-run"
   },
   GapLedgerRow {
     phase_label: "P0:reach-secrets-network",

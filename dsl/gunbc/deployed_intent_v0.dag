@@ -1,0 +1,66 @@
+module gunbc.deployed_intent_v0
+
+import std.types { String, NonEmptyStr, Bool }
+import std.disposition { Disposition, Terminal }
+import product.placement_supply { HostIdentity }
+import gunbc.fleet_intent { ComputeHost, srv1_host }
+import gunbc.fleet_intent_network { operator_host_srv1 }
+import gunbc.host_identity_observation {
+  HostIdentityObservation,
+  HostIdentityObservationRow,
+  gunbc_srv1_host_identity_observation_fixture_row,
+  host_identity_observation_typed,
+  fixture_host_identity_observation,
+}
+
+type DeployedIntentV0 {
+  fleet_slot: HostIdentity
+  target_host: ComputeHost
+  observation: HostIdentityObservation
+}
+
+data gunbc_deployed_intent_v0_scope_disposition: Disposition = Terminal {
+  reason: "ADOPT-BASE phase-0 carrier: the DeployedIntentV0 type IS the observed-base shape — records live-read hostname observation, explicitly NOT fleet design-intent identity (operator_host_srv*). Design intent is a later-phase type; no base_kind tag (§2: v0 is observed-only by construction, not by predicate over a dead coproduct arm)."
+}
+
+fn deployed_intent_v0_adopt_observed_base(
+  fleet_slot: HostIdentity,
+  target_host: ComputeHost,
+  observation: HostIdentityObservation,
+) -> DeployedIntentV0 {
+  DeployedIntentV0 {
+    fleet_slot: fleet_slot,
+    target_host: target_host,
+    observation: observation,
+  }
+}
+
+fn deployed_intent_observed_short_hostname(d: DeployedIntentV0) -> String {
+  d.observation.short_hostname
+}
+
+fn deployed_intent_observed_differs_from_fleet_slot(d: DeployedIntentV0) -> Bool {
+  deployed_intent_observed_short_hostname(d: d) != d.fleet_slot
+}
+
+fn deployed_intent_v0_srv1_fixture() -> DeployedIntentV0 {
+  deployed_intent_v0_adopt_observed_base(
+    fleet_slot: operator_host_srv1,
+    target_host: srv1_host,
+    observation: fixture_host_identity_observation(),
+  )
+}
+
+data gunbc_srv1_deployed_intent_v0_fixture: DeployedIntentV0 = deployed_intent_v0_srv1_fixture()
+
+fn deployed_intent_v0_from_observation_row(
+  fleet_slot: HostIdentity,
+  target_host: ComputeHost,
+  row: HostIdentityObservationRow,
+) -> DeployedIntentV0 {
+  deployed_intent_v0_adopt_observed_base(
+    fleet_slot: fleet_slot,
+    target_host: target_host,
+    observation: host_identity_observation_typed(row: row),
+  )
+}

@@ -1,0 +1,84 @@
+module gunbc.host_identity_knob
+
+import std.types { String, Bool }
+import product.placement_supply { HostIdentity }
+
+type HostIdentityHostnameField
+  = HostnameShort
+  | HostnameFieldReserved
+
+type HostIdentityKnobKey {
+  host: HostIdentity
+  field: HostIdentityHostnameField
+}
+
+type HostIdentityKnobValue {
+  hostname_short: String
+}
+
+type HostIdentityLeafVerdict
+  = Unchanged
+  | ApplyHunk { from: HostIdentityKnobValue, to: HostIdentityKnobValue }
+  | Conflict
+
+fn host_identity_knob_key(host: HostIdentity) -> HostIdentityKnobKey {
+  HostIdentityKnobKey { host: host, field: HostnameShort }
+}
+
+fn host_identity_knob_value(hostname_short: String) -> HostIdentityKnobValue {
+  HostIdentityKnobValue { hostname_short: hostname_short }
+}
+
+fn host_identity_knob_values_equal(a: HostIdentityKnobValue, b: HostIdentityKnobValue) -> Bool {
+  a.hostname_short == b.hostname_short
+}
+
+fn three_way_leaf(
+  base: HostIdentityKnobValue,
+  observed: HostIdentityKnobValue,
+  desired: HostIdentityKnobValue,
+) -> HostIdentityLeafVerdict {
+  if host_identity_knob_values_equal(a: observed, b: desired) {
+    Unchanged
+  } else { if host_identity_knob_values_equal(a: observed, b: base) {
+    ApplyHunk { from: base, to: desired }
+  } else {
+    Conflict
+  } }
+}
+
+fn host_identity_leaf_has_apply_arm(verdict: HostIdentityLeafVerdict) -> Bool {
+  match verdict {
+    ApplyHunk { from: _, to: _ } => true
+    Unchanged => false
+    Conflict => false
+  }
+}
+
+fn host_identity_leaf_is_noop(verdict: HostIdentityLeafVerdict) -> Bool {
+  match verdict {
+    Unchanged => true
+    ApplyHunk { from: _, to: _ } => false
+    Conflict => false
+  }
+}
+
+fn host_identity_leaf_is_conflict(verdict: HostIdentityLeafVerdict) -> Bool {
+  match verdict {
+    Conflict => true
+    Unchanged => false
+    ApplyHunk { from: _, to: _ } => false
+  }
+}
+
+fn host_identity_patch_from_intents(
+  base_hostname: String,
+  observed_hostname: String,
+  desired_hostname: String,
+) -> HostIdentityLeafVerdict {
+  three_way_leaf(
+    base: host_identity_knob_value(hostname_short: base_hostname),
+    observed: host_identity_knob_value(hostname_short: observed_hostname),
+    desired: host_identity_knob_value(hostname_short: desired_hostname),
+  )
+}
