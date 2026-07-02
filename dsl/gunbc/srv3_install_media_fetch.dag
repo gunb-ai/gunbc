@@ -1,0 +1,154 @@
+module gunbc.srv3_install_media_fetch
+
+import extdeps.shell
+import extdeps.os.ubuntu_install_media {
+  UbuntuInstallMediaArtifactRow,
+  UbuntuInstallMediaMirrorHost,
+  UbuntuInstallMediaMirrorRow,
+  noble_numbat_2404_3_live_server_arm64,
+  ubuntu_install_media_install_path,
+  ubuntu_install_media_mirror_rows,
+  ubuntu_install_media_mirror_url,
+}
+import extdeps.os.ubuntu_install_media_fetch {
+  install_media_fetch_script,
+  install_media_fetch_bash_emit_dissolution_trigger,
+}
+import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
+import gunbc.fleet_intent { srv1_host, ComputeHost }
+import std.effects {
+  EffectShape,
+  CreateEffect,
+  CreateIfAbsent,
+  InputField,
+}
+import std.measure { ByteSize }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { String, NonEmptyStr, Sha256, Milliseconds, List }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.resources { Network }
+
+data gunbc_srv3_install_media_fetch_scope_disposition: Disposition = Terminal {
+  reason: "srv3 Ubuntu 24.04.3 live-server arm64 ISO acquisition — CreateIfAbsent keyed on content_sha256; N mirror transport handlers on one cited artifact row; runnable on srv1 actuator host before nbd-proxy serve."
+}
+
+data srv3_install_media_fetch_shell_runner_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.os.ubuntu_install_media_fetch",
+    decl_name: "install_media_fetch_bash_emit_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data srv3_install_media_fetch_shell_runner_dissolution_trigger: String = "🟡 dissolve-on: srv3_install_media_fetch shell runner glue — srv3_install_media_fetch orchestrates via shell.Exec.Run over install_media_fetch_script; DISSOLVES WHEN host_effect_apply binds InstallMediaFetch without serialize_bash runner glue; retire medium_structure_exception_roster entry for dsl/gunbc/srv3_install_media_fetch.dag"
+
+data srv3_ubuntu_install_media_artifact: UbuntuInstallMediaArtifactRow = noble_numbat_2404_3_live_server_arm64
+
+data srv3_ubuntu_install_media_install_path: NonEmptyStr = ubuntu_install_media_install_path(
+  artifact: srv3_ubuntu_install_media_artifact,
+)
+
+data install_media_fetch_effect_shape: EffectShape = CreateEffect {
+  cause: CreateIfAbsent { key_source: InputField { field: "content_sha256" } },
+}
+
+type InstallMediaPresenceObservation
+  = Absent
+  | Present { observed_sha256: Sha256 }
+
+type InstallMediaFetchVerdict
+  = AlreadyPresent {
+      install_path: NonEmptyStr
+      content_sha256: Sha256
+    }
+  | FetchRequired {
+      install_path: NonEmptyStr
+      mirror_order: List<UbuntuInstallMediaMirrorRow>
+    }
+  | HashMismatchRefusal {
+      install_path: NonEmptyStr
+      expected_sha256: Sha256
+      observed_sha256: Sha256
+    }
+
+type InstallMediaFetchReceipt {
+  artifact_version: NonEmptyStr
+  mirror_used: UbuntuInstallMediaMirrorHost?
+  sha256_verified: Sha256
+  bytes: ByteSize
+  duration_ms: Milliseconds
+  outcome: InstallMediaFetchOutcome
+}
+
+type InstallMediaFetchOutcome
+  = AlreadyPresentOutcome
+  | FetchedOutcome
+
+fn classify_install_media_fetch(
+  observation: InstallMediaPresenceObservation,
+  artifact: UbuntuInstallMediaArtifactRow,
+) -> InstallMediaFetchVerdict {
+  let install_path = ubuntu_install_media_install_path(artifact: artifact)
+  match observation {
+    Absent =>
+      FetchRequired {
+        install_path: install_path,
+        mirror_order: ubuntu_install_media_mirror_rows,
+      }
+    Present { observed_sha256: observed } =>
+      if observed == artifact.content_sha256 {
+        AlreadyPresent {
+          install_path: install_path,
+          content_sha256: artifact.content_sha256,
+        }
+      } else {
+        HashMismatchRefusal {
+          install_path: install_path,
+          expected_sha256: artifact.content_sha256,
+          observed_sha256: observed,
+        }
+      }
+  }
+}
+
+fn install_media_fetch_verdict_is_idempotent_skip(verdict: InstallMediaFetchVerdict) -> Bool {
+  match verdict {
+    AlreadyPresent { install_path: _, content_sha256: _ } => true
+    FetchRequired { install_path: _, mirror_order: _ } => false
+    HashMismatchRefusal { install_path: _, expected_sha256: _, observed_sha256: _ } => false
+  }
+}
+
+fn install_media_fetch_first_mirror_url(artifact: UbuntuInstallMediaArtifactRow) -> NonEmptyStr {
+  let first = ubuntu_install_media_mirror_rows.first()
+  ubuntu_install_media_mirror_url(artifact: artifact, mirror: first)
+}
+
+fn srv3_install_media_fetch_actuator_host() -> ComputeHost {
+  srv3_os_install_actuator_host
+}
+
+func srv3_install_media_fetch() -> ProcessExit
+  uses net: Network
+{
+  let script = install_media_fetch_script(artifact: srv3_ubuntu_install_media_artifact)
+  let run = shell.Exec.Run(script: script)
+  if run.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("install-media-fetch: ", run.stderr))
+  }
+}
+
+fn srv3_install_media_fetch_install_path_is_versioned() -> Bool {
+  string_contains(
+    s: srv3_ubuntu_install_media_install_path as String,
+    pattern: "ubuntu-24.04.3-live-server-arm64.iso",
+  )
+}
+
+fn srv3_install_media_fetch_actuator_host_is_srv1() -> Bool {
+  srv3_install_media_fetch_actuator_host() == srv1_host
+}

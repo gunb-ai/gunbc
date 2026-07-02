@@ -1,0 +1,78 @@
+module gunbc.srv3_os_install_actuate_scope
+
+import gunbc.os_install {
+  srv3_os_install_plan,
+  srv3_os_install_plan_autoinstall,
+  fleet_install_server_specs,
+}
+import gunbc.os_install_mechanism { srv3_install_mechanism, NbdProxyVirtualMediaInstall }
+import extdeps.os.ubuntu_autoinstall { NoCloudNet, NoCloudLocal }
+import extdeps.uri { uri_wire }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { NonEmptyStr, Int, Bool, String }
+
+data gunbc_srv3_os_install_actuate_scope_boundary: Disposition = Terminal {
+  reason: "prefix:os-install-actuated boundary — actuator prep (ISO fetch, seeded-ISO remaster scaffold, derived actuator host, NBD serve/boot-once/SOL capture runnable entrypoints) + operator runbook ONLY; NOT srv3 OS install solved. Autoinstall seed delivery remains fail-closed (NoCloudNet without install server) until seeded-ISO unattended boot proven by execution; BMC credential source debt remains scaffold until SecretRef shelf lands."
+}
+
+data srv3_seeded_iso_pivot_dissolution_trigger: String = "🟡 dissolve-on: srv3_autoinstall_seed_delivery_refusal — NoCloudNet fail-closed gap DISSOLVES WHEN seeded ISO path proven unattended (boot-once + SOL receipt + OS-up witness green BY EXECUTION) and consumers bind srv3_seeded_ubuntu_install_media_install_path + srv3_ubuntu_autoinstall_on_iso NoCloudLocal delivery"
+
+type AutoinstallSeedDeliveryRefusal {
+  install_server_count: Int
+  seed_url: NonEmptyStr
+  refusal: NonEmptyStr
+}
+
+fn srv3_autoinstall_seed_delivery_refusal() -> AutoinstallSeedDeliveryRefusal? {
+  match srv3_install_mechanism {
+    NbdProxyVirtualMediaInstall =>
+      if fleet_install_server_specs.length() == 0 {
+        match srv3_os_install_plan_autoinstall(plan: srv3_os_install_plan).delivery {
+          NoCloudNet { seed_url: url } =>
+            Present {
+              value: AutoinstallSeedDeliveryRefusal {
+                install_server_count: fleet_install_server_specs.length(),
+                seed_url: uri_wire(uri: url),
+                refusal: "fail-closed: NoCloudNet autoinstall seed unreachable on NbdProxyVirtualMediaInstall path — fleet_install_server_specs empty; stock ISO may boot interactive installer or hang waiting for network seed; prefix:os-install-actuated does NOT solve seed delivery" as NonEmptyStr,
+              }
+            }
+          NoCloudLocal => none
+        }
+      } else {
+        none
+      }
+    _ => none
+  }
+}
+
+fn srv3_autoinstall_seed_gap_is_fail_closed() -> Bool {
+  match srv3_autoinstall_seed_delivery_refusal() {
+    Present { value: refusal } =>
+      refusal.install_server_count == 0
+        && string_contains(s: refusal.refusal as String, pattern: "fail-closed")
+        && string_contains(s: refusal.seed_url as String, pattern: "install.srv3.lan")
+    Absent => false
+  }
+}
+
+data srv3_os_install_actuate_credential_source_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.roadmap_authority",
+    decl_name: "roadmap_document",
+    field: WholeDeclaration,
+  }
+}
+
+data srv3_os_install_actuate_credential_debt_marker: String = "🟡 debt: srv3_os_install_actuate BMC login/boot use openbmc_factory_login only — operator runbook documents manual gcloud Secret Manager fallback for RotatedCredentialActive; NOT a reusable modeled install actuator until BMC credential source is typed SecretRef (ROADMAP §4 shelf-privacy / shelf-privacy id); dissolve-on binds SecretRef shelf item, not built in prefix:os-install-actuated"
+
+fn srv3_os_install_actuate_credential_debt_references_secretref_shelf() -> Bool {
+  string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "SecretRef")
+    && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "shelf-privacy")
+}
+
+fn srv3_os_install_actuate_is_actuator_prep_not_install_solved() -> Bool {
+  srv3_autoinstall_seed_gap_is_fail_closed()
+    && srv3_os_install_actuate_credential_debt_references_secretref_shelf()
+}

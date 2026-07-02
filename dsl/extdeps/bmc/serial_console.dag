@@ -1,0 +1,70 @@
+module extdeps.bmc.serial_console
+
+import std.types { NonEmptyStr, String, Milliseconds }
+import std.measure { ByteSize }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/openbmc/obmc-console"
+  }
+}
+
+data redfish_serial_interface_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "redfish.dmtf.org/schemas/v1/SerialInterface.json"
+  }
+}
+
+type SolConsoleTransport
+  = ObmcConsoleCli
+  | RedfishSerialInterface
+
+type SolConsoleCaptureIntent {
+  bmc_host: NonEmptyStr
+  transport: SolConsoleTransport
+  output_path: NonEmptyStr
+}
+
+type SolConsoleCaptureOutcome
+  = CaptureRunning
+  | CaptureCompleted
+  | CaptureRefused { reason: NonEmptyStr }
+
+type SolConsoleCaptureReceipt {
+  bmc_host: NonEmptyStr
+  transport: SolConsoleTransport
+  log_path: NonEmptyStr
+  bytes_captured: ByteSize
+  duration_ms: Milliseconds
+  outcome: SolConsoleCaptureOutcome
+}
+
+fn sol_console_transport_wire(transport: SolConsoleTransport) -> NonEmptyStr {
+  match transport {
+    ObmcConsoleCli => "obmc-console"
+    RedfishSerialInterface => "redfish-serial-interface"
+  }
+}
+
+data sol_console_capture_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: sol_console_capture — obmc-console/Redfish SerialInterface log stream composed as shell transport (medium-as-string); DISSOLVES WHEN host_effect_apply binds SolConsoleCapture without concat-built runner glue; retire medium_structure_exception_roster entry for dsl/extdeps/bmc/serial_console.dag"
+
+fn sol_console_capture_script(intent: SolConsoleCaptureIntent) -> String {
+  let transport_wire = sol_console_transport_wire(transport: intent.transport)
+  concat(
+    concat(
+      concat(
+        concat(
+          concat("#!/usr/bin/env bash\nset -euo pipefail\nLOG=", intent.output_path as String),
+          "\nobmc-console-client ",
+        ),
+        intent.bmc_host as String,
+      ),
+      concat(" > \"", intent.output_path as String),
+    ),
+    concat("\" 2>&1 &\necho \"SolConsoleCaptureReceipt: transport=", transport_wire as String, " log=", intent.output_path as String, "\"\n"),
+  )
+}

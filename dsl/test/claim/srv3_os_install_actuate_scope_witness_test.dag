@@ -1,0 +1,33 @@
+module test.claim.srv3_os_install_actuate_scope
+
+import std.logic { Bool }
+import gunbc.srv3_os_install_actuate_scope {
+  srv3_autoinstall_seed_delivery_refusal,
+  srv3_autoinstall_seed_gap_is_fail_closed,
+  srv3_os_install_actuate_credential_debt_marker,
+  srv3_os_install_actuate_credential_debt_references_secretref_shelf,
+  srv3_os_install_actuate_is_actuator_prep_not_install_solved,
+}
+import gunbc.os_install { fleet_install_server_specs }
+
+test fn srv3_autoinstall_seed_gap_is_explicitly_fail_closed() -> Bool {
+  match srv3_autoinstall_seed_delivery_refusal() {
+    Present { value: refusal } =>
+      fleet_install_server_specs.length() == 0
+        && refusal.install_server_count == 0
+        && string_contains(s: refusal.refusal as String, pattern: "fail-closed")
+        && string_contains(s: refusal.refusal as String, pattern: "NoCloudNet")
+        && srv3_autoinstall_seed_gap_is_fail_closed()
+    Absent => false
+  }
+}
+
+test fn srv3_os_install_actuate_credential_debt_is_scaffold_not_reusable_actuator() -> Bool {
+  srv3_os_install_actuate_credential_debt_references_secretref_shelf()
+    && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "openbmc_factory_login")
+    && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "NOT a reusable modeled install actuator")
+}
+
+test fn srv3_os_install_actuate_scope_is_prep_not_install_solved() -> Bool {
+  srv3_os_install_actuate_is_actuator_prep_not_install_solved()
+}

@@ -1,0 +1,73 @@
+module test.claim.srv3_os_install_actuate
+
+import std.logic { Bool }
+import gunbc.srv3_os_install_actuate {
+  srv3_os_install_actuator_step_count_is_three,
+  srv3_os_install_actuate_runbook_is_declared,
+  srv3_os_install_actuate_shell_runner_dissolution_trigger,
+  srv3_nbd_proxy_serve_intent,
+  srv3_bmcweb_login_body_content,
+  srv3_nbd_proxy_serve_script_path,
+  srv3_bmcweb_token_path,
+}
+import extdeps.bmc.webui.nbd_proxy {
+  VmSlotIndexEndpoint,
+  bmcweb_nbd_proxy_ws_path,
+}
+import extdeps.bmc.webui.nbd_proxy_serve {
+  nbd_proxy_serve_script,
+  nbd_proxy_serve_program_statement_count,
+}
+import extdeps.boards.asrock_rack {
+  asrock_srv3_live_bmc_host,
+  asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
+}
+import gunbc.nbd_proxy_virtual_media_install { srv3_os_install_actuator_plan }
+import gunbc.os_install_mechanism {
+  NbdProxyVirtualMediaInstall,
+  PxeHttpInstall,
+  VirtualMediaInstall,
+  FirmwareUpdateThenVirtualMedia,
+}
+
+test fn srv3_actuator_plan_has_three_steps() -> Bool {
+  srv3_os_install_actuator_step_count_is_three()
+    && match srv3_os_install_actuator_plan.mechanism {
+      NbdProxyVirtualMediaInstall => true
+      PxeHttpInstall => false
+      VirtualMediaInstall => false
+      FirmwareUpdateThenVirtualMedia => false
+    }
+}
+
+test fn srv3_nbd_proxy_serve_intent_targets_vm_slot_index() -> Bool {
+  let intent = srv3_nbd_proxy_serve_intent()
+  nbd_proxy_serve_program_statement_count(intent: intent) == 5
+    && intent.bmc_host == asrock_srv3_live_bmc_host
+    && intent.ws_path == bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0)
+    && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == VmSlotIndexEndpoint
+}
+
+test fn srv3_bmcweb_login_body_uses_factory_credentials_not_inline_in_script() -> Bool {
+  string_contains(s: srv3_bmcweb_login_body_content(), pattern: "\"username\":\"root\"")
+    && string_contains(s: srv3_bmcweb_login_body_content(), pattern: "\"password\":\"0penBmc\"")
+}
+
+test fn srv3_actuate_prep_paths_are_declared() -> Bool {
+  string_contains(s: srv3_nbd_proxy_serve_script_path, pattern: "/tmp/srv3_nbd_proxy_serve")
+    && string_contains(s: srv3_bmcweb_token_path, pattern: "/tmp/srv3_bmcweb_token")
+    && srv3_os_install_actuate_runbook_is_declared()
+}
+
+test fn srv3_nbd_proxy_serve_script_is_emittable_from_intent() -> Bool {
+  let script = nbd_proxy_serve_script(intent: srv3_nbd_proxy_serve_intent())
+  string_contains(s: script, pattern: "websocat")
+    && string_contains(s: script, pattern: "nbdkit")
+    && string_contains(s: script, pattern: "/vm/0/0")
+}
+
+test fn srv3_os_install_actuate_shell_runner_carries_dissolution_trigger() -> Bool {
+  string_contains(s: srv3_os_install_actuate_shell_runner_dissolution_trigger, pattern: "dissolve-on:")
+    && string_contains(s: srv3_os_install_actuate_shell_runner_dissolution_trigger, pattern: "medium_structure_exception_roster")
+    && string_contains(s: srv3_os_install_actuate_shell_runner_dissolution_trigger, pattern: "shell.Exec.Run")
+}

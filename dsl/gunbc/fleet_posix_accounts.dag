@@ -67,6 +67,8 @@ data fleet_posix_ci_runner_declared_probe: PosixAccountDeclaredProbe = PosixAcco
   host: "srv1",
 }
 
+data fleet_hostnamectl_command_path: NonEmptyStr = "/usr/bin/hostnamectl"
+
 data fleet_operator_email: NonEmptyStr = "briansrls@gmail.com"
 
 fn fleet_operator_gcp_iam_member() -> String {
@@ -80,7 +82,7 @@ fn fleet_posix_root_sudo_grants() -> List<PosixSudoGrant> {
 fn fleet_posix_operator_sudo_grants() -> List<PosixSudoGrant> {
   [
     PosixSudoGrant {
-      command_path: "/usr/bin/hostnamectl",
+      command_path: fleet_hostnamectl_command_path,
       check_argv: "--version",
     },
   ]
