@@ -1673,6 +1673,50 @@ fn perturb_function_to_false(path: &Path, function: &str) -> Result<(), String> 
     fs::write(path, out).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
+const PERTURB_SHARD_BROKEN_ENTRY: &str = "_perturb_compile_clean_shard_red.dag";
+
+const PERTURB_SHARD_BROKEN_MODULE: &str = "module test.perturb_compile_clean_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}\n";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum PerturbPlant {
+    SingleClaim {
+        entry: String,
+        function: String,
+    },
+    CompileCleanShardBrokenEntry {
+        rel_path: String,
+    },
+}
+
+fn perturb_plant_target(batch: &[Runnable]) -> Result<PerturbPlant, String> {
+    match batch.first() {
+        Some(Runnable::CompileCleanShardBatch { .. }) => {
+            Ok(PerturbPlant::CompileCleanShardBrokenEntry {
+                rel_path: PERTURB_SHARD_BROKEN_ENTRY.to_string(),
+            })
+        }
+        Some(Runnable::SingleClaim {
+            entry, function, ..
+        }) if !entry.is_empty() => Ok(PerturbPlant::SingleClaim {
+            entry: entry.clone(),
+            function: function.clone(),
+        }),
+        _ => Err(
+            "batch 1 has no plantable gating node (SingleClaim or CompileCleanShardBatch)"
+                .to_string(),
+        ),
+    }
+}
+
+fn perturb_plant_label(plant: &PerturbPlant) -> String {
+    match plant {
+        PerturbPlant::SingleClaim { function, .. } => function.clone(),
+        PerturbPlant::CompileCleanShardBrokenEntry { rel_path } => {
+            format!("compile-clean-shard-batch[{rel_path}]")
+        }
+    }
+}
+
 fn run_perturb_check(
     source_roots: &[String],
     plan_entry: &str,
@@ -1693,14 +1737,10 @@ fn run_perturb_check(
         );
         return Err(ExitCode::from(2));
     }
-    let (gating_entry, gating_function) = match batches[0].first() {
-        Some(Runnable::SingleClaim {
-            entry, function, ..
-        }) if !entry.is_empty() => (entry.clone(), function.clone()),
-        _ => {
-            eprintln!(
-                "claim_executor: --perturb-check: batch 1 has no plantable SingleClaim gating node"
-            );
+    let plant = match perturb_plant_target(&batches[0]) {
+        Ok(p) => p,
+        Err(msg) => {
+            eprintln!("claim_executor: --perturb-check: {msg}");
             return Err(ExitCode::from(2));
         }
     };
@@ -1714,11 +1754,25 @@ fn run_perturb_check(
         return Err(ExitCode::from(2));
     }
 
-    let gating_path = remap_entry_for_temp(primary, &temp_src, &gating_entry);
-    if let Err(e) = perturb_function_to_false(&gating_path, &gating_function) {
-        let _ = fs::remove_dir_all(&tmp);
-        eprintln!("claim_executor: --perturb-check: plant gating->false failed: {e}");
-        return Err(ExitCode::from(2));
+    match &plant {
+        PerturbPlant::SingleClaim { entry, function } => {
+            let gating_path = remap_entry_for_temp(primary, &temp_src, entry);
+            if let Err(e) = perturb_function_to_false(&gating_path, function) {
+                let _ = fs::remove_dir_all(&tmp);
+                eprintln!("claim_executor: --perturb-check: plant gating->false failed: {e}");
+                return Err(ExitCode::from(2));
+            }
+        }
+        PerturbPlant::CompileCleanShardBrokenEntry { rel_path } => {
+            let broken_path = temp_src.join(rel_path);
+            if let Err(e) = fs::write(&broken_path, PERTURB_SHARD_BROKEN_MODULE) {
+                let _ = fs::remove_dir_all(&tmp);
+                eprintln!(
+                    "claim_executor: --perturb-check: plant broken shard entry failed: {e}"
+                );
+                return Err(ExitCode::from(2));
+            }
+        }
     }
 
     let temp_root = temp_src.to_string_lossy().into_owned();
@@ -1770,9 +1824,17 @@ fn run_perturb_check(
                     Runnable::CompileCleanShardBatch {
                         entry_paths,
                         spawn_width_cap,
-                    } => Runnable::CompileCleanShardBatch {
-                        entry_paths: entry_paths.clone(),
-                        spawn_width_cap: *spawn_width_cap,
+                    } => match &plant {
+                        PerturbPlant::CompileCleanShardBrokenEntry { rel_path } => {
+                            Runnable::CompileCleanShardBatch {
+                                entry_paths: vec![rel_path.clone()],
+                                spawn_width_cap: *spawn_width_cap,
+                            }
+                        }
+                        _ => Runnable::CompileCleanShardBatch {
+                            entry_paths: entry_paths.clone(),
+                            spawn_width_cap: *spawn_width_cap,
+                        },
                     },
                 })
                 .collect()
@@ -1781,7 +1843,7 @@ fn run_perturb_check(
 
     eprintln!(
         "claim_executor: --perturb-check: planted batch-1 gating witness `{}` -> false; re-walking",
-        gating_function
+        perturb_plant_label(&plant)
     );
     let outcome = run_walk(&[temp_root], &remapped, 1);
     let _ = fs::remove_dir_all(&tmp);
@@ -1994,6 +2056,36 @@ mod tests {
             discovery_scope_dirs: vec![],
             spawn_width_cap: 0,
         }
+    }
+
+    fn compile_clean_shard_batch() -> Runnable {
+        Runnable::CompileCleanShardBatch {
+            entry_paths: vec!["dsl/std/logic.dag".to_string()],
+            spawn_width_cap: 4,
+        }
+    }
+
+    #[test]
+    fn perturb_plant_target_prefers_shard_batch_when_first() {
+        let batch = vec![compile_clean_shard_batch(), single("gate.dag", "g1")];
+        assert_eq!(
+            perturb_plant_target(&batch),
+            Ok(PerturbPlant::CompileCleanShardBrokenEntry {
+                rel_path: PERTURB_SHARD_BROKEN_ENTRY.to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn perturb_plant_target_uses_single_claim_for_monolith_batch() {
+        let batch = vec![single("dsl/tools/dsl_compile_clean_gate.dag", "dsl_compile_clean_gate_passes")];
+        assert_eq!(
+            perturb_plant_target(&batch),
+            Ok(PerturbPlant::SingleClaim {
+                entry: "dsl/tools/dsl_compile_clean_gate.dag".to_string(),
+                function: "dsl_compile_clean_gate_passes".to_string(),
+            })
+        );
     }
 
     /// Flatten the grouped units back to the (entry, function) claims they will execute, in the
