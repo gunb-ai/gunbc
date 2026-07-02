@@ -171,6 +171,12 @@ fn type_expr_authored_name(
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
     type_expr: &Rc<Node>,
 ) -> String {
+    if type_expr.connective == Connective::Conj
+        && type_expr.type_annotation.is_some()
+        && type_expr.children.len() == 1
+    {
+        return type_expr_authored_name(si, &type_expr.children[0]);
+    }
     let name = authored_name_at(si.clone(), type_expr.clone());
     if !name.is_empty() {
         return name;
@@ -986,14 +992,13 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
     let facts = decl_facts_for_roots(pool_roots);
     let mut rows = Vec::with_capacity(facts.len());
     for fact in facts {
-        let node = marshal_decl_fact_node(ctx, &fact.node, fact.kind, &fact.source_indices).map_err(
-            |e| InterpError::TypeError {
+        let node = marshal_decl_fact_node(ctx, &fact.node, fact.kind, &fact.source_indices)
+            .map_err(|e| InterpError::TypeError {
                 msg: format!(
                     "decl_facts: failed to marshal `{}` ({:?}) in `{}`: {e}",
                     fact.qualified_name, fact.kind, fact.rel_path
                 ),
-            },
-        )?;
+            })?;
         rows.push(Value::Record {
             type_name: ctx.sym("DeclFact"),
             fields: Rc::new(sorted_fields(vec![
