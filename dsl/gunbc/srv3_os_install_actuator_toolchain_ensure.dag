@@ -87,30 +87,24 @@ fn os_install_actuator_websocat_ensure_block() -> String {
   concat(
     concat(
       concat(
-        concat("if command -v ", tool_name),
+        concat("#!/usr/bin/env bash\nif command -v ", tool_name),
         " >/dev/null 2>&1; then\n",
       ),
       concat(
         concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Present tool=", tool_name),
-        "\"\nelse\n",
+        "\"\n  exit 0\nfi\n",
       ),
     ),
     concat(
       concat(
-        concat(concat("  mkdir -p ", bin_dir), "\n"),
-        concat(
-          concat(concat(concat("  curl -fsSL \"", url_a64), "\" -o \""),
-          concat(install_path, "\"\n"),
-        ),
+        concat(concat("mkdir -p ", bin_dir), "\n"),
+        concat(concat(concat("curl -fsSL \"", url_a64), "\" -o \""), concat(install_path, "\"\n")),
       ),
       concat(
-        concat(concat("  chmod +x \"", install_path), "\"\n"),
+        concat(concat("chmod +x \"", install_path), "\"\n"),
         concat(
-          concat(concat("  export PATH=", bin_dir), ":$PATH\n"),
-          concat(
-            concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Installed tool=", tool_name),
-            concat(concat(" path=", install_path), "\"\nfi\n"),
-          ),
+          concat("echo \"OsInstallActuatorToolchainReceipt: outcome=Installed tool=", tool_name),
+          concat(concat(" path=", install_path), "\"\n"),
         ),
       ),
     ),
