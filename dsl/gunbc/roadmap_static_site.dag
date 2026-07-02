@@ -139,21 +139,19 @@ fn roadmap_site_path_template(raw: String) -> PathTemplate {
 fn roadmap_site_healthz_body() -> String {
   let roadmap = roadmap_site_roadmap_md_artifact()
   let dispatch = roadmap_site_dispatch_json_artifact()
+  let artifacts = concat(
+    concat("{", concat(json_str(s: roadmap.url_path), concat(":", json_str(s: roadmap.digest)))),
+    concat(
+      concat(",", concat(json_str(s: dispatch.url_path), concat(":", json_str(s: dispatch.digest)))),
+      "}"
+    )
+  )
   concat(
     concat(
-      concat(
-        concat("{\"status\":", json_str(s: "ok")),
-        concat(",\"service\":", json_str(s: roadmap_site_service_name))
-      ),
-      concat(
-        concat(",\"artifacts\":{", concat(json_str(s: roadmap.url_path), concat(":", json_str(s: roadmap.digest)))),
-        concat(
-          concat(",", concat(json_str(s: dispatch.url_path), concat(":", json_str(s: dispatch.digest)))),
-          "}}"
-        )
-      )
+      concat("{\"status\":", json_str(s: "ok")),
+      concat(",\"service\":", json_str(s: roadmap_site_service_name))
     ),
-    "}"
+    concat(",\"artifacts\":", concat(artifacts, "}"))
   )
 }
 
@@ -251,7 +249,7 @@ fn roadmap_site_readback_script(port: Int) -> String {
         concat("set -euo pipefail\n", "# roadmap static-site read-back host=srv1\n"),
         concat(
           concat("curl -sf ", sh_single_quote(s: health_url)),
-          concat(" | grep -q '\"status\":\"ok\"' || \{ echo roadmap-site-readback: healthz not ok >&2; exit 1; \}\n")
+          " | node -e 'JSON.parse(require(\"fs\").readFileSync(0,\"utf8\"))' || \{ echo roadmap-site-readback: healthz json parse failed >&2; exit 1; \}\n"
         )
       ),
       concat(roadmap_site_readback_curl_digest_check(url: concat(base, roadmap.url_path), expected: roadmap.digest), "\n")

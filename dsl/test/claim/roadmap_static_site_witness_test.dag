@@ -60,9 +60,22 @@ fn witness_artifact_digests_are_content_hashes() -> Bool {
   )
 }
 
+fn witness_healthz_body_json_well_formed() -> Bool {
+  let body = roadmap_site_healthz_body()
+  starts_with(s: body, prefix: "{")
+    && ends_with(s: body, suffix: "}}")
+    && !ends_with(s: body, suffix: "}}}")
+}
+
+fn witness_healthz_body_extra_brace_perturb_red() -> Bool {
+  ends_with(s: concat(roadmap_site_healthz_body(), "}"), suffix: "}}}")
+}
+
 fn witness_healthz_route_json_ok() -> Bool {
   let body = roadmap_site_healthz_body()
-  string_contains(s: body, pattern: "\"status\":\"ok\"")
+  witness_healthz_body_json_well_formed()
+    && witness_healthz_body_extra_brace_perturb_red()
+    && string_contains(s: body, pattern: "\"status\":\"ok\"")
     && string_contains(s: body, pattern: roadmap_site_roadmap_url_path)
     && string_contains(s: body, pattern: roadmap_site_dispatch_url_path)
     && roadmap_site_healthz_route().content_type == ApplicationJsonUtf8
@@ -92,10 +105,11 @@ fn witness_readback_shell_marked_scaffold() -> Bool {
 fn witness_readback_script_checks_health_and_digests() -> Bool {
   let sh = roadmap_site_readback_script(port: 8080)
   string_contains(s: sh, pattern: "/healthz")
+    && string_contains(s: sh, pattern: "healthz json parse failed")
     && string_contains(s: sh, pattern: roadmap_site_roadmap_url_path)
     && string_contains(s: sh, pattern: roadmap_site_dispatch_url_path)
     && string_contains(s: sh, pattern: "digest mismatch")
-    && string_contains(s: sh, pattern: "JSON.parse")
+    && string_contains(s: sh, pattern: "dispatch json parse failed")
     && string_contains(s: sh, pattern: "roadmap-site-receipt")
     && string_contains(s: sh, pattern: "read_back_ts=")
 }

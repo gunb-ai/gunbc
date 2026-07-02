@@ -135,7 +135,8 @@ fn witness_apply_script_includes_static_site_readback() -> Bool {
     && string_contains(s: sh, pattern: roadmap_site_dispatch_url_path)
     && string_contains(s: sh, pattern: "roadmap-site-readback")
     && string_contains(s: sh, pattern: "roadmap-site-receipt")
-    && string_contains(s: sh, pattern: "JSON.parse")
+    && string_contains(s: sh, pattern: "healthz json parse failed")
+    && string_contains(s: sh, pattern: "dispatch json parse failed")
 }
 
 fn witness_systemd_unit_emitted() -> Bool {
