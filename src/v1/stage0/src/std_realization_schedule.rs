@@ -209,7 +209,6 @@ pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
     match (*r).clone() {
         Runnable::RunnableSingleClaim { profile: p, .. } => p.clone(),
         Runnable::RunnableDiscoveryBatch { profile: p, .. } => p.clone(),
-        Runnable::RunnableCompileCleanShardBatch { profile: p, .. } => p.clone(),
         Runnable::RunnableKernelWorkload {
             fused_op_count: _, ..
         } => runnable_resource_profile_negligible(),
@@ -219,9 +218,6 @@ pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
 pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
     match (*r).clone() {
         Runnable::RunnableDiscoveryBatch { .. } => false,
-        Runnable::RunnableCompileCleanShardBatch { profile: p, .. } => {
-            runnable_excludes_corpus_co_residence(p.clone())
-        }
         Runnable::RunnableSingleClaim { profile: p, .. } => {
             runnable_excludes_corpus_co_residence(p.clone())
         }
@@ -249,23 +245,9 @@ pub enum Runnable {
         spawn_width_cap: i64,
         profile: Rc<RunnableResourceProfile>,
     },
-    RunnableCompileCleanShardBatch {
-        entry_paths: Rc<Vec<String>>,
-        spawn_width_cap: i64,
-        profile: Rc<RunnableResourceProfile>,
-    },
     RunnableKernelWorkload {
         fused_op_count: i64,
     },
-}
-
-pub fn compile_clean_shard_batch_label() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "__compile_clean_shard_batch__".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn runnable_kernel_workload_dissolution_trigger() -> String {
@@ -292,39 +274,10 @@ pub fn runnable_step_label(r: Rc<Runnable>) -> String {
     match (*r).clone() {
         Runnable::RunnableSingleClaim { function: f, .. } => f.clone(),
         Runnable::RunnableDiscoveryBatch { .. } => "__discovery_corpus__".to_string(),
-        Runnable::RunnableCompileCleanShardBatch { .. } => compile_clean_shard_batch_label(),
         Runnable::RunnableKernelWorkload {
             fused_op_count: _, ..
         } => "__kernel_workload__".to_string(),
     }
-}
-
-pub fn runnable_compile_clean_shard_entry_paths(r: Rc<Runnable>) -> Rc<Vec<String>> {
-    match (*r).clone() {
-        Runnable::RunnableCompileCleanShardBatch {
-            entry_paths: paths, ..
-        } => paths.clone(),
-        _ => Rc::new(vec![]),
-    }
-}
-
-pub fn runnable_compile_clean_shard_count(r: Rc<Runnable>) -> i64 {
-    (runnable_compile_clean_shard_entry_paths(r).len() as i64)
-}
-
-pub fn schedule_batch_compile_clean_shard_entry_paths(
-    batch: Rc<Vec<Rc<Runnable>>>,
-) -> Rc<Vec<String>> {
-    batch
-        .iter()
-        .cloned()
-        .fold(Rc::new(vec![]), |acc: Rc<Vec<String>>, r: Rc<Runnable>| {
-            v1_rt::concat(acc, runnable_compile_clean_shard_entry_paths(r.clone()))
-        })
-}
-
-pub fn schedule_batch_compile_clean_shard_count(batch: Rc<Vec<Rc<Runnable>>>) -> i64 {
-    (schedule_batch_compile_clean_shard_entry_paths(batch).len() as i64)
 }
 
 pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: String) -> bool {
@@ -341,10 +294,20 @@ pub fn schedule_batch_contains_label(batch: Rc<Vec<Rc<Runnable>>>, target: Strin
 pub enum ScheduleLensViolation {
     EmptySchedule,
     CompileGateNotFirst { expected: String },
-    CompileGateMonolithPresent { expected: String },
-    CompileCleanShardsInsufficient { minimum: i64 },
     CorpusBeforeCompile,
     SingleBatchOnly,
+}
+impl ScheduleLensViolation {
+    pub fn expected(&self) -> String {
+        match self {
+            ScheduleLensViolation::EmptySchedule => panic!("no expected on unit variant"),
+            ScheduleLensViolation::CompileGateNotFirst {
+                expected: __val, ..
+            } => __val.clone(),
+            ScheduleLensViolation::CorpusBeforeCompile => panic!("no expected on unit variant"),
+            ScheduleLensViolation::SingleBatchOnly => panic!("no expected on unit variant"),
+        }
+    }
 }
 
 pub fn schedule_lens_module() -> String {
@@ -375,19 +338,6 @@ pub fn schedule_lens_violation_diagnostic(
                 reason: ("schedule_lens_compile_gate_not_first:".to_string() + &expected.clone()),
                 at: at,
             }),
-            ScheduleLensViolation::CompileGateMonolithPresent {
-                expected: expected, ..
-            } => Rc::new(LensVerdictDiagnostic {
-                reason: ("schedule_lens_compile_gate_monolith_present:".to_string()
-                    + &expected.clone()),
-                at: at,
-            }),
-            ScheduleLensViolation::CompileCleanShardsInsufficient { minimum: _, .. } => {
-                Rc::new(LensVerdictDiagnostic {
-                    reason: "schedule_lens_compile_clean_shards_insufficient".to_string(),
-                    at: at,
-                })
-            }
             ScheduleLensViolation::CorpusBeforeCompile => Rc::new(LensVerdictDiagnostic {
                 reason: "schedule_lens_corpus_before_compile".to_string(),
                 at: at,
@@ -403,7 +353,6 @@ pub fn schedule_lens_violation_diagnostic(
 pub fn schedule_lens_verdict_for_ci_floor<S>(
     plan: Rc<RealizationPlan<S>>,
     compile_gate_fn: String,
-    compile_clean_sharded: bool,
 ) -> Rc<LensVerdict> {
     if (((*plan.schedule).clone().len() as i64) == 0) {
         Rc::new(LensVerdict::Violation {
@@ -421,76 +370,37 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
                 ),
             })
         } else {
-            if !compile_clean_sharded {
-                {
-                    let batch0 = (*plan.schedule).clone().first().cloned();
-                    if ((batch0.clone().expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) != 1) {
+            {
+                let batch0 = (*plan.schedule).clone().first().cloned();
+                if ((batch0.clone().expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) != 1) {
+                    Rc::new(LensVerdict::Violation {
+    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileGateNotFirst {
+    expected: compile_gate_fn.clone(),
+}), compile_gate_fn.clone()),
+})
+                } else {
+                    if !schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), compile_gate_fn.clone()) {
                         Rc::new(LensVerdict::Violation {
     diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileGateNotFirst {
     expected: compile_gate_fn.clone(),
 }), compile_gate_fn.clone()),
 })
                     } else {
-                        if !schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), compile_gate_fn.clone()) {
+                        if schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), "__discovery_corpus__".to_string()) {
                             Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileGateNotFirst {
-    expected: compile_gate_fn.clone(),
-}), compile_gate_fn.clone()),
-})
-                        } else {
-                            if schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), "__discovery_corpus__".to_string()) {
-                                Rc::new(LensVerdict::Violation {
     diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CorpusBeforeCompile), compile_gate_fn.clone()),
 })
-                            } else {
-                                {
-                                    let batch1 = (*plan.schedule).clone().get(1 as usize).cloned();
-if ((batch1.expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) < 2) {
-                                        Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::SingleBatchOnly), compile_gate_fn.clone()),
-})
-                                    } else {
-                                        Rc::new(LensVerdict::Holds)
-                                    }
-}
-                            }
-                        }
-                    }
-                }
-            } else {
-                {
-                    let batch0 = (*plan.schedule).clone().first().cloned();
-                    let shard_count = schedule_batch_compile_clean_shard_count(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_compile_clean_shard_count (empty Optional at runtime)"));
-                    if schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), compile_gate_fn.clone()) {
-                        Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileGateMonolithPresent {
-    expected: compile_gate_fn.clone(),
-}), compile_gate_fn.clone()),
-})
-                    } else {
-                        if (shard_count < 2) {
-                            Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileCleanShardsInsufficient {
-    minimum: 2,
-}), compile_gate_fn.clone()),
-})
                         } else {
-                            if schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), "__discovery_corpus__".to_string()) {
-                                Rc::new(LensVerdict::Violation {
-    diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CorpusBeforeCompile), compile_gate_fn.clone()),
-})
-                            } else {
-                                {
-                                    let batch1 = (*plan.schedule).clone().get(1 as usize).cloned();
+                            {
+                                let batch1 = (*plan.schedule).clone().get(1 as usize).cloned();
 if ((batch1.expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) < 2) {
-                                        Rc::new(LensVerdict::Violation {
+                                    Rc::new(LensVerdict::Violation {
     diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::SingleBatchOnly), compile_gate_fn.clone()),
 })
-                                    } else {
-                                        Rc::new(LensVerdict::Holds)
-                                    }
+                                } else {
+                                    Rc::new(LensVerdict::Holds)
+                                }
 }
-                            }
                         }
                     }
                 }
@@ -583,7 +493,6 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                     && runnable_resource_profile_eq(lp.clone(), rp.clone()))
             }
             Runnable::RunnableDiscoveryBatch { .. } => false,
-            Runnable::RunnableCompileCleanShardBatch { .. } => false,
             Runnable::RunnableKernelWorkload {
                 fused_op_count: _, ..
             } => false,
@@ -620,28 +529,6 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                     && (lwc.clone() == rwc.clone()))
                     && runnable_resource_profile_eq(lp.clone(), rp.clone()))
             }
-            Runnable::RunnableCompileCleanShardBatch { .. } => false,
-            Runnable::RunnableKernelWorkload {
-                fused_op_count: _, ..
-            } => false,
-        },
-        Runnable::RunnableCompileCleanShardBatch {
-            entry_paths: lpaths,
-            spawn_width_cap: lwc,
-            profile: lp,
-            ..
-        } => match (*right).clone() {
-            Runnable::RunnableSingleClaim { .. } => false,
-            Runnable::RunnableDiscoveryBatch { .. } => false,
-            Runnable::RunnableCompileCleanShardBatch {
-                entry_paths: rpaths,
-                spawn_width_cap: rwc,
-                profile: rp,
-                ..
-            } => {
-                ((string_list_eq(lpaths.clone(), rpaths.clone()) && (lwc.clone() == rwc.clone()))
-                    && runnable_resource_profile_eq(lp.clone(), rp.clone()))
-            }
             Runnable::RunnableKernelWorkload {
                 fused_op_count: _, ..
             } => false,
@@ -652,7 +539,6 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
         } => match (*right).clone() {
             Runnable::RunnableSingleClaim { .. } => false,
             Runnable::RunnableDiscoveryBatch { .. } => false,
-            Runnable::RunnableCompileCleanShardBatch { .. } => false,
             Runnable::RunnableKernelWorkload {
                 fused_op_count: rcount,
                 ..
