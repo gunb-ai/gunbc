@@ -29,6 +29,10 @@ use crate::v1_std_core::{
 };
 use serde::Serialize;
 
+#[path = "phase_profile.rs"]
+mod phase_profile;
+pub use phase_profile::{set_phase, FloorPhase, PhaseProfile};
+
 use crate::resolved_graph_cache::{
     lookup as cross_process_lookup, resolved_graph_cache_root_from_env, subject_digest_for_closure,
     write as cross_process_write, CacheLookupResult,
@@ -719,7 +723,9 @@ fn resolve_entry_graph_with_index(
     ),
     String,
 > {
+    set_phase(FloorPhase::Resolve, entry_file);
     let sources = load_sources_for_entry_with_index(index, entry_file)?;
+    set_phase(FloorPhase::Typecheck, entry_file);
     resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
 }
 
@@ -734,6 +740,7 @@ fn resolve_entry_with_parse_cache(
     ),
     String,
 > {
+    set_phase(FloorPhase::Resolve, entry_file);
     let sources = load_sources_for_entry_with_index(&index.source_files, entry_file)?;
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
@@ -813,6 +820,7 @@ fn resolve_entry_with_parse_cache(
         return Err(format_error_nodes(&norm.diagnostics, &source_indices));
     }
 
+    set_phase(FloorPhase::Typecheck, entry_file);
     let typed = reconcile_with_typed_cache(
         norm.graph.clone(),
         source_indices.clone(),
@@ -4198,6 +4206,7 @@ pub fn run_discovery_corpus_with_options(
     if rows.is_empty() {
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
+    set_phase(FloorPhase::Discovery, "discovery-roster");
     let diff_outcome = if options.skip_unaffected_node_frontier {
         match floor_git_diff_range() {
             Ok(text) => FloorGitDiffOutcome::UnifiedProduced(text),
@@ -4455,6 +4464,7 @@ fn run_discovery_rows(
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
             let resolve_started = std::time::Instant::now();
+            set_phase(FloorPhase::Resolve, &row.entry);
             let (graph, source_indices) =
                 resolve_entry_with_index_for_discovery_corpus(index, &row.entry)
                     .map_err(|msg| format!("resolve failed for {}: {}", row.entry, msg))?;
@@ -4537,6 +4547,10 @@ fn run_discovery_rows(
         let closure_subject = current_closure_subject
             .as_deref()
             .expect("closure subject set above");
+        set_phase(
+            FloorPhase::Eval,
+            &format!("{}::{}", row.entry, row.function),
+        );
         let (outcome, receipt) = run_claim_measured(ctx_ref, closure_subject, &row.function);
         summary.total_measured_nanos += receipt.wall_nanos;
         summary.performance_receipts.push(receipt);
