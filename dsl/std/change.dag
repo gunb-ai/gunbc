@@ -3,7 +3,7 @@ module std.change
 import std.types { List, Bool }
 import std.algebra { Monoid }
 
-data keyed_change_doc: String = "Keyed delta fold carrier — generic keyed zip-fold into an algebraic codomain. Unchanged vanishes by monoid identity (never by filtering). Three-way uses a join-semilattice with KeyedUnchanged as the benign bottom (safety inversion of std.termination.DescentEvidence, whose bottom is the fail state). Codomain carries NO Unknown element."
+data keyed_change_doc: String = "Keyed delta fold carrier — generic keyed zip-fold into an algebraic codomain. Unchanged vanishes by monoid identity (never by filtering). Three-way uses a join-semilattice with KeyedUnchanged as the benign bottom (safety inversion of std.termination.DescentEvidence, whose bottom is the fail state). KeyedLeafVerdict is the single three-way authority (verdict is the plan). Codomain carries NO Unknown element."
 
 type KeyedRow<K, V> {
   row_key: K
@@ -11,9 +11,9 @@ type KeyedRow<K, V> {
 }
 
 type KeyedDiffKind
-  = KeyedAdded
-  | KeyedRemoved
-  | KeyedModified
+  = KeyedDiffAdded
+  | KeyedDiffRemoved
+  | KeyedDiffModified
 
 type KeyedDiffHunk<K, V> {
   hunk_key: K
@@ -26,19 +26,15 @@ type KeyedPatch<K, V> {
   hunks: List<KeyedDiffHunk<K, V>>
 }
 
+type KeyedLeafMutationKind<V>
+  = KeyedApplyHunk { from: V, to: V }
+  | KeyedVerdictAdded { value: V }
+  | KeyedVerdictRemoved { value: V }
+
 type KeyedLeafVerdict<V>
   = KeyedUnchanged
-  | KeyedApplyHunk { from: V, to: V }
-  | KeyedAdded { value: V }
-  | KeyedRemoved { value: V }
   | KeyedConflict
-
-type KeyedConvergePlan<V>
-  = KeyedPlanApply { from: V, to: V }
-  | KeyedPlanAdd { value: V }
-  | KeyedPlanRemove { value: V }
-  | KeyedPlanNoop
-  | KeyedPlanConflict
+  | KeyedLeafMutation { mutation: KeyedLeafMutationKind<V> }
 
 type KeyedThreeWayEntry<K, V> {
   entry_key: K
@@ -46,6 +42,11 @@ type KeyedThreeWayEntry<K, V> {
 }
 
 type KeyedThreeWayPatch<K, V> {
+  entries: List<KeyedThreeWayEntry<K, V>>
+}
+
+type KeyedThreeWayInsertAcc<K, V> {
+  replaced: Bool
   entries: List<KeyedThreeWayEntry<K, V>>
 }
 
@@ -111,34 +112,33 @@ fn keyed_three_way_patch_insert_entry<K, V>(
   key_eq: fn(K, K) -> Bool,
   value_eq: fn(V, V) -> Bool,
 ) -> KeyedThreeWayPatch<K, V> {
-  match fold(patch.entries, init: none, f: fn(found, existing) {
+  let acc = fold(patch.entries, init: KeyedThreeWayInsertAcc {
+    replaced: false,
+    entries: [],
+  }, f: fn(state, existing) {
     if key_eq(a: existing.entry_key, b: entry.entry_key) {
-      Present {
-        value: KeyedThreeWayEntry {
+      KeyedThreeWayInsertAcc {
+        replaced: true,
+        entries: concat(state.entries, [KeyedThreeWayEntry {
           entry_key: entry.entry_key,
           verdict: keyed_leaf_verdict_join(
             a: existing.verdict,
             b: entry.verdict,
             equal: value_eq,
           ),
-        }
+        }]),
       }
     } else {
-      found
-    }
-  }) {
-    Present { value: merged } =>
-      KeyedThreeWayPatch {
-        entries: fold(patch.entries, init: [], f: fn(kept, existing) {
-          if key_eq(a: existing.entry_key, b: entry.entry_key) {
-            concat(kept, [merged])
-          } else {
-            concat(kept, [existing])
-          }
-        }),
+      KeyedThreeWayInsertAcc {
+        replaced: state.replaced,
+        entries: concat(state.entries, [existing]),
       }
-    Absent =>
-      KeyedThreeWayPatch { entries: concat(patch.entries, [entry]) }
+    }
+  })
+  if acc.replaced {
+    KeyedThreeWayPatch { entries: acc.entries }
+  } else {
+    KeyedThreeWayPatch { entries: concat(acc.entries, [entry]) }
   }
 }
 
@@ -174,60 +174,12 @@ fn keyed_three_way_leaf<V>(
   if equal(a: observed, b: desired) {
     KeyedUnchanged
   } else { if equal(a: observed, b: base) {
-    KeyedApplyHunk { from: base, to: desired }
+    KeyedLeafMutation {
+      mutation: KeyedApplyHunk { from: base, to: desired },
+    }
   } else {
     KeyedConflict
   } }
-}
-
-fn keyed_plan_from_verdict<V>(verdict: KeyedLeafVerdict<V>) -> KeyedConvergePlan<V> {
-  match verdict {
-    KeyedUnchanged => KeyedPlanNoop
-    KeyedApplyHunk { from: f, to: t } => KeyedPlanApply { from: f, to: t }
-    KeyedAdded { value: v } => KeyedPlanAdd { value: v }
-    KeyedRemoved { value: v } => KeyedPlanRemove { value: v }
-    KeyedConflict => KeyedPlanConflict
-  }
-}
-
-fn keyed_plan_has_apply_arm<V>(plan: KeyedConvergePlan<V>) -> Bool {
-  match plan {
-    KeyedPlanApply { from: _, to: _ } => true
-    KeyedPlanAdd { value: _ } => true
-    KeyedPlanRemove { value: _ } => true
-    KeyedPlanNoop => false
-    KeyedPlanConflict => false
-  }
-}
-
-fn keyed_leaf_has_apply_arm<V>(verdict: KeyedLeafVerdict<V>) -> Bool {
-  match verdict {
-    KeyedApplyHunk { from: _, to: _ } => true
-    KeyedAdded { value: _ } => true
-    KeyedRemoved { value: _ } => true
-    KeyedUnchanged => false
-    KeyedConflict => false
-  }
-}
-
-fn keyed_leaf_is_noop<V>(verdict: KeyedLeafVerdict<V>) -> Bool {
-  match verdict {
-    KeyedUnchanged => true
-    KeyedApplyHunk { from: _, to: _ } => false
-    KeyedAdded { value: _ } => false
-    KeyedRemoved { value: _ } => false
-    KeyedConflict => false
-  }
-}
-
-fn keyed_leaf_is_conflict<V>(verdict: KeyedLeafVerdict<V>) -> Bool {
-  match verdict {
-    KeyedConflict => true
-    KeyedUnchanged => false
-    KeyedApplyHunk { from: _, to: _ } => false
-    KeyedAdded { value: _ } => false
-    KeyedRemoved { value: _ } => false
-  }
 }
 
 fn keyed_leaf_verdict_join<V>(
@@ -238,20 +190,24 @@ fn keyed_leaf_verdict_join<V>(
   match a {
     KeyedUnchanged => b
     KeyedConflict => KeyedConflict
-    KeyedApplyHunk { from: fa, to: ta } => match b {
+    KeyedLeafMutation { mutation: ma } => match b {
       KeyedUnchanged => a
       KeyedConflict => KeyedConflict
-      KeyedApplyHunk { from: fb, to: tb } =>
-        if equal(a: fa, b: fb) && equal(a: ta, b: tb) {
-          a
-        } else {
-          KeyedConflict
+      KeyedLeafMutation { mutation: mb } => match ma {
+        KeyedApplyHunk { from: fa, to: ta } => match mb {
+          KeyedApplyHunk { from: fb, to: tb } =>
+            if equal(a: fa, b: fb) && equal(a: ta, b: tb) {
+              a
+            } else {
+              KeyedConflict
+            }
+          KeyedVerdictAdded { value: _ } => KeyedConflict
+          KeyedVerdictRemoved { value: _ } => KeyedConflict
         }
-      KeyedAdded { value: _ } => KeyedConflict
-      KeyedRemoved { value: _ } => KeyedConflict
+        KeyedVerdictAdded { value: _ } => KeyedConflict
+        KeyedVerdictRemoved { value: _ } => KeyedConflict
+      }
     }
-    KeyedAdded { value: _ } => KeyedConflict
-    KeyedRemoved { value: _ } => KeyedConflict
   }
 }
 
@@ -269,27 +225,15 @@ fn keyed_row_find<K, V>(
   })
 }
 
-fn keyed_key_in_list<K, V>(
-  rows: List<KeyedRow<K, V>>,
-  wanted_key: K,
-  key_eq: fn(K, K) -> Bool,
-) -> Bool {
-  match keyed_row_find(rows: rows, wanted_key: wanted_key, key_eq: key_eq) {
-    Present { value: _ } => true
-    Absent => false
-  }
-}
-
 fn keyed_merge_row_lists<K, V>(
   left: List<KeyedRow<K, V>>,
   right: List<KeyedRow<K, V>>,
   key_eq: fn(K, K) -> Bool,
 ) -> List<KeyedRow<K, V>> {
   fold(right, init: left, f: fn(acc, row) {
-    if keyed_key_in_list(rows: acc, wanted_key: row.row_key, key_eq: key_eq) {
-      acc
-    } else {
-      concat(acc, [row])
+    match keyed_row_find(rows: acc, wanted_key: row.row_key, key_eq: key_eq) {
+      Present { value: _ } => acc
+      Absent => concat(acc, [row])
     }
   })
 }
@@ -352,7 +296,7 @@ fn keyed_two_way_row<K, V>(
           Present {
             value: KeyedDiffHunk {
               hunk_key: wanted_key,
-              kind: KeyedModified,
+              kind: KeyedDiffModified,
               from: Present { value: lr.value },
               to: Present { value: rr.value },
             }
@@ -362,7 +306,7 @@ fn keyed_two_way_row<K, V>(
         Present {
           value: KeyedDiffHunk {
             hunk_key: wanted_key,
-            kind: KeyedRemoved,
+            kind: KeyedDiffRemoved,
             from: Present { value: lr.value },
             to: none,
           }
@@ -373,7 +317,7 @@ fn keyed_two_way_row<K, V>(
         Present {
           value: KeyedDiffHunk {
             hunk_key: wanted_key,
-            kind: KeyedAdded,
+            kind: KeyedDiffAdded,
             from: none,
             to: Present { value: rr.value },
           }
@@ -447,7 +391,9 @@ fn keyed_three_way_row_verdict<K, V>(
           )
         Absent =>
           if value_eq(a: orow.value, b: brow.value) {
-            KeyedRemoved { value: brow.value }
+            KeyedLeafMutation {
+              mutation: KeyedVerdictRemoved { value: brow.value },
+            }
           } else {
             KeyedConflict
           }
@@ -469,7 +415,9 @@ fn keyed_three_way_row_verdict<K, V>(
       }
       Absent => match d {
         Present { value: drow } =>
-          KeyedAdded { value: drow.value }
+          KeyedLeafMutation {
+            mutation: KeyedVerdictAdded { value: drow.value },
+          }
         Absent => KeyedUnchanged
       }
     }
@@ -566,15 +514,15 @@ fn keyed_apply_row<K, V>(
   key_eq: fn(K, K) -> Bool,
 ) -> KeyedRow<K, V> {
   match hunk.kind {
-    KeyedModified => match hunk.to {
+    KeyedDiffModified => match hunk.to {
       Present { value: v } => KeyedRow { row_key: row.row_key, value: v }
       Absent => row
     }
-    KeyedAdded => match hunk.to {
+    KeyedDiffAdded => match hunk.to {
       Present { value: v } => KeyedRow { row_key: row.row_key, value: v }
       Absent => row
     }
-    KeyedRemoved => row
+    KeyedDiffRemoved => row
   }
 }
 
@@ -585,13 +533,13 @@ fn keyed_apply_patch<K, V>(
 ) -> List<KeyedRow<K, V>> {
   fold(patch.hunks, init: rows, f: fn(acc, hunk) {
     match hunk.kind {
-      KeyedAdded => match hunk.to {
+      KeyedDiffAdded => match hunk.to {
         Present { value: v } => concat(acc, [KeyedRow { row_key: hunk.hunk_key, value: v }])
         Absent => acc
       }
-      KeyedRemoved =>
+      KeyedDiffRemoved =>
         filter(acc, fn(row) { !key_eq(a: row.row_key, b: hunk.hunk_key) })
-      KeyedModified =>
+      KeyedDiffModified =>
         match keyed_row_find(rows: acc, wanted_key: hunk.hunk_key, key_eq: key_eq) {
           Present { value: row } =>
             concat(
@@ -606,24 +554,24 @@ fn keyed_apply_patch<K, V>(
 
 fn keyed_invert_hunk<K, V>(hunk: KeyedDiffHunk<K, V>) -> KeyedDiffHunk<K, V> {
   match hunk.kind {
-    KeyedAdded =>
+    KeyedDiffAdded =>
       KeyedDiffHunk {
         hunk_key: hunk.hunk_key,
-        kind: KeyedRemoved,
+        kind: KeyedDiffRemoved,
         from: hunk.to,
         to: none,
       }
-    KeyedRemoved =>
+    KeyedDiffRemoved =>
       KeyedDiffHunk {
         hunk_key: hunk.hunk_key,
-        kind: KeyedAdded,
+        kind: KeyedDiffAdded,
         from: none,
         to: hunk.from,
       }
-    KeyedModified =>
+    KeyedDiffModified =>
       KeyedDiffHunk {
         hunk_key: hunk.hunk_key,
-        kind: KeyedModified,
+        kind: KeyedDiffModified,
         from: hunk.to,
         to: hunk.from,
       }
@@ -648,22 +596,22 @@ fn keyed_three_way_entry_count<K, V>(patch: KeyedThreeWayPatch<K, V>) -> Int {
 
 fn keyed_three_way_has_conflict<K, V>(patch: KeyedThreeWayPatch<K, V>) -> Bool {
   fold(patch.entries, init: false, f: fn(acc, entry) {
-    acc || keyed_leaf_is_conflict(verdict: entry.verdict)
+    acc || match entry.verdict {
+      KeyedConflict => true
+      KeyedUnchanged => false
+      KeyedLeafMutation { mutation: _ } => false
+    }
   })
 }
 
 fn keyed_three_way_has_apply<K, V>(patch: KeyedThreeWayPatch<K, V>) -> Bool {
   fold(patch.entries, init: false, f: fn(acc, entry) {
-    acc || keyed_leaf_has_apply_arm(verdict: entry.verdict)
+    acc || match entry.verdict {
+      KeyedLeafMutation { mutation: _ } => true
+      KeyedUnchanged => false
+      KeyedConflict => false
+    }
   })
-}
-
-fn keyed_hunk_kind_equal(a: KeyedDiffKind, b: KeyedDiffKind) -> Bool {
-  match a {
-    KeyedAdded => match b { KeyedAdded => true, _ => false }
-    KeyedRemoved => match b { KeyedRemoved => true, _ => false }
-    KeyedModified => match b { KeyedModified => true, _ => false }
-  }
 }
 
 fn keyed_optional_value_equal<V>(
@@ -687,7 +635,11 @@ fn keyed_diff_hunks_equal<K, V>(
   value_eq: fn(V, V) -> Bool,
 ) -> Bool {
   key_eq(a: left.hunk_key, b: right.hunk_key)
-    && keyed_hunk_kind_equal(a: left.kind, b: right.kind)
+    && match left.kind {
+      KeyedDiffAdded => match right.kind { KeyedDiffAdded => true, _ => false }
+      KeyedDiffRemoved => match right.kind { KeyedDiffRemoved => true, _ => false }
+      KeyedDiffModified => match right.kind { KeyedDiffModified => true, _ => false }
+    }
     && keyed_optional_value_equal(left: left.from, right: right.from, value_eq: value_eq)
     && keyed_optional_value_equal(left: left.to, right: right.to, value_eq: value_eq)
 }

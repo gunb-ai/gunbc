@@ -3,10 +3,10 @@ module gunbc.host_identity_knob
 import std.types { String, Bool }
 import std.change {
   KeyedLeafVerdict,
+  KeyedLeafMutation,
+  KeyedUnchanged,
+  KeyedConflict,
   keyed_three_way_leaf,
-  keyed_leaf_has_apply_arm,
-  keyed_leaf_is_noop,
-  keyed_leaf_is_conflict,
 }
 import product.placement_supply { HostIdentity }
 
@@ -51,15 +51,27 @@ fn three_way_leaf(
 }
 
 fn host_identity_leaf_has_apply_arm(verdict: HostIdentityLeafVerdict) -> Bool {
-  keyed_leaf_has_apply_arm(verdict: verdict)
+  match verdict {
+    KeyedLeafMutation { mutation: _ } => true
+    KeyedUnchanged => false
+    KeyedConflict => false
+  }
 }
 
 fn host_identity_leaf_is_noop(verdict: HostIdentityLeafVerdict) -> Bool {
-  keyed_leaf_is_noop(verdict: verdict)
+  match verdict {
+    KeyedUnchanged => true
+    KeyedLeafMutation { mutation: _ } => false
+    KeyedConflict => false
+  }
 }
 
 fn host_identity_leaf_is_conflict(verdict: HostIdentityLeafVerdict) -> Bool {
-  keyed_leaf_is_conflict(verdict: verdict)
+  match verdict {
+    KeyedConflict => true
+    KeyedUnchanged => false
+    KeyedLeafMutation { mutation: _ } => false
+  }
 }
 
 fn host_identity_patch_from_intents(
