@@ -77,7 +77,7 @@ fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> Node?
 }
 
 fn collect_unit_variant_phantom_matches(env: TypeEnv, variant_name: String) -> List<Node> {
-  fold(map_keys(env.bindings), init: [], f: (acc, ident) =>
+  fold(flatten_visible_bindings(env: env) |> map_keys, init: [], f: (acc, ident) =>
     match lookup_type(env: env, ident: ident) {
       Present { value: ty_node } =>
         match unit_variant_in_coproduct(
