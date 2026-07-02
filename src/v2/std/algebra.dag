@@ -84,7 +84,7 @@ type FreeMonoidUniqueState<T> {
 fn fold_list<T, A>(xs: FreeMonoid<T>, empty: A, cons: fn(A, T) -> A) -> A {
   match xs {
     Empty => empty
-    Cons { head: h, tail: t } => fold_list(xs: t, empty: cons(empty, h), cons: cons)
+    Cons { head: h, tail: t } => fold_list(xs: t, empty: empty, cons: cons)
   }
 }
 fn fold_non_empty<T>(head: T, tail: FreeMonoid<T>, cons: fn(T, T) -> T) -> T {
