@@ -11757,6 +11757,14 @@ pub fn union_parent_type_env_caches(
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
 ) -> Rc<TypeEnvCache> {
+    if resolved_imports.len() == 1 {
+        if let Some(imp) = resolved_imports.first().cloned() {
+            if let Some(parent) = v1_rt::map_get(&parent_index, imp.module_path.clone()) {
+                return parent.type_env_cache.clone();
+            }
+        }
+        return empty_type_env_cache();
+    }
     resolved_imports.iter().cloned().fold(
         empty_type_env_cache(),
         |acc: Rc<TypeEnvCache>, imp: Rc<ResolvedImport>| match v1_rt::map_get(
@@ -12534,7 +12542,11 @@ pub fn build_type_env(
         );
         let import_cache =
             union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone());
-        let ancestry_cache = merge_type_env_cache(import_cache, kernel_cache);
+        let ancestry_cache = if module.resolved_imports.clone().len() == 1 {
+            import_cache.clone()
+        } else {
+            merge_type_env_cache(import_cache, kernel_cache)
+        };
         let local_deps_map = Rc::new(v1_rt::map_values(&all_local_bindings))
             .iter()
             .cloned()
@@ -12967,7 +12979,11 @@ pub fn build_type_env_unresolved(
         );
         let import_cache =
             union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone());
-        let ancestry_cache = merge_type_env_cache(import_cache, kernel_cache);
+        let ancestry_cache = if module.resolved_imports.clone().len() == 1 {
+            import_cache.clone()
+        } else {
+            merge_type_env_cache(import_cache, kernel_cache)
+        };
         let local_deps_map = Rc::new(v1_rt::map_values(&local_bindings))
             .iter()
             .cloned()
@@ -14513,19 +14529,32 @@ pub fn import_module_path_at(
 
 pub fn rewire_type_env_import_str_binding_identity(
     modules: Rc<Vec<Rc<TypedModule>>>,
-    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    _source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
-    use crate::v1_compiler_infer_env::lookup_binding_by_name;
-    let index = modules.clone().iter().cloned().fold(
-        v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
-        |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
-            v1_rt::rc_map_insert(
-                acc,
-                authored_name_at(source_indices.clone(), m.module.clone()),
-                m.clone(),
-            )
-        },
-    );
+    fn local_authority_binding(
+        owner: Rc<TypedModule>,
+        name: String,
+    ) -> Option<Rc<TypeBinding>> {
+        owner
+            .type_env
+            .bindings
+            .values()
+            .find(|b| b.name.clone() == name)
+            .cloned()
+    }
+
+    fn local_authority_for_name(
+        modules: Rc<Vec<Rc<TypedModule>>>,
+        name: String,
+    ) -> Option<Rc<TypedModule>> {
+        modules.iter().find(|m| {
+            m.type_env
+                .bindings
+                .values()
+                .any(|b| b.name.clone() == name)
+        }).cloned()
+    }
+
     Rc::new({
         let mut __result = Vec::new();
         for m in modules.clone().iter().cloned() {
@@ -14537,33 +14566,23 @@ pub fn rewire_type_env_import_str_binding_identity(
                 .collect();
             let mut str_bindings = m.type_env.str_bindings.clone();
             let mut ancestry_str_bindings = m.type_env.ancestry_str_bindings.clone();
-            for imp in module_imports(m.module.clone()).iter().cloned() {
-                let path = import_module_path_at(imp.clone(), source_indices.clone());
-                if let Some(parent) = v1_rt::map_get(&index, path.clone()) {
-                    for name in Rc::new(v1_rt::map_keys(&ancestry_str_bindings))
-                        .iter()
-                        .cloned()
-                    {
-                        if local_names.contains(&name) {
-                            continue;
-                        }
-                        if let Some(canonical) =
-                            lookup_binding_by_name(parent.type_env.clone(), name.clone())
-                        {
-                            ancestry_str_bindings = v1_rt::rc_map_insert(
-                                ancestry_str_bindings,
-                                name.clone(),
-                                canonical.clone(),
-                            );
-                        }
-                    }
-                    for name in Rc::new(v1_rt::map_keys(&str_bindings)).iter().cloned() {
-                        if local_names.contains(&name) {
-                            continue;
-                        }
-                        if let Some(canonical) =
-                            lookup_binding_by_name(parent.type_env.clone(), name.clone())
-                        {
+            let inherited_names: std::collections::HashSet<String> = Rc::new(v1_rt::map_keys(
+                &ancestry_str_bindings,
+            ))
+            .iter()
+            .chain(Rc::new(v1_rt::map_keys(&str_bindings)).iter())
+            .cloned()
+            .filter(|name| !local_names.contains(name))
+            .collect();
+            for name in inherited_names {
+                if let Some(owner) = local_authority_for_name(modules.clone(), name.clone()) {
+                    if let Some(canonical) = local_authority_binding(owner, name.clone()) {
+                        ancestry_str_bindings = v1_rt::rc_map_insert(
+                            ancestry_str_bindings,
+                            name.clone(),
+                            canonical.clone(),
+                        );
+                        if v1_rt::map_contains_key(&str_bindings, name.clone()) {
                             str_bindings =
                                 v1_rt::rc_map_insert(str_bindings, name.clone(), canonical);
                         }

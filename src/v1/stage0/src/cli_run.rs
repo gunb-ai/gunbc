@@ -921,6 +921,13 @@ fn reconcile_with_typed_cache(
         }
         acc
     });
+    let modules = v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
+    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
+        modules.clone(),
+        source_indices.clone(),
+    );
+    let modules =
+        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
     let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
     maybe_print_type_env_lookup_profile();
     Rc::new(ResolvedGraph {

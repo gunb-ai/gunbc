@@ -312,6 +312,7 @@ fn empty_type_env() -> Rc<TypeEnv> {
     Rc::new(TypeEnv {
         bindings: Rc::new(std::collections::HashMap::new()),
         str_bindings: Rc::new(std::collections::HashMap::new()),
+        ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
@@ -991,6 +992,7 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
             str_bindings: Rc::new(std::collections::HashMap::new()),
+            ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
@@ -1015,6 +1017,7 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
             str_bindings: Rc::new(std::collections::HashMap::new()),
+            ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
@@ -1039,6 +1042,7 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
         Rc::new(TypeEnv {
             bindings: Rc::new(std::collections::HashMap::new()),
             str_bindings: Rc::new(std::collections::HashMap::new()),
+            ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
             parents: Rc::new(vec![]),
             recursive_types: Rc::new(vec![]),
             recursive_type_set: Rc::new(std::collections::HashMap::new()),
@@ -1100,6 +1104,7 @@ fn resolve_node_uses_node_name_for_lookup() {
             "User".to_string(),
             user_binding,
         )])),
+        ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),
@@ -1616,6 +1621,7 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
             "Box".to_string(),
             box_binding,
         )])),
+        ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: Rc::new(vec![]),
         recursive_type_set: Rc::new(std::collections::HashMap::new()),

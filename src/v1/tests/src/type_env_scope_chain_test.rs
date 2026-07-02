@@ -288,6 +288,7 @@ fn type_env_import_resolves_via_str_bindings_index() {
     let stripped = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
         bindings: consumer.type_env.bindings.clone(),
         str_bindings: Rc::new(std::collections::HashMap::new()),
+        ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
         parents: consumer.type_env.parents.clone(),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
@@ -318,6 +319,7 @@ fn type_env_dropped_parent_chain_fails_lookup() {
     let stripped = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
         bindings: consumer.type_env.bindings.clone(),
         str_bindings: consumer.type_env.str_bindings.clone(),
+        ancestry_str_bindings: consumer.type_env.ancestry_str_bindings.clone(),
         parents: Rc::new(vec![]),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
@@ -332,6 +334,7 @@ fn type_env_dropped_parent_chain_fails_lookup() {
     let stripped_index = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
         bindings: consumer.type_env.bindings.clone(),
         str_bindings: Rc::new(std::collections::HashMap::new()),
+        ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
         parents: Rc::new(vec![]),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
