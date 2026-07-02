@@ -1,0 +1,195 @@
+module extdeps.languages.yaml.emit
+
+import extdeps.languages.yaml.types {
+  YamlValue, YamlKeyValue,
+  YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping
+}
+import std.layout {
+  Doc, DocLine, DocConcat,
+  LayoutProtocol,
+  doc_text, doc_concat, doc_nest, doc_line_of,
+  render
+}
+
+data yaml_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "  " }
+
+fn is_expression(s: String) -> Bool {
+  starts_with(s: s, prefix: "${{")
+}
+
+fn is_reserved_yaml_scalar(s: String) -> Bool {
+  (s == "true") ||
+    (s == "false") ||
+    (s == "null") ||
+    (s == "yes") ||
+    (s == "no") ||
+    (s == "~")
+}
+
+fn starts_with_yaml_indicator(s: String) -> Bool {
+  starts_with(s: s, prefix: "- ") ||
+    starts_with(s: s, prefix: "?") ||
+    starts_with(s: s, prefix: ":") ||
+    starts_with(s: s, prefix: ",") ||
+    starts_with(s: s, prefix: "[") ||
+    starts_with(s: s, prefix: "]") ||
+    starts_with(s: s, prefix: "{") ||
+    starts_with(s: s, prefix: "}") ||
+    starts_with(s: s, prefix: "#") ||
+    starts_with(s: s, prefix: "&") ||
+    starts_with(s: s, prefix: "*") ||
+    starts_with(s: s, prefix: "!") ||
+    starts_with(s: s, prefix: "|") ||
+    starts_with(s: s, prefix: ">") ||
+    starts_with(s: s, prefix: "'") ||
+    starts_with(s: s, prefix: "\"") ||
+    starts_with(s: s, prefix: "%") ||
+    starts_with(s: s, prefix: "@") ||
+    starts_with(s: s, prefix: "`")
+}
+
+fn needs_double_quotes(s: String) -> Bool {
+  is_reserved_yaml_scalar(s: s) ||
+    starts_with_yaml_indicator(s: s) ||
+    string_contains(s: s, pattern: ": ") ||
+    string_contains(s: s, pattern: " #")
+}
+
+fn escape_double_quoted(s: String) -> String {
+  replace(replace(s, "\\", "\\\\"), "\"", "\\\"")
+}
+
+fn emit_inline_scalar_text(s: String) -> String {
+  if s == "" {
+    "''"
+  } else if is_expression(s: s) {
+    s
+  } else if needs_double_quotes(s: s) {
+    concat(concat("\"", escape_double_quoted(s: s)), "\"")
+  } else {
+    s
+  }
+}
+
+fn emit_scalar(v: YamlValue) -> String {
+  match v {
+    YamlNull => ""
+    YamlBool { value: b } => if b { "true" } else { "false" }
+    YamlInt { lexeme: l } => l
+    YamlFloat { lexeme: l } => l
+    YamlString { value: s } => emit_inline_scalar_text(s: s)
+    YamlSequence { elements: _ } => ""
+    YamlMapping { entries: _ } => ""
+  }
+}
+
+fn all_scalars_flowable(elements: List<YamlValue>) -> Bool {
+  fold(elements, init: true, f: (acc, e) => acc && match e {
+    YamlString { value: s } => !string_contains(s: s, pattern: "\n")
+    YamlInt { lexeme: _ } => true
+    YamlBool { value: _ } => true
+    _ => false
+  })
+}
+
+fn emit_flow_sequence(elements: List<YamlValue>) -> String {
+  concat(
+    concat(
+      "[",
+      fold(elements, init: "", f: (acc, e) => {
+        let part = emit_scalar(v: e)
+        if acc == "" { part } else { concat(concat(acc, ", "), part) }
+      })
+    ),
+    "]"
+  )
+}
+
+fn nested_body_doc(body: Doc) -> Doc {
+  doc_nest(levels: 1, body: doc_concat(parts: [DocLine, body]))
+}
+
+fn multiline_block_doc(prefix: String, s: String) -> Doc {
+  let lines = filter(split(s: s, delimiter: "\n"), l => l != "")
+  let content = fold(lines, init: [], f: (acc, l) => append(acc, items: [DocLine, doc_text(text: l)]))
+  doc_concat(parts: [
+    doc_text(text: concat(prefix, "|")),
+    doc_nest(levels: 1, body: doc_concat(parts: content)),
+    DocLine
+  ])
+}
+
+fn entry_doc(entry: YamlKeyValue) -> Doc {
+  let key = entry.key
+  let val = entry.value
+  match val {
+    YamlNull => doc_line_of(text: concat(key, ":"))
+    YamlMapping { entries: nested } =>
+      doc_concat(parts: [doc_text(text: concat(key, ":")), nested_body_doc(body: mapping_body_doc(entries: nested))])
+    YamlSequence { elements: els } =>
+      if all_scalars_flowable(elements: els) {
+        doc_line_of(text: concat(concat(key, ": "), emit_flow_sequence(elements: els)))
+      } else {
+        doc_concat(parts: [doc_text(text: concat(key, ":")), nested_body_doc(body: block_sequence_doc(elements: els))])
+      }
+    YamlString { value: s } =>
+      if string_contains(s: s, pattern: "\n") {
+        multiline_block_doc(prefix: concat(key, ": "), s: s)
+      } else {
+        doc_line_of(text: concat(concat(key, ": "), emit_inline_scalar_text(s: s)))
+      }
+    _ => doc_line_of(text: concat(concat(key, ": "), emit_scalar(v: val)))
+  }
+}
+
+fn mapping_body_doc(entries: List<YamlKeyValue>) -> Doc {
+  doc_concat(parts: map(entries, e => entry_doc(entry: e)))
+}
+
+fn block_sequence_element_doc(e: YamlValue) -> Doc {
+  match e {
+    YamlMapping { entries: ents } =>
+      doc_concat(parts: [doc_text(text: "- "), doc_nest(levels: 1, body: mapping_body_doc(entries: ents))])
+    YamlString { value: s } =>
+      if string_contains(s: s, pattern: "\n") {
+        multiline_block_doc(prefix: "- ", s: s)
+      } else {
+        doc_line_of(text: concat("- ", emit_inline_scalar_text(s: s)))
+      }
+    YamlNull => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlBool { value: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlInt { lexeme: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlFloat { lexeme: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+    YamlSequence { elements: _ } => doc_line_of(text: concat("- ", emit_scalar(v: e)))
+  }
+}
+
+fn block_sequence_doc(elements: List<YamlValue>) -> Doc {
+  doc_concat(parts: map(elements, e => block_sequence_element_doc(e: e)))
+}
+
+fn project_yaml_to_doc(v: YamlValue) -> Doc {
+  match v {
+    YamlMapping { entries: ents } => mapping_body_doc(entries: ents)
+    YamlSequence { elements: els } =>
+      if all_scalars_flowable(elements: els) {
+        doc_line_of(text: emit_flow_sequence(elements: els))
+      } else {
+        block_sequence_doc(elements: els)
+      }
+    YamlString { value: s } =>
+      if string_contains(s: s, pattern: "\n") {
+        multiline_block_doc(prefix: "", s: s)
+      } else {
+        doc_line_of(text: emit_inline_scalar_text(s: s))
+      }
+    YamlNull => doc_line_of(text: emit_scalar(v: v))
+    YamlBool { value: _ } => doc_line_of(text: emit_scalar(v: v))
+    YamlInt { lexeme: _ } => doc_line_of(text: emit_scalar(v: v))
+    YamlFloat { lexeme: _ } => doc_line_of(text: emit_scalar(v: v))
+  }
+}
+
+fn serialize_yaml(v: YamlValue) -> String {
+  render(doc: project_yaml_to_doc(v: v), proto: yaml_protocol)
+}
