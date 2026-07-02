@@ -34,8 +34,8 @@ type LensContract {                        // grows LensRegistryEntryV0, one con
   lens_id: LensIdV0
   module_path: LensModulePathV0            // already present
   claimed_scope: SubjectRoster             // reuse the subject_roster carrier
-  mode: Blocking | AuditOnly | Advisory
-  consumer: FloorGate | WitnessOnly | None // "referenced by synthesis" == None
+  mode: EnforcementMode                    // Advisory < AuditOnly < Blocking (§12)
+  consumer: ConsumerKind                   // FloorGate | MergeAdmission | … | None (§12); "referenced by synthesis" == None
   red_control: Present { witness: QualifiedName } | Absent
   self_application: SelfApplies | Exempt { reason: String }
   boundary: ConstructionJustification      // reuse — WallNow / WallAfterGrounding / RatchetForever
@@ -51,13 +51,16 @@ type StandingIntent {
   property: PropertyClass                   // reuse the lens property vocabulary (Complexity, …)
   desired_scope: SubjectRoster              // default = WHOLE CORPUS (see §5)
   required_subjects: List<QualifiedName>    // the receipts that MUST be covered
-  default_mode: Blocking | AuditOnly | Advisory
+  default_mode: EnforcementMode            // Advisory < AuditOnly < Blocking (§12)
+  required_consumer: ConsumerRequirement   // AnyLiveConsumer | OneOf | Exact (§12) — NOT hardwired to FloorGate
   self_application_required: Bool
   fallback_when_unavailable: Refuse | Unknown | AuditOnlyWithReason  // never silently OK (§5)
 }
 ```
 
 `StandingIntent` references the property and subject carriers rather than restating them; it is the single home for "what the operator wants," so a future PR can refine the *implementation* but cannot silently narrow the *intent*.
+
+**Admission rule — `StandingIntent` is durable governance, not a preference bucket.** A row is admissible only if it (a) *recurs* across PRs, (b) has a *named displaced cost* (§6), (c) has a *scope*, (d) names an *enforcement mechanism class*, and (e) *can produce a receipt*. "make this cleaner" / "prefer better names" fail (a) and (e); the five initial rows pass. This keeps the carrier from degenerating into a global lint dump.
 
 ## 4. The meta-gate (decidable — a wall now)
 
@@ -67,11 +70,11 @@ enforcement_intent_gate(intent: StandingIntent, contracts: List<LensContract>, r
 
 For each `StandingIntent` it proves, all fail-closed (`fallback_when_unavailable` on any miss — never green):
 
-1. **claimed** — some `LensContract` names `intent.property` with `mode >= intent.default_mode`.
-2. **scope ⊇** — that contract's `claimed_scope` covers `intent.desired_scope` (set-containment on declared roots — decidable).
-3. **subjects ⊇** — the *discovered* subject set includes every `required_subject` (membership over the live discovery — decidable; this is the leg that fails today on `src/v1/04_infer.dag::build_type_env`).
-4. **live consumer** — `consumer == FloorGate` (reuses the inert-lens backstop; `None` = the coverage-by-illusion failure).
-5. **red control** — `red_control == Present` and that witness goes red under perturbation (§5 green-by-execution + discriminating red).
+1. **claimed** — some `LensContract` names `intent.property` with `enforcement_mode_satisfies(contract.mode, intent.default_mode)` (§12 order; no overloaded `>=`).
+2. **scope ⊇** — `scope_satisfaction(contract.claimed_scope, intent.desired_scope)` is `ScopeCovers`, or a typed `ScopeNarrowed { reason }` whose reason kind the intent allows (§12; set-containment on declared roots — decidable).
+3. **subjects ⊇** — the *discovered* subject set (from the `CoverageReceipt`, not the contract's claim) includes every `required_subject` (membership over the live discovery — decidable; this is the leg that fails today on `src/v1/04_infer.dag::build_type_env`).
+4. **live consumer** — `consumer_satisfies(contract.consumer, intent.required_consumer)` (§12) — NOT hardwired to `FloorGate`, so merge-admission / pre-push / periodic-actuator / deploy-readback consumers count; `None` = the coverage-by-illusion failure. Reuses the inert-lens backstop.
+5. **red control** — the `CoverageReceipt`'s `red_control_status == RedControlPassed` — the witness actually went red under perturbation (§5 green-by-execution). A contract that self-declares `Present` but whose receipt is `RedControlFailedToFlip`/`NotRun` still reds.
 6. **self-application** — the lens module is in its own property's subject set, or carries an explicit `Exempt { reason }`.
 
 Every leg is decidable set-containment or liveness → the meta-gate is a `WallNow`, not a ratchet. It is itself classified by `ConstructionJustification`, and (§7) it is subject to itself.
@@ -81,7 +84,7 @@ Every leg is decidable set-containment or liveness → the meta-gate is a `WallN
 The operator's "objective things, enforce on the entire corpus — why not" becomes a *default*, not a per-lens opt-in:
 
 - `StandingIntent.desired_scope` defaults to **whole corpus** (`["dsl", "src/v1", "src/v2"]`, `DagSource`).
-- A `LensContract` whose `claimed_scope` is **narrower** than a `StandingIntent` it answers must carry an explicit `Narrowed { reason }` (e.g. a bootstrap exemption for `src/v1`), else the gate **Refuses**.
+- Scope containment is a typed `ScopeSatisfaction` (§12): `ScopeCovers` | `ScopeNarrowed { missing, reason: NarrowingReason }` | `ScopeMissing`. A `LensContract` narrower than a `StandingIntent` it answers must carry a typed `NarrowingReason` (`BootstrapBlocked` / `TypeReflectionUnavailable` / `ExternalRuntimeOnly` / `ExplicitOperatorExemption`) — a Blocking intent **Refuses** unless the reason kind is on its allow-list; an AuditOnly intent **Reports**. Not a stringly escape hatch.
 - This inverts the permissive interface: silence no longer means "v2 only." Under-scope is a failing receipt, not a default.
 
 ## 6. The fractal layer (reuse, don't re-invent)
