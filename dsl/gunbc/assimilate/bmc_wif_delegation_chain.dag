@@ -1,0 +1,139 @@
+module gunbc.assimilate.bmc_wif_delegation_chain
+
+import std.logic { Bool }
+import std.types { NonEmptyStr, String, List }
+import extdeps.cloud.gcp.gcp { WifPool, WifProvider, ServiceAccountEmail, wif_provider_resource }
+import extdeps.cloud.gcp.secret_ref { SecretRef, HashPending }
+import extdeps.cloud.gcp.iam { GcpBinding }
+import gunbc.auth.secret_access_grant {
+  SecretAccessGrant, GrantPrincipal, GrantPrincipalCondition,
+  Signed, Unsigned,
+  signed_grants_only, signed_grant_bindings
+}
+import gunbc.assimilate.bmc_token_federation {
+  bmc_secrets_project_id,
+  bmc_secrets_project_number,
+  bmc_srv3_secret_name,
+  bmc_assimilator_sa_email,
+  bmc_wif_pool,
+  bmc_wif_provider,
+  bmc_wif_attribute_condition,
+  bmc_token_smoke_job
+}
+
+data bmc_srv3_admin_secret_ref: SecretRef = SecretRef {
+  project: bmc_secrets_project_id,
+  secret: bmc_srv3_secret_name,
+  version: "latest",
+  hash_state: HashPending
+}
+
+data wif_canary_secret_name: NonEmptyStr = "wif-canary"
+
+data wif_canary_secret_ref: SecretRef = SecretRef {
+  project: bmc_secrets_project_id,
+  secret: wif_canary_secret_name,
+  version: "latest",
+  hash_state: HashPending
+}
+
+fn bmc_wif_designated_job_id() -> NonEmptyStr {
+  bmc_token_smoke_job().id as NonEmptyStr
+}
+
+fn bmc_wif_grant_principal() -> GrantPrincipal {
+  GrantPrincipal {
+    service_account: bmc_assimilator_sa_email,
+    condition: GrantPrincipalCondition {
+      workflow_or_job: bmc_wif_designated_job_id(),
+      attribute_condition: bmc_wif_attribute_condition() as NonEmptyStr
+    }
+  }
+}
+
+data bmc_wif_canary_grant: SecretAccessGrant = SecretAccessGrant {
+  secret_ref: wif_canary_secret_ref,
+  principal: bmc_wif_grant_principal(),
+  role: "roles/secretmanager.secretAccessor",
+  consumer: "bmc_token_smoke",
+  justification: "prove the WIF chain resolves keylessly against a worthless value before any real secret is bound",
+  signoff: Signed { signed_by: "operator", note: "canary-only, no sensitive value" }
+}
+
+data bmc_srv3_admin_access_grant: SecretAccessGrant = SecretAccessGrant {
+  secret_ref: bmc_srv3_admin_secret_ref,
+  principal: bmc_wif_grant_principal(),
+  role: "roles/secretmanager.secretAccessor",
+  consumer: "bmc_assimilate_srv3",
+  justification: "srv3 BMC admin credential readback for the assimilate/rotate flow",
+  signoff: Unsigned
+}
+
+data bmc_wif_all_grants: List<SecretAccessGrant> = [
+  bmc_wif_canary_grant,
+  bmc_srv3_admin_access_grant
+]
+
+fn bmc_wif_signed_grants() -> List<SecretAccessGrant> {
+  signed_grants_only(grants: bmc_wif_all_grants)
+}
+
+fn bmc_wif_bootstrap_bindings() -> List<GcpBinding> {
+  signed_grant_bindings(grants: bmc_wif_all_grants)
+}
+
+type CredentialDelegationStep
+  = GhaOidcIssuance { audience: NonEmptyStr, designated_job: NonEmptyStr }
+  | WifTokenExchange { pool: WifPool, provider: WifProvider, attribute_condition: NonEmptyStr }
+  | ServiceAccountImpersonation { impersonated_sa: ServiceAccountEmail, granted_roles: List<String> }
+  | SecretVersionAccess { secret_ref: SecretRef }
+
+type WifDelegationChain {
+  steps: List<CredentialDelegationStep>
+}
+
+fn bmc_wif_delegation_chain(secret_ref: SecretRef, granted_roles: List<String>) -> WifDelegationChain {
+  WifDelegationChain {
+    steps: [
+      GhaOidcIssuance {
+        audience: wif_provider_resource(project_number: bmc_secrets_project_number, provider: bmc_wif_provider) as NonEmptyStr,
+        designated_job: bmc_wif_designated_job_id()
+      },
+      WifTokenExchange {
+        pool: bmc_wif_pool,
+        provider: bmc_wif_provider,
+        attribute_condition: bmc_wif_attribute_condition() as NonEmptyStr
+      },
+      ServiceAccountImpersonation {
+        impersonated_sa: bmc_assimilator_sa_email,
+        granted_roles: granted_roles
+      },
+      SecretVersionAccess { secret_ref: secret_ref }
+    ]
+  }
+}
+
+data bmc_wif_canary_delegation_chain: WifDelegationChain = bmc_wif_delegation_chain(
+  secret_ref: wif_canary_secret_ref,
+  granted_roles: ["roles/secretmanager.secretAccessor"]
+)
+
+type Srv3CredentialPathOption
+  = OperatorOneHourToken
+  | ActorPinnedWorkflowDispatch { allowed_actor: NonEmptyStr }
+  | DedicatedActuatorIdentity { note: NonEmptyStr }
+
+data srv3_credential_path_options: List<Srv3CredentialPathOption> = [
+  OperatorOneHourToken,
+  ActorPinnedWorkflowDispatch { allowed_actor: "briansrls" },
+  DedicatedActuatorIdentity { note: "separate SA from the CI federation SA, scoped to srv1 actuation only" }
+]
+
+type SecretReadCapability
+  = MergeToMainAuthorViaDesignatedJobEdit
+  | CodeExecOnRunnerHostDuringJobWindow
+
+data bound_secret_read_capabilities: List<SecretReadCapability> = [
+  MergeToMainAuthorViaDesignatedJobEdit,
+  CodeExecOnRunnerHostDuringJobWindow
+]
