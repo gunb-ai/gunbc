@@ -2,9 +2,13 @@ module gunbc.srv3_os_install_actuate_scope
 
 import gunbc.os_install {
   srv3_os_install_plan,
+  srv3_seeded_os_install_plan,
   srv3_os_install_plan_autoinstall,
   fleet_install_server_specs,
 }
+import gunbc.srv3_seeded_install_media { srv3_seeded_ubuntu_install_media_install_path }
+import gunbc.assimilate.bmc_wif_delegation_chain { bmc_srv3_admin_secret_ref }
+import gunbc.assimilate.bmc_token_federation { bmc_srv3_secret_name }
 import gunbc.os_install_mechanism { srv3_install_mechanism, NbdProxyVirtualMediaInstall }
 import extdeps.os.ubuntu_autoinstall { NoCloudNet, NoCloudLocal }
 import extdeps.uri { uri_wire }
@@ -13,8 +17,10 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.types { NonEmptyStr, Int, Bool, String }
 
 data gunbc_srv3_os_install_actuate_scope_boundary: Disposition = Terminal {
-  reason: "prefix:os-install-actuated boundary — actuator prep (ISO fetch, seeded-ISO remaster scaffold, derived actuator host, NBD serve/boot-once/SOL capture runnable entrypoints) + operator runbook ONLY; NOT srv3 OS install solved. Autoinstall seed delivery remains fail-closed (NoCloudNet without install server) until seeded-ISO unattended boot proven by execution; BMC credential source debt remains scaffold until SecretRef shelf lands."
+  reason: "prefix:os-install-actuated boundary — actuator prep (stock ISO fetch, seeded-ISO remaster, derived actuator host, NBD serve/boot-once/SOL capture runnable entrypoints) + operator runbook ONLY; NOT srv3 OS install solved. Legacy solver plan (srv3_os_install_plan, NoCloudNet) seed gap stays fail-closed; actuator prep binds srv3_seeded_os_install_plan + srv3_actuator_virtual_media_iso_install_path (NoCloudLocal on-ISO). BMC runtime login still factory-login scaffold; typed credential target is bmc_srv3_admin_secret_ref (#6146 landed) until secret_ref_credential handler replaces openbmc_factory_login."
 }
+
+data srv3_actuator_virtual_media_iso_install_path: NonEmptyStr = srv3_seeded_ubuntu_install_media_install_path
 
 data srv3_seeded_iso_pivot_dissolution_trigger: String = "🟡 dissolve-on: srv3_autoinstall_seed_delivery_refusal — NoCloudNet fail-closed gap DISSOLVES WHEN seeded ISO path proven unattended (boot-once + SOL receipt + OS-up witness green BY EXECUTION) and consumers bind srv3_seeded_ubuntu_install_media_install_path + srv3_ubuntu_autoinstall_on_iso NoCloudLocal delivery"
 
@@ -65,14 +71,40 @@ data srv3_os_install_actuate_credential_source_scaffold: Disposition = Scaffold 
   }
 }
 
-data srv3_os_install_actuate_credential_debt_marker: String = "🟡 debt: srv3_os_install_actuate BMC login/boot use openbmc_factory_login only — operator runbook documents manual gcloud Secret Manager fallback for RotatedCredentialActive; NOT a reusable modeled install actuator until BMC credential source is typed SecretRef (ROADMAP §4 shelf-privacy / shelf-privacy id); dissolve-on binds SecretRef shelf item, not built in prefix:os-install-actuated"
+data srv3_os_install_actuate_credential_debt_marker: String = "🟡 debt: srv3_os_install_actuate BMC login/boot use openbmc_factory_login at runtime — typed credential target is gunbc.assimilate.bmc_wif_delegation_chain.bmc_srv3_admin_secret_ref (secret bmc-srv3-admin, SecretRef shelf landed #6146); operator runbook documents manual gcloud Secret Manager fallback for RotatedCredentialActive; NOT a reusable modeled install actuator until secret_ref_credential handler replaces factory login in srv3_bmcweb_session_login; dissolve-on binds live SecretVersionAccess readback, not built in prefix:os-install-actuated"
 
 fn srv3_os_install_actuate_credential_debt_references_secretref_shelf() -> Bool {
-  string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "SecretRef")
-    && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "shelf-privacy")
+  string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "bmc_srv3_admin_secret_ref")
+    && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "secret_ref_credential")
+}
+
+fn srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref() -> Bool {
+  string_contains(
+    s: srv3_os_install_actuate_credential_debt_marker as String,
+    pattern: bmc_srv3_secret_name,
+  )
+    && bmc_srv3_admin_secret_ref.secret == (bmc_srv3_secret_name as NonEmptyStr)
+}
+
+fn srv3_actuator_prep_uses_seeded_autoinstall_delivery() -> Bool {
+  match srv3_os_install_plan_autoinstall(plan: srv3_seeded_os_install_plan).delivery {
+    NoCloudLocal => true
+    NoCloudNet { seed_url: _ } => false
+  }
+}
+
+fn srv3_actuator_prep_binds_seeded_iso_path() -> Bool {
+  srv3_actuator_virtual_media_iso_install_path == srv3_seeded_ubuntu_install_media_install_path
+    && string_contains(
+      s: srv3_actuator_virtual_media_iso_install_path as String,
+      pattern: "srv3-seeded.iso",
+    )
 }
 
 fn srv3_os_install_actuate_is_actuator_prep_not_install_solved() -> Bool {
   srv3_autoinstall_seed_gap_is_fail_closed()
     && srv3_os_install_actuate_credential_debt_references_secretref_shelf()
+    && srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref()
+    && srv3_actuator_prep_uses_seeded_autoinstall_delivery()
+    && srv3_actuator_prep_binds_seeded_iso_path()
 }

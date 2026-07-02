@@ -10,6 +10,7 @@ import gunbc.srv3_os_install_actuate {
   srv3_nbd_proxy_serve_script_path,
   srv3_bmcweb_token_path,
 }
+import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
 import extdeps.bmc.webui.nbd_proxy {
   VmSlotIndexEndpoint,
   bmcweb_nbd_proxy_ws_path,
@@ -46,6 +47,8 @@ test fn srv3_nbd_proxy_serve_intent_targets_vm_slot_index() -> Bool {
     && intent.bmc_host == asrock_srv3_live_bmc_host
     && intent.ws_path == bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0)
     && asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint == VmSlotIndexEndpoint
+    && intent.iso_path == srv3_actuator_virtual_media_iso_install_path
+    && string_contains(s: intent.iso_path as String, pattern: "srv3-seeded.iso")
 }
 
 test fn srv3_bmcweb_login_body_uses_factory_credentials_not_inline_in_script() -> Bool {

@@ -32,7 +32,7 @@ import extdeps.bmc.os_install_actuator_toolchain {
 }
 import gunbc.os_install_actuator_selection { srv3_os_install_actuator_host }
 import gunbc.fleet_intent { srv3_host, ComputeHost }
-import gunbc.srv3_install_media_fetch { srv3_ubuntu_install_media_install_path }
+import gunbc.srv3_os_install_actuate_scope { srv3_actuator_virtual_media_iso_install_path }
 import gunbc.os_install_mechanism {
   OsInstallMechanism,
   VirtualMediaInstall,
@@ -174,7 +174,7 @@ fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffec
                 bmc_host: asrock_srv3_live_bmc_host,
                 session_token: bmcweb_session_token_env_ref,
                 ws_path: bmcweb_nbd_proxy_ws_path(variant: ep, slot: s, index: i),
-                iso_path: srv3_ubuntu_install_media_install_path,
+                iso_path: srv3_actuator_virtual_media_iso_install_path,
                 local_nbd_port: srv3_nbd_proxy_local_port,
               )
             )

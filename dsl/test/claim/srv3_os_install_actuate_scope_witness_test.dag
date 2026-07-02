@@ -6,6 +6,9 @@ import gunbc.srv3_os_install_actuate_scope {
   srv3_autoinstall_seed_gap_is_fail_closed,
   srv3_os_install_actuate_credential_debt_marker,
   srv3_os_install_actuate_credential_debt_references_secretref_shelf,
+  srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref,
+  srv3_actuator_prep_uses_seeded_autoinstall_delivery,
+  srv3_actuator_prep_binds_seeded_iso_path,
   srv3_os_install_actuate_is_actuator_prep_not_install_solved,
 }
 import gunbc.os_install { fleet_install_server_specs }
@@ -24,8 +27,15 @@ test fn srv3_autoinstall_seed_gap_is_explicitly_fail_closed() -> Bool {
 
 test fn srv3_os_install_actuate_credential_debt_is_scaffold_not_reusable_actuator() -> Bool {
   srv3_os_install_actuate_credential_debt_references_secretref_shelf()
+    && srv3_os_install_actuate_credential_debt_grounds_bmc_secret_ref()
     && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "openbmc_factory_login")
+    && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "bmc_srv3_admin_secret_ref")
     && string_contains(s: srv3_os_install_actuate_credential_debt_marker, pattern: "NOT a reusable modeled install actuator")
+}
+
+test fn srv3_actuator_prep_binds_seeded_delivery_and_iso_path() -> Bool {
+  srv3_actuator_prep_uses_seeded_autoinstall_delivery()
+    && srv3_actuator_prep_binds_seeded_iso_path()
 }
 
 test fn srv3_os_install_actuate_scope_is_prep_not_install_solved() -> Bool {

@@ -2,7 +2,11 @@
 
 Operator-gated procedure to actuate the solve-driven NBD-proxy virtual-media install on srv3.
 **Scope:** actuator prep + this runbook only — **NOT** srv3 OS install solved until seeded-ISO unattended boot is proven by execution.
-Modeled seed-delivery gap (`gunbc.srv3_os_install_actuate_scope`) stays fail-closed on the legacy NoCloudNet plan path; the **seeded-ISO pivot** (`gunbc.srv3_seeded_install_media`) embeds autoinstall user-data on media with GRUB `autoinstall ds=nocloud` so install is fully remote/CLI (no KVM). SOL console capture (`gunbc.srv3_sol_console_capture`) provides CLI observability during install.
+Modeled seed-delivery gap (`gunbc.srv3_os_install_actuate_scope`) stays fail-closed on the **legacy solver plan**
+(`gunbc.os_install.srv3_os_install_plan`, NoCloudNet); actuator prep binds **seeded delivery**
+(`srv3_seeded_os_install_plan` + on-ISO `NoCloudLocal`) and the seeded ISO path authority. Unattended install is still
+**NOT proven by execution** until boot-once + SOL receipt + OS-up witness green.
+The **seeded-ISO pivot** (`gunbc.srv3_seeded_install_media`) embeds autoinstall user-data on media with GRUB `autoinstall ds=nocloud` (fully remote/CLI, no KVM). SOL console capture (`gunbc.srv3_sol_console_capture`) provides CLI observability during install.
 Model authority: `gunbc.srv3_install_media_fetch`, `gunbc.srv3_seeded_install_media`, `gunbc.srv3_sol_console_capture`, `gunbc.srv3_os_install_actuate`,
 `gunbc.os_install_actuator_selection`, `gunbc.srv3_os_install_actuate_scope`,
 `gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan`, `gunbc.srv3_boot_once_cd`.
@@ -15,13 +19,16 @@ with the toolchain grant (curl, websocat, nbdkit, socat).
 
 ## Hard constraints
 
-1. **ISO must be fetched first** — run the modeled `srv3_install_media_fetch` on srv1 (step 0 below). The install path is
+1. **ISO must be fetched first** — run the modeled `srv3_install_media_fetch` on srv1 (step 0 below). Stock artifact path:
    `/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-arm64.iso` (grounded on Ubuntu 24.04.3 point release + cited
    sha256 from [cdimage SHA256SUMS](https://cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS)). Do not hand-fetch;
    the fetch receipt is the prereq read-back.
-2. **`srv3_nbd_proxy_serve` is long-running** — runs foreground until Ctrl-C or installer disconnect. Open a second
+2. **Seeded ISO remaster before serve** — step 0b produces the actuator virtual-media path
+   (`gunbc.srv3_os_install_actuate_scope.srv3_actuator_virtual_media_iso_install_path` →
+   `.../ubuntu-24.04.3-live-server-srv3-seeded.iso`). `srv3_nbd_proxy_serve` binds this authority, not the stock path.
+3. **`srv3_nbd_proxy_serve` is long-running** — runs foreground until Ctrl-C or installer disconnect. Open a second
    terminal for boot-once.
-3. **Record receipts** — paste command output and router lease observation into the operator sign-off thread.
+4. **Record receipts** — paste command output and router lease observation into the operator sign-off thread.
 
 ## Step 0 — modeled ISO fetch (srv1 actuator host)
 
