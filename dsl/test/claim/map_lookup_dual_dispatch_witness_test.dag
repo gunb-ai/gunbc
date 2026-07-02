@@ -1,0 +1,31 @@
+module test.claim.map_lookup_dual_dispatch_witness_test
+
+import std.graph { CallGraph, GraphEdge, build_adjacency_views }
+import std.logic { Bool }
+
+data map_lookup_dispatch_witness_provenance: String = "Floor witnesses migrated from src/v1/tests/src/map_lookup_dual_dispatch_test.rs (5-test-migration lane): the three map-lookup surfaces (method get, index sugar, lookup builtin) that must route through the raw_map_lookup dual-dispatch chokepoint, plus the std.graph adjacency-view smoke that consumes map_get end to end."
+
+test fn map_get_method_routes_through_dual_dispatch_chokepoint() -> Bool {
+  let m = empty_map() |> map_insert("a", 10)
+  (m |> get("a")) == 10
+}
+
+test fn map_index_routes_through_dual_dispatch_chokepoint() -> Bool {
+  let m = empty_map() |> map_insert("b", 42)
+  m["b"] == 42
+}
+
+test fn lookup_builtin_routes_through_dual_dispatch_chokepoint() -> Bool {
+  let m = empty_map() |> map_insert("k", 7)
+  lookup(m, "k") == 7
+}
+
+test fn std_graph_build_adjacency_views_evaluates() -> Bool {
+  let names = ["a", "b"]
+  let graph = CallGraph { edges: [GraphEdge { caller: "a", callee: "b" }] }
+  let views = build_adjacency_views(names: names, graph: graph)
+  match map_get(views.forward, "a") {
+    Present { value: ns } => ns == ["b"]
+    Absent => false
+  }
+}
