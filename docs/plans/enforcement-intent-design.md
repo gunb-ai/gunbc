@@ -114,3 +114,28 @@ Do 1–3 before adding many object rules, else task 4 is just one more possibly-
 ## 10. The sentence for the manager
 
 > The operator has repeatedly asked for complexity enforced repo-wide. Your first job is **not** to add another complexity check — it is to make that standing intent impossible to lose: extend the registry into a contract, model the intent as a row, and gate the relationship fail-closed. A PR that narrows complexity from whole-corpus to fixture-only, adds a lens without a consumer, claims "blocking" without a red control, or omits `src/v1` without an explicit bootstrap exemption must go red.
+
+## 11. Operator sign-off refinements (2026-07-02)
+
+Signed off with these deltas:
+
+- **Wording:** completion attaches to *a mechanism claiming enforcement*, not to every lens. Not all lenses answer a standing directive (some are local experiments / advisory diagnostics); only ones that *claim* enforcement (`repo-wide`, `blocking`, `complete`, `self-applying`) are held to a `StandingIntent`.
+- **Anti-overcomplication rule (the wall that keeps the walls honest):** *no lens may claim `repo-wide`, `blocking`, `complete`, or `self-applying` unless the enforcement gate can independently prove the claim.* This is the meta-gate turned on the vocabulary of the claims themselves.
+- **Two model-quality StandingIntents** — the DFS/anemia/consolidation habit is the *same governance bug on the single-authority axis* rather than the runtime-complexity axis (§2 deep-reduction, §3 single-authority). Add:
+
+  ```
+  model.anemia.repo-wide          // a String leaf hiding named parts is anemic (decompress→map→reduce)
+  single-authority.consolidation  // two names for one concept fail unless one is explicitly
+                                   //   realization / transport / external-source WITH direction
+  ```
+
+  `concept-dfs-before-minting` is an *implementation rule under* `single-authority.consolidation`, not (yet) its own top-level intent. The lens must **suggest a consolidation target**, not merely warn — "what existing concept should this map to? where is the single authority? is this a realization/transport/policy variant?" Live seed corpus: the `extdeps.shell` fork (main-red incident), the JSON-emitter fork, the hostname-surface split, `cli_run` BFS vs `module_graph` closure authority.
+
+- **Rollout (so the corpus still merges, without a weak gate):** three tiers, not one flip.
+  1. `StandingIntent` rows: **live**.
+  2. `enforcement_intent_gate`: **Blocking on contract *consistency*** now — a claim that is internally impossible fails immediately, independent of any dependency: Blocking-with-no-consumer → fail; whole-corpus-claim-scanning-only-v2 → fail; self-apply-required-but-absent → fail; AuditOnly-with-a-declared-scope-gap → report, not block.
+  3. Object rules (R1/R2/R3, anemia, consolidation): **AuditOnly** over the whole corpus until the receipts are understood, then per-rule flip to Blocking as false-positive magnitude tiers land.
+
+  This is confirmed by silent-ferret's #6162 characterization: `complexity.repo-wide` already reds today on **three contract legs** — claimed_scope (4 exemplars + 3 synthetic, not repo-wide), consumer (witness-only, no FloorGate), self_application (false) — with **no `decl_facts` dependency**. The gate's first honest RED needs nothing new; the whole-corpus *subject-discovery* leg waits on the `decl_facts(roots)` reflection builtin (#5966 / gunbc#5364), and the gate's job is precisely to red on that gap rather than hide it.
+
+- **Task order (manager):** 1 `StandingIntent` rows · 2 `LensContract` extension · 3 `enforcement_intent_gate` · 4 `complexity.repo-wide` first proof · 5 `model.anemia.repo-wide` + `single-authority.consolidation` next proof · 6 *only then* R1/R2 object rules. Do 1–3 before adding object rules, else task 6 is one more possibly-inert lens.
