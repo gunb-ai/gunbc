@@ -8,6 +8,7 @@ type Quantity =
   | Length
   | Mass
   | Memory
+  | Storage
   | Information
   | DataRate
   | Frequency
@@ -134,11 +135,17 @@ fn measure_le<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
   a.count <= b.count
 }
 
+fn measure_saturating_sub<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q, S, Nat> {
+  Measure { count: if a.count <= b.count { 0 } else { a.count - b.count } }
+}
+
 fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
   Measure { count: count }
 }
 
 type ByteSize = Measure<Memory, One, Nat>
+
+type DiskSize = Measure<Storage, One, Nat>
 
 type Kibibyte = Measure<Memory, Kibi, Nat>
 
@@ -226,6 +233,14 @@ fn byte_size(count: Nat) -> ByteSize {
 
 fn byte_size_count(b: ByteSize) -> Nat {
   measure_count(b)
+}
+
+fn disk_size(count: Nat) -> DiskSize {
+  DiskSize { count: count }
+}
+
+fn disk_size_count(d: DiskSize) -> Nat {
+  measure_count(d)
 }
 
 fn bit_width(count: Nat) -> BitWidth {
