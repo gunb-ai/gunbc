@@ -5,7 +5,13 @@ import gunbc.srv3_sol_console_capture {
   srv3_sol_console_capture_carries_dissolution_trigger,
   srv3_sol_console_capture_intent,
 }
-import extdeps.bmc.serial_console { ObmcConsoleCli, RedfishSerialInterface }
+import extdeps.bmc.serial_console {
+  ObmcConsoleCli,
+  RedfishSerialInterface,
+  extdeps_external_authority_anchor,
+  redfish_serial_interface_authority,
+  sol_console_transport_authority_for,
+}
 
 test fn srv3_sol_console_capture_intent_uses_obmc_cli() -> Bool {
   match srv3_sol_console_capture_intent.transport {
@@ -14,4 +20,9 @@ test fn srv3_sol_console_capture_intent_uses_obmc_cli() -> Bool {
   }
     && srv3_sol_console_capture_log_path_is_declared()
     && srv3_sol_console_capture_carries_dissolution_trigger()
+}
+
+test fn sol_console_redfish_serial_transport_cites_dmtf_authority() -> Bool {
+  sol_console_transport_authority_for(transport: RedfishSerialInterface) == redfish_serial_interface_authority
+    && sol_console_transport_authority_for(transport: ObmcConsoleCli) == extdeps_external_authority_anchor
 }

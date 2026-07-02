@@ -50,6 +50,13 @@ fn sol_console_transport_wire(transport: SolConsoleTransport) -> NonEmptyStr {
   }
 }
 
+fn sol_console_transport_authority_for(transport: SolConsoleTransport) -> ExternalAuthority {
+  match transport {
+    ObmcConsoleCli => extdeps_external_authority_anchor
+    RedfishSerialInterface => redfish_serial_interface_authority
+  }
+}
+
 data sol_console_capture_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: sol_console_capture — obmc-console/Redfish SerialInterface log stream composed as shell transport (medium-as-string); DISSOLVES WHEN host_effect_apply binds SolConsoleCapture without concat-built runner glue; retire medium_structure_exception_roster entry for dsl/extdeps/bmc/serial_console.dag"
 
 fn sol_console_capture_script(intent: SolConsoleCaptureIntent) -> String {
