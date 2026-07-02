@@ -18,7 +18,7 @@ import v2.workflow.ci_floor_plan {
   ci_floor_target_digest,
   ci_floor_compile_gate_fn,
 }
-import tools.dsl_compile_clean_shard_roster { compile_clean_sharding_enabled }
+import v2.workflow.compile_clean_shard_roster { compile_clean_sharding_enabled }
 
 fn witness_batches_are_plan_schedule() -> Bool {
   schedule_generates_identical_schedule(

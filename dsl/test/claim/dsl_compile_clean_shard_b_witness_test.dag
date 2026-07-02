@@ -15,7 +15,7 @@ import tools.dsl_compile_clean_shard_transport {
   witness_broken_staged_shard_compile_red,
   shard_a_exemplar_entry_path
 }
-import tools.dsl_compile_clean_shard_roster {
+import v2.workflow.compile_clean_shard_roster {
   compile_clean_sharding_enabled,
   compile_clean_whole_tree_rollback_env,
   compile_clean_whole_tree_rollback_disposition,

@@ -1,4 +1,4 @@
-module tools.dsl_compile_clean_shard_roster
+module v2.workflow.compile_clean_shard_roster
 
 import extdeps.shell
 import std.disposition { Disposition, Scaffold, SingleAuthority }
@@ -33,7 +33,7 @@ data compile_clean_whole_tree_rollback_dissolution_trigger: String = "dissolve-o
 data compile_clean_whole_tree_rollback_disposition: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
-    module_path: "tools.dsl_compile_clean_shard_roster",
+    module_path: "v2.workflow.compile_clean_shard_roster",
     decl_name: "compile_clean_sharding_enabled",
     field: WholeDeclaration
   }

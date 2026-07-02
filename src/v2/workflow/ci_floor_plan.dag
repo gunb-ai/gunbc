@@ -55,7 +55,7 @@ import std.realization_schedule {
   cost_account_predicted_zero,
   schedule_lens_verdict_for_ci_floor
 }
-import tools.dsl_compile_clean_shard_roster {
+import v2.workflow.compile_clean_shard_roster {
   compile_clean_shard_batch_runnable,
   compile_clean_shard_batch_profile,
   compile_clean_shard_entry_paths,
