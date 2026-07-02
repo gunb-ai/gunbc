@@ -1,6 +1,6 @@
 module test.claim.temporal_effect_spine
 
-import std.types { Bool, NonEmptyStr, List, ContentHash }
+import std.types { Bool, NonEmptyStr, List, ContentHash, Timestamp }
 import std.temporal_effect {
   EffectAttemptIntent,
   EffectStepReceipt,
@@ -33,7 +33,7 @@ import std.temporal_effect {
 
 data witness_intent_hash: ContentHash = "temporal-spine-witness-intent-v1"
 data witness_escalation_id: NonEmptyStr = "srv3-boot-once-cd" as NonEmptyStr
-data witness_observed_at: String = "2026-07-02T23:05:00Z"
+data witness_observed_at: Timestamp = "2026-07-02T23:05:00Z"
 
 data witness_intent: EffectAttemptIntent = EffectAttemptIntent {
   attempt_id: "attempt-witness-1" as NonEmptyStr,
