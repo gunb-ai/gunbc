@@ -1,0 +1,81 @@
+module extdeps.os.ubuntu_seeded_install_media
+
+import std.types { NonEmptyStr, String, ContentHash }
+import std.content_hash { content_hash_atom, content_hash_combine, content_hash_tagged }
+import extdeps.os.ubuntu_install_media {
+  UbuntuInstallMediaArtifactRow,
+  ubuntu_install_media_artifacts_dir,
+}
+import extdeps.os.ubuntu_autoinstall { UbuntuAutoinstallPayload }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-methods.html"
+  }
+}
+
+type UbuntuSeededInstallMediaFlavor = | UbuntuLiveServerSeeded
+
+type UbuntuSeededInstallMediaArtifactRow {
+  stock_artifact: UbuntuInstallMediaArtifactRow
+  autoinstall: UbuntuAutoinstallPayload
+  autoinstall_user_data_body: NonEmptyStr
+  grub_kernel_cmdline: NonEmptyStr
+  nocloud_dir_on_iso: NonEmptyStr
+  content_hash: ContentHash
+}
+
+fn ubuntu_seeded_install_media_grub_kernel_cmdline(nocloud_dir: NonEmptyStr) -> NonEmptyStr {
+  concat("autoinstall ds=nocloud;s=/cdrom/", nocloud_dir as String) as NonEmptyStr
+}
+
+fn ubuntu_seeded_install_media_default_nocloud_dir(hostname: NonEmptyStr) -> NonEmptyStr {
+  concat("nocloud/", hostname as String) as NonEmptyStr
+}
+
+fn seeded_install_media_content_hash(
+  stock_content_sha256: NonEmptyStr,
+  autoinstall_user_data_body: NonEmptyStr,
+  grub_kernel_cmdline: NonEmptyStr,
+  nocloud_dir_on_iso: NonEmptyStr,
+) -> ContentHash {
+  content_hash_tagged(
+    tag: "ubuntu-seeded-install-media/v2",
+    payload: content_hash_combine(
+      content_hash_combine(
+        content_hash_combine(
+          content_hash_atom(value: stock_content_sha256),
+          content_hash_atom(value: autoinstall_user_data_body),
+        ),
+        content_hash_atom(value: grub_kernel_cmdline),
+      ),
+      content_hash_atom(value: nocloud_dir_on_iso),
+    ),
+  )
+}
+
+fn ubuntu_seeded_install_media_filename(artifact: UbuntuSeededInstallMediaArtifactRow) -> NonEmptyStr {
+  concat(
+    concat(
+      concat("ubuntu-", artifact.stock_artifact.point_release as String),
+      "-live-server-",
+    ),
+    concat(
+      concat(artifact.autoinstall.identity.hostname as String, "-seeded.iso"),
+    ),
+  ) as NonEmptyStr
+}
+
+fn ubuntu_seeded_install_media_install_path(artifact: UbuntuSeededInstallMediaArtifactRow) -> NonEmptyStr {
+  concat(
+    concat(ubuntu_install_media_artifacts_dir() as String, "/"),
+    ubuntu_seeded_install_media_filename(artifact: artifact) as String,
+  ) as NonEmptyStr
+}
+
+fn ubuntu_seeded_install_media_part_path(install_path: NonEmptyStr) -> NonEmptyStr {
+  concat(install_path as String, ".part") as NonEmptyStr
+}

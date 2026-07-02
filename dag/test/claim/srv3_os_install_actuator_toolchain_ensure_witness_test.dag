@@ -1,0 +1,35 @@
+module test.claim.srv3_os_install_actuator_toolchain_ensure
+
+import std.logic { Bool }
+import gunbc.srv3_os_install_actuator_toolchain_ensure {
+  os_install_actuator_toolchain_ensure_script,
+  os_install_actuator_toolchain_ensure_script_uses_github_release_not_apt_for_websocat,
+  os_install_actuator_toolchain_ensure_is_privileged_gated_for_apt,
+  os_install_actuator_toolchain_requirement_row_count,
+  os_install_actuator_toolchain_ensure_dissolution_trigger,
+}
+import extdeps.tools.websocat { websocat_install_path }
+
+test fn srv3_actuator_toolchain_ensure_uses_github_release_for_websocat() -> Bool {
+  os_install_actuator_toolchain_ensure_script_uses_github_release_not_apt_for_websocat()
+    && os_install_actuator_toolchain_ensure_is_privileged_gated_for_apt()
+}
+
+test fn srv3_actuator_toolchain_ensure_covers_four_tools() -> Bool {
+  os_install_actuator_toolchain_requirement_row_count() == 4
+}
+
+test fn srv3_actuator_toolchain_ensure_websocat_installs_to_modeled_path_with_namespace_upsert() -> Bool {
+  let script = os_install_actuator_toolchain_ensure_script()
+  string_contains(s: script, pattern: websocat_install_path as String)
+    && string_contains(s: script, pattern: "sudo chown")
+    && string_contains(s: script, pattern: concat("test -x \"", websocat_install_path as String))
+}
+
+test fn srv3_actuator_toolchain_ensure_dissolution_trigger_names_roster_retirement() -> Bool {
+  string_contains(s: os_install_actuator_toolchain_ensure_dissolution_trigger, pattern: "medium_structure_exception_roster")
+    && string_contains(
+      s: os_install_actuator_toolchain_ensure_dissolution_trigger,
+      pattern: "srv3_os_install_actuator_toolchain_ensure.dag",
+    )
+}

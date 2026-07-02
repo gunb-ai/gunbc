@@ -16,6 +16,7 @@ import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
   AutoinstallIdentity,
   NoCloudNet,
+  NoCloudLocal,
 }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_lan_segment }
 import product.placement_supply { HostIdentity }
@@ -131,6 +132,17 @@ data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayloa
   install_openssh_server: true,
 }
 
+data srv3_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+  autoinstall_version: 1,
+  delivery: NoCloudLocal,
+  fully_automated: true,
+  target_distribution: NobleNumbat2404Lts,
+  identity: srv3_autoinstall_identity,
+  locale: "en_US.UTF-8",
+  keyboard_layout: "us",
+  install_openssh_server: true,
+}
+
 data srv3_os_install_plan: Srv3OsInstallPlan = Srv3OsInstallPlan {
   os_target: UbuntuOs { distro: NobleNumbat2404Lts },
   host_architecture: Aarch64,
@@ -139,6 +151,20 @@ data srv3_os_install_plan: Srv3OsInstallPlan = Srv3OsInstallPlan {
     mechanism: srv3_install_mechanism,
     pxe_chain: srv3_pxe_network_boot_chain,
     autoinstall: srv3_ubuntu_autoinstall
+  ),
+  bmc_boot_target: srv3_install_boot_target,
+  bmc_boot_enabled: BootOverrideOnce,
+  post_stage_reset: ResetForceRestart,
+}
+
+data srv3_seeded_os_install_plan: Srv3OsInstallPlan = Srv3OsInstallPlan {
+  os_target: UbuntuOs { distro: NobleNumbat2404Lts },
+  host_architecture: Aarch64,
+  lan_survey: srv3_lan_install_survey,
+  delivery: os_install_delivery_for(
+    mechanism: srv3_install_mechanism,
+    pxe_chain: srv3_pxe_network_boot_chain,
+    autoinstall: srv3_ubuntu_autoinstall_on_iso
   ),
   bmc_boot_target: srv3_install_boot_target,
   bmc_boot_enabled: BootOverrideOnce,

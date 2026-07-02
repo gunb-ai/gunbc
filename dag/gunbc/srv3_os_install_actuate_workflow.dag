@@ -1,0 +1,93 @@
+module gunbc.srv3_os_install_actuate_workflow
+
+import std.types { NonEmptyStr, List, Int }
+import gunbc.workflow_escalation {
+  WorkflowEscalation,
+  WorkflowApprovalState,
+  WorkflowStepDisposition,
+  PendingApproval,
+  ApprovalGranted,
+  StepRunnable,
+  StepAwaitingApproval,
+  workflow_step_disposition_for_approval,
+}
+import gunbc.nbd_proxy_virtual_media_install { srv3_os_install_actuator_plan }
+import gunbc.srv3_bmc_credential_resolve { srv3_os_install_actuate_credential_intent }
+
+type OsInstallActuateWorkflowStep
+  = WorkflowEnsureActuatorToolchain
+  | WorkflowEnsureSeededInstallMedia
+  | WorkflowBmcCredentialProbeAndResolve
+  | WorkflowBmcwebSessionLogin
+  | WorkflowNbdProxyServe
+  | WorkflowOperatorApproval { escalation: WorkflowEscalation }
+  | WorkflowBootOnceCd
+  | WorkflowSolConsoleCapture
+
+data srv3_boot_once_cd_escalation: WorkflowEscalation = WorkflowEscalation {
+  escalation_id: "srv3-boot-once-cd" as NonEmptyStr,
+  rationale: "PATCH boot override to CD Once + ForceRestart is destructive and may interrupt srv3" as NonEmptyStr,
+  destructive: true,
+}
+
+data srv3_boot_once_cd_default_approval: WorkflowApprovalState = PendingApproval {
+  escalation: srv3_boot_once_cd_escalation,
+}
+
+data srv3_boot_once_cd_operator_granted_approval: WorkflowApprovalState = ApprovalGranted {
+  escalation_id: srv3_boot_once_cd_escalation.escalation_id,
+  granted_by: "operator" as NonEmptyStr,
+}
+
+fn srv3_os_install_actuate_workflow_steps() -> List<OsInstallActuateWorkflowStep> {
+  [
+    WorkflowEnsureActuatorToolchain,
+    WorkflowEnsureSeededInstallMedia,
+    WorkflowBmcCredentialProbeAndResolve,
+    WorkflowBmcwebSessionLogin,
+    WorkflowNbdProxyServe,
+    WorkflowOperatorApproval { escalation: srv3_boot_once_cd_escalation },
+    WorkflowBootOnceCd,
+    WorkflowSolConsoleCapture,
+  ]
+}
+
+fn srv3_os_install_actuate_workflow_step_count() -> Int {
+  srv3_os_install_actuate_workflow_steps().length()
+}
+
+fn srv3_boot_once_cd_workflow_disposition(approval: WorkflowApprovalState) -> WorkflowStepDisposition {
+  workflow_step_disposition_for_approval(
+    escalation: srv3_boot_once_cd_escalation,
+    approval: approval,
+  )
+}
+
+fn srv3_boot_once_cd_is_runnable_with_approval(approval: WorkflowApprovalState) -> Bool {
+  match srv3_boot_once_cd_workflow_disposition(approval: approval) {
+    StepRunnable => true
+    _ => false
+  }
+}
+
+fn srv3_os_install_actuate_workflow_includes_operator_approval_before_boot() -> Bool {
+  let steps = srv3_os_install_actuate_workflow_steps()
+  srv3_os_install_actuate_workflow_step_count() == 8
+    && match steps.skip(n: 5).first() {
+      WorkflowOperatorApproval { escalation: e } =>
+        e.escalation_id == srv3_boot_once_cd_escalation.escalation_id
+      _ => false
+    }
+    && match steps.skip(n: 6).first() {
+      WorkflowBootOnceCd => true
+      _ => false
+    }
+}
+
+fn srv3_os_install_actuate_workflow_credential_intent_is_declared() -> Bool {
+  srv3_os_install_actuate_credential_intent().rotated_secret_ref.secret == "bmc-srv3-admin" as NonEmptyStr
+}
+
+fn srv3_os_install_actuator_plan_step_count_matches_workflow_tail() -> Bool {
+  srv3_os_install_actuator_plan.steps.length() == 3
+}

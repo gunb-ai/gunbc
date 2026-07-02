@@ -1,0 +1,125 @@
+module extdeps.os.ubuntu_seeded_install_media_remaster
+
+import extdeps.languages.bash.program {
+  ShellProgram,
+  RawLine,
+  assign,
+  lit,
+  serialize_bash,
+}
+import extdeps.os.ubuntu_seeded_install_media {
+  UbuntuSeededInstallMediaArtifactRow,
+  ubuntu_seeded_install_media_install_path,
+  ubuntu_seeded_install_media_part_path,
+}
+import extdeps.os.ubuntu_install_media {
+  ubuntu_install_media_install_path,
+}
+import std.types { String, NonEmptyStr }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data install_media_remaster_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: install_media_remaster — xorriso remaster composed as RawLine shell inside ShellProgram (medium-as-string); AlreadyPresent/StaleRefusal classification and chmod -R u+w are string-scaffolded (see install_media_remaster_classification_scaffold + install_media_remaster_chmod_access_upsert_scaffold); DISSOLVES WHEN host_effect_apply binds InstallMediaRemaster typed intent→observation→verdict→plan without serialize_bash RawLine payload; retire medium_structure_exception_roster entry for dag/extdeps/os/ubuntu_seeded_install_media_remaster.dag"
+
+data install_media_remaster_classification_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.os.ubuntu_seeded_install_media_remaster",
+    decl_name: "install_media_remaster_classification_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data install_media_remaster_classification_dissolution_trigger: String = "🟡 dissolve-on: install_media_remaster AlreadyPresent|StaleRefusal — xorriso extract + sidecar hash + grub/user-data probe live only inside emitted shell; no typed RemasterObservation→RemasterVerdict fold; witnesses check script substrings only; DISSOLVES WHEN InstallMediaRemaster classify_seeded_media runs without shell execution"
+
+data install_media_remaster_chmod_access_upsert_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.os.ubuntu_seeded_install_media_remaster",
+    decl_name: "install_media_remaster_chmod_access_upsert_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data install_media_remaster_chmod_access_upsert_dissolution_trigger: String = "🟡 dissolve-on: chmod -R u+w $work — emergency FileNamespace access upsert hidden in RawLine; only valid inside fresh mktemp extract tree; DISSOLVES WHEN RemasterPlan binds FileAccessObservation (ReadOnlyButOwned→ChmodOwnerWriteWithinNamespace, OutsideNamespace→Refuse) before edit; tracked: roadmap resource-namespace-upsert-a"
+
+fn install_media_remaster_script(artifact: UbuntuSeededInstallMediaArtifactRow) -> String {
+  serialize_bash(p: install_media_remaster_program(artifact: artifact))
+}
+
+fn install_media_remaster_script_applies_grub_cmdline(artifact: UbuntuSeededInstallMediaArtifactRow) -> Bool {
+  let script = install_media_remaster_script(artifact: artifact)
+  string_contains(s: script, pattern: "boot/grub/grub.cfg")
+    && string_contains(s: script, pattern: "$GRUB_CMD")
+    && string_contains(s: script, pattern: "grub kernel cmdline not applied")
+}
+
+fn install_media_remaster_classification_is_string_scaffolded_not_typed() -> Bool {
+  string_contains(s: install_media_remaster_classification_dissolution_trigger, pattern: "dissolve-on:")
+    && string_contains(s: install_media_remaster_classification_dissolution_trigger, pattern: "no typed RemasterObservation")
+}
+
+fn install_media_remaster_chmod_is_file_access_upsert_scaffold() -> Bool {
+  string_contains(s: install_media_remaster_chmod_access_upsert_dissolution_trigger, pattern: "dissolve-on:")
+    && string_contains(s: install_media_remaster_chmod_access_upsert_dissolution_trigger, pattern: "FileNamespace")
+}
+
+fn install_media_remaster_program(artifact: UbuntuSeededInstallMediaArtifactRow) -> ShellProgram {
+  let stock_path = ubuntu_install_media_install_path(artifact: artifact.stock_artifact)
+  let final_path = ubuntu_seeded_install_media_install_path(artifact: artifact)
+  let part_path = ubuntu_seeded_install_media_part_path(install_path: final_path)
+  let nocloud_dir = artifact.nocloud_dir_on_iso
+  let user_data = artifact.autoinstall_user_data_body
+  let grub_cmdline = artifact.grub_kernel_cmdline
+  ShellProgram {
+    set_e: true,
+    statements: [
+      assign(name: "STOCK", value: lit(text: stock_path as String)),
+      assign(name: "FINAL", value: lit(text: final_path as String)),
+      assign(name: "PART", value: lit(text: part_path as String)),
+      assign(name: "NO_CLOUD", value: lit(text: nocloud_dir as String)),
+      assign(name: "USER_DATA", value: lit(text: user_data as String)),
+      assign(name: "GRUB_CMD", value: lit(text: grub_cmdline as String)),
+      assign(name: "HASH", value: lit(text: artifact.content_hash as String)),
+      RawLine { text: "if [ -f \"$FINAL\" ]; then" },
+      RawLine { text: "  probe=$(mktemp -d)" },
+      RawLine { text: "  grub_probe=\"$probe/boot/grub/grub.cfg\"" },
+      RawLine { text: "  mkdir -p \"$probe/$NO_CLOUD\"" },
+      RawLine { text: "  user_probe=\"$probe/$NO_CLOUD/user-data\"" },
+      RawLine { text: "  xorriso -osirrox on -indev \"$FINAL\" -extract /boot/grub/grub.cfg \"$grub_probe\" >/dev/null 2>&1 || true" },
+      RawLine { text: "  xorriso -osirrox on -indev \"$FINAL\" -extract \"/$NO_CLOUD/user-data\" \"$user_probe\" >/dev/null 2>&1 || true" },
+      RawLine { text: "  sidecar=\"$FINAL.gunbc-content-hash\"" },
+      RawLine { text: "  valid=false" },
+      RawLine { text: "  if [ -f \"$sidecar\" ] && [ \"$(cat \"$sidecar\")\" = \"$HASH\" ] && [ -f \"$grub_probe\" ] && grep -qF \"$GRUB_CMD\" \"$grub_probe\" && [ -s \"$user_probe\" ]; then" },
+      RawLine { text: "    valid=true" },
+      RawLine { text: "  fi" },
+      RawLine { text: "  rm -rf \"$probe\"" },
+      RawLine { text: "  if [ \"$valid\" = true ]; then" },
+      RawLine { text: "    echo \"InstallMediaRemasterReceipt: outcome=AlreadyPresent path=$FINAL content_hash=$HASH\"" },
+      RawLine { text: "    exit 0" },
+      RawLine { text: "  fi" },
+      RawLine { text: "  echo \"InstallMediaRemasterReceipt: outcome=StaleRefusal path=$FINAL content_hash=$HASH\" >&2" },
+      RawLine { text: "fi" },
+      RawLine { text: "test -f \"$STOCK\" || { echo \"InstallMediaRemasterRefusal: stock ISO missing at $STOCK\" >&2; exit 1; }" },
+      RawLine { text: "mkdir -p \"$(dirname \"$FINAL\")\"" },
+      RawLine { text: "work=$(mktemp -d)" },
+      RawLine { text: "trap 'rm -rf \"$work\"' EXIT" },
+      RawLine { text: "xorriso -osirrox on -indev \"$STOCK\" -extract / \"$work\" >/dev/null" },
+      RawLine { text: "chmod -R u+w \"$work\"" },
+      RawLine { text: "mkdir -p \"$work/$NO_CLOUD\"" },
+      RawLine { text: "printf '%s' \"$USER_DATA\" > \"$work/$NO_CLOUD/user-data\"" },
+      RawLine { text: "printf 'instance-id: gunbc-srv3-seeded\\n' > \"$work/$NO_CLOUD/meta-data\"" },
+      RawLine { text: "grub_cfg=\"$work/boot/grub/grub.cfg\"" },
+      RawLine { text: "test -f \"$grub_cfg\" || { echo \"InstallMediaRemasterRefusal: missing grub.cfg at $grub_cfg\" >&2; exit 1; }" },
+      RawLine { text: "if ! grep -qF \"$GRUB_CMD\" \"$grub_cfg\"; then" },
+      RawLine { text: "  sed -i \"s|\\(linux[[:space:]].*\\) ---|\\1 $GRUB_CMD ---|g\" \"$grub_cfg\"" },
+      RawLine { text: "fi" },
+      RawLine { text: "grep -qF \"$GRUB_CMD\" \"$grub_cfg\" || { echo \"InstallMediaRemasterRefusal: grub kernel cmdline not applied\" >&2; exit 1; }" },
+      RawLine { text: "xorriso -as mkisofs -r -V \"UBUNTU_SEEDED\" -o \"$PART\" -graft-points /=\"$work\" >/dev/null" },
+      RawLine { text: "mv \"$PART\" \"$FINAL\"" },
+      RawLine { text: "printf '%s' \"$HASH\" > \"$FINAL.gunbc-content-hash\"" },
+      RawLine { text: "echo \"InstallMediaRemasterReceipt: outcome=Remastered path=$FINAL content_hash=$HASH stock=$STOCK\"" },
+      RawLine { text: "exit 0" },
+    ],
+  }
+}

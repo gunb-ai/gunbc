@@ -11,9 +11,9 @@ use std::time::Instant;
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     compute_histogram_data, compute_witness_timing_rows, make_eval_context, resolve_entry_graph,
-    run_claim, run_discovery_corpus_with_options, run_value, top_n_slowest_witnesses, ClaimOutcome,
-    DiscoveryCorpusOptions, DiscoverySummary, HistogramData, TimingPercentiles, WitnessTimingRow,
-    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    run_claim, run_discovery_corpus_with_options, run_value, set_phase, top_n_slowest_witnesses,
+    ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, FloorPhase, HistogramData,
+    PhaseProfile, TimingPercentiles, WitnessTimingRow, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
@@ -475,6 +475,7 @@ fn run_shared_entry_claims(
     functions
         .iter()
         .map(|function| {
+            set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
             let outcome = run_claim(&ctx, function);
             let wall_nanos = claim_start.elapsed().as_nanos();
@@ -535,6 +536,7 @@ fn run_memo_shared_claims(
     functions
         .iter()
         .map(|function| {
+            set_phase(FloorPhase::Gate, &format!("{entry}::{function}"));
             let claim_start = Instant::now();
             let outcome = run_claim(ctx, function);
             let wall_nanos = claim_start.elapsed().as_nanos();
@@ -764,6 +766,7 @@ fn run_discovery_batch_node(
     spawn_width: usize,
     spawn_width_cap: usize,
 ) -> ClaimResult {
+    set_phase(FloorPhase::Discovery, "discovery-corpus");
     let label = format!(
         "discovery-corpus[{} root(s)+{} explicit, width={}]",
         source_roots.len(),
@@ -845,6 +848,7 @@ fn eval_plan(
     plan_entry: &str,
     plan_function: &str,
 ) -> Result<Vec<Vec<Runnable>>, String> {
+    set_phase(FloorPhase::Gate, &format!("{plan_entry}::{plan_function}"));
     let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
         .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
     let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Hermetic);
@@ -1358,6 +1362,10 @@ fn run_walk(source_roots: &[String], batches: &[Vec<Runnable>], spawn_width: usi
         // spans the whole batch), so it is sound under `spawn_width > 1`.
         let grouped = v1_compiler::v1_interpreter::host_trace_grouping_active();
         if grouped {
+            set_phase(
+                FloorPhase::HostEffect,
+                &format!("batch-{}-host-effects", bi + 1),
+            );
             v1_compiler::v1_interpreter::group_begin(&format!("batch {} host-effects", bi + 1));
         }
         let handles: Vec<_> = thread_units
@@ -1715,6 +1723,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!("claim_executor: provide at least one --source-root");
         return Err(ExitCode::from(2));
     }
+    let _phase_profile = PhaseProfile::install_from_env();
     let plan_entry = match plan_entry {
         Some(e) => e,
         None => {
