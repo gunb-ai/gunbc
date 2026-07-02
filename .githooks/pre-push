@@ -81,6 +81,7 @@ fresh_artifact_path() {
     docs/plans/realization-measurement-loop.md*) return 0 ;;
     docs/plans/host-effect-orchestration.md*) return 0 ;;
     docs/plans/ci-floor-fractal-gantt.md*) return 0 ;;
+    docs/plans/resolver-pathology-profile-receipt.md*) return 0 ;;
     docs/plans/representation-minimization.md*) return 0 ;;
     docs/plans/reference-grounding-migration.md*) return 0 ;;
     docs/plans/typescript-gap-census.md*) return 0 ;;
