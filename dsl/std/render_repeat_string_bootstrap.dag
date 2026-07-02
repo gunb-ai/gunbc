@@ -4,7 +4,7 @@ fn repeat_string_loop(acc: String, s: String, remaining: Int) -> String {
   if remaining <= 0 {
     acc
   } else {
-    repeat_string_loop(concat(acc, s), s: s, remaining: remaining - 1)
+    repeat_string_loop(concat(acc, s), s: s, remaining: remaining - 2)
   }
 }
 
