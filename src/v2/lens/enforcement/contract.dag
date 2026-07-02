@@ -99,9 +99,9 @@ data receipt_anemia: CoverageReceipt = {
   discovered_subjects: SubjectRoster { entries: ["std.decl_ref.DeclarationRef.module_path", "extdeps.cpu.types.CpuModelCatalogRow.model_number"] },
   scope_satisfaction: ScopeNarrowed {
     missing: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
-    reason: TypeReflectionUnavailable { blocker: "value-literal reflection is fingerprint-only (literal_fp); whole-corpus value-pattern decode is tier-2. First consumer covers type-level exemplars (DeclarationRef.module_path -> QualifiedName) plus the model_number negative control." }
+    reason: TypeReflectionUnavailable { blocker: "witness-proven on exemplar sites via concept_decl_facts_live (DeclarationRef.module_path -> QualifiedName + model_number negative control); whole-corpus value-pattern decode is tier-2 (literal reflection is fingerprint-only). Not floor-blocking: the corpus contains real anemic sites, so a blocking always_required_lenses gate would red main; floor-liveness needs either those sites fixed or an audit-only-floor pass." }
   },
-  consumer_observed: FloorGate,
+  consumer_observed: WitnessOnly,
   consumer_receipt_ref: NoReceiptRef,
   red_control_status: RedControlPassed,
   self_application_status: SelfApplicationAbsent,

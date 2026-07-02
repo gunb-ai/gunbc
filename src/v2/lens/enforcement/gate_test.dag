@@ -139,12 +139,13 @@ test fn subjects_leg_discriminates() -> Bool {
     && leg_fails(l: intent_family_verdict(intent: synthetic_intent_missing_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
 }
 
-test fn model_anemia_intent_now_has_live_consumer() -> Bool {
-  return leg_holds(l: intent_family_verdict(intent: standing_intent_model_anemia_repo_wide, contracts: lens_contract_registry, receipts: coverage_receipt_registry).live_consumer)
+test fn model_anemia_contract_now_answers_the_intent() -> Bool {
+  return leg_holds(l: intent_family_verdict(intent: standing_intent_model_anemia_repo_wide, contracts: lens_contract_registry, receipts: coverage_receipt_registry).claimed)
 }
 
-test fn model_anemia_intent_holds_with_anemia_consumer() -> Bool {
-  return intent_family_holds(intent: standing_intent_model_anemia_repo_wide, contracts: lens_contract_registry, receipts: coverage_receipt_registry)
+test fn model_anemia_consumer_is_witness_only_not_floor_live_today() -> Bool {
+  return leg_fails(l: intent_family_verdict(intent: standing_intent_model_anemia_repo_wide, contracts: lens_contract_registry, receipts: coverage_receipt_registry).live_consumer)
+    && !intent_family_holds(intent: standing_intent_model_anemia_repo_wide, contracts: lens_contract_registry, receipts: coverage_receipt_registry)
 }
 
 test fn complexity_repo_wide_intent_does_not_hold() -> Bool {
