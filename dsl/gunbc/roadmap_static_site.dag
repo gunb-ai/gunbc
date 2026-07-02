@@ -1,7 +1,10 @@
 module gunbc.roadmap_static_site
 
-import std.types { String, Bool, List, Int, NonEmptyStr, ContentHash, HttpMethod, GET }
+import std.types { String, Bool, List, NonEmptyStr, ContentHash, HttpMethod, GET, Port }
 import std.content_hash { content_hash_atom }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { Measure, Memory, Mebi, Count, Milli, Nat }
 import std.http_path { PathTemplate, LiteralToken }
 import extdeps.uri_path { ParsedPathTemplate, MalformedPathTemplate, parse_path_template }
 import extdeps.http.server {
@@ -13,6 +16,9 @@ import extdeps.http.server {
 import gunbc.roadmap_authority { expected_roadmap_md, authored_merged_prs, roadmap_authority }
 import gunbc.roadmap_spawner { roadmap_dispatch_file_content, json_str }
 import gunbc.fleet_intent_network { fleet_intent_network }
+
+type Mebibyte = Measure<Memory, Mebi, Nat>
+type CpuMillicoreBudget = Measure<Count, Milli, Nat>
 
 type SiteArtifactKind
   = RoadmapMarkdown
@@ -27,9 +33,9 @@ type SiteArtifact {
 }
 
 type WebServiceShape {
-  cpu_millicores: Int
-  memory_mib: Int
-  port: Int
+  cpu: CpuMillicoreBudget
+  memory: Mebibyte
+  port: Port
   stateless: Bool
   health_path: NonEmptyStr
 }
@@ -91,8 +97,8 @@ fn roadmap_site_text_artifacts() -> List<SiteArtifact> {
 
 fn roadmap_site_web_service_shape() -> WebServiceShape {
   WebServiceShape {
-    cpu_millicores: 100,
-    memory_mib: 128,
+    cpu: CpuMillicoreBudget { count: 100 },
+    memory: Mebibyte { count: 128 },
     port: 8080,
     stateless: true,
     health_path: roadmap_site_health_path,
