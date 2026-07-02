@@ -1,0 +1,81 @@
+module extdeps.os.ubuntu_install_media_fetch
+
+import std.types { NonEmptyStr, List, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.languages.bash.program {
+  ShellProgram,
+  lit,
+  assign,
+  serialize_bash,
+  RawLine,
+}
+import extdeps.os.ubuntu_install_media {
+  UbuntuInstallMediaArtifactRow,
+  ubuntu_install_media_install_path,
+  ubuntu_install_media_part_path,
+  ubuntu_install_media_mirror_urls,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "cdimage.ubuntu.com/releases/24.04/release/SHA256SUMS"
+  }
+}
+
+data install_media_fetch_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: install_media_fetch — mirror retry loop, sha256 verify-before-rename, and AlreadyPresent/HashMismatch branches composed as RawLine shell text inside ShellProgram (medium-as-string); DISSOLVES WHEN bash_fold grammar rows model the fetch loop (for/mirror-fail/retry, .part download, sha256sum -c, mv) and host_effect_apply binds InstallMediaFetch without serialize_bash RawLine payload; retire medium_structure_exception_roster entry for dag/extdeps/os/ubuntu_install_media_fetch.dag"
+
+fn join_mirror_urls_for_shell(urls: List<NonEmptyStr>) -> String {
+  fold(
+    urls,
+    init: "",
+    f: (acc, u) => {
+      if acc == "" {
+        concat("\"", concat(u as String, "\""))
+      } else {
+        concat(concat(acc, " "), concat("\"", concat(u as String, "\"")))
+      }
+    },
+  )
+}
+
+fn install_media_fetch_program(artifact: UbuntuInstallMediaArtifactRow) -> ShellProgram {
+  let final_path = ubuntu_install_media_install_path(artifact: artifact)
+  let part_path = ubuntu_install_media_part_path(install_path: final_path)
+  let expected_hash = artifact.content_sha256
+  let mirror_urls = ubuntu_install_media_mirror_urls(artifact: artifact)
+  ShellProgram {
+    set_e: true,
+    statements: [
+      assign(name: "FINAL", value: lit(text: final_path as String)),
+      assign(name: "PART", value: lit(text: part_path as String)),
+      assign(name: "HASH", value: lit(text: expected_hash as String)),
+      RawLine { text: "if [ -f \"$FINAL\" ]; then" },
+      RawLine { text: "  if echo \"$HASH  $FINAL\" | sha256sum -c - >/dev/null 2>&1; then" },
+      RawLine { text: "    echo \"InstallMediaFetchReceipt: outcome=AlreadyPresent path=$FINAL sha256=$HASH\"" },
+      RawLine { text: "    exit 0" },
+      RawLine { text: "  fi" },
+      RawLine { text: "  echo \"HashMismatchRefusal: path=$FINAL expected=$HASH\" >&2" },
+      RawLine { text: "  exit 1" },
+      RawLine { text: "fi" },
+      RawLine { text: "mkdir -p \"$(dirname \"$FINAL\")\"" },
+      RawLine { text: concat("for url in ", join_mirror_urls_for_shell(urls: mirror_urls), "; do") },
+      RawLine { text: "  if curl -fL \"$url\" -o \"$PART\"; then" },
+      RawLine { text: "    echo \"$HASH  $PART\" | sha256sum -c -" },
+      RawLine { text: "    mv \"$PART\" \"$FINAL\"" },
+      RawLine { text: "    bytes=$(stat -c%s \"$FINAL\" 2>/dev/null || stat -f%z \"$FINAL\")" },
+      RawLine { text: "    echo \"InstallMediaFetchReceipt: outcome=Fetched mirror=$url sha256=$HASH bytes=$bytes path=$FINAL\"" },
+      RawLine { text: "    exit 0" },
+      RawLine { text: "  fi" },
+      RawLine { text: "  rm -f \"$PART\"" },
+      RawLine { text: "done" },
+      RawLine { text: "echo \"InstallMediaFetchRefusal: all mirrors unreachable\" >&2" },
+      RawLine { text: "exit 1" },
+    ],
+  }
+}
+
+fn install_media_fetch_script(artifact: UbuntuInstallMediaArtifactRow) -> String {
+  serialize_bash(p: install_media_fetch_program(artifact: artifact))
+}

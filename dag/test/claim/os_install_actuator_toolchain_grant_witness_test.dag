@@ -6,7 +6,7 @@ import extdeps.bmc.os_install_actuator_toolchain {
   srv3_os_install_actuator_toolchain_grant,
   srv3_os_install_actuator_host_label,
   srv3_os_install_actuator_toolchain_is_complete,
-  actuator_toolchain_grant_includes_tool,
+  actuator_toolchain_requirement_includes_tool,
   extdeps_external_authority_anchor,
 }
 import extdeps.tools.curl { curl_cli_tool }
@@ -20,21 +20,21 @@ test fn srv3_actuator_toolchain_grant_declares_four_tools() -> Bool {
 }
 
 test fn srv3_actuator_toolchain_grant_is_fail_closed_on_websocat() -> Bool {
-  actuator_toolchain_grant_includes_tool(
-    grant: srv3_os_install_actuator_toolchain_grant,
-    tool_name: websocat_cli_tool.name
+  actuator_toolchain_requirement_includes_tool(
+    requirement: srv3_os_install_actuator_toolchain_grant,
+    tool_name: websocat_cli_tool.name,
   )
-    && actuator_toolchain_grant_includes_tool(
-      grant: srv3_os_install_actuator_toolchain_grant,
-      tool_name: nbdkit_cli_tool.name
+    && actuator_toolchain_requirement_includes_tool(
+      requirement: srv3_os_install_actuator_toolchain_grant,
+      tool_name: nbdkit_cli_tool.name,
     )
-    && actuator_toolchain_grant_includes_tool(
-      grant: srv3_os_install_actuator_toolchain_grant,
-      tool_name: socat_cli_tool.name
+    && actuator_toolchain_requirement_includes_tool(
+      requirement: srv3_os_install_actuator_toolchain_grant,
+      tool_name: socat_cli_tool.name,
     )
-    && actuator_toolchain_grant_includes_tool(
-      grant: srv3_os_install_actuator_toolchain_grant,
-      tool_name: curl_cli_tool.name
+    && actuator_toolchain_requirement_includes_tool(
+      requirement: srv3_os_install_actuator_toolchain_grant,
+      tool_name: curl_cli_tool.name,
     )
 }
 
@@ -45,6 +45,6 @@ test fn srv3_actuator_host_label_is_declared() -> Bool {
 test fn srv3_actuator_toolchain_authority_cites_openbmc_virtual_media() -> Bool {
   string_contains(
     s: extdeps_external_authority_anchor.uri.locator,
-    pattern: "openbmc/docs/blob/master/designs/virtual-media.md"
+    pattern: "openbmc/docs/blob/master/designs/virtual-media.md",
   )
 }

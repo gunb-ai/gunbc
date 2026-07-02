@@ -1,0 +1,184 @@
+module gunbc.srv3_os_install_actuator_toolchain_ensure
+
+import extdeps.bmc.os_install_actuator_toolchain { os_install_actuator_toolchain_requirement }
+import extdeps.tools.curl { curl_cli_tool }
+import extdeps.tools.nbdkit { nbdkit_cli_tool }
+import extdeps.tools.socat { socat_cli_tool }
+import extdeps.tools.websocat {
+  websocat_cli_tool,
+  websocat_github_tag,
+  websocat_asset_aarch64,
+  websocat_install_path,
+  websocat_github_release_download_url,
+}
+import extdeps.apt { package_curl, package_nbdkit, package_socat }
+import gunbc.ci_deploy_access {
+  ci_deploy_srv1_operator_access,
+  deploy_access_preflight_check_block,
+  deploy_access_apt_get_privileged_command,
+  deploy_access_sudo_n_apt_get_install_command,
+}
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import extdeps.shell
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { NonEmptyStr, String, Bool }
+import std.resources { Network }
+
+data srv3_os_install_actuator_toolchain_ensure_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_os_install_actuator_toolchain_ensure",
+    decl_name: "os_install_actuator_toolchain_ensure_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data os_install_actuator_toolchain_ensure_dissolution_trigger: String = "🟡 dissolve-on: os_install_actuator_toolchain_ensure — curl/nbdkit/socat via sudo -n apt-get (privileged/gated); websocat via cited GitHub release binary to /var/lib/gunbc/bin (unprivileged curl); concat-built bash runner via shell_exec_via_bash + shell.Exec.Run (medium-as-string); DISSOLVES WHEN host_effect_apply binds OsInstallActuatorToolchainEnsure without concat runner glue; retire medium_structure_exception_roster entry for dag/gunbc/srv3_os_install_actuator_toolchain_ensure.dag"
+
+data gunbc_bin_dir: NonEmptyStr = "/var/lib/gunbc/bin"
+
+fn os_install_actuator_apt_tool_ensure_block(tool_name: String, package: NonEmptyStr) -> String {
+  os_install_actuator_apt_tool_ensure_block_with_check(
+    tool_name: tool_name,
+    package: package,
+    present_check: concat(
+      concat(concat("command -v ", tool_name), " >/dev/null 2>&1 && "),
+      concat(tool_name, " --version >/dev/null 2>&1"),
+    ),
+    post_install_check: concat(tool_name, " --version >/dev/null"),
+  )
+}
+
+fn os_install_actuator_apt_tool_ensure_block_with_check(
+  tool_name: String,
+  package: NonEmptyStr,
+  present_check: String,
+  post_install_check: String,
+) -> String {
+  let apt_preflight = deploy_access_preflight_check_block(
+    access: ci_deploy_srv1_operator_access,
+    cmd: deploy_access_apt_get_privileged_command(),
+  )
+  let privileged_install = deploy_access_sudo_n_apt_get_install_command(package: package)
+  concat(
+    concat(
+      concat(concat("if ", present_check), "; then\n"),
+      concat(
+        concat(
+          concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Present tool=", tool_name),
+          concat(" package=", package as String),
+        ),
+        "\"\nelse\n",
+      ),
+    ),
+    concat(
+      concat(
+        concat(concat(apt_preflight, privileged_install), "\n"),
+        concat(post_install_check, "\n"),
+      ),
+      concat(
+        concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Installed tool=", tool_name),
+        concat(concat(" package=", package as String), "\"\nfi\n"),
+      ),
+    ),
+  )
+}
+
+fn os_install_actuator_socat_ensure_block() -> String {
+  os_install_actuator_apt_tool_ensure_block_with_check(
+    tool_name: socat_cli_tool.name as String,
+    package: package_socat,
+    present_check: "command -v socat >/dev/null 2>&1",
+    post_install_check: "command -v socat >/dev/null 2>&1",
+  )
+}
+
+fn os_install_actuator_websocat_ensure_block() -> String {
+  let tool_name = websocat_cli_tool.name as String
+  let install_path = websocat_install_path as String
+  let bin_dir = gunbc_bin_dir as String
+  let url_a64 = websocat_github_release_download_url(tag: websocat_github_tag, asset: websocat_asset_aarch64)
+  concat(
+    concat(
+      concat(
+        concat("if test -x \"", install_path),
+        "\"; then\n",
+      ),
+      concat(
+        concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Present tool=", tool_name),
+        concat(concat(" path=", install_path), "\"\nelse\n"),
+      ),
+    ),
+    concat(
+      concat(
+        concat(concat("  sudo mkdir -p ", bin_dir), "\n"),
+        concat(
+          concat(concat("  sudo chown \"$(id -un):$(id -gn)\" ", bin_dir), "\n"),
+        ),
+      ),
+      concat(
+        concat(
+          concat(
+            concat(concat("  curl -fsSL \"", url_a64), "\" -o \""), concat(install_path, "\"\n")),
+          concat(concat("  chmod +x \"", install_path), "\"\n"),
+        ),
+        concat(
+          concat("  test -x \"", install_path),
+          concat(
+            concat("\" || { echo \"OsInstallActuatorToolchainRefusal: websocat not executable at ", install_path),
+            "\" >&2; exit 1; }\n",
+          ),
+        ),
+      ),
+      concat(
+        concat("  echo \"OsInstallActuatorToolchainReceipt: outcome=Installed tool=", tool_name),
+        concat(concat(" path=", install_path), "\"\nfi\n"),
+      ),
+    ),
+  )
+}
+
+fn os_install_actuator_toolchain_ensure_script() -> String {
+  concat(
+    concat(
+      concat(
+        concat(
+          "#!/usr/bin/env bash\nset -euo pipefail\n",
+          os_install_actuator_apt_tool_ensure_block(tool_name: curl_cli_tool.name as String, package: package_curl),
+        ),
+        os_install_actuator_apt_tool_ensure_block(tool_name: nbdkit_cli_tool.name as String, package: package_nbdkit),
+      ),
+      os_install_actuator_socat_ensure_block(),
+    ),
+    os_install_actuator_websocat_ensure_block(),
+  )
+}
+
+func srv3_os_install_actuator_toolchain_ensure() -> ProcessExit
+  uses net: Network
+{
+  let script = os_install_actuator_toolchain_ensure_script()
+  let run = shell.Exec.Run(script: shell_exec_via_bash(body: script))
+  if run.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("actuator-toolchain-ensure: ", run.stderr))
+  }
+}
+
+fn os_install_actuator_toolchain_ensure_script_uses_github_release_not_apt_for_websocat() -> Bool {
+  let script = os_install_actuator_toolchain_ensure_script()
+  string_contains(s: script, pattern: "github.com/vi/websocat/releases/download/")
+    && string_contains(s: script, pattern: websocat_install_path as String)
+    && string_contains(s: script, pattern: "apt-get install -y websocat") == false
+}
+
+fn os_install_actuator_toolchain_ensure_is_privileged_gated_for_apt() -> Bool {
+  string_contains(s: os_install_actuator_toolchain_ensure_script(), pattern: "sudo -n /usr/bin/apt-get install -y")
+}
+
+fn os_install_actuator_toolchain_requirement_row_count() -> Int {
+  os_install_actuator_toolchain_requirement.required_tools.length()
+}

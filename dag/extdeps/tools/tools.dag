@@ -23,6 +23,13 @@ type InstallSource
   | SourceRustup
   | SourceBrew { formula: NonEmptyStr }
   | SourceApt { package: NonEmptyStr }
+  | SourceGitHubRelease {
+      repo: NonEmptyStr
+      tag: NonEmptyStr
+      asset_aarch64: NonEmptyStr
+      asset_x86_64: NonEmptyStr
+      install_path: NonEmptyStr
+    }
 
 type CliTool {
   name: NonEmptyStr
@@ -45,6 +52,11 @@ fn one_hint(source: InstallSource) -> String {
     SourceRustup => concat("install rustup from ", rustup_install_url)
     SourceBrew { formula: f } => concat("brew install ", f)
     SourceApt { package: p } => concat("apt install ", p)
+    SourceGitHubRelease { repo: r, tag: t, install_path: p, asset_aarch64: _, asset_x86_64: _ } =>
+      concat(
+        concat(concat(concat("install ", p as String), " from github.com/"), r as String),
+        concat("/releases/tag/", t as String),
+      )
   }
 }
 

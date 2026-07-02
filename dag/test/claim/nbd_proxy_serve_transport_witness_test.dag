@@ -32,7 +32,7 @@ test fn nbd_proxy_serve_program_is_structured_not_concat_blob() -> Bool {
     bmc_host: asrock_srv3_live_bmc_host,
     session_token: bmcweb_session_token_env_ref,
     ws_path: bmcweb_nbd_proxy_ws_path(variant: VmSlotIndexEndpoint, slot: 0, index: 0),
-    iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04-live-server-arm64.iso",
+    iso_path: "/var/lib/gunbc/artifacts/ubuntu-24.04.3-live-server-arm64.iso",
     local_nbd_port: srv3_nbd_proxy_local_port,
   )
   nbd_proxy_serve_program_statement_count(intent: intent) == 5
@@ -77,6 +77,7 @@ test fn bmcweb_session_login_program_uses_curl_authority_not_inline_secret() -> 
   bmcweb_session_login_program(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: "/tmp/bmcweb-login.json",
+    response_path: "/tmp/bmcweb-login-response.json",
   ).statements.length() == 1
     && curl_cli_tool.name == "curl"
 }

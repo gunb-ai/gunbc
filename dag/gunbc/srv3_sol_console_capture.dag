@@ -1,0 +1,51 @@
+module gunbc.srv3_sol_console_capture
+
+import extdeps.bmc.serial_console {
+  SolConsoleCaptureIntent,
+  ObmcConsoleCli,
+  sol_console_capture_script,
+  sol_console_capture_bash_emit_dissolution_trigger,
+}
+import extdeps.boards.asrock_rack { asrock_srv3_live_bmc_host }
+import extdeps.shell
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.types { NonEmptyStr, String, Bool }
+
+data srv3_sol_console_capture_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "extdeps.bmc.serial_console",
+    decl_name: "sol_console_capture_bash_emit_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data srv3_sol_console_log_path: NonEmptyStr = "/var/lib/gunbc/logs/srv3-install-sol-console.log" as NonEmptyStr
+
+data srv3_sol_console_capture_intent: SolConsoleCaptureIntent = SolConsoleCaptureIntent {
+  bmc_host: asrock_srv3_live_bmc_host,
+  transport: ObmcConsoleCli,
+  output_path: srv3_sol_console_log_path,
+}
+
+func srv3_sol_console_capture() -> ProcessExit {
+  let script = sol_console_capture_script(intent: srv3_sol_console_capture_intent)
+  let run = shell.Exec.Run(script: shell_exec_via_bash(body: script))
+  if run.success {
+    ExitSuccess
+  } else {
+    exit_failure(reason: concat("sol-console-capture: ", run.stderr))
+  }
+}
+
+fn srv3_sol_console_capture_log_path_is_declared() -> Bool {
+  string_contains(s: srv3_sol_console_log_path as String, pattern: "srv3-install-sol-console")
+}
+
+fn srv3_sol_console_capture_carries_dissolution_trigger() -> Bool {
+  string_contains(s: sol_console_capture_bash_emit_dissolution_trigger, pattern: "dissolve-on:")
+    && string_contains(s: sol_console_capture_bash_emit_dissolution_trigger, pattern: "obmc-console")
+}

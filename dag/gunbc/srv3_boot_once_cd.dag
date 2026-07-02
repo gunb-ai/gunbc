@@ -26,6 +26,22 @@ import gunbc.tools.bmc_onboard {
   reset_body,
 }
 import gunbc.bmc_onboarding { new_altra_onboarding_plan }
+import gunbc.workflow_escalation {
+  WorkflowApprovalState,
+  workflow_destructive_step_refusal_reason,
+}
+import gunbc.srv3_os_install_actuate_workflow {
+  srv3_boot_once_cd_escalation,
+  srv3_boot_once_cd_default_approval,
+  srv3_boot_once_cd_operator_granted_approval,
+  srv3_boot_once_cd_workflow_disposition,
+}
+import gunbc.srv3_bmc_credential_resolve {
+  observe_and_resolve_srv3_bmc_credential,
+  materialize_bmc_login_password,
+  CredentialResolutionRefused,
+  BmcCredentialResolution,
+}
 
 data srv3_boot_once_cd_secret_debt: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
@@ -46,13 +62,48 @@ data srv3_boot_cd_reset_type: RedfishResetType = ResetForceRestart
 func srv3_boot_once_cd() -> ProcessExit
   uses net: Network
 {
+  srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_default_approval)
+}
+
+func srv3_boot_once_cd_operator_approved() -> ProcessExit
+  uses net: Network
+{
+  srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_operator_granted_approval)
+}
+
+func srv3_boot_once_cd_gated(approval: WorkflowApprovalState) -> ProcessExit
+  uses net: Network
+{
+  let disposition = srv3_boot_once_cd_workflow_disposition(approval: approval)
+  let refusal = workflow_destructive_step_refusal_reason(disposition: disposition)
+  if refusal != "" {
+    return exit_failure(reason: concat("boot-once-cd: ", refusal))
+  }
+
+  let resolution = observe_and_resolve_srv3_bmc_credential()
+  return match resolution {
+    CredentialResolutionRefused { reason: r } =>
+      exit_failure(reason: concat("boot-once-cd: credential resolution refused: ", r))
+    _ => srv3_boot_once_cd_resolved(resolution: resolution)
+  }
+}
+
+func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
+  uses net: Network
+{
   let plan = new_altra_onboarding_plan
   let host = plan.bmc.host
   let account = plan.factory_login.username
 
+  let password = match materialize_bmc_login_password(resolution: resolution) {
+    Absent =>
+      return exit_failure(reason: "boot-once-cd: could not materialize BMC password from resolution")
+    Present { value: p } => p
+  }
+
   let netrc_write = Filesystem.Write(
     path: bmc_onboard_netrc_path,
-    content: netrc_content(host: host, account: account, password: plan.factory_login.published_password)
+    content: netrc_content(host: host, account: account, password: password)
   )
   if netrc_write.success == false {
     return exit_failure(reason: concat("boot-once-cd: netrc stage failed: ", netrc_write.error))
