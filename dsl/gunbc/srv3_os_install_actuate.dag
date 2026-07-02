@@ -29,6 +29,7 @@ import gunbc.srv3_bmc_credential_resolve {
   UseFactoryCredential,
   UseRotatedSecretRef,
 }
+import gunbc.shell_bash_runner { shell_exec_via_bash }
 import gunbc.nbd_proxy_virtual_media_install {
   srv3_os_install_actuator_plan,
   os_install_actuator_step_count,
@@ -134,7 +135,7 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
     concat(serialize_bash(p: login_prog), " > "),
     srv3_bmcweb_login_response_path,
   )
-  let login_run = shell.Exec.Run(script: login_script)
+  let login_run = shell.Exec.Run(script: shell_exec_via_bash(body: login_script))
   if login_run.success == false {
     return exit_failure(reason: concat("bmcweb-login: curl login failed: ", login_run.stderr))
   }
@@ -146,7 +147,7 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
     ),
     srv3_bmcweb_token_path,
   )
-  let extract_run = shell.Exec.Run(script: extract_script)
+  let extract_run = shell.Exec.Run(script: shell_exec_via_bash(body: extract_script))
   if extract_run.success == false {
     return exit_failure(reason: concat("bmcweb-login: token extract failed: ", extract_run.stderr))
   }
@@ -177,7 +178,7 @@ func srv3_nbd_proxy_serve() -> ProcessExit
     ),
     srv3_nbd_proxy_serve_script_path,
   )
-  let serve_run = shell.Exec.Run(script: serve_script)
+  let serve_run = shell.Exec.Run(script: shell_exec_via_bash(body: serve_script))
   if serve_run.success {
     ExitSuccess
   } else {
