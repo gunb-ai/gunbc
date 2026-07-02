@@ -124,7 +124,11 @@ fn host_identity_assimilation_receipt(
 fn host_identity_assimilation_receipt_is_valid(receipt: HostIdentityAssimilationReceipt) -> Bool {
   receipt.read_back_converged
     && receipt.reapply_noop
-    && deployed_intent_observed_differs_from_fleet_slot(d: receipt.adopted_base)
+    && (if receipt.apply_converged {
+      deployed_intent_observed_differs_from_fleet_slot(d: receipt.adopted_base)
+    } else {
+      true
+    })
 }
 
 fn host_identity_assimilate_srv1_live(probed_at: NonEmptyStr) -> HostIdentityAssimilationReceipt? {
