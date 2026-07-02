@@ -1409,16 +1409,10 @@ pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResu
         rows.push(Value::Record {
             type_name: ctx.sym("DeclFact"),
             fields: Rc::new(sorted_fields(vec![
-                (
-                    ctx.sym("qualified_name"),
-                    Value::Str(fact.qualified_name),
-                ),
+                (ctx.sym("qualified_name"), Value::Str(fact.qualified_name)),
                 (ctx.sym("name"), Value::Str(fact.name)),
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
-                (
-                    ctx.sym("node"),
-                    marshal_decl_fact_node(ctx, &item_name),
-                ),
+                (ctx.sym("node"), marshal_decl_fact_node(ctx, &item_name)),
                 (ctx.sym("rel_path"), Value::Str(fact.rel_path)),
             ])),
         });

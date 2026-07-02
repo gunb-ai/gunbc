@@ -23,8 +23,7 @@ use std::sync::OnceLock;
 
 use crate::cli_run::{
     non_fold_residue_count, non_fold_residue_live_sites, non_fold_residue_roster_size,
-    non_fold_residue_site_is_rostered, non_fold_residue_unrostered_count,
-    witness_layer_roots,
+    non_fold_residue_site_is_rostered, non_fold_residue_unrostered_count, witness_layer_roots,
 };
 
 // Migration-debt sub-roster — subset of NON_FOLD_RESIDUE_ROSTER in cli_run.
