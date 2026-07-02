@@ -4,9 +4,12 @@ import v2.std.algebra { Empty, length, list_snoc_item }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.node { Node }
+import v2.std.node_query { node_labeled_child_edges }
 import v2.std.text { String }
 
-type DeclItemKind
+// dissolve-on: byte-identical peer of v1.compiler.infer_items::ItemKind — single authority
+// when std←compiler import opens (gunbc#5364); host marshals this type name today.
+type ItemKind
   = FnItem
   | FuncItem
   | TypeItem
@@ -17,7 +20,7 @@ type DeclItemKind
 type DeclFact {
   qualified_name: String
   name: String
-  kind: DeclItemKind
+  kind: ItemKind
   node: Node
   rel_path: String
 }
@@ -36,12 +39,18 @@ fn logical_qualified_name_from_module(module_name: String, name: String) -> Stri
   }
 }
 
-fn decl_facts_is_fn_like(kind: DeclItemKind) -> Bool {
+// dissolve-on: sole predicate authority for fn-like decl rows; Rust emit audit inlines
+// ItemKind::FnItem|FuncItem at the host seam only (gunbc#5364 corpus-accessor widen).
+fn decl_facts_is_fn_like(kind: ItemKind) -> Bool {
   match kind {
     FnItem => true
     FuncItem => true
     _ => false
   }
+}
+
+fn decl_fact_node_has_body(node: Node) -> Bool {
+  length(xs: node_labeled_child_edges(node: node)) > 0
 }
 
 fn decl_facts_fn_items(facts: List<DeclFact>) -> List<DeclFact> {

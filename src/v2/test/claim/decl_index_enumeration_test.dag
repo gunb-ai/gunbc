@@ -3,6 +3,7 @@ module v2.test.claim.decl_index_enumeration
 import gunbc.ci_layer_roots { witness_layer_roots }
 import v2.std.decl_index {
   DeclFact,
+  decl_fact_node_has_body,
   decl_facts,
   decl_facts_count,
   decl_facts_fn_item_count,
@@ -24,7 +25,9 @@ test fn decl_facts_rows_carry_locked_shape_fields() -> Bool {
     if found {
       found
     } else if fact.name == "eval_bind_node_eval" {
-      decl_facts_is_fn_like(kind: fact.kind) && (fact.rel_path.length() > 0)
+      decl_facts_is_fn_like(kind: fact.kind)
+        && (fact.rel_path.length() > 0)
+        && decl_fact_node_has_body(node: fact.node)
     } else {
       false
     }

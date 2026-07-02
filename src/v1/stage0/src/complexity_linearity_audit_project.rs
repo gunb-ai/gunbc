@@ -74,7 +74,8 @@ fn nfr_roster_bucket(site: &str) -> Option<NonFoldRosterBucket> {
         Some(NonFoldRosterBucket::Irreducible)
     }
 }
-use crate::coproduct_reflection::{decl_facts_for_roots, decl_facts_is_fn_like, DeclFactRaw};
+use crate::coproduct_reflection::{decl_facts_for_roots, DeclFactRaw};
+use crate::v1_compiler_infer_items::ItemKind;
 use crate::v1_std_core::{
     arm_pattern, authored_name_at, expr_var_name_at, match_arm_nodes, match_scrutinee,
     param_node_name_at, param_node_type_expr, ExprData, MatchPattern, Node,
@@ -380,7 +381,7 @@ pub fn audit_corpus_over_decl_facts(roots: &[String]) -> AuditSummary {
     for fact in &facts {
         scanned_files.insert(fact.rel_path.clone());
         parsed_files.insert(fact.rel_path.clone());
-        if !decl_facts_is_fn_like(fact.kind) {
+        if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
             continue;
         }
         summary.fns_scanned += 1;

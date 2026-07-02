@@ -1297,6 +1297,7 @@ pub struct DeclFactRaw {
     pub node: Rc<Node>,
     pub rel_path: String,
     pub source_indices: SourceIndices,
+    pub file_content: String,
 }
 
 fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
@@ -1334,10 +1335,6 @@ fn corpus_dag_files_for_roots(roots: &[String]) -> Vec<PathBuf> {
     files
 }
 
-pub fn decl_facts_is_fn_like(kind: ItemKind) -> bool {
-    matches!(kind, ItemKind::FnItem | ItemKind::FuncItem)
-}
-
 /// Parse-only whole-tree `decl_facts(roots)` substrate — shared by host builtin and emit audits.
 pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
     let mut out = Vec::new();
@@ -1347,6 +1344,7 @@ pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
             continue;
         }
         let content = std::fs::read_to_string(&file).ok();
+        let file_content = content.clone().unwrap_or_default();
         let module_path = content
             .as_ref()
             .and_then(|c| extract_module_path_from_content(c))
@@ -1368,6 +1366,7 @@ pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
                 node: item.clone(),
                 rel_path: rel.clone(),
                 source_indices: si.clone(),
+                file_content: file_content.clone(),
             });
         }
     }
@@ -1381,6 +1380,21 @@ pub fn decl_facts_for_roots(pool_roots: &[String]) -> Vec<DeclFactRaw> {
     out
 }
 
+fn fn_item_param_names(item: &Rc<Node>, si: &SourceIndices) -> Vec<String> {
+    let mut param_names = Vec::new();
+    for p in item.params.iter() {
+        if param_is_type_param(p, si) {
+            continue;
+        }
+        let pn = param_node_name_at(p.clone(), si.clone());
+        if pn.is_empty() || pn.starts_with('_') || param_names.iter().any(|q| q == &pn) {
+            continue;
+        }
+        param_names.push(pn);
+    }
+    param_names
+}
+
 fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
     let variant = match kind {
         ItemKind::FnItem => "FnItem",
@@ -1391,28 +1405,58 @@ fn marshal_decl_item_kind(ctx: &InterpContext, kind: ItemKind) -> Value {
         ItemKind::OtherItem => "OtherItem",
     };
     Value::Variant {
-        type_name: ctx.sym("DeclItemKind"),
+        type_name: ctx.sym("ItemKind"),
         variant_name: ctx.sym(variant),
         fields: Rc::new(vec![]),
     }
 }
 
-fn marshal_decl_fact_node(ctx: &InterpContext, item_name: &str) -> Value {
-    atom_identity_node(ctx, item_name)
+fn marshal_decl_fact_node(
+    ctx: &InterpContext,
+    item: &Rc<Node>,
+    kind: ItemKind,
+    si: &SourceIndices,
+    file_content: &str,
+) -> InterpResult<Value> {
+    match kind {
+        ItemKind::TypeItem => concept_decl_node_parse_only_from_source(ctx, item, si, file_content),
+        ItemKind::FnItem | ItemKind::FuncItem => {
+            if let Some(body) = item.body.as_ref() {
+                let param_names = fn_item_param_names(item, si);
+                Ok(marshal_fn_body_skeleton(ctx, body, &param_names, si))
+            } else {
+                Ok(unit_type_node(ctx))
+            }
+        }
+        ItemKind::DataItem => {
+            if let Some(body) = item.body.as_ref() {
+                Ok(marshal_fn_body_skeleton(ctx, body, &[], si))
+            } else {
+                Ok(unit_type_node(ctx))
+            }
+        }
+        _ => Ok(unit_type_node(ctx)),
+    }
 }
 
 pub fn eval_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> InterpResult<Value> {
     let facts = decl_facts_for_roots(pool_roots);
     let mut rows = Vec::with_capacity(facts.len());
     for fact in facts {
-        let item_name = fact.name.clone();
+        let node = marshal_decl_fact_node(
+            ctx,
+            &fact.node,
+            fact.kind,
+            &fact.source_indices,
+            &fact.file_content,
+        )?;
         rows.push(Value::Record {
             type_name: ctx.sym("DeclFact"),
             fields: Rc::new(sorted_fields(vec![
                 (ctx.sym("qualified_name"), Value::Str(fact.qualified_name)),
                 (ctx.sym("name"), Value::Str(fact.name)),
                 (ctx.sym("kind"), marshal_decl_item_kind(ctx, fact.kind)),
-                (ctx.sym("node"), marshal_decl_fact_node(ctx, &item_name)),
+                (ctx.sym("node"), node),
                 (ctx.sym("rel_path"), Value::Str(fact.rel_path)),
             ])),
         });
