@@ -1,9 +1,18 @@
 //! Periodic phase-local heartbeat records for long `claim_executor` floor walks.
 //!
-//! Transport only (DESIGN §4): stderr lines tagged `[phase-profile]` with
-//! `phase ∈ {discovery|resolve|typecheck|eval|host-effect|gate}`. Zero cost when
-//! `GUNBC_FLOOR_PHASE_PROFILE` is unset. Dissolves when the realization_measurement_loop
-//! `.dag` carrier supersedes this Rust tap (same family as `GUNBC_FLOOR_GANTT`).
+//! **Transport only** (DESIGN §4): stderr `[phase-profile]` k=v lines are the Lossless wire
+//! projection crossing the Rust→log boundary — same pattern as `[gantt]`, `[measurement]`,
+//! and `[calibration]` in `claim_executor`. The authority is not this file.
+//!
+//! Zero cost when `GUNBC_FLOOR_PHASE_PROFILE` is unset.
+//!
+//! **Dissolution trigger (DESIGN §6):** delete `src/v1/stage0/src/phase_profile.rs`, remove the
+//! `set_phase` hooks in `cli_run.rs` / `claim_executor.rs`, and drop `GUNBC_FLOOR_PHASE_PROFILE`
+//! when realization_measurement_loop **Phase 0** (`docs/plans/realization-measurement-loop.md`) lands
+//! a `.dag` `PerformanceReceipt` phase-local tick carrier in `dsl/product/compute_fabric.dag` that a
+//! floor witness consumes by execution (the same retirement event that supersedes `GUNBC_FLOOR_GANTT`
+//! per `docs/plans/ci-floor-fractal-gantt.md` § dissolution). Receipt = that witness green with this
+//! module deleted and zero `[phase-profile]` stderr when profiling is enabled on the model path.
 
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
