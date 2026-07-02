@@ -7,7 +7,7 @@ import v2.compiler.translate { target_bundle_child }
 import v2.std.node_query { find_named_child }
 import v2.std.orchestration_emit {
   OrchestrationEmitMedium,
-  orch_construct_run_env,
+  OrchRunEmitPlan,
   orch_construct_run_rawline,
   orch_construct_retry,
   orch_construct_seq2
@@ -50,8 +50,6 @@ fn orch_emit_facts_lookup(key: Node) -> Witness<InferredFacts> {
     }
   }
 }
-
-data orch_run_env_reduction_dissolution_trigger: String = "orchestration_emit Run/Step/Retry path reduces onto bash_fold serialize: an env-FREE Run is delegated to bash_fold_raw_line_target_model + bash_word_pass_emitted via orch_fold_serialize_rawline (single orch_raw, green path, proven byte-identical by orch_run_empty_env_delegates_to_shell_emit and bash_fold fold==serialize_stmt witnesses). An env-BEARING Run lowers to an EnvPrefixed over env plus a RawLine command. The emit-kernel String<->List-Int-codepoint straddle that blocked this is now FIXED by grounding String construction into its native realization (free_monoid_to_string in v1_interpreter.rs, sibling to Int<->Nat PR 5428). The RESIDUAL blocker is a DIFFERENT, modeling-side gap, not the kernel: EnvBinding has EnvUnset (env -u NAME) and FreeMonoid<EnvBinding> is a LIST, but the bash AST EnvPrefixed models only a single name=value prefix with no EnvUnset node, so an env-bearing Run cannot yet be lowered losslessly. It stays on the orch_run_emitted_command single-string render (orch_emit_run_env_welded) until the bash AST grows an env-unset construct and multi-binding nesting. DISSOLVES WHEN the bash EnvPrefixed AST covers EnvUnset + multi-binding env (modeling follow-on landed by gunbc#5846 'Grow bash AST: EnvUnset node + multi-binding env nesting (dissolve orch_emit_run_env_welded)', which depends on this PR's kernel String grounding and dissolves this welded fn outright; no longer kernel-blocked)."
 
 data orch_emit_unsupported_step_anchor: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^orch_emit_unsupported_step } },
@@ -102,12 +100,19 @@ fn orch_emit_run(r: Run, medium: OrchestrationEmitMedium) -> Outcome<Medium<Stri
         target: medium.realize_run_rawline(r.command)
       )
     HeadFound { value: _ } =>
-      orch_emit_from_registry(
-        medium: medium,
-        construct_tag: orch_construct_run_env,
-        target: medium.realize_run_env(r)
-      )
+      orch_emit_run_from_plan(plan: medium.run_env_plan(r), medium: medium)
   }
+}
+
+fn orch_emit_run_from_plan(
+  plan: OrchRunEmitPlan,
+  medium: OrchestrationEmitMedium
+) -> Outcome<Medium<String>> {
+  orch_emit_from_registry(
+    medium: medium,
+    construct_tag: plan.construct_tag,
+    target: plan.target
+  )
 }
 
 fn orch_emit_join2(
