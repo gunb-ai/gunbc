@@ -81,6 +81,10 @@ import v1.compiler.infer_cycle { detect_type_cycles_kahn }
 import v1.compiler.infer_env {
   TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache, merge_type_env_cache,
   str_bindings_from_bindings,
+  build_type_env_calls, merge_type_env_cache_calls,
+  rewire_type_env_parent_links_calls, rewire_type_env_import_str_binding_calls,
+  record_build_type_env_call, record_merge_type_env_cache_call,
+  record_rewire_type_env_parent_links_call, record_rewire_type_env_import_str_binding_call,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
   inductive_fields_list_to_map, flatten_visible_bindings
@@ -1617,7 +1621,7 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
         } else { call_fold_acc_type }
         let method_resolution = resolve_known_method_node(
           receiver: method_receiver,
-          receiver_type: first_arg_type,
+          receiver_type: resolve_method_receiver_type(receiver_type: first_arg_type, env: scope.type_env),
           method_name: func_name,
           fold_accumulator_type: if call_fold_info != none { Present { value: refined_call_fold_acc_type } } else { none },
           service_registry: scope.service_registry,
@@ -5620,6 +5624,7 @@ fn type_env_for_import(module_path: String, parent_env: TypeEnv) -> TypeEnv {
 }
 
 fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
+  record_build_type_env_call()
   let source_indices = fold(map_keys(kernel_type_set), init: source_indices, f: (acc, name) =>
     map_insert(acc, concat("<kernel:", name, ">"), build_newline_index(file: concat("<kernel:", name, ">"), source: name))
   )
@@ -5789,6 +5794,7 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
 }
 
 fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> BuildTypeEnvResult {
+  record_build_type_env_call()
   let intern_table = fold(map_keys(kernel_type_set), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let intern_table = fold(["Optional"], init: intern_table, f: (t, name) => intern(table: t, s: name).table)
   let zero_span = make_span(start: 0, end: 0)
@@ -6597,6 +6603,7 @@ fn rewire_inherited_str_binding(
 }
 
 fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
+  record_rewire_type_env_import_str_binding_call()
   let index = fold(modules, init: empty_map(), f: (acc, m) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
@@ -6639,6 +6646,7 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
 }
 
 fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
+  record_rewire_type_env_parent_links_call()
   let index = fold(modules, init: empty_map(), f: (acc, m) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )

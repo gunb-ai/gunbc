@@ -42,7 +42,17 @@ fn empty_type_env_cache() -> TypeEnvCache {
   }
 }
 
+fn build_type_env_calls() -> Int { 0 }
+fn merge_type_env_cache_calls() -> Int { 0 }
+fn rewire_type_env_parent_links_calls() -> Int { 0 }
+fn rewire_type_env_import_str_binding_calls() -> Int { 0 }
+fn record_build_type_env_call() -> Unit { }
+fn record_merge_type_env_cache_call() -> Unit { }
+fn record_rewire_type_env_parent_links_call() -> Unit { }
+fn record_rewire_type_env_import_str_binding_call() -> Unit { }
+
 fn merge_type_env_cache(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
+  record_merge_type_env_cache_call()
   TypeEnvCache {
     deps_map: map_merge(base.deps_map, overlay.deps_map),
     str_bindings: map_merge(base.str_bindings, overlay.str_bindings),

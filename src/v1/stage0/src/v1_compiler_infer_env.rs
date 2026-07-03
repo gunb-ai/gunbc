@@ -118,8 +118,12 @@ pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
     })
 }
 
-pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
+pub fn record_merge_type_env_cache_call() {
     MERGE_TYPE_ENV_CACHE_CALLS.fetch_add(1, Ordering::Relaxed);
+}
+
+pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
+    record_merge_type_env_cache_call();
     Rc::new(TypeEnvCache {
         deps_map: v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone()),
         str_bindings: deterministic_str_binding_map(v1_rt::rc_map_merge(
