@@ -313,6 +313,11 @@ test fn effects_modifier_gcp_sites_witnesses() -> Bool {
 test fn effects_post_parent_path_witnesses() -> Bool {
   derived_raw_is_create(name: "CreateSecret", method: POST, raw: "/v1/projects/\{project_id\}/secrets")
     && derived_raw_is_create(
+      name: "CreateComment",
+      method: POST,
+      raw: "/repos/\{owner\}/\{repo\}/issues/\{issue_number\}/comments"
+    )
+    && derived_raw_is_create(
       name: "CreateReview",
       method: POST,
       raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews"

@@ -10,7 +10,7 @@ use v1_compiler::rest_transport_facts::{
 };
 use v1_compiler::std_effects::{
     derive_op_effect, generate_idempotency_obligations, is_idempotent_effect,
-    DeriveOpEffectResult, HttpMethod,
+    DeriveOpEffectResult, EffectShape, HttpMethod,
 };
 use v1_compiler::std_http_path::PathTemplate;
 use v1_compiler::extdeps_uri_path::{parse_path_template, PathTemplateParseResult};
@@ -246,6 +246,26 @@ fn main() -> ExitCode {
             "CreateComment expected issue_number path param; got {}",
             create_comment.path
         ));
+    }
+    match &*derive_op_effect(
+        create_comment.name.clone(),
+        method_ok(&create_comment.method),
+        parse_path(&create_comment.path),
+    ) {
+        DeriveOpEffectResult::DerivedEffect { effect } => {
+            if !matches!(effect.shape.as_ref(), EffectShape::CreateEffect { .. }) {
+                return fail(format!(
+                    "CreateComment POST on {} should derive CreateEffect, got {:?}",
+                    create_comment.path, effect.shape
+                ));
+            }
+        }
+        _ => {
+            return fail(format!(
+                "failed to derive effect for CreateComment ({} {})",
+                create_comment.method, create_comment.path
+            ));
+        }
     }
 
     ExitCode::SUCCESS
