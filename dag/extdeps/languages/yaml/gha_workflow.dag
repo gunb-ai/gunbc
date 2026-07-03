@@ -1,5 +1,7 @@
 module extdeps.languages.yaml.gha_workflow
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv,
@@ -15,6 +17,13 @@ import extdeps.github.actions {
   CancelInProgressWhenQueueMax, QueueMaxCancelInProgressFalse, QueueMaxCancelInProgressExpression,
   RunnerSpec, SelfHosted, RunsOnExpression, HostedRunner, RunnerLabel,
   UbuntuLatest, ShellType, Bash
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
+  }
 }
 
 fn permission_level_yaml(level: PermissionLevel) -> YamlValue {

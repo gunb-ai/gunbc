@@ -1,0 +1,32 @@
+module gunbc.srv3_os_install_reconcile_record_approval
+
+import extdeps.shell
+import gunbc.shell_bash_runner { shell_exec_via_bash }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.srv3_os_install_reconcile_types {
+  srv3_boot_once_approval_grant_path,
+}
+import gunbc.srv3_os_install_reconcile_receipt {
+  srv3_install_record_boot_once_approval_script,
+}
+
+data srv3_os_install_reconcile_record_approval_shell_runner_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_os_install_reconcile",
+    decl_name: "srv3_os_install_reconcile_shell_runner_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+func srv3_os_install_record_boot_once_approval() -> ProcessExit {
+  let script = srv3_install_record_boot_once_approval_script()
+  let run = shell.Exec.Run(script: shell_exec_via_bash(body: script))
+  if run.success {
+    ExitSuccess
+  } else {
+    return exit_failure(reason: concat("srv3-install-record-approval: ", run.stderr))
+  }
+}

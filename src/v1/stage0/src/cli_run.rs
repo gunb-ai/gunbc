@@ -375,28 +375,28 @@ pub fn source_path_for_module_path(module_path: String) -> String {
         .unwrap_or_else(|| panic!("module_path_index: unknown module path '{module_path}'"))
 }
 
-pub fn qualified_name_value_to_module_path(value: &v1_interpreter::Value) -> String {
-    v1_interpreter::qualified_name_value_to_module_path(value)
+pub fn free_monoid_symbol_value_to_dotted_string(value: &v1_interpreter::Value) -> String {
+    v1_interpreter::free_monoid_symbol_value_to_dotted_string(value)
 }
 
-pub fn qualified_name_value_from_dotted_string(
+pub fn free_monoid_symbol_value_from_dotted_string(
     ctx: &v1_interpreter::InterpContext,
     dotted: &str,
 ) -> v1_interpreter::Value {
     use v1_interpreter::{sorted_fields, Value};
 
-    let qn_variant = |variant: &str, fields: Vec<_>| Value::Variant {
-        type_name: ctx.sym("QualifiedName"),
+    let fm_variant = |variant: &str, fields: Vec<_>| Value::Variant {
+        type_name: ctx.sym("FreeMonoid"),
         variant_name: ctx.sym(variant),
         fields: Rc::new(fields),
     };
     if dotted.is_empty() {
-        return qn_variant("QnEmpty", vec![]);
+        return fm_variant("Empty", vec![]);
     }
-    let mut qn = qn_variant("QnEmpty", vec![]);
+    let mut qn = fm_variant("Empty", vec![]);
     for seg in dotted.split('.').rev() {
-        qn = qn_variant(
-            "QnCons",
+        qn = fm_variant(
+            "Cons",
             sorted_fields(vec![
                 (ctx.sym("head"), Value::Str(seg.to_string())),
                 (ctx.sym("tail"), qn),
@@ -3572,6 +3572,60 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
     out
 }
 
+fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, HashSet<i64>> {
+    let mut out: HashMap<String, HashSet<i64>> = HashMap::new();
+    let mut current_file: Option<String> = None;
+    let mut new_line: i64 = 0;
+    let mut in_hunk = false;
+    for line in diff_text.lines() {
+        if let Some(rest) = line.strip_prefix("+++ b/") {
+            current_file = Some(normalize_repo_path(rest));
+            in_hunk = false;
+            continue;
+        }
+        if line.starts_with("@@ ") {
+            let plus = line.split_whitespace().nth(2).unwrap_or("");
+            let plus = plus.trim_start_matches('+');
+            new_line = if let Some((s, _)) = plus.split_once(',') {
+                s.parse::<i64>().unwrap_or(1)
+            } else {
+                plus.parse::<i64>().unwrap_or(1)
+            };
+            in_hunk = true;
+            continue;
+        }
+        if !in_hunk {
+            continue;
+        }
+        let Some(file) = current_file.clone() else {
+            continue;
+        };
+        if let Some(_add) = line.strip_prefix('+') {
+            out.entry(file.clone()).or_default().insert(new_line);
+            new_line += 1;
+        } else if line.starts_with('-') {
+            // Pure deletions advance only the old-file cursor; attribute at the new-file
+            // position where the removal occurred (same line for consecutive `-` rows).
+            out.entry(file).or_default().insert(new_line);
+        } else if line.starts_with(' ') {
+            new_line += 1;
+        }
+    }
+    out
+}
+
+fn changed_new_lines_for_file(
+    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
+    file_path: &str,
+    file_norm: &str,
+) -> HashSet<i64> {
+    changed_new_lines_by_file
+        .get(file_norm)
+        .or_else(|| changed_new_lines_by_file.get(file_path))
+        .cloned()
+        .unwrap_or_default()
+}
+
 fn newline_index_for_span<'a>(
     span: &SourceSpan,
     source_indices: &'a HashMap<String, Rc<NewlineIndex>>,
@@ -3996,17 +4050,31 @@ fn call_floor_kernel_precompute_would_skip(
     }
 }
 
+fn floor_diff_edits_from_diff_text(
+    index: &MultiEntryIndex,
+    diff_text: &str,
+) -> Result<FloorDiffEdits, String> {
+    let line_ranges = parse_unified_diff_line_ranges(diff_text);
+    let changed = parse_unified_diff_changed_new_lines(diff_text);
+    floor_diff_edits_from_line_ranges(index, &line_ranges, &changed)
+}
+
 fn floor_diff_edits_from_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
+    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
     let mut touched_entry_files = HashSet::new();
+    let mut saw_non_dag = false;
+    let mut saw_dag = false;
     for (file_path, ranges) in line_ranges_by_file {
         if !file_path.ends_with(".dag") {
-            return Err(format!("non-.dag file changed: {file_path}"));
+            saw_non_dag = true;
+            continue;
         }
+        saw_dag = true;
         let file_norm = normalize_repo_path(file_path);
         let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
             Ok(pair) => pair,
@@ -4043,13 +4111,35 @@ fn floor_diff_edits_from_line_ranges(
             return Err(format!("no declarations in {file_path}"));
         }
         decls.sort_by_key(|(line, _, _)| *line);
-        if ranges.iter().any(|r| r.start < decls[0].0) {
+        let first_decl_line = decls[0].0;
+        let mut changed =
+            changed_new_lines_for_file(changed_new_lines_by_file, file_path, &file_norm);
+        // Deletion-only hunks (`-` rows, zero `+` width) still carry a new-side anchor in the
+        // hunk header; fall back to parsed ranges when no `+`/`-` rows were attributed.
+        if changed.is_empty() {
+            for r in ranges {
+                let end = if r.end < r.start { r.start } else { r.end };
+                for l in r.start..=end {
+                    changed.insert(l);
+                }
+            }
+        }
+        // Module-line edits (line 1) stay fail-closed — renaming can change entry identity.
+        if changed.contains(&1) {
             return Err(format!("diff before first declaration in {file_path}"));
+        }
+        let has_pre_decl = changed.iter().any(|&l| l < first_decl_line);
+        let has_post_decl = changed.iter().any(|&l| l >= first_decl_line);
+        if has_pre_decl {
+            touched_entry_files.insert(file_norm.clone());
+            if !has_post_decl {
+                continue;
+            }
         }
         for i in 0..decls.len() {
             let (line, name, is_data) = &decls[i];
             let decl_end = decls.get(i + 1).map(|(l, _, _)| l - 1).unwrap_or(i64::MAX);
-            if !ranges.iter().any(|r| *line <= r.end && decl_end >= r.start) {
+            if !changed.iter().any(|&l| l >= *line && l <= decl_end) {
                 continue;
             }
             if test_fn_names.contains(name) {
@@ -4060,6 +4150,9 @@ fn floor_diff_edits_from_line_ranges(
                 touched_entry_files.insert(file_norm.clone());
             }
         }
+    }
+    if saw_non_dag && !saw_dag {
+        return Err("non-.dag file changed with no .dag paths in diff".to_string());
     }
     Ok(FloorDiffEdits {
         overlapping_data_items,
@@ -4224,12 +4317,20 @@ pub fn run_discovery_corpus_with_options(
         FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
         FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_line_ranges(text),
     };
+    let changed_new_lines_by_file = match &diff_outcome {
+        FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
+        FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_changed_new_lines(text),
+    };
     let changed_paths: Vec<String> = line_ranges_by_file.keys().cloned().collect();
     let (skip_enabled, diff_edits) = if options.skip_unaffected_node_frontier
         && !line_ranges_by_file.is_empty()
     {
         let frontier_index = build_multi_entry_index(source_roots);
-        match floor_diff_edits_from_line_ranges(&frontier_index, &line_ranges_by_file) {
+        match floor_diff_edits_from_line_ranges(
+            &frontier_index,
+            &line_ranges_by_file,
+            &changed_new_lines_by_file,
+        ) {
             Ok(edits) => (true, edits),
             Err(msg) => {
                 eprintln!(
@@ -4581,14 +4682,14 @@ fn run_discovery_rows(
 #[cfg(test)]
 mod floor_skip_frontier_tests {
     use super::{
-        build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_line_ranges,
-        list_value_from_vec, parse_unified_diff_line_ranges, rerun_frontier_nodes_for_entry,
-        scan_test_decl_lines, FileLineRange,
+        build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
+        list_value_from_vec, parse_unified_diff_changed_new_lines, parse_unified_diff_line_ranges,
+        rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange,
     };
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
     use crate::v1_std_core::{authored_name_at, byte_to_line_col};
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -4656,6 +4757,21 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
     }
 
     #[test]
+    fn parse_unified_diff_changed_new_lines_includes_deletions() {
+        let diff = "\
+diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
+--- a/src/v2/lens/affected_set.dag
++++ b/src/v2/lens/affected_set.dag
+@@ -42,2 +42,0 @@
+-removed_a
+-removed_b
+";
+        let changed = parse_unified_diff_changed_new_lines(diff);
+        let file = "src/v2/lens/affected_set.dag";
+        assert_eq!(changed.get(file), Some(&HashSet::from([42])));
+    }
+
+    #[test]
     fn scan_test_decl_lines_pairs_names_with_1_based_lines() {
         let source = "module m\n\ndata d: Int = 1\n\ntest fn witness_a() -> Bool { true }\n\ntest data witness_b: Int = 2\n";
         let pairs = scan_test_decl_lines(source);
@@ -4688,9 +4804,8 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
 
         let ctx = super::make_eval_context(&graph, source_indices.clone(), ExecutionMode::Wet);
 
-        let referenced_ranges =
-            parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, referenced_line));
-        let referenced_seeds = floor_diff_edits_from_line_ranges(&index, &referenced_ranges)
+        let referenced_diff = unified_diff_for_line(&fixture, referenced_line);
+        let referenced_seeds = floor_diff_edits_from_diff_text(&index, &referenced_diff)
             .expect("frontier for referenced-node diff");
         assert!(
             entry_touches_rerun_frontier(
@@ -4704,9 +4819,8 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             "a diff on a node some claim references must touch the entry (runs)"
         );
 
-        let orphan_ranges =
-            parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, orphan_line));
-        let orphan_seeds = floor_diff_edits_from_line_ranges(&index, &orphan_ranges)
+        let orphan_diff = unified_diff_for_line(&fixture, orphan_line);
+        let orphan_seeds = floor_diff_edits_from_diff_text(&index, &orphan_diff)
             .expect("frontier for orphan-node diff");
         let orphan_nodes =
             rerun_frontier_nodes_for_entry(&ctx, &fixture, &orphan_seeds).expect("nodes");
@@ -5438,7 +5552,8 @@ mod floor_witness_a_prove {
     fn witness_a_function_edited_axis_body_touch_fixture_impl_vs_impl() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
-        let diff = unified_diff_for_line(FIXTURE_REL, 78);
+        // Body line inside floor_disc_witness_a_only_holds (rebased when floor_disc_helper_fn landed in #6061).
+        let diff = unified_diff_for_line(FIXTURE_REL, 83);
         let roots = setup_roots(&ws);
         let index = build_multi_entry_index(&roots);
         let line_ranges = parse_unified_diff_line_ranges(&diff);
@@ -5535,7 +5650,7 @@ mod floor_witness_a_prove {
 mod node_frontier_plumbing_controls {
     use super::{
         build_multi_entry_index, call_floor_kernel_would_skip, entry_touches_rerun_frontier,
-        floor_diff_edits_from_line_ranges, list_value_from_vec, parse_unified_diff_line_ranges,
+        floor_diff_edits_from_diff_text, list_value_from_vec, parse_unified_diff_line_ranges,
         rerun_frontier_nodes_for_entry,
     };
     use crate::v1_interpreter::ExecutionMode;
@@ -5567,6 +5682,13 @@ mod node_frontier_plumbing_controls {
         format!(
             "diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n\
              @@ -{line},0 +{line},1 @@\n+// synthetic touch\n"
+        )
+    }
+
+    fn deletion_diff_at(file: &str, line: i64) -> String {
+        format!(
+            "diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n\
+             @@ -{line},1 +{line},0 @@\n-// synthetic deletion\n"
         )
     }
 
@@ -5604,9 +5726,8 @@ mod node_frontier_plumbing_controls {
         // Build diff touching a data declaration in OUTSIDE_FILE (absolute path so parse_unified_diff
         // resolves it without process-global cwd — "b//abs" strips to "/abs" after the b/ prefix).
         let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = floor_diff_edits_from_line_ranges(&index, &ranges)
-            .expect("seeds from outside-file diff");
+        let seeds =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let ctx = super::make_eval_context(&graph, source_indices, ExecutionMode::Wet);
         let nodes =
             rerun_frontier_nodes_for_entry(&ctx, &abs(&ws, FIXTURE), &seeds).expect("nodes");
@@ -5633,15 +5754,38 @@ mod node_frontier_plumbing_controls {
             .map(|i| (i + 1) as i64)
             .expect("witness A test fn line");
         let diff = diff_at(FIXTURE, test_fn_line);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = floor_diff_edits_from_line_ranges(&index, &ranges)
-            .expect("seeds from test-fn-line diff");
+        let seeds =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from test-fn-line diff");
         assert!(
             seeds
                 .edited_test_fns
                 .iter()
                 .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
             "diff at test fn declaration line must populate edited_test_fns with the function name"
+        );
+    }
+
+    #[test]
+    fn deletion_only_hunk_populates_edited_test_fns() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let text = std::fs::read_to_string(FIXTURE).expect("fixture readable");
+        let test_fn_line = text
+            .lines()
+            .position(|l| l.contains("test fn floor_disc_witness_a_only_holds"))
+            .map(|i| (i + 1) as i64)
+            .expect("witness A test fn line");
+        let diff = deletion_diff_at(FIXTURE, test_fn_line);
+        let seeds =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from deletion-only diff");
+        assert!(
+            seeds
+                .edited_test_fns
+                .iter()
+                .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
+            "deletion-only diff at test fn line must populate edited_test_fns"
         );
     }
 
@@ -5660,8 +5804,7 @@ mod node_frontier_plumbing_controls {
             .map(|i| (i + 1) as i64)
             .expect("floor_disc_node_a line");
         let diff = diff_at(&fixture_abs, data_line);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let seeds = floor_diff_edits_from_diff_text(&index, &diff)
             .expect("seeds from referenced-node diff");
         let (graph, source_indices) =
             super::resolve_entry_with_index(&index, &fixture_abs).expect("fixture resolves");
@@ -5690,9 +5833,8 @@ mod node_frontier_plumbing_controls {
             .map(|i| (i + 1) as i64)
             .expect("helper fn line");
         let diff = diff_at(&fixture_abs, helper_line);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = floor_diff_edits_from_line_ranges(&index, &ranges)
-            .expect("seeds from helper-fn-line diff");
+        let seeds =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from helper-fn-line diff");
         assert!(
             seeds
                 .touched_entry_files
@@ -5753,8 +5895,7 @@ mod node_frontier_plumbing_controls {
             .map(|i| (i + 1) as i64)
             .expect("shared helper fn line");
         let diff = diff_at(&helper_abs, helper_line);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let seeds = floor_diff_edits_from_diff_text(&index, &diff)
             .expect("seeds from cross-file helper-fn diff");
         assert!(
             seeds
@@ -5806,7 +5947,7 @@ mod node_frontier_plumbing_controls {
         );
     }
 
-    // Control 5 (fail-closed): non-.dag changed file → seed collection fails closed.
+    // Control 5 (fail-closed): exclusively non-.dag diff → seed collection fails closed.
     #[test]
     fn fail_closed_non_dag_file_forces_run_all() {
         let ws = workspace_root();
@@ -5816,8 +5957,7 @@ mod node_frontier_plumbing_controls {
                     --- a/src/v1/stage0/src/cli_run.rs\n\
                     +++ b/src/v1/stage0/src/cli_run.rs\n\
                     @@ -1,0 +2,1 @@\n+// synthetic\n";
-        let ranges = parse_unified_diff_line_ranges(diff);
-        let err = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let err = floor_diff_edits_from_diff_text(&index, &diff)
             .expect_err("diff on a non-.dag file must fail-closed");
         assert!(
             err.contains("non-.dag"),
@@ -5833,12 +5973,49 @@ mod node_frontier_plumbing_controls {
         let roots = setup_roots(&ws);
         let index = build_multi_entry_index(&roots);
         let diff = diff_at(&abs(&ws, FIXTURE), 1);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let err = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let err = floor_diff_edits_from_diff_text(&index, &diff)
             .expect_err("diff before first declaration must fail-closed");
         assert!(
             err.contains("before first declaration"),
             "expected pre-decl fail-closed, got: {err}"
+        );
+    }
+
+    #[test]
+    fn import_preamble_plus_fn_body_populates_touched_entry_not_fail_closed() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let emit_rel = "dag/extdeps/languages/json/emit.dag";
+        let diff = include_str!("../testdata/emit_import_preamble_fn_body.diff");
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("import+fn diff must not fail-closed to full corpus");
+        assert!(
+            edits.touched_entry_files.iter().any(|f| f == emit_rel),
+            "import preamble + fn body must touch the entry file"
+        );
+    }
+
+    #[test]
+    fn mixed_dag_and_non_dag_diff_scopes_from_dag_only() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let emit_rel = "dag/extdeps/languages/json/emit.dag";
+        let dag_diff = include_str!("../testdata/emit_import_preamble_fn_body.diff");
+        let host_diff =
+            "diff --git a/src/v1/stage0/src/cli_run.rs b/src/v1/stage0/src/cli_run.rs\n\
+                          --- a/src/v1/stage0/src/cli_run.rs\n\
+                          +++ b/src/v1/stage0/src/cli_run.rs\n\
+                          @@ -1,0 +2,1 @@\n+// synthetic\n";
+        let diff = format!("{dag_diff}\n{host_diff}");
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("mixed dag+host diff must scope from .dag paths only");
+        assert!(
+            edits.touched_entry_files.iter().any(|f| f == emit_rel),
+            "mixed diff must still attribute .dag frontier seeds"
         );
     }
 
@@ -5850,8 +6027,7 @@ mod node_frontier_plumbing_controls {
         let roots = setup_roots(&ws);
         let index = build_multi_entry_index(&roots);
         let diff = diff_at(&abs(&ws, "src/v2/lens/does_not_exist_sentinel.dag"), 10);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let err = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let err = floor_diff_edits_from_diff_text(&index, &diff)
             .expect_err("diff naming a non-existent .dag path must fail-closed");
         assert!(
             err.contains("resolve failed"),
@@ -5985,13 +6161,13 @@ pub fn parse_source_root_entry_admission(source: &str) -> Result<SourceRootEntry
         .ok_or_else(|| "entry source missing `module` declaration".to_string())
 }
 
-fn emit_qualified_name_dag(segments: &[String]) -> String {
+fn free_monoid_symbol_emit_dag(segments: &[String]) -> String {
     if segments.is_empty() {
-        return "QnEmpty".to_string();
+        return "Empty".to_string();
     }
-    let mut out = String::from("QnEmpty");
+    let mut out = String::from("Empty");
     for seg in segments.iter().rev() {
-        out = format!("QnCons {{ head: ^{seg}, tail: {out} }}");
+        out = format!("Cons {{ head: ^{seg}, tail: {out} }}");
     }
     out
 }
@@ -5999,20 +6175,20 @@ fn emit_qualified_name_dag(segments: &[String]) -> String {
 #[cfg(test)]
 mod manifest_emit_tests {
     use super::{
-        dag_embedded_dag_source_escape, dag_manifest_scalar_escape, emit_qualified_name_dag,
+        dag_embedded_dag_source_escape, dag_manifest_scalar_escape, free_monoid_symbol_emit_dag,
     };
 
     #[test]
-    fn emit_qualified_name_dag_three_segment_path() {
+    fn free_monoid_symbol_emit_dag_three_segment_path() {
         assert_eq!(
-            emit_qualified_name_dag(&["v2".into(), "compiler".into(), "compile".into()]),
-            "QnCons { head: ^v2, tail: QnCons { head: ^compiler, tail: QnCons { head: ^compile, tail: QnEmpty } } }"
+            free_monoid_symbol_emit_dag(&["v2".into(), "compiler".into(), "compile".into()]),
+            "Cons { head: ^v2, tail: Cons { head: ^compiler, tail: Cons { head: ^compile, tail: Empty } } }"
         );
     }
 
     #[test]
-    fn emit_qualified_name_dag_empty_is_qn_empty() {
-        assert_eq!(emit_qualified_name_dag(&[]), "QnEmpty");
+    fn free_monoid_symbol_emit_dag_empty_is_empty_variant() {
+        assert_eq!(free_monoid_symbol_emit_dag(&[]), "Empty");
     }
 
     #[test]
@@ -6092,7 +6268,7 @@ fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
     for import in imports.iter().rev() {
         out = format!(
             "Cons {{\n  head: Import {{\n    target: {},\n    visibility: ImportVisible\n  }},\n  tail: {out}\n}}",
-            emit_qualified_name_dag(import)
+            free_monoid_symbol_emit_dag(import)
         );
     }
     out
@@ -6101,7 +6277,7 @@ fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
 fn emit_source_root_entry_admission_data(admission: &SourceRootEntryAdmission) -> String {
     format!(
         "data host_compiler_closure_admission: Admission = Admission {{\n  subject: ResolutionSubject {{\n    name: {}\n  }},\n  imports: {}\n}}\n\n\n",
-        emit_qualified_name_dag(&admission.subject),
+        free_monoid_symbol_emit_dag(&admission.subject),
         emit_import_admission_list(&admission.imports)
     )
 }
@@ -6290,7 +6466,7 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("  ImportVisible,\n");
         out.push_str("  ResolutionSubject\n");
         out.push_str("}\n");
-        out.push_str("import v2.std.qualified_name { QnCons, QnEmpty }\n");
+        out.push_str("import v2.std.algebra { Cons, Empty }\n");
     }
     out.push('\n');
     out.push_str(&format!(
@@ -7090,11 +7266,35 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
+    "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_command_leading_lit_text",
+    "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_rawline_starts_with_tool",
     "dag/extdeps/languages/markdown.dag::md_nested",
     "dag/gunbc/generated_artifact.dag::artifact_eq",
     "dag/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
     "dag/gunbc/commit_workflow.dag::gate_eq",
     "dag/gunbc/commit_workflow.dag::local_tidy_check_eq",
+    "dag/gunbc/os_install_deduction.dag::runtime_verdict_from_kvm_attestation",
+    "dag/gunbc/runner_unit_live_read.dag::converge_target_live_verdict",
+    "dag/gunbc/srv3_bmc_credential_resolve.dag::bmc_credential_resolution_uses_factory",
+    "dag/gunbc/srv3_bmc_credential_resolve.dag::bmc_credential_resolution_uses_secret_ref",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_boot_override_consumed_or_weak",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_srv3_install_post_boot",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_srv3_install_when_serve_observed",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_srv3_install_when_serve_ready",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_weak_kvm_or_inconclusive",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_when_router_not_installed",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_when_serve_ready",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::install_diagnostic_verdict_is_boot_override_consumed_failure",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::install_diagnostic_verdict_is_os_installed",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::install_diagnostic_verdict_is_ready_to_boot",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::install_has_progress_evidence",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::parse_virtual_media_session_observation",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::router_lacks_os_installed_lease",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::sol_has_autoinstall_evidence",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_boot_override_consumed",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_os_installed",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_ready_to_boot",
+    "dag/std/change.dag::keyed_diff_hunks_equal",
     "dag/std/computation.dag::constant_bound_value",
     "dag/std/computation.dag::is_constant_bound",
     "dag/std/effects.dag::create_double_init_collapsible",
@@ -7161,6 +7361,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/std/effects.dag::key_source_eq",
     "src/v2/std/determinism.dag::determinism_class_eq",
     "src/v2/std/determinism.dag::non_det_source_eq",
+    "src/v2/std/decl_index.dag::decl_facts_is_fn_like",
     "src/v2/std/float.dag::float_body_is_nan",
     "src/v2/std/node_minimal.dag::node_superset_field_eq",
     "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
@@ -9050,7 +9251,7 @@ pub fn shell_argv_nodes_for_operation(
 }
 
 pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter::Value) -> bool {
-    let module_path = qualified_name_value_to_module_path(qn);
+    let module_path = free_monoid_symbol_value_to_dotted_string(qn);
     !module_path.is_empty()
         && build_module_path_index_from_witness_roots().contains_key(&module_path)
 }

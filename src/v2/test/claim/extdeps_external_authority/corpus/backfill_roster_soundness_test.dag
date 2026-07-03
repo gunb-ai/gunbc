@@ -1,13 +1,13 @@
 module v2.test.extdeps_external_authority.corpus.backfill_roster_soundness
 
-import v2.std.algebra { any, for_all, list_append }
+import v2.std.algebra { Cons, Empty, any, for_all, list_append }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.qualified_name { QualifiedName }
 
-data planted_stale_backfill_entry: QualifiedName = QnCons {
+data planted_stale_backfill_entry: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons { head: ^nonexistent_planted_backfill_module, tail: QnEmpty }
+  tail: Cons { head: ^nonexistent_planted_backfill_module, tail: Empty }
 }
 
 fn qn_list_contains(xs: List<QualifiedName>, target: QualifiedName) -> Bool {

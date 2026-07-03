@@ -185,7 +185,13 @@ data medium_structure_exception_roster: List<String> = [
   "dag/extdeps/os/ubuntu_seeded_install_media_remaster.dag",
   "dag/gunbc/srv3_seeded_install_media.dag",
   "dag/extdeps/bmc/serial_console.dag",
-  "dag/gunbc/srv3_install_diagnostic_checklist.dag"
+  "dag/gunbc/srv3_install_diagnostic_checklist.dag",
+  "dag/gunbc/srv3_os_install_reconcile.dag",
+  "dag/gunbc/srv3_os_install_reconcile_types.dag",
+  "dag/gunbc/srv3_os_install_reconcile_receipt.dag",
+  "dag/gunbc/srv3_os_install_reconcile_apply.dag",
+  "dag/gunbc/srv3_os_install_reconcile_dry_run.dag",
+  "dag/gunbc/srv3_os_install_reconcile_record_approval.dag"
 ]
 
 fn char_eq(a: Char, b: Char) -> Bool {
