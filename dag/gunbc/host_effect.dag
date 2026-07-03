@@ -12,7 +12,6 @@ import std.effects {
   LatticeEffect,
   IdentityEffect,
   NonIdempotent,
-  is_idempotent_effect,
 }
 
 type HostEffect =
@@ -41,15 +40,10 @@ type HostEffectEvidence =
     ShellEffectApplied { exit_code: Int, stdout: String }
 
 fn host_effect_drive_from_evidence(evidence: IdempotencyEvidence) -> Drive {
-  match evidence {
-    IdentityEffect => OneShot
-    LatticeEffect { shape: shape } =>
-      if is_idempotent_effect(shape: shape) {
-        OneShot
-      } else {
-        ConvergeLoop
-      }
-    NonIdempotent { shape: _, reason: _ } => ConvergeLoop
+  if host_effect_is_converge_loop_evidence(evidence: evidence) {
+    ConvergeLoop
+  } else {
+    OneShot
   }
 }
 
@@ -57,13 +51,21 @@ fn host_effect_drive(intent: HostEffectIntent) -> Drive {
   host_effect_drive_from_evidence(evidence: intent.evidence)
 }
 
+data host_effect_converge_loop_drive_authority: String = "Only host_effect_converge_loop_evidence may derive ConvergeLoop. Arbitrary NonIdempotent rows and breaking LatticeEffect shapes are not retry policy — they settle OneShot (terminal failure)."
+
+data host_effect_converge_loop_reason: String = "converge to fixpoint — external redrive until observed state matches desired"
+
 data host_effect_identity_evidence: IdempotencyEvidence = IdentityEffect
 
 data host_effect_read_evidence: IdempotencyEvidence = LatticeEffect { shape: ReadEffect }
 
 data host_effect_converge_loop_evidence: IdempotencyEvidence = NonIdempotent {
   shape: AppendEffect,
-  reason: "converge to fixpoint — external redrive until observed state matches desired",
+  reason: host_effect_converge_loop_reason,
+}
+
+fn host_effect_is_converge_loop_evidence(evidence: IdempotencyEvidence) -> Bool {
+  evidence == host_effect_converge_loop_evidence
 }
 
 fn host_effect_lattice_evidence(shape: EffectShape) -> IdempotencyEvidence {

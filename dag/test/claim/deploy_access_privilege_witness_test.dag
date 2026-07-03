@@ -21,7 +21,7 @@ import gunbc.host_effect {
 }
 import gunbc.host_effect_realize {
   host_effect_apply_gated,
-  host_effect_policy_directive,
+  host_effect_drive_directive,
   Refused,
 }
 import std.realization_reconcile { reconciliation_converged, NotConverged, Converged }
@@ -82,7 +82,7 @@ fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
     transport: LocalShell,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
   )
-  match host_effect_policy_directive(r: r) {
+  match host_effect_drive_directive(r: r) {
     Refused { reason: _ } =>
       match r {
         NotConverged { reason: _, applied: intent } =>

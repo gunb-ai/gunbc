@@ -186,7 +186,7 @@ fn not_converged_directive(drive: Drive) -> ConvergeDirective {
   }
 }
 
-fn host_effect_policy_directive(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ConvergeDirective {
+fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ConvergeDirective {
   match r {
     Converged { evidence: _, applied: _ } => Settled
     NotConverged { reason: why, applied: intent } =>
