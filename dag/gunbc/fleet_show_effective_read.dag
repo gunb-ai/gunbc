@@ -18,14 +18,11 @@ import extdeps.os.systemd {
 }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import gunbc.host_converge {
-  SliceProperty,
-  RunnerWidth,
   ConvergeVerdict,
   Converged,
   Drifted,
   Absent,
   converge_verdict,
-  runner_instance_glob,
 }
 import gunbc.ci_floor_measurement { RunnerSliceCapEffectiveness }
 import gunbc.runner_unit_live_read {
@@ -34,10 +31,7 @@ import gunbc.runner_unit_live_read {
   gunbc_srv1_runner_unit_live_read_fixture,
   runner_unit_live_read_typed,
   memory_limit_to_cap_effectiveness,
-  converge_target_live_verdict,
 }
-import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
-
 
 type RunnerSliceCapLiveReadRow {
   slice_unit: NonEmptyStr
@@ -158,9 +152,10 @@ fn runner_slice_cap_to_effectiveness(read: RunnerSliceCapLiveRead) -> RunnerSlic
 
 fn slice_property_memory_max_verdict(
   read: RunnerSliceCapLiveRead,
-  target: SliceProperty,
+  property: String,
+  expected_effective: String,
 ) -> ConvergeVerdict? {
-  if target.property != systemd_memory_max_property {
+  if property != systemd_memory_max_property {
     none
   } else {
     match read.memory_max {
@@ -170,7 +165,7 @@ fn slice_property_memory_max_verdict(
         Present {
           value: converge_verdict(
             effective: to_string(byte_size_count(b: b)),
-            expected: target.expected_effective
+            expected: expected_effective
           )
         }
     }
@@ -272,17 +267,4 @@ fn fleet_receipt_unit_count(receipt: FleetHostEffectiveReadReceipt) -> Int {
 
 fn fleet_receipt_lists_unit(receipt: FleetHostEffectiveReadReceipt, unit: NonEmptyStr) -> Bool {
   any(receipt.runner_units.units, u => u.unit == unit)
-}
-
-fn runner_slice_cap_target_for_host(host: HostIdentity, expected_effective: String) -> SliceProperty {
-  SliceProperty {
-    unit: gunbc_runner_slot_unit_placeholder,
-    property: systemd_memory_max_property,
-    apply_value: expected_effective,
-    expected_effective: expected_effective,
-  }
-}
-
-fn runner_width_target_for_host(host: HostIdentity) -> RunnerWidth {
-  RunnerWidth { instance_glob: runner_instance_glob(host: host) }
 }

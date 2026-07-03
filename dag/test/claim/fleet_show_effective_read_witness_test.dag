@@ -47,8 +47,6 @@ import gunbc.fleet_show_effective_read {
   fixture_srv2_host_effective_read_receipt,
   fleet_receipt_unit_count,
   fleet_receipt_lists_unit,
-  runner_slice_cap_target_for_host,
-  runner_width_target_for_host,
 }
 import gunbc.runner_unit_live_read {
   runner_unit_live_read_typed,
@@ -95,8 +93,11 @@ fn witness_width_parse_count_is_typed() -> Bool {
 
 fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
   let read = runner_slice_cap_live_read_typed(row: gunbc_srv1_runner_slice_cap_fixture_row)
-  let target = runner_slice_cap_target_for_host(host: operator_host_srv1, expected_effective: pool_budget_wire())
-  match slice_property_memory_max_verdict(read: read, target: target) {
+  match slice_property_memory_max_verdict(
+    read: read,
+    property: systemd_memory_max_property,
+    expected_effective: pool_budget_wire(),
+  ) {
     Present { value: Drifted } => true
     _ => false
   }
@@ -104,8 +105,11 @@ fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
 
 fn witness_srv2_slice_cap_converges_to_pool_budget() -> Bool {
   let read = runner_slice_cap_live_read_typed(row: gunbc_srv2_runner_slice_cap_fixture_row)
-  let target = runner_slice_cap_target_for_host(host: operator_host_srv2, expected_effective: pool_budget_wire())
-  match slice_property_memory_max_verdict(read: read, target: target) {
+  match slice_property_memory_max_verdict(
+    read: read,
+    property: systemd_memory_max_property,
+    expected_effective: pool_budget_wire(),
+  ) {
     Present { value: Converged } => true
     _ => false
   }
