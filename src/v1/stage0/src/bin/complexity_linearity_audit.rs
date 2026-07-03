@@ -3,20 +3,20 @@
 //! SCAFFOLD — emit-only whole-corpus audit for the complexity/linearity lens family (SYNTACTIC half).
 //!
 //! ROADMAP §3 `3-gates-whole` ("complexity budget gates the whole codebase"); audit-first bridge
-//! until `decl_facts(roots)` host builtin (#5966) grounds fn-body reflection. Parse-only walk over
-//! `witness_layer_roots` using `decl_facts_parse_only` stub.
+//! until whole-corpus asymptotic cost gate grounds. Parse-only walk over `witness_layer_roots`
+//! using `decl_facts(roots)`.
 //!
 //! NOT floor-enrolled. Prints `site`, `lens`, `rule`, `triage` (TSV). Exit 0 unless
 //! `--fail-on-findings` (for discriminating tests).
 //!
-//! DISSOLUTION: swap stub for `decl_facts(roots)`, move triage roster on-carrier, fold SYNTACTIC
-//! projections into a pure `.dag` reader (gunbc#5364), then enroll floor gate.
+//! DISSOLUTION: fold SYNTACTIC projections into a pure `.dag` Node-tree reader, then enroll floor.
 
 use std::process::ExitCode;
 
-use v1_compiler::cli_run::{non_fold_residue_count, non_fold_residue_unrostered_count};
-use v1_compiler::complexity_linearity_audit_project::{
-    audit_corpus_default_roots, audit_corpus_parse_only, roster_fiction_report,
+use v1_compiler::cli_run::{
+    complexity_linearity_audit_corpus_default_roots, complexity_linearity_audit_corpus_parse_only,
+    complexity_linearity_wildcard_facts, non_fold_residue_count, non_fold_residue_unrostered_count,
+    ComplexityLinearityAuditSummary,
 };
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
@@ -51,14 +51,20 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     if source_roots.is_empty() {
-        return print_summary(&audit_corpus_default_roots(), fail_on_findings);
+        return print_summary(
+            &complexity_linearity_audit_corpus_default_roots(),
+            fail_on_findings,
+        );
     }
 
-    print_summary(&audit_corpus_parse_only(&source_roots), fail_on_findings)
+    print_summary(
+        &complexity_linearity_audit_corpus_parse_only(&source_roots),
+        fail_on_findings,
+    )
 }
 
 fn print_summary(
-    summary: &v1_compiler::complexity_linearity_audit_project::AuditSummary,
+    summary: &ComplexityLinearityAuditSummary,
     fail_on_findings: bool,
 ) -> Result<ExitCode, ExitCode> {
     eprintln!(
@@ -75,21 +81,7 @@ fn print_summary(
         non_fold_residue_unrostered_count(),
         v1_compiler::cli_run::inert_carrier_names_live().len()
     );
-    let fiction = roster_fiction_report(summary);
-    eprintln!(
-        "complexity_linearity_audit: ROSTER-FICTION — (a) MIGRATION-DEBT: {}/{} live on roster \
-         (floor RED on {} if migration roster fiction dropped); \
-         (b) IRREDUCIBLE: {}/{} honest permanent residue (operator-signed); \
-         unrostered today: {}",
-        fiction.migration_debt_live,
-        fiction.migration_debt_roster_slots,
-        fiction.floor_red_if_migration_roster_fiction_dropped,
-        fiction.irreducible_live,
-        fiction.irreducible_roster_slots,
-        fiction.resolved_unrostered_sites
-    );
-    let wildcard_facts =
-        v1_compiler::complexity_linearity_audit_project::complexity_linearity_wildcard_facts();
+    let wildcard_facts = complexity_linearity_wildcard_facts();
     let on_roster = wildcard_facts.iter().filter(|f| f.rostered).count();
     eprintln!(
         "complexity_linearity_audit: syntactic wildcard arms — total={} on_roster={} off_roster={} \
@@ -102,7 +94,7 @@ fn print_summary(
     let cost_findings = summary.findings.iter().filter(|f| f.lens == "cost").count();
     eprintln!(
         "complexity_linearity_audit: cost syntactic proxy (Node.body walk) — \
-         syntactic_high_match_fanout={} site(s) (full cost_lens on DeclFact.node.body pending #5364)",
+         syntactic_high_match_fanout={} site(s) (full cost_lens on DeclFact.node.body pending whole-corpus gate)",
         cost_findings
     );
     eprintln!("site\tlens\trule\ttriage");

@@ -1,5 +1,217 @@
 #![allow(clippy::disallowed_macros)]
 
+use std::collections::HashMap;
+use std::process::ExitCode;
+use std::rc::Rc;
+
+use v1_compiler::cli_run::workspace_root;
+use v1_compiler::v1_compiler_artifact::RenderTarget;
+use v1_compiler::v1_compiler_compile::{compile_sources, PipelineResult, SourceFile};
+
+type WitnessCase = (&'static str, fn());
+
+fn fail(msg: impl std::fmt::Display) -> ExitCode {
+    eprintln!("bootstrap_witness: {msg}");
+    ExitCode::from(1)
+}
+
+fn source_roots() -> [std::path::PathBuf; 2] {
+    let ws = workspace_root();
+    [ws.join("src/v1"), ws.join("dag")]
+}
+
+fn cargo_infra_failure_transient(stderr: &str) -> bool {
+    stderr.contains("couldn't create a temp dir")
+        || stderr.contains("Resource temporarily unavailable")
+        || stderr.contains("failed to spawn")
+        || stderr.contains("sccache: encountered fatal error")
+}
+
+fn run_cargo_with_infra_retry<F>(build: F) -> std::process::Output
+where
+    F: Fn() -> std::process::Command,
+{
+    let first = build().output().expect("failed to spawn cargo");
+    if first.status.success()
+        || !cargo_infra_failure_transient(&String::from_utf8_lossy(&first.stderr))
+    {
+        return first;
+    }
+
+    let mut retry = build();
+    retry.env("CARGO_BUILD_JOBS", "1");
+    let second = retry.output().expect("failed to spawn cargo retry");
+    if second.status.success()
+        || !cargo_infra_failure_transient(&String::from_utf8_lossy(&second.stderr))
+    {
+        return second;
+    }
+
+    let mut cold = build();
+    cold.env_remove("RUSTC_WRAPPER");
+    cold.env("CARGO_BUILD_JOBS", "1");
+    cold.output().expect("failed to spawn cargo cold retry")
+}
+
+fn tokenize_for_parse(source: &str) -> Rc<Vec<Rc<v1_compiler::v1_std_core::Token>>> {
+    v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
+}
+
+fn parse_source(source: &str) -> Rc<v1_compiler::v1_compiler_parse::ParseResult> {
+    let tokens = tokenize_for_parse(source);
+    let source_index =
+        v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert("test.dag".to_string(), source_index);
+    v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices))
+}
+
+fn build_module_index_for_roots(
+    roots: &[std::path::PathBuf],
+) -> HashMap<String, std::path::PathBuf> {
+    let mut index = HashMap::new();
+    for root in roots {
+        if root.exists() {
+            scan_dag_files(root, &mut index);
+        }
+    }
+    index
+}
+
+fn build_module_index() -> HashMap<String, std::path::PathBuf> {
+    build_module_index_for_roots(&source_roots())
+}
+
+fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            scan_dag_files(&path, index);
+        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            if let Some(module_path) = extract_module_declaration(&path) {
+                index.insert(module_path, path);
+            }
+        }
+    }
+}
+
+fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            continue;
+        }
+        return trimmed
+            .strip_prefix("module ")
+            .and_then(|rest| rest.split_whitespace().next())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+    }
+    None
+}
+
+fn extract_imports(source: &str) -> Vec<String> {
+    let result = parse_source(source);
+    match &result.module {
+        Some(module) => v1_compiler::v1_std_core::module_imports(module.clone())
+            .iter()
+            .map(|imp| imp.name.clone())
+            .collect(),
+        None => vec![],
+    }
+}
+
+fn resolve_imports_transitively_with_index(
+    entry_path: &str,
+    entry_content: &str,
+    module_index: &HashMap<String, std::path::PathBuf>,
+) -> Vec<Rc<SourceFile>> {
+    let ws = workspace_root();
+    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    let mut queue: Vec<(String, String)> = Vec::new();
+
+    queue.push((entry_path.to_string(), entry_content.to_string()));
+
+    while let Some((_path, content)) = queue.pop() {
+        let imports = extract_imports(&content);
+        for module_path in imports {
+            if seen.contains_key(&module_path) {
+                continue;
+            }
+            if let Some(file_path) = module_index.get(&module_path) {
+                if let Ok(file_content) = std::fs::read_to_string(file_path) {
+                    let rel_path = file_path
+                        .strip_prefix(&ws)
+                        .unwrap_or(file_path)
+                        .to_string_lossy()
+                        .to_string();
+                    let source = Rc::new(SourceFile {
+                        path: rel_path.clone(),
+                        content: file_content.clone(),
+                    });
+                    seen.insert(module_path.clone(), source);
+                    queue.push((rel_path, file_content));
+                }
+            }
+        }
+    }
+
+    let mut sources: Vec<Rc<SourceFile>> = seen.into_values().collect();
+    sources.push(Rc::new(SourceFile {
+        path: entry_path.to_string(),
+        content: entry_content.to_string(),
+    }));
+    sources
+}
+
+fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Rc<SourceFile>> {
+    resolve_imports_transitively_with_index(entry_path, entry_content, &build_module_index())
+}
+
+fn compile_dag_named(filename: &str, source: &str, target: RenderTarget) -> Rc<PipelineResult> {
+    let sources = resolve_imports_transitively(filename, source);
+    compile_sources(Rc::new(sources), target)
+}
+
+fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
+    result
+        .diagnostics
+        .iter()
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect()
+}
+
+fn collect_dag_sources(
+    root: &std::path::Path,
+    dir: &std::path::Path,
+    sources: &mut Vec<Rc<SourceFile>>,
+) {
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .unwrap_or_else(|e| panic!("failed to read {}: {}", dir.display(), e))
+        .filter_map(|e| e.ok())
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_dag_sources(root, &path, sources);
+        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            let content = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e));
+            let rel = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .to_string();
+            sources.push(Rc::new(SourceFile { path: rel, content }));
+        }
+    }
+}
+
 fn build_stage0() -> std::path::PathBuf {
     let build = std::process::Command::new("cargo")
         .arg("build")
@@ -15,7 +227,7 @@ fn build_stage0() -> std::path::PathBuf {
     );
     let target_dir = std::env::var_os("CARGO_TARGET_DIR")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| crate::helpers::workspace_root().join("target"));
+        .unwrap_or_else(|| workspace_root().join("target"));
     let bin = target_dir.join("release/gunbc");
     assert!(bin.exists(), "stage0 binary not found at {}", bin.display());
     bin
@@ -45,7 +257,7 @@ fn run_self_compile_with_extra_source_roots(
     output_dir: &std::path::Path,
     extra_source_roots: &[std::path::PathBuf],
 ) -> std::process::Output {
-    let [v1_root, dag_root] = crate::helpers::source_roots();
+    let [v1_root, dag_root] = source_roots();
     let mut command = std::process::Command::new(binary);
     command
         .arg("compile")
@@ -194,14 +406,13 @@ fn diff_excluding_hand_maintained(
     }
 }
 
-#[test]
 fn stage0_cargo_check() {
-    let output = crate::helpers::run_cargo_with_infra_retry(|| {
+    let output = run_cargo_with_infra_retry(|| {
         let mut cmd = std::process::Command::new("cargo");
         cmd.arg("check")
             .arg("-p")
             .arg("v1-compiler")
-            .current_dir(crate::helpers::workspace_root());
+            .current_dir(workspace_root());
         cmd
     });
     assert!(
@@ -211,10 +422,27 @@ fn stage0_cargo_check() {
     );
 }
 
+/// Fast in-process floor keystone — no nested `cargo` subprocess (nested check
+/// during claim_executor floor blew CI budget; stage0_cargo_check lives in expensive).
+fn floor_smoke() {
+    let ws = workspace_root();
+    assert!(
+        ws.join("src/v1/stage0/Cargo.toml").is_file(),
+        "stage0 Cargo.toml missing under {}",
+        ws.display()
+    );
+    assert!(ws.join("dag").is_dir(), "dag/ missing under {}", ws.display());
+    let [v1_root, dag_root] = source_roots();
+    assert!(v1_root.is_dir(), "v1 source root missing: {}", v1_root.display());
+    assert!(
+        dag_root.is_dir(),
+        "dag source root missing: {}",
+        dag_root.display()
+    );
+}
+
 const DIAG_RATCHET: usize = 358;
 
-#[test]
-#[ignore = "Requires building stage0 binary (~2 min)"]
 fn strict_compile_diagnostic_count() {
     let stage0_bin = find_or_build_stage0();
 
@@ -237,8 +465,6 @@ fn strict_compile_diagnostic_count() {
     let _ = std::fs::remove_dir_all(&out_dir);
 }
 
-#[test]
-#[ignore = "Requires building stage0 binary (~2 min)"]
 fn stage0_compile_accepts_dag_target() {
     let stage0_bin = find_or_build_stage0();
 
@@ -280,8 +506,6 @@ fn stage0_compile_accepts_dag_target() {
     let _ = std::fs::remove_dir_all(&out_dir);
 }
 
-#[test]
-#[ignore = "Requires building stage0 binary (~2 min)"]
 fn stage0_compile_imports_ephemeral_generated_source_root() {
     let stage0_bin = find_or_build_stage0();
 
@@ -338,7 +562,7 @@ fn main() -> Int { generated_answer() }
         out_dir.join("dag-artifact.json").display()
     );
     let committed_generated_projection =
-        crate::helpers::workspace_root().join("src/generated/method_template_projection.dag");
+        workspace_root().join("src/generated/method_template_projection.dag");
     assert!(
         !committed_generated_projection.exists(),
         "ratchet must not rely on committed generated .dag at {}",
@@ -352,11 +576,9 @@ fn main() -> Int { generated_answer() }
 
 const EMITTED_RUST_ERROR_RATCHET: usize = 0;
 
-#[test]
-#[ignore = "Expensive: builds binary + runs full compile + cargo check"]
 fn bootstrap_stage0_to_stage1() {
     let stage0_bin = find_or_build_stage0();
-    let ws = crate::helpers::workspace_root();
+    let ws = workspace_root();
 
     let stage1_dir = std::env::temp_dir().join("v2-bootstrap-stage1");
     let _ = std::fs::remove_dir_all(&stage1_dir);
@@ -438,10 +660,8 @@ fn bootstrap_stage0_to_stage1() {
     let _ = std::fs::remove_dir_all(&stage1_dir);
 }
 
-#[test]
-#[ignore = "Expensive: builds two binaries + two full compiles"]
 fn bootstrap_fixed_point() {
-    let ws = crate::helpers::workspace_root();
+    let ws = workspace_root();
     let stage0_bin = find_or_build_stage0();
 
     let stage1_dir = std::env::temp_dir().join("v2-fp-stage1");
@@ -499,8 +719,6 @@ fn bootstrap_fixed_point() {
 
 const PERF_RATCHET_SECONDS: u64 = 150;
 
-#[test]
-#[ignore = "Requires building stage0 binary"]
 fn performance_ratchet() {
     let stage0_bin = find_or_build_stage0();
 
@@ -563,7 +781,7 @@ struct Pass2Output {
 fn prebuilt_stage0_path() -> std::path::PathBuf {
     let target_dir = std::env::var_os("CARGO_TARGET_DIR")
         .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| crate::helpers::workspace_root().join("target"));
+        .unwrap_or_else(|| workspace_root().join("target"));
     target_dir.join("release/gunbc")
 }
 
@@ -580,7 +798,7 @@ fn find_or_build_stage0() -> std::path::PathBuf {
 
 static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
     let stage0_bin = find_or_build_stage0();
-    let ws = crate::helpers::workspace_root();
+    let ws = workspace_root();
 
     let output_dir = std::env::temp_dir().join("v2-ci-pass1");
     let _ = std::fs::remove_dir_all(&output_dir);
@@ -622,7 +840,7 @@ static CI_PASS1: LazyLock<Pass1Output> = LazyLock::new(|| {
 
 static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
     let pass1 = &*CI_PASS1;
-    let ws = crate::helpers::workspace_root();
+    let ws = workspace_root();
     ci_timing("PASS2: start generated crate rebuild");
     let stage1_target_dir = std::env::temp_dir().join("v2-ci-pass2-target");
     let _ = std::fs::remove_dir_all(&stage1_target_dir);
@@ -663,15 +881,12 @@ static CI_PASS2: LazyLock<Pass2Output> = LazyLock::new(|| {
     Pass2Output { output_dir }
 });
 
-#[test]
-#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_full_dag() {
     ci_timing("ci_full_dag: start");
-    let ws = crate::helpers::workspace_root();
+    let ws = workspace_root();
     let dag_dir = ws.join("dag");
-    let mut dag_sources: Vec<std::rc::Rc<v1_compiler::v1_compiler_compile::SourceFile>> =
-        Vec::new();
-    crate::pipeline::collect_dag_sources(&ws, &dag_dir, &mut dag_sources);
+    let mut dag_sources: Vec<Rc<SourceFile>> = Vec::new();
+    collect_dag_sources(&ws, &dag_dir, &mut dag_sources);
 
     assert!(
         !dag_sources.is_empty(),
@@ -683,7 +898,7 @@ fn ci_full_dag() {
         v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
     );
 
-    let hard_diags: Vec<_> = crate::helpers::diagnostic_messages(&dag_result)
+    let hard_diags: Vec<_> = diagnostic_messages(&dag_result)
         .into_iter()
         .filter(|m| !m.starts_with("complexity: "))
         .collect();
@@ -702,8 +917,6 @@ fn ci_full_dag() {
     ci_timing(&format!("ci_full_dag: done ({} files)", dag_sources.len()));
 }
 
-#[test]
-#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_diagnostic_ratchet() {
     let pass1 = &*CI_PASS1;
     let diag_count = parse_diagnostic_count(&pass1.stderr);
@@ -719,8 +932,6 @@ fn ci_diagnostic_ratchet() {
     );
 }
 
-#[test]
-#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_performance_ratchet() {
     let pass1 = &*CI_PASS1;
     eprintln!(
@@ -736,8 +947,6 @@ fn ci_performance_ratchet() {
     );
 }
 
-#[test]
-#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_freshness() {
     let pass1 = &*CI_PASS1;
     if let Err(ref diff) = pass1.freshness {
@@ -750,8 +959,6 @@ fn ci_freshness() {
     }
 }
 
-#[test]
-#[ignore = "CI: cargo test -p v1-compiler-tests ci_ -- --ignored"]
 fn ci_fixed_point() {
     let pass1 = &*CI_PASS1;
     let pass2 = &*CI_PASS2;
@@ -763,17 +970,15 @@ fn ci_fixed_point() {
     }
 }
 
-#[test]
-#[ignore = "Expensive: compiles .dag, builds emitted crate, runs cargo test"]
 fn bootstrap_l4_structural() {
     let result = std::thread::Builder::new()
         .stack_size(64 * 1024 * 1024)
         .spawn(|| {
-            let ws = crate::helpers::workspace_root();
+            let ws = workspace_root();
             let weather_src = std::fs::read_to_string(ws.join("dag/examples/weather/weather.dag"))
                 .expect("weather.dag should exist");
 
-            let result = crate::helpers::compile_dag_named(
+            let result = compile_dag_named(
                 "dag/examples/weather/weather.dag",
                 &weather_src,
                 v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
@@ -992,4 +1197,71 @@ fn roundtrip_forecast() {
 }
 "#
     .to_string()
+}
+
+fn floor_suite() -> Vec<WitnessCase> {
+    vec![("floor_smoke", floor_smoke)]
+}
+
+fn expensive_suite() -> Vec<WitnessCase> {
+    vec![
+        ("stage0_cargo_check", stage0_cargo_check),
+        ("strict_compile_diagnostic_count", strict_compile_diagnostic_count),
+        ("stage0_compile_accepts_dag_target", stage0_compile_accepts_dag_target),
+        (
+            "stage0_compile_imports_ephemeral_generated_source_root",
+            stage0_compile_imports_ephemeral_generated_source_root,
+        ),
+        ("bootstrap_stage0_to_stage1", bootstrap_stage0_to_stage1),
+        ("bootstrap_fixed_point", bootstrap_fixed_point),
+        ("performance_ratchet", performance_ratchet),
+    ]
+}
+
+fn ci_suite() -> Vec<WitnessCase> {
+    vec![
+        ("ci_full_dag", ci_full_dag),
+        ("ci_diagnostic_ratchet", ci_diagnostic_ratchet),
+        ("ci_performance_ratchet", ci_performance_ratchet),
+        ("ci_freshness", ci_freshness),
+        ("ci_fixed_point", ci_fixed_point),
+    ]
+}
+
+fn all_suite() -> Vec<WitnessCase> {
+    let mut tests = floor_suite();
+    tests.extend(expensive_suite());
+    tests.extend(ci_suite());
+    tests.push(("bootstrap_l4_structural", bootstrap_l4_structural));
+    tests
+}
+
+fn run_suite(tests: &[WitnessCase]) -> ExitCode {
+    for (name, test) in tests {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(test));
+        if result.is_err() {
+            return fail(format!("{name} panicked"));
+        }
+    }
+    ExitCode::SUCCESS
+}
+
+fn main() -> ExitCode {
+    let suite = std::env::args().nth(1).unwrap_or_else(|| "--suite".to_string());
+    let suite_name = if suite == "--suite" {
+        std::env::args().nth(2).unwrap_or_else(|| "floor".to_string())
+    } else {
+        suite
+    };
+
+    let tests: Vec<WitnessCase> = match suite_name.as_str() {
+        "floor" => floor_suite(),
+        "expensive" => expensive_suite(),
+        "ci" => ci_suite(),
+        "l4" => vec![("bootstrap_l4_structural", bootstrap_l4_structural)],
+        "all" => all_suite(),
+        other => return fail(format!("unknown suite {other:?}; expected floor|expensive|ci|l4|all")),
+    };
+
+    run_suite(&tests)
 }
