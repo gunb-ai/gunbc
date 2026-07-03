@@ -6,6 +6,8 @@ import extdeps.languages.bash.program {
   lit, var_ref, command, serialize_bash
 }
 import tools.host_prelude { ensure_effects_rest_transport_witness_built }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 fn effects_rest_transport_witness_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
@@ -15,6 +17,15 @@ fn effects_rest_transport_witness_program() -> ShellProgram {
       command(words: [lit(text: "cd"), root]),
       command(words: [var_ref(name: "EFFECTS_REST_TRANSPORT_WITNESS")])
     ])
+  }
+}
+
+data effects_rest_transport_witness_transport_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.bash.program",
+    decl_name: "serialize_bash",
+    field: WholeDeclaration
   }
 }
 
