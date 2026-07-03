@@ -53,7 +53,6 @@ pub use crate::v1_compiler_infer_env::{
     record_rewire_type_env_parent_links_call, str_bindings_from_bindings,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv, TypeEnvCache};
-use crate::v1_std_core::empty_intern_table;
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
@@ -110,6 +109,7 @@ pub use crate::v1_compiler_resolve::{ModuleGraph, ResolvedImport, ResolvedModule
 use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_std_core::empty_intern_table;
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
@@ -14726,17 +14726,20 @@ pub fn rewire_type_env_parent_links(
             .first()
             .map(|m| m.type_env.intern_table.clone())
             .unwrap_or_else(empty_intern_table);
-        let shared_kernel = modules.iter().find_map(|m| {
-            m.type_env.parents.last().and_then(|kernel| {
-                if kernel.bindings.is_empty() {
-                    None
-                } else {
-                    Some(kernel.clone())
-                }
+        let shared_kernel = modules
+            .iter()
+            .find_map(|m| {
+                m.type_env.parents.last().and_then(|kernel| {
+                    if kernel.bindings.is_empty() {
+                        None
+                    } else {
+                        Some(kernel.clone())
+                    }
+                })
             })
-        }).unwrap_or_else(|| {
-            compiler_kernel_type_env(source_indices.clone(), intern_table.clone())
-        });
+            .unwrap_or_else(|| {
+                compiler_kernel_type_env(source_indices.clone(), intern_table.clone())
+            });
         let index = modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
             |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
