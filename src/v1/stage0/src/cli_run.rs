@@ -5682,8 +5682,8 @@ mod node_frontier_plumbing_controls {
         // Build diff touching a data declaration in OUTSIDE_FILE (absolute path so parse_unified_diff
         // resolves it without process-global cwd — "b//abs" strips to "/abs" after the b/ prefix).
         let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
-        let seeds = floor_diff_edits_from_diff_text(&index, &diff)
-            .expect("seeds from outside-file diff");
+        let seeds =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from outside-file diff");
         let ctx = super::make_eval_context(&graph, source_indices, ExecutionMode::Wet);
         let nodes =
             rerun_frontier_nodes_for_entry(&ctx, &abs(&ws, FIXTURE), &seeds).expect("nodes");
@@ -5710,8 +5710,8 @@ mod node_frontier_plumbing_controls {
             .map(|i| (i + 1) as i64)
             .expect("witness A test fn line");
         let diff = diff_at(FIXTURE, test_fn_line);
-        let seeds = floor_diff_edits_from_diff_text(&index, &diff)
-            .expect("seeds from test-fn-line diff");
+        let seeds =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from test-fn-line diff");
         assert!(
             seeds
                 .edited_test_fns
@@ -5765,8 +5765,8 @@ mod node_frontier_plumbing_controls {
             .map(|i| (i + 1) as i64)
             .expect("helper fn line");
         let diff = diff_at(&fixture_abs, helper_line);
-        let seeds = floor_diff_edits_from_diff_text(&index, &diff)
-            .expect("seeds from helper-fn-line diff");
+        let seeds =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from helper-fn-line diff");
         assert!(
             seeds
                 .touched_entry_files
@@ -5919,34 +5919,35 @@ mod node_frontier_plumbing_controls {
         let roots = setup_roots(&ws);
         let index = build_multi_entry_index(&roots);
         let emit_rel = "dag/extdeps/languages/json/emit.dag";
-        let emit_abs = abs(&ws, emit_rel);
-        let diff = format!(
-            "diff --git a/{p} b/{p}\n--- a/{p}\n+++ b/{p}\n\
-@@ -1,7 +1,7 @@\n\
- module extdeps.languages.json.emit\n\
- \n\
- import extdeps.external_authority {{ ExternalAuthority }}\n\
--import extdeps.languages.json.grammar {{ JsonNumberLexeme, json_int_lexeme }}\n\
-+import extdeps.languages.json.grammar {{ JsonNumberLexeme, json_int_lexeme, json_number_lexeme }}\n\
- import extdeps.uri {{ Uri, Https }}\n\
- \n\
- data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {{\n\
-@@ -40,6 +40,13 @@ fn json_int(n: Int) -> JsonValue {{\n\
-   JsonNumber {{ lexeme: json_int_lexeme(n: n) }}\n\
- }}\n\
- \n\
-+fn json_number_from_lexeme_string(s: String) -> JsonValue? {{\n\
-+  match json_number_lexeme(s: s) {{\n\
-+    Present {{ value: l }} => Present {{ value: JsonNumber {{ lexeme: l }} }}\n\
-+    Absent => none\n\
-+  }}\n\
-+}}\n\
-+\n\
- fn json_string(s: String) -> JsonValue {{\n\
-   JsonString {{ value: s }}\n\
- }}",
-            p = emit_abs
-        );
+        // Canonical unified diff (space-prefixed context lines) — matches git diff output.
+        let diff = "\
+diff --git a/dag/extdeps/languages/json/emit.dag b/dag/extdeps/languages/json/emit.dag
+--- a/dag/extdeps/languages/json/emit.dag
++++ b/dag/extdeps/languages/json/emit.dag
+@@ -1,7 +1,7 @@
+ module extdeps.languages.json.emit
+ 
+ import extdeps.external_authority { ExternalAuthority }
+-import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme }
++import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme, json_number_lexeme }
+ import extdeps.uri { Uri, Https }
+ 
+ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+@@ -40,6 +40,13 @@ fn json_int(n: Int) -> JsonValue {
+   JsonNumber { lexeme: json_int_lexeme(n: n) }
+ }
+ 
++fn json_number_from_lexeme_string(s: String) -> JsonValue? {
++  match json_number_lexeme(s: s) {
++    Present { value: l } => Present { value: JsonNumber { lexeme: l } }
++    Absent => none
++  }
++}
++
+ fn json_string(s: String) -> JsonValue {
+   JsonString { value: s }
+ }
+";
         let edits = floor_diff_edits_from_diff_text(&index, &diff)
             .expect("import+fn diff must not fail-closed to full corpus");
         assert!(
