@@ -820,7 +820,8 @@ pub fn resolve_entry_graph(
     String,
 > {
     let index = build_module_index(source_roots);
-    resolve_entry_graph_with_index(source_roots, &index, entry_file)
+    let facts = build_module_graph_facts_live(source_roots);
+    resolve_entry_graph_with_index(&index, &facts, entry_file)
 }
 
 pub struct MultiEntryIndex {
@@ -886,8 +887,8 @@ pub fn resolve_entry_with_index_for_discovery_corpus(
 }
 
 fn resolve_entry_graph_with_index(
-    pool_roots: &[String],
     index: &ModuleSourceIndex,
+    facts: &ModuleGraphFactsLive,
     entry_file: &str,
 ) -> Result<
     (
@@ -897,8 +898,7 @@ fn resolve_entry_graph_with_index(
     String,
 > {
     set_phase(FloorPhase::Resolve, entry_file);
-    let facts = build_module_graph_facts_live(pool_roots);
-    let sources = load_sources_for_entry_with_index(index, &facts, entry_file)?;
+    let sources = load_sources_for_entry_with_index(index, facts, entry_file)?;
     set_phase(FloorPhase::Typecheck, entry_file);
     resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
 }
