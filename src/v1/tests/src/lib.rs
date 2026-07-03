@@ -9,8 +9,6 @@ pub mod helpers;
 #[cfg(test)]
 mod a4_opacity;
 #[cfg(test)]
-mod auth_declared_but_unwired_witness_test;
-#[cfg(test)]
 mod b1_hash_primitive_test;
 #[cfg(test)]
 mod body_producer_infer_perf_witness_test;
@@ -138,6 +136,8 @@ mod sub_value_lattice_factor_test;
 mod target_model_runtime_import_repro;
 #[cfg(test)]
 mod type_alias_phantom_param_test;
+#[cfg(test)]
+mod type_env_scope_chain_test;
 #[cfg(test)]
 mod type_param_casing_test;
 #[cfg(test)]
