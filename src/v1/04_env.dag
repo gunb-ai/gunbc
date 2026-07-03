@@ -215,9 +215,7 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
 fn flatten_visible_parent_recurses() -> Int { 0 }
 fn reset_flatten_visible_profile() -> Unit { }
 fn reset_type_env_lookup_profile() -> Unit { reset_flatten_visible_profile() }
-fn maybe_print_type_env_lookup_profile() -> Unit {
-  // Host realization: v1_compiler_infer_env.rs prints when GUNBC_TYPE_ENV_PROFILE=1.
-}
+fn maybe_print_type_env_lookup_profile() -> Unit { }
 fn record_flatten_visible_parent_recurse() -> Unit { }
 
 fn flatten_visible_bindings(env: TypeEnv) -> Map<String, TypeBinding> {
