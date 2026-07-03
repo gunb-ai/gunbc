@@ -573,8 +573,9 @@ pub fn import_closure_from_facts(
         let before = reached.len();
         let mut next = reached.clone();
         for importer in &reached {
+            let importer_norm = workspace_relative_repo_path(importer);
             for edge in edges {
-                if edge.path != *importer {
+                if workspace_relative_repo_path(&edge.path) != importer_norm {
                     continue;
                 }
                 for node in nodes {
@@ -7114,7 +7115,25 @@ const LAYER_STD: &str = "LayerPrefixStd";
 const LAYER_EXTDEPS: &str = "LayerPrefixExtdeps";
 
 fn rel_path_for_layer_import(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
+    let ws = workspace_root();
+    path.strip_prefix(&ws)
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+        .unwrap_or_else(|_| path.to_string_lossy().replace('\\', "/"))
+}
+
+fn pool_roots_abs(pool_roots: &[String]) -> Vec<String> {
+    let ws = workspace_root();
+    pool_roots
+        .iter()
+        .map(|r| {
+            let p = Path::new(r);
+            if p.is_absolute() {
+                r.clone()
+            } else {
+                ws.join(p).to_string_lossy().into_owned()
+            }
+        })
+        .collect()
 }
 
 fn project_layer_import_root(root: &str, layer: &'static str, out: &mut Vec<LayerImportFactRaw>) {
@@ -7340,16 +7359,13 @@ pub fn import_resolution_facts(
     importer_roots: &[String],
     exclude_substrings: &[String],
 ) -> Vec<ImportResolutionFactRaw> {
-    let ws = workspace_root();
-    let abs_pool_roots: Vec<String> = pool_roots
-        .iter()
-        .map(|r| ws.join(r).to_string_lossy().into_owned())
-        .collect();
+    let abs_pool_roots = pool_roots_abs(pool_roots);
+    let abs_importer_roots = pool_roots_abs(importer_roots);
     let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
         .into_keys()
         .collect();
     let mut out = Vec::new();
-    for root in importer_roots {
+    for root in &abs_importer_roots {
         let root_path = Path::new(root);
         if !root_path.is_dir() {
             continue;
@@ -7380,11 +7396,7 @@ pub fn import_resolution_facts(
 }
 
 pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
-    let ws = workspace_root();
-    let abs_pool_roots: Vec<String> = pool_roots
-        .iter()
-        .map(|r| ws.join(r).to_string_lossy().into_owned())
-        .collect();
+    let abs_pool_roots = pool_roots_abs(pool_roots);
     let mut out: Vec<ModuleDeclarationFactRaw> = build_module_path_index(&abs_pool_roots)
         .into_iter()
         .map(|(module, path)| ModuleDeclarationFactRaw { module, path })
@@ -10006,30 +10018,6 @@ mod import_closure_equivalence_tests {
     }
 
     #[test]
-    fn debug_import_resolution_edge_paths_for_conformance_entry() {
-        let roots = vec!["dag".to_string(), "src/v2".to_string()];
-        let entry = "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag";
-        let edges = super::import_resolution_facts(&roots, &roots, &[]);
-        let matching: Vec<_> = edges
-            .iter()
-            .filter(|e| super::workspace_relative_repo_path(&e.path) == entry)
-            .collect();
-        eprintln!(
-            "matching importer edges for {entry}: {:?}",
-            matching
-                .iter()
-                .map(|e| (&e.path, &e.import_module))
-                .collect::<Vec<_>>()
-        );
-        let closure = super::import_closure_live_paths(entry, &roots).expect("closure");
-        eprintln!("closure({entry}) len={} paths={closure:?}", closure.len());
-        assert!(
-            closure.len() > 1,
-            "expected transitive imports beyond entry; edge-path normalization may be broken"
-        );
-    }
-
-    #[test]
     fn import_closure_live_matches_legacy_bfs_on_conformance_entry() {
         let roots = default_source_roots();
         assert_bfs_matches_import_closure_live(
@@ -10042,6 +10030,87 @@ mod import_closure_equivalence_tests {
     fn import_closure_live_matches_legacy_bfs_on_floor_gate_entry() {
         let roots = default_source_roots();
         assert_bfs_matches_import_closure_live("dag/tools/floor_effect_gate_witness.dag", &roots);
+    }
+
+    #[test]
+    fn import_closure_live_matches_legacy_bfs_on_budget_roster_completeness() {
+        let roots = default_source_roots();
+        assert_bfs_matches_import_closure_live(
+            "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag",
+            &roots,
+        );
+    }
+
+    #[test]
+    fn import_closure_live_matches_legacy_bfs_on_fold_list_generic_instantiation() {
+        let roots = default_source_roots();
+        assert_bfs_matches_import_closure_live(
+            "src/v2/test/claim/fold_list_generic_instantiation.dag",
+            &roots,
+        );
+    }
+
+    fn module_paths_for_sources(
+        sources: &[Rc<crate::v1_compiler_compile::SourceFile>],
+    ) -> Vec<String> {
+        let mut out: Vec<String> = sources
+            .iter()
+            .filter_map(|s| super::extract_module_path(&s.content))
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    #[test]
+    fn import_closure_module_path_set_identity_matches_legacy_bfs_on_witness_roots() {
+        let roots = default_source_roots();
+        let entries = [
+            "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+            "dag/tools/floor_effect_gate_witness.dag",
+            "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag",
+            "src/v2/test/claim/fold_list_generic_instantiation.dag",
+        ];
+        for entry_rel in entries {
+            let ws = workspace_root();
+            let index = build_module_index(&roots);
+            let content = std::fs::read_to_string(ws.join(entry_rel))
+                .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
+            let entry_source = Rc::new(crate::v1_compiler_compile::SourceFile {
+                path: ws.join(entry_rel).to_string_lossy().into_owned(),
+                content,
+            });
+            let mut seen: HashMap<String, Rc<crate::v1_compiler_compile::SourceFile>> =
+                HashMap::new();
+            if let Some(mod_path) = super::extract_module_path(&entry_source.content) {
+                seen.insert(mod_path, entry_source.clone());
+            }
+            let bfs = resolve_transitively_bfs_legacy(vec![entry_source.clone()], &index, seen);
+            let repointed =
+                resolve_transitively(vec![entry_source], &index, &roots).expect("repointed");
+            let bfs_modules = module_paths_for_sources(&bfs);
+            let repointed_modules = module_paths_for_sources(&repointed);
+            assert_eq!(
+                repointed_modules, bfs_modules,
+                "module-path set identity diverged for {entry_rel}"
+            );
+            let live = import_closure_live_paths(entry_rel, &roots).expect("live");
+            let live_modules: Vec<String> = live
+                .iter()
+                .filter_map(|p| {
+                    let path = ws.join(super::workspace_relative_repo_path(p));
+                    std::fs::read_to_string(&path)
+                        .ok()
+                        .and_then(|c| super::extract_module_path(&c))
+                })
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+            assert_eq!(
+                live_modules, bfs_modules,
+                "import_closure_live module-path set diverged for {entry_rel}"
+            );
+        }
     }
 
     #[test]
