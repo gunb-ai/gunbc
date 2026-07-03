@@ -30,7 +30,7 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.qualified_name { QualifiedName }
 import v2.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -264,7 +264,7 @@ fn resolve_subject_module_root_with_import_use() -> Node {
 }
 
 fn resolve_subject_name() -> QualifiedName {
-  QnCons { head: ^anchor_subject_path_segment, tail: QnEmpty }
+  Cons { head: ^anchor_subject_path_segment, tail: Empty }
 }
 
 fn resolve_roots_single_import() -> FreeMonoid<Node> {
@@ -286,7 +286,7 @@ fn resolve_imported_use_tree() -> Node {
 }
 
 fn resolve_import_target() -> QualifiedName {
-  QnCons { head: ^anchor_imported_path_segment, tail: QnEmpty }
+  Cons { head: ^anchor_imported_path_segment, tail: Empty }
 }
 
 fn resolve_with_admission_imported_binding_accepts() -> Bool {
