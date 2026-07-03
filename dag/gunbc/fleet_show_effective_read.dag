@@ -87,14 +87,12 @@ type OomPressureLimitLiveReadRow {
 type OomPressureLimitLiveRead {
   slice_unit: NonEmptyStr
   pressure_limit: Percent
-  wire_value: Int
   probed_at: NonEmptyStr
 }
 
 type FleetRunnerUnitsLiveRead {
   host: HostIdentity
   units: List<RunnerUnitMemoryLiveRead>
-  probed_at: NonEmptyStr
 }
 
 type FleetHostEffectiveReadReceipt {
@@ -267,17 +265,12 @@ fn runner_slice_cap_live_read_typed(row: RunnerSliceCapLiveReadRow) -> RunnerSli
 fn oom_pressure_limit_live_read_typed(row: OomPressureLimitLiveReadRow) -> OomPressureLimitLiveRead? {
   match parse_managed_oom_pressure_limit_show(raw: row.pressure_limit_raw) {
     Present { value: pct } =>
-      match parse_int(s: trim(row.pressure_limit_raw)) {
-        Present { value: wire } =>
-          Present {
-            value: OomPressureLimitLiveRead {
-              slice_unit: row.slice_unit,
-              pressure_limit: pct,
-              wire_value: wire,
-              probed_at: row.probed_at,
-            }
-          }
-        Absent => none
+      Present {
+        value: OomPressureLimitLiveRead {
+          slice_unit: row.slice_unit,
+          pressure_limit: pct,
+          probed_at: row.probed_at,
+        }
       }
     Absent => none
   }
@@ -301,7 +294,7 @@ fn show_effective_read_from_slice_cap_row(row: RunnerSliceCapLiveReadRow) -> Sho
   }
 }
 
-fn show_effective_read_from_runner_units(host: HostIdentity, rows: List<RunnerUnitLiveReadRow>, probed_at: NonEmptyStr) -> ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
+fn show_effective_read_from_runner_units(host: HostIdentity, rows: List<RunnerUnitLiveReadRow>) -> ShowEffectiveRead<FleetRunnerUnitsLiveRead> {
   if rows.length() == 0 {
     ReadAbsent { reason: "no runner unit rows to read; fail-closed" }
   } else {
@@ -309,7 +302,6 @@ fn show_effective_read_from_runner_units(host: HostIdentity, rows: List<RunnerUn
       value: FleetRunnerUnitsLiveRead {
         host: host,
         units: map(rows, f: fn(row) { runner_unit_live_read_typed(row: row) }),
-        probed_at: probed_at,
       }
     }
   }
