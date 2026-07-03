@@ -137,10 +137,12 @@ pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -
     record_merge_type_env_cache_call();
     Rc::new(TypeEnvCache {
         deps_map: v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone()),
-        str_bindings: deterministic_str_binding_map(v1_rt::rc_map_merge(
+        // Match 04_env.dag authority (plain map_merge). Cache-key determinism lives at
+        // resolved_graph_cache::encode_cache_payload (sort_json_value), not here.
+        str_bindings: v1_rt::rc_map_merge(
             base.str_bindings.clone(),
             overlay.str_bindings.clone(),
-        )),
+        ),
         cycle_set_str: v1_rt::rc_map_merge(
             base.cycle_set_str.clone(),
             overlay.cycle_set_str.clone(),
@@ -178,8 +180,8 @@ pub fn str_bindings_from_bindings(
     )
 }
 
-// Re-sort String-keyed binding maps so merge_type_env_cache / cache-purity witnesses
-// see stable key order independent of HashMap iteration (content-addressed cache keys).
+// Serialization-boundary canonicalization only (resolved_graph_cache::sort_json_value
+// subsumes this for disk cache; do not call from build_type_env / merge_type_env_cache).
 pub fn deterministic_str_binding_map(
     m: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
