@@ -385,18 +385,18 @@ pub fn free_monoid_symbol_value_from_dotted_string(
 ) -> v1_interpreter::Value {
     use v1_interpreter::{sorted_fields, Value};
 
-    let qn_variant = |variant: &str, fields: Vec<_>| Value::Variant {
-        type_name: ctx.sym("QualifiedName"),
+    let fm_variant = |variant: &str, fields: Vec<_>| Value::Variant {
+        type_name: ctx.sym("FreeMonoid"),
         variant_name: ctx.sym(variant),
         fields: Rc::new(fields),
     };
     if dotted.is_empty() {
-        return qn_variant("QnEmpty", vec![]);
+        return fm_variant("Empty", vec![]);
     }
-    let mut qn = qn_variant("QnEmpty", vec![]);
+    let mut qn = fm_variant("Empty", vec![]);
     for seg in dotted.split('.').rev() {
-        qn = qn_variant(
-            "QnCons",
+        qn = fm_variant(
+            "Cons",
             sorted_fields(vec![
                 (ctx.sym("head"), Value::Str(seg.to_string())),
                 (ctx.sym("tail"), qn),
@@ -5987,11 +5987,11 @@ pub fn parse_source_root_entry_admission(source: &str) -> Result<SourceRootEntry
 
 fn free_monoid_symbol_emit_dag(segments: &[String]) -> String {
     if segments.is_empty() {
-        return "QnEmpty".to_string();
+        return "Empty".to_string();
     }
-    let mut out = String::from("QnEmpty");
+    let mut out = String::from("Empty");
     for seg in segments.iter().rev() {
-        out = format!("QnCons {{ head: ^{seg}, tail: {out} }}");
+        out = format!("Cons {{ head: ^{seg}, tail: {out} }}");
     }
     out
 }
@@ -6006,13 +6006,13 @@ mod manifest_emit_tests {
     fn free_monoid_symbol_emit_dag_three_segment_path() {
         assert_eq!(
             free_monoid_symbol_emit_dag(&["v2".into(), "compiler".into(), "compile".into()]),
-            "QnCons { head: ^v2, tail: QnCons { head: ^compiler, tail: QnCons { head: ^compile, tail: QnEmpty } } }"
+            "Cons { head: ^v2, tail: Cons { head: ^compiler, tail: Cons { head: ^compile, tail: Empty } } }"
         );
     }
 
     #[test]
-    fn free_monoid_symbol_emit_dag_empty_is_qn_empty() {
-        assert_eq!(free_monoid_symbol_emit_dag(&[]), "QnEmpty");
+    fn free_monoid_symbol_emit_dag_empty_is_empty_variant() {
+        assert_eq!(free_monoid_symbol_emit_dag(&[]), "Empty");
     }
 
     #[test]
@@ -6290,7 +6290,7 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("  ImportVisible,\n");
         out.push_str("  ResolutionSubject\n");
         out.push_str("}\n");
-        out.push_str("import v2.std.qualified_name { QnCons, QnEmpty }\n");
+        out.push_str("import v2.std.algebra { Cons, Empty }\n");
     }
     out.push('\n');
     out.push_str(&format!(

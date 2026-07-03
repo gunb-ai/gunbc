@@ -137,10 +137,10 @@ pub fn free_monoid_symbol_value_to_dotted_string(value: &Value) -> String {
             ..
         } => {
             let variant = resolve_sym(*variant_name);
-            if variant == "QnEmpty" {
+            if variant == "Empty" {
                 return String::new();
             }
-            if variant == "QnCons" {
+            if variant == "Cons" {
                 let head = fields
                     .iter()
                     .find(|(k, _)| resolve_sym(*k) == "head")
@@ -166,14 +166,12 @@ pub fn free_monoid_symbol_value_to_dotted_string(value: &Value) -> String {
                         }
                         _ => None,
                     })
-                    .unwrap_or_else(|| {
-                        panic!("qualified_name_to_module_path: QnCons.head not Str")
-                    });
+                    .unwrap_or_else(|| panic!("free_monoid_symbol_to_dotted: Cons.head not Str"));
                 let tail = fields
                     .iter()
                     .find(|(k, _)| resolve_sym(*k) == "tail")
                     .map(|(_, v)| v)
-                    .expect("qualified_name_to_module_path: QnCons.tail missing");
+                    .expect("free_monoid_symbol_to_dotted: Cons.tail missing");
                 let rest = free_monoid_symbol_value_to_dotted_string(tail);
                 if rest.is_empty() {
                     head
@@ -181,11 +179,11 @@ pub fn free_monoid_symbol_value_to_dotted_string(value: &Value) -> String {
                     format!("{head}.{rest}")
                 }
             } else {
-                panic!("qualified_name_to_module_path: unexpected variant '{variant}'");
+                panic!("free_monoid_symbol_to_dotted: unexpected variant '{variant}'");
             }
         }
         other => {
-            panic!("qualified_name_to_module_path: expected QualifiedName variant, got {other:?}")
+            panic!("free_monoid_symbol_to_dotted: expected FreeMonoid variant, got {other:?}")
         }
     }
 }
