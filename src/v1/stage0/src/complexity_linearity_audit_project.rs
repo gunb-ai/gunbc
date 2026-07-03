@@ -163,11 +163,14 @@ fn audit_function_body(
     let site = format!("{rel}::{fn_name}");
     let mut out = Vec::new();
     if stats.wildcard_matches > 0 {
+        // Triage is grounded in `v2.lens.complexity_linearity_audit` (.dag), which owns the
+        // bucket decision tree over `complexity_linearity_wildcard_facts()` raw facts.
+        // This field is a non-authoritative rule echo — do not classify here (single authority §3).
         out.push(AuditFinding {
             site: site.clone(),
             lens: "non_fold_residue",
             rule: "syntactic_match_wildcard_arm",
-            triage: triage_wildcard(&site, fn_name, stats.closed_coproduct_wildcard_matches > 0),
+            triage: "wildcard-arm",
         });
     }
     if stats.match_count >= 8 || (stats.node_count >= 200 && stats.match_count >= 4) {
@@ -240,19 +243,14 @@ pub struct RosterFictionReport {
     pub irreducible_roster_slots: i64,
     pub floor_red_if_migration_roster_fiction_dropped: i64,
     pub honest_irreducible_rostered: i64,
-    pub syntactic_wildcard_total: i64,
-    pub syntactic_wildcard_on_roster: i64,
-    pub syntactic_wildcard_off_roster: i64,
-    pub eval_interpreter_debt: i64,
-    pub grammar_ladder_debt: i64,
-    pub kernel_permanent: i64,
-    pub migration_debt_tagged: i64,
-    pub closed_coproduct_debt: i64,
-    pub open_domain: i64,
-    pub triage_pending: i64,
 }
 
-pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
+// Wildcard-arm triage counters (`syntactic_wildcard_*`, `*_debt`, `kernel_permanent`, ...) were
+// removed from this Rust report: their single authority is now `v2.lens.complexity_linearity_audit`
+// (.dag), folding over `complexity_linearity_wildcard_facts()`. The `eval_interpreter_debt`,
+// `grammar_ladder_debt`, and `triage_pending` counters were structurally dead here (the old
+// `triage_wildcard` never emitted those strings) and are not reintroduced downstream.
+pub fn roster_fiction_report(_summary: &AuditSummary) -> RosterFictionReport {
     let resolved_residue_sites = non_fold_residue_count();
     let resolved_unrostered_sites = non_fold_residue_unrostered_count();
     let live_sites = crate::cli_run::non_fold_residue_live_sites();
@@ -272,7 +270,7 @@ pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
         .count() as i64;
     let irreducible_roster_slots =
         crate::cli_run::non_fold_residue_roster_size() - migration_debt_roster_slots;
-    let mut report = RosterFictionReport {
+    RosterFictionReport {
         resolved_residue_sites,
         resolved_unrostered_sites,
         migration_debt_live,
@@ -281,30 +279,7 @@ pub fn roster_fiction_report(summary: &AuditSummary) -> RosterFictionReport {
         irreducible_roster_slots,
         floor_red_if_migration_roster_fiction_dropped: migration_debt_live,
         honest_irreducible_rostered: irreducible_live,
-        ..Default::default()
-    };
-    for f in &summary.findings {
-        if f.rule != "syntactic_match_wildcard_arm" {
-            continue;
-        }
-        report.syntactic_wildcard_total += 1;
-        if non_fold_residue_site_is_rostered(&f.site) {
-            report.syntactic_wildcard_on_roster += 1;
-        } else {
-            report.syntactic_wildcard_off_roster += 1;
-        }
-        match f.triage {
-            "eval-interpreter-debt" => report.eval_interpreter_debt += 1,
-            "grammar-ladder-debt" => report.grammar_ladder_debt += 1,
-            "kernel-permanent" => report.kernel_permanent += 1,
-            "migration-debt" => report.migration_debt_tagged += 1,
-            "closed-coproduct-debt" => report.closed_coproduct_debt += 1,
-            "open-domain" => report.open_domain += 1,
-            "triage-pending" => report.triage_pending += 1,
-            _ => {}
-        }
     }
-    report
 }
 
 fn is_kernel_permanent_fn(fn_name: &str) -> bool {
@@ -325,31 +300,6 @@ fn is_kernel_permanent_fn(fn_name: &str) -> bool {
         || fn_name.starts_with("program_runtime_bool")
         || fn_name == "is_text_encoding"
         || fn_name == "is_strict_style_structural"
-}
-
-fn triage_wildcard(site: &str, fn_name: &str, has_closed_coproduct_wildcard: bool) -> &'static str {
-    if !has_closed_coproduct_wildcard {
-        return "open-domain";
-    }
-    if matches!(
-        nfr_roster_bucket(site),
-        Some(NonFoldRosterBucket::MigrationDebt)
-    ) {
-        return "migration-debt";
-    }
-    if matches!(
-        nfr_roster_bucket(site),
-        Some(NonFoldRosterBucket::Irreducible)
-    ) {
-        return "kernel-permanent";
-    }
-    if fn_name.contains("infer_match") && site.contains("04_infer.dag") {
-        return "migration-debt";
-    }
-    if is_kernel_permanent_fn(fn_name) {
-        return "kernel-permanent";
-    }
-    "closed-coproduct-debt"
 }
 
 // Emit-only path buckets for `syntactic_high_match_fanout` (cost lens) — not used by floor gates.
@@ -402,7 +352,6 @@ pub fn audit_corpus_default_roots() -> AuditSummary {
 
 struct AuditBuiltinCache {
     finding_count: i64,
-    wildcard_count: i64,
     sites: BTreeSet<String>,
 }
 
@@ -414,11 +363,6 @@ fn cached_builtin_cache() -> &'static AuditBuiltinCache {
         let summary = audit_corpus_default_roots();
         AuditBuiltinCache {
             finding_count: summary.findings.len() as i64,
-            wildcard_count: summary
-                .findings
-                .iter()
-                .filter(|f| f.rule == "syntactic_match_wildcard_arm")
-                .count() as i64,
             sites: summary.findings.iter().map(|f| f.site.clone()).collect(),
         }
     })
@@ -428,12 +372,73 @@ pub fn complexity_linearity_syntactic_finding_count() -> i64 {
     cached_builtin_cache().finding_count
 }
 
-pub fn complexity_linearity_syntactic_wildcard_finding_count() -> i64 {
-    cached_builtin_cache().wildcard_count
-}
-
 pub fn complexity_linearity_syntactic_site_fired(site: &str) -> bool {
     cached_builtin_cache().sites.contains(site)
+}
+
+/// Raw structural fact for one function carrying at least one wildcard match arm.
+/// The thin Rust bridge: only what requires real fn-body/type parsing. All triage/bucket
+/// classification is grounded in `v2.lens.complexity_linearity_audit` (.dag) over these facts.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct WildcardSiteFactRaw {
+    pub site: String,
+    pub fn_name: String,
+    pub closed_coproduct_wildcard: bool,
+    pub rostered: bool,
+}
+
+struct WildcardFactsCache {
+    facts: Vec<WildcardSiteFactRaw>,
+}
+
+fn cached_wildcard_facts() -> &'static WildcardFactsCache {
+    static CACHE: OnceLock<WildcardFactsCache> = OnceLock::new();
+    CACHE.get_or_init(|| WildcardFactsCache {
+        facts: compute_wildcard_facts(&witness_layer_roots()),
+    })
+}
+
+fn compute_wildcard_facts(roots: &[String]) -> Vec<WildcardSiteFactRaw> {
+    let walk = decl_facts_corpus_walk(roots);
+    let closed = crate::cli_run::non_fold_residue_closed_coproduct_type_names();
+    let mut out = Vec::new();
+    for fact in &walk.facts {
+        if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+            continue;
+        }
+        let Some(body) = fact.node.body.as_ref() else {
+            continue;
+        };
+        let param_types = fn_param_type_heads(&fact.node, &fact.source_indices);
+        let mut stats = FnBodyStats::default();
+        walk_expr(body, &fact.source_indices, &param_types, closed, &mut stats);
+        if stats.wildcard_matches > 0 {
+            let site = format!("{}::{}", fact.rel_path, fact.name);
+            out.push(WildcardSiteFactRaw {
+                fn_name: fact.name.clone(),
+                closed_coproduct_wildcard: stats.closed_coproduct_wildcard_matches > 0,
+                rostered: crate::cli_run::non_fold_residue_site_is_rostered(&site),
+                site,
+            });
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Host-builtin surface: raw wildcard-site facts over the default witness-layer roots.
+pub fn complexity_linearity_wildcard_facts() -> &'static [WildcardSiteFactRaw] {
+    &cached_wildcard_facts().facts
+}
+
+/// Host-builtin surface: the migration-debt sub-roster exposed as data so the `.dag` lens
+/// owns the membership classification (rather than querying a Rust predicate).
+pub fn complexity_linearity_migration_debt_roster() -> Vec<String> {
+    NON_FOLD_MIGRATION_DEBT_ROSTER
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
 }
 
 #[cfg(test)]
@@ -485,41 +490,44 @@ mod tests {
         );
     }
 
+    // Triage itself (bucket strings) is grounded + verified in
+    // `src/v2/test/claim/complexity_linearity/syntactic_audit_witness_test.dag`. Here we assert only
+    // the RAW facts that drive it: presence, `rostered`, and migration-debt roster membership.
     #[test]
-    fn eval_interpreter_handlers_tagged_eval_interpreter_debt() {
-        let summary = audit_corpus_default_roots();
+    fn eval_interpreter_handler_is_migration_debt_raw_fact() {
+        let facts = complexity_linearity_wildcard_facts();
         let eval_bind_site = "src/v2/compiler/05_eval.dag::eval_bind_node_eval";
         assert!(
-            !summary
-                .findings
-                .iter()
-                .any(|f| { f.site == eval_bind_site && f.rule == "syntactic_match_wildcard_arm" }),
-            "eval_bind_node_eval wildcard dissolved; should not fire syntactic_match_wildcard_arm"
+            !facts.iter().any(|f| f.site == eval_bind_site),
+            "eval_bind_node_eval wildcard dissolved; should not appear in wildcard facts"
         );
         let site = "src/v2/compiler/05_eval.dag::eval_match_node_eval";
-        let finding = summary.findings.iter().find(|f| f.site == site);
-        assert!(finding.is_some(), "expected syntactic finding for {site}");
-        assert_eq!(
-            finding.unwrap().triage,
-            "migration-debt",
-            "expected migration-debt triage for {site} (roster bucket precedes eval-interpreter tag)"
+        let fact = facts.iter().find(|f| f.site == site);
+        assert!(fact.is_some(), "expected wildcard fact for {site}");
+        assert!(
+            fact.unwrap().rostered,
+            "{site} must be rostered (drives migration-debt/kernel-permanent triage in .dag)"
+        );
+        let migration_roster = complexity_linearity_migration_debt_roster();
+        assert!(
+            migration_roster.iter().any(|s| s == site),
+            "{site} must be in the migration-debt roster (→ migration-debt triage)"
         );
     }
 
     #[test]
-    fn closed_coproduct_wildcard_tags_testgen_anchor_match() {
-        let summary = audit_corpus_default_roots();
-        let finding = summary.findings.iter().find(|f| {
-            f.site == "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim"
-        });
+    fn testgen_anchor_match_is_migration_debt_raw_fact() {
+        let site = "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim";
+        let facts = complexity_linearity_wildcard_facts();
+        let fact = facts.iter().find(|f| f.site == site);
         assert!(
-            finding.is_some(),
-            "expected syntactic finding for testgen anchor match"
+            fact.is_some(),
+            "expected wildcard fact for testgen anchor match"
         );
-        assert_eq!(
-            finding.unwrap().triage,
-            "migration-debt",
-            "enrolled ManualAnchorKey wildcard sites are migration-debt"
+        let migration_roster = complexity_linearity_migration_debt_roster();
+        assert!(
+            migration_roster.iter().any(|s| s == site),
+            "enrolled ManualAnchorKey wildcard site must be in migration-debt roster"
         );
     }
 
