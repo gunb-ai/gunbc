@@ -11,6 +11,9 @@ use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::lookup_type_by_name;
+use crate::v1_compiler_infer_env::{
+    maybe_print_type_env_lookup_profile, reset_type_env_lookup_profile,
+};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -1045,6 +1048,7 @@ fn reconcile_with_typed_cache(
     intern_table: Rc<InternTable>,
     typed_cache: &RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
 ) -> Rc<ResolvedGraph> {
+    reset_type_env_lookup_profile();
     let mut modules: Rc<Vec<Rc<TypedModule>>> = Rc::new(Vec::new());
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = v1_rt::rc_empty_map();
@@ -1094,7 +1098,16 @@ fn reconcile_with_typed_cache(
         }
         acc
     });
+    let modules =
+        v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
+    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
+        modules.clone(),
+        source_indices.clone(),
+    );
+    let modules =
+        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
     let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
+    maybe_print_type_env_lookup_profile();
     Rc::new(ResolvedGraph {
         modules,
         item_registry: expanded_registry,
