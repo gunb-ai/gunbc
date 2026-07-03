@@ -1,0 +1,24 @@
+module tools.effects_rest_transport_witness_transport
+
+import extdeps.shell
+import extdeps.languages.bash.program {
+  ShellProgram,
+  lit, var_ref, command, serialize_bash
+}
+import tools.host_prelude { ensure_effects_rest_transport_witness_built }
+
+fn effects_rest_transport_witness_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_effects_rest_transport_witness_built(), [
+      command(words: [lit(text: "cd"), root]),
+      command(words: [var_ref(name: "EFFECTS_REST_TRANSPORT_WITNESS")])
+    ])
+  }
+}
+
+fn run_effects_rest_transport_witness() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: effects_rest_transport_witness_program()))
+  result.success
+}

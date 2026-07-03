@@ -23,47 +23,34 @@ import std.effects {
 
 data effects_witness_provenance: String = "Floor witnesses migrated from src/v1/tests/src/effects.rs (5-test-migration lane): effect-shape derivation, idempotency, modifier agreement, compose verdicts, and cited REST-transport authority rows — marker-discovered instead of the v1 Rust harness."
 
-type RestFingerprint {
-  service: String
-  name: String
-  method: HttpMethod
-  path: String
-}
-
-type TrackedRestOp {
-  service: String
-  name: String
-  method: HttpMethod
-  path: String
-}
-
 type ReadonlyGetCase {
   name: String
   path: String
 }
 
-fn parse_ok(raw: String) -> PathTemplate {
+fn derived_op_valid_raw_path(raw: String) -> Bool {
   match parse_path_template(raw: raw) {
-    ParsedPathTemplate { template: t } => t
-    MalformedPathTemplate => PathTemplate { tokens: [] }
-  }
-}
-
-fn parse_malformed(raw: String) -> Bool {
-  match parse_path_template(raw: raw) {
-    MalformedPathTemplate => true
-    ParsedPathTemplate => false
+    ParsedPathTemplate { template: path } => true
+    MalformedPathTemplate => false
   }
 }
 
 fn derived_op(name: String, method: HttpMethod, raw_path: String) -> DerivedOpEffect {
-  let path = parse_ok(raw: raw_path)
-  match derive_op_effect(operation_name: name, method: method, path: path) {
-    DerivedEffect { effect: e } => e
-    MalformedPathInput => DerivedOpEffect {
+  match parse_path_template(raw: raw_path) {
+    ParsedPathTemplate { template: path } =>
+      match derive_op_effect(operation_name: name, method: method, path: path) {
+        DerivedEffect { effect: e } => e
+        MalformedPathInput => DerivedOpEffect {
+          operation_name: name,
+          method: method,
+          path_template: path,
+          shape: AppendEffect
+        }
+      }
+    MalformedPathTemplate => DerivedOpEffect {
       operation_name: name,
       method: method,
-      path_template: path,
+      path_template: PathTemplate { tokens: [] },
       shape: AppendEffect
     }
   }
@@ -123,160 +110,85 @@ fn op_non_idempotent(name: String) -> OperationEffect {
   }
 }
 
-fn fp_eq(a: RestFingerprint, b: RestFingerprint) -> Bool {
-  a.service == b.service
-    && a.name == b.name
-    && a.method == b.method
-    && a.path == b.path
-}
-
-fn fp_count(ops: List<RestFingerprint>, target: RestFingerprint) -> Int {
-  fold(ops, init: 0, f: (acc, op) => if fp_eq(a: op, b: target) { acc + 1 } else { acc })
-}
-
-fn fingerprints_all_unique(ops: List<RestFingerprint>) -> Bool {
-  fold(ops, init: true, f: (acc, candidate) =>
-    acc && fp_count(ops: ops, target: candidate) == 1
-  )
-}
-
-data effects_rest_authority_corpus: List<RestFingerprint> = [
-  RestFingerprint { service: "gcp.IAM", name: "GenerateAccessToken", method: POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" },
-  RestFingerprint { service: "gcp.ResourceManager", name: "GetIamPolicy", method: POST, path: "/v1/projects/\{project_id\}:getIamPolicy" },
-  RestFingerprint { service: "gcp.ResourceManager", name: "SetIamPolicy", method: POST, path: "/v1/projects/\{project_id\}:setIamPolicy" },
-  RestFingerprint { service: "gcp.SecretManager", name: "AccessVersion", method: GET, path: "/v1/projects/\{project_id\}/secrets/\{secret\}/versions/\{version\}:access" },
-  RestFingerprint { service: "gcp.STS", name: "Exchange", method: POST, path: "/v1/token" },
-  RestFingerprint { service: "github.OIDC", name: "GetToken", method: GET, path: "/\{audience\}" },
-  RestFingerprint { service: "gcp.Metadata", name: "GetIdentityToken", method: GET, path: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}" },
-  RestFingerprint { service: "oauth2.Google", name: "Refresh", method: POST, path: "/token" },
-  RestFingerprint { service: "github.Gist", name: "Create", method: POST, path: "/gists" },
-  RestFingerprint { service: "llm.Anthropic", name: "Messages", method: POST, path: "/v1/messages" },
-  RestFingerprint { service: "llm.OpenAI", name: "ChatCompletion", method: POST, path: "/v1/chat/completions" },
-  RestFingerprint { service: "llm.OpenAI", name: "Responses", method: POST, path: "/v1/responses" },
-  RestFingerprint { service: "gcp.SecretManager", name: "AddVersion", method: POST, path: "/v1/\{secret_name\}:addVersion" },
-  RestFingerprint { service: "gcp.SecretManager", name: "CreateSecret", method: POST, path: "/v1/projects/\{project_id\}/secrets" },
-  RestFingerprint { service: "gcp.SecretManager", name: "SetSecretIamPolicy", method: POST, path: "/v1/projects/\{project_id\}/secrets/\{secret\}:setIamPolicy" },
-  RestFingerprint { service: "github.Pulls", name: "CreateComment", method: POST, path: "/repos/\{owner\}/\{repo\}/issues/\{issue_number\}/comments" },
-  RestFingerprint { service: "github.Pulls", name: "CreateReview", method: POST, path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews" },
-  RestFingerprint { service: "github.Pulls", name: "Diff", method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}" },
-  RestFingerprint { service: "github.Pulls", name: "Get", method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}" },
-  RestFingerprint { service: "github.Pulls", name: "List", method: GET, path: "/repos/\{owner\}/\{repo\}/pulls" },
-  RestFingerprint { service: "github.Pulls", name: "ListComments", method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/comments" },
-  RestFingerprint { service: "github.Pulls", name: "ListReviews", method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews" },
-]
-
-data effects_tracked_rest_ops: List<TrackedRestOp> = [
-  TrackedRestOp { service: "github.Pulls", name: "List", method: GET, path: "/repos/\{owner\}/\{repo\}/pulls" },
-  TrackedRestOp { service: "github.Pulls", name: "Get", method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}" },
-  TrackedRestOp { service: "github.Pulls", name: "Diff", method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}" },
-  TrackedRestOp { service: "github.Pulls", name: "CreateComment", method: POST, path: "/repos/\{owner\}/\{repo\}/issues/\{issue_number\}/comments" },
-  TrackedRestOp { service: "github.Pulls", name: "ListReviews", method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews" },
-  TrackedRestOp { service: "github.Pulls", name: "CreateReview", method: POST, path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews" },
-  TrackedRestOp { service: "github.Pulls", name: "ListComments", method: GET, path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/comments" },
-  TrackedRestOp { service: "github.Gist", name: "Create", method: POST, path: "/gists" },
-  TrackedRestOp { service: "llm.Anthropic", name: "Messages", method: POST, path: "/v1/messages" },
-  TrackedRestOp { service: "llm.OpenAI", name: "ChatCompletion", method: POST, path: "/v1/chat/completions" },
-  TrackedRestOp { service: "llm.OpenAI", name: "Responses", method: POST, path: "/v1/responses" },
-  TrackedRestOp { service: "gcp.IAM", name: "GenerateAccessToken", method: POST, path: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken" },
-  TrackedRestOp { service: "gcp.SecretManager", name: "AccessVersion", method: GET, path: "/v1/projects/\{project_id\}/secrets/\{secret\}/versions/\{version\}:access" },
-  TrackedRestOp { service: "gcp.SecretManager", name: "AddVersion", method: POST, path: "/v1/\{secret_name\}:addVersion" },
-  TrackedRestOp { service: "oauth2.Google", name: "Refresh", method: POST, path: "/token" },
-  TrackedRestOp { service: "gcp.STS", name: "Exchange", method: POST, path: "/v1/token" },
-]
-
-fn tracked_op_derives(op: TrackedRestOp) -> Bool {
-  match derive_op_effect(
-    operation_name: op.name,
-    method: op.method,
-    path: parse_ok(raw: op.path)
-  ) {
-    DerivedEffect { effect: effect } => true
-    MalformedPathInput => false
+test fn effects_path_parse_witnesses() -> Bool {
+  match parse_path_template(raw: "/repos/\{owner\}/\{repo\}/pulls") {
+    ParsedPathTemplate { template: simple } =>
+      match parse_path_template(raw: "/v1/\{secret_name\}:addVersion") {
+        ParsedPathTemplate { template: colon } =>
+          match parse_path_template(raw: "/token") {
+            ParsedPathTemplate { template: no_params } =>
+              match parse_path_template(raw: "/v1/projects/\{project_id\}/secrets/\{secret\}/versions/\{version\}:access") {
+                ParsedPathTemplate { template: nested } =>
+                  match parse_path_template(raw: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}") {
+                    ParsedPathTemplate { template: query_stripped } =>
+                      match parse_path_template(raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews") {
+                        ParsedPathTemplate { template: deep } =>
+                          has_path_params(template: simple)
+                            && match last_path_param(template: simple) {
+                              Present { value: p } => p == "repo"
+                              Absent => false
+                            }
+                            && has_path_params(template: colon)
+                            && match last_path_param(template: colon) {
+                              Present { value: p } => p == "secret_name"
+                              Absent => false
+                            }
+                            && !has_path_params(template: no_params)
+                            && match last_path_param(template: no_params) { Absent => true Present => false }
+                            && has_path_params(template: nested)
+                            && match last_path_param(template: nested) {
+                              Present { value: p } => p == "version"
+                              Absent => false
+                            }
+                            && !has_path_params(template: query_stripped)
+                            && has_path_params(template: deep)
+                            && match last_path_param(template: deep) {
+                              Present { value: p } => p == "pull_number"
+                              Absent => false
+                            }
+                            && match parse_path_template(raw: concat("/repos/", "{", "owner/pulls")) {
+                              MalformedPathTemplate => true
+                              ParsedPathTemplate => false
+                            }
+                            && match parse_path_template(raw: concat("/repos/owner", "}", "/pulls")) {
+                              MalformedPathTemplate => true
+                              ParsedPathTemplate => false
+                            }
+                            && match parse_path_template(raw: concat("/v1/", "{", "project", "}", "{", "secret", "}")) {
+                              MalformedPathTemplate => true
+                              ParsedPathTemplate => false
+                            }
+                        MalformedPathTemplate => false
+                      }
+                    MalformedPathTemplate => false
+                  }
+                MalformedPathTemplate => false
+              }
+            MalformedPathTemplate => false
+          }
+        MalformedPathTemplate => false
+      }
+    MalformedPathTemplate => false
   }
 }
 
-fn all_tracked_rest_ops_derive() -> Bool {
-  fold(effects_tracked_rest_ops, init: true, f: (acc, op) =>
-    acc && tracked_op_derives(op: op)
-  )
-}
-
-fn tracked_to_derived(op: TrackedRestOp) -> DerivedOpEffect {
-  derived_op(name: op.name, method: op.method, raw_path: op.path)
-}
-
-fn tracked_idempotent_count() -> Int {
-  fold(effects_tracked_rest_ops, init: 0, f: (acc, op) => {
-    let d = tracked_to_derived(op: op)
-    if is_idempotent_effect(shape: d.shape) { acc + 1 } else { acc }
-  })
-}
-
-fn every_idempotent_tracked_has_obligation() -> Bool {
-  let derived = effects_tracked_rest_ops |> map(op => tracked_to_derived(op: op))
-  let obligations = generate_idempotency_obligations(ops: derived)
-  fold(derived, init: true, f: (acc, d) => {
-    if is_idempotent_effect(shape: d.shape) {
-      acc && fold(obligations, init: false, f: (found, o) =>
-        found || (o.operation_name == d.operation_name && o.effect_shape == d.shape)
-      )
-    } else {
-      acc
-    }
-  })
-}
-
-test fn effects_path_parse_witnesses() -> Bool {
-  let simple = parse_ok(raw: "/repos/\{owner\}/\{repo\}/pulls")
-  let colon = parse_ok(raw: "/v1/\{secret_name\}:addVersion")
-  let no_params = parse_ok(raw: "/token")
-  let nested = parse_ok(raw: "/v1/projects/\{project_id\}/secrets/\{secret\}/versions/\{version\}:access")
-  let query_stripped = parse_ok(raw: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}")
-  let deep = parse_ok(raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews")
-
-  has_path_params(template: simple)
-    && match last_path_param(template: simple) {
-      Present { value: p } => p == "repo"
-      Absent => false
-    }
-    && has_path_params(template: colon)
-    && match last_path_param(template: colon) {
-      Present { value: p } => p == "secret_name"
-      Absent => false
-    }
-    && !has_path_params(template: no_params)
-    && match last_path_param(template: no_params) { Absent => true Present => false }
-    && has_path_params(template: nested)
-    && match last_path_param(template: nested) {
-      Present { value: p } => p == "version"
-      Absent => false
-    }
-    && !has_path_params(template: query_stripped)
-    && has_path_params(template: deep)
-    && match last_path_param(template: deep) {
-      Present { value: p } => p == "pull_number"
-      Absent => false
-    }
-    && parse_malformed(raw: concat("/repos/", "{", "owner/pulls"))
-    && parse_malformed(raw: concat("/repos/owner", "}", "/pulls"))
-    && parse_malformed(raw: concat("/v1/", "{", "project", "}", "{", "secret", "}"))
-}
-
 test fn effects_derivation_witnesses() -> Bool {
-  is_read(shape: derived_op(name: "List", method: GET, raw_path: "/repos/\{owner\}/\{repo\}/pulls").shape)
+  derived_op_valid_raw_path(raw: "/repos/\{owner\}/\{repo\}/pulls")
+    && is_read(shape: derived_op(name: "List", method: GET, raw_path: "/repos/\{owner\}/\{repo\}/pulls").shape)
+    && derived_op_valid_raw_path(raw: "/v1/projects/\{project_id\}/secrets")
     && is_create(shape: derived_op(name: "CreateSecret", method: POST, raw_path: "/v1/projects/\{project_id\}/secrets").shape)
     && is_create(shape: derived_op(name: "Messages", method: POST, raw_path: "/v1/messages").shape)
     && is_upsert(shape: derived_op(name: "Update", method: PUT, raw_path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}").shape)
     && is_create(shape: derived_op(name: "Update", method: PUT, raw_path: "/config").shape)
     && is_delete(shape: derived_op(name: "DeleteItem", method: DELETE, raw_path: "/items/\{id\}").shape)
     && is_create(shape: derived_op(name: "Purge", method: DELETE, raw_path: "/cache").shape)
-    && match derive_op_effect(
-      operation_name: "TypedBoundary",
-      method: PUT,
-      path: parse_ok(raw: "/repos/\{owner\}/\{repo\}")
-    ) {
-      DerivedEffect { effect: effect } => true
-      MalformedPathInput => false
+    && match parse_path_template(raw: "/repos/\{owner\}/\{repo\}") {
+      ParsedPathTemplate { template: path } =>
+        match derive_op_effect(operation_name: "TypedBoundary", method: PUT, path: path) {
+          DerivedEffect { effect: effect } => true
+          MalformedPathInput => false
+        }
+      MalformedPathTemplate => false
     }
 }
 
@@ -299,13 +211,6 @@ test fn effects_compose_witnesses() -> Bool {
     }
 }
 
-test fn effects_idempotency_obligation_witnesses() -> Bool {
-  let derived = effects_tracked_rest_ops |> map(op => tracked_to_derived(op: op))
-  let obligations = generate_idempotency_obligations(ops: derived)
-  (obligations |> length) == tracked_idempotent_count()
-    && every_idempotent_tracked_has_obligation()
-}
-
 test fn effects_modifier_github_readonly_witnesses() -> Bool {
   let readonly_gets = [
     ReadonlyGetCase { name: "List", path: "/repos/\{owner\}/\{repo\}/pulls" },
@@ -315,14 +220,13 @@ test fn effects_modifier_github_readonly_witnesses() -> Bool {
     ReadonlyGetCase { name: "ListComments", path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/comments" },
   ]
   fold(readonly_gets, init: true, f: (acc, case) => {
-    let mc = check_modifier_vs_derivation(
-      op: derived_op(name: case.name, method: GET, raw_path: case.path),
-      declared_idempotent: false,
-      declared_readonly: true
-    )
     acc
-      && match mc.agreement { Agrees => true _ => false }
-      && mc.declared_readonly
+      && derived_op_valid_raw_path(raw: case.path)
+      && match check_modifier_vs_derivation(
+        op: derived_op(name: case.name, method: GET, raw_path: case.path),
+        declared_idempotent: false,
+        declared_readonly: true
+      ).agreement { Agrees => true _ => false }
   })
 }
 
