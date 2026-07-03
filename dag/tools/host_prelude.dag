@@ -83,6 +83,10 @@ fn ensure_auth_declared_but_unwired_witness_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "AUTH_DECLARED_BUT_UNWIRED_WITNESS", bin_name: "auth_declared_but_unwired_witness")
 }
 
+fn ensure_bootstrap_witness_built() -> List<ShellStmt> {
+  ensure_bin_built_and_verified(var_name: "BOOTSTRAP_WITNESS", bin_name: "bootstrap_witness")
+}
+
 fn ensure_floor_skip_discovery_witness_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "FLOOR_SKIP_DISCOVERY_WITNESS", bin_name: "floor_skip_discovery_witness")
 }
@@ -93,6 +97,10 @@ fn ensure_claim_batch_built() -> List<ShellStmt> {
 
 fn ensure_interp_recorded_fixture_witness_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "INTERP_RECORDED_FIXTURE_WITNESS", bin_name: "interp_recorded_fixture_witness")
+}
+
+fn ensure_diagnostics_witness_built() -> List<ShellStmt> {
+  ensure_bin_built_and_verified(var_name: "DIAGNOSTICS_WITNESS", bin_name: "diagnostics_witness")
 }
 
 fn ensure_regen_stage0_built() -> List<ShellStmt> {

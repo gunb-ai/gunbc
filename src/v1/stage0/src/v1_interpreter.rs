@@ -5923,12 +5923,10 @@ fn eval_builtin(
         ))),
 
         "complexity_linearity_syntactic_finding_count" => Ok(Some(Value::Int(
-            crate::complexity_linearity_audit_project::complexity_linearity_syntactic_finding_count(
-            ),
+            crate::cli_run::complexity_linearity_syntactic_finding_count(),
         ))),
         "complexity_linearity_wildcard_facts" => {
-            let facts =
-                crate::complexity_linearity_audit_project::complexity_linearity_wildcard_facts();
+            let facts = crate::cli_run::complexity_linearity_wildcard_facts();
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 items.push(Value::Record {
@@ -5947,23 +5945,13 @@ fn eval_builtin(
             Ok(Some(list_value(items)))
         }
 
-        "complexity_linearity_migration_debt_roster" => {
-            let roster =
-                crate::complexity_linearity_audit_project::complexity_linearity_migration_debt_roster();
-            Ok(Some(list_value(
-                roster.into_iter().map(Value::Str).collect::<Vec<_>>(),
-            )))
-        }
-
         "complexity_linearity_syntactic_site_fired" => {
             let site = expect_str(
                 positional.first().copied(),
                 "complexity_linearity_syntactic_site_fired",
             )?;
             Ok(Some(Value::Bool(
-                crate::complexity_linearity_audit_project::complexity_linearity_syntactic_site_fired(
-                    &site,
-                ),
+                crate::cli_run::complexity_linearity_syntactic_site_fired(&site),
             )))
         }
         "census_corpus_roots_follow_layer_authority" => Ok(Some(Value::Bool(
