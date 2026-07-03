@@ -43,7 +43,7 @@ fn json_int(n: Int) -> JsonValue {
 fn json_number_from_lexeme_string(s: String) -> JsonValue? {
   match json_number_lexeme(s: s) {
     Present { value: l } => Present { value: JsonNumber { lexeme: l } }
-    Absent => none
+    none => Absent
   }
 }
 

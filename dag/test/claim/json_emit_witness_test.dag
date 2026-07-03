@@ -145,7 +145,7 @@ fn witness_json_number_lexeme_accepts_valid_at_construction() -> Bool {
 
 fn witness_json_number_from_lexeme_string_refuses_invalid() -> Bool {
   match json_number_from_lexeme_string(s: "01") {
-    none => true
+    Absent => true
     Present { value: _ } => false
   }
 }
