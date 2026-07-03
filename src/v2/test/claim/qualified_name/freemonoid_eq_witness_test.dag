@@ -1,0 +1,36 @@
+module v2.test.claim.qualified_name.freemonoid_eq_witness
+
+import v2.std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.node { Symbol }
+import v2.std.logic { Bool }
+
+type QnPath = FreeMonoid<Symbol>
+
+fn ab() -> QnPath {
+  Cons { head: ^a, tail: Cons { head: ^b, tail: Empty } }
+}
+
+fn ab2() -> QnPath {
+  Cons { head: ^a, tail: Cons { head: ^b, tail: Empty } }
+}
+
+fn ac() -> QnPath {
+  Cons { head: ^a, tail: Cons { head: ^c, tail: Empty } }
+}
+
+fn a_only() -> QnPath {
+  Cons { head: ^a, tail: Empty }
+}
+
+fn empty_path() -> QnPath {
+  Empty
+}
+
+test fn freemonoid_structural_eq_matches_qn_eq() -> Bool {
+  ab() == ab2()
+    && !(ab() == ac())
+    && !(ab() == a_only())
+    && !(a_only() == empty_path())
+    && empty_path() == empty_path()
+    && !(ab() == empty_path())
+}
