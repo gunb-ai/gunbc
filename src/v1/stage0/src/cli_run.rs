@@ -8418,7 +8418,11 @@ pub fn test_migration_debt_module_count() -> i64 {
 }
 
 pub fn test_migration_debt_total_loc() -> i64 {
-    test_migration_debt_report().entries.iter().map(|e| e.loc).sum()
+    test_migration_debt_report()
+        .entries
+        .iter()
+        .map(|e| e.loc)
+        .sum()
 }
 
 pub fn test_migration_debt_total_test_fns() -> i64 {
