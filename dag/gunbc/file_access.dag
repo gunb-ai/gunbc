@@ -1,0 +1,80 @@
+module gunbc.file_access
+
+import std.types { String, NonEmptyStr, Bool }
+import std.upsert_decision {
+  ObservationVerdict,
+  Converged,
+  Absent,
+  Drifted,
+  Inaccessible,
+  UpsertDecision,
+  UpsertClassification,
+  Noop,
+  Apply,
+  Refuse,
+}
+
+data file_access_doc: String = "File-tree scope observation→verdict→plan for temp-work-tree chmod/create paths. Lexical path_within_file_tree_scope is a fixture helper only — not canonical-path or TOCTOU authority (realize via owned TempWorkTree + canonical root in host_effect_apply)."
+
+type FileTreeScope {
+  root_path: NonEmptyStr
+}
+
+type FileAccessObservation
+  = PathAbsent
+  | ReadOnlyWithinNamespace
+  | WritableWithinNamespace
+  | PathOutsideNamespace
+
+type FileAccessPlan
+  = ChmodOwnerWriteWithinTempTree
+  | CreateParent
+
+fn path_has_dotdot_segment(path: String) -> Bool {
+  path == ".."
+    || starts_with(s: path, prefix: "../")
+    || string_contains(s: path, pattern: "/../")
+    || string_contains(s: path, pattern: "/..")
+}
+
+fn path_within_file_tree_scope(scope: FileTreeScope, path: NonEmptyStr) -> Bool {
+  let root = scope.root_path as String
+  let candidate = path as String
+  if path_has_dotdot_segment(path: candidate) {
+    false
+  } else {
+    if candidate == root {
+      true
+    } else {
+      starts_with(s: candidate, prefix: concat(root, "/"))
+    }
+  }
+}
+
+fn classify_file_access(obs: FileAccessObservation) -> ObservationVerdict {
+  match obs {
+    PathAbsent => Absent
+    ReadOnlyWithinNamespace => Drifted
+    WritableWithinNamespace => Converged
+    PathOutsideNamespace => Inaccessible
+  }
+}
+
+fn decision_for_file_access(obs: FileAccessObservation) -> UpsertDecision<FileAccessPlan> {
+  match obs {
+    PathOutsideNamespace => Refuse { reason: "path outside file tree scope" as NonEmptyStr }
+    ReadOnlyWithinNamespace => Apply { plan: ChmodOwnerWriteWithinTempTree }
+    WritableWithinNamespace => Noop
+    PathAbsent => Apply { plan: CreateParent }
+  }
+}
+
+fn classify_file_access_upsert(
+  scope: FileTreeScope,
+  obs: FileAccessObservation,
+) -> UpsertClassification<FileAccessPlan> {
+  UpsertClassification {
+    verdict: classify_file_access(obs: obs),
+    decision: decision_for_file_access(obs: obs),
+  }
+}

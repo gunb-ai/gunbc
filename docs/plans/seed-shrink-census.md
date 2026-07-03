@@ -203,11 +203,9 @@ These v1 modules have **no identified `*_test.dag` witness** (by stem or topic s
 | 458 | `resolve_cross_process_cache_test` | 10 | Resolve-cache cross-process witnesses |
 | 364 | `extdeps_shape_transport_policy_lens_test` | 7 | Lens already in `.dag`; needs floor `*_test.dag` consumer |
 | 330 | `floor_skip_discovery_host_test` | 9 | Floor-skip discovery witnesses |
-| 296 | `fn_as_value_test` | 10 | Fn-as-value infer witnesses |
 | 274 | `auth_declared_but_unwired_witness_test` | 7 | Auth wiring witnesses |
 | 242 | `measure_field_access_test` | 9 | Measure emit/access witnesses |
 | 234 | `coverage_completeness_lens_test` | 6 | Coverage-completeness lens floor witness |
-| 223 | `witness_option_bridge_test` | 6 | Optional/`Value::Null` bridge witnesses |
 | 221 | `list_free_monoid_chokepoint_test` | 8 | FreeMonoid generic-inference witnesses |
 | 208 | `consumed_input_closure_drift_test` | 2 | Wiring-liveness witnesses |
 | 206 | `ir_fixture_seam_soundness_test` | 3 | IR-fixture seam witnesses |
@@ -215,14 +213,18 @@ These v1 modules have **no identified `*_test.dag` witness** (by stem or topic s
 | 186 | `pd3_adversarial` | 8 | Adversarial parse witnesses |
 | 181 | `route_a_final_six_test` | 6 | Route-A emit regression witnesses |
 | 179 | `variant_owner_disambiguation_test` | 3 | Variant-owner resolve witnesses |
-| 175 | `map_lookup_dual_dispatch_test` | 6 | Map-lookup dispatch witnesses |
-| 114 | `r2_emit_add_named_test` | 0 | Emit add-named witnesses |
+| 96 | `fn_as_value_test` | 2 | Fn-as-value infer witnesses — shrunk from 296/10 by #6140, residual only |
 | 79 | `type_alias_phantom_param_test` | 2 | PhantomData type-alias emit witnesses |
 | 81 | `languages_consumer_census_lens_test` | 1 | Lens has `.dag`; floor witness missing |
 | 85 | `fact_cardinality_lens_test` | 1 | Lens has `.dag`; floor witness missing |
-| … | *(46 more modules < 200 LOC each)* | … | Per-module `*_test.dag` or fold into concern-suite above |
+| 65 | `coproduct_reflection_conformance_test` | 1 | Pinned-harness residual after #6142 |
+| 146 | `witness_option_bridge_test` | 3 | Optional/`Value::Null` bridge witnesses — shrunk from 223/6 by #6153, residual only |
+| 92 | `map_lookup_dual_dispatch_test` | 2 | Map-lookup dispatch witnesses — shrunk from 175/6 by #6150, residual only |
+| … | *(≈43 more modules < 200 LOC each)* | … | Per-module `*_test.dag` or fold into concern-suite above |
 
-**Debt total:** ~71 modules / ~13k LOC / ~400+ `#[test]` fns without floor equivalent.
+**Migrated off this table (2026-07-02, confirmed gone from `src/v1/tests/src/lib.rs`):** `render_repeat` (#6147), `cron_tag` (#6145), `money_carrier_cost_witness` (#6143) — fully deleted, no residual.
+
+**Debt total:** ~66 modules / ~12.5k LOC / ~380+ `#[test]` fns without floor equivalent (revised down from the stale 71/13k/400+ count above — six rows corrected 2026-07-02 against current `main`).
 
 **Migration rule:** for each v1 test module, the floor `*_test.dag` witness must be **green-by-execution** in `claim_executor` before the v1 `#[test]` module deletes. Bulk-delete of `src/v1/tests` is forbidden.
 

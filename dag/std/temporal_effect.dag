@@ -1,0 +1,221 @@
+module std.temporal_effect
+
+import std.types { String, NonEmptyStr, Int, Bool, ContentHash, Timestamp, List }
+
+data temporal_effect_doc: String = "Temporal realization spine — minimal durable facts (intent, receipt, lease, approval grant, base snapshot) and plan_next_step_from_prior_receipt_and_lease (single prior receipt + lease; list-level workflow fold is consumer-side). Not a workflow engine: cursor derived from receipts+leases+observations, never authoritative alone. Persistence is a realization handler; these types are the single authority (roadmap 2-temporal-effect-spine-a)."
+
+data approval_grant_covers_intent_dissolution_marker: String = "🟡 v0 predicate: escalation_id + intent_hash + expires_at bound via ISO-8601 lexicographic compare on Timestamp=String; dissolve-on: grounded instant ordering authority lands in std.time (DESIGN §3 — no second grant-equality surface)."
+
+data effect_step_receipt_label_dissolution_marker: String = "🟡 v0 receipt interop: verdict_label/plan_label are NonEmptyStr until workflow consumer binds typed verdict/plan rows; dissolve-on: EffectStepReceipt<V,P> or DeclarationRef when srv3-install-reconcile-a wires folds."
+
+data derived_pending_step_id_dissolution_marker: String = "🟡 v0: derived_pending_step_id returns last receipt step for retry-until-read-back; next-step-after-success cursor belongs in gunbc workflow consumer, not this helper alone."
+
+type EffectAttemptIntent {
+  attempt_id: NonEmptyStr
+  intent_hash: ContentHash
+  target: NonEmptyStr
+  created_at: Timestamp
+}
+
+type AppliedEffectRef
+  = NoEffectApplied
+  | EffectApplied { effect_id: NonEmptyStr }
+
+type EffectStepReceipt {
+  attempt_id: NonEmptyStr
+  step_id: NonEmptyStr
+  observation_digest: ContentHash
+  verdict_label: NonEmptyStr
+  plan_label: NonEmptyStr
+  applied: AppliedEffectRef
+  read_back_ok: Bool
+  recorded_at: Timestamp
+}
+
+type HeldLeaseObservedState
+  = LeaseAbsent
+  | LeaseRunningExpected
+  | LeaseRunningStale
+  | LeasePortForeign
+  | LeaseInaccessible
+
+type HeldLease {
+  lease_key: NonEmptyStr
+  resource_fingerprint: ContentHash
+  owner_fingerprint: ContentHash
+  generation: Int
+  observed: HeldLeaseObservedState
+}
+
+type DurableApprovalGrant
+  = GrantAbsent
+  | GrantActive {
+      escalation_id: NonEmptyStr
+      intent_hash: ContentHash
+      granted_by: NonEmptyStr
+      granted_at: Timestamp
+      expires_at: Timestamp
+    }
+  | GrantConsumed {
+      escalation_id: NonEmptyStr
+      intent_hash: ContentHash
+      consumed_by_step: NonEmptyStr
+    }
+
+type BaseSnapshotRow {
+  row_key: NonEmptyStr
+  value_hash: ContentHash
+}
+
+type BaseSnapshot {
+  generation: Int
+  observed_at: Timestamp
+  rows: List<BaseSnapshotRow>
+}
+
+type TemporalEffectPolicy
+  = PureRead
+  | CreateIfAbsent { content_key: ContentHash }
+  | ReplaceIfStale { content_key: ContentHash }
+  | UpsertScope { scope_key: NonEmptyStr }
+  | HeldSessionLease { lease_key: NonEmptyStr }
+  | DestructiveOnce { approval_id: NonEmptyStr, idempotency_key: ContentHash }
+
+type NextStepPlan
+  = PlanNoop { step_id: NonEmptyStr }
+  | PlanApply { step_id: NonEmptyStr }
+  | PlanRefuse { step_id: NonEmptyStr, reason: NonEmptyStr }
+  | PlanAwaitApproval { escalation_id: NonEmptyStr }
+  | PlanDrainThenStart { step_id: NonEmptyStr, lease_key: NonEmptyStr }
+
+type PriorStepReceipt
+  = NoPriorReceipt
+  | PriorReceipt { receipt: EffectStepReceipt }
+
+fn grant_not_expired_at(observed_at: Timestamp, expires_at: Timestamp) -> Bool {
+  observed_at <= expires_at
+}
+
+fn approval_grant_covers_intent(
+  grant: DurableApprovalGrant,
+  intent: EffectAttemptIntent,
+  escalation_id: NonEmptyStr,
+  observed_at: Timestamp,
+) -> Bool {
+  match grant {
+    GrantAbsent => false
+    GrantConsumed { escalation_id: _, intent_hash: _, consumed_by_step: _ } => false
+    GrantActive {
+      escalation_id: eid,
+      intent_hash: ih,
+      granted_by: _,
+      granted_at: _,
+      expires_at: exp,
+    } =>
+      eid == escalation_id
+        && ih == intent.intent_hash
+        && grant_not_expired_at(observed_at: observed_at, expires_at: exp)
+  }
+}
+
+fn plan_for_held_lease_observation(
+  lease: HeldLease,
+  pending_step_id: NonEmptyStr,
+) -> NextStepPlan {
+  match lease.observed {
+    LeaseAbsent => PlanApply { step_id: pending_step_id }
+    LeaseRunningExpected => PlanNoop { step_id: pending_step_id }
+    LeaseRunningStale => PlanDrainThenStart { step_id: pending_step_id, lease_key: lease.lease_key }
+    LeasePortForeign => PlanRefuse {
+      step_id: pending_step_id,
+      reason: "foreign lease holder on scoped resource",
+    }
+    LeaseInaccessible => PlanRefuse {
+      step_id: pending_step_id,
+      reason: "lease observation inaccessible",
+    }
+  }
+}
+
+fn plan_next_step_from_prior_receipt_and_lease(
+  intent: EffectAttemptIntent,
+  pending_step_id: NonEmptyStr,
+  requires_destructive_approval: Bool,
+  escalation_id: NonEmptyStr,
+  grant: DurableApprovalGrant,
+  lease: HeldLease,
+  prior: PriorStepReceipt,
+  observed_at: Timestamp,
+) -> NextStepPlan {
+  if requires_destructive_approval
+    && !approval_grant_covers_intent(
+      grant: grant,
+      intent: intent,
+      escalation_id: escalation_id,
+      observed_at: observed_at,
+    ) {
+    PlanAwaitApproval { escalation_id: escalation_id }
+  } else {
+    match prior {
+      PriorReceipt { receipt: r } =>
+        if r.read_back_ok && r.step_id == pending_step_id {
+          plan_for_held_lease_observation(lease: lease, pending_step_id: pending_step_id)
+        } else {
+          match r.applied {
+            EffectApplied { effect_id: _ } =>
+              if !r.read_back_ok {
+                PlanRefuse {
+                  step_id: pending_step_id,
+                  reason: "applied without read-back convergence",
+                }
+              } else {
+                plan_for_held_lease_observation(lease: lease, pending_step_id: pending_step_id)
+              }
+            NoEffectApplied =>
+              plan_for_held_lease_observation(lease: lease, pending_step_id: pending_step_id)
+          }
+        }
+      NoPriorReceipt =>
+        plan_for_held_lease_observation(lease: lease, pending_step_id: pending_step_id)
+    }
+  }
+}
+
+data cursor_unset_step: NonEmptyStr = "cursor-unset" as NonEmptyStr
+
+fn receipt_log_last_step_id(receipts: List<EffectStepReceipt>) -> NonEmptyStr {
+  fold(
+    receipts,
+    init: cursor_unset_step,
+    f: (acc, r) => r.step_id,
+  )
+}
+
+fn derived_pending_step_id(
+  receipts: List<EffectStepReceipt>,
+  default_step: NonEmptyStr,
+) -> NonEmptyStr {
+  let last = receipt_log_last_step_id(receipts: receipts)
+  if last == cursor_unset_step {
+    default_step
+  } else {
+    last
+  }
+}
+
+fn prior_receipt_for_step(
+  receipts: List<EffectStepReceipt>,
+  step_id: NonEmptyStr,
+) -> PriorStepReceipt {
+  fold(
+    receipts,
+    init: NoPriorReceipt,
+    f: (acc, r) => {
+      if r.step_id == step_id {
+        PriorReceipt { receipt: r }
+      } else {
+        acc
+      }
+    },
+  )
+}
