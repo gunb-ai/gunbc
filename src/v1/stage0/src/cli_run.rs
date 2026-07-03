@@ -375,28 +375,28 @@ pub fn source_path_for_module_path(module_path: String) -> String {
         .unwrap_or_else(|| panic!("module_path_index: unknown module path '{module_path}'"))
 }
 
-pub fn qualified_name_value_to_module_path(value: &v1_interpreter::Value) -> String {
-    v1_interpreter::qualified_name_value_to_module_path(value)
+pub fn free_monoid_symbol_value_to_dotted_string(value: &v1_interpreter::Value) -> String {
+    v1_interpreter::free_monoid_symbol_value_to_dotted_string(value)
 }
 
-pub fn qualified_name_value_from_dotted_string(
+pub fn free_monoid_symbol_value_from_dotted_string(
     ctx: &v1_interpreter::InterpContext,
     dotted: &str,
 ) -> v1_interpreter::Value {
     use v1_interpreter::{sorted_fields, Value};
 
-    let qn_variant = |variant: &str, fields: Vec<_>| Value::Variant {
-        type_name: ctx.sym("QualifiedName"),
+    let fm_variant = |variant: &str, fields: Vec<_>| Value::Variant {
+        type_name: ctx.sym("FreeMonoid"),
         variant_name: ctx.sym(variant),
         fields: Rc::new(fields),
     };
     if dotted.is_empty() {
-        return qn_variant("QnEmpty", vec![]);
+        return fm_variant("Empty", vec![]);
     }
-    let mut qn = qn_variant("QnEmpty", vec![]);
+    let mut qn = fm_variant("Empty", vec![]);
     for seg in dotted.split('.').rev() {
-        qn = qn_variant(
-            "QnCons",
+        qn = fm_variant(
+            "Cons",
             sorted_fields(vec![
                 (ctx.sym("head"), Value::Str(seg.to_string())),
                 (ctx.sym("tail"), qn),
@@ -5985,13 +5985,13 @@ pub fn parse_source_root_entry_admission(source: &str) -> Result<SourceRootEntry
         .ok_or_else(|| "entry source missing `module` declaration".to_string())
 }
 
-fn emit_qualified_name_dag(segments: &[String]) -> String {
+fn free_monoid_symbol_emit_dag(segments: &[String]) -> String {
     if segments.is_empty() {
-        return "QnEmpty".to_string();
+        return "Empty".to_string();
     }
-    let mut out = String::from("QnEmpty");
+    let mut out = String::from("Empty");
     for seg in segments.iter().rev() {
-        out = format!("QnCons {{ head: ^{seg}, tail: {out} }}");
+        out = format!("Cons {{ head: ^{seg}, tail: {out} }}");
     }
     out
 }
@@ -5999,20 +5999,20 @@ fn emit_qualified_name_dag(segments: &[String]) -> String {
 #[cfg(test)]
 mod manifest_emit_tests {
     use super::{
-        dag_embedded_dag_source_escape, dag_manifest_scalar_escape, emit_qualified_name_dag,
+        dag_embedded_dag_source_escape, dag_manifest_scalar_escape, free_monoid_symbol_emit_dag,
     };
 
     #[test]
-    fn emit_qualified_name_dag_three_segment_path() {
+    fn free_monoid_symbol_emit_dag_three_segment_path() {
         assert_eq!(
-            emit_qualified_name_dag(&["v2".into(), "compiler".into(), "compile".into()]),
-            "QnCons { head: ^v2, tail: QnCons { head: ^compiler, tail: QnCons { head: ^compile, tail: QnEmpty } } }"
+            free_monoid_symbol_emit_dag(&["v2".into(), "compiler".into(), "compile".into()]),
+            "Cons { head: ^v2, tail: Cons { head: ^compiler, tail: Cons { head: ^compile, tail: Empty } } }"
         );
     }
 
     #[test]
-    fn emit_qualified_name_dag_empty_is_qn_empty() {
-        assert_eq!(emit_qualified_name_dag(&[]), "QnEmpty");
+    fn free_monoid_symbol_emit_dag_empty_is_empty_variant() {
+        assert_eq!(free_monoid_symbol_emit_dag(&[]), "Empty");
     }
 
     #[test]
@@ -6092,7 +6092,7 @@ fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
     for import in imports.iter().rev() {
         out = format!(
             "Cons {{\n  head: Import {{\n    target: {},\n    visibility: ImportVisible\n  }},\n  tail: {out}\n}}",
-            emit_qualified_name_dag(import)
+            free_monoid_symbol_emit_dag(import)
         );
     }
     out
@@ -6101,7 +6101,7 @@ fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
 fn emit_source_root_entry_admission_data(admission: &SourceRootEntryAdmission) -> String {
     format!(
         "data host_compiler_closure_admission: Admission = Admission {{\n  subject: ResolutionSubject {{\n    name: {}\n  }},\n  imports: {}\n}}\n\n\n",
-        emit_qualified_name_dag(&admission.subject),
+        free_monoid_symbol_emit_dag(&admission.subject),
         emit_import_admission_list(&admission.imports)
     )
 }
@@ -6290,7 +6290,7 @@ pub fn emit_source_root_ingest_manifest(
         out.push_str("  ImportVisible,\n");
         out.push_str("  ResolutionSubject\n");
         out.push_str("}\n");
-        out.push_str("import v2.std.qualified_name { QnCons, QnEmpty }\n");
+        out.push_str("import v2.std.algebra { Cons, Empty }\n");
     }
     out.push('\n');
     out.push_str(&format!(
@@ -9050,7 +9050,7 @@ pub fn shell_argv_nodes_for_operation(
 }
 
 pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter::Value) -> bool {
-    let module_path = qualified_name_value_to_module_path(qn);
+    let module_path = free_monoid_symbol_value_to_dotted_string(qn);
     !module_path.is_empty()
         && build_module_path_index_from_witness_roots().contains_key(&module_path)
 }
