@@ -46,7 +46,7 @@ import v2.std.node {
   TypeNode,
   SyntheticOccurrence
 }
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.qualified_name { QualifiedName }
 
 fn pbf_parse_root() -> GrammarRoot {
   GrammarRoot {
@@ -267,11 +267,11 @@ fn pbf_cross_file_import_resolves() -> Bool {
     roots: pbf_cross_file_roots(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: QnCons { head: ^pbf_subject_seg, tail: QnEmpty }
+        name: Cons { head: ^pbf_subject_seg, tail: Empty }
       },
       imports: Cons {
         head: Import {
-          target: QnCons { head: ^pbf_imported_seg, tail: QnEmpty },
+          target: Cons { head: ^pbf_imported_seg, tail: Empty },
           visibility: ImportVisible
         },
         tail: Empty
@@ -362,16 +362,16 @@ fn pbf_ambiguous_export_rejects() -> Bool {
     roots: pbf_ambiguous_import_roots(),
     admission: Admission {
       subject: ResolutionSubject {
-        name: QnCons { head: ^pbf_subject_seg, tail: QnEmpty }
+        name: Cons { head: ^pbf_subject_seg, tail: Empty }
       },
       imports: Cons {
         head: Import {
-          target: QnCons { head: ^pbf_ambiguous_import_a_seg, tail: QnEmpty },
+          target: Cons { head: ^pbf_ambiguous_import_a_seg, tail: Empty },
           visibility: ImportVisible
         },
         tail: Cons {
           head: Import {
-            target: QnCons { head: ^pbf_ambiguous_import_b_seg, tail: QnEmpty },
+            target: Cons { head: ^pbf_ambiguous_import_b_seg, tail: Empty },
             visibility: ImportVisible
           },
           tail: Empty
