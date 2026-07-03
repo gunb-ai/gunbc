@@ -672,7 +672,7 @@ pub fn load_sources_for_entry(
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let index = build_module_index(source_roots);
-    load_sources_for_entry_with_index(&index, entry_path)
+    load_sources_for_entry_with_index(&index, source_roots, entry_path)
 }
 
 fn entry_source_from_index_or_disk(
@@ -704,23 +704,21 @@ fn entry_source_from_index_or_disk(
 
 fn load_sources_for_entry_with_index(
     index: &ModuleSourceIndex,
+    pool_roots: &[String],
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let entry_source = entry_source_from_index_or_disk(index, entry_path)?;
     let rel_path = entry_source.path.clone();
 
-    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
-    if let Some(mod_path) = extract_module_path(&entry_source.content) {
-        seen.insert(mod_path, entry_source.clone());
-    }
-    let mut sources = resolve_transitively(vec![entry_source.clone()], index, seen);
+    let sources = resolve_transitively(vec![entry_source.clone()], index, pool_roots)?;
+    let mut sources = sources;
     if !sources.iter().any(|s| s.path == rel_path) {
         sources.push(entry_source);
     }
     Ok(sources)
 }
 
-fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
+fn load_sources(source_roots: &[String]) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let index = build_module_index(source_roots);
     let first_root = std::path::Path::new(&source_roots[0]);
     let mut entry_files = Vec::new();
@@ -737,20 +735,18 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFi
     let skipped_moduleless = moduleless_dag_entry_paths(&entry_files);
     report_moduleless_dag_entry_skips(&skipped_moduleless);
 
-    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
     let mut entry_for_queue = Vec::new();
     for (path, content) in &entry_files {
-        if let Some(mod_path) = extract_module_path(content) {
+        if let Some(_mod_path) = extract_module_path(content) {
             let source = Rc::new(v1_compiler_compile::SourceFile {
                 path: path.clone(),
                 content: content.clone(),
             });
-            seen.insert(mod_path, source.clone());
             entry_for_queue.push(source);
         }
     }
 
-    let mut sources = resolve_transitively(entry_for_queue, &index, seen);
+    let mut sources = resolve_transitively(entry_for_queue, &index, source_roots)?;
     for (path, content) in entry_files {
         if extract_module_path(&content).is_none() {
             continue;
@@ -759,7 +755,7 @@ fn load_sources(source_roots: &[String]) -> Vec<Rc<v1_compiler_compile::SourceFi
             sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
         }
     }
-    sources
+    Ok(sources)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -781,10 +777,11 @@ pub fn resolve_entry_graph(
     String,
 > {
     let index = build_module_index(source_roots);
-    resolve_entry_graph_with_index(&index, entry_file)
+    resolve_entry_graph_with_index(source_roots, &index, entry_file)
 }
 
 pub struct MultiEntryIndex {
+    source_roots: Vec<String>,
     source_files: ModuleSourceIndex,
     intern_table: RefCell<Rc<InternTable>>,
     parse_cache: RefCell<HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>>,
@@ -807,6 +804,7 @@ fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
 
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     MultiEntryIndex {
+        source_roots: source_roots.to_vec(),
         source_files: build_module_index(source_roots),
         intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
         parse_cache: RefCell::new(HashMap::new()),
@@ -845,6 +843,7 @@ pub fn resolve_entry_with_index_for_discovery_corpus(
 }
 
 fn resolve_entry_graph_with_index(
+    pool_roots: &[String],
     index: &ModuleSourceIndex,
     entry_file: &str,
 ) -> Result<
@@ -855,7 +854,7 @@ fn resolve_entry_graph_with_index(
     String,
 > {
     set_phase(FloorPhase::Resolve, entry_file);
-    let sources = load_sources_for_entry_with_index(index, entry_file)?;
+    let sources = load_sources_for_entry_with_index(index, pool_roots, entry_file)?;
     set_phase(FloorPhase::Typecheck, entry_file);
     resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict)
 }
@@ -872,7 +871,8 @@ fn resolve_entry_with_parse_cache(
     String,
 > {
     set_phase(FloorPhase::Resolve, entry_file);
-    let sources = load_sources_for_entry_with_index(&index.source_files, entry_file)?;
+    let sources =
+        load_sources_for_entry_with_index(&index.source_files, &index.source_roots, entry_file)?;
 
     if let Some(cache_root) = resolved_graph_cache_root_from_env() {
         let subject = subject_digest_for_closure(&sources);
@@ -1354,13 +1354,7 @@ pub fn precompute_whole_tree_published_mock_keys(
     if declarers.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
-    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
-    for d in &declarers {
-        if let Some(mp) = extract_module_path(&d.content) {
-            seen.insert(mp, d.clone());
-        }
-    }
-    let all_sources = resolve_transitively(declarers, &index, seen);
+    let all_sources = resolve_transitively(declarers, &index, &dag_roots)?;
     if all_sources.is_empty() {
         return Ok(std::collections::HashSet::new());
     }
@@ -1615,7 +1609,8 @@ pub fn whole_tree_resolved_ctx(
 }
 
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
-    let sources = load_sources_for_entry_with_index(&index.source_files, entry)?;
+    let sources =
+        load_sources_for_entry_with_index(&index.source_files, &index.source_roots, entry)?;
     Ok(subject_digest_for_closure(&sources))
 }
 
@@ -1711,7 +1706,13 @@ pub fn handle_run_with_options(
                 std::process::exit(1);
             }
         },
-        None => load_sources(&source_roots),
+        None => match load_sources(&source_roots) {
+            Ok(sources) => sources,
+            Err(msg) => {
+                eprintln!("error: {}", msg);
+                std::process::exit(1);
+            }
+        },
     };
     eprintln!("resolved {} sources", sources.len());
 
@@ -2367,7 +2368,7 @@ pub fn discover_owned_data_decls(
             .count();
         entry_count += 1;
 
-        let closure = load_sources_for_entry_with_index(&module_index, &entry)?;
+        let closure = load_sources_for_entry_with_index(&module_index, source_roots, &entry)?;
         for source in &closure {
             names_by_file
                 .entry(source.path.clone())
@@ -4692,7 +4693,11 @@ fn run_discovery_rows(
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
-            let sources = load_sources_for_entry_with_index(&index.source_files, &row.entry)
+            let sources = load_sources_for_entry_with_index(
+                &index.source_files,
+                &index.source_roots,
+                &row.entry,
+            )
                 .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
             let resolve_started = std::time::Instant::now();
@@ -9934,5 +9939,169 @@ mod doc_reachability_tests {
         let c = "// bind: docs/planning/foo.md (provenance)\n// no bind here\n// bind: bar.md";
         let t = bind_md_refs(c);
         assert_eq!(t, vec!["docs/planning/foo.md", "bar.md"]);
+    }
+}
+
+#[cfg(test)]
+mod import_closure_equivalence_tests {
+    use super::{
+        build_module_index, default_source_roots, import_closure_live_paths,
+        resolve_transitively, resolve_transitively_bfs_legacy, workspace_relative_repo_path,
+        witness_layer_roots,
+    };
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+    use std::rc::Rc;
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .ancestors()
+            .nth(3)
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    fn closure_paths(
+        sources: &[Rc<crate::v1_compiler_compile::SourceFile>],
+    ) -> std::collections::BTreeSet<String> {
+        sources
+            .iter()
+            .map(|s| workspace_relative_repo_path(&s.path))
+            .collect()
+    }
+
+    fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
+        let ws = workspace_root();
+        let entry_abs = ws.join(entry_rel);
+        let index = build_module_index(pool_roots);
+        let content = std::fs::read_to_string(&entry_abs)
+            .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
+        let entry_source = Rc::new(crate::v1_compiler_compile::SourceFile {
+            path: entry_abs.to_string_lossy().into_owned(),
+            content,
+        });
+        let mut seen: HashMap<String, Rc<crate::v1_compiler_compile::SourceFile>> = HashMap::new();
+        if let Some(mod_path) = super::extract_module_path(&entry_source.content) {
+            seen.insert(mod_path, entry_source.clone());
+        }
+        let bfs = resolve_transitively_bfs_legacy(vec![entry_source.clone()], &index, seen);
+        let repointed = resolve_transitively(vec![entry_source], &index, pool_roots)
+            .unwrap_or_else(|e| panic!("resolve_transitively {entry_rel}: {e}"));
+        let live = import_closure_live_paths(entry_rel, pool_roots)
+            .unwrap_or_else(|e| panic!("import_closure_live_paths {entry_rel}: {e}"));
+        let bfs_paths = closure_paths(&bfs);
+        let repointed_paths = closure_paths(&repointed);
+        let live_paths: std::collections::BTreeSet<String> = live
+            .iter()
+            .map(|p| workspace_relative_repo_path(p))
+            .collect();
+        assert_eq!(
+            repointed_paths, bfs_paths,
+            "repointed closure diverged from legacy BFS for {entry_rel}"
+        );
+        assert_eq!(
+            live_paths, bfs_paths,
+            "import_closure_live diverged from legacy BFS for {entry_rel}"
+        );
+    }
+
+    #[test]
+    fn debug_import_resolution_edge_paths_for_conformance_entry() {
+        let roots = vec!["dag".to_string(), "src/v2".to_string()];
+        let entry = "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag";
+        let edges = super::import_resolution_facts(&roots, &roots, &[]);
+        let matching: Vec<_> = edges
+            .iter()
+            .filter(|e| super::workspace_relative_repo_path(&e.path) == entry)
+            .collect();
+        eprintln!(
+            "matching importer edges for {entry}: {:?}",
+            matching
+                .iter()
+                .map(|e| (&e.path, &e.import_module))
+                .collect::<Vec<_>>()
+        );
+        let closure = super::import_closure_live_paths(entry, &roots).expect("closure");
+        eprintln!("closure({entry}) len={} paths={closure:?}", closure.len());
+        assert!(
+            closure.len() > 1,
+            "expected transitive imports beyond entry; edge-path normalization may be broken"
+        );
+    }
+
+    #[test]
+    fn import_closure_live_matches_legacy_bfs_on_conformance_entry() {
+        let roots = default_source_roots();
+        assert_bfs_matches_import_closure_live(
+            "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+            &roots,
+        );
+    }
+
+    #[test]
+    fn import_closure_live_matches_legacy_bfs_on_floor_gate_entry() {
+        let roots = default_source_roots();
+        assert_bfs_matches_import_closure_live("dag/tools/floor_effect_gate_witness.dag", &roots);
+    }
+
+    #[test]
+    fn import_closure_live_drift_discriminates_under_declaration() {
+        let roots = default_source_roots();
+        let live = import_closure_live_paths(
+            "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+            &roots,
+        )
+        .expect("live closure");
+        let mut without_entry: std::collections::BTreeSet<String> = live
+            .iter()
+            .map(|p| workspace_relative_repo_path(p))
+            .filter(|p| {
+                p != "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag"
+            })
+            .collect();
+        let repointed = import_closure_live_paths(
+            "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+            &roots,
+        )
+        .expect("live closure again");
+        let full: std::collections::BTreeSet<String> = repointed
+            .iter()
+            .map(|p| workspace_relative_repo_path(p))
+            .collect();
+        assert_ne!(without_entry, full, "RED control: dropped entry must diverge");
+        without_entry.insert(
+            "src/v2/std/__bogus_never_imported__.dag".to_string(),
+        );
+        assert_ne!(
+            without_entry, full,
+            "RED control: bogus path must diverge from live closure"
+        );
+    }
+
+    #[test]
+    fn import_closure_live_uses_witness_layer_roots_without_extra_resolve() {
+        let ws = workspace_root();
+        let rel_roots: Vec<String> = witness_layer_roots();
+        let abs_roots: Vec<String> = rel_roots
+            .iter()
+            .map(|r| ws.join(r).to_string_lossy().into_owned())
+            .collect();
+        let from_rel = import_closure_live_paths(
+            "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+            &rel_roots,
+        )
+        .expect("relative roots");
+        let from_abs = import_closure_live_paths(
+            "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+            &abs_roots,
+        )
+        .expect("absolute roots");
+        let norm = |paths: Vec<String>| {
+            paths
+                .into_iter()
+                .map(|p| workspace_relative_repo_path(&p))
+                .collect::<std::collections::BTreeSet<_>>()
+        };
+        assert_eq!(norm(from_rel), norm(from_abs));
     }
 }
