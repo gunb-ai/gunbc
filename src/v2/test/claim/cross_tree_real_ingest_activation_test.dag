@@ -24,7 +24,7 @@ import v2.std.cross_tree.resolution {
   cross_tree_edge_decision
 }
 import v2.std.logic { Bool }
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.qualified_name { QualifiedName }
 
 data ct_real_v2_subject_source: Medium<String> = Medium {
   carried: "module v2.ct_real_subject\n",
@@ -87,11 +87,11 @@ data ct_real_dag_to_v2_ingest: SourceRootIngest = Cons {
 }
 
 fn ct_real_subject_qn() -> QualifiedName {
-  QnCons { head: ^v2, tail: QnCons { head: ^ct_real_subject, tail: QnEmpty } }
+  Cons { head: ^v2, tail: Cons { head: ^ct_real_subject, tail: Empty } }
 }
 
 fn ct_real_target_qn() -> QualifiedName {
-  QnCons { head: ^ct_real_target, tail: QnEmpty }
+  Cons { head: ^ct_real_target, tail: Empty }
 }
 
 fn ct_real_edge_decision(ingest: SourceRootIngest) -> CrossTreeEdgeDecision {

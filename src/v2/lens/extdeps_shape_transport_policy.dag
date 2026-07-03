@@ -10,7 +10,7 @@ import v2.std.algebra {
 }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName, qualified_name_eq }
+import v2.std.qualified_name { QualifiedName }
 import v2.std.text { String }
 
 type ExtdepsTransportKind
@@ -180,7 +180,7 @@ fn extdeps_live_module_dead_param_count_for_operation(
 }
 
 fn argv_fact_matches_module(fact: ExtdepsTransportArgvFact, module: QualifiedName) -> Bool {
-  qualified_name_eq(a: fact.module, b: module)
+  fact.module == module
 }
 
 fn argv_fact_matches_operation(
@@ -195,7 +195,7 @@ fn argv_fact_matches_operation(
 }
 
 fn fusion_fact_matches_module(fact: ExtdepsTransportFusionFact, module: QualifiedName) -> Bool {
-  qualified_name_eq(a: fact.module, b: module)
+  fact.module == module
 }
 
 fn input_fact_matches_operation(
@@ -204,7 +204,7 @@ fn input_fact_matches_operation(
   service: String,
   operation: String
 ) -> Bool {
-  qualified_name_eq(a: fact.module, b: module)
+  fact.module == module
     && fact.service == service
     && fact.operation == operation
 }

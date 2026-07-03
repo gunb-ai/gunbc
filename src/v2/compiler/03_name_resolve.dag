@@ -59,10 +59,7 @@ import v2.std.cross_tree.resolution {
   cross_tree_edge_decision,
   source_root_index_empty
 }
-import v2.std.qualified_name {
-  QualifiedName,
-  qualified_name_eq
-}
+import v2.std.qualified_name { QualifiedName }
 
 type ImportVisibility
   = ImportVisible
@@ -159,7 +156,7 @@ fn module_root_name_find_fold(
     xs: names,
     empty: acc,
     cons: fn(st, candidate) {
-      if qualified_name_eq(a: candidate, b: name) {
+      if candidate == name {
         match st {
           ModuleRootNameNotFound => ModuleRootNameFoundOnce
           ModuleRootNameFoundOnce => ModuleRootNameFoundDuplicate
@@ -252,7 +249,7 @@ fn module_root_find(
                   Rejected { diagnostics: d }
                 Accepted { value: candidate, diagnostics: _ } =>
                   Accepted {
-                    value: match qualified_name_eq(a: candidate, b: name) {
+                    value: match candidate == name {
                       true =>
                         match fold_state {
                           NoPassingCandidate => OnePassingCandidate { candidate: root }
