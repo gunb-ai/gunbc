@@ -4175,36 +4175,6 @@ fn call_floor_host_scaffold_precompute_would_skip(
     }
 }
 
-fn extract_test_fn_body(content: &str, function: &str) -> String {
-    extract_named_fn_body(content, function, "test fn ")
-}
-
-fn extract_named_fn_body(content: &str, function: &str, prefix: &str) -> String {
-    let needle = format!("{prefix}{function}");
-    let Some(start) = content.find(&needle) else {
-        return String::new();
-    };
-    let after = &content[start + needle.len()..];
-    let mut body = String::new();
-    for line in after.lines().skip(1) {
-        if !line.is_empty() && !line.starts_with(' ') && !line.starts_with('\t') {
-            let trimmed = line.trim_start();
-            if trimmed.starts_with("test fn ")
-                || trimmed.starts_with("fn ")
-                || trimmed.starts_with("data ")
-                || trimmed.starts_with("type ")
-                || trimmed.starts_with("import ")
-                || trimmed.starts_with("service ")
-            {
-                break;
-            }
-        }
-        body.push_str(line);
-        body.push('\n');
-    }
-    body
-}
-
 fn entry_text_indicates_live_host_scan(text: &str) -> bool {
     text.contains(FLOOR_HOST_SCAFFOLD_WITNESS_MARKER)
         || text.contains("layer_import_facts")
