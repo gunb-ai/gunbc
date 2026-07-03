@@ -184,11 +184,26 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
   )
 }
 
+// 🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0).
+fn flatten_visible_parent_recurses() -> Int { 0 }
+fn reset_flatten_visible_profile() -> Unit { }
+fn reset_type_env_lookup_profile() -> Unit { reset_flatten_visible_profile() }
+fn maybe_print_type_env_lookup_profile() -> Unit { }
+fn record_flatten_visible_parent_recurse() -> Unit { }
+
 fn flatten_visible_bindings(env: TypeEnv) -> Map<String, TypeBinding> {
-  map_merge(
-    env.ancestry_str_bindings,
-    env.str_bindings,
-  )
+  if (env.ancestry_str_bindings |> map_keys |> count > 0) || (env.parents |> count == 0) {
+    map_merge(env.ancestry_str_bindings, env.str_bindings)
+  } else {
+    let from_parents = fold(env.parents, init: empty_map(), f: (acc, parent) =>
+      map_merge(flatten_visible_bindings(env: parent), acc)
+    )
+    let local_by_name = fold(env.bindings |> map_values, init: empty_map(), f: (acc, binding) =>
+      map_insert(acc, binding.name, binding)
+    )
+    record_flatten_visible_parent_recurse()
+    map_merge(from_parents, local_by_name)
+  }
 }
 
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {

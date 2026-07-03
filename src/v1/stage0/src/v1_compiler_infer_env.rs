@@ -19,8 +19,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-static TYPE_ENV_LOOKUP_BY_NAME_CALLS: AtomicU64 = AtomicU64::new(0);
-static TYPE_ENV_PARENT_CHAIN_STEPS: AtomicU64 = AtomicU64::new(0);
+// 🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0).
 static FLATTEN_VISIBLE_PARENT_RECURSES: AtomicU64 = AtomicU64::new(0);
 
 pub fn flatten_visible_parent_recurses() -> u64 {
@@ -31,29 +30,14 @@ pub fn reset_flatten_visible_profile() {
     FLATTEN_VISIBLE_PARENT_RECURSES.store(0, Ordering::Relaxed);
 }
 
-pub fn maybe_print_type_env_lookup_profile() {
-    if std::env::var("GUNBC_TYPE_ENV_LOOKUP_PROFILE")
-        .ok()
-        .as_deref()
-        == Some("1")
-    {
-        let calls = TYPE_ENV_LOOKUP_BY_NAME_CALLS.load(Ordering::Relaxed);
-        let steps = TYPE_ENV_PARENT_CHAIN_STEPS.load(Ordering::Relaxed);
-        let avg_depth = if calls > 0 {
-            (steps as f64) / (calls as f64)
-        } else {
-            0.0
-        };
-        eprintln!(
-            "[type-env-profile] lookup_by_name_calls={calls} parent_chain_steps={steps} avg_chain_steps_per_lookup={avg_depth:.2}"
-        );
-    }
+pub fn reset_type_env_lookup_profile() {
+    reset_flatten_visible_profile();
 }
 
-pub fn reset_type_env_lookup_profile() {
-    TYPE_ENV_LOOKUP_BY_NAME_CALLS.store(0, Ordering::Relaxed);
-    TYPE_ENV_PARENT_CHAIN_STEPS.store(0, Ordering::Relaxed);
-    reset_flatten_visible_profile();
+pub fn maybe_print_type_env_lookup_profile() {}
+
+pub fn record_flatten_visible_parent_recurse() {
+    FLATTEN_VISIBLE_PARENT_RECURSES.fetch_add(1, Ordering::Relaxed);
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -130,7 +114,6 @@ pub fn str_bindings_from_bindings(
 }
 
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    TYPE_ENV_LOOKUP_BY_NAME_CALLS.fetch_add(1, Ordering::Relaxed);
     match v1_rt::map_get(&env.str_bindings, name.clone()) {
         Some(binding) => Some(binding.clone()),
         None => v1_rt::map_get(&env.ancestry_str_bindings, name),
@@ -333,7 +316,6 @@ pub fn flatten_visible_bindings(env: Rc<TypeEnv>) -> Rc<HashMap<String, Rc<TypeB
         let from_parents = env.parents.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
-                FLATTEN_VISIBLE_PARENT_RECURSES.fetch_add(1, Ordering::Relaxed);
                 v1_rt::rc_map_merge(flatten_visible_bindings(parent.clone()), acc)
             },
         );
@@ -346,6 +328,7 @@ pub fn flatten_visible_bindings(env: Rc<TypeEnv>) -> Rc<HashMap<String, Rc<TypeB
                     v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone())
                 },
             );
+        record_flatten_visible_parent_recurse();
         v1_rt::rc_map_merge(from_parents, local_by_name)
     })
 }

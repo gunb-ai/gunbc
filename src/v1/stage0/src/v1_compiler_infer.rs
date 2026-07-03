@@ -14579,7 +14579,7 @@ pub fn import_module_path_at(
 
 pub fn rewire_type_env_import_str_binding_identity(
     modules: Rc<Vec<Rc<TypedModule>>>,
-    _source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
     fn local_authority_binding(owner: Rc<TypedModule>, name: String) -> Option<Rc<TypeBinding>> {
         owner
@@ -14596,9 +14596,45 @@ pub fn rewire_type_env_import_str_binding_identity(
     ) -> Option<Rc<TypedModule>> {
         modules
             .iter()
+            .rev()
             .find(|m| m.type_env.bindings.values().any(|b| b.name.clone() == name))
             .cloned()
     }
+
+    fn module_exports_type_name(m: Rc<TypedModule>, name: &str) -> bool {
+        m.type_env
+            .bindings
+            .values()
+            .any(|b| b.name.as_str() == name)
+    }
+
+    fn direct_import_exporter_count(
+        m: Rc<TypedModule>,
+        name: &str,
+        index: &HashMap<String, Rc<TypedModule>>,
+        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ) -> usize {
+        module_imports(m.module.clone())
+            .iter()
+            .filter(|imp| {
+                let path = import_module_path_at((*imp).clone(), source_indices.clone());
+                index
+                    .get(&path)
+                    .map_or(false, |parent| module_exports_type_name(parent.clone(), name))
+            })
+            .count()
+    }
+
+    let index = modules.clone().iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
+        |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
+            v1_rt::rc_map_insert(
+                acc,
+                authored_name_at(source_indices.clone(), m.module.clone()),
+                m.clone(),
+            )
+        },
+    );
 
     Rc::new({
         let mut __result = Vec::new();
@@ -14619,6 +14655,15 @@ pub fn rewire_type_env_import_str_binding_identity(
                     .filter(|name| !local_names.contains(name))
                     .collect();
             for name in inherited_names {
+                if direct_import_exporter_count(
+                    m.clone(),
+                    name.as_str(),
+                    &index,
+                    source_indices.clone(),
+                ) > 1
+                {
+                    continue;
+                }
                 if let Some(owner) = local_authority_for_name(modules.clone(), name.clone()) {
                     if let Some(canonical) = local_authority_binding(owner, name.clone()) {
                         ancestry_str_bindings = v1_rt::rc_map_insert(
@@ -14788,6 +14833,10 @@ pub fn reconcile(
     {
         let typed = typecheck(graph, source_indices.clone(), intern_table);
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
+        let modules = rewire_type_env_import_str_binding_identity(
+            modules.clone(),
+            source_indices.clone(),
+        );
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
         let emit_info = build_emit_graph_info(modules.clone());
         Rc::new(ResolvedGraph {
