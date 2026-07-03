@@ -11,7 +11,7 @@ import extdeps.os.ubuntu_autoinstall {
 }
 import product.placement_supply { HostIdentity }
 
-data os_install_deduction_doc: String = "OS install deduction spine — construction-time preflight (intent+policy completeness) and runtime KVM-attested diagnostic vocabulary (T1 only; not wired to srv3_os_install_diagnostic fold until srv3-install-reconcile-a). Preflight fold is scoped to the NBD-proxy/on-ISO actuator path: NoCloudNet is incomplete for that path only, not universally. Not a monitoring product (roadmap 2-os-install-deduction-a). Deduction half pairs with std.temporal_effect receipt/resume half."
+data os_install_deduction_doc: String = "OS install deduction spine — construction-time preflight (intent+policy completeness) and runtime KVM-attested diagnostic vocabulary. Consumed by gunbc.srv3_os_install_reconcile (srv3-install-reconcile-a). Preflight fold is scoped to the NBD-proxy/on-ISO actuator path: NoCloudNet is incomplete for that path only, not universally."
 
 type TargetDiskState
   = EmptyDisk

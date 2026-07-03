@@ -37,7 +37,7 @@ import v1.compiler.infer_types {
 }
 import std.induction { SubValueUnknown }
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name
+  TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name, flatten_visible_bindings
 }
 
 fn is_unit_variant_node(variant: Node) -> Bool {
@@ -77,17 +77,13 @@ fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> Node?
 }
 
 fn collect_unit_variant_phantom_matches(env: TypeEnv, variant_name: String) -> List<Node> {
-  fold(map_keys(env.bindings), init: [], f: (acc, ident) =>
-    match lookup_type(env: env, ident: ident) {
-      Present { value: ty_node } =>
-        match unit_variant_in_coproduct(
-          env: env,
-          ty: structural_type_for_variant_lookup(env: env, ty: ty_node),
-          variant_name: variant_name
-        ) {
-          Present { value: variant } => concat(acc, [variant])
-          Absent => acc
-        }
+  fold(flatten_visible_bindings(env: env) |> map_values, init: [], f: (acc, binding) =>
+    match unit_variant_in_coproduct(
+      env: env,
+      ty: structural_type_for_variant_lookup(env: env, ty: binding.resolved),
+      variant_name: variant_name
+    ) {
+      Present { value: variant } => concat(acc, [variant])
       Absent => acc
     }
   )
@@ -118,6 +114,13 @@ fn with_authored_identity(identity: Node, structural: Node) -> Node {
   }
 }
 
+data transparent_primitive_alias_rhs_dissolution_trigger: String = "🟢 intentional: resolve-side predicate for kernel-type transparent alias RHS — skip nominal re-brand in preserve_nominal_brand_on_resolve / peel_nominal_alias_identity until ParamKind partition lands."
+
+fn is_transparent_primitive_alias_rhs(structural: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+  structural.connective == NoConnective && structural.children |> count == 0
+    && is_kernel_type(name: authored_name_at(source_indices: source_indices, node: structural))
+}
+
 fn preserve_nominal_brand_on_resolve(
   identity: Node,
   structural: Node,
@@ -125,7 +128,8 @@ fn preserve_nominal_brand_on_resolve(
   source_indices: Map<String, NewlineIndex>
 ) -> Node {
   if brand_name != "" && brand_name != authored_name_at(source_indices: source_indices, node: structural)
-    && !is_declared_container_alias_spelling(name: brand_name) {
+    && !is_declared_container_alias_spelling(name: brand_name)
+    && !is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices) {
     with_authored_identity(identity: identity, structural: structural)
   } else { structural }
 }
@@ -145,7 +149,8 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
         resolve_node_bounded(n: resolved, env: env, module_name: module_name, depth: 0).resolved
       }
       if brand != "" && brand != authored_name_at(source_indices: source_indices, node: structural)
-        && !is_declared_container_alias_spelling(name: brand) {
+        && !is_declared_container_alias_spelling(name: brand)
+        && !is_transparent_primitive_alias_rhs(structural: structural, source_indices: source_indices) {
         with_authored_identity(identity: n, structural: structural)
       } else if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
         match resolved.inferred {
@@ -929,12 +934,16 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
     [make_error_node(diagnostic: InternalError { message: concat("type param name collides with a value param in fn '", authored_name_at(source_indices: env.source_indices, node: item), "' — a value param shares its name with a declared type param (e.g., `fn f<T>(T: T)`). Rename the value param, or dissolve via ParamKind / params-slot partition."), span: item.span }, module_name: module_name)]
   } else { [] }
   let env = fold(tp_names, init: env, f: (e, tp_name) =>
+    let tp_binding = TypeBinding {
+      name: tp_name,
+      resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      provenance: SubValueUnknown
+    }
     TypeEnv {
-      bindings: map_insert(e.bindings, intern(table: e.intern_table, s: tp_name).id, TypeBinding {
-        name: tp_name,
-        resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-        provenance: SubValueUnknown
-      }),
+      bindings: map_insert(e.bindings, intern(table: e.intern_table, s: tp_name).id, tp_binding),
+      str_bindings: map_insert(e.str_bindings, tp_name, tp_binding),
+      ancestry_str_bindings: e.ancestry_str_bindings,
+      parents: e.parents,
       recursive_types: e.recursive_types,
       recursive_type_set: e.recursive_type_set,
       inductive_fields: e.inductive_fields,

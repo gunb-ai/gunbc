@@ -1,0 +1,207 @@
+module gunbc.srv3_os_install_reconcile_apply
+
+import extdeps.shell
+import gunbc.shell_bash_runner { shell_exec_via_bash, shell_printf_line }
+import std.process { ProcessExit, ExitSuccess, exit_failure }
+import std.resources { Network }
+import std.types { NonEmptyStr, Timestamp }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.measure { second_count }
+import gunbc.srv3_install_diagnostic_checklist {
+  srv3_install_diagnostic_observe_script,
+}
+import gunbc.srv3_os_install_diagnostic {
+  srv3_os_install_attempt_intent,
+  parse_srv3_install_debug_observation,
+}
+import gunbc.srv3_os_install_reconcile {
+  reconcile_srv3_os_install,
+  srv3_held_lease_from_serve,
+  parse_durable_approval_grant_file,
+  parse_observed_at_from_stdout,
+  workflow_approval_from_durable_grant,
+  boot_once_apply_read_back_ok,
+  consumed_grant_after_boot_once,
+  srv3_install_reconcile_observe_meta_script,
+}
+import gunbc.srv3_os_install_reconcile_types {
+  srv3_install_reconcile_default_disk,
+  srv3_boot_once_approval_grant_path,
+  srv3_boot_once_apply_read_back_sleep,
+}
+import gunbc.srv3_os_install_reconcile_receipt {
+  srv3_install_reconcile_full_receipt,
+  srv3_install_reconcile_apply_receipt,
+  effect_step_receipt_for_boot_once,
+  durable_grant_is_active,
+}
+import gunbc.srv3_boot_once_cd { srv3_boot_once_cd_gated }
+import std.temporal_effect {
+  NoPriorReceipt,
+  PriorReceipt,
+  PlanApply,
+  PlanAwaitApproval,
+  PlanRefuse,
+  PlanNoop,
+  EffectApplied,
+}
+
+data srv3_os_install_reconcile_apply_shell_runner_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.srv3_os_install_reconcile",
+    decl_name: "srv3_os_install_reconcile_shell_runner_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+fn load_durable_approval_grant_script() -> String {
+  concat("cat ", concat(srv3_boot_once_approval_grant_path, " 2>/dev/null || true"))
+}
+
+fn srv3_install_reconcile_run_observe_script() -> String {
+  concat(
+    srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent),
+    srv3_install_reconcile_observe_meta_script(),
+  )
+}
+
+fn process_exit_succeeded(exit: ProcessExit) -> Bool {
+  match exit {
+    ExitSuccess => true
+    _ => false
+  }
+}
+
+fn sleep_for_boot_once_read_back_script() -> String {
+  concat("sleep ", to_string(second_count(s: srv3_boot_once_apply_read_back_sleep)))
+}
+
+func srv3_os_install_reconcile_apply() -> ProcessExit
+  uses net: Network
+{
+  let intent = srv3_os_install_attempt_intent
+  let grant_run = shell.Exec.Run(script: shell_exec_via_bash(body: load_durable_approval_grant_script()))
+  if !grant_run.success {
+    return exit_failure(reason: concat("srv3-install-reconcile-apply: read grant: ", grant_run.stderr))
+  }
+  let grant = parse_durable_approval_grant_file(contents: grant_run.stdout)
+  if !durable_grant_is_active(grant: grant) {
+    return exit_failure(reason: "srv3-install-reconcile-apply: durable approval grant missing or invalid")
+  }
+
+  let pre_observe_script = srv3_install_reconcile_run_observe_script()
+  let pre_observe = shell.Exec.Run(script: shell_exec_via_bash(body: pre_observe_script))
+  if !pre_observe.success {
+    return exit_failure(reason: concat("srv3-install-reconcile-apply: pre-observe: ", pre_observe.stderr))
+  }
+  let pre_observed_at = match parse_observed_at_from_stdout(stdout: pre_observe.stdout) {
+    Present { value: t } => t as Timestamp
+    Absent =>
+      return exit_failure(reason: "srv3-install-reconcile-apply: pre-observe missing surface=observed_at=")
+  }
+  let pre_observation = parse_srv3_install_debug_observation(
+    stdout: pre_observe.stdout,
+    intent: intent,
+  )
+  let pre_result = reconcile_srv3_os_install(
+    intent: intent,
+    observation: pre_observation,
+    disk: srv3_install_reconcile_default_disk,
+    observed_at: pre_observed_at,
+    grant: grant,
+    prior: NoPriorReceipt,
+  )
+
+  match pre_result.temporal_plan {
+    PlanApply { step_id: _ } => {}
+    PlanAwaitApproval { escalation_id: _ } =>
+      return exit_failure(reason: "srv3-install-reconcile-apply: plan awaits approval despite grant file present")
+    PlanRefuse { step_id: _, reason: r } =>
+      return exit_failure(reason: concat("srv3-install-reconcile-apply: plan refused: ", r))
+    PlanNoop { step_id: _ } =>
+      return exit_failure(reason: "srv3-install-reconcile-apply: plan noop; boot-once already converged")
+    _ =>
+      return exit_failure(reason: "srv3-install-reconcile-apply: unexpected temporal plan for boot-once apply")
+  }
+
+  let boot_exit = srv3_boot_once_cd_gated(approval: workflow_approval_from_durable_grant(grant: grant))
+  let apply_succeeded = process_exit_succeeded(exit: boot_exit)
+  if !apply_succeeded {
+    return exit_failure(reason: "srv3-install-reconcile-apply: boot-once-cd apply failed")
+  }
+
+  let sleep_run = shell.Exec.Run(script: shell_exec_via_bash(body: sleep_for_boot_once_read_back_script()))
+  if !sleep_run.success {
+    return exit_failure(reason: concat("srv3-install-reconcile-apply: read-back sleep: ", sleep_run.stderr))
+  }
+
+  let post_observe = shell.Exec.Run(script: shell_exec_via_bash(body: pre_observe_script))
+  if !post_observe.success {
+    return exit_failure(reason: concat("srv3-install-reconcile-apply: post-observe: ", post_observe.stderr))
+  }
+  let post_observed_at = match parse_observed_at_from_stdout(stdout: post_observe.stdout) {
+    Present { value: t } => t as Timestamp
+    Absent =>
+      return exit_failure(reason: "srv3-install-reconcile-apply: post-observe missing surface=observed_at=")
+  }
+  let post_observation = parse_srv3_install_debug_observation(
+    stdout: post_observe.stdout,
+    intent: intent,
+  )
+  let read_back_ok = boot_once_apply_read_back_ok(
+    pre: pre_observation,
+    post: post_observation,
+    apply_succeeded: apply_succeeded,
+  )
+  let step_receipt = effect_step_receipt_for_boot_once(
+    observation: post_observation,
+    diagnostic: pre_result.diagnostic,
+    plan: pre_result.temporal_plan,
+    read_back_ok: read_back_ok,
+    observed_at: post_observed_at,
+    applied: EffectApplied { effect_id: "srv3-boot-once-cd" as NonEmptyStr },
+  )
+  let post_grant = consumed_grant_after_boot_once()
+  let post_result = reconcile_srv3_os_install(
+    intent: intent,
+    observation: post_observation,
+    disk: srv3_install_reconcile_default_disk,
+    observed_at: post_observed_at,
+    grant: post_grant,
+    prior: PriorReceipt { receipt: step_receipt },
+  )
+  let lease = srv3_held_lease_from_serve(serve: post_observation.actuator_serve)
+  let dry_receipt = srv3_install_reconcile_full_receipt(
+    result: post_result,
+    intent: intent,
+    observation: post_observation,
+    grant: post_grant,
+    prior: PriorReceipt { receipt: step_receipt },
+    lease: lease,
+    git_branch: "live-apply" as NonEmptyStr,
+    git_commit: "live-apply" as NonEmptyStr,
+  )
+  let apply_receipt = srv3_install_reconcile_apply_receipt(
+    pre_result: pre_result,
+    post_result: post_result,
+    pre_grant: grant,
+    post_grant: post_grant,
+    step_receipt: step_receipt,
+    apply_succeeded: apply_succeeded,
+    read_back_ok: read_back_ok,
+  )
+  let echo_body = concat(
+    shell_printf_line(line: apply_receipt),
+    shell_printf_line(line: dry_receipt),
+  )
+  let echo_run = shell.Exec.Run(script: shell_exec_via_bash(body: echo_body))
+  if !echo_run.success {
+    return exit_failure(reason: concat("srv3-install-reconcile-apply-receipt: ", echo_run.stderr))
+  }
+  if !read_back_ok {
+    return exit_failure(reason: "srv3-install-reconcile-apply: read-back failed after boot-once-cd")
+  }
+  ExitSuccess
+}

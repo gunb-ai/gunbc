@@ -47,7 +47,7 @@ fn manifest_entry_admission_qualified_name_is_well_formed() {
     let manifest = fs::read_to_string(&manifest_path).expect("read manifest");
     assert!(
         manifest.contains(
-            "QnCons { head: ^v2, tail: QnCons { head: ^compiler, tail: QnCons { head: ^compile, tail: QnEmpty } } }"
+            "Cons { head: ^v2, tail: Cons { head: ^compiler, tail: Cons { head: ^compile, tail: Empty } } }"
         ),
         "manifest admission subject QN malformed:\n{manifest}"
     );

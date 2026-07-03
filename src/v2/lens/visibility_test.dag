@@ -1,16 +1,17 @@
 module v2.test.lens_visibility.visibility_test
+import v2.std.algebra { Cons, Empty }
 
 import v2.std.logic { Bool }
-import v2.std.qualified_name { QualifiedName, QnCons, QnEmpty }
+import v2.std.qualified_name { QualifiedName }
 import v2.lens.visibility {
   ModuleVisibilityFact, VisibilityLeak,
   scan_visibility_leaks, visibility_leak_count, visibility_clean
 }
 
-data mod_public_api: QualifiedName = QnCons { head: ^public_api, tail: QnEmpty }
-data mod_private_impl: QualifiedName = QnCons { head: ^private_impl, tail: QnEmpty }
-data mod_public_util: QualifiedName = QnCons { head: ^public_util, tail: QnEmpty }
-data mod_unknown_dep: QualifiedName = QnCons { head: ^unknown_dep, tail: QnEmpty }
+data mod_public_api: QualifiedName = Cons { head: ^public_api, tail: Empty }
+data mod_private_impl: QualifiedName = Cons { head: ^private_impl, tail: Empty }
+data mod_public_util: QualifiedName = Cons { head: ^public_util, tail: Empty }
+data mod_unknown_dep: QualifiedName = Cons { head: ^unknown_dep, tail: Empty }
 
 data no_imports: List<QualifiedName> = []
 

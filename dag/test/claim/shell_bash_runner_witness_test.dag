@@ -3,6 +3,7 @@ module test.claim.shell_bash_runner
 import gunbc.shell_bash_runner {
   shell_bash_runner_dissolution_trigger,
   shell_exec_via_bash,
+  shell_printf_line,
   gunbc_bash_heredoc_delimiter,
 }
 
@@ -17,4 +18,17 @@ test fn shell_exec_via_bash_wraps_body_in_heredoc() -> Bool {
   string_contains(s: wrapped, pattern: "bash <<'")
     && string_contains(s: wrapped, pattern: gunbc_bash_heredoc_delimiter)
     && string_contains(s: wrapped, pattern: "set -e")
+}
+
+test fn shell_printf_line_uses_printf_not_single_quote_echo() -> Bool {
+  let line = shell_printf_line(line: "can't refuse: operator's call")
+  string_contains(s: line, pattern: "printf '%s\\n'")
+    && !string_contains(s: line, pattern: "echo '")
+}
+
+test fn shell_printf_line_escapes_embedded_double_quote() -> Bool {
+  string_contains(
+    s: shell_printf_line(line: "say \"hi\""),
+    pattern: "\\\"",
+  )
 }
