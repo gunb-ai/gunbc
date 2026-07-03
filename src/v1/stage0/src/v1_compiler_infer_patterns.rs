@@ -365,10 +365,12 @@ pub fn expand_scrut_type_for_variant_lookup(
     scrut_node: Rc<Node>,
     env: Rc<TypeEnv>,
 ) -> Rc<Node> {
-    if (scrut_node.connective.clone() == Connective::Disj) {
+    let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
+    if (scrut_node.connective.clone() == Connective::Disj)
+        || is_witness_type_name(name.clone())
+    {
         return scrut_node.clone();
     }
-    let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
     if (((scrut_node.connective.clone() == Connective::NoConnective)
         && ((scrut_node.children.clone().len() as i64) > 0))
         && is_user_generic_use_site(scrut_node.clone(), env.clone()))

@@ -259,7 +259,8 @@ fn type_env_local_binding_shadows_imported_name() {
     );
     assert_eq!(
         authored_name_at(consumer.type_env.source_indices.clone(), visible.clone()),
-        "Marker"
+        "Int",
+        "local Marker = Int shadow must resolve to Int body, not imported String alias"
     );
     assert!(
         consumer
