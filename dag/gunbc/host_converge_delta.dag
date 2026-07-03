@@ -22,7 +22,7 @@ import gunbc.host_converge {
   HostConverge,
 }
 
-data gunbc_converge_knob_semantics_marker: Disposition = Scaffold {
+data gunbc_converge_target_byte_normalization_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.host_converge_delta",
@@ -31,7 +31,7 @@ data gunbc_converge_knob_semantics_marker: Disposition = Scaffold {
   }
 }
 
-data converge_knob_values_equal_dissolution_trigger: String = "🟡 dissolve-on: converge_knob_values_equal — row equality compares desired string only (ignores slice/name/target payload axes on ConvergeKnob); DISSOLVES WHEN per-target normalization grounds full knob snapshot equality in a single converge_knob_semantics authority, retiring this string-equality leaf."
+data converge_target_byte_normalization_trigger: String = "🟡 dissolve-on: converge_knob_values_equal compares ConvergeTarget structurally, so byte axes (PerSlotMemoryCap.bytes_value / SliceProperty.expected_effective) still compare their canonical decimal String fields verbatim; DISSOLVES WHEN a std ByteSize parse grounds live-read sentinels (empty/infinity/unit-suffixed) into a canonical magnitude, so a live 'infinity' read where bytes are expected folds to drift rather than a String mismatch alone."
 
 type ConvergeKnobKey {
   slice: ConvergeSlice
@@ -47,7 +47,7 @@ fn converge_knob_keys_equal(a: ConvergeKnobKey, b: ConvergeKnobKey) -> Bool {
 }
 
 fn converge_knob_values_equal(a: ConvergeKnob, b: ConvergeKnob) -> Bool {
-  a.desired == b.desired
+  a.desired == b.desired && a.target == b.target
 }
 
 fn converge_knob_row(knob: ConvergeKnob) -> KeyedRow<ConvergeKnobKey, ConvergeKnob> {
