@@ -144,6 +144,18 @@ fn json_number_lexeme_valid(s: String) -> Bool {
   }
 }
 
+fn json_number_lexeme_unchecked(s: String) -> JsonNumberLexeme {
+  s as JsonNumberLexeme
+}
+
+fn json_number_lexeme(s: String) -> JsonNumberLexeme? {
+  if json_number_lexeme_valid(s: s) {
+    Present { value: json_number_lexeme_unchecked(s: s) }
+  } else {
+    none
+  }
+}
+
 fn json_int_lexeme(n: Int) -> JsonNumberLexeme {
-  to_string(n) as JsonNumberLexeme
+  json_number_lexeme_unchecked(s: to_string(n))
 }
