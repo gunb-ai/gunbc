@@ -5798,9 +5798,9 @@ fn eval_builtin(
                 msg: "extdeps_derived_extdeps_modules requires an active interpreter context"
                     .to_string(),
             })?;
-            Ok(Some(
-                crate::cli_run::extdeps_derived_extdeps_modules_value(ctx),
-            ))
+            Ok(Some(crate::cli_run::extdeps_derived_extdeps_modules_value(
+                ctx,
+            )))
         }
 
         "extdeps_external_authority_backfill_entries" => {

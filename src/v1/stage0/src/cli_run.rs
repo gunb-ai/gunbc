@@ -10392,7 +10392,8 @@ fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnch
     read_external_authority_anchor_from_items(&items, &source_indices)
 }
 
-fn external_authority_backfill_pending_module_paths() -> &'static std::collections::HashSet<String> {
+fn external_authority_backfill_pending_module_paths() -> &'static std::collections::HashSet<String>
+{
     use std::collections::HashSet;
     use std::sync::OnceLock;
     static PATHS: OnceLock<HashSet<String>> = OnceLock::new();
@@ -10557,9 +10558,8 @@ pub fn extdeps_external_authority_module_facts(
         locator,
         is_backfill_pending: external_authority_is_backfill_pending_for_module_path(module_path),
         is_machinery_exempt: external_authority_is_machinery_exempt_for_module_path(module_path),
-        is_clean_tree_roster_excluded: external_authority_is_clean_tree_roster_excluded_for_module_path(
-            module_path,
-        ),
+        is_clean_tree_roster_excluded:
+            external_authority_is_clean_tree_roster_excluded_for_module_path(module_path),
         anchor_shadow_masked: external_authority_anchor_shadow_masked_for_module_path(module_path),
     }
 }
@@ -10571,7 +10571,8 @@ fn external_authority_live_violation_module_paths() -> Vec<String> {
         if external_authority_is_clean_tree_roster_excluded_for_module_path(&path) {
             continue;
         }
-        if external_authority_is_machinery_exempt_for_module_path(&path) || backfill.contains(&path) {
+        if external_authority_is_machinery_exempt_for_module_path(&path) || backfill.contains(&path)
+        {
             continue;
         }
         match project_external_authority_anchor(&path) {
