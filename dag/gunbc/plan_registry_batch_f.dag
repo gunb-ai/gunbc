@@ -9,6 +9,7 @@ import gunbc.plans.input_envelope_roadmap { input_envelope_roadmap_plan }
 import gunbc.plans.ci_selection_vs_scheduling { ci_selection_vs_scheduling_plan }
 import gunbc.plans.ci_process_end_to_end { ci_process_end_to_end_plan }
 import gunbc.plans.ci_oom_reclassification { ci_oom_reclassification_plan }
+import gunbc.plans.bounded_input_cost_envelope_scheduling { bounded_input_cost_envelope_scheduling_plan }
 
 data batch_f_plans: List<Plan> = [
   self_applying_lenses_plan,
@@ -18,5 +19,6 @@ data batch_f_plans: List<Plan> = [
   input_envelope_roadmap_plan,
   ci_selection_vs_scheduling_plan,
   ci_process_end_to_end_plan,
-  ci_oom_reclassification_plan
+  ci_oom_reclassification_plan,
+  bounded_input_cost_envelope_scheduling_plan
 ]
