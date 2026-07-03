@@ -79,6 +79,10 @@ fn ensure_infer_semantics_witness_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "INFER_SEMANTICS_WITNESS", bin_name: "infer_semantics_witness")
 }
 
+fn ensure_auth_declared_but_unwired_witness_built() -> List<ShellStmt> {
+  ensure_bin_built_and_verified(var_name: "AUTH_DECLARED_BUT_UNWIRED_WITNESS", bin_name: "auth_declared_but_unwired_witness")
+}
+
 fn ensure_regen_stage0_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "REGEN_STAGE0", bin_name: "regen_stage0")
 }

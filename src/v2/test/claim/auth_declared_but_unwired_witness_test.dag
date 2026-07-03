@@ -1,0 +1,10 @@
+module v2.test.claim.auth_declared_but_unwired_witness
+
+import tools.auth_declared_but_unwired_witness_transport { run_auth_declared_but_unwired_witness }
+import v2.std.logic { Bool }
+
+data auth_declared_but_unwired_witness_provenance: String = "Floor witness migrated from src/v1/tests/src/auth_declared_but_unwired_witness_test.rs (7 v1 #[test] fns): auth-guard oracle suite (Bearer-declared-no-source pre-send fail-closed, empty auth_input pre-send fail-closed, no-auth-declared does-not-fire, three-way dispatch-behavior split, dual-declare auth_input/auth_source env-var fallback resolution + fail-closed-when-both-empty, AuthResolution pub-API smoke) executed via auth_declared_but_unwired_witness host physics until v1.compiler auth-resolution APIs are witness-layer importable."
+
+test fn auth_declared_but_unwired_witness_keystone_holds() -> Bool {
+  run_auth_declared_but_unwired_witness()
+}
