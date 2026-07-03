@@ -1,6 +1,6 @@
 # HAND kernel D — v1_interpreter pure-eval authority + pinned host-physics
 
-**Status:** design-first (2026-06-29). Parent `sunny-crab-671` seed burn-down, **HAND kernel D**. **This slice:** lands `gunbc.interpreter_kernel_model` + pure `.dag` floor witness only — no `v1_interpreter.rs` emit flip, no `HAND_MAINTAINED` registry edit, no `regen --verify` flip. Mirrors #5894 / `compile_source_model` sequencing.
+**Status:** design-first (2026-06-29). Parent `sunny-crab-671` seed burn-down, **HAND kernel D**. **Original slice (landed):** `gunbc.interpreter_kernel_model` + pure `.dag` floor witness — no `v1_interpreter.rs` emit flip, no `regen --verify` flip. **Follow-on (this track):** dissolve HAND modules verified as pure fact-projection (zero fs/net/process) — `rest_transport_facts` · `wire_value_serialize` folded into `cli_run.rs` (#6217) — including targeted `HAND_MAINTAINED` registry and `05_emit_rust.dag` patch-hook edits for those modules only.
 
 ## 0. Verdict — pure-eval authority vs pinned host-physics
 
@@ -9,7 +9,7 @@
 | class | authority / carrier | this slice | follow-up |
 | --- | --- | --- | --- |
 | pure-eval | `05_eval.dag` · `emit_host.dag` · `v2_evaluator.dag` · `host_transport.dag` · `host_run.dag` | `gunbc.interpreter_kernel_model` + `interpreter_kernel_model_witnesses` | wire `05_emit_rust` pure-eval emit → shrink `v1_interpreter.rs` eval core |
-| pinned host-physics | `recorded_fixture.rs` · `resolved_graph_cache.rs` · `rest_transport_facts.rs` · `wire_value_serialize.rs` | roster + dissolution triggers in model | collapse onto Materialization kernel (`realize(subject)`); stays HAND until then |
+| pinned host-physics | `recorded_fixture.rs` · `resolved_graph_cache.rs` | roster + dissolution triggers in model | collapse onto Materialization kernel (`realize(subject)`); stays HAND until then |
 | hybrid remainder | `v1_interpreter.rs` host-effect + CLI render dispatch | explicitly NOT pinned as a whole file | split: eval → GENERATED; host dispatch → pinned submodule or `.dag` transport handlers |
 
 ## 1. Pure-eval emit seam (`emit_host`)
@@ -20,23 +20,21 @@
 
 ## 2. Pinned host-physics (transports / fixtures / cache)
 
-**Verdict:** these four `HAND_MAINTAINED` stage0 files are honestly **physics-bound** — OS/shell/network/fixture-store/cache I/O. They are pinned in the model until the §4 Materialization kernel (`realization_measurement_loop` Phase 2/3) provides one `CacheLookupResult` fold consumed by both v1 handlers and v2 `05_eval`.
+**Verdict:** `recorded_fixture.rs` and `resolved_graph_cache.rs` are honestly **physics-bound** — fixture-store and cross-run cache I/O. They are pinned in the model until the §4 Materialization kernel (`realization_measurement_loop` Phase 2/3) provides one `CacheLookupResult` fold consumed by both v1 handlers and v2 `05_eval`. `rest_transport_facts.rs` + `wire_value_serialize.rs` were misclassified as host-physics — verified zero fs/net/process calls; folded into `cli_run.rs` as pure Node-tree / wire-policy fact projection.
 
 - `recorded_fixture.rs` — hermetic service replay store (M4/M5 consolidation target).
 - `resolved_graph_cache.rs` — cross-run resolve memo (content-hash keyed) + warm==cold cache-purity oracle (`audit_warm_equals_cold`).
-- `rest_transport_facts.rs` + `wire_value_serialize.rs` — REST + wire JSON host seam.
 
-## 3. Explicit non-goals (this slice)
+## 3. Explicit non-goals (remaining)
 
 - No `v1_interpreter.rs` refactor or LOC deletion.
-- No `regen_stage0.rs` `HAND_MAINTAINED_STAGE0_FILES` edit.
-- No `05_emit_rust.dag` emitter edit.
 - No `emit_host.dag` `run_host_process` wiring (transport realization PR).
+- No `regen --verify` flip or bulk HAND→GENERATED cutover (per-module dissolution only).
 
 ## 4. Discriminating witness (follow-on PRs)
 
 - **Pure-eval emit:** `run_test_claim_emit_vs_eval` GREEN on a rust `EqualsClaim` row without `Deferred` transport diagnostic.
-- **Pin receipt:** pinned roster matches `regen_stage0.rs` HAND list for the four pinned host-physics files — drift-gated when invert-hand-maintained derives the registry.
+- **Pin receipt:** pinned roster matches `regen_stage0.rs` HAND list for the two pinned host-physics files — drift-gated when invert-hand-maintained derives the registry.
 
 ## Dissolution trigger (DESIGN §6)
 
