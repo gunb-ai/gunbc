@@ -1,0 +1,46 @@
+module gunbc.srv3_os_install_reconcile_types
+
+import std.types { NonEmptyStr, Timestamp, String, ContentHash }
+import std.temporal_effect { EffectAttemptIntent, NextStepPlan }
+import std.measure { Second, second }
+import gunbc.os_install_deduction {
+  TargetDiskState,
+  ForeignOsPresent,
+  OsInstallPreflightVerdict,
+  OsInstallPreflightPlan,
+  OsInstallRuntimeDiagnosticVerdict,
+}
+import gunbc.srv3_os_install_diagnostic { Srv3InstallDiagnostic }
+import gunbc.srv3_seeded_install_media { srv3_seeded_install_media_content_hash }
+
+type DeductionRuntimeHint
+  = DeductionRuntimeAbsent
+  | DeductionRuntimePresent { verdict: OsInstallRuntimeDiagnosticVerdict }
+
+type Srv3InstallReconcileResult {
+  preflight: OsInstallPreflightVerdict
+  preflight_plan: OsInstallPreflightPlan
+  diagnostic: Srv3InstallDiagnostic
+  deduction_runtime: DeductionRuntimeHint
+  temporal_plan: NextStepPlan
+  pending_step_id: NonEmptyStr
+}
+
+data srv3_boot_once_cd_step_id: NonEmptyStr = "boot-once-cd" as NonEmptyStr
+
+data srv3_boot_once_approval_grant_path: String = "/var/lib/gunbc/logs/approvals/srv3-boot-once-cd.grant"
+
+data srv3_boot_once_apply_read_back_sleep: Second = second(count: 45)
+
+data srv3_install_reconcile_default_disk: TargetDiskState = ForeignOsPresent
+
+data srv3_nbd_proxy_lease_key: NonEmptyStr = "srv3-nbd-proxy-10809" as NonEmptyStr
+
+data srv3_install_effect_attempt_intent: EffectAttemptIntent = EffectAttemptIntent {
+  attempt_id: "srv3-nbd-proxy-install" as NonEmptyStr,
+  intent_hash: srv3_seeded_install_media_content_hash,
+  target: "srv3" as NonEmptyStr,
+  created_at: "2026-07-03T00:00:00Z",
+}
+
+data srv3_install_reconcile_dry_run_observed_at: Timestamp = "2026-07-03T00:00:00Z"

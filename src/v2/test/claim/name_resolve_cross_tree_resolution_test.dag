@@ -32,7 +32,7 @@ import v2.std.node {
   SyntheticOccurrence,
   TypeNode
 }
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.qualified_name { QualifiedName }
 
 fn ct_qn_node(seg: Symbol) -> Node {
   fold_list_node(
@@ -115,20 +115,20 @@ fn ct_subject_with_import_use(
 }
 
 fn ct_qn_one(seg: Symbol) -> QualifiedName {
-  QnCons { head: seg, tail: QnEmpty }
+  Cons { head: seg, tail: Empty }
 }
 
 fn ct_qn_v2(seg_b: Symbol) -> QualifiedName {
-  QnCons {
+  Cons {
     head: ^v2,
-    tail: QnCons { head: seg_b, tail: QnEmpty }
+    tail: Cons { head: seg_b, tail: Empty }
   }
 }
 
 fn ct_qn_v2_std() -> QualifiedName {
-  QnCons {
+  Cons {
     head: ^v2,
-    tail: QnCons { head: ^std, tail: QnEmpty }
+    tail: Cons { head: ^std, tail: Empty }
   }
 }
 
