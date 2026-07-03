@@ -3951,6 +3951,8 @@ struct FloorDiffEdits {
 }
 
 const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
+// Keep in sync with `floor_host_scaffold_witness_marker` in affected_set_floor_runner.dag.
+const FLOOR_HOST_SCAFFOLD_WITNESS_MARKER: &str = "floor:host_scaffold";
 
 fn resolve_floor_runner_context(
     source_roots: &[String],
@@ -4174,7 +4176,11 @@ fn call_floor_host_scaffold_precompute_would_skip(
 }
 
 fn extract_test_fn_body(content: &str, function: &str) -> String {
-    let needle = format!("test fn {function}");
+    extract_named_fn_body(content, function, "test fn ")
+}
+
+fn extract_named_fn_body(content: &str, function: &str, prefix: &str) -> String {
+    let needle = format!("{prefix}{function}");
     let Some(start) = content.find(&needle) else {
         return String::new();
     };
@@ -4199,18 +4205,78 @@ fn extract_test_fn_body(content: &str, function: &str) -> String {
     body
 }
 
+fn scan_call_idents(body: &str) -> Vec<String> {
+    const KEYWORDS: &[&str] = &[
+        "if", "match", "fn", "let", "return", "true", "false", "fold", "fold_list",
+    ];
+    let mut out = Vec::new();
+    let bytes = body.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' {
+            let start = i;
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                i += 1;
+            }
+            let ident = &body[start..i];
+            if i < bytes.len()
+                && bytes[i] == b'('
+                && !KEYWORDS.contains(&ident)
+                && !out.iter().any(|s: &String| s == ident)
+            {
+                out.push(ident.to_string());
+            }
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+fn entry_text_indicates_live_host_scan(text: &str) -> bool {
+    text.contains(FLOOR_HOST_SCAFFOLD_WITNESS_MARKER)
+        || text.contains("layer_import_facts")
+        || text.contains("_live(")
+        || text.contains("_facts_live(")
+}
+
 fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> bool {
+    let decl_needle = format!("test fn {function}");
+    if let Some(start) = entry_content.find(&decl_needle) {
+        let decl_tail = &entry_content[start..entry_content.len().min(start + decl_needle.len() + 120)];
+        if decl_tail.contains(FLOOR_HOST_SCAFFOLD_WITNESS_MARKER) {
+            return true;
+        }
+    }
     let body = extract_test_fn_body(entry_content, function);
-    body.contains("layer_import_facts")
-        || body.contains("_live(")
-        || body.contains("_facts_live(")
+    if entry_text_indicates_live_host_scan(&body) {
+        return true;
+    }
+    for callee in scan_call_idents(&body) {
+        let helper_body = extract_named_fn_body(entry_content, &callee, "fn ");
+        if entry_text_indicates_live_host_scan(&helper_body) {
+            return true;
+        }
+    }
+    false
+}
+
+fn read_entry_content_for_host_scaffold(entry: &str) -> (String, bool) {
+    match std::fs::read_to_string(entry) {
+        Ok(content) => (content, false),
+        Err(e) => {
+            eprintln!(
+                "claim_executor: failed to read entry {entry} for host-scaffold classification ({e}) — fail-closed, treating as host-scaffold"
+            );
+            (String::new(), true)
+        }
+    }
 }
 
 fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> bool {
     rows.iter().any(|row| {
-        std::fs::read_to_string(&row.entry)
-            .ok()
-            .is_some_and(|content| witness_test_fn_uses_live_host_scan(&content, &row.function))
+        let (content, read_failed) = read_entry_content_for_host_scaffold(&row.entry);
+        read_failed || witness_test_fn_uses_live_host_scan(&content, &row.function)
     })
 }
 
@@ -4737,6 +4803,7 @@ fn run_discovery_rows(
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
     let mut current_entry_closure_files: HashSet<String> = HashSet::new();
     let mut current_entry_content: String = String::new();
+    let mut current_entry_host_scaffold_fail_closed: bool = false;
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
@@ -4781,7 +4848,9 @@ fn run_discovery_rows(
             }
             ctx = Some(entry_ctx);
             current_entry = Some(row.entry.clone());
-            current_entry_content = std::fs::read_to_string(&row.entry).unwrap_or_default();
+            let (content, read_failed) = read_entry_content_for_host_scaffold(&row.entry);
+            current_entry_content = content;
+            current_entry_host_scaffold_fail_closed = read_failed;
         }
         let function_edited = skip_enabled
             && diff_edits.edited_test_fns.iter().any(|(file, func)| {
@@ -4793,8 +4862,8 @@ fn run_discovery_rows(
                 .iter()
                 .any(|file| touched_file_in_import_closure(file, &current_entry_closure_files));
         let should_skip = if skip_enabled {
-            let host_scaffold_witness =
-                witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
+            let host_scaffold_witness = current_entry_host_scaffold_fail_closed
+                || witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
             match floor_runner_ctx {
                 Some(runner_ctx) => {
                     let skip = if host_scaffold_witness {
@@ -4988,6 +5057,18 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             "clean_tree_holds"
         ));
         assert!(!super::witness_test_fn_uses_live_host_scan(source, "pure_holds"));
+    }
+
+    #[test]
+    fn witness_test_fn_uses_live_host_scan_detects_declared_marker() {
+        let source = "module m\n\ntest fn marked_holds() -> Bool { // floor:host_scaffold\n  true\n}\n";
+        assert!(super::witness_test_fn_uses_live_host_scan(source, "marked_holds"));
+    }
+
+    #[test]
+    fn witness_test_fn_uses_live_host_scan_follows_same_file_helper() {
+        let source = "module m\n\nfn helper_holds() -> Bool {\n  layer_import_facts(std_roots: [], extdeps_roots: [])\n}\n\ntest fn witness_holds() -> Bool {\n  helper_holds()\n}\n";
+        assert!(super::witness_test_fn_uses_live_host_scan(source, "witness_holds"));
     }
 
     #[test]
