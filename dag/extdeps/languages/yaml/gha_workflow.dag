@@ -307,20 +307,6 @@ fn optional_string_list_kv(key: String, items: List<String>) -> List<YamlKeyValu
   }
 }
 
-fn optional_job_outputs(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
-  match entries {
-    Absent => []
-    Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "outputs", value: yaml_mapping(entries: es))] }
-  }
-}
-
-fn optional_job_concurrency(spec: ConcurrencySpec?) -> List<YamlKeyValue> {
-  match spec {
-    Absent => []
-    Present { value: c } => [kv(key: "concurrency", value: concurrency_yaml(spec: c))]
-  }
-}
-
 fn job_yaml(job: Job) -> YamlValue {
   yaml_mapping(entries: concat(
     [kv(key: "runs-on", value: runner_yaml(spec: job.runner))],
@@ -334,13 +320,7 @@ fn job_yaml(job: Job) -> YamlValue {
             [kv(key: "steps", value: steps_yaml(steps: job.steps))],
             concat(
               optional_env_mapping(entries: job.env),
-              concat(
-                optional_bool_kv(key: "continue-on-error", value: job.continue_on_error),
-                concat(
-                  optional_job_outputs(entries: job.outputs),
-                  optional_job_concurrency(spec: job.concurrency)
-                )
-              )
+              optional_bool_kv(key: "continue-on-error", value: job.continue_on_error)
             )
           )
         )

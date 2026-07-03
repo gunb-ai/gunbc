@@ -1,10 +1,9 @@
 module gunbc.ci_budget_tree
 
-import std.measure { ByteSize, byte_size, Memory, One, measure_fit_count_floor }
+import std.measure { ByteSize, byte_size, Memory, One }
 import std.types { Int, List, String, Bool }
-import std.nat { nat_max }
 import std.disposition { Disposition, Terminal }
-import std.realization_width { byte_size_saturating_sub, int_min }
+import std.realization_width { byte_size_saturating_sub }
 import extdeps.accounting.budget { Appropriation, LineItem }
 import product.budget_tree {
   BudgetNode, BudgetClaim, Guaranteed,
@@ -143,34 +142,4 @@ fn srv1_dashboard_session_container_cap() -> ByteSize {
 
 fn witness_floor_budget_equals_runner_cgroup_cap() -> Bool {
   byte_size_count(b: srv1_floor_memory_budget()) == byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)
-}
-
-data gunbc_ci_fleet_concurrent_heavy_ci_slot_count_disposition: Disposition = Terminal {
-  reason: "2026-07-03 fleet-concurrency incident follow-up (srv2 4-concurrent heavy `ci` jobs OOMing on one host): this repo's own budget-tree model already predicted the incident as an over-admission once gunbc_ci_runner_cgroup_memory_cap is corrected to its live 24GiB value (see gunbc_ci_cap_split_disposition) -- per-host gha_runner_pool floor-divided by the corrected cap yields <4. This is the single derivation both the GHA job-level concurrency group (ci_workflow.dag ci_job()) and the operator-facing PR body cite; it is a MIN across the fleet (not per-host) because a GHA concurrency group is a single fleet-wide bucket space, not scoped to the host a run happens to land on."
-}
-
-fn gunbc_ci_host_concurrent_heavy_ci_slot_count(offer: ComputeOffer) -> Int {
-  let fit = measure_fit_count_floor(
-    capacity: runner_pool_bytes(offer: offer),
-    each: gunbc_ci_runner_cgroup_memory_cap
-  )
-  nat_max(a: fit, b: 1)
-}
-
-data gunbc_ci_fleet_offers: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer]
-
-fn gunbc_ci_fleet_concurrent_heavy_ci_slot_count() -> Int {
-  fold(
-    gunbc_ci_fleet_offers.skip(n: 1),
-    init: gunbc_ci_host_concurrent_heavy_ci_slot_count(offer: gunbc_ci_fleet_offers.first()),
-    f: (acc, offer) => int_min(a: acc, b: gunbc_ci_host_concurrent_heavy_ci_slot_count(offer: offer))
-  )
-}
-
-fn witness_fleet_slot_count_at_least_one() -> Bool {
-  gunbc_ci_fleet_concurrent_heavy_ci_slot_count() >= 1
-}
-
-fn witness_fleet_slot_count_below_incident_concurrency() -> Bool {
-  gunbc_ci_fleet_concurrent_heavy_ci_slot_count() < 4
 }
