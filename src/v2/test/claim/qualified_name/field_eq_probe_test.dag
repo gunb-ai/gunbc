@@ -1,0 +1,19 @@
+module v2.test.claim.qualified_name.field_eq_probe
+
+import v2.std.logic { Bool }
+import v2.std.qualified_name { QualifiedName }
+import v2.std.algebra { Cons, Empty }
+import v2.std.node { Symbol }
+
+type Rec { module: QualifiedName, name: String }
+
+fn matches(r: Rec, m: QualifiedName) -> Bool {
+  r.module == m
+}
+
+test fn field_eq_works() -> Bool {
+  matches(
+    r: Rec { module: Cons { head: ^v2, tail: Empty }, name: "x" },
+    m: Cons { head: ^v2, tail: Empty }
+  )
+}
