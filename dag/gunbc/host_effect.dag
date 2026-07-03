@@ -7,6 +7,7 @@ import gunbc.fleet_intent { ComputeHost }
 import std.effects {
   EffectShape,
   ReadEffect,
+  AppendEffect,
   IdempotencyEvidence,
   LatticeEffect,
   IdentityEffect,
@@ -61,7 +62,7 @@ data host_effect_identity_evidence: IdempotencyEvidence = IdentityEffect
 data host_effect_read_evidence: IdempotencyEvidence = LatticeEffect { shape: ReadEffect }
 
 data host_effect_converge_loop_evidence: IdempotencyEvidence = NonIdempotent {
-  shape: ReadEffect,
+  shape: AppendEffect,
   reason: "converge to fixpoint — external redrive until observed state matches desired",
 }
 
