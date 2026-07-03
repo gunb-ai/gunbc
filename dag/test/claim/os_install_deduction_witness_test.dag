@@ -56,9 +56,32 @@ data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinst
   storage_policy: StoragePolicyDirectLayout,
 }
 
+data witness_autoinstall_without_storage: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+  autoinstall_version: 1,
+  delivery: NoCloudLocal,
+  fully_automated: true,
+  target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
+  identity: srv3_autoinstall_identity,
+  locale: "en_US.UTF-8",
+  keyboard_layout: "us",
+  install_openssh_server: true,
+  storage_policy: StoragePolicyAbsent,
+}
+
+test fn srv3_on_iso_direct_layout_complete_for_unattended_on_foreign_disk() -> Bool {
+  fold_nbd_proxy_os_install_preflight_verdict(
+    payload: srv3_ubuntu_autoinstall_on_iso,
+    disk: ForeignOsPresent,
+  ) == CompleteForUnattended
+    && match srv3_ubuntu_autoinstall_on_iso.storage_policy {
+      StoragePolicyDirectLayout => true
+      StoragePolicyAbsent => false
+    }
+}
+
 test fn foreign_disk_without_storage_is_not_bootable() -> Bool {
   match fold_nbd_proxy_os_install_preflight_verdict(
-    payload: srv3_ubuntu_autoinstall_on_iso,
+    payload: witness_autoinstall_without_storage,
     disk: ForeignOsPresent,
   ) {
     AutoinstallIncompleteNotBootable => true
@@ -69,14 +92,14 @@ test fn foreign_disk_without_storage_is_not_bootable() -> Bool {
 
 test fn unknown_disk_without_storage_needs_observation() -> Bool {
   fold_nbd_proxy_os_install_preflight_verdict(
-    payload: srv3_ubuntu_autoinstall_on_iso,
+    payload: witness_autoinstall_without_storage,
     disk: UnknownDiskState,
   ) == RequiresDiskObservation
 }
 
 test fn empty_disk_without_storage_requires_policy() -> Bool {
   fold_nbd_proxy_os_install_preflight_verdict(
-    payload: srv3_ubuntu_autoinstall_on_iso,
+    payload: witness_autoinstall_without_storage,
     disk: EmptyDisk,
   ) == RequiresStoragePolicy
 }
@@ -94,7 +117,7 @@ test fn direct_layout_storage_is_complete_for_unattended() -> Bool {
 
 test fn removing_storage_policy_flips_ready_to_boot_witness() -> Bool {
   match fold_nbd_proxy_os_install_preflight_verdict(
-    payload: srv3_ubuntu_autoinstall_on_iso,
+    payload: witness_autoinstall_without_storage,
     disk: ForeignOsPresent,
   ) {
     CompleteForUnattended => false

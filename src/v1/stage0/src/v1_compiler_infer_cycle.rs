@@ -229,10 +229,11 @@ pub fn detect_type_cycles_kahn(
 ) -> Rc<Vec<String>> {
     {
         let all_names = Rc::new({
-            let mut __result = Vec::new();
-            for b in Rc::new(v1_rt::map_values(&bindings)).iter().cloned() {
-                __result.push(b.name.clone());
-            }
+            let mut __result: Vec<String> = Rc::new(v1_rt::map_values(&bindings))
+                .iter()
+                .map(|b| b.name.clone())
+                .collect();
+            __result.sort();
             __result
         });
         let name_set = all_names

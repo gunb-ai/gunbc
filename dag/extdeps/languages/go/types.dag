@@ -1,7 +1,7 @@
 module extdeps.languages.go.types
 
 import std.coercion {
-  TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax
+  TypeCheckpoint, InhabitantDecl, CallableRepr, CastSyntax, CastRule
 }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

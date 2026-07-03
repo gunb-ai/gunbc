@@ -22,8 +22,8 @@ import gunbc.runner_slot_enforcement {
   runner_slot_evidence_from_reconciliation,
   runner_slot_enforcement_evidence,
   gunbc_runner_slot_enforcement_committed,
-  gunbc_runner_slot_show_effective_read,
 }
+import gunbc.fleet_show_effective_read { gunbc_fleet_runner_slice_cap_show_effective_read }
 
 fn fixture_slot() -> NonEmptyStr {
   "actions-runner@srv1-01.service"
@@ -104,7 +104,7 @@ fn witness_committed_read_is_absent() -> Bool {
   !is_enforced(e: runner_slot_enforcement_evidence(
     slot_unit: fixture_slot(),
     expected_cap: fixture_expected_cap(),
-    read: gunbc_runner_slot_show_effective_read
+    read: gunbc_fleet_runner_slice_cap_show_effective_read
   ))
 }
 
