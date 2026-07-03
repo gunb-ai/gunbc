@@ -153,6 +153,7 @@ data medium_structure_exception_roster: List<String> = [
   "dag/gunbc/ci_deploy_access.dag",
   "dag/gunbc/ci_deploy_target_host.dag",
   "dag/gunbc/host_identity_observation.dag",
+  "dag/gunbc/fleet_show_effective_read.dag",
   "dag/gunbc/host_identity_converge.dag",
   "dag/gunbc/host_identity_adopt.dag",
   "dag/gunbc/host_identity_assimilation.dag",
