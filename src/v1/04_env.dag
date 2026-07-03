@@ -87,8 +87,12 @@ fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
         Present { value: binding } => Present { value: binding }
         Absent =>
           match intern_find(table: env.intern_table, s: name) {
-            Present { value: id } => map_get(env.bindings, id)
-            Absent => Absent
+            Present { value: id } =>
+              match map_get(env.bindings, id) {
+                Present { value: binding } => Present { value: binding }
+                Absent => map_get(flatten_visible_bindings(env: env), name)
+              }
+            Absent => map_get(flatten_visible_bindings(env: env), name)
           }
       }
   }

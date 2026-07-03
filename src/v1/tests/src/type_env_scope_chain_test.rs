@@ -515,6 +515,56 @@ fn type_env_dual_import_later_overlay_wins() {
 }
 
 #[test]
+fn lookup_binding_by_name_falls_back_to_flatten_visible_parents() {
+    use v1_compiler::v1_compiler_infer_env::{lookup_binding_by_name, TypeBinding, TypeEnv};
+    use v1_compiler::v1_std_core::{empty_intern_table, intern, leaf_node_with_span, make_span};
+
+    fn stub_leaf(name: &str) -> Rc<v1_compiler::v1_std_core::Node> {
+        leaf_node_with_span(name.to_string(), make_span(0, 0))
+    }
+
+    let intern_table = empty_intern_table();
+    let exported = Rc::new(TypeBinding {
+        name: "Exported".to_string(),
+        resolved: stub_leaf("Exported"),
+        provenance: Rc::new(v1_compiler::v1_std_core::SubValueRelation::SubValueUnknown),
+    });
+    let exported_id = intern(intern_table.clone(), "Exported".to_string()).id;
+    let empty_source_indices = Rc::new(std::collections::HashMap::new());
+    let parent = Rc::new(TypeEnv {
+        bindings: Rc::new(std::collections::HashMap::from([(
+            exported_id,
+            exported.clone(),
+        )])),
+        str_bindings: Rc::new(std::collections::HashMap::from([(
+            "Exported".to_string(),
+            exported.clone(),
+        )])),
+        ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
+        parents: Rc::new(vec![]),
+        recursive_types: Rc::new(vec![]),
+        recursive_type_set: Rc::new(std::collections::HashMap::new()),
+        inductive_fields: Rc::new(std::collections::HashMap::new()),
+        source_indices: empty_source_indices.clone(),
+        intern_table: intern_table.clone(),
+    });
+    let scratch = Rc::new(TypeEnv {
+        bindings: Rc::new(std::collections::HashMap::new()),
+        str_bindings: Rc::new(std::collections::HashMap::new()),
+        ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
+        parents: Rc::new(vec![parent]),
+        recursive_types: Rc::new(vec![]),
+        recursive_type_set: Rc::new(std::collections::HashMap::new()),
+        inductive_fields: Rc::new(std::collections::HashMap::new()),
+        source_indices: empty_source_indices,
+        intern_table,
+    });
+    let found = lookup_binding_by_name(scratch, "Exported".to_string())
+        .expect("scratch env with empty ancestry must still resolve parent exports");
+    assert_eq!(found.name, "Exported");
+}
+
+#[test]
 fn type_env_std_types_type_variable_filtered_from_import() {
     use v1_compiler::v1_compiler_infer::type_env_for_import;
     use v1_compiler::v1_compiler_infer_env::TypeBinding;
