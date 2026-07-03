@@ -79,6 +79,14 @@ fn ensure_infer_semantics_witness_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "INFER_SEMANTICS_WITNESS", bin_name: "infer_semantics_witness")
 }
 
+fn ensure_claim_batch_built() -> List<ShellStmt> {
+  ensure_bin_built_and_verified(var_name: "CLAIM_BATCH", bin_name: "claim_batch")
+}
+
+fn ensure_interp_recorded_fixture_witness_built() -> List<ShellStmt> {
+  ensure_bin_built_and_verified(var_name: "INTERP_RECORDED_FIXTURE_WITNESS", bin_name: "interp_recorded_fixture_witness")
+}
+
 fn ensure_regen_stage0_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "REGEN_STAGE0", bin_name: "regen_stage0")
 }
