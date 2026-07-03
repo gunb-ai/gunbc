@@ -1,0 +1,103 @@
+module v2.test.fixture.floor_skip.provenance_fail_closed_contract
+
+// Scout fixture (#6105): fail-closed contract for affected-set witness disposition.
+// Provenance ABSENT (committed host_source_root_ingest_manifest is Empty) =>
+//   witness RUNS and precompute must NOT skip (run-all posture).
+// Provenance PRESENT (frontier produced, witness off-frontier) =>
+//   witness SKIPs => smaller affected set than run-all.
+
+import v2.std.algebra { length }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
+import v2.std.verification {
+  EqualsClaim,
+  TestClaim,
+  ManualAnchorAbsent,
+  TestClassification,
+  Tier1,
+  Unit,
+  manual_claim_anchor
+}
+import v2.test.workflow.host_source_root_ingest_manifest {
+  host_source_root_ingest,
+  host_source_root_ingest_coverage_receipt
+}
+import v2.workflow.affected_set_floor_runner {
+  DiffPathsProduced,
+  FloorDiffObservation,
+  FloorRerunFrontier,
+  FrontierFailClosed,
+  FrontierProduced,
+  RunWitness,
+  SkipAssumedGreen,
+  floor_precompute_would_skip,
+  floor_witness_run_disposition
+}
+
+data scout_manifest_provenance_live: Bool =
+  host_source_root_ingest_coverage_receipt.coverage_complete
+    && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
+    && (length(xs: host_source_root_ingest) > 0)
+
+data scout_unrelated_frontier_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^scout_unrelated_frontier_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data scout_orphan_claim: TestClaim = EqualsClaim {
+  label: "scout: orphan claim off diff frontier",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: scout_orphan_claim_node,
+  rhs: scout_orphan_claim_node,
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data scout_orphan_claim_node: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^scout_orphan_claim_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data scout_nonempty_diff: FloorDiffObservation = DiffPathsProduced {
+  changed_paths: ["src/v2/lens/affected_set.dag"]
+}
+
+data scout_provenance_present_frontier: FloorRerunFrontier = FrontierProduced {
+  nodes: [scout_unrelated_frontier_node]
+}
+
+data scout_provenance_absent_frontier: FloorRerunFrontier = FrontierFailClosed {
+  reason: "provenance unavailable"
+}
+
+test fn provenance_fail_closed_contract_holds() -> Bool {
+  let manifest_absent = scout_manifest_provenance_live == false
+  let absent_witness_runs = match floor_witness_run_disposition(
+    diff: scout_nonempty_diff,
+    frontier: scout_provenance_absent_frontier,
+    touches_frontier: false,
+    function_edited: false,
+    entry_file_touched: false
+  ) {
+    RunWitness { reason: _ } => true
+    SkipAssumedGreen => false
+  }
+  let present_witness_skips = match floor_witness_run_disposition(
+    diff: scout_nonempty_diff,
+    frontier: scout_provenance_present_frontier,
+    touches_frontier: false,
+    function_edited: false,
+    entry_file_touched: false
+  ) {
+    SkipAssumedGreen => true
+    RunWitness { reason: _ } => false
+  }
+  let absent_precompute_runs_all = !floor_precompute_would_skip(
+    diff: scout_nonempty_diff,
+    frontier: scout_provenance_absent_frontier,
+    edited_test_fn_count: 0,
+    touched_entry_file_count: 0
+  )
+  manifest_absent && absent_witness_runs && present_witness_skips && absent_precompute_runs_all
+}

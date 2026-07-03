@@ -1,15 +1,17 @@
+#![allow(clippy::disallowed_macros)]
+
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::process::ExitCode;
 
 use v1_compiler::cli_run::{
-    run_discovery_corpus_with_options, DiscoveryCorpusOptions, DiscoverySummary,
+    build_multi_entry_index, resolve_entry_with_index, run_discovery_corpus_with_options,
+    workspace_root, DiscoveryCorpusOptions, DiscoverySummary,
 };
 use v1_compiler::v1_interpreter::ExecutionMode;
 
-static DIFF_ENV_LOCK: Mutex<()> = Mutex::new(());
-
-fn workspace_root() -> PathBuf {
-    crate::helpers::workspace_root()
+fn fail(msg: impl std::fmt::Display) -> ExitCode {
+    eprintln!("floor_skip_discovery_witness: {msg}");
+    ExitCode::from(1)
 }
 
 fn chdir_workspace() {
@@ -77,78 +79,6 @@ impl Drop for EnvVarGuard {
     }
 }
 
-#[test]
-fn budget_roster_resolves_after_frontier_warmup() {
-    chdir_workspace();
-    use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
-
-    let roots = floor_skip_source_roots();
-    let index = build_multi_entry_index(&roots);
-    for path in [
-        "dag/std/realization_schedule.dag",
-        "src/v2/workflow/affected_set_floor_runner.dag",
-        "src/v2/workflow/affected_set_floor_runner_test.dag",
-    ] {
-        let _ = resolve_entry_with_index(&index, path);
-    }
-    let entry = workspace_root()
-        .join("src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag")
-        .to_string_lossy()
-        .into_owned();
-    resolve_entry_with_index(&index, &entry).expect("budget_roster should resolve");
-}
-
-#[test]
-fn budget_roster_resolves_cold() {
-    chdir_workspace();
-    use v1_compiler::cli_run::{build_multi_entry_index, resolve_entry_with_index};
-
-    let roots = floor_skip_source_roots();
-    let index = build_multi_entry_index(&roots);
-    let entry = workspace_root()
-        .join("src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag")
-        .to_string_lossy()
-        .into_owned();
-    resolve_entry_with_index(&index, &entry).expect("budget_roster should resolve cold");
-}
-
-#[test]
-fn discovery_corpus_skip_disabled_runs_without_panic() {
-    let summary = run_explicit_roster(false).expect("skip-disabled discovery must not panic");
-    assert_eq!(summary.skipped, 0, "skip disabled → no skips");
-    assert!(
-        summary.passed >= 1,
-        "skip-disabled path must run at least one witness"
-    );
-}
-
-#[test]
-fn discovery_corpus_skip_enabled_empty_diff_runs_corpus() {
-    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let _base = EnvVarGuard::set("GUNBC_CI_DIFF_BASE", "HEAD");
-    let _head = EnvVarGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
-    let summary = run_explicit_roster(true).expect("empty diff path must not panic");
-    assert_eq!(
-        summary.skipped, 0,
-        "empty diff → fail-closed run-all (no stateless skip)"
-    );
-    assert!(summary.passed >= 1);
-}
-
-#[test]
-fn discovery_corpus_skip_enabled_git_observation_fail_closed_runs() {
-    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    let _base = EnvVarGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
-    let _head = EnvVarGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
-    let _merge = EnvVarGuard::set("GUNBC_CI_DIFF_MERGE_BASE", "0");
-    let summary = run_explicit_roster(true).expect("git observation fail-closed must not panic");
-    assert_eq!(
-        summary.skipped, 0,
-        "git diff failure → skip inactive → run full explicit roster"
-    );
-    assert!(summary.passed >= 1);
-}
-
 fn fixture_line(text: &str, needle: &str) -> i64 {
     text.lines()
         .position(|l| l.contains(needle))
@@ -161,7 +91,7 @@ fn run_injected_diff_roster(
     line: i64,
     roster: &[(String, String)],
 ) -> DiscoverySummary {
-    let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n");
+    let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n+// synthetic touch\n");
     let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
     run_discovery_corpus_with_options(
         &floor_skip_source_roots(),
@@ -174,9 +104,68 @@ fn run_injected_diff_roster(
     .expect("node-precise skip path must not error (FreeMonoid decode root fix)")
 }
 
-#[test]
+fn budget_roster_completeness_entry(ws: &std::path::Path) -> String {
+    ws.join("src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag")
+        .to_string_lossy()
+        .into_owned()
+}
+
+fn budget_roster_resolves_after_frontier_warmup() {
+    chdir_workspace();
+    let roots = floor_skip_source_roots();
+    let index = build_multi_entry_index(&roots);
+    for path in [
+        "dag/std/realization_schedule.dag",
+        "src/v2/workflow/affected_set_floor_runner.dag",
+        "src/v2/workflow/affected_set_floor_runner_test.dag",
+    ] {
+        let _ = resolve_entry_with_index(&index, path);
+    }
+    let entry = budget_roster_completeness_entry(&workspace_root());
+    resolve_entry_with_index(&index, &entry).expect("budget_roster should resolve");
+}
+
+fn budget_roster_resolves_cold() {
+    chdir_workspace();
+    let roots = floor_skip_source_roots();
+    let index = build_multi_entry_index(&roots);
+    let entry = budget_roster_completeness_entry(&workspace_root());
+    resolve_entry_with_index(&index, &entry).expect("budget_roster should resolve cold");
+}
+
+fn discovery_corpus_skip_disabled_runs_without_panic() {
+    let summary = run_explicit_roster(false).expect("skip-disabled discovery must not panic");
+    assert_eq!(summary.skipped, 0, "skip disabled → no skips");
+    assert!(
+        summary.passed >= 1,
+        "skip-disabled path must run at least one witness"
+    );
+}
+
+fn discovery_corpus_skip_enabled_empty_diff_runs_corpus() {
+    let _base = EnvVarGuard::set("GUNBC_CI_DIFF_BASE", "HEAD");
+    let _head = EnvVarGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
+    let summary = run_explicit_roster(true).expect("empty diff path must not panic");
+    assert_eq!(
+        summary.skipped, 0,
+        "empty diff → fail-closed run-all (no stateless skip)"
+    );
+    assert!(summary.passed >= 1);
+}
+
+fn discovery_corpus_skip_enabled_git_observation_fail_closed_runs() {
+    let _base = EnvVarGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
+    let _head = EnvVarGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
+    let _merge = EnvVarGuard::set("GUNBC_CI_DIFF_MERGE_BASE", "0");
+    let summary = run_explicit_roster(true).expect("git observation fail-closed must not panic");
+    assert_eq!(
+        summary.skipped, 0,
+        "git diff failure → skip inactive → run full explicit roster"
+    );
+    assert!(summary.passed >= 1);
+}
+
 fn node_precise_referenced_runs_orphan_skips_by_execution() {
-    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     chdir_workspace();
     let ws = workspace_root();
     let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
@@ -220,9 +209,7 @@ fn node_precise_referenced_runs_orphan_skips_by_execution() {
     );
 }
 
-#[test]
 fn node_precise_transitive_c_edit_runs_conj_witness() {
-    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     chdir_workspace();
     let ws = workspace_root();
     let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
@@ -252,9 +239,7 @@ fn node_precise_transitive_c_edit_runs_conj_witness() {
     assert_eq!(summary.passed, 1);
 }
 
-#[test]
 fn node_precise_test_fn_body_edit_runs_only_that_witness() {
-    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     chdir_workspace();
     let ws = workspace_root();
     let rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
@@ -298,9 +283,7 @@ fn node_precise_test_fn_body_edit_runs_only_that_witness() {
     );
 }
 
-#[test]
 fn entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only() {
-    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     chdir_workspace();
     let ws = workspace_root();
     let disc_rel = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
@@ -340,9 +323,7 @@ fn entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only() {
     );
 }
 
-#[test]
 fn import_closure_helper_fn_edit_runs_importer_entry_only() {
-    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     chdir_workspace();
     let ws = workspace_root();
     let helper_rel = "src/v2/test/fixture/floor_skip/floor_disc_shared_helper.dag";
@@ -382,19 +363,14 @@ fn import_closure_helper_fn_edit_runs_importer_entry_only() {
     );
 }
 
-#[test]
 fn frontier_warmup_does_not_poison_corpus_resolution() {
-    let _env = DIFF_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     chdir_workspace();
     let ws = workspace_root();
     let poisoner_rel = "src/v2/workflow/ci_floor_plan.dag";
     let poisoner_abs = ws.join(poisoner_rel);
     let text = std::fs::read_to_string(&poisoner_abs).expect("ci_floor_plan readable");
     let data_line = fixture_line(&text, "data floor_corpus_node");
-    let budget = ws
-        .join("src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag")
-        .to_string_lossy()
-        .into_owned();
+    let budget = budget_roster_completeness_entry(&ws);
     let roster = vec![(
         budget,
         "complexity_budget_roster_family_gate_holds".to_string(),
@@ -411,4 +387,61 @@ fn frontier_warmup_does_not_poison_corpus_resolution() {
         summary.skipped, 1,
         "budget_roster does not reference the edited ci_floor_plan node → skips after a clean resolve"
     );
+}
+
+fn main() -> ExitCode {
+    let _workspace_marker: PathBuf = workspace_root();
+
+    let tests: Vec<(&str, fn())> = vec![
+        (
+            "budget_roster_resolves_after_frontier_warmup",
+            budget_roster_resolves_after_frontier_warmup,
+        ),
+        ("budget_roster_resolves_cold", budget_roster_resolves_cold),
+        (
+            "discovery_corpus_skip_disabled_runs_without_panic",
+            discovery_corpus_skip_disabled_runs_without_panic,
+        ),
+        (
+            "discovery_corpus_skip_enabled_empty_diff_runs_corpus",
+            discovery_corpus_skip_enabled_empty_diff_runs_corpus,
+        ),
+        (
+            "discovery_corpus_skip_enabled_git_observation_fail_closed_runs",
+            discovery_corpus_skip_enabled_git_observation_fail_closed_runs,
+        ),
+        (
+            "node_precise_referenced_runs_orphan_skips_by_execution",
+            node_precise_referenced_runs_orphan_skips_by_execution,
+        ),
+        (
+            "node_precise_transitive_c_edit_runs_conj_witness",
+            node_precise_transitive_c_edit_runs_conj_witness,
+        ),
+        (
+            "node_precise_test_fn_body_edit_runs_only_that_witness",
+            node_precise_test_fn_body_edit_runs_only_that_witness,
+        ),
+        (
+            "entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only",
+            entry_file_helper_fn_edit_scopes_runs_to_touched_entry_only,
+        ),
+        (
+            "import_closure_helper_fn_edit_runs_importer_entry_only",
+            import_closure_helper_fn_edit_runs_importer_entry_only,
+        ),
+        (
+            "frontier_warmup_does_not_poison_corpus_resolution",
+            frontier_warmup_does_not_poison_corpus_resolution,
+        ),
+    ];
+
+    for (name, test) in tests {
+        let result = std::panic::catch_unwind(test);
+        if result.is_err() {
+            return fail(format!("{name} panicked"));
+        }
+    }
+
+    ExitCode::SUCCESS
 }

@@ -153,6 +153,7 @@ data medium_structure_exception_roster: List<String> = [
   "dag/gunbc/ci_deploy_access.dag",
   "dag/gunbc/ci_deploy_target_host.dag",
   "dag/gunbc/host_identity_observation.dag",
+  "dag/gunbc/fleet_show_effective_read.dag",
   "dag/gunbc/host_identity_converge.dag",
   "dag/gunbc/host_identity_adopt.dag",
   "dag/gunbc/host_identity_assimilation.dag",
@@ -185,7 +186,13 @@ data medium_structure_exception_roster: List<String> = [
   "dag/extdeps/os/ubuntu_seeded_install_media_remaster.dag",
   "dag/gunbc/srv3_seeded_install_media.dag",
   "dag/extdeps/bmc/serial_console.dag",
-  "dag/gunbc/srv3_install_diagnostic_checklist.dag"
+  "dag/gunbc/srv3_install_diagnostic_checklist.dag",
+  "dag/gunbc/srv3_os_install_reconcile.dag",
+  "dag/gunbc/srv3_os_install_reconcile_types.dag",
+  "dag/gunbc/srv3_os_install_reconcile_receipt.dag",
+  "dag/gunbc/srv3_os_install_reconcile_apply.dag",
+  "dag/gunbc/srv3_os_install_reconcile_dry_run.dag",
+  "dag/gunbc/srv3_os_install_reconcile_record_approval.dag"
 ]
 
 fn char_eq(a: Char, b: Char) -> Bool {

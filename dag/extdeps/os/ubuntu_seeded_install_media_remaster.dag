@@ -1,5 +1,7 @@
 module extdeps.os.ubuntu_seeded_install_media_remaster
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 import extdeps.languages.bash.program {
   ShellProgram,
   RawLine,
@@ -18,6 +20,13 @@ import extdeps.os.ubuntu_install_media {
 import std.types { String, NonEmptyStr }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "canonical-subiquity.readthedocs-hosted.com/en/latest/reference/autoinstall-methods.html"
+  }
+}
 
 data install_media_remaster_bash_emit_dissolution_trigger: String = "🟡 dissolve-on: install_media_remaster — xorriso remaster composed as RawLine shell inside ShellProgram (medium-as-string); AlreadyPresent/StaleRefusal classification and chmod -R u+w are string-scaffolded (see install_media_remaster_classification_scaffold + install_media_remaster_chmod_access_upsert_scaffold); DISSOLVES WHEN host_effect_apply binds InstallMediaRemaster typed intent→observation→verdict→plan without serialize_bash RawLine payload; retire medium_structure_exception_roster entry for dag/extdeps/os/ubuntu_seeded_install_media_remaster.dag"
 
