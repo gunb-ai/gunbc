@@ -19,6 +19,9 @@ import extdeps.http.server {
   PathInput,
   NodeHttpServerRouteBinding,
   NodeHttpRequestListener,
+  NodeHttpCreateServerEmissionTarget,
+  NodeHttpCreateServerEffectChain,
+  NodeHttpCreateServerServe,
   ServedStaticRoute,
   ServedStaticRouteTable,
   ServedDynamicRoute,
@@ -175,7 +178,7 @@ fn emit_argv_segment_exprs(segments: List<ServedDynamicRouteArgvSegment>) -> Lis
   map(xs: segments, f: s => emit_argv_segment_expr(seg: s))
 }
 
-fn emit_dynamic_route_expr(route: ServedDynamicRoute) -> TsExpr {
+fn emit_dynamic_route_config_expr(route: ServedDynamicRoute) -> TsExpr {
   let binding = route.binding
   let method = emit_http_method_label(method: binding.route.method)
   let re = emit_path_template_regex_capture_source(template: binding.route.path_template)
@@ -187,12 +190,20 @@ fn emit_dynamic_route_expr(route: ServedDynamicRoute) -> TsExpr {
     ts_field(key: "command", value: ts_lit_str(value: route.exec.command)),
     ts_field(key: "argvSegments", value: ts_array(elements: emit_argv_segment_exprs(segments: route.exec.argv))),
     ts_field(key: "status", value: ts_lit_num(text: to_string(route.success_status))),
-    ts_field(key: "handlerName", value: ts_lit_str(value: binding.listener.handler_name)),
   ])
 }
 
+fn emit_dynamic_handler_dispatch_expr(routes: List<ServedDynamicRoute>) -> TsExpr {
+  ts_object(map(xs: routes, f: r =>
+    ts_field(
+      key: r.binding.listener.handler_name,
+      value: emit_dynamic_route_config_expr(route: r)
+    )
+  ))
+}
+
 fn emit_dynamic_route_exprs(routes: List<ServedDynamicRoute>) -> List<TsExpr> {
-  map(xs: routes, f: r => emit_dynamic_route_expr(route: r))
+  map(xs: routes, f: r => emit_dynamic_route_config_expr(route: r))
 }
 
 fn req_member(name: String) -> TsExpr {
@@ -234,8 +245,20 @@ fn node_http_handle_dynamic_route_const() -> TsStmt {
   ts_const(
     name: "handleDynamicRoute",
     value: ts_arrow(
-      params: ["req", "res", "route", "path", "method"],
+      params: ["req", "res", "handlerName", "path", "method"],
       body: ts_block(stmts: [
+        ts_const(
+          name: "route",
+          value: ts_index(
+            object: ts_ident(name: "dynamicHandlerDispatch"),
+            index: ts_ident(name: "handlerName")
+          )
+        ),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_ident(name: "route")),
+          then: ts_block(stmts: [ts_return(expr: ts_ident(name: "false"))]),
+          else_stmt: none
+        ),
         ts_if(
           cond: ts_binop(
             left: ts_member(object: ts_ident(name: "route"), property: "method"),
@@ -403,15 +426,18 @@ fn node_http_request_handler_block() -> TsStmt {
       )
     ),
     ts_for_of(
-      var_name: "route",
-      iterable: ts_ident(name: "dynamicRoutes"),
+      var_name: "handlerName",
+      iterable: ts_call(
+        callee: ts_member(object: ts_ident(name: "Object"), property: "keys"),
+        args: [ts_ident(name: "dynamicHandlerDispatch")]
+      ),
       body: ts_if(
         cond: ts_call(
           callee: ts_ident(name: "handleDynamicRoute"),
           args: [
             ts_ident(name: "req"),
             ts_ident(name: "res"),
-            ts_ident(name: "route"),
+            ts_ident(name: "handlerName"),
             ts_ident(name: "path"),
             ts_ident(name: "method"),
           ]
@@ -445,7 +471,10 @@ fn node_http_request_handler_block() -> TsStmt {
       value: ts_call(
         callee: ts_member(
           object: ts_array(elements: [
-            ts_spread(expr: ts_ident(name: "dynamicRoutes")),
+            ts_spread(expr: ts_call(
+              callee: ts_member(object: ts_ident(name: "Object"), property: "values"),
+              args: [ts_ident(name: "dynamicHandlerDispatch")]
+            )),
             ts_spread(expr: ts_ident(name: "routes")),
           ]),
           property: "filter"
@@ -595,8 +624,8 @@ fn emit_node_http_server_program(spec: NodeHttpServerSpec) -> TsProgram {
     statements: [
       node_http_exec_file_require_stmt(),
       ts_const(
-        name: "dynamicRoutes",
-        value: ts_array(elements: emit_dynamic_route_exprs(routes: spec.dynamic_routes))
+        name: "dynamicHandlerDispatch",
+        value: emit_dynamic_handler_dispatch_expr(routes: spec.dynamic_routes)
       ),
       ts_const(
         name: "routes",
@@ -625,6 +654,18 @@ fn gunbhub_node_http_server_spec() -> NodeHttpServerSpec {
 
 fn gunbhub_node_http_server_source() -> String {
   serialize_typescript_program(p: emit_node_http_server_program(spec: gunbhub_node_http_server_spec()))
+}
+
+fn node_http_server_spec_emission_target(spec: NodeHttpServerSpec) -> NodeHttpCreateServerEmissionTarget {
+  NodeHttpCreateServerEmissionTarget {
+    service_name: spec.service_name,
+    effects: NodeHttpCreateServerEffectChain {
+      serve: NodeHttpCreateServerServe {
+        route_bindings: map(xs: spec.dynamic_routes, f: r => r.binding),
+      },
+      listen: spec.listen,
+    },
+  }
 }
 
 fn roadmap_dashboard_root_path_template() -> PathTemplate {
@@ -718,7 +759,7 @@ fn toy_dynamic_echo_route() -> ServedDynamicRoute {
       listener: NodeHttpRequestListener { handler_name: "toy_echo" },
     },
     exec: ServedDynamicRouteExec {
-      command: "/bin/echo",
+      command: "echo",
       argv: [PathParamArgvSegment { param_name: "msg" }],
     },
     success_status: 200,

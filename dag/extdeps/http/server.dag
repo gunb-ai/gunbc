@@ -93,6 +93,8 @@ type NodeHttpCreateServerEmissionTarget {
   effects: NodeHttpCreateServerEffectChain
 }
 
+data node_http_create_server_chain_dissolution_trigger: String = "dissolve-on: NodeHttpCreateServerEmissionTarget unified effect-chain host emit — serve.listen as one host-effect program beyond per-handler execFile rows (handler_name-keyed dynamicHandlerDispatch landed M1 in dag/gunbc/node_http_server_emit.dag)"
+
 type ServedDynamicRouteArgvSegment
   = LiteralArgvSegment { text: String }
   | PathParamArgvSegment { param_name: String }
