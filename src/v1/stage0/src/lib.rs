@@ -14,7 +14,6 @@
 #![recursion_limit = "256"]
 
 pub mod cli_run;
-pub mod complexity_linearity_audit_project;
 pub mod coproduct_reflection;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
@@ -35,7 +34,6 @@ pub mod extdeps_uri;
 pub mod extdeps_uri_path;
 pub mod extdeps_version;
 pub mod extdeps_version_semver;
-pub mod external_authority_project;
 pub mod module_path_index;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;

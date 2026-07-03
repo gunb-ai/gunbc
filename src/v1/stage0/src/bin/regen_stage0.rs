@@ -116,9 +116,7 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
 
 const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "cli_run.rs",
-    "complexity_linearity_audit_project.rs",
     "coproduct_reflection.rs",
-    "external_authority_project.rs",
     "recorded_fixture.rs",
     "resolved_graph_cache.rs",
     "rest_transport_facts.rs",
@@ -338,9 +336,6 @@ fn run() -> Result<(), String> {
     })?;
     time_phase(&mut phases, "copy_hand_maintained_support", || {
         copy_hand_maintained_support(&stage0_src, &fresh_dir.join("src"))
-    })?;
-    time_phase(&mut phases, "patch_complexity_linearity_audit_mod", || {
-        patch_complexity_linearity_audit_mod(&fresh_dir.join("src"))
     })?;
     time_phase(&mut phases, "assert_bootstrap_emit_core_support", || {
         assert_bootstrap_emit_core_support(&fresh_dir.join("src"))
@@ -837,20 +832,6 @@ fn copy_dir_recursive(source: &Path, dest: &Path) -> Result<(), String> {
             })?;
         }
     }
-    Ok(())
-}
-
-fn patch_complexity_linearity_audit_mod(src_dir: &Path) -> Result<(), String> {
-    let lib_path = src_dir.join("lib.rs");
-    let mut lib_text =
-        fs::read_to_string(&lib_path).map_err(|e| format!("read {}: {e}", lib_path.display()))?;
-    if !lib_text.contains("pub mod complexity_linearity_audit_project;") {
-        lib_text = lib_text.replace(
-            "pub mod cli_run;\n",
-            "pub mod cli_run;\npub mod complexity_linearity_audit_project;\n",
-        );
-    }
-    fs::write(&lib_path, lib_text).map_err(|e| format!("write {}: {e}", lib_path.display()))?;
     Ok(())
 }
 

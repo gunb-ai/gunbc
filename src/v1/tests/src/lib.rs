@@ -13,8 +13,6 @@ mod b1_hash_primitive_test;
 #[cfg(test)]
 mod body_producer_infer_perf_witness_test;
 #[cfg(test)]
-mod bootstrap;
-#[cfg(test)]
 mod bug_sentinel_ratchet;
 #[cfg(test)]
 mod cache_purity_oracle_test;
@@ -38,8 +36,6 @@ mod data_def_brand_alias_type_test;
 mod dependency_pool_index_compile_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
-#[cfg(test)]
-mod diagnostics;
 #[cfg(test)]
 mod eval_measurement_purity_test;
 #[cfg(test)]

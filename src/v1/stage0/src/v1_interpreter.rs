@@ -5756,41 +5756,41 @@ fn eval_builtin(
             Ok(Some(result))
         }
 
-        "extdeps_external_authority_anchor_kind_for_qualified_name" => {
-            let module = positional.first().ok_or_else(|| InterpError::TypeError {
-                msg: "extdeps_external_authority_anchor_kind_for_qualified_name requires a QualifiedName"
+        "extdeps_external_authority_facts_for_qualified_name" => {
+            let qn = positional.first().ok_or_else(|| InterpError::TypeError {
+                msg: "extdeps_external_authority_facts_for_qualified_name requires a QualifiedName"
                     .to_string(),
             })?;
-            Ok(Some(Value::Str(
-                crate::external_authority_project::external_authority_anchor_kind_for_qualified_name(
-                    module,
-                ),
-            )))
-        }
-
-        "extdeps_external_authority_scheme_identity_for_qualified_name" => {
-            let module = positional.first().ok_or_else(|| InterpError::TypeError {
-                msg: "extdeps_external_authority_scheme_identity_for_qualified_name requires a QualifiedName"
-                    .to_string(),
-            })?;
-            Ok(Some(Value::Str(
-                crate::external_authority_project::external_authority_scheme_identity_for_qualified_name(
-                    module,
-                ),
-            )))
-        }
-
-        "extdeps_external_authority_locator_for_qualified_name" => {
-            let module = positional.first().ok_or_else(|| InterpError::TypeError {
-                msg:
-                    "extdeps_external_authority_locator_for_qualified_name requires a QualifiedName"
-                        .to_string(),
-            })?;
-            Ok(Some(Value::Str(
-                crate::external_authority_project::external_authority_locator_for_qualified_name(
-                    module,
-                ),
-            )))
+            let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
+            let facts = crate::cli_run::extdeps_external_authority_module_facts(&module_path);
+            let result = Value::Record {
+                type_name: ctx.sym("ExtdepsExternalAuthorityModuleFacts"),
+                fields: Rc::new(sorted_fields(vec![
+                    (ctx.sym("anchor_kind"), Value::Str(facts.anchor_kind)),
+                    (
+                        ctx.sym("scheme_identity"),
+                        Value::Str(facts.scheme_identity),
+                    ),
+                    (ctx.sym("locator"), Value::Str(facts.locator)),
+                    (
+                        ctx.sym("is_backfill_pending"),
+                        Value::Bool(facts.is_backfill_pending),
+                    ),
+                    (
+                        ctx.sym("is_machinery_exempt"),
+                        Value::Bool(facts.is_machinery_exempt),
+                    ),
+                    (
+                        ctx.sym("is_clean_tree_roster_excluded"),
+                        Value::Bool(facts.is_clean_tree_roster_excluded),
+                    ),
+                    (
+                        ctx.sym("anchor_shadow_masked"),
+                        Value::Bool(facts.anchor_shadow_masked),
+                    ),
+                ])),
+            };
+            Ok(Some(result))
         }
 
         "extdeps_derived_extdeps_modules" => {
@@ -5798,9 +5798,9 @@ fn eval_builtin(
                 msg: "extdeps_derived_extdeps_modules requires an active interpreter context"
                     .to_string(),
             })?;
-            Ok(Some(
-                crate::external_authority_project::derived_extdeps_modules_value(ctx),
-            ))
+            Ok(Some(crate::cli_run::extdeps_derived_extdeps_modules_value(
+                ctx,
+            )))
         }
 
         "extdeps_external_authority_backfill_entries" => {
@@ -5809,58 +5809,18 @@ fn eval_builtin(
                     .to_string(),
             })?;
             Ok(Some(
-                crate::external_authority_project::backfill_pending_entries_value(ctx),
+                crate::cli_run::extdeps_external_authority_backfill_pending_entries_value(ctx),
             ))
         }
 
-        "extdeps_external_authority_is_backfill_pending_for_qualified_name" => {
-            let module = positional.first().ok_or_else(|| InterpError::TypeError {
-                msg: "extdeps_external_authority_is_backfill_pending_for_qualified_name requires a QualifiedName"
-                    .to_string(),
-            })?;
-            Ok(Some(Value::Bool(
-                crate::external_authority_project::is_backfill_pending_for_qualified_name(module),
-            )))
-        }
-        "extdeps_external_authority_is_machinery_exempt_for_qualified_name" => {
-            let module = positional.first().ok_or_else(|| InterpError::TypeError {
-                msg: "extdeps_external_authority_is_machinery_exempt_for_qualified_name requires a QualifiedName"
-                    .to_string(),
-            })?;
-            Ok(Some(Value::Bool(
-                crate::external_authority_project::is_machinery_exempt_for_qualified_name(module),
-            )))
-        }
-        "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name" => {
-            let module = positional.first().ok_or_else(|| InterpError::TypeError {
-                msg: "extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name requires a QualifiedName"
-                    .to_string(),
-            })?;
-            Ok(Some(Value::Bool(
-                crate::external_authority_project::is_clean_tree_roster_excluded_for_qualified_name(
-                    module,
-                ),
-            )))
-        }
         "extdeps_external_authority_live_clean_tree_holds" => Ok(Some(Value::Bool(
-            crate::external_authority_project::external_authority_live_clean_tree_holds(),
+            crate::cli_run::extdeps_external_authority_live_clean_tree_holds(),
         ))),
-        "extdeps_external_authority_anchor_shadow_masked_for_qualified_name" => {
-            let module = positional.first().ok_or_else(|| InterpError::TypeError {
-                msg: "extdeps_external_authority_anchor_shadow_masked_for_qualified_name requires a QualifiedName"
-                    .to_string(),
-            })?;
-            Ok(Some(Value::Bool(
-                crate::external_authority_project::external_authority_anchor_shadow_masked_for_qualified_name(
-                    module,
-                ),
-            )))
-        }
         "extdeps_external_authority_live_shadow_mask_holds" => Ok(Some(Value::Bool(
-            crate::external_authority_project::external_authority_live_shadow_mask_holds(),
+            crate::cli_run::extdeps_external_authority_live_shadow_mask_holds(),
         ))),
         "extdeps_external_authority_live_roster_module_count" => Ok(Some(Value::Int(
-            crate::external_authority_project::external_authority_live_roster_module_count(),
+            crate::cli_run::extdeps_external_authority_live_roster_module_count(),
         ))),
 
         "doc_graph_orphan_count" => Ok(Some(Value::Int(crate::cli_run::doc_graph_orphan_count()))),
@@ -5923,12 +5883,10 @@ fn eval_builtin(
         ))),
 
         "complexity_linearity_syntactic_finding_count" => Ok(Some(Value::Int(
-            crate::complexity_linearity_audit_project::complexity_linearity_syntactic_finding_count(
-            ),
+            crate::cli_run::complexity_linearity_syntactic_finding_count(),
         ))),
         "complexity_linearity_wildcard_facts" => {
-            let facts =
-                crate::complexity_linearity_audit_project::complexity_linearity_wildcard_facts();
+            let facts = crate::cli_run::complexity_linearity_wildcard_facts();
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 items.push(Value::Record {
@@ -5947,23 +5905,13 @@ fn eval_builtin(
             Ok(Some(list_value(items)))
         }
 
-        "complexity_linearity_migration_debt_roster" => {
-            let roster =
-                crate::complexity_linearity_audit_project::complexity_linearity_migration_debt_roster();
-            Ok(Some(list_value(
-                roster.into_iter().map(Value::Str).collect::<Vec<_>>(),
-            )))
-        }
-
         "complexity_linearity_syntactic_site_fired" => {
             let site = expect_str(
                 positional.first().copied(),
                 "complexity_linearity_syntactic_site_fired",
             )?;
             Ok(Some(Value::Bool(
-                crate::complexity_linearity_audit_project::complexity_linearity_syntactic_site_fired(
-                    &site,
-                ),
+                crate::cli_run::complexity_linearity_syntactic_site_fired(&site),
             )))
         }
         "census_corpus_roots_follow_layer_authority" => Ok(Some(Value::Bool(
