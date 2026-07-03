@@ -450,10 +450,14 @@ pub fn eval_concept_decl_facts_live(
 ) -> InterpResult<Value> {
     let si = ctx.source_indices();
     let mut rows: Vec<Value> = Vec::new();
-    for_each_live_registry_item(ctx, |k| k == ItemKind::TypeItem, |module_name, name, item| {
-        rows.push(concept_decl_record(ctx, &si, module_name, name, item)?);
-        Ok(())
-    })?;
+    for_each_live_registry_item(
+        ctx,
+        |k| k == ItemKind::TypeItem,
+        |module_name, name, item| {
+            rows.push(concept_decl_record(ctx, &si, module_name, name, item)?);
+            Ok(())
+        },
+    )?;
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
@@ -858,12 +862,16 @@ pub fn eval_data_init_decl_facts_live(
 ) -> InterpResult<Value> {
     let si = ctx.source_indices();
     let mut rows: Vec<Value> = Vec::new();
-    for_each_live_registry_item(ctx, |k| k == ItemKind::DataItem, |module_name, name, item| {
-        if let Some(row) = data_init_decl_record(ctx, &si, module_name, name, item) {
-            rows.push(row);
-        }
-        Ok(())
-    })?;
+    for_each_live_registry_item(
+        ctx,
+        |k| k == ItemKind::DataItem,
+        |module_name, name, item| {
+            if let Some(row) = data_init_decl_record(ctx, &si, module_name, name, item) {
+                rows.push(row);
+            }
+            Ok(())
+        },
+    )?;
     Ok(crate::v1_interpreter::list_value(rows))
 }
 
