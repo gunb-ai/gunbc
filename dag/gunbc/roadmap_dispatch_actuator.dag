@@ -9,6 +9,7 @@ import std.upsert_decision {
   Drifted,
   Conflict,
   Inaccessible,
+  UnknownRefused,
   UpsertDecision,
   UpsertClassification,
   Noop,
@@ -37,7 +38,9 @@ import gunbc.session_lease {
   classify_process_port_upsert,
 }
 
-data roadmap_dispatch_actuator_doc: String = "M2 dispatch actuator model: brief fill, worktree+tmux+claude argv construction, tmux session lease reuse (session_lease classifier discipline), tmux ls parse, stop. Pure folds — spec docs/plans/dispatch-maintain-cc.md."
+data roadmap_dispatch_actuator_doc: String = "M2 dispatch actuator model: brief fill, worktree+tmux+claude argv construction, tmux session lease (session_lease classifier discipline — observation carries facts only), tmux ls parse, stop. Pure folds — spec docs/plans/dispatch-maintain-cc.md."
+
+data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: String = "🟡 dissolve-on: tmux-ls name-only lease observation — SessionNameObserved yields UnknownRefused (fail-closed) until dispatch_tmux_process_fingerprint observation transport binds pgrep/cmdline facts into SessionObserved.process_fingerprint; DISSOLVES WHEN M3/M4 wires HostExecArgv receipt rows (tmux capture-pane or ps) feeding classify_dispatch_lease_upsert so Conflict/Drifted/Converged are reachable from observed facts"
 
 data dispatch_mvp_repo: String = "gunbc"
 data dispatch_worktree_root: String = "/opt/gunbc/dispatch-worktrees"
@@ -73,6 +76,10 @@ type TmuxSessionScope {
 
 type TmuxSessionObservation
   = SessionAbsent
+  | SessionNameObserved {
+      session_name: NonEmptyStr
+      windows: Int
+    }
   | SessionObserved {
       session_name: NonEmptyStr
       windows: Int
@@ -341,10 +348,9 @@ fn tmux_session_observation_for_scope(
     SessionAbsent
   } else {
     let e = matched.first()
-    SessionObserved {
+    SessionNameObserved {
       session_name: scope.session_name,
       windows: e.windows,
-      process_fingerprint: scope.expected_process_fingerprint,
     }
   }
 }
@@ -356,6 +362,15 @@ fn classify_tmux_session(
   match obs {
     SessionAbsent => Absent
     SessionInaccessible => Inaccessible
+    SessionNameObserved {
+      session_name: name,
+      windows: _,
+    } =>
+      if (name as String) != (scope.session_name as String) {
+        Inaccessible
+      } else {
+        UnknownRefused
+      }
     SessionObserved {
       session_name: name,
       windows: _,
@@ -397,7 +412,8 @@ fn decision_for_dispatch_lease_verdict(
     Drifted => Apply { plan: DrainStaleThenSpawn }
     Conflict => Refuse { reason: "foreign tmux session owns dispatch slot" as NonEmptyStr }
     Inaccessible => Refuse { reason: "tmux session inaccessible" as NonEmptyStr }
-    UnknownRefused => Refuse { reason: "tmux session observation refused" as NonEmptyStr }
+    UnknownRefused =>
+      Refuse { reason: "dispatch session name occupied; process fingerprint unobserved" as NonEmptyStr }
   }
 }
 
@@ -477,10 +493,9 @@ fn dispatch_node_id_from_session_name(session_name: String) -> String {
 }
 
 fn live_session_row(entry: TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLiveSession {
-  let obs = SessionObserved {
+  let obs = SessionNameObserved {
     session_name: entry.session_name as NonEmptyStr,
     windows: entry.windows,
-    process_fingerprint: scope.expected_process_fingerprint,
   }
   DispatchLiveSession {
     session_name: entry.session_name,

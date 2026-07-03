@@ -14,11 +14,16 @@ import gunbc.roadmap_spawner { next_spawnable, dispatch_brief_template }
 import std.upsert_decision {
   Absent,
   Apply,
+  Conflict,
+  Converged,
+  UnknownRefused,
+  Refuse,
   UpsertClassification,
 }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
   dispatch_tmux_session_prefix,
+  dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
   fill_dispatch_brief,
   dispatch_brief_fields,
   claude_effort_for_intricacy,
@@ -31,6 +36,7 @@ import gunbc.roadmap_dispatch_actuator {
   filter_dispatch_tmux_sessions,
   classify_dispatch_request,
   classify_dispatch_lease_upsert,
+  classify_tmux_session,
   dispatch_tmux_session_scope,
   dispatch_live_sessions,
   session_lease_reuses_process_port_classifier_shape,
@@ -39,6 +45,8 @@ import gunbc.roadmap_dispatch_actuator {
   DispatchRefused,
   TmuxLsEntry,
   SessionAbsent,
+  SessionNameObserved,
+  SessionObserved,
   SpawnSession,
 }
 
@@ -174,7 +182,9 @@ fn witness_live_lease_refused() -> Bool {
   let ready = next_spawnable(doc: doc, merged: [])
   let entries = [TmuxLsEntry { session_name: "gunbc-dispatch-leased-node", windows: 1 }]
   match classify_dispatch_request(node: node, ready: ready, tmux_entries: entries) {
-    DispatchRefused { reason: r } => string_contains(s: r as String, pattern: "already running")
+    DispatchRefused { reason: r } =>
+      string_contains(s: r as String, pattern: "name occupied")
+        && string_contains(s: r as String, pattern: "fingerprint unobserved")
     _ => false
   }
 }
@@ -197,6 +207,49 @@ fn witness_live_sessions_panel_rows() -> Bool {
   count(rows) == 1
     && rows.first().node_id == "panel-a"
     && rows.first().session_name == "gunbc-dispatch-panel-a"
+    && rows.first().lease_verdict == UnknownRefused
+}
+
+fn witness_name_only_observation_not_converged() -> Bool {
+  let scope = dispatch_tmux_session_scope(node_id: nid(s: "name-only"))
+  match classify_tmux_session(
+    scope: scope,
+    obs: SessionNameObserved {
+      session_name: "gunbc-dispatch-name-only" as NonEmptyStr,
+      windows: 1,
+    },
+  ) {
+    UnknownRefused => true
+    Converged => false
+    _ => false
+  }
+}
+
+fn witness_foreign_process_fingerprint_is_conflict() -> Bool {
+  let scope = dispatch_tmux_session_scope(node_id: nid(s: "foreign-proc"))
+  match classify_dispatch_lease_upsert(
+    scope: scope,
+    obs: SessionObserved {
+      session_name: "gunbc-dispatch-foreign-proc" as NonEmptyStr,
+      windows: 1,
+      process_fingerprint: "foreign-shell" as NonEmptyStr,
+    },
+  ) {
+    UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
+    UpsertClassification { verdict: Converged, decision: _ } => false
+    _ => false
+  }
+}
+
+fn witness_fingerprint_scaffold_marker_present() -> Bool {
+  string_contains(
+    s: dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
+    pattern: "dissolve-on:",
+  )
+    && string_contains(
+      s: dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
+      pattern: "SessionNameObserved",
+    )
 }
 
 fn witness_session_lease_shape_reused() -> Bool {
@@ -218,5 +271,8 @@ test fn roadmap_dispatch_actuator_witnesses() -> Bool {
     && witness_absent_lease_classifies_spawn()
     && witness_hostile_node_id_single_argv_token()
     && witness_live_sessions_panel_rows()
+    && witness_name_only_observation_not_converged()
+    && witness_foreign_process_fingerprint_is_conflict()
+    && witness_fingerprint_scaffold_marker_present()
     && witness_session_lease_shape_reused()
 }
