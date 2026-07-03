@@ -2,8 +2,9 @@
 
 //! Emit the whole-corpus semantic oracle snapshot (corpus fingerprint,
 //! per-module diagnostics/emit repr, full EmitGraphInfo) as JSON on stdout.
-//! Used to capture the pre-change baseline at commit db559b42814 for func_env
-//! scope-chain equivalence testing.
+//! Used to capture the frozen baseline fixture for func_env whole-corpus
+//! semantic equivalence testing (see func_env_semantic_equivalence_test.rs
+//! for the pinned BASELINE_COMMIT).
 
 use std::process::ExitCode;
 
@@ -75,7 +76,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         })?;
 
     let output = CaptureOutput {
-        baseline_commit: "db559b42814",
+        baseline_commit: "aeb1739ec5c",
         diagnostic_fingerprint: &oracle.diagnostic_fingerprint,
         rust_corpus_repr: &oracle.rust_corpus_repr,
         emit_graph_fingerprint: &oracle.emit_graph_fingerprint,

@@ -1,0 +1,117 @@
+module gunbc.os_install_deduction
+
+import std.types { String, NonEmptyStr, Timestamp, Bool }
+import extdeps.os.ubuntu_autoinstall {
+  UbuntuAutoinstallPayload,
+  AutoinstallStoragePolicy,
+  StoragePolicyAbsent,
+  StoragePolicyDirectLayout,
+  NoCloudLocal,
+  NoCloudNet,
+}
+import product.placement_supply { HostIdentity }
+
+data os_install_deduction_doc: String = "OS install deduction spine — construction-time preflight (intent+policy completeness) and runtime KVM-attested diagnostic vocabulary (T1 only; not wired to srv3_os_install_diagnostic fold until srv3-install-reconcile-a). Preflight fold is scoped to the NBD-proxy/on-ISO actuator path: NoCloudNet is incomplete for that path only, not universally. Not a monitoring product (roadmap 2-os-install-deduction-a). Deduction half pairs with std.temporal_effect receipt/resume half."
+
+type TargetDiskState
+  = EmptyDisk
+  | ForeignOsPresent
+  | UnknownDiskState
+
+type OsInstallPreflightVerdict
+  = CompleteForUnattended
+  | NotUnattendedByPolicy
+  | RequiresStoragePolicy
+  | RequiresDiskObservation
+  | IncompleteSeedDelivery
+  | AutoinstallIncompleteNotBootable
+
+type OsInstallPreflightPlan
+  = PreflightNoop
+  | RemasterWithStoragePolicy
+  | RefuseUntilStoragePolicyDeclared
+  | RefuseNeedsDiskObservation
+  | RefuseIncompleteSeedDelivery
+  | RefuseNotUnattendedByPolicy
+
+type OsInstallRuntimeDiagnosticVerdict
+  = ReadyToBoot
+  | KvmFirmwareIdleObserved
+  | BootOverrideConsumedNoInstallEvidence
+  | InstallerAwaitingStorage
+  | InstallerRunning
+  | InstallerHung
+  | KvmSuggestsOsBooted
+  | OsInstalled
+
+type KvmObservedScreen
+  = FirmwareSetup
+  | UefiBootMenu
+  | GrubMenu
+  | SubiquityStorageScreen
+  | SubiquityInstalling
+  | LoginPrompt
+  | ErrorScreen { summary: NonEmptyStr }
+
+type KvmOperatorAttestation {
+  target: HostIdentity
+  observed_screen: KvmObservedScreen
+  observed_at: Timestamp
+  attested_by: NonEmptyStr
+}
+
+fn fold_nbd_proxy_os_install_preflight_verdict(
+  payload: UbuntuAutoinstallPayload,
+  disk: TargetDiskState,
+) -> OsInstallPreflightVerdict {
+  if !payload.fully_automated {
+    NotUnattendedByPolicy
+  } else {
+    match payload.delivery {
+      NoCloudNet { seed_url: _ } => IncompleteSeedDelivery
+      NoCloudLocal =>
+        match payload.storage_policy {
+          StoragePolicyDirectLayout => CompleteForUnattended
+          StoragePolicyAbsent =>
+            match disk {
+              EmptyDisk => RequiresStoragePolicy
+              ForeignOsPresent => AutoinstallIncompleteNotBootable
+              UnknownDiskState => RequiresDiskObservation
+            }
+        }
+    }
+  }
+}
+
+fn plan_for_os_install_preflight_verdict(
+  verdict: OsInstallPreflightVerdict,
+) -> OsInstallPreflightPlan {
+  match verdict {
+    CompleteForUnattended => PreflightNoop
+    NotUnattendedByPolicy => RefuseNotUnattendedByPolicy
+    RequiresStoragePolicy => RemasterWithStoragePolicy
+    RequiresDiskObservation => RefuseNeedsDiskObservation
+    IncompleteSeedDelivery => RefuseIncompleteSeedDelivery
+    AutoinstallIncompleteNotBootable => RefuseUntilStoragePolicyDeclared
+  }
+}
+
+fn runtime_verdict_from_kvm_attestation(
+  attestation: KvmOperatorAttestation,
+  preflight: OsInstallPreflightVerdict,
+) -> OsInstallRuntimeDiagnosticVerdict {
+  match attestation.observed_screen {
+    SubiquityStorageScreen =>
+      match preflight {
+        AutoinstallIncompleteNotBootable => InstallerAwaitingStorage
+        RequiresStoragePolicy => InstallerAwaitingStorage
+        _ => InstallerRunning
+      }
+    SubiquityInstalling => InstallerRunning
+    LoginPrompt => KvmSuggestsOsBooted
+    FirmwareSetup => KvmFirmwareIdleObserved
+    UefiBootMenu => KvmFirmwareIdleObserved
+    GrubMenu => InstallerRunning
+    ErrorScreen { summary: _ } => InstallerHung
+  }
+}

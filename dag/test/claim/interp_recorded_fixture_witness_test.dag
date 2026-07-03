@@ -1,0 +1,10 @@
+module test.claim.interp_recorded_fixture_witness_test
+
+import tools.interp_recorded_fixture_witness_transport { run_interp_recorded_fixture_witness }
+import std.logic { Bool }
+
+data interp_recorded_fixture_witness_provenance: String = "Floor witness migrated from src/v1/tests/src/interp_recorded_fixture_test.rs (24 tests). The v1 interpreter recorded-fixture record -> hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism / safety axis) is a runtime host-effect mechanism, not pure logic, so its executing coverage lives in the interp_recorded_fixture_witness host binary — driven here through a shell transport — until the record/replay lifecycle is itself modeled + executed in the v2 .dag floor (open thread: v2.std.determinism)."
+
+test fn interp_recorded_fixture_keystone_holds() -> Bool {
+  run_interp_recorded_fixture_witness()
+}
