@@ -888,12 +888,19 @@ pub fn rejects_string_for_optional_coproduct_field(
     expected: Rc<Node>,
     got: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    env: Rc<TypeEnv>,
 ) -> bool {
     {
-        let expected_inner = with_required_cardinality(expected.clone());
-        let expected_is_optional_coproduct = ((expected.return_cardinality.clone()
-            == Cardinality::CardOptional)
-            && (expected_inner.connective.clone() == Connective::Disj));
+        if (expected.return_cardinality.clone() != Cardinality::CardOptional) {
+            return false;
+        }
+        let expected_resolved =
+            match lookup_type_for(env.clone(), with_required_cardinality(expected.clone())) {
+                Some(resolved) => resolved.clone(),
+                None => with_required_cardinality(expected.clone()),
+            };
+        let expected_is_optional_coproduct =
+            (expected_resolved.connective.clone() == Connective::Disj);
         let got_shape = node_type_shape(got.clone(), source_indices.clone());
         let got_is_string = (got_shape == "Primitive(String)".to_string())
             || (authored_name_at(source_indices.clone(), got.clone()) == "String".to_string());
@@ -901,10 +908,15 @@ pub fn rejects_string_for_optional_coproduct_field(
     }
 }
 
-pub fn field_type_is_optional_coproduct(ft: Rc<Node>) -> bool {
-    let inner = with_required_cardinality(ft.clone());
-    ((ft.return_cardinality.clone() == Cardinality::CardOptional)
-        && (inner.connective.clone() == Connective::Disj))
+pub fn field_type_is_optional_coproduct(ft: Rc<Node>, env: Rc<TypeEnv>) -> bool {
+    if (ft.return_cardinality.clone() != Cardinality::CardOptional) {
+        return false;
+    }
+    let inner = match lookup_type_for(env.clone(), with_required_cardinality(ft.clone())) {
+        Some(resolved) => resolved.clone(),
+        None => with_required_cardinality(ft.clone()),
+    };
+    (inner.connective.clone() == Connective::Disj)
 }
 
 pub fn record_lit_expected_fields(
@@ -957,16 +969,7 @@ pub fn record_lit_variant_fields_from_visible_env(
 ) -> Rc<Vec<Rc<Node>>> {
     let source_indices = env.source_indices.clone();
     let visible = flatten_visible_bindings(env.clone());
-    if (variant_name.clone() == "UserToolResultBlock".to_string()) {
-        eprintln!(
-            "record_lit_variant_fields: visible_bindings={}",
-            visible.len()
-        );
-    }
-    for binding in Rc::new(v1_rt::map_values(&visible))
-        .iter()
-        .cloned()
-    {
+    for binding in Rc::new(v1_rt::map_values(&visible)).iter().cloned() {
         let node = expand_type_for_field_access(
             binding.resolved.clone(),
             env.clone(),
@@ -974,7 +977,8 @@ pub fn record_lit_variant_fields_from_visible_env(
         );
         if (node.connective.clone() == Connective::Disj) {
             for arm in node.children.clone().iter().cloned() {
-                if (authored_name_at(source_indices.clone(), arm.clone()) == variant_name.clone()) {
+                let arm_name = authored_name_at(source_indices.clone(), arm.clone());
+                if (arm_name == variant_name.clone()) {
                     let expanded =
                         expand_type_for_field_access(arm.clone(), env.clone(), module_name.clone());
                     if (expanded.connective.clone() == Connective::Conj) {
@@ -5942,7 +5946,10 @@ pub fn infer_record_lit(
                             };
                             if ((ft.ident_span.clone() != None)
                                 || type_node_is_callable(ft.clone())
-                                || field_type_is_optional_coproduct(ft.clone()))
+                                || field_type_is_optional_coproduct(
+                                    ft.clone(),
+                                    scope.type_env.clone(),
+                                ))
                             {
                                 Some(ft.clone())
                             } else {
@@ -5965,10 +5972,18 @@ pub fn infer_record_lit(
                                 expected_node.clone(),
                                 got_node.clone(),
                                 scope.type_env.clone().source_indices.clone(),
+                                scope.type_env.clone(),
                             ) {
+                                let expected_for_shape = match lookup_type_for(
+                                    scope.type_env.clone(),
+                                    with_required_cardinality(expected_node.clone()),
+                                ) {
+                                    Some(resolved) => resolved.clone(),
+                                    None => expected_node.clone(),
+                                };
                                 Rc::new(vec![type_mismatch_error(
                                     node_type_shape(
-                                        expected_node.clone(),
+                                        expected_for_shape,
                                         scope.type_env.clone().source_indices.clone(),
                                     ),
                                     node_type_shape(

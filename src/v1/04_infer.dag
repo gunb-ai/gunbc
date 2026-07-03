@@ -527,16 +527,30 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
   make_error_node(diagnostic: TypeMismatch { expected: expected, got: got, span: span }, module_name: module_name)
 }
 
-fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-  let expected_inner = with_required_cardinality(n: expected)
-  let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_inner.connective == Disj
-  let got_is_string = node_type_shape(n: got, source_indices: source_indices) == "Primitive(String)" || authored_name_at(source_indices: source_indices, node: got) == "String"
-  expected_is_optional_coproduct && got_is_string
+fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
+  if expected.return_cardinality != CardOptional {
+    false
+  } else {
+    let expected_resolved = match lookup_type_for(env: env, node: with_required_cardinality(n: expected)) {
+      Present { value: resolved } => resolved
+      Absent => with_required_cardinality(n: expected)
+    }
+    let expected_is_optional_coproduct = expected_resolved.connective == Disj
+    let got_is_string = node_type_shape(n: got, source_indices: source_indices) == "Primitive(String)" || authored_name_at(source_indices: source_indices, node: got) == "String"
+    expected_is_optional_coproduct && got_is_string
+  }
 }
 
-fn field_type_is_optional_coproduct(ft: Node) -> Bool {
-  let inner = with_required_cardinality(n: ft)
-  ft.return_cardinality == CardOptional && inner.connective == Disj
+fn field_type_is_optional_coproduct(ft: Node, env: TypeEnv) -> Bool {
+  if ft.return_cardinality != CardOptional {
+    false
+  } else {
+    let inner = match lookup_type_for(env: env, node: with_required_cardinality(n: ft)) {
+      Present { value: resolved } => resolved
+      Absent => with_required_cardinality(n: ft)
+    }
+    inner.connective == Disj
+  }
 }
 
 fn record_lit_variant_fields_from_visible_env(env: TypeEnv, variant_name: String, module_name: String) -> List<Node> {
@@ -2950,7 +2964,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
           Present { value: Resolved { node: rt } } => rt
           _ => field_node_type_expr(n: sf)
         }
-        if ft.ident_span != none || type_node_is_callable(n: ft) || field_type_is_optional_coproduct(ft: ft) {
+        if ft.ident_span != none || type_node_is_callable(n: ft) || field_type_is_optional_coproduct(ft: ft, env: scope.type_env) {
           Present { value: ft }
         } else { none }
       Absent => none
@@ -2964,10 +2978,15 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
         if rejects_string_for_optional_coproduct_field(
           expected: expected_node,
           got: got_node,
-          source_indices: scope.type_env.source_indices
+          source_indices: scope.type_env.source_indices,
+          env: scope.type_env
         ) {
+          let expected_for_shape = match lookup_type_for(env: scope.type_env, node: with_required_cardinality(n: expected_node)) {
+            Present { value: resolved } => resolved
+            Absent => expected_node
+          }
           [type_mismatch_error(
-            expected: node_type_shape(n: expected_node, source_indices: scope.type_env.source_indices),
+            expected: node_type_shape(n: expected_for_shape, source_indices: scope.type_env.source_indices),
             got: node_type_shape(n: got_node, source_indices: scope.type_env.source_indices),
             span: ar_typed.span,
             module_name: scope.module_name
