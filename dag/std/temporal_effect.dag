@@ -23,6 +23,8 @@ data effect_step_receipt_label_dissolution_marker: String = "🟡 v0 receipt int
 
 data derived_pending_step_id_dissolution_marker: String = "🟡 v0: derived_pending_step_id returns last receipt step for retry-until-read-back; next-step-after-success cursor belongs in gunbc workflow consumer, not this helper alone."
 
+data temporal_effect_policy_dissolution_marker: String = "🟡 TemporalEffectPolicy is an inert third effect-shape vocabulary (fork-census 2026-07-03, PR #6220 §1b): zero consumers today, and its CreateIfAbsent variant name-collides std.effects.CreateCause — a second name inviting a second meaning. Left untouched in this slice (decide-algebra consolidation is HeldLeaseObservedState/NextStepPlan onto std.upsert_decision, not this type). Dissolve-on: either ground it onto std.effects' EffectShape before any consumer binds it, or delete it outright if no consumer ever appears — never let a first consumer wire against this vocabulary as-is."
+
 type EffectAttemptIntent {
   attempt_id: NonEmptyStr
   intent_hash: ContentHash
