@@ -1,0 +1,10 @@
+module test.claim.floor_skip_discovery_witness_test
+
+import tools.floor_skip_discovery_witness_transport { run_floor_skip_discovery_witness }
+import std.logic { Bool }
+
+data floor_skip_discovery_witness_provenance: String = "Floor witness migrated from src/v1/tests/src/floor_skip_discovery_host_test.rs (11 tests). The affected-set floor skip/discovery mechanism (run_discovery_corpus_with_options node-precise skip semantics over a live git-diff observation) is a runtime host-effect mechanism -- multi-entry resolve, git diff shelling, per-witness skip decisions -- not pure logic, so its executing coverage lives in the floor_skip_discovery_witness host binary, driven here through a shell transport, until the discovery/skip mechanism is itself modeled + executed in the v2 .dag floor."
+
+test fn floor_skip_discovery_keystone_holds() -> Bool {
+  run_floor_skip_discovery_witness()
+}
