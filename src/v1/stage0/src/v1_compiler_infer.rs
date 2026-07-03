@@ -12636,18 +12636,22 @@ pub fn build_type_env(
         );
         let merged_inductive_fields =
             merge_inductive_fields(import_inductive_fields, local_inductive_fields);
-        let ancestry_str_bindings = scope_parents.clone().iter().cloned().fold(
-            ancestry_cache.str_bindings.clone(),
-            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
-                v1_rt::rc_map_merge(
+        let ancestry_str_bindings = if module.resolved_imports.clone().len() == 1 {
+            if let Some(imp) = module.resolved_imports.clone().first().cloned() {
+                if let Some(parent_mod) = v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                     v1_rt::rc_map_merge(
-                        parent.ancestry_str_bindings.clone(),
-                        parent.str_bindings.clone(),
-                    ),
-                    acc,
-                )
-            },
-        );
+                        parent_mod.type_env.ancestry_str_bindings.clone(),
+                        parent_mod.type_env.str_bindings.clone(),
+                    )
+                } else {
+                    ancestry_cache.str_bindings.clone()
+                }
+            } else {
+                ancestry_cache.str_bindings.clone()
+            }
+        } else {
+            ancestry_cache.str_bindings.clone()
+        };
         let visible_str_bindings = deterministic_str_binding_map(v1_rt::rc_map_merge(
             ancestry_str_bindings.clone(),
             local_str_bindings.clone(),
@@ -13085,18 +13089,22 @@ pub fn build_type_env_unresolved(
         );
         let merged_inductive_fields =
             merge_inductive_fields(import_inductive_fields, local_inductive_fields);
-        let ancestry_str_bindings = scope_parents.clone().iter().cloned().fold(
-            ancestry_cache.str_bindings.clone(),
-            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
-                v1_rt::rc_map_merge(
+        let ancestry_str_bindings = if module.resolved_imports.clone().len() == 1 {
+            if let Some(imp) = module.resolved_imports.clone().first().cloned() {
+                if let Some(parent_mod) = v1_rt::map_get(&parent_index, imp.module_path.clone()) {
                     v1_rt::rc_map_merge(
-                        parent.ancestry_str_bindings.clone(),
-                        parent.str_bindings.clone(),
-                    ),
-                    acc,
-                )
-            },
-        );
+                        parent_mod.type_env.ancestry_str_bindings.clone(),
+                        parent_mod.type_env.str_bindings.clone(),
+                    )
+                } else {
+                    ancestry_cache.str_bindings.clone()
+                }
+            } else {
+                ancestry_cache.str_bindings.clone()
+            }
+        } else {
+            ancestry_cache.str_bindings.clone()
+        };
         let visible_str_bindings = deterministic_str_binding_map(v1_rt::rc_map_merge(
             ancestry_str_bindings.clone(),
             local_str_bindings.clone(),
