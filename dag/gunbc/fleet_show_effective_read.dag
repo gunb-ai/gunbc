@@ -1,8 +1,9 @@
 module gunbc.fleet_show_effective_read
 
 import std.types { NonEmptyStr, String, Int, List, Bool }
-import std.measure { byte_size_count, Percent, percent, percent_count }
-import std.disposition { Disposition, Terminal }
+import std.measure { ByteSize, byte_size_count, Percent, percent, percent_count }
+import std.disposition { Disposition, Terminal, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.realization_reconcile {
   ShowEffectiveRead,
   ReadObserved,
@@ -19,7 +20,6 @@ import extdeps.os.systemd {
   MemoryLimitAbsent,
   parse_systemd_memory_limit_show,
   systemd_memory_max_property,
-  systemd_memory_swap_max_property,
 }
 import extdeps.os.oomd {
   parse_managed_oom_pressure_limit_show,
@@ -31,7 +31,6 @@ import gunbc.host_converge {
   Converged,
   Drifted,
   Absent,
-  converge_verdict,
 }
 import gunbc.host_effect {
   ShellCommand,
@@ -54,7 +53,6 @@ import gunbc.runner_unit_live_read {
   gunbc_srv1_runner_unit_live_read_fixture,
   runner_unit_live_read_typed,
   memory_limit_to_cap_effectiveness,
-  runner_unit_memory_max_drifts_against_cap,
 }
 
 type RunnerSliceCapLiveReadRow {
@@ -117,8 +115,19 @@ type FleetHostEffectiveReadGroundedReceipt {
 }
 
 data gunbc_fleet_show_effective_read_scope_disposition: Disposition = Terminal {
-  reason: "Typed READ-ONLY live host-read seam for runner-allocation-v0 (three blocking knobs): (1) runner-slice MemoryMax on system-actions-runner.slice, (2) per-slot MemoryMax+MemorySwapMax on actions-runner@<host>-*.service, (3) runner_width active-unit count. Transport = host_effect ShellCommand handlers (systemctl show / list-units), never fused into ConvergeKnob shape. Committed ShowEffectiveRead rows stay ReadAbsent until a live or fixture-grounded read supplies ReadObserved; ReadAbsent cannot converge (fail-closed). ManagedOOMMemoryPressureLimit percent-wire grounding lives in extdeps.os.oomd (single authority for 60 vs 2576980377)."
+  reason: "Typed READ-ONLY live host-read seam for runner-allocation-v0 (three blocking knobs): (1) runner-slice MemoryMax on system-actions-runner.slice, (2) per-slot MemoryMax+MemorySwapMax on actions-runner@<host>-*.service, (3) runner_width active-unit count. Transport intent lives here; shell realization is scaffold-marked medium-as-string (fleet_show_effective_read_transport_script_scaffold) until host_effect orchestration emit binds grammar rows. Committed ShowEffectiveRead rows stay ReadAbsent until live or fixture-grounded read supplies ReadObserved. ManagedOOMMemoryPressureLimit percent-wire grounding lives in extdeps.os.oomd."
 }
+
+data fleet_show_effective_read_transport_script_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.live_deploy.emit",
+    decl_name: "live_deploy_emit_shell_dissolution_trigger",
+    field: WholeDeclaration,
+  }
+}
+
+data fleet_show_effective_read_transport_dissolution_trigger: String = "🟡 dissolve-on: fleet_show_effective_read transport script builders — systemctl show / list-units READ handlers authored as concat-built String literals handed to ShellCommand { script } (medium-as-string; embeds quotes, 2>/dev/null, ||, pipelines); DISSOLVES WHEN host_effect Phase B / orchestration emit (#6106 / shell-emission-model) models fleet effective reads as HostEffect orchestration intent rows (bash grammar rows), retiring these string leaves and medium_structure_exception_roster entry for dag/gunbc/fleet_show_effective_read.dag"
 
 fn fleet_runner_slice_memory_max_read_script(unit: NonEmptyStr) -> String {
   concat(
@@ -317,7 +326,7 @@ fn show_effective_read_from_width_row(row: RunnerWidthLiveReadRow) -> ShowEffect
 fn slice_property_memory_max_verdict(
   read: RunnerSliceCapLiveRead,
   property: String,
-  expected_effective: String,
+  expected: ByteSize,
 ) -> ConvergeVerdict? {
   if property != systemd_memory_max_property {
     none
@@ -327,10 +336,11 @@ fn slice_property_memory_max_verdict(
       MemoryLimitUnbounded => Present { value: Drifted }
       MemoryLimitBytes { bytes: b } =>
         Present {
-          value: converge_verdict(
-            effective: to_string(byte_size_count(b: b)),
-            expected: expected_effective
-          )
+          value: if byte_size_count(b: b) == byte_size_count(b: expected) {
+            Converged
+          } else {
+            Drifted
+          }
         }
     }
   }
@@ -371,12 +381,8 @@ fn runner_width_live_read_typed(row: RunnerWidthLiveReadRow) -> RunnerWidthLiveR
   }
 }
 
-fn runner_width_converge_verdict(observed: Int, desired: String) -> ConvergeVerdict {
-  match parse_int(s: desired) {
-    Present { value: d } =>
-      if observed == d { Converged } else { Drifted }
-    Absent => Absent
-  }
+fn runner_width_converge_verdict(observed: Int, desired: Int) -> ConvergeVerdict {
+  if observed == desired { Converged } else { Drifted }
 }
 
 fn show_effective_read_cannot_converge(read: ShowEffectiveRead<RunnerSliceCapEffectiveness>) -> Bool {
