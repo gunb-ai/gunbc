@@ -11,7 +11,7 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_right }
+import v2.std.algebra { Cons, Empty, FreeMonoid, HeadAbsent, HeadFound, fold_list_right, list_head }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.logic { Bool }
@@ -73,11 +73,19 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: _ } } =>
                     match child_qn {
-                      Cons { head: sym, tail: Empty } =>
-                        match acc {
-                          QnFoldInit => QnFoldHeadSeen { sym: sym }
-                          QnFoldTailSeen { tail: tail_qn } => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
-                          _ => QnFoldError { diag: Diagnostic {
+                      Cons { head: sym, tail: child_tail } =>
+                        match list_head(xs: child_tail) {
+                          HeadAbsent =>
+                            match acc {
+                              QnFoldInit => QnFoldHeadSeen { sym: sym }
+                              QnFoldTailSeen { tail: tail_qn } => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
+                              _ => QnFoldError { diag: Diagnostic {
+                                reason: ^qualified_name_structure_invalid,
+                                at: node_locus(node: edge.target),
+                                correction: Unavailable { reason: ExternalContractUnknown }
+                              }}
+                            }
+                          HeadFound { value: _ } => QnFoldError { diag: Diagnostic {
                             reason: ^qualified_name_structure_invalid,
                             at: node_locus(node: edge.target),
                             correction: Unavailable { reason: ExternalContractUnknown }

@@ -1,6 +1,6 @@
 module v2.std.cross_tree.resolution
 
-import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list }
+import v2.std.algebra { Cons, Empty, FreeMonoid, HeadAbsent, HeadFound, fold_list, list_head }
 import v2.std.cross_tree.import_model {
   CoFundamental,
   CrossTreeAdmitted,
@@ -107,9 +107,9 @@ fn layer_prefix_from_qualified_name(qn: QualifiedName) -> LayerPrefix {
     Empty => LayerPrefixStd
     Cons { head: h, tail: t } =>
       if h == ^v2 {
-        match t {
-          Empty => LayerPrefixStd
-          Cons { head: h2, tail: _ } =>
+        match list_head(xs: t) {
+          HeadAbsent => LayerPrefixStd
+          HeadFound { value: h2 } =>
             if h2 == ^std {
               LayerPrefixStd
             } else if h2 == ^extdeps {
