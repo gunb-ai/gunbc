@@ -1,0 +1,521 @@
+module gunbc.roadmap_dispatch_actuator
+
+import ctrl.process_algebra { ProcessNodeId }
+import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.upsert_decision {
+  ObservationVerdict,
+  Converged,
+  Absent,
+  Drifted,
+  Conflict,
+  Inaccessible,
+  UpsertDecision,
+  UpsertClassification,
+  Noop,
+  Apply,
+  Refuse,
+}
+import gunbc.roadmap_model {
+  RoadmapNode,
+  Intricacy,
+  IntricacyLow,
+  IntricacyMedium,
+  IntricacyHigh,
+  Volume,
+  VolumeSmall,
+  VolumeMedium,
+  VolumeLarge,
+  NodeSizing,
+  Sized,
+  Unsized,
+}
+import gunbc.roadmap_spawner { dispatch_brief_template, node_title }
+import gunbc.session_lease {
+  ProcessPortScope,
+  PortAbsent,
+  Start,
+  classify_process_port_upsert,
+}
+
+data roadmap_dispatch_actuator_doc: String = "M2 dispatch actuator model: brief fill, worktree+tmux+claude argv construction, tmux session lease reuse (session_lease classifier discipline), tmux ls parse, stop. Pure folds — spec docs/plans/dispatch-maintain-cc.md."
+
+data dispatch_mvp_repo: String = "gunbc"
+data dispatch_worktree_root: String = "/opt/gunbc/dispatch-worktrees"
+data dispatch_git_remote_ref: String = "origin/main"
+data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
+data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
+data claude_skip_permission_settings_json: String = "{\"skipDangerousModePermissionPrompt\":true}"
+data dispatch_claude_start_prompt: String = "Begin working on the assigned node."
+
+type HostExecArgv {
+  program: String
+  args: List<String>
+}
+
+type DispatchBriefFields {
+  node_id: String
+  title: String
+  repo: String
+  intricacy_label: String
+  volume_label: String
+}
+
+type TmuxLsEntry {
+  session_name: String
+  windows: Int
+}
+
+type TmuxSessionScope {
+  session_name: NonEmptyStr
+  expected_owner_label: NonEmptyStr
+  expected_process_fingerprint: NonEmptyStr
+}
+
+type TmuxSessionObservation
+  = SessionAbsent
+  | SessionObserved {
+      session_name: NonEmptyStr
+      windows: Int
+      process_fingerprint: NonEmptyStr
+    }
+  | SessionObservedStaleExpected {
+      session_name: NonEmptyStr
+      windows: Int
+      process_fingerprint: NonEmptyStr
+      stale_reason: NonEmptyStr
+    }
+  | SessionInaccessible
+
+type DispatchLeasePlan
+  = SpawnSession
+  | DrainStaleThenSpawn
+  | RefuseForeignSession
+
+type DispatchRequestGate
+  = DispatchPermitted {
+      session_name: String
+      worktree_path: String
+      branch_name: String
+      brief: String
+      claude_effort: String
+    }
+  | DispatchRefused { reason: NonEmptyStr }
+
+type DispatchLiveSession {
+  session_name: String
+  node_id: String
+  windows: Int
+  lease_verdict: ObservationVerdict
+}
+
+fn intricacy_label(i: Intricacy) -> String {
+  match i {
+    IntricacyLow => "low"
+    IntricacyMedium => "medium"
+    IntricacyHigh => "high"
+  }
+}
+
+fn volume_label(v: Volume) -> String {
+  match v {
+    VolumeSmall => "small"
+    VolumeMedium => "medium"
+    VolumeLarge => "large"
+  }
+}
+
+fn claude_effort_for_intricacy(i: Intricacy) -> String {
+  match i {
+    IntricacyHigh => "high"
+    IntricacyMedium => "medium"
+    IntricacyLow => "medium"
+  }
+}
+
+fn dispatch_tmux_session_name(node_id: ProcessNodeId) -> String {
+  concat(dispatch_tmux_session_prefix, node_id)
+}
+
+fn dispatch_worktree_path(node_id: ProcessNodeId) -> String {
+  concat(concat(dispatch_worktree_root, "/"), node_id)
+}
+
+fn dispatch_branch_name(node_id: ProcessNodeId) -> String {
+  concat("dispatch/", node_id)
+}
+
+fn dispatch_tmux_session_scope(node_id: ProcessNodeId) -> TmuxSessionScope {
+  TmuxSessionScope {
+    session_name: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
+    expected_owner_label: dispatch_tmux_session_name(node_id: node_id) as NonEmptyStr,
+    expected_process_fingerprint: dispatch_claude_process_fingerprint,
+  }
+}
+
+fn dispatch_brief_fields(node: RoadmapNode) -> DispatchBriefFields {
+  match node.sizing {
+  Sized { intricacy, volume, repo, acceptance: _ } =>
+    DispatchBriefFields {
+      node_id: node.node,
+      title: node_title(item: node.line),
+      repo: repo,
+      intricacy_label: intricacy_label(i: intricacy),
+      volume_label: volume_label(v: volume),
+    }
+  Unsized =>
+    DispatchBriefFields {
+      node_id: node.node,
+      title: node_title(item: node.line),
+      repo: "",
+      intricacy_label: "unsized",
+      volume_label: "unsized",
+    }
+  }
+}
+
+fn fill_dispatch_brief(template: String, fields: DispatchBriefFields) -> String {
+  template
+    .replace(from: "<node_id>", to: fields.node_id)
+    .replace(from: "<displaced cost / what it unblocks>", to: fields.title)
+    .replace(from: "<explicitly out of scope>", to: "see parent roadmap dispatch plan")
+    .replace(from: "<prove current state / reproduce the gap>", to: fields.title)
+    .replace(from: "<first implementation slice>", to: fields.title)
+    .replace(from: "<perturbation that goes red>", to: "drop modeled argv row and witness goes red")
+    .replace(from: "<execution on the real path>", to: "tmux ls shows gunbc-dispatch session on srv1")
+    .replace(from: "<named hand-back conditions>", to: "node not ready, foreign lease, or unsupported repo")
+    .replace(from: "<paths>", to: concat("dag/gunbc/roadmap_dispatch_actuator.dag (repo=", fields.repo, ")"))
+    .replace(from: "<repro/verify commands>", to: "cargo test roadmap_dispatch_actuator_witness")
+    .replace(from: "<what comes back even if the fix does not land>", to: "dispatch argv receipt + witness log")
+}
+
+fn filled_dispatch_brief_for_node(node: RoadmapNode) -> String {
+  fill_dispatch_brief(
+    template: dispatch_brief_template,
+    fields: dispatch_brief_fields(node: node),
+  )
+}
+
+fn host_exec_argv(program: String, args: List<String>) -> HostExecArgv {
+  HostExecArgv { program: program, args: args }
+}
+
+fn git_worktree_add_argv(worktree_path: String, branch_name: String, remote_ref: String) -> HostExecArgv {
+  host_exec_argv(
+    program: "git",
+    args: ["worktree", "add", worktree_path, "-b", branch_name, remote_ref],
+  )
+}
+
+fn claude_spawn_argv(
+  effort: String,
+  session_uuid: String,
+  node_id: ProcessNodeId,
+  brief: String,
+) -> List<String> {
+  [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--settings",
+    claude_skip_permission_settings_json,
+    "--effort",
+    effort,
+    "--session-id",
+    session_uuid,
+    "-n",
+    node_id,
+    "--append-system-prompt",
+    brief,
+    dispatch_claude_start_prompt,
+  ]
+}
+
+fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: List<String>) -> HostExecArgv {
+  host_exec_argv(
+    program: "tmux",
+    args: concat(
+      ["new-session", "-d", "-s", session_name, "-c", worktree_path],
+      concat(["env", "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
+    ),
+  )
+}
+
+fn tmux_ls_argv() -> HostExecArgv {
+  host_exec_argv(program: "tmux", args: ["ls"])
+}
+
+fn tmux_kill_session_argv(session_name: String) -> HostExecArgv {
+  host_exec_argv(program: "tmux", args: ["kill-session", "-t", session_name])
+}
+
+type DispatchSpawnCommands {
+  worktree_add: HostExecArgv
+  tmux_spawn: HostExecArgv
+}
+
+fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String) -> DispatchSpawnCommands {
+  let fields = dispatch_brief_fields(node: node)
+  let brief = fill_dispatch_brief(template: dispatch_brief_template, fields: fields)
+  let effort = match node.sizing {
+    Sized { intricacy, volume: _, repo: _, acceptance: _ } => claude_effort_for_intricacy(i: intricacy)
+    Unsized => "medium"
+  }
+  let session_name = dispatch_tmux_session_name(node_id: node.node)
+  let worktree_path = dispatch_worktree_path(node_id: node.node)
+  let branch_name = dispatch_branch_name(node_id: node.node)
+  let worktree = git_worktree_add_argv(
+    worktree_path: worktree_path,
+    branch_name: branch_name,
+    remote_ref: dispatch_git_remote_ref,
+  )
+  let claude = claude_spawn_argv(
+    effort: effort,
+    session_uuid: session_uuid,
+    node_id: node.node,
+    brief: brief,
+  )
+  let tmux = tmux_spawn_argv(session_name: session_name, worktree_path: worktree_path, claude_argv: claude)
+  DispatchSpawnCommands { worktree_add: worktree, tmux_spawn: tmux }
+}
+
+fn parse_tmux_ls_windows(rest: String) -> Int {
+  let parts = split(s: rest, delimiter: " ")
+  match parse_int(parts.first()) {
+    Present { value: n } => n
+    Absent => 0
+  }
+}
+
+fn parse_tmux_ls_line(line: String) -> TmuxLsEntry? {
+  let trimmed = trim(line)
+  if trimmed == "" {
+    Absent
+  } else {
+    let colon_parts = split(s: trimmed, delimiter: ":")
+    let name = trim(colon_parts.first())
+    if name == "" {
+      Absent
+    } else {
+      let rest = if colon_parts.length() > 1 {
+        trim(colon_parts.skip(n: 1).first())
+      } else {
+        ""
+      }
+      Present {
+        value: TmuxLsEntry {
+          session_name: name,
+          windows: parse_tmux_ls_windows(rest: rest),
+        },
+      }
+    }
+  }
+}
+
+fn parse_tmux_ls_output(output: String) -> List<TmuxLsEntry> {
+  fold(
+    split(s: output, delimiter: "\n"),
+    init: [],
+    f: (acc, line) => match parse_tmux_ls_line(line: line) {
+      Present { value: e } => append(acc, [e])
+      Absent => acc
+    },
+  )
+}
+
+fn filter_dispatch_tmux_sessions(entries: List<TmuxLsEntry>) -> List<TmuxLsEntry> {
+  entries |> filter(e => starts_with(s: e.session_name, prefix: dispatch_tmux_session_prefix))
+}
+
+fn tmux_session_observation_for_scope(
+  scope: TmuxSessionScope,
+  entries: List<TmuxLsEntry>,
+) -> TmuxSessionObservation {
+  let scoped_name = scope.session_name as String
+  match entries |> filter(e => e.session_name == scoped_name) |> first {
+    Present { value: e } =>
+      SessionObserved {
+        session_name: scope.session_name,
+        windows: e.windows,
+        process_fingerprint: scope.expected_process_fingerprint,
+      }
+    Absent => SessionAbsent
+  }
+}
+
+fn classify_tmux_session(
+  scope: TmuxSessionScope,
+  obs: TmuxSessionObservation,
+) -> ObservationVerdict {
+  match obs {
+    SessionAbsent => Absent
+    SessionInaccessible => Inaccessible
+    SessionObserved {
+      session_name: name,
+      windows: _,
+      process_fingerprint: fingerprint,
+    } =>
+      if (name as String) != (scope.session_name as String) {
+        Inaccessible
+      } else {
+        if fingerprint == scope.expected_process_fingerprint {
+          Converged
+        } else {
+          Conflict
+        }
+      }
+    SessionObservedStaleExpected {
+      session_name: name,
+      windows: _,
+      process_fingerprint: fingerprint,
+      stale_reason: _,
+    } =>
+      if (name as String) != (scope.session_name as String) {
+        Inaccessible
+      } else {
+        if fingerprint == scope.expected_process_fingerprint {
+          Drifted
+        } else {
+          Conflict
+        }
+      }
+  }
+}
+
+fn decision_for_dispatch_lease_verdict(
+  verdict: ObservationVerdict,
+) -> UpsertDecision<DispatchLeasePlan> {
+  match verdict {
+    Converged => Refuse { reason: "dispatch session already running for node" as NonEmptyStr }
+    Absent => Apply { plan: SpawnSession }
+    Drifted => Apply { plan: DrainStaleThenSpawn }
+    Conflict => Refuse { reason: "foreign tmux session owns dispatch slot" as NonEmptyStr }
+    Inaccessible => Refuse { reason: "tmux session inaccessible" as NonEmptyStr }
+    UnknownRefused => Refuse { reason: "tmux session observation refused" as NonEmptyStr }
+  }
+}
+
+fn classify_dispatch_lease_upsert(
+  scope: TmuxSessionScope,
+  obs: TmuxSessionObservation,
+) -> UpsertClassification<DispatchLeasePlan> {
+  let verdict = classify_tmux_session(scope: scope, obs: obs)
+  UpsertClassification {
+    verdict: verdict,
+    decision: decision_for_dispatch_lease_verdict(verdict: verdict),
+  }
+}
+
+fn node_in_ready(node_id: ProcessNodeId, ready: List<RoadmapNode>) -> Bool {
+  any(ready, n => n.node == node_id)
+}
+
+fn node_repo_supported(node: RoadmapNode) -> Bool {
+  match node.sizing {
+    Sized { repo, intricacy: _, volume: _, acceptance: _ } => repo == dispatch_mvp_repo
+    Unsized => false
+  }
+}
+
+fn classify_dispatch_request(
+  node: RoadmapNode,
+  ready: List<RoadmapNode>,
+  tmux_entries: List<TmuxLsEntry>,
+) -> DispatchRequestGate {
+  if !node_in_ready(node_id: node.node, ready: ready) {
+    DispatchRefused { reason: "node not in ready frontier" as NonEmptyStr }
+  } else {
+    if !node_repo_supported(node: node) {
+      DispatchRefused { reason: "repo not supported on srv1 mvp" as NonEmptyStr }
+    } else {
+      let scope = dispatch_tmux_session_scope(node_id: node.node)
+      let obs = tmux_session_observation_for_scope(scope: scope, entries: tmux_entries)
+      match classify_dispatch_lease_upsert(scope: scope, obs: obs) {
+        UpsertClassification { verdict: _, decision: Refuse { reason } } =>
+          DispatchRefused { reason: reason }
+        UpsertClassification { verdict: _, decision: Noop } =>
+          DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
+        UpsertClassification { verdict: _, decision: Apply { plan: _ } } => {
+          let brief = filled_dispatch_brief_for_node(node: node)
+          let effort = match node.sizing {
+            Sized { intricacy, volume: _, repo: _, acceptance: _ } =>
+              claude_effort_for_intricacy(i: intricacy)
+            Unsized => "medium"
+          }
+          DispatchPermitted {
+            session_name: dispatch_tmux_session_name(node_id: node.node),
+            worktree_path: dispatch_worktree_path(node_id: node.node),
+            branch_name: dispatch_branch_name(node_id: node.node),
+            brief: brief,
+            claude_effort: effort,
+          }
+        }
+      }
+    }
+  }
+}
+
+fn dispatch_node_id_from_session_name(session_name: String) -> String {
+  if starts_with(s: session_name, prefix: dispatch_tmux_session_prefix) {
+    substring(
+      s: session_name,
+      start: string_length(s: dispatch_tmux_session_prefix),
+      end: string_length(s: session_name),
+    )
+  } else {
+    ""
+  }
+}
+
+fn live_session_row(entry: TmuxLsEntry, scope: TmuxSessionScope) -> DispatchLiveSession {
+  let obs = SessionObserved {
+    session_name: entry.session_name as NonEmptyStr,
+    windows: entry.windows,
+    process_fingerprint: scope.expected_process_fingerprint,
+  }
+  DispatchLiveSession {
+    session_name: entry.session_name,
+    node_id: dispatch_node_id_from_session_name(session_name: entry.session_name),
+    windows: entry.windows,
+    lease_verdict: classify_tmux_session(scope: scope, obs: obs),
+  }
+}
+
+fn dispatch_live_session_for_entry(entry: TmuxLsEntry) -> DispatchLiveSession {
+  let node_id = dispatch_node_id_from_session_name(session_name: entry.session_name)
+  let scope = dispatch_tmux_session_scope(node_id: node_id)
+  live_session_row(entry: entry, scope: scope)
+}
+
+fn dispatch_live_sessions(tmux_ls_output: String) -> List<DispatchLiveSession> {
+  let entries = filter_dispatch_tmux_sessions(entries: parse_tmux_ls_output(output: tmux_ls_output))
+  entries |> map(e => dispatch_live_session_for_entry(entry: e))
+}
+
+fn session_lease_reuses_process_port_classifier_shape() -> Bool {
+  let port_scope = ProcessPortScope {
+    listen_port: 8080,
+    expected_owner_label: "gunbc-roadmap" as NonEmptyStr,
+    expected_process_fingerprint: "node server.js" as NonEmptyStr,
+  }
+  match classify_process_port_upsert(
+    scope: port_scope,
+    obs: PortAbsent,
+  ) {
+    UpsertClassification { verdict: Absent, decision: Apply { plan: Start } } => true
+    _ => false
+  }
+}
+
+fn argv_contains_token(argv: List<String>, token: String) -> Bool {
+  any(argv, a => a == token)
+}
+
+fn hostile_node_id_stays_single_argv_token(node_id: String) -> Bool {
+  let worktree = git_worktree_add_argv(
+    worktree_path: concat(concat(dispatch_worktree_root, "/"), node_id),
+    branch_name: concat("dispatch/", node_id),
+    remote_ref: dispatch_git_remote_ref,
+  ).args
+  argv_contains_token(argv: worktree, token: node_id)
+    && !argv_contains_token(argv: worktree, token: "rm")
+    && !argv_contains_token(argv: worktree, token: "-rf")
+}
