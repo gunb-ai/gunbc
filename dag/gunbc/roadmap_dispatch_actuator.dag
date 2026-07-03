@@ -329,7 +329,6 @@ fn parse_tmux_ls_output(output: String) -> List<TmuxLsEntry> {
     f: (acc, line) => match parse_tmux_ls_line(line: line) {
       Present { value: e } => append(acc, [e])
       Absent => acc
-      none => acc
     },
   )
 }
