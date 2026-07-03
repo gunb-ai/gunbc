@@ -375,11 +375,11 @@ pub fn source_path_for_module_path(module_path: String) -> String {
         .unwrap_or_else(|| panic!("module_path_index: unknown module path '{module_path}'"))
 }
 
-pub fn qualified_name_value_to_module_path(value: &v1_interpreter::Value) -> String {
-    v1_interpreter::qualified_name_value_to_module_path(value)
+pub fn free_monoid_symbol_value_to_dotted_string(value: &v1_interpreter::Value) -> String {
+    v1_interpreter::free_monoid_symbol_value_to_dotted_string(value)
 }
 
-pub fn qualified_name_value_from_dotted_string(
+pub fn free_monoid_symbol_value_from_dotted_string(
     ctx: &v1_interpreter::InterpContext,
     dotted: &str,
 ) -> v1_interpreter::Value {
@@ -5985,7 +5985,7 @@ pub fn parse_source_root_entry_admission(source: &str) -> Result<SourceRootEntry
         .ok_or_else(|| "entry source missing `module` declaration".to_string())
 }
 
-fn emit_qualified_name_dag(segments: &[String]) -> String {
+fn free_monoid_symbol_emit_dag(segments: &[String]) -> String {
     if segments.is_empty() {
         return "QnEmpty".to_string();
     }
@@ -5999,20 +5999,20 @@ fn emit_qualified_name_dag(segments: &[String]) -> String {
 #[cfg(test)]
 mod manifest_emit_tests {
     use super::{
-        dag_embedded_dag_source_escape, dag_manifest_scalar_escape, emit_qualified_name_dag,
+        dag_embedded_dag_source_escape, dag_manifest_scalar_escape, free_monoid_symbol_emit_dag,
     };
 
     #[test]
-    fn emit_qualified_name_dag_three_segment_path() {
+    fn free_monoid_symbol_emit_dag_three_segment_path() {
         assert_eq!(
-            emit_qualified_name_dag(&["v2".into(), "compiler".into(), "compile".into()]),
+            free_monoid_symbol_emit_dag(&["v2".into(), "compiler".into(), "compile".into()]),
             "QnCons { head: ^v2, tail: QnCons { head: ^compiler, tail: QnCons { head: ^compile, tail: QnEmpty } } }"
         );
     }
 
     #[test]
-    fn emit_qualified_name_dag_empty_is_qn_empty() {
-        assert_eq!(emit_qualified_name_dag(&[]), "QnEmpty");
+    fn free_monoid_symbol_emit_dag_empty_is_qn_empty() {
+        assert_eq!(free_monoid_symbol_emit_dag(&[]), "QnEmpty");
     }
 
     #[test]
@@ -6092,7 +6092,7 @@ fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
     for import in imports.iter().rev() {
         out = format!(
             "Cons {{\n  head: Import {{\n    target: {},\n    visibility: ImportVisible\n  }},\n  tail: {out}\n}}",
-            emit_qualified_name_dag(import)
+            free_monoid_symbol_emit_dag(import)
         );
     }
     out
@@ -6101,7 +6101,7 @@ fn emit_import_admission_list(imports: &[Vec<String>]) -> String {
 fn emit_source_root_entry_admission_data(admission: &SourceRootEntryAdmission) -> String {
     format!(
         "data host_compiler_closure_admission: Admission = Admission {{\n  subject: ResolutionSubject {{\n    name: {}\n  }},\n  imports: {}\n}}\n\n\n",
-        emit_qualified_name_dag(&admission.subject),
+        free_monoid_symbol_emit_dag(&admission.subject),
         emit_import_admission_list(&admission.imports)
     )
 }
@@ -8904,7 +8904,7 @@ pub fn shell_argv_nodes_for_operation(
 }
 
 pub fn qualified_name_resolves_in_derived_module_set(qn: &crate::v1_interpreter::Value) -> bool {
-    let module_path = qualified_name_value_to_module_path(qn);
+    let module_path = free_monoid_symbol_value_to_dotted_string(qn);
     !module_path.is_empty()
         && build_module_path_index_from_witness_roots().contains_key(&module_path)
 }

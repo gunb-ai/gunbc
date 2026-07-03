@@ -129,7 +129,7 @@ fn resolve_sym(sym: Symbol) -> String {
         .unwrap_or_else(|| format!("#{}", sym.0))
 }
 
-pub fn qualified_name_value_to_module_path(value: &Value) -> String {
+pub fn free_monoid_symbol_value_to_dotted_string(value: &Value) -> String {
     match value {
         Value::Variant {
             variant_name,
@@ -174,7 +174,7 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                     .find(|(k, _)| resolve_sym(*k) == "tail")
                     .map(|(_, v)| v)
                     .expect("qualified_name_to_module_path: QnCons.tail missing");
-                let rest = qualified_name_value_to_module_path(tail);
+                let rest = free_monoid_symbol_value_to_dotted_string(tail);
                 if rest.is_empty() {
                     head
                 } else {
@@ -5664,7 +5664,7 @@ fn eval_builtin(
                 msg: "extdeps_shape_transport_policy_facts_for_qualified_name requires a QualifiedName"
                     .to_string(),
             })?;
-            let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
+            let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
             let facts = crate::cli_run::extdeps_shape_transport_policy_module_facts(&module_path);
             let argv_items: Vec<Value> = facts
                 .argv_facts

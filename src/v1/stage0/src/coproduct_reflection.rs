@@ -353,7 +353,7 @@ pub fn eval_qualified_name_from_dotted_string(
         args.first().map(|(_, v)| v),
         "qualified_name_from_dotted_string",
     )?;
-    Ok(crate::cli_run::qualified_name_value_from_dotted_string(
+    Ok(crate::cli_run::free_monoid_symbol_value_from_dotted_string(
         ctx, &dotted,
     ))
 }
