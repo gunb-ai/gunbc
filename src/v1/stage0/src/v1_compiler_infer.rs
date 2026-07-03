@@ -2775,7 +2775,10 @@ pub fn infer_expr(
                         base_rt.clone()
                     } else {
                         expand_type_for_field_access(
-                            base_rt.clone(),
+                            resolve_scrutinee_type_node(
+                                scope.type_env.clone(),
+                                base_rt.clone(),
+                            ),
                             scope.type_env.clone(),
                             scope.module_name.clone(),
                         )

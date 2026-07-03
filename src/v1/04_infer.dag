@@ -1433,7 +1433,11 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let resolved_base = if is_deferred_field_access_base(n: base_rt, env: scope.type_env) {
         base_rt
       } else {
-        expand_type_for_field_access(n: base_rt, env: scope.type_env, module_name: scope.module_name)
+        expand_type_for_field_access(
+          n: resolve_scrutinee_type_node(env: scope.type_env, n: base_rt),
+          env: scope.type_env,
+          module_name: scope.module_name
+        )
       }
       let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
       if resolved_base_is_error {
