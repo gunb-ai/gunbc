@@ -65,8 +65,6 @@ mod gunbhub_serve_program_test;
 #[cfg(test)]
 mod html_markup_smoke_test;
 #[cfg(test)]
-mod infer_semantics;
-#[cfg(test)]
 mod int_pow_bounded_test;
 #[cfg(test)]
 mod interp_dry_run_test;

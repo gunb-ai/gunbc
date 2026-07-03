@@ -88,20 +88,16 @@ fn print_summary(
         fiction.irreducible_roster_slots,
         fiction.resolved_unrostered_sites
     );
+    let wildcard_facts =
+        v1_compiler::complexity_linearity_audit_project::complexity_linearity_wildcard_facts();
+    let on_roster = wildcard_facts.iter().filter(|f| f.rostered).count();
     eprintln!(
         "complexity_linearity_audit: syntactic wildcard arms — total={} on_roster={} off_roster={} \
-         | triage: eval-interpreter-debt={} grammar-ladder-debt={} kernel-permanent={} \
-         migration-debt={} closed-coproduct-debt={} open-domain={} triage-pending={}",
-        fiction.syntactic_wildcard_total,
-        fiction.syntactic_wildcard_on_roster,
-        fiction.syntactic_wildcard_off_roster,
-        fiction.eval_interpreter_debt,
-        fiction.grammar_ladder_debt,
-        fiction.kernel_permanent,
-        fiction.migration_debt_tagged,
-        fiction.closed_coproduct_debt,
-        fiction.open_domain,
-        fiction.triage_pending
+         | triage buckets are grounded in v2.lens.complexity_linearity_audit (.dag), verified by \
+         src/v2/test/claim/complexity_linearity/syntactic_audit_witness_test.dag",
+        wildcard_facts.len(),
+        on_roster,
+        wildcard_facts.len() - on_roster,
     );
     let cost_findings = summary.findings.iter().filter(|f| f.lens == "cost").count();
     eprintln!(
