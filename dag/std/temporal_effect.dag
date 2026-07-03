@@ -1,8 +1,21 @@
 module std.temporal_effect
 
 import std.types { String, NonEmptyStr, Int, Bool, ContentHash, Timestamp, List }
+import std.upsert_decision {
+  ObservationVerdict,
+  Converged,
+  Absent,
+  Drifted,
+  Conflict,
+  Inaccessible,
+  UnknownRefused,
+  UpsertDecision,
+  Noop,
+  Apply,
+  Refuse,
+}
 
-data temporal_effect_doc: String = "Temporal realization spine — minimal durable facts (intent, receipt, lease, approval grant, base snapshot) and plan_next_step_from_prior_receipt_and_lease (single prior receipt + lease; list-level workflow fold is consumer-side). Not a workflow engine: cursor derived from receipts+leases+observations, never authoritative alone. Persistence is a realization handler; these types are the single authority (roadmap 2-temporal-effect-spine-a)."
+data temporal_effect_doc: String = "Temporal realization spine — minimal durable facts (intent, receipt, lease, approval grant, base snapshot) and plan_next_step_from_prior_receipt_and_lease (single prior receipt + lease; list-level workflow fold is consumer-side). Not a workflow engine: cursor derived from receipts+leases+observations, never authoritative alone. Persistence is a realization handler; these types are the single authority (roadmap 2-temporal-effect-spine-a). Decide-algebra consolidation (operator ruling 2026-07-03, fork-census, PR #6220 §1b): HeldLeaseObservedState grounds on std.upsert_decision.ObservationVerdict (5/5 bijection — held_lease_observed_verdict) and the lease-driven arms of NextStepPlan (Noop/Apply/Refuse/DrainThenStart) derive from a single std.upsert_decision.UpsertDecision<NextStepApplyPlan> classification (decision_for_held_lease_verdict); PlanAwaitApproval is the honest temporal-only residue — it precedes lease observation entirely and has no UpsertDecision arm to collapse onto."
 
 data approval_grant_covers_intent_dissolution_marker: String = "🟡 v0 predicate: escalation_id + intent_hash + expires_at bound via ISO-8601 lexicographic compare on Timestamp=String; dissolve-on: grounded instant ordering authority lands in std.time (DESIGN §3 — no second grant-equality surface)."
 
@@ -118,23 +131,67 @@ fn approval_grant_covers_intent(
   }
 }
 
+type NextStepApplyPlan
+  = ApplyAtStep { step_id: NonEmptyStr }
+  | DrainThenStartAtStep { step_id: NonEmptyStr, lease_key: NonEmptyStr }
+
+fn held_lease_observed_verdict(observed: HeldLeaseObservedState) -> ObservationVerdict {
+  match observed {
+    LeaseAbsent => Absent
+    LeaseRunningExpected => Converged
+    LeaseRunningStale => Drifted
+    LeasePortForeign => Conflict
+    LeaseInaccessible => Inaccessible
+  }
+}
+
+fn decision_for_held_lease_verdict(
+  verdict: ObservationVerdict,
+  lease: HeldLease,
+  pending_step_id: NonEmptyStr,
+) -> UpsertDecision<NextStepApplyPlan> {
+  match verdict {
+    Converged => Noop
+    Absent => Apply { plan: ApplyAtStep { step_id: pending_step_id } }
+    Drifted => Apply {
+      plan: DrainThenStartAtStep { step_id: pending_step_id, lease_key: lease.lease_key },
+    }
+    Conflict => Refuse { reason: "foreign lease holder on scoped resource" as NonEmptyStr }
+    Inaccessible => Refuse { reason: "lease observation inaccessible" as NonEmptyStr }
+    UnknownRefused => Refuse { reason: "lease observation classification unknown" as NonEmptyStr }
+  }
+}
+
+fn next_step_plan_from_apply_decision(
+  decision: UpsertDecision<NextStepApplyPlan>,
+  pending_step_id: NonEmptyStr,
+) -> NextStepPlan {
+  match decision {
+    Noop => PlanNoop { step_id: pending_step_id }
+    Refuse { reason: r } => PlanRefuse { step_id: pending_step_id, reason: r }
+    Apply { plan: p } => match p {
+      ApplyAtStep { step_id: s } => PlanApply { step_id: s }
+      DrainThenStartAtStep { step_id: s, lease_key: k } => PlanDrainThenStart {
+        step_id: s,
+        lease_key: k,
+      }
+    }
+  }
+}
+
 fn plan_for_held_lease_observation(
   lease: HeldLease,
   pending_step_id: NonEmptyStr,
 ) -> NextStepPlan {
-  match lease.observed {
-    LeaseAbsent => PlanApply { step_id: pending_step_id }
-    LeaseRunningExpected => PlanNoop { step_id: pending_step_id }
-    LeaseRunningStale => PlanDrainThenStart { step_id: pending_step_id, lease_key: lease.lease_key }
-    LeasePortForeign => PlanRefuse {
-      step_id: pending_step_id,
-      reason: "foreign lease holder on scoped resource",
-    }
-    LeaseInaccessible => PlanRefuse {
-      step_id: pending_step_id,
-      reason: "lease observation inaccessible",
-    }
-  }
+  let verdict = held_lease_observed_verdict(observed: lease.observed)
+  next_step_plan_from_apply_decision(
+    decision: decision_for_held_lease_verdict(
+      verdict: verdict,
+      lease: lease,
+      pending_step_id: pending_step_id,
+    ),
+    pending_step_id: pending_step_id,
+  )
 }
 
 fn plan_next_step_from_prior_receipt_and_lease(
