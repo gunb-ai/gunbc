@@ -1,0 +1,60 @@
+module v2.lens.test_migration_debt
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SingleAuthority }
+
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data test_migration_debt_module_count_baseline: Int = 77
+data test_migration_debt_total_loc_baseline: Int = 28546
+data test_migration_debt_total_test_fns_baseline: Int = 912
+
+fn test_migration_debt_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
+  live_count <= baseline
+}
+
+fn test_migration_debt_live_module_count() -> Int {
+  test_migration_debt_module_count()
+}
+
+fn test_migration_debt_live_total_loc() -> Int {
+  test_migration_debt_total_loc()
+}
+
+fn test_migration_debt_live_total_test_fns() -> Int {
+  test_migration_debt_total_test_fns()
+}
+
+fn test_migration_debt_live_module_names() -> List<String> {
+  test_migration_debt_module_names()
+}
+
+fn test_migration_debt_known_covered_module_is_recognized_as_covered() -> Bool {
+  test_migration_debt_known_covered_module_is_not_debt()
+}
+
+fn test_migration_debt_module_count_ratchet_holds() -> Bool {
+  test_migration_debt_ratchet_holds(
+    live_count: test_migration_debt_live_module_count(),
+    baseline: test_migration_debt_module_count_baseline
+  )
+}
+
+fn test_migration_debt_total_loc_ratchet_holds() -> Bool {
+  test_migration_debt_ratchet_holds(
+    live_count: test_migration_debt_live_total_loc(),
+    baseline: test_migration_debt_total_loc_baseline
+  )
+}
+
+fn test_migration_debt_total_test_fns_ratchet_holds() -> Bool {
+  test_migration_debt_ratchet_holds(
+    live_count: test_migration_debt_live_total_test_fns(),
+    baseline: test_migration_debt_total_test_fns_baseline
+  )
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SingleAuthority }
+}
