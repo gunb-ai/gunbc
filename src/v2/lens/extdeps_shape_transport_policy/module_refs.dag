@@ -1,74 +1,75 @@
 module v2.lens.extdeps_shape_transport_policy.module_refs
+import v2.std.algebra { Cons, Empty }
 
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.qualified_name { QualifiedName }
 
-data extdeps_cargo_build_module: QualifiedName = QnCons {
+data extdeps_cargo_build_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons { head: ^cargo_build, tail: QnEmpty }
+  tail: Cons { head: ^cargo_build, tail: Empty }
 }
 
-data extdeps_git_module: QualifiedName = QnCons {
+data extdeps_git_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons { head: ^git, tail: QnEmpty }
+  tail: Cons { head: ^git, tail: Empty }
 }
 
-data extdeps_gcp_module: QualifiedName = QnCons {
+data extdeps_gcp_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons {
+  tail: Cons {
     head: ^cloud,
-    tail: QnCons { head: ^gcp, tail: QnCons { head: ^gcp, tail: QnEmpty } }
+    tail: Cons { head: ^gcp, tail: Cons { head: ^gcp, tail: Empty } }
   }
 }
 
-data extdeps_github_gists_module: QualifiedName = QnCons {
+data extdeps_github_gists_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons { head: ^github, tail: QnCons { head: ^gists, tail: QnEmpty } }
+  tail: Cons { head: ^github, tail: Cons { head: ^gists, tail: Empty } }
 }
 
-data extdeps_runtime_local_module: QualifiedName = QnCons {
+data extdeps_runtime_local_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons { head: ^runtime, tail: QnCons { head: ^local, tail: QnEmpty } }
+  tail: Cons { head: ^runtime, tail: Cons { head: ^local, tail: Empty } }
 }
 
-data bogus_extdeps_module: QualifiedName = QnCons {
+data bogus_extdeps_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons { head: ^bogus_unknown_module_xyz, tail: QnEmpty }
+  tail: Cons { head: ^bogus_unknown_module_xyz, tail: Empty }
 }
 
-data coverage_domain_equivalence_module: QualifiedName = QnCons {
+data coverage_domain_equivalence_module: QualifiedName = Cons {
   head: ^v2,
-  tail: QnCons {
+  tail: Cons {
     head: ^test,
-    tail: QnCons {
+    tail: Cons {
       head: ^extdeps_shape_transport_policy,
-      tail: QnCons { head: ^coverage_domain_equivalence, tail: QnEmpty }
+      tail: Cons { head: ^coverage_domain_equivalence, tail: Empty }
     }
   }
 }
 
-data module_source_nickname_literal_green_module: QualifiedName = QnCons {
+data module_source_nickname_literal_green_module: QualifiedName = Cons {
   head: ^v2,
-  tail: QnCons {
+  tail: Cons {
     head: ^test,
-    tail: QnCons {
+    tail: Cons {
       head: ^extdeps_shape_transport_policy,
-      tail: QnCons {
+      tail: Cons {
         head: ^lens_unit,
-        tail: QnCons { head: ^module_source_nickname_literal_green, tail: QnEmpty }
+        tail: Cons { head: ^module_source_nickname_literal_green, tail: Empty }
       }
     }
   }
 }
 
-data module_source_nickname_literal_local_red_module: QualifiedName = QnCons {
+data module_source_nickname_literal_local_red_module: QualifiedName = Cons {
   head: ^v2,
-  tail: QnCons {
+  tail: Cons {
     head: ^test,
-    tail: QnCons {
+    tail: Cons {
       head: ^extdeps_shape_transport_policy,
-      tail: QnCons {
+      tail: Cons {
         head: ^lens_unit,
-        tail: QnCons { head: ^module_source_nickname_literal_local_red, tail: QnEmpty }
+        tail: Cons { head: ^module_source_nickname_literal_local_red, tail: Empty }
       }
     }
   }

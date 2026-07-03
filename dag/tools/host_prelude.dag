@@ -79,6 +79,10 @@ fn ensure_infer_semantics_witness_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "INFER_SEMANTICS_WITNESS", bin_name: "infer_semantics_witness")
 }
 
+fn ensure_floor_skip_discovery_witness_built() -> List<ShellStmt> {
+  ensure_bin_built_and_verified(var_name: "FLOOR_SKIP_DISCOVERY_WITNESS", bin_name: "floor_skip_discovery_witness")
+}
+
 fn ensure_claim_batch_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "CLAIM_BATCH", bin_name: "claim_batch")
 }

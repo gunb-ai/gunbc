@@ -126,14 +126,14 @@ pub fn external_authority_scheme_identity_for_module_path(module_path: String) -
 pub fn external_authority_anchor_kind_for_qualified_name(
     qn: &crate::v1_interpreter::Value,
 ) -> String {
-    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
     external_authority_anchor_kind_for_module_path(module_path)
 }
 
 pub fn external_authority_scheme_identity_for_qualified_name(
     qn: &crate::v1_interpreter::Value,
 ) -> String {
-    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
     external_authority_scheme_identity_for_module_path(module_path)
 }
 
@@ -145,7 +145,7 @@ pub fn external_authority_locator_for_module_path(module_path: String) -> String
 }
 
 pub fn external_authority_locator_for_qualified_name(qn: &crate::v1_interpreter::Value) -> String {
-    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
     external_authority_locator_for_module_path(module_path)
 }
 
@@ -164,7 +164,7 @@ pub fn qualified_name_value_from_module_path(
     ctx: &crate::v1_interpreter::InterpContext,
     module_path: &str,
 ) -> crate::v1_interpreter::Value {
-    crate::cli_run::qualified_name_value_from_dotted_string(ctx, module_path)
+    crate::cli_run::free_monoid_symbol_value_from_dotted_string(ctx, module_path)
 }
 
 pub fn derived_extdeps_modules_value(
@@ -214,7 +214,7 @@ pub fn is_backfill_pending_for_module_path(module_path: &str) -> bool {
 }
 
 pub fn is_backfill_pending_for_qualified_name(qn: &crate::v1_interpreter::Value) -> bool {
-    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
     is_backfill_pending_for_module_path(&module_path)
 }
 
@@ -236,7 +236,7 @@ pub fn is_machinery_exempt_for_module_path(module_path: &str) -> bool {
 }
 
 pub fn is_machinery_exempt_for_qualified_name(qn: &crate::v1_interpreter::Value) -> bool {
-    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
     is_machinery_exempt_for_module_path(&module_path)
 }
 
@@ -251,7 +251,7 @@ pub fn is_clean_tree_roster_excluded_for_module_path(module_path: &str) -> bool 
 }
 
 pub fn is_clean_tree_roster_excluded_for_qualified_name(qn: &crate::v1_interpreter::Value) -> bool {
-    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
     is_clean_tree_roster_excluded_for_module_path(&module_path)
 }
 
@@ -350,7 +350,7 @@ pub fn external_authority_anchor_shadow_masked_for_module_path(module_path: Stri
 pub fn external_authority_anchor_shadow_masked_for_qualified_name(
     qn: &crate::v1_interpreter::Value,
 ) -> bool {
-    let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
+    let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
     external_authority_anchor_shadow_masked_for_module_path(module_path)
 }
 
