@@ -160,19 +160,29 @@ purpose: compile the bootstrap source snapshot
   human reviewer can read the whole thing in one sitting (that *is* the trust property DDC needs;
   a reference compiler too large to audit defeats its own purpose).
 
-### 3.4 What agreement means (bytes vs. behavior)
+### 3.4 What agreement means
 
-Two independently-implemented compilers targeting the same backend model on the same frozen
-construct subset can reasonably be required to reach **behavioral** agreement, not necessarily
-byte-identical output (different codegen choices are expected even with no bug on either side).
-Concretely: `v1_pipeline` and `ddc_reference_compiler` each independently compile
-`bootstrap_source_snapshot_root`'s underlying source; both binaries are then run against
+`bootstrap.dag`'s existing witness shape already decides this, and this design does not propose
+changing it (§4 is explicit that the `Witness`/fail-closed shape is out of scope):
+`diverse_compilation_agreement_witness` requires `primary.output_hash.digest ==
+secondary.output_hash.digest` (`bootstrap.dag:581-583`) — **byte-identical digests**, full stop.
+So agreement here is **byte-identical emitted source for the frozen subset, plus identical corpus
+verdicts** — not a looser "behavioral" standard. Concretely: `v1_pipeline` and
+`ddc_reference_compiler` each independently compile `bootstrap_source_snapshot_root`'s underlying
+source, both targeting the same frozen backend representation; both binaries are then run against
 `bootstrap_manual_corpus_harness`'s fixed test entry (`self_host.dag`'s corpus runner is already
-wired for this shape); agreement is defined as **identical corpus verdicts** (pass/fail per
-witness) **and** identical `canonical_emitted_bytes_digest` over each compiler's *own* emitted
-source-for-the-frozen-subset when both target the same backend representation. This mirrors real-
-world DDC practice (behavioral/output equivalence over a fixed corpus, not incidental-bytes
-equivalence) and avoids conflating "different valid codegen" with "disagreement."
+wired for this shape); agreement is **identical corpus verdicts** (pass/fail per witness) **and**
+identical `canonical_emitted_bytes_digest` over each compiler's emitted source for the frozen
+subset.
+
+This is a real constraint on `ddc_reference_compiler`'s scope (§3.3): it is not free to make
+independent codegen choices for the frozen subset — it must emit source that is byte-identical to
+`v1_pipeline`'s output for that closure, which is achievable only because the frozen subset is
+small and its target representation is fixed (`rust_mvp1_target_model`'s bootstrap-relevant slice),
+not because codegen freedom is being waived. If a future stage wants to allow independently-chosen
+codegen (e.g. a reference compiler targeting a different backend entirely), that requires first
+widening `bootstrap.dag`'s witness shape to a semantic/behavioral equality — a load-bearing change
+this design does not propose and which would need its own sign-off.
 
 ## 4. Non-goals / scope fence
 
@@ -224,11 +234,16 @@ equivalence) and avoids conflating "different valid codegen" with "disagreement.
   → `diverse_compilation_agreement_witness` goes `Violates` (today: impossible to construct a red
   case, since `evidence` never reads a real comparison).
 
-- **Stage 4 — wire `bootstrap_seed_honesty_discharge` to Stage 3's real witness.** Delete the
-  `evidence == ^independent_compiler_witness` self-check in `independent_compiler_pair_witness`
-  (`bootstrap.dag:563`); the function takes the Stage-3 `Witness<DiverseCompilationAgreement>` as
-  an argument instead of re-deriving a fake one from atoms. `SeedHonestyDischarge` becomes provable
-  by execution for the first time.
+- **Stage 4 — wire `bootstrap_seed_honesty_discharge` to Stage 3's real witness.** The chain is
+  `IndependentCompilerPair` → `DiverseCompilationAgreement` → `SeedHonestyDischarge`
+  (`bootstrap.dag:558-604`, `602-619`); Stage 3 already routes `evidence`/`compiler` through real
+  `DeclarationRef` pins, so `independent_compiler_pair_witness` no longer needs (and Stage 4
+  deletes) the `evidence == ^independent_compiler_witness` self-check at `bootstrap.dag:563` — its
+  `Holds`/`Violates` verdict now falls out of the pins actually resolving, not an atom comparing
+  itself. The **top-level** `bootstrap_seed_honesty_discharge` binding (`bootstrap.dag:694-716`) is
+  what changes to consume Stage 3's executed `Witness<DiverseCompilationAgreement>` as an argument,
+  replacing the inline fabricated `diverse_compilation_agreement_witness(...)` call built from bare
+  atoms. `SeedHonestyDischarge` becomes provable by execution for the first time.
 
 Stage 1 can proceed in parallel with Stages 2–3 (independent halves of the same gap); Stage 4
 requires both.
