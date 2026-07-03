@@ -2,20 +2,186 @@ module v2.lens.complexity_linearity_audit
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SubstrateMandatoryTag }
+import v2.std.algebra { fold_list, length, contains }
+import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.text { String }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
-  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+// SYNTACTIC wildcard-arm-over-closed-coproduct triage — grounded into this `.dag` lens
+// (same play as #6037/#6042). The Rust bridge (`complexity_linearity_audit_project`) now emits
+// only RAW structural facts (`complexity_linearity_wildcard_facts`, one row per fn carrying a
+// wildcard match arm) plus the migration-debt sub-roster as DATA
+// (`complexity_linearity_migration_debt_roster`); ALL bucket classification lives here — single
+// authority (§3), no dual representation of triage in Rust.
+//
+// DISSOLUTION TRIGGER (named, checkable): `complexity_linearity_wildcard_facts` still requires a
+// Rust parse walk because `decl_facts(roots)` marshals every fn body to a generic `Conj` skeleton
+// (`coproduct_reflection::marshal_generic`), losing `ExprMatch`/wildcard-arm structure. When the
+// skeleton carrier preserves match/pattern nodes (gunbc#5364 real-Node-tree reflection), replace
+// the raw-fact builtin with a pure `.dag` Node-tree reader and this whole module becomes fold-only.
+// Until then the wall is: the bridge parses, the classification is grounded here.
+//
+// NOTE (tracked, not fixed here — out of scope): `is_kernel_permanent_fn` is an fn-name substring
+// heuristic (a §5 validation-not-construction smell) ported faithfully from Rust. It is duplicated
+// with the cost-lens `triage_complexity` (still Rust-only, a different lens at a different migration
+// stage); consolidation waits on that lens grounding.
+
+type ComplexityLinearityWildcardFact {
+  site: String
+  fn_name: String
+  closed_coproduct_wildcard: Bool
+  rostered: Bool
 }
 
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn complexity_linearity_wildcard_facts_live() -> List<ComplexityLinearityWildcardFact> {
+  complexity_linearity_wildcard_facts()
+}
+
+fn complexity_linearity_migration_debt_roster_live() -> List<String> {
+  complexity_linearity_migration_debt_roster()
+}
+
+fn migration_roster_contains(site: String) -> Bool {
+  contains(
+    xs: complexity_linearity_migration_debt_roster_live(),
+    item: site,
+    eq: string_eq
+  )
+}
+
+// Faithful port of the Rust `is_kernel_permanent_fn` substring heuristic (see NOTE above).
+fn is_kernel_permanent_fn(fn_name: String) -> Bool {
+  ends_with(s: fn_name, suffix: "_eq")
+    || string_contains(s: fn_name, pattern: "dominates")
+    || string_contains(s: fn_name, pattern: "lattice_join")
+    || string_contains(s: fn_name, pattern: "lattice_meet")
+    || fn_name == "exit_ok"
+    || string_contains(s: fn_name, pattern: "_relation_eq")
+    || string_contains(s: fn_name, pattern: "_mode_eq")
+    || ends_with(s: fn_name, suffix: "_combine")
+    || fn_name == "constant_bound_value"
+    || fn_name == "is_constant_bound"
+    || fn_name == "create_double_init_collapsible"
+    || fn_name == "create_effect_is_dedupable"
+    || starts_with(s: fn_name, prefix: "compose_sub_value")
+    || fn_name == "promote_to_strict"
+    || starts_with(s: fn_name, prefix: "program_runtime_bool")
+    || fn_name == "is_text_encoding"
+    || fn_name == "is_strict_style_structural"
+}
+
+// Faithful port of the Rust `triage_wildcard` bucket decision tree. Same order:
+// open-domain → migration-debt (roster) → kernel-permanent (irreducible roster) →
+// migration-debt (infer_match special case) → kernel-permanent (name heuristic) →
+// closed-coproduct-debt.
+fn triage_wildcard(fact: ComplexityLinearityWildcardFact) -> String {
+  if !fact.closed_coproduct_wildcard {
+    "open-domain"
+  } else if migration_roster_contains(site: fact.site) {
+    "migration-debt"
+  } else if fact.rostered {
+    "kernel-permanent"
+  } else if string_contains(s: fact.fn_name, pattern: "infer_match")
+    && string_contains(s: fact.site, pattern: "04_infer.dag") {
+    "migration-debt"
+  } else if is_kernel_permanent_fn(fn_name: fact.fn_name) {
+    "kernel-permanent"
+  } else {
+    "closed-coproduct-debt"
+  }
+}
+
+fn count_triage_bucket(bucket: String) -> Int {
+  fold_list(
+    xs: complexity_linearity_wildcard_facts_live(),
+    empty: 0,
+    cons: fn(acc, fact) {
+      if triage_wildcard(fact: fact) == bucket {
+        acc + 1
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn count_rostered() -> Int {
+  fold_list(
+    xs: complexity_linearity_wildcard_facts_live(),
+    empty: 0,
+    cons: fn(acc, fact) {
+      if fact.rostered {
+        acc + 1
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// Grounded wildcard finding count (was a Rust builtin; now derived here from the raw facts).
+fn complexity_linearity_syntactic_wildcard_finding_count_live() -> Int {
+  length(xs: complexity_linearity_wildcard_facts_live())
+}
+
+fn complexity_linearity_wildcard_total_live() -> Int {
+  length(xs: complexity_linearity_wildcard_facts_live())
+}
+
+fn complexity_linearity_wildcard_on_roster_live() -> Int {
+  count_rostered()
+}
+
+fn complexity_linearity_wildcard_off_roster_live() -> Int {
+  complexity_linearity_wildcard_total_live() - count_rostered()
+}
+
+fn complexity_linearity_wildcard_open_domain_live() -> Int {
+  count_triage_bucket(bucket: "open-domain")
+}
+
+fn complexity_linearity_wildcard_migration_debt_live() -> Int {
+  count_triage_bucket(bucket: "migration-debt")
+}
+
+fn complexity_linearity_wildcard_kernel_permanent_live() -> Int {
+  count_triage_bucket(bucket: "kernel-permanent")
+}
+
+fn complexity_linearity_wildcard_closed_coproduct_debt_live() -> Int {
+  count_triage_bucket(bucket: "closed-coproduct-debt")
+}
+
+// Triage bucket for a named site (first matching wildcard fact); "none" if the site carries
+// no wildcard match arm in the live corpus.
+fn complexity_linearity_wildcard_triage_for_site(site: String) -> String {
+  fold_list(
+    xs: complexity_linearity_wildcard_facts_live(),
+    empty: "none",
+    cons: fn(acc, fact) {
+      if acc == "none" && fact.site == site {
+        triage_wildcard(fact: fact)
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+// Cost+wildcard combined finding-count / site-fired surface stays a Rust pass-through: it spans
+// the cost lens (`syntactic_high_match_fanout`) whose triage is not grounded in this PR.
 fn complexity_linearity_syntactic_finding_count_live() -> Int {
   complexity_linearity_syntactic_finding_count()
 }
 
-fn complexity_linearity_syntactic_wildcard_finding_count_live() -> Int {
-  complexity_linearity_syntactic_wildcard_finding_count()
-}
-
 fn complexity_linearity_syntactic_site_fired_live(site: String) -> Bool {
   complexity_linearity_syntactic_site_fired(site: site)
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

@@ -490,41 +490,41 @@ mod tests {
         );
     }
 
+    // Triage itself (bucket strings) is grounded + verified in
+    // `src/v2/test/claim/complexity_linearity/syntactic_audit_witness_test.dag`. Here we assert only
+    // the RAW facts that drive it: presence, `rostered`, and migration-debt roster membership.
     #[test]
-    fn eval_interpreter_handlers_tagged_eval_interpreter_debt() {
-        let summary = audit_corpus_default_roots();
+    fn eval_interpreter_handler_is_migration_debt_raw_fact() {
+        let facts = complexity_linearity_wildcard_facts();
         let eval_bind_site = "src/v2/compiler/05_eval.dag::eval_bind_node_eval";
         assert!(
-            !summary
-                .findings
-                .iter()
-                .any(|f| { f.site == eval_bind_site && f.rule == "syntactic_match_wildcard_arm" }),
-            "eval_bind_node_eval wildcard dissolved; should not fire syntactic_match_wildcard_arm"
+            !facts.iter().any(|f| f.site == eval_bind_site),
+            "eval_bind_node_eval wildcard dissolved; should not appear in wildcard facts"
         );
         let site = "src/v2/compiler/05_eval.dag::eval_match_node_eval";
-        let finding = summary.findings.iter().find(|f| f.site == site);
-        assert!(finding.is_some(), "expected syntactic finding for {site}");
-        assert_eq!(
-            finding.unwrap().triage,
-            "migration-debt",
-            "expected migration-debt triage for {site} (roster bucket precedes eval-interpreter tag)"
+        let fact = facts.iter().find(|f| f.site == site);
+        assert!(fact.is_some(), "expected wildcard fact for {site}");
+        assert!(
+            fact.unwrap().rostered,
+            "{site} must be rostered (drives migration-debt/kernel-permanent triage in .dag)"
+        );
+        let migration_roster = complexity_linearity_migration_debt_roster();
+        assert!(
+            migration_roster.iter().any(|s| s == site),
+            "{site} must be in the migration-debt roster (→ migration-debt triage)"
         );
     }
 
     #[test]
-    fn closed_coproduct_wildcard_tags_testgen_anchor_match() {
-        let summary = audit_corpus_default_roots();
-        let finding = summary.findings.iter().find(|f| {
-            f.site == "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim"
-        });
+    fn testgen_anchor_match_is_migration_debt_raw_fact() {
+        let site = "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim";
+        let facts = complexity_linearity_wildcard_facts();
+        let fact = facts.iter().find(|f| f.site == site);
+        assert!(fact.is_some(), "expected wildcard fact for testgen anchor match");
+        let migration_roster = complexity_linearity_migration_debt_roster();
         assert!(
-            finding.is_some(),
-            "expected syntactic finding for testgen anchor match"
-        );
-        assert_eq!(
-            finding.unwrap().triage,
-            "migration-debt",
-            "enrolled ManualAnchorKey wildcard sites are migration-debt"
+            migration_roster.iter().any(|s| s == site),
+            "enrolled ManualAnchorKey wildcard site must be in migration-debt roster"
         );
     }
 

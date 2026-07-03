@@ -5904,10 +5904,35 @@ fn eval_builtin(
             crate::complexity_linearity_audit_project::complexity_linearity_syntactic_finding_count(
             ),
         ))),
-        "complexity_linearity_syntactic_wildcard_finding_count" => Ok(Some(Value::Int(
-            crate::complexity_linearity_audit_project::complexity_linearity_syntactic_wildcard_finding_count(
-            ),
-        ))),
+        "complexity_linearity_wildcard_facts" => {
+            let facts =
+                crate::complexity_linearity_audit_project::complexity_linearity_wildcard_facts();
+            let mut items: Vec<Value> = Vec::new();
+            for f in facts {
+                items.push(Value::Record {
+                    type_name: ctx.sym("ComplexityLinearityWildcardFact"),
+                    fields: Rc::new(sorted_fields(vec![
+                        (
+                            ctx.sym("closed_coproduct_wildcard"),
+                            Value::Bool(f.closed_coproduct_wildcard),
+                        ),
+                        (ctx.sym("fn_name"), Value::Str(f.fn_name.clone())),
+                        (ctx.sym("rostered"), Value::Bool(f.rostered)),
+                        (ctx.sym("site"), Value::Str(f.site.clone())),
+                    ])),
+                });
+            }
+            Ok(Some(list_value(items)))
+        }
+
+        "complexity_linearity_migration_debt_roster" => {
+            let roster =
+                crate::complexity_linearity_audit_project::complexity_linearity_migration_debt_roster();
+            Ok(Some(list_value(
+                roster.into_iter().map(Value::Str).collect::<Vec<_>>(),
+            )))
+        }
+
         "complexity_linearity_syntactic_site_fired" => {
             let site = expect_str(
                 positional.first().copied(),
