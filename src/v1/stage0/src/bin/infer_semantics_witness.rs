@@ -4,12 +4,13 @@ use std::collections::HashMap;
 use std::process::ExitCode;
 use std::rc::Rc;
 
+use v1_compiler::cli_run::workspace_root;
 use v1_compiler::std_induction::SubValueRelation;
+use v1_compiler::std_types::container_param_name;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::{
     compile_sources, compile_to_resolved, PipelineResult, ResolvedPipelineResult, SourceFile,
 };
-use v1_compiler::std_types::container_param_name;
 use v1_compiler::v1_compiler_infer::InferScope;
 use v1_compiler::v1_compiler_infer_access;
 use v1_compiler::v1_compiler_infer_env::lookup_type_by_name;
@@ -32,15 +33,6 @@ use v1_compiler::v1_std_core::{
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
     eprintln!("infer_semantics_witness: {msg}");
     ExitCode::from(1)
-}
-
-fn workspace_root() -> std::path::PathBuf {
-    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest_dir
-        .ancestors()
-        .nth(2)
-        .expect("could not find workspace root")
-        .to_path_buf()
 }
 
 fn source_roots() -> [std::path::PathBuf; 2] {
@@ -93,16 +85,11 @@ fn build_module_index() -> HashMap<String, std::path::PathBuf> {
 fn extract_imports(source: &str) -> Vec<String> {
     let tokens =
         v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string());
-    let source_index = v1_compiler::v1_std_core::build_newline_index(
-        "test.dag".to_string(),
-        source.to_string(),
-    );
+    let source_index =
+        v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
     let mut source_indices = HashMap::new();
     source_indices.insert("test.dag".to_string(), source_index);
-    let result = v1_compiler::v1_compiler_parse::parse(
-        tokens,
-        Rc::new(source_indices),
-    );
+    let result = v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices));
     match &result.module {
         Some(module) => v1_compiler::v1_std_core::module_imports(module.clone())
             .iter()
@@ -145,7 +132,13 @@ fn resolve_imports_transitively(
             }
         }
     }
-    seen.into_values().collect()
+
+    let mut sources: Vec<Rc<SourceFile>> = seen.into_values().collect();
+    sources.push(Rc::new(SourceFile {
+        path: entry_path.to_string(),
+        content: entry_content.to_string(),
+    }));
+    sources
 }
 
 fn compile_dag(source: &str) -> Rc<PipelineResult> {
