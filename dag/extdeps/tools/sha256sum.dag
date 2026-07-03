@@ -1,7 +1,16 @@
 module extdeps.tools.sha256sum
 
 import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 import extdeps.tools { CliTool, SourceCoreutils }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.gnu.org/software/coreutils/manual/coreutils.html"
+  }
+}
 
 data sha256sum_cli_tool: CliTool = CliTool {
   name: "sha256sum",
