@@ -8342,10 +8342,11 @@ mod inert_carrier_tests {
 
 // --- Complexity/linearity syntactic audit (folded from complexity_linearity_audit_project.rs) ---
 //
-// Thin host builtins over `decl_facts` + fn-body AST walk. Triage/bucket classification lives in
-// `v2.lens.complexity_linearity_audit` (.dag); migration-debt roster is on-carrier there too.
-// DISSOLUTION: fold the AST walk into a pure `.dag` Node-tree reader when expr introspection
-// grounds on the #5364 corpus accessor (same seam as non_fold_residue_* / inert_carrier_*).
+// Thin host builtins over `decl_facts` + fn-body AST walk. Triage/bucket classification and the
+// migration-debt roster live in `v2.lens.complexity_linearity_audit` (.dag).
+// REMAINING GATE (#5364 partial): `decl_facts` exposes corpus `Node`s but v2 `.dag` has no
+// `expr_data` / `MatchPattern` introspection — the wildcard-arm walk stays in this host seam
+// until a `.dag`-accessible match-body reader lands (same residue class as inert_carrier_*).
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ComplexityLinearityAuditFinding {
