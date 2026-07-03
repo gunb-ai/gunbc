@@ -10710,12 +10710,13 @@ mod doc_reachability_tests {
 mod import_closure_equivalence_tests {
     use super::{
         build_module_index, build_module_graph_facts_live, build_multi_entry_index,
-        closure_subject_for_entry, default_source_roots, import_closure_live_paths,
-        module_graph_facts_build_count_for_test, reset_module_graph_facts_build_count_for_test,
-        resolve_transitively, resolve_transitively_bfs_legacy, workspace_relative_repo_path,
-        witness_layer_roots,
+        closure_subject_for_entry, default_source_roots, discover_floor_corpus_rows,
+        import_closure_live_paths, module_graph_facts_build_count_for_test,
+        reset_module_graph_facts_build_count_for_test, resolve_transitively,
+        resolve_transitively_bfs_legacy, workspace_relative_repo_path, witness_discovery_scan_dirs,
+        witness_layer_roots, FLOOR_DISCOVERY_EXCLUDES,
     };
-    use std::collections::HashMap;
+    use std::collections::{BTreeSet, HashMap};
     use std::path::PathBuf;
     use std::rc::Rc;
 
@@ -10736,10 +10737,13 @@ mod import_closure_equivalence_tests {
             .collect()
     }
 
-    fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
+    fn assert_bfs_matches_import_closure_live_with_facts(
+        entry_rel: &str,
+        index: &super::ModuleSourceIndex,
+        facts: &super::ModuleGraphFactsLive,
+    ) {
         let ws = workspace_root();
         let entry_abs = ws.join(entry_rel);
-        let index = build_module_index(pool_roots);
         let content = std::fs::read_to_string(&entry_abs)
             .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
         let entry_source = Rc::new(crate::v1_compiler_compile::SourceFile {
@@ -10750,14 +10754,13 @@ mod import_closure_equivalence_tests {
         if let Some(mod_path) = super::extract_module_path(&entry_source.content) {
             seen.insert(mod_path, entry_source.clone());
         }
-        let bfs = resolve_transitively_bfs_legacy(vec![entry_source.clone()], &index, seen);
-        let facts = super::build_module_graph_facts_live(pool_roots);
-        let repointed = resolve_transitively(vec![entry_source], &index, &facts)
+        let bfs = resolve_transitively_bfs_legacy(vec![entry_source.clone()], index, seen);
+        let repointed = resolve_transitively(vec![entry_source], index, facts)
             .unwrap_or_else(|e| panic!("resolve_transitively {entry_rel}: {e}"));
-        let live = super::import_closure_live_paths_with_facts(entry_rel, &facts);
+        let live = super::import_closure_live_paths_with_facts(entry_rel, facts);
         let bfs_paths = closure_paths(&bfs);
         let repointed_paths = closure_paths(&repointed);
-        let live_paths: std::collections::BTreeSet<String> = live
+        let live_paths: BTreeSet<String> = live
             .iter()
             .map(|p| workspace_relative_repo_path(p))
             .collect();
@@ -10769,6 +10772,44 @@ mod import_closure_equivalence_tests {
             live_paths, bfs_paths,
             "import_closure_live diverged from legacy BFS for {entry_rel}"
         );
+    }
+
+    fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
+        let index = build_module_index(pool_roots);
+        let facts = super::build_module_graph_facts_live(pool_roots);
+        assert_bfs_matches_import_closure_live_with_facts(entry_rel, &index, &facts);
+    }
+
+    fn floor_corpus_unique_entry_paths() -> BTreeSet<String> {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir to workspace root");
+        let roots = default_source_roots();
+        let scan_dirs = witness_discovery_scan_dirs();
+        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let rows = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes)
+            .unwrap_or_else(|e| panic!("floor discovery for import-closure semantic oracle: {e}"));
+        rows.into_iter()
+            .map(|row| workspace_relative_repo_path(&row.entry))
+            .collect()
+    }
+
+    #[test]
+    fn import_closure_live_matches_legacy_bfs_on_whole_floor_corpus() {
+        let roots = default_source_roots();
+        let entries = floor_corpus_unique_entry_paths();
+        assert!(
+            entries.len() >= 4,
+            "import-closure semantic oracle expects the full floor roster (got {})",
+            entries.len()
+        );
+        let index = build_module_index(&roots);
+        let facts = super::build_module_graph_facts_live(&roots);
+        for entry_rel in entries {
+            assert_bfs_matches_import_closure_live_with_facts(&entry_rel, &index, &facts);
+        }
     }
 
     #[test]
