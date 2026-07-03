@@ -5878,10 +5878,7 @@ mod node_frontier_plumbing_controls {
         let edits = floor_diff_edits_from_line_ranges(&index, &ranges)
             .expect("import+fn diff must not fail-closed to full corpus");
         assert!(
-            edits
-                .touched_entry_files
-                .iter()
-                .any(|f| f == emit_rel),
+            edits.touched_entry_files.iter().any(|f| f == emit_rel),
             "import preamble + fn body must touch the entry file"
         );
     }
