@@ -5871,6 +5871,24 @@ fn eval_builtin(
         ))),
         "doc_graph_doc_count" => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
 
+        "test_migration_debt_module_count" => Ok(Some(Value::Int(
+            crate::cli_run::test_migration_debt_module_count(),
+        ))),
+        "test_migration_debt_total_loc" => Ok(Some(Value::Int(
+            crate::cli_run::test_migration_debt_total_loc(),
+        ))),
+        "test_migration_debt_total_test_fns" => Ok(Some(Value::Int(
+            crate::cli_run::test_migration_debt_total_test_fns(),
+        ))),
+        "test_migration_debt_module_names" => {
+            let names = crate::cli_run::test_migration_debt_module_names();
+            let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
+            Ok(Some(list_value(items)))
+        }
+        "test_migration_debt_known_covered_module_is_not_debt" => Ok(Some(Value::Bool(
+            crate::cli_run::test_migration_debt_known_covered_module_is_not_debt(),
+        ))),
+
         "inert_carrier_names_live" => {
             let names = crate::cli_run::inert_carrier_names_live();
             let items: Vec<Value> = names.into_iter().map(Value::Str).collect();
