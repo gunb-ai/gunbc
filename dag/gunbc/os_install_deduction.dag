@@ -90,13 +90,6 @@ fn fold_os_install_preflight_verdict(
   }
 }
 
-fn preflight_verdict_allows_ready_to_boot(verdict: OsInstallPreflightVerdict) -> Bool {
-  match verdict {
-    CompleteForUnattended => true
-    _ => false
-  }
-}
-
 fn plan_for_os_install_preflight_verdict(
   verdict: OsInstallPreflightVerdict,
 ) -> OsInstallPreflightPlan {
@@ -127,21 +120,5 @@ fn runtime_verdict_from_kvm_attestation(
     UefiBootMenu => KvmFirmwareIdleObserved
     GrubMenu => InstallerRunning
     ErrorScreen { summary: _ } => InstallerHung
-  }
-}
-
-fn runtime_verdict_implies_installer_awaiting_storage(
-  verdict: OsInstallRuntimeDiagnosticVerdict,
-) -> Bool {
-  match verdict {
-    InstallerAwaitingStorage => true
-    _ => false
-  }
-}
-
-fn runtime_verdict_implies_os_installed(verdict: OsInstallRuntimeDiagnosticVerdict) -> Bool {
-  match verdict {
-    OsInstalled => true
-    _ => false
   }
 }

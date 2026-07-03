@@ -29,7 +29,6 @@ import gunbc.os_install_deduction {
   NotUnattendedByPolicy,
   IncompleteSeedDelivery,
   fold_os_install_preflight_verdict,
-  preflight_verdict_allows_ready_to_boot,
   plan_for_os_install_preflight_verdict,
   RemasterWithStoragePolicy,
   RefuseUntilStoragePolicyDeclared,
