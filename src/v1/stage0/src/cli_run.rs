@@ -10183,6 +10183,7 @@ mod import_closure_equivalence_tests {
     #[test]
     fn module_graph_facts_scanned_once_per_multi_entry_index_hot_path() {
         reset_module_graph_facts_build_count_for_test();
+        let ws = workspace_root();
         let roots = default_source_roots();
         let index = build_multi_entry_index(&roots);
         assert_eq!(
@@ -10190,15 +10191,21 @@ mod import_closure_equivalence_tests {
             1,
             "module graph facts must be built once with MultiEntryIndex"
         );
-        let budget = "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag";
-        let fold = "src/v2/test/claim/fold_list_generic_instantiation.dag";
-        resolve_entry_with_index(&index, budget).expect("budget_roster resolve");
+        let budget = ws
+            .join("src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag")
+            .to_string_lossy()
+            .into_owned();
+        let fold = ws
+            .join("src/v2/test/claim/fold_list_generic_instantiation.dag")
+            .to_string_lossy()
+            .into_owned();
+        resolve_entry_with_index(&index, &budget).expect("budget_roster resolve");
         assert_eq!(
             module_graph_facts_build_count_for_test(),
             1,
             "budget_roster resolve must not re-scan corpus for facts"
         );
-        resolve_entry_with_index(&index, fold).expect("fold_list resolve");
+        resolve_entry_with_index(&index, &fold).expect("fold_list resolve");
         assert_eq!(
             module_graph_facts_build_count_for_test(),
             1,
