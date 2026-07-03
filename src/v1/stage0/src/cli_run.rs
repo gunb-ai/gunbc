@@ -3601,8 +3601,12 @@ fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, Hash
             continue;
         };
         if let Some(_add) = line.strip_prefix('+') {
-            out.entry(file).or_default().insert(new_line);
+            out.entry(file.clone()).or_default().insert(new_line);
             new_line += 1;
+        } else if line.starts_with('-') {
+            // Pure deletions advance only the old-file cursor; attribute at the new-file
+            // position where the removal occurred (same line for consecutive `-` rows).
+            out.entry(file).or_default().insert(new_line);
         } else if line.starts_with(' ') {
             new_line += 1;
         }
@@ -4104,7 +4108,18 @@ fn floor_diff_edits_from_line_ranges(
         }
         decls.sort_by_key(|(line, _, _)| *line);
         let first_decl_line = decls[0].0;
-        let changed = changed_new_lines_for_file(changed_new_lines_by_file, file_path, &file_norm);
+        let mut changed =
+            changed_new_lines_for_file(changed_new_lines_by_file, file_path, &file_norm);
+        // Deletion-only hunks (`-` rows, zero `+` width) still carry a new-side anchor in the
+        // hunk header; fall back to parsed ranges when no `+`/`-` rows were attributed.
+        if changed.is_empty() {
+            for r in ranges {
+                let end = if r.end < r.start { r.start } else { r.end };
+                for l in r.start..=end {
+                    changed.insert(l);
+                }
+            }
+        }
         // Module-line edits (line 1) stay fail-closed — renaming can change entry identity.
         if changed.contains(&1) {
             return Err(format!("diff before first declaration in {file_path}"));
@@ -4661,13 +4676,13 @@ fn run_discovery_rows(
 mod floor_skip_frontier_tests {
     use super::{
         build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
-        list_value_from_vec, parse_unified_diff_line_ranges, rerun_frontier_nodes_for_entry,
-        scan_test_decl_lines, FileLineRange,
+        list_value_from_vec, parse_unified_diff_changed_new_lines, parse_unified_diff_line_ranges,
+        rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange,
     };
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
     use crate::v1_std_core::{authored_name_at, byte_to_line_col};
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -4732,6 +4747,21 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
                 end: 103
             }])
         );
+    }
+
+    #[test]
+    fn parse_unified_diff_changed_new_lines_includes_deletions() {
+        let diff = "\
+diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
+--- a/src/v2/lens/affected_set.dag
++++ b/src/v2/lens/affected_set.dag
+@@ -42,2 +42,0 @@
+-removed_a
+-removed_b
+";
+        let changed = parse_unified_diff_changed_new_lines(diff);
+        let file = "src/v2/lens/affected_set.dag";
+        assert_eq!(changed.get(file), Some(&HashSet::from([42])));
     }
 
     #[test]
@@ -5648,6 +5678,13 @@ mod node_frontier_plumbing_controls {
         )
     }
 
+    fn deletion_diff_at(file: &str, line: i64) -> String {
+        format!(
+            "diff --git a/{file} b/{file}\n--- a/{file}\n+++ b/{file}\n\
+             @@ -{line},1 +{line},0 @@\n-// synthetic deletion\n"
+        )
+    }
+
     fn setup_roots(ws: &PathBuf) -> Vec<String> {
         vec![
             ws.join("src/v2").to_string_lossy().into_owned(),
@@ -5718,6 +5755,30 @@ mod node_frontier_plumbing_controls {
                 .iter()
                 .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
             "diff at test fn declaration line must populate edited_test_fns with the function name"
+        );
+    }
+
+    #[test]
+    fn deletion_only_hunk_populates_edited_test_fns() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let text = std::fs::read_to_string(FIXTURE).expect("fixture readable");
+        let test_fn_line = text
+            .lines()
+            .position(|l| l.contains("test fn floor_disc_witness_a_only_holds"))
+            .map(|i| (i + 1) as i64)
+            .expect("witness A test fn line");
+        let diff = deletion_diff_at(FIXTURE, test_fn_line);
+        let seeds =
+            floor_diff_edits_from_diff_text(&index, &diff).expect("seeds from deletion-only diff");
+        assert!(
+            seeds
+                .edited_test_fns
+                .iter()
+                .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
+            "deletion-only diff at test fn line must populate edited_test_fns"
         );
     }
 
@@ -5916,38 +5977,11 @@ mod node_frontier_plumbing_controls {
     #[test]
     fn import_preamble_plus_fn_body_populates_touched_entry_not_fail_closed() {
         let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = setup_roots(&ws);
         let index = build_multi_entry_index(&roots);
         let emit_rel = "dag/extdeps/languages/json/emit.dag";
-        // Canonical unified diff (space-prefixed context lines) — matches git diff output.
-        let diff = "\
-diff --git a/dag/extdeps/languages/json/emit.dag b/dag/extdeps/languages/json/emit.dag
---- a/dag/extdeps/languages/json/emit.dag
-+++ b/dag/extdeps/languages/json/emit.dag
-@@ -1,7 +1,7 @@
- module extdeps.languages.json.emit
- 
- import extdeps.external_authority { ExternalAuthority }
--import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme }
-+import extdeps.languages.json.grammar { JsonNumberLexeme, json_int_lexeme, json_number_lexeme }
- import extdeps.uri { Uri, Https }
- 
- data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-@@ -40,6 +40,13 @@ fn json_int(n: Int) -> JsonValue {
-   JsonNumber { lexeme: json_int_lexeme(n: n) }
- }
- 
-+fn json_number_from_lexeme_string(s: String) -> JsonValue? {
-+  match json_number_lexeme(s: s) {
-+    Present { value: l } => Present { value: JsonNumber { lexeme: l } }
-+    Absent => none
-+  }
-+}
-+
- fn json_string(s: String) -> JsonValue {
-   JsonString { value: s }
- }
-";
+        let diff = include_str!("../testdata/emit_import_preamble_fn_body.diff");
         let edits = floor_diff_edits_from_diff_text(&index, &diff)
             .expect("import+fn diff must not fail-closed to full corpus");
         assert!(
