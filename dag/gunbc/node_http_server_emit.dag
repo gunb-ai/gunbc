@@ -14,7 +14,6 @@ import extdeps.http.server {
   HttpServerRoute,
   HttpServerParameter,
   HttpStatusResponse,
-  HttpRequestBodyKind,
   NoRequestBody,
   JsonRequestBody,
   PathInput,
@@ -28,7 +27,6 @@ import extdeps.http.server {
   PathParamArgvSegment,
   HttpContentType,
   TextHtmlUtf8,
-  ApplicationJsonUtf8,
   http_content_type_wire_label,
 }
 import gunbc.gunbhub_serve { gunbhub_served_static_route_table }
@@ -695,7 +693,7 @@ fn roadmap_dashboard_node_http_server_source() -> String {
 }
 
 fn toy_dynamic_route_path_template() -> PathTemplate {
-  match parse_path_template(raw: "/toy/:msg") {
+  match parse_path_template(raw: concat("/toy/", "{", "msg", "}")) {
     ParsedPathTemplate { template: t } => t
     MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
       PathTemplate { tokens: [LiteralToken { text: "toy" }, ParamToken { name: "msg" }] }
