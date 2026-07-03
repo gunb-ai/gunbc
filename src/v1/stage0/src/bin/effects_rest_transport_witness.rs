@@ -5,15 +5,15 @@ use std::process::ExitCode;
 use std::rc::Rc;
 
 use v1_compiler::cli_run::workspace_root;
+use v1_compiler::extdeps_uri_path::{parse_path_template, PathTemplateParseResult};
 use v1_compiler::rest_transport_facts::{
     collect_rest_transport_operations, DeclaredRestTransportOp,
 };
 use v1_compiler::std_effects::{
-    derive_op_effect, generate_idempotency_obligations, is_idempotent_effect,
-    DeriveOpEffectResult, EffectShape, HttpMethod,
+    derive_op_effect, generate_idempotency_obligations, is_idempotent_effect, DeriveOpEffectResult,
+    EffectShape, HttpMethod,
 };
 use v1_compiler::std_http_path::PathTemplate;
-use v1_compiler::extdeps_uri_path::{parse_path_template, PathTemplateParseResult};
 use v1_compiler::v1_compiler_parse::parse;
 use v1_compiler::v1_compiler_tokenize::tokenize;
 use v1_compiler::v1_std_core::{build_newline_index, NewlineIndex, Node};
@@ -95,10 +95,7 @@ fn parse_extdep_module(relative_path: &str) -> (Rc<Node>, Rc<HashMap<String, Rc<
         .to_string();
     let tokens = tokenize(source.clone(), filename.clone());
     let mut source_indices = HashMap::new();
-    source_indices.insert(
-        filename.clone(),
-        build_newline_index(filename, source),
-    );
+    source_indices.insert(filename.clone(), build_newline_index(filename, source));
     let source_indices = Rc::new(source_indices);
     let result = parse(tokens, source_indices.clone());
     if let Some(err) = result.error.as_ref() {
@@ -178,11 +175,7 @@ fn main() -> ExitCode {
     }
 
     for op in &tracked {
-        let result = derive_op_effect(
-            op.name.clone(),
-            method_ok(&op.method),
-            parse_path(&op.path),
-        );
+        let result = derive_op_effect(op.name.clone(), method_ok(&op.method), parse_path(&op.path));
         if !matches!(&*result, DeriveOpEffectResult::DerivedEffect { .. }) {
             return fail(format!(
                 "failed to derive effect for {} ({} {})",
@@ -194,11 +187,8 @@ fn main() -> ExitCode {
     let derived: Vec<_> = tracked
         .iter()
         .map(|op| {
-            let result = derive_op_effect(
-                op.name.clone(),
-                method_ok(&op.method),
-                parse_path(&op.path),
-            );
+            let result =
+                derive_op_effect(op.name.clone(), method_ok(&op.method), parse_path(&op.path));
             match &*result {
                 DeriveOpEffectResult::DerivedEffect { effect } => effect.clone(),
                 _ => unreachable!(),
@@ -220,9 +210,9 @@ fn main() -> ExitCode {
 
     for d in &derived {
         if is_idempotent_effect(d.shape.clone())
-            && !obligations.iter().any(|o| {
-                o.operation_name == d.operation_name && o.effect_shape == d.shape
-            })
+            && !obligations
+                .iter()
+                .any(|o| o.operation_name == d.operation_name && o.effect_shape == d.shape)
         {
             return fail(format!(
                 "missing obligation for idempotent op {}",
