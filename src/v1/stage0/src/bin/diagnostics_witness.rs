@@ -251,7 +251,7 @@ fn reexport_surface_missing_variant(module_index: &ModuleIndex) {
 }
 
 /// Golden: UnresolvedType names the unknown type; ArityMismatch fires on bare containers
-/// but not on parameterized uses of the same container.
+/// but not on parameterized std containers or user-defined types.
 fn type_and_arity_discrimination(module_index: &ModuleIndex) {
     let unresolved_source = "module types\ntype Wrapper { inner: Bogus }\n";
     let unresolved_result = compile_multi(module_index, &[("types.dag", unresolved_source)]);
@@ -284,6 +284,15 @@ fn type_and_arity_discrimination(module_index: &ModuleIndex) {
         !has_arity_mismatch(&parameterized_result),
         "parameterized List<Int> should not trigger ArityMismatch, got: {:?}",
         diagnostic_messages(&parameterized_result)
+    );
+
+    let user_defined =
+        "module custom\ntype Widget { label: String }\ntype Bag { item: Widget }\n";
+    let user_defined_result = compile_multi(module_index, &[("custom.dag", user_defined)]);
+    assert!(
+        !has_arity_mismatch(&user_defined_result),
+        "user-defined type should not trigger ArityMismatch, got: {:?}",
+        diagnostic_messages(&user_defined_result)
     );
 }
 
