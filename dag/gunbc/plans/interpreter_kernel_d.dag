@@ -6,7 +6,7 @@ import gunbc.plans.md_helpers { h2, p, li, ol, ul, cell, row }
 
 fn interpreter_kernel_d_body() -> List<MarkdownBlock> {
   [
-    p(text: "**Status:** design-first (2026-06-29). Parent `sunny-crab-671` seed burn-down, **HAND kernel D**. **This slice:** lands `gunbc.interpreter_kernel_model` + pure `.dag` floor witness only — no `v1_interpreter.rs` emit flip, no `HAND_MAINTAINED` registry edit, no `regen --verify` flip. Mirrors #5894 / `compile_source_model` sequencing."),
+    p(text: "**Status:** design-first (2026-06-29). Parent `sunny-crab-671` seed burn-down, **HAND kernel D**. **Original slice (landed):** `gunbc.interpreter_kernel_model` + pure `.dag` floor witness — no `v1_interpreter.rs` emit flip, no `regen --verify` flip. **Follow-on (this track):** dissolve HAND modules verified as pure fact-projection (zero fs/net/process) — `rest_transport_facts` · `wire_value_serialize` folded into `cli_run.rs` (#6217) — including targeted `HAND_MAINTAINED` registry and `05_emit_rust.dag` patch-hook edits for those modules only."),
     h2(text: "0. Verdict — pure-eval authority vs pinned host-physics"),
     p(text: "`v1_interpreter.rs` (~6.3k LOC, `HAND_MAINTAINED_STAGE0_FILES`) is a **hybrid**: pure expression evaluation + host-effect dispatch (shell / REST / file / fixture replay / caches). Total dissolution is not one file delete — the seam splits on **decidability**: pure-eval grounds into `v2.compiler.eval` + `emit_host`; host-physics (transports / fixtures / cache backends) is the **terminal irreducible kernel** (seed-shrink-census §6)."),
     TableBlock {
@@ -27,12 +27,11 @@ fn interpreter_kernel_d_body() -> List<MarkdownBlock> {
       li(text: "`recorded_fixture.rs` — hermetic service replay store (M4/M5 consolidation target)."),
       li(text: "`resolved_graph_cache.rs` — cross-run resolve memo (content-hash keyed) + warm==cold cache-purity oracle (`audit_warm_equals_cold`)."),
     ]),
-    h2(text: "3. Explicit non-goals (this slice)"),
+    h2(text: "3. Explicit non-goals (remaining)"),
     ul(items: [
       li(text: "No `v1_interpreter.rs` refactor or LOC deletion."),
-      li(text: "No `regen_stage0.rs` `HAND_MAINTAINED_STAGE0_FILES` edit."),
-      li(text: "No `05_emit_rust.dag` emitter edit."),
       li(text: "No `emit_host.dag` `run_host_process` wiring (transport realization PR)."),
+      li(text: "No `regen --verify` flip or bulk HAND→GENERATED cutover (per-module dissolution only)."),
     ]),
     h2(text: "4. Discriminating witness (follow-on PRs)"),
     ul(items: [
