@@ -80,7 +80,11 @@ run_floor_labeled() {
   log="$(mktemp "${TMPDIR:-/tmp}/b1-floor-${label}.XXXXXX.log")"
   start=$(date +%s)
   set +e
-  "$@" >"$log" 2>&1
+  if command -v stdbuf >/dev/null 2>&1; then
+    stdbuf -oL -eL "$@" >"$log" 2>&1
+  else
+    "$@" >"$log" 2>&1
+  fi
   rc=$?
   set -e
   end=$(date +%s)
@@ -90,6 +94,11 @@ run_floor_labeled() {
   echo "[b1-measurement] label=${label} exit=${rc} wall_seconds=${elapsed} peak_rss=${peak_rss:-unavailable}"
   [[ -n "$cgroup_line" ]] && echo "[b1-measurement] ${cgroup_line#\[measurement\] }"
   echo "[b1-measurement] log=${log}"
+  case "$label" in
+    uncapped) UNCAPPED_PEAK="${peak_rss:-}"; UNCAPPED_WALL="$elapsed"; UNCAPPED_EXIT="$rc" ;;
+    cap-8g) EXIT_8G="$rc" ;;
+    cap-24g) EXIT_24G="$rc" ;;
+  esac
   return "$rc"
 }
 
@@ -137,31 +146,30 @@ run_capped() {
   fi
   echo "b1: capped run (${cap_label}) requires docker or writable cgroup-v2 — neither available" >&2
   echo "[b1-measurement] label=cap-${cap_label} exit=127 wall_seconds=0 peak_rss=unavailable reason=no_cap_enforcer"
+  case "$cap_label" in
+    8g|8G) EXIT_8G=127 ;;
+    24g|24G) EXIT_24G=127 ;;
+  esac
   return 127
 }
 
-SUMMARY_FILE="${TMPDIR:-/tmp}/b1-floor-summary-$$.txt"
-: >"$SUMMARY_FILE"
-
-record_summary() {
-  printf '%s\n' "$1" >>"$SUMMARY_FILE"
-}
+UNCAPPED_PEAK=""
+UNCAPPED_WALL=""
+UNCAPPED_EXIT=""
+EXIT_8G=""
+EXIT_24G=""
 
 if [[ "$MODE" == "all" || "$MODE" == "uncapped" ]]; then
-  if run_floor_labeled "uncapped" "${FLOOR_CMD[@]}"; then
-    uncapped_exit=0
-  else
-    uncapped_exit=$?
-  fi
-  uncapped_line="$(rg 'label=uncapped' "$SUMMARY_FILE" 2>/dev/null || true)"
-  record_summary "[b1-summary] uncapped_exit=${uncapped_exit}"
+  run_floor_labeled "uncapped" "${FLOOR_CMD[@]}" || true
 fi
 
 if [[ "$MODE" == "all" ]]; then
-  run_capped 8g || record_summary "[b1-summary] cap_8g_exit=$?"
-  run_capped 24g || record_summary "[b1-summary] cap_24g_exit=$?"
+  run_capped 8g || EXIT_8G=$?
+  run_capped 24g || EXIT_24G=$?
 elif [[ "$MODE" == "single" ]]; then
   run_capped "$SINGLE_CAP"
 fi
 
-echo "b1: summary written to $SUMMARY_FILE" >&2
+if [[ "$MODE" == "all" ]]; then
+  echo "[b1-summary] uncapped_peak_rss=${UNCAPPED_PEAK:-unavailable} uncapped_wall_seconds=${UNCAPPED_WALL:-unavailable} exit_8g_cap=${EXIT_8G:-unavailable} exit_24g_cap=${EXIT_24G:-unavailable}"
+fi
