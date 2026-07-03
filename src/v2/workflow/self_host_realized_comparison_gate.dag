@@ -7,17 +7,13 @@ import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
   lit, var_ref, command, serialize_bash
 }
-import std.disposition { Disposition, Scaffold, RealizationDispatch, Terminal }
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import tools.host_prelude { ensure_gunbc_built }
 
 data srfc_gate_test_entry: String = "src/v2/workflow/self_host_realized_comparison_claims.dag"
 data srfc_staleness_gate_witness: String = "self_host_realized_comparison_staleness_gate_holds"
 data srfc_provenance_witness: String = "self_host_realized_comparison_reads_real_bytes_both_sides_holds"
-
-data self_host_realized_comparison_gate_interim: Disposition = Terminal {
-  reason: "INTERIM gate: subset-roster fold (lib.rs,v1_rt.rs) dodges Peano digest wall; emit is full 89-file via RegenVerifyGate shared --emit-fresh. Dissolves when source_text_code_unit_digest is host-grounded and fold widens to full GENERATED_STAGE0_FILES roster."
-}
 
 data self_host_realized_comparison_gate_disposition: Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
