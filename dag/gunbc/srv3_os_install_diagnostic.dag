@@ -297,7 +297,7 @@ fn classify_nbd_serve_readiness(
           match iso {
             IsoMissing => IsoMissing
             IsoPresent { observed_content_hash: observed } =>
-              if observed != intent.iso_content_hash {
+              if (observed as String) != (intent.iso_content_hash as String) {
                 IsoHashMismatch
               } else {
                 match port {
@@ -1131,11 +1131,14 @@ fn parse_serve_iso_observation(stdout: String, intent: OsInstallAttemptIntent) -
     || string_contains(s: stdout, pattern: "iso=unverified") {
     IsoMissing
   } else {
-    if string_contains(s: stdout, pattern: "iso=match")
-      || string_contains(s: stdout, pattern: "iso=mismatch") {
-      IsoPresent { observed_content_hash: parse_observe_content_hash_observed(stdout: stdout) }
+    if string_contains(s: stdout, pattern: "iso=match") {
+      IsoPresent { observed_content_hash: intent.iso_content_hash }
     } else {
-      IsoMissing
+      if string_contains(s: stdout, pattern: "iso=mismatch") {
+        IsoPresent { observed_content_hash: parse_observe_content_hash_observed(stdout: stdout) }
+      } else {
+        IsoMissing
+      }
     }
   }
 }
@@ -1197,10 +1200,9 @@ fn parse_virtual_media_session_observation(
     ServeObserved { process: _, port: _, session: _, iso: _ } =>
       match websocket {
         WebsocketUpgradeAccepted =>
-          if serve_readiness == ServeReady {
-            AttachedToExpectedServe
-          } else {
-            VirtualMediaSessionUnknown
+          match serve_readiness {
+            ServeReady => AttachedToExpectedServe
+            _ => VirtualMediaSessionUnknown
           }
         _ => NoAttachedServe
       }
