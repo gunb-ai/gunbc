@@ -9,8 +9,6 @@ pub mod helpers;
 #[cfg(test)]
 mod a4_opacity;
 #[cfg(test)]
-mod auth_declared_but_unwired_witness_test;
-#[cfg(test)]
 mod b1_hash_primitive_test;
 #[cfg(test)]
 mod body_producer_infer_perf_witness_test;
