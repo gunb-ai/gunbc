@@ -3,8 +3,8 @@ module gunbc.host_standup
 import std.types { List, String, NonEmptyStr, Bool, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.effects { IdempotencyEvidence }
 import gunbc.host_effect {
-  IdempotencyEvidence,
   host_effect_identity_evidence,
   host_effect_converge_loop_evidence,
 }
@@ -150,7 +150,7 @@ fn host_standup_prefix_step(
     phase: Prefix { phase: phase },
     label: label,
     disposition: ModeledCompose { authorities: authorities },
-    effect_policy: effect_policy,
+    effect_evidence: effect_evidence,
   }
 }
 
@@ -164,7 +164,7 @@ fn host_standup_assimilation_step(
     phase: Assimilation { phase: phase },
     label: label,
     disposition: disposition,
-    effect_policy: effect_policy,
+    effect_evidence: effect_evidence,
   }
 }
 
@@ -190,7 +190,7 @@ fn host_standup_prefix_gap_step(
       interim_realization: interim_realization,
       refusal: refusal,
     },
-    effect_policy: effect_policy,
+    effect_evidence: effect_evidence,
   }
 }
 
@@ -202,7 +202,7 @@ data host_standup_spine: List<HostStandupStep> = [
       decl_ref(module_path: "gunbc.bmc_onboarding", decl_name: "bmc_credential_probe_to_phase"),
       decl_ref(module_path: "gunbc.tools.bmc_onboard", decl_name: "bmc_converge_credential_idempotent"),
     ],
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_prefix_step(
     phase: OsInstallMechanismResolved,
@@ -212,14 +212,14 @@ data host_standup_spine: List<HostStandupStep> = [
       decl_ref(module_path: "gunbc.os_install_mechanism", decl_name: "srv3_install_mechanism"),
       decl_ref(module_path: "gunbc.os_install", decl_name: "srv3_os_install_plan"),
     ],
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_prefix_gap_step(
     phase: OsInstallActuated,
     label: "prefix:os-install-actuated",
     interim_realization: "gunbc.srv3_os_install_actuate (runnable prep) + extdeps.bmc.webui.nbd_proxy_serve ShellProgram transport (bash_emit dissolve-on) + gunbc.nbd_proxy_virtual_media_install.srv3_os_install_actuator_plan + gunbc.network_identity_subsumption; live mount+boot proof operator-gated (docs/runbooks/srv3-os-install-actuate.md)",
     refusal: "host_standup:prefix:os-install-actuated:unexecuted — refuse assimilation until NBD-proxy install actuates and OS-up witness is green-by-execution",
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_prefix_step(
     phase: HostConvergePolicyDerived,
@@ -228,7 +228,7 @@ data host_standup_spine: List<HostStandupStep> = [
       decl_ref(module_path: "gunbc.host_converge", decl_name: "fleet_converge_policy"),
       decl_ref(module_path: "gunbc.fleet_converge_emit", decl_name: "expected_fleet_converge_sh"),
     ],
-    effect_policy: ConvergeToFixpoint
+    effect_evidence: host_effect_converge_loop_evidence
   ),
   host_standup_assimilation_step(
     phase: HostIdentityConverge,
@@ -247,7 +247,7 @@ data host_standup_spine: List<HostStandupStep> = [
         decl_ref(module_path: "gunbc.deployed_intent_v1", decl_name: "deployed_intent_v1_srv1"),
       ]
     },
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_assimilation_step(
     phase: ReachSecretsNetwork,
@@ -256,7 +256,7 @@ data host_standup_spine: List<HostStandupStep> = [
       interim_realization: "ACL authority: extdeps.tailscale.acl + gunbc.tailscale_acl_emit (fixture: dag/test/fixture/tailscale_acl_reference.hujson); Phase 2 credential design: gunbc.tailscale_acl_phase2_credential (operator user-principal Secret Accessor, ADC-only, no repo WIF); ctrl interim: grant_host_reach.mjs, spawn_github_token.mjs; bind-dir interim: scripts/session-dashboard/container_runtime.mjs#prepareHostBindDirs",
       refusal: "host_standup:P0:reach-secrets-network:partial — ACL modeled+emit; Phase 2 credential design landed (DESIGN_ONLY); refuse live upsert until operator sign-off on tailscale_acl_upsert_wet"
     },
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_assimilation_step(
     phase: RunnerDeploySlot,
@@ -269,7 +269,7 @@ data host_standup_spine: List<HostStandupStep> = [
         decl_ref(module_path: "gunbc.ci_runner_placement", decl_name: "runner_deployment_plan"),
       ]
     },
-    effect_policy: ConvergeToFixpoint
+    effect_evidence: host_effect_converge_loop_evidence
   ),
   host_standup_assimilation_step(
     phase: ComputeFabricEnroll,
@@ -278,7 +278,7 @@ data host_standup_spine: List<HostStandupStep> = [
       interim_realization: "ctrl:scripts/session-dashboard/lib/node_registry.mjs",
       refusal: "host_standup:P2:compute-fabric-enroll:enroll-act-unmodeled — product.compute_fabric.connect shapes the need/opportunity match but the enroll act is interim ctrl only"
     },
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_assimilation_step(
     phase: GreenPlaceReadiness,
@@ -291,7 +291,7 @@ data host_standup_spine: List<HostStandupStep> = [
         decl_ref(module_path: "gunbc.host_converge", decl_name: "gunbc_pinned_tree_knob"),
       ]
     },
-    effect_policy: ConvergeToFixpoint
+    effect_evidence: host_effect_converge_loop_evidence
   ),
   host_standup_assimilation_step(
     phase: SessionPlacementEnrollment,
@@ -300,7 +300,7 @@ data host_standup_spine: List<HostStandupStep> = [
       interim_realization: "ctrl:scripts/session-dashboard/lib/spawn_placement.mjs;scripts/session-dashboard/lib/placement_query.mjs",
       refusal: "host_standup:P4:session-placement-enrollment:unmodeled — refuse until placement enrollment has a .dag authority (interim ctrl .mjs only)"
     },
-    effect_policy: OneShotIdempotent
+    effect_evidence: host_effect_identity_evidence
   ),
   host_standup_assimilation_step(
     phase: StandupAssimilationComplete,
@@ -314,7 +314,7 @@ data host_standup_spine: List<HostStandupStep> = [
         host_standup_p5_desired_pin_authority,
       ]
     },
-    effect_policy: ConvergeToFixpoint
+    effect_evidence: host_effect_converge_loop_evidence
   ),
 ]
 
