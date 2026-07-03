@@ -119,15 +119,15 @@ fn witness_json_number_lexeme_valid_accepts_fraction_and_exp() -> Bool {
 
 fn witness_json_number_lexeme_refuses_invalid_at_construction() -> Bool {
   match json_number_lexeme(s: "not-a-number") {
-    Absent => true
+    none => true
     Present { value: _ } => false
   }
     && match json_number_lexeme(s: "12abc") {
-      Absent => true
+      none => true
       Present { value: _ } => false
     }
     && match json_number_lexeme(s: "") {
-      Absent => true
+      none => true
       Present { value: _ } => false
     }
 }
@@ -135,17 +135,17 @@ fn witness_json_number_lexeme_refuses_invalid_at_construction() -> Bool {
 fn witness_json_number_lexeme_accepts_valid_at_construction() -> Bool {
   match json_number_lexeme(s: "12.34") {
     Present { value: l } => (l as String) == "12.34"
-    Absent => false
+    none => false
   }
     && match json_number_lexeme(s: "-7") {
       Present { value: l } => (l as String) == "-7"
-      Absent => false
+      none => false
     }
 }
 
 fn witness_json_number_from_lexeme_string_refuses_invalid() -> Bool {
   match json_number_from_lexeme_string(s: "01") {
-    Absent => true
+    none => true
     Present { value: _ } => false
   }
 }
