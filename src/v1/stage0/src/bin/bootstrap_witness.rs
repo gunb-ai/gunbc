@@ -422,6 +422,25 @@ fn stage0_cargo_check() {
     );
 }
 
+/// Fast in-process floor keystone — no nested `cargo` subprocess (nested check
+/// during claim_executor floor blew CI budget; stage0_cargo_check lives in expensive).
+fn floor_smoke() {
+    let ws = workspace_root();
+    assert!(
+        ws.join("src/v1/stage0/Cargo.toml").is_file(),
+        "stage0 Cargo.toml missing under {}",
+        ws.display()
+    );
+    assert!(ws.join("dag").is_dir(), "dag/ missing under {}", ws.display());
+    let [v1_root, dag_root] = source_roots();
+    assert!(v1_root.is_dir(), "v1 source root missing: {}", v1_root.display());
+    assert!(
+        dag_root.is_dir(),
+        "dag source root missing: {}",
+        dag_root.display()
+    );
+}
+
 const DIAG_RATCHET: usize = 358;
 
 fn strict_compile_diagnostic_count() {
@@ -1181,11 +1200,12 @@ fn roundtrip_forecast() {
 }
 
 fn floor_suite() -> Vec<WitnessCase> {
-    vec![("stage0_cargo_check", stage0_cargo_check)]
+    vec![("floor_smoke", floor_smoke)]
 }
 
 fn expensive_suite() -> Vec<WitnessCase> {
     vec![
+        ("stage0_cargo_check", stage0_cargo_check),
         ("strict_compile_diagnostic_count", strict_compile_diagnostic_count),
         ("stage0_compile_accepts_dag_target", stage0_compile_accepts_dag_target),
         (
