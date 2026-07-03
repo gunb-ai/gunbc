@@ -136,7 +136,7 @@ fn measure_le<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Bool {
 }
 
 fn measure_saturating_sub<Q, S>(a: Measure<Q, S, Nat>, b: Measure<Q, S, Nat>) -> Measure<Q, S, Nat> {
-  Measure { count: if a.count <= b.count { 0 } else { a.count - b.count } }
+  Measure { count: if a.count <= b.count { a.count - a.count } else { a.count - b.count } }
 }
 
 fn time_measure<S>(count: Nat) -> Measure<Time, S, Nat> {
