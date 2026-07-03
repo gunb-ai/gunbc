@@ -544,6 +544,20 @@ pub fn load_sources_for_entry(
     load_sources_for_entry_with_index(&index, entry_path)
 }
 
+/// In-process compile-clean for one module entry against the witness-layer pool roots.
+/// Avoids per-module `gunbc compile` subprocesses (the #6127 regression path).
+pub fn compile_clean_shard_module_in_process(
+    pool_roots: &[String],
+    entry_path: &str,
+) -> Result<bool, String> {
+    let sources = load_sources_for_entry(pool_roots, entry_path)?;
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let has_errors = result.diagnostics.iter().any(|d| {
+        is_interpreter_blocking_diagnostic(d.diagnostic.clone())
+    });
+    Ok(!has_errors && result.graph.is_some())
+}
+
 fn entry_source_from_index_or_disk(
     index: &ModuleSourceIndex,
     entry_path: &str,

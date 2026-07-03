@@ -1,4 +1,4 @@
-module tools.dsl_compile_clean_perturb_witness
+module tools.dag_compile_clean_perturb_witness
 
 import tools.dag_compile_clean_transport {
   run_perturb_optional_skew_red_receipt,

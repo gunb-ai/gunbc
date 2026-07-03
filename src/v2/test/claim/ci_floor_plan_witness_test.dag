@@ -2,12 +2,17 @@ module v2.test.claim.ci_floor_plan_witness
 
 import std.realization {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch,
+  RunnableCompileCleanShardBatch,
+  compile_clean_shard_batch_label,
 }
 import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_batches, corpus_runnable,
   gunbc_ci_floor_schedule_without_serialization,
   gunbc_ci_floor_plan_serializes_heavy_resolves,
   gunbc_ci_floor_plan_co_runs_heavy_without_serialization,
+  gunbc_ci_floor_compile_clean_shard_count,
+  witness_floor_batch_one_uses_compile_clean_shards,
+  witness_floor_batch_one_has_no_compile_gate_monolith,
   gate_runnable,
   witness_floor_corpus_exclusion_edges_exist,
   witness_floor_compile_gate_honest_heavy_profile,
@@ -32,6 +37,7 @@ fn runnable_function(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
     RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => corpus_sentinel
+    RunnableCompileCleanShardBatch { entry_paths: _, spawn_width_cap: _, profile: _ } => compile_clean_shard_batch_label
     RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
   }
 }
@@ -45,9 +51,9 @@ fn list_contains_str(xs: List<String>, target: String) -> Bool {
 }
 
 fn witness_compile_root_runs_first() -> Bool {
-  let batches = gunbc_ci_floor_batches()
-  (batches.first().length() == 1) &&
-    list_contains_str(xs: batch_functions(b: batches.first()), target: "dag_compile_clean_gate_passes")
+  witness_floor_batch_one_uses_compile_clean_shards()
+    && witness_floor_batch_one_has_no_compile_gate_monolith()
+    && (gunbc_ci_floor_compile_clean_shard_count() >= 2)
 }
 
 fn witness_corpus_not_before_compile() -> Bool {
@@ -80,7 +86,7 @@ fn witness_corpus_has_no_explicit_entries() -> Bool {
     RunnableDiscoveryBatch { source_roots: roots, scan_dirs: _, explicit_entries: entries, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
       (length(xs: entries) == 0) &&
         list_contains_str(xs: roots, target: "src/v2") &&
-        list_contains_str(xs: roots, target: "dag") &&
+        list_contains_str(xs: roots, target: "dsl") &&
         list_contains_str(xs: roots, target: witness_layer_roots.first())
     _ => false
   }
