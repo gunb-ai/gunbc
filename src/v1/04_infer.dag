@@ -2803,19 +2803,7 @@ fn expand_type_for_field_access_with_seen(n: Node, env: TypeEnv, module_name: St
       Present { value: _ } => n
       Absent =>
         let seen = map_insert(seen, name, true)
-        match lookup_type_by_name(env: env, name: name) {
-          Present { value: decl } =>
-            if decl.connective == Conj && (decl.params |> count) > 0 {
-              decl
-            } else if decl.connective == NoConnective && decl.children |> count == 0 && decl.inferred != none {
-              match decl.inferred {
-                Present { value: Resolved { node: target } } =>
-                  expand_type_for_field_access_with_seen(n: target, env: env, module_name: module_name, seen: seen)
-                _ => n
-              }
-            } else { n }
-          Absent => n
-        }
+        expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, origin_name: name, seen: seen, lossy: false)
     }
   } else {
     let origin_name = authored_name_at(source_indices: env.source_indices, node: n)

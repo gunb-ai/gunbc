@@ -5598,41 +5598,7 @@ pub fn expand_type_for_field_access_with_seen(
             return n.clone();
         }
         let seen = v1_rt::rc_map_insert(seen, name.clone(), true);
-        match lookup_type_by_name(env.clone(), name.clone()) {
-            Some(decl) => {
-                if ((decl.connective.clone() == Connective::Conj)
-                    && ((decl.params.clone().len() as i64) > 0))
-                {
-                    decl.clone()
-                } else if (((decl.connective.clone() == Connective::NoConnective)
-                    && ((decl.children.clone().len() as i64) == 0))
-                    && (decl.inferred.clone() != None))
-                {
-                    match decl.inferred.clone().as_deref().cloned() {
-                        Some(InferredNode::Resolved { node: target, .. }) => {
-                            if target
-                                .inferred
-                                .clone()
-                                .is_some_and(|i| is_compiler_error(i))
-                            {
-                                n.clone()
-                            } else {
-                                expand_type_for_field_access_with_seen(
-                                    target,
-                                    env,
-                                    module_name,
-                                    seen,
-                                )
-                            }
-                        }
-                        _ => n.clone(),
-                    }
-                } else {
-                    n.clone()
-                }
-            }
-            None => n.clone(),
-        }
+        expand_alias_chain_for_field_access(n.clone(), env.clone(), module_name, name, seen, false)
     } else {
         let origin_name = authored_name_at(env.source_indices.clone(), n.clone());
         expand_alias_chain_for_field_access(
