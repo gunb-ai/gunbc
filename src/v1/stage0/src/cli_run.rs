@@ -3572,6 +3572,56 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
     out
 }
 
+fn parse_unified_diff_changed_new_lines(diff_text: &str) -> HashMap<String, HashSet<i64>> {
+    let mut out: HashMap<String, HashSet<i64>> = HashMap::new();
+    let mut current_file: Option<String> = None;
+    let mut new_line: i64 = 0;
+    let mut in_hunk = false;
+    for line in diff_text.lines() {
+        if let Some(rest) = line.strip_prefix("+++ b/") {
+            current_file = Some(normalize_repo_path(rest));
+            in_hunk = false;
+            continue;
+        }
+        if line.starts_with("@@ ") {
+            let plus = line.split_whitespace().nth(2).unwrap_or("");
+            let plus = plus.trim_start_matches('+');
+            new_line = if let Some((s, _)) = plus.split_once(',') {
+                s.parse::<i64>().unwrap_or(1)
+            } else {
+                plus.parse::<i64>().unwrap_or(1)
+            };
+            in_hunk = true;
+            continue;
+        }
+        if !in_hunk {
+            continue;
+        }
+        let Some(file) = current_file.clone() else {
+            continue;
+        };
+        if let Some(_add) = line.strip_prefix('+') {
+            out.entry(file).or_default().insert(new_line);
+            new_line += 1;
+        } else if line.starts_with(' ') {
+            new_line += 1;
+        }
+    }
+    out
+}
+
+fn changed_new_lines_for_file(
+    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
+    file_path: &str,
+    file_norm: &str,
+) -> HashSet<i64> {
+    changed_new_lines_by_file
+        .get(file_norm)
+        .or_else(|| changed_new_lines_by_file.get(file_path))
+        .cloned()
+        .unwrap_or_default()
+}
+
 fn newline_index_for_span<'a>(
     span: &SourceSpan,
     source_indices: &'a HashMap<String, Rc<NewlineIndex>>,
@@ -3999,6 +4049,7 @@ fn call_floor_kernel_precompute_would_skip(
 fn floor_diff_edits_from_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
+    changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
@@ -4044,12 +4095,13 @@ fn floor_diff_edits_from_line_ranges(
         }
         decls.sort_by_key(|(line, _, _)| *line);
         let first_decl_line = decls[0].0;
+        let changed = changed_new_lines_for_file(changed_new_lines_by_file, file_path, &file_norm);
         // Module-line edits (line 1) stay fail-closed — renaming can change entry identity.
-        if ranges.iter().any(|r| r.start <= 1 && r.end >= 1) {
+        if changed.contains(&1) {
             return Err(format!("diff before first declaration in {file_path}"));
         }
-        let has_pre_decl = ranges.iter().any(|r| r.start < first_decl_line);
-        let has_post_decl = ranges.iter().any(|r| r.end >= first_decl_line);
+        let has_pre_decl = changed.iter().any(|&l| l < first_decl_line);
+        let has_post_decl = changed.iter().any(|&l| l >= first_decl_line);
         if has_pre_decl {
             touched_entry_files.insert(file_norm.clone());
             if !has_post_decl {
@@ -4059,7 +4111,7 @@ fn floor_diff_edits_from_line_ranges(
         for i in 0..decls.len() {
             let (line, name, is_data) = &decls[i];
             let decl_end = decls.get(i + 1).map(|(l, _, _)| l - 1).unwrap_or(i64::MAX);
-            if !ranges.iter().any(|r| *line <= r.end && decl_end >= r.start) {
+            if !changed.iter().any(|&l| l >= *line && l <= decl_end) {
                 continue;
             }
             if test_fn_names.contains(name) {
@@ -4234,12 +4286,20 @@ pub fn run_discovery_corpus_with_options(
         FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
         FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_line_ranges(text),
     };
+    let changed_new_lines_by_file = match &diff_outcome {
+        FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
+        FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_changed_new_lines(text),
+    };
     let changed_paths: Vec<String> = line_ranges_by_file.keys().cloned().collect();
     let (skip_enabled, diff_edits) = if options.skip_unaffected_node_frontier
         && !line_ranges_by_file.is_empty()
     {
         let frontier_index = build_multi_entry_index(source_roots);
-        match floor_diff_edits_from_line_ranges(&frontier_index, &line_ranges_by_file) {
+        match floor_diff_edits_from_line_ranges(
+            &frontier_index,
+            &line_ranges_by_file,
+            &changed_new_lines_by_file,
+        ) {
             Ok(edits) => (true, edits),
             Err(msg) => {
                 eprintln!(
