@@ -108,3 +108,19 @@ path = "src/bin/capture_func_env_semantic_oracle.rs"
 [[bin]]
 name = "effects_rest_transport_witness"
 path = "src/bin/effects_rest_transport_witness.rs"
+
+# Host-physics floor witness for infer semantics oracle suite (infer_semantics.rs).
+# Exercises v1.compiler.infer_* submodules (access, patterns, lookup, types) until
+# those APIs are witness-layer importable from pure .dag floor witnesses.
+[[bin]]
+name = "infer_semantics_witness"
+path = "src/bin/infer_semantics_witness.rs"
+
+# Host-physics floor witness for the v1 interpreter recorded-fixture record ->
+# hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real
+# claim_batch binary with --record/--hermetic/--fixture-store + mutates fixtures on
+# disk to prove fail-closed. SCAFFOLD — dissolves when the record/replay lifecycle
+# is modeled + executed in the v2 .dag floor (open thread: v2.std.determinism).
+[[bin]]
+name = "interp_recorded_fixture_witness"
+path = "src/bin/interp_recorded_fixture_witness.rs"

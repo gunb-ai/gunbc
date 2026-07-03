@@ -1,7 +1,16 @@
+#![allow(clippy::disallowed_macros)]
+
+use std::collections::HashMap;
+use std::process::ExitCode;
 use std::rc::Rc;
 
+use v1_compiler::cli_run::workspace_root;
 use v1_compiler::std_induction::SubValueRelation;
 use v1_compiler::std_types::container_param_name;
+use v1_compiler::v1_compiler_artifact::RenderTarget;
+use v1_compiler::v1_compiler_compile::{
+    compile_sources, compile_to_resolved, PipelineResult, ResolvedPipelineResult, SourceFile,
+};
 use v1_compiler::v1_compiler_infer::InferScope;
 use v1_compiler::v1_compiler_infer_access;
 use v1_compiler::v1_compiler_infer_env::lookup_type_by_name;
@@ -20,6 +29,148 @@ use v1_compiler::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ExprData, InferredNode, MatchPattern, Node,
     SourceSpan,
 };
+
+fn fail(msg: impl std::fmt::Display) -> ExitCode {
+    eprintln!("infer_semantics_witness: {msg}");
+    ExitCode::from(1)
+}
+
+fn source_roots() -> [std::path::PathBuf; 2] {
+    let ws = workspace_root();
+    [ws.join("src/v1"), ws.join("dag")]
+}
+
+fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
+    let content = std::fs::read_to_string(path).ok()?;
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("//") {
+            continue;
+        }
+        return trimmed
+            .strip_prefix("module ")
+            .and_then(|rest| rest.split_whitespace().next())
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string());
+    }
+    None
+}
+
+fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::PathBuf>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            scan_dag_files(&path, index);
+        } else if path.extension().map(|e| e == "dag").unwrap_or(false) {
+            if let Some(module_path) = extract_module_declaration(&path) {
+                index.insert(module_path, path);
+            }
+        }
+    }
+}
+
+fn build_module_index() -> HashMap<String, std::path::PathBuf> {
+    let mut index = HashMap::new();
+    for root in source_roots() {
+        if root.exists() {
+            scan_dag_files(&root, &mut index);
+        }
+    }
+    index
+}
+
+fn extract_imports(source: &str) -> Vec<String> {
+    let tokens =
+        v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string());
+    let source_index =
+        v1_compiler::v1_std_core::build_newline_index("test.dag".to_string(), source.to_string());
+    let mut source_indices = HashMap::new();
+    source_indices.insert("test.dag".to_string(), source_index);
+    let result = v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices));
+    match &result.module {
+        Some(module) => v1_compiler::v1_std_core::module_imports(module.clone())
+            .iter()
+            .map(|imp| imp.name.clone())
+            .collect(),
+        None => vec![],
+    }
+}
+
+fn resolve_imports_transitively(
+    entry_path: &str,
+    entry_content: &str,
+    module_index: &HashMap<String, std::path::PathBuf>,
+) -> Vec<Rc<SourceFile>> {
+    let ws = workspace_root();
+    let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
+    let mut queue = vec![(entry_path.to_string(), entry_content.to_string())];
+
+    while let Some((_path, content)) = queue.pop() {
+        for module_path in extract_imports(&content) {
+            if seen.contains_key(&module_path) {
+                continue;
+            }
+            if let Some(file_path) = module_index.get(&module_path) {
+                if let Ok(file_content) = std::fs::read_to_string(file_path) {
+                    let rel_path = file_path
+                        .strip_prefix(&ws)
+                        .unwrap_or(file_path)
+                        .to_string_lossy()
+                        .to_string();
+                    seen.insert(
+                        module_path.clone(),
+                        Rc::new(SourceFile {
+                            path: rel_path.clone(),
+                            content: file_content.clone(),
+                        }),
+                    );
+                    queue.push((rel_path, file_content));
+                }
+            }
+        }
+    }
+
+    let mut sources: Vec<Rc<SourceFile>> = seen.into_values().collect();
+    sources.push(Rc::new(SourceFile {
+        path: entry_path.to_string(),
+        content: entry_content.to_string(),
+    }));
+    sources
+}
+
+fn compile_dag(source: &str) -> Rc<PipelineResult> {
+    let module_index = build_module_index();
+    let sources = resolve_imports_transitively("test.dag", source, &module_index);
+    compile_sources(Rc::new(sources), RenderTarget::Rust)
+}
+
+fn compile_dag_resolved(source: &str) -> Rc<ResolvedPipelineResult> {
+    let module_index = build_module_index();
+    let sources = resolve_imports_transitively("test.dag", source, &module_index);
+    compile_to_resolved(Rc::new(sources))
+}
+
+fn assert_no_diagnostics(result: &PipelineResult) {
+    if !result.diagnostics.is_empty() {
+        let messages: Vec<String> = result
+            .diagnostics
+            .iter()
+            .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect();
+        panic!("expected no diagnostics, got: {messages:?}");
+    }
+}
+
+fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
+    result
+        .diagnostics
+        .iter()
+        .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+        .collect()
+}
 
 fn empty_source_indices() -> Rc<std::collections::HashMap<String, Rc<NewlineIndex>>> {
     Rc::new(std::collections::HashMap::new())
@@ -233,7 +384,6 @@ fn assert_compiler_error(inferred: &Option<Rc<InferredNode>>, message_fragment: 
     }
 }
 
-#[test]
 fn m1_brand_twins_over_refined_base_remain_distinct_in_infer_representation() {
     let source = r#"
 module m1.brand_twins
@@ -245,7 +395,7 @@ type UserId = Refined<String>
 type AccountId = Refined<String>
 "#;
 
-    let result = crate::helpers::compile_dag_resolved(source);
+    let result = compile_dag_resolved(source);
     assert!(
         result.diagnostics.is_empty(),
         "brand-twin infer probe should compile without diagnostics, got: {:?}",
@@ -304,7 +454,6 @@ type AccountId = Refined<String>
     );
 }
 
-#[test]
 fn pd3_brand_twins_incompatible_at_node_type_compatible() {
     let source = r#"
 module pd3.brand_relation
@@ -316,7 +465,7 @@ type UserId = Refined<String>
 type AccountId = Refined<String>
 "#;
 
-    let result = crate::helpers::compile_dag_resolved(source);
+    let result = compile_dag_resolved(source);
     assert!(
         result.diagnostics.is_empty(),
         "PD-3 relation probe should resolve cleanly, got: {:?}",
@@ -353,7 +502,6 @@ type AccountId = Refined<String>
     );
 }
 
-#[test]
 fn pd3_direct_call_rejects_brand_twin_mismatch() {
     let source = r#"
 module pd3.brand_call_reject
@@ -373,7 +521,7 @@ fn caller(uid: UserId) -> String {
 }
 "#;
 
-    let result = crate::helpers::compile_dag(source);
+    let result = compile_dag(source);
     let has_type_mismatch = result
         .diagnostics
         .iter()
@@ -381,11 +529,10 @@ fn caller(uid: UserId) -> String {
     assert!(
         has_type_mismatch,
         "PD-3: direct call must reject UserId-for-AccountId, got: {:?}",
-        crate::helpers::diagnostic_messages(&result)
+        diagnostic_messages(&result)
     );
 }
 
-#[test]
 fn pd3_direct_call_accepts_same_brand() {
     let source = r#"
 module pd3.brand_call_accept
@@ -404,11 +551,10 @@ fn caller(uid: UserId) -> String {
 }
 "#;
 
-    let result = crate::helpers::compile_dag(source);
-    crate::helpers::assert_no_diagnostics(&result);
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
 }
 
-#[test]
 fn pd3_direct_call_accepts_list_for_freemonoid_alias() {
     let source = r#"
 module pd3.alias_call_accept
@@ -422,11 +568,10 @@ fn caller(xs: List<Int>) -> Int {
 }
 "#;
 
-    let result = crate::helpers::compile_dag(source);
-    crate::helpers::assert_no_diagnostics(&result);
+    let result = compile_dag(source);
+    assert_no_diagnostics(&result);
 }
 
-#[test]
 fn list_int_index_returns_optional_element_type() {
     let result = v1_compiler_infer_access::check_index_access_node(
         container_node("List".to_string(), leaf_node("Int".to_string())),
@@ -447,7 +592,6 @@ fn list_int_index_returns_optional_element_type() {
     );
 }
 
-#[test]
 fn malformed_map_index_returns_compiler_error_type() {
     let result = v1_compiler_infer_access::check_index_access_node(
         bare_map_node().expect("Map kernel container profile"),
@@ -461,7 +605,6 @@ fn malformed_map_index_returns_compiler_error_type() {
     assert_compiler_error(&result.inferred, "key type does not match");
 }
 
-#[test]
 fn invalid_slice_returns_compiler_error_type() {
     let result = v1_compiler_infer_access::check_slice_access_node(
         container_node("List".to_string(), leaf_node("Int".to_string())),
@@ -476,7 +619,6 @@ fn invalid_slice_returns_compiler_error_type() {
     assert_compiler_error(&result.inferred, "slice is only supported");
 }
 
-#[test]
 fn valid_map_index_preserves_optional_value_type() {
     let result = v1_compiler_infer_access::check_index_access_node(
         map_node(
@@ -504,7 +646,6 @@ fn valid_map_index_preserves_optional_value_type() {
     }
 }
 
-#[test]
 fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
     let subject = v1_compiler_infer_patterns::pattern_subject_from_inferred(Some(Rc::new(
         InferredNode::CompilerError {
@@ -530,7 +671,6 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
     );
 }
 
-#[test]
 fn pattern_lookup_reports_error_scrutinee_structurally() {
     use v1_compiler::v1_std_core::error_type;
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(error_type());
@@ -548,7 +688,6 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
     ));
 }
 
-#[test]
 fn optional_pattern_lookup_rejects_some_variant() {
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
         leaf_node("String".to_string()),
@@ -568,7 +707,6 @@ fn optional_pattern_lookup_rejects_some_variant() {
     assert_eq!(lookup.diagnostics.len(), 1);
 }
 
-#[test]
 fn optional_pattern_lookup_resolves_present_variant() {
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
         leaf_node("String".to_string()),
@@ -591,7 +729,6 @@ fn optional_pattern_lookup_resolves_present_variant() {
     }
 }
 
-#[test]
 fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant() {
     let sp = make_span(0, 0);
     let inner_present = Rc::new(Node {
@@ -676,7 +813,6 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
     }
 }
 
-#[test]
 fn optional_present_absent_patterns_keep_canonical_names() {
     let scope = empty_infer_scope();
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(with_optional_cardinality(
@@ -737,7 +873,6 @@ fn applied_generic_type_node(type_name: &str, type_arg: Rc<Node>) -> Rc<Node> {
     })
 }
 
-#[test]
 fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children() {
     let applied_optional = applied_generic_type_node("Optional", leaf_node("Bool".to_string()));
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(applied_optional);
@@ -772,7 +907,6 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
     );
 }
 
-#[test]
 fn optional_applied_generic_lookup_rejects_wrong_variant_name() {
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(applied_generic_type_node(
         "Optional",
@@ -796,7 +930,6 @@ fn optional_applied_generic_lookup_rejects_wrong_variant_name() {
     );
 }
 
-#[test]
 fn non_optional_applied_generic_missing_variant_still_fails() {
     let subject = v1_compiler_infer_patterns::pattern_subject_from_node(applied_generic_type_node(
         "Outcome",
@@ -820,7 +953,6 @@ fn non_optional_applied_generic_missing_variant_still_fails() {
     );
 }
 
-#[test]
 fn real_optional_coproduct_preserves_present_absent_pattern_names() {
     let scope = empty_infer_scope();
     let optional_sum = sum_node(
@@ -850,7 +982,6 @@ fn real_optional_coproduct_preserves_present_absent_pattern_names() {
     ));
 }
 
-#[test]
 fn optional_match_exhaustiveness_reports_missing_absent() {
     let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
@@ -873,7 +1004,6 @@ fn optional_match_exhaustiveness_reports_missing_absent() {
     assert!(diag0_msg.contains("Absent"));
 }
 
-#[test]
 fn optional_match_exhaustiveness_rejects_some_and_none() {
     let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
@@ -896,7 +1026,6 @@ fn optional_match_exhaustiveness_rejects_some_and_none() {
     assert!(diag0_msg.contains("Absent"));
 }
 
-#[test]
 fn optional_match_exhaustiveness_accepts_present_and_absent() {
     let diags = v1_compiler_infer_patterns::check_match_exhaustiveness(
         with_optional_cardinality(leaf_node("String".to_string())),
@@ -920,7 +1049,6 @@ fn optional_match_exhaustiveness_accepts_present_and_absent() {
     );
 }
 
-#[test]
 fn resolve_node_uses_node_name_for_lookup() {
     let node_ref = Rc::new(Node {
         name: "User".to_string(),
@@ -972,7 +1100,6 @@ fn resolve_node_uses_node_name_for_lookup() {
     assert_eq!(result.resolved.name, "User");
 }
 
-#[test]
 fn structural_method_lookup_resolves_all_list_collection_methods() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let expected_methods = [
@@ -1010,7 +1137,6 @@ fn structural_method_lookup_resolves_all_list_collection_methods() {
     }
 }
 
-#[test]
 fn structural_method_any_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v1_compiler_infer_lookup::lookup_structural_method(
@@ -1028,7 +1154,6 @@ fn structural_method_any_on_list_returns_bool() {
     );
 }
 
-#[test]
 fn structural_method_all_on_list_returns_bool() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v1_compiler_infer_lookup::lookup_structural_method(
@@ -1046,7 +1171,6 @@ fn structural_method_all_on_list_returns_bool() {
     );
 }
 
-#[test]
 fn structural_method_sort_by_on_list_returns_self() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v1_compiler_infer_lookup::lookup_structural_method(
@@ -1064,7 +1188,6 @@ fn structural_method_sort_by_on_list_returns_self() {
     );
 }
 
-#[test]
 fn structural_method_first_on_list_returns_optional_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let result = v1_compiler_infer_lookup::lookup_structural_method(
@@ -1089,7 +1212,6 @@ fn structural_method_first_on_list_returns_optional_element() {
     );
 }
 
-#[test]
 fn structural_method_count_on_list_returns_int() {
     let list_string = container_node("List".to_string(), leaf_node("String".to_string()));
     let result = v1_compiler_infer_lookup::lookup_structural_method(
@@ -1104,7 +1226,6 @@ fn structural_method_count_on_list_returns_int() {
     assert_eq!(result.result_type.name, "Int", "count should return Int");
 }
 
-#[test]
 fn structural_method_lookup_resolves_all_int_ring_methods() {
     let int_node = leaf_node("Int".to_string());
     let expected_methods = ["add", "zero", "negate", "mul", "one", "compare"];
@@ -1123,7 +1244,6 @@ fn structural_method_lookup_resolves_all_int_ring_methods() {
     }
 }
 
-#[test]
 fn structural_method_compare_on_int_returns_ordering() {
     let int_node = leaf_node("Int".to_string());
     let result = v1_compiler_infer_lookup::lookup_structural_method(
@@ -1141,7 +1261,6 @@ fn structural_method_compare_on_int_returns_ordering() {
     );
 }
 
-#[test]
 fn structural_method_lookup_resolves_all_map_partial_function_methods() {
     let m = map_node(
         leaf_node("String".to_string()),
@@ -1174,7 +1293,6 @@ fn structural_method_lookup_resolves_all_map_partial_function_methods() {
     }
 }
 
-#[test]
 fn structural_method_get_on_map_returns_optional_value() {
     let m = map_node(
         leaf_node("String".to_string()),
@@ -1202,7 +1320,6 @@ fn structural_method_get_on_map_returns_optional_value() {
     );
 }
 
-#[test]
 fn structural_method_keys_on_map_returns_list_of_key_type() {
     let m = map_node(
         leaf_node("String".to_string()),
@@ -1231,7 +1348,6 @@ fn structural_method_keys_on_map_returns_list_of_key_type() {
     );
 }
 
-#[test]
 fn structural_method_lookup_returns_none_for_unknown_type() {
     let custom = leaf_node("MyType".to_string());
     assert!(
@@ -1246,7 +1362,6 @@ fn structural_method_lookup_returns_none_for_unknown_type() {
     );
 }
 
-#[test]
 fn keyed_collection_parts_extracts_key_and_value() {
     let m = map_node(
         leaf_node("String".to_string()),
@@ -1258,7 +1373,6 @@ fn keyed_collection_parts_extracts_key_and_value() {
     assert_eq!(parts.value_type.name, "Int");
 }
 
-#[test]
 fn keyed_collection_parts_returns_none_for_element_collection() {
     let list = container_node("List".to_string(), leaf_node("Int".to_string()));
     let parts = v1_compiler_infer_access::keyed_collection_parts(list, empty_source_indices());
@@ -1268,7 +1382,6 @@ fn keyed_collection_parts_returns_none_for_element_collection() {
     );
 }
 
-#[test]
 fn keyed_collection_parts_returns_type_variables_for_bare_map() {
     let bare = bare_map_node().expect("Map kernel container profile");
     let parts = v1_compiler_infer_access::keyed_collection_parts(bare, empty_source_indices());
@@ -1278,7 +1391,6 @@ fn keyed_collection_parts_returns_type_variables_for_bare_map() {
     );
 }
 
-#[test]
 fn node_is_keyed_collection_true_for_map() {
     let m = map_node(
         leaf_node("String".to_string()),
@@ -1287,37 +1399,31 @@ fn node_is_keyed_collection_true_for_map() {
     assert!(node_is_keyed_collection(m, empty_source_indices()));
 }
 
-#[test]
 fn node_is_keyed_collection_false_for_list() {
     let list = container_node("List".to_string(), leaf_node("Int".to_string()));
     assert!(!node_is_keyed_collection(list, empty_source_indices()));
 }
 
-#[test]
 fn node_is_keyed_collection_false_for_leaf() {
     let leaf = leaf_node("String".to_string());
     assert!(!node_is_keyed_collection(leaf, empty_source_indices()));
 }
 
-#[test]
 fn is_fully_resolved_rejects_under_parameterized_container() {
     let bare_list = leaf_node("List".to_string());
     assert!(!is_fully_resolved(bare_list, empty_source_indices()));
 }
 
-#[test]
 fn is_fully_resolved_accepts_parameterized_container() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     assert!(is_fully_resolved(list_int, empty_source_indices()));
 }
 
-#[test]
 fn is_fully_resolved_ignores_unknown_type_names() {
     let widget = leaf_node("Widget".to_string());
     assert!(is_fully_resolved(widget, empty_source_indices()));
 }
 
-#[test]
 fn map_index_with_correct_key_type_succeeds() {
     let map_type = map_node(
         leaf_node("String".to_string()),
@@ -1344,7 +1450,6 @@ fn map_index_with_correct_key_type_succeeds() {
     }
 }
 
-#[test]
 fn map_index_with_wrong_key_type_reports_error() {
     let map_type = map_node(
         leaf_node("String".to_string()),
@@ -1364,7 +1469,6 @@ fn map_index_with_wrong_key_type_reports_error() {
     );
 }
 
-#[test]
 fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
     let syn_span = Some(Rc::new(v1_compiler::v1_std_core::SourceSpan {
         file: "".to_string(),
@@ -1406,7 +1510,6 @@ fn node_inferred_to_outputs_returns_empty_when_child_has_error() {
     );
 }
 
-#[test]
 fn list_and_freemonoid_compatible_same_element() {
     let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
     let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
@@ -1416,7 +1519,6 @@ fn list_and_freemonoid_compatible_same_element() {
     );
 }
 
-#[test]
 fn list_and_freemonoid_incompatible_different_element() {
     let list_int = container_node("List".to_string(), leaf_node("Int".to_string()));
     let fm_string = container_node("FreeMonoid".to_string(), leaf_node("String".to_string()));
@@ -1426,7 +1528,6 @@ fn list_and_freemonoid_incompatible_different_element() {
     );
 }
 
-#[test]
 fn list_freemonoid_compat_is_symmetric() {
     let fm_sym = container_node("FreeMonoid".to_string(), leaf_node("Symbol".to_string()));
     let list_sym = container_node("List".to_string(), leaf_node("Symbol".to_string()));
@@ -1436,7 +1537,6 @@ fn list_freemonoid_compat_is_symmetric() {
     );
 }
 
-#[test]
 fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
     use v1_compiler::v1_compiler_infer_lookup::{
         lookup_field_type_node, resolve_scrutinee_type_node,
@@ -1528,4 +1628,222 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         field.is_some(),
         "field lookup should find value on expanded struct"
     );
+}
+
+fn main() -> ExitCode {
+    let tests: &[(&str, fn())] = &[
+        (
+            "m1_brand_twins_over_refined_base_remain_distinct_in_infer_representation",
+            m1_brand_twins_over_refined_base_remain_distinct_in_infer_representation,
+        ),
+        (
+            "pd3_brand_twins_incompatible_at_node_type_compatible",
+            pd3_brand_twins_incompatible_at_node_type_compatible,
+        ),
+        (
+            "pd3_direct_call_rejects_brand_twin_mismatch",
+            pd3_direct_call_rejects_brand_twin_mismatch,
+        ),
+        (
+            "pd3_direct_call_accepts_same_brand",
+            pd3_direct_call_accepts_same_brand,
+        ),
+        (
+            "pd3_direct_call_accepts_list_for_freemonoid_alias",
+            pd3_direct_call_accepts_list_for_freemonoid_alias,
+        ),
+        (
+            "list_int_index_returns_optional_element_type",
+            list_int_index_returns_optional_element_type,
+        ),
+        (
+            "malformed_map_index_returns_compiler_error_type",
+            malformed_map_index_returns_compiler_error_type,
+        ),
+        (
+            "invalid_slice_returns_compiler_error_type",
+            invalid_slice_returns_compiler_error_type,
+        ),
+        (
+            "valid_map_index_preserves_optional_value_type",
+            valid_map_index_preserves_optional_value_type,
+        ),
+        (
+            "pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic",
+            pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic,
+        ),
+        (
+            "pattern_lookup_reports_error_scrutinee_structurally",
+            pattern_lookup_reports_error_scrutinee_structurally,
+        ),
+        (
+            "optional_pattern_lookup_rejects_some_variant",
+            optional_pattern_lookup_rejects_some_variant,
+        ),
+        (
+            "optional_pattern_lookup_resolves_present_variant",
+            optional_pattern_lookup_resolves_present_variant,
+        ),
+        (
+            "optional_pattern_lookup_prefers_optional_present_over_inner_present_variant",
+            optional_pattern_lookup_prefers_optional_present_over_inner_present_variant,
+        ),
+        (
+            "optional_present_absent_patterns_keep_canonical_names",
+            optional_present_absent_patterns_keep_canonical_names,
+        ),
+        (
+            "optional_applied_generic_lookup_resolves_present_absent_without_disj_children",
+            optional_applied_generic_lookup_resolves_present_absent_without_disj_children,
+        ),
+        (
+            "optional_applied_generic_lookup_rejects_wrong_variant_name",
+            optional_applied_generic_lookup_rejects_wrong_variant_name,
+        ),
+        (
+            "non_optional_applied_generic_missing_variant_still_fails",
+            non_optional_applied_generic_missing_variant_still_fails,
+        ),
+        (
+            "real_optional_coproduct_preserves_present_absent_pattern_names",
+            real_optional_coproduct_preserves_present_absent_pattern_names,
+        ),
+        (
+            "optional_match_exhaustiveness_reports_missing_absent",
+            optional_match_exhaustiveness_reports_missing_absent,
+        ),
+        (
+            "optional_match_exhaustiveness_rejects_some_and_none",
+            optional_match_exhaustiveness_rejects_some_and_none,
+        ),
+        (
+            "optional_match_exhaustiveness_accepts_present_and_absent",
+            optional_match_exhaustiveness_accepts_present_and_absent,
+        ),
+        (
+            "resolve_node_uses_node_name_for_lookup",
+            resolve_node_uses_node_name_for_lookup,
+        ),
+        (
+            "structural_method_lookup_resolves_all_list_collection_methods",
+            structural_method_lookup_resolves_all_list_collection_methods,
+        ),
+        (
+            "structural_method_any_on_list_returns_bool",
+            structural_method_any_on_list_returns_bool,
+        ),
+        (
+            "structural_method_all_on_list_returns_bool",
+            structural_method_all_on_list_returns_bool,
+        ),
+        (
+            "structural_method_sort_by_on_list_returns_self",
+            structural_method_sort_by_on_list_returns_self,
+        ),
+        (
+            "structural_method_first_on_list_returns_optional_element",
+            structural_method_first_on_list_returns_optional_element,
+        ),
+        (
+            "structural_method_count_on_list_returns_int",
+            structural_method_count_on_list_returns_int,
+        ),
+        (
+            "structural_method_lookup_resolves_all_int_ring_methods",
+            structural_method_lookup_resolves_all_int_ring_methods,
+        ),
+        (
+            "structural_method_compare_on_int_returns_ordering",
+            structural_method_compare_on_int_returns_ordering,
+        ),
+        (
+            "structural_method_lookup_resolves_all_map_partial_function_methods",
+            structural_method_lookup_resolves_all_map_partial_function_methods,
+        ),
+        (
+            "structural_method_get_on_map_returns_optional_value",
+            structural_method_get_on_map_returns_optional_value,
+        ),
+        (
+            "structural_method_keys_on_map_returns_list_of_key_type",
+            structural_method_keys_on_map_returns_list_of_key_type,
+        ),
+        (
+            "structural_method_lookup_returns_none_for_unknown_type",
+            structural_method_lookup_returns_none_for_unknown_type,
+        ),
+        (
+            "keyed_collection_parts_extracts_key_and_value",
+            keyed_collection_parts_extracts_key_and_value,
+        ),
+        (
+            "keyed_collection_parts_returns_none_for_element_collection",
+            keyed_collection_parts_returns_none_for_element_collection,
+        ),
+        (
+            "keyed_collection_parts_returns_type_variables_for_bare_map",
+            keyed_collection_parts_returns_type_variables_for_bare_map,
+        ),
+        (
+            "node_is_keyed_collection_true_for_map",
+            node_is_keyed_collection_true_for_map,
+        ),
+        (
+            "node_is_keyed_collection_false_for_list",
+            node_is_keyed_collection_false_for_list,
+        ),
+        (
+            "node_is_keyed_collection_false_for_leaf",
+            node_is_keyed_collection_false_for_leaf,
+        ),
+        (
+            "is_fully_resolved_rejects_under_parameterized_container",
+            is_fully_resolved_rejects_under_parameterized_container,
+        ),
+        (
+            "is_fully_resolved_accepts_parameterized_container",
+            is_fully_resolved_accepts_parameterized_container,
+        ),
+        (
+            "is_fully_resolved_ignores_unknown_type_names",
+            is_fully_resolved_ignores_unknown_type_names,
+        ),
+        (
+            "map_index_with_correct_key_type_succeeds",
+            map_index_with_correct_key_type_succeeds,
+        ),
+        (
+            "map_index_with_wrong_key_type_reports_error",
+            map_index_with_wrong_key_type_reports_error,
+        ),
+        (
+            "node_inferred_to_outputs_returns_empty_when_child_has_error",
+            node_inferred_to_outputs_returns_empty_when_child_has_error,
+        ),
+        (
+            "list_and_freemonoid_compatible_same_element",
+            list_and_freemonoid_compatible_same_element,
+        ),
+        (
+            "list_and_freemonoid_incompatible_different_element",
+            list_and_freemonoid_incompatible_different_element,
+        ),
+        (
+            "list_freemonoid_compat_is_symmetric",
+            list_freemonoid_compat_is_symmetric,
+        ),
+        (
+            "resolve_applied_generic_struct_expands_to_conj_for_field_lookup",
+            resolve_applied_generic_struct_expands_to_conj_for_field_lookup,
+        ),
+    ];
+
+    for (name, test) in tests {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(test));
+        if result.is_err() {
+            return fail(format!("{name} panicked"));
+        }
+    }
+
+    ExitCode::SUCCESS
 }
