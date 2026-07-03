@@ -24,6 +24,7 @@ import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
   dispatch_tmux_session_prefix,
   dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
+  dispatch_host_exec_argv_shape_transport_dissolution_trigger,
   fill_dispatch_brief,
   dispatch_brief_fields,
   claude_effort_for_intricacy,
@@ -252,6 +253,17 @@ fn witness_fingerprint_scaffold_marker_present() -> Bool {
     )
 }
 
+fn witness_host_exec_argv_shape_transport_scaffold_marker_present() -> Bool {
+  string_contains(
+    s: dispatch_host_exec_argv_shape_transport_dissolution_trigger,
+    pattern: "dissolve-on:",
+  )
+    && string_contains(
+      s: dispatch_host_exec_argv_shape_transport_dissolution_trigger,
+      pattern: "shape/transport/policy",
+    )
+}
+
 fn witness_session_lease_shape_reused() -> Bool {
   session_lease_reuses_process_port_classifier_shape()
 }
@@ -274,5 +286,6 @@ test fn roadmap_dispatch_actuator_witnesses() -> Bool {
     && witness_name_only_observation_not_converged()
     && witness_foreign_process_fingerprint_is_conflict()
     && witness_fingerprint_scaffold_marker_present()
+    && witness_host_exec_argv_shape_transport_scaffold_marker_present()
     && witness_session_lease_shape_reused()
 }

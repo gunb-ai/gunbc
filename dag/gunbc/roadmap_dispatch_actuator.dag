@@ -42,6 +42,8 @@ data roadmap_dispatch_actuator_doc: String = "M2 dispatch actuator model: brief 
 
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: String = "🟡 dissolve-on: tmux-ls name-only lease observation — SessionNameObserved yields UnknownRefused (fail-closed) until dispatch_tmux_process_fingerprint observation transport binds pgrep/cmdline facts into SessionObserved.process_fingerprint; DISSOLVES WHEN M3/M4 wires HostExecArgv receipt rows (tmux capture-pane or ps) feeding classify_dispatch_lease_upsert so Conflict/Drifted/Converged are reachable from observed facts"
 
+data dispatch_host_exec_argv_shape_transport_dissolution_trigger: String = "🟡 dissolve-on: HostExecArgv git/tmux/claude spawn rows authored inline in gunbc.roadmap_dispatch_actuator — workflow policy literals (dispatch_git_remote_ref, dispatch_worktree_root, claude settings) fused with transport argv; DISSOLVES WHEN extdeps/{git,tmux,claude} declare interface shapes (worktree add, new-session, claude invoke) and this module binds policy parameters only, per DESIGN §3 shape/transport/policy split"
+
 data dispatch_mvp_repo: String = "gunbc"
 data dispatch_worktree_root: String = "/opt/gunbc/dispatch-worktrees"
 data dispatch_git_remote_ref: String = "origin/main"
