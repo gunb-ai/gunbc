@@ -1,0 +1,42 @@
+module tools.interp_recorded_fixture_witness_transport
+
+import extdeps.shell
+import extdeps.languages.bash.program {
+  ShellProgram,
+  lit, var_ref, command, serialize_bash
+}
+import tools.host_prelude {
+  ensure_claim_batch_built,
+  ensure_interp_recorded_fixture_witness_built
+}
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.logic { Bool }
+
+fn interp_recorded_fixture_witness_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  ShellProgram {
+    set_e: true,
+    statements: concat(
+      concat(ensure_claim_batch_built(), ensure_interp_recorded_fixture_witness_built()),
+      [
+        command(words: [lit(text: "cd"), root]),
+        command(words: [var_ref(name: "INTERP_RECORDED_FIXTURE_WITNESS")])
+      ]
+    )
+  }
+}
+
+data interp_recorded_fixture_witness_transport_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "extdeps.languages.bash.program",
+    decl_name: "serialize_bash",
+    field: WholeDeclaration
+  }
+}
+
+fn run_interp_recorded_fixture_witness() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: interp_recorded_fixture_witness_program()))
+  result.success
+}
