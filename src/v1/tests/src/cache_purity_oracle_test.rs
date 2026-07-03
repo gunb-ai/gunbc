@@ -144,6 +144,36 @@ impl AuditedRealization for ResolvedGraphRealization {
 }
 
 #[test]
+fn resolved_graph_realization_is_stable_back_to_back() {
+    let dir = temp_dir("stable");
+    let (roots, entry) = write_fixture(&dir);
+    let realization = ResolvedGraphRealization {
+        roots: roots.clone(),
+        entry: entry.clone(),
+    };
+    let bytes1 = realization.realize_cold();
+    let bytes2 = realization.realize_cold();
+    if bytes1 != bytes2 {
+        let v1: serde_json::Value = serde_json::from_slice(&bytes1).expect("json1");
+        let v2: serde_json::Value = serde_json::from_slice(&bytes2).expect("json2");
+        let keys = ["modules", "item_registry", "diagnostics", "emit_graph_info"];
+        for key in keys {
+            let h1 = v1_rt::bytes_identity_hash(
+                &serde_json::to_vec(&v1.get(key).unwrap_or(&serde_json::Value::Null)).unwrap(),
+            );
+            let h2 = v1_rt::bytes_identity_hash(
+                &serde_json::to_vec(&v2.get(key).unwrap_or(&serde_json::Value::Null)).unwrap(),
+            );
+            if h1 != h2 {
+                panic!("back-to-back compile diverged on payload.{key}: {h1} vs {h2}");
+            }
+        }
+        panic!("back-to-back compile diverged outside known payload keys");
+    }
+    let _ = fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn real_resolved_graph_realization_is_pure_under_nonkeyed_probes() {
     let dir = temp_dir("pure");
     let (roots, entry) = write_fixture(&dir);

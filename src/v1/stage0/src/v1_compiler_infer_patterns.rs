@@ -368,6 +368,13 @@ pub fn expand_scrut_type_for_variant_lookup(scrut_node: Rc<Node>, env: Rc<TypeEn
     )
 }
 
+fn node_has_compiler_error(n: Rc<Node>) -> bool {
+    match n.inferred.clone().as_deref().cloned() {
+        Some(InferredNode::CompilerError { .. }) => true,
+        _ => false,
+    }
+}
+
 fn expand_scrut_type_for_variant_lookup_with_seen(
     scrut_node: Rc<Node>,
     env: Rc<TypeEnv>,
@@ -400,7 +407,11 @@ fn expand_scrut_type_for_variant_lookup_with_seen(
                                 name.clone(),
                                 env.source_indices.clone(),
                             );
-                            return expanded;
+                            if node_has_compiler_error(expanded.clone()) {
+                                scrut_node.clone()
+                            } else {
+                                expanded
+                            }
                         }
                         _ => scrut_node.clone(),
                     }
@@ -423,7 +434,11 @@ fn expand_scrut_type_for_variant_lookup_with_seen(
                     match def.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: target, .. }) => {
                             if (target.connective.clone() == Connective::Disj) {
-                                target
+                                if node_has_compiler_error(target.clone()) {
+                                    scrut_node.clone()
+                                } else {
+                                    target
+                                }
                             } else {
                                 scrut_node.clone()
                             }

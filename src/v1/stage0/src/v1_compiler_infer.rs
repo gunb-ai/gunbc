@@ -5610,7 +5610,20 @@ pub fn expand_type_for_field_access_with_seen(
                 {
                     match decl.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: target, .. }) => {
-                            expand_type_for_field_access_with_seen(target, env, module_name, seen)
+                            if target
+                                .inferred
+                                .clone()
+                                .is_some_and(|i| is_compiler_error(i))
+                            {
+                                n.clone()
+                            } else {
+                                expand_type_for_field_access_with_seen(
+                                    target,
+                                    env,
+                                    module_name,
+                                    seen,
+                                )
+                            }
                         }
                         _ => n.clone(),
                     }
