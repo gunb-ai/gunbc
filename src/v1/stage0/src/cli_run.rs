@@ -599,16 +599,53 @@ pub fn import_closure_from_facts(
     reached
 }
 
+/// Pre-built `import_resolution_facts` / `module_declaration_facts` rows for one pool-root
+/// set. Built once per `MultiEntryIndex` / resolve pass so closure queries do not re-scan the
+/// corpus on every `resolve_transitively` call (Phase 1 perf receipt, DESIGN §2).
+pub struct ModuleGraphFactsLive {
+    edges: Vec<ImportResolutionFactRaw>,
+    nodes: Vec<ModuleDeclarationFactRaw>,
+}
+
+#[cfg(test)]
+static MODULE_GRAPH_FACTS_BUILD_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
+pub(crate) fn reset_module_graph_facts_build_count_for_test() {
+    MODULE_GRAPH_FACTS_BUILD_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[cfg(test)]
+pub(crate) fn module_graph_facts_build_count_for_test() -> usize {
+    MODULE_GRAPH_FACTS_BUILD_COUNT.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsLive {
+    #[cfg(test)]
+    MODULE_GRAPH_FACTS_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    const EXCLUDE: &[String] = &[];
+    let roots = pool_roots_for_module_graph_closure(pool_roots);
+    ModuleGraphFactsLive {
+        edges: import_resolution_facts(&roots, &roots, EXCLUDE),
+        nodes: module_declaration_facts(&roots),
+    }
+}
+
 /// Host realization of `v2.lens.module_graph.import_closure_live`.
 pub fn import_closure_live_paths(
     entry_path: &str,
     pool_roots: &[String],
 ) -> Result<Vec<String>, String> {
-    const EXCLUDE: &[String] = &[];
-    let roots = pool_roots_for_module_graph_closure(pool_roots);
-    let edges = import_resolution_facts(&roots, &roots, EXCLUDE);
-    let nodes = module_declaration_facts(&roots);
-    Ok(import_closure_from_facts(entry_path, &edges, &nodes))
+    let facts = build_module_graph_facts_live(pool_roots);
+    Ok(import_closure_live_paths_with_facts(entry_path, &facts))
+}
+
+pub fn import_closure_live_paths_with_facts(
+    entry_path: &str,
+    facts: &ModuleGraphFactsLive,
+) -> Vec<String> {
+    import_closure_from_facts(entry_path, &facts.edges, &facts.nodes)
 }
 
 #[cfg(test)]
