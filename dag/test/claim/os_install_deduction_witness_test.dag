@@ -26,6 +26,7 @@ import gunbc.os_install_deduction {
   RequiresStoragePolicy,
   RequiresDiskObservation,
   AutoinstallIncompleteNotBootable,
+  NotUnattendedByPolicy,
   IncompleteSeedDelivery,
   fold_os_install_preflight_verdict,
   preflight_verdict_allows_ready_to_boot,
@@ -38,8 +39,10 @@ import gunbc.os_install_deduction {
   SubiquityStorageScreen,
   FirmwareSetup,
   InstallerAwaitingStorage,
-  FirmwareIdleBenign,
+  KvmFirmwareIdleObserved,
+  KvmSuggestsOsBooted,
   runtime_verdict_from_kvm_attestation,
+  runtime_verdict_implies_os_installed,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 
@@ -120,8 +123,10 @@ test fn nocloud_net_seed_is_incomplete_for_actuator_path() -> Bool {
     install_openssh_server: true,
     storage_policy: StoragePolicyDirectLayout,
   }
-  fold_os_install_preflight_verdict(payload: net_payload, disk: EmptyDisk)
-    == IncompleteSeedDelivery
+  match fold_os_install_preflight_verdict(payload: net_payload, disk: EmptyDisk) {
+    IncompleteSeedDelivery => true
+    _ => false
+  }
 }
 
 test fn requires_storage_policy_plans_remaster() -> Bool {
@@ -163,7 +168,29 @@ test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool {
   }
 }
 
-test fn kvm_firmware_setup_is_benign_idle() -> Bool {
+test fn non_automated_is_not_unattended_ready() -> Bool {
+  let manual_payload = UbuntuAutoinstallPayload {
+    autoinstall_version: 1,
+    delivery: NoCloudLocal,
+    fully_automated: false,
+    target_distribution: srv3_ubuntu_autoinstall_on_iso.target_distribution,
+    identity: srv3_autoinstall_identity,
+    locale: "en_US.UTF-8",
+    keyboard_layout: "us",
+    install_openssh_server: true,
+    storage_policy: StoragePolicyDirectLayout,
+  }
+  match fold_os_install_preflight_verdict(payload: manual_payload, disk: EmptyDisk) {
+    NotUnattendedByPolicy => true
+    CompleteForUnattended => false
+    _ => false
+  }
+    && !preflight_verdict_allows_ready_to_boot(
+      verdict: fold_os_install_preflight_verdict(payload: manual_payload, disk: EmptyDisk),
+    )
+}
+
+test fn kvm_firmware_setup_is_weak_idle_observation() -> Bool {
   match runtime_verdict_from_kvm_attestation(
     attestation: KvmOperatorAttestation {
       target: operator_host_srv3,
@@ -173,7 +200,33 @@ test fn kvm_firmware_setup_is_benign_idle() -> Bool {
     },
     preflight: CompleteForUnattended,
   ) {
-    FirmwareIdleBenign => true
+    KvmFirmwareIdleObserved => true
     _ => false
   }
+}
+
+test fn kvm_login_prompt_is_weak_not_os_installed() -> Bool {
+  match runtime_verdict_from_kvm_attestation(
+    attestation: KvmOperatorAttestation {
+      target: operator_host_srv3,
+      observed_screen: LoginPrompt,
+      observed_at: "2026-07-02T23:00:00Z",
+      attested_by: "operator" as NonEmptyStr,
+    },
+    preflight: CompleteForUnattended,
+  ) {
+    KvmSuggestsOsBooted => true
+    _ => false
+  }
+    && !runtime_verdict_implies_os_installed(
+      verdict: runtime_verdict_from_kvm_attestation(
+        attestation: KvmOperatorAttestation {
+          target: operator_host_srv3,
+          observed_screen: LoginPrompt,
+          observed_at: "2026-07-02T23:00:00Z",
+          attested_by: "operator" as NonEmptyStr,
+        },
+        preflight: CompleteForUnattended,
+      ),
+    )
 }

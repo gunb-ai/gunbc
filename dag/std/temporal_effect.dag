@@ -2,9 +2,13 @@ module std.temporal_effect
 
 import std.types { String, NonEmptyStr, Int, Bool, ContentHash, Timestamp, List }
 
-data temporal_effect_doc: String = "Temporal realization spine — minimal durable facts (intent, receipt, lease, approval grant, base snapshot) and a receipt-derived fold for next-step plan. Not a workflow engine: cursor is derived from receipts+leases+observations, never authoritative alone. Persistence is a realization handler; these types are the single authority (roadmap 2-temporal-effect-spine-a)."
+data temporal_effect_doc: String = "Temporal realization spine — minimal durable facts (intent, receipt, lease, approval grant, base snapshot) and plan_next_step_from_prior_receipt_and_lease (single prior receipt + lease; list-level workflow fold is consumer-side). Not a workflow engine: cursor derived from receipts+leases+observations, never authoritative alone. Persistence is a realization handler; these types are the single authority (roadmap 2-temporal-effect-spine-a)."
 
 data approval_grant_covers_intent_dissolution_marker: String = "🟡 v0 predicate: escalation_id + intent_hash + expires_at bound via ISO-8601 lexicographic compare on Timestamp=String; dissolve-on: grounded instant ordering authority lands in std.time (DESIGN §3 — no second grant-equality surface)."
+
+data effect_step_receipt_label_dissolution_marker: String = "🟡 v0 receipt interop: verdict_label/plan_label are NonEmptyStr until workflow consumer binds typed verdict/plan rows; dissolve-on: EffectStepReceipt<V,P> or DeclarationRef when srv3-install-reconcile-a wires folds."
+
+data derived_pending_step_id_dissolution_marker: String = "🟡 v0: derived_pending_step_id returns last receipt step for retry-until-read-back; next-step-after-success cursor belongs in gunbc workflow consumer, not this helper alone."
 
 type EffectAttemptIntent {
   attempt_id: NonEmptyStr
@@ -133,7 +137,7 @@ fn plan_for_held_lease_observation(
   }
 }
 
-fn fold_next_step_plan(
+fn plan_next_step_from_prior_receipt_and_lease(
   intent: EffectAttemptIntent,
   pending_step_id: NonEmptyStr,
   requires_destructive_approval: Bool,

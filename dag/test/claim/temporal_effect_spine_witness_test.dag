@@ -25,7 +25,7 @@ import std.temporal_effect {
   PlanDrainThenStart,
   PlanNoop,
   PlanApply,
-  fold_next_step_plan,
+  plan_next_step_from_prior_receipt_and_lease,
   approval_grant_covers_intent,
   derived_pending_step_id,
   prior_receipt_for_step,
@@ -93,7 +93,7 @@ fn converged_serve_receipt() -> EffectStepReceipt {
 }
 
 test fn missing_approval_awaits_not_apply() -> Bool {
-  match fold_next_step_plan(
+  match plan_next_step_from_prior_receipt_and_lease(
     intent: witness_intent,
     pending_step_id: witness_step_boot,
     requires_destructive_approval: true,
@@ -109,7 +109,7 @@ test fn missing_approval_awaits_not_apply() -> Bool {
 }
 
 test fn foreign_lease_refuses_not_drain() -> Bool {
-  match fold_next_step_plan(
+  match plan_next_step_from_prior_receipt_and_lease(
     intent: witness_intent,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
@@ -126,7 +126,7 @@ test fn foreign_lease_refuses_not_drain() -> Bool {
 }
 
 test fn stale_lease_drains_not_blind_start() -> Bool {
-  match fold_next_step_plan(
+  match plan_next_step_from_prior_receipt_and_lease(
     intent: witness_intent,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
@@ -144,7 +144,7 @@ test fn stale_lease_drains_not_blind_start() -> Bool {
 }
 
 test fn converged_receipt_stale_lease_drains_not_noop() -> Bool {
-  match fold_next_step_plan(
+  match plan_next_step_from_prior_receipt_and_lease(
     intent: witness_intent,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
@@ -172,7 +172,7 @@ test fn applied_without_read_back_refuses() -> Bool {
     read_back_ok: false,
     recorded_at: "2026-07-02T23:01:00Z",
   }
-  match fold_next_step_plan(
+  match plan_next_step_from_prior_receipt_and_lease(
     intent: witness_intent,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
@@ -188,7 +188,7 @@ test fn applied_without_read_back_refuses() -> Bool {
 }
 
 test fn converged_receipt_expected_lease_yields_noop() -> Bool {
-  match fold_next_step_plan(
+  match plan_next_step_from_prior_receipt_and_lease(
     intent: witness_intent,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
@@ -231,7 +231,7 @@ test fn expired_grant_does_not_authorize_destructive() -> Bool {
     escalation_id: witness_escalation_id,
     observed_at: witness_observed_at,
   )
-    && match fold_next_step_plan(
+    && match plan_next_step_from_prior_receipt_and_lease(
       intent: witness_intent,
       pending_step_id: witness_step_boot,
       requires_destructive_approval: true,
@@ -298,7 +298,7 @@ test fn consumed_grant_does_not_authorize_destructive() -> Bool {
     escalation_id: witness_escalation_id,
     observed_at: witness_observed_at,
   )
-    && match fold_next_step_plan(
+    && match plan_next_step_from_prior_receipt_and_lease(
       intent: witness_intent,
       pending_step_id: witness_step_boot,
       requires_destructive_approval: true,
@@ -319,7 +319,7 @@ test fn consumed_grant_does_not_authorize_destructive() -> Bool {
 }
 
 test fn absent_lease_plans_apply_when_no_prior_receipt() -> Bool {
-  match fold_next_step_plan(
+  match plan_next_step_from_prior_receipt_and_lease(
     intent: witness_intent,
     pending_step_id: witness_step_serve,
     requires_destructive_approval: false,
