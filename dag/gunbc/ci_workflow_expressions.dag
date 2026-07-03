@@ -1,10 +1,13 @@
 module gunbc.ci_workflow_expressions
 
+import std.types { Int, String }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.github.expressions {
   Expression, ContextAccess, FunctionCall, StringLiteral, LogicalOr,
   ExpressionTemplate, TemplateSegment, LiteralText, Interpolation,
-  HashFiles, Github,
-  serialize_template, runner_os, runner_arch, runner_temp
+  HashFiles, Github, Needs, Steps,
+  serialize_template, interpolate, runner_os, runner_arch, runner_temp
 }
 
 fn ci_cache_hash_files() -> Expression {
@@ -85,3 +88,73 @@ fn ci_setup_rust_home() -> String { serialize_template(template: ci_setup_rust_h
 fn ci_cache_path() -> String { serialize_template(template: ci_cache_path_template) }
 fn ci_cache_key() -> String { serialize_template(template: ci_cache_key_template) }
 fn ci_cache_restore_keys() -> String { serialize_template(template: ci_cache_restore_keys_template) }
+
+data ci_concurrency_slot_decimal_digit_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "std.encoding",
+    decl_name: "int_to_decimal_string",
+    field: WholeDeclaration
+  }
+}
+
+fn ci_concurrency_slot_decimal_digit_char(d: Int) -> String {
+  from_code_point(48 + d)
+}
+
+fn ci_concurrency_slot_decimal_string_rec(n: Int, acc: String) -> String {
+  if n <= 0 {
+    if acc == "" { "0" } else { acc }
+  } else {
+    ci_concurrency_slot_decimal_string_rec(
+      n: n / 10,
+      acc: concat(ci_concurrency_slot_decimal_digit_char(d: n % 10), acc)
+    )
+  }
+}
+
+fn ci_concurrency_slot_decimal_string(n: Int) -> String {
+  if n <= 0 {
+    "1"
+  } else {
+    ci_concurrency_slot_decimal_string_rec(n: n, acc: "")
+  }
+}
+
+data ci_concurrency_slot_job_id: String = "ci_concurrency_slot"
+data ci_concurrency_slot_output_name: String = "slot"
+
+fn ci_concurrency_slot_bucket_bash(slot_count: Int) -> String {
+  concat(
+    "echo \"", ci_concurrency_slot_output_name, "=$(( GITHUB_RUN_ID % ",
+    ci_concurrency_slot_decimal_string(n: slot_count),
+    " ))\" >> \"$GITHUB_OUTPUT\""
+  )
+}
+
+fn ci_heavy_concurrency_group_expression() -> Expression {
+  ContextAccess {
+    context: Needs,
+    path: [ci_concurrency_slot_job_id, "outputs", ci_concurrency_slot_output_name]
+  }
+}
+
+fn ci_concurrency_slot_step_output_expression() -> Expression {
+  ContextAccess {
+    context: Steps,
+    path: [ci_concurrency_slot_output_name, "outputs", ci_concurrency_slot_output_name]
+  }
+}
+
+fn ci_concurrency_slot_job_output_value() -> String {
+  interpolate(expression: ci_concurrency_slot_step_output_expression())
+}
+
+data ci_heavy_concurrency_group_template: ExpressionTemplate = {
+  segments: [
+    LiteralText { text: "ci-heavy-slot-" },
+    Interpolation { expression: ci_heavy_concurrency_group_expression() }
+  ]
+}
+
+fn ci_heavy_concurrency_group() -> String { serialize_template(template: ci_heavy_concurrency_group_template) }

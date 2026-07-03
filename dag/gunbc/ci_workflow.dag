@@ -2,8 +2,11 @@ module gunbc.ci_workflow
 
 import extdeps.languages.yaml.types { yaml_string, yaml_int, yaml_bool, kv }
 import gunbc.ci_workflow_expressions {
-  ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys
+  ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys,
+  ci_heavy_concurrency_group, ci_concurrency_slot_bucket_bash, ci_concurrency_slot_job_id,
+  ci_concurrency_slot_output_name, ci_concurrency_slot_job_output_value
 }
+import gunbc.ci_budget_tree { gunbc_ci_fleet_concurrent_heavy_ci_slot_count }
 import gunbc.ci_spec {
   CiSpec, gunbc_ci_spec, gunbc_ci_workflow_run, gunbc_ci_rust_job_run,
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
@@ -22,6 +25,7 @@ import extdeps.github.actions {
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview,
   WorkflowPermissions, PermRead,
   ConcurrencySpec, ConcurrencyMappingQueueNotMax, CancelInProgressBool,
+  RunnerSpec, HostedRunner, UbuntuLatest,
   checkout_action, setup_rust_action, cache_action
 }
 
@@ -294,20 +298,63 @@ fn ci_deploy_jobs() -> List<Job> {
   map(gunbc_ci_deploy_stages, s => ci_deploy_job(stage: s))
 }
 
+data gunbc_ci_heavy_concurrency_disposition: Disposition = Terminal {
+  reason: "2026-07-03 fleet-concurrency incident follow-up: bounds the heavy `ci` job to at most gunbc_ci_fleet_concurrent_heavy_ci_slot_count() concurrent runs fleet-wide via a job-level concurrency group, needed because GHA expressions have no arithmetic (extdeps/github/expressions.dag) -- ci_concurrency_slot_job computes the bucket in bash and passes it via job outputs. This throttles PR-merge-burst throughput (extra runs queue past the slot count instead of running immediately); operator bless needed on that tradeoff. If 3-concurrent still OOMs after this lands, #6155 (build_type_env quadratic) is independently needed -- this fix only isolates that question, it does not preclude it."
+}
+
+fn ci_concurrency_slot_step() -> Step {
+  RunStep {
+    name: Present { value: "Compute heavy-CI concurrency slot" },
+    id: Present { value: ci_concurrency_slot_output_name },
+    run: ci_concurrency_slot_bucket_bash(slot_count: gunbc_ci_fleet_concurrent_heavy_ci_slot_count()),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn ci_concurrency_slot_job() -> Job {
+  Job {
+    id: ci_concurrency_slot_job_id,
+    name: none,
+    runner: HostedRunner { label: UbuntuLatest },
+    steps: [ci_concurrency_slot_step()],
+    needs: [],
+    env: none,
+    outputs: Present { value: [
+      kv(key: ci_concurrency_slot_output_name, value: yaml_string(s: ci_concurrency_slot_job_output_value()))
+    ] },
+    if_condition: none,
+    strategy: none,
+    timeout_minutes: none,
+    continue_on_error: none,
+    concurrency: none
+  }
+}
+
 fn ci_job() -> Job {
   Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_runner_spec(),
     steps: concat(ci_prelude_steps(), [ci_floor_step(), ci_merge_admission_gate_step()]),
-    needs: [],
+    needs: [ci_concurrency_slot_job_id],
     env: none,
     outputs: none,
     if_condition: none,
     strategy: none,
     timeout_minutes: Present { value: gunbc_ci_job_timeout_policy_minutes },
     continue_on_error: none,
-    concurrency: none
+    concurrency: Present {
+      value: ConcurrencyMappingQueueNotMax {
+        group: ci_heavy_concurrency_group(),
+        cancel_in_progress: none,
+        explicit_single: none
+      }
+    }
   }
 }
 
@@ -361,5 +408,5 @@ data ci_workflow: Workflow = {
       id_token: none
     }
   },
-  jobs: concat([ci_job(), rust_tests_job()], ci_deploy_jobs())
+  jobs: concat([ci_concurrency_slot_job(), ci_job(), rust_tests_job()], ci_deploy_jobs())
 }

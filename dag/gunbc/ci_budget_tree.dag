@@ -157,13 +157,14 @@ fn gunbc_ci_host_concurrent_heavy_ci_slot_count(offer: ComputeOffer) -> Int {
   nat_max(a: fit, b: 1)
 }
 
-fn gunbc_ci_fleet_concurrent_heavy_ci_slot_count() -> Int {
-  fold(fleet_budget_trees_offers(), init: gunbc_ci_host_concurrent_heavy_ci_slot_count(offer: srv1_offer), f: (acc, offer) =>
-    int_min(a: acc, b: gunbc_ci_host_concurrent_heavy_ci_slot_count(offer: offer)))
-}
+data gunbc_ci_fleet_offers: List<ComputeOffer> = [srv1_offer, srv2_offer, srv3_offer]
 
-fn fleet_budget_trees_offers() -> List<ComputeOffer> {
-  [srv1_offer, srv2_offer, srv3_offer]
+fn gunbc_ci_fleet_concurrent_heavy_ci_slot_count() -> Int {
+  fold(
+    gunbc_ci_fleet_offers.skip(n: 1),
+    init: gunbc_ci_host_concurrent_heavy_ci_slot_count(offer: gunbc_ci_fleet_offers.first()),
+    f: (acc, offer) => int_min(a: acc, b: gunbc_ci_host_concurrent_heavy_ci_slot_count(offer: offer))
+  )
 }
 
 fn witness_fleet_slot_count_at_least_one() -> Bool {
