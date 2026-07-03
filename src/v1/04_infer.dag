@@ -539,17 +539,22 @@ fn field_type_is_optional_coproduct(ft: Node) -> Bool {
   ft.return_cardinality == CardOptional && inner.connective == Disj
 }
 
-fn record_lit_variant_fields_from_visible_env(env: TypeEnv, variant_name: String) -> List<Node> {
+fn record_lit_variant_fields_from_visible_env(env: TypeEnv, variant_name: String, module_name: String) -> List<Node> {
   flatten_visible_bindings(env: env) |> map_values |> fold(init: [], f: (acc, binding) =>
     if acc |> count > 0 {
       acc
-    } else if binding.resolved.connective == Disj {
-      match binding.resolved.children |> filter(arm => authored_name_at(source_indices: env.source_indices, node: arm) == variant_name) |> first {
-        Present { value: variant } => variant.children
-        Absent => acc
-      }
     } else {
-      acc
+      let node = expand_type_for_field_access(n: binding.resolved, env: env, module_name: module_name)
+      if node.connective == Disj {
+        match node.children |> filter(arm => authored_name_at(source_indices: env.source_indices, node: arm) == variant_name) |> first {
+          Present { value: arm } =>
+            let expanded = expand_type_for_field_access(n: arm, env: env, module_name: module_name)
+            if expanded.connective == Conj { expanded.children } else { arm.children }
+          Absent => acc
+        }
+      } else {
+        acc
+      }
     }
   )
 }
@@ -570,7 +575,7 @@ fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Nod
                   }
                 Absent => []
               }
-            Absent => record_lit_variant_fields_from_visible_env(env: scope.type_env, variant_name: tn)
+            Absent => record_lit_variant_fields_from_visible_env(env: scope.type_env, variant_name: tn, module_name: scope.module_name)
           }
       }
     Absent => []
@@ -2888,21 +2893,26 @@ fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let struct_fields = match type_name {
     Present { value: tn } =>
-      match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
-        Present { value: fields } => fields
-        Absent =>
-          match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
-            Present { value: fields } => fields
-            Absent =>
-              match expected {
-                Present { value: _ } => record_lit_expected_fields(type_name: type_name, scope: scope)
-                Absent =>
-                  match record_lit_alias_struct_fields(type_name: tn, scope: scope) {
-                    Present { value: fields } => fields
-                    Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
-                  }
-              }
-          }
+      let visible_fields = record_lit_variant_fields_from_visible_env(env: scope.type_env, variant_name: tn, module_name: scope.module_name)
+      if visible_fields |> count > 0 {
+        visible_fields
+      } else {
+        match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
+          Present { value: fields } => fields
+          Absent =>
+            match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
+              Present { value: fields } => fields
+              Absent =>
+                match expected {
+                  Present { value: _ } => record_lit_expected_fields(type_name: type_name, scope: scope)
+                  Absent =>
+                    match record_lit_alias_struct_fields(type_name: tn, scope: scope) {
+                      Present { value: fields } => fields
+                      Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
+                    }
+                }
+            }
+        }
       }
     Absent =>
       match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {

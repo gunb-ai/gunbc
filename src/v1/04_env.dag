@@ -79,21 +79,6 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
   )
 }
 
-fn lookup_variant_binding_in_visible_env(env: TypeEnv, variant_name: String) -> TypeBinding? {
-  flatten_visible_bindings(env: env) |> map_values |> fold(init: none, f: (acc, binding) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if binding.resolved.connective == Disj {
-          match binding.resolved.children |> filter(arm => authored_name_at(source_indices: env.source_indices, node: arm) == variant_name) |> first {
-            Present { value: variant } => Present { value: TypeBinding { name: variant_name, resolved: variant, provenance: SubValueUnknown } }
-            Absent => none
-          }
-        } else { none }
-    }
-  )
-}
-
 fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.str_bindings, name) {
     Present { value: binding } => Present { value: binding }
@@ -102,12 +87,8 @@ fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
         Present { value: binding } => Present { value: binding }
         Absent =>
           match intern_find(table: env.intern_table, s: name) {
-            Present { value: id } =>
-              match map_get(env.bindings, id) {
-                Present { value: binding } => Present { value: binding }
-                Absent => lookup_variant_binding_in_visible_env(env: env, variant_name: name)
-              }
-            Absent => lookup_variant_binding_in_visible_env(env: env, variant_name: name)
+            Present { value: id } => map_get(env.bindings, id)
+            Absent => Absent
           }
       }
   }

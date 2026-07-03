@@ -939,9 +939,11 @@ pub fn record_lit_expected_fields(
                         None => Rc::new(vec![]),
                     }
                 }
-                None => {
-                    record_lit_variant_fields_from_visible_env(scope.type_env.clone(), tn.clone())
-                }
+                None => record_lit_variant_fields_from_visible_env(
+                    scope.type_env.clone(),
+                    tn.clone(),
+                    scope.module_name.clone(),
+                ),
             },
         },
         None => Rc::new(vec![]),
@@ -951,17 +953,35 @@ pub fn record_lit_expected_fields(
 pub fn record_lit_variant_fields_from_visible_env(
     env: Rc<TypeEnv>,
     variant_name: String,
+    module_name: String,
 ) -> Rc<Vec<Rc<Node>>> {
     let source_indices = env.source_indices.clone();
-    for binding in Rc::new(v1_rt::map_values(&flatten_visible_bindings(env.clone())))
+    let visible = flatten_visible_bindings(env.clone());
+    if (variant_name.clone() == "UserToolResultBlock".to_string()) {
+        eprintln!(
+            "record_lit_variant_fields: visible_bindings={}",
+            visible.len()
+        );
+    }
+    for binding in Rc::new(v1_rt::map_values(&visible))
         .iter()
         .cloned()
     {
-        let node = binding.resolved.clone();
+        let node = expand_type_for_field_access(
+            binding.resolved.clone(),
+            env.clone(),
+            module_name.clone(),
+        );
         if (node.connective.clone() == Connective::Disj) {
             for arm in node.children.clone().iter().cloned() {
                 if (authored_name_at(source_indices.clone(), arm.clone()) == variant_name.clone()) {
-                    return arm.children.clone();
+                    let expanded =
+                        expand_type_for_field_access(arm.clone(), env.clone(), module_name.clone());
+                    if (expanded.connective.clone() == Connective::Conj) {
+                        return expanded.children.clone();
+                    } else {
+                        return arm.children.clone();
+                    }
                 }
             }
         }
@@ -5797,27 +5817,46 @@ pub fn infer_record_lit(
 ) -> Rc<InferResult> {
     {
         let struct_fields = match type_name.clone() {
-            Some(tn) => match record_lit_instantiated_fields(
-                type_name.clone(),
-                expected.clone(),
-                scope.clone(),
-            ) {
-                Some(fields) => fields.clone(),
-                None => match record_lit_fields_from_expected(
-                    type_name.clone(),
-                    expected.clone(),
-                    scope.clone(),
-                ) {
-                    Some(fields) => fields.clone(),
-                    None => match expected.clone() {
-                        Some(_) => record_lit_expected_fields(type_name.clone(), scope.clone()),
-                        None => match record_lit_alias_struct_fields(tn.clone(), scope.clone()) {
+            Some(tn) => {
+                let visible_fields = record_lit_variant_fields_from_visible_env(
+                    scope.type_env.clone(),
+                    tn.clone(),
+                    scope.module_name.clone(),
+                );
+                if ((visible_fields.clone().len() as i64) > 0) {
+                    visible_fields.clone()
+                } else {
+                    match record_lit_instantiated_fields(
+                        type_name.clone(),
+                        expected.clone(),
+                        scope.clone(),
+                    ) {
+                        Some(fields) => fields.clone(),
+                        None => match record_lit_fields_from_expected(
+                            type_name.clone(),
+                            expected.clone(),
+                            scope.clone(),
+                        ) {
                             Some(fields) => fields.clone(),
-                            None => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                            None => match expected.clone() {
+                                Some(_) => {
+                                    record_lit_expected_fields(type_name.clone(), scope.clone())
+                                }
+                                None => {
+                                    match record_lit_alias_struct_fields(tn.clone(), scope.clone())
+                                    {
+                                        Some(fields) => fields.clone(),
+                                        None => record_lit_expected_fields(
+                                            type_name.clone(),
+                                            scope.clone(),
+                                        ),
+                                    }
+                                }
+                            },
                         },
-                    },
-                },
-            },
+                    }
+                }
+            }
             None => match record_lit_instantiated_fields(
                 type_name.clone(),
                 expected.clone(),

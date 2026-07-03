@@ -11,7 +11,7 @@ pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
     source_text_at,
 };
-pub use crate::v1_std_core::{Connective, InternTable, NewlineIndex, Node};
+pub use crate::v1_std_core::{InternTable, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
@@ -193,41 +193,14 @@ pub fn deterministic_str_binding_map(
     )
 }
 
-pub fn lookup_variant_binding_in_visible_env(
-    env: Rc<TypeEnv>,
-    variant_name: String,
-) -> Option<Rc<TypeBinding>> {
-    let source_indices = env.source_indices.clone();
-    for binding in Rc::new(v1_rt::map_values(&flatten_visible_bindings(env.clone())))
-        .iter()
-        .cloned()
-    {
-        if (binding.resolved.clone().connective.clone() == Connective::Disj) {
-            for arm in binding.resolved.clone().children.iter().cloned() {
-                if (authored_name_at(source_indices.clone(), arm.clone()) == variant_name.clone()) {
-                    return Some(Rc::new(TypeBinding {
-                        name: variant_name.clone(),
-                        resolved: arm.clone(),
-                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                    }));
-                }
-            }
-        }
-    }
-    None
-}
-
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.str_bindings, name.clone()) {
         Some(binding) => Some(binding.clone()),
         None => match v1_rt::map_get(&env.ancestry_str_bindings, name.clone()) {
             Some(binding) => Some(binding.clone()),
-            None => match intern_find(env.intern_table.clone(), name.clone()) {
-                Some(id) => match v1_rt::map_get(&env.bindings, id) {
-                    Some(binding) => Some(binding.clone()),
-                    None => lookup_variant_binding_in_visible_env(env, name),
-                },
-                None => lookup_variant_binding_in_visible_env(env, name),
+            None => match intern_find(env.intern_table.clone(), name) {
+                Some(id) => v1_rt::map_get(&env.bindings, id),
+                None => None,
             },
         },
     }
