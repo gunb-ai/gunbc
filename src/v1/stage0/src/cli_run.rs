@@ -4973,7 +4973,55 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let pairs = scan_test_decl_lines(source);
         assert_eq!(
             pairs,
-            vec![("witness_a".to_string(), 5), ("witness_b".to_string(), 7)]
+            vec![
+                ("witness_a".to_string(), 5),
+                ("witness_b".to_string(), 7)
+            ]
+        );
+    }
+
+    #[test]
+    fn witness_test_fn_uses_live_host_scan_detects_live_calls() {
+        let source = "module m\n\ntest fn clean_tree_holds() -> Bool {\n  realization_vocab_containment_clean_live(scan_roots: roots)\n}\n\ntest fn pure_holds() -> Bool { true }\n";
+        assert!(super::witness_test_fn_uses_live_host_scan(
+            source,
+            "clean_tree_holds"
+        ));
+        assert!(!super::witness_test_fn_uses_live_host_scan(source, "pure_holds"));
+    }
+
+    #[test]
+    fn host_scaffold_witness_not_skipped_on_unrelated_diff() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let (runner_graph, runner_indices) =
+            super::resolve_entry_graph(&roots, super::FLOOR_RUNNER_ENTRY)
+                .expect("floor runner resolves");
+        let runner_ctx =
+            super::make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+        let entry = "src/v2/test/claim/realization_vocabulary_containment/clean_tree_test.dag";
+        let content = std::fs::read_to_string(entry).expect("clean_tree readable");
+        assert!(super::witness_test_fn_uses_live_host_scan(
+            &content,
+            "realization_vocab_clean_tree_holds"
+        ));
+        let changed_paths = vec!["src/v2/lens/affected_set.dag".to_string()];
+        let skip = super::call_floor_host_scaffold_would_skip(
+            &runner_ctx,
+            &changed_paths,
+            &[],
+            false,
+            false,
+            false,
+        )
+        .expect("host scaffold skip");
+        assert!(
+            !skip,
+            "host-scaffold witness must not skip on unrelated node-frontier diff"
         );
     }
 
