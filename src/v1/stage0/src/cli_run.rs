@@ -4067,10 +4067,14 @@ fn floor_diff_edits_from_line_ranges(
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
     let mut touched_entry_files = HashSet::new();
+    let mut saw_non_dag = false;
+    let mut saw_dag = false;
     for (file_path, ranges) in line_ranges_by_file {
         if !file_path.ends_with(".dag") {
-            return Err(format!("non-.dag file changed: {file_path}"));
+            saw_non_dag = true;
+            continue;
         }
+        saw_dag = true;
         let file_norm = normalize_repo_path(file_path);
         let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
             Ok(pair) => pair,
@@ -4146,6 +4150,9 @@ fn floor_diff_edits_from_line_ranges(
                 touched_entry_files.insert(file_norm.clone());
             }
         }
+    }
+    if saw_non_dag && !saw_dag {
+        return Err("non-.dag file changed with no .dag paths in diff".to_string());
     }
     Ok(FloorDiffEdits {
         overlapping_data_items,
@@ -5940,7 +5947,7 @@ mod node_frontier_plumbing_controls {
         );
     }
 
-    // Control 5 (fail-closed): non-.dag changed file → seed collection fails closed.
+    // Control 5 (fail-closed): exclusively non-.dag diff → seed collection fails closed.
     #[test]
     fn fail_closed_non_dag_file_forces_run_all() {
         let ws = workspace_root();
@@ -5987,6 +5994,27 @@ mod node_frontier_plumbing_controls {
         assert!(
             edits.touched_entry_files.iter().any(|f| f == emit_rel),
             "import preamble + fn body must touch the entry file"
+        );
+    }
+
+    #[test]
+    fn mixed_dag_and_non_dag_diff_scopes_from_dag_only() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let emit_rel = "dag/extdeps/languages/json/emit.dag";
+        let dag_diff = include_str!("../testdata/emit_import_preamble_fn_body.diff");
+        let host_diff = "diff --git a/src/v1/stage0/src/cli_run.rs b/src/v1/stage0/src/cli_run.rs\n\
+                          --- a/src/v1/stage0/src/cli_run.rs\n\
+                          +++ b/src/v1/stage0/src/cli_run.rs\n\
+                          @@ -1,0 +2,1 @@\n+// synthetic\n";
+        let diff = format!("{dag_diff}\n{host_diff}");
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("mixed dag+host diff must scope from .dag paths only");
+        assert!(
+            edits.touched_entry_files.iter().any(|f| f == emit_rel),
+            "mixed diff must still attribute .dag frontier seeds"
         );
     }
 
