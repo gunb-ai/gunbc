@@ -12,20 +12,12 @@ import extdeps.tailscale.acl {
   ssh_members_reach_ci_nonroot_only,
   ssh_dashboard_reaches_ci_root_and_nonroot,
   operator_acl_security_spine_holds,
-  extdeps_external_authority_anchor,
+  tailscale_grants_external_authority_holds,
 }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Https }
 import gunbc.tailscale_acl_emit { expected_tailscale_acl_json }
 import extdeps.filesystem.filesystem_io { Filesystem }
 
 data tailscale_acl_reference_fixture_path: String = "dag/test/fixture/tailscale_acl_reference.json"
-
-fn witness_acl_cites_tailscale_grants_authority() -> Bool {
-  match extdeps_external_authority_anchor {
-    ExternalAuthority { uri } => uri.scheme == Https && uri.locator == "tailscale.com/kb/1018"
-  }
-}
 
 fn witness_operator_policy_row_counts() -> Bool {
   let policy = operator_tailscale_acl_policy
@@ -69,7 +61,7 @@ fn witness_dashboard_tag_not_ci_in_acl_model() -> Bool {
 }
 
 test fn tailscale_acl_witnesses() -> Bool {
-  witness_acl_cites_tailscale_grants_authority()
+  tailscale_grants_external_authority_holds()
     && witness_operator_policy_row_counts()
     && witness_tag_ci_quarantine_spine()
     && witness_tag_dashboard_admin_exception()

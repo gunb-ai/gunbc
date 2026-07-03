@@ -91,7 +91,7 @@ fn run_injected_diff_roster(
     line: i64,
     roster: &[(String, String)],
 ) -> DiscoverySummary {
-    let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n");
+    let unified = format!("+++ b/{rel_path}\n@@ -{line},0 +{line},1 @@\n+// synthetic touch\n");
     let _diff = EnvVarGuard::set("GUNBC_CI_DIFF_UNIFIED", &unified);
     run_discovery_corpus_with_options(
         &floor_skip_source_roots(),
