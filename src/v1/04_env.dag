@@ -32,7 +32,7 @@ data type_env_compositional_authority_dissolution_trigger: String = "🟡 dissol
 data type_env_profiling_dissolution_trigger: String = "🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0)."
 data type_env_work_count_profiling_dissolution_trigger: String = "🟡 dissolve-on: build_type_env / merge_type_env_cache / rewire pass counters — fold into PerformanceReceipt at realization-measurement-loop Phase 0."
 data type_env_cache_parallel_repr_dissolution_trigger: String = "🟡 dissolve-on: TypeEnvCache String-keyed str_bindings/cycle_set_str parallel to TypeEnv Int-keyed bindings/recursive_type_set — fold into single authority at v2 regen."
-data flatten_visible_bindings_invariant: String = "B1 build_type_env populates ancestry_str_bindings for import chains; flatten_visible_bindings parent-recurse is legacy/stub-only on import chains (witness flatten_visible_parent_recurses==0); merge_envs still calls flatten for one-shot env merge."
+data flatten_visible_bindings_invariant: String = "B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is fail-closed on miss (str_bindings → ancestry_str_bindings → intern+bindings only). flatten_visible_bindings parent-recurse is legacy/stub-only on import chains (witness flatten_visible_parent_recurses==0); merge_envs still calls flatten for one-shot env merge."
 
 fn empty_type_env_cache() -> TypeEnvCache {
   TypeEnvCache {
@@ -87,12 +87,8 @@ fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
         Present { value: binding } => Present { value: binding }
         Absent =>
           match intern_find(table: env.intern_table, s: name) {
-            Present { value: id } =>
-              match map_get(env.bindings, id) {
-                Present { value: binding } => Present { value: binding }
-                Absent => map_get(flatten_visible_bindings(env: env), name)
-              }
-            Absent => map_get(flatten_visible_bindings(env: env), name)
+            Present { value: id } => map_get(env.bindings, id)
+            Absent => Absent
           }
       }
   }
@@ -155,8 +151,18 @@ fn is_recursive_type_for(env: TypeEnv, node: Node) -> Bool {
 
 fn inductive_fields_for(env: TypeEnv, type_name: String) -> List<InductiveField> {
   match map_get(env.inductive_fields, type_name) {
-    Present { value: fields } => fields
-    Absent => []
+    Present { value: fields } =>
+      if fields |> count > 0 {
+        fields
+      } else {
+        fold(env.parents, init: [], f: (acc, parent) =>
+          if acc |> count > 0 { acc } else { inductive_fields_for(env: parent, type_name: type_name) }
+        )
+      }
+    Absent =>
+      fold(env.parents, init: [], f: (acc, parent) =>
+        if acc |> count > 0 { acc } else { inductive_fields_for(env: parent, type_name: type_name) }
+      )
   }
 }
 
