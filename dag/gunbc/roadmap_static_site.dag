@@ -14,8 +14,14 @@ import extdeps.http.server {
   ServedStaticRoute,
 }
 import gunbc.roadmap_authority { expected_roadmap_md, authored_merged_prs, roadmap_authority }
-import gunbc.roadmap_spawner { roadmap_dispatch_file_content, json_str }
+import gunbc.roadmap_spawner { roadmap_dispatch_file_content }
 import gunbc.fleet_intent_network { fleet_intent_network }
+import extdeps.languages.json.emit {
+  serialize_json,
+  json_object,
+  json_kv,
+  json_string,
+}
 
 type SiteArtifactKind
   = RoadmapMarkdown
@@ -139,20 +145,14 @@ fn roadmap_site_path_template(raw: String) -> PathTemplate {
 fn roadmap_site_healthz_body() -> String {
   let roadmap = roadmap_site_roadmap_md_artifact()
   let dispatch = roadmap_site_dispatch_json_artifact()
-  let artifacts = concat(
-    concat("{", concat(json_str(s: roadmap.url_path), concat(":", json_str(s: roadmap.digest)))),
-    concat(
-      concat(",", concat(json_str(s: dispatch.url_path), concat(":", json_str(s: dispatch.digest)))),
-      "}"
-    )
-  )
-  concat(
-    concat(
-      concat("{\"status\":", json_str(s: "ok")),
-      concat(",\"service\":", json_str(s: roadmap_site_service_name))
-    ),
-    concat(",\"artifacts\":", concat(artifacts, "}"))
-  )
+  serialize_json(v: json_object(members: [
+    json_kv(key: "status", value: json_string(s: "ok")),
+    json_kv(key: "service", value: json_string(s: roadmap_site_service_name)),
+    json_kv(key: "artifacts", value: json_object(members: [
+      json_kv(key: roadmap.url_path as String, value: json_string(s: roadmap.digest as String)),
+      json_kv(key: dispatch.url_path as String, value: json_string(s: dispatch.digest as String)),
+    ])),
+  ]))
 }
 
 fn roadmap_site_healthz_route() -> ServedStaticRoute {
