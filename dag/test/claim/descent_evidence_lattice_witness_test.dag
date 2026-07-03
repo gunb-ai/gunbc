@@ -42,9 +42,6 @@ fn promote_never_fabricates_strict() -> Bool {
     && evidence_rank(e: promote_to_strict(evidence: Strict)) == 2
 }
 
-// Red control: the meet is a strict lower bound, never the optimistic join.
-// A fork that widened the bare v2 copy (no lattice) could not distinguish these;
-// grounding on the single std.termination authority makes meet(Strict, X) descend to X.
 fn meet_is_not_join_red_control() -> Bool {
   rank_of_meet(a: Strict, b: DescentUnknown) == 0
     && rank_of_join(a: Strict, b: DescentUnknown) == 2
