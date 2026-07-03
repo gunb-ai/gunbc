@@ -108,7 +108,7 @@ fn collect_dag_files(dir: &std::path::Path, files: &mut Vec<std::path::PathBuf>)
     }
 }
 
-fn extract_module_path(content: &str) -> Option<String> {
+pub(crate) fn extract_module_path(content: &str) -> Option<String> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("module ") {
