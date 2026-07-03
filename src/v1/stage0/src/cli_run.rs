@@ -8452,6 +8452,161 @@ pub fn test_migration_debt_known_covered_module_is_not_debt() -> bool {
         .any(|m| m == "witness_option_bridge_test.rs")
 }
 
+// §5 hard gate per module at delete time: any `#[test]`-bearing v1 module deleted in the CI
+// diff must already have an exact-stem floor `*_test.dag` witness on HEAD (same stem rule as the
+// live debt roster). Uses the same `GUNBC_CI_DIFF_*` endpoints as `floor_diff_observe`.
+fn test_migration_delete_guard_diff_endpoints() -> (String, String) {
+    let base = std::env::var("GUNBC_CI_DIFF_BASE").unwrap_or_else(|_| "origin/main".to_string());
+    let head = std::env::var("GUNBC_CI_DIFF_HEAD").unwrap_or_else(|_| "HEAD".to_string());
+    (base, head)
+}
+
+fn test_migration_delete_guard_merge_base_mode() -> bool {
+    match std::env::var("GUNBC_CI_DIFF_MERGE_BASE") {
+        Ok(v) => v != "0" && v != "false",
+        Err(_) => true,
+    }
+}
+
+fn test_migration_delete_guard_run_git(args: &[&str]) -> Result<String, String> {
+    let output = std::process::Command::new("git")
+        .args(args)
+        .current_dir(workspace_root())
+        .output()
+        .map_err(|e| format!("git {args:?}: {e}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+fn test_migration_v1_test_module_had_line_anchored_tests(content: &str) -> bool {
+    content.lines().any(|line| line.trim() == "#[test]")
+}
+
+fn test_migration_delete_guard_deleted_v1_test_paths(
+    base: &str,
+    head: &str,
+) -> Result<Vec<String>, String> {
+    let range = if test_migration_delete_guard_merge_base_mode() {
+        format!("{base}...{head}")
+    } else {
+        format!("{base} {head}")
+    };
+    let out =
+        test_migration_delete_guard_run_git(&["diff", "--name-only", "--diff-filter=D", &range])?;
+    Ok(out
+        .lines()
+        .map(normalize_repo_path)
+        .filter(|p| {
+            p.starts_with("src/v1/tests/src/") && p.ends_with(".rs") && !p.ends_with("/lib.rs")
+        })
+        .collect())
+}
+
+fn test_migration_delete_guard_resolve_rev(r#ref: &str) -> Result<String, String> {
+    match test_migration_delete_guard_run_git(&["rev-parse", r#ref]) {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            if r#ref == "origin/main" {
+                test_migration_delete_guard_run_git(&["rev-parse", "main"]).or(Err(e))
+            } else {
+                Err(e)
+            }
+        }
+    }
+}
+
+fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, String> {
+    let (base, head) = test_migration_delete_guard_diff_endpoints();
+    let ci_diff_configured = std::env::var("GUNBC_CI_DIFF_BASE").is_ok();
+    let base_rev = match test_migration_delete_guard_resolve_rev(&base) {
+        Ok(v) => v,
+        Err(e) if !ci_diff_configured => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    let head_rev = match test_migration_delete_guard_resolve_rev(&head) {
+        Ok(v) => v,
+        Err(e) if !ci_diff_configured => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    if base_rev == head_rev {
+        return Ok(Vec::new());
+    }
+    let floor_stems = test_migration_debt_floor_stems();
+    let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base, &head)?;
+    let mut violations = Vec::new();
+    for path in deleted {
+        let content = test_migration_delete_guard_run_git(&["show", &format!("{base}:{path}")])?;
+        if !test_migration_v1_test_module_had_line_anchored_tests(&content) {
+            continue;
+        }
+        let file_name = std::path::Path::new(&path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or_default();
+        let stem = test_migration_debt_stem(file_name);
+        if !test_migration_debt_stem_covered(&stem, &floor_stems) {
+            violations.push(path);
+        }
+    }
+    violations.sort();
+    violations.dedup();
+    Ok(violations)
+}
+
+pub fn test_migration_delete_guard_uncovered_deletes() -> Vec<String> {
+    test_migration_delete_guard_uncovered_deletes_inner().unwrap_or_default()
+}
+
+pub fn test_migration_delete_guard_holds() -> bool {
+    match test_migration_delete_guard_uncovered_deletes_inner() {
+        Ok(violations) => violations.is_empty(),
+        Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod test_migration_debt_tests {
+    use super::*;
+
+    #[test]
+    fn stem_strips_rs_and_dag_suffixes_before_test_suffix() {
+        assert_eq!(
+            test_migration_debt_stem("witness_option_bridge_test.rs"),
+            "witness_option_bridge"
+        );
+        assert_eq!(
+            test_migration_debt_stem("witness_option_bridge_test.dag"),
+            "witness_option_bridge"
+        );
+        assert_ne!(
+            test_migration_debt_stem("typescript_import_pipeline_test.dag"),
+            "pipeline"
+        );
+    }
+
+    #[test]
+    fn known_covered_module_is_not_debt() {
+        assert!(test_migration_debt_known_covered_module_is_not_debt());
+    }
+
+    #[test]
+    fn delete_guard_holds_with_no_v1_test_deletions_in_diff() {
+        assert!(test_migration_delete_guard_holds());
+    }
+
+    #[test]
+    fn delete_guard_rejects_uncovered_v1_test_delete() {
+        let floor_stems = test_migration_debt_floor_stems();
+        let stem = test_migration_debt_stem("cron_tag_test.rs");
+        assert!(!test_migration_debt_stem_covered(&stem, &floor_stems));
+    }
+}
+
 // Host-fed fact extraction for `v2.lens.host_language_transport_script` — the lens `.dag` table
 // owns verdict logic; this bridge only projects `shell.Exec.Run` script-arg shapes from parsed
 // modules. DISSOLUTION: node-tree reader at gunbc#5364; until then one shared host seam (Chunk D).
