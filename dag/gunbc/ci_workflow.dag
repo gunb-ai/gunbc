@@ -267,10 +267,10 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
   }
 }
 
-data gunbc_ci_job_timeout_policy_minutes: Int = 50
+data gunbc_ci_job_timeout_policy_minutes: Int = 90
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
-  reason: "gunbc CI policy (operator, 2026-07-02; interim 2026-07-03): CI jobs time out at 50 minutes. The prior 30-minute smoke alarm was deliberately below the measured batch-1 compile-clean wall (~47min on ARM fleet, ROADMAP §3 `2-compile-clean-serial`) and blocked every merge while the serial wall remains. Raised to 50min as an interim unblock until compile-clean is scoped/memoized below 30min again. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default — this is workflow-layer policy on top."
+  reason: "gunbc CI policy (operator, 2026-07-02; interim 2026-07-03): CI jobs time out at 90 minutes. The 30min smoke alarm and subsequent 50min raise both sat below the live floor wall: batch-1 compile-clean alone ran ~48min still in progress when a 50min job cap canceled run 28645912887 (plus ~2min release build overhead in the same step). Measured whole-step wall is ~50min+ on ARM fleet (ROADMAP §3 `2-compile-clean-serial`); 90min is interim headroom until compile-clean is scoped/memoized below 30min again. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default — workflow-layer policy on top."
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
