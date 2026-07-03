@@ -1,0 +1,288 @@
+module gunbc.fleet_show_effective_read
+
+import std.types { NonEmptyStr, String, Int, List, Bool }
+import std.measure { byte_size_count }
+import std.disposition { Disposition, Terminal }
+import std.realization_reconcile {
+  ShowEffectiveRead,
+  ReadAbsent,
+}
+import product.placement_supply { HostIdentity }
+import extdeps.os.systemd {
+  SystemdCgroupMemoryLimit,
+  MemoryLimitUnbounded,
+  MemoryLimitBytes,
+  MemoryLimitAbsent,
+  parse_systemd_memory_limit_show,
+  systemd_memory_max_property,
+}
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import gunbc.host_converge {
+  SliceProperty,
+  RunnerWidth,
+  ConvergeVerdict,
+  Converged,
+  Drifted,
+  Absent,
+  converge_verdict,
+  runner_instance_glob,
+}
+import gunbc.ci_floor_measurement { RunnerSliceCapEffectiveness }
+import gunbc.runner_unit_live_read {
+  RunnerUnitLiveReadRow,
+  RunnerUnitMemoryLiveRead,
+  gunbc_srv1_runner_unit_live_read_fixture,
+  runner_unit_live_read_typed,
+  memory_limit_to_cap_effectiveness,
+  converge_target_live_verdict,
+}
+import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
+
+
+type RunnerSliceCapLiveReadRow {
+  slice_unit: NonEmptyStr
+  memory_max_raw: String
+  probed_at: NonEmptyStr
+}
+
+type RunnerSliceCapLiveRead {
+  slice_unit: NonEmptyStr
+  memory_max: SystemdCgroupMemoryLimit
+  probed_at: NonEmptyStr
+}
+
+type RunnerWidthLiveReadRow {
+  instance_glob: NonEmptyStr
+  active_count_raw: String
+  probed_at: NonEmptyStr
+}
+
+type RunnerWidthLiveRead {
+  instance_glob: NonEmptyStr
+  active_count: Int
+  probed_at: NonEmptyStr
+}
+
+type FleetRunnerUnitsLiveRead {
+  host: HostIdentity
+  units: List<RunnerUnitMemoryLiveRead>
+  probed_at: NonEmptyStr
+}
+
+type FleetHostEffectiveReadReceipt {
+  host: HostIdentity
+  runner_slice_cap: RunnerSliceCapLiveRead
+  runner_units: FleetRunnerUnitsLiveRead
+  runner_width: RunnerWidthLiveRead
+}
+
+data gunbc_fleet_show_effective_read_scope_disposition: Disposition = Terminal {
+  reason: "Typed live host-read seam for the three runner-allocation-v0 blocking knobs (READ-ONLY): (1) runner-slice MemoryMax on system-actions-runner.slice, (2) per-slot MemoryMax/MemorySwapMax on every active actions-runner@<host>-*.service instance, (3) runner_width active-unit count. Raw systemctl-show / list-units wire values parse into typed rows; fixtures ground ConvergeTarget verdict semantics. Does NOT replace committed ReadAbsent transport nodes (gunbc_runner_slot_show_effective_read, runner_unit_live_read Terminal fixture) — the live fleet transport binds here at the apply increment."
+}
+
+data gunbc_srv1_runner_slice_cap_fixture_row: RunnerSliceCapLiveReadRow = RunnerSliceCapLiveReadRow {
+  slice_unit: "system-actions-runner.slice",
+  memory_max_raw: "infinity",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv2_runner_slice_cap_fixture_row: RunnerSliceCapLiveReadRow = RunnerSliceCapLiveReadRow {
+  slice_unit: "system-actions-runner.slice",
+  memory_max_raw: "85899345920",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv1_runner_width_fixture_row: RunnerWidthLiveReadRow = RunnerWidthLiveReadRow {
+  instance_glob: "actions-runner@srv1-*.service",
+  active_count_raw: "10",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv2_runner_width_fixture_row: RunnerWidthLiveReadRow = RunnerWidthLiveReadRow {
+  instance_glob: "actions-runner@srv2-*.service",
+  active_count_raw: "8",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv1_runner_unit_live_read_fixture_02: RunnerUnitLiveReadRow = RunnerUnitLiveReadRow {
+  unit: "actions-runner@srv1-02.service",
+  memory_max_raw: "8589934592",
+  memory_swap_max_raw: "0",
+  memory_high_raw: "infinity",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv2_runner_unit_live_read_fixture_01: RunnerUnitLiveReadRow = RunnerUnitLiveReadRow {
+  unit: "actions-runner@srv2-01.service",
+  memory_max_raw: "8589934592",
+  memory_swap_max_raw: "0",
+  memory_high_raw: "infinity",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_srv2_runner_unit_live_read_fixture_02: RunnerUnitLiveReadRow = RunnerUnitLiveReadRow {
+  unit: "actions-runner@srv2-02.service",
+  memory_max_raw: "8589934592",
+  memory_swap_max_raw: "0",
+  memory_high_raw: "infinity",
+  probed_at: "2026-07-03",
+}
+
+data gunbc_fleet_runner_slice_cap_show_effective_read: ShowEffectiveRead<RunnerSliceCapEffectiveness> = ReadAbsent {
+  reason: "no live systemctl show -p MemoryMax on system-actions-runner.slice has run on the fleet yet; typed parse + ConvergeTarget projection live in gunbc.fleet_show_effective_read — transport binds at the apply increment"
+}
+
+data gunbc_fleet_runner_units_show_effective_read: ShowEffectiveRead<FleetRunnerUnitsLiveRead> = ReadAbsent {
+  reason: "no live per-instance systemctl show loop has run on the fleet runner units yet; typed rows live in gunbc.fleet_show_effective_read — transport binds at the apply increment"
+}
+
+data gunbc_fleet_runner_width_show_effective_read: ShowEffectiveRead<RunnerWidthLiveRead> = ReadAbsent {
+  reason: "no live systemctl list-units active-count read has run on the fleet runner glob yet; typed parse lives in gunbc.fleet_show_effective_read — transport binds at the apply increment"
+}
+
+data gunbc_fleet_host_effective_read_show_effective_read: ShowEffectiveRead<FleetHostEffectiveReadReceipt> = ReadAbsent {
+  reason: "no full-host effective read receipt has been collected on srv1/srv2 yet; the three v0-blocking knob carriers compose here — transport binds at the apply increment"
+}
+
+fn runner_slice_cap_live_read_typed(row: RunnerSliceCapLiveReadRow) -> RunnerSliceCapLiveRead {
+  RunnerSliceCapLiveRead {
+    slice_unit: row.slice_unit,
+    memory_max: parse_systemd_memory_limit_show(raw: row.memory_max_raw),
+    probed_at: row.probed_at,
+  }
+}
+
+fn runner_slice_cap_to_effectiveness(read: RunnerSliceCapLiveRead) -> RunnerSliceCapEffectiveness? {
+  memory_limit_to_cap_effectiveness(lim: read.memory_max)
+}
+
+fn slice_property_memory_max_verdict(
+  read: RunnerSliceCapLiveRead,
+  target: SliceProperty,
+) -> ConvergeVerdict? {
+  if target.property != systemd_memory_max_property {
+    none
+  } else {
+    match read.memory_max {
+      MemoryLimitAbsent => Present { value: Absent }
+      MemoryLimitUnbounded => Present { value: Drifted }
+      MemoryLimitBytes { bytes: b } =>
+        Present {
+          value: converge_verdict(
+            effective: to_string(byte_size_count(b: b)),
+            expected: target.expected_effective
+          )
+        }
+    }
+  }
+}
+
+fn parse_runner_width_active_count(raw: String) -> Int? {
+  let trimmed = trim(raw)
+  if trimmed == "" {
+    none
+  } else {
+    match parse_int(s: trimmed) {
+      Present { value: n } =>
+        if n >= 0 { Present { value: n } } else { none }
+      Absent => none
+    }
+  }
+}
+
+fn runner_width_live_read_typed(row: RunnerWidthLiveReadRow) -> RunnerWidthLiveRead? {
+  match parse_runner_width_active_count(raw: row.active_count_raw) {
+    Present { value: count } =>
+      Present {
+        value: RunnerWidthLiveRead {
+          instance_glob: row.instance_glob,
+          active_count: count,
+          probed_at: row.probed_at,
+        }
+      }
+    Absent => none
+  }
+}
+
+fn runner_width_converge_verdict(observed: Int, desired: String) -> ConvergeVerdict {
+  match parse_int(s: desired) {
+    Present { value: d } =>
+      if observed == d { Converged } else { Drifted }
+    Absent => Absent
+  }
+}
+
+fn fleet_runner_units_from_rows(host: HostIdentity, rows: List<RunnerUnitLiveReadRow>, probed_at: NonEmptyStr) -> FleetRunnerUnitsLiveRead {
+  FleetRunnerUnitsLiveRead {
+    host: host,
+    units: map(rows, f: fn(row) { runner_unit_live_read_typed(row: row) }),
+    probed_at: probed_at,
+  }
+}
+
+fn fleet_host_effective_read_receipt(
+  host: HostIdentity,
+  slice_row: RunnerSliceCapLiveReadRow,
+  unit_rows: List<RunnerUnitLiveReadRow>,
+  width_row: RunnerWidthLiveReadRow,
+) -> FleetHostEffectiveReadReceipt? {
+  match runner_width_live_read_typed(row: width_row) {
+    Present { value: width } =>
+      Present {
+        value: FleetHostEffectiveReadReceipt {
+          host: host,
+          runner_slice_cap: runner_slice_cap_live_read_typed(row: slice_row),
+          runner_units: fleet_runner_units_from_rows(host: host, rows: unit_rows, probed_at: width_row.probed_at),
+          runner_width: width,
+        }
+      }
+    Absent => none
+  }
+}
+
+fn fixture_srv1_runner_units_rows() -> List<RunnerUnitLiveReadRow> {
+  [gunbc_srv1_runner_unit_live_read_fixture, gunbc_srv1_runner_unit_live_read_fixture_02]
+}
+
+fn fixture_srv2_runner_units_rows() -> List<RunnerUnitLiveReadRow> {
+  [gunbc_srv2_runner_unit_live_read_fixture_01, gunbc_srv2_runner_unit_live_read_fixture_02]
+}
+
+fn fixture_srv1_host_effective_read_receipt() -> FleetHostEffectiveReadReceipt? {
+  fleet_host_effective_read_receipt(
+    host: operator_host_srv1,
+    slice_row: gunbc_srv1_runner_slice_cap_fixture_row,
+    unit_rows: fixture_srv1_runner_units_rows(),
+    width_row: gunbc_srv1_runner_width_fixture_row,
+  )
+}
+
+fn fixture_srv2_host_effective_read_receipt() -> FleetHostEffectiveReadReceipt? {
+  fleet_host_effective_read_receipt(
+    host: operator_host_srv2,
+    slice_row: gunbc_srv2_runner_slice_cap_fixture_row,
+    unit_rows: fixture_srv2_runner_units_rows(),
+    width_row: gunbc_srv2_runner_width_fixture_row,
+  )
+}
+
+fn fleet_receipt_unit_count(receipt: FleetHostEffectiveReadReceipt) -> Int {
+  receipt.runner_units.units.length()
+}
+
+fn fleet_receipt_lists_unit(receipt: FleetHostEffectiveReadReceipt, unit: NonEmptyStr) -> Bool {
+  any(receipt.runner_units.units, u => u.unit == unit)
+}
+
+fn runner_slice_cap_target_for_host(host: HostIdentity, expected_effective: String) -> SliceProperty {
+  SliceProperty {
+    unit: gunbc_runner_slot_unit_placeholder,
+    property: systemd_memory_max_property,
+    apply_value: expected_effective,
+    expected_effective: expected_effective,
+  }
+}
+
+fn runner_width_target_for_host(host: HostIdentity) -> RunnerWidth {
+  RunnerWidth { instance_glob: runner_instance_glob(host: host) }
+}

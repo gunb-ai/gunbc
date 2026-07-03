@@ -1,0 +1,223 @@
+module test.claim.fleet_show_effective_read_witness
+
+import std.types { Bool, String, NonEmptyStr }
+import std.measure { byte_size_count }
+import extdeps.os.systemd {
+  MemoryLimitUnbounded,
+  MemoryLimitBytes,
+  MemoryLimitAbsent,
+  parse_systemd_memory_limit_show,
+  systemd_memory_max_property,
+  systemd_memory_swap_max_property,
+}
+import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
+import gunbc.host_converge {
+  PerSlotMemoryCap,
+  ConvergeVerdict,
+  Converged,
+  Drifted,
+  Absent,
+  gunbc_runner_per_slot_dropin_path,
+  runner_instance_glob,
+}
+import gunbc.fleet_host_budget {
+  declared_runner_count,
+  gunbc_runner_pool_budget,
+}
+import gunbc.ci_floor_measurement { gunbc_ci_runner_cgroup_memory_cap }
+import gunbc.fleet_show_effective_read {
+  RunnerSliceCapLiveReadRow,
+  RunnerWidthLiveReadRow,
+  FleetHostEffectiveReadReceipt,
+  gunbc_srv1_runner_slice_cap_fixture_row,
+  gunbc_srv2_runner_slice_cap_fixture_row,
+  gunbc_srv1_runner_width_fixture_row,
+  gunbc_srv2_runner_width_fixture_row,
+  gunbc_fleet_runner_slice_cap_show_effective_read,
+  gunbc_fleet_runner_units_show_effective_read,
+  gunbc_fleet_runner_width_show_effective_read,
+  gunbc_fleet_host_effective_read_show_effective_read,
+  runner_slice_cap_live_read_typed,
+  runner_slice_cap_to_effectiveness,
+  slice_property_memory_max_verdict,
+  parse_runner_width_active_count,
+  runner_width_live_read_typed,
+  runner_width_converge_verdict,
+  fixture_srv1_host_effective_read_receipt,
+  fixture_srv2_host_effective_read_receipt,
+  fleet_receipt_unit_count,
+  fleet_receipt_lists_unit,
+  runner_slice_cap_target_for_host,
+  runner_width_target_for_host,
+}
+import gunbc.runner_unit_live_read {
+  runner_unit_live_read_typed,
+  converge_target_live_verdict,
+  gunbc_srv1_runner_unit_live_read_fixture,
+}
+import std.realization_reconcile { ReadAbsent }
+
+fn pool_budget_wire() -> String {
+  to_string(byte_size_count(b: gunbc_runner_pool_budget))
+}
+
+fn per_slot_cap_wire() -> String {
+  to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap))
+}
+
+fn witness_slice_cap_parse_empty_is_absent() -> Bool {
+  match parse_systemd_memory_limit_show(raw: "") {
+    MemoryLimitAbsent => true
+    _ => false
+  }
+}
+
+fn witness_slice_cap_parse_infinity_is_unbounded() -> Bool {
+  match parse_systemd_memory_limit_show(raw: "infinity") {
+    MemoryLimitUnbounded => true
+    _ => false
+  }
+}
+
+fn witness_width_parse_empty_is_absent() -> Bool {
+  match parse_runner_width_active_count(raw: "") {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+fn witness_width_parse_count_is_typed() -> Bool {
+  match parse_runner_width_active_count(raw: "10") {
+    Present { value: n } => n == declared_runner_count()
+    Absent => false
+  }
+}
+
+fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
+  let read = runner_slice_cap_live_read_typed(row: gunbc_srv1_runner_slice_cap_fixture_row)
+  let target = runner_slice_cap_target_for_host(host: operator_host_srv1, expected_effective: pool_budget_wire())
+  match slice_property_memory_max_verdict(read: read, target: target) {
+    Present { value: Drifted } => true
+    _ => false
+  }
+}
+
+fn witness_srv2_slice_cap_converges_to_pool_budget() -> Bool {
+  let read = runner_slice_cap_live_read_typed(row: gunbc_srv2_runner_slice_cap_fixture_row)
+  let target = runner_slice_cap_target_for_host(host: operator_host_srv2, expected_effective: pool_budget_wire())
+  match slice_property_memory_max_verdict(read: read, target: target) {
+    Present { value: Converged } => true
+    _ => false
+  }
+}
+
+fn witness_srv1_width_converges_to_declared_count() -> Bool {
+  match runner_width_live_read_typed(row: gunbc_srv1_runner_width_fixture_row) {
+    Present { value: read } =>
+      runner_width_converge_verdict(
+        observed: read.active_count,
+        desired: to_string(declared_runner_count())
+      ) == Converged
+    Absent => false
+  }
+}
+
+fn witness_srv2_width_drifts_from_declared_count() -> Bool {
+  match runner_width_live_read_typed(row: gunbc_srv2_runner_width_fixture_row) {
+    Present { value: read } =>
+      runner_width_converge_verdict(
+        observed: read.active_count,
+        desired: to_string(declared_runner_count())
+      ) == Drifted
+    Absent => false
+  }
+}
+
+fn witness_srv1_per_slot_infinity_drifts() -> Bool {
+  let read = runner_unit_live_read_typed(row: gunbc_srv1_runner_unit_live_read_fixture)
+  let target = PerSlotMemoryCap {
+    dropin_path: gunbc_runner_per_slot_dropin_path,
+    instance_glob: runner_instance_glob(host: operator_host_srv1),
+    property: systemd_memory_max_property,
+    bytes_value: per_slot_cap_wire(),
+  }
+  match converge_target_live_verdict(read: read, target: target) {
+    Present { value: Drifted } => true
+    _ => false
+  }
+}
+
+fn witness_srv1_receipt_lists_every_fixture_runner_unit() -> Bool {
+  match fixture_srv1_host_effective_read_receipt() {
+    Present { value: receipt } =>
+      fleet_receipt_unit_count(receipt: receipt) == 2
+        && fleet_receipt_lists_unit(receipt: receipt, unit: "actions-runner@srv1-01.service")
+        && fleet_receipt_lists_unit(receipt: receipt, unit: "actions-runner@srv1-02.service")
+    Absent => false
+  }
+}
+
+fn witness_srv2_receipt_lists_every_fixture_runner_unit() -> Bool {
+  match fixture_srv2_host_effective_read_receipt() {
+    Present { value: receipt } =>
+      fleet_receipt_unit_count(receipt: receipt) == 2
+        && fleet_receipt_lists_unit(receipt: receipt, unit: "actions-runner@srv2-01.service")
+        && fleet_receipt_lists_unit(receipt: receipt, unit: "actions-runner@srv2-02.service")
+    Absent => false
+  }
+}
+
+fn witness_receipt_carries_all_three_v0_knobs() -> Bool {
+  match fixture_srv1_host_effective_read_receipt() {
+    Present { value: receipt } =>
+      receipt.host == operator_host_srv1
+        && match runner_slice_cap_to_effectiveness(read: receipt.runner_slice_cap) {
+          Present { value: _ } => true
+          Absent => false
+        }
+        && receipt.runner_units.units.length() > 0
+        && receipt.runner_width.active_count == declared_runner_count()
+    Absent => false
+  }
+}
+
+fn witness_committed_show_reads_are_fail_closed_absent() -> Bool {
+  match gunbc_fleet_runner_slice_cap_show_effective_read {
+    ReadAbsent { reason: _ } => true
+    _ => false
+  }
+    && match gunbc_fleet_runner_units_show_effective_read {
+      ReadAbsent { reason: _ } => true
+      _ => false
+    }
+    && match gunbc_fleet_runner_width_show_effective_read {
+      ReadAbsent { reason: _ } => true
+      _ => false
+    }
+    && match gunbc_fleet_host_effective_read_show_effective_read {
+      ReadAbsent { reason: _ } => true
+      _ => false
+    }
+}
+
+fn witness_perturbed_width_fixture_red_on_drift() -> Bool {
+  witness_srv1_width_converges_to_declared_count()
+    && witness_srv2_width_drifts_from_declared_count()
+}
+
+test fn fleet_show_effective_read_v0_knobs_ground() -> Bool {
+  witness_slice_cap_parse_empty_is_absent()
+    && witness_slice_cap_parse_infinity_is_unbounded()
+    && witness_width_parse_empty_is_absent()
+    && witness_width_parse_count_is_typed()
+    && witness_srv1_slice_cap_infinity_drifts_against_pool_budget()
+    && witness_srv2_slice_cap_converges_to_pool_budget()
+    && witness_srv1_width_converges_to_declared_count()
+    && witness_srv2_width_drifts_from_declared_count()
+    && witness_srv1_per_slot_infinity_drifts()
+    && witness_srv1_receipt_lists_every_fixture_runner_unit()
+    && witness_srv2_receipt_lists_every_fixture_runner_unit()
+    && witness_receipt_carries_all_three_v0_knobs()
+    && witness_committed_show_reads_are_fail_closed_absent()
+    && witness_perturbed_width_fixture_red_on_drift()
+}
