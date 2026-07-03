@@ -6605,6 +6605,8 @@ fn global_type_exporter_count(modules: List<TypedModule>, name: String) -> Int {
   filter(modules, m => module_exports_type_name(m: m, name: name)) |> count
 }
 
+data local_authority_for_name_dissolution_trigger: String = "🟡 dissolve-on: single-exporter rewire canonical picks last TypedModule in compilation list (filter|>last); multi-exporter names skip rewire and defer to merge_type_env_cache overlay-wins — ground on import-order authority at v2 regen."
+
 fn local_authority_for_name(modules: List<TypedModule>, name: String) -> TypedModule? {
   match filter(modules, m => (filter(m.type_env.bindings |> map_values, b => b.name == name) |> count) > 0) |> last {
     Present { value: owner } => Present { value: owner }

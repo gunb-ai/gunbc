@@ -14694,6 +14694,7 @@ pub fn rewire_type_env_import_str_binding_identity(
         modules: Rc<Vec<Rc<TypedModule>>>,
         name: String,
     ) -> Option<Rc<TypedModule>> {
+        // 🟡 dissolve-on: local_authority_for_name_dissolution_trigger (04_infer.dag)
         modules
             .iter()
             .rev()

@@ -104,9 +104,7 @@ fn canonical_graph_bytes(
     graph: &ResolvedGraph,
     source_indices: &std::collections::HashMap<String, Rc<NewlineIndex>>,
 ) -> Vec<u8> {
-    let raw = serialize_fixture_payload_for_test(graph, source_indices).expect("serialize payload");
-    let value: serde_json::Value = serde_json::from_slice(&raw).expect("payload is valid json");
-    serde_json::to_vec(&sort_json_value(value)).expect("re-serialize canonical")
+    serialize_fixture_payload_for_test(graph, source_indices).expect("serialize payload")
 }
 
 struct CacheEnvGuard {

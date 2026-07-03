@@ -198,12 +198,9 @@ pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeB
         Some(binding) => Some(binding.clone()),
         None => match v1_rt::map_get(&env.ancestry_str_bindings, name.clone()) {
             Some(binding) => Some(binding.clone()),
-            None => match intern_find(env.intern_table.clone(), name.clone()) {
-                Some(id) => match v1_rt::map_get(&env.bindings, id) {
-                    Some(binding) => Some(binding.clone()),
-                    None => v1_rt::map_get(&flatten_visible_bindings(env.clone()), name),
-                },
-                None => v1_rt::map_get(&flatten_visible_bindings(env), name),
+            None => match intern_find(env.intern_table.clone(), name) {
+                Some(id) => v1_rt::map_get(&env.bindings, id),
+                None => None,
             },
         },
     }
