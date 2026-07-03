@@ -1,6 +1,6 @@
 module gunbc.host_converge
 
-import std.types { String, List, Int, Bool }
+import std.types { String, List, Int, Bool, NonEmptyStr }
 import std.measure { ByteSize, byte_size_count, hardware_thread_count_value, percent_count, Second, second, second_count }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -29,7 +29,6 @@ import gunbc.ci_fleet { fleet_intent_offers }
 import gunbc.fleet_intent_network { operator_host_srv3 }
 import extdeps.ctrl.gunbc_pin { gunbc_pin_match, gunbc_pin_skewed }
 import gunbc.oomd_install { gunbc_oomd_sessions_policy, gunbc_oomd_sessions_slice }
-import gunbc.runner_slot_enforcement { gunbc_runner_slot_unit_placeholder }
 import extdeps.os.systemd {
   systemd_memory_max_property,
   systemd_memory_swap_max_property,
@@ -52,6 +51,8 @@ data gunbc_runner_per_slot_swap_dropin_path: String = "/etc/systemd/system/actio
 data gunbc_runner_jobserver_env_file: String = "/etc/default/ctrl-jobserver"
 data gunbc_runner_jobserver_env_key: String = "CTRL_JOBSERVER_TOKENS"
 data gunbc_runner_jobserver_service: String = "ctrl-jobserver.service"
+
+data gunbc_runner_slot_unit_placeholder: NonEmptyStr = "system-actions-runner.slice"
 
 data gunbc_root_env_key: String = "GUNBC_ROOT"
 
