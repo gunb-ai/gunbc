@@ -1,37 +1,25 @@
 module v2.test.claim.qualified_name.from_dotted_string
+import v2.std.algebra { Cons, Empty }
 
 import v2.std.cross_tree.resolution { layer_prefix_from_dotted_qualified_name }
 import v2.std.layer { LayerPrefixStd }
 import v2.std.logic { Bool }
-import v2.std.qualified_name {
-  QnCons,
-  QnEmpty,
-  qualified_name_eq,
-  qualified_name_from_dotted_string
-}
+import v2.std.qualified_name { qualified_name_from_dotted_string }
 
 test fn qualified_name_from_dotted_string_empty_holds() -> Bool {
-  qualified_name_eq(
-    a: qualified_name_from_dotted_string(dotted: ""),
-    b: QnEmpty
-  )
+  qualified_name_from_dotted_string(dotted: "") == Empty
 }
 
 test fn qualified_name_from_dotted_string_singleton_holds() -> Bool {
-  qualified_name_eq(
-    a: qualified_name_from_dotted_string(dotted: "std"),
-    b: QnCons { head: ^std, tail: QnEmpty }
-  )
+  qualified_name_from_dotted_string(dotted: "std") == Cons { head: ^std, tail: Empty }
 }
 
 test fn qualified_name_from_dotted_string_multi_segment_holds() -> Bool {
-  qualified_name_eq(
-    a: qualified_name_from_dotted_string(dotted: "v2.std.text"),
-    b: QnCons {
+  qualified_name_from_dotted_string(dotted: "v2.std.text")
+    == Cons {
       head: ^v2,
-      tail: QnCons { head: ^std, tail: QnCons { head: ^text, tail: QnEmpty } }
+      tail: Cons { head: ^std, tail: Cons { head: ^text, tail: Empty } }
     }
-  )
 }
 
 test fn qualified_name_from_dotted_string_layer_prefix_holds() -> Bool {

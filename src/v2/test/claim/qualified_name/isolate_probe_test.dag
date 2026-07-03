@@ -1,0 +1,10 @@
+module v2.test.claim.qualified_name.isolate_probe
+
+import v2.std.logic { Bool }
+import v2.std.algebra { Cons, Empty }
+import v2.std.node { Symbol }
+import v2.test.claim.qualified_name.qn_min_mod { is_singleton }
+
+test fn t() -> Bool {
+  is_singleton(x: Cons { head: ^a, tail: Empty })
+}

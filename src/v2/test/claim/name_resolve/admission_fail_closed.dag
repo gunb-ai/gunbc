@@ -23,7 +23,7 @@ import v2.std.collection { empty_map }
 import v2.std.diagnostic { Accepted, None, Outcome, Rejected, diagnostics_eq }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Named, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.qualified_name { QualifiedName }
 import v2.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -90,7 +90,7 @@ fn fc_module_root(seg: Symbol) -> Node {
 }
 
 fn fc_qn(seg: Symbol) -> QualifiedName {
-  QnCons { head: seg, tail: QnEmpty }
+  Cons { head: seg, tail: Empty }
 }
 
 fn fc_duplicate_roots() -> FreeMonoid<Node> {

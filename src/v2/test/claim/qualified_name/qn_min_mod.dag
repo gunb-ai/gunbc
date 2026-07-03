@@ -1,0 +1,19 @@
+module v2.test.claim.qualified_name.qn_min_mod
+
+import v2.std.algebra { Cons, Empty, FreeMonoid }
+import v2.std.node { Symbol }
+import v2.std.logic { Bool }
+
+fn fm_is_empty(x: FreeMonoid<Symbol>) -> Bool {
+  match x {
+    Empty => true
+    _ => false
+  }
+}
+
+fn is_singleton(x: FreeMonoid<Symbol>) -> Bool {
+  match x {
+    Cons { head: _, tail: t } => fm_is_empty(x: t)
+    _ => false
+  }
+}

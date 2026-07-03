@@ -1,45 +1,46 @@
 module v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_module_refs
+import v2.std.algebra { Cons, Empty }
 
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.qualified_name { QualifiedName }
 
-data witness_policy_leak_cargo_build_lens_unit_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^lens_unit, tail: QnCons { head: ^policy_leak_cargo_build, tail: QnEmpty } } } } }
+data witness_policy_leak_cargo_build_lens_unit_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^lens_unit, tail: Cons { head: ^policy_leak_cargo_build, tail: Empty } } } } }
 
-data witness_policy_leak_cargo_build_corpus_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^corpus, tail: QnCons { head: ^cargo_build_policy_leak, tail: QnEmpty } } } } }
+data witness_policy_leak_cargo_build_corpus_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^corpus, tail: Cons { head: ^cargo_build_policy_leak, tail: Empty } } } } }
 
-data witness_policy_leak_cargo_fmt_lens_unit_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^lens_unit, tail: QnCons { head: ^policy_leak_cargo_fmt, tail: QnEmpty } } } } }
+data witness_policy_leak_cargo_fmt_lens_unit_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^lens_unit, tail: Cons { head: ^policy_leak_cargo_fmt, tail: Empty } } } } }
 
-data witness_policy_leak_cargo_doc_lens_unit_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^lens_unit, tail: QnCons { head: ^policy_leak_cargo_doc, tail: QnEmpty } } } } }
+data witness_policy_leak_cargo_doc_lens_unit_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^lens_unit, tail: Cons { head: ^policy_leak_cargo_doc, tail: Empty } } } } }
 
-data witness_policy_leak_cargo_fmt_corpus_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^corpus, tail: QnCons { head: ^cargo_fmt_policy_leak, tail: QnEmpty } } } } }
+data witness_policy_leak_cargo_fmt_corpus_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^corpus, tail: Cons { head: ^cargo_fmt_policy_leak, tail: Empty } } } } }
 
-data witness_policy_leak_cargo_doc_corpus_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^corpus, tail: QnCons { head: ^cargo_doc_policy_leak, tail: QnEmpty } } } } }
+data witness_policy_leak_cargo_doc_corpus_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^corpus, tail: Cons { head: ^cargo_doc_policy_leak, tail: Empty } } } } }
 
-data witness_git_policy_leak_corpus_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^corpus, tail: QnCons { head: ^git_policy_leak, tail: QnEmpty } } } } }
+data witness_git_policy_leak_corpus_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^corpus, tail: Cons { head: ^git_policy_leak, tail: Empty } } } } }
 
-data witness_clean_git_diff_lens_unit_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^lens_unit, tail: QnCons { head: ^clean_git_diff, tail: QnEmpty } } } } }
+data witness_clean_git_diff_lens_unit_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^lens_unit, tail: Cons { head: ^clean_git_diff, tail: Empty } } } } }
 
-data witness_clean_gist_create_lens_unit_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^lens_unit, tail: QnCons { head: ^clean_gist_create, tail: QnEmpty } } } } }
+data witness_clean_gist_create_lens_unit_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^lens_unit, tail: Cons { head: ^clean_gist_create, tail: Empty } } } } }
 
-data witness_gist_create_corpus_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^corpus, tail: QnCons { head: ^gist_create_policy_leak, tail: QnEmpty } } } } }
+data witness_gist_create_corpus_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^corpus, tail: Cons { head: ^gist_create_policy_leak, tail: Empty } } } } }
 
-data witness_transport_fusion_gcp_oauth_lens_unit_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^lens_unit, tail: QnCons { head: ^transport_fusion_gcp_oauth, tail: QnEmpty } } } } }
+data witness_transport_fusion_gcp_oauth_lens_unit_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^lens_unit, tail: Cons { head: ^transport_fusion_gcp_oauth, tail: Empty } } } } }
 
-data witness_transport_fusion_gcp_oauth_corpus_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^corpus, tail: QnCons { head: ^gcp_oauth_fusion_fork, tail: QnEmpty } } } } }
+data witness_transport_fusion_gcp_oauth_corpus_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^corpus, tail: Cons { head: ^gcp_oauth_fusion_fork, tail: Empty } } } } }
 
-data witness_dead_param_cargo_build_lens_unit_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^lens_unit, tail: QnCons { head: ^dead_param_cargo_build, tail: QnEmpty } } } } }
+data witness_dead_param_cargo_build_lens_unit_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^lens_unit, tail: Cons { head: ^dead_param_cargo_build, tail: Empty } } } } }
 
-data witness_dead_param_gcp_login_lens_unit_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^lens_unit, tail: QnCons { head: ^dead_param_gcp_login, tail: QnEmpty } } } } }
+data witness_dead_param_gcp_login_lens_unit_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^lens_unit, tail: Cons { head: ^dead_param_gcp_login, tail: Empty } } } } }
 
-data witness_dead_param_cargo_clippy_lens_unit_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^lens_unit, tail: QnCons { head: ^dead_param_cargo_clippy, tail: QnEmpty } } } } }
+data witness_dead_param_cargo_clippy_lens_unit_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^lens_unit, tail: Cons { head: ^dead_param_cargo_clippy, tail: Empty } } } } }
 
-data witness_dead_param_cargo_clippy_corpus_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^corpus, tail: QnCons { head: ^cargo_clippy_dead_param, tail: QnEmpty } } } } }
+data witness_dead_param_cargo_clippy_corpus_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^corpus, tail: Cons { head: ^cargo_clippy_dead_param, tail: Empty } } } } }
 
-data witness_dead_param_cargo_fmt_corpus_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^corpus, tail: QnCons { head: ^cargo_fmt_dead_param, tail: QnEmpty } } } } }
+data witness_dead_param_cargo_fmt_corpus_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^corpus, tail: Cons { head: ^cargo_fmt_dead_param, tail: Empty } } } } }
 
-data witness_dead_param_cargo_doc_corpus_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^corpus, tail: QnCons { head: ^cargo_doc_dead_param, tail: QnEmpty } } } } }
+data witness_dead_param_cargo_doc_corpus_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^corpus, tail: Cons { head: ^cargo_doc_dead_param, tail: Empty } } } } }
 
-data witness_dead_param_gcp_login_corpus_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^corpus, tail: QnCons { head: ^gcp_login_dead_param, tail: QnEmpty } } } } }
+data witness_dead_param_gcp_login_corpus_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^corpus, tail: Cons { head: ^gcp_login_dead_param, tail: Empty } } } } }
 
-data witness_embedded_policy_lens_unit_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^lens_unit, tail: QnCons { head: ^embedded_policy_literal_local, tail: QnEmpty } } } } }
+data witness_embedded_policy_lens_unit_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^lens_unit, tail: Cons { head: ^embedded_policy_literal_local, tail: Empty } } } } }
 
-data witness_embedded_policy_corpus_module: QualifiedName = QnCons { head: ^v2, tail: QnCons { head: ^test, tail: QnCons { head: ^extdeps_shape_transport_policy, tail: QnCons { head: ^corpus, tail: QnCons { head: ^runtime_local_embedded_policy, tail: QnEmpty } } } } }
+data witness_embedded_policy_corpus_module: QualifiedName = Cons { head: ^v2, tail: Cons { head: ^test, tail: Cons { head: ^extdeps_shape_transport_policy, tail: Cons { head: ^corpus, tail: Cons { head: ^runtime_local_embedded_policy, tail: Empty } } } } }
