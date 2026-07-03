@@ -2,7 +2,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use crate::cli_run::{collect_dag_files_tolerant, is_test_dag, repo_rel, workspace_root};
+use crate::cli_run::{
+    collect_dag_files_tolerant, extract_module_path, is_test_dag, repo_rel, workspace_root,
+};
 use crate::module_path_index::medium_structure_census::parse_dag_file;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
@@ -279,6 +281,8 @@ pub fn eval_resolve_type_node(
 }
 
 fn logical_qualified_name(module_name: &str, name: &str) -> String {
+    // Concept-index reflection keeps the authored module path (including `v2.`).
+    // Decl-index uses `decl_logical_qualified_name` instead (strips `v2.`).
     if module_name.is_empty() {
         name.to_string()
     } else {
@@ -737,6 +741,16 @@ fn fn_item_param_names(item: &Rc<Node>, si: &SourceIndices) -> Vec<String> {
     param_names
 }
 
+fn fn_arrow_output_skeleton(
+    ctx: &InterpContext,
+    si: &SourceIndices,
+    item: &Rc<Node>,
+) -> Option<Value> {
+    let body = item.body.as_ref()?;
+    let param_names = fn_item_param_names(item, si);
+    Some(marshal_fn_body_skeleton(ctx, body, &param_names, si))
+}
+
 fn fn_arrow_decl_record(
     ctx: &InterpContext,
     si: &SourceIndices,
@@ -744,9 +758,8 @@ fn fn_arrow_decl_record(
     name: &str,
     item: &Rc<Node>,
 ) -> Option<Value> {
-    let body = item.body.as_ref()?;
+    let output = fn_arrow_output_skeleton(ctx, si, item)?;
     let param_names = fn_item_param_names(item, si);
-    let output = marshal_fn_body_skeleton(ctx, body, &param_names, si);
     let params: Vec<Value> = param_names
         .iter()
         .map(|pn| fn_arrow_param_record(ctx, pn))
@@ -886,6 +899,9 @@ pub struct DeclFactRaw {
     pub source_indices: SourceIndices,
 }
 
+/// Qualified name for `decl_facts` / `decl_index` — strips the `v2.` layer prefix to match
+/// `v2.std.decl_index.logical_qualified_name_from_module` (concept reflection keeps the
+/// full module path including `v2.` for `concept_index` consumers).
 fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
     let logical = module_name.strip_prefix("v2.").unwrap_or(module_name);
     if logical.is_empty() {
@@ -893,19 +909,6 @@ fn decl_logical_qualified_name(module_name: &str, name: &str) -> String {
     } else {
         format!("{logical}.{name}")
     }
-}
-
-fn extract_module_path_from_content(content: &str) -> Option<String> {
-    for line in content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with("module ") {
-            return Some(trimmed["module ".len()..].trim().to_string());
-        }
-        if !trimmed.is_empty() && !trimmed.starts_with("//") {
-            break;
-        }
-    }
-    None
 }
 
 fn corpus_dag_files_for_roots(roots: &[String]) -> Vec<PathBuf> {
@@ -948,7 +951,7 @@ pub fn decl_facts_corpus_walk(pool_roots: &[String]) -> DeclFactsCorpusWalk {
         let content = std::fs::read_to_string(&file).ok();
         let module_path = content
             .as_ref()
-            .and_then(|c| extract_module_path_from_content(c))
+            .and_then(|c| extract_module_path(c))
             .unwrap_or_default();
         let Some(parsed) = parse_dag_file(&file) else {
             continue;
@@ -1023,12 +1026,7 @@ fn marshal_decl_fact_node(
     match kind {
         ItemKind::TypeItem => concept_decl_node(ctx, si, item),
         ItemKind::FnItem | ItemKind::FuncItem => {
-            if let Some(body) = item.body.as_ref() {
-                let param_names = fn_item_param_names(item, si);
-                Ok(marshal_fn_body_skeleton(ctx, body, &param_names, si))
-            } else {
-                Ok(unit_type_node(ctx))
-            }
+            Ok(fn_arrow_output_skeleton(ctx, si, item).unwrap_or_else(|| unit_type_node(ctx)))
         }
         ItemKind::DataItem => {
             if let Some(body) = item.body.as_ref() {
