@@ -19,6 +19,8 @@ import gunbc.ci_budget_tree {
   budget_tree_gha_runner_pool_node,
   budget_tree_dashboard_session_pool_node,
   witness_floor_budget_equals_runner_cgroup_cap,
+  witness_fleet_slot_count_at_least_one,
+  witness_fleet_slot_count_below_incident_concurrency,
 }
 import gunbc.fleet_host_budget { gunbc_per_runner_memory_cap }
 import gunbc.ci_floor_measurement {
@@ -153,4 +155,6 @@ test fn ci_budget_tree_holds() -> Bool {
     && witness_hard_cap_is_runner_cgroup_cap()
     && witness_cap_split_runner_lt_session()
     && witness_floor_budget_equals_runner_cgroup_cap_holds()
+    && witness_fleet_slot_count_at_least_one()
+    && witness_fleet_slot_count_below_incident_concurrency()
 }
