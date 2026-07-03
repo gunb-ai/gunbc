@@ -1,63 +1,64 @@
 module v2.lens.extdeps_external_authority.module_refs
+import v2.std.algebra { Cons, Empty }
 
 import v2.std.collection { List }
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.qualified_name { QualifiedName }
 
-data extdeps_uri_module: QualifiedName = QnCons {
+data extdeps_uri_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons { head: ^uri, tail: QnEmpty }
+  tail: Cons { head: ^uri, tail: Empty }
 }
 
-data extdeps_external_authority_module: QualifiedName = QnCons {
+data extdeps_external_authority_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons { head: ^external_authority, tail: QnEmpty }
+  tail: Cons { head: ^external_authority, tail: Empty }
 }
 
-data extdeps_fixture_missing_anchor_module: QualifiedName = QnCons {
+data extdeps_fixture_missing_anchor_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons {
+  tail: Cons {
     head: ^fixture,
-    tail: QnCons { head: ^external_authority_missing, tail: QnEmpty }
+    tail: Cons { head: ^external_authority_missing, tail: Empty }
   }
 }
 
-data extdeps_fixture_bogus_scheme_module: QualifiedName = QnCons {
+data extdeps_fixture_bogus_scheme_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons {
+  tail: Cons {
     head: ^fixture,
-    tail: QnCons { head: ^external_authority_bogus_scheme, tail: QnEmpty }
+    tail: Cons { head: ^external_authority_bogus_scheme, tail: Empty }
   }
 }
 
-data extdeps_fixture_clean_https_module: QualifiedName = QnCons {
+data extdeps_fixture_clean_https_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons {
+  tail: Cons {
     head: ^fixture,
-    tail: QnCons { head: ^external_authority_clean_https, tail: QnEmpty }
+    tail: Cons { head: ^external_authority_clean_https, tail: Empty }
   }
 }
 
-data extdeps_fixture_clean_https_no_anchor_module: QualifiedName = QnCons {
+data extdeps_fixture_clean_https_no_anchor_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons {
+  tail: Cons {
     head: ^fixture,
-    tail: QnCons { head: ^external_authority_clean_https_no_anchor, tail: QnEmpty }
+    tail: Cons { head: ^external_authority_clean_https_no_anchor, tail: Empty }
   }
 }
 
-data extdeps_fixture_file_anchor_module: QualifiedName = QnCons {
+data extdeps_fixture_file_anchor_module: QualifiedName = Cons {
   head: ^extdeps,
-  tail: QnCons {
+  tail: Cons {
     head: ^fixture,
-    tail: QnCons { head: ^external_authority_file_anchor, tail: QnEmpty }
+    tail: Cons { head: ^external_authority_file_anchor, tail: Empty }
   }
 }
 
-data extdeps_fixture_shadow_masked_module: QualifiedName = QnCons {
+data extdeps_fixture_shadow_masked_module: QualifiedName = Cons {
   head: ^test,
-  tail: QnCons {
+  tail: Cons {
     head: ^fixture,
-    tail: QnCons { head: ^external_authority_shadow_masked, tail: QnEmpty }
+    tail: Cons { head: ^external_authority_shadow_masked, tail: Empty }
   }
 }
 

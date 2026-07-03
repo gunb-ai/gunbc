@@ -297,7 +297,7 @@ fn classify_nbd_serve_readiness(
           match iso {
             IsoMissing => IsoMissing
             IsoPresent { observed_content_hash: observed } =>
-              if observed != intent.iso_content_hash {
+              if (observed as String) != (intent.iso_content_hash as String) {
                 IsoHashMismatch
               } else {
                 match port {
@@ -1131,11 +1131,14 @@ fn parse_serve_iso_observation(stdout: String, intent: OsInstallAttemptIntent) -
     || string_contains(s: stdout, pattern: "iso=unverified") {
     IsoMissing
   } else {
-    if string_contains(s: stdout, pattern: "iso=match")
-      || string_contains(s: stdout, pattern: "iso=mismatch") {
-      IsoPresent { observed_content_hash: parse_observe_content_hash_observed(stdout: stdout) }
+    if string_contains(s: stdout, pattern: "iso=match") {
+      IsoPresent { observed_content_hash: intent.iso_content_hash }
     } else {
-      IsoMissing
+      if string_contains(s: stdout, pattern: "iso=mismatch") {
+        IsoPresent { observed_content_hash: parse_observe_content_hash_observed(stdout: stdout) }
+      } else {
+        IsoMissing
+      }
     }
   }
 }
@@ -1190,12 +1193,17 @@ fn parse_sol_console_observation(stdout: String) -> SolConsoleContentObservation
 fn parse_virtual_media_session_observation(
   serve: NbdServeObservation,
   websocket: BmcWebsocketObservation,
+  serve_readiness: NbdServeReadinessVerdict,
 ) -> VirtualMediaSessionObservation {
   match serve {
     ServeUnknown => VirtualMediaSessionUnknown
     ServeObserved { process: _, port: _, session: _, iso: _ } =>
       match websocket {
-        WebsocketUpgradeAccepted => VirtualMediaSessionUnknown
+        WebsocketUpgradeAccepted =>
+          match serve_readiness {
+            ServeReady => AttachedToExpectedServe
+            _ => VirtualMediaSessionUnknown
+          }
         _ => NoAttachedServe
       }
   }
@@ -1207,11 +1215,19 @@ fn parse_srv3_install_debug_observation(
 ) -> Srv3InstallDebugObservation {
   let serve = parse_actuator_serve_observation(stdout: stdout, intent: intent)
   let websocket = parse_bmc_websocket_observation(stdout: stdout)
+  let serve_readiness = classify_serve_observation_readiness(
+    serve: serve,
+    intent: intent,
+  )
   Srv3InstallDebugObservation {
     actuator_serve: serve,
     bmc_websocket: websocket,
     redfish_boot: parse_redfish_boot_observation(stdout: stdout),
-    virtual_media_session: parse_virtual_media_session_observation(serve: serve, websocket: websocket),
+    virtual_media_session: parse_virtual_media_session_observation(
+      serve: serve,
+      websocket: websocket,
+      serve_readiness: serve_readiness,
+    ),
     sol: Present { value: parse_sol_console_observation(stdout: stdout) },
     router_lease_table: Absent,
     kvm: Absent,
