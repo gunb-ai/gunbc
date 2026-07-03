@@ -1,0 +1,68 @@
+module extdeps.tmux
+
+import std.types { List, String }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/tmux/tmux/wiki"
+  }
+}
+
+fn shape_tmux_new_session_argv(session_name: String, working_dir: String, inner_argv: List<String>) -> List<String> {
+  concat(
+    ["new-session", "-d", "-s", session_name, "-c", working_dir],
+    inner_argv,
+  )
+}
+
+fn shape_tmux_ls_argv() -> List<String> {
+  ["ls"]
+}
+
+fn shape_tmux_kill_session_argv(session_name: String) -> List<String> {
+  ["kill-session", "-t", session_name]
+}
+
+service tmux.Session {
+  operation New {
+    input { session_name: String, working_dir: String, inner_argv: List<String> }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["tmux", "new-session", "-d", "-s", "{session_name}", "-c", "{working_dir}", inner_argv] }
+    exit {
+      0 => Unit
+      nonzero => String "tmux new-session failed"
+    }
+  }
+
+  operation List {
+    input {}
+    output { sessions: String from "stdout" }
+    readonly
+    transport shell { argv: ["tmux", "ls"] }
+    exit {
+      0 => Unit
+      1 => Unit "No sessions"
+    }
+  }
+
+  operation Kill {
+    input { session_name: String }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["tmux", "kill-session", "-t", "{session_name}"] }
+    exit {
+      0 => Unit
+      nonzero => String "tmux kill-session failed"
+    }
+  }
+}

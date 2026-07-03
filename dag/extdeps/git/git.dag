@@ -186,7 +186,7 @@ service git.Core {
   }
 }
 
-fn git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: GitRef) -> List<String> {
+fn shape_git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: GitRef) -> List<String> {
   ["worktree", "add", path as String, "-b", branch as String, remote_ref as String]
 }
 

@@ -20,11 +20,13 @@ import std.upsert_decision {
   Refuse,
   UpsertClassification,
 }
+import extdeps.git { shape_git_worktree_add_argv }
+import extdeps.tmux { shape_tmux_new_session_argv }
+import extdeps.llm.cli { shape_claude_invoke_argv }
 import gunbc.roadmap_dispatch_actuator {
   dispatch_tmux_session_name,
   dispatch_tmux_session_prefix,
   dispatch_tmux_process_fingerprint_observation_dissolution_trigger,
-  dispatch_host_exec_argv_shape_transport_dissolution_trigger,
   fill_dispatch_brief,
   dispatch_brief_fields,
   claude_effort_for_intricacy,
@@ -253,15 +255,33 @@ fn witness_fingerprint_scaffold_marker_present() -> Bool {
     )
 }
 
-fn witness_host_exec_argv_shape_transport_scaffold_marker_present() -> Bool {
-  string_contains(
-    s: dispatch_host_exec_argv_shape_transport_dissolution_trigger,
-    pattern: "dissolve-on:",
+fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
+  let worktree_args = shape_git_worktree_add_argv(
+    path: "/opt/gunbc/dispatch-worktrees/bound-node" as FilePath,
+    branch: "dispatch/bound-node" as NonEmptyStr,
+    remote_ref: "origin/main" as GitRef,
   )
-    && string_contains(
-      s: dispatch_host_exec_argv_shape_transport_dissolution_trigger,
-      pattern: "shape/transport/policy",
-    )
+  let bound_worktree = git_worktree_add_argv(
+    worktree_path: "/opt/gunbc/dispatch-worktrees/bound-node",
+    branch_name: "dispatch/bound-node",
+    remote_ref: "origin/main",
+  )
+  let tmux_args = shape_tmux_new_session_argv(
+    session_name: "gunbc-dispatch-bound-node",
+    working_dir: "/opt/gunbc/dispatch-worktrees/bound-node",
+    inner_argv: ["env", "CLAUDE_CODE_NO_FLICKER=1"],
+  )
+  let claude_args = shape_claude_invoke_argv(
+    session_id: "uuid-bound",
+    node_id: "bound-node",
+    effort: "high",
+    settings_json: "{}",
+    append_system_prompt: "brief",
+    start_prompt: "go",
+  )
+  bound_worktree.args == worktree_args
+    && starts_with(s: join(tmux_args, separator: " "), prefix: "new-session -d -s gunbc-dispatch-bound-node")
+    && string_contains(s: join(claude_args, separator: "\0"), pattern: "--dangerously-skip-permissions")
 }
 
 fn witness_session_lease_shape_reused() -> Bool {
@@ -286,6 +306,6 @@ test fn roadmap_dispatch_actuator_witnesses() -> Bool {
     && witness_name_only_observation_not_converged()
     && witness_foreign_process_fingerprint_is_conflict()
     && witness_fingerprint_scaffold_marker_present()
-    && witness_host_exec_argv_shape_transport_scaffold_marker_present()
+    && witness_host_exec_argv_shapes_bound_to_extdeps()
     && witness_session_lease_shape_reused()
 }

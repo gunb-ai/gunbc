@@ -1,7 +1,7 @@
 module gunbc.roadmap_dispatch_actuator
 
 import ctrl.process_algebra { ProcessNodeId }
-import std.types { String, NonEmptyStr, Int, Bool, List }
+import std.types { String, NonEmptyStr, Int, Bool, List, FilePath, GitRef }
 import std.upsert_decision {
   ObservationVerdict,
   Converged,
@@ -37,12 +37,17 @@ import gunbc.session_lease {
   Start,
   classify_process_port_upsert,
 }
+import extdeps.git { shape_git_worktree_add_argv }
+import extdeps.tmux {
+  shape_tmux_new_session_argv,
+  shape_tmux_ls_argv,
+  shape_tmux_kill_session_argv,
+}
+import extdeps.llm.cli { shape_claude_invoke_argv }
 
-data roadmap_dispatch_actuator_doc: String = "M2 dispatch actuator model: brief fill, worktree+tmux+claude argv construction, tmux session lease (session_lease classifier discipline — observation carries facts only), tmux ls parse, stop. Pure folds — spec docs/plans/dispatch-maintain-cc.md."
+data roadmap_dispatch_actuator_doc: String = "M2 dispatch actuator model: brief fill, worktree+tmux+claude argv construction (bound to extdeps git/tmux/claude interface shapes; this module supplies policy parameters only), tmux session lease (session_lease classifier discipline — observation carries facts only), tmux ls parse, stop. Pure folds — spec docs/plans/dispatch-maintain-cc.md."
 
 data dispatch_tmux_process_fingerprint_observation_dissolution_trigger: String = "🟡 dissolve-on: tmux-ls name-only lease observation — SessionNameObserved yields UnknownRefused (fail-closed) until dispatch_tmux_process_fingerprint observation transport binds pgrep/cmdline facts into SessionObserved.process_fingerprint; DISSOLVES WHEN M3/M4 wires HostExecArgv receipt rows (tmux capture-pane or ps) feeding classify_dispatch_lease_upsert so Conflict/Drifted/Converged are reachable from observed facts"
-
-data dispatch_host_exec_argv_shape_transport_dissolution_trigger: String = "🟡 dissolve-on: HostExecArgv git/tmux/claude spawn rows authored inline in gunbc.roadmap_dispatch_actuator — workflow policy literals (dispatch_git_remote_ref, dispatch_worktree_root, claude settings) fused with transport argv; DISSOLVES WHEN extdeps git/tmux/claude declare interface shapes (worktree add, new-session, claude invoke) and this module binds policy parameters only, per DESIGN section 3 shape/transport/policy split"
 
 data dispatch_mvp_repo: String = "gunbc"
 data dispatch_worktree_root: String = "/opt/gunbc/dispatch-worktrees"
@@ -211,7 +216,11 @@ fn host_exec_argv(program: String, args: List<String>) -> HostExecArgv {
 fn git_worktree_add_argv(worktree_path: String, branch_name: String, remote_ref: String) -> HostExecArgv {
   host_exec_argv(
     program: "git",
-    args: ["worktree", "add", worktree_path, "-b", branch_name, remote_ref],
+    args: shape_git_worktree_add_argv(
+      path: worktree_path as FilePath,
+      branch: branch_name as NonEmptyStr,
+      remote_ref: remote_ref as GitRef,
+    ),
   )
 }
 
@@ -221,39 +230,33 @@ fn claude_spawn_argv(
   node_id: ProcessNodeId,
   brief: String,
 ) -> List<String> {
-  [
-    "claude",
-    "--dangerously-skip-permissions",
-    "--settings",
-    claude_skip_permission_settings_json,
-    "--effort",
-    effort,
-    "--session-id",
-    session_uuid,
-    "-n",
-    node_id,
-    "--append-system-prompt",
-    brief,
-    dispatch_claude_start_prompt,
-  ]
+  shape_claude_invoke_argv(
+    session_id: session_uuid,
+    node_id: node_id,
+    effort: effort,
+    settings_json: claude_skip_permission_settings_json,
+    append_system_prompt: brief,
+    start_prompt: dispatch_claude_start_prompt,
+  )
 }
 
 fn tmux_spawn_argv(session_name: String, worktree_path: String, claude_argv: List<String>) -> HostExecArgv {
   host_exec_argv(
     program: "tmux",
-    args: concat(
-      ["new-session", "-d", "-s", session_name, "-c", worktree_path],
-      concat(["env", "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
+    args: shape_tmux_new_session_argv(
+      session_name: session_name,
+      working_dir: worktree_path,
+      inner_argv: concat(["env", "CLAUDE_CODE_NO_FLICKER=1"], claude_argv),
     ),
   )
 }
 
 fn tmux_ls_argv() -> HostExecArgv {
-  host_exec_argv(program: "tmux", args: ["ls"])
+  host_exec_argv(program: "tmux", args: shape_tmux_ls_argv())
 }
 
 fn tmux_kill_session_argv(session_name: String) -> HostExecArgv {
-  host_exec_argv(program: "tmux", args: ["kill-session", "-t", session_name])
+  host_exec_argv(program: "tmux", args: shape_tmux_kill_session_argv(session_name: session_name))
 }
 
 type DispatchSpawnCommands {

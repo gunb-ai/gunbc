@@ -1,5 +1,6 @@
 module extdeps.llm.cli
 
+import std.types { List, String }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
@@ -8,6 +9,33 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     scheme: Https
     locator: "github.com/openai/codex"
   }
+}
+
+data claude_cli_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.claude.com/en/docs/claude-code/cli-reference"
+  }
+}
+
+fn shape_claude_invoke_argv(
+  session_id: String,
+  node_id: String,
+  effort: String,
+  settings_json: String,
+  append_system_prompt: String,
+  start_prompt: String,
+) -> List<String> {
+  [
+    "claude",
+    "--dangerously-skip-permissions",
+    "--settings", settings_json,
+    "--effort", effort,
+    "--session-id", session_id,
+    "-n", node_id,
+    "--append-system-prompt", append_system_prompt,
+    start_prompt,
+  ]
 }
 
 service llm.Codex {
@@ -36,6 +64,39 @@ service llm.Codex {
     exit {
       0 => Unit
       nonzero => String "Codex CLI failed"
+    }
+  }
+}
+
+service claude.Invoke {
+  operation Run {
+    input {
+      session_id: String
+      node_id: String
+      effort: String
+      settings_json: String
+      append_system_prompt: String
+      start_prompt: String
+    }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell {
+      argv: [
+        "claude", "--dangerously-skip-permissions",
+        "--settings", "{settings_json}",
+        "--effort", "{effort}",
+        "--session-id", "{session_id}",
+        "-n", "{node_id}",
+        "--append-system-prompt", "{append_system_prompt}",
+        "{start_prompt}"
+      ]
+    }
+    exit {
+      0 => Unit
+      nonzero => String "Claude CLI invocation failed"
     }
   }
 }
