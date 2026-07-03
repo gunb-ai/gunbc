@@ -4,6 +4,7 @@ import gunbc.node_http_server_emit {
   toy_dynamic_route_node_http_server_source,
   toy_dynamic_route_node_http_server_spec,
   toy_dynamic_echo_route,
+  gunbhub_node_http_server_source,
 }
 
 fn witness_emitted_source_contains_exec_file_dispatch() -> Bool {
@@ -32,7 +33,10 @@ fn witness_toy_route_binding_inhabits_handler_name() -> Bool {
 }
 
 fn witness_dynamic_route_red_control() -> Bool {
-  count(toy_dynamic_route_node_http_server_spec().static_routes.routes) != 99
+  let toy_src = toy_dynamic_route_node_http_server_source()
+  let gunbhub_src = gunbhub_node_http_server_source()
+  string_contains(s: toy_src, pattern: "/^\\/toy\\/([^\\/]+)$/")
+    && !string_contains(s: gunbhub_src, pattern: "/^\\/toy\\/([^\\/]+)$/")
 }
 
 test fn node_http_server_dynamic_route_emit_witnesses() -> Bool {

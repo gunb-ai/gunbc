@@ -6,7 +6,8 @@ import tools.emit_host_transport {
   run_python_mvp2_smoke,
   run_go_mvp2_smoke,
   run_ts_mvp1_smoke,
-  run_node_http_serve_smoke
+  run_node_http_serve_smoke,
+  run_node_http_dynamic_route_smoke,
 }
 
 func run_emit_host_gate_body() -> ProcessExit {
@@ -15,7 +16,8 @@ func run_emit_host_gate_body() -> ProcessExit {
   go = run_go_mvp2_smoke()
   ts = run_ts_mvp1_smoke()
   node_http = run_node_http_serve_smoke()
-  return if rust && python && go && ts && node_http {
+  node_http_dynamic = run_node_http_dynamic_route_smoke()
+  return if rust && python && go && ts && node_http && node_http_dynamic {
     ExitSuccess
   } else {
     exit_failure(
