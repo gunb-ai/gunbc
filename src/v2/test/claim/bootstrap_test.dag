@@ -1,0 +1,10 @@
+module v2.test.claim.bootstrap
+
+import tools.bootstrap_witness_transport { run_bootstrap_witness }
+import v2.std.logic { Bool }
+
+data bootstrap_witness_provenance: String = "Floor witness migrated from src/v1/tests/src/bootstrap.rs (29 v1 #[test] fns across floor/expensive/ci/l4 suites): v1 bootstrap self-host oracle executed via bootstrap_witness host physics until v2.workflow.bootstrap self-host gates are witness-layer importable. Floor runs --suite floor (in-process smoke: workspace + source-root sanity; no nested cargo — stage0_cargo_check moved to expensive suite to avoid CI floor timeout). Full v1 parity via bootstrap_witness --suite all."
+
+test fn bootstrap_witness_keystone_holds() -> Bool {
+  run_bootstrap_witness()
+}
