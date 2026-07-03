@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::OnceLock;
 
+use crate::coproduct_reflection::{decl_facts_corpus_walk, DeclFactRaw};
 use crate::std_node::compiler_recursive_types;
 use crate::std_syntax::LiteralValue;
 use crate::std_types::{kernel_type_set, SourceSpan};
@@ -18,14 +19,15 @@ use crate::v1_compiler_tokenize;
 use crate::v1_interpreter;
 use crate::v1_rt;
 use crate::v1_std_core::{
-    arg_name_at, arg_value, authored_name_at, block_stmts, build_newline_index, byte_to_line_col,
-    diagnostic_to_message, diagnostic_to_span, empty_intern_table, expr_method_name_at,
-    expr_var_name_at, field_access_base, field_access_field_at, field_init_node_name_at,
-    field_init_node_value, has_child_named, intern,
+    arg_name_at, arg_value, arm_pattern, authored_name_at, block_stmts, build_newline_index,
+    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, empty_intern_table,
+    expr_method_name_at, expr_var_name_at, field_access_base, field_access_field_at,
+    field_init_node_name_at, field_init_node_value, has_child_named, intern,
     is_discovery_corpus_advisory_typecheck_diagnostic, is_discovery_corpus_blocking_diagnostic,
     is_error_diagnostic, is_interpreter_blocking_diagnostic, let_binding_name_at, let_value,
-    method_arg_nodes, method_receiver, CompilerDiagnostic, ErrorNode, ExprData, InferredNode,
-    InternTable, NewlineIndex, Node,
+    match_arm_nodes, match_scrutinee, method_arg_nodes, method_receiver, param_node_name_at,
+    param_node_type_expr, CompilerDiagnostic, ErrorNode, ExprData, InferredNode, InternTable,
+    MatchPattern, NewlineIndex, Node,
 };
 use serde::Serialize;
 
@@ -8335,6 +8337,385 @@ mod inert_carrier_tests {
             ("b.dag", "module b\ntype Dup { y: Int }\n"),
         ]);
         assert!(!inert.contains(&"Dup".to_string()));
+    }
+}
+
+// --- Complexity/linearity syntactic audit (folded from complexity_linearity_audit_project.rs) ---
+//
+// Thin host builtins over `decl_facts` + fn-body AST walk. Triage/bucket classification lives in
+// `v2.lens.complexity_linearity_audit` (.dag); migration-debt roster is on-carrier there too.
+// DISSOLUTION: fold the AST walk into a pure `.dag` Node-tree reader when expr introspection
+// grounds on the #5364 corpus accessor (same seam as non_fold_residue_* / inert_carrier_*).
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ComplexityLinearityAuditFinding {
+    pub site: String,
+    pub lens: &'static str,
+    pub rule: &'static str,
+    pub triage: &'static str,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ComplexityLinearityAuditSummary {
+    pub files_scanned: usize,
+    pub files_parsed: usize,
+    pub fns_scanned: usize,
+    pub findings: Vec<ComplexityLinearityAuditFinding>,
+}
+
+fn cla_is_wildcard_arm(arm: &Rc<Node>) -> bool {
+    matches!(arm_pattern(arm.clone()).as_ref(), MatchPattern::Wildcard)
+}
+
+fn cla_type_expr_head(ty: Rc<Node>, si: &Rc<HashMap<String, Rc<NewlineIndex>>>) -> String {
+    let name = authored_name_at(si.clone(), ty);
+    name.chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect()
+}
+
+fn cla_fn_param_type_heads(
+    item: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> BTreeMap<String, String> {
+    let mut out = BTreeMap::new();
+    for param in item.params.iter() {
+        let pname = param_node_name_at(param.clone(), si.clone());
+        if pname.is_empty() {
+            continue;
+        }
+        let head = cla_type_expr_head(param_node_type_expr(param.clone()), si);
+        if !head.is_empty() {
+            out.insert(pname, head);
+        }
+    }
+    out
+}
+
+fn cla_is_closed_coproduct_param_scrutinee(
+    scrutinee_name: &str,
+    param_types: &BTreeMap<String, String>,
+    closed: &BTreeSet<String>,
+) -> bool {
+    param_types
+        .get(scrutinee_name)
+        .is_some_and(|ty| closed.contains(ty))
+}
+
+#[derive(Default)]
+struct ClaFnBodyStats {
+    node_count: usize,
+    match_count: usize,
+    wildcard_matches: usize,
+    closed_coproduct_wildcard_matches: usize,
+}
+
+fn cla_walk_expr(
+    node: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    param_types: &BTreeMap<String, String>,
+    closed_coproducts: &BTreeSet<String>,
+    stats: &mut ClaFnBodyStats,
+) {
+    stats.node_count += 1;
+    if let ExprData::ExprMatch = node.expr_data.as_ref() {
+        stats.match_count += 1;
+        let scrutinee = match_scrutinee(node.clone());
+        let scrutinee_name = expr_var_name_at(scrutinee, si.clone());
+        let has_wildcard = match_arm_nodes(node.clone())
+            .iter()
+            .any(|arm| cla_is_wildcard_arm(arm));
+        if has_wildcard {
+            stats.wildcard_matches += 1;
+            if !scrutinee_name.is_empty()
+                && cla_is_closed_coproduct_param_scrutinee(
+                    &scrutinee_name,
+                    param_types,
+                    closed_coproducts,
+                )
+            {
+                stats.closed_coproduct_wildcard_matches += 1;
+            }
+        }
+    }
+    for child in node.children.iter() {
+        cla_walk_expr(child, si, param_types, closed_coproducts, stats);
+    }
+}
+
+fn cla_is_kernel_permanent_fn(fn_name: &str) -> bool {
+    fn_name.ends_with("_eq")
+        || fn_name.contains("dominates")
+        || fn_name.contains("lattice_join")
+        || fn_name.contains("lattice_meet")
+        || fn_name == "exit_ok"
+        || fn_name.contains("_relation_eq")
+        || fn_name.contains("_mode_eq")
+        || fn_name.ends_with("_combine")
+        || fn_name == "constant_bound_value"
+        || fn_name == "is_constant_bound"
+        || fn_name == "create_double_init_collapsible"
+        || fn_name == "create_effect_is_dedupable"
+        || fn_name.starts_with("compose_sub_value")
+        || fn_name == "promote_to_strict"
+        || fn_name.starts_with("program_runtime_bool")
+        || fn_name == "is_text_encoding"
+        || fn_name == "is_strict_style_structural"
+}
+
+fn cla_triage_complexity(site: &str) -> &'static str {
+    let fn_name = site.rsplit("::").next().unwrap_or("");
+    if cla_is_kernel_permanent_fn(fn_name) {
+        return "kernel-permanent";
+    }
+    if site.starts_with("dag/extdeps/")
+        || site.starts_with("dag/ctrl/")
+        || site.starts_with("dag/gunbc/plans/")
+        || site.starts_with("dag/test/")
+    {
+        "open-domain"
+    } else if site.starts_with("dag/std/") || site.starts_with("dag/gunbc/") {
+        "kernel-permanent"
+    } else {
+        "open-domain"
+    }
+}
+
+fn cla_audit_function_body(
+    rel: &str,
+    fn_name: &str,
+    body: &Rc<Node>,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+    param_types: &BTreeMap<String, String>,
+) -> Vec<ComplexityLinearityAuditFinding> {
+    let closed = non_fold_residue_closed_coproduct_type_names();
+    let mut stats = ClaFnBodyStats::default();
+    cla_walk_expr(body, si, param_types, closed, &mut stats);
+    let site = format!("{rel}::{fn_name}");
+    let mut out = Vec::new();
+    if stats.wildcard_matches > 0 {
+        out.push(ComplexityLinearityAuditFinding {
+            site: site.clone(),
+            lens: "non_fold_residue",
+            rule: "syntactic_match_wildcard_arm",
+            triage: "wildcard-arm",
+        });
+    }
+    if stats.match_count >= 8 || (stats.node_count >= 200 && stats.match_count >= 4) {
+        out.push(ComplexityLinearityAuditFinding {
+            site,
+            lens: "cost",
+            rule: "syntactic_high_match_fanout",
+            triage: cla_triage_complexity(&format!("{rel}::{fn_name}")),
+        });
+    }
+    out
+}
+
+fn cla_audit_decl_fact(
+    fact: &DeclFactRaw,
+    si: &Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Vec<ComplexityLinearityAuditFinding> {
+    let Some(body) = fact.node.body.as_ref() else {
+        return Vec::new();
+    };
+    let param_types = cla_fn_param_type_heads(&fact.node, si);
+    cla_audit_function_body(&fact.rel_path, &fact.name, body, si, &param_types)
+}
+
+pub fn complexity_linearity_audit_corpus_over_decl_facts(
+    roots: &[String],
+) -> ComplexityLinearityAuditSummary {
+    let walk = decl_facts_corpus_walk(roots);
+    let mut summary = ComplexityLinearityAuditSummary::default();
+    summary.files_scanned = walk.files_scanned;
+    summary.files_parsed = walk.files_parsed;
+
+    for fact in &walk.facts {
+        if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+            continue;
+        }
+        summary.fns_scanned += 1;
+        summary
+            .findings
+            .extend(cla_audit_decl_fact(fact, &fact.source_indices));
+    }
+    summary.findings.sort();
+    summary
+}
+
+pub fn complexity_linearity_audit_corpus_parse_only(
+    roots: &[String],
+) -> ComplexityLinearityAuditSummary {
+    complexity_linearity_audit_corpus_over_decl_facts(roots)
+}
+
+pub fn complexity_linearity_audit_corpus_default_roots() -> ComplexityLinearityAuditSummary {
+    complexity_linearity_audit_corpus_parse_only(&witness_layer_roots())
+}
+
+struct ClaAuditBuiltinCache {
+    finding_count: i64,
+    sites: BTreeSet<String>,
+}
+
+fn cla_cached_builtin_cache() -> &'static ClaAuditBuiltinCache {
+    static CACHE: OnceLock<ClaAuditBuiltinCache> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let summary = complexity_linearity_audit_corpus_default_roots();
+        ClaAuditBuiltinCache {
+            finding_count: summary.findings.len() as i64,
+            sites: summary.findings.iter().map(|f| f.site.clone()).collect(),
+        }
+    })
+}
+
+pub fn complexity_linearity_syntactic_finding_count() -> i64 {
+    cla_cached_builtin_cache().finding_count
+}
+
+pub fn complexity_linearity_syntactic_site_fired(site: &str) -> bool {
+    cla_cached_builtin_cache().sites.contains(site)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ComplexityLinearityWildcardFactRaw {
+    pub site: String,
+    pub fn_name: String,
+    pub closed_coproduct_wildcard: bool,
+    pub rostered: bool,
+}
+
+struct ClaWildcardFactsCache {
+    facts: Vec<ComplexityLinearityWildcardFactRaw>,
+}
+
+fn cla_compute_wildcard_facts(roots: &[String]) -> Vec<ComplexityLinearityWildcardFactRaw> {
+    let walk = decl_facts_corpus_walk(roots);
+    let closed = non_fold_residue_closed_coproduct_type_names();
+    let mut out = Vec::new();
+    for fact in &walk.facts {
+        if !matches!(fact.kind, ItemKind::FnItem | ItemKind::FuncItem) {
+            continue;
+        }
+        let Some(body) = fact.node.body.as_ref() else {
+            continue;
+        };
+        let param_types = cla_fn_param_type_heads(&fact.node, &fact.source_indices);
+        let mut stats = ClaFnBodyStats::default();
+        cla_walk_expr(body, &fact.source_indices, &param_types, closed, &mut stats);
+        if stats.wildcard_matches > 0 {
+            let site = format!("{}::{}", fact.rel_path, fact.name);
+            out.push(ComplexityLinearityWildcardFactRaw {
+                fn_name: fact.name.clone(),
+                closed_coproduct_wildcard: stats.closed_coproduct_wildcard_matches > 0,
+                rostered: non_fold_residue_site_is_rostered(&site),
+                site,
+            });
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+fn cla_cached_wildcard_facts() -> &'static ClaWildcardFactsCache {
+    static CACHE: OnceLock<ClaWildcardFactsCache> = OnceLock::new();
+    CACHE.get_or_init(|| ClaWildcardFactsCache {
+        facts: cla_compute_wildcard_facts(&witness_layer_roots()),
+    })
+}
+
+pub fn complexity_linearity_wildcard_facts() -> &'static [ComplexityLinearityWildcardFactRaw] {
+    &cla_cached_wildcard_facts().facts
+}
+
+#[cfg(test)]
+mod complexity_linearity_audit_tests {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn write_temp_module(content: &str) -> String {
+        let dir = std::env::temp_dir().join(format!(
+            "complexity-linearity-audit-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("time")
+                .as_nanos()
+        ));
+        fs::create_dir_all(&dir).expect("tempdir");
+        let path = dir.join("audit_wildcard.dag");
+        fs::write(&path, content).expect("write");
+        path.to_string_lossy().to_string()
+    }
+
+    #[test]
+    fn syntactic_wildcard_finding_on_closed_coproduct_match() {
+        let path = write_temp_module(
+            "module audit_wildcard\n\
+             type Mode = A | B | C\n\
+             fn f(x: Mode) -> Bool {\n\
+               match x {\n\
+                 A => true\n\
+                 _ => false\n\
+               }\n\
+             }\n",
+        );
+        let root = Path::new(&path)
+            .parent()
+            .unwrap()
+            .to_string_lossy()
+            .to_string();
+        let summary = complexity_linearity_audit_corpus_parse_only(&[root]);
+        assert!(
+            summary
+                .findings
+                .iter()
+                .any(|f| { f.rule == "syntactic_match_wildcard_arm" && f.site.contains("::f") }),
+            "expected wildcard finding; got {:?}",
+            summary.findings
+        );
+    }
+
+    #[test]
+    fn eval_interpreter_handler_is_migration_debt_raw_fact() {
+        let facts = complexity_linearity_wildcard_facts();
+        let eval_bind_site = "src/v2/compiler/05_eval.dag::eval_bind_node_eval";
+        assert!(
+            !facts.iter().any(|f| f.site == eval_bind_site),
+            "eval_bind_node_eval wildcard dissolved; should not appear in wildcard facts"
+        );
+        let site = "src/v2/compiler/05_eval.dag::eval_match_node_eval";
+        let fact = facts.iter().find(|f| f.site == site);
+        assert!(fact.is_some(), "expected wildcard fact for {site}");
+        assert!(
+            fact.unwrap().rostered,
+            "{site} must be rostered (drives migration-debt/kernel-permanent triage in .dag)"
+        );
+    }
+
+    #[test]
+    fn testgen_anchor_match_is_migration_debt_raw_fact() {
+        let site = "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim";
+        let facts = complexity_linearity_wildcard_facts();
+        assert!(
+            facts.iter().any(|f| f.site == site),
+            "expected wildcard fact for testgen anchor match"
+        );
+    }
+
+    #[test]
+    fn live_tree_parse_audit_runs_over_witness_roots() {
+        let summary = complexity_linearity_audit_corpus_default_roots();
+        assert!(summary.files_scanned > 100, "corpus walk fail-opened");
+        assert!(summary.files_parsed > 50, "parse fail-opened");
+        assert!(summary.fns_scanned > 100, "fn scan fail-opened");
+        assert!(
+            !summary.findings.is_empty(),
+            "expected syntactic findings on the live corpus"
+        );
     }
 }
 
