@@ -520,7 +520,10 @@ mod tests {
         let site = "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim";
         let facts = complexity_linearity_wildcard_facts();
         let fact = facts.iter().find(|f| f.site == site);
-        assert!(fact.is_some(), "expected wildcard fact for testgen anchor match");
+        assert!(
+            fact.is_some(),
+            "expected wildcard fact for testgen anchor match"
+        );
         let migration_roster = complexity_linearity_migration_debt_roster();
         assert!(
             migration_roster.iter().any(|s| s == site),

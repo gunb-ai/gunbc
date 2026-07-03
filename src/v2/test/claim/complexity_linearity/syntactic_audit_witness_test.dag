@@ -30,32 +30,24 @@ test fn syntactic_audit_bites_tokenize_prefer_longer() -> Bool {
   )
 }
 
-// The wildcard-fact universe is non-empty — the raw-fact bridge is live (not vacuously green).
 test fn wildcard_fact_universe_is_nonempty() -> Bool {
   return complexity_linearity_wildcard_total_live() > 0
 }
 
-// Triage classification is live — at least one site buckets to migration-debt. Flips RED if the
-// bucket decision tree stops classifying (e.g. roster membership check breaks).
 test fn wildcard_triage_classifies_migration_debt() -> Bool {
   return complexity_linearity_wildcard_migration_debt_live() > 0
 }
 
-// Discriminant: total partitions into buckets — open-domain is a strict subset of the universe,
-// so open-domain < total (proves the closed-coproduct filter is not classifying everything one way).
 test fn wildcard_triage_open_domain_is_proper_subset() -> Bool {
   return complexity_linearity_wildcard_open_domain_live() < complexity_linearity_wildcard_total_live()
 }
 
-// A rostered closed-coproduct wildcard site on the migration-debt roster triages migration-debt
-// (roster bucket precedes the eval-interpreter path) — mirrors the retired Rust unit test.
 test fn wildcard_triage_eval_match_site_is_migration_debt() -> Bool {
   return complexity_linearity_wildcard_triage_for_site(
     site: "src/v2/compiler/05_eval.dag::eval_match_node_eval"
   ) == "migration-debt"
 }
 
-// An enrolled ManualAnchorKey wildcard site triages migration-debt — mirrors the retired Rust unit test.
 test fn wildcard_triage_testgen_anchor_is_migration_debt() -> Bool {
   return complexity_linearity_wildcard_triage_for_site(
     site: "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim"

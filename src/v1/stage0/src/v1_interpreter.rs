@@ -5489,13 +5489,14 @@ fn eval_builtin(
                 expect_str_list_flex(positional.get(3).copied(), "medium_structure_leak_facts")?;
             let string_ops =
                 expect_str_list_flex(positional.get(4).copied(), "medium_structure_leak_facts")?;
-            let facts = crate::module_path_index::medium_structure_census::medium_structure_leak_facts(
-                &emit_roots,
-                &check_roots,
-                &markers,
-                &emit_fns,
-                &string_ops,
-            );
+            let facts =
+                crate::module_path_index::medium_structure_census::medium_structure_leak_facts(
+                    &emit_roots,
+                    &check_roots,
+                    &markers,
+                    &emit_fns,
+                    &string_ops,
+                );
             let mut items: Vec<Value> = Vec::new();
             for f in facts {
                 let face = Value::Variant {
@@ -5532,7 +5533,10 @@ fn eval_builtin(
                 items.push(Value::Record {
                     type_name: ctx.sym("FactCardinalityDeclFact"),
                     fields: Rc::new(sorted_fields(vec![
-                        (ctx.sym("rel_path_decl_key"), Value::Str(f.rel_path_decl_key)),
+                        (
+                            ctx.sym("rel_path_decl_key"),
+                            Value::Str(f.rel_path_decl_key),
+                        ),
                         (ctx.sym("tree"), tree_value),
                         (ctx.sym("content_hash"), Value::Str(f.content_hash)),
                     ])),
@@ -5861,15 +5865,11 @@ fn eval_builtin(
             crate::external_authority_project::external_authority_live_roster_module_count(),
         ))),
 
-        "doc_graph_orphan_count" => Ok(Some(Value::Int(
-            crate::cli_run::doc_graph_orphan_count(),
-        ))),
+        "doc_graph_orphan_count" => Ok(Some(Value::Int(crate::cli_run::doc_graph_orphan_count()))),
         "doc_graph_dangling_link_count" => Ok(Some(Value::Int(
             crate::cli_run::doc_graph_dangling_link_count(),
         ))),
-        "doc_graph_doc_count" => Ok(Some(Value::Int(
-            crate::cli_run::doc_graph_doc_count(),
-        ))),
+        "doc_graph_doc_count" => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
 
         "inert_carrier_names_live" => {
             let names = crate::cli_run::inert_carrier_names_live();
@@ -5887,9 +5887,7 @@ fn eval_builtin(
             crate::cli_run::inert_lens_top_level_module_count(),
         ))),
 
-        "non_fold_residue_count" => Ok(Some(Value::Int(
-            crate::cli_run::non_fold_residue_count(),
-        ))),
+        "non_fold_residue_count" => Ok(Some(Value::Int(crate::cli_run::non_fold_residue_count()))),
         "non_fold_residue_unrostered_count" => Ok(Some(Value::Int(
             crate::cli_run::non_fold_residue_unrostered_count(),
         ))),
