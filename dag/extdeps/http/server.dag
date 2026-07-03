@@ -93,7 +93,22 @@ type NodeHttpCreateServerEmissionTarget {
   effects: NodeHttpCreateServerEffectChain
 }
 
-data node_http_create_server_chain_dissolution_trigger: String = "dissolve-on: P3 dynamic-handler serving lane inhabits NodeHttpCreateServerEmissionTarget/EffectChain/Serve — these become live when a realization handler binds a handler_name dispatch to each NodeHttpServerRouteBinding"
+data node_http_create_server_chain_dissolution_trigger: String = "dissolved M1: dynamic-handler serving lane — emit_node_http_server_program binds handler_name dispatch per NodeHttpServerRouteBinding via ServedDynamicRoute execFile realization (dag/gunbc/node_http_server_emit.dag)"
+
+type ServedDynamicRouteArgvSegment
+  = LiteralArgvSegment { text: String }
+  | PathParamArgvSegment { param_name: String }
+
+type ServedDynamicRouteExec {
+  command: String
+  argv: List<ServedDynamicRouteArgvSegment>
+}
+
+type ServedDynamicRoute {
+  binding: NodeHttpServerRouteBinding
+  exec: ServedDynamicRouteExec
+  success_status: HttpStatus
+}
 
 type ServedStaticRoute {
   method: HttpMethod
