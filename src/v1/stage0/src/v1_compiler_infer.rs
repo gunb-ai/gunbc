@@ -12664,14 +12664,19 @@ pub fn build_type_env(
             cycle_set_for_inductive,
             source_indices.clone(),
         );
-        let parent_inductive_fields = scope_parents.clone().iter().cloned().fold(
+        let import_inductive_fields = module.resolved_imports.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, parent: Rc<TypeEnv>| {
-                merge_inductive_fields(acc, parent.inductive_fields.clone())
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, imp: Rc<ResolvedImport>| {
+                match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
+                    Some(typed_parent) => {
+                        merge_inductive_fields(acc, typed_parent.type_env.inductive_fields.clone())
+                    }
+                    None => acc,
+                }
             },
         );
         let merged_inductive_fields =
-            merge_inductive_fields(parent_inductive_fields, local_inductive_fields);
+            merge_inductive_fields(import_inductive_fields, local_inductive_fields);
         let ancestry_str_bindings = if module.resolved_imports.clone().len() == 1 {
             if let Some(imp) = module.resolved_imports.clone().first().cloned() {
                 if let Some(parent_mod) = v1_rt::map_get(&parent_index, imp.module_path.clone()) {
@@ -13117,14 +13122,19 @@ pub fn build_type_env_unresolved(
             cycle_set_for_inductive,
             source_indices.clone(),
         );
-        let parent_inductive_fields = scope_parents.clone().iter().cloned().fold(
+        let import_inductive_fields = module.resolved_imports.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
-            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, parent: Rc<TypeEnv>| {
-                merge_inductive_fields(acc, parent.inductive_fields.clone())
+            |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, imp: Rc<ResolvedImport>| {
+                match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
+                    Some(typed_parent) => {
+                        merge_inductive_fields(acc, typed_parent.type_env.inductive_fields.clone())
+                    }
+                    None => acc,
+                }
             },
         );
         let merged_inductive_fields =
-            merge_inductive_fields(parent_inductive_fields, local_inductive_fields);
+            merge_inductive_fields(import_inductive_fields, local_inductive_fields);
         let ancestry_str_bindings = if module.resolved_imports.clone().len() == 1 {
             if let Some(imp) = module.resolved_imports.clone().first().cloned() {
                 if let Some(parent_mod) = v1_rt::map_get(&parent_index, imp.module_path.clone()) {

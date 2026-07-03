@@ -263,8 +263,16 @@ pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
 
 pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<InductiveField>>> {
     match v1_rt::map_get(&env.inductive_fields.clone(), type_name.clone()) {
-        Some(fields) => fields.clone(),
-        None => Rc::new(vec![]),
+        Some(fields) if !fields.is_empty() => fields.clone(),
+        _ => {
+            for parent in env.parents.iter() {
+                let fields = inductive_fields_for(parent.clone(), type_name.clone());
+                if !fields.is_empty() {
+                    return fields;
+                }
+            }
+            Rc::new(vec![])
+        }
     }
 }
 
