@@ -28,6 +28,7 @@ type TypeEnvCache {
   variant_locals: Map<String, TypeBinding>
 }
 
+data type_env_compositional_authority_dissolution_trigger: String = "🟡 dissolve-on: compositional TypeEnv.parents + ancestry_str_bindings rewire passes in stage0 — ground in v2 std.type_env when PerformanceReceipt subsumes type_env_work_count_profiling_dissolution_trigger."
 data type_env_profiling_dissolution_trigger: String = "🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0)."
 data type_env_work_count_profiling_dissolution_trigger: String = "🟡 dissolve-on: build_type_env / merge_type_env_cache / rewire pass counters — fold into PerformanceReceipt at realization-measurement-loop Phase 0."
 data type_env_cache_parallel_repr_dissolution_trigger: String = "🟡 dissolve-on: TypeEnvCache String-keyed str_bindings/cycle_set_str parallel to TypeEnv Int-keyed bindings/recursive_type_set — fold into single authority at v2 regen."
@@ -78,6 +79,21 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
   )
 }
 
+fn lookup_variant_binding_in_visible_env(env: TypeEnv, variant_name: String) -> TypeBinding? {
+  flatten_visible_bindings(env: env) |> map_values |> fold(init: none, f: (acc, binding) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if binding.resolved.connective == Disj {
+          match binding.resolved.children |> filter(arm => authored_name_at(source_indices: env.source_indices, node: arm) == variant_name) |> first {
+            Present { value: variant } => Present { value: TypeBinding { name: variant_name, resolved: variant, provenance: SubValueUnknown } }
+            Absent => none
+          }
+        } else { none }
+    }
+  )
+}
+
 fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.str_bindings, name) {
     Present { value: binding } => Present { value: binding }
@@ -86,8 +102,12 @@ fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
         Present { value: binding } => Present { value: binding }
         Absent =>
           match intern_find(table: env.intern_table, s: name) {
-            Present { value: id } => map_get(env.bindings, id)
-            Absent => Absent
+            Present { value: id } =>
+              match map_get(env.bindings, id) {
+                Present { value: binding } => Present { value: binding }
+                Absent => lookup_variant_binding_in_visible_env(env: env, variant_name: name)
+              }
+            Absent => lookup_variant_binding_in_visible_env(env: env, variant_name: name)
           }
       }
   }
@@ -203,7 +223,9 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
 fn flatten_visible_parent_recurses() -> Int { 0 }
 fn reset_flatten_visible_profile() -> Unit { }
 fn reset_type_env_lookup_profile() -> Unit { reset_flatten_visible_profile() }
-fn maybe_print_type_env_lookup_profile() -> Unit { }
+fn maybe_print_type_env_lookup_profile() -> Unit {
+  // Host realization: v1_compiler_infer_env.rs prints when GUNBC_TYPE_ENV_PROFILE=1.
+}
 fn record_flatten_visible_parent_recurse() -> Unit { }
 
 fn flatten_visible_bindings(env: TypeEnv) -> Map<String, TypeBinding> {

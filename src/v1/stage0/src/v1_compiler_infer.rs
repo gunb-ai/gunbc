@@ -894,9 +894,17 @@ pub fn rejects_string_for_optional_coproduct_field(
         let expected_is_optional_coproduct = ((expected.return_cardinality.clone()
             == Cardinality::CardOptional)
             && (expected_inner.connective.clone() == Connective::Disj));
-        let got_is_string = (authored_name_at(source_indices, got) == "String".to_string());
+        let got_shape = node_type_shape(got.clone(), source_indices.clone());
+        let got_is_string = (got_shape == "Primitive(String)".to_string())
+            || (authored_name_at(source_indices.clone(), got.clone()) == "String".to_string());
         (expected_is_optional_coproduct && got_is_string)
     }
+}
+
+pub fn field_type_is_optional_coproduct(ft: Rc<Node>) -> bool {
+    let inner = with_required_cardinality(ft.clone());
+    ((ft.return_cardinality.clone() == Cardinality::CardOptional)
+        && (inner.connective.clone() == Connective::Disj))
 }
 
 pub fn record_lit_expected_fields(
@@ -931,11 +939,34 @@ pub fn record_lit_expected_fields(
                         None => Rc::new(vec![]),
                     }
                 }
-                None => Rc::new(vec![]),
+                None => {
+                    record_lit_variant_fields_from_visible_env(scope.type_env.clone(), tn.clone())
+                }
             },
         },
         None => Rc::new(vec![]),
     }
+}
+
+pub fn record_lit_variant_fields_from_visible_env(
+    env: Rc<TypeEnv>,
+    variant_name: String,
+) -> Rc<Vec<Rc<Node>>> {
+    let source_indices = env.source_indices.clone();
+    for binding in Rc::new(v1_rt::map_values(&flatten_visible_bindings(env.clone())))
+        .iter()
+        .cloned()
+    {
+        let node = binding.resolved.clone();
+        if (node.connective.clone() == Connective::Disj) {
+            for arm in node.children.clone().iter().cloned() {
+                if (authored_name_at(source_indices.clone(), arm.clone()) == variant_name.clone()) {
+                    return arm.children.clone();
+                }
+            }
+        }
+    }
+    Rc::new(vec![])
 }
 
 pub fn record_lit_expanded_from_expected(
@@ -5871,7 +5902,8 @@ pub fn infer_record_lit(
                                 _ => field_node_type_expr(sf.clone()),
                             };
                             if ((ft.ident_span.clone() != None)
-                                || type_node_is_callable(ft.clone()))
+                                || type_node_is_callable(ft.clone())
+                                || field_type_is_optional_coproduct(ft.clone()))
                             {
                                 Some(ft.clone())
                             } else {
@@ -14596,6 +14628,13 @@ pub fn rewire_type_env_import_str_binding_identity(
             .cloned()
     }
 
+    fn global_type_exporter_count(modules: Rc<Vec<Rc<TypedModule>>>, name: &str) -> usize {
+        modules
+            .iter()
+            .filter(|m| module_exports_type_name((**m).clone(), name))
+            .count()
+    }
+
     fn local_authority_for_name(
         modules: Rc<Vec<Rc<TypedModule>>>,
         name: String,
@@ -14667,6 +14706,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                     &index,
                     source_indices.clone(),
                 ) > 1
+                    || global_type_exporter_count(modules.clone(), name.as_str()) > 1
                 {
                     continue;
                 }

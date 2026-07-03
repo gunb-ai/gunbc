@@ -11,7 +11,7 @@ pub use crate::v1_std_core::{
     authored_name_at, empty_intern_table, intern, intern_find, intern_str, merge_intern_tables,
     source_text_at,
 };
-pub use crate::v1_std_core::{InternTable, NewlineIndex, Node};
+pub use crate::v1_std_core::{Connective, InternTable, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
@@ -58,7 +58,18 @@ pub fn reset_type_env_lookup_profile() {
     REWIRE_TYPE_ENV_IMPORT_STR_BINDING_CALLS.store(0, Ordering::Relaxed);
 }
 
-pub fn maybe_print_type_env_lookup_profile() {}
+pub fn maybe_print_type_env_lookup_profile() {
+    if std::env::var("GUNBC_TYPE_ENV_PROFILE").ok().as_deref() == Some("1") {
+        eprintln!(
+            "type_env profile: flatten_parent_recurses={} build_type_env_calls={} merge_cache_calls={} rewire_parent_links={} rewire_import_str={}",
+            flatten_visible_parent_recurses(),
+            build_type_env_calls(),
+            merge_type_env_cache_calls(),
+            rewire_type_env_parent_links_calls(),
+            rewire_type_env_import_str_binding_calls(),
+        );
+    }
+}
 
 pub fn record_flatten_visible_parent_recurse() {
     FLATTEN_VISIBLE_PARENT_RECURSES.fetch_add(1, Ordering::Relaxed);
@@ -182,14 +193,41 @@ pub fn deterministic_str_binding_map(
     )
 }
 
+pub fn lookup_variant_binding_in_visible_env(
+    env: Rc<TypeEnv>,
+    variant_name: String,
+) -> Option<Rc<TypeBinding>> {
+    let source_indices = env.source_indices.clone();
+    for binding in Rc::new(v1_rt::map_values(&flatten_visible_bindings(env.clone())))
+        .iter()
+        .cloned()
+    {
+        if (binding.resolved.clone().connective.clone() == Connective::Disj) {
+            for arm in binding.resolved.clone().children.iter().cloned() {
+                if (authored_name_at(source_indices.clone(), arm.clone()) == variant_name.clone()) {
+                    return Some(Rc::new(TypeBinding {
+                        name: variant_name.clone(),
+                        resolved: arm.clone(),
+                        provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                    }));
+                }
+            }
+        }
+    }
+    None
+}
+
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.str_bindings, name.clone()) {
         Some(binding) => Some(binding.clone()),
         None => match v1_rt::map_get(&env.ancestry_str_bindings, name.clone()) {
             Some(binding) => Some(binding.clone()),
-            None => match intern_find(env.intern_table.clone(), name) {
-                Some(id) => v1_rt::map_get(&env.bindings, id),
-                None => None,
+            None => match intern_find(env.intern_table.clone(), name.clone()) {
+                Some(id) => match v1_rt::map_get(&env.bindings, id) {
+                    Some(binding) => Some(binding.clone()),
+                    None => lookup_variant_binding_in_visible_env(env, name),
+                },
+                None => lookup_variant_binding_in_visible_env(env, name),
             },
         },
     }

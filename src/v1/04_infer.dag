@@ -528,11 +528,30 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
 }
 
 fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
-
   let expected_inner = with_required_cardinality(n: expected)
   let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_inner.connective == Disj
-  let got_is_string = authored_name_at(source_indices: source_indices, node: got) == "String"
+  let got_is_string = node_type_shape(n: got, source_indices: source_indices) == "Primitive(String)" || authored_name_at(source_indices: source_indices, node: got) == "String"
   expected_is_optional_coproduct && got_is_string
+}
+
+fn field_type_is_optional_coproduct(ft: Node) -> Bool {
+  let inner = with_required_cardinality(n: ft)
+  ft.return_cardinality == CardOptional && inner.connective == Disj
+}
+
+fn record_lit_variant_fields_from_visible_env(env: TypeEnv, variant_name: String) -> List<Node> {
+  flatten_visible_bindings(env: env) |> map_values |> fold(init: [], f: (acc, binding) =>
+    if acc |> count > 0 {
+      acc
+    } else if binding.resolved.connective == Disj {
+      match binding.resolved.children |> filter(arm => authored_name_at(source_indices: env.source_indices, node: arm) == variant_name) |> first {
+        Present { value: variant } => variant.children
+        Absent => acc
+      }
+    } else {
+      acc
+    }
+  )
 }
 
 fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Node> {
@@ -551,7 +570,7 @@ fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Nod
                   }
                 Absent => []
               }
-            Absent => []
+            Absent => record_lit_variant_fields_from_visible_env(env: scope.type_env, variant_name: tn)
           }
       }
     Absent => []
@@ -2921,7 +2940,7 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
           Present { value: Resolved { node: rt } } => rt
           _ => field_node_type_expr(n: sf)
         }
-        if ft.ident_span != none || type_node_is_callable(n: ft) {
+        if ft.ident_span != none || type_node_is_callable(n: ft) || field_type_is_optional_coproduct(ft: ft) {
           Present { value: ft }
         } else { none }
       Absent => none
@@ -6551,6 +6570,10 @@ fn local_authority_binding(owner: TypedModule, name: String) -> TypeBinding? {
   }
 }
 
+fn global_type_exporter_count(modules: List<TypedModule>, name: String) -> Int {
+  filter(modules, m => module_exports_type_name(m: m, name: name)) |> count
+}
+
 fn local_authority_for_name(modules: List<TypedModule>, name: String) -> TypedModule? {
   match filter(modules, m => (filter(m.type_env.bindings |> map_values, b => b.name == name) |> count) > 0) |> last {
     Present { value: owner } => Present { value: owner }
@@ -6582,7 +6605,7 @@ fn rewire_inherited_str_binding(
   ancestry_str_bindings: Map<String, TypeBinding>,
   name: String
 ) -> StrBindingsRewireAccum {
-  if set_contains(local_names, name) || direct_import_exporter_count(m: consumer, name: name, index: module_index, source_indices: source_indices) > 1 {
+  if set_contains(local_names, name) || direct_import_exporter_count(m: consumer, name: name, index: module_index, source_indices: source_indices) > 1 || global_type_exporter_count(modules: modules, name: name) > 1 {
     StrBindingsRewireAccum { str_bindings: str_bindings, ancestry_str_bindings: ancestry_str_bindings }
   } else {
     match local_authority_for_name(modules: modules, name: name) {
