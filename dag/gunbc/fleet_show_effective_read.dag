@@ -9,8 +9,6 @@ import std.realization_reconcile {
   ReadObserved,
   ReadAbsent,
   Reconciliation,
-  Converged,
-  NotConverged,
 }
 import product.placement_supply { HostIdentity }
 import extdeps.os.systemd {
@@ -53,6 +51,7 @@ import gunbc.runner_unit_live_read {
   gunbc_srv1_runner_unit_live_read_fixture,
   runner_unit_live_read_typed,
   memory_limit_to_cap_effectiveness,
+  memory_limit_converge_verdict,
 }
 
 type RunnerSliceCapLiveReadRow {
@@ -331,17 +330,8 @@ fn slice_property_memory_max_verdict(
   if property != systemd_memory_max_property {
     none
   } else {
-    match read.memory_max {
-      MemoryLimitAbsent => Present { value: Absent }
-      MemoryLimitUnbounded => Present { value: Drifted }
-      MemoryLimitBytes { bytes: b } =>
-        Present {
-          value: if byte_size_count(b: b) == byte_size_count(b: expected) {
-            Converged
-          } else {
-            Drifted
-          }
-        }
+    Present {
+      value: memory_limit_converge_verdict(observed: read.memory_max, desired: expected)
     }
   }
 }

@@ -71,10 +71,6 @@ import gunbc.runner_slot_enforcement {
 }
 import std.realization_reconcile { ReadAbsent, ReadObserved }
 
-fn pool_budget_wire() -> String {
-  to_string(byte_size_count(b: gunbc_runner_pool_budget))
-}
-
 fn per_slot_cap_wire() -> String {
   to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap))
 }
@@ -141,7 +137,7 @@ fn witness_srv1_slice_cap_infinity_drifts_against_pool_budget() -> Bool {
   match slice_property_memory_max_verdict(
     read: read,
     property: systemd_memory_max_property,
-    expected_effective: pool_budget_wire(),
+    expected: gunbc_runner_pool_budget,
   ) {
     Present { value: Drifted } => true
     _ => false
@@ -153,7 +149,7 @@ fn witness_srv2_slice_cap_converges_to_pool_budget() -> Bool {
   match slice_property_memory_max_verdict(
     read: read,
     property: systemd_memory_max_property,
-    expected_effective: pool_budget_wire(),
+    expected: gunbc_runner_pool_budget,
   ) {
     Present { value: Converged } => true
     _ => false
@@ -179,7 +175,7 @@ fn witness_srv1_width_converges_to_declared_count() -> Bool {
     Present { value: read } =>
       runner_width_converge_verdict(
         observed: read.active_count,
-        desired: to_string(declared_runner_count())
+        desired: declared_runner_count()
       ) == Converged
     Absent => false
   }
@@ -190,7 +186,7 @@ fn witness_srv2_width_drifts_from_declared_count() -> Bool {
     Present { value: read } =>
       runner_width_converge_verdict(
         observed: read.active_count,
-        desired: to_string(declared_runner_count())
+        desired: declared_runner_count()
       ) == Drifted
     Absent => false
   }
