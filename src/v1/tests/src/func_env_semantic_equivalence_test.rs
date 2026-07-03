@@ -2,8 +2,9 @@
 //!
 //! Proves the post-refactor compiler is byte-identical to commit db559b42814 on
 //! diagnostics, per-module emit repr, and full `EmitGraphInfo` when run over
-//! the frozen baseline corpus (`git archive db559b42814 dag src/v1`). Fixture
-//! captured via capture_func_env_semantic_oracle on that tree.
+//! the frozen baseline corpus (`git archive db559b42814 dsl src/v1` — pre-#6165
+//! tree name; that commit predates the dag/ rename). Fixture captured via
+//! capture_func_env_semantic_oracle on that tree.
 
 use std::fs;
 use std::io::Write;
@@ -16,6 +17,9 @@ use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, FLOOR_DISCOVER
 use crate::helpers::workspace_root;
 
 const BASELINE_COMMIT: &str = "db559b42814";
+/// Baseline commit db559b42814 predates #6165 (dsl → dag rename); archive the
+/// historical tree name, not the post-rename `dag/` path.
+const BASELINE_CORPUS_SUBDIR: &str = "dsl";
 const BASELINE_FIXTURE: &str = "src/v1/tests/fixtures/func_env_semantic_baseline.json";
 
 #[derive(Debug, Deserialize)]
@@ -98,13 +102,13 @@ fn baseline_corpus_dir() -> PathBuf {
     let dir = workspace_root()
         .join("target")
         .join("func_env_semantic_baseline_corpus");
-    if dir.join("dag").is_dir() && dir.join("src/v1").is_dir() {
+    if dir.join(BASELINE_CORPUS_SUBDIR).is_dir() && dir.join("src/v1").is_dir() {
         return dir;
     }
     fs::create_dir_all(&dir).unwrap_or_else(|e| panic!("create baseline corpus dir {dir:?}: {e}"));
     ensure_baseline_commit_available(&git_root);
     let archive = Command::new("git")
-        .args(["archive", BASELINE_COMMIT, "dag", "src/v1"])
+        .args(["archive", BASELINE_COMMIT, BASELINE_CORPUS_SUBDIR, "src/v1"])
         .current_dir(&git_root)
         .output()
         .unwrap_or_else(|e| panic!("git archive {BASELINE_COMMIT}: {e}"));
@@ -134,7 +138,10 @@ fn baseline_corpus_dir() -> PathBuf {
 
 fn baseline_corpus_roots(corpus_dir: &Path) -> Vec<String> {
     vec![
-        corpus_dir.join("dag").to_string_lossy().into_owned(),
+        corpus_dir
+            .join(BASELINE_CORPUS_SUBDIR)
+            .to_string_lossy()
+            .into_owned(),
         corpus_dir.join("src/v1").to_string_lossy().into_owned(),
     ]
 }
