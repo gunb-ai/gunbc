@@ -4205,34 +4205,6 @@ fn extract_named_fn_body(content: &str, function: &str, prefix: &str) -> String 
     body
 }
 
-fn scan_call_idents(body: &str) -> Vec<String> {
-    const KEYWORDS: &[&str] = &[
-        "if", "match", "fn", "let", "return", "true", "false", "fold", "fold_list",
-    ];
-    let mut out = Vec::new();
-    let bytes = body.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_' {
-            let start = i;
-            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
-                i += 1;
-            }
-            let ident = &body[start..i];
-            if i < bytes.len()
-                && bytes[i] == b'('
-                && !KEYWORDS.contains(&ident)
-                && !out.iter().any(|s: &String| s == ident)
-            {
-                out.push(ident.to_string());
-            }
-        } else {
-            i += 1;
-        }
-    }
-    out
-}
-
 fn entry_text_indicates_live_host_scan(text: &str) -> bool {
     text.contains(FLOOR_HOST_SCAFFOLD_WITNESS_MARKER)
         || text.contains("layer_import_facts")
@@ -4241,20 +4213,16 @@ fn entry_text_indicates_live_host_scan(text: &str) -> bool {
 }
 
 fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> bool {
+    // Fail-closed (file-wide): any live-tree scan signal anywhere in the entry
+    // classifies every witness in that file as host-scaffold — nested helper
+    // chains (test → helper_a → helper_b → _live) cannot fall back to kernel-skip.
+    if entry_text_indicates_live_host_scan(entry_content) {
+        return true;
+    }
     let decl_needle = format!("test fn {function}");
     if let Some(start) = entry_content.find(&decl_needle) {
         let decl_tail = &entry_content[start..entry_content.len().min(start + decl_needle.len() + 120)];
         if decl_tail.contains(FLOOR_HOST_SCAFFOLD_WITNESS_MARKER) {
-            return true;
-        }
-    }
-    let body = extract_test_fn_body(entry_content, function);
-    if entry_text_indicates_live_host_scan(&body) {
-        return true;
-    }
-    for callee in scan_call_idents(&body) {
-        let helper_body = extract_named_fn_body(entry_content, &callee, "fn ");
-        if entry_text_indicates_live_host_scan(&helper_body) {
             return true;
         }
     }
@@ -5056,7 +5024,15 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             source,
             "clean_tree_holds"
         ));
+        // File-wide fail-closed: sibling witnesses in the same entry also run.
+        assert!(super::witness_test_fn_uses_live_host_scan(source, "pure_holds"));
+    }
+
+    #[test]
+    fn witness_test_fn_uses_live_host_scan_pure_entry_stays_kernel_eligible() {
+        let source = "module m\n\ntest fn pure_holds() -> Bool { true }\n\ntest fn also_pure() -> Bool { false }\n";
         assert!(!super::witness_test_fn_uses_live_host_scan(source, "pure_holds"));
+        assert!(!super::witness_test_fn_uses_live_host_scan(source, "also_pure"));
     }
 
     #[test]
@@ -5068,6 +5044,12 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
     #[test]
     fn witness_test_fn_uses_live_host_scan_follows_same_file_helper() {
         let source = "module m\n\nfn helper_holds() -> Bool {\n  layer_import_facts(std_roots: [], extdeps_roots: [])\n}\n\ntest fn witness_holds() -> Bool {\n  helper_holds()\n}\n";
+        assert!(super::witness_test_fn_uses_live_host_scan(source, "witness_holds"));
+    }
+
+    #[test]
+    fn witness_test_fn_uses_live_host_scan_follows_nested_same_file_helper() {
+        let source = "module m\n\nfn helper_b() -> Bool {\n  realization_vocab_containment_clean_live(scan_roots: roots)\n}\n\nfn helper_a() -> Bool {\n  helper_b()\n}\n\ntest fn witness_holds() -> Bool {\n  helper_a()\n}\n";
         assert!(super::witness_test_fn_uses_live_host_scan(source, "witness_holds"));
     }
 
