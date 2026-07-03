@@ -5756,18 +5756,11 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     merge_inductive_fields(left: acc, right: parent.inductive_fields)
   )
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
-  let ancestry_str_bindings = if module.resolved_imports |> count == 1 {
-    match module.resolved_imports |> first {
-      Present { value: imp } =>
-        match map_get(parent_index, imp.module_path) {
-          Present { value: parent_mod } => map_merge(parent_mod.type_env.ancestry_str_bindings, parent_mod.type_env.str_bindings)
-          Absent => ancestry_cache.str_bindings
-        }
-      Absent => ancestry_cache.str_bindings
-    }
-  } else {
-    ancestry_cache.str_bindings
-  }
+  // Flat import surface: ancestry_cache (import/kernels union) plus every scope_parent's
+  // ancestry+local overlay — kernel is the scope_parents tail, so no parent-list fallback needed.
+  let ancestry_str_bindings = fold(scope_parents, init: ancestry_cache.str_bindings, f: (acc, parent) =>
+    map_merge(map_merge(parent.ancestry_str_bindings, parent.str_bindings), acc)
+  )
   let visible_str_bindings = map_merge(ancestry_str_bindings, local_str_bindings)
   let unresolved_env = TypeEnv { bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table }
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module_name_str, local_names: local_name_set, deps_map: all_deps_map)
@@ -5871,18 +5864,9 @@ fn build_type_env_unresolved(module: ResolvedModule, parent_index: Map<String, T
     merge_inductive_fields(left: acc, right: parent.inductive_fields)
   )
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
-  let ancestry_str_bindings = if module.resolved_imports |> count == 1 {
-    match module.resolved_imports |> first {
-      Present { value: imp } =>
-        match map_get(parent_index, imp.module_path) {
-          Present { value: parent_mod } => map_merge(parent_mod.type_env.ancestry_str_bindings, parent_mod.type_env.str_bindings)
-          Absent => ancestry_cache.str_bindings
-        }
-      Absent => ancestry_cache.str_bindings
-    }
-  } else {
-    ancestry_cache.str_bindings
-  }
+  let ancestry_str_bindings = fold(scope_parents, init: ancestry_cache.str_bindings, f: (acc, parent) =>
+    map_merge(map_merge(parent.ancestry_str_bindings, parent.str_bindings), acc)
+  )
   let visible_str_bindings = map_merge(ancestry_str_bindings, local_str_bindings)
   let unresolved_env = TypeEnv { bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table }
   let type_env_cache = TypeEnvCache {
