@@ -660,7 +660,7 @@ fn pattern_lookup_blocks_on_infer_error_without_cascade_diagnostic() {
         subject,
         "Some".to_string(),
         "test".to_string(),
-        empty_type_env(),
+        empty_source_indices(),
         0,
     );
 
@@ -681,7 +681,7 @@ fn pattern_lookup_reports_error_scrutinee_structurally() {
         subject,
         "Some".to_string(),
         "test".to_string(),
-        empty_type_env(),
+        empty_source_indices(),
         0,
     );
 
@@ -699,7 +699,7 @@ fn optional_pattern_lookup_rejects_some_variant() {
         subject,
         "Some".to_string(),
         "test".to_string(),
-        empty_type_env(),
+        empty_source_indices(),
         0,
     );
 
@@ -718,7 +718,7 @@ fn optional_pattern_lookup_resolves_present_variant() {
         subject,
         "Present".to_string(),
         "test".to_string(),
-        empty_type_env(),
+        empty_source_indices(),
         0,
     );
 
@@ -800,7 +800,7 @@ fn optional_pattern_lookup_prefers_optional_present_over_inner_present_variant()
         subject,
         "Present".to_string(),
         "test".to_string(),
-        empty_type_env(),
+        empty_source_indices(),
         1,
     );
 
@@ -883,7 +883,7 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
         subject.clone(),
         "Present".to_string(),
         "test".to_string(),
-        empty_type_env(),
+        empty_source_indices(),
         1,
     );
     match present_lookup.status.as_ref() {
@@ -897,7 +897,7 @@ fn optional_applied_generic_lookup_resolves_present_absent_without_disj_children
         subject,
         "Absent".to_string(),
         "test".to_string(),
-        empty_type_env(),
+        empty_source_indices(),
         0,
     );
     assert!(
@@ -919,7 +919,7 @@ fn optional_applied_generic_lookup_rejects_wrong_variant_name() {
         subject,
         "Some".to_string(),
         "test".to_string(),
-        empty_type_env(),
+        empty_source_indices(),
         0,
     );
     assert!(matches!(
@@ -942,7 +942,7 @@ fn non_optional_applied_generic_missing_variant_still_fails() {
         subject,
         "Present".to_string(),
         "test".to_string(),
-        empty_type_env(),
+        empty_source_indices(),
         0,
     );
     assert!(matches!(
