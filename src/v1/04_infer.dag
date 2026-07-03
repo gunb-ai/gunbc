@@ -2797,22 +2797,8 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
 data expand_type_for_field_access_dissolution_trigger: String = "🟡 dissolve-on: parallel alias/inferred chase to expand_type_for_field_access — unify with 04_resolve.dag resolve_scrutinee_type_node once regen lands."
 
 fn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
-  if is_deferred_field_access_base(n: n, env: env) {
-    let name = authored_name_at(source_indices: env.source_indices, node: n)
-    match lookup_type_by_name(env: env, name: name) {
-      Present { value: decl } =>
-        if decl.connective == Conj && (decl.params |> count) > 0 {
-          decl
-        } else if decl.connective == NoConnective && decl.children |> count == 0 && decl.inferred != none {
-          match decl.inferred {
-            Present { value: Resolved { node: target } } =>
-              expand_type_for_field_access(n: target, env: env, module_name: module_name)
-            _ => n
-          }
-        } else { n }
-      Absent => n
-    }
-  } else {
+  if is_deferred_field_access_base(n: n, env: env) { n }
+  else {
     let origin_name = authored_name_at(source_indices: env.source_indices, node: n)
     expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, origin_name: origin_name, seen: empty_map(), lossy: false)
   }

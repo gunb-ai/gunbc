@@ -153,7 +153,7 @@ fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusR
       match find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices) {
         Present { value: applied } =>
           if applied.children |> count > 0 {
-            render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() })
+            render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() })
           } else {
             render_rust_type_without_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
           }
@@ -165,7 +165,7 @@ fn render_rust_type(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusR
 fn render_rust_type_without_applied_binding(n: Node, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
   if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: authored_name_at(source_indices: source_indices, node: n)) {
-    render_rust_applied_type_shared(n: n, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() })
+    render_rust_applied_type_shared(n: n, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() })
   } else if node_is_set_collection(n: n, source_indices: source_indices) {
     match n.children |> first {
       Present { value: elem_child } =>
@@ -3366,7 +3366,7 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, cor
           } else if set_contains(shared_types, outer_name) {
             render_rust_shared_type_if_needed(type_name: outer_name, rendered: outer_name, shared_types: shared_types)
           } else {
-            render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() })
+            render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() })
           }
         } else {
           render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() })
@@ -8226,7 +8226,7 @@ fn emit_test_file(module_name: String, projections: List<TestProjection>, corpus
 }
 
 fn rust_test_signature_comment(projection: TestProjection, corpus_repr: RustCorpusRepr) -> String {
-  let stub_env = TypeEnv { bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: projection.source_indices, intern_table: empty_intern_table() }
+  let stub_env = TypeEnv { bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: projection.source_indices, intern_table: empty_intern_table() }
   let params_str = projection.params
     |> map(p => concat(param_node_name_at(n: p, source_indices: projection.source_indices), ": ", emit_rust_param_type(n: param_node_type_expr(n: p), generic_param_names: [], shared_types: empty_set(), corpus_repr: corpus_repr, source_indices: projection.source_indices, variant_to_enum: empty_map(), env: stub_env)))
     |> join(separator: ", ")

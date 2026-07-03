@@ -29,6 +29,7 @@ type TypeEnvCache {
 }
 
 data type_env_profiling_dissolution_trigger: String = "🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0)."
+data type_env_work_count_profiling_dissolution_trigger: String = "🟡 dissolve-on: build_type_env / merge_type_env_cache / rewire pass counters — fold into PerformanceReceipt at realization-measurement-loop Phase 0."
 data type_env_cache_parallel_repr_dissolution_trigger: String = "🟡 dissolve-on: TypeEnvCache String-keyed str_bindings/cycle_set_str parallel to TypeEnv Int-keyed bindings/recursive_type_set — fold into single authority at v2 regen."
 data flatten_visible_bindings_invariant: String = "B1 build_type_env populates ancestry_str_bindings for import chains; flatten_visible_bindings parent-recurse is legacy/stub-only on import chains (witness flatten_visible_parent_recurses==0); merge_envs still calls flatten for one-shot env merge."
 
@@ -70,7 +71,15 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
 fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.str_bindings, name) {
     Present { value: binding } => Present { value: binding }
-    Absent => map_get(env.ancestry_str_bindings, name)
+    Absent =>
+      match map_get(env.ancestry_str_bindings, name) {
+        Present { value: binding } => Present { value: binding }
+        Absent =>
+          match intern_find(table: env.intern_table, s: name) {
+            Present { value: id } => map_get(env.bindings, id)
+            Absent => Absent
+          }
+      }
   }
 }
 

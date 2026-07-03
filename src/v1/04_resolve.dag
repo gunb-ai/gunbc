@@ -114,6 +114,8 @@ fn with_authored_identity(identity: Node, structural: Node) -> Node {
   }
 }
 
+data transparent_primitive_alias_rhs_dissolution_trigger: String = "🟢 intentional: resolve-side predicate for kernel-type transparent alias RHS — skip nominal re-brand in preserve_nominal_brand_on_resolve / peel_nominal_alias_identity until ParamKind partition lands."
+
 fn is_transparent_primitive_alias_rhs(structural: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
   structural.connective == NoConnective && structural.children |> count == 0
     && is_kernel_type(name: authored_name_at(source_indices: source_indices, node: structural))
@@ -932,12 +934,15 @@ fn resolve_item_types(item: Node, env: TypeEnv, module_name: String) -> ItemResu
     [make_error_node(diagnostic: InternalError { message: concat("type param name collides with a value param in fn '", authored_name_at(source_indices: env.source_indices, node: item), "' — a value param shares its name with a declared type param (e.g., `fn f<T>(T: T)`). Rename the value param, or dissolve via ParamKind / params-slot partition."), span: item.span }, module_name: module_name)]
   } else { [] }
   let env = fold(tp_names, init: env, f: (e, tp_name) =>
+    let tp_binding = TypeBinding {
+      name: tp_name,
+      resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      provenance: SubValueUnknown
+    }
     TypeEnv {
-      bindings: map_insert(e.bindings, intern(table: e.intern_table, s: tp_name).id, TypeBinding {
-        name: tp_name,
-        resolved: Node { name: tp_name, span: kernel_span(name: tp_name), ident_span: Present { value: kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
-        provenance: SubValueUnknown
-      }),
+      bindings: map_insert(e.bindings, intern(table: e.intern_table, s: tp_name).id, tp_binding),
+      str_bindings: map_insert(e.str_bindings, tp_name, tp_binding),
+      ancestry_str_bindings: e.ancestry_str_bindings,
       parents: e.parents,
       recursive_types: e.recursive_types,
       recursive_type_set: e.recursive_type_set,

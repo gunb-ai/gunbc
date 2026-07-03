@@ -21,9 +21,29 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 // 🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0).
 static FLATTEN_VISIBLE_PARENT_RECURSES: AtomicU64 = AtomicU64::new(0);
+static BUILD_TYPE_ENV_CALLS: AtomicU64 = AtomicU64::new(0);
+static MERGE_TYPE_ENV_CACHE_CALLS: AtomicU64 = AtomicU64::new(0);
+static REWIRE_TYPE_ENV_PARENT_LINKS_CALLS: AtomicU64 = AtomicU64::new(0);
+static REWIRE_TYPE_ENV_IMPORT_STR_BINDING_CALLS: AtomicU64 = AtomicU64::new(0);
 
 pub fn flatten_visible_parent_recurses() -> u64 {
     FLATTEN_VISIBLE_PARENT_RECURSES.load(Ordering::Relaxed)
+}
+
+pub fn build_type_env_calls() -> u64 {
+    BUILD_TYPE_ENV_CALLS.load(Ordering::Relaxed)
+}
+
+pub fn merge_type_env_cache_calls() -> u64 {
+    MERGE_TYPE_ENV_CACHE_CALLS.load(Ordering::Relaxed)
+}
+
+pub fn rewire_type_env_parent_links_calls() -> u64 {
+    REWIRE_TYPE_ENV_PARENT_LINKS_CALLS.load(Ordering::Relaxed)
+}
+
+pub fn rewire_type_env_import_str_binding_calls() -> u64 {
+    REWIRE_TYPE_ENV_IMPORT_STR_BINDING_CALLS.load(Ordering::Relaxed)
 }
 
 pub fn reset_flatten_visible_profile() {
@@ -32,12 +52,28 @@ pub fn reset_flatten_visible_profile() {
 
 pub fn reset_type_env_lookup_profile() {
     reset_flatten_visible_profile();
+    BUILD_TYPE_ENV_CALLS.store(0, Ordering::Relaxed);
+    MERGE_TYPE_ENV_CACHE_CALLS.store(0, Ordering::Relaxed);
+    REWIRE_TYPE_ENV_PARENT_LINKS_CALLS.store(0, Ordering::Relaxed);
+    REWIRE_TYPE_ENV_IMPORT_STR_BINDING_CALLS.store(0, Ordering::Relaxed);
 }
 
 pub fn maybe_print_type_env_lookup_profile() {}
 
 pub fn record_flatten_visible_parent_recurse() {
     FLATTEN_VISIBLE_PARENT_RECURSES.fetch_add(1, Ordering::Relaxed);
+}
+
+pub fn record_build_type_env_call() {
+    BUILD_TYPE_ENV_CALLS.fetch_add(1, Ordering::Relaxed);
+}
+
+pub fn record_rewire_type_env_parent_links_call() {
+    REWIRE_TYPE_ENV_PARENT_LINKS_CALLS.fetch_add(1, Ordering::Relaxed);
+}
+
+pub fn record_rewire_type_env_import_str_binding_call() {
+    REWIRE_TYPE_ENV_IMPORT_STR_BINDING_CALLS.fetch_add(1, Ordering::Relaxed);
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -78,9 +114,13 @@ pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
 }
 
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
+    MERGE_TYPE_ENV_CACHE_CALLS.fetch_add(1, Ordering::Relaxed);
     Rc::new(TypeEnvCache {
         deps_map: v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone()),
-        str_bindings: v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone()),
+        str_bindings: deterministic_str_binding_map(v1_rt::rc_map_merge(
+            base.str_bindings.clone(),
+            overlay.str_bindings.clone(),
+        )),
         cycle_set_str: v1_rt::rc_map_merge(
             base.cycle_set_str.clone(),
             overlay.cycle_set_str.clone(),
@@ -105,10 +145,32 @@ pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc
 pub fn str_bindings_from_bindings(
     bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    bindings.values().fold(
+    let mut names: Vec<String> = bindings
+        .values()
+        .map(|binding| binding.name.clone())
+        .collect();
+    names.sort();
+    names.iter().fold(
         v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: &Rc<TypeBinding>| {
-            v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone())
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: &String| match bindings
+            .values()
+            .find(|binding| binding.name.clone() == *name)
+        {
+            Some(binding) => v1_rt::rc_map_insert(acc, name.clone(), binding.clone()),
+            None => acc,
+        },
+    )
+}
+
+pub fn deterministic_str_binding_map(
+    m: Rc<HashMap<String, Rc<TypeBinding>>>,
+) -> Rc<HashMap<String, Rc<TypeBinding>>> {
+    let mut keys: Vec<String> = m.keys().cloned().collect();
+    keys.sort();
+    keys.iter().fold(
+        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, key: &String| {
+            v1_rt::rc_map_insert(acc, key.clone(), m.get(key).unwrap().clone())
         },
     )
 }
@@ -116,7 +178,13 @@ pub fn str_bindings_from_bindings(
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.str_bindings, name.clone()) {
         Some(binding) => Some(binding.clone()),
-        None => v1_rt::map_get(&env.ancestry_str_bindings, name),
+        None => match v1_rt::map_get(&env.ancestry_str_bindings, name.clone()) {
+            Some(binding) => Some(binding.clone()),
+            None => match intern_find(env.intern_table.clone(), name) {
+                Some(id) => v1_rt::map_get(&env.bindings, id),
+                None => None,
+            },
+        },
     }
 }
 
