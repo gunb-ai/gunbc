@@ -43,8 +43,6 @@ mod derive_bound_fail_closed_test;
 #[cfg(test)]
 mod diagnostics;
 #[cfg(test)]
-mod effects;
-#[cfg(test)]
 mod eval_measurement_purity_test;
 #[cfg(test)]
 mod faithful_string_element_char_witness_test;
@@ -138,7 +136,6 @@ mod route_a_emit_fresh_cargo_green_test;
 mod route_a_final_six_test;
 #[cfg(test)]
 mod shell_transport_stdin_wet_test;
-mod source_audit;
 #[cfg(test)]
 mod source_root_ingest_manifest_host_test;
 #[cfg(test)]

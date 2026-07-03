@@ -1,0 +1,373 @@
+module test.claim.effects_witness_test
+
+import std.types { HttpMethod, GET, POST, PUT, DELETE, String, List, Bool }
+import std.http_path { PathTemplate, has_path_params, last_path_param }
+import extdeps.uri_path {
+  parse_path_template,
+  ParsedPathTemplate,
+  MalformedPathTemplate,
+}
+import std.effects {
+  EffectShape, ReadEffect, UpsertEffect, DeleteEffect, CreateEffect, AppendEffect,
+  CreateCause, PostAlways, CreateIfAbsent,
+  KeySource, PathParam, InputField,
+  DerivedOpEffect, DeriveOpEffectResult, DerivedEffect, MalformedPathInput,
+  derive_op_effect, check_modifier_vs_derivation,
+  compose_effects, OperationEffect, CompositionVerdict,
+  IdempotentComposition, BrokenBy,
+  IdempotencyEvidence, LatticeEffect, NonIdempotent,
+  ModifierAgreement, Agrees, Disagrees, DerivationUnknown,
+  is_idempotent_effect, create_effect_is_dedupable, create_double_init_collapsible,
+}
+
+data effects_witness_provenance: String = "Floor witnesses migrated from src/v1/tests/src/effects.rs (5-test-migration lane): pure std.effects derivation/idempotency/modifier/compose behavior. Live extdep REST-transport collection is in effects_rest_transport_parse_witness_test.dag (host physics until modeled)."
+
+type ReadonlyGetCase {
+  name: String
+  path: String
+}
+
+
+fn derived_op(name: String, method: HttpMethod, path: PathTemplate) -> DerivedOpEffect {
+  match derive_op_effect(operation_name: name, method: method, path: path) {
+    DerivedEffect { effect: e } => e
+    MalformedPathInput => DerivedOpEffect {
+      operation_name: name,
+      method: method,
+      path_template: path,
+      shape: AppendEffect
+    }
+  }
+}
+
+fn derived_raw_is_read(name: String, method: HttpMethod, raw: String) -> Bool {
+  match parse_path_template(raw: raw) {
+    ParsedPathTemplate { template: path } => is_read(shape: derived_op(name: name, method: method, path: path).shape)
+    MalformedPathTemplate => false
+  }
+}
+
+fn derived_raw_is_create(name: String, method: HttpMethod, raw: String) -> Bool {
+  match parse_path_template(raw: raw) {
+    ParsedPathTemplate { template: path } => is_create(shape: derived_op(name: name, method: method, path: path).shape)
+    MalformedPathTemplate => false
+  }
+}
+
+fn derived_raw_is_upsert(name: String, method: HttpMethod, raw: String) -> Bool {
+  match parse_path_template(raw: raw) {
+    ParsedPathTemplate { template: path } => is_upsert(shape: derived_op(name: name, method: method, path: path).shape)
+    MalformedPathTemplate => false
+  }
+}
+
+fn derived_raw_is_delete(name: String, method: HttpMethod, raw: String) -> Bool {
+  match parse_path_template(raw: raw) {
+    ParsedPathTemplate { template: path } => is_delete(shape: derived_op(name: name, method: method, path: path).shape)
+    MalformedPathTemplate => false
+  }
+}
+
+fn derived_raw_modifier_agrees(name: String, method: HttpMethod, raw: String, declared_idempotent: Bool, declared_readonly: Bool) -> Bool {
+  match parse_path_template(raw: raw) {
+    ParsedPathTemplate { template: path } =>
+      match check_modifier_vs_derivation(
+        op: derived_op(name: name, method: method, path: path),
+        declared_idempotent: declared_idempotent,
+        declared_readonly: declared_readonly
+      ).agreement { Agrees => true _ => false }
+    MalformedPathTemplate => false
+  }
+}
+
+fn derived_raw_modifier_unknown(name: String, method: HttpMethod, raw: String, declared_idempotent: Bool, declared_readonly: Bool) -> Bool {
+  match parse_path_template(raw: raw) {
+    ParsedPathTemplate { template: path } =>
+      match check_modifier_vs_derivation(
+        op: derived_op(name: name, method: method, path: path),
+        declared_idempotent: declared_idempotent,
+        declared_readonly: declared_readonly
+      ).agreement { DerivationUnknown { reason: reason } => true _ => false }
+    MalformedPathTemplate => false
+  }
+}
+
+fn is_read(shape: EffectShape) -> Bool {
+  match shape {
+    ReadEffect => true
+    _ => false
+  }
+}
+
+fn is_create(shape: EffectShape) -> Bool {
+  match shape {
+    CreateEffect { cause: cause } => true
+    _ => false
+  }
+}
+
+fn is_create_always(shape: EffectShape) -> Bool {
+  match shape {
+    CreateEffect { cause: PostAlways } => true
+    _ => false
+  }
+}
+
+fn is_upsert(shape: EffectShape) -> Bool {
+  match shape {
+    UpsertEffect { key_source: key_source } => true
+    _ => false
+  }
+}
+
+fn is_delete(shape: EffectShape) -> Bool {
+  match shape {
+    DeleteEffect { key_source: key_source } => true
+    _ => false
+  }
+}
+
+fn op_lattice_read(name: String) -> OperationEffect {
+  OperationEffect {
+    operation_name: name,
+    shape: ReadEffect,
+    evidence: LatticeEffect { shape: ReadEffect }
+  }
+}
+
+fn op_non_idempotent(name: String) -> OperationEffect {
+  OperationEffect {
+    operation_name: name,
+    shape: CreateEffect { cause: PostAlways },
+    evidence: NonIdempotent {
+      shape: CreateEffect { cause: PostAlways },
+      reason: "test"
+    }
+  }
+}
+
+test fn effects_path_parse_witnesses() -> Bool {
+  match parse_path_template(raw: "/repos/\{owner\}/\{repo\}/pulls") {
+    ParsedPathTemplate { template: simple } =>
+      match parse_path_template(raw: "/v1/\{secret_name\}:addVersion") {
+        ParsedPathTemplate { template: colon } =>
+          match parse_path_template(raw: "/token") {
+            ParsedPathTemplate { template: no_params } =>
+              match parse_path_template(raw: "/v1/projects/\{project_id\}/secrets/\{secret\}/versions/\{version\}:access") {
+                ParsedPathTemplate { template: nested } =>
+                  match parse_path_template(raw: "/computeMetadata/v1/instance/service-accounts/default/identity?audience=\{audience\}") {
+                    ParsedPathTemplate { template: query_stripped } =>
+                      match parse_path_template(raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews") {
+                        ParsedPathTemplate { template: deep } =>
+                          has_path_params(template: simple)
+                            && match last_path_param(template: simple) {
+                              Present { value: p } => p == "repo"
+                              Absent => false
+                            }
+                            && has_path_params(template: colon)
+                            && match last_path_param(template: colon) {
+                              Present { value: p } => p == "secret_name"
+                              Absent => false
+                            }
+                            && !has_path_params(template: no_params)
+                            && match last_path_param(template: no_params) { Absent => true Present => false }
+                            && has_path_params(template: nested)
+                            && match last_path_param(template: nested) {
+                              Present { value: p } => p == "version"
+                              Absent => false
+                            }
+                            && !has_path_params(template: query_stripped)
+                            && has_path_params(template: deep)
+                            && match last_path_param(template: deep) {
+                              Present { value: p } => p == "pull_number"
+                              Absent => false
+                            }
+                            && match parse_path_template(raw: concat("/repos/", "{", "owner/pulls")) {
+                              MalformedPathTemplate => true
+                              ParsedPathTemplate => false
+                            }
+                            && match parse_path_template(raw: concat("/repos/owner", "}", "/pulls")) {
+                              MalformedPathTemplate => true
+                              ParsedPathTemplate => false
+                            }
+                            && match parse_path_template(raw: concat("/v1/", "{", "project", "}", "{", "secret", "}")) {
+                              MalformedPathTemplate => true
+                              ParsedPathTemplate => false
+                            }
+                        MalformedPathTemplate => false
+                      }
+                    MalformedPathTemplate => false
+                  }
+                MalformedPathTemplate => false
+              }
+            MalformedPathTemplate => false
+          }
+        MalformedPathTemplate => false
+      }
+    MalformedPathTemplate => false
+  }
+}
+
+test fn effects_derivation_witnesses() -> Bool {
+  derived_raw_is_read(name: "List", method: GET, raw: "/repos/\{owner\}/\{repo\}/pulls")
+    && derived_raw_is_create(name: "CreateSecret", method: POST, raw: "/v1/projects/\{project_id\}/secrets")
+    && derived_raw_is_create(name: "Messages", method: POST, raw: "/v1/messages")
+    && derived_raw_is_upsert(name: "Update", method: PUT, raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}")
+    && derived_raw_is_create(name: "Update", method: PUT, raw: "/config")
+    && derived_raw_is_delete(name: "DeleteItem", method: DELETE, raw: "/items/\{id\}")
+    && derived_raw_is_create(name: "Purge", method: DELETE, raw: "/cache")
+    && match parse_path_template(raw: "/repos/\{owner\}/\{repo\}") {
+      ParsedPathTemplate { template: path } =>
+        match derive_op_effect(operation_name: "TypedBoundary", method: PUT, path: path) {
+          DerivedEffect { effect: effect } => true
+          MalformedPathInput => false
+        }
+      MalformedPathTemplate => false
+    }
+}
+
+test fn effects_compose_witnesses() -> Bool {
+  match compose_effects(effects: []) {
+    IdempotentComposition => true
+    BrokenBy { first_breaker: breaker } => false
+  }
+    && match compose_effects(effects: [op_lattice_read(name: "a"), op_lattice_read(name: "b")]) {
+      IdempotentComposition => true
+      BrokenBy { first_breaker: breaker } => false
+    }
+    && match compose_effects(effects: [
+      op_lattice_read(name: "first"),
+      op_non_idempotent(name: "breaker"),
+      op_non_idempotent(name: "later")
+    ]) {
+      BrokenBy { first_breaker: breaker } => breaker.operation_name == "breaker"
+      IdempotentComposition => false
+    }
+}
+
+test fn effects_modifier_github_readonly_witnesses() -> Bool {
+  let readonly_gets = [
+    ReadonlyGetCase { name: "List", path: "/repos/\{owner\}/\{repo\}/pulls" },
+    ReadonlyGetCase { name: "Get", path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}" },
+    ReadonlyGetCase { name: "Diff", path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}" },
+    ReadonlyGetCase { name: "ListReviews", path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews" },
+    ReadonlyGetCase { name: "ListComments", path: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/comments" },
+  ]
+  fold(readonly_gets, init: true, f: (acc, case) => {
+    acc && derived_raw_modifier_agrees(
+      name: case.name,
+      method: GET,
+      raw: case.path,
+      declared_idempotent: false,
+      declared_readonly: true
+    )
+  })
+}
+
+test fn effects_modifier_gcp_sites_witnesses() -> Bool {
+  derived_raw_modifier_agrees(
+    name: "AccessVersion",
+    method: GET,
+    raw: "/v1/projects/\{project_id\}/secrets/\{secret\}/versions/\{version\}:access",
+    declared_idempotent: true,
+    declared_readonly: true
+  )
+    && derived_raw_is_create(name: "AddVersion", method: POST, raw: "/v1/\{secret_name\}:addVersion")
+    && derived_raw_modifier_unknown(
+      name: "AddVersion",
+      method: POST,
+      raw: "/v1/\{secret_name\}:addVersion",
+      declared_idempotent: true,
+      declared_readonly: false
+    )
+    && derived_raw_is_create(
+      name: "GenerateAccessToken",
+      method: POST,
+      raw: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken"
+    )
+    && derived_raw_modifier_unknown(
+      name: "GenerateAccessToken",
+      method: POST,
+      raw: "/v1/projects/-/serviceAccounts/\{target_sa\}:generateAccessToken",
+      declared_idempotent: true,
+      declared_readonly: false
+    )
+    && derived_raw_is_create(name: "Refresh", method: POST, raw: "/token")
+    && derived_raw_modifier_unknown(
+      name: "Refresh",
+      method: POST,
+      raw: "/token",
+      declared_idempotent: true,
+      declared_readonly: false
+    )
+    && derived_raw_is_create(name: "Exchange", method: POST, raw: "/v1/token")
+    && derived_raw_modifier_unknown(
+      name: "Exchange",
+      method: POST,
+      raw: "/v1/token",
+      declared_idempotent: true,
+      declared_readonly: false
+    )
+}
+
+test fn effects_post_parent_path_witnesses() -> Bool {
+  derived_raw_is_create(name: "CreateSecret", method: POST, raw: "/v1/projects/\{project_id\}/secrets")
+    && derived_raw_is_create(
+      name: "CreateComment",
+      method: POST,
+      raw: "/repos/\{owner\}/\{repo\}/issues/\{issue_number\}/comments"
+    )
+    && derived_raw_is_create(
+      name: "CreateReview",
+      method: POST,
+      raw: "/repos/\{owner\}/\{repo\}/pulls/\{pull_number\}/reviews"
+    )
+}
+
+test fn effects_create_if_absent_dedup_witnesses() -> Bool {
+  let key = InputField { field: "id" }
+  let shape = CreateEffect { cause: CreateIfAbsent { key_source: key } }
+  let key_b = InputField { field: "b" }
+  let shape_b = CreateEffect { cause: CreateIfAbsent { key_source: key_b } }
+  let always = CreateEffect { cause: PostAlways }
+
+  is_idempotent_effect(shape: shape)
+    && create_effect_is_dedupable(shape: shape)
+    && create_double_init_collapsible(a: shape, b: shape)
+    && create_effect_is_dedupable(shape: shape_b)
+    && !create_double_init_collapsible(a: shape, b: shape_b)
+    && !is_idempotent_effect(shape: always)
+    && !create_effect_is_dedupable(shape: always)
+    && !create_double_init_collapsible(a: always, b: always)
+}
+
+test fn effects_create_if_absent_modifier_witnesses() -> Bool {
+  let key = InputField { field: "id" }
+  let shape = CreateEffect { cause: CreateIfAbsent { key_source: key } }
+  match parse_path_template(raw: "/secrets") {
+    ParsedPathTemplate { template: secrets_path } =>
+      match parse_path_template(raw: "/versions") {
+        ParsedPathTemplate { template: versions_path } =>
+          let op = DerivedOpEffect {
+            operation_name: "create_secret",
+            method: POST,
+            path_template: secrets_path,
+            shape: shape
+          }
+          let agrees = check_modifier_vs_derivation(op: op, declared_idempotent: true, declared_readonly: false)
+          let disagrees = check_modifier_vs_derivation(op: op, declared_idempotent: false, declared_readonly: false)
+          let always_op = DerivedOpEffect {
+            operation_name: "add_version",
+            method: POST,
+            path_template: versions_path,
+            shape: CreateEffect { cause: PostAlways }
+          }
+          let unknown = check_modifier_vs_derivation(op: always_op, declared_idempotent: true, declared_readonly: false)
+          match agrees.agreement { Agrees => true _ => false }
+            && match disagrees.agreement { Disagrees { reason: reason } => true _ => false }
+            && match unknown.agreement { DerivationUnknown { reason: reason } => true _ => false }
+        MalformedPathTemplate => false
+      }
+    MalformedPathTemplate => false
+  }
+}
