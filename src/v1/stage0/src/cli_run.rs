@@ -10398,6 +10398,7 @@ mod doc_reachability_tests {
     }
 }
 
+// --- REST transport fact projection (folded from rest_transport_facts.rs) ---
 // Pure Node-tree reader over transport annotations — zero host I/O.
 
 #[derive(Debug, Clone, PartialEq, Eq)]
