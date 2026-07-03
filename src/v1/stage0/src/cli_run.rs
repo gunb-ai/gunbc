@@ -11,9 +11,6 @@ use crate::std_types::{kernel_type_set, SourceSpan};
 use crate::v1_compiler_compile;
 use crate::v1_compiler_infer;
 use crate::v1_compiler_infer_env::lookup_type_by_name;
-use crate::v1_compiler_infer_env::{
-    maybe_print_type_env_lookup_profile, reset_type_env_lookup_profile,
-};
 use crate::v1_compiler_infer_items::{item_kind, ItemInfo, ItemKind, ResolvedGraph, TypedModule};
 use crate::v1_compiler_normalize;
 use crate::v1_compiler_parse;
@@ -1048,7 +1045,6 @@ fn reconcile_with_typed_cache(
     intern_table: Rc<InternTable>,
     typed_cache: &RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
 ) -> Rc<ResolvedGraph> {
-    reset_type_env_lookup_profile();
     let mut modules: Rc<Vec<Rc<TypedModule>>> = Rc::new(Vec::new());
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = v1_rt::rc_empty_map();
@@ -1098,16 +1094,7 @@ fn reconcile_with_typed_cache(
         }
         acc
     });
-    let modules =
-        v1_compiler_infer::rewire_type_env_parent_links(modules.clone(), source_indices.clone());
-    let modules = v1_compiler_infer::rewire_type_env_import_str_binding_identity(
-        modules.clone(),
-        source_indices.clone(),
-    );
-    let modules =
-        v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
     let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
-    maybe_print_type_env_lookup_profile();
     Rc::new(ResolvedGraph {
         modules,
         item_registry: expanded_registry,
@@ -10303,6 +10290,313 @@ pub fn extdeps_shape_transport_policy_module_facts(
         gist_create_declares_filename_input,
         gist_create_files_keyed_by_filename,
     }
+}
+
+// SCAFFOLD — host-fed fact extraction for v2.lens.extdeps_external_authority (Concern B).
+// Dissolution: when Node-tree anchor projection supersedes module parse (dissolve-on marker in
+// extdeps_external_authority.dag construction_justification), replace this block with a
+// Node-tree builtin and delete these structs. gunbc#5364 successor, Concern B lane.
+
+pub struct ExtdepsExternalAuthorityModuleFacts {
+    pub anchor_kind: String,
+    pub scheme_identity: String,
+    pub locator: String,
+    pub is_backfill_pending: bool,
+    pub is_machinery_exempt: bool,
+    pub is_clean_tree_roster_excluded: bool,
+    pub anchor_shadow_masked: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ExternalAuthorityAnchorProjection {
+    Absent,
+    Present {
+        scheme_identity: String,
+        locator: String,
+    },
+}
+
+fn external_authority_uri_record_from_anchor_body(
+    body: &Rc<crate::v1_std_core::Node>,
+    variant: &str,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> Option<Rc<crate::v1_std_core::Node>> {
+    match variant {
+        "ExternalAuthority" | "StableAuthority" | "ExternalUri" => {
+            extdeps_record_field_value(body, "uri", source_indices)
+        }
+        _ => None,
+    }
+}
+
+fn external_authority_scheme_identity_from_value_node(
+    node: &Rc<crate::v1_std_core::Node>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> String {
+    use crate::v1_std_core::authored_name_at;
+    authored_name_at(source_indices.clone(), node.clone())
+}
+
+fn read_external_authority_anchor_from_items(
+    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
+) -> ExternalAuthorityAnchorProjection {
+    use crate::v1_compiler_emit_core_support::is_data_def_item;
+    use crate::v1_std_core::authored_name_at;
+    for item in items.iter() {
+        if !is_data_def_item(item.clone()) || item.name != "extdeps_external_authority_anchor" {
+            continue;
+        }
+        let Some(body) = item.body.as_ref() else {
+            return ExternalAuthorityAnchorProjection::Absent;
+        };
+        let variant = authored_name_at(source_indices.clone(), body.clone());
+        let Some(uri_node) =
+            external_authority_uri_record_from_anchor_body(body, variant.as_str(), source_indices)
+        else {
+            return ExternalAuthorityAnchorProjection::Absent;
+        };
+        let scheme = extdeps_record_field_value(&uri_node, "scheme", source_indices)
+            .map(|n| external_authority_scheme_identity_from_value_node(&n, source_indices))
+            .unwrap_or_default();
+        let locator = extdeps_record_field_value(&uri_node, "locator", source_indices)
+            .and_then(|n| extdeps_literal_string_value(&n))
+            .unwrap_or_default();
+        if scheme.is_empty() {
+            return ExternalAuthorityAnchorProjection::Absent;
+        }
+        return ExternalAuthorityAnchorProjection::Present {
+            scheme_identity: scheme,
+            locator,
+        };
+    }
+    ExternalAuthorityAnchorProjection::Absent
+}
+
+fn project_external_authority_anchor(module_path: &str) -> ExternalAuthorityAnchorProjection {
+    let path = source_path_for_module_path(module_path.to_string());
+    let (items, source_indices) = parse_extdeps_module_items(&path);
+    read_external_authority_anchor_from_items(&items, &source_indices)
+}
+
+fn external_authority_backfill_pending_module_paths() -> &'static std::collections::HashSet<String> {
+    use std::collections::HashSet;
+    use std::sync::OnceLock;
+    static PATHS: OnceLock<HashSet<String>> = OnceLock::new();
+    PATHS.get_or_init(|| {
+        let path = workspace_root().join("dag/extdeps/external_authority_backfill_pending.txt");
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("read backfill_pending snapshot {:?}: {e}", path));
+        content
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty() && !line.starts_with('#'))
+            .map(str::to_string)
+            .collect()
+    })
+}
+
+fn external_authority_machinery_exempt_module_paths() -> &'static [&'static str] {
+    &["extdeps.uri", "extdeps.external_authority"]
+}
+
+fn external_authority_clean_tree_roster_exclusion_paths() -> &'static [&'static str] {
+    &[
+        "extdeps.fixture.external_authority_bogus_scheme",
+        "extdeps.fixture.external_authority_missing",
+        "extdeps.fixture.external_authority_clean_https_no_anchor",
+        "extdeps.fixture.external_authority_file_anchor",
+    ]
+}
+
+pub fn extdeps_derived_extdeps_module_paths() -> Vec<String> {
+    let index = build_module_path_index_from_witness_roots();
+    let mut paths: Vec<String> = index
+        .keys()
+        .filter(|k| k.starts_with("extdeps."))
+        .cloned()
+        .collect();
+    paths.sort();
+    paths
+}
+
+pub fn extdeps_derived_extdeps_modules_value(
+    ctx: &crate::v1_interpreter::InterpContext,
+) -> crate::v1_interpreter::Value {
+    use crate::v1_interpreter::list_value;
+    let items: Vec<_> = extdeps_derived_extdeps_module_paths()
+        .iter()
+        .map(|p| free_monoid_symbol_value_from_dotted_string(ctx, p))
+        .collect();
+    list_value(items)
+}
+
+pub fn extdeps_external_authority_backfill_pending_entries_value(
+    ctx: &crate::v1_interpreter::InterpContext,
+) -> crate::v1_interpreter::Value {
+    use crate::v1_interpreter::list_value;
+    let mut paths: Vec<String> = external_authority_backfill_pending_module_paths()
+        .iter()
+        .cloned()
+        .collect();
+    paths.sort();
+    let items: Vec<_> = paths
+        .iter()
+        .map(|p| free_monoid_symbol_value_from_dotted_string(ctx, p))
+        .collect();
+    list_value(items)
+}
+
+fn external_authority_is_backfill_pending_for_module_path(module_path: &str) -> bool {
+    external_authority_backfill_pending_module_paths().contains(module_path)
+}
+
+fn external_authority_is_machinery_exempt_for_module_path(module_path: &str) -> bool {
+    external_authority_machinery_exempt_module_paths().contains(&module_path)
+}
+
+fn external_authority_is_clean_tree_roster_excluded_for_module_path(module_path: &str) -> bool {
+    if module_path.starts_with("extdeps.fixture.") {
+        return true;
+    }
+    if module_path.ends_with(".mock_corpus") {
+        return true;
+    }
+    external_authority_clean_tree_roster_exclusion_paths().contains(&module_path)
+}
+
+fn external_authority_anchor_present_in_any_source_root(module_path: &str) -> bool {
+    let ws = workspace_root();
+    for root in default_source_roots() {
+        let root_path = std::path::PathBuf::from(&root);
+        if !root_path.is_dir() {
+            continue;
+        }
+        let mut files = Vec::new();
+        collect_dag_files_tolerant(&root_path, &mut files);
+        for file in files {
+            let Ok(content) = std::fs::read_to_string(&file) else {
+                continue;
+            };
+            let declares = content.lines().find_map(|l| {
+                l.trim()
+                    .strip_prefix("module ")
+                    .map(|m| m.trim().to_string())
+            });
+            if declares.as_deref() != Some(module_path) {
+                continue;
+            }
+            let rel = file
+                .strip_prefix(&ws)
+                .map(|p| p.to_string_lossy().replace('\\', "/"))
+                .unwrap_or_else(|_| file.to_string_lossy().into_owned());
+            let (items, source_indices) = parse_extdeps_module_items(&rel);
+            if matches!(
+                read_external_authority_anchor_from_items(&items, &source_indices),
+                ExternalAuthorityAnchorProjection::Present { .. }
+            ) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn external_authority_shadow_plant_paired_extdeps_module_path(module_path: &str) -> Option<String> {
+    module_path
+        .strip_prefix("test.fixture.")
+        .map(|leaf| format!("extdeps.fixture.{leaf}"))
+}
+
+fn external_authority_anchor_shadow_masked_for_module_path(module_path: &str) -> bool {
+    match project_external_authority_anchor(module_path) {
+        ExternalAuthorityAnchorProjection::Present { .. } => false,
+        ExternalAuthorityAnchorProjection::Absent => {
+            if external_authority_anchor_present_in_any_source_root(module_path) {
+                return true;
+            }
+            if let Some(extdeps_path) =
+                external_authority_shadow_plant_paired_extdeps_module_path(module_path)
+            {
+                return external_authority_anchor_present_in_any_source_root(&extdeps_path);
+            }
+            false
+        }
+    }
+}
+
+pub fn extdeps_external_authority_module_facts(
+    module_path: &str,
+) -> ExtdepsExternalAuthorityModuleFacts {
+    let (anchor_kind, scheme_identity, locator) =
+        match project_external_authority_anchor(module_path) {
+            ExternalAuthorityAnchorProjection::Absent => {
+                ("absent".to_string(), String::new(), String::new())
+            }
+            ExternalAuthorityAnchorProjection::Present {
+                scheme_identity,
+                locator,
+            } => ("present".to_string(), scheme_identity, locator),
+        };
+    ExtdepsExternalAuthorityModuleFacts {
+        anchor_kind,
+        scheme_identity,
+        locator,
+        is_backfill_pending: external_authority_is_backfill_pending_for_module_path(module_path),
+        is_machinery_exempt: external_authority_is_machinery_exempt_for_module_path(module_path),
+        is_clean_tree_roster_excluded: external_authority_is_clean_tree_roster_excluded_for_module_path(
+            module_path,
+        ),
+        anchor_shadow_masked: external_authority_anchor_shadow_masked_for_module_path(module_path),
+    }
+}
+
+fn external_authority_live_violation_module_paths() -> Vec<String> {
+    let backfill = external_authority_backfill_pending_module_paths();
+    let mut violations = Vec::new();
+    for path in extdeps_derived_extdeps_module_paths() {
+        if external_authority_is_clean_tree_roster_excluded_for_module_path(&path) {
+            continue;
+        }
+        if external_authority_is_machinery_exempt_for_module_path(&path) || backfill.contains(&path) {
+            continue;
+        }
+        match project_external_authority_anchor(&path) {
+            ExternalAuthorityAnchorProjection::Absent => violations.push(format!("missing:{path}")),
+            ExternalAuthorityAnchorProjection::Present {
+                scheme_identity, ..
+            } if scheme_identity != "Http" && scheme_identity != "Https" => {
+                violations.push(format!("non_external:{path}:{scheme_identity}"))
+            }
+            _ => {}
+        }
+    }
+    violations
+}
+
+pub fn extdeps_external_authority_live_clean_tree_holds() -> bool {
+    external_authority_live_violation_module_paths().is_empty()
+}
+
+pub fn extdeps_external_authority_live_roster_module_count() -> i64 {
+    extdeps_derived_extdeps_module_paths()
+        .into_iter()
+        .filter(|path| !external_authority_is_clean_tree_roster_excluded_for_module_path(path))
+        .count() as i64
+}
+
+pub fn extdeps_external_authority_live_shadow_mask_holds() -> bool {
+    for path in extdeps_derived_extdeps_module_paths() {
+        if external_authority_is_clean_tree_roster_excluded_for_module_path(&path)
+            || external_authority_is_machinery_exempt_for_module_path(&path)
+        {
+            continue;
+        }
+        if external_authority_anchor_shadow_masked_for_module_path(&path) {
+            return false;
+        }
+    }
+    true
 }
 
 #[cfg(test)]

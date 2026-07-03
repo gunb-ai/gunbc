@@ -3,3 +3,5 @@ module gunbc.hand_lens_host_bridge_scaffold_index
 import std.types { String }
 
 data transport_script_position_host_bridge_dissolution_trigger: String = "dissolve-on: gunbc#5364 — host-fed transport_script_position_facts_for_path (cli_run.rs TransportScriptArgShape classify_*) folds into pure Node-tree reader; verdict authority is v2.lens.host_language_transport_script.dag"
+
+data extdeps_external_authority_host_bridge_dissolution_trigger: String = "dissolve-on: gunbc#5364 — host-fed extdeps_external_authority_facts_for_qualified_name (cli_run.rs anchor projection from parsed module items) folds into pure Node-tree reader; verdict authority is v2.lens.extdeps_external_authority.dag"
