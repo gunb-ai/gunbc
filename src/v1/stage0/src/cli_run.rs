@@ -5859,6 +5859,7 @@ mod node_frontier_plumbing_controls {
         let roots = setup_roots(&ws);
         let index = build_multi_entry_index(&roots);
         let emit_rel = "dag/extdeps/languages/json/emit.dag";
+        let emit_abs = abs(&ws, emit_rel);
         let diff = format!(
             "diff --git a/{p} b/{p}\n--- a/{p}\n+++ b/{p}\n\
              @@ -1,7 +1,7 @@\n import extdeps.external_authority {{ ExternalAuthority }}\n\
@@ -5871,7 +5872,7 @@ mod node_frontier_plumbing_controls {
              +    Absent => none\n\
              +  }}\n\
              +}}\n",
-            p = emit_rel
+            p = emit_abs
         );
         let ranges = parse_unified_diff_line_ranges(&diff);
         let edits = floor_diff_edits_from_line_ranges(&index, &ranges)
