@@ -53,6 +53,7 @@ pub use crate::v1_compiler_infer_env::{
     record_rewire_type_env_parent_links_call, str_bindings_from_bindings,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv, TypeEnvCache};
+use crate::v1_std_core::empty_intern_table;
 use crate::v1_compiler_infer_items::ItemKind::{
     DataItem, FnItem, FuncItem, OtherItem, ServiceItem, TypeItem,
 };
@@ -12290,199 +12291,12 @@ pub fn build_type_env(
             },
         );
         let intern_table = seed_kernel_intern_table(intern_table.clone());
-        let kernel_bindings_base = Rc::new(v1_rt::map_keys(&kernel_type_set()))
-            .iter()
-            .cloned()
-            .fold(
-                v1_rt::rc_empty_map::<i64, Rc<TypeBinding>>(),
-                |acc: Rc<HashMap<i64, Rc<TypeBinding>>>, name: String| {
-                    v1_rt::rc_map_insert(
-                        acc,
-                        intern(intern_table.clone(), name.clone()).id.clone(),
-                        Rc::new(TypeBinding {
-                            name: name.clone(),
-                            resolved: Rc::new(Node {
-                                name: name.clone(),
-                                span: kernel_span(name.clone()),
-                                ident_span: Some(kernel_span(name.clone())),
-                                children: Rc::new(vec![]),
-                                connective: Connective::NoConnective,
-                                params: Rc::new(vec![]),
-                                inferred: None,
-                                return_cardinality: Cardinality::Required,
-                                uses: Rc::new(vec![]),
-                                body: None,
-                                transport: None,
-                                properties: Rc::new(vec![]),
-                                type_annotation: None,
-                                is_self_recursive: false,
-                                has_non_tail_self_call: false,
-                                match_pattern: None,
-                                expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
-                            }),
-                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                        }),
-                    )
-                },
-            );
-        let unit_span = kernel_span("Unit".to_string());
-        let kernel_bindings = v1_rt::rc_map_insert(
-            kernel_bindings_base,
-            intern(intern_table.clone(), "Unit".to_string()).id.clone(),
-            Rc::new(TypeBinding {
-                name: "Unit".to_string(),
-                resolved: Rc::new(Node {
-                    name: "Unit".to_string(),
-                    span: unit_span.clone(),
-                    ident_span: Some(unit_span.clone()),
-                    children: Rc::new(vec![]),
-                    connective: Connective::Conj,
-                    params: Rc::new(vec![]),
-                    inferred: None,
-                    return_cardinality: Cardinality::Required,
-                    uses: Rc::new(vec![]),
-                    body: None,
-                    transport: None,
-                    properties: Rc::new(vec![]),
-                    type_annotation: None,
-                    is_self_recursive: false,
-                    has_non_tail_self_call: false,
-                    match_pattern: None,
-                    expr_data: Rc::new(ExprData::NoExprData),
-                    ident: None,
-                }),
-                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-            }),
+        let kernel = compiler_kernel_type_env(source_indices.clone(), intern_table.clone());
+        let kernel_cache = type_env_cache_from_bindings(
+            kernel.bindings.clone(),
+            source_indices.clone(),
+            compiler_recursive_name_set(),
         );
-        let present_value_field = Rc::new(Node {
-            name: "value".to_string(),
-            span: kernel_span("value".to_string()),
-            ident_span: Some(kernel_span("value".to_string())),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: Some(Rc::new(InferredNode::TypeVariable {
-                id: "present_value".to_string(),
-            })),
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
-            properties: Rc::new(vec![]),
-            type_annotation: None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let present_variant = Rc::new(Node {
-            name: "Present".to_string(),
-            span: kernel_span("Present".to_string()),
-            ident_span: Some(kernel_span("Present".to_string())),
-            children: Rc::new(vec![present_value_field]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
-            properties: Rc::new(vec![]),
-            type_annotation: None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let absent_variant = Rc::new(Node {
-            name: "Absent".to_string(),
-            span: kernel_span("Absent".to_string()),
-            ident_span: Some(kernel_span("Absent".to_string())),
-            children: Rc::new(vec![]),
-            connective: Connective::NoConnective,
-            params: Rc::new(vec![]),
-            inferred: None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
-            properties: Rc::new(vec![]),
-            type_annotation: None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let kernel_optional = Rc::new(Node {
-            name: "Optional".to_string(),
-            span: kernel_span("Optional".to_string()),
-            ident_span: Some(kernel_span("Optional".to_string())),
-            children: Rc::new(vec![present_variant, absent_variant]),
-            connective: Connective::Disj,
-            params: Rc::new(vec![]),
-            inferred: None,
-            return_cardinality: Cardinality::Required,
-            uses: Rc::new(vec![]),
-            body: None,
-            transport: None,
-            properties: Rc::new(vec![]),
-            type_annotation: None,
-            is_self_recursive: false,
-            has_non_tail_self_call: false,
-            match_pattern: None,
-            expr_data: Rc::new(ExprData::NoExprData),
-            ident: None,
-        });
-        let kernel_bindings = v1_rt::rc_map_insert(
-            kernel_bindings.clone(),
-            intern(intern_table.clone(), "Optional".to_string())
-                .id
-                .clone(),
-            Rc::new(TypeBinding {
-                name: "Optional".to_string(),
-                resolved: kernel_optional,
-                provenance: Rc::new(SubValueRelation::SubValueUnknown),
-            }),
-        );
-        let node_fields = inductive_fields_list_to_map(compiler_inductive_fields());
-        let kernel_recursive_types = Rc::new({
-            let mut __result = Vec::new();
-            for name in v1_rt::sorted_map_keys(&compiler_recursive_types())
-                .iter()
-                .cloned()
-            {
-                __result.push(intern(intern_table.clone(), name.clone()).id.clone());
-            }
-            __result
-        });
-        let kernel_recursive_type_set = v1_rt::sorted_map_keys(&compiler_recursive_types())
-            .iter()
-            .cloned()
-            .fold(
-                v1_rt::rc_empty_map::<i64, bool>(),
-                |acc: Rc<HashMap<i64, bool>>, name: String| {
-                    v1_rt::rc_map_insert(
-                        acc,
-                        intern(intern_table.clone(), name.clone()).id.clone(),
-                        true,
-                    )
-                },
-            );
-        let kernel = Rc::new(TypeEnv {
-            bindings: kernel_bindings.clone(),
-            str_bindings: str_bindings_from_bindings(kernel_bindings.clone()),
-            ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-            parents: Rc::new(vec![]),
-            recursive_types: kernel_recursive_types,
-            recursive_type_set: kernel_recursive_type_set,
-            inductive_fields: node_fields,
-            source_indices: source_indices.clone(),
-            intern_table: intern_table.clone(),
-        });
         let module_name_str = authored_name_at(source_indices.clone(), module.module.clone());
         let import_parents = Rc::new({
             let mut __result = Vec::new();
@@ -12501,7 +12315,7 @@ pub fn build_type_env(
             }
             __result
         });
-        let scope_parents = v1_rt::concat(import_parents, Rc::new(vec![kernel]));
+        let scope_parents = v1_rt::concat(import_parents, Rc::new(vec![kernel.clone()]));
         let import_diags = Rc::new({
             let mut __result = Vec::new();
             for imp in module.resolved_imports.clone().iter().cloned() {
@@ -12752,11 +12566,6 @@ pub fn build_type_env(
                 },
             );
         let all_local_bindings = v1_rt::rc_map_merge(local_bindings.clone(), param_bindings);
-        let kernel_cache = type_env_cache_from_bindings(
-            kernel_bindings.clone(),
-            source_indices.clone(),
-            compiler_recursive_name_set(),
-        );
         let import_cache =
             union_parent_type_env_caches(module.resolved_imports.clone(), parent_index.clone());
         let ancestry_cache = if module.resolved_imports.clone().len() == 1 {
@@ -14913,6 +14722,21 @@ pub fn rewire_type_env_parent_links(
 ) -> Rc<Vec<Rc<TypedModule>>> {
     record_rewire_type_env_parent_links_call();
     {
+        let intern_table = modules
+            .first()
+            .map(|m| m.type_env.intern_table.clone())
+            .unwrap_or_else(empty_intern_table);
+        let shared_kernel = modules.iter().find_map(|m| {
+            m.type_env.parents.last().and_then(|kernel| {
+                if kernel.bindings.is_empty() {
+                    None
+                } else {
+                    Some(kernel.clone())
+                }
+            })
+        }).unwrap_or_else(|| {
+            compiler_kernel_type_env(source_indices.clone(), intern_table.clone())
+        });
         let index = modules.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
             |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
@@ -14948,10 +14772,7 @@ pub fn rewire_type_env_parent_links(
                         }
                         __result
                     });
-                    let kernel_parent = match m.type_env.clone().parents.clone().last().cloned() {
-                        Some(kernel) => Rc::new(vec![kernel.clone()]),
-                        None => Rc::new(vec![]),
-                    };
+                    let kernel_parent = Rc::new(vec![shared_kernel.clone()]);
                     Rc::new(TypedModule {
                         module: m.module.clone(),
                         items: m.items.clone(),

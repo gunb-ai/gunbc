@@ -6645,11 +6645,55 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
   )
 }
 
+fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypeEnv {
+  let kernel_bindings_base = fold(
+    map_keys(kernel_type_set),
+    init: empty_map(),
+    f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, TypeBinding {
+      name: name,
+      resolved: Node { name: name, span: kernel_span(name: name), ident_span: Present { value: kernel_span(name: name) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      provenance: SubValueUnknown
+    })
+  )
+  let unit_span = kernel_span(name: "Unit")
+  let kernel_bindings = map_insert(kernel_bindings_base, intern(table: intern_table, s: "Unit").id, TypeBinding {
+    name: "Unit",
+    resolved: Node { name: "Unit", span: unit_span, ident_span: Present { value: unit_span }, children: [], connective: Conj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+    provenance: SubValueUnknown
+  })
+  let present_value_field = Node { name: "value", span: kernel_span(name: "value"), ident_span: Present { value: kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: "present_value" } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let present_variant = Node { name: "Present", span: kernel_span(name: "Present"), ident_span: Present { value: kernel_span(name: "Present") }, children: [present_value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let absent_variant = Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_optional = Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
+  let node_fields = inductive_fields_list_to_map(fields: compiler_inductive_fields)
+  let kernel_recursive_types = map_keys(compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
+  let kernel_recursive_type_set = fold(map_keys(compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
+  TypeEnv { bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table }
+}
+
 fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
   record_rewire_type_env_parent_links_call()
   let index = fold(modules, init: empty_map(), f: (acc, m) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
+  let shared_kernel = match fold(modules, init: Absent, f: (acc, m) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        match m.type_env.parents |> last {
+          Present { value: kernel } => Present { value: kernel }
+          Absent => Absent
+        }
+    }
+  ) {
+    Present { value: kernel } => kernel
+    Absent =>
+      match modules |> first {
+        Present { value: m } => compiler_kernel_type_env(source_indices: source_indices, intern_table: m.type_env.intern_table)
+        Absent => compiler_kernel_type_env(source_indices: source_indices, intern_table: empty_intern_table())
+      }
+  }
   map(modules, m =>
     let import_parents = flat_map(module_imports(n: m.module), imp =>
       let path = import_module_path_at(imp: imp, source_indices: source_indices)
@@ -6658,10 +6702,6 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
         Absent => []
       }
     )
-    let kernel_parent = match m.type_env.parents |> last {
-      Present { value: kernel } => [kernel]
-      Absent => []
-    }
     TypedModule {
       module: m.module,
       items: m.items,
@@ -6669,7 +6709,7 @@ fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<
         bindings: m.type_env.bindings,
         str_bindings: m.type_env.str_bindings,
         ancestry_str_bindings: m.type_env.ancestry_str_bindings,
-        parents: concat(import_parents, kernel_parent),
+        parents: concat(import_parents, [shared_kernel]),
         recursive_types: m.type_env.recursive_types,
         recursive_type_set: m.type_env.recursive_type_set,
         inductive_fields: m.type_env.inductive_fields,
