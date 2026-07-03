@@ -1,12 +1,12 @@
 #![allow(clippy::disallowed_macros)]
 
-//! Host-physics floor witness for the v1 compiler diagnostic oracle suite
-//! (`src/v1/tests/src/diagnostics.rs`, 11 active `#[test]` fns; `duplicate_module_detected`
-//! remains `#[ignore]` under PERF track). Exercises compile-time diagnostic shape,
-//! message text, and span→line/col mapping via `compile_multi` until that harness is
-//! witness-layer importable from pure `.dag` floor witnesses.
+//! Host-physics floor witness for essential v1 compiler diagnostic behavior
+//! (curated from `src/v1/tests/src/diagnostics.rs`; not 1:1 test-count parity).
+//! Exercises compile-time diagnostic variants, grounded messages, and span
+//! mapping via `compile_multi` until that harness is witness-layer importable.
 
 use std::collections::HashMap;
+use std::env;
 use std::process::ExitCode;
 use std::rc::Rc;
 
@@ -20,6 +20,11 @@ use v1_compiler::v1_std_core::{
 
 type ModuleIndex = HashMap<String, std::path::PathBuf>;
 type WitnessCase = (&'static str, fn(&ModuleIndex));
+
+const SUITE_IMPORT_RESOLUTION: &str = "import_resolution";
+const SUITE_REEXPORT_SURFACE: &str = "reexport_surface";
+const SUITE_TYPE_AND_ARITY: &str = "type_and_arity";
+const SUITE_EMPTY_LIST_CONTEXT: &str = "empty_list_context";
 
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
     eprintln!("diagnostics_witness: {msg}");
@@ -132,25 +137,16 @@ fn resolve_imports_transitively(
     sources
 }
 
-fn compile_multi(_module_index: &ModuleIndex, files: &[(&str, &str)]) -> Rc<PipelineResult> {
+fn compile_multi(module_index: &ModuleIndex, files: &[(&str, &str)]) -> Rc<PipelineResult> {
     let mut all_sources: HashMap<String, Rc<SourceFile>> = HashMap::new();
     for (path, content) in files {
-        let resolved = resolve_imports_transitively(path, content, _module_index);
+        let resolved = resolve_imports_transitively(path, content, module_index);
         for src in resolved {
             all_sources.entry(src.path.clone()).or_insert(src);
         }
     }
     let sources: Vec<Rc<SourceFile>> = all_sources.into_values().collect();
     compile_sources(Rc::new(sources), RenderTarget::Rust)
-}
-
-fn first_diag(module_index: &ModuleIndex, files: &[(&str, &str)]) -> Rc<ErrorNode> {
-    let result = compile_multi(module_index, files);
-    assert!(
-        !result.diagnostics.is_empty(),
-        "expected at least one diagnostic, got none"
-    );
-    result.diagnostics[0].clone()
 }
 
 fn diag_line_col(diag: &ErrorNode, source: &str, file: &str) -> (i64, i64) {
@@ -168,46 +164,68 @@ fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
         .collect()
 }
 
-fn missing_export_points_at_name(module_index: &ModuleIndex) {
-    let source = "module provider\ntype User { name: String }\n";
-    let bad = "module consumer\nimport provider { NonExistent }\n";
-    let result = compile_multi(
-        module_index,
-        &[("provider.dag", source), ("consumer.dag", bad)],
-    );
-
-    assert_eq!(result.diagnostics.len(), 1);
-    let d = &result.diagnostics[0];
-
-    assert!(
-        matches!(&*d.diagnostic, CompilerDiagnostic::MissingExport { .. }),
-        "expected MissingExport, got: {:?}",
-        d.diagnostic
-    );
-
-    let msg = diagnostic_to_message(d.diagnostic.clone());
-    assert!(
-        msg.contains("NonExistent"),
-        "message should name the missing export: {msg}"
-    );
-    assert!(
-        msg.contains("provider"),
-        "message should name the target module: {msg}"
-    );
-    assert!(
-        msg.contains("consumer"),
-        "message should name the importing module: {msg}"
-    );
-
-    let (line, col) = diag_line_col(d, bad, "consumer.dag");
-    assert_eq!(line, 2, "should be on line 2 (the import line)");
-    assert_eq!(
-        col, 19,
-        "should point at 'NonExistent' (col 19), not 'import' (col 1)"
-    );
+fn has_arity_mismatch(result: &PipelineResult) -> bool {
+    result.diagnostics.iter().any(|d| {
+        matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. })
+    })
 }
 
-fn variant_not_reexported_through_type_only_import(module_index: &ModuleIndex) {
+fn first_arity_mismatch_message(result: &PipelineResult) -> Option<String> {
+    result.diagnostics.iter().find_map(|d| {
+        if matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. }) {
+            Some(diagnostic_to_message(d.diagnostic.clone()))
+        } else {
+            None
+        }
+    })
+}
+
+/// Golden: MissingExport names export/module/importer and span points at the missing name.
+/// Also covers UnresolvedImport variant + grounded message.
+fn import_resolution_variants_and_span(module_index: &ModuleIndex) {
+    let provider = "module provider\ntype User { name: String }\n";
+    let missing_export = "module consumer\nimport provider { NonExistent }\n";
+    let missing_result = compile_multi(
+        module_index,
+        &[("provider.dag", provider), ("consumer.dag", missing_export)],
+    );
+    assert_eq!(missing_result.diagnostics.len(), 1);
+    let missing = &missing_result.diagnostics[0];
+    assert!(
+        matches!(&*missing.diagnostic, CompilerDiagnostic::MissingExport { .. }),
+        "expected MissingExport, got: {:?}",
+        missing.diagnostic
+    );
+    let missing_msg = diagnostic_to_message(missing.diagnostic.clone());
+    assert!(missing_msg.contains("NonExistent"), "missing export: {missing_msg}");
+    assert!(missing_msg.contains("provider"), "target module: {missing_msg}");
+    assert!(missing_msg.contains("consumer"), "importing module: {missing_msg}");
+    let (line, col) = diag_line_col(missing, missing_export, "consumer.dag");
+    assert_eq!(line, 2, "span should be on import line");
+    assert_eq!(col, 19, "span should point at missing name, not import keyword");
+
+    let unresolved = "module consumer\nimport nonexistent { Thing }\n";
+    let unresolved_result = compile_multi(module_index, &[("consumer.dag", unresolved)]);
+    assert!(
+        !unresolved_result.diagnostics.is_empty(),
+        "expected UnresolvedImport diagnostic"
+    );
+    let unresolved_diag = &unresolved_result.diagnostics[0];
+    assert!(
+        matches!(
+            &*unresolved_diag.diagnostic,
+            CompilerDiagnostic::UnresolvedImport { .. }
+        ),
+        "expected UnresolvedImport, got: {:?}",
+        unresolved_diag.diagnostic
+    );
+    let unresolved_msg = diagnostic_to_message(unresolved_diag.diagnostic.clone());
+    assert!(unresolved_msg.contains("nonexistent"), "{unresolved_msg}");
+    assert!(unresolved_msg.contains("consumer"), "{unresolved_msg}");
+}
+
+/// Golden: variant not re-exported through a type-only import surface.
+fn reexport_surface_missing_variant(module_index: &ModuleIndex) {
     let files = &[
         ("def.dag", "module self_gen8_def\ntype E = A | B\n"),
         (
@@ -220,7 +238,6 @@ fn variant_not_reexported_through_type_only_import(module_index: &ModuleIndex) {
         ),
     ];
     let result = compile_multi(module_index, files);
-
     assert_eq!(result.diagnostics.len(), 1);
     let d = &result.diagnostics[0];
     assert!(
@@ -229,155 +246,52 @@ fn variant_not_reexported_through_type_only_import(module_index: &ModuleIndex) {
         d.diagnostic
     );
     let msg = diagnostic_to_message(d.diagnostic.clone());
-    assert!(
-        msg.contains("B"),
-        "message should name the missing variant export: {msg}"
-    );
-    assert!(
-        msg.contains("self_gen8_proxy"),
-        "message should name the proxy module: {msg}"
-    );
+    assert!(msg.contains("B"), "missing variant export: {msg}");
+    assert!(msg.contains("self_gen8_proxy"), "proxy module: {msg}");
 }
 
-fn multiple_missing_exports_each_have_own_span(module_index: &ModuleIndex) {
-    let source = "module provider\ntype User { name: String }\n";
-    let bad = "module consumer\nimport provider { Foo, Bar }\n";
-    let result = compile_multi(
-        module_index,
-        &[("provider.dag", source), ("consumer.dag", bad)],
-    );
-
-    assert_eq!(
-        result.diagnostics.len(),
-        2,
-        "expected 2 diagnostics for 2 missing names"
-    );
-
-    let msg0 = diagnostic_to_message(result.diagnostics[0].diagnostic.clone());
-    let msg1 = diagnostic_to_message(result.diagnostics[1].diagnostic.clone());
-    assert!(
-        msg0.contains("Foo"),
-        "first diagnostic should mention Foo: {msg0}"
-    );
-    assert!(
-        msg1.contains("Bar"),
-        "second diagnostic should mention Bar: {msg1}"
-    );
-
-    let (_, col0) = diag_line_col(&result.diagnostics[0], bad, "consumer.dag");
-    let (_, col1) = diag_line_col(&result.diagnostics[1], bad, "consumer.dag");
-    assert_ne!(
-        col0, col1,
-        "Foo and Bar should have different column positions"
-    );
-}
-
-fn unresolved_import_names_module(module_index: &ModuleIndex) {
-    let bad = "module consumer\nimport nonexistent { Thing }\n";
-    let d = first_diag(module_index, &[("consumer.dag", bad)]);
-
-    assert!(
-        matches!(&*d.diagnostic, CompilerDiagnostic::UnresolvedImport { .. }),
-        "expected UnresolvedImport, got: {:?}",
-        d.diagnostic
-    );
-
-    let msg = diagnostic_to_message(d.diagnostic.clone());
-    assert!(
-        msg.contains("nonexistent"),
-        "should name the missing module: {msg}"
-    );
-    assert!(
-        msg.contains("consumer"),
-        "should name the importing module: {msg}"
-    );
-}
-
-fn unresolved_type_in_field(module_index: &ModuleIndex) {
-    let source = "module types\ntype Wrapper { inner: Bogus }\n";
-    let result = compile_multi(module_index, &[("types.dag", source)]);
-
-    let type_diags: Vec<_> = result
+/// Golden: UnresolvedType names the unknown type; ArityMismatch fires on bare containers
+/// but not on parameterized uses of the same container.
+fn type_and_arity_discrimination(module_index: &ModuleIndex) {
+    let unresolved_source = "module types\ntype Wrapper { inner: Bogus }\n";
+    let unresolved_result = compile_multi(module_index, &[("types.dag", unresolved_source)]);
+    let unresolved: Vec<_> = unresolved_result
         .diagnostics
         .iter()
         .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::UnresolvedType { .. }))
         .collect();
-
     assert!(
-        !type_diags.is_empty(),
-        "expected UnresolvedType diagnostic, got: {:?}",
-        diagnostic_messages(&result)
+        !unresolved.is_empty(),
+        "expected UnresolvedType, got: {:?}",
+        diagnostic_messages(&unresolved_result)
     );
+    let unresolved_msg = diagnostic_to_message(unresolved[0].diagnostic.clone());
+    assert!(unresolved_msg.contains("Bogus"), "{unresolved_msg}");
 
-    let msg = diagnostic_to_message(type_diags[0].diagnostic.clone());
+    let bare = "module bare\nimport std.types { List }\ntype Foo { items: List }\n";
+    let bare_result = compile_multi(module_index, &[("bare.dag", bare)]);
     assert!(
-        msg.contains("Bogus"),
-        "should name the unresolved type: {msg}"
+        has_arity_mismatch(&bare_result),
+        "bare List should trigger ArityMismatch, got: {:?}",
+        diagnostic_messages(&bare_result)
     );
-}
+    let bare_msg = first_arity_mismatch_message(&bare_result).expect("arity message");
+    assert!(bare_msg.contains("List"), "ArityMismatch should name List");
 
-fn bare_container_type_detected(module_index: &ModuleIndex) {
-    let source = "module bare\nimport std.types { List }\ntype Foo { items: List }\n";
-    let result = compile_multi(module_index, &[("bare.dag", source)]);
-
-    let arity_diags: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. }))
-        .collect();
-
+    let parameterized = "module param\nimport std.types { List }\ntype Foo { items: List<Int> }\n";
+    let parameterized_result = compile_multi(module_index, &[("param.dag", parameterized)]);
     assert!(
-        !arity_diags.is_empty(),
-        "expected ArityMismatch diagnostic for bare List, got: {:?}",
-        diagnostic_messages(&result)
-    );
-
-    let msg = diagnostic_to_message(arity_diags[0].diagnostic.clone());
-    assert!(
-        msg.contains("List"),
-        "should name the bare container type: {msg}"
-    );
-}
-
-fn parameterized_container_no_false_positive(module_index: &ModuleIndex) {
-    let source = "module param\nimport std.types { List }\ntype Foo { items: List<Int> }\n";
-    let result = compile_multi(module_index, &[("param.dag", source)]);
-
-    let arity_diags: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. }))
-        .collect();
-
-    assert!(
-        arity_diags.is_empty(),
+        !has_arity_mismatch(&parameterized_result),
         "parameterized List<Int> should not trigger ArityMismatch, got: {:?}",
-        diagnostic_messages(&result)
+        diagnostic_messages(&parameterized_result)
     );
 }
 
-fn unknown_type_name_no_arity_false_positive(module_index: &ModuleIndex) {
-    let source = "module custom\ntype Widget { label: String }\ntype Bag { item: Widget }\n";
-    let result = compile_multi(module_index, &[("custom.dag", source)]);
-
-    let arity_diags: Vec<_> = result
-        .diagnostics
-        .iter()
-        .filter(|d| matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. }))
-        .collect();
-
-    assert!(
-        arity_diags.is_empty(),
-        "user-defined type should not trigger ArityMismatch, got: {:?}",
-        diagnostic_messages(&result)
-    );
-}
-
-fn empty_list_wrong_expected_type(module_index: &ModuleIndex) {
-    let source = "module elist\nfn make_stuff() -> String {\n  []\n}\n";
-    let result = compile_multi(module_index, &[("elist.dag", source)]);
-
-    let internal_diags: Vec<_> = result
+/// Golden: empty list literal fails without collection context; succeeds with List<T> context.
+fn empty_list_literal_context(module_index: &ModuleIndex) {
+    let wrong = "module elist\nfn make_stuff() -> String {\n  []\n}\n";
+    let wrong_result = compile_multi(module_index, &[("elist.dag", wrong)]);
+    let wrong_diags: Vec<_> = wrong_result
         .diagnostics
         .iter()
         .filter(|d| {
@@ -390,20 +304,15 @@ fn empty_list_wrong_expected_type(module_index: &ModuleIndex) {
                 }
         })
         .collect();
-
     assert!(
-        !internal_diags.is_empty(),
-        "expected diagnostic for empty list with non-collection expected type, got: {:?}",
-        diagnostic_messages(&result)
+        !wrong_diags.is_empty(),
+        "empty list with non-collection expected type should diagnose, got: {:?}",
+        diagnostic_messages(&wrong_result)
     );
-}
 
-fn empty_list_with_type_context_no_false_positive(module_index: &ModuleIndex) {
-    let source =
-        "module elist_ok\nimport std.types { List }\nfn make_list() -> List<String> {\n  []\n}\n";
-    let result = compile_multi(module_index, &[("elist_ok.dag", source)]);
-
-    let empty_list_diags: Vec<_> = result
+    let ok = "module elist_ok\nimport std.types { List }\nfn make_list() -> List<String> {\n  []\n}\n";
+    let ok_result = compile_multi(module_index, &[("elist_ok.dag", ok)]);
+    let ok_diags: Vec<_> = ok_result
         .diagnostics
         .iter()
         .filter(|d| {
@@ -416,75 +325,58 @@ fn empty_list_with_type_context_no_false_positive(module_index: &ModuleIndex) {
                 }
         })
         .collect();
-
     assert!(
-        empty_list_diags.is_empty(),
-        "empty list with type context should not trigger diagnostic, got: {:?}",
-        diagnostic_messages(&result)
+        ok_diags.is_empty(),
+        "empty list with List<String> context should not diagnose, got: {:?}",
+        diagnostic_messages(&ok_result)
     );
 }
 
-fn clean_compile_produces_zero_diagnostics(module_index: &ModuleIndex) {
-    let source = "module clean\ntype Widget { label: String, count: Int }\n";
-    let result = compile_multi(module_index, &[("clean.dag", source)]);
-    assert!(
-        result.diagnostics.is_empty(),
-        "clean source should produce 0 diagnostics, got: {:?}",
-        diagnostic_messages(&result)
-    );
+fn suite_cases(suite: &str) -> Result<Vec<WitnessCase>, String> {
+    match suite {
+        SUITE_IMPORT_RESOLUTION => Ok(vec![(
+            "import_resolution_variants_and_span",
+            import_resolution_variants_and_span,
+        )]),
+        SUITE_REEXPORT_SURFACE => Ok(vec![(
+            "reexport_surface_missing_variant",
+            reexport_surface_missing_variant,
+        )]),
+        SUITE_TYPE_AND_ARITY => Ok(vec![(
+            "type_and_arity_discrimination",
+            type_and_arity_discrimination,
+        )]),
+        SUITE_EMPTY_LIST_CONTEXT => Ok(vec![(
+            "empty_list_literal_context",
+            empty_list_literal_context,
+        )]),
+        _ => Err(format!(
+            "unknown suite '{suite}'; expected one of: {SUITE_IMPORT_RESOLUTION}, \
+             {SUITE_REEXPORT_SURFACE}, {SUITE_TYPE_AND_ARITY}, {SUITE_EMPTY_LIST_CONTEXT}"
+        )),
+    }
+}
+
+fn run_suite(module_index: &ModuleIndex, suite: &str) -> Result<(), String> {
+    for (name, test) in suite_cases(suite)? {
+        let index = module_index.clone();
+        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| test(&index))).is_err() {
+            return Err(format!("{name} panicked"));
+        }
+    }
+    Ok(())
 }
 
 fn main() -> ExitCode {
-    let module_index = build_module_index();
-
-    let tests: Vec<WitnessCase> = vec![
-        (
-            "missing_export_points_at_name",
-            missing_export_points_at_name,
-        ),
-        (
-            "variant_not_reexported_through_type_only_import",
-            variant_not_reexported_through_type_only_import,
-        ),
-        (
-            "multiple_missing_exports_each_have_own_span",
-            multiple_missing_exports_each_have_own_span,
-        ),
-        (
-            "unresolved_import_names_module",
-            unresolved_import_names_module,
-        ),
-        ("unresolved_type_in_field", unresolved_type_in_field),
-        ("bare_container_type_detected", bare_container_type_detected),
-        (
-            "parameterized_container_no_false_positive",
-            parameterized_container_no_false_positive,
-        ),
-        (
-            "unknown_type_name_no_arity_false_positive",
-            unknown_type_name_no_arity_false_positive,
-        ),
-        (
-            "empty_list_wrong_expected_type",
-            empty_list_wrong_expected_type,
-        ),
-        (
-            "empty_list_with_type_context_no_false_positive",
-            empty_list_with_type_context_no_false_positive,
-        ),
-        (
-            "clean_compile_produces_zero_diagnostics",
-            clean_compile_produces_zero_diagnostics,
-        ),
-    ];
-
-    for (name, test) in tests {
-        let index = module_index.clone();
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| test(&index)));
-        if result.is_err() {
-            return fail(format!("{name} panicked"));
-        }
+    let args: Vec<String> = env::args().skip(1).collect();
+    let suite = args.first().map(String::as_str).unwrap_or("");
+    if suite.is_empty() {
+        return fail("usage: diagnostics_witness <suite>");
     }
 
-    ExitCode::SUCCESS
+    let module_index = build_module_index();
+    match run_suite(&module_index, suite) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(msg) => fail(msg),
+    }
 }
