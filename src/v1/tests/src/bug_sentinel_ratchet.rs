@@ -9,12 +9,12 @@ fn no_bug_no_profile_sentinel_in_tracked_sources() {
         !types_dag.contains(SENTINEL),
         "dag/std/types.dag must not contain fabrication sentinel"
     );
-    let witness_source = include_str!(concat!(
+    let infer_semantics_oracle = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../../src/v2/test/claim/infer_semantics_witness_test.dag"
+        "/../stage0/src/bin/infer_semantics_witness.rs"
     ));
     assert!(
-        !witness_source.contains(SENTINEL),
-        "infer_semantics_witness_test.dag must not contain fabrication fallback"
+        !infer_semantics_oracle.contains(SENTINEL),
+        "infer_semantics_witness.rs must not contain fabrication fallback"
     );
 }
