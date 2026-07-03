@@ -1,0 +1,396 @@
+module test.claim.v1_source_audit_witness_test
+
+import extdeps.filesystem.filesystem_io
+import extdeps.languages.rust.emit {
+  rt_functions,
+  rt_wraps_result,
+  rt_bridge_function_names,
+  rust_method_templates,
+  rust_method_wraps_result,
+}
+import extdeps.languages.python.emit { python_method_templates_flat }
+import extdeps.languages.go.emit { go_method_templates_flat }
+
+data v1_source_audit_witness_provenance: String = "Floor witnesses migrated from src/v1/tests/src/source_audit.rs (41-test v1 source_audit module, 1238 LOC). Grep-style source audits over the v1 pipeline .dag sources and their stage0 .rs mirror ported to filesystem_read + string_contains; the eight registry/spec derivation-parity tests ported to executable checks over the v2 extdeps.languages rust/python/go emit single-authority folds. Two teeth intentionally not carried, see notes below. Deletes the Rust source_audit module (mod removed from src/v1/tests/src/lib.rs)."
+
+data v1_source_audit_witness_notes: String = "Not carried: (1) emit_backends_do_not_consume_inductive_fields was #[ignore]d (failing, never run in CI) in the Rust module, so porting it green would fabricate a passing witness; it is dropped, matching its live status. (2) no_expr_data_before_catch_all_in_core asserted match-arm ORDERING within a function body (NoExprData arm before the catch-all so it is not shadowed); pure string_contains cannot express positional ordering, so the witness carries only the presence of the NoExprData arm. (3) emit_handles_for_loop additionally compiled a for-loop snippet and asserted the emitted Rust contained iter().cloned(); that is a behavioral emit-output assertion, not a source property, and is covered by the floor emit-host MVP smokes, so the witness carries only the emit_typed_for_each source presence. is_copy_checkpoint_parity is carried as a source-presence witness (checkpoint authority + is_copy definition) rather than an executing call, to avoid importing the v1 coercion module into the v2 witness (de-fork name-collision hazard)."
+
+data core_path: String = "src/v1/00_core.dag"
+data parse_path: String = "src/v1/02_parse.dag"
+data resolve3_path: String = "src/v1/03_resolve.dag"
+data env_path: String = "src/v1/04_env.dag"
+data infer_path: String = "src/v1/04_infer.dag"
+data patterns_path: String = "src/v1/04_patterns.dag"
+data resolve4_path: String = "src/v1/04_resolve.dag"
+data sigs_path: String = "src/v1/04_sigs.dag"
+data emit_path: String = "src/v1/05_emit.dag"
+data emit_go_path: String = "src/v1/05_emit_go.dag"
+data emit_python_path: String = "src/v1/05_emit_python.dag"
+data emit_rust_path: String = "src/v1/05_emit_rust.dag"
+data compile_path: String = "src/v1/compile.dag"
+data complexity_path: String = "src/v1/complexity.dag"
+data languages_path: String = "src/v1/languages.dag"
+data coercion_path: String = "src/v1/coercion.dag"
+data service_path: String = "src/v1/04_service.dag"
+data ownership_path: String = "src/v1/ownership.dag"
+
+data std_graph_stage0_path: String = "src/v1/stage0/src/std_graph.rs"
+data compile_stage0_path: String = "src/v1/stage0/src/v1_compiler_compile.rs"
+data complexity_stage0_path: String = "src/v1/stage0/src/v1_compiler_complexity.rs"
+data emit_stage0_path: String = "src/v1/stage0/src/v1_compiler_emit.rs"
+data infer_env_stage0_path: String = "src/v1/stage0/src/v1_compiler_infer_env.rs"
+data parse_stage0_path: String = "src/v1/stage0/src/v1_compiler_parse.rs"
+
+data rust_syntax_spec_path: String = "dag/extdeps/languages/rust/syntax.dag"
+data rust_types_path: String = "dag/extdeps/languages/rust/types.dag"
+
+fn src_has(path: String, needle: String) -> Bool {
+  let r = filesystem_read(path: path)
+  string_contains(s: r.content, pattern: needle)
+}
+
+fn src_lacks(path: String, needle: String) -> Bool {
+  let r = filesystem_read(path: path)
+  !string_contains(s: r.content, pattern: needle)
+}
+
+fn map_has_key(m: Map<String, Bool>, key: String) -> Bool {
+  match map_get(m, key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+fn str_map_has_key(m: Map<String, String>, key: String) -> Bool {
+  match map_get(m, key) {
+    Present { value: _ } => true
+    Absent => false
+  }
+}
+
+test fn pipe_arrow_token_exists() -> Bool {
+  src_has(core_path, "PipeArrow")
+}
+
+test fn null_coalesce_in_binop_kind() -> Bool {
+  src_has(core_path, "NullCoalesce")
+}
+
+test fn parse_supports_pipe_arrow() -> Bool {
+  src_has(parse_path, "PipeArrow")
+    && src_has(parse_path, "parse_pipe_rhs")
+}
+
+test fn parse_supports_null_coalesce() -> Bool {
+  src_has(parse_path, "NullCoalesce")
+}
+
+test fn parser_uses_expected_token_api_for_control_flow() -> Bool {
+  src_has(parse_path, "type ExpectedToken")
+    && src_has(parse_path, "fn token_matches_expected(")
+    && src_lacks(parse_path, "fn kind_matches_tag(")
+}
+
+test fn emit_handles_null_coalesce() -> Bool {
+  src_has(emit_rust_path, "unwrap_or_else")
+}
+
+test fn emit_handles_for_loop() -> Bool {
+  src_has(emit_rust_path, "emit_typed_for_each")
+}
+
+test fn emit_generates_cargo_toml() -> Bool {
+  src_has(emit_rust_path, "emit_cargo_toml")
+}
+
+test fn emit_has_tco_support() -> Bool {
+  src_has(emit_rust_path, "emit_typed_tco_body")
+    && src_has(emit_rust_path, "emit_typed_tco_expr")
+    && src_has(emit_rust_path, "emit_tco_params")
+    && src_has(emit_rust_path, "loop \{")
+    && src_has(emit_rust_path, "continue;")
+    && src_has(emit_rust_path, "break ")
+    && src_has(emit_python_path, "emit_tco_unified")
+    && src_has(emit_path, "fn emit_unified_tco_expr")
+    && src_has(emit_path, "fn emit_unified_tco_body")
+    && src_has(emit_path, "fn emit_unified_tco_match")
+    && src_has(emit_path, "fn emit_tco_unified")
+    && src_has(languages_path, "loop_keyword: \"while True\"")
+    && src_has(languages_path, "continue_str: \"continue\\n\"")
+    && src_has(core_path, "fn expr_has_self_call")
+    && src_has(core_path, "fn expr_has_non_tail_self_call")
+}
+
+test fn parse_supports_where_clause() -> Bool {
+  src_has(parse_path, "try_where_clause")
+    && src_has(parse_path, "parse_predicates")
+}
+
+test fn parse_supports_response_blocks() -> Bool {
+  src_has(parse_path, "parse_optional_response_block")
+    && src_has(parse_path, "parse_optional_mock_response_block")
+}
+
+test fn typecheck_has_cycle_detection() -> Bool {
+  src_has(infer_path, "detect_type_cycles")
+    && src_has(infer_path, "recursive_types")
+}
+
+test fn pattern_lookup_uses_explicit_subject_status() -> Bool {
+  src_has(patterns_path, "type PatternSubject")
+    && src_has(patterns_path, "PatternLookupBlocked")
+    && src_lacks(patterns_path, "scrut.name == \"Error\"")
+    && src_lacks(patterns_path, "variant.name == \"Dynamic\"")
+}
+
+test fn resolve_filters_failed_imports_and_cycles() -> Bool {
+  src_has(resolve3_path, "acyclic_resolved")
+    && src_has(resolve3_path, "r.resolved.target_module != none")
+    && src_has(resolve3_path, "r.diagnostics |> count == 0")
+}
+
+test fn typecheck_gates_inference_on_env_errors_and_resolves_expr_types() -> Bool {
+  src_has(resolve4_path, "fn resolve_expr_types(")
+    && src_lacks(infer_path, "fn resolve_expr_types(")
+    && src_has(infer_path, "if env_errors |> count > 0 \{")
+}
+
+test fn emit_preserves_field_provenance_and_named_arg_ordering() -> Bool {
+  src_has(emit_rust_path, "serde_rename_template")
+    && src_has(emit_path, "order_typed_call_args")
+}
+
+test fn emit_deletes_intrinsic_string_classifier_and_lambda_scope_fallback() -> Bool {
+  src_lacks(emit_path, "classify_intrinsic_method")
+    && src_lacks(emit_rust_path, "extend_scope_for_lambda")
+    && src_lacks(emit_rust_path, "let needs_wrap = false")
+}
+
+test fn final_cleanup_removes_parser_and_cli_fabrication_fallbacks() -> Bool {
+  src_has(parse_path, "parse_recovery_placeholder()")
+    && src_lacks(parse_path, "make_expr_node(expr_data: ExprLiteral \{ value: LitNull \}, inferred: none, span: SourceSpan \{ start: 0, end: 0 \})")
+    && src_lacks(emit_rust_path, "LitNull => \"\"")
+    && src_lacks(emit_rust_path, "None => Node \{ name: \"\"")
+}
+
+test fn unannotated_function_reports_signature_resolution_error() -> Bool {
+  src_has(sigs_path, "fn collect_func_call_edges(")
+    && src_has(sigs_path, "fn topo_resolve_loop(")
+}
+
+test fn service_calls_under_return_inject_service_params() -> Bool {
+  src_has(core_path, "ExprReturn")
+    && src_has(core_path, "ExprForEach")
+    && src_has(core_path, "ExprIndex")
+    && src_has(core_path, "ExprSlice")
+    && src_has(core_path, "fn map_children")
+}
+
+test fn complexity_source_and_stage0_stay_in_parity_on_classifier_hooks() -> Bool {
+  src_has(std_graph_stage0_path, "pub struct CallGraph")
+    && src_has(std_graph_stage0_path, "pub struct DfsFinishAcc")
+    && src_has(std_graph_stage0_path, "pub struct SccComponentAcc")
+    && src_has(std_graph_stage0_path, "pub fn dfs_finish_order(")
+    && src_has(std_graph_stage0_path, "pub fn dfs_collect_component(")
+    && src_has(complexity_path, "fn max_path_self_calls(")
+    && src_has(complexity_path, "fn max_path_self_calls_with_cont(")
+    && src_has(complexity_path, "fn max_path_self_calls_block(")
+    && src_has(complexity_path, "fn build_scc_measure_params(")
+    && src_has(complexity_path, "fn normalize_asymptotic(")
+    && src_has(complexity_path, "fn format_cost_class(")
+    && src_has(complexity_path, "fn format_cost_inner(")
+    && src_has(complexity_path, "fn parenthesize_additive_cost(")
+    && src_has(complexity_path, "fn classify_complexity(")
+    && src_has(complexity_path, "ExprReturn")
+    && src_has(complexity_stage0_path, "pub fn max_path_self_calls(")
+    && src_has(complexity_stage0_path, "pub fn max_path_self_calls_with_cont(")
+    && src_has(complexity_stage0_path, "pub fn max_path_self_calls_block(")
+    && src_has(complexity_stage0_path, "pub fn build_scc_measure_params(")
+    && src_has(complexity_stage0_path, "pub fn normalize_asymptotic(")
+    && src_has(complexity_stage0_path, "pub fn format_cost_class(")
+    && src_has(complexity_stage0_path, "pub fn format_cost_inner(")
+    && src_has(complexity_stage0_path, "pub fn parenthesize_additive_cost(")
+    && src_has(complexity_stage0_path, "pub fn classify_complexity(")
+    && src_has(complexity_stage0_path, "ExprData::ExprReturn")
+    && src_has(complexity_path, "fn classify_complexity(expr: CostExpr) -> String")
+    && src_has(complexity_stage0_path, "pub fn classify_complexity(expr: Rc<CostExpr>) -> String")
+    && src_lacks(complexity_path, "type ComplexityClass")
+    && src_lacks(complexity_path, "formatted: String")
+    && src_lacks(complexity_path, "fn recursive_variant_field_key(")
+    && src_lacks(complexity_path, "fn scc_members_for(")
+    && src_lacks(complexity_path, "split(delimiter: \"::\")")
+    && src_lacks(complexity_stage0_path, "pub formatted: String")
+    && src_lacks(complexity_stage0_path, "pub fn recursive_variant_field_key(")
+    && src_lacks(complexity_stage0_path, "pub fn scc_members_for(")
+    && src_lacks(complexity_stage0_path, ".split(&\"::\".to_string())")
+}
+
+test fn parser_progress_witness_hooks_live_in_parse_layer() -> Bool {
+  src_has(parse_path, "type ParserHelperIdentity")
+    && src_has(parse_path, "type ParserResultWitness")
+    && src_has(parse_path, "fn parser_progress_flag_var(")
+    && src_has(parse_path, "fn parser_helper_identity(")
+    && src_has(parse_path, "fn parser_passthrough_state_expr(")
+    && src_has(parse_path, "fn parser_result_witness(")
+    && src_has(parse_stage0_path, "pub enum ParserHelperIdentity")
+    && src_has(parse_stage0_path, "pub enum ParserResultWitness")
+    && src_has(parse_stage0_path, "pub fn parser_progress_flag_var(")
+    && src_has(parse_stage0_path, "pub fn parser_helper_identity(")
+    && src_has(parse_stage0_path, "pub fn parser_passthrough_state_expr(")
+    && src_has(parse_stage0_path, "pub fn parser_result_witness(")
+    && src_has(complexity_path, "import v1.compiler.parse \{")
+    && src_lacks(complexity_path, "\"skip_newlines\"")
+    && src_lacks(complexity_path, "\"skip_continuation_newlines\"")
+}
+
+test fn recursive_variant_witnesses_are_structural() -> Bool {
+  src_has(env_path, "fn put_inductive_field(")
+    && src_has(env_path, "fn merge_inductive_fields(")
+    && src_has(infer_env_stage0_path, "pub fn put_inductive_field(")
+    && src_has(infer_env_stage0_path, "pub fn merge_inductive_fields(")
+    && src_has(infer_path, "import std.node { compiler_inductive_fields")
+    && src_has(infer_path, "inductive_fields_list_to_map(fields: compiler_inductive_fields)")
+}
+
+test fn compile_gate_keeps_infer_errors_blocking_in_stage0() -> Bool {
+  src_has(compile_path, "analyze_complexity: false")
+    && src_has(compile_path, "let blocking = resolved.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))")
+    && src_lacks(compile_path, "bootstrap_mode")
+    && src_has(compile_stage0_path, "typed_diags")
+    && src_lacks(compile_stage0_path, "BOOTSTRAP_MODE")
+}
+
+test fn testgen_emits_valid_rust() -> Bool {
+  src_lacks(emit_rust_path, "todo!(\"unsupported simple expr")
+    && (src_has(emit_rust_path, "compile_error!(\"unsupported simple expr")
+        || src_has(emit_rust_path, "emit_error_expr(message: \"unsupported simple expr")
+        || src_has(emit_path, "emit_error_expr(message: \"unsupported simple expr"))
+    && src_lacks(emit_rust_path, "Ok(Default::default())")
+    && src_has(emit_rust_path, "has_mock_prefix")
+    && src_lacks(emit_rust_path, "starts_with_prefix")
+    && src_has(emit_path, "extract_test_projections")
+    && src_has(emit_path, "TestProjection")
+    && src_has(languages_path, "Rc<dyn Fn(")
+    && src_has(languages_path, "callable_type_template")
+    && src_has(emit_path, "callable_type_template")
+}
+
+test fn testgen_service_mock_source_gate() -> Bool {
+  src_has(emit_rust_path, "emit_test_file")
+    && src_has(emit_path, "extract_test_projections")
+    && src_has(emit_path, "has_mock_prefix")
+    && src_lacks(emit_path, "Ok(Default::default())")
+    && src_lacks(emit_path, "Value::Object(Default::default())")
+    && src_lacks(emit_path, "_ => \"null\"")
+    && src_lacks(emit_path, "extract_mock_props")
+    && src_lacks(emit_path, "starts_with_prefix")
+}
+
+test fn canonical_accessors_exist_in_core() -> Bool {
+  src_has(core_path, "fn expr_child_at")
+    && src_has(core_path, "fn if_condition")
+    && src_has(core_path, "fn if_then_branch")
+    && src_has(core_path, "fn if_else_branch")
+    && src_has(core_path, "fn match_scrutinee")
+    && src_has(core_path, "fn match_arm_nodes")
+    && src_has(core_path, "fn binop_left")
+    && src_has(core_path, "fn binop_right")
+    && src_has(core_path, "fn unaryop_operand")
+    && src_has(core_path, "fn field_access_base")
+    && src_has(core_path, "fn method_receiver")
+    && src_has(core_path, "fn method_arg_nodes")
+    && src_has(core_path, "fn lambda_body")
+    && src_has(core_path, "fn let_value")
+    && src_has(core_path, "fn let_body")
+    && src_has(core_path, "fn cast_expr")
+    && src_has(core_path, "fn cast_target")
+    && src_has(core_path, "fn foreach_collection")
+    && src_has(core_path, "fn foreach_body")
+    && src_has(core_path, "fn index_base")
+    && src_has(core_path, "fn index_expr")
+    && src_has(core_path, "fn slice_base")
+    && src_has(core_path, "fn slice_start")
+    && src_has(core_path, "fn slice_end")
+    && src_has(core_path, "fn return_value")
+}
+
+test fn no_self_fallback_in_consumer_files() -> Bool {
+  src_lacks(infer_path, "None => texpr") && src_lacks(infer_path, "None => expr \}")
+    && src_lacks(service_path, "None => texpr") && src_lacks(service_path, "None => expr \}")
+    && src_lacks(emit_path, "None => texpr") && src_lacks(emit_path, "None => expr \}")
+    && src_lacks(emit_rust_path, "None => texpr") && src_lacks(emit_rust_path, "None => expr \}")
+    && src_lacks(emit_go_path, "None => texpr") && src_lacks(emit_go_path, "None => expr \}")
+    && src_lacks(emit_python_path, "None => texpr") && src_lacks(emit_python_path, "None => expr \}")
+    && src_lacks(complexity_path, "None => texpr") && src_lacks(complexity_path, "None => expr \}")
+    && src_lacks(ownership_path, "None => texpr") && src_lacks(ownership_path, "None => expr \}")
+}
+
+test fn serializer_has_no_expr_other_fallback() -> Bool {
+  src_lacks(compile_path, "ExprOther")
+}
+
+test fn parse_item_keyword_arm_count() -> Bool {
+  src_lacks(parse_path, "Some \{ value: ShKw")
+}
+
+test fn second_syntax_spec_exists() -> Bool {
+  src_has(rust_syntax_spec_path, "rust_syntax_spec: SyntaxSpec")
+    && src_has(rust_syntax_spec_path, "rust_item_forms")
+    && src_has(rust_syntax_spec_path, "rust_operators")
+    && src_has(rust_syntax_spec_path, "rust_keyword_literals")
+    && src_has(rust_syntax_spec_path, "\"struct\"")
+    && src_has(rust_syntax_spec_path, "\"enum\"")
+    && src_has(rust_syntax_spec_path, "\"impl\"")
+}
+
+test fn no_expr_data_arm_present_in_core() -> Bool {
+  src_has(core_path, "NoExprData =>")
+}
+
+test fn rt_functions_derived_from_registry() -> Bool {
+  map_has_key(rt_functions(), "filesystem_read")
+    && map_has_key(rt_functions(), "concat")
+    && map_has_key(rt_functions(), "index_by")
+}
+
+test fn rt_bridge_function_names_derived_from_registry() -> Bool {
+  let overridden = match map_get(rt_bridge_function_names(), "index_by") {
+    Present { value: b } => b == "rc_index_by"
+    Absent => false
+  }
+  overridden && !str_map_has_key(rt_bridge_function_names(), "concat")
+}
+
+test fn rt_wraps_result_derived_from_registry() -> Bool {
+  map_has_key(rt_wraps_result(), "append")
+    && map_has_key(rt_wraps_result(), "map_keys")
+    && !map_has_key(rt_wraps_result(), "concat")
+}
+
+test fn method_wraps_result_derived_from_specs() -> Bool {
+  map_has_key(rust_method_wraps_result(), "split")
+    && !map_has_key(rust_method_wraps_result(), "last")
+}
+
+test fn method_templates_derived_from_specs() -> Bool {
+  str_map_has_key(rust_method_templates(), "split")
+    && str_map_has_key(rust_method_templates(), "last")
+    && str_map_has_key(rust_method_templates(), "first")
+}
+
+test fn python_flat_method_templates_exclude_bridge_routed() -> Bool {
+  !str_map_has_key(python_method_templates_flat(), "map")
+    && !str_map_has_key(python_method_templates_flat(), "fold")
+    && !str_map_has_key(python_method_templates_flat(), "concat")
+}
+
+test fn go_flat_method_templates_exclude_bridge_routed() -> Bool {
+  !str_map_has_key(go_method_templates_flat(), "map")
+    && !str_map_has_key(go_method_templates_flat(), "fold")
+    && !str_map_has_key(go_method_templates_flat(), "concat")
+}
+
+test fn is_copy_checkpoint_authority_present() -> Bool {
+  src_has(rust_types_path, "rust_type_checkpoints")
+    && src_has(coercion_path, "fn is_copy(")
+}

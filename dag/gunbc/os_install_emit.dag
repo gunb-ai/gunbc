@@ -5,6 +5,9 @@ import std.types { List, String }
 import extdeps.os.ubuntu_autoinstall {
   UbuntuAutoinstallPayload,
   AutoinstallIdentity,
+  AutoinstallStoragePolicy,
+  StoragePolicyAbsent,
+  StoragePolicyDirectLayout,
 }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
@@ -41,9 +44,19 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
     base
   }
   if payload.fully_automated {
-    append(with_ssh, items: [
+    let automated = append(with_ssh, items: [
       kv(key: "interactive-sections", value: yaml_sequence(elements: empty_yaml_values)),
     ])
+    match payload.storage_policy {
+      StoragePolicyAbsent => automated
+      StoragePolicyDirectLayout => append(automated, items: [
+        kv(key: "storage", value: yaml_mapping(entries: [
+          kv(key: "layout", value: yaml_mapping(entries: [
+            kv(key: "name", value: yaml_string(s: "direct")),
+          ])),
+        ])),
+      ])
+    }
   } else {
     with_ssh
   }

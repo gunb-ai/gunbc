@@ -1,0 +1,10 @@
+module test.claim.effects_rest_transport_parse_witness_test
+
+import tools.effects_rest_transport_witness_transport { run_effects_rest_transport_witness }
+import std.logic { Bool }
+
+data effects_rest_transport_parse_witness_provenance: String = "Floor witness migrated from src/v1/tests/src/effects.rs REST-transport integration tests (5-test-migration lane): live extdep parse via rest_transport_facts host physics — fingerprint uniqueness, tracked-op resolution, derive_op_effect, and idempotency obligations — until REST transport rows are modeled in .dag authority."
+
+test fn effects_rest_transport_parse_keystone_holds() -> Bool {
+  run_effects_rest_transport_witness()
+}

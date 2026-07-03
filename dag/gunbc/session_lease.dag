@@ -1,0 +1,111 @@
+module gunbc.session_lease
+
+import std.types { String, NonEmptyStr, Int, Bool }
+import std.upsert_decision {
+  ObservationVerdict,
+  Converged,
+  Absent,
+  Drifted,
+  Conflict,
+  Inaccessible,
+  UpsertDecision,
+  UpsertClassification,
+  Noop,
+  Apply,
+  Refuse,
+}
+
+data session_lease_doc: String = "Process port lease observation→verdict→plan. Classifier compares observed port and process fingerprint against ProcessPortScope — observation carries facts, not pre-classified ownership. expected_owner_label is human/diagnostic only; expected_process_fingerprint is the semantic authority."
+
+type ProcessPortScope {
+  listen_port: Int
+  expected_owner_label: NonEmptyStr
+  expected_process_fingerprint: NonEmptyStr
+}
+
+type ProcessPortObservation
+  = PortAbsent
+  | PortObserved {
+      observed_port: Int
+      pid: Int
+      cmdline: NonEmptyStr
+      process_fingerprint: NonEmptyStr
+    }
+  | PortObservedStaleExpected {
+      observed_port: Int
+      pid: Int
+      cmdline: NonEmptyStr
+      process_fingerprint: NonEmptyStr
+      stale_reason: NonEmptyStr
+    }
+  | PortInaccessible
+
+type ProcessLeasePlan
+  = Start
+  | DrainMatchingStaleThenStart
+  | RefuseForeignOwner
+
+fn classify_process_port(
+  scope: ProcessPortScope,
+  obs: ProcessPortObservation,
+) -> ObservationVerdict {
+  match obs {
+    PortAbsent => Absent
+    PortInaccessible => Inaccessible
+    PortObserved {
+      observed_port: port,
+      pid: _,
+      cmdline: _,
+      process_fingerprint: fingerprint,
+    } =>
+      if port != scope.listen_port {
+        Inaccessible
+      } else {
+        if fingerprint == scope.expected_process_fingerprint {
+          Converged
+        } else {
+          Conflict
+        }
+      }
+    PortObservedStaleExpected {
+      observed_port: port,
+      pid: _,
+      cmdline: _,
+      process_fingerprint: fingerprint,
+      stale_reason: _,
+    } =>
+      if port != scope.listen_port {
+        Inaccessible
+      } else {
+        if fingerprint == scope.expected_process_fingerprint {
+          Drifted
+        } else {
+          Conflict
+        }
+      }
+  }
+}
+
+fn decision_for_process_port_verdict(
+  verdict: ObservationVerdict,
+) -> UpsertDecision<ProcessLeasePlan> {
+  match verdict {
+    Converged => Noop
+    Absent => Apply { plan: Start }
+    Drifted => Apply { plan: DrainMatchingStaleThenStart }
+    Conflict => Refuse { reason: "foreign process owns port" as NonEmptyStr }
+    Inaccessible => Refuse { reason: "port inaccessible or wrong listen port" as NonEmptyStr }
+    UnknownRefused => Refuse { reason: "port observation refused" as NonEmptyStr }
+  }
+}
+
+fn classify_process_port_upsert(
+  scope: ProcessPortScope,
+  obs: ProcessPortObservation,
+) -> UpsertClassification<ProcessLeasePlan> {
+  let verdict = classify_process_port(scope: scope, obs: obs)
+  UpsertClassification {
+    verdict: verdict,
+    decision: decision_for_process_port_verdict(verdict: verdict),
+  }
+}
