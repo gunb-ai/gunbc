@@ -1,0 +1,10 @@
+module test.claim.diagnostics_test
+
+import tools.diagnostics_witness_transport { run_diagnostics_witness }
+import std.logic { Bool }
+
+data diagnostics_witness_provenance: String = "Floor witness migrated from src/v1/tests/src/diagnostics.rs (11 active #[test] fns; duplicate_module_detected remains #[ignore] under PERF track). Exercises v1 compiler diagnostic variant, message text, and span→line/col mapping via compile_multi host physics until that harness is witness-layer importable from pure .dag floor witnesses."
+
+test fn diagnostics_keystone_holds() -> Bool {
+  run_diagnostics_witness()
+}

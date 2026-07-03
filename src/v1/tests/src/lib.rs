@@ -39,8 +39,6 @@ mod dependency_pool_index_compile_test;
 #[cfg(test)]
 mod derive_bound_fail_closed_test;
 #[cfg(test)]
-mod diagnostics;
-#[cfg(test)]
 mod eval_measurement_purity_test;
 #[cfg(test)]
 mod faithful_string_element_char_witness_test;
