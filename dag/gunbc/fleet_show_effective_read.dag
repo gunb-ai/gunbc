@@ -375,11 +375,10 @@ fn show_effective_read_cannot_converge(read: ShowEffectiveRead<RunnerSliceCapEff
   }
 }
 
-fn fleet_runner_units_from_rows(host: HostIdentity, rows: List<RunnerUnitLiveReadRow>, probed_at: NonEmptyStr) -> FleetRunnerUnitsLiveRead {
+fn fleet_runner_units_from_rows(host: HostIdentity, rows: List<RunnerUnitLiveReadRow>) -> FleetRunnerUnitsLiveRead {
   FleetRunnerUnitsLiveRead {
     host: host,
     units: map(rows, f: fn(row) { runner_unit_live_read_typed(row: row) }),
-    probed_at: probed_at,
   }
 }
 
@@ -395,7 +394,7 @@ fn fleet_host_effective_read_receipt(
         value: FleetHostEffectiveReadReceipt {
           host: host,
           runner_slice_cap: runner_slice_cap_live_read_typed(row: slice_row),
-          runner_units: fleet_runner_units_from_rows(host: host, rows: unit_rows, probed_at: width_row.probed_at),
+          runner_units: fleet_runner_units_from_rows(host: host, rows: unit_rows),
           runner_width: width,
         }
       }
@@ -408,6 +407,7 @@ fn fleet_host_effective_read_grounded_from_fixture(
   slice_row: RunnerSliceCapLiveReadRow,
   unit_rows: List<RunnerUnitLiveReadRow>,
   width_row: RunnerWidthLiveReadRow,
+  probed_at: NonEmptyStr,
 ) -> FleetHostEffectiveReadGroundedReceipt? {
   match fleet_host_effective_read_receipt(
     host: host,
@@ -421,9 +421,9 @@ fn fleet_host_effective_read_grounded_from_fixture(
           host: host,
           effective: effective,
           runner_slice_cap_read: show_effective_read_from_slice_cap_row(row: slice_row),
-          runner_units_read: show_effective_read_from_runner_units(host: host, rows: unit_rows, probed_at: width_row.probed_at),
+          runner_units_read: show_effective_read_from_runner_units(host: host, rows: unit_rows),
           runner_width_read: show_effective_read_from_width_row(row: width_row),
-          probed_at: width_row.probed_at,
+          probed_at: probed_at,
         }
       }
     Absent => none
@@ -444,6 +444,7 @@ fn fixture_srv1_host_effective_read_grounded_receipt() -> FleetHostEffectiveRead
     slice_row: gunbc_srv1_runner_slice_cap_fixture_row,
     unit_rows: fixture_srv1_runner_units_rows(),
     width_row: gunbc_srv1_runner_width_fixture_row,
+    probed_at: gunbc_srv1_runner_slice_cap_fixture_row.probed_at,
   )
 }
 
@@ -453,6 +454,7 @@ fn fixture_srv2_host_effective_read_grounded_receipt() -> FleetHostEffectiveRead
     slice_row: gunbc_srv2_runner_slice_cap_fixture_row,
     unit_rows: fixture_srv2_runner_units_rows(),
     width_row: gunbc_srv2_runner_width_fixture_row,
+    probed_at: gunbc_srv2_runner_slice_cap_fixture_row.probed_at,
   )
 }
 
