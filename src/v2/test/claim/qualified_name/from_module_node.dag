@@ -7,7 +7,7 @@ import v2.extdeps.languages.dag {
 import v2.std.algebra { Cons, Empty, fold_list_node }
 import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName, qualified_name_eq }
+import v2.std.qualified_name { QualifiedName }
 import v2.std.logic { Bool }
 import v2.std.verification {
   EqualsClaim,
@@ -45,7 +45,7 @@ fn fmn_outcome_accepted(out: Outcome<QualifiedName>) -> Bool {
 fn fmn_value_eq(out: Outcome<QualifiedName>, expected: QualifiedName) -> Bool {
   match out {
     Rejected { diagnostics: _ } => false
-    Accepted { value: actual, diagnostics: _ } => qualified_name_eq(a: actual, b: expected)
+    Accepted { value: actual, diagnostics: _ } => actual == expected
   }
 }
 
@@ -77,7 +77,7 @@ data claim_from_module_node_accepted: TestClaim = EqualsClaim {
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: fmn_bool_atom(b: fmn_value_eq(
     out: qualified_name_from_module_node(root: fmn_module_header_node),
-    expected: QnCons { head: ^fmn_sym_a, tail: QnCons { head: ^fmn_sym_b, tail: QnEmpty } }
+    expected: Cons { head: ^fmn_sym_a, tail: Cons { head: ^fmn_sym_b, tail: Empty } }
   )),
   rhs: fmn_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }

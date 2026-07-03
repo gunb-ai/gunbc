@@ -11,38 +11,14 @@ import v2.std.diagnostic {
   outcome_accepted,
   outcome_rejected
 }
-import v2.std.algebra { fold_list_right }
+import v2.std.algebra { Cons, Empty, FreeMonoid, HeadAbsent, HeadFound, fold_list_right, list_head }
 import v2.std.collection { List }
 import v2.std.compilers.lexing { symbol_intern_lexeme }
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Conj, Edge, Named, Node, NodeFold, Symbol, TypeNode, fold_node }
 import v2.std.text { String, string_is_empty }
 
-type QualifiedName
-  = QnEmpty
-  | QnCons { head: Symbol, tail: QualifiedName }
-
-fn qualified_name_singleton(sym: Symbol) -> QualifiedName {
-  QnCons { head: sym, tail: QnEmpty }
-}
-
-fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
-  match a {
-    QnEmpty => match b { QnEmpty => true  QnCons { head: _, tail: _ } => false }
-    QnCons { head: ha, tail: ta } =>
-      match b {
-        QnEmpty => false
-        QnCons { head: hb, tail: tb } => ha == hb && qualified_name_eq(a: ta, b: tb)
-      }
-  }
-}
-
-fn qualified_name_for_all(qn: QualifiedName, predicate: fn(Symbol) -> Bool) -> Bool {
-  match qn {
-    QnEmpty => true
-    QnCons { head: h, tail: t } => predicate(h) && qualified_name_for_all(qn: t, predicate: predicate)
-  }
-}
+type QualifiedName = FreeMonoid<Symbol>
 
 type QnFoldStatus
   = QnFoldInit
@@ -55,7 +31,7 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
   match n.kind {
     TypeNode { connective: Conj } =>
       if count(n.children) == 0 {
-        QnFoldDone { qn: QnEmpty }
+        QnFoldDone { qn: Empty }
       } else if count(n.children) == 2 {
         QnFoldInit
       } else {
@@ -67,7 +43,7 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
       }
     TypeNode { connective: Atom { identity: sym } } =>
       if count(n.children) == 0 {
-        QnFoldDone { qn: QnCons { head: sym, tail: QnEmpty } }
+        QnFoldDone { qn: Cons { head: sym, tail: Empty } }
       } else {
         QnFoldError { diag: Diagnostic {
           reason: ^qualified_name_structure_invalid,
@@ -97,11 +73,19 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                 match edge.target.kind {
                   TypeNode { connective: Atom { identity: _ } } =>
                     match child_qn {
-                      QnCons { head: sym, tail: QnEmpty } =>
-                        match acc {
-                          QnFoldInit => QnFoldHeadSeen { sym: sym }
-                          QnFoldTailSeen { tail: tail_qn } => QnFoldDone { qn: QnCons { head: sym, tail: tail_qn } }
-                          _ => QnFoldError { diag: Diagnostic {
+                      Cons { head: sym, tail: child_tail } =>
+                        match list_head(xs: child_tail) {
+                          HeadAbsent =>
+                            match acc {
+                              QnFoldInit => QnFoldHeadSeen { sym: sym }
+                              QnFoldTailSeen { tail: tail_qn } => QnFoldDone { qn: Cons { head: sym, tail: tail_qn } }
+                              _ => QnFoldError { diag: Diagnostic {
+                                reason: ^qualified_name_structure_invalid,
+                                at: node_locus(node: edge.target),
+                                correction: Unavailable { reason: ExternalContractUnknown }
+                              }}
+                            }
+                          HeadFound { value: _ } => QnFoldError { diag: Diagnostic {
                             reason: ^qualified_name_structure_invalid,
                             at: node_locus(node: edge.target),
                             correction: Unavailable { reason: ExternalContractUnknown }
@@ -124,7 +108,7 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
                   TypeNode { connective: Conj } =>
                     match acc {
                       QnFoldInit => QnFoldTailSeen { tail: child_qn }
-                      QnFoldHeadSeen { sym: sym } => QnFoldDone { qn: QnCons { head: sym, tail: child_qn } }
+                      QnFoldHeadSeen { sym: sym } => QnFoldDone { qn: Cons { head: sym, tail: child_qn } }
                       _ => QnFoldError { diag: Diagnostic {
                         reason: ^qualified_name_structure_invalid,
                         at: node_locus(node: edge.target),
@@ -159,19 +143,19 @@ fn qn_fold_step(acc: QnFoldStatus, edge: Edge, child: QnFoldStatus) -> QnFoldSta
   }
 }
 
-fn qualified_name_from_segment_list(segments: List<String>) -> QualifiedName {
+fn qualified_name_from_segment_list(segments: List<String>) -> FreeMonoid<Symbol> {
   fold_list_right(
     xs: segments,
-    empty: QnEmpty,
+    empty: Empty,
     snoc: fn(tail, segment) {
-      QnCons { head: symbol_intern_lexeme(lexeme: segment), tail: tail }
+      Cons { head: symbol_intern_lexeme(lexeme: segment), tail: tail }
     }
   )
 }
 
-fn qualified_name_from_dotted_string(dotted: String) -> QualifiedName {
+fn qualified_name_from_dotted_string(dotted: String) -> FreeMonoid<Symbol> {
   if string_is_empty(s: dotted) {
-    QnEmpty
+    Empty
   } else {
     qualified_name_from_segment_list(segments: dotted.split(delimiter: "."))
   }

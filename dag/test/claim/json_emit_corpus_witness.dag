@@ -18,7 +18,8 @@ fn json_number_lexeme_record_carrier_gone(grammar_content: String) -> Bool {
 }
 
 fn grammar_mints_json_number_lexeme(grammar_content: String) -> Bool {
-  string_contains(s: grammar_content, pattern: "as JsonNumberLexeme")
+  string_contains(s: grammar_content, pattern: "json_number_lexeme_unchecked")
+    && string_contains(s: grammar_content, pattern: "json_number_lexeme_valid")
 }
 
 fn emit_has_no_unblessed_json_number_lexeme_cast(emit_content: String) -> Bool {

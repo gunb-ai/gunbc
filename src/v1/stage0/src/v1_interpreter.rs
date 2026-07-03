@@ -129,7 +129,7 @@ fn resolve_sym(sym: Symbol) -> String {
         .unwrap_or_else(|| format!("#{}", sym.0))
 }
 
-pub fn qualified_name_value_to_module_path(value: &Value) -> String {
+pub fn free_monoid_symbol_value_to_dotted_string(value: &Value) -> String {
     match value {
         Value::Variant {
             variant_name,
@@ -137,10 +137,10 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
             ..
         } => {
             let variant = resolve_sym(*variant_name);
-            if variant == "QnEmpty" {
+            if variant == "Empty" {
                 return String::new();
             }
-            if variant == "QnCons" {
+            if variant == "Cons" {
                 let head = fields
                     .iter()
                     .find(|(k, _)| resolve_sym(*k) == "head")
@@ -166,26 +166,24 @@ pub fn qualified_name_value_to_module_path(value: &Value) -> String {
                         }
                         _ => None,
                     })
-                    .unwrap_or_else(|| {
-                        panic!("qualified_name_to_module_path: QnCons.head not Str")
-                    });
+                    .unwrap_or_else(|| panic!("free_monoid_symbol_to_dotted: Cons.head not Str"));
                 let tail = fields
                     .iter()
                     .find(|(k, _)| resolve_sym(*k) == "tail")
                     .map(|(_, v)| v)
-                    .expect("qualified_name_to_module_path: QnCons.tail missing");
-                let rest = qualified_name_value_to_module_path(tail);
+                    .expect("free_monoid_symbol_to_dotted: Cons.tail missing");
+                let rest = free_monoid_symbol_value_to_dotted_string(tail);
                 if rest.is_empty() {
                     head
                 } else {
                     format!("{head}.{rest}")
                 }
             } else {
-                panic!("qualified_name_to_module_path: unexpected variant '{variant}'");
+                panic!("free_monoid_symbol_to_dotted: unexpected variant '{variant}'");
             }
         }
         other => {
-            panic!("qualified_name_to_module_path: expected QualifiedName variant, got {other:?}")
+            panic!("free_monoid_symbol_to_dotted: expected FreeMonoid variant, got {other:?}")
         }
     }
 }
@@ -5668,7 +5666,7 @@ fn eval_builtin(
                 msg: "extdeps_shape_transport_policy_facts_for_qualified_name requires a QualifiedName"
                     .to_string(),
             })?;
-            let module_path = crate::cli_run::qualified_name_value_to_module_path(qn);
+            let module_path = crate::cli_run::free_monoid_symbol_value_to_dotted_string(qn);
             let facts = crate::cli_run::extdeps_shape_transport_policy_module_facts(&module_path);
             let argv_items: Vec<Value> = facts
                 .argv_facts
@@ -5888,6 +5886,14 @@ fn eval_builtin(
         "test_migration_debt_known_covered_module_is_not_debt" => Ok(Some(Value::Bool(
             crate::cli_run::test_migration_debt_known_covered_module_is_not_debt(),
         ))),
+        "test_migration_delete_guard_holds" => Ok(Some(Value::Bool(
+            crate::cli_run::test_migration_delete_guard_holds(),
+        ))),
+        "test_migration_delete_guard_uncovered_deletes" => {
+            let paths = crate::cli_run::test_migration_delete_guard_uncovered_deletes();
+            let items: Vec<Value> = paths.into_iter().map(Value::Str).collect();
+            Ok(Some(list_value(items)))
+        }
 
         "inert_carrier_names_live" => {
             let names = crate::cli_run::inert_carrier_names_live();

@@ -16,7 +16,7 @@ import v2.extdeps.languages.dag {
 import v2.std.algebra { Cons, Empty, FreeMonoid, fold_list_node }
 import v2.std.collection { empty_map }
 import v2.std.node { Atom, Conj, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.qualified_name { QnCons, QnEmpty, QualifiedName }
+import v2.std.qualified_name { QualifiedName }
 import v2.std.verification {
   CompilesClaim,
   ManualAnchorAbsent,
@@ -77,7 +77,7 @@ fn malformed_root_node() -> Node {
 }
 
 fn malformed_entry_name() -> QualifiedName {
-  QnCons { head: ^malformed_seg, tail: QnEmpty }
+  Cons { head: ^malformed_seg, tail: Empty }
 }
 
 fn roots_with_malformed_entry() -> FreeMonoid<Node> {

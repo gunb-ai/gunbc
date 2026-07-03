@@ -116,6 +116,14 @@ path = "src/bin/effects_rest_transport_witness.rs"
 name = "infer_semantics_witness"
 path = "src/bin/infer_semantics_witness.rs"
 
+# Host-physics floor witness for the affected-set floor skip/discovery mechanism
+# (run_discovery_corpus_with_options node-precise skip semantics). Runtime host-effect
+# behavior (git diff observation, multi-entry resolve, per-witness skip decisions), not
+# pure logic, so a bare .dag test fn would be spec-without-execution (DESIGN §5).
+[[bin]]
+name = "floor_skip_discovery_witness"
+path = "src/bin/floor_skip_discovery_witness.rs"
+
 # Host-physics floor witness for the v1 interpreter recorded-fixture record ->
 # hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real
 # claim_batch binary with --record/--hermetic/--fixture-store + mutates fixtures on

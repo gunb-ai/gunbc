@@ -35,7 +35,6 @@ import v2.std.node {
   SyntheticOccurrence,
   TypeNode
 }
-import v2.std.qualified_name { QnCons, QnEmpty }
 
 fn pa_qn_node(seg: Symbol) -> Node {
   fold_list_node(
@@ -135,11 +134,11 @@ fn pa_duplicate_module_roots() -> FreeMonoid<Node> {
 fn pa_cross_file_admission() -> Admission {
   Admission {
     subject: ResolutionSubject {
-      name: QnCons { head: ^pa_subject_seg, tail: QnEmpty }
+      name: Cons { head: ^pa_subject_seg, tail: Empty }
     },
     imports: Cons {
       head: Import {
-        target: QnCons { head: ^pa_imported_seg, tail: QnEmpty },
+        target: Cons { head: ^pa_imported_seg, tail: Empty },
         visibility: ImportVisible
       },
       tail: Empty
@@ -206,7 +205,7 @@ test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
     ingest: pa_ingest_non_source_ingest,
     admission: Admission {
       subject: ResolutionSubject {
-        name: QnCons { head: ^pa_subject_seg, tail: QnEmpty }
+        name: Cons { head: ^pa_subject_seg, tail: Empty }
       },
       imports: Empty
     },
