@@ -6005,7 +6005,8 @@ mod node_frontier_plumbing_controls {
         let index = build_multi_entry_index(&roots);
         let emit_rel = "dag/extdeps/languages/json/emit.dag";
         let dag_diff = include_str!("../testdata/emit_import_preamble_fn_body.diff");
-        let host_diff = "diff --git a/src/v1/stage0/src/cli_run.rs b/src/v1/stage0/src/cli_run.rs\n\
+        let host_diff =
+            "diff --git a/src/v1/stage0/src/cli_run.rs b/src/v1/stage0/src/cli_run.rs\n\
                           --- a/src/v1/stage0/src/cli_run.rs\n\
                           +++ b/src/v1/stage0/src/cli_run.rs\n\
                           @@ -1,0 +2,1 @@\n+// synthetic\n";
