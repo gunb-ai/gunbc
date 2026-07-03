@@ -1039,7 +1039,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: Patte
         PatternLookupBlocked => none
       }
       let annotated_variant_name = variant_name
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name, source_indices: scope.type_env.source_indices, field_binding_count: bindings |> count)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: variant_name, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let annotated_bindings = bindings |> map(binding =>
         let field_lookup = lookup_field_in_variant(variant: variant_subject, field_name: field_binding_name_at(n: binding, source_indices: scope.type_env.source_indices), module_name: scope.module_name, source_indices: scope.type_env.source_indices)
@@ -1161,7 +1161,7 @@ fn extend_scope_with_pattern_node(scope: InferScope, pattern: MatchPattern, scru
     LitPattern { value: _ } => PatternScopeResult { scope: scope, diagnostics: [] }
     VariantPattern { name: vname, parent_enum: _, field_bindings: bindings } =>
       let resolved_scrut = resolve_pattern_subject(scope: scope, scrutinee_subject: scrutinee_subject)
-      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name, source_indices: scope.type_env.source_indices, field_binding_count: bindings |> count)
+      let variant_lookup = lookup_variant_in_type(scrut: resolved_scrut, variant_name: vname, module_name: scope.module_name, env: scope.type_env, field_binding_count: bindings |> count)
       let variant_subject = lookup_result_subject(result: variant_lookup)
       let variant_diags = variant_lookup.diagnostics
       fold(bindings, init: PatternScopeResult { scope: scope, diagnostics: variant_diags }, f: (acc, fb) =>
@@ -2795,8 +2795,22 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
 }
 
 fn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
-  if is_deferred_field_access_base(n: n, env: env) { n }
-  else {
+  if is_deferred_field_access_base(n: n, env: env) {
+    let name = authored_name_at(source_indices: env.source_indices, node: n)
+    match lookup_type_by_name(env: env, name: name) {
+      Present { value: decl } =>
+        if decl.connective == Conj && (decl.params |> count) > 0 {
+          decl
+        } else if decl.connective == NoConnective && decl.children |> count == 0 && decl.inferred != none {
+          match decl.inferred {
+            Present { value: Resolved { node: target } } =>
+              expand_type_for_field_access(n: target, env: env, module_name: module_name)
+            _ => n
+          }
+        } else { n }
+      Absent => n
+    }
+  } else {
     let origin_name = authored_name_at(source_indices: env.source_indices, node: n)
     expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, origin_name: origin_name, seen: empty_map(), lossy: false)
   }

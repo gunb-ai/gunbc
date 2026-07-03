@@ -3,7 +3,7 @@ module v1.compiler.infer_patterns
 import std.types { SourceSpan }
 import v1.std.core {
   Node,
-  find_child_named, NewlineIndex, authored_name_at,
+  find_child_named, NewlineIndex, authored_name_at, generic_param_name_at,
   ExprData, NoExprData,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   Cardinality, Required,
@@ -24,6 +24,67 @@ import v1.compiler.infer_types {
 import v1.compiler.infer_env {
   TypeEnv,
   lookup_type, lookup_type_by_name
+}
+import v1.compiler.infer_resolve {
+  is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots
+}
+
+fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node> {
+  let decl = resolve_generic_use_decl(env: env, n: scrut_node)
+  fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
+    let slot = generic_param_name_at(n: pair.second, source_indices: env.source_indices)
+    match scrut_node.children |> skip(pair.first) |> first {
+      Present { value: arg } => map_insert(acc, slot, arg)
+      Absent => acc
+    }
+  )
+}
+
+fn expand_scrut_type_for_variant_lookup(scrut_node: Node, env: TypeEnv) -> Node {
+  if scrut_node.connective == Disj { scrut_node }
+  else {
+    match scrut_node.inferred {
+      Present { value: Resolved { node: target } } =>
+        expand_scrut_type_for_variant_lookup(scrut_node: target, env: env)
+      _ =>
+        let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
+        if scrut_node.connective == NoConnective && scrut_node.children |> count > 0
+          && is_user_generic_use_site(n: scrut_node, env: env) {
+          match lookup_type_by_name(env: env, name: name) {
+            Present { value: decl } =>
+              if decl.inferred != none && decl.connective == NoConnective && decl.children |> count == 0 {
+                match decl.inferred {
+                  Present { value: Resolved { node: target } } =>
+                    let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+                    let expanded = substitute_type_slots(
+                      n: target,
+                      slot_bindings: subst,
+                      decl_name: name,
+                      source_indices: env.source_indices
+                    )
+                    if expanded.connective == Disj { expanded } else { expanded }
+                  _ => scrut_node
+                }
+              } else if decl.connective == Disj { decl }
+              else { scrut_node }
+            Absent => scrut_node
+          }
+        } else {
+          match lookup_type_by_name(env: env, name: name) {
+            Present { value: def } =>
+              if def.connective == Disj { def }
+              else if def.inferred != none && def.connective == NoConnective {
+                match def.inferred {
+                  Present { value: Resolved { node: target } } =>
+                    if target.connective == Disj { target } else { scrut_node }
+                  _ => scrut_node
+                }
+              } else { scrut_node }
+            Absent => scrut_node
+          }
+        }
+    }
+  }
 }
 
 fn is_witness_type_name(name: String) -> Bool {
@@ -130,13 +191,15 @@ fn variant_not_found_result(scrut: Node, variant_name: String, module_name: Stri
   )
 }
 
-fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>, field_binding_count: Int) -> NodeLookupResult {
+fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, env: TypeEnv, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
     PatternDynamic { span: dynamic_span } =>
       node_lookup_failed(diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: "unresolved", span: dynamic_span }, module_name: module_name)])
     PatternResolved { node: scrut_node } =>
+      let source_indices = env.source_indices
+      let scrut_node = expand_scrut_type_for_variant_lookup(scrut_node: scrut_node, env: env)
       let scrut_opt = scrut_node.return_cardinality == CardOptional
       if scrut_node.connective == NoConnective && scrut_node.children |> count == 0 && scrut_opt == false {
         node_lookup_failed(diagnostics: [])

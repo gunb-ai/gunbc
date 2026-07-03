@@ -1905,7 +1905,7 @@ pub fn annotate_pattern_parent_enums(
                     resolved_scrut.clone(),
                     variant_name.clone(),
                     scope.module_name.clone(),
-                    scope.type_env.clone().source_indices.clone(),
+                    scope.type_env.clone(),
                     (bindings.clone().len() as i64),
                 );
                 let variant_subject = lookup_result_subject(variant_lookup);
@@ -2188,7 +2188,7 @@ pub fn extend_scope_with_pattern_node(
                 resolved_scrut,
                 vname.clone(),
                 scope.module_name.clone(),
-                scope.type_env.clone().source_indices.clone(),
+                scope.type_env.clone(),
                 (bindings.clone().len() as i64),
             );
             let variant_subject = lookup_result_subject(variant_lookup.clone());
@@ -5577,7 +5577,29 @@ pub fn expand_type_for_field_access(
     module_name: String,
 ) -> Rc<Node> {
     if is_deferred_field_access_base(n.clone(), env.clone()) {
-        n.clone()
+        let name = authored_name_at(env.source_indices.clone(), n.clone());
+        match lookup_type_by_name(env.clone(), name.clone()) {
+            Some(decl) => {
+                if ((decl.connective.clone() == Connective::Conj)
+                    && ((decl.params.clone().len() as i64) > 0))
+                {
+                    decl.clone()
+                } else if (((decl.connective.clone() == Connective::NoConnective)
+                    && ((decl.children.clone().len() as i64) == 0))
+                    && (decl.inferred.clone() != None))
+                {
+                    match decl.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: target, .. }) => {
+                            expand_type_for_field_access(target, env, module_name)
+                        }
+                        _ => n.clone(),
+                    }
+                } else {
+                    n.clone()
+                }
+            }
+            None => n.clone(),
+        }
     } else {
         {
             let origin_name = authored_name_at(env.source_indices.clone(), n.clone());
