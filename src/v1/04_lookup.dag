@@ -145,7 +145,7 @@ fn resolve_method_receiver_type(receiver_type: Node, env: TypeEnv) -> Node {
   } else {
     let resolved = reground_alias_carrier_identity(n: resolve_scrutinee_type_node(env: env, n: receiver_type), source_indices: env.source_indices)
     let resolved_name = authored_name_at(source_indices: env.source_indices, node: resolved)
-    if resolved_name != raw_name && is_declared_container_alias_spelling(name: resolved_name) {
+    if resolved.connective == Conj || (resolved_name != raw_name && is_declared_container_alias_spelling(name: resolved_name)) {
       resolved
     } else {
       receiver_type
