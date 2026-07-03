@@ -1,5 +1,7 @@
 module extdeps.languages.yaml.emit
 
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
 import extdeps.languages.yaml.types {
   YamlValue, YamlKeyValue,
   YamlNull, YamlBool, YamlInt, YamlFloat, YamlString, YamlSequence, YamlMapping
@@ -9,6 +11,13 @@ import std.layout {
   LayoutProtocol,
   doc_text, doc_concat, doc_nest, doc_line_of,
   render
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "yaml.org/spec/1.2.2/"
+  }
 }
 
 data yaml_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "  " }

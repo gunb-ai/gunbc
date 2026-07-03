@@ -23,7 +23,11 @@ data tailscale_acl_reference_fixture_path: String = "dag/test/fixture/tailscale_
 
 fn witness_acl_cites_tailscale_grants_authority() -> Bool {
   match extdeps_external_authority_anchor {
-    ExternalAuthority { uri } => uri.scheme == Https && uri.locator == "tailscale.com/kb/1018"
+    ExternalAuthority { uri } =>
+      match uri.scheme {
+        Https => uri.locator == "tailscale.com/kb/1018"
+        _ => false
+      }
   }
 }
 

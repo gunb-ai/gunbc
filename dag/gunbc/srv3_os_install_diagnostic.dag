@@ -1190,12 +1190,18 @@ fn parse_sol_console_observation(stdout: String) -> SolConsoleContentObservation
 fn parse_virtual_media_session_observation(
   serve: NbdServeObservation,
   websocket: BmcWebsocketObservation,
+  serve_readiness: NbdServeReadinessVerdict,
 ) -> VirtualMediaSessionObservation {
   match serve {
     ServeUnknown => VirtualMediaSessionUnknown
     ServeObserved { process: _, port: _, session: _, iso: _ } =>
       match websocket {
-        WebsocketUpgradeAccepted => VirtualMediaSessionUnknown
+        WebsocketUpgradeAccepted =>
+          if serve_readiness == ServeReady {
+            AttachedToExpectedServe
+          } else {
+            VirtualMediaSessionUnknown
+          }
         _ => NoAttachedServe
       }
   }
@@ -1207,11 +1213,19 @@ fn parse_srv3_install_debug_observation(
 ) -> Srv3InstallDebugObservation {
   let serve = parse_actuator_serve_observation(stdout: stdout, intent: intent)
   let websocket = parse_bmc_websocket_observation(stdout: stdout)
+  let serve_readiness = classify_serve_observation_readiness(
+    serve: serve,
+    intent: intent,
+  )
   Srv3InstallDebugObservation {
     actuator_serve: serve,
     bmc_websocket: websocket,
     redfish_boot: parse_redfish_boot_observation(stdout: stdout),
-    virtual_media_session: parse_virtual_media_session_observation(serve: serve, websocket: websocket),
+    virtual_media_session: parse_virtual_media_session_observation(
+      serve: serve,
+      websocket: websocket,
+      serve_readiness: serve_readiness,
+    ),
     sol: Present { value: parse_sol_console_observation(stdout: stdout) },
     router_lease_table: Absent,
     kvm: Absent,
