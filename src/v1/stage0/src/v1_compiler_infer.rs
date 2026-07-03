@@ -5593,12 +5593,7 @@ pub fn expand_type_for_field_access_with_seen(
     seen: Rc<HashMap<String, bool>>,
 ) -> Rc<Node> {
     if is_deferred_field_access_base(n.clone(), env.clone()) {
-        let name = authored_name_at(env.source_indices.clone(), n.clone());
-        if v1_rt::map_get(&seen, name.clone()).is_some() {
-            return n.clone();
-        }
-        let seen = v1_rt::rc_map_insert(seen, name.clone(), true);
-        expand_alias_chain_for_field_access(n.clone(), env.clone(), module_name, name, seen, false)
+        n.clone()
     } else {
         let origin_name = authored_name_at(env.source_indices.clone(), n.clone());
         expand_alias_chain_for_field_access(
@@ -5606,7 +5601,7 @@ pub fn expand_type_for_field_access_with_seen(
             env.clone(),
             module_name,
             origin_name,
-            v1_rt::rc_empty_map::<String, bool>(),
+            seen,
             false,
         )
     }

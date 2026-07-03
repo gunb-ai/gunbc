@@ -2798,16 +2798,10 @@ data expand_type_for_field_access_dissolution_trigger: String = "🟡 dissolve-o
 
 fn expand_type_for_field_access_with_seen(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> Node {
   if is_deferred_field_access_base(n: n, env: env) {
-    let name = authored_name_at(source_indices: env.source_indices, node: n)
-    match map_get(seen, name) {
-      Present { value: _ } => n
-      Absent =>
-        let seen = map_insert(seen, name, true)
-        expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, origin_name: name, seen: seen, lossy: false)
-    }
+    n
   } else {
     let origin_name = authored_name_at(source_indices: env.source_indices, node: n)
-    expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, origin_name: origin_name, seen: empty_map(), lossy: false)
+    expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, origin_name: origin_name, seen: seen, lossy: false)
   }
 }
 
