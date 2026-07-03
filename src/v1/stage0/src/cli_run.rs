@@ -824,7 +824,6 @@ pub fn resolve_entry_graph(
 }
 
 pub struct MultiEntryIndex {
-    source_roots: Vec<String>,
     source_files: ModuleSourceIndex,
     module_graph_facts: ModuleGraphFactsLive,
     intern_table: RefCell<Rc<InternTable>>,
@@ -848,7 +847,6 @@ fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
 
 pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     MultiEntryIndex {
-        source_roots: source_roots.to_vec(),
         source_files: build_module_index(source_roots),
         module_graph_facts: build_module_graph_facts_live(source_roots),
         intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
@@ -10022,10 +10020,10 @@ mod doc_reachability_tests {
 mod import_closure_equivalence_tests {
     use super::{
         build_module_index, build_module_graph_facts_live, build_multi_entry_index,
-        default_source_roots, import_closure_live_paths,
+        closure_subject_for_entry, default_source_roots, import_closure_live_paths,
         module_graph_facts_build_count_for_test, reset_module_graph_facts_build_count_for_test,
-        resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
-        workspace_relative_repo_path, witness_layer_roots,
+        resolve_transitively, resolve_transitively_bfs_legacy, workspace_relative_repo_path,
+        witness_layer_roots,
     };
     use std::collections::HashMap;
     use std::path::PathBuf;
@@ -10199,17 +10197,17 @@ mod import_closure_equivalence_tests {
             .join("src/v2/test/claim/fold_list_generic_instantiation.dag")
             .to_string_lossy()
             .into_owned();
-        resolve_entry_with_index(&index, &budget).expect("budget_roster resolve");
+        closure_subject_for_entry(&index, &budget).expect("budget_roster closure");
         assert_eq!(
             module_graph_facts_build_count_for_test(),
             1,
-            "budget_roster resolve must not re-scan corpus for facts"
+            "budget_roster closure must not re-scan corpus for facts"
         );
-        resolve_entry_with_index(&index, &fold).expect("fold_list resolve");
+        closure_subject_for_entry(&index, &fold).expect("fold_list closure");
         assert_eq!(
             module_graph_facts_build_count_for_test(),
             1,
-            "second entry resolve must not re-scan corpus for facts"
+            "second entry closure must not re-scan corpus for facts"
         );
     }
 
