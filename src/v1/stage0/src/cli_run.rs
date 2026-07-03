@@ -4043,8 +4043,18 @@ fn floor_diff_edits_from_line_ranges(
             return Err(format!("no declarations in {file_path}"));
         }
         decls.sort_by_key(|(line, _, _)| *line);
-        if ranges.iter().any(|r| r.start < decls[0].0) {
+        let first_decl_line = decls[0].0;
+        // Module-line edits (line 1) stay fail-closed — renaming can change entry identity.
+        if ranges.iter().any(|r| r.start <= 1 && r.end >= 1) {
             return Err(format!("diff before first declaration in {file_path}"));
+        }
+        let has_pre_decl = ranges.iter().any(|r| r.start < first_decl_line);
+        let has_post_decl = ranges.iter().any(|r| r.end >= first_decl_line);
+        if has_pre_decl {
+            touched_entry_files.insert(file_norm.clone());
+            if !has_post_decl {
+                continue;
+            }
         }
         for i in 0..decls.len() {
             let (line, name, is_data) = &decls[i];
@@ -5840,6 +5850,38 @@ mod node_frontier_plumbing_controls {
         assert!(
             err.contains("before first declaration"),
             "expected pre-decl fail-closed, got: {err}"
+        );
+    }
+
+    #[test]
+    fn import_preamble_plus_fn_body_populates_touched_entry_not_fail_closed() {
+        let ws = workspace_root();
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let emit_rel = "dag/extdeps/languages/json/emit.dag";
+        let diff = format!(
+            "diff --git a/{p} b/{p}\n--- a/{p}\n+++ b/{p}\n\
+             @@ -1,7 +1,7 @@\n import extdeps.external_authority {{ ExternalAuthority }}\n\
+             -import extdeps.languages.json.grammar {{ JsonNumberLexeme, json_int_lexeme }}\n\
+             +import extdeps.languages.json.grammar {{ JsonNumberLexeme, json_int_lexeme, json_number_lexeme }}\n\
+             @@ -40,6 +40,13 @@ fn json_int(n: Int) -> JsonValue {{\n\
+             +fn json_number_from_lexeme_string(s: String) -> JsonValue? {{\n\
+             +  match json_number_lexeme(s: s) {{\n\
+             +    Present {{ value: l }} => Present {{ value: JsonNumber {{ lexeme: l }} }}\n\
+             +    Absent => none\n\
+             +  }}\n\
+             +}}\n",
+            p = emit_rel
+        );
+        let ranges = parse_unified_diff_line_ranges(&diff);
+        let edits = floor_diff_edits_from_line_ranges(&index, &ranges)
+            .expect("import+fn diff must not fail-closed to full corpus");
+        assert!(
+            edits
+                .touched_entry_files
+                .iter()
+                .any(|f| f == emit_rel),
+            "import preamble + fn body must touch the entry file"
         );
     }
 
