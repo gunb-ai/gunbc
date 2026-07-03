@@ -50,6 +50,49 @@ fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
   gunbc_ci_floor_per_shard_peak_max()
 }
 
+// In-process single-module compile-clean shard (claim_executor path): one module entry +
+// import closure through witness_layer_roots pool — NOT whole-tree 4.24GiB co-shard peak.
+data gunbc_ci_floor_per_module_compile_shard_peak_samples: List<ByteSize> = [
+  byte_size(536870912),
+  byte_size(805306368),
+]
+
+data gunbc_ci_floor_per_module_compile_shard_peak_source: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_floor_measurement",
+    decl_name: "gunbc_ci_floor_per_module_compile_shard_peak_rss",
+    field: WholeDeclaration
+  }
+}
+
+fn gunbc_ci_floor_per_module_compile_shard_peak_max() -> ByteSize {
+  fold(gunbc_ci_floor_per_module_compile_shard_peak_samples, init: byte_size(0), f: fn(acc, s) {
+    measure_max(a: acc, b: s)
+  })
+}
+
+fn gunbc_ci_floor_per_module_compile_shard_peak_rss() -> ByteSize {
+  gunbc_ci_floor_per_module_compile_shard_peak_max()
+}
+
+fn gunbc_ci_floor_memory_derived_width_for_each(cap: ByteSize, cpu_bound: Int, each: ByteSize) -> Int {
+  let mem_fit = measure_fit_count_floor(
+    capacity: gunbc_ci_floor_usable_shard_budget(cap: cap),
+    each: each
+  )
+  let mem_width = nat_max(a: mem_fit, b: 1)
+  int_min(a: cpu_bound, b: mem_width)
+}
+
+fn gunbc_ci_floor_compile_clean_shard_spawn_width(cpu_bound: Int) -> Int {
+  gunbc_ci_floor_memory_derived_width_for_each(
+    cap: gunbc_ci_runner_cgroup_memory_cap,
+    cpu_bound: cpu_bound,
+    each: gunbc_ci_floor_per_module_compile_shard_peak_rss()
+  )
+}
+
 data gunbc_ci_runner_cgroup_memory_cap: ByteSize = byte_size(8589934592)
 
 data gunbc_ci_dashboard_session_container_cap: ByteSize = byte_size(33578549248)

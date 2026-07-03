@@ -122,3 +122,11 @@ fn witness_empty_compose_is_unknown_reduce() -> Bool {
     b: compose_compile_clean_shard_verdicts_as_reduce(verdicts: [])
   )
 }
+
+fn compile_clean_shard_verdict_from_bool(entry_path: String, ok: Bool) -> CompileCleanShardVerdict {
+  if ok {
+    ShardClean
+  } else {
+    ShardFailed { entry_path: entry_path }
+  }
+}

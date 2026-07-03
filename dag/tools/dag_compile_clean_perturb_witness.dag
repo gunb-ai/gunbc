@@ -1,0 +1,24 @@
+module tools.dsl_compile_clean_perturb_witness
+
+import tools.dag_compile_clean_transport {
+  run_perturb_optional_skew_red_receipt,
+  run_perturb_unresolved_import_red_receipt,
+  run_cross_tree_import_green_receipt,
+  run_dag_shell_primary_precedence_receipt
+}
+
+func compile_clean_perturb_optional_skew_passes() -> Bool {
+  run_perturb_optional_skew_red_receipt()
+}
+
+func compile_clean_perturb_unresolved_import_passes() -> Bool {
+  run_perturb_unresolved_import_red_receipt()
+}
+
+func compile_clean_perturb_cross_tree_import_passes() -> Bool {
+  run_cross_tree_import_green_receipt()
+}
+
+func compile_clean_perturb_dag_shell_primary_passes() -> Bool {
+  run_dag_shell_primary_precedence_receipt()
+}
