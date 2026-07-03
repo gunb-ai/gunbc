@@ -20,9 +20,7 @@ use std::rc::Rc;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::recorded_fixture::{value_from_fixture_json, RecordedFixtureStore};
-use v1_compiler::v1_compiler_compile::{
-    compile_to_resolved, ResolvedPipelineResult, SourceFile,
-};
+use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
 use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 // ---- helpers ported from the deleted test module -------------------------------
@@ -65,7 +63,10 @@ fn claim_batch_exe() -> Result<PathBuf, String> {
     if release.is_file() {
         Ok(release)
     } else {
-        Err(format!("claim_batch binary still missing at {}", release.display()))
+        Err(format!(
+            "claim_batch binary still missing at {}",
+            release.display()
+        ))
     }
 }
 
@@ -96,20 +97,23 @@ fn unique_fs_witness_entry(ws: &Path, scratch: &Path) -> Result<PathBuf, String>
             live.to_str().ok_or("utf8 scratch path")?,
         );
     let entry = scratch.join("filesystem_write_witness.dag");
-    fs::write(&entry, rewritten).map_err(|e| format!("write rewritten filesystem witness dag: {e}"))?;
+    fs::write(&entry, rewritten)
+        .map_err(|e| format!("write rewritten filesystem witness dag: {e}"))?;
     Ok(entry)
 }
 
 fn closure_scale_witness_entry(ws: &Path, scratch: &Path) -> Result<PathBuf, String> {
-    let src = fs::read_to_string(ws.join("dag/test/claim/filesystem_write_closure_scale_witness.dag"))
-        .map_err(|e| format!("read closure-scale witness dag: {e}"))?;
+    let src =
+        fs::read_to_string(ws.join("dag/test/claim/filesystem_write_closure_scale_witness.dag"))
+            .map_err(|e| format!("read closure-scale witness dag: {e}"))?;
     let live = scratch.join("fs_closure_scale_witness.txt");
     let rewritten = src.replace(
         "/tmp/gunbc_fs_closure_scale_witness.txt",
         live.to_str().ok_or("utf8 scratch path")?,
     );
     let entry = scratch.join("filesystem_write_closure_scale_witness.dag");
-    fs::write(&entry, rewritten).map_err(|e| format!("write rewritten closure-scale witness dag: {e}"))?;
+    fs::write(&entry, rewritten)
+        .map_err(|e| format!("write rewritten closure-scale witness dag: {e}"))?;
     Ok(entry)
 }
 
@@ -216,11 +220,17 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() -> Result<(), St
     let entry = unique_fs_witness_entry(&ws, &store_dir)?;
 
     let record = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "filesystem_write_keystone_holds",
-        "--record", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "filesystem_write_keystone_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     ensure!(
         record.status.success(),
@@ -234,11 +244,17 @@ fn filesystem_write_witness_record_then_hermetic_replay_holds() -> Result<(), St
     );
 
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "filesystem_write_keystone_holds",
-        "--hermetic", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "filesystem_write_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     let _ = fs::remove_dir_all(&store_dir);
     ensure!(
@@ -256,11 +272,17 @@ fn filesystem_write_closure_scale_record_then_hermetic_replay_holds() -> Result<
     let entry = closure_scale_witness_entry(&ws, &store_dir)?;
 
     let record = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "filesystem_write_closure_scale_holds",
-        "--record", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "filesystem_write_closure_scale_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     ensure!(
         record.status.success(),
@@ -270,11 +292,17 @@ fn filesystem_write_closure_scale_record_then_hermetic_replay_holds() -> Result<
     );
 
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "filesystem_write_closure_scale_holds",
-        "--hermetic", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "filesystem_write_closure_scale_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     let _ = fs::remove_dir_all(&store_dir);
     ensure!(
@@ -292,11 +320,17 @@ fn hermetic_fixture_staleness_fails_closed() -> Result<(), String> {
     let entry = unique_fs_witness_entry(&ws, &store_dir)?;
 
     let record = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "witness_read_absent_fails_closed",
-        "--record", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "witness_read_absent_fails_closed",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     ensure!(record.status.success(), "record must capture absent-read");
 
@@ -307,16 +341,25 @@ fn hermetic_fixture_staleness_fails_closed() -> Result<(), String> {
         if let Some(obj) = fixture.as_object_mut() {
             obj.insert("recorded_at".to_string(), serde_json::json!(0u64));
         }
-        fs::write(&path, serde_json::to_vec_pretty(&fixture).expect("serialize"))
-            .map_err(|e| format!("write: {e}"))?;
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(&fixture).expect("serialize"),
+        )
+        .map_err(|e| format!("write: {e}"))?;
     }
 
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "witness_read_absent_fails_closed",
-        "--hermetic", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "witness_read_absent_fails_closed",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     let _ = fs::remove_dir_all(&store_dir);
     ensure!(
@@ -493,11 +536,17 @@ fn hermetic_replay_rejects_corrupted_fixture_response() -> Result<(), String> {
     let entry = unique_fs_witness_entry(&ws, &store_dir)?;
 
     let record = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "witness_write_then_read_roundtrip",
-        "--record", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "witness_write_then_read_roundtrip",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     ensure!(record.status.success(), "record must capture write/read");
 
@@ -514,16 +563,25 @@ fn hermetic_replay_rejects_corrupted_fixture_response() -> Result<(), String> {
                 }
             }
         }
-        fs::write(&path, serde_json::to_vec_pretty(&fixture).expect("serialize"))
-            .map_err(|e| format!("write tampered fixture: {e}"))?;
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(&fixture).expect("serialize"),
+        )
+        .map_err(|e| format!("write tampered fixture: {e}"))?;
     }
 
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "witness_write_then_read_roundtrip",
-        "--hermetic", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "witness_write_then_read_roundtrip",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     let _ = fs::remove_dir_all(&store_dir);
     ensure!(
@@ -547,22 +605,34 @@ fn hermetic_replay_uses_fixture_not_live_fs_after_mutation() -> Result<(), Strin
     let target = store_dir.join("fs_witness.txt");
 
     let record = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "witness_write_then_read_roundtrip",
-        "--record", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "witness_write_then_read_roundtrip",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     ensure!(record.status.success(), "record must capture");
 
     fs::write(&target, b"MUTATED-LIVE-FS-CONTENT").map_err(|e| format!("mutate live file: {e}"))?;
 
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "witness_write_then_read_roundtrip",
-        "--hermetic", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "witness_write_then_read_roundtrip",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     let _ = fs::remove_dir_all(&store_dir);
     ensure!(
@@ -579,10 +649,14 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() -> Result<(), String
     fs::create_dir_all(&scratch).map_err(|e| format!("scratch dir: {e}"))?;
     let entry = unique_fs_witness_entry(&ws, &scratch)?;
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "witness_read_absent_fails_closed",
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "witness_read_absent_fails_closed",
         "--hermetic",
     ])?;
     ensure!(
@@ -601,11 +675,16 @@ fn filesystem_hermetic_without_fixture_store_fails_closed() -> Result<(), String
 fn filesystem_read_hermetic_without_fixture_fails_closed() -> Result<(), String> {
     let ws = workspace_root();
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
         "--entry",
-        ws.join("dag/test/claim/filesystem_read_hermetic_witness.dag").to_str().unwrap(),
-        "--function", "witness_read_via_builtin_roundtrip",
+        ws.join("dag/test/claim/filesystem_read_hermetic_witness.dag")
+            .to_str()
+            .unwrap(),
+        "--function",
+        "witness_read_via_builtin_roundtrip",
         "--hermetic",
     ])?;
     ensure!(
@@ -632,11 +711,16 @@ fn filesystem_read_record_then_hermetic_replay_holds() -> Result<(), String> {
 
     let common = |mode_flag: &str| -> Result<Output, String> {
         run_claim_batch(&[
-            "--source-root", ws.to_str().unwrap(),
-            "--source-root", dag_root.to_str().unwrap(),
-            "--entry", entry.to_str().unwrap(),
-            "--function", "witness_read_via_builtin_roundtrip",
-            "--fixture-store", store_path.as_str(),
+            "--source-root",
+            ws.to_str().unwrap(),
+            "--source-root",
+            dag_root.to_str().unwrap(),
+            "--entry",
+            entry.to_str().unwrap(),
+            "--function",
+            "witness_read_via_builtin_roundtrip",
+            "--fixture-store",
+            store_path.as_str(),
             mode_flag,
         ])
     };
@@ -667,11 +751,16 @@ fn m4_governed_service_published_realizes_unpublished_fails_closed() -> Result<(
     let ws = workspace_root();
     let common = |func: &str| -> Result<Output, String> {
         run_claim_batch(&[
-            "--source-root", ws.to_str().unwrap(),
-            "--source-root", ws.join("dag").to_str().unwrap(),
+            "--source-root",
+            ws.to_str().unwrap(),
+            "--source-root",
+            ws.join("dag").to_str().unwrap(),
             "--entry",
-            ws.join("dag/test/claim/m4_governed_service_witness.dag").to_str().unwrap(),
-            "--function", func,
+            ws.join("dag/test/claim/m4_governed_service_witness.dag")
+                .to_str()
+                .unwrap(),
+            "--function",
+            func,
             "--hermetic",
         ])
     };
@@ -702,12 +791,17 @@ fn gcp_oauth_access_token_materializer_holds() -> Result<(), String> {
     let store = ws.join("dag/test/fixture/gcp_oauth_access_token_store");
     let common = |func: &str| -> Result<Output, String> {
         run_claim_batch(&[
-            "--source-root", ws.to_str().unwrap(),
-            "--source-root", ws.join("dag").to_str().unwrap(),
-            "--entry", entry.to_str().unwrap(),
-            "--function", func,
+            "--source-root",
+            ws.to_str().unwrap(),
+            "--source-root",
+            ws.join("dag").to_str().unwrap(),
+            "--entry",
+            entry.to_str().unwrap(),
+            "--function",
+            func,
             "--hermetic",
-            "--fixture-store", store.to_str().unwrap(),
+            "--fixture-store",
+            store.to_str().unwrap(),
         ])
     };
 
@@ -731,11 +825,16 @@ fn m4_universal_corpus_published_realizes_unpublished_fails_closed() -> Result<(
     let ws = workspace_root();
     let common = |func: &str| -> Result<Output, String> {
         run_claim_batch(&[
-            "--source-root", ws.to_str().unwrap(),
-            "--source-root", ws.join("dag").to_str().unwrap(),
+            "--source-root",
+            ws.to_str().unwrap(),
+            "--source-root",
+            ws.join("dag").to_str().unwrap(),
             "--entry",
-            ws.join("dag/test/claim/m4_universal_corpus_witness.dag").to_str().unwrap(),
-            "--function", func,
+            ws.join("dag/test/claim/m4_universal_corpus_witness.dag")
+                .to_str()
+                .unwrap(),
+            "--function",
+            func,
             "--hermetic",
         ])
     };
@@ -765,14 +864,24 @@ fn clock_now_record_then_hermetic_replay_holds() -> Result<(), String> {
     let store_dir = fixture_store_dir("clock-record-replay");
     fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
     let entry = ws.join("dag/test/claim/clock_freshness_witness.dag");
-    ensure!(entry.is_file(), "witness dag must exist at {}", entry.display());
+    ensure!(
+        entry.is_file(),
+        "witness dag must exist at {}",
+        entry.display()
+    );
 
     let record = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "clock_freshness_keystone_holds",
-        "--record", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "clock_freshness_keystone_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     ensure!(
         record.status.success(),
@@ -786,11 +895,17 @@ fn clock_now_record_then_hermetic_replay_holds() -> Result<(), String> {
     );
 
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "clock_freshness_keystone_holds",
-        "--hermetic", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "clock_freshness_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     let _ = fs::remove_dir_all(&store_dir);
     ensure!(
@@ -808,11 +923,17 @@ fn hermetic_clock_fixture_staleness_fails_closed() -> Result<(), String> {
     let entry = ws.join("dag/test/claim/clock_freshness_witness.dag");
 
     let record = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "clock_freshness_keystone_holds",
-        "--record", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "clock_freshness_keystone_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     ensure!(record.status.success(), "record must capture Clock.Now");
 
@@ -823,16 +944,25 @@ fn hermetic_clock_fixture_staleness_fails_closed() -> Result<(), String> {
         if let Some(obj) = fixture.as_object_mut() {
             obj.insert("recorded_at".to_string(), serde_json::json!(0u64));
         }
-        fs::write(&path, serde_json::to_vec_pretty(&fixture).expect("serialize"))
-            .map_err(|e| format!("write: {e}"))?;
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(&fixture).expect("serialize"),
+        )
+        .map_err(|e| format!("write: {e}"))?;
     }
 
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "clock_freshness_keystone_holds",
-        "--hermetic", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "clock_freshness_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     let _ = fs::remove_dir_all(&store_dir);
     ensure!(
@@ -855,11 +985,17 @@ fn env_get_record_then_hermetic_replay_holds() -> Result<(), String> {
     let entry = ws.join("dag/test/claim/env_freshness_witness.dag");
 
     let record = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "env_freshness_keystone_holds",
-        "--record", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "env_freshness_keystone_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     ensure!(
         record.status.success(),
@@ -868,11 +1004,17 @@ fn env_get_record_then_hermetic_replay_holds() -> Result<(), String> {
     );
 
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "env_freshness_keystone_holds",
-        "--hermetic", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "env_freshness_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     let _ = fs::remove_dir_all(&store_dir);
     ensure!(
@@ -890,11 +1032,17 @@ fn hermetic_env_fixture_staleness_fails_closed() -> Result<(), String> {
     let entry = ws.join("dag/test/claim/env_freshness_witness.dag");
 
     let record = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "env_freshness_keystone_holds",
-        "--record", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "env_freshness_keystone_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     ensure!(record.status.success(), "record must capture shell.Env.Get");
 
@@ -905,16 +1053,25 @@ fn hermetic_env_fixture_staleness_fails_closed() -> Result<(), String> {
         if let Some(obj) = fixture.as_object_mut() {
             obj.insert("recorded_at".to_string(), serde_json::json!(0u64));
         }
-        fs::write(&path, serde_json::to_vec_pretty(&fixture).expect("serialize"))
-            .map_err(|e| format!("write: {e}"))?;
+        fs::write(
+            &path,
+            serde_json::to_vec_pretty(&fixture).expect("serialize"),
+        )
+        .map_err(|e| format!("write: {e}"))?;
     }
 
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "env_freshness_keystone_holds",
-        "--hermetic", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "env_freshness_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     let _ = fs::remove_dir_all(&store_dir);
     ensure!(
@@ -934,10 +1091,14 @@ fn env_hermetic_without_fixture_store_fails_closed() -> Result<(), String> {
     let ws = workspace_root();
     let entry = ws.join("dag/test/claim/env_freshness_witness.dag");
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "env_freshness_keystone_holds",
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "env_freshness_keystone_holds",
         "--hermetic",
     ])?;
     ensure!(
@@ -957,14 +1118,24 @@ fn diagnostic_redfish_record_then_hermetic_replay_holds() -> Result<(), String> 
     let store_dir = fixture_store_dir("diagnostic-redfish-record-replay");
     fs::create_dir_all(&store_dir).map_err(|e| format!("fixture dir: {e}"))?;
     let entry = ws.join("dag/test/claim/diagnostic_redfish_witness.dag");
-    ensure!(entry.is_file(), "witness dag must exist at {}", entry.display());
+    ensure!(
+        entry.is_file(),
+        "witness dag must exist at {}",
+        entry.display()
+    );
 
     let record = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "diagnostic_redfish_keystone_holds",
-        "--record", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "diagnostic_redfish_keystone_holds",
+        "--record",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     ensure!(
         record.status.success(),
@@ -973,11 +1144,17 @@ fn diagnostic_redfish_record_then_hermetic_replay_holds() -> Result<(), String> 
     );
 
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "diagnostic_redfish_keystone_holds",
-        "--hermetic", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "diagnostic_redfish_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     let _ = fs::remove_dir_all(&store_dir);
     ensure!(
@@ -992,10 +1169,14 @@ fn diagnostic_redfish_hermetic_without_fixture_store_fails_closed() -> Result<()
     let ws = workspace_root();
     let entry = ws.join("dag/test/claim/diagnostic_redfish_witness.dag");
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "diagnostic_redfish_keystone_holds",
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "diagnostic_redfish_keystone_holds",
         "--hermetic",
     ])?;
     ensure!(
@@ -1018,14 +1199,23 @@ fn hermetic_http_pilot_fixture_staleness_fails_closed() -> Result<(), String> {
     let entry = ws.join("dag/test/claim/http_pilot_rest_witness.dag");
 
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "http_pilot_rest_keystone_holds",
-        "--hermetic", "--fixture-store", store_dir.to_str().unwrap(),
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "http_pilot_rest_keystone_holds",
+        "--hermetic",
+        "--fixture-store",
+        store_dir.to_str().unwrap(),
     ])?;
     let _ = fs::remove_dir_all(&store_dir);
-    ensure!(!hermetic.status.success(), "stale REST fixture must fail closed");
+    ensure!(
+        !hermetic.status.success(),
+        "stale REST fixture must fail closed"
+    );
     let combined = combined_output(&hermetic);
     ensure!(
         combined.contains("expired recorded fixture")
@@ -1039,10 +1229,14 @@ fn hermetic_http_pilot_without_fixture_store_fails_closed() -> Result<(), String
     let ws = workspace_root();
     let entry = ws.join("dag/test/claim/http_pilot_rest_witness.dag");
     let hermetic = run_claim_batch(&[
-        "--source-root", ws.to_str().unwrap(),
-        "--source-root", ws.join("dag").to_str().unwrap(),
-        "--entry", entry.to_str().unwrap(),
-        "--function", "http_pilot_rest_keystone_holds",
+        "--source-root",
+        ws.to_str().unwrap(),
+        "--source-root",
+        ws.join("dag").to_str().unwrap(),
+        "--entry",
+        entry.to_str().unwrap(),
+        "--function",
+        "http_pilot_rest_keystone_holds",
         "--hermetic",
     ])?;
     ensure!(
@@ -1069,29 +1263,98 @@ fn main() -> ExitCode {
     // not part of the hermetic CI floor. All other 23 checks run.
     type Check = (&'static str, fn() -> Result<(), String>);
     let checks: &[Check] = &[
-        ("filesystem_write_witness_record_then_hermetic_replay_holds", filesystem_write_witness_record_then_hermetic_replay_holds),
-        ("filesystem_write_closure_scale_record_then_hermetic_replay_holds", filesystem_write_closure_scale_record_then_hermetic_replay_holds),
-        ("hermetic_fixture_staleness_fails_closed", hermetic_fixture_staleness_fails_closed),
-        ("record_response_drift_for_same_input_hash_fails_closed", record_response_drift_for_same_input_hash_fails_closed),
-        ("hermetic_without_fixture_store_still_uses_mock_response_for_rest", hermetic_without_fixture_store_still_uses_mock_response_for_rest),
-        ("recorded_fixture_store_roundtrip_value", recorded_fixture_store_roundtrip_value),
-        ("hermetic_replay_rejects_corrupted_fixture_response", hermetic_replay_rejects_corrupted_fixture_response),
-        ("hermetic_replay_uses_fixture_not_live_fs_after_mutation", hermetic_replay_uses_fixture_not_live_fs_after_mutation),
-        ("filesystem_hermetic_without_fixture_store_fails_closed", filesystem_hermetic_without_fixture_store_fails_closed),
-        ("filesystem_read_hermetic_without_fixture_fails_closed", filesystem_read_hermetic_without_fixture_fails_closed),
-        ("filesystem_read_record_then_hermetic_replay_holds", filesystem_read_record_then_hermetic_replay_holds),
-        ("m4_governed_service_published_realizes_unpublished_fails_closed", m4_governed_service_published_realizes_unpublished_fails_closed),
-        ("gcp_oauth_access_token_materializer_holds", gcp_oauth_access_token_materializer_holds),
-        ("m4_universal_corpus_published_realizes_unpublished_fails_closed", m4_universal_corpus_published_realizes_unpublished_fails_closed),
-        ("clock_now_record_then_hermetic_replay_holds", clock_now_record_then_hermetic_replay_holds),
-        ("hermetic_clock_fixture_staleness_fails_closed", hermetic_clock_fixture_staleness_fails_closed),
-        ("env_get_record_then_hermetic_replay_holds", env_get_record_then_hermetic_replay_holds),
-        ("hermetic_env_fixture_staleness_fails_closed", hermetic_env_fixture_staleness_fails_closed),
-        ("env_hermetic_without_fixture_store_fails_closed", env_hermetic_without_fixture_store_fails_closed),
-        ("diagnostic_redfish_record_then_hermetic_replay_holds", diagnostic_redfish_record_then_hermetic_replay_holds),
-        ("diagnostic_redfish_hermetic_without_fixture_store_fails_closed", diagnostic_redfish_hermetic_without_fixture_store_fails_closed),
-        ("hermetic_http_pilot_fixture_staleness_fails_closed", hermetic_http_pilot_fixture_staleness_fails_closed),
-        ("hermetic_http_pilot_without_fixture_store_fails_closed", hermetic_http_pilot_without_fixture_store_fails_closed),
+        (
+            "filesystem_write_witness_record_then_hermetic_replay_holds",
+            filesystem_write_witness_record_then_hermetic_replay_holds,
+        ),
+        (
+            "filesystem_write_closure_scale_record_then_hermetic_replay_holds",
+            filesystem_write_closure_scale_record_then_hermetic_replay_holds,
+        ),
+        (
+            "hermetic_fixture_staleness_fails_closed",
+            hermetic_fixture_staleness_fails_closed,
+        ),
+        (
+            "record_response_drift_for_same_input_hash_fails_closed",
+            record_response_drift_for_same_input_hash_fails_closed,
+        ),
+        (
+            "hermetic_without_fixture_store_still_uses_mock_response_for_rest",
+            hermetic_without_fixture_store_still_uses_mock_response_for_rest,
+        ),
+        (
+            "recorded_fixture_store_roundtrip_value",
+            recorded_fixture_store_roundtrip_value,
+        ),
+        (
+            "hermetic_replay_rejects_corrupted_fixture_response",
+            hermetic_replay_rejects_corrupted_fixture_response,
+        ),
+        (
+            "hermetic_replay_uses_fixture_not_live_fs_after_mutation",
+            hermetic_replay_uses_fixture_not_live_fs_after_mutation,
+        ),
+        (
+            "filesystem_hermetic_without_fixture_store_fails_closed",
+            filesystem_hermetic_without_fixture_store_fails_closed,
+        ),
+        (
+            "filesystem_read_hermetic_without_fixture_fails_closed",
+            filesystem_read_hermetic_without_fixture_fails_closed,
+        ),
+        (
+            "filesystem_read_record_then_hermetic_replay_holds",
+            filesystem_read_record_then_hermetic_replay_holds,
+        ),
+        (
+            "m4_governed_service_published_realizes_unpublished_fails_closed",
+            m4_governed_service_published_realizes_unpublished_fails_closed,
+        ),
+        (
+            "gcp_oauth_access_token_materializer_holds",
+            gcp_oauth_access_token_materializer_holds,
+        ),
+        (
+            "m4_universal_corpus_published_realizes_unpublished_fails_closed",
+            m4_universal_corpus_published_realizes_unpublished_fails_closed,
+        ),
+        (
+            "clock_now_record_then_hermetic_replay_holds",
+            clock_now_record_then_hermetic_replay_holds,
+        ),
+        (
+            "hermetic_clock_fixture_staleness_fails_closed",
+            hermetic_clock_fixture_staleness_fails_closed,
+        ),
+        (
+            "env_get_record_then_hermetic_replay_holds",
+            env_get_record_then_hermetic_replay_holds,
+        ),
+        (
+            "hermetic_env_fixture_staleness_fails_closed",
+            hermetic_env_fixture_staleness_fails_closed,
+        ),
+        (
+            "env_hermetic_without_fixture_store_fails_closed",
+            env_hermetic_without_fixture_store_fails_closed,
+        ),
+        (
+            "diagnostic_redfish_record_then_hermetic_replay_holds",
+            diagnostic_redfish_record_then_hermetic_replay_holds,
+        ),
+        (
+            "diagnostic_redfish_hermetic_without_fixture_store_fails_closed",
+            diagnostic_redfish_hermetic_without_fixture_store_fails_closed,
+        ),
+        (
+            "hermetic_http_pilot_fixture_staleness_fails_closed",
+            hermetic_http_pilot_fixture_staleness_fails_closed,
+        ),
+        (
+            "hermetic_http_pilot_without_fixture_store_fails_closed",
+            hermetic_http_pilot_without_fixture_store_fails_closed,
+        ),
     ];
 
     let mut failures = 0usize;
@@ -1106,7 +1369,10 @@ fn main() -> ExitCode {
     }
 
     if failures == 0 {
-        println!("interp_recorded_fixture_witness: all {} checks passed", checks.len());
+        println!(
+            "interp_recorded_fixture_witness: all {} checks passed",
+            checks.len()
+        );
         ExitCode::SUCCESS
     } else {
         eprintln!("interp_recorded_fixture_witness: {failures} check(s) failed");
