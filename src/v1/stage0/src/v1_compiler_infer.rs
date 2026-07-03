@@ -884,6 +884,7 @@ pub fn type_mismatch_error(
     )
 }
 
+// 🟡 dissolve-on: optional_coproduct_field_shape_predicate_dissolution_trigger (04_infer.dag)
 pub fn rejects_string_for_optional_coproduct_field(
     expected: Rc<Node>,
     got: Rc<Node>,
