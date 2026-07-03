@@ -934,6 +934,20 @@ fn diagnose_srv3_install_when_serve_observed(
   }
 }
 
+fn srv3_install_pre_boot_ready_to_boot(
+  observation: Srv3InstallDebugObservation,
+) -> Bool {
+  if !install_serve_session_active(observation: observation)
+    || !redfish_boot_override_is_disabled_none(obs: observation.redfish_boot) {
+    false
+  } else {
+    match observation.elapsed_since_boot_once_ms {
+      Absent => true
+      Present { value: elapsed } => elapsed == 0
+    }
+  }
+}
+
 fn diagnose_srv3_install_when_serve_ready(
   observation: Srv3InstallDebugObservation,
   redfish: RedfishSystemBootVerdict,
@@ -944,36 +958,29 @@ fn diagnose_srv3_install_when_serve_ready(
   match redfish {
     BootOverrideCdOnceArmed => InstallerProbablyRunning
     BootOverrideDisabledAfterAttempt =>
-      match observation.virtual_media_session {
-        AttachedToExpectedServe =>
-          if elapsed == 0 {
-            ReadyToBoot
-          } else {
-            diagnose_srv3_install_post_boot(
-              observation: observation,
-              redfish: redfish,
-              sol: sol,
-              router: router,
-              elapsed: elapsed,
-            )
-          }
-        _ =>
-          diagnose_srv3_install_post_boot(
-            observation: observation,
-            redfish: redfish,
-            sol: sol,
-            router: router,
-            elapsed: elapsed,
-          )
+      if srv3_install_pre_boot_ready_to_boot(observation: observation) {
+        ReadyToBoot
+      } else {
+        diagnose_srv3_install_post_boot(
+          observation: observation,
+          redfish: redfish,
+          sol: sol,
+          router: router,
+          elapsed: elapsed,
+        )
       }
     _ =>
-      diagnose_srv3_install_post_boot(
-        observation: observation,
-        redfish: redfish,
-        sol: sol,
-        router: router,
-        elapsed: elapsed,
-      )
+      if srv3_install_pre_boot_ready_to_boot(observation: observation) {
+        ReadyToBoot
+      } else {
+        diagnose_srv3_install_post_boot(
+          observation: observation,
+          redfish: redfish,
+          sol: sol,
+          router: router,
+          elapsed: elapsed,
+        )
+      }
   }
 }
 
@@ -1008,11 +1015,20 @@ fn diagnose_srv3_install_post_boot(
                 if elapsed >= srv3_install_hang_no_router_lease_ms {
                   InstallerHung
                 } else {
-                  if elapsed == 0
-                    && redfish_boot_override_is_disabled_none(obs: observation.redfish_boot) {
-                    BootOverrideNotArmed
+                  if srv3_install_pre_boot_ready_to_boot(observation: observation) {
+                    ReadyToBoot
                   } else {
-                    BootOverrideConsumedNoInstallEvidence
+                    if install_serve_session_active(observation: observation)
+                      && redfish_boot_override_is_disabled_none(obs: observation.redfish_boot) {
+                      BootOverrideConsumedNoInstallEvidence
+                    } else {
+                      if elapsed == 0
+                        && redfish_boot_override_is_disabled_none(obs: observation.redfish_boot) {
+                        BootOverrideNotArmed
+                      } else {
+                        BootOverrideConsumedNoInstallEvidence
+                      }
+                    }
                   }
                 }
               _ => BootOverrideConsumedNoInstallEvidence
@@ -1043,14 +1059,26 @@ fn observe_stdout_has_serve_surface(stdout: String) -> Bool {
   string_contains(s: stdout, pattern: "Srv3InstallObserveReceipt: surface=serve")
 }
 
+fn observe_stdout_bmc_websocket_line(stdout: String) -> String {
+  let parts = split(s: stdout, delimiter: "surface=bmc_websocket")
+  match parts.length() <= 1 {
+    true => concat("", "")
+    false => {
+      let tail = parts.skip(n: 1).first()
+      split(s: tail, delimiter: "\n").first()
+    }
+  }
+}
+
 fn parse_bmc_websocket_observation(stdout: String) -> BmcWebsocketObservation {
-  if string_contains(s: stdout, pattern: "http_code=101") {
-    WebsocketUpgradeAccepted
+  let line = observe_stdout_bmc_websocket_line(stdout: stdout)
+  if line == concat("", "") {
+    WebsocketUnknown
   } else {
-    if string_contains(s: stdout, pattern: "surface=bmc_websocket") {
-      WebsocketUnavailable
+    if string_contains(s: line, pattern: "http_code=101") {
+      WebsocketUpgradeAccepted
     } else {
-      WebsocketUnknown
+      WebsocketUnavailable
     }
   }
 }
@@ -1121,8 +1149,8 @@ fn parse_observe_content_hash_observed(stdout: String) -> ContentHash {
     "content-hash-unobserved" as ContentHash
   } else {
     let tail = parts.skip(n: 1).first()
-    let token = split(s: tail, delimiter: " ").first()
-    token as ContentHash
+    let line = split(s: tail, delimiter: "\n").first()
+    split(s: line, delimiter: " ").first() as ContentHash
   }
 }
 
@@ -1183,7 +1211,7 @@ fn parse_sol_console_observation(stdout: String) -> SolConsoleContentObservation
       contains_grub: string_contains(s: stdout, pattern: "marker=grub"),
       contains_subiquity: string_contains(s: stdout, pattern: "marker=subiquity"),
       contains_autoinstall: string_contains(s: stdout, pattern: "marker=autoinstall"),
-      contains_firmware_menu: false,
+      contains_firmware_menu: string_contains(s: stdout, pattern: "marker=firmware_menu"),
       contains_error: string_contains(s: stdout, pattern: "marker=error"),
       capture_available: true,
     }
@@ -1197,7 +1225,7 @@ fn parse_virtual_media_session_observation(
 ) -> VirtualMediaSessionObservation {
   match serve {
     ServeUnknown => VirtualMediaSessionUnknown
-    ServeObserved { process: _, port: _, session: _, iso: _ } =>
+    ServeObserved { process: proc, port: _, session: _, iso: _ } =>
       match websocket {
         WebsocketUpgradeAccepted =>
           match serve_readiness {
@@ -1206,6 +1234,40 @@ fn parse_virtual_media_session_observation(
           }
         _ => NoAttachedServe
       }
+  }
+}
+
+fn install_serve_session_active(observation: Srv3InstallDebugObservation) -> Bool {
+  match observation.actuator_serve {
+    ServeObserved { process: proc, port: port, session: sess, iso: _ } =>
+      match proc {
+        ServeProcessesPresent =>
+          match port {
+            ServePortListening { owner_matches_expected: true, port: _ } =>
+              match sess {
+                TokenPresent => true
+                TokenMissing => false
+              }
+            _ => false
+          }
+        _ => false
+      }
+    ServeUnknown => false
+  }
+}
+
+fn parse_elapsed_boot_once_ms_observation(stdout: String) -> Milliseconds? {
+  let parts = split(s: stdout, delimiter: "surface=elapsed boot_once_ms=")
+  match parts.length() <= 1 {
+    true => Absent
+    false => {
+      let tail = parts.skip(n: 1).first()
+      let token = split(s: tail, delimiter: "\n").first()
+      match parse_int(s: token) {
+        Present { value: n } => Present { value: n }
+        Absent => Absent
+      }
+    }
   }
 }
 
@@ -1231,7 +1293,7 @@ fn parse_srv3_install_debug_observation(
     sol: Present { value: parse_sol_console_observation(stdout: stdout) },
     router_lease_table: Absent,
     kvm: Absent,
-    elapsed_since_boot_once_ms: Absent,
+    elapsed_since_boot_once_ms: parse_elapsed_boot_once_ms_observation(stdout: stdout),
   }
 }
 
@@ -1278,7 +1340,7 @@ fn srv3_install_diagnostic_recommended_action_wire(verdict: Srv3InstallDiagnosti
     ServeDown => "start or repair srv3_nbd_proxy_serve held session on srv1 before boot-once"
     BmcWebsocketUnavailable => "verify BMC /vm/0/0 websocket path before virtual media"
     BootOverrideNotArmed => "re-arm boot-once CD when serve is ReadyToBoot"
-    BootOverrideConsumedNoInstallEvidence => "serve alive: re-arm boot-once CD + force restart; verify SOL/router"
+    BootOverrideConsumedNoInstallEvidence => "await PlanAwaitApproval(srv3-boot-once-cd); verify SOL and router before granting durable approval"
     InstallerProbablyRunning => "monitor SOL and router DHCP option-12 srv3"
     InstallerHung => "declare hang per runbook thresholds; repair serve/boot path before retry"
     OsInstalled => "confirm router dynamic lease option-12 srv3; proceed post-install witnesses"
