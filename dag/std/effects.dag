@@ -113,20 +113,6 @@ fn compose_effects(effects: List<OperationEffect>) -> CompositionVerdict {
   )
 }
 
-fn composition_is_idempotent(v: CompositionVerdict) -> Bool {
-  match v {
-    IdempotentComposition => true
-    BrokenBy { first_breaker: breaker } => false
-  }
-}
-
-fn composition_first_breaker_name(v: CompositionVerdict) -> String {
-  match v {
-    BrokenBy { first_breaker: breaker } => breaker.operation_name
-    IdempotentComposition => ""
-  }
-}
-
 type DerivedOpEffect {
   operation_name: String
   method: HttpMethod
