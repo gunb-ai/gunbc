@@ -8491,13 +8491,18 @@ fn test_migration_delete_guard_deleted_v1_test_paths(
     base: &str,
     head: &str,
 ) -> Result<Vec<String>, String> {
-    let range = if test_migration_delete_guard_merge_base_mode() {
-        format!("{base}...{head}")
+    let out = if test_migration_delete_guard_merge_base_mode() {
+        let range = format!("{base}...{head}");
+        test_migration_delete_guard_run_git(&["diff", "--name-only", "--diff-filter=D", &range])?
     } else {
-        format!("{base} {head}")
+        test_migration_delete_guard_run_git(&[
+            "diff",
+            "--name-only",
+            "--diff-filter=D",
+            base,
+            head,
+        ])?
     };
-    let out =
-        test_migration_delete_guard_run_git(&["diff", "--name-only", "--diff-filter=D", &range])?;
     Ok(out
         .lines()
         .map(normalize_repo_path)
@@ -8525,12 +8530,12 @@ fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, 
     let ci_diff_configured = std::env::var("GUNBC_CI_DIFF_BASE").is_ok();
     let base_rev = match test_migration_delete_guard_resolve_rev(&base) {
         Ok(v) => v,
-        Err(e) if !ci_diff_configured => return Ok(Vec::new()),
+        Err(_) if !ci_diff_configured => return Ok(Vec::new()),
         Err(e) => return Err(e),
     };
     let head_rev = match test_migration_delete_guard_resolve_rev(&head) {
         Ok(v) => v,
-        Err(e) if !ci_diff_configured => return Ok(Vec::new()),
+        Err(_) if !ci_diff_configured => return Ok(Vec::new()),
         Err(e) => return Err(e),
     };
     if base_rev == head_rev {
