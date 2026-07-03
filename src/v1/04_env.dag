@@ -192,6 +192,7 @@ fn maybe_print_type_env_lookup_profile() -> Unit { }
 fn record_flatten_visible_parent_recurse() -> Unit { }
 
 fn flatten_visible_bindings(env: TypeEnv) -> Map<String, TypeBinding> {
+  // Invariant: B1 build_type_env populates ancestry_str_bindings for import chains; empty ancestry with non-empty parents falls back to parent recurse (legacy/stub path only).
   if (env.ancestry_str_bindings |> map_keys |> count > 0) || (env.parents |> count == 0) {
     map_merge(env.ancestry_str_bindings, env.str_bindings)
   } else {
