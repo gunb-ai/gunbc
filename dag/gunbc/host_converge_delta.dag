@@ -19,12 +19,6 @@ import gunbc.host_converge {
   ConvergeKnob,
   ConvergeSlice,
   ConvergeTarget,
-  SliceProperty,
-  PerSlotMemoryCap,
-  RunnerWidth,
-  JobserverTokens,
-  VerifyOnlyCap,
-  GunbcPinnedTree,
   HostConverge,
 }
 
@@ -32,12 +26,12 @@ data gunbc_converge_target_byte_normalization_marker: Disposition = Scaffold {
   dissolves_to: SingleAuthority,
   bind: DeclarationRef {
     module_path: "gunbc.host_converge_delta",
-    decl_name: "converge_target_signature",
+    decl_name: "converge_knob_values_equal",
     field: WholeDeclaration,
   }
 }
 
-data converge_target_byte_normalization_trigger: String = "🟡 dissolve-on: converge_target_signature byte axes (PerSlotMemoryCap.bytes_value / SliceProperty.expected_effective) compare canonical decimal strings verbatim; DISSOLVES WHEN a std ByteSize parse grounds live-read sentinels (empty/infinity/unit-suffixed) into a canonical magnitude, so a live 'infinity' read where bytes are expected folds to drift rather than a string mismatch alone."
+data converge_target_byte_normalization_trigger: String = "🟡 dissolve-on: converge_knob_values_equal compares ConvergeTarget structurally, so byte axes (PerSlotMemoryCap.bytes_value / SliceProperty.expected_effective) still compare their canonical decimal String fields verbatim; DISSOLVES WHEN a std ByteSize parse grounds live-read sentinels (empty/infinity/unit-suffixed) into a canonical magnitude, so a live 'infinity' read where bytes are expected folds to drift rather than a String mismatch alone."
 
 type ConvergeKnobKey {
   slice: ConvergeSlice
@@ -52,34 +46,8 @@ fn converge_knob_keys_equal(a: ConvergeKnobKey, b: ConvergeKnobKey) -> Bool {
   a.slice == b.slice && a.name == b.name
 }
 
-fn converge_target_signature(t: ConvergeTarget) -> String {
-  match t {
-    SliceProperty { unit: u, property: p, apply_value: _, expected_effective: ee } =>
-      concat(concat(concat(concat("slice_property|", u), concat("|", p)), "|"), ee)
-    PerSlotMemoryCap { dropin_path: _, instance_glob: g, property: p, bytes_value: b } =>
-      concat(concat(concat(concat("per_slot_cap|", g), concat("|", p)), "|"), b)
-    RunnerWidth { instance_glob: g } =>
-      concat("runner_width|", g)
-    JobserverTokens { env_file: _, env_key: ek, service_unit: su } =>
-      concat(concat(concat("jobserver|", ek), "|"), su)
-    VerifyOnlyCap { slice_unit: u, property: p } =>
-      concat(concat(concat("verify_only|", u), "|"), p)
-    GunbcPinnedTree {
-      gunbc_root_env_key: _,
-      gunbc_root_path: _,
-      dag_root: _,
-      ctrl_checkout_path: _,
-      binary: _,
-      pin_read_script: _,
-      green_place_marker: _,
-      live_apply: _,
-    } => "pinned_tree"
-  }
-}
-
 fn converge_knob_values_equal(a: ConvergeKnob, b: ConvergeKnob) -> Bool {
-  a.desired == b.desired
-    && converge_target_signature(t: a.target) == converge_target_signature(t: b.target)
+  a.desired == b.desired && a.target == b.target
 }
 
 fn converge_knob_row(knob: ConvergeKnob) -> KeyedRow<ConvergeKnobKey, ConvergeKnob> {
