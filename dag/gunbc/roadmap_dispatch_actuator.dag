@@ -56,6 +56,7 @@ data dispatch_tmux_session_prefix: String = "gunbc-dispatch-"
 data dispatch_claude_process_fingerprint: NonEmptyStr = "claude" as NonEmptyStr
 data claude_skip_permission_settings_json: String = "{\"skipDangerousModePermissionPrompt\":true}"
 data dispatch_claude_start_prompt: String = "Begin working on the assigned node."
+data dispatch_claude_permission_args: List<String> = ["--dangerously-skip-permissions"]
 
 type HostExecArgv {
   program: String
@@ -237,6 +238,7 @@ fn claude_spawn_argv(
     settings_json: claude_skip_permission_settings_json,
     append_system_prompt: brief,
     start_prompt: dispatch_claude_start_prompt,
+    permission_args: dispatch_claude_permission_args,
   )
 }
 

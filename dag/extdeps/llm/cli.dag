@@ -25,17 +25,22 @@ fn shape_claude_invoke_argv(
   settings_json: String,
   append_system_prompt: String,
   start_prompt: String,
+  permission_args: List<String>,
 ) -> List<String> {
-  [
-    "claude",
-    "--dangerously-skip-permissions",
-    "--settings", settings_json,
-    "--effort", effort,
-    "--session-id", session_id,
-    "-n", node_id,
-    "--append-system-prompt", append_system_prompt,
-    start_prompt,
-  ]
+  concat(
+    ["claude"],
+    concat(
+      permission_args,
+      [
+        "--settings", settings_json,
+        "--effort", effort,
+        "--session-id", session_id,
+        "-n", node_id,
+        "--append-system-prompt", append_system_prompt,
+        start_prompt,
+      ],
+    ),
+  )
 }
 
 service llm.Codex {
@@ -77,6 +82,7 @@ service claude.Invoke {
       settings_json: String
       append_system_prompt: String
       start_prompt: String
+      permission_args: List<String> = []
     }
     output {
       success: Bool from "exit_success"
@@ -85,7 +91,7 @@ service claude.Invoke {
     }
     transport shell {
       argv: [
-        "claude", "--dangerously-skip-permissions",
+        "claude", permission_args,
         "--settings", "{settings_json}",
         "--effort", "{effort}",
         "--session-id", "{session_id}",
