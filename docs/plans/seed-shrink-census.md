@@ -196,7 +196,8 @@ The 88 v1 integration-test modules (~30k LOC, **939 `#[test]` fns**, `pipeline.r
 
 - **Live counts:** `test_migration_debt_module_count()` / `test_migration_debt_total_loc()` / `test_migration_debt_total_test_fns()` (builtins in `cli_run.rs`, dispatched via `v1_interpreter.rs`).
 - **Live roster:** `test_migration_debt_module_names()` returns the current debt module list — run this instead of reading a table to see which v1 modules still need a floor witness.
-- **Floor gate:** `src/v2/test/claim/manual/test_migration_debt_test.dag` enrolls three shrink-only ratchet witnesses (module count / total LOC / total test-fn count each `<=` their baseline) — floor-discovered and green-by-execution like every other witness. Debt may shrink freely; it must never silently grow.
+- **Floor gate:** `src/v2/test/claim/manual/test_migration_debt_test.dag` enrolls shrink-only ratchet witnesses (module count / total LOC / total test-fn count each `<=` their baseline) plus a **diff-based delete guard** (`test_migration_delete_guard_holds`) — floor-discovered and green-by-execution like every other witness. Debt may shrink freely; it must never silently grow.
+- **Delete guard:** for each `src/v1/tests/src/*.rs` module bearing a line-anchored `#[test]` deleted in the CI diff (`origin/main...HEAD`), HEAD must already carry an exact-stem floor `*_test.dag` witness (same stem rule as the live debt roster). Bulk-delete without per-module floor coverage fails closed.
 - **Baselines** (set at this table's dissolution, re-verify by running the lens): 77 modules / 28,546 LOC / 912 `#[test]` fns.
 
 **Migration rule (unchanged):** for each v1 test module, the floor `*_test.dag` witness must be **green-by-execution** in `claim_executor` before the v1 `#[test]` module deletes. Bulk-delete of `src/v1/tests` is forbidden. When `test_migration_debt_module_count()` reaches 0, §5 test-migration is done — no table to keep in sync.

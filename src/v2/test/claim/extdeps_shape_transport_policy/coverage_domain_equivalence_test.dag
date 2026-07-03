@@ -1,0 +1,10 @@
+module v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence_test
+
+import v2.test.extdeps_shape_transport_policy.coverage_domain_equivalence {
+  coverage_domain_equivalence_argument_holds
+}
+import v2.std.logic { Bool }
+
+test fn extdeps_shape_transport_policy_coverage_domain_equivalence_holds() -> Bool {
+  coverage_domain_equivalence_argument_holds()
+}

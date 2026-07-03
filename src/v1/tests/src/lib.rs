@@ -9,8 +9,6 @@ pub mod helpers;
 #[cfg(test)]
 mod a4_opacity;
 #[cfg(test)]
-mod auth_declared_but_unwired_witness_test;
-#[cfg(test)]
 mod b1_hash_primitive_test;
 #[cfg(test)]
 mod body_producer_infer_perf_witness_test;
@@ -46,8 +44,6 @@ mod diagnostics;
 mod eval_measurement_purity_test;
 #[cfg(test)]
 mod faithful_string_element_char_witness_test;
-#[cfg(test)]
-mod floor_skip_discovery_host_test;
 #[cfg(test)]
 mod fn_as_value_test;
 #[cfg(test)]

@@ -56,6 +56,23 @@ fn managed_oom_pressure_limit_show_value(p: Percent) -> Int {
   percent_count(p: p) * systemd_managed_oom_pressure_limit_show_scale / 100
 }
 
+fn parse_managed_oom_pressure_limit_show(raw: String) -> Percent? {
+  let trimmed = trim(raw)
+  if trimmed == "" {
+    none
+  } else {
+    match parse_int(s: trimmed) {
+      Present { value: wire } =>
+        Present { value: percent(wire * 100 / systemd_managed_oom_pressure_limit_show_scale) }
+      Absent => none
+    }
+  }
+}
+
+fn managed_oom_pressure_limit_wire_matches_percent(wire: Int, desired: Percent) -> Bool {
+  wire == managed_oom_pressure_limit_show_value(p: desired)
+}
+
 fn managed_oom_action_value(a: ManagedOomAction) -> NonEmptyStr {
   match a {
     ManagedOomKill => oomd_managed_value_kill
