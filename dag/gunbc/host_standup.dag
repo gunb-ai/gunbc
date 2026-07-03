@@ -3,7 +3,11 @@ module gunbc.host_standup
 import std.types { List, String, NonEmptyStr, Bool, Int }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.disposition { Disposition, Scaffold, SingleAuthority }
-import gunbc.host_effect { Policy, OneShotIdempotent, ConvergeToFixpoint }
+import gunbc.host_effect {
+  IdempotencyEvidence,
+  host_effect_identity_evidence,
+  host_effect_converge_loop_evidence,
+}
 import gunbc.bmc_onboarding {
   FactoryDefault,
   CredentialsRotated,
@@ -50,7 +54,7 @@ type HostStandupStep {
   phase: HostStandupPhase
   label: NonEmptyStr
   disposition: PhaseDisposition
-  effect_policy: Policy
+  effect_evidence: IdempotencyEvidence
 }
 
 type GapLedgerRow {
@@ -140,7 +144,7 @@ fn host_standup_prefix_step(
   phase: HostStandupPrefixPhase,
   label: NonEmptyStr,
   authorities: List<DeclarationRef>,
-  effect_policy: Policy
+  effect_evidence: IdempotencyEvidence
 ) -> HostStandupStep {
   HostStandupStep {
     phase: Prefix { phase: phase },
@@ -154,7 +158,7 @@ fn host_standup_assimilation_step(
   phase: HostStandupAssimilationPhase,
   label: NonEmptyStr,
   disposition: PhaseDisposition,
-  effect_policy: Policy
+  effect_evidence: IdempotencyEvidence
 ) -> HostStandupStep {
   HostStandupStep {
     phase: Assimilation { phase: phase },
@@ -177,7 +181,7 @@ fn host_standup_prefix_gap_step(
   label: NonEmptyStr,
   interim_realization: String,
   refusal: String,
-  effect_policy: Policy
+  effect_evidence: IdempotencyEvidence
 ) -> HostStandupStep {
   HostStandupStep {
     phase: Prefix { phase: phase },

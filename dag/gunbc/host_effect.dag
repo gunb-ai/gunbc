@@ -4,6 +4,15 @@ import std.types { String, Int, NonEmptyStr }
 import std.access { AccessDecision }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
+import std.effects {
+  EffectShape,
+  ReadEffect,
+  IdempotencyEvidence,
+  LatticeEffect,
+  IdentityEffect,
+  NonIdempotent,
+  is_idempotent_effect,
+}
 
 type HostEffect =
     ShellCommand { script: String }
@@ -13,7 +22,7 @@ type NodeControlPlane =
     HostOs { node: ComputeHost }
   | BmcController { node: ComputeHost }
 
-type Policy = OneShotIdempotent | ConvergeToFixpoint
+type Drive = OneShot | ConvergeLoop
 
 type HostEffectTransport =
     LocalShell
@@ -22,10 +31,40 @@ type HostEffectTransport =
 type HostEffectIntent {
   target: NodeControlPlane
   effect: HostEffect
-  policy: Policy
+  evidence: IdempotencyEvidence
   transport: HostEffectTransport
   privilege_denial: AccessDecision?
 }
 
 type HostEffectEvidence =
     ShellEffectApplied { exit_code: Int, stdout: String }
+
+fn host_effect_drive_from_evidence(evidence: IdempotencyEvidence) -> Drive {
+  match evidence {
+    IdentityEffect => OneShot
+    LatticeEffect { shape: shape } =>
+      if is_idempotent_effect(shape: shape) {
+        OneShot
+      } else {
+        ConvergeLoop
+      }
+    NonIdempotent { shape: _, reason: _ } => ConvergeLoop
+  }
+}
+
+fn host_effect_drive(intent: HostEffectIntent) -> Drive {
+  host_effect_drive_from_evidence(evidence: intent.evidence)
+}
+
+data host_effect_identity_evidence: IdempotencyEvidence = IdentityEffect
+
+data host_effect_read_evidence: IdempotencyEvidence = LatticeEffect { shape: ReadEffect }
+
+data host_effect_converge_loop_evidence: IdempotencyEvidence = NonIdempotent {
+  shape: ReadEffect,
+  reason: "converge to fixpoint — external redrive until observed state matches desired",
+}
+
+fn host_effect_lattice_evidence(shape: EffectShape) -> IdempotencyEvidence {
+  LatticeEffect { shape: shape }
+}
