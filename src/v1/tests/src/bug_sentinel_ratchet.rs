@@ -9,9 +9,13 @@ fn no_bug_no_profile_sentinel_in_tracked_sources() {
         !types_dag.contains(SENTINEL),
         "dag/std/types.dag must not contain fabrication sentinel"
     );
-    let infer_semantics = include_str!("infer_semantics.rs");
+    // Host-physics oracle (51 tests); not the thin floor .dag wrapper.
+    let infer_semantics_oracle = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../stage0/src/bin/infer_semantics_witness.rs"
+    ));
     assert!(
-        !infer_semantics.contains(SENTINEL),
-        "infer_semantics.rs must not contain fabrication fallback"
+        !infer_semantics_oracle.contains(SENTINEL),
+        "infer_semantics_witness.rs must not contain fabrication fallback"
     );
 }

@@ -1,0 +1,10 @@
+module v2.test.claim.infer_semantics_witness
+
+import tools.infer_semantics_witness_transport { run_infer_semantics_witness }
+import v2.std.logic { Bool }
+
+data infer_semantics_witness_provenance: String = "Floor witness migrated from src/v1/tests/src/infer_semantics.rs (5-test-migration lane, 51 v1 #[test] fns): infer semantics oracle suite (brand twins, optional pattern lookup, structural methods, keyed-collection access, type compatibility, applied-generic field lookup) executed via infer_semantics_witness host physics until v1.compiler.infer_* submodules are witness-layer importable."
+
+test fn infer_semantics_witness_keystone_holds() -> Bool {
+  run_infer_semantics_witness()
+}

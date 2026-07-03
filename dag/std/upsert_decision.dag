@@ -1,0 +1,23 @@
+module std.upsert_decision
+
+import std.types { String, NonEmptyStr }
+
+data upsert_decision_doc: String = "Generic observation verdict + parameterized upsert decision algebra. Domain modules (gunbc.file_access, gunbc.session_lease, gunbc.install_media) supply concrete observation/plan types P; std owns only the shared verdict and UpsertDecision<P> shape (roadmap 2-resource-namespace-upsert-a, operator reshape 2026-07-03)."
+
+type ObservationVerdict
+  = Converged
+  | Absent
+  | Drifted
+  | Conflict
+  | Inaccessible
+  | UnknownRefused
+
+type UpsertDecision<P>
+  = Noop
+  | Apply { plan: P }
+  | Refuse { reason: NonEmptyStr }
+
+type UpsertClassification<P> {
+  verdict: ObservationVerdict
+  decision: UpsertDecision<P>
+}
