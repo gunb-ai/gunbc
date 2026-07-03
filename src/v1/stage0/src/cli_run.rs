@@ -5438,7 +5438,8 @@ mod floor_witness_a_prove {
     fn witness_a_function_edited_axis_body_touch_fixture_impl_vs_impl() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
-        let diff = unified_diff_for_line(FIXTURE_REL, 78);
+        // Body line inside floor_disc_witness_a_only_holds (rebased when floor_disc_helper_fn landed in #6061).
+        let diff = unified_diff_for_line(FIXTURE_REL, 83);
         let roots = setup_roots(&ws);
         let index = build_multi_entry_index(&roots);
         let line_ranges = parse_unified_diff_line_ranges(&diff);
@@ -7090,11 +7091,35 @@ pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationF
 // when exhaustiveness-by-default / compile-graph access lands (gunbc#5364).
 
 const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
+    "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_command_leading_lit_text",
+    "dag/extdeps/bmc/webui/nbd_proxy_serve.dag::shell_rawline_starts_with_tool",
     "dag/extdeps/languages/markdown.dag::md_nested",
     "dag/gunbc/generated_artifact.dag::artifact_eq",
     "dag/gunbc/commit_workflow.dag::commit_workflow_surface_eq",
     "dag/gunbc/commit_workflow.dag::gate_eq",
     "dag/gunbc/commit_workflow.dag::local_tidy_check_eq",
+    "dag/gunbc/os_install_deduction.dag::runtime_verdict_from_kvm_attestation",
+    "dag/gunbc/runner_unit_live_read.dag::converge_target_live_verdict",
+    "dag/gunbc/srv3_bmc_credential_resolve.dag::bmc_credential_resolution_uses_factory",
+    "dag/gunbc/srv3_bmc_credential_resolve.dag::bmc_credential_resolution_uses_secret_ref",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_boot_override_consumed_or_weak",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_srv3_install_post_boot",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_srv3_install_when_serve_observed",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_srv3_install_when_serve_ready",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_weak_kvm_or_inconclusive",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_when_router_not_installed",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::diagnose_when_serve_ready",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::install_diagnostic_verdict_is_boot_override_consumed_failure",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::install_diagnostic_verdict_is_os_installed",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::install_diagnostic_verdict_is_ready_to_boot",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::install_has_progress_evidence",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::parse_virtual_media_session_observation",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::router_lacks_os_installed_lease",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::sol_has_autoinstall_evidence",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_boot_override_consumed",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_os_installed",
+    "dag/gunbc/srv3_os_install_diagnostic.dag::srv3_install_diagnostic_is_ready_to_boot",
+    "dag/std/change.dag::keyed_diff_hunks_equal",
     "dag/std/computation.dag::constant_bound_value",
     "dag/std/computation.dag::is_constant_bound",
     "dag/std/effects.dag::create_double_init_collapsible",
@@ -7161,6 +7186,7 @@ const NON_FOLD_RESIDUE_ROSTER: &[&str] = &[
     "src/v2/std/effects.dag::key_source_eq",
     "src/v2/std/determinism.dag::determinism_class_eq",
     "src/v2/std/determinism.dag::non_det_source_eq",
+    "src/v2/std/decl_index.dag::decl_facts_is_fn_like",
     "src/v2/std/float.dag::float_body_is_nan",
     "src/v2/std/node_minimal.dag::node_superset_field_eq",
     "src/v2/std/probe_selector.dag::diagnostic_interface_kind_eq",
