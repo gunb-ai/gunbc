@@ -55,6 +55,10 @@ fn test_migration_debt_total_test_fns_ratchet_holds() -> Bool {
   )
 }
 
+fn test_migration_delete_guard_holds_live() -> Bool {
+  test_migration_delete_guard_holds()
+}
+
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

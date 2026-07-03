@@ -44,7 +44,7 @@ type RunnerUnitMemoryLiveRead {
 }
 
 data gunbc_runner_unit_live_read_scope_disposition: Disposition = Terminal {
-  reason: "Slice-1 typed fixture/read carrier only: parses recorded systemctl-show wire values into SystemdCgroupMemoryLimit and projects onto ConvergeTarget PerSlotMemoryCap verdict semantics. Does NOT replace gunbc.runner_slot_show_effective_read ReadAbsent — the live fleet systemctl-show transport is a separate load-bearing node."
+  reason: "Per-slot raw→typed read carrier: RunnerUnitLiveReadRow parses systemctl-show wire values into SystemdCgroupMemoryLimit and projects onto ConvergeTarget PerSlotMemoryCap verdict semantics. Live READ transport (systemctl show per property) is owned by gunbc.fleet_show_effective_read; this module keeps the typed shape + fixture rows."
 }
 
 data gunbc_srv1_runner_unit_live_read_fixture: RunnerUnitLiveReadRow = RunnerUnitLiveReadRow {
