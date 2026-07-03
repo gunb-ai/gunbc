@@ -87,6 +87,39 @@ lives in `RunnerHostDeployment`/`fleet_intent`, not projected to a converge knob
 **tailscale ACL / deploy route** · **sccache config** · **OOM/swap counters** (only `emit_sessions_membership`
 count exists). None of these have a `ConvergeTarget` variant or a typed live read → all §5 stop-points.
 
+### 1e. Last live receipt / source on record (which knobs have ANY real observed value vs pure ReadAbsent)
+
+To keep the §1 tables readable, the observed-value provenance is consolidated here. **Exactly one knob
+family has any observed value on record today — and it is a recorded *fixture*, not a live-transport read.**
+
+| Knob | Last observed value on record | Source | Nature | Reads as |
+|---|---|---|---|---|
+| `per_slot_memory_max_bytes` (srv1-01) | `MemoryMax = infinity` | `gunbc_srv1_runner_unit_live_read_fixture` (`runner_unit_live_read.dag`), `probed_at: "2026-07-01"`, unit `actions-runner@srv1-01.service` | **fixture row** (Terminal disposition), NOT a live transport read | **DRIFTED** — uncapped; the inert-cap OOM-reboot vector `runner_slot_enforcement` refuses to ground |
+| `per_slot_memory_swap_max_bytes` (srv1-01) | `MemorySwapMax = 0` | same fixture row | fixture row | converged-shaped (equals desired `"0"`), but off a fixture not a live read |
+| `memory_high` (srv1-01) | `MemoryHigh = infinity` | same fixture row | fixture row | no knob emits `MemoryHigh` — observed value exists ahead of any knob |
+| **every other knob** | *none* | — | `ShowEffectiveRead = ReadAbsent` (runner slice) / no read carrier at all (sessions, jobserver, width, pinned-tree) | pure `Absent` / unenforced, fail-closed |
+
+Reading of the one receipt: the single on-record observation *already shows drift* (srv1-01 per-slot `MemoryMax`
+reads `infinity` = uncapped), which is exactly why `runner_slot_enforcement`'s committed posture is
+`RunnerSlotUnenforced`. It is a fixture, so it is not proof of the current live host — but it is the shape a
+real receipt will take, and it is the reason the first live mutation (§1f) targets a per-slot MemoryMax cap.
+
+### 1f. First narrow hunk candidate (the deliberately-narrow first live-mutation target)
+
+**Candidate: srv2, one runner unit, `per_slot_memory_max_bytes` (+ its paired `per_slot_memory_swap_max_bytes`).**
+
+| Axis | Value |
+|---|---|
+| Host | `srv2` (existing host, `ExistingHostQuiescentReload` apply mode — not the srv3 fresh-standup path) |
+| Knob | `per_slot_memory_max_bytes` on one `actions-runner@srv2-NN.service` instance, paired with `per_slot_memory_swap_max_bytes` |
+| Target variant | `PerSlotMemoryCap` (drop-in + per-instance `set-property`) |
+| Desired source | `RunnerHostDeployment.per_runner_memory_cap` (already model-owned) |
+| Why narrowest | (a) it is the ONLY knob with a typed read shape already built (`RunnerUnitMemoryLiveRead`, §1e); (b) the keyed-delta fold is already exercised on exactly this srv2 + `per_slot_memory_max/swap` pair by `host_converge_delta_witness_test.dag` (2-entry patch, apply-hunk verdicts); (c) `MemoryMax` is drain-free and per-instance-scoped — no runner-width change, no session-slice coupling, no pinned-tree reload. |
+| Reuse path | fixture `RunnerUnitLiveReadRow` → `runner_unit_live_read_typed` → `RunnerSliceCapEffectiveness` → `reconcile_runner_slot` → `Reconciliation<RunnerSlotApplyEffect, RunnerSlotEnforcement>`; only the live `systemctl show` transport (currently `ReadAbsent`) is new. |
+| Stays narrow by | one host, one instance, one property pair; verify-first (read before write); everything else stays `ReadAbsent`/unenforced. |
+
+This is a *candidate*, not a decision — the owning lane ratifies the actual first target.
+
 ---
 
 ## 2. Existing converge carriers to REUSE (so later slices extend, never fork)
@@ -203,6 +236,28 @@ Per the brief: where a live read output cannot be represented typed today, it is
 Representation stop-flag (do-not-invent, per brief): `oom_pressure_limit_pct` emits desired `60` but the
 effective wire value is `2576980377` (a byte count). Whether the typed live read grounds a **percent** or a
 **derived byte ceiling** is a modeling decision recorded here, not resolved.
+
+### 5a. Which stop-points BLOCK runner-allocation-v0 vs which are deferrable
+
+runner-allocation-v0 is the milestone that derives and *reads back* the runner memory/width allocation on the
+fleet. A stop-point BLOCKS it iff a typed live read must exist before the allocation can be verified converged
+(fail-closed: no read ⇒ `RunnerSlotUnenforced` ⇒ the allocation cannot claim it landed).
+
+| Stop-point | v0 disposition | Rationale |
+|---|---|---|
+| Runner slice `MemoryMax` live read | **BLOCKS** | The slice cap is the allocation's top-level envelope; conservation (`host_allocation_conserves`) is premised on it being effective. Must read back typed. |
+| Per-slot memory/swap cap live read (real transport) | **BLOCKS** | This is the per-runner allocation itself; the typed shape (`RunnerUnitMemoryLiveRead`) is ready, only the transport is missing. This is the §1f first hunk. |
+| `runner_count` active-width live read | **BLOCKS** | The allocation's cardinality; without a typed width read-back v0 cannot confirm the derived `runner_count` matches live active units. |
+| Runner slice `CPUWeight` live read | **deferrable** | Work-conserving; wrong/absent CPUWeight does not break the *memory* allocation soundness. Nice-to-verify, not a v0 gate. |
+| `build_tokens` / jobserver env live read | **deferrable** | Build parallelism, not a memory-allocation fact; jobserver drift degrades throughput, it does not invalidate the allocation. |
+| All sessions-slice knobs | **deferrable** | Separate slice (sessions ≠ runner allocation); coupled only through host conservation arithmetic, which is already model-side. |
+| `pinned_tree_sha` reads | **deferrable** | Deploy/version concern, orthogonal to the memory allocation read-back. |
+| Unmodeled knobs (`TasksMax`, `MemoryHigh` knob, labels, sudoers, tailscale, sccache, OOM counters) | **deferrable** | Greenfield; not on the runner-allocation-v0 critical path. |
+
+Net: **three typed reads gate runner-allocation-v0** — runner-slice `MemoryMax`, per-slot `MemoryMax`/`MemorySwapMax`,
+and `runner_count` width. All three extend carriers that already exist (`ShowEffectiveRead<RunnerSliceCapEffectiveness>`,
+`RunnerUnitMemoryLiveRead`, and a new `RunnerWidthLiveRead` row); each needs its live `systemctl`/`list-units`
+transport wired. Everything else is deferrable past v0.
 
 ---
 
