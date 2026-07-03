@@ -137,11 +137,16 @@ witness before the next begins.
 - **Stage 0 — this design PR (non-load-bearing).** This document + an open-thread bullet in DESIGN.md
   registering the milestone. No behavior change. *This is the PR this session opens.*
 
-- **Stage 1 — resolve the `DescentEvidence` fork (§3 / FLAG A).** Ground the v2 descent path on the
-  single authority (the `dag/std/termination.dag` lattice), deleting the bare `cardinality.dag:108-111`
-  copy or making it a re-export, per the operator's single-authority ruling on the v2↔dag layer split.
-  Witness: `descent_evidence_meet` over the lattice, red control = a perturbed meet. **Model-before:
-  Stage 2 imports the consolidated authority; do it first.**
+- **Stage 1 — resolve the `DescentEvidence` fork (§3 / FLAG A — direction RULED, landing HELD).**
+  Ground the v2 descent path on the single authority: **`dag/std/termination.dag` is the authority**
+  (parent ruling 2026-07-03, §7 — `.dag` is truth, `src/v2/std` is the transient seed that shrinks to
+  zero; and the richer lattice already lives there). Consolidate the bare `cardinality.dag:108-111`
+  `DescentEvidence` **into** `dag/std/termination.dag`, then repoint/delete the v2 copy. Witness:
+  `descent_evidence_meet` over the lattice, red control = a perturbed meet. **Model-before: Stage 2
+  imports the consolidated authority; do it first.** **LANDING HOLD:** design against this direction
+  now (unblocked), but do **not** land the consolidation until parent relays the operator's *standing*
+  confirmation that `dag/std` wins v2↔dag forks as a durable rule (covers this, the pending
+  `QualifiedName` de-fork, and future forks — imminent, direction very unlikely to flip).
 
 - **Stage 2 — node-aware Loop multiplicity (T1).** Introduce `loop_multiplicity(n: Node)` deriving
   `Multiplicity` from the measure via the Stage-1 authority; route `node_multiplicity` for
@@ -181,20 +186,28 @@ Stage 2 to *land* but reads cleaner after it. Stage 2 requires Stage 1.
   runs green *and* a perturbed measure/body runs red (DESIGN.md §5 spec-without-execution trap; my
   standing anti-overclaim culture — the honest bar is the deliverable).
 
-## 7. Open flags for parent/operator sign
+## 7. Flag dispositions (parent-signed 2026-07-03)
 
-- **FLAG A (blocks Stage 1):** which layer owns the single `DescentEvidence` authority — the v2
-  `src/v2/std` tree or the `dag/std/termination.dag` tree? Both exist; the richer lattice is in
-  `dag/std`. Need the single-authority ruling before consolidating (this is the recurring v2↔dag
-  cross-tree grounding question, not new to this milestone).
-- **FLAG B (Stage 2):** `behavior_multiplicity` currently takes `Behavior`; making Loop node-aware
-  means Loop's multiplicity is decided one layer up (`node_multiplicity`) while the other behaviors
-  stay in `behavior_multiplicity`. Is asymmetry acceptable, or should `behavior_multiplicity` be
-  retired in favor of a uniformly node-aware `node_multiplicity`? I lean asymmetric (the other
-  behaviors' multiplicity *is* genuinely tag-determined; forcing them node-aware is ceremony), but
-  flag it because it touches a load-bearing dispatch.
-- **FLAG C (Stage 3):** the fixpoint relation `τ → τ` assumes the loop carrier is invariant across
-  iterations. Some faithful loops *narrow* a type monotonically (refinement). First cut requires
-  strict invariance (fail-closed); refinement-typed loops are a named follow-on, not silently
-  admitted.
+- **FLAG A — RULED (direction), landing HELD.** The single `DescentEvidence` authority is
+  **`dag/std/termination.dag`** (§7: `.dag` is truth, `src/v2/std` is the shrinking seed; the richer
+  meet/join/`promote_to_strict` lattice already lives there). This is one instance of the recurring
+  v2↔dag fork class (same as the pending `QualifiedName` de-fork). Stage 1 is designed against this
+  direction now, but its **consolidation landing waits** on the operator's *standing* confirmation
+  (parent relaying) that `dag/std` wins these forks as a durable rule — so we don't re-escalate per
+  fork. Direction very unlikely to flip.
+- **FLAG B — SIGNED (accept the asymmetry).** Loop's multiplicity is decided one layer up
+  (`node_multiplicity`, node-aware) while the other behaviors stay tag-only in `behavior_multiplicity`
+  — and that is **principled, not sloppy inconsistency**: Loop is genuinely different because its
+  termination *depends on the measure*, which is a node-level edge the `Behavior` tag structurally
+  cannot carry. The other behaviors' multiplicity **is** tag-determined; forcing them node-aware would
+  be false uniformity (ceremony over a distinction that isn't there). The Stage-2 implementation must
+  carry this rationale in-code so the asymmetry reads as a real distinction.
+- **FLAG C — SIGNED, with one §5 requirement.** First cut handles carrier-invariant `τ → τ` loops
+  (typed + green). Refinement-typed loops (carrier narrows monotonically across iterations) are a
+  named follow-on — but they must be **fail-closed in the first cut**: a refinement loop is typed
+  `DescentUnknown` / **refused with a located diagnostic**, *never* silently fabricated as `τ → τ`. A
+  refinement loop mis-typed as invariant is a fabricated wrong answer (§5). So: `τ → τ` → proven;
+  detected-refinement → refused, with the refinement-typed follow-on as its named dissolution trigger.
+  The Stage-3 discriminating witness must include a refinement-shaped loop that goes **red/refused**
+  (not silently accepted).
 ```
