@@ -220,18 +220,11 @@ fn maybe_print_type_env_lookup_profile() -> Unit { }
 fn record_flatten_visible_parent_recurse() -> Unit { }
 
 fn flatten_visible_bindings(env: TypeEnv) -> Map<String, TypeBinding> {
-  if (env.ancestry_str_bindings |> map_keys |> count > 0) || (env.parents |> count == 0) {
-    map_merge(env.ancestry_str_bindings, env.str_bindings)
-  } else {
-    let from_parents = fold(env.parents, init: empty_map(), f: (acc, parent) =>
-      map_merge(flatten_visible_bindings(env: parent), acc)
-    )
-    let local_by_name = fold(env.bindings |> map_values, init: empty_map(), f: (acc, binding) =>
-      map_insert(acc, binding.name, binding)
-    )
-    record_flatten_visible_parent_recurse()
-    map_merge(from_parents, local_by_name)
-  }
+  let from_parents = fold(env.parents, init: empty_map(), f: (acc, parent) =>
+    map_merge(flatten_visible_bindings(env: parent), acc)
+  )
+  let local_by_name = map_merge(env.ancestry_str_bindings, env.str_bindings)
+  map_merge(from_parents, local_by_name)
 }
 
 fn merge_envs(envs: List<TypeEnv>) -> TypeEnv {

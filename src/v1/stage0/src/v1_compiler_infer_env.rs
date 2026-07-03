@@ -402,28 +402,16 @@ pub fn inductive_fields_list_to_map(
 }
 
 pub fn flatten_visible_bindings(env: Rc<TypeEnv>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    // O(1) flat view: ancestry + local (local wins), same overlay order as lookup_binding_by_name.
-    if !env.ancestry_str_bindings.is_empty() || env.parents.is_empty() {
-        return v1_rt::rc_map_merge(env.ancestry_str_bindings.clone(), env.str_bindings.clone());
-    }
-    // Fallback for envs that still carry only parent-chain links (tests / legacy stubs).
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let from_parents = env.parents.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
+                FLATTEN_VISIBLE_PARENT_RECURSES.fetch_add(1, Ordering::Relaxed);
                 v1_rt::rc_map_merge(flatten_visible_bindings(parent.clone()), acc)
             },
         );
-        let local_by_name = Rc::new(v1_rt::map_values(&env.bindings.clone()))
-            .iter()
-            .cloned()
-            .fold(
-                v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
-                    v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone())
-                },
-            );
-        record_flatten_visible_parent_recurse();
+        let local_by_name =
+            v1_rt::rc_map_merge(env.ancestry_str_bindings.clone(), env.str_bindings.clone());
         v1_rt::rc_map_merge(from_parents, local_by_name)
     })
 }
