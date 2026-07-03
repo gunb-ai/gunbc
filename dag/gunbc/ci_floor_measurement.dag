@@ -115,8 +115,6 @@ fn gunbc_ci_floor_memory_derived_width(cap: ByteSize, cpu_bound: Int) -> Int {
   int_min(a: cpu_bound, b: mem_width)
 }
 
-// In-process single-module compile-clean shard (claim_executor path): one module entry +
-// import closure through witness_layer_roots pool — NOT whole-tree 4.24GiB co-shard peak.
 data gunbc_ci_floor_per_module_compile_shard_peak_samples: List<ByteSize> = [
   byte_size(536870912),
   byte_size(805306368),

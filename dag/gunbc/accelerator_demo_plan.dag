@@ -193,6 +193,7 @@ fn demo_plan_fused_op_count(plan: RealizationPlan<Nano>) -> Int {
       RunnableKernelWorkload { fused_op_count: count } => count
       RunnableSingleClaim { entry: _, function: _, profile: _ } => 0
       RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => 0
+      RunnableCompileCleanShardBatch { entry_paths: _, spawn_width_cap: _, profile: _ } => 0
     }
   }
 }
