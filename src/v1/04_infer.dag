@@ -527,7 +527,7 @@ fn type_mismatch_error(expected: String, got: String, span: SourceSpan, module_n
   make_error_node(diagnostic: TypeMismatch { expected: expected, got: got, span: span }, module_name: module_name)
 }
 
-data optional_coproduct_field_shape_predicate_dissolution_trigger: String = "🟡 dissolve-on: field_type_is_optional_coproduct + rejects_string_for_optional_coproduct_field — CardOptional+Disj Bool predicates over lookup_type_for-resolved shape; ground as inhabitable OptionalCoproduct<T> in std.types at v2 regen."
+data optional_coproduct_field_shape_predicate_dissolution_trigger: String = "🟡 dissolve-on: field_type_is_optional_coproduct + rejects_string_for_optional_coproduct_field — CardOptional+Disj Bool predicates over lookup_type_for-resolved shape; ground as inhabitable OptionalCoproduct in std.types at v2 regen."
 
 fn rejects_string_for_optional_coproduct_field(expected: Node, got: Node, source_indices: Map<String, NewlineIndex>, env: TypeEnv) -> Bool {
   if expected.return_cardinality != CardOptional {
@@ -565,7 +565,11 @@ fn record_lit_variant_fields_from_visible_env(env: TypeEnv, variant_name: String
         match node.children |> filter(arm => authored_name_at(source_indices: env.source_indices, node: arm) == variant_name) |> first {
           Present { value: arm } =>
             let expanded = expand_type_for_field_access(n: arm, env: env, module_name: module_name)
-            if expanded.connective == Conj { expanded.children } else { arm.children }
+            if expanded.connective == Conj {
+              expanded.children
+            } else {
+              arm.children
+            }
           Absent => acc
         }
       } else {
@@ -6605,7 +6609,7 @@ fn global_type_exporter_count(modules: List<TypedModule>, name: String) -> Int {
   filter(modules, m => module_exports_type_name(m: m, name: name)) |> count
 }
 
-data local_authority_for_name_dissolution_trigger: String = "🟡 dissolve-on: single-exporter rewire canonical picks last TypedModule in compilation list (filter|>last); multi-exporter names skip rewire and defer to merge_type_env_cache overlay-wins — ground on import-order authority at v2 regen."
+data local_authority_for_name_dissolution_trigger: String = "🟡 dissolve-on: single-exporter rewire canonical picks last TypedModule in compilation list (filter then last); multi-exporter names skip rewire and defer to merge_type_env_cache overlay-wins — ground on import-order authority at v2 regen."
 
 fn local_authority_for_name(modules: List<TypedModule>, name: String) -> TypedModule? {
   match filter(modules, m => (filter(m.type_env.bindings |> map_values, b => b.name == name) |> count) > 0) |> last {
