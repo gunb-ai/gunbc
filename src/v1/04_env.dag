@@ -28,6 +28,9 @@ type TypeEnvCache {
   variant_locals: Map<String, TypeBinding>
 }
 
+data type_env_profiling_dissolution_trigger: String = "🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0)."
+data flatten_visible_bindings_invariant: String = "B1 build_type_env populates ancestry_str_bindings for import chains; empty ancestry with non-empty parents falls back to parent recurse (legacy/stub path only)."
+
 fn empty_type_env_cache() -> TypeEnvCache {
   TypeEnvCache {
     deps_map: empty_map(),
@@ -184,7 +187,6 @@ fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, Lis
   )
 }
 
-// 🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0).
 fn flatten_visible_parent_recurses() -> Int { 0 }
 fn reset_flatten_visible_profile() -> Unit { }
 fn reset_type_env_lookup_profile() -> Unit { reset_flatten_visible_profile() }
@@ -192,7 +194,6 @@ fn maybe_print_type_env_lookup_profile() -> Unit { }
 fn record_flatten_visible_parent_recurse() -> Unit { }
 
 fn flatten_visible_bindings(env: TypeEnv) -> Map<String, TypeBinding> {
-  // Invariant: B1 build_type_env populates ancestry_str_bindings for import chains; empty ancestry with non-empty parents falls back to parent recurse (legacy/stub path only).
   if (env.ancestry_str_bindings |> map_keys |> count > 0) || (env.parents |> count == 0) {
     map_merge(env.ancestry_str_bindings, env.str_bindings)
   } else {
