@@ -514,7 +514,101 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
     index
 }
 
-fn resolve_transitively(
+/// Workspace-relative path for module-graph closure queries (`v2.lens.module_graph`).
+fn workspace_relative_repo_path(path: &str) -> String {
+    let norm = path.strip_prefix("./").unwrap_or(path).replace('\\', "/");
+    let p = Path::new(&norm);
+    if p.is_absolute() {
+        let ws = workspace_root();
+        p.strip_prefix(&ws)
+            .map(|rp| rp.to_string_lossy().replace('\\', "/"))
+            .unwrap_or(norm)
+    } else {
+        norm
+    }
+}
+
+/// Normalize `source_roots` to the workspace-relative form `import_resolution_facts` /
+/// `module_declaration_facts` expect when invoked from `.dag` (`witness_layer_roots` style).
+fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
+    let ws = workspace_root();
+    source_roots
+        .iter()
+        .map(|r| {
+            let p = Path::new(r);
+            if p.is_absolute() {
+                p.strip_prefix(&ws)
+                    .map(|rp| rp.to_string_lossy().replace('\\', "/"))
+                    .unwrap_or_else(|_| r.replace('\\', "/"))
+            } else {
+                r.replace('\\', "/")
+            }
+        })
+        .collect()
+}
+
+fn path_to_source_lookup(index: &ModuleSourceIndex) -> HashMap<String, Rc<v1_compiler_compile::SourceFile>> {
+    let mut out = HashMap::new();
+    for sf in index.values() {
+        let rel = workspace_relative_repo_path(&sf.path);
+        out.insert(rel, sf.clone());
+        out.insert(sf.path.clone(), sf.clone());
+    }
+    out
+}
+
+/// Host realization of `v2.lens.module_graph.import_closure` over modeled fact rows.
+/// Authority: `src/v2/lens/module_graph.dag` — this is the consumer repoint surface for
+/// `cli_run.rs` resolve/reconcile (Phase 1 de-fork); fact extraction stays on the existing
+/// `import_resolution_facts` / `module_declaration_facts` builtins.
+pub fn import_closure_from_facts(
+    entry_path: &str,
+    edges: &[ImportResolutionFactRaw],
+    nodes: &[ModuleDeclarationFactRaw],
+) -> Vec<String> {
+    let entry_path = workspace_relative_repo_path(entry_path);
+    let mut reached: Vec<String> = vec![entry_path];
+    let fuel = nodes.len();
+    for _ in 0..fuel {
+        let before = reached.len();
+        let mut next = reached.clone();
+        for importer in &reached {
+            for edge in edges {
+                if edge.path != *importer {
+                    continue;
+                }
+                for node in nodes {
+                    if node.module == edge.import_module {
+                        let path = workspace_relative_repo_path(&node.path);
+                        if !next.iter().any(|p| p == &path) {
+                            next.push(path);
+                        }
+                    }
+                }
+            }
+        }
+        if next.len() == before {
+            break;
+        }
+        reached = next;
+    }
+    reached
+}
+
+/// Host realization of `v2.lens.module_graph.import_closure_live`.
+pub fn import_closure_live_paths(
+    entry_path: &str,
+    pool_roots: &[String],
+) -> Result<Vec<String>, String> {
+    const EXCLUDE: &[String] = &[];
+    let roots = pool_roots_for_module_graph_closure(pool_roots);
+    let edges = import_resolution_facts(&roots, &roots, EXCLUDE);
+    let nodes = module_declaration_facts(&roots);
+    Ok(import_closure_from_facts(entry_path, &edges, &nodes))
+}
+
+#[cfg(test)]
+fn resolve_transitively_bfs_legacy(
     entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
     index: &ModuleSourceIndex,
     mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>>,
@@ -534,6 +628,43 @@ fn resolve_transitively(
     let mut result: Vec<_> = seen.into_values().collect();
     result.sort_by(|a, b| a.path.cmp(&b.path));
     result
+}
+
+fn resolve_transitively(
+    entry_sources: Vec<Rc<v1_compiler_compile::SourceFile>>,
+    index: &ModuleSourceIndex,
+    pool_roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let mut path_lookup = path_to_source_lookup(index);
+    for entry in &entry_sources {
+        let rel = workspace_relative_repo_path(&entry.path);
+        path_lookup
+            .entry(rel)
+            .or_insert_with(|| entry.clone());
+        path_lookup
+            .entry(entry.path.clone())
+            .or_insert_with(|| entry.clone());
+    }
+
+    let mut all_paths: BTreeSet<String> = BTreeSet::new();
+    for entry in &entry_sources {
+        let entry_rel = workspace_relative_repo_path(&entry.path);
+        for path in import_closure_live_paths(&entry_rel, pool_roots)? {
+            all_paths.insert(workspace_relative_repo_path(&path));
+        }
+    }
+
+    let mut result = Vec::with_capacity(all_paths.len());
+    for path in all_paths {
+        let sf = path_lookup.get(&path).cloned().ok_or_else(|| {
+            format!(
+                "import_closure_live: closure path '{path}' has no provenance in module index (fail-closed)"
+            )
+        })?;
+        result.push(sf);
+    }
+    result.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(result)
 }
 
 pub fn load_sources_for_entry(
