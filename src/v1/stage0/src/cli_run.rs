@@ -4046,6 +4046,15 @@ fn call_floor_kernel_precompute_would_skip(
     }
 }
 
+fn floor_diff_edits_from_diff_text(
+    index: &MultiEntryIndex,
+    diff_text: &str,
+) -> Result<FloorDiffEdits, String> {
+    let line_ranges = parse_unified_diff_line_ranges(diff_text);
+    let changed = parse_unified_diff_changed_new_lines(diff_text);
+    floor_diff_edits_from_line_ranges(index, &line_ranges, &changed)
+}
+
 fn floor_diff_edits_from_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
@@ -4651,7 +4660,7 @@ fn run_discovery_rows(
 #[cfg(test)]
 mod floor_skip_frontier_tests {
     use super::{
-        build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_line_ranges,
+        build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
         list_value_from_vec, parse_unified_diff_line_ranges, rerun_frontier_nodes_for_entry,
         scan_test_decl_lines, FileLineRange,
     };
@@ -4758,9 +4767,8 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
 
         let ctx = super::make_eval_context(&graph, source_indices.clone(), ExecutionMode::Wet);
 
-        let referenced_ranges =
-            parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, referenced_line));
-        let referenced_seeds = floor_diff_edits_from_line_ranges(&index, &referenced_ranges)
+        let referenced_diff = unified_diff_for_line(&fixture, referenced_line);
+        let referenced_seeds = floor_diff_edits_from_diff_text(&index, &referenced_diff)
             .expect("frontier for referenced-node diff");
         assert!(
             entry_touches_rerun_frontier(
@@ -4774,9 +4782,8 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             "a diff on a node some claim references must touch the entry (runs)"
         );
 
-        let orphan_ranges =
-            parse_unified_diff_line_ranges(&unified_diff_for_line(&fixture, orphan_line));
-        let orphan_seeds = floor_diff_edits_from_line_ranges(&index, &orphan_ranges)
+        let orphan_diff = unified_diff_for_line(&fixture, orphan_line);
+        let orphan_seeds = floor_diff_edits_from_diff_text(&index, &orphan_diff)
             .expect("frontier for orphan-node diff");
         let orphan_nodes =
             rerun_frontier_nodes_for_entry(&ctx, &fixture, &orphan_seeds).expect("nodes");
@@ -5606,7 +5613,7 @@ mod floor_witness_a_prove {
 mod node_frontier_plumbing_controls {
     use super::{
         build_multi_entry_index, call_floor_kernel_would_skip, entry_touches_rerun_frontier,
-        floor_diff_edits_from_line_ranges, list_value_from_vec, parse_unified_diff_line_ranges,
+        floor_diff_edits_from_diff_text, list_value_from_vec, parse_unified_diff_line_ranges,
         rerun_frontier_nodes_for_entry,
     };
     use crate::v1_interpreter::ExecutionMode;
@@ -5675,8 +5682,7 @@ mod node_frontier_plumbing_controls {
         // Build diff touching a data declaration in OUTSIDE_FILE (absolute path so parse_unified_diff
         // resolves it without process-global cwd — "b//abs" strips to "/abs" after the b/ prefix).
         let diff = diff_at(&abs(&ws, OUTSIDE_FILE), OUTSIDE_DATA_LINE);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let seeds = floor_diff_edits_from_diff_text(&index, &diff)
             .expect("seeds from outside-file diff");
         let ctx = super::make_eval_context(&graph, source_indices, ExecutionMode::Wet);
         let nodes =
@@ -5704,8 +5710,7 @@ mod node_frontier_plumbing_controls {
             .map(|i| (i + 1) as i64)
             .expect("witness A test fn line");
         let diff = diff_at(FIXTURE, test_fn_line);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let seeds = floor_diff_edits_from_diff_text(&index, &diff)
             .expect("seeds from test-fn-line diff");
         assert!(
             seeds
@@ -5731,8 +5736,7 @@ mod node_frontier_plumbing_controls {
             .map(|i| (i + 1) as i64)
             .expect("floor_disc_node_a line");
         let diff = diff_at(&fixture_abs, data_line);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let seeds = floor_diff_edits_from_diff_text(&index, &diff)
             .expect("seeds from referenced-node diff");
         let (graph, source_indices) =
             super::resolve_entry_with_index(&index, &fixture_abs).expect("fixture resolves");
@@ -5761,8 +5765,7 @@ mod node_frontier_plumbing_controls {
             .map(|i| (i + 1) as i64)
             .expect("helper fn line");
         let diff = diff_at(&fixture_abs, helper_line);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let seeds = floor_diff_edits_from_diff_text(&index, &diff)
             .expect("seeds from helper-fn-line diff");
         assert!(
             seeds
@@ -5824,8 +5827,7 @@ mod node_frontier_plumbing_controls {
             .map(|i| (i + 1) as i64)
             .expect("shared helper fn line");
         let diff = diff_at(&helper_abs, helper_line);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let seeds = floor_diff_edits_from_diff_text(&index, &diff)
             .expect("seeds from cross-file helper-fn diff");
         assert!(
             seeds
@@ -5887,8 +5889,7 @@ mod node_frontier_plumbing_controls {
                     --- a/src/v1/stage0/src/cli_run.rs\n\
                     +++ b/src/v1/stage0/src/cli_run.rs\n\
                     @@ -1,0 +2,1 @@\n+// synthetic\n";
-        let ranges = parse_unified_diff_line_ranges(diff);
-        let err = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let err = floor_diff_edits_from_diff_text(&index, &diff)
             .expect_err("diff on a non-.dag file must fail-closed");
         assert!(
             err.contains("non-.dag"),
@@ -5904,8 +5905,7 @@ mod node_frontier_plumbing_controls {
         let roots = setup_roots(&ws);
         let index = build_multi_entry_index(&roots);
         let diff = diff_at(&abs(&ws, FIXTURE), 1);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let err = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let err = floor_diff_edits_from_diff_text(&index, &diff)
             .expect_err("diff before first declaration must fail-closed");
         assert!(
             err.contains("before first declaration"),
@@ -5922,20 +5922,32 @@ mod node_frontier_plumbing_controls {
         let emit_abs = abs(&ws, emit_rel);
         let diff = format!(
             "diff --git a/{p} b/{p}\n--- a/{p}\n+++ b/{p}\n\
-             @@ -1,7 +1,7 @@\n import extdeps.external_authority {{ ExternalAuthority }}\n\
-             -import extdeps.languages.json.grammar {{ JsonNumberLexeme, json_int_lexeme }}\n\
-             +import extdeps.languages.json.grammar {{ JsonNumberLexeme, json_int_lexeme, json_number_lexeme }}\n\
-             @@ -40,6 +40,13 @@ fn json_int(n: Int) -> JsonValue {{\n\
-             +fn json_number_from_lexeme_string(s: String) -> JsonValue? {{\n\
-             +  match json_number_lexeme(s: s) {{\n\
-             +    Present {{ value: l }} => Present {{ value: JsonNumber {{ lexeme: l }} }}\n\
-             +    Absent => none\n\
-             +  }}\n\
-             +}}\n",
+@@ -1,7 +1,7 @@\n\
+ module extdeps.languages.json.emit\n\
+ \n\
+ import extdeps.external_authority {{ ExternalAuthority }}\n\
+-import extdeps.languages.json.grammar {{ JsonNumberLexeme, json_int_lexeme }}\n\
++import extdeps.languages.json.grammar {{ JsonNumberLexeme, json_int_lexeme, json_number_lexeme }}\n\
+ import extdeps.uri {{ Uri, Https }}\n\
+ \n\
+ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {{\n\
+@@ -40,6 +40,13 @@ fn json_int(n: Int) -> JsonValue {{\n\
+   JsonNumber {{ lexeme: json_int_lexeme(n: n) }}\n\
+ }}\n\
+ \n\
++fn json_number_from_lexeme_string(s: String) -> JsonValue? {{\n\
++  match json_number_lexeme(s: s) {{\n\
++    Present {{ value: l }} => Present {{ value: JsonNumber {{ lexeme: l }} }}\n\
++    Absent => none\n\
++  }}\n\
++}}\n\
++\n\
+ fn json_string(s: String) -> JsonValue {{\n\
+   JsonString {{ value: s }}\n\
+ }}",
             p = emit_abs
         );
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let edits = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
             .expect("import+fn diff must not fail-closed to full corpus");
         assert!(
             edits.touched_entry_files.iter().any(|f| f == emit_rel),
@@ -5951,8 +5963,7 @@ mod node_frontier_plumbing_controls {
         let roots = setup_roots(&ws);
         let index = build_multi_entry_index(&roots);
         let diff = diff_at(&abs(&ws, "src/v2/lens/does_not_exist_sentinel.dag"), 10);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let err = floor_diff_edits_from_line_ranges(&index, &ranges)
+        let err = floor_diff_edits_from_diff_text(&index, &diff)
             .expect_err("diff naming a non-existent .dag path must fail-closed");
         assert!(
             err.contains("resolve failed"),
