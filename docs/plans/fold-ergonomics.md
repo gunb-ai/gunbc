@@ -31,7 +31,7 @@ The fold is not aspirational here — it is the actual architecture, at scale:
 **Root B — generic inference is weak, so the fold is awkward to reach (the friction).** Two concrete failures:
 
 - generic fn-param results mis-infer as kernel `Witness`/`Optional` → must route through a typed param (the `resolve_probe` workaround in `staging.dag`; same in `target_model.dag`);
-- generic type-alias instantiation — **partially fixed by #5552**: `type QualifiedName = FreeMonoid<Symbol>` now defines, and simple construct/match/use-site instantiation resolves (proven by `generic_alias_coproduct_instantiation_test.dag`); the hand-rolled `qualified_name_eq`/`for_all`/`singleton` were dissolved into `FreeMonoid` ops + structural `==` (QualifiedName seed de-fork). **Remaining resolver gap:** raw variant-matching a value *bound from a `Cons.tail` field* (or a nested `tail: Empty` pattern) on a recursive `FreeMonoid` still corrupts resolution ("variant not found in type `FreeMonoid`") — thread tails through the algebra (`list_head`/`list_tail`/`fold`) instead, the idiom all `FreeMonoid` consumers already use. It is the *same* root that makes v2 still hand-roll `ParseTable`.
+- generic type-alias instantiation fails — `type QualifiedName = FreeMonoid<Symbol>` won't define ("variant not found in type `FreeMonoid`") → **55 lines of hand-rolled `qualified_name_eq`/`for_all`** (`qualified_name.dag:25–57`), and it is the *same* root that makes v2 still hand-roll `ParseTable`.
 
 Root A is the fail-open class the lane retires; Root B is the friction that keeps producing it.
 
