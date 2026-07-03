@@ -40,51 +40,67 @@ fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node
   )
 }
 
+fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeEnv) -> Node {
+  let decl_is_disj = decl.connective == Disj
+  let has_inferred_alias = decl.inferred != none && decl.connective == NoConnective && decl.children |> count == 0
+  if decl_is_disj {
+    decl
+  } else if has_inferred_alias {
+    match decl.inferred {
+      Present { value: Resolved { node: target } } =>
+        let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
+        substitute_type_slots(
+          n: target,
+          slot_bindings: subst,
+          decl_name: name,
+          source_indices: env.source_indices
+        )
+      _ => scrut_node
+    }
+  } else {
+    scrut_node
+  }
+}
+
+fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
+  let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
+  let is_generic_use = scrut_node.connective == NoConnective && scrut_node.children |> count > 0
+    && is_user_generic_use_site(n: scrut_node, env: env)
+  match lookup_type_by_name(env: env, name: name) {
+    Present { value: decl } =>
+      if is_generic_use {
+        expand_scrut_from_decl(decl: decl, scrut_node: scrut_node, name: name, env: env)
+      } else {
+        let def_is_disj = decl.connective == Disj
+        let has_inferred_body = decl.inferred != none && decl.connective == NoConnective
+        if def_is_disj {
+          decl
+        } else if has_inferred_body {
+          match decl.inferred {
+            Present { value: Resolved { node: target } } =>
+              let target_is_disj = target.connective == Disj
+              if target_is_disj { target } else { scrut_node }
+            _ => scrut_node
+          }
+        } else {
+          scrut_node
+        }
+      }
+    Absent => scrut_node
+  }
+}
+
 fn expand_scrut_type_for_variant_lookup(scrut_node: Node, env: TypeEnv) -> Node {
   let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
-  if scrut_node.connective == Disj || is_witness_type_name(name: name) {
+  let is_disj = scrut_node.connective == Disj
+  let is_witness = is_witness_type_name(name: name)
+  if is_disj || is_witness {
     scrut_node
   } else {
     match scrut_node.inferred {
       Present { value: Resolved { node: target } } =>
         expand_scrut_type_for_variant_lookup(scrut_node: target, env: env)
-      _ =>
-        let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
-        if scrut_node.connective == NoConnective && scrut_node.children |> count > 0
-          && is_user_generic_use_site(n: scrut_node, env: env) {
-          match lookup_type_by_name(env: env, name: name) {
-            Present { value: decl } =>
-              if decl.inferred != none && decl.connective == NoConnective && decl.children |> count == 0 {
-                match decl.inferred {
-                  Present { value: Resolved { node: target } } =>
-                    let subst = generic_use_slot_bindings(scrut_node: scrut_node, env: env)
-                    let expanded = substitute_type_slots(
-                      n: target,
-                      slot_bindings: subst,
-                      decl_name: name,
-                      source_indices: env.source_indices
-                    )
-                    if expanded.connective == Disj { expanded } else { expanded }
-                  _ => scrut_node
-                }
-              } else if decl.connective == Disj { decl }
-              else { scrut_node }
-            Absent => scrut_node
-          }
-        } else {
-          match lookup_type_by_name(env: env, name: name) {
-            Present { value: def } =>
-              if def.connective == Disj { def }
-              else if def.inferred != none && def.connective == NoConnective {
-                match def.inferred {
-                  Present { value: Resolved { node: target } } =>
-                    if target.connective == Disj { target } else { scrut_node }
-                  _ => scrut_node
-                }
-              } else { scrut_node }
-            Absent => scrut_node
-          }
-        }
+      _ => expand_scrut_from_type_name(scrut_node: scrut_node, env: env)
     }
   }
 }
