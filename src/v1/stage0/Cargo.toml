@@ -123,6 +123,13 @@ path = "src/bin/infer_semantics_witness.rs"
 name = "auth_declared_but_unwired_witness"
 path = "src/bin/auth_declared_but_unwired_witness.rs"
 
+# Host-physics floor witness for the v1 bootstrap self-host oracle suite
+# (bootstrap.rs). Exercises stage0 check/compile/fixed-point/freshness gates
+# until v2.workflow.bootstrap self-host gates are witness-layer importable.
+[[bin]]
+name = "bootstrap_witness"
+path = "src/bin/bootstrap_witness.rs"
+
 # Host-physics floor witness for the affected-set floor skip/discovery mechanism
 # (run_discovery_corpus_with_options node-precise skip semantics). Runtime host-effect
 # behavior (git diff observation, multi-entry resolve, per-witness skip decisions), not
