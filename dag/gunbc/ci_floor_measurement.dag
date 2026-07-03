@@ -50,12 +50,12 @@ fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
   gunbc_ci_floor_per_shard_peak_max()
 }
 
-data gunbc_ci_runner_cgroup_memory_cap: ByteSize = byte_size(25769803776)
+data gunbc_ci_runner_cgroup_memory_cap: ByteSize = byte_size(8589934592)
 
 data gunbc_ci_dashboard_session_container_cap: ByteSize = byte_size(33578549248)
 
 data gunbc_ci_cap_split_disposition: Disposition = Terminal {
-  reason: "DESIGN §3 de-conflation (PR-A): gunbc_ci_runner_cgroup_memory_cap (24GiB live actions-runner@ cgroup cap, within-run OOM authority) vs gunbc_ci_dashboard_session_container_cap (31.27GiB, dashboard session pool, inter-run). Corrected 2026-07-03: the prior 8GiB value here was stale versus the live cgroup entitlement already cited as ~24GiB in gunbc_ci_footprint_granularity_disposition -- this constant, not that prose, was wrong, and a future OOM investigation reading this constant would have been misled. Retired gunbc_ci_host_container_memory_cap nickname that fused both."
+  reason: "DESIGN §3 de-conflation (PR-A): gunbc_ci_runner_cgroup_memory_cap (8GiB, actions-runner@ MemoryMax, within-run OOM authority) vs gunbc_ci_dashboard_session_container_cap (31.27GiB, dashboard session pool, inter-run). Retired gunbc_ci_host_container_memory_cap nickname that fused both."
 }
 
 type ExecutorBaseOverhead
