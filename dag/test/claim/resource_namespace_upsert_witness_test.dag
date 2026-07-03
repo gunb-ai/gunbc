@@ -1,114 +1,133 @@
 module test.claim.resource_namespace_upsert
 
-import std.types { Bool, NonEmptyStr }
-import std.resource_namespace {
-  FileNamespace,
-  ProcessNamespace,
-  ProcessPortObservation,
-  PortOwnedForeign,
-  PortOwnedExpected,
+import std.types { Bool, NonEmptyStr, Int }
+import std.upsert_decision {
+  UpsertClassification,
+  Converged,
+  Drifted,
+  Absent,
+  Conflict,
+  Noop,
+  Apply,
+  Refuse,
+}
+import gunbc.file_access {
+  FileTreeScope,
   FileAccessObservation,
   PathOutsideNamespace,
   ReadOnlyWithinNamespace,
   WritableWithinNamespace,
-  SeededArtifactProbeObservation,
-  ArtifactStale,
-  ArtifactConverged,
-  ArtifactAbsent,
-  ResourceNamespaceClassification,
-  Conflict,
-  Converged,
-  Stale,
-  Absent,
-  Refuse,
-  UpsertAccess,
-  Noop,
-  Create,
-  DrainThenStart,
-  classify_process_port_upsert,
+  ChmodOwnerWriteWithinTempTree,
+  CreateParent,
   classify_file_access_upsert,
-  classify_seeded_artifact_upsert,
-  classify_seeded_artifact_presence,
-  path_within_file_namespace,
+  path_within_file_tree_scope,
+}
+import gunbc.session_lease {
+  ProcessPortScope,
+  ProcessPortObservation,
+  PortObserved,
+  ProcessLeasePlan,
+  Start,
+  DrainMatchingStaleThenStart,
+  RefuseForeignOwner,
+  classify_process_port_upsert,
+}
+import gunbc.install_media {
+  SeededInstallMediaObservation,
+  MediaAbsent,
+  MediaConverged,
+  MediaDrifted,
+  SeededInstallMediaPlan,
+  Remaster,
+  ReplaceAtomically,
+  classify_seeded_install_media,
+  classify_seeded_install_media_upsert,
 }
 
 data srv3_nbd_proxy_port: Int = 10809
 
-data remaster_work_namespace: FileNamespace = FileNamespace {
+data remaster_work_scope: FileTreeScope = FileTreeScope {
   root_path: "/tmp/gunbc-remaster-work" as NonEmptyStr,
 }
 
+data nbd_proxy_scope: ProcessPortScope = ProcessPortScope {
+  listen_port: srv3_nbd_proxy_port,
+  expected_owner_label: "gunbc-nbd-proxy" as NonEmptyStr,
+  expected_process_fingerprint: "gunbc-nbd-proxy" as NonEmptyStr,
+}
+
 test fn foreign_process_on_10809_is_conflict_not_kill() -> Bool {
-  let ns = ProcessNamespace {
-    listen_port: srv3_nbd_proxy_port,
-    expected_owner_label: "gunbc-nbd-proxy" as NonEmptyStr,
-  }
-  let obs = PortOwnedForeign {
-    pid: 424242,
-    cmdline: "foreign-nbdkit" as NonEmptyStr,
-  }
-  match classify_process_port_upsert(ns: ns, obs: obs) {
-    ResourceNamespaceClassification { verdict: Conflict, plan: Refuse } => true
-    ResourceNamespaceClassification { verdict: _, plan: DrainThenStart } => false
+  match classify_process_port_upsert(
+    scope: nbd_proxy_scope,
+    obs: PortObserved {
+      observed_port: srv3_nbd_proxy_port,
+      pid: 424242,
+      cmdline: "foreign-nbdkit" as NonEmptyStr,
+      process_fingerprint: "foreign-nbdkit" as NonEmptyStr,
+    },
+  ) {
+    UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
+    UpsertClassification { verdict: _, decision: Apply { plan: DrainMatchingStaleThenStart } } => false
     _ => false
   }
 }
 
 test fn expected_process_on_10809_is_converged_noop() -> Bool {
-  let ns = ProcessNamespace {
-    listen_port: srv3_nbd_proxy_port,
-    expected_owner_label: "gunbc-nbd-proxy" as NonEmptyStr,
-  }
-  let obs = PortOwnedExpected { pid: 12345 }
-  match classify_process_port_upsert(ns: ns, obs: obs) {
-    ResourceNamespaceClassification { verdict: Converged, plan: Noop } => true
+  match classify_process_port_upsert(
+    scope: nbd_proxy_scope,
+    obs: PortObserved {
+      observed_port: srv3_nbd_proxy_port,
+      pid: 12345,
+      cmdline: "gunbc-nbd-proxy" as NonEmptyStr,
+      process_fingerprint: "gunbc-nbd-proxy" as NonEmptyStr,
+    },
+  ) {
+    UpsertClassification { verdict: Converged, decision: Noop } => true
     _ => false
   }
 }
 
 test fn outside_namespace_chmod_is_refused() -> Bool {
-  let ns = remaster_work_namespace
   let outside = "/etc/passwd" as NonEmptyStr
-  !path_within_file_namespace(ns: ns, path: outside)
-    && match classify_file_access_upsert(ns: ns, obs: PathOutsideNamespace) {
-      ResourceNamespaceClassification { verdict: _, plan: Refuse } => true
+  !path_within_file_tree_scope(scope: remaster_work_scope, path: outside)
+    && match classify_file_access_upsert(scope: remaster_work_scope, obs: PathOutsideNamespace) {
+      UpsertClassification { verdict: _, decision: Refuse { reason: _ } } => true
       _ => false
     }
 }
 
 test fn substring_trap_path_fails_prefix_containment() -> Bool {
-  let ns = remaster_work_namespace
   let trap = "/attacker/tmp/gunbc-remaster-work/x" as NonEmptyStr
-  !path_within_file_namespace(ns: ns, path: trap)
+  !path_within_file_tree_scope(scope: remaster_work_scope, path: trap)
 }
 
 test fn dotdot_path_rejected_by_containment() -> Bool {
-  let ns = remaster_work_namespace
   let escape = "/tmp/gunbc-remaster-work/../etc/passwd" as NonEmptyStr
-  !path_within_file_namespace(ns: ns, path: escape)
+  !path_within_file_tree_scope(scope: remaster_work_scope, path: escape)
 }
 
-test fn readonly_within_namespace_plans_upsert_access() -> Bool {
-  let ns = remaster_work_namespace
-  match classify_file_access_upsert(ns: ns, obs: ReadOnlyWithinNamespace) {
-    ResourceNamespaceClassification { verdict: Stale, plan: UpsertAccess } => true
+test fn readonly_within_namespace_plans_chmod() -> Bool {
+  match classify_file_access_upsert(scope: remaster_work_scope, obs: ReadOnlyWithinNamespace) {
+    UpsertClassification {
+      verdict: Drifted,
+      decision: Apply { plan: ChmodOwnerWriteWithinTempTree },
+    } => true
     _ => false
   }
 }
 
 test fn writable_within_namespace_is_converged_noop() -> Bool {
-  let ns = remaster_work_namespace
-  match classify_file_access_upsert(ns: ns, obs: WritableWithinNamespace) {
-    ResourceNamespaceClassification { verdict: Converged, plan: Noop } => true
+  match classify_file_access_upsert(scope: remaster_work_scope, obs: WritableWithinNamespace) {
+    UpsertClassification { verdict: Converged, decision: Noop } => true
     _ => false
   }
 }
 
-test fn stale_seeded_iso_is_stale_not_already_present() -> Bool {
-  match classify_seeded_artifact_presence(obs: ArtifactStale) {
-    Stale => match classify_seeded_artifact_presence(obs: ArtifactConverged) {
+test fn drifted_seeded_iso_is_drifted_not_converged() -> Bool {
+  match classify_seeded_install_media(obs: MediaDrifted) {
+    Drifted => match classify_seeded_install_media(obs: MediaConverged) {
       Converged => true
-      Stale => false
+      Drifted => false
       _ => false
     }
     Converged => false
@@ -116,19 +135,32 @@ test fn stale_seeded_iso_is_stale_not_already_present() -> Bool {
   }
 }
 
-test fn converged_seeded_iso_is_not_stale() -> Bool {
-  match classify_seeded_artifact_presence(obs: ArtifactConverged) {
-    Converged => match classify_seeded_artifact_upsert(obs: ArtifactConverged) {
-      ResourceNamespaceClassification { verdict: _, plan: Noop } => true
+test fn converged_seeded_iso_is_not_drifted() -> Bool {
+  match classify_seeded_install_media(obs: MediaConverged) {
+    Converged => match classify_seeded_install_media_upsert(obs: MediaConverged) {
+      UpsertClassification { verdict: _, decision: Noop } => true
       _ => false
     }
     _ => false
   }
 }
 
-test fn absent_seeded_iso_plans_create() -> Bool {
-  match classify_seeded_artifact_upsert(obs: ArtifactAbsent) {
-    ResourceNamespaceClassification { verdict: Absent, plan: Create } => true
+test fn absent_seeded_iso_plans_replace() -> Bool {
+  match classify_seeded_install_media_upsert(obs: MediaAbsent) {
+    UpsertClassification {
+      verdict: Absent,
+      decision: Apply { plan: ReplaceAtomically },
+    } => true
+    _ => false
+  }
+}
+
+test fn drifted_seeded_iso_plans_remaster_not_drain() -> Bool {
+  match classify_seeded_install_media_upsert(obs: MediaDrifted) {
+    UpsertClassification {
+      verdict: Drifted,
+      decision: Apply { plan: Remaster },
+    } => true
     _ => false
   }
 }
