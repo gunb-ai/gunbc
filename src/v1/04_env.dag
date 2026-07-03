@@ -29,7 +29,8 @@ type TypeEnvCache {
 }
 
 data type_env_profiling_dissolution_trigger: String = "🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0)."
-data flatten_visible_bindings_invariant: String = "B1 build_type_env populates ancestry_str_bindings for import chains; empty ancestry with non-empty parents falls back to parent recurse (legacy/stub path only)."
+data type_env_cache_parallel_repr_dissolution_trigger: String = "🟡 dissolve-on: TypeEnvCache String-keyed str_bindings/cycle_set_str parallel to TypeEnv Int-keyed bindings/recursive_type_set — fold into single authority at v2 regen."
+data flatten_visible_bindings_invariant: String = "B1 build_type_env populates ancestry_str_bindings for import chains; flatten_visible_bindings parent-recurse is legacy/stub-only on import chains (witness flatten_visible_parent_recurses==0); merge_envs still calls flatten for one-shot env merge."
 
 fn empty_type_env_cache() -> TypeEnvCache {
   TypeEnvCache {
@@ -79,13 +80,6 @@ fn lookup_binding(env: TypeEnv, ident: Int) -> TypeBinding? {
     Absent =>
       let name = intern_str(table: env.intern_table, id: ident)
       lookup_binding_by_name(env: env, name: name)
-  }
-}
-
-fn is_recursive_type_local(env: TypeEnv, ident: Int) -> Bool {
-  match map_get(env.recursive_type_set, ident) {
-    Present { value: _ } => true
-    Absent => false
   }
 }
 

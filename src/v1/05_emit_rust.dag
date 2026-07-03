@@ -72,7 +72,7 @@ import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint 
 
 import std.types { is_container_type, is_kernel_type }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, is_recursive_type_by_name }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -4728,7 +4728,8 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
       let grounds_to_host_scalar = rust_seed_host_numeric_alias(name: field_ty_name, corpus_repr: emit_info.corpus_repr) != none
       if grounds_to_host_scalar { false }
       else {
-        needs_box_wrapping(n: field_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+        let faithful_nat_field = emit_info.corpus_repr == FaithfulFreeMonoid && (field_ty_name == "Nat" || substring(s: field_ty_name, start: 0, end: 4) == "Nat<")
+        faithful_nat_field || needs_box_wrapping(n: field_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices) || is_recursive_type_by_name(env: scope.type_env, name: field_ty_name)
       }
     Absent => false
   }
