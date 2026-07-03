@@ -279,8 +279,11 @@ fn dispatch_spawn_commands(node: RoadmapNode, session_uuid: String) -> DispatchS
 
 fn parse_tmux_ls_windows(rest: String) -> Int {
   let parts = split(s: rest, delimiter: " ")
-  match parse_int(parts.first()) {
-    Present { value: n } => n
+  match parts.first() {
+    Present { value: s } => match parse_int(s) {
+      Present { value: n } => n
+      Absent => 0
+    }
     Absent => 0
   }
 }
@@ -518,12 +521,15 @@ fn argv_contains_token(argv: List<String>, token: String) -> Bool {
 }
 
 fn hostile_node_id_stays_single_argv_token(node_id: String) -> Bool {
+  let worktree_path = concat(concat(dispatch_worktree_root, "/"), node_id)
+  let branch_name = concat("dispatch/", node_id)
   let worktree = git_worktree_add_argv(
-    worktree_path: concat(concat(dispatch_worktree_root, "/"), node_id),
-    branch_name: concat("dispatch/", node_id),
+    worktree_path: worktree_path,
+    branch_name: branch_name,
     remote_ref: dispatch_git_remote_ref,
   ).args
-  argv_contains_token(argv: worktree, token: node_id)
+  argv_contains_token(argv: worktree, token: worktree_path)
+    && argv_contains_token(argv: worktree, token: branch_name)
     && !argv_contains_token(argv: worktree, token: "rm")
     && !argv_contains_token(argv: worktree, token: "-rf")
 }
