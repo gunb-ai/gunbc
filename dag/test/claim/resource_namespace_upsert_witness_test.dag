@@ -26,10 +26,8 @@ import gunbc.session_lease {
   ProcessPortScope,
   ProcessPortObservation,
   PortObserved,
-  ProcessLeasePlan,
-  Start,
+  PortObservedStaleExpected,
   DrainMatchingStaleThenStart,
-  RefuseForeignOwner,
   classify_process_port_upsert,
 }
 import gunbc.install_media {
@@ -67,7 +65,27 @@ test fn foreign_process_on_10809_is_conflict_not_kill() -> Bool {
     },
   ) {
     UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
-    UpsertClassification { verdict: _, decision: Apply { plan: DrainMatchingStaleThenStart } } => false
+    UpsertClassification { verdict: Drifted, decision: Apply { plan: _ } } => false
+    _ => false
+  }
+}
+
+test fn stale_matching_process_on_10809_drains_then_starts() -> Bool {
+  match classify_process_port_upsert(
+    scope: nbd_proxy_scope,
+    obs: PortObservedStaleExpected {
+      observed_port: srv3_nbd_proxy_port,
+      pid: 99999,
+      cmdline: "gunbc-nbd-proxy" as NonEmptyStr,
+      process_fingerprint: "gunbc-nbd-proxy" as NonEmptyStr,
+      stale_reason: "prior-generation lease holder" as NonEmptyStr,
+    },
+  ) {
+    UpsertClassification {
+      verdict: Drifted,
+      decision: Apply { plan: DrainMatchingStaleThenStart },
+    } => true
+    UpsertClassification { verdict: Converged, decision: Noop } => false
     _ => false
   }
 }

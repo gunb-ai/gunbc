@@ -15,7 +15,7 @@ import std.upsert_decision {
   Refuse,
 }
 
-data session_lease_doc: String = "Process port lease observation→verdict→plan. Classifier compares observed port and process fingerprint against ProcessPortScope — observation carries facts, not pre-classified ownership."
+data session_lease_doc: String = "Process port lease observation→verdict→plan. Classifier compares observed port and process fingerprint against ProcessPortScope — observation carries facts, not pre-classified ownership. expected_owner_label is human/diagnostic only; expected_process_fingerprint is the semantic authority."
 
 type ProcessPortScope {
   listen_port: Int
@@ -30,6 +30,13 @@ type ProcessPortObservation
       pid: Int
       cmdline: NonEmptyStr
       process_fingerprint: NonEmptyStr
+    }
+  | PortObservedStaleExpected {
+      observed_port: Int
+      pid: Int
+      cmdline: NonEmptyStr
+      process_fingerprint: NonEmptyStr
+      stale_reason: NonEmptyStr
     }
   | PortInaccessible
 
@@ -56,6 +63,22 @@ fn classify_process_port(
       } else {
         if fingerprint == scope.expected_process_fingerprint {
           Converged
+        } else {
+          Conflict
+        }
+      }
+    PortObservedStaleExpected {
+      observed_port: port,
+      pid: _,
+      cmdline: _,
+      process_fingerprint: fingerprint,
+      stale_reason: _,
+    } =>
+      if port != scope.listen_port {
+        Inaccessible
+      } else {
+        if fingerprint == scope.expected_process_fingerprint {
+          Drifted
         } else {
           Conflict
         }
