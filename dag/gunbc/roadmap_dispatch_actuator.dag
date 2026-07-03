@@ -288,17 +288,19 @@ fn parse_tmux_ls_windows(rest: String) -> Int {
 fn parse_tmux_ls_line(line: String) -> TmuxLsEntry? {
   let trimmed = trim(line)
   if trimmed == "" {
-    Absent
+    none
   } else {
     let colon_parts = split(s: trimmed, delimiter: ":")
-    let name = trim(colon_parts.first())
+    let name = match colon_parts.first() {
+      Present { value: s } => trim(s)
+      Absent => ""
+    }
     if name == "" {
-      Absent
+      none
     } else {
-      let rest = if colon_parts.length() > 1 {
-        trim(colon_parts.skip(n: 1).first())
-      } else {
-        ""
+      let rest = match colon_parts.skip(n: 1).first() {
+        Present { value: s } => trim(s)
+        Absent => ""
       }
       Present {
         value: TmuxLsEntry {
@@ -317,6 +319,7 @@ fn parse_tmux_ls_output(output: String) -> List<TmuxLsEntry> {
     f: (acc, line) => match parse_tmux_ls_line(line: line) {
       Present { value: e } => append(acc, [e])
       Absent => acc
+      none => acc
     },
   )
 }
@@ -330,14 +333,16 @@ fn tmux_session_observation_for_scope(
   entries: List<TmuxLsEntry>,
 ) -> TmuxSessionObservation {
   let scoped_name = scope.session_name as String
-  match entries |> filter(e => e.session_name == scoped_name) |> first {
-    Present { value: e } =>
-      SessionObserved {
-        session_name: scope.session_name,
-        windows: e.windows,
-        process_fingerprint: scope.expected_process_fingerprint,
-      }
-    Absent => SessionAbsent
+  let matched = entries |> filter(e => e.session_name == scoped_name)
+  if count(matched) == 0 {
+    SessionAbsent
+  } else {
+    let e = matched.first()
+    SessionObserved {
+      session_name: scope.session_name,
+      windows: e.windows,
+      process_fingerprint: scope.expected_process_fingerprint,
+    }
   }
 }
 
@@ -415,6 +420,22 @@ fn node_repo_supported(node: RoadmapNode) -> Bool {
   }
 }
 
+fn dispatch_permitted_for_node(node: RoadmapNode) -> DispatchRequestGate {
+  let brief = filled_dispatch_brief_for_node(node: node)
+  let effort = match node.sizing {
+    Sized { intricacy, volume: _, repo: _, acceptance: _ } =>
+      claude_effort_for_intricacy(i: intricacy)
+    Unsized => "medium"
+  }
+  DispatchPermitted {
+    session_name: dispatch_tmux_session_name(node_id: node.node),
+    worktree_path: dispatch_worktree_path(node_id: node.node),
+    branch_name: dispatch_branch_name(node_id: node.node),
+    brief: brief,
+    claude_effort: effort,
+  }
+}
+
 fn classify_dispatch_request(
   node: RoadmapNode,
   ready: List<RoadmapNode>,
@@ -433,21 +454,8 @@ fn classify_dispatch_request(
           DispatchRefused { reason: reason }
         UpsertClassification { verdict: _, decision: Noop } =>
           DispatchRefused { reason: "dispatch session already running for node" as NonEmptyStr }
-        UpsertClassification { verdict: _, decision: Apply { plan: _ } } => {
-          let brief = filled_dispatch_brief_for_node(node: node)
-          let effort = match node.sizing {
-            Sized { intricacy, volume: _, repo: _, acceptance: _ } =>
-              claude_effort_for_intricacy(i: intricacy)
-            Unsized => "medium"
-          }
-          DispatchPermitted {
-            session_name: dispatch_tmux_session_name(node_id: node.node),
-            worktree_path: dispatch_worktree_path(node_id: node.node),
-            branch_name: dispatch_branch_name(node_id: node.node),
-            brief: brief,
-            claude_effort: effort,
-          }
-        }
+        UpsertClassification { verdict: _, decision: Apply { plan: _ } } =>
+          dispatch_permitted_for_node(node: node)
       }
     }
   }
