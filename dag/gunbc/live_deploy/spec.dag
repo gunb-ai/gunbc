@@ -14,7 +14,7 @@ import gunbc.fleet_intent_network {
   operator_host_srv1,
 }
 import gunbc.node_http_server_emit {
-  roadmap_dashboard_node_http_static_server_spec,
+  roadmap_dashboard_node_http_server_spec,
 }
 import extdeps.http.server { HttpServerListenConfig }
 import product.network_topology { NetworkEndpoint }
@@ -112,7 +112,7 @@ fn deployment_srv1_target() -> DeploymentHostTarget {
 }
 
 fn deployment_service_config() -> DeploymentServiceConfig {
-  let spec = roadmap_dashboard_node_http_static_server_spec()
+  let spec = roadmap_dashboard_node_http_server_spec()
   DeploymentServiceConfig {
     unit_name: gunbc_roadmap_unit_name,
     server_path: gunbc_roadmap_server_path,
