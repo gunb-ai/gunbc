@@ -181,6 +181,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(m.clone(), "hash_combine".to_string(), hash_type());
         let m = v1_rt::rc_map_insert(m.clone(), "atom_identity_hash".to_string(), hash_type());
         let m = v1_rt::rc_map_insert(m.clone(), "string_contains".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "replace".to_string(), string_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "filesystem_read".to_string(),
@@ -359,11 +360,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "complexity_linearity_wildcard_facts".to_string(),
             list_of_type_variable("complexity_linearity_wildcard_fact_elem".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "complexity_linearity_migration_debt_roster".to_string(),
-            list_of_type_variable("complexity_linearity_migration_debt_roster_elem".to_string()),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),

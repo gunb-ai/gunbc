@@ -6,7 +6,8 @@ pub use crate::std_induction::SubValueRelation;
 use crate::std_induction::SubValueRelation::SubValueUnknown;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_emit_info::EmitGraphInfo;
-pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
+pub use crate::v1_compiler_infer_env::empty_type_env_cache;
+pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv, TypeEnvCache};
 pub use crate::v1_compiler_infer_sigs::ResolvedFuncEnv;
 pub use crate::v1_compiler_infer_types::child_type_node;
 use crate::v1_rt;
@@ -58,6 +59,7 @@ pub struct TypedModule {
     pub module: Rc<Node>,
     pub items: Rc<Vec<Rc<Node>>>,
     pub type_env: Rc<TypeEnv>,
+    pub type_env_cache: Rc<TypeEnvCache>,
     pub func_env: Rc<ResolvedFuncEnv>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 }

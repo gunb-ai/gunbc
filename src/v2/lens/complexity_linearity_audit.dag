@@ -7,6 +7,32 @@ import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
+data complexity_linearity_migration_debt_roster: List<String> = [
+  "src/v2/compiler/05_eval.dag::eval_branch_node_eval",
+  "src/v2/compiler/05_eval.dag::eval_loop_node",
+  "src/v2/compiler/05_eval.dag::eval_match_node_eval",
+  "src/v2/compiler/05_eval.dag::eval_transform_node",
+  "src/v2/compiler/05_eval.dag::eval_value_node",
+  "src/v2/compiler/05_eval.dag::run_test_claim_assert_decided",
+  "src/v2/compiler/05_eval.dag::run_test_claim_runtime_assert",
+  "src/v2/compiler/01_tokenize.dag::lex_try_rules_prefer_longer",
+  "src/v2/compiler/06_translate.dag::translate_algebra_finalize",
+  "src/v2/compiler/emit_host.dag::run_test_claim_emit_vs_eval_verdict",
+  "dag/extdeps/languages/markdown.dag::md_nested",
+  "src/v2/extdeps/formats/spice_passive_projection.dag::passive_spec_from_component",
+  "src/v2/extdeps/formats/spice_passive_projection.dag::passive_topology_from_component",
+  "src/v2/extdeps/runtimes/v2_effect_io_pure.dag::effect_io_pure_backends_match",
+  "src/v2/std/compilers/target_model.dag::target_type_expr_emitted_validate_wire_shape",
+  "src/v2/std/compilers/target_model.dag::target_use_site_ownership_catalog_lookup_step",
+  "src/v2/test/claim/manual/eval_runtime_mvp.dag::eval_mvp2_arg_is_two_literal",
+  "src/v2/lens/testgen.dag::algebra_law_subject_for_manual_anchor",
+  "src/v2/lens/testgen.dag::nat_manual_anchor_key_eq",
+  "src/v2/lens/testgen.dag::testgen_emit_language_behavior_equivalence_claim",
+  "src/v2/lens/testgen.dag::testgen_emit_refinement_preservation_claim",
+  "src/v2/test/claim/generated/coproduct_exhaustiveness.dag::anchor_is",
+  "src/v2/test/claim/generated/cross_representation_equality.dag::anchor_is_straddle"
+]
+
 type ComplexityLinearityWildcardFact {
   site: String
   fn_name: String
@@ -23,7 +49,7 @@ fn complexity_linearity_wildcard_facts_live() -> List<ComplexityLinearityWildcar
 }
 
 fn complexity_linearity_migration_debt_roster_live() -> List<String> {
-  complexity_linearity_migration_debt_roster()
+  complexity_linearity_migration_debt_roster
 }
 
 fn migration_roster_contains(site: String) -> Bool {
