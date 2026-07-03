@@ -17,6 +17,9 @@ import extdeps.os.ubuntu_autoinstall {
   AutoinstallIdentity,
   NoCloudNet,
   NoCloudLocal,
+  AutoinstallStoragePolicy,
+  StoragePolicyAbsent,
+  StoragePolicyDirectLayout,
 }
 import gunbc.fleet_intent_network { operator_host_srv3, operator_lan_segment }
 import product.placement_supply { HostIdentity }
@@ -130,6 +133,7 @@ data srv3_ubuntu_autoinstall: UbuntuAutoinstallPayload = UbuntuAutoinstallPayloa
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
+  storage_policy: StoragePolicyAbsent,
 }
 
 data srv3_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
@@ -141,6 +145,7 @@ data srv3_ubuntu_autoinstall_on_iso: UbuntuAutoinstallPayload = UbuntuAutoinstal
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
+  storage_policy: StoragePolicyAbsent,
 }
 
 data srv3_os_install_plan: Srv3OsInstallPlan = Srv3OsInstallPlan {
