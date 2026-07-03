@@ -182,6 +182,7 @@ pub fn str_bindings_from_bindings(
 
 // Serialization-boundary canonicalization only (resolved_graph_cache::sort_json_value
 // subsumes this for disk cache; do not call from build_type_env / merge_type_env_cache).
+#[allow(dead_code)]
 pub fn deterministic_str_binding_map(
     m: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
