@@ -46,6 +46,7 @@ test fn observe_script_covers_five_surfaces() -> Bool {
 test fn observe_script_websocket_http_code_not_concatenated_before_if() -> Bool {
   let script = srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent)
   !string_contains(s: script, pattern: "HTTP_CODE=if")
+    && !string_contains(s: script, pattern: "echo 000))")
     && string_contains(s: script, pattern: "HTTP_CODE=$(curl")
 }
 

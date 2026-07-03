@@ -71,7 +71,7 @@ fn srv3_install_diagnostic_observe_script_curl_tail() -> String {
                     concat(
                       bash_var_ref(name: "BMC"),
                       concat(
-                        "/vm/0/0\" 2>/dev/null || echo 000))\nelse\n  HTTP_CODE=000\nfi\necho \"Srv3InstallObserveReceipt: surface=bmc_websocket http_code=",
+                        "/vm/0/0\" 2>/dev/null || echo 000)\nelse\n  HTTP_CODE=000\nfi\necho \"Srv3InstallObserveReceipt: surface=bmc_websocket http_code=",
                         concat(
                           bash_var_ref(name: "HTTP_CODE"),
                           "\"\nif test -s \"",
