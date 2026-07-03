@@ -29,7 +29,6 @@ type FileAccessObservation
 type FileAccessPlan
   = ChmodOwnerWriteWithinTempTree
   | CreateParent
-  | Refuse
 
 fn path_has_dotdot_segment(path: String) -> Bool {
   path == ".."
@@ -52,7 +51,7 @@ fn path_within_file_tree_scope(scope: FileTreeScope, path: NonEmptyStr) -> Bool 
   }
 }
 
-fn classify_file_access(scope: FileTreeScope, obs: FileAccessObservation) -> ObservationVerdict {
+fn classify_file_access(obs: FileAccessObservation) -> ObservationVerdict {
   match obs {
     PathAbsent => Absent
     ReadOnlyWithinNamespace => Drifted
@@ -75,7 +74,7 @@ fn classify_file_access_upsert(
   obs: FileAccessObservation,
 ) -> UpsertClassification<FileAccessPlan> {
   UpsertClassification {
-    verdict: classify_file_access(scope: scope, obs: obs),
+    verdict: classify_file_access(obs: obs),
     decision: decision_for_file_access(obs: obs),
   }
 }
