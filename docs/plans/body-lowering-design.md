@@ -34,15 +34,23 @@ The substrate **models** this faithfully. The **inferred tree does not interpret
    symptom (this is the §5 "bounded-forever ≠ unknown" fail shape inverted: here a *provably-bounded*
    loop is indistinguishable from an unbounded one because the proof input is never consulted).
 
-2. **The faithful carrier exists but is a dead scaffold.**
+2. **The faithful carrier exists but its termination field is computed measure-blind, and no
+   *inference* consumes it.**
    `loop_bound_witness_for_node` (`cardinality.dag:278-289`) already builds the right shape —
    `LoopBound { measure: Node, termination: Witness<TerminationProof> }` (`cardinality.dag:119-122`)
    — pairing the extracted measure (`loop_measure_node`, `cardinality.dag:161-181`) with a termination
-   witness. But (a) it has **zero callers** — `04_infer.dag` never consumes it; and (b) its
-   `termination` field is computed by the same `termination_proof_witness_for_node` → tag-only path,
-   so even the carrier that *names* the measure→proof binding **derives its proof without reading the
-   measure**. A scaffold that duplicates a fact it does not actually compute (§5 parallel-representation
-   debt; §6 named-dissolution-trigger missing).
+   witness. It *is* consumed today — but only by the **cost/complexity** lenses
+   (`src/v2/lens/cost.dag:168` `base_cost_for_loop`, and the complexity-budget roster test
+   `src/v2/test/claim/complexity_gate/subject_complexity_budget_roster.dag:45`), and those read only
+   the `measure` field (via `loop_bound_measure`) to size cost — `linear_in_node(measure)`
+   (`cost.dag:170`) — never the `termination` field. The gap is two-fold: (a) **no inference
+   consumer** — `04_infer.dag` never reads this carrier, so the loop's termination fact never reaches
+   the inferred tree; and (b) the carrier's `termination` field is itself computed by the same
+   `termination_proof_witness_for_node` → tag-only path (`cardinality.dag:284`), so even the field that
+   *names* the measure→proof binding **derives its proof without reading the measure**. The carrier
+   names a fact it does not actually compute (§5 parallel-representation debt): a `LoopBound` whose
+   `termination` is measure-blind is a second, hollow representation of a proof that the measure
+   already determines.
 
 3. **The loop body is typed opaquely — no per-iteration relation.**
    `04_infer.dag` has **no `Loop` arm.** `infer_gather_fold_init` (`04_infer.dag:933-985`)
@@ -98,9 +106,11 @@ edge's `DescentEvidence`, combines them by **lattice meet** on the single author
   refuse loudly).
 
 This makes the measure edge *load-bearing in the type*: perturb the measure and the loop's
-termination verdict changes — the acyclic encoding is now interpreted, not decorative. `LoopBound`
-(gap 2) becomes the live carrier of this binding, and `loop_bound_witness_for_node` gains its first
-real consumer (dead scaffold dissolved).
+termination verdict changes — the acyclic encoding is now interpreted, not decorative. `LoopBound`'s
+`termination` field (gap 2) stops being measure-blind: it is *derived from* the measure, so the
+carrier's two fields become consistent, and `04_infer` gains the **first inference / measure-aware
+termination consumer** of it (the cost/complexity lenses already read its `measure` for sizing, but
+never the `termination` fact — this closes gap 2's hollow half).
 
 **T2 — the body is typed as a per-iteration transform.** Give `04_infer.dag` a `Loop` arm parallel to
 `Branch`/`Match`: type the iteration-fold body (positional children, per
@@ -151,8 +161,11 @@ witness before the next begins.
 - **Stage 2 — node-aware Loop multiplicity (T1).** Introduce `loop_multiplicity(n: Node)` deriving
   `Multiplicity` from the measure via the Stage-1 authority; route `node_multiplicity` for
   `ComputationNode { behavior: Loop }` through it (Branch/Value/etc. stay tag-only — their multiplicity
-  genuinely is tag-determined). Wire `loop_bound_witness_for_node` as the consumer (kills the dead
-  scaffold). **Discriminating witness:** a Loop with a `Strict`-descent measure infers
+  genuinely is tag-determined). Make `loop_bound_witness_for_node`'s `termination` field derive from
+  the measure (not the tag-only path) and route inference through it — the **first measure-aware
+  termination consumer** (the existing cost/complexity readers at `cost.dag:168` /
+  `subject_complexity_budget_roster.dag:45` use only the `measure` field and are unaffected).
+  **Discriminating witness:** a Loop with a `Strict`-descent measure infers
   `ProvenTermination` (was `Violates`); the *same* Loop with the measure perturbed to `DescentUnknown`
   infers `Violates` — the verdict is a function of the measure. Load-bearing (`cardinality.dag`):
   higher bar, execution-proven, escalate if it touches beyond the Loop arm.
