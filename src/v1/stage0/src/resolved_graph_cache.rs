@@ -7,7 +7,10 @@ use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::v1_compiler_compile::SourceFile;
-use crate::v1_compiler_infer::rewire_func_env_parent_links;
+use crate::v1_compiler_infer::{
+    rewire_func_env_parent_links, rewire_type_env_import_str_binding_identity,
+    rewire_type_env_parent_links,
+};
 use crate::v1_compiler_infer_items::ResolvedGraph;
 use crate::v1_rt::{self, Hash};
 use crate::v1_std_core::NewlineIndex;
@@ -58,6 +61,34 @@ pub struct CachedResolvedGraph {
 struct CachePayload {
     graph: ResolvedGraph,
     source_indices: HashMap<String, NewlineIndex>,
+}
+
+fn sort_json_value(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<String> = map.keys().cloned().collect();
+            keys.sort();
+            let mut out = serde_json::Map::new();
+            for key in keys {
+                out.insert(
+                    key.clone(),
+                    sort_json_value(map.get(&key).expect("key").clone()),
+                );
+            }
+            serde_json::Value::Object(out)
+        }
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(sort_json_value).collect())
+        }
+        other => other,
+    }
+}
+
+fn encode_cache_payload(payload: &CachePayload) -> Result<Vec<u8>, String> {
+    let value =
+        serde_json::to_value(payload).map_err(|e| format!("cache payload value encode: {e}"))?;
+    serde_json::to_vec(&sort_json_value(value))
+        .map_err(|e| format!("cache payload byte encode: {e}"))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -271,7 +302,10 @@ fn read_cached_file(path: &Path, expected_subject: &str) -> CacheLookupResult {
             .collect(),
     );
     let decoded = Rc::new(payload.graph);
-    let modules = rewire_func_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let modules =
+        rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
+    let modules = rewire_func_env_parent_links(modules, source_indices.clone());
     let graph = Rc::new(ResolvedGraph {
         modules,
         item_registry: decoded.item_registry.clone(),
@@ -428,8 +462,7 @@ pub fn build_valid_artifact_bytes(
         graph: graph.clone(),
         source_indices: si_plain,
     };
-    let payload_bytes =
-        serde_json::to_vec(&payload).map_err(|e| format!("cache payload encode failed: {e}"))?;
+    let payload_bytes = encode_cache_payload(&payload)?;
     let content_digest = payload_content_digest(&payload_bytes);
     let mut bytes = Vec::new();
     bytes.extend_from_slice(MAGIC);
@@ -453,7 +486,7 @@ pub fn serialize_fixture_payload_for_test(
         graph: graph.clone(),
         source_indices: si_plain,
     };
-    serde_json::to_vec(&payload).map_err(|e| format!("fixture payload encode: {e}"))
+    encode_cache_payload(&payload).map_err(|e| format!("fixture payload encode: {e}"))
 }
 
 pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolvedGraph, String> {
@@ -467,7 +500,10 @@ pub fn deserialize_fixture_payload_for_test(bytes: &[u8]) -> Result<CachedResolv
             .collect(),
     );
     let decoded = Rc::new(payload.graph);
-    let modules = rewire_func_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let modules = rewire_type_env_parent_links(decoded.modules.clone(), source_indices.clone());
+    let modules =
+        rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
+    let modules = rewire_func_env_parent_links(modules, source_indices.clone());
     Ok(CachedResolvedGraph {
         graph: Rc::new(ResolvedGraph {
             modules,

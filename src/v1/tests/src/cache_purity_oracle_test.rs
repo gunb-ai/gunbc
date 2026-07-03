@@ -45,13 +45,66 @@ fn write_fixture(dir: &std::path::Path) -> (Vec<String>, String) {
     (roots, entry)
 }
 
+fn sort_json_value(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => {
+            let mut keys: Vec<String> = map.keys().cloned().collect();
+            keys.sort();
+            let mut out = serde_json::Map::new();
+            for key in keys {
+                out.insert(
+                    key.clone(),
+                    sort_json_value(map.get(&key).expect("key").clone()),
+                );
+            }
+            serde_json::Value::Object(out)
+        }
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(sort_json_value).collect())
+        }
+        other => other,
+    }
+}
+
+fn json_diff_path(a: &serde_json::Value, b: &serde_json::Value, path: &str) -> Option<String> {
+    if a == b {
+        return None;
+    }
+    match (a, b) {
+        (serde_json::Value::Object(ma), serde_json::Value::Object(mb)) => {
+            let mut keys: Vec<&String> = ma.keys().chain(mb.keys()).collect();
+            keys.sort();
+            keys.dedup();
+            for key in keys {
+                let next = format!("{path}.{key}");
+                let av = ma.get(key).unwrap_or(&serde_json::Value::Null);
+                let bv = mb.get(key).unwrap_or(&serde_json::Value::Null);
+                if let Some(found) = json_diff_path(av, bv, &next) {
+                    return Some(found);
+                }
+            }
+            Some(path.to_string())
+        }
+        (serde_json::Value::Array(aa), serde_json::Value::Array(bb)) => {
+            if aa.len() != bb.len() {
+                return Some(format!("{path}[len {} vs {}]", aa.len(), bb.len()));
+            }
+            for (i, (av, bv)) in aa.iter().zip(bb.iter()).enumerate() {
+                if let Some(found) = json_diff_path(av, bv, &format!("{path}[{i}]")) {
+                    return Some(found);
+                }
+            }
+            Some(path.to_string())
+        }
+        _ => Some(path.to_string()),
+    }
+}
+
 fn canonical_graph_bytes(
     graph: &ResolvedGraph,
     source_indices: &std::collections::HashMap<String, Rc<NewlineIndex>>,
 ) -> Vec<u8> {
-    let raw = serialize_fixture_payload_for_test(graph, source_indices).expect("serialize payload");
-    let value: serde_json::Value = serde_json::from_slice(&raw).expect("payload is valid json");
-    serde_json::to_vec(&value).expect("re-serialize canonical")
+    serialize_fixture_payload_for_test(graph, source_indices).expect("serialize payload")
 }
 
 struct CacheEnvGuard {
@@ -120,6 +173,50 @@ impl AuditedRealization for ResolvedGraphRealization {
         let (graph, si) = resolve_entry_graph(&self.roots, &self.entry).expect("cold resolve");
         canonical_graph_bytes(&graph, &si)
     }
+}
+
+#[test]
+fn resolved_graph_realization_is_stable_back_to_back() {
+    let dir = temp_dir("stable");
+    let (roots, entry) = write_fixture(&dir);
+    let realization = ResolvedGraphRealization {
+        roots: roots.clone(),
+        entry: entry.clone(),
+    };
+    let bytes1 = realization.realize_cold();
+    let bytes2 = realization.realize_cold();
+    if bytes1 != bytes2 {
+        let v1: serde_json::Value = serde_json::from_slice(&bytes1).expect("json1");
+        let v2: serde_json::Value = serde_json::from_slice(&bytes2).expect("json2");
+        let s1 = sort_json_value(v1.clone());
+        let s2 = sort_json_value(v2.clone());
+        if s1 != s2 {
+            let keys = ["graph", "source_indices"];
+            for key in keys {
+                let h1 = v1_rt::bytes_identity_hash(
+                    &serde_json::to_vec(&s1.get(key).unwrap_or(&serde_json::Value::Null)).unwrap(),
+                );
+                let h2 = v1_rt::bytes_identity_hash(
+                    &serde_json::to_vec(&s2.get(key).unwrap_or(&serde_json::Value::Null)).unwrap(),
+                );
+                if h1 != h2 {
+                    let ga = s1.get(key).expect("graph key");
+                    let gb = s2.get(key).expect("graph key");
+                    let diff = json_diff_path(ga, gb, key).unwrap_or_else(|| key.to_string());
+                    panic!(
+                        "back-to-back compile diverged on payload.{key} at {diff}: {h1} vs {h2}"
+                    );
+                }
+            }
+            panic!(
+                "back-to-back compile diverged outside graph/source_indices after canonical sort"
+            );
+        }
+        panic!(
+            "back-to-back compile diverged only in raw serde key order (canonical sort matched)"
+        );
+    }
+    let _ = fs::remove_dir_all(&dir);
 }
 
 #[test]

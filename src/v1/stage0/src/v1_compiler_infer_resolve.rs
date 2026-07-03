@@ -9,8 +9,8 @@ use crate::std_syntax::LiteralValue::LitInt;
 pub use crate::std_types::container_param_name;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::{
-    authored_name, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for,
-    lookup_type, lookup_type_by_name, lookup_type_for,
+    authored_name, flatten_visible_bindings, is_recursive_type, is_recursive_type_by_name,
+    is_recursive_type_for, lookup_type, lookup_type_by_name, lookup_type_for,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 pub use crate::v1_compiler_infer_types::{
@@ -121,20 +121,17 @@ pub fn collect_unit_variant_phantom_matches(
     env: Rc<TypeEnv>,
     variant_name: String,
 ) -> Rc<Vec<Rc<Node>>> {
-    Rc::new(v1_rt::map_keys(&env.bindings.clone()))
+    Rc::new(v1_rt::map_values(&flatten_visible_bindings(env.clone())))
         .iter()
         .cloned()
         .fold(
             Rc::new(vec![]),
-            |acc: Rc<Vec<Rc<Node>>>, ident: i64| match lookup_type(env.clone(), ident.clone()) {
-                Some(ty_node) => match unit_variant_in_coproduct(
-                    env.clone(),
-                    structural_type_for_variant_lookup(env.clone(), ty_node.clone()),
-                    variant_name.clone(),
-                ) {
-                    Some(variant) => v1_rt::concat(acc.clone(), Rc::new(vec![variant.clone()])),
-                    None => acc.clone(),
-                },
+            |acc: Rc<Vec<Rc<Node>>>, binding: Rc<TypeBinding>| match unit_variant_in_coproduct(
+                env.clone(),
+                structural_type_for_variant_lookup(env.clone(), binding.resolved.clone()),
+                variant_name.clone(),
+            ) {
+                Some(variant) => v1_rt::concat(acc.clone(), Rc::new(vec![variant.clone()])),
                 None => acc.clone(),
             },
         )
@@ -182,6 +179,15 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
     })
 }
 
+pub fn is_transparent_primitive_alias_rhs(
+    structural: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> bool {
+    (((structural.connective.clone() == Connective::NoConnective)
+        && ((structural.children.clone().len() as i64) == 0))
+        && is_kernel_type(authored_name_at(source_indices.clone(), structural.clone())))
+}
+
 pub fn preserve_nominal_brand_on_resolve(
     identity: Rc<Node>,
     structural: Rc<Node>,
@@ -189,8 +195,9 @@ pub fn preserve_nominal_brand_on_resolve(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     if (((brand_name.clone() != "".to_string())
-        && (brand_name.clone() != authored_name_at(source_indices, structural.clone())))
-        && !is_declared_container_alias_spelling(brand_name.clone()))
+        && (brand_name.clone() != authored_name_at(source_indices.clone(), structural.clone())))
+        && !is_declared_container_alias_spelling(brand_name.clone())
+        && !is_transparent_primitive_alias_rhs(structural.clone(), source_indices.clone()))
     {
         with_authored_identity(identity, structural.clone())
     } else {
@@ -234,7 +241,11 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                 if (((brand.clone() != "".to_string())
                     && (brand.clone()
                         != authored_name_at(source_indices.clone(), structural.clone())))
-                    && !is_declared_container_alias_spelling(brand.clone()))
+                    && !is_declared_container_alias_spelling(brand.clone())
+                    && !is_transparent_primitive_alias_rhs(
+                        structural.clone(),
+                        source_indices.clone(),
+                    ))
                 {
                     with_authored_identity(n.clone(), structural.clone())
                 } else {
@@ -2955,37 +2966,45 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         let env = tp_names.clone().iter().cloned().fold(
             env.clone(),
             |e: Rc<TypeEnv>, tp_name: String| {
+                let tp_binding = Rc::new(TypeBinding {
+                    name: tp_name.clone(),
+                    resolved: Rc::new(Node {
+                        name: tp_name.clone(),
+                        span: kernel_span(tp_name.clone()),
+                        ident_span: Some(kernel_span(tp_name.clone())),
+                        children: Rc::new(vec![]),
+                        connective: Connective::NoConnective,
+                        params: Rc::new(vec![]),
+                        inferred: Some(Rc::new(InferredNode::TypeVariable {
+                            id: tp_name.clone(),
+                        })),
+                        return_cardinality: Cardinality::Required,
+                        uses: Rc::new(vec![]),
+                        body: None,
+                        transport: None,
+                        properties: Rc::new(vec![]),
+                        type_annotation: None,
+                        is_self_recursive: false,
+                        has_non_tail_self_call: false,
+                        match_pattern: None,
+                        expr_data: Rc::new(ExprData::NoExprData),
+                        ident: None,
+                    }),
+                    provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                });
                 Rc::new(TypeEnv {
                     bindings: v1_rt::rc_map_insert(
                         e.bindings.clone(),
                         intern(e.intern_table.clone(), tp_name.clone()).id.clone(),
-                        Rc::new(TypeBinding {
-                            name: tp_name.clone(),
-                            resolved: Rc::new(Node {
-                                name: tp_name.clone(),
-                                span: kernel_span(tp_name.clone()),
-                                ident_span: Some(kernel_span(tp_name.clone())),
-                                children: Rc::new(vec![]),
-                                connective: Connective::NoConnective,
-                                params: Rc::new(vec![]),
-                                inferred: Some(Rc::new(InferredNode::TypeVariable {
-                                    id: tp_name.clone(),
-                                })),
-                                return_cardinality: Cardinality::Required,
-                                uses: Rc::new(vec![]),
-                                body: None,
-                                transport: None,
-                                properties: Rc::new(vec![]),
-                                type_annotation: None,
-                                is_self_recursive: false,
-                                has_non_tail_self_call: false,
-                                match_pattern: None,
-                                expr_data: Rc::new(ExprData::NoExprData),
-                                ident: None,
-                            }),
-                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
-                        }),
+                        tp_binding.clone(),
                     ),
+                    str_bindings: v1_rt::rc_map_insert(
+                        e.str_bindings.clone(),
+                        tp_name.clone(),
+                        tp_binding,
+                    ),
+                    ancestry_str_bindings: e.ancestry_str_bindings.clone(),
+                    parents: e.parents.clone(),
                     recursive_types: e.recursive_types.clone(),
                     recursive_type_set: e.recursive_type_set.clone(),
                     inductive_fields: e.inductive_fields.clone(),
