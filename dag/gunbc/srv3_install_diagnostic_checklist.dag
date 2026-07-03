@@ -348,7 +348,7 @@ fn srv3_install_diagnostic_observe_script(intent: OsInstallAttemptIntent) -> Str
                       bash_var_ref(name: "ISO_FILE_SHA256"),
                       concat(
                         " content_hash_observed=",
-                        concat(bash_var_ref(name: "CONTENT_HASH_OBSERVED"), "\"\nHTTP_CODE="),
+                        concat(bash_var_ref(name: "CONTENT_HASH_OBSERVED"), "\"\n"),
                       ),
                     ),
                   ),

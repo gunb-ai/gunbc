@@ -43,6 +43,12 @@ test fn observe_script_covers_five_surfaces() -> Bool {
     && string_contains(s: srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent), pattern: "/vm/0/0")
 }
 
+test fn observe_script_websocket_http_code_not_concatenated_before_if() -> Bool {
+  let script = srv3_install_diagnostic_observe_script(intent: srv3_os_install_attempt_intent)
+  !string_contains(s: script, pattern: "HTTP_CODE=if")
+    && string_contains(s: script, pattern: "HTTP_CODE=$(curl")
+}
+
 test fn remote_bmc_probe_needs_serve_observation() -> Bool {
   srv3_remote_bmc_probe_diagnostic_is_needs_serve_observation()
     && match diagnose_srv3_install(
