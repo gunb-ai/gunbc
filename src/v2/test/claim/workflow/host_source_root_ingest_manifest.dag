@@ -8,8 +8,8 @@ import v2.compiler.source_authority {
   SourceRootIngest,
   SourceRootProvenanceCoverageReceipt,
 }
-import v2.std.algebra { Empty }
-import v2.std.qualified_name { QnCons, QnEmpty }
+import v2.std.algebra { Cons, Empty }
+
 import v2.std.text { String }
 
 data host_source_root_ingest_content_hash: String = ""
@@ -24,9 +24,9 @@ data host_source_root_ingest: SourceRootIngest = Empty
 
 data host_compiler_closure_admission: Admission = Admission {
   subject: ResolutionSubject {
-    name: QnCons {
+    name: Cons {
       head: ^v2,
-      tail: QnCons { head: ^compiler, tail: QnCons { head: ^compile, tail: QnEmpty } }
+      tail: Cons { head: ^compiler, tail: Cons { head: ^compile, tail: Empty } }
     }
   },
   imports: Empty
