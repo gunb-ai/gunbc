@@ -436,8 +436,16 @@ fn type_env_dual_import_later_overlay_wins() {
     ];
     let resolved = compile_modules(sources);
     let graph = resolved.graph.as_ref().expect("graph");
-    let mod_a = typed_module_by_name(&graph.modules, &resolved.source_indices, "test.dual_import_a");
-    let mod_b = typed_module_by_name(&graph.modules, &resolved.source_indices, "test.dual_import_b");
+    let mod_a = typed_module_by_name(
+        &graph.modules,
+        &resolved.source_indices,
+        "test.dual_import_a",
+    );
+    let mod_b = typed_module_by_name(
+        &graph.modules,
+        &resolved.source_indices,
+        "test.dual_import_b",
+    );
     let consumer = typed_module_by_name(
         &graph.modules,
         &resolved.source_indices,
@@ -577,7 +585,10 @@ fn type_env_local_variant_shadows_imported_variant_local() {
         .get("Alpha")
         .expect("consumer Alpha variant local");
     assert_eq!(
-        authored_name_at(parent.type_env.source_indices.clone(), parent_alpha.resolved.clone()),
+        authored_name_at(
+            parent.type_env.source_indices.clone(),
+            parent_alpha.resolved.clone()
+        ),
         "E",
         "parent Alpha must point at imported enum E"
     );

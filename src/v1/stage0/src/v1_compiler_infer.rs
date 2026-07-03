@@ -14618,9 +14618,9 @@ pub fn rewire_type_env_import_str_binding_identity(
             .iter()
             .filter(|imp| {
                 let path = import_module_path_at((*imp).clone(), source_indices.clone());
-                index
-                    .get(&path)
-                    .map_or(false, |parent| module_exports_type_name(parent.clone(), name))
+                index.get(&path).map_or(false, |parent| {
+                    module_exports_type_name(parent.clone(), name)
+                })
             })
             .count()
     }
@@ -14833,10 +14833,8 @@ pub fn reconcile(
     {
         let typed = typecheck(graph, source_indices.clone(), intern_table);
         let modules = rewire_type_env_parent_links(typed.modules.clone(), source_indices.clone());
-        let modules = rewire_type_env_import_str_binding_identity(
-            modules.clone(),
-            source_indices.clone(),
-        );
+        let modules =
+            rewire_type_env_import_str_binding_identity(modules.clone(), source_indices.clone());
         let modules = rewire_func_env_parent_links(modules.clone(), source_indices.clone());
         let emit_info = build_emit_graph_info(modules.clone());
         Rc::new(ResolvedGraph {

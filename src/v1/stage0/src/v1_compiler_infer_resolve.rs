@@ -185,10 +185,7 @@ pub fn is_transparent_primitive_alias_rhs(
 ) -> bool {
     (((structural.connective.clone() == Connective::NoConnective)
         && ((structural.children.clone().len() as i64) == 0))
-        && is_kernel_type(authored_name_at(
-            source_indices.clone(),
-            structural.clone(),
-        )))
+        && is_kernel_type(authored_name_at(source_indices.clone(), structural.clone())))
 }
 
 pub fn preserve_nominal_brand_on_resolve(
@@ -198,13 +195,9 @@ pub fn preserve_nominal_brand_on_resolve(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
     if (((brand_name.clone() != "".to_string())
-        && (brand_name.clone()
-            != authored_name_at(source_indices.clone(), structural.clone())))
+        && (brand_name.clone() != authored_name_at(source_indices.clone(), structural.clone())))
         && !is_declared_container_alias_spelling(brand_name.clone())
-        && !is_transparent_primitive_alias_rhs(
-            structural.clone(),
-            source_indices.clone(),
-        ))
+        && !is_transparent_primitive_alias_rhs(structural.clone(), source_indices.clone()))
     {
         with_authored_identity(identity, structural.clone())
     } else {
