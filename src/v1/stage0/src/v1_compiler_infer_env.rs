@@ -81,12 +81,17 @@ pub struct TypeEnv {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
+    #[serde(skip, default = "empty_type_env_parents")]
     pub parents: Rc<Vec<Rc<TypeEnv>>>,
     pub recursive_types: Rc<Vec<i64>>,
     pub recursive_type_set: Rc<HashMap<i64, bool>>,
     pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
+}
+
+fn empty_type_env_parents() -> Rc<Vec<Rc<TypeEnv>>> {
+    Rc::new(vec![])
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

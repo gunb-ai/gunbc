@@ -361,15 +361,80 @@ pub fn generic_use_slot_bindings(
 }
 
 pub fn expand_scrut_type_for_variant_lookup(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
+    expand_scrut_type_for_variant_lookup_with_seen(
+        scrut_node,
+        env,
+        v1_rt::rc_empty_map::<String, bool>(),
+    )
+}
+
+fn expand_scrut_type_for_variant_lookup_with_seen(
+    scrut_node: Rc<Node>,
+    env: Rc<TypeEnv>,
+    seen: Rc<HashMap<String, bool>>,
+) -> Rc<Node> {
     let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
     if (scrut_node.connective.clone() == Connective::Disj) || is_witness_type_name(name.clone()) {
-        scrut_node.clone()
-    } else {
-        match scrut_node.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: target, .. }) => {
-                expand_scrut_type_for_variant_lookup(target, env)
+        return scrut_node.clone();
+    }
+    if v1_rt::map_get(&seen, name.clone()).is_some() {
+        return scrut_node.clone();
+    }
+    let seen = v1_rt::rc_map_insert(seen, name.clone(), true);
+    if (((scrut_node.connective.clone() == Connective::NoConnective)
+        && ((scrut_node.children.clone().len() as i64) > 0))
+        && is_user_generic_use_site(scrut_node.clone(), env.clone()))
+    {
+        match lookup_type_by_name(env.clone(), name.clone()) {
+            Some(decl) => {
+                if (((decl.inferred.clone() != None)
+                    && ((decl.children.clone().len() as i64) == 0))
+                    && (decl.connective.clone() == Connective::NoConnective))
+                {
+                    match decl.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: target, .. }) => {
+                            let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
+                            let expanded = substitute_type_slots(
+                                target,
+                                subst,
+                                name.clone(),
+                                env.source_indices.clone(),
+                            );
+                            return expanded;
+                        }
+                        _ => scrut_node.clone(),
+                    }
+                } else if (decl.connective.clone() == Connective::Disj) {
+                    decl.clone()
+                } else {
+                    scrut_node.clone()
+                }
             }
-            _ => scrut_node.clone(),
+            None => scrut_node.clone(),
+        }
+    } else {
+        match lookup_type_by_name(env.clone(), name.clone()) {
+            Some(def) => {
+                if (def.connective.clone() == Connective::Disj) {
+                    def.clone()
+                } else if ((def.inferred.clone() != None)
+                    && (def.connective.clone() == Connective::NoConnective))
+                {
+                    match def.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: target, .. }) => {
+                            if (target.connective.clone() == Connective::Disj) {
+                                target
+                            } else {
+                                scrut_node.clone()
+                            }
+                        }
+                        _ => scrut_node.clone(),
+                    }
+                } else {
+                    scrut_node.clone()
+                }
+            }
+            None => scrut_node.clone(),
         }
     }
 }

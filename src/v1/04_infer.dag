@@ -2796,12 +2796,35 @@ fn expand_alias_chain_for_field_access(n: Node, env: TypeEnv, module_name: Strin
 
 data expand_type_for_field_access_dissolution_trigger: String = "🟡 dissolve-on: parallel alias/inferred chase to expand_type_for_field_access — unify with 04_resolve.dag resolve_scrutinee_type_node once regen lands."
 
-fn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
-  if is_deferred_field_access_base(n: n, env: env) { n }
-  else {
+fn expand_type_for_field_access_with_seen(n: Node, env: TypeEnv, module_name: String, seen: Map<String, Bool>) -> Node {
+  if is_deferred_field_access_base(n: n, env: env) {
+    let name = authored_name_at(source_indices: env.source_indices, node: n)
+    match map_get(seen, name) {
+      Present { value: _ } => n
+      Absent =>
+        let seen = map_insert(seen, name, true)
+        match lookup_type_by_name(env: env, name: name) {
+          Present { value: decl } =>
+            if decl.connective == Conj && (decl.params |> count) > 0 {
+              decl
+            } else if decl.connective == NoConnective && decl.children |> count == 0 && decl.inferred != none {
+              match decl.inferred {
+                Present { value: Resolved { node: target } } =>
+                  expand_type_for_field_access_with_seen(n: target, env: env, module_name: module_name, seen: seen)
+                _ => n
+              }
+            } else { n }
+          Absent => n
+        }
+    }
+  } else {
     let origin_name = authored_name_at(source_indices: env.source_indices, node: n)
     expand_alias_chain_for_field_access(n: n, env: env, module_name: module_name, origin_name: origin_name, seen: empty_map(), lossy: false)
   }
+}
+
+fn expand_type_for_field_access(n: Node, env: TypeEnv, module_name: String) -> Node {
+  expand_type_for_field_access_with_seen(n: n, env: env, module_name: module_name, seen: empty_map())
 }
 
 fn record_lit_alias_struct_fields(type_name: String, scope: InferScope) -> List<Node>? {

@@ -5578,20 +5578,58 @@ pub fn expand_type_for_field_access(
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<Node> {
+    expand_type_for_field_access_with_seen(
+        n,
+        env,
+        module_name,
+        v1_rt::rc_empty_map::<String, bool>(),
+    )
+}
+
+pub fn expand_type_for_field_access_with_seen(
+    n: Rc<Node>,
+    env: Rc<TypeEnv>,
+    module_name: String,
+    seen: Rc<HashMap<String, bool>>,
+) -> Rc<Node> {
     if is_deferred_field_access_base(n.clone(), env.clone()) {
-        n.clone()
-    } else {
-        {
-            let origin_name = authored_name_at(env.source_indices.clone(), n.clone());
-            expand_alias_chain_for_field_access(
-                n.clone(),
-                env.clone(),
-                module_name,
-                origin_name,
-                v1_rt::rc_empty_map::<String, bool>(),
-                false,
-            )
+        let name = authored_name_at(env.source_indices.clone(), n.clone());
+        if v1_rt::map_get(&seen, name.clone()).is_some() {
+            return n.clone();
         }
+        let seen = v1_rt::rc_map_insert(seen, name.clone(), true);
+        match lookup_type_by_name(env.clone(), name.clone()) {
+            Some(decl) => {
+                if ((decl.connective.clone() == Connective::Conj)
+                    && ((decl.params.clone().len() as i64) > 0))
+                {
+                    decl.clone()
+                } else if (((decl.connective.clone() == Connective::NoConnective)
+                    && ((decl.children.clone().len() as i64) == 0))
+                    && (decl.inferred.clone() != None))
+                {
+                    match decl.inferred.clone().as_deref().cloned() {
+                        Some(InferredNode::Resolved { node: target, .. }) => {
+                            expand_type_for_field_access_with_seen(target, env, module_name, seen)
+                        }
+                        _ => n.clone(),
+                    }
+                } else {
+                    n.clone()
+                }
+            }
+            None => n.clone(),
+        }
+    } else {
+        let origin_name = authored_name_at(env.source_indices.clone(), n.clone());
+        expand_alias_chain_for_field_access(
+            n.clone(),
+            env.clone(),
+            module_name,
+            origin_name,
+            v1_rt::rc_empty_map::<String, bool>(),
+            false,
+        )
     }
 }
 
