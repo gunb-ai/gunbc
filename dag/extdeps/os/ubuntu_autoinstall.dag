@@ -1,7 +1,6 @@
 module extdeps.os.ubuntu_autoinstall
 
-import std.logic { Bool }
-import std.types { Int, NonEmptyStr }
+import std.types { Int, NonEmptyStr, Bool }
 import std.os.types { UbuntuDistribution }
 import extdeps.uri { Uri, Https }
 import extdeps.external_authority { ExternalAuthority }
@@ -24,6 +23,10 @@ type AutoinstallIdentity {
   hashed_password: NonEmptyStr
 }
 
+type AutoinstallStoragePolicy
+  = StoragePolicyAbsent
+  | StoragePolicyDirectLayout
+
 type UbuntuAutoinstallPayload {
   autoinstall_version: Int
   delivery: AutoinstallDeliveryMethod
@@ -33,4 +36,5 @@ type UbuntuAutoinstallPayload {
   locale: NonEmptyStr
   keyboard_layout: NonEmptyStr
   install_openssh_server: Bool
+  storage_policy: AutoinstallStoragePolicy
 }

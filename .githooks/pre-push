@@ -75,6 +75,7 @@ fresh_artifact_path() {
     docs/plans/ci-selection-vs-scheduling.md*) return 0 ;;
     docs/plans/ci-process-end-to-end.md*) return 0 ;;
     docs/plans/ci-oom-reclassification.md*) return 0 ;;
+    docs/plans/bounded-input-cost-envelope-scheduling.md*) return 0 ;;
     docs/plans/ci-humming.md*) return 0 ;;
     docs/plans/edge-b-rust-dag-provenance-brief.md*) return 0 ;;
     docs/plans/resolver-type-name-collision-wall.md*) return 0 ;;
