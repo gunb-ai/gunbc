@@ -182,7 +182,7 @@ fn witness_live_lease_refused() -> Bool {
 fn witness_absent_lease_classifies_spawn() -> Bool {
   let scope = dispatch_tmux_session_scope(node_id: nid(s: "lease-absent"))
   match classify_dispatch_lease_upsert(scope: scope, obs: SessionAbsent) {
-    gunbc.roadmap_dispatch_actuator.UpsertClassification { verdict: gunbc.roadmap_dispatch_actuator.Absent, decision: gunbc.roadmap_dispatch_actuator.Apply { plan: gunbc.roadmap_dispatch_actuator.SpawnSession } } => true
+    UpsertClassification { verdict: Absent, decision: Apply { plan: SpawnSession } } => true
     _ => false
   }
 }
