@@ -12288,7 +12288,7 @@ pub fn build_type_env(
         let node_fields = inductive_fields_list_to_map(compiler_inductive_fields());
         let kernel_recursive_types = Rc::new({
             let mut __result = Vec::new();
-            for name in Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
+            for name in v1_rt::sorted_map_keys(&compiler_recursive_types())
                 .iter()
                 .cloned()
             {
@@ -12296,7 +12296,7 @@ pub fn build_type_env(
             }
             __result
         });
-        let kernel_recursive_type_set = Rc::new(v1_rt::map_keys(&compiler_recursive_types()))
+        let kernel_recursive_type_set = v1_rt::sorted_map_keys(&compiler_recursive_types())
             .iter()
             .cloned()
             .fold(
@@ -12638,25 +12638,22 @@ pub fn build_type_env(
         );
         let cycle_set = Rc::new({
             let mut __result = Vec::new();
-            for name in Rc::new(v1_rt::map_keys(&cycle_set_str)).iter().cloned() {
+            for name in v1_rt::sorted_map_keys(&cycle_set_str).iter().cloned() {
                 __result.push(intern(intern_table.clone(), name.clone()).id.clone());
             }
             __result
         });
-        let cross_type_set = Rc::new(v1_rt::map_keys(&cycle_set_str))
-            .iter()
-            .cloned()
-            .fold(
-                v1_rt::rc_empty_map::<i64, bool>(),
-                |acc: Rc<HashMap<i64, bool>>, name: String| {
-                    v1_rt::rc_map_insert(
-                        acc,
-                        intern(intern_table.clone(), name.clone()).id.clone(),
-                        true,
-                    )
-                },
-            );
-        let cycle_set_for_inductive = Rc::new(v1_rt::map_keys(&cycle_set_str))
+        let cross_type_set = v1_rt::sorted_map_keys(&cycle_set_str).iter().cloned().fold(
+            v1_rt::rc_empty_map::<i64, bool>(),
+            |acc: Rc<HashMap<i64, bool>>, name: String| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    intern(intern_table.clone(), name.clone()).id.clone(),
+                    true,
+                )
+            },
+        );
+        let cycle_set_for_inductive = v1_rt::sorted_map_keys(&cycle_set_str)
             .iter()
             .cloned()
             .fold(v1_rt::rc_empty_set::<_>(), |acc: _, name: String| {
@@ -13094,25 +13091,22 @@ pub fn build_type_env_unresolved(
         );
         let cycle_set = Rc::new({
             let mut __result = Vec::new();
-            for name in Rc::new(v1_rt::map_keys(&cycle_set_str)).iter().cloned() {
+            for name in v1_rt::sorted_map_keys(&cycle_set_str).iter().cloned() {
                 __result.push(intern(intern_table.clone(), name.clone()).id.clone());
             }
             __result
         });
-        let cross_type_set = Rc::new(v1_rt::map_keys(&cycle_set_str))
-            .iter()
-            .cloned()
-            .fold(
-                v1_rt::rc_empty_map::<i64, bool>(),
-                |acc: Rc<HashMap<i64, bool>>, name: String| {
-                    v1_rt::rc_map_insert(
-                        acc,
-                        intern(intern_table.clone(), name.clone()).id.clone(),
-                        true,
-                    )
-                },
-            );
-        let cycle_set_for_inductive = Rc::new(v1_rt::map_keys(&cycle_set_str))
+        let cross_type_set = v1_rt::sorted_map_keys(&cycle_set_str).iter().cloned().fold(
+            v1_rt::rc_empty_map::<i64, bool>(),
+            |acc: Rc<HashMap<i64, bool>>, name: String| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    intern(intern_table.clone(), name.clone()).id.clone(),
+                    true,
+                )
+            },
+        );
+        let cycle_set_for_inductive = v1_rt::sorted_map_keys(&cycle_set_str)
             .iter()
             .cloned()
             .fold(v1_rt::rc_empty_set::<_>(), |acc: _, name: String| {

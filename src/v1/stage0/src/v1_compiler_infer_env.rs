@@ -185,12 +185,24 @@ pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeB
         Some(binding) => Some(binding.clone()),
         None => match v1_rt::map_get(&env.ancestry_str_bindings, name.clone()) {
             Some(binding) => Some(binding.clone()),
-            None => match intern_find(env.intern_table.clone(), name) {
-                Some(id) => v1_rt::map_get(&env.bindings, id),
-                None => None,
+            None => match intern_find(env.intern_table.clone(), name.clone()) {
+                Some(id) => match v1_rt::map_get(&env.bindings, id) {
+                    Some(binding) => Some(binding.clone()),
+                    None => lookup_binding_in_parents(env, name),
+                },
+                None => lookup_binding_in_parents(env, name),
             },
         },
     }
+}
+
+fn lookup_binding_in_parents(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
+    for parent in env.parents.iter() {
+        if let Some(binding) = lookup_binding_by_name(parent.clone(), name.clone()) {
+            return Some(binding);
+        }
+    }
+    None
 }
 
 pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {

@@ -66,6 +66,40 @@ fn sort_json_value(value: serde_json::Value) -> serde_json::Value {
     }
 }
 
+fn json_diff_path(a: &serde_json::Value, b: &serde_json::Value, path: &str) -> Option<String> {
+    if a == b {
+        return None;
+    }
+    match (a, b) {
+        (serde_json::Value::Object(ma), serde_json::Value::Object(mb)) => {
+            let mut keys: Vec<&String> = ma.keys().chain(mb.keys()).collect();
+            keys.sort();
+            keys.dedup();
+            for key in keys {
+                let next = format!("{path}.{key}");
+                let av = ma.get(key).unwrap_or(&serde_json::Value::Null);
+                let bv = mb.get(key).unwrap_or(&serde_json::Value::Null);
+                if let Some(found) = json_diff_path(av, bv, &next) {
+                    return Some(found);
+                }
+            }
+            Some(path.to_string())
+        }
+        (serde_json::Value::Array(aa), serde_json::Value::Array(bb)) => {
+            if aa.len() != bb.len() {
+                return Some(format!("{path}[len {} vs {}]", aa.len(), bb.len()));
+            }
+            for (i, (av, bv)) in aa.iter().zip(bb.iter()).enumerate() {
+                if let Some(found) = json_diff_path(av, bv, &format!("{path}[{i}]")) {
+                    return Some(found);
+                }
+            }
+            Some(path.to_string())
+        }
+        _ => Some(path.to_string()),
+    }
+}
+
 fn canonical_graph_bytes(
     graph: &ResolvedGraph,
     source_indices: &std::collections::HashMap<String, Rc<NewlineIndex>>,
@@ -156,19 +190,33 @@ fn resolved_graph_realization_is_stable_back_to_back() {
     if bytes1 != bytes2 {
         let v1: serde_json::Value = serde_json::from_slice(&bytes1).expect("json1");
         let v2: serde_json::Value = serde_json::from_slice(&bytes2).expect("json2");
-        let keys = ["modules", "item_registry", "diagnostics", "emit_graph_info"];
-        for key in keys {
-            let h1 = v1_rt::bytes_identity_hash(
-                &serde_json::to_vec(&v1.get(key).unwrap_or(&serde_json::Value::Null)).unwrap(),
-            );
-            let h2 = v1_rt::bytes_identity_hash(
-                &serde_json::to_vec(&v2.get(key).unwrap_or(&serde_json::Value::Null)).unwrap(),
-            );
-            if h1 != h2 {
-                panic!("back-to-back compile diverged on payload.{key}: {h1} vs {h2}");
+        let s1 = sort_json_value(v1.clone());
+        let s2 = sort_json_value(v2.clone());
+        if s1 != s2 {
+            let keys = ["graph", "source_indices"];
+            for key in keys {
+                let h1 = v1_rt::bytes_identity_hash(
+                    &serde_json::to_vec(&s1.get(key).unwrap_or(&serde_json::Value::Null)).unwrap(),
+                );
+                let h2 = v1_rt::bytes_identity_hash(
+                    &serde_json::to_vec(&s2.get(key).unwrap_or(&serde_json::Value::Null)).unwrap(),
+                );
+                if h1 != h2 {
+                    let ga = s1.get(key).expect("graph key");
+                    let gb = s2.get(key).expect("graph key");
+                    let diff = json_diff_path(ga, gb, key).unwrap_or_else(|| key.to_string());
+                    panic!(
+                        "back-to-back compile diverged on payload.{key} at {diff}: {h1} vs {h2}"
+                    );
+                }
             }
+            panic!(
+                "back-to-back compile diverged outside graph/source_indices after canonical sort"
+            );
         }
-        panic!("back-to-back compile diverged outside known payload keys");
+        panic!(
+            "back-to-back compile diverged only in raw serde key order (canonical sort matched)"
+        );
     }
     let _ = fs::remove_dir_all(&dir);
 }

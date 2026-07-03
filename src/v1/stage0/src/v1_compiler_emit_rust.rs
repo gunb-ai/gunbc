@@ -1401,6 +1401,11 @@ pub fn render_rust_alias_rhs_type(
                 if ((n.connective.clone() == Connective::NoConnective)
                     && ((n.children.clone().len() as i64) > 0))
                 {
+                    if let Some(host) =
+                        rust_seed_host_numeric_alias(name.clone(), corpus_repr.clone())
+                    {
+                        return host;
+                    }
                     {
                         let local_mod = module_to_filename(module_name.clone());
                         let def_mod = alias_rhs_rust_qualify_module_filename(

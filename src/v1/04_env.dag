@@ -68,6 +68,15 @@ fn str_bindings_from_bindings(bindings: Map<Int, TypeBinding>) -> Map<String, Ty
   )
 }
 
+fn lookup_binding_in_parents(env: TypeEnv, name: String) -> TypeBinding? {
+  fold(env.parents, init: Absent, f: (acc, parent) =>
+    match acc {
+      Present { value: _ } => acc
+      Absent => lookup_binding_by_name(env: parent, name: name)
+    }
+  )
+}
+
 fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
   match map_get(env.str_bindings, name) {
     Present { value: binding } => Present { value: binding }
@@ -76,8 +85,12 @@ fn lookup_binding_by_name(env: TypeEnv, name: String) -> TypeBinding? {
         Present { value: binding } => Present { value: binding }
         Absent =>
           match intern_find(table: env.intern_table, s: name) {
-            Present { value: id } => map_get(env.bindings, id)
-            Absent => Absent
+            Present { value: id } =>
+              match map_get(env.bindings, id) {
+                Present { value: binding } => Present { value: binding }
+                Absent => lookup_binding_in_parents(env: env, name: name)
+              }
+            Absent => lookup_binding_in_parents(env: env, name: name)
           }
       }
   }

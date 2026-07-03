@@ -229,6 +229,12 @@ pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
 }
 
+pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
+    let mut keys = map_keys(m);
+    keys.sort();
+    keys
+}
+
 pub fn map_is_empty<K, V>(m: &HashMap<K, V>) -> bool {
     m.is_empty()
 }
