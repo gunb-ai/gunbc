@@ -1429,7 +1429,10 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
       let base_result = infer_expr(texpr: base_expr, scope: scope, expected: none)
       let base_typed = base_result.typed
       let base_diags = base_result.diagnostics
-      let base_rt = resolved_type(n: base_typed)
+      let base_rt = match base_typed.inferred {
+        Present { value: Resolved { node: rt } } => resolve_scrutinee_type_node(env: scope.type_env, n: rt)
+        _ => resolve_scrutinee_type_node(env: scope.type_env, n: base_typed)
+      }
       let resolved_base = if is_deferred_field_access_base(n: base_rt, env: scope.type_env) {
         base_rt
       } else {
@@ -1439,8 +1442,11 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           module_name: scope.module_name
         )
       }
-      let resolved_base_is_error = if resolved_base.inferred != none { is_compiler_error(inferred: resolved_base.inferred.value) } else { false }
-      if resolved_base_is_error {
+      let base_is_error = match base_typed.inferred {
+        Present { value: CompilerError { .. } } => true
+        _ => false
+      }
+      if base_is_error {
         InferResult {
           typed: make_expr_error_node(kind: SemanticExprError, message: "error type cascade", span: span),
           diagnostics: base_diags

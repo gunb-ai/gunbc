@@ -154,23 +154,21 @@ pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc
 pub fn str_bindings_from_bindings(
     bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    let mut names: Vec<String> = bindings
+    let mut pairs: Vec<(String, Rc<TypeBinding>)> = bindings
         .values()
-        .map(|binding| binding.name.clone())
+        .map(|binding| (binding.name.clone(), binding.clone()))
         .collect();
-    names.sort();
-    names.iter().fold(
+    pairs.sort_by(|a, b| a.0.cmp(&b.0));
+    pairs.into_iter().fold(
         v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, name: &String| match bindings
-            .values()
-            .find(|binding| binding.name.clone() == *name)
-        {
-            Some(binding) => v1_rt::rc_map_insert(acc, name.clone(), binding.clone()),
-            None => acc,
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, (name, binding)| {
+            v1_rt::rc_map_insert(acc, name, binding)
         },
     )
 }
 
+// Re-sort String-keyed binding maps so merge_type_env_cache / cache-purity witnesses
+// see stable key order independent of HashMap iteration (content-addressed cache keys).
 pub fn deterministic_str_binding_map(
     m: Rc<HashMap<String, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {

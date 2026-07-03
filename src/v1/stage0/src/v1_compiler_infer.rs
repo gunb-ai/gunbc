@@ -2769,7 +2769,12 @@ pub fn infer_expr(
                 let base_result = infer_expr(base_expr, scope.clone(), None);
                 let base_typed = base_result.typed.clone();
                 let base_diags = base_result.diagnostics.clone();
-                let base_rt = resolved_type(base_typed.clone());
+                let base_rt = match base_typed.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        resolve_scrutinee_type_node(scope.type_env.clone(), rt)
+                    }
+                    _ => resolve_scrutinee_type_node(scope.type_env.clone(), base_typed.clone()),
+                };
                 let resolved_base =
                     if is_deferred_field_access_base(base_rt.clone(), scope.type_env.clone()) {
                         base_rt.clone()
@@ -2780,12 +2785,11 @@ pub fn infer_expr(
                             scope.module_name.clone(),
                         )
                     };
-                let resolved_base_is_error = if (resolved_base.inferred.clone() != None) {
-                    is_compiler_error(resolved_base.inferred.clone().clone().unwrap())
-                } else {
-                    false
-                };
-                if resolved_base_is_error {
+                let base_is_error = matches!(
+                    base_typed.inferred.clone().as_deref().cloned(),
+                    Some(InferredNode::CompilerError { .. })
+                );
+                if base_is_error {
                     Rc::new(InferResult {
                         typed: make_expr_error_node(
                             ExprErrorKind::SemanticExprError,
