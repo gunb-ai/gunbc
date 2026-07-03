@@ -256,7 +256,10 @@ fn node_precise_test_fn_body_edit_runs_only_that_witness() {
         "witness-A body edit failures: {:?}",
         a.failures
     );
-    assert_eq!(a.skipped, 0, "editing witness A's own body must NOT skip it");
+    assert_eq!(
+        a.skipped, 0,
+        "editing witness A's own body must NOT skip it"
+    );
     assert_eq!(
         a.passed, 1,
         "editing witness A's own body must RUN it (finding 1)"
@@ -270,7 +273,10 @@ fn node_precise_test_fn_body_edit_runs_only_that_witness() {
         "witness-B body edit failures: {:?}",
         b.failures
     );
-    assert_eq!(b.passed, 0, "editing witness B's body must NOT run witness A");
+    assert_eq!(
+        b.passed, 0,
+        "editing witness B's body must NOT run witness A"
+    );
     assert_eq!(
         b.skipped, 1,
         "editing witness B's body must SKIP witness A (per-function precision)"
