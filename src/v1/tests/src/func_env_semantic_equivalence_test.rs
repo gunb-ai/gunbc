@@ -1,9 +1,14 @@
-//! Oracle 4 — whole-corpus semantic equivalence vs pre-scope-chain baseline.
+//! Oracle 4 — whole-corpus semantic equivalence vs a frozen baseline commit.
 //!
-//! Proves the post-refactor compiler is byte-identical to commit db559b42814 on
+//! Proves the compiler stays byte-identical to a pinned baseline commit on
 //! diagnostics, per-module emit repr, and full `EmitGraphInfo` when run over
-//! the frozen baseline corpus (`git archive db559b42814 dag src/v1`). Fixture
-//! captured via capture_func_env_semantic_oracle on that tree.
+//! the frozen baseline corpus (`git archive <BASELINE_COMMIT> dag src/v1`).
+//! Fixture captured via capture_func_env_semantic_oracle on that tree.
+//!
+//! BASELINE_COMMIT must postdate the dsl->dag rename (#6165) — the tree at
+//! any earlier commit has `dsl/` not `dag/`, so `git archive ... dag src/v1`
+//! fails on a fresh clone (a warm runner with a cached
+//! target/func_env_semantic_baseline_corpus dir hides this).
 
 use std::fs;
 use std::io::Write;
@@ -15,7 +20,7 @@ use v1_compiler::cli_run::{whole_corpus_semantic_oracle_snapshot, FLOOR_DISCOVER
 
 use crate::helpers::workspace_root;
 
-const BASELINE_COMMIT: &str = "db559b42814";
+const BASELINE_COMMIT: &str = "aeb1739ec5c";
 const BASELINE_FIXTURE: &str = "src/v1/tests/fixtures/func_env_semantic_baseline.json";
 
 #[derive(Debug, Deserialize)]
