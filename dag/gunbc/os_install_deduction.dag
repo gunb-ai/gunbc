@@ -60,13 +60,6 @@ type KvmOperatorAttestation {
   attested_by: NonEmptyStr
 }
 
-fn nbd_proxy_actuator_seed_delivery_is_local(payload: UbuntuAutoinstallPayload) -> Bool {
-  match payload.delivery {
-    NoCloudLocal => true
-    NoCloudNet { seed_url: _ } => false
-  }
-}
-
 fn fold_nbd_proxy_os_install_preflight_verdict(
   payload: UbuntuAutoinstallPayload,
   disk: TargetDiskState,
@@ -74,18 +67,18 @@ fn fold_nbd_proxy_os_install_preflight_verdict(
   if !payload.fully_automated {
     NotUnattendedByPolicy
   } else {
-    if !nbd_proxy_actuator_seed_delivery_is_local(payload: payload) {
-      IncompleteSeedDelivery
-    } else {
-      match payload.storage_policy {
-        StoragePolicyDirectLayout => CompleteForUnattended
-        StoragePolicyAbsent =>
-          match disk {
-            EmptyDisk => RequiresStoragePolicy
-            ForeignOsPresent => AutoinstallIncompleteNotBootable
-            UnknownDiskState => RequiresDiskObservation
-          }
-      }
+    match payload.delivery {
+      NoCloudNet { seed_url: _ } => IncompleteSeedDelivery
+      NoCloudLocal =>
+        match payload.storage_policy {
+          StoragePolicyDirectLayout => CompleteForUnattended
+          StoragePolicyAbsent =>
+            match disk {
+              EmptyDisk => RequiresStoragePolicy
+              ForeignOsPresent => AutoinstallIncompleteNotBootable
+              UnknownDiskState => RequiresDiskObservation
+            }
+        }
     }
   }
 }

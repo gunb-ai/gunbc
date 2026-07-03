@@ -8,7 +8,6 @@ import extdeps.os.ubuntu_autoinstall {
   NoCloudNet,
   StoragePolicyAbsent,
   StoragePolicyDirectLayout,
-  autoinstall_has_storage_policy,
 }
 import extdeps.uri { Uri, Https }
 import gunbc.os_install {
@@ -87,7 +86,10 @@ test fn direct_layout_storage_is_complete_for_unattended() -> Bool {
     payload: witness_autoinstall_with_storage,
     disk: ForeignOsPresent,
   ) == CompleteForUnattended
-    && autoinstall_has_storage_policy(payload: witness_autoinstall_with_storage)
+    && match witness_autoinstall_with_storage.storage_policy {
+      StoragePolicyDirectLayout => true
+      StoragePolicyAbsent => false
+    }
 }
 
 test fn removing_storage_policy_flips_ready_to_boot_witness() -> Bool {
