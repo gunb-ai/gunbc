@@ -11,10 +11,24 @@ import extdeps.uri_path {
 import extdeps.languages.html { EmitOk, EmitRejected, try_serialize_html_source }
 import extdeps.http.server {
   HttpServerListenConfig,
+  HttpServerRoute,
+  HttpServerParameter,
+  HttpStatusResponse,
+  HttpRequestBodyKind,
+  NoRequestBody,
+  JsonRequestBody,
+  PathInput,
+  NodeHttpServerRouteBinding,
+  NodeHttpRequestListener,
   ServedStaticRoute,
   ServedStaticRouteTable,
+  ServedDynamicRoute,
+  ServedDynamicRouteExec,
+  LiteralArgvSegment,
+  PathParamArgvSegment,
   HttpContentType,
   TextHtmlUtf8,
+  ApplicationJsonUtf8,
   http_content_type_wire_label,
 }
 import gunbc.gunbhub_serve { gunbhub_served_static_route_table }
@@ -50,9 +64,10 @@ import extdeps.languages.typescript.program {
   ts_spread,
 }
 
-type NodeHttpStaticServerSpec {
+type NodeHttpServerSpec {
   service_name: String
-  routes: ServedStaticRouteTable
+  static_routes: ServedStaticRouteTable
+  dynamic_routes: List<ServedDynamicRoute>
   listen: HttpServerListenConfig
 }
 
@@ -117,6 +132,71 @@ fn emit_static_route_exprs(routes: List<ServedStaticRoute>) -> List<TsExpr> {
   map(xs: routes, f: r => emit_static_route_expr(route: r))
 }
 
+fn path_template_param_names(template: PathTemplate) -> List<String> {
+  fold(
+    xs: template.tokens,
+    init: [],
+    f: (acc, tok) =>
+      match tok {
+        ParamToken { name: n } => concat(acc, [n])
+        LiteralToken { text: _ } => acc
+      }
+  )
+}
+
+fn emit_path_template_regex_capture_source(template: PathTemplate) -> String {
+  let segs = map(xs: template.tokens, f: tok =>
+    match tok {
+      LiteralToken { text: t } => js_regex_escape_literal(s: t)
+      ParamToken { name: _ } => "([^\\/]+)"
+    }
+  )
+  if count(xs: segs) == 0 {
+    "^\\/$"
+  } else {
+    concat("^\\/", concat(join(segs, "\\/"), "$"))
+  }
+}
+
+fn emit_argv_segment_expr(seg: ServedDynamicRouteArgvSegment) -> TsExpr {
+  match seg {
+    LiteralArgvSegment { text: t } =>
+      ts_object([
+        ts_field(key: "kind", value: ts_lit_str(value: "literal")),
+        ts_field(key: "text", value: ts_lit_str(value: t)),
+      ])
+    PathParamArgvSegment { param_name: n } =>
+      ts_object([
+        ts_field(key: "kind", value: ts_lit_str(value: "param")),
+        ts_field(key: "name", value: ts_lit_str(value: n)),
+      ])
+  }
+}
+
+fn emit_argv_segment_exprs(segments: List<ServedDynamicRouteArgvSegment>) -> List<TsExpr> {
+  map(xs: segments, f: s => emit_argv_segment_expr(seg: s))
+}
+
+fn emit_dynamic_route_expr(route: ServedDynamicRoute) -> TsExpr {
+  let binding = route.binding
+  let method = emit_http_method_label(method: binding.route.method)
+  let re = emit_path_template_regex_capture_source(template: binding.route.path_template)
+  let param_names = path_template_param_names(template: binding.route.path_template)
+  ts_object([
+    ts_field(key: "method", value: ts_lit_str(value: method)),
+    ts_field(key: "pathRe", value: ts_lit_regex(source: re)),
+    ts_field(key: "paramNames", value: ts_array(elements: map(xs: param_names, f: n => ts_lit_str(value: n)))),
+    ts_field(key: "command", value: ts_lit_str(value: route.exec.command)),
+    ts_field(key: "argvSegments", value: ts_array(elements: emit_argv_segment_exprs(segments: route.exec.argv))),
+    ts_field(key: "status", value: ts_lit_num(text: to_string(route.success_status))),
+    ts_field(key: "handlerName", value: ts_lit_str(value: binding.listener.handler_name)),
+  ])
+}
+
+fn emit_dynamic_route_exprs(routes: List<ServedDynamicRoute>) -> List<TsExpr> {
+  map(xs: routes, f: r => emit_dynamic_route_expr(route: r))
+}
+
 fn req_member(name: String) -> TsExpr {
   ts_member(object: ts_ident(name: "req"), property: name)
 }
@@ -152,6 +232,154 @@ fn node_http_match_handler_body() -> TsStmt {
   ])
 }
 
+fn node_http_handle_dynamic_route_const() -> TsStmt {
+  ts_const(
+    name: "handleDynamicRoute",
+    value: ts_arrow(
+      params: ["req", "res", "route", "path", "method"],
+      body: ts_block(stmts: [
+        ts_if(
+          cond: ts_binop(
+            left: ts_member(object: ts_ident(name: "route"), property: "method"),
+            op: "!==",
+            right: ts_ident(name: "method")
+          ),
+          then: ts_block(stmts: [ts_return(expr: ts_ident(name: "false"))]),
+          else_stmt: none
+        ),
+        ts_const(
+          name: "m",
+          value: ts_call(
+            callee: ts_member(
+              object: ts_member(object: ts_ident(name: "route"), property: "pathRe"),
+              property: "exec"
+            ),
+            args: [ts_ident(name: "path")]
+          )
+        ),
+        ts_if(
+          cond: ts_prefix(op: "!", expr: ts_ident(name: "m")),
+          then: ts_block(stmts: [ts_return(expr: ts_ident(name: "false"))]),
+          else_stmt: none
+        ),
+        ts_const(name: "params", value: ts_object(fields: [])),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_member(
+            object: ts_member(object: ts_ident(name: "route"), property: "paramNames"),
+            property: "forEach"
+          ),
+          args: [
+            ts_arrow(
+              params: ["name", "i"],
+              body: ts_block(stmts: [
+                ts_expr_stmt(expr: ts_binop(
+                  left: ts_index(object: ts_ident(name: "params"), index: ts_ident(name: "name")),
+                  op: "=",
+                  right: ts_index(
+                    object: ts_ident(name: "m"),
+                    index: ts_binop(
+                      left: ts_ident(name: "i"),
+                      op: "+",
+                      right: ts_lit_num(text: "1")
+                    )
+                  )
+                )),
+              ])
+            ),
+          ]
+        )),
+        ts_const(
+          name: "argv",
+          value: ts_call(
+            callee: ts_member(
+              object: ts_member(object: ts_ident(name: "route"), property: "argvSegments"),
+              property: "map"
+            ),
+            args: [
+              ts_arrow(
+                params: ["seg"],
+                body: ts_expr_stmt(expr: ts_cond(
+                  test: ts_binop(
+                    left: ts_member(object: ts_ident(name: "seg"), property: "kind"),
+                    op: "===",
+                    right: ts_lit_str(value: "literal")
+                  ),
+                  consequent: ts_member(object: ts_ident(name: "seg"), property: "text"),
+                  alternate: ts_index(
+                    object: ts_ident(name: "params"),
+                    index: ts_member(object: ts_ident(name: "seg"), property: "name")
+                  )
+                ))
+              ),
+            ]
+          )
+        ),
+        ts_expr_stmt(expr: ts_call(
+          callee: ts_ident(name: "execFile"),
+          args: [
+            ts_member(object: ts_ident(name: "route"), property: "command"),
+            ts_ident(name: "argv"),
+            ts_arrow(
+              params: ["err", "stdout", "stderr"],
+              body: ts_block(stmts: [
+                ts_const(
+                  name: "payload",
+                  value: ts_object(fields: [
+                    ts_field(
+                      key: "ok",
+                      value: ts_prefix(op: "!", expr: ts_ident(name: "err"))
+                    ),
+                    ts_field(key: "stdout", value: ts_ident(name: "stdout")),
+                    ts_field(key: "stderr", value: ts_ident(name: "stderr")),
+                    ts_field(
+                      key: "code",
+                      value: ts_cond(
+                        test: ts_binop(
+                          left: ts_ident(name: "err"),
+                          op: "&&",
+                          right: ts_binop(
+                            left: ts_member(object: ts_ident(name: "err"), property: "code"),
+                            op: "!=",
+                            right: ts_ident(name: "null")
+                          )
+                        ),
+                        consequent: ts_member(object: ts_ident(name: "err"), property: "code"),
+                        alternate: ts_lit_num(text: "0")
+                      )
+                    ),
+                  ])
+                ),
+                ts_expr_stmt(expr: ts_call(
+                  callee: res_member(name: "writeHead"),
+                  args: [
+                    ts_member(object: ts_ident(name: "route"), property: "status"),
+                    ts_object(fields: [
+                      ts_quoted_field(
+                        key: "Content-Type",
+                        value: ts_lit_str(value: "application/json; charset=utf-8")
+                      ),
+                    ]),
+                  ]
+                )),
+                ts_expr_stmt(expr: ts_call(
+                  callee: res_member(name: "end"),
+                  args: [
+                    ts_call(
+                      callee: ts_member(object: ts_ident(name: "JSON"), property: "stringify"),
+                      args: [ts_ident(name: "payload")]
+                    ),
+                  ]
+                )),
+              ])
+            ),
+          ]
+        )),
+        ts_return(expr: ts_ident(name: "true")),
+      ])
+    )
+  )
+}
+
 fn node_http_request_handler_block() -> TsStmt {
   ts_block(stmts: [
     ts_const(
@@ -178,6 +406,24 @@ fn node_http_request_handler_block() -> TsStmt {
     ),
     ts_for_of(
       var_name: "route",
+      iterable: ts_ident(name: "dynamicRoutes"),
+      body: ts_if(
+        cond: ts_call(
+          callee: ts_ident(name: "handleDynamicRoute"),
+          args: [
+            ts_ident(name: "req"),
+            ts_ident(name: "res"),
+            ts_ident(name: "route"),
+            ts_ident(name: "path"),
+            ts_ident(name: "method"),
+          ]
+        ),
+        then: ts_block(stmts: [ts_return(expr: none)]),
+        else_stmt: none
+      )
+    ),
+    ts_for_of(
+      var_name: "route",
       iterable: ts_ident(name: "routes"),
       body: ts_if(
         cond: ts_binop(
@@ -199,7 +445,13 @@ fn node_http_request_handler_block() -> TsStmt {
     ts_const(
       name: "pathRoutes",
       value: ts_call(
-        callee: ts_member(object: ts_ident(name: "routes"), property: "filter"),
+        callee: ts_member(
+          object: ts_array(elements: [
+            ts_spread(expr: ts_ident(name: "dynamicRoutes")),
+            ts_spread(expr: ts_ident(name: "routes")),
+          ]),
+          property: "filter"
+        ),
         args: [
           ts_arrow(
             params: ["r"],
@@ -325,7 +577,17 @@ fn node_http_listen_stmt() -> TsStmt {
   ))
 }
 
-fn emit_node_http_static_server_program(spec: NodeHttpStaticServerSpec) -> TsProgram {
+fn node_http_exec_file_require_stmt() -> TsStmt {
+  ts_const(
+    name: "execFile",
+    value: ts_member(
+      object: ts_call(callee: ts_ident(name: "require"), args: [ts_lit_str(value: "child_process")]),
+      property: "execFile"
+    )
+  )
+}
+
+fn emit_node_http_server_program(spec: NodeHttpServerSpec) -> TsProgram {
   let port = to_string(spec.listen.port)
   TsProgram {
     ts_nocheck: true,
@@ -333,10 +595,16 @@ fn emit_node_http_static_server_program(spec: NodeHttpStaticServerSpec) -> TsPro
       "GENERATED by gunbc from dag/gunbc/node_http_server_emit.dag",
     ],
     statements: [
+      node_http_exec_file_require_stmt(),
+      ts_const(
+        name: "dynamicRoutes",
+        value: ts_array(elements: emit_dynamic_route_exprs(routes: spec.dynamic_routes))
+      ),
       ts_const(
         name: "routes",
-        value: ts_array(elements: emit_static_route_exprs(routes: spec.routes.routes))
+        value: ts_array(elements: emit_static_route_exprs(routes: spec.static_routes.routes))
       ),
+      node_http_handle_dynamic_route_const(),
       node_http_create_server_stmt(),
       node_http_port_const(port: port),
       node_http_host_const(host: spec.listen.host),
@@ -345,10 +613,11 @@ fn emit_node_http_static_server_program(spec: NodeHttpStaticServerSpec) -> TsPro
   }
 }
 
-fn gunbhub_node_http_static_server_spec() -> NodeHttpStaticServerSpec {
-  NodeHttpStaticServerSpec {
+fn gunbhub_node_http_server_spec() -> NodeHttpServerSpec {
+  NodeHttpServerSpec {
     service_name: "gunbhub",
-    routes: gunbhub_served_static_route_table(),
+    static_routes: gunbhub_served_static_route_table(),
+    dynamic_routes: [],
     listen: HttpServerListenConfig {
       host: "0.0.0.0",
       port: 8080,
@@ -357,7 +626,7 @@ fn gunbhub_node_http_static_server_spec() -> NodeHttpStaticServerSpec {
 }
 
 fn gunbhub_node_http_server_source() -> String {
-  serialize_typescript_program(p: emit_node_http_static_server_program(spec: gunbhub_node_http_static_server_spec()))
+  serialize_typescript_program(p: emit_node_http_server_program(spec: gunbhub_node_http_server_spec()))
 }
 
 fn roadmap_dashboard_root_path_template() -> PathTemplate {
@@ -409,10 +678,11 @@ fn roadmap_dashboard_served_static_route_table() -> ServedStaticRouteTable {
   }
 }
 
-fn roadmap_dashboard_node_http_static_server_spec() -> NodeHttpStaticServerSpec {
-  NodeHttpStaticServerSpec {
+fn roadmap_dashboard_node_http_server_spec() -> NodeHttpServerSpec {
+  NodeHttpServerSpec {
     service_name: "gunbc-roadmap",
-    routes: roadmap_dashboard_served_static_route_table(),
+    static_routes: roadmap_dashboard_served_static_route_table(),
+    dynamic_routes: [],
     listen: HttpServerListenConfig {
       host: "0.0.0.0",
       port: 8080,
@@ -421,7 +691,56 @@ fn roadmap_dashboard_node_http_static_server_spec() -> NodeHttpStaticServerSpec 
 }
 
 fn roadmap_dashboard_node_http_server_source() -> String {
-  serialize_typescript_program(p: emit_node_http_static_server_program(spec: roadmap_dashboard_node_http_static_server_spec()))
+  serialize_typescript_program(p: emit_node_http_server_program(spec: roadmap_dashboard_node_http_server_spec()))
+}
+
+fn toy_dynamic_route_path_template() -> PathTemplate {
+  match parse_path_template(raw: "/toy/:msg") {
+    ParsedPathTemplate { template: t } => t
+    MalformedPathTemplate { raw: _, segment: _, reason: _ } =>
+      PathTemplate { tokens: [LiteralToken { text: "toy" }, ParamToken { name: "msg" }] }
+  }
+}
+
+fn toy_dynamic_echo_route() -> ServedDynamicRoute {
+  ServedDynamicRoute {
+    binding: NodeHttpServerRouteBinding {
+      route: HttpServerRoute {
+        operation_name: "toyEcho",
+        method: POST,
+        path_template: toy_dynamic_route_path_template(),
+        request_body: NoRequestBody,
+        parameters: [
+          HttpServerParameter { name: "msg", location: PathInput, required: true },
+        ],
+        responses: [
+          HttpStatusResponse { status: 200, body_kind: JsonRequestBody },
+        ],
+      },
+      listener: NodeHttpRequestListener { handler_name: "toy_echo" },
+    },
+    exec: ServedDynamicRouteExec {
+      command: "/bin/echo",
+      argv: [PathParamArgvSegment { param_name: "msg" }],
+    },
+    success_status: 200,
+  }
+}
+
+fn toy_dynamic_route_node_http_server_spec() -> NodeHttpServerSpec {
+  NodeHttpServerSpec {
+    service_name: "toy-dynamic-route",
+    static_routes: ServedStaticRouteTable { routes: [] },
+    dynamic_routes: [toy_dynamic_echo_route()],
+    listen: HttpServerListenConfig {
+      host: "127.0.0.1",
+      port: 18472,
+    },
+  }
+}
+
+fn toy_dynamic_route_node_http_server_source() -> String {
+  serialize_typescript_program(p: emit_node_http_server_program(spec: toy_dynamic_route_node_http_server_spec()))
 }
 
 data gunbhub_node_http_listen_defaults_dissolution_trigger: String = "dissolve-on: fleet_intent host binding — host 0.0.0.0 / port 8080 are provisioning defaults; fleet_intent should supply the listen address and port as deployment facts, not compile-time constants"

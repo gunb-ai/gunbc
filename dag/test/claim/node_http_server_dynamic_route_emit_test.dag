@@ -1,0 +1,44 @@
+module test.claim.node_http_server_dynamic_route_emit
+
+import gunbc.node_http_server_emit {
+  toy_dynamic_route_node_http_server_source,
+  toy_dynamic_route_node_http_server_spec,
+  toy_dynamic_echo_route,
+}
+
+fn witness_emitted_source_contains_exec_file_dispatch() -> Bool {
+  let src = toy_dynamic_route_node_http_server_source()
+  string_contains(s: src, pattern: "execFile")
+    && string_contains(s: src, pattern: "handleDynamicRoute")
+    && string_contains(s: src, pattern: "argvSegments")
+    && string_contains(s: src, pattern: "toy_echo")
+}
+
+fn witness_emitted_source_contains_toy_post_route() -> Bool {
+  let src = toy_dynamic_route_node_http_server_source()
+  string_contains(s: src, pattern: "method: 'POST'")
+    && string_contains(s: src, pattern: "/^\\/toy\\/([^\\/]+)$/")
+    && string_contains(s: src, pattern: "/bin/echo")
+}
+
+fn witness_toy_spec_has_one_dynamic_route() -> Bool {
+  count(toy_dynamic_route_node_http_server_spec().dynamic_routes) == 1
+}
+
+fn witness_toy_route_binding_inhabits_handler_name() -> Bool {
+  let route = toy_dynamic_echo_route()
+  route.binding.listener.handler_name == "toy_echo"
+    && route.binding.route.operation_name == "toyEcho"
+}
+
+fn witness_dynamic_route_red_control() -> Bool {
+  count(toy_dynamic_route_node_http_server_spec().static_routes.routes) != 99
+}
+
+test fn node_http_server_dynamic_route_emit_witnesses() -> Bool {
+  witness_emitted_source_contains_exec_file_dispatch()
+    && witness_emitted_source_contains_toy_post_route()
+    && witness_toy_spec_has_one_dynamic_route()
+    && witness_toy_route_binding_inhabits_handler_name()
+    && witness_dynamic_route_red_control()
+}
