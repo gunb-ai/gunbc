@@ -86,6 +86,13 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "dag/test/claim/variant_owner_expected_type_test.dag",
+      check_fns: ["expected_type_picks_variant_owner_not_alpha_order"]
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: doc_reachability_witness_entry,
       check_fns: ["doc_graph_has_no_orphan_docs", "doc_graph_has_no_dangling_links"]
     },
