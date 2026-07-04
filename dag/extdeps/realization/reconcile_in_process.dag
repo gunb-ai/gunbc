@@ -1,0 +1,123 @@
+module extdeps.realization.reconcile_in_process
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+import extdeps.cache.types { CacheInterfaceCatalogFacts, HandAuthored, FilePaths, UpsertSubject }
+import std.cache_identity { CacheInterfaceId }
+import std.cache_interface {
+  OpaqueStringEncoding,
+  ExactKeyOnly,
+  OverwriteAllowed,
+  MissThenCreate,
+  StructuredArtifact,
+  InProcess,
+  Never,
+  PerFile,
+  None,
+  InProcessNs,
+  Strong,
+  OperatorObserved,
+  ManualPurge,
+  Repo,
+}
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
+  }
+}
+
+data parse_cache_id: CacheInterfaceId = "parse_cache"
+data typed_module_cache_id: CacheInterfaceId = "typed_module_cache"
+
+data parse_cache_facts: CacheInterfaceCatalogFacts = {
+  identity: parse_cache_id
+  backing_surface: "gunbc-cli-run-parse-in-process"
+  transport_encoding: OpaqueStringEncoding
+  key_derivation: {
+
+    key_inputs: HandAuthored { cited_inputs: [FilePaths] }
+    overwritable: true
+    prefix_fallback_allowed: false
+    content_verified_on_read: false
+    visibility_scope: Repo
+    invalidation_triggers: [ManualPurge]
+  }
+  io: {
+    lookup_semantics: ExactKeyOnly
+    write_semantics: OverwriteAllowed
+    miss_semantics: MissThenCreate
+  }
+  placement: {
+    value_shape: StructuredArtifact
+    locality: InProcess
+    eviction: Never
+    atomicity: PerFile
+    auth: None
+    read_latency: InProcessNs
+    consistency: Strong
+  }
+  evidence: [
+    {
+      field: "key_derivation"
+      evidence: OperatorObserved {
+        note: "cli_run.rs MultiEntryIndex.parse_cache keys on source.path (file path string), not content digest — cache-impurity witness; converge in Phase 2c"
+        observed_at: 0
+      }
+    },
+    {
+      field: "locality"
+      evidence: OperatorObserved {
+        note: "scoped to MultiEntryIndex; shared across entry resolves in one batch; drops when index is dropped"
+        observed_at: 0
+      }
+    },
+  ]
+}
+
+data typed_module_cache_facts: CacheInterfaceCatalogFacts = {
+  identity: typed_module_cache_id
+  backing_surface: "gunbc-cli-run-typed-module-in-process"
+  transport_encoding: OpaqueStringEncoding
+  key_derivation: {
+
+    key_inputs: HandAuthored { cited_inputs: [UpsertSubject] }
+    overwritable: true
+    prefix_fallback_allowed: false
+    content_verified_on_read: false
+    visibility_scope: Repo
+    invalidation_triggers: [ManualPurge]
+  }
+  io: {
+    lookup_semantics: ExactKeyOnly
+    write_semantics: OverwriteAllowed
+    miss_semantics: MissThenCreate
+  }
+  placement: {
+    value_shape: StructuredArtifact
+    locality: InProcess
+    eviction: Never
+    atomicity: PerFile
+    auth: None
+    read_latency: InProcessNs
+    consistency: Strong
+  }
+  evidence: [
+    {
+      field: "key_derivation"
+      evidence: OperatorObserved {
+        note: "cli_run.rs reconcile_with_typed_cache keys on authored module name (authored_name_at), not module content digest — cache-impurity witness; converge in Phase 2c"
+        observed_at: 0
+      }
+    },
+    {
+      field: "locality"
+      evidence: OperatorObserved {
+        note: "scoped to MultiEntryIndex.typed_module_cache; warms across batch entry resolves; drops when index is dropped"
+        observed_at: 0
+      }
+    },
+  ]
+}

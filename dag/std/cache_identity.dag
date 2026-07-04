@@ -11,6 +11,10 @@ data resolved_graph_artifact_kind: ArtifactKindId = "resolved_graph"
 
 data parse_table_artifact_kind: ArtifactKindId = "parse_table"
 
+data parse_source_artifact_kind: ArtifactKindId = "parse_source"
+
+data typed_module_artifact_kind: ArtifactKindId = "typed_module"
+
 data hermetic_fixture_artifact_kind: ArtifactKindId = "hermetic_fixture"
 
 type CacheInterfaceProduct

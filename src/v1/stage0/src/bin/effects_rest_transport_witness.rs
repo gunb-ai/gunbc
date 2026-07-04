@@ -6,7 +6,7 @@ use std::rc::Rc;
 
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::extdeps_uri_path::{parse_path_template, PathTemplateParseResult};
-use v1_compiler::rest_transport_facts::{
+use v1_compiler::cli_run::{
     collect_rest_transport_operations, DeclaredRestTransportOp,
 };
 use v1_compiler::std_effects::{

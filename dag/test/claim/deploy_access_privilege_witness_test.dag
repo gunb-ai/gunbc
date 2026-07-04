@@ -16,12 +16,12 @@ import gunbc.host_effect {
   ShellCommand,
   HostOs,
   NodeControlPlane,
-  OneShotIdempotent,
+  host_effect_identity_evidence,
   LocalShell,
 }
 import gunbc.host_effect_realize {
   host_effect_apply_gated,
-  host_effect_policy_directive,
+  host_effect_drive_directive,
   Refused,
 }
 import std.realization_reconcile { reconciliation_converged, NotConverged, Converged }
@@ -55,7 +55,7 @@ fn witness_unprivileged_mutation_refused_before_shell() -> Bool {
     effect: ShellCommand {
       script: concat("echo ", privilege_mutation_marker, " && exit 99")
     },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
   ) {
@@ -78,11 +78,11 @@ fn witness_unprivileged_mutation_directive_is_refused_terminal() -> Bool {
     access: ci_deploy_srv1_access,
     target: host_os_target(),
     effect: ShellCommand { script: concat("echo ", privilege_mutation_marker) },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present { value: deploy_access_unprivileged_fixture_actor() }
   )
-  match host_effect_policy_directive(r: r) {
+  match host_effect_drive_directive(r: r) {
     Refused { reason: _ } =>
       match r {
         NotConverged { reason: _, applied: intent } =>
@@ -101,7 +101,7 @@ fn witness_privileged_fixture_mutation_applies() -> Bool {
     access: ci_deploy_srv1_access,
     target: host_os_target(),
     effect: ShellCommand { script: "true" },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present {
       value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)
@@ -116,7 +116,7 @@ fn witness_privileged_fixture_surfaces_stdout() -> Bool {
     effect: ShellCommand {
       script: concat("echo ", privilege_mutation_marker)
     },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell,
     fixture_actor: Present {
       value: deploy_access_privileged_fixture_actor(access: ci_deploy_srv1_access)

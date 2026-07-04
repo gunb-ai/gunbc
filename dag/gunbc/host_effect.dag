@@ -4,6 +4,15 @@ import std.types { String, Int, NonEmptyStr }
 import std.access { AccessDecision }
 import extdeps.bmc.types { RedfishSystemAction }
 import gunbc.fleet_intent { ComputeHost }
+import std.effects {
+  EffectShape,
+  ReadEffect,
+  AppendEffect,
+  IdempotencyEvidence,
+  LatticeEffect,
+  IdentityEffect,
+  NonIdempotent,
+}
 
 type HostEffect =
     ShellCommand { script: String }
@@ -13,7 +22,7 @@ type NodeControlPlane =
     HostOs { node: ComputeHost }
   | BmcController { node: ComputeHost }
 
-type Policy = OneShotIdempotent | ConvergeToFixpoint
+type Drive = OneShot | ConvergeLoop
 
 type HostEffectTransport =
     LocalShell
@@ -22,10 +31,43 @@ type HostEffectTransport =
 type HostEffectIntent {
   target: NodeControlPlane
   effect: HostEffect
-  policy: Policy
+  evidence: IdempotencyEvidence
   transport: HostEffectTransport
   privilege_denial: AccessDecision?
 }
 
 type HostEffectEvidence =
     ShellEffectApplied { exit_code: Int, stdout: String }
+
+fn host_effect_drive_from_evidence(evidence: IdempotencyEvidence) -> Drive {
+  if host_effect_is_converge_loop_evidence(evidence: evidence) {
+    ConvergeLoop
+  } else {
+    OneShot
+  }
+}
+
+fn host_effect_drive(intent: HostEffectIntent) -> Drive {
+  host_effect_drive_from_evidence(evidence: intent.evidence)
+}
+
+data host_effect_converge_loop_drive_authority: String = "Only host_effect_converge_loop_evidence may derive ConvergeLoop. Arbitrary NonIdempotent rows and breaking LatticeEffect shapes are not retry policy — they settle OneShot (terminal failure)."
+
+data host_effect_converge_loop_reason: String = "converge to fixpoint — external redrive until observed state matches desired"
+
+data host_effect_identity_evidence: IdempotencyEvidence = IdentityEffect
+
+data host_effect_read_evidence: IdempotencyEvidence = LatticeEffect { shape: ReadEffect }
+
+data host_effect_converge_loop_evidence: IdempotencyEvidence = NonIdempotent {
+  shape: AppendEffect,
+  reason: host_effect_converge_loop_reason,
+}
+
+fn host_effect_is_converge_loop_evidence(evidence: IdempotencyEvidence) -> Bool {
+  evidence == host_effect_converge_loop_evidence
+}
+
+fn host_effect_lattice_evidence(shape: EffectShape) -> IdempotencyEvidence {
+  LatticeEffect { shape: shape }
+}

@@ -5,14 +5,18 @@ import std.types { NonEmptyStr }
 import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction,
   NodeControlPlane, HostOs, BmcController,
-  Policy, OneShotIdempotent, ConvergeToFixpoint,
+  Drive, OneShot, ConvergeLoop,
+  host_effect_identity_evidence,
+  host_effect_converge_loop_evidence,
+  host_effect_drive_from_evidence,
   LocalShell, SshShell,
 }
 import gunbc.host_effect_realize {
-  host_effect_apply, host_effect_policy_directive,
+  host_effect_apply, host_effect_drive_directive,
   ConvergeDirective, Settled, ReDrive, Refused
 }
 import std.realization_reconcile { Reconciliation, reconciliation_converged, NotConverged }
+import std.effects { IdempotencyEvidence, LatticeEffect, NonIdempotent, AppendEffect }
 import gunbc.fleet_intent { srv1_host }
 import extdeps.bmc.types { RedfishSystemAction, GetSystem }
 
@@ -52,7 +56,7 @@ fn witness_shell_on_host_success_converges() -> Bool {
   reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "true" },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
 }
@@ -61,7 +65,7 @@ fn witness_shell_on_host_failure_fails_closed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "exit 1" },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
 }
@@ -70,7 +74,7 @@ fn witness_redfish_on_bmc_unimplemented_fails_closed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: bmc_target(),
     effect: RedfishAction { action: GetSystem },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
 }
@@ -79,7 +83,7 @@ fn witness_redfish_on_hostos_typed_mismatch() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: RedfishAction { action: GetSystem },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
 }
@@ -88,43 +92,43 @@ fn witness_shell_on_bmc_typed_mismatch() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: bmc_target(),
     effect: ShellCommand { script: "true" },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ))
 }
 
 fn witness_converge_policy_redrives_not_converged() -> Bool {
-  directive_is_redrive(d: host_effect_policy_directive(r: host_effect_apply(
+  directive_is_redrive(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "exit 1" },
-    policy: ConvergeToFixpoint,
+    evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
   )))
 }
 
 fn witness_oneshot_policy_terminal_not_converged() -> Bool {
-  directive_is_settled(d: host_effect_policy_directive(r: host_effect_apply(
+  directive_is_settled(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "exit 1" },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   )))
 }
 
 fn witness_incompatible_is_refused_terminal() -> Bool {
-  directive_is_refused(d: host_effect_policy_directive(r: host_effect_apply(
+  directive_is_refused(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
     effect: RedfishAction { action: GetSystem },
-    policy: ConvergeToFixpoint,
+    evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
   )))
 }
 
 fn witness_converged_is_settled() -> Bool {
-  directive_is_settled(d: host_effect_policy_directive(r: host_effect_apply(
+  directive_is_settled(d: host_effect_drive_directive(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "true" },
-    policy: ConvergeToFixpoint,
+    evidence: host_effect_converge_loop_evidence,
     transport: LocalShell
   )))
 }
@@ -133,7 +137,7 @@ fn witness_ssh_shell_unreachable_fails_closed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "true" },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
   ))
 }
@@ -142,7 +146,7 @@ fn witness_ssh_empty_script_fails_closed() -> Bool {
   !reconciliation_converged(r: host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "" },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
   ))
 }
@@ -151,7 +155,7 @@ fn witness_shell_failure_surfaces_captured_stdout() -> Bool {
   match host_effect_apply(
     target: host_os_target(),
     effect: ShellCommand { script: "echo host-effect-preflight-marker && exit 1" },
-    policy: OneShotIdempotent,
+    evidence: host_effect_identity_evidence,
     transport: LocalShell
   ) {
     NotConverged { reason: why, applied: _ } =>
@@ -159,6 +163,27 @@ fn witness_shell_failure_surfaces_captured_stdout() -> Bool {
         && string_contains(s: why, pattern: "--- stdout ---")
     Converged { evidence: _, applied: _ } => false
   }
+}
+
+fn witness_identity_evidence_derives_oneshot_drive() -> Bool {
+  host_effect_drive_from_evidence(evidence: host_effect_identity_evidence) == OneShot
+}
+
+fn witness_converge_loop_evidence_derives_converge_drive() -> Bool {
+  host_effect_drive_from_evidence(evidence: host_effect_converge_loop_evidence) == ConvergeLoop
+}
+
+data witness_arbitrary_non_idempotent_evidence: IdempotencyEvidence = NonIdempotent {
+  shape: AppendEffect,
+  reason: "breaking side effect — not a converge-loop authorization",
+}
+
+fn witness_arbitrary_non_idempotent_derives_oneshot_not_redrive() -> Bool {
+  host_effect_drive_from_evidence(evidence: witness_arbitrary_non_idempotent_evidence) == OneShot
+}
+
+fn witness_lattice_breaking_shape_derives_oneshot_not_redrive() -> Bool {
+  host_effect_drive_from_evidence(evidence: LatticeEffect { shape: AppendEffect }) == OneShot
 }
 
 test fn host_effect_apply_holds() -> Bool {
@@ -174,4 +199,8 @@ test fn host_effect_apply_holds() -> Bool {
     && witness_oneshot_policy_terminal_not_converged()
     && witness_incompatible_is_refused_terminal()
     && witness_converged_is_settled()
+    && witness_identity_evidence_derives_oneshot_drive()
+    && witness_converge_loop_evidence_derives_converge_drive()
+    && witness_arbitrary_non_idempotent_derives_oneshot_not_redrive()
+    && witness_lattice_breaking_shape_derives_oneshot_not_redrive()
 }

@@ -318,12 +318,9 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
         "v1_interpreter.rs",
         "cli_run.rs",
         "main.rs",
-        "rest_transport_facts.rs",
-        "wire_value_serialize.rs",
         "coproduct_reflection.rs",
         "resolved_graph_cache.rs",
         "recorded_fixture.rs",
-        "external_authority_project.rs",
     ] {
         let src = stage0_src.join(name);
         if src.exists() {
@@ -381,12 +378,9 @@ fn diff_excluding_hand_maintained(
         .arg("--exclude=v1_interpreter.rs")
         .arg("--exclude=cli_run.rs")
         .arg("--exclude=main.rs")
-        .arg("--exclude=rest_transport_facts.rs")
-        .arg("--exclude=wire_value_serialize.rs")
         .arg("--exclude=coproduct_reflection.rs")
         .arg("--exclude=resolved_graph_cache.rs")
         .arg("--exclude=recorded_fixture.rs")
-        .arg("--exclude=external_authority_project.rs")
         .arg("--exclude=module_path_index")
         .arg(dir_a)
         .arg(dir_b)
@@ -431,9 +425,17 @@ fn floor_smoke() {
         "stage0 Cargo.toml missing under {}",
         ws.display()
     );
-    assert!(ws.join("dag").is_dir(), "dag/ missing under {}", ws.display());
+    assert!(
+        ws.join("dag").is_dir(),
+        "dag/ missing under {}",
+        ws.display()
+    );
     let [v1_root, dag_root] = source_roots();
-    assert!(v1_root.is_dir(), "v1 source root missing: {}", v1_root.display());
+    assert!(
+        v1_root.is_dir(),
+        "v1 source root missing: {}",
+        v1_root.display()
+    );
     assert!(
         dag_root.is_dir(),
         "dag source root missing: {}",
@@ -1206,8 +1208,14 @@ fn floor_suite() -> Vec<WitnessCase> {
 fn expensive_suite() -> Vec<WitnessCase> {
     vec![
         ("stage0_cargo_check", stage0_cargo_check),
-        ("strict_compile_diagnostic_count", strict_compile_diagnostic_count),
-        ("stage0_compile_accepts_dag_target", stage0_compile_accepts_dag_target),
+        (
+            "strict_compile_diagnostic_count",
+            strict_compile_diagnostic_count,
+        ),
+        (
+            "stage0_compile_accepts_dag_target",
+            stage0_compile_accepts_dag_target,
+        ),
         (
             "stage0_compile_imports_ephemeral_generated_source_root",
             stage0_compile_imports_ephemeral_generated_source_root,
@@ -1247,9 +1255,13 @@ fn run_suite(tests: &[WitnessCase]) -> ExitCode {
 }
 
 fn main() -> ExitCode {
-    let suite = std::env::args().nth(1).unwrap_or_else(|| "--suite".to_string());
+    let suite = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "--suite".to_string());
     let suite_name = if suite == "--suite" {
-        std::env::args().nth(2).unwrap_or_else(|| "floor".to_string())
+        std::env::args()
+            .nth(2)
+            .unwrap_or_else(|| "floor".to_string())
     } else {
         suite
     };
@@ -1260,7 +1272,11 @@ fn main() -> ExitCode {
         "ci" => ci_suite(),
         "l4" => vec![("bootstrap_l4_structural", bootstrap_l4_structural)],
         "all" => all_suite(),
-        other => return fail(format!("unknown suite {other:?}; expected floor|expensive|ci|l4|all")),
+        other => {
+            return fail(format!(
+                "unknown suite {other:?}; expected floor|expensive|ci|l4|all"
+            ))
+        }
     };
 
     run_suite(&tests)

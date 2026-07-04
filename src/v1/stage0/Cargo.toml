@@ -101,7 +101,7 @@ path = "src/bin/measure_whole_tree_resolve.rs"
 name = "capture_func_env_semantic_oracle"
 path = "src/bin/capture_func_env_semantic_oracle.rs"
 
-# Host-physics floor witness for extdep REST transport collection (rest_transport_facts.rs).
+# Floor witness for extdep REST transport collection (cli_run::collect_rest_transport_operations).
 # Parses the eight-file authority closure live, resolves tracked ops, and checks
 # fingerprint uniqueness + derive_op_effect obligations. SCAFFOLD — dissolves when
 # REST transport facts move to modeled .dag authority (interpreter_kernel_d).

@@ -33,6 +33,16 @@ type ExtdepsExternalAuthorityViolation
 
 data empty_extdeps_external_authority_violations: List<ExtdepsExternalAuthorityViolation> = []
 
+type ExtdepsExternalAuthorityModuleFacts {
+  anchor_kind: String
+  scheme_identity: String
+  locator: String
+  is_backfill_pending: Bool
+  is_machinery_exempt: Bool
+  is_clean_tree_roster_excluded: Bool
+  anchor_shadow_masked: Bool
+}
+
 fn anchor_kind_is_absent(kind: String) -> Bool {
   kind == "absent"
 }
@@ -54,31 +64,31 @@ fn decode_uri_scheme(raw: String) -> Optional<UriScheme> {
 fn extdeps_external_authority_status_for_module(
   module: QualifiedName
 ) -> ExtdepsExternalAuthorityAnchorStatus {
-  let kind = extdeps_external_authority_anchor_kind_for_qualified_name(module: module)
-  if anchor_kind_is_absent(kind: kind) {
+  let facts = extdeps_external_authority_facts_for_qualified_name(module: module)
+  if anchor_kind_is_absent(kind: facts.anchor_kind) {
     AnchorAbsent
   } else {
     AnchorPresent {
-      scheme_identity: extdeps_external_authority_scheme_identity_for_qualified_name(module: module),
-      locator: extdeps_external_authority_locator_for_qualified_name(module: module)
+      scheme_identity: facts.scheme_identity,
+      locator: facts.locator
     }
   }
 }
 
 fn extdeps_external_authority_is_anchor_machinery_exempt(module: QualifiedName) -> Bool {
-  extdeps_external_authority_is_machinery_exempt_for_qualified_name(module: module)
+  extdeps_external_authority_facts_for_qualified_name(module: module).is_machinery_exempt
 }
 
 fn extdeps_external_authority_is_backfill_pending(module: QualifiedName) -> Bool {
-  extdeps_external_authority_is_backfill_pending_for_qualified_name(module: module)
+  extdeps_external_authority_facts_for_qualified_name(module: module).is_backfill_pending
 }
 
 fn extdeps_external_authority_is_clean_tree_roster_excluded(module: QualifiedName) -> Bool {
-  extdeps_external_authority_is_clean_tree_roster_excluded_for_qualified_name(module: module)
+  extdeps_external_authority_facts_for_qualified_name(module: module).is_clean_tree_roster_excluded
 }
 
 fn extdeps_external_authority_anchor_shadow_masked(module: QualifiedName) -> Bool {
-  extdeps_external_authority_anchor_shadow_masked_for_qualified_name(module: module)
+  extdeps_external_authority_facts_for_qualified_name(module: module).anchor_shadow_masked
 }
 
 fn scheme_violations_for_present_anchor(
@@ -180,19 +190,17 @@ fn extdeps_external_authority_violation_count(modules: List<QualifiedName>) -> I
 fn extdeps_external_authority_has_missing_formal_anchor(
   module: QualifiedName
 ) -> Bool {
+  let facts = extdeps_external_authority_facts_for_qualified_name(module: module)
   extdeps_external_authority_violation_count_for_module(module: module) == 1
-    && anchor_kind_is_absent(
-      kind: extdeps_external_authority_anchor_kind_for_qualified_name(module: module)
-    )
+    && anchor_kind_is_absent(kind: facts.anchor_kind)
 }
 
 fn extdeps_external_authority_has_missing_formal_anchor_via_live_policy(
   module: QualifiedName
 ) -> Bool {
+  let facts = extdeps_external_authority_facts_for_qualified_name(module: module)
   extdeps_external_authority_live_violation_count_for_module(module: module) == 1
-    && anchor_kind_is_absent(
-      kind: extdeps_external_authority_anchor_kind_for_qualified_name(module: module)
-    )
+    && anchor_kind_is_absent(kind: facts.anchor_kind)
 }
 
 fn extdeps_external_authority_has_unrecognized_scheme(
