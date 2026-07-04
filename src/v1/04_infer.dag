@@ -22,7 +22,7 @@ import v1.std.core {
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType,
   resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
@@ -87,7 +87,7 @@ import v1.compiler.infer_env {
   record_rewire_type_env_parent_links_call, record_rewire_type_env_import_str_binding_call,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
-  inductive_fields_list_to_map, flatten_visible_bindings
+  inductive_fields_list_to_map
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.induction {
@@ -123,7 +123,7 @@ import v1.compiler.infer_emit_info {
 import v1.compiler.infer_items {
   ItemKind, FnItem, FuncItem, TypeItem, DataItem, ServiceItem, OtherItem,
   ItemInfo, TypedModule, TypedGraph, ResolvedGraph,
-  inferred_to_outputs, item_kind, variant_locals_from_items
+  inferred_to_outputs, item_kind
 }
 import v1.compiler.infer_service {
   UniqueAccum, OpEntry, ServiceMethodResult,
@@ -489,6 +489,25 @@ fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
   }
 }
 
+data variant_owner_node_authority: String = "Constructor-owner ruling (DESIGN resolver-graph-major §1c, 2026-07-04): a constructor literal's owner is the BINDING EDGE — scope.locals binds the arm name to its owning coproduct node at env construction (local declaration or direct import), so owner lookup is O(1) map_get + dealias. No whole-environment scan, no expected-type owner-picking, no name round-trip through lookup_type_by_name (the owner node rides the binding even when the enum's name is not itself visible). Unbound constructor literal = UnresolvedType error; two visible owners for one arm name = VariantCollision at env construction."
+
+fn variant_owner_node(scope: InferScope, name: String) -> Node? {
+  match map_get(scope.locals, name) {
+    Present { value: binding } =>
+      match lookup_type_for(env: scope.type_env, node: binding.resolved) {
+        Present { value: owner } =>
+          let owner_is_coproduct = owner.connective == Disj
+          if owner_is_coproduct {
+            if has_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices) {
+              Present { value: owner }
+            } else { none }
+          } else { none }
+        Absent => none
+      }
+    Absent => none
+  }
+}
+
 fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
   match lookup_variant_parent_enum(scope: scope, name: name) {
     Present { value: parent_enum } => VariantValueBinding { parent_enum: parent_enum }
@@ -499,23 +518,6 @@ fn infer_var_binding_kind(scope: InferScope, name: String) -> VarBindingKind {
           else { LocalValueBinding }
         Absent => FunctionValueBinding
       }
-  }
-}
-
-fn expected_type_override_enum(scope: InferScope, name: String, scope_enum: String, expected: Node?) -> String? {
-  match expected {
-    Present { value: exp_node } =>
-      let exp_name = authored_name_at(source_indices: scope.type_env.source_indices, node: exp_node)
-      if exp_name != "" && exp_name != scope_enum && exp_name != name {
-        match lookup_type_by_name(env: scope.type_env, name: exp_name) {
-          Present { value: exp_type } =>
-            if exp_type.connective == Disj && has_child_named(n: exp_type, name: name, source_indices: scope.type_env.source_indices) {
-              Present { value: exp_name }
-            } else { none }
-          Absent => none
-        }
-      } else { none }
-    Absent => none
   }
 }
 
@@ -547,50 +549,19 @@ fn field_type_is_optional_coproduct(ft: Node, env: TypeEnv) -> Bool {
   ft.return_cardinality == CardOptional && inner.connective == Disj
 }
 
-fn record_lit_variant_fields_from_visible_env(env: TypeEnv, variant_name: String, module_name: String) -> List<Node> {
-  flatten_visible_bindings(env: env) |> map_values |> fold(init: [], f: (acc, binding) =>
-    if acc |> count > 0 {
-      acc
-    } else {
-      let node = expand_type_for_field_access(n: binding.resolved, env: env, module_name: module_name)
-      let is_disj = node.connective == Disj
-      if is_disj {
-        match node.children |> filter(arm => authored_name_at(source_indices: env.source_indices, node: arm) == variant_name) |> first {
-          Present { value: arm } => {
-            let expanded = expand_type_for_field_access(n: arm, env: env, module_name: module_name)
-            let expanded_is_conj = expanded.connective == Conj
-            if expanded_is_conj {
-              expanded.children
-            } else {
-              arm.children
-            }
-          }
-          Absent => acc
-        }
-      } else {
-        acc
-      }
-    }
-  )
-}
-
 fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<Node> {
   match type_name {
     Present { value: tn } =>
       match lookup_type_by_name(env: scope.type_env, name: tn) {
         Present { value: direct } => direct.children
         Absent =>
-          match lookup_variant_parent_enum(scope: scope, name: tn) {
-            Present { value: parent_name } =>
-              match lookup_type_by_name(env: scope.type_env, name: parent_name) {
-                Present { value: parent } =>
-                  match parent.children |> filter(v => authored_name_at(source_indices: scope.type_env.source_indices, node: v) == tn) |> first {
-                    Present { value: variant } => variant.children
-                    Absent => []
-                  }
+          match variant_owner_node(scope: scope, name: tn) {
+            Present { value: parent } =>
+              match parent.children |> filter(v => authored_name_at(source_indices: scope.type_env.source_indices, node: v) == tn) |> first {
+                Present { value: variant } => variant.children
                 Absent => []
               }
-            Absent => record_lit_variant_fields_from_visible_env(env: scope.type_env, variant_name: tn, module_name: scope.module_name)
+            Absent => []
           }
       }
     Absent => []
@@ -1387,24 +1358,11 @@ fn infer_expr(texpr: Node, scope: InferScope, expected: Node?) -> InferResult {
           let scope_parent = lookup_variant_parent_enum(scope: scope, name: name)
           match scope_parent {
             Present { value: scope_enum } =>
-              let override_enum = expected_type_override_enum(scope: scope, name: name, scope_enum: scope_enum, expected: expected)
-              let effective_enum = match override_enum {
-                Present { value: ov } => ov
-                Absent => scope_enum
-              }
-              let effective_resolved = match override_enum {
-                Present { value: ov } =>
-                  match lookup_type_by_name(env: scope.type_env, name: ov) {
-                    Present { value: t } => t
-                    Absent => binding.resolved
-                  }
-                Absent => binding.resolved
-              }
               ok_infer(texpr: make_named_expr_node(
                 name: name,
-                expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: effective_enum } } },
+                expr_data: ExprVar { binding_kind: Present { value: VariantValueBinding { parent_enum: scope_enum } } },
                 children: [],
-                inferred: Present { value: Resolved { node: effective_resolved } },
+                inferred: Present { value: Resolved { node: binding.resolved } },
                 span: span,
                 name_span: span
               ))
@@ -2884,18 +2842,17 @@ fn record_lit_construction_field_names(type_name: String, scope: InferScope) -> 
 
 fn field_in_any_variant_named(type_name: String, field: String, scope: InferScope) -> Bool {
   let si = scope.type_env.source_indices
-  flatten_visible_bindings(env: scope.type_env) |> map_values |> any(binding =>
-    let node = binding.resolved
-    if (node.connective == Disj) {
-      node.children |> any(arm =>
+  match variant_owner_node(scope: scope, name: type_name) {
+    Present { value: owner } =>
+      owner.children |> any(arm =>
         if authored_name_at(source_indices: si, node: arm) == type_name {
           let ea = expand_type_for_field_access(n: arm, env: scope.type_env, module_name: scope.module_name)
           let fields = if (ea.connective == Conj) { ea.children } else { arm.children }
           fields |> any(f => authored_name_at(source_indices: si, node: f) == field)
         } else { false }
       )
-    } else { false }
-  )
+    Absent => false
+  }
 }
 
 fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
@@ -2908,26 +2865,21 @@ fn type_has_sole_constructor(type_name: String, scope: InferScope) -> Bool {
 fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpan, name_span: SourceSpan, scope: InferScope, expected: Node?) -> InferResult {
   let struct_fields = match type_name {
     Present { value: tn } =>
-      let visible_fields = record_lit_variant_fields_from_visible_env(env: scope.type_env, variant_name: tn, module_name: scope.module_name)
-      if visible_fields |> count > 0 {
-        visible_fields
-      } else {
-        match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
-          Present { value: fields } => fields
-          Absent =>
-            match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
-              Present { value: fields } => fields
-              Absent =>
-                match expected {
-                  Present { value: _ } => record_lit_expected_fields(type_name: type_name, scope: scope)
-                  Absent =>
-                    match record_lit_alias_struct_fields(type_name: tn, scope: scope) {
-                      Present { value: fields } => fields
-                      Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
-                    }
-                }
-            }
-        }
+      match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
+        Present { value: fields } => fields
+        Absent =>
+          match record_lit_fields_from_expected(type_name: type_name, expected: expected, scope: scope) {
+            Present { value: fields } => fields
+            Absent =>
+              match expected {
+                Present { value: _ } => record_lit_expected_fields(type_name: type_name, scope: scope)
+                Absent =>
+                  match record_lit_alias_struct_fields(type_name: tn, scope: scope) {
+                    Present { value: fields } => fields
+                    Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
+                  }
+              }
+          }
       }
     Absent =>
       match record_lit_instantiated_fields(type_name: type_name, expected: expected, scope: scope) {
@@ -3054,9 +3006,8 @@ fn infer_record_lit(type_name: String?, field_inits: List<Node>, span: SourceSpa
     } else { raw_resolved }
     let type_diags = match effective_lookup {
       Present { value: _ } => []
-      Absent => [inference_error(
-        message: concat("type '", type_name.value, "' not found in scope"),
-        span: span,
+      Absent => [make_error_node(
+        diagnostic: UnresolvedType { name: type_name.value, span: span },
         module_name: scope.module_name
       )]
     }
@@ -5551,62 +5502,24 @@ fn union_parent_type_env_caches(
   )
 }
 
-fn union_parent_variant_locals(
-  resolved_imports: List<ResolvedImport>,
-  parent_index: Map<String, TypedModule>
-) -> Map<String, TypeBinding> {
-  fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
-    match map_get(parent_index, imp.module_path) {
-      Present { value: parent } => map_merge(acc, parent.type_env_cache.variant_locals)
-      Absent => acc
-    }
-  )
-}
-
-fn fold_local_coproduct_variant_locals(
-  bindings: Map<Int, TypeBinding>,
-  imported_variants: Map<String, String>,
-  source_indices: Map<String, NewlineIndex>,
-  init_locals: Map<String, TypeBinding>
-) -> VariantFoldState {
-  fold(
-    bindings |> map_values |> sort_by(b => b.name),
-    init: VariantFoldState { locals: init_locals, collision_errors: [] },
-    f: (acc, binding) =>
-      let is_coproduct = binding.resolved.connective == Disj
-      if is_coproduct {
-        let binding_enum_name = authored_name_at(source_indices: source_indices, node: binding.resolved)
-        fold(binding.resolved.children, init: acc, f: (vacc, child) =>
-          let child_name = authored_name_at(source_indices: source_indices, node: child)
-          let curr_child_is_imported = is_imported_variant_owned_by(imported_variants: imported_variants, variant_name: child_name, enum_name: binding_enum_name)
-          match map_get(vacc.locals, child_name) {
-            Present { value: _prev } =>
-              if curr_child_is_imported {
-                VariantFoldState {
-                  locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
-                  collision_errors: vacc.collision_errors
-                }
-              } else { vacc }
-            Absent =>
-              VariantFoldState {
-                locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
-                collision_errors: vacc.collision_errors
-              }
-          }
-        )
-      } else { acc }
-  )
-}
-
 fn kernel_coproduct_variant_locals(env: TypeEnv) -> Map<String, TypeBinding> {
   match env.parents |> last {
     Present { value: kernel } =>
-      fold_local_coproduct_variant_locals(
-        bindings: kernel.bindings,
-        imported_variants: empty_map(),
-        source_indices: env.source_indices,
-        init_locals: empty_map()
-      ).locals
+      fold(
+        kernel.bindings |> map_values |> sort_by(b => b.name),
+        init: empty_map(),
+        f: (acc, binding) =>
+          let is_coproduct = binding.resolved.connective == Disj
+          if is_coproduct {
+            fold(binding.resolved.children, init: acc, f: (vacc, child) =>
+              let child_name = authored_name_at(source_indices: env.source_indices, node: child)
+              match map_get(vacc, child_name) {
+                Present { value: _prev } => vacc
+                Absent => map_insert(vacc, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown })
+              }
+            )
+          } else { acc }
+      )
     Absent => empty_map()
   }
 }
@@ -6068,42 +5981,79 @@ fn fold_module_contributions(remaining: List<ItemContribution>,
   }
 }
 
-fn enum_parents_for_variant_in_items(variant_name: String, items: List<Node>, source_indices: Map<String, NewlineIndex>) -> List<String> {
-  items
-    |> filter(item => item.connective == Disj)
-    |> filter(item => item.children |> any(child => authored_name_at(source_indices: source_indices, node: child) == variant_name))
-    |> map(item => authored_name_at(source_indices: source_indices, node: item))
-}
+data constructor_binding_authority: String = "Constructor-owner ruling (§1c): a module's constructor namespace is FLAT — its own coproduct declarations plus its DIRECT imports' contributions, never transitive ancestry. Each arm name binds to its owning coproduct NODE (the binding edge carries the owner; no name re-lookup, so the owner need not be name-visible). One arm name bound to two DIFFERENT owners in one file = VariantCollision at env construction (the per-file wall); the same declaration reached via two import paths is one owner, not a collision. Kernel coproduct arms (Optional/Witness/...) merge low-priority afterwards, prelude semantics."
 
-fn unique_imported_variant_owner(variant_name: String, items: List<Node>, source_indices: Map<String, NewlineIndex>) -> String? {
-  let parents = enum_parents_for_variant_in_items(variant_name: variant_name, items: items, source_indices: source_indices)
-  if parents |> count == 1 {
-    parents |> first
-  } else { none }
-}
-
-fn is_imported_variant_owned_by(imported_variants: Map<String, String>, variant_name: String, enum_name: String) -> Bool {
-  match map_get(imported_variants, variant_name) {
-    Present { value: unique_parent } => unique_parent == enum_name
-    Absent => false
+fn insert_variant_owner_checked(state: VariantFoldState, arm_name: String, owner: Node, source_indices: Map<String, NewlineIndex>, module_name: String) -> VariantFoldState {
+  match map_get(state.locals, arm_name) {
+    Present { value: prev } =>
+      let prev_name = authored_name_at(source_indices: source_indices, node: prev.resolved)
+      let owner_name = authored_name_at(source_indices: source_indices, node: owner)
+      let same_owner = prev_name == owner_name
+        && prev.resolved.span.file == owner.span.file
+        && prev.resolved.span.start == owner.span.start
+      if same_owner {
+        state
+      } else {
+        VariantFoldState {
+          locals: state.locals,
+          collision_errors: concat(state.collision_errors, [make_error_node(
+            diagnostic: VariantCollision { variant: arm_name, enum1: prev_name, enum2: owner_name, span: owner.span },
+            module_name: module_name
+          )])
+        }
+      }
+    Absent =>
+      VariantFoldState {
+        locals: map_insert(state.locals, arm_name, TypeBinding { name: arm_name, resolved: owner, provenance: SubValueUnknown }),
+        collision_errors: state.collision_errors
+      }
   }
 }
 
-fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> Map<String, String> {
-  fold(resolved_imports, init: empty_map(), f: (acc, imp) =>
-    fold(imp.specific_names, init: acc, f: (inner, variant_name) =>
-      if map_contains_key(inner, variant_name) {
-        inner
-      } else {
-        let source_items = match map_get(parent_index, imp.module_path) {
-          Present { value: parent_tm } => parent_tm.items
-          Absent => []
+fn bind_coproduct_item_arms(state: VariantFoldState, item: Node, source_indices: Map<String, NewlineIndex>, module_name: String) -> VariantFoldState {
+  fold(item.children, init: state, f: (vacc, child) =>
+    insert_variant_owner_checked(
+      state: vacc,
+      arm_name: authored_name_at(source_indices: source_indices, node: child),
+      owner: item,
+      source_indices: source_indices,
+      module_name: module_name
+    )
+  )
+}
+
+fn build_local_variants(items: List<Node>, source_indices: Map<String, NewlineIndex>, module_name: String, init: VariantFoldState) -> VariantFoldState {
+  fold(items, init: init, f: (acc, item) =>
+    let item_is_coproduct = item.connective == Disj
+    if item_is_coproduct {
+      bind_coproduct_item_arms(state: acc, item: item, source_indices: source_indices, module_name: module_name)
+    } else { acc }
+  )
+}
+
+fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, module_name: String, init: VariantFoldState) -> VariantFoldState {
+  fold(resolved_imports, init: init, f: (acc, imp) =>
+    let source_items = match map_get(parent_index, imp.module_path) {
+      Present { value: parent_tm } => parent_tm.items
+      Absent => []
+    }
+    fold(source_items, init: acc, f: (iacc, item) =>
+      let item_is_coproduct = item.connective == Disj
+      if item_is_coproduct {
+        let item_name = authored_name_at(source_indices: source_indices, node: item)
+        let enum_visible = imp.is_all || (imp.specific_names |> any(n => n == item_name))
+        if enum_visible {
+          bind_coproduct_item_arms(state: iacc, item: item, source_indices: source_indices, module_name: module_name)
+        } else {
+          fold(item.children, init: iacc, f: (vacc, child) =>
+            let child_name = authored_name_at(source_indices: source_indices, node: child)
+            let arm_named = imp.specific_names |> any(n => n == child_name)
+            if arm_named {
+              insert_variant_owner_checked(state: vacc, arm_name: child_name, owner: item, source_indices: source_indices, module_name: module_name)
+            } else { vacc }
+          )
         }
-        match unique_imported_variant_owner(variant_name: variant_name, items: source_items, source_indices: source_indices) {
-          Present { value: parent } => map_insert(inner, variant_name, parent)
-          Absent => inner
-        }
-      }
+      } else { iacc }
     )
   )
 }
@@ -6123,63 +6073,21 @@ fn build_module_context(contributions: List<ItemContribution>,
     diag_chunks: [],
     source_indices: env.source_indices
   )
-  let imported_variants = build_imported_variants(resolved_imports: resolved_imports, parent_index: parent_index, source_indices: env.source_indices)
-  let ancestry_cache = union_parent_type_env_caches(resolved_imports: resolved_imports, parent_index: parent_index)
-  let local_str_bindings = fold(env.bindings |> map_values, init: empty_map(), f: (acc, b) =>
-    map_insert(acc, b.name, b)
+  let local_variant_fold = build_local_variants(
+    items: local.resolved_items,
+    source_indices: env.source_indices,
+    module_name: module_name,
+    init: VariantFoldState { locals: empty_map(), collision_errors: [] }
   )
-  let bindings_for_variants = map_merge(ancestry_cache.str_bindings, local_str_bindings)
-  let variant_fold = fold(
-    bindings_for_variants |> map_values |> sort_by(b => b.name),
-    init: VariantFoldState { locals: empty_map(), collision_errors: [] },
-    f: (acc, binding) =>
-      let is_coproduct = binding.resolved.connective == Disj
-      if is_coproduct {
-        let binding_enum_name = authored_name_at(source_indices: env.source_indices, node: binding.resolved)
-        fold(binding.resolved.children, init: acc, f: (vacc, child) =>
-          let child_name = authored_name_at(source_indices: env.source_indices, node: child)
-          let curr_child_is_imported = is_imported_variant_owned_by(imported_variants: imported_variants, variant_name: child_name, enum_name: binding_enum_name)
-          match map_get(vacc.locals, child_name) {
-            Present { value: _prev } =>
-              if curr_child_is_imported {
-                VariantFoldState {
-                  locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
-                  collision_errors: vacc.collision_errors
-                }
-              } else { vacc }
-            Absent =>
-              VariantFoldState {
-                locals: map_insert(vacc.locals, child_name, TypeBinding { name: child_name, resolved: binding.resolved, provenance: SubValueUnknown }),
-                collision_errors: vacc.collision_errors
-              }
-          }
-        )
-      } else { acc }
-  )
-  let imported_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
-  let imported_variant_locals = fold(resolved_imports, init: imported_variant_locals, f: (acc, imp) =>
-    fold(imp.specific_names, init: acc, f: (inner, variant_name) =>
-      if map_contains_key(inner, variant_name) {
-        inner
-      } else {
-        match map_get(imported_variants, variant_name) {
-          Present { value: enum_name } =>
-            match lookup_type_by_name(env: env, name: enum_name) {
-              Present { value: enum_node } =>
-                map_insert(inner, variant_name, TypeBinding {
-                  name: variant_name,
-                  resolved: enum_node,
-                  provenance: SubValueUnknown
-                })
-              Absent => inner
-            }
-          Absent => inner
-        }
-      }
-    )
+  let variant_fold = build_imported_variants(
+    resolved_imports: resolved_imports,
+    parent_index: parent_index,
+    source_indices: env.source_indices,
+    module_name: module_name,
+    init: local_variant_fold
   )
   let variant_collision_errors = variant_fold.collision_errors
-  let env_variant_locals = variant_locals_from_items(items: local.resolved_items, init: imported_variant_locals, source_indices: env.source_indices)
+  let env_variant_locals = merge_kernel_variant_locals_low_priority(env: env, locals: variant_fold.locals)
   let merged_scope = merge_scope_from_imports(
     remaining: resolved_imports,
     parent_index: parent_index,

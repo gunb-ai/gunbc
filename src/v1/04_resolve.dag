@@ -37,7 +37,7 @@ import v1.compiler.infer_types {
 }
 import std.induction { SubValueUnknown }
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name, flatten_visible_bindings
+  TypeEnv, TypeBinding, lookup_type, lookup_type_by_name, lookup_type_for, is_recursive_type, is_recursive_type_by_name, is_recursive_type_for, authored_name
 }
 
 fn is_unit_variant_node(variant: Node) -> Bool {
@@ -76,8 +76,13 @@ fn lookup_unit_variant_phantom_type(env: TypeEnv, variant_name: String) -> Node?
   } else { none }
 }
 
+data phantom_match_flat_scope: String = "Constructor-owner ruling (§1c): the nullary-variant-as-type fallback searches the FLAT visible set — the module's own str_bindings plus its direct parents' str_bindings, one level, never the recursive ancestry flatten. Unique match resolves; anything else falls through to the UnresolvedType error at the caller (fail-closed)."
+
 fn collect_unit_variant_phantom_matches(env: TypeEnv, variant_name: String) -> List<Node> {
-  fold(flatten_visible_bindings(env: env) |> map_values, init: [], f: (acc, binding) =>
+  let direct_bindings = fold(env.parents, init: env.str_bindings, f: (acc, parent) =>
+    map_merge(parent.str_bindings, acc)
+  )
+  fold(direct_bindings |> map_values, init: [], f: (acc, binding) =>
     match unit_variant_in_coproduct(
       env: env,
       ty: structural_type_for_variant_lookup(env: env, ty: binding.resolved),
