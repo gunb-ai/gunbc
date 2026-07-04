@@ -12,7 +12,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data tcgplayer_pricing_money_measure_grounding_dissolution_trigger: String = "🟡 dissolve-on: TCGplayer money fields here (ProductPriceRow low/mid/high/market/directLow prices, GetProductPrices market_price output) mirror the wire as bare Float (JSON numbers TCGplayer returns for USD prices) pending value-Measure grounding on std.measure MoneyAmountMicro. BLOCKED on a numeric-tower decimal-dollars <-> money_amount_micro conversion that std does not have yet (no Float->Nat micros primitive); wire-fidelity Float is the reviewer-sanctioned transport-seam representation until it lands. See gunbc.tools.card_intake tcgplayer_money_measure_grounding_dissolution_trigger for the shared gate. DISSOLVES WHEN std.measure gains that conversion and the operation output decodes into MoneyAmountMicro at the seam."
+data tcgplayer_pricing_money_measure_grounding_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: TCGplayer money fields here (ProductPriceRow low/mid/high/market/directLow prices, GetProductPrices market_price output) mirror the wire as bare Float (JSON numbers TCGplayer returns for USD prices) pending value-Measure grounding on std.measure MoneyAmountMicro. BLOCKED on a numeric-tower decimal-dollars <-> money_amount_micro conversion that std does not have yet (no Float->Nat micros primitive); wire-fidelity Float is the reviewer-sanctioned transport-seam representation until it lands. See gunbc.tools.card_intake tcgplayer_money_measure_grounding_dissolution_trigger for the shared gate. DISSOLVES WHEN std.measure gains that conversion and the operation output decodes into MoneyAmountMicro at the seam."
 
 type ProductPriceRow {
   productId: Int
