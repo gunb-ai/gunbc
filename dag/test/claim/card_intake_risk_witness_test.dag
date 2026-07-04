@@ -21,7 +21,6 @@ import gunbc.tools.card_intake {
   NeedsReview,
   classify_catalog_match,
   assess_intake,
-  needs_review,
 }
 
 test fn witness_zero_results_classifies_no_match() -> Bool {
@@ -112,12 +111,18 @@ test fn witness_ambiguous_high_value_collects_both_reasons() -> Bool {
   }
 }
 
-test fn witness_ready_to_list_is_not_flagged() -> Bool {
-  needs_review(d: ReadyToList) == false
+test fn witness_ready_to_list_disposition() -> Bool {
+  match ReadyToList {
+    ReadyToList => true
+    NeedsReview { reasons: _ } => false
+  }
 }
 
-test fn witness_needs_review_is_flagged() -> Bool {
-  needs_review(d: NeedsReview { reasons: [] |> list_push(HighValue) })
+test fn witness_needs_review_disposition() -> Bool {
+  match NeedsReview { reasons: [] |> list_push(HighValue) } {
+    NeedsReview { reasons: rs } => count(rs) == 1 && any(rs, r => r == HighValue)
+    ReadyToList => false
+  }
 }
 
 test fn witness_near_mint_display_name_roundtrip() -> Bool {

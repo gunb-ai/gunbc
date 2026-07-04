@@ -131,7 +131,7 @@ func intake_binder_photo(
   bearer_token: Secret,
   category_id: Int,
   high_value_threshold: Float = default_high_value_threshold_usd
-) -> { card_name: String, flagged: Bool, product_id: Int, market_price: Float } {
+) -> { card_name: String, disposition: IntakeDisposition, product_id: Int, market_price: Float? } {
 
   recognized = recognize_binder_photo(photo_path: photo_path)
 
@@ -153,13 +153,13 @@ func intake_binder_photo(
 
   disposition = assess_intake(
     card_match: card_match,
-    market_price: Present { value: prices.market_price },
+    market_price: prices.market_price,
     high_value_threshold: high_value_threshold
   )
 
   return {
     card_name: recognized.card_name,
-    flagged: needs_review(d: disposition),
+    disposition: disposition,
     product_id: search.first_product_id,
     market_price: prices.market_price
   }
@@ -188,7 +188,10 @@ func intake_binder(
   }
 
   flags = for r in results {
-    r.flagged
+    match r.disposition {
+      ReadyToList => false
+      NeedsReview { reasons: _ } => true
+    }
   }
 
   return { total: count(results), flagged: count_true(flags: flags) }
