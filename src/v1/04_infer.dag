@@ -6044,16 +6044,32 @@ fn empty_variant_export_surface() -> VariantExportSurface {
   VariantExportSurface { arm_owners: empty_map(), enum_items: empty_map() }
 }
 
+fn add_coproduct_to_variant_surface(acc: VariantExportSurface, item: Node, source_indices: Map<String, NewlineIndex>) -> VariantExportSurface {
+  let enum_items = map_insert(acc.enum_items, authored_name_at(source_indices: source_indices, node: item), item)
+  let arm_owners = fold(item.children, init: acc.arm_owners, f: (arms, child) =>
+    map_insert(arms, authored_name_at(source_indices: source_indices, node: child), item)
+  )
+  VariantExportSurface { arm_owners: arm_owners, enum_items: enum_items }
+}
+
 fn collect_own_variant_export_surface(items: List<Node>, source_indices: Map<String, NewlineIndex>) -> VariantExportSurface {
   fold(items, init: empty_variant_export_surface(), f: (acc, item) =>
-    if item.connective == Disj {
-      let enum_items = map_insert(acc.enum_items, authored_name_at(source_indices: source_indices, node: item), item)
-      let arm_owners = fold(item.children, init: acc.arm_owners, f: (arms, child) =>
-        map_insert(arms, authored_name_at(source_indices: source_indices, node: child), item)
-      )
-      VariantExportSurface { arm_owners: arm_owners, enum_items: enum_items }
+    let item_is_coproduct = item.connective == Disj
+    if item_is_coproduct {
+      add_coproduct_to_variant_surface(acc: acc, item: item, source_indices: source_indices)
     } else { acc }
   )
+}
+
+fn merge_name_from_proxy_surface(acc: VariantExportSurface, proxy: VariantExportSurface, name: String) -> VariantExportSurface {
+  let with_arm = match map_get(proxy.arm_owners, name) {
+    Present { value: owner } => VariantExportSurface { arm_owners: map_insert(acc.arm_owners, name, owner), enum_items: acc.enum_items }
+    Absent => acc
+  }
+  match map_get(proxy.enum_items, name) {
+    Present { value: item } => VariantExportSurface { arm_owners: with_arm.arm_owners, enum_items: map_insert(with_arm.enum_items, name, item) }
+    Absent => with_arm
+  }
 }
 
 fn reexport_variant_surface_fragment(imp: Node, surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>) -> VariantExportSurface {
@@ -6062,15 +6078,15 @@ fn reexport_variant_surface_fragment(imp: Node, surfaces: Map<String, VariantExp
     Absent => empty_variant_export_surface()
     Present { value: proxy } =>
       fold(import_specific_names_at(n: imp, source_indices: source_indices), init: empty_variant_export_surface(), f: (acc, name) =>
-        let with_arm = match map_get(proxy.arm_owners, name) {
-          Present { value: owner } => VariantExportSurface { arm_owners: map_insert(acc.arm_owners, name, owner), enum_items: acc.enum_items }
-          Absent => acc
-        }
-        match map_get(proxy.enum_items, name) {
-          Present { value: item } => VariantExportSurface { arm_owners: with_arm.arm_owners, enum_items: map_insert(with_arm.enum_items, name, item) }
-          Absent => with_arm
-        }
+        merge_name_from_proxy_surface(acc: acc, proxy: proxy, name: name)
       )
+  }
+}
+
+fn merge_variant_surface_fragments(acc: VariantExportSurface, frag: VariantExportSurface) -> VariantExportSurface {
+  VariantExportSurface {
+    arm_owners: map_merge(acc.arm_owners, frag.arm_owners),
+    enum_items: map_merge(acc.enum_items, frag.enum_items)
   }
 }
 
@@ -6080,15 +6096,25 @@ fn build_variant_export_surface(tm: TypedModule, surfaces: Map<String, VariantEx
     module_imports(n: tm.module) |> filter(imp => !import_is_all(n: imp)),
     init: empty_variant_export_surface(),
     f: (acc, imp) =>
-      let frag = reexport_variant_surface_fragment(imp: imp, surfaces: surfaces, source_indices: source_indices)
-      VariantExportSurface {
-        arm_owners: map_merge(acc.arm_owners, frag.arm_owners),
-        enum_items: map_merge(acc.enum_items, frag.enum_items)
-      }
+      merge_variant_surface_fragments(
+        acc: acc,
+        frag: reexport_variant_surface_fragment(imp: imp, surfaces: surfaces, source_indices: source_indices)
+      )
   )
   VariantExportSurface {
     arm_owners: map_merge(reexports.arm_owners, own.arm_owners),
     enum_items: map_merge(reexports.enum_items, own.enum_items)
+  }
+}
+
+fn bind_imported_name_from_surface(state: VariantFoldState, surface: VariantExportSurface, name: String, source_indices: Map<String, NewlineIndex>, module_name: String) -> VariantFoldState {
+  let after_enum = match map_get(surface.enum_items, name) {
+    Present { value: item } => bind_coproduct_item_arms(state: state, item: item, source_indices: source_indices, module_name: module_name)
+    Absent => state
+  }
+  match map_get(surface.arm_owners, name) {
+    Present { value: owner } => insert_variant_owner_checked(state: after_enum, arm_name: name, owner: owner, source_indices: source_indices, module_name: module_name)
+    Absent => after_enum
   }
 }
 
@@ -6111,14 +6137,7 @@ fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index:
         Present { value: s } => s
         Absent => empty_variant_export_surface()
       }
-      let after_enum = match map_get(surface.enum_items, name) {
-        Present { value: item } => bind_coproduct_item_arms(state: nacc, item: item, source_indices: source_indices, module_name: module_name)
-        Absent => nacc
-      }
-      match map_get(surface.arm_owners, name) {
-        Present { value: owner } => insert_variant_owner_checked(state: after_enum, arm_name: name, owner: owner, source_indices: source_indices, module_name: module_name)
-        Absent => after_enum
-      }
+      bind_imported_name_from_surface(state: nacc, surface: surface, name: name, source_indices: source_indices, module_name: module_name)
     )
   )
 }
