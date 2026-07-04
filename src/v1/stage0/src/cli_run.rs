@@ -4260,9 +4260,7 @@ fn call_floor_host_scaffold_would_skip(
         .item_registry
         .contains_key("floor_host_scaffold_would_skip")
     {
-        return Err(
-            "floor_host_scaffold_would_skip missing from floor runner context".to_string(),
-        );
+        return Err("floor_host_scaffold_would_skip missing from floor runner context".to_string());
     }
     let paths: Vec<v1_interpreter::Value> = changed_paths
         .iter()
@@ -4374,7 +4372,8 @@ fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> b
     }
     let decl_needle = format!("test fn {function}");
     if let Some(start) = entry_content.find(&decl_needle) {
-        let decl_tail = &entry_content[start..entry_content.len().min(start + decl_needle.len() + 120)];
+        let decl_tail =
+            &entry_content[start..entry_content.len().min(start + decl_needle.len() + 120)];
         if decl_tail.contains(FLOOR_HOST_SCAFFOLD_WITNESS_MARKER) {
             return true;
         }
@@ -5167,10 +5166,7 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let pairs = scan_test_decl_lines(source);
         assert_eq!(
             pairs,
-            vec![
-                ("witness_a".to_string(), 5),
-                ("witness_b".to_string(), 7)
-            ]
+            vec![("witness_a".to_string(), 5), ("witness_b".to_string(), 7)]
         );
     }
 
@@ -5182,32 +5178,51 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             "clean_tree_holds"
         ));
         // File-wide fail-closed: sibling witnesses in the same entry also run.
-        assert!(super::witness_test_fn_uses_live_host_scan(source, "pure_holds"));
+        assert!(super::witness_test_fn_uses_live_host_scan(
+            source,
+            "pure_holds"
+        ));
     }
 
     #[test]
     fn witness_test_fn_uses_live_host_scan_pure_entry_stays_kernel_eligible() {
         let source = "module m\n\ntest fn pure_holds() -> Bool { true }\n\ntest fn also_pure() -> Bool { false }\n";
-        assert!(!super::witness_test_fn_uses_live_host_scan(source, "pure_holds"));
-        assert!(!super::witness_test_fn_uses_live_host_scan(source, "also_pure"));
+        assert!(!super::witness_test_fn_uses_live_host_scan(
+            source,
+            "pure_holds"
+        ));
+        assert!(!super::witness_test_fn_uses_live_host_scan(
+            source,
+            "also_pure"
+        ));
     }
 
     #[test]
     fn witness_test_fn_uses_live_host_scan_detects_declared_marker() {
-        let source = "module m\n\ntest fn marked_holds() -> Bool { // floor:host_scaffold\n  true\n}\n";
-        assert!(super::witness_test_fn_uses_live_host_scan(source, "marked_holds"));
+        let source =
+            "module m\n\ntest fn marked_holds() -> Bool { // floor:host_scaffold\n  true\n}\n";
+        assert!(super::witness_test_fn_uses_live_host_scan(
+            source,
+            "marked_holds"
+        ));
     }
 
     #[test]
     fn witness_test_fn_uses_live_host_scan_follows_same_file_helper() {
         let source = "module m\n\nfn helper_holds() -> Bool {\n  layer_import_facts(std_roots: [], extdeps_roots: [])\n}\n\ntest fn witness_holds() -> Bool {\n  helper_holds()\n}\n";
-        assert!(super::witness_test_fn_uses_live_host_scan(source, "witness_holds"));
+        assert!(super::witness_test_fn_uses_live_host_scan(
+            source,
+            "witness_holds"
+        ));
     }
 
     #[test]
     fn witness_test_fn_uses_live_host_scan_follows_nested_same_file_helper() {
         let source = "module m\n\nfn helper_b() -> Bool {\n  realization_vocab_containment_clean_live(scan_roots: roots)\n}\n\nfn helper_a() -> Bool {\n  helper_b()\n}\n\ntest fn witness_holds() -> Bool {\n  helper_a()\n}\n";
-        assert!(super::witness_test_fn_uses_live_host_scan(source, "witness_holds"));
+        assert!(super::witness_test_fn_uses_live_host_scan(
+            source,
+            "witness_holds"
+        ));
     }
 
     #[test]
