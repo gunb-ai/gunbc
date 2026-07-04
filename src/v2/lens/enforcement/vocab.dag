@@ -5,6 +5,7 @@ import v2.std.integer { Int }
 import v2.std.text { String }
 import v2.std.collection { List }
 import v2.std.algebra { for_all, contains }
+import std.realization_schedule { ScheduleWitnessEntry }
 
 type SubjectRoster {
   entries: List<String>
@@ -22,6 +23,10 @@ type ConsumerRequirement
   = AnyLiveConsumer
   | OneOf { acceptable: List<ConsumerKind> }
   | Exact { kind: ConsumerKind }
+
+type ConsumerWitnessBinding
+  = BoundConsumerWitness { witness: ScheduleWitnessEntry }
+  | NoConsumerWitness
 
 type NarrowingReason
   = BootstrapBlocked { blocker: String }
@@ -41,12 +46,6 @@ type SelfApplicationStatus
   = SelfAppliesObserved | SelfExemptObserved { reason: String } | SelfApplicationAbsent
 
 type ReceiptRef = HasReceiptRef { ref: String } | NoReceiptRef
-
-type Timestamp {
-  iso: String
-}
-
-data timestamp_iso_anemia_dissolution_trigger: String = "🟡 dissolve-on: Timestamp.iso is an anemic String leaf (DESIGN §2 deep decomposition: year/month/day/hour/… ground into std.measure). On-ledger via standing_intent_model_anemia_repo_wide (task E), not silent debt. DISSOLVES WHEN a std.measure-side wall-clock-instant carrier exists: Timestamp reuses it and iso becomes a rendering, not the authority."
 
 fn mode_rank(m: EnforcementMode) -> Int {
   match m {
