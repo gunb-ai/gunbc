@@ -25,10 +25,9 @@ fn run_fixture(files: &[(&str, &str)], entry: &str, function: &str) -> ClaimOutc
     use std::sync::atomic::{AtomicU64, Ordering};
     static SEQ: AtomicU64 = AtomicU64::new(0);
     let seq = SEQ.fetch_add(1, Ordering::SeqCst);
-    let dir = workspace_root().join("target").join(format!(
-        "kernel-shadow-seams-{}-{seq}",
-        std::process::id()
-    ));
+    let dir = workspace_root()
+        .join("target")
+        .join(format!("kernel-shadow-seams-{}-{seq}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("fixture dir");
     for (name, src) in files {

@@ -1961,118 +1961,87 @@ fn match_pattern(
                 return Some(bindings);
             }
             match value {
-            Value::Variant {
-                variant_name,
-                fields,
-                ..
-            } => {
-                if name == "Holds"
-                    && parent_enum.as_deref() == Some("Witness")
-                    && *variant_name != ctx.sym("Holds")
-                    && *variant_name != ctx.sym("Violates")
-                {
-                    let mut bindings = HashMap::new();
-                    for fb in field_bindings.iter() {
-                        let fb_pat = field_binding_pattern(fb.clone());
-                        let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
-                        bindings.extend(sub_bindings);
-                    }
-                    return Some(bindings);
-                }
-                if name == "Present"
-                    && parent_enum.as_deref() == Some("Optional")
-                    && *variant_name != ctx.sym("Present")
-                    && *variant_name != ctx.sym("Absent")
-                {
-                    let mut bindings = HashMap::new();
-                    for fb in field_bindings.iter() {
-                        let fb_pat = field_binding_pattern(fb.clone());
-                        let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
-                        bindings.extend(sub_bindings);
-                    }
-                    return Some(bindings);
-                }
-                if *variant_name != ctx.sym(name) {
-                    return None;
-                }
-                let mut bindings = HashMap::new();
-                for fb in field_bindings.iter() {
-                    let field_name = field_binding_name_at(fb.clone(), ctx.source_indices.clone());
-                    let fb_pat = field_binding_pattern(fb.clone());
-                    let field_val = fields_get(fields, ctx.sym(&field_name))
-                        .cloned()
-                        .unwrap_or(Value::Null);
-                    let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
-                    bindings.extend(sub_bindings);
-                }
-                Some(bindings)
-            }
-            Value::Record { type_name, fields } => {
-                if *type_name != ctx.sym(name) {
-                    return None;
-                }
-                let mut bindings = HashMap::new();
-                for fb in field_bindings.iter() {
-                    let field_name = field_binding_name_at(fb.clone(), ctx.source_indices.clone());
-                    let fb_pat = field_binding_pattern(fb.clone());
-                    let field_val = fields_get(fields, ctx.sym(&field_name))
-                        .cloned()
-                        .unwrap_or(Value::Null);
-                    let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
-                    bindings.extend(sub_bindings);
-                }
-                Some(bindings)
-            }
-            Value::List(items) => match name.as_str() {
-                "Empty" => {
-                    if items.is_empty() {
-                        Some(HashMap::new())
-                    } else {
-                        None
-                    }
-                }
-                "Cons" => {
-                    if items.is_empty() {
-                        None
-                    } else {
-                        let head = items[0].clone();
-                        let tail = {
-                            let mut rest = (**items).clone();
-                            list_value(rest.split_off(1))
-                        };
+                Value::Variant {
+                    variant_name,
+                    fields,
+                    ..
+                } => {
+                    if name == "Holds"
+                        && parent_enum.as_deref() == Some("Witness")
+                        && *variant_name != ctx.sym("Holds")
+                        && *variant_name != ctx.sym("Violates")
+                    {
                         let mut bindings = HashMap::new();
                         for fb in field_bindings.iter() {
-                            let field_name =
-                                field_binding_name_at(fb.clone(), ctx.source_indices.clone());
                             let fb_pat = field_binding_pattern(fb.clone());
-                            let field_val = match field_name.as_str() {
-                                "head" => head.clone(),
-                                "tail" => tail.clone(),
-                                _ => return None,
-                            };
-                            let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                            let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
                             bindings.extend(sub_bindings);
                         }
-                        Some(bindings)
+                        return Some(bindings);
                     }
-                }
-                _ => None,
-            },
-            Value::Str(s) if name == "Empty" || name == "Cons" => match name.as_str() {
-                "Empty" => {
-                    if s.is_empty() {
-                        Some(HashMap::new())
-                    } else {
-                        None
+                    if name == "Present"
+                        && parent_enum.as_deref() == Some("Optional")
+                        && *variant_name != ctx.sym("Present")
+                        && *variant_name != ctx.sym("Absent")
+                    {
+                        let mut bindings = HashMap::new();
+                        for fb in field_bindings.iter() {
+                            let fb_pat = field_binding_pattern(fb.clone());
+                            let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                            bindings.extend(sub_bindings);
+                        }
+                        return Some(bindings);
                     }
+                    if *variant_name != ctx.sym(name) {
+                        return None;
+                    }
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let field_name =
+                            field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let field_val = fields_get(fields, ctx.sym(&field_name))
+                            .cloned()
+                            .unwrap_or(Value::Null);
+                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
                 }
-                "Cons" => {
-                    let mut chars = s.chars();
-                    match chars.next() {
-                        None => None,
-                        Some(c) => {
-                            let head = char_value(c);
-                            let tail = Value::Str(chars.as_str().to_string());
+                Value::Record { type_name, fields } => {
+                    if *type_name != ctx.sym(name) {
+                        return None;
+                    }
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let field_name =
+                            field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let field_val = fields_get(fields, ctx.sym(&field_name))
+                            .cloned()
+                            .unwrap_or(Value::Null);
+                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
+                }
+                Value::List(items) => match name.as_str() {
+                    "Empty" => {
+                        if items.is_empty() {
+                            Some(HashMap::new())
+                        } else {
+                            None
+                        }
+                    }
+                    "Cons" => {
+                        if items.is_empty() {
+                            None
+                        } else {
+                            let head = items[0].clone();
+                            let tail = {
+                                let mut rest = (**items).clone();
+                                list_value(rest.split_off(1))
+                            };
                             let mut bindings = HashMap::new();
                             for fb in field_bindings.iter() {
                                 let field_name =
@@ -2089,84 +2058,120 @@ fn match_pattern(
                             Some(bindings)
                         }
                     }
-                }
-                _ => None,
-            },
-            Value::Int(n) if name == "Zero" || name == "Succ" => match name.as_str() {
-                "Zero" => {
-                    if *n == 0 {
-                        Some(HashMap::new())
-                    } else {
-                        None
-                    }
-                }
-                "Succ" => {
-                    if *n <= 0 {
-                        None
-                    } else {
-                        let mut bindings = HashMap::new();
-                        for fb in field_bindings.iter() {
-                            let field_name =
-                                field_binding_name_at(fb.clone(), ctx.source_indices.clone());
-                            let fb_pat = field_binding_pattern(fb.clone());
-                            let field_val = match field_name.as_str() {
-                                "prev" => Value::Int(n - 1),
-                                _ => return None,
-                            };
-                            let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
-                            bindings.extend(sub_bindings);
+                    _ => None,
+                },
+                Value::Str(s) if name == "Empty" || name == "Cons" => match name.as_str() {
+                    "Empty" => {
+                        if s.is_empty() {
+                            Some(HashMap::new())
+                        } else {
+                            None
                         }
-                        Some(bindings)
                     }
+                    "Cons" => {
+                        let mut chars = s.chars();
+                        match chars.next() {
+                            None => None,
+                            Some(c) => {
+                                let head = char_value(c);
+                                let tail = Value::Str(chars.as_str().to_string());
+                                let mut bindings = HashMap::new();
+                                for fb in field_bindings.iter() {
+                                    let field_name = field_binding_name_at(
+                                        fb.clone(),
+                                        ctx.source_indices.clone(),
+                                    );
+                                    let fb_pat = field_binding_pattern(fb.clone());
+                                    let field_val = match field_name.as_str() {
+                                        "head" => head.clone(),
+                                        "tail" => tail.clone(),
+                                        _ => return None,
+                                    };
+                                    let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                                    bindings.extend(sub_bindings);
+                                }
+                                Some(bindings)
+                            }
+                        }
+                    }
+                    _ => None,
+                },
+                Value::Int(n) if name == "Zero" || name == "Succ" => match name.as_str() {
+                    "Zero" => {
+                        if *n == 0 {
+                            Some(HashMap::new())
+                        } else {
+                            None
+                        }
+                    }
+                    "Succ" => {
+                        if *n <= 0 {
+                            None
+                        } else {
+                            let mut bindings = HashMap::new();
+                            for fb in field_bindings.iter() {
+                                let field_name =
+                                    field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                                let fb_pat = field_binding_pattern(fb.clone());
+                                let field_val = match field_name.as_str() {
+                                    "prev" => Value::Int(n - 1),
+                                    _ => return None,
+                                };
+                                let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                                bindings.extend(sub_bindings);
+                            }
+                            Some(bindings)
+                        }
+                    }
+                    _ => None,
+                },
+                Value::Null if name == "Violates" && parent_enum.as_deref() == Some("Witness") => {
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let field_name =
+                            field_binding_name_at(fb.clone(), ctx.source_indices.clone());
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let field_val = match field_name.as_str() {
+                            "diagnostic" => native_map_absent_diagnostic_value(ctx),
+                            _ => return None,
+                        };
+                        let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
+                }
+                Value::Null if name == "None" && parent_enum.as_deref() == Some("Diagnostics") => {
+                    Some(HashMap::new())
+                }
+                Value::Null if name == "Absent" && parent_enum.as_deref() == Some("Optional") => {
+                    Some(HashMap::new())
+                }
+                _ if name == "Present" && parent_enum.as_deref() == Some("Optional") => {
+                    if matches!(value, Value::Null) {
+                        return None;
+                    }
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
+                }
+                _ if name == "Holds" && parent_enum.as_deref() == Some("Witness") => {
+                    if matches!(value, Value::Null) {
+                        return None;
+                    }
+                    let mut bindings = HashMap::new();
+                    for fb in field_bindings.iter() {
+                        let fb_pat = field_binding_pattern(fb.clone());
+                        let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                        bindings.extend(sub_bindings);
+                    }
+                    Some(bindings)
                 }
                 _ => None,
-            },
-            Value::Null if name == "Violates" && parent_enum.as_deref() == Some("Witness") => {
-                let mut bindings = HashMap::new();
-                for fb in field_bindings.iter() {
-                    let field_name = field_binding_name_at(fb.clone(), ctx.source_indices.clone());
-                    let fb_pat = field_binding_pattern(fb.clone());
-                    let field_val = match field_name.as_str() {
-                        "diagnostic" => native_map_absent_diagnostic_value(ctx),
-                        _ => return None,
-                    };
-                    let sub_bindings = match_pattern(&fb_pat, &field_val, ctx)?;
-                    bindings.extend(sub_bindings);
-                }
-                Some(bindings)
             }
-            Value::Null if name == "None" && parent_enum.as_deref() == Some("Diagnostics") => {
-                Some(HashMap::new())
-            }
-            Value::Null if name == "Absent" && parent_enum.as_deref() == Some("Optional") => {
-                Some(HashMap::new())
-            }
-            _ if name == "Present" && parent_enum.as_deref() == Some("Optional") => {
-                if matches!(value, Value::Null) {
-                    return None;
-                }
-                let mut bindings = HashMap::new();
-                for fb in field_bindings.iter() {
-                    let fb_pat = field_binding_pattern(fb.clone());
-                    let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
-                    bindings.extend(sub_bindings);
-                }
-                Some(bindings)
-            }
-            _ if name == "Holds" && parent_enum.as_deref() == Some("Witness") => {
-                if matches!(value, Value::Null) {
-                    return None;
-                }
-                let mut bindings = HashMap::new();
-                for fb in field_bindings.iter() {
-                    let fb_pat = field_binding_pattern(fb.clone());
-                    let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
-                    bindings.extend(sub_bindings);
-                }
-                Some(bindings)
-            }
-            _ => None,
-        }
         }
     }
 }
