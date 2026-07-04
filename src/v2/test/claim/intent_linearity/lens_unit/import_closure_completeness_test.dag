@@ -1,0 +1,45 @@
+module v2.test.intent_linearity.lens_unit.import_closure_completeness
+
+import v2.lens.intent_linearity { import_closure_is_clean_live }
+import tools.rust_stage0_gates { ConsumedInputClosure, declared_consumed_input_closures }
+import gunbc.ci_layer_roots { witness_layer_roots }
+import v2.std.algebra { FreeMonoid, for_all, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data import_closure_completeness_doc: String = "Completeness-gated parallel-representation wall (change-time / §2-§4): a module's DECLARED consumed-input closure must equal its DERIVED import closure (import_closure_live over witness_layer_roots). This FOLDS over the whole declared_consumed_input_closures registry, so ANY future declared closure is auto-covered by the same gate — closing the 'only the one conformance closure is hand-witnessed' gap. Forward-looking ask-once-compile-forever prevention, not instance-count-bound (today the registry is 1 clean entry, 0 drift). ENFORCEMENT MATURITY: this is a floor witness (fail-closed on the v1 floor engine — a red witness fails the floor). Because main ci.yml currently CANCELS at the 30-min compile-clean timeout before batch-2 witnesses run, this wall — like every batch-2 witness — is enforced on the LOCAL/scheduled floor run, NOT yet on main CI; full CI enforcement follows the compile-clean-serial lane. Green-by-execution verified on claim_batch (v1 engine)."
+
+fn closure_row_is_clean(c: ConsumedInputClosure) -> Bool {
+  import_closure_is_clean_live(
+    declared: c.consumed_dag_paths,
+    entry_path: c.entry_path,
+    pool_roots: witness_layer_roots
+  )
+}
+
+fn all_closures_clean(closures: List<ConsumedInputClosure>) -> Bool {
+  for_all(xs: closures, predicate: closure_row_is_clean)
+}
+
+data synthetic_drifted_closure: ConsumedInputClosure = ConsumedInputClosure {
+  unit: "synthetic_drift_control",
+  entry_path: "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+  consumed_dag_paths: ["src/v2/std/__bogus_never_imported__.dag"]
+}
+
+fn registry_with_injected_drift() -> FreeMonoid<ConsumedInputClosure> {
+  list_snoc_item(xs: declared_consumed_input_closures, item: synthetic_drifted_closure)
+}
+
+test fn all_declared_import_closures_have_no_drift() -> Bool {
+  return all_closures_clean(closures: declared_consumed_input_closures)
+}
+
+test fn completeness_fold_reds_on_a_drifted_closure() -> Bool {
+  return !all_closures_clean(closures: [synthetic_drifted_closure])
+}
+
+test fn fold_auto_covers_a_newly_added_closure() -> Bool {
+  return !all_closures_clean(closures: registry_with_injected_drift())
+}

@@ -41,11 +41,13 @@ data consumed_input_closure_slice1_status: Disposition = Scaffold {
 
 type ConsumedInputClosure {
   unit: String
+  entry_path: String
   consumed_dag_paths: List<String>
 }
 
 data coproduct_reflection_conformance_consumed_closure: ConsumedInputClosure = ConsumedInputClosure {
   unit: "coproduct_reflection_conformance_test",
+  entry_path: "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
   consumed_dag_paths: [
     "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
     "src/v2/std/algebra.dag",
