@@ -24,8 +24,6 @@ data pure_eval_authority_modules: List<String> = [
 data pinned_host_physics_stage0_files: List<String> = [
   "recorded_fixture.rs",
   "resolved_graph_cache.rs",
-  "rest_transport_facts.rs",
-  "wire_value_serialize.rs",
 ]
 
 data v1_interpreter_hybrid_seed_file: String = "v1_interpreter.rs"

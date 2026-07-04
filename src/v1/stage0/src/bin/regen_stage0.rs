@@ -119,8 +119,6 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "coproduct_reflection.rs",
     "recorded_fixture.rs",
     "resolved_graph_cache.rs",
-    "rest_transport_facts.rs",
-    "wire_value_serialize.rs",
     // dag_collect split (#6053) removed Ci-subcommand / extract_module_path emission from
     // 05_emit_rust.dag; without those, the emitter no longer produces byte-identical main.rs,
     // so main.rs parks here until those gaps are restored in .dag. Registry flip deferred until

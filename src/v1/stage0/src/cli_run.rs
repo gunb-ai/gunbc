@@ -10970,6 +10970,399 @@ mod doc_reachability_tests {
     }
 }
 
+// --- REST transport fact projection (folded from rest_transport_facts.rs) ---
+// Pure Node-tree reader over transport annotations — zero host I/O.
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeclaredRestTransportOp {
+    pub service: String,
+    pub name: String,
+    pub method: String,
+    pub path: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RestTransportFactError {
+    MissingServiceScope { operation: String },
+    MissingMethodProperty { service: String, operation: String },
+    MissingPathProperty { service: String, operation: String },
+}
+
+impl std::fmt::Display for RestTransportFactError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RestTransportFactError::MissingServiceScope { operation } => {
+                write!(
+                    f,
+                    "REST transport without enclosing service scope (operation={operation})"
+                )
+            }
+            RestTransportFactError::MissingMethodProperty { service, operation } => {
+                write!(
+                    f,
+                    "missing method on rest transport for {service}::{operation}"
+                )
+            }
+            RestTransportFactError::MissingPathProperty { service, operation } => {
+                write!(
+                    f,
+                    "missing path on rest transport for {service}::{operation}"
+                )
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RestTransportCollectResult {
+    pub ops: Vec<DeclaredRestTransportOp>,
+    pub errors: Vec<RestTransportFactError>,
+}
+
+fn rest_transport_field_string(
+    props: Rc<Vec<Rc<Node>>>,
+    prop_name: String,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<String> {
+    use crate::v1_std_core::{find_property, find_property_string, ExprData};
+    find_property_string(props.clone(), prop_name.clone(), source_indices.clone()).or_else(|| {
+        let n = find_property(props, prop_name, source_indices.clone())?;
+        match (*n.expr_data).clone() {
+            ExprData::ExprVar { .. } => {
+                let s = authored_name_at(source_indices, n);
+                if s.is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
+            }
+            _ => None,
+        }
+    })
+}
+
+pub fn collect_rest_transport_operations(
+    module: &Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> RestTransportCollectResult {
+    use crate::v1_std_core::{
+        is_rest_transport, transport_method_key, transport_path_template_key,
+    };
+    let mut out = Vec::new();
+    let mut errors = Vec::new();
+    fn walk(
+        n: &Rc<Node>,
+        source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+        service_ctx: Option<String>,
+        out: &mut Vec<DeclaredRestTransportOp>,
+        errors: &mut Vec<RestTransportFactError>,
+    ) {
+        let ctx_for_children = match &n.transport {
+            Some(t)
+                if !is_rest_transport(t.clone(), source_indices.clone()) && !n.name.is_empty() =>
+            {
+                Some(n.name.clone())
+            }
+            _ => service_ctx.clone(),
+        };
+
+        if let Some(t) = &n.transport {
+            if is_rest_transport(t.clone(), source_indices.clone()) {
+                let Some(svc) = service_ctx.clone() else {
+                    errors.push(RestTransportFactError::MissingServiceScope {
+                        operation: n.name.clone(),
+                    });
+                    for c in n.children.iter() {
+                        walk(
+                            c,
+                            source_indices.clone(),
+                            ctx_for_children.clone(),
+                            out,
+                            errors,
+                        );
+                    }
+                    return;
+                };
+                let method = rest_transport_field_string(
+                    t.properties.clone(),
+                    transport_method_key(),
+                    source_indices.clone(),
+                );
+                let Some(method) = method else {
+                    errors.push(RestTransportFactError::MissingMethodProperty {
+                        service: svc.clone(),
+                        operation: n.name.clone(),
+                    });
+                    for c in n.children.iter() {
+                        walk(
+                            c,
+                            source_indices.clone(),
+                            ctx_for_children.clone(),
+                            out,
+                            errors,
+                        );
+                    }
+                    return;
+                };
+                let path = rest_transport_field_string(
+                    t.properties.clone(),
+                    transport_path_template_key(),
+                    source_indices.clone(),
+                );
+                let Some(path) = path else {
+                    errors.push(RestTransportFactError::MissingPathProperty {
+                        service: svc.clone(),
+                        operation: n.name.clone(),
+                    });
+                    for c in n.children.iter() {
+                        walk(
+                            c,
+                            source_indices.clone(),
+                            ctx_for_children.clone(),
+                            out,
+                            errors,
+                        );
+                    }
+                    return;
+                };
+                out.push(DeclaredRestTransportOp {
+                    service: svc,
+                    name: n.name.clone(),
+                    method,
+                    path,
+                });
+            }
+        }
+
+        for c in n.children.iter() {
+            walk(
+                c,
+                source_indices.clone(),
+                ctx_for_children.clone(),
+                out,
+                errors,
+            );
+        }
+    }
+    walk(module, source_indices, None, &mut out, &mut errors);
+    RestTransportCollectResult { ops: out, errors }
+}
+
+// --- Wire value serialization (folded from wire_value_serialize.rs) ---
+// Pure coproduct wire-policy projection for interpreter REST bodies — zero host I/O.
+
+type WireSerializeResult<T> = Result<T, String>;
+
+pub fn resolve_coproduct_wire_policy(
+    coproduct_name: &str,
+    modules: &[Rc<TypedModule>],
+    source_indices: &HashMap<String, Rc<NewlineIndex>>,
+) -> Option<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> {
+    use crate::v1_compiler_emit_rust::resolve_local_coproduct_wire_policy;
+    use crate::v1_std_core::module_imports;
+    let si = Rc::new(source_indices.clone());
+    let mut matches: Vec<Rc<crate::v1_compiler_emit_rust::RustEnumWireSerde>> = Vec::new();
+    for tm in modules {
+        let imports = module_imports(tm.module.clone());
+        if let Some(local) = resolve_local_coproduct_wire_policy(
+            coproduct_name.to_string(),
+            false,
+            tm.items.clone(),
+            imports,
+            si.clone(),
+        ) {
+            if local.error_message.is_none() {
+                matches.push(local);
+            }
+        }
+    }
+    if matches.is_empty() {
+        None
+    } else if matches.len() == 1 {
+        Some(matches[0].clone())
+    } else {
+        let first = &matches[0];
+        if matches.iter().all(|m| m == first) {
+            Some(first.clone())
+        } else {
+            None
+        }
+    }
+}
+
+fn wire_resolve_sym(ctx: &v1_interpreter::InterpContext, sym: v1_interpreter::Symbol) -> String {
+    ctx.resolve(sym)
+}
+
+pub fn value_to_wire_json(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> WireSerializeResult<serde_json::Value> {
+    match val {
+        v1_interpreter::Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => serialize_variant_to_wire_json(
+            &wire_resolve_sym(ctx, *type_name),
+            &wire_resolve_sym(ctx, *variant_name),
+            fields,
+            ctx,
+        ),
+        v1_interpreter::Value::Null => Ok(serde_json::Value::Null),
+        v1_interpreter::Value::Bool(b) => Ok(serde_json::Value::Bool(*b)),
+        v1_interpreter::Value::Int(n) => Ok(serde_json::json!(*n)),
+        v1_interpreter::Value::Float(f) => Ok(serde_json::json!(*f)),
+        v1_interpreter::Value::Str(s) => {
+            if s.starts_with('[') || s.starts_with('{') {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(s) {
+                    return Ok(parsed);
+                }
+            }
+            Ok(serde_json::Value::String(s.clone()))
+        }
+        v1_interpreter::Value::List(items) => {
+            let mut arr = Vec::with_capacity(items.len());
+            for item in items.iter() {
+                arr.push(value_to_wire_json(item, ctx)?);
+            }
+            Ok(serde_json::Value::Array(arr))
+        }
+        v1_interpreter::Value::Set(members) => Ok(serde_json::Value::Array(
+            members
+                .iter()
+                .map(|s| serde_json::Value::String(s.clone()))
+                .collect(),
+        )),
+        v1_interpreter::Value::Map(m) => {
+            let mut obj = serde_json::Map::new();
+            for (k, v) in m.iter() {
+                let key = match k.value_ref() {
+                    v1_interpreter::Value::Str(s) => s.clone(),
+                    other => {
+                        return Err(format!(
+                            "cannot serialize map with non-string key to JSON (got {other:?} key)"
+                        ))
+                    }
+                };
+                obj.insert(key, value_to_wire_json(v, ctx)?);
+            }
+            Ok(serde_json::Value::Object(obj))
+        }
+        v1_interpreter::Value::Record { fields, .. } => {
+            let mut obj = serde_json::Map::new();
+            for (k, v) in fields.iter() {
+                if matches!(v, v1_interpreter::Value::Null) {
+                    continue;
+                }
+                obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+            }
+            Ok(serde_json::Value::Object(obj))
+        }
+        v1_interpreter::Value::Unit => Ok(serde_json::Value::Null),
+        v1_interpreter::Value::Closure { .. } => {
+            Ok(serde_json::Value::String("<closure>".to_string()))
+        }
+        v1_interpreter::Value::Fn { node } => {
+            Ok(serde_json::Value::String(format!("<fn {}>", node.name)))
+        }
+    }
+}
+
+fn serialize_variant_to_wire_json(
+    type_name: &str,
+    variant_name: &str,
+    fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
+    ctx: &v1_interpreter::InterpContext,
+) -> WireSerializeResult<serde_json::Value> {
+    use crate::v1_compiler_emit_rust::{
+        policy_is_string_variant, policy_is_untagged, policy_serde_tag_field,
+        rust_serde_tag_attr, rust_tagged_object_policy, wire_variant_tag_for_policy,
+    };
+    let policy = resolve_coproduct_wire_policy(
+        type_name,
+        ctx.modules.iter().as_ref(),
+        ctx.source_indices.as_ref(),
+    )
+    .unwrap_or_else(|| rust_tagged_object_policy());
+
+    if policy.error_message.is_some() {
+        return Err(policy
+            .error_message
+            .clone()
+            .unwrap_or_else(|| format!("wire policy error for coproduct {type_name}")));
+    }
+
+    if policy_is_untagged(policy.clone()) {
+        return serialize_untagged_variant(fields, ctx);
+    }
+
+    if policy_is_string_variant(policy.clone()) {
+        let tag = wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
+            .ok_or_else(|| format!("no wire tag for string variant {type_name}::{variant_name}"))?;
+        return Ok(serde_json::Value::String(tag));
+    }
+
+    if let Some(tag_field) = policy_serde_tag_field(policy.clone()) {
+        let wire_tag = wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
+            .ok_or_else(|| {
+                format!("no wire tag for internally-tagged variant {type_name}::{variant_name}")
+            })?;
+        let mut obj = serde_json::Map::new();
+        obj.insert(tag_field, serde_json::Value::String(wire_tag));
+        for (k, v) in fields.iter() {
+            if matches!(v, v1_interpreter::Value::Null) {
+                continue;
+            }
+            obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+        }
+        return Ok(serde_json::Value::Object(obj));
+    }
+
+    let tag_key = policy_serde_tag_field(policy.clone()).unwrap_or_else(|| "_variant".to_string());
+    let default_tag = if policy.enum_attr == rust_serde_tag_attr() {
+        variant_name.to_string()
+    } else {
+        wire_variant_tag_for_policy(variant_name.to_string(), policy.clone())
+            .unwrap_or_else(|| variant_name.to_string())
+    };
+    let mut obj = serde_json::Map::new();
+    obj.insert(tag_key, serde_json::Value::String(default_tag));
+    for (k, v) in fields.iter() {
+        if matches!(v, v1_interpreter::Value::Null) {
+            continue;
+        }
+        obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+    }
+    Ok(serde_json::Value::Object(obj))
+}
+
+fn serialize_untagged_variant(
+    fields: &[(v1_interpreter::Symbol, v1_interpreter::Value)],
+    ctx: &v1_interpreter::InterpContext,
+) -> WireSerializeResult<serde_json::Value> {
+    let mut values: Vec<serde_json::Value> = fields
+        .iter()
+        .map(|(_, v)| v)
+        .filter(|v| !matches!(v, v1_interpreter::Value::Null))
+        .map(|v| value_to_wire_json(v, ctx))
+        .collect::<Result<Vec<_>, _>>()?;
+    match values.len() {
+        0 => Ok(serde_json::Value::Null),
+        1 => Ok(values.remove(0)),
+        _ => {
+            let mut obj = serde_json::Map::new();
+            for (k, v) in fields.iter() {
+                if matches!(v, v1_interpreter::Value::Null) {
+                    continue;
+                }
+                obj.insert(wire_resolve_sym(ctx, *k), value_to_wire_json(v, ctx)?);
+            }
+            Ok(serde_json::Value::Object(obj))
+        }
+    }
+}
+
 #[cfg(test)]
 mod import_closure_equivalence_tests {
     use super::{

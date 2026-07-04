@@ -31,7 +31,7 @@ use crate::v1_std_core::{
     FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan,
     StringPart, UnaryOpKind, VarBindingKind,
 };
-use crate::wire_value_serialize::value_to_wire_json;
+use crate::cli_run::value_to_wire_json;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Symbol(u32);
