@@ -1,0 +1,60 @@
+module extdeps.ebay.errors
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.ebay.contracts { error_category_wire_contract }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.ebay.com/api-docs/static/handling-error-messages.html"
+  }
+}
+
+type EbayErrorCategory
+  = Application
+  | Business
+  | Request
+
+data structural_coverage_gap_error_category_codec_hand_rolled: List<String> = [
+  "parse_error_category and error_category_wire_label hand-roll the ScreamingSnakeCase mapping",
+  "already declared in error_category_wire_contract. Dissolve when the codec-from-contract bridge",
+  "derives decode and encode from CoproductWireContract rows directly."
+]
+
+fn error_category_wire_label(c: EbayErrorCategory) -> String {
+  match c {
+    Application => "APPLICATION"
+    Business => "BUSINESS"
+    Request => "REQUEST"
+  }
+}
+
+fn parse_error_category(raw: String) -> EbayErrorCategory? {
+  if raw == "APPLICATION" { Present { value: Application } }
+  else if raw == "BUSINESS" { Present { value: Business } }
+  else if raw == "REQUEST" { Present { value: Request } }
+  else { none }
+}
+
+type EbayErrorParameter {
+  name: String
+  value: String
+}
+
+type EbayError {
+  errorId: Int
+  domain: String
+  subdomain: String?
+  category: EbayErrorCategory
+  message: String
+  longMessage: String?
+  inputRefIds: List<String>?
+  outputRefIds: List<String>?
+  parameters: List<EbayErrorParameter>?
+}
+
+type EbayErrorShape {
+  errors: List<EbayError>
+  warnings: List<EbayError>?
+}

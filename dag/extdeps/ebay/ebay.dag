@@ -1,0 +1,93 @@
+module extdeps.ebay.ebay
+
+import std.types { NonEmptyStr }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.ebay.contracts { marketplace_wire_contract }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.ebay.com/api-docs/static/ebay-rest-landing.html"
+  }
+}
+
+type EbayEnvironment = Production | Sandbox
+
+data production_api_base: NonEmptyStr = "https://api.ebay.com"
+
+data sandbox_api_base: NonEmptyStr = "https://api.sandbox.ebay.com"
+
+fn ebay_api_base(env: EbayEnvironment) -> NonEmptyStr {
+  match env {
+    Production => production_api_base
+    Sandbox => sandbox_api_base
+  }
+}
+
+type MarketplaceEnum
+  = EbayUs
+  | EbayMotors
+  | EbayCa
+  | EbayGb
+  | EbayAu
+  | EbayAt
+  | EbayBe
+  | EbayCh
+  | EbayDe
+  | EbayEs
+  | EbayFr
+  | EbayIe
+  | EbayIt
+  | EbayNl
+  | EbayPl
+
+data structural_coverage_gap_marketplace_enum_residue: List<String> = [
+  "upstream ba:MarketplaceIdEnum enumerates ~40 marketplaces; the rows above are the majors",
+  "extend on demand when a consumer targets a marketplace outside this set"
+]
+
+data structural_coverage_gap_marketplace_codec_hand_rolled: List<String> = [
+  "parse_marketplace and marketplace_wire_label hand-roll the ScreamingSnakeCase mapping",
+  "already declared in marketplace_wire_contract. Dissolve when the codec-from-contract bridge",
+  "derives decode and encode from CoproductWireContract rows directly."
+]
+
+fn marketplace_wire_label(m: MarketplaceEnum) -> String {
+  match m {
+    EbayUs => "EBAY_US"
+    EbayMotors => "EBAY_MOTORS"
+    EbayCa => "EBAY_CA"
+    EbayGb => "EBAY_GB"
+    EbayAu => "EBAY_AU"
+    EbayAt => "EBAY_AT"
+    EbayBe => "EBAY_BE"
+    EbayCh => "EBAY_CH"
+    EbayDe => "EBAY_DE"
+    EbayEs => "EBAY_ES"
+    EbayFr => "EBAY_FR"
+    EbayIe => "EBAY_IE"
+    EbayIt => "EBAY_IT"
+    EbayNl => "EBAY_NL"
+    EbayPl => "EBAY_PL"
+  }
+}
+
+fn parse_marketplace(raw: String) -> MarketplaceEnum? {
+  if raw == "EBAY_US" { Present { value: EbayUs } }
+  else if raw == "EBAY_MOTORS" { Present { value: EbayMotors } }
+  else if raw == "EBAY_CA" { Present { value: EbayCa } }
+  else if raw == "EBAY_GB" { Present { value: EbayGb } }
+  else if raw == "EBAY_AU" { Present { value: EbayAu } }
+  else if raw == "EBAY_AT" { Present { value: EbayAt } }
+  else if raw == "EBAY_BE" { Present { value: EbayBe } }
+  else if raw == "EBAY_CH" { Present { value: EbayCh } }
+  else if raw == "EBAY_DE" { Present { value: EbayDe } }
+  else if raw == "EBAY_ES" { Present { value: EbayEs } }
+  else if raw == "EBAY_FR" { Present { value: EbayFr } }
+  else if raw == "EBAY_IE" { Present { value: EbayIe } }
+  else if raw == "EBAY_IT" { Present { value: EbayIt } }
+  else if raw == "EBAY_NL" { Present { value: EbayNl } }
+  else if raw == "EBAY_PL" { Present { value: EbayPl } }
+  else { none }
+}
