@@ -1923,7 +1923,44 @@ fn match_pattern(
             name,
             parent_enum,
             field_bindings,
-        } => match value {
+        } => {
+            // Kernel-optional / witness raw representation (value-or-Null):
+            // the `_ if Present+Optional` / `_ if Holds+Witness` unwrap arms
+            // below the kind-specific arms were UNREACHABLE for Record/List/
+            // Str/Int payloads — Value::Record etc. match their kind arm
+            // first and return None from inside it, so
+            // `match xs |> first { Present { value: t } => ... }` failed
+            // non-exhaustive on any record element (pre-existing on main;
+            // located via the interpreted-parse suite reds). Hoisted here
+            // verbatim; Variant payloads are excluded so the Variant arm's
+            // inline raw-value handling stays authoritative.
+            if name == "Present"
+                && parent_enum.as_deref() == Some("Optional")
+                && !matches!(value, Value::Null)
+                && !matches!(value, Value::Variant { .. })
+            {
+                let mut bindings = HashMap::new();
+                for fb in field_bindings.iter() {
+                    let fb_pat = field_binding_pattern(fb.clone());
+                    let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                    bindings.extend(sub_bindings);
+                }
+                return Some(bindings);
+            }
+            if name == "Holds"
+                && parent_enum.as_deref() == Some("Witness")
+                && !matches!(value, Value::Null)
+                && !matches!(value, Value::Variant { .. })
+            {
+                let mut bindings = HashMap::new();
+                for fb in field_bindings.iter() {
+                    let fb_pat = field_binding_pattern(fb.clone());
+                    let sub_bindings = match_pattern(&fb_pat, value, ctx)?;
+                    bindings.extend(sub_bindings);
+                }
+                return Some(bindings);
+            }
+            match value {
             Value::Variant {
                 variant_name,
                 fields,
@@ -2129,7 +2166,8 @@ fn match_pattern(
                 Some(bindings)
             }
             _ => None,
-        },
+        }
+        }
     }
 }
 

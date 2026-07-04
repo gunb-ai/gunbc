@@ -63,6 +63,8 @@ mod int_pow_bounded_test;
 #[cfg(test)]
 mod interp_dry_run_test;
 #[cfg(test)]
+mod kernel_shadow_seams_test;
+#[cfg(test)]
 mod interp_stats_test;
 #[cfg(test)]
 mod interp_string_family_cast_test;
