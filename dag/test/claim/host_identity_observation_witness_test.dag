@@ -10,7 +10,7 @@ import gunbc.host_effect {
   HostOs,
   LocalShell,
   ShellCommand,
-  OneShotIdempotent,
+  host_effect_identity_evidence,
 }
 import gunbc.host_effect_realize { host_effect_apply }
 import std.realization_reconcile { reconciliation_converged }
@@ -124,7 +124,7 @@ fn witness_host_effect_apply_failure_is_not_observation() -> Bool {
     r: host_effect_apply(
       target: srv1_os_target(),
       effect: ShellCommand { script: "exit 1" },
-      policy: OneShotIdempotent,
+      evidence: host_effect_identity_evidence,
       transport: LocalShell
     ),
     probed_at: "2026-07-02"

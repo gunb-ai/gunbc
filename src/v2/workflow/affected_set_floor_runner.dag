@@ -32,6 +32,13 @@ type FloorWitnessRow {
   function: String
 }
 
+// Declared on a `test fn` line (or its body) when the witness reads the live tree
+// via host intrinsics. The claim_executor host-scaffold classifier honors this
+// marker so detection is not limited to Rust substring heuristics alone.
+// DISSOLVE-ON: ROADMAP `2-host-scaffold-classifier-defork` — substrate-declared
+// `reads_live_tree` disposition on TestClaim rows.
+data floor_host_scaffold_witness_marker: String = "floor:host_scaffold"
+
 type FloorDiffLineTouch {
   path: String
   start_line: Int
@@ -165,13 +172,10 @@ fn floor_host_scaffold_would_skip(
   function_edited: Bool,
   entry_file_touched: Bool
 ) -> Bool {
-  floor_kernel_would_skip(
-    changed_paths: changed_paths,
-    frontier_nodes: frontier_nodes,
-    touches_frontier: touches_frontier,
-    function_edited: function_edited,
-    entry_file_touched: entry_file_touched
-  )
+  // Host-scan walls read the live tree via host intrinsics (`layer_import_facts`,
+  // `*_facts_live`, …). Node-frontier skip is unsound for them: an unrelated diff
+  // can leave a corpus-wide violation red while the witness is assumed green.
+  false
 }
 
 fn floor_precompute_would_skip(
@@ -221,12 +225,9 @@ fn floor_host_scaffold_precompute_would_skip(
   edited_test_fn_count: Int,
   touched_entry_file_count: Int
 ) -> Bool {
-  floor_kernel_precompute_would_skip(
-    changed_paths: changed_paths,
-    frontier_node_count: frontier_node_count,
-    edited_test_fn_count: edited_test_fn_count,
-    touched_entry_file_count: touched_entry_file_count
-  )
+  // Conservative: host-scaffold witnesses in the corpus always run, so the
+  // whole-tree published-mock precompute they may depend on must not be skipped.
+  false
 }
 
 fn floor_witness_eval_nodes_from_claims(claims: List<TestClaim>) -> List<Node> {

@@ -35,19 +35,29 @@ data realization_edge_path_prefixes: List<String> = [
 ]
 
 data realization_vocab_exception_roster: List<String> = [
+  "dag/extdeps/bmc/webui/nbd_proxy_serve.dag",
+  "dag/extdeps/os/ubuntu_install_media_fetch.dag",
+  "dag/extdeps/os/ubuntu_seeded_install_media_remaster.dag",
   "dag/gunbc/node_http_server_emit.dag",
-  "dag/gunbc/ci_yaml_validate.dag",
+  "dag/gunbc/srv3_os_install_actuate.dag",
+  "dag/tools/auth_declared_but_unwired_witness_transport.dag",
   "dag/tools/build_step.dag",
   "dag/tools/build_step_transport.dag",
+  "dag/tools/dag_compile_clean_shard_transport.dag",
   "dag/tools/dag_compile_clean_transport.dag",
+  "dag/tools/effects_rest_transport_witness_transport.dag",
   "dag/tools/emit_determinism_transport.dag",
   "dag/tools/emit_host_transport.dag",
   "dag/tools/extdeps_external_authority_transport.dag",
+  "dag/tools/floor_skip_discovery_witness_transport.dag",
   "dag/tools/host_prelude.dag",
+  "dag/tools/infer_semantics_witness_transport.dag",
+  "dag/tools/interp_recorded_fixture_witness_transport.dag",
   "dag/tools/layering_imports_transport.dag",
   "dag/tools/regen_verify_transport.dag",
   "dag/tools/self_host_realized_comparison_transport.dag",
   "dag/tools/v1_dag_parse_transport.dag",
+  "src/v2/workflow/bash_program_emit.dag",
   "src/v2/workflow/compiler_closure_ingest_transport.dag",
   "src/v2/workflow/floor_diff_observe.dag",
   "src/v2/workflow/self_host_realized_comparison_gate.dag",
@@ -65,6 +75,14 @@ data realization_vocab_consumer_scan_roots: List<String> = [
   "src/v2/compiler",
   "src/v2/workflow",
   "src/v2/lens"
+]
+
+data bash_program_module: String = "extdeps.languages.bash.program"
+data bash_program_importer_count_baseline: Int = 33
+
+data bash_program_importer_scan_roots: List<String> = [
+  "src/v2",
+  "dag"
 ]
 
 type RealizationVocabularyLeak {
@@ -224,6 +242,40 @@ fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
   realization_vocab_roster_sound(
     roster: realization_vocab_exception_roster,
     live_leak_paths: realization_vocab_live_leak_candidate_paths(scan_roots: scan_roots)
+  )
+}
+
+fn importer_count_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
+  live_count <= baseline
+}
+
+fn bash_program_importer_count(facts: List<LayerImportFact>) -> Int {
+  fold_list(
+    xs: facts,
+    empty: 0,
+    cons: fn(count, fact) {
+      if fact.import_module == bash_program_module {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn bash_program_importer_count_live() -> Int {
+  bash_program_importer_count(
+    facts: layer_import_facts_live(
+      std_roots: bash_program_importer_scan_roots,
+      extdeps_roots: []
+    )
+  )
+}
+
+fn bash_program_importer_count_ratchet_holds() -> Bool {
+  importer_count_ratchet_holds(
+    live_count: bash_program_importer_count_live(),
+    baseline: bash_program_importer_count_baseline
   )
 }
 

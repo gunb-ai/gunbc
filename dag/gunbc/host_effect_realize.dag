@@ -3,10 +3,12 @@ module gunbc.host_effect_realize
 import gunbc.host_effect {
   HostEffect, ShellCommand, RedfishAction,
   NodeControlPlane, HostOs, BmcController,
-  Policy, OneShotIdempotent, ConvergeToFixpoint,
+  Drive, OneShot, ConvergeLoop,
   HostEffectIntent, HostEffectEvidence, ShellEffectApplied,
   HostEffectTransport, LocalShell, SshShell,
+  host_effect_drive,
 }
+import std.effects { IdempotencyEvidence }
 import std.realization_reconcile {
   Reconciliation, Converged, NotConverged,
   ReadObserved, Grounds, DoesNotGround,
@@ -111,11 +113,11 @@ fn realize_shell_on_host(script: String, transport: HostEffectTransport, intent:
   )
 }
 
-fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, policy: Policy, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
+fn host_effect_apply(target: NodeControlPlane, effect: HostEffect, evidence: IdempotencyEvidence, transport: HostEffectTransport) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let intent = HostEffectIntent {
     target: target,
     effect: effect,
-    policy: policy,
+    evidence: evidence,
     transport: transport,
     privilege_denial: none,
   }
@@ -141,14 +143,14 @@ fn host_effect_apply_gated(
   access: DeployAccess,
   target: NodeControlPlane,
   effect: HostEffect,
-  policy: Policy,
+  evidence: IdempotencyEvidence,
   transport: HostEffectTransport,
   fixture_actor: DeployAccessActor?
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   let intent = HostEffectIntent {
     target: target,
     effect: effect,
-    policy: policy,
+    evidence: evidence,
     transport: transport,
     privilege_denial: none,
   }
@@ -167,7 +169,7 @@ fn host_effect_apply_gated(
         applied: HostEffectIntent {
           target: target,
           effect: effect,
-          policy: policy,
+          evidence: evidence,
           transport: transport,
           privilege_denial: Present { value: verdict },
         },
@@ -177,25 +179,25 @@ fn host_effect_apply_gated(
 
 type ConvergeDirective = Settled | ReDrive | Refused { reason: String }
 
-fn not_converged_directive(policy: Policy) -> ConvergeDirective {
-  match policy {
-    OneShotIdempotent => Settled
-    ConvergeToFixpoint => ReDrive
+fn not_converged_directive(drive: Drive) -> ConvergeDirective {
+  match drive {
+    OneShot => Settled
+    ConvergeLoop => ReDrive
   }
 }
 
-fn host_effect_policy_directive(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ConvergeDirective {
+fn host_effect_drive_directive(r: Reconciliation<HostEffectIntent, HostEffectEvidence>) -> ConvergeDirective {
   match r {
     Converged { evidence: _, applied: _ } => Settled
     NotConverged { reason: why, applied: intent } =>
       match intent.privilege_denial {
         Present { value: Deny { reason: _ } } => Refused { reason: why }
-        Present { value: Permit } => not_converged_directive(policy: intent.policy)
+        Present { value: Permit } => not_converged_directive(drive: host_effect_drive(intent: intent))
         Absent =>
           match resolve_host_effect_cell(target: intent.target, effect: intent.effect) {
             IncompatibleCell { reason: inner_why } => Refused { reason: inner_why }
-            ShellOnHost { node: _, script: _ } => not_converged_directive(policy: intent.policy)
-            RedfishOnBmc { node: _, action: _ } => not_converged_directive(policy: intent.policy)
+            ShellOnHost { node: _, script: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
+            RedfishOnBmc { node: _, action: _ } => not_converged_directive(drive: host_effect_drive(intent: intent))
           }
       }
   }

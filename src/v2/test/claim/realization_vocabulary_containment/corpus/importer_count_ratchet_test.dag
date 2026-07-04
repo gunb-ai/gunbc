@@ -1,0 +1,40 @@
+module v2.test.realization_vocabulary_containment.corpus.importer_count_ratchet
+
+import v2.lens.layering_imports { LayerImportFact }
+import v2.lens.realization_vocabulary_containment {
+  bash_program_importer_count,
+  bash_program_importer_count_baseline,
+  bash_program_importer_count_ratchet_holds,
+  bash_program_module,
+  importer_count_ratchet_holds
+}
+import v2.std.collection { List }
+import v2.std.layer { LayerPrefixStd }
+import v2.std.logic { Bool }
+
+test fn corpus_bash_program_importer_count_ratchet_holds() -> Bool {
+  bash_program_importer_count_ratchet_holds()
+}
+
+test fn bash_program_importer_count_planted_growth_red_holds() -> Bool {
+  importer_count_ratchet_holds(
+    live_count: bash_program_importer_count_baseline + 1,
+    baseline: bash_program_importer_count_baseline
+  ) == false
+}
+
+data planted_extra_importer_facts: List<LayerImportFact> = [
+  LayerImportFact {
+    layer: LayerPrefixStd,
+    path: "dag/tools/_perturb_fresh_bash_program_consumer.dag",
+    import_module: bash_program_module
+  }
+]
+
+test fn bash_program_importer_count_planted_fact_red_holds() -> Bool {
+  bash_program_importer_count(facts: planted_extra_importer_facts) == 1
+    && importer_count_ratchet_holds(
+      live_count: bash_program_importer_count_baseline + 1,
+      baseline: bash_program_importer_count_baseline
+    ) == false
+}
