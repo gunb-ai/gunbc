@@ -625,6 +625,37 @@ pub(crate) fn module_graph_facts_build_count_for_test() -> usize {
     MODULE_GRAPH_FACTS_BUILD_COUNT.load(std::sync::atomic::Ordering::SeqCst)
 }
 
+#[cfg(test)]
+mod shared_cache_collision_guard_tests {
+    use super::check_module_source_identity;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+
+    // Collision-honesty receipt (union-resolve §6.3): the shared typed-module cache's
+    // source-identity guard fails LOUD when one module name resolves from two declaring files
+    // in a process, and stays green when the same file is re-seen through many import paths.
+    // This is the guard exercised by execution with a red control — not an inert wall.
+    #[test]
+    fn source_identity_flags_coresidence_collision_but_allows_reexport() {
+        let reg: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+        // First sight records the identity.
+        assert!(check_module_source_identity(&reg, "std.foo", "dag/std/foo.dag").is_ok());
+        // GREEN control: the SAME module reached again (a legitimate re-export / second
+        // import path) is benign — one authority, many hops — so no error.
+        assert!(check_module_source_identity(&reg, "std.foo", "dag/std/foo.dag").is_ok());
+        // A distinct name from a distinct file is fine.
+        assert!(check_module_source_identity(&reg, "std.bar", "dag/std/bar.dag").is_ok());
+        // RED control: the same name from a DIFFERENT declaring file is the co-residence
+        // surprise — a loud typed error, never a silently divergent resolution.
+        let err = check_module_source_identity(&reg, "std.foo", "src/v2/std/foo.dag")
+            .expect_err("a colliding module name from a second file must fail closed");
+        assert!(
+            err.contains("co-residence collision") && err.contains("std.foo"),
+            "collision error must name the module and the seam: {err}"
+        );
+    }
+}
+
 pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsLive {
     #[cfg(test)]
     MODULE_GRAPH_FACTS_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
@@ -850,6 +881,43 @@ thread_local! {
             ),
         >,
     > = RefCell::new(HashMap::new());
+
+    // The thread's ONE shared resolve index (union-resolve S1,
+    // docs/plans/resolver-graph-major-design.md §7). Every fixed-entry consumer routed
+    // through resolve_entry_graph_shared (the executor prelude: plan entry + output
+    // policy + group syntax, plus the floor runner) resolves against this single
+    // MultiEntryIndex, so its parse/typed caches share the union of all those closures:
+    // the shared std/spec prefix typechecks ONCE, not once per prelude entry. Keyed by
+    // source_roots — a run's roots are fixed, so this is a get-or-build, rebuilt only on
+    // the rare roots change. Thread-local by the same Rc-not-Send reason as the store:
+    // each shard keeps its own index rather than smuggling Rc across threads.
+    #[allow(clippy::type_complexity)]
+    static PROCESS_RESOLVE_INDEX: RefCell<Option<(String, Rc<MultiEntryIndex>)>> =
+        const { RefCell::new(None) };
+}
+
+/// The thread-local shared resolve index for `source_roots` (union-resolve S1). Built once
+/// per (thread, roots) and reused, so consumers that resolve distinct entries against it
+/// share one typed_module_cache — the union closure typechecks once per node.
+fn process_shared_index(source_roots: &[String]) -> Rc<MultiEntryIndex> {
+    let roots_key = source_roots.join("\u{1f}");
+    let existing = PROCESS_RESOLVE_INDEX.with(|s| {
+        s.borrow().as_ref().and_then(|(k, idx)| {
+            if *k == roots_key {
+                Some(idx.clone())
+            } else {
+                None
+            }
+        })
+    });
+    if let Some(idx) = existing {
+        return idx;
+    }
+    let idx = Rc::new(build_multi_entry_index(source_roots));
+    PROCESS_RESOLVE_INDEX.with(|s| {
+        *s.borrow_mut() = Some((roots_key, idx.clone()));
+    });
+    idx
 }
 
 pub fn resolve_entry_graph_shared(
@@ -867,7 +935,12 @@ pub fn resolve_entry_graph_shared(
     if let Some(found) = hit {
         return Ok(found);
     }
-    let resolved = resolve_entry_graph(source_roots, entry_file)?;
+    // Resolve through the thread's shared index instead of a fresh per-call module index.
+    // resolve_entry_with_index is proven behaviorally identical to the cold resolve_entry_graph
+    // by resolve_typed_cache_equivalence_test (cached == cold across every resolve order); the
+    // win is that the union of all fixed-entry closures now typechecks once per node.
+    let index = process_shared_index(source_roots);
+    let resolved = resolve_entry_with_index(&index, entry_file)?;
     PROCESS_RESOLVE_STORE.with(|s| {
         s.borrow_mut().insert(key, resolved.clone());
     });
@@ -880,6 +953,35 @@ pub struct MultiEntryIndex {
     intern_table: RefCell<Rc<InternTable>>,
     parse_cache: RefCell<HashMap<String, (Rc<v1_compiler_parse::ParseResult>, Rc<NewlineIndex>)>>,
     typed_module_cache: RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
+    // Collision-honesty registry for the shared typed_module_cache (union-resolve
+    // receipt §6.3, docs/plans/resolver-graph-major-design.md). The typed cache is
+    // keyed by authored module name and reused across every entry that co-resides in
+    // this index, so a name that maps to two DIFFERENT declaring files must fail loud
+    // — never silently serve one file's typecheck for the other's. Records
+    // mod_name → declaring_file; a mismatch on a later co-resolve is a typed error.
+    module_source_identity: RefCell<HashMap<String, String>>,
+}
+
+// Once-per-node resolve receipt (union-resolve minimum-upper-bound contract, §6.2 of
+// docs/plans/resolver-graph-major-design.md). Counts how many module typechecks were
+// actually COMPUTED (cache misses) on this thread. When every consumer of the process
+// shares one index, this stays == the distinct module count of the union closure — the
+// enforced form of "a process's resolve cost is ≤ 1× its union closure, never N×". A
+// private re-resolve sneaking back would push computes above distinct nodes.
+thread_local! {
+    static TYPECHECK_COMPUTE_COUNT: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+pub fn typecheck_compute_count() -> usize {
+    TYPECHECK_COMPUTE_COUNT.with(|c| c.get())
+}
+
+pub fn reset_typecheck_compute_count() {
+    TYPECHECK_COMPUTE_COUNT.with(|c| c.set(0));
+}
+
+fn bump_typecheck_compute_count() {
+    TYPECHECK_COMPUTE_COUNT.with(|c| c.set(c.get().saturating_add(1)));
 }
 
 fn seed_kernel_intern_names(table: Rc<InternTable>) -> Rc<InternTable> {
@@ -903,6 +1005,7 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
         intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
         parse_cache: RefCell::new(HashMap::new()),
         typed_module_cache: RefCell::new(HashMap::new()),
+        module_source_identity: RefCell::new(HashMap::new()),
     }
 }
 
@@ -1054,7 +1157,8 @@ fn resolve_entry_with_parse_cache(
         source_indices.clone(),
         global_table,
         &index.typed_module_cache,
-    );
+        &index.module_source_identity,
+    )?;
 
     for d in typed.diagnostics.iter() {
         log_discovery_advisory_typecheck(d, &source_indices, typecheck_gate);
@@ -1090,12 +1194,46 @@ fn resolve_entry_with_parse_cache(
     Ok((typed, source_indices))
 }
 
+/// Collision-honesty check for the shared typed-module cache (union-resolve receipt §6.3,
+/// docs/plans/resolver-graph-major-design.md). The typed cache is keyed by authored module
+/// name and reused across every entry that co-resides in one process's shared index, so a
+/// name that maps to two DIFFERENT declaring files is a co-residence surprise: serving one
+/// file's typecheck for the other's would be a §5 fail-open (a divergent resolution passing
+/// as plausible). This fails loud instead. Re-seeing the SAME (name, file) — one module
+/// reached through many import paths — is benign and records nothing new; first sight records
+/// the identity, a later mismatch is a typed error. `build_module_index` already walls
+/// tree-wide module-path collisions at index build; this is the same wall at the cache seam
+/// the union widens (e.g. an on-disk entry whose module path shadows an indexed module,
+/// reached via `entry_source_from_index_or_disk`).
+fn check_module_source_identity(
+    registry: &RefCell<HashMap<String, String>>,
+    mod_name: &str,
+    decl_file: &str,
+) -> Result<(), String> {
+    if let Some(prev_file) = registry.borrow().get(mod_name).cloned() {
+        if prev_file != decl_file {
+            return Err(format!(
+                "co-residence collision: module '{mod_name}' resolved from two files \
+                 ('{prev_file}' and '{decl_file}') in one process — one module, one authority \
+                 (DESIGN §3). The shared resolve store fails loud rather than silently serving \
+                 a divergent module (resolver-graph-major-design.md §6.3)."
+            ));
+        }
+        return Ok(());
+    }
+    registry
+        .borrow_mut()
+        .insert(mod_name.to_string(), decl_file.to_string());
+    Ok(())
+}
+
 fn reconcile_with_typed_cache(
     graph: Rc<v1_compiler_resolve::ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
     typed_cache: &RefCell<HashMap<String, Rc<v1_compiler_infer::TypecheckModuleResult>>>,
-) -> Rc<ResolvedGraph> {
+    module_identity: &RefCell<HashMap<String, String>>,
+) -> Result<Rc<ResolvedGraph>, String> {
     reset_type_env_lookup_profile();
     let mut modules: Rc<Vec<Rc<TypedModule>>> = Rc::new(Vec::new());
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
@@ -1109,10 +1247,25 @@ fn reconcile_with_typed_cache(
             source_indices.clone(),
         );
         let mod_name = authored_name_at(source_indices.clone(), resolved.module.clone());
+        // Collision-honesty guard (union-resolve receipt §6.3): the typed cache is keyed by
+        // authored name and shared across every co-resident entry, so a name that resolves
+        // from two DIFFERENT declaring files in one process is a co-residence surprise — the
+        // shared store must fail loud here, never silently serve one file's typecheck for the
+        // other's (that would be a §5 fail-open: a divergent resolution passing as plausible).
+        // build_module_index already walls tree-wide module-path collisions at index build;
+        // this is the same wall at the cache seam the union widens (e.g. an on-disk entry whose
+        // module path shadows an indexed module reached via entry_source_from_index_or_disk).
+        // Normalize to the workspace-relative form so a module reached both index-loaded
+        // (absolute path) and via the disk-entry fallback (relative path) is recognized as ONE
+        // authority — the guard must fire on genuinely different files, not path representations.
+        let decl_file = workspace_relative_repo_path(&resolved.module.span.file);
+        check_module_source_identity(module_identity, &mod_name, &decl_file)?;
         let cached = typed_cache.borrow().get(&mod_name).cloned();
         let tc_result = match cached {
             Some(hit) => hit,
             None => {
+                // Once-per-node receipt (§6.2): count only genuine computes (cache misses).
+                bump_typecheck_compute_count();
                 if phase_profile::phase_profile_enabled() {
                     eprintln!("[typecheck-attribution] module={mod_name} start");
                 }
@@ -1168,12 +1321,12 @@ fn reconcile_with_typed_cache(
         v1_compiler_infer::rewire_func_env_parent_links(modules.clone(), source_indices.clone());
     let emit_graph_info = v1_compiler_infer::build_emit_graph_info(modules.clone());
     maybe_print_type_env_lookup_profile();
-    Rc::new(ResolvedGraph {
+    Ok(Rc::new(ResolvedGraph {
         modules,
         item_registry: expanded_registry,
         diagnostics,
         emit_graph_info,
-    })
+    }))
 }
 
 fn format_error_loc(file: &str, start: i64, si: &HashMap<String, Rc<NewlineIndex>>) -> String {
@@ -4170,7 +4323,7 @@ fn entry_touches_frontier_seeds(
 // is the I/O + frontier-input bridge only, not a second skip policy.
 // Dissolve-on: `affected_set_reading_from_git_diff_provenance` + floor-runtime provenance ingest
 // expose edit-locus → delete `floor_diff_edits_from_line_ranges`, `rerun_frontier_nodes_for_entry`,
-// `entry_touches_rerun_frontier`, and the `resolve_floor_runner_context` host wrappers (census:
+// `entry_touches_rerun_frontier`, and the inline floor-runner `resolve_entry_with_index` (census:
 // `rg 'floor_diff_edits_from_line_ranges|rerun_frontier_nodes_for_entry' src/v1/stage0/src/cli_run.rs`
 // must be empty). `entry_file_touched` is marshaled from the entry's transitive import-closure
 // (not entry-path equality alone) so cross-file helper-fn edits fail-closed for importers until
@@ -4189,18 +4342,6 @@ struct FloorDiffEdits {
 const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
 // Keep in sync with `floor_host_scaffold_witness_marker` in affected_set_floor_runner.dag.
 const FLOOR_HOST_SCAFFOLD_WITNESS_MARKER: &str = "floor:host_scaffold";
-
-fn resolve_floor_runner_context(
-    source_roots: &[String],
-) -> Result<
-    (
-        Rc<v1_compiler_compile::ResolvedGraph>,
-        Rc<HashMap<String, Rc<NewlineIndex>>>,
-    ),
-    String,
-> {
-    resolve_entry_graph_shared(source_roots, FLOOR_RUNNER_ENTRY)
-}
 
 fn call_floor_kernel_would_skip(
     ctx: &v1_interpreter::InterpContext,
@@ -4721,11 +4862,17 @@ pub fn run_discovery_corpus_with_options(
     let line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let changed_paths: Vec<String> = line_ranges_by_file.keys().cloned().collect();
+    // Union-resolve S1 (docs/plans/resolver-graph-major-design.md §7): ONE index for the
+    // whole process step. Frontier attribution, the floor runner context, and every roster
+    // row resolve against this single MultiEntryIndex, so the union of their closures — the
+    // shared std/spec prefix above all — typechecks once per node instead of once per
+    // consumer. Previously the frontier build, the floor runner (via a separate thread-local
+    // store), and the rows each carried a private cold cache of that same prefix.
+    let index = build_multi_entry_index(source_roots);
     let (skip_enabled, diff_edits) =
         if options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty() {
-            let frontier_index = build_multi_entry_index(source_roots);
             match floor_diff_edits_from_line_ranges(
-                &frontier_index,
+                &index,
                 &line_ranges_by_file,
                 &changed_new_lines_by_file,
             ) {
@@ -4742,7 +4889,10 @@ pub fn run_discovery_corpus_with_options(
             (false, FloorDiffEdits::default())
         };
     let floor_runner_ctx = if options.skip_unaffected_node_frontier {
-        match resolve_floor_runner_context(source_roots) {
+        // Resolve the floor runner through the SAME shared index as the rows (union-resolve
+        // S1) rather than a private per-call resolve — its closure shares the std/spec prefix
+        // with the roster, so co-resolving here means that prefix is not typechecked twice.
+        match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
             Ok((graph, source_indices)) => {
                 Some(make_eval_context(&graph, source_indices, execution_mode))
             }
@@ -4809,8 +4959,6 @@ pub fn run_discovery_corpus_with_options(
             }
         }
     };
-    let index = build_multi_entry_index(source_roots);
-
     let capped_width = if options.spawn_width_cap > 0 {
         parallel_width.min(options.spawn_width_cap)
     } else {
@@ -4848,9 +4996,15 @@ pub fn run_discovery_corpus_with_options(
         let paths = changed_paths.clone();
         let keys = whole_tree_published_keys.clone();
         handles.push(std::thread::spawn(move || {
+            // Each shard is its own thread (Rc<ResolvedGraph> is !Send, so the resolve store
+            // cannot cross the shard boundary — that cross-shard share is the S2b/Arc frontier).
+            // Within the shard, union-resolve S1 still holds: the shard's floor runner and its
+            // rows resolve against ONE index, so the shard no longer re-resolves the floor
+            // runner's closure privately alongside the rows' — the std/spec prefix typechecks
+            // once per shard, not twice.
             let index = build_multi_entry_index(&roots);
             let runner = if skip_for_shards {
-                match resolve_floor_runner_context(&roots) {
+                match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
                     Ok((graph, source_indices)) => {
                         Some(make_eval_context(&graph, source_indices, execution_mode))
                     }
