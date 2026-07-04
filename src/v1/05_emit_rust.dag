@@ -3187,12 +3187,14 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
   }
 }
 
+data needs_box_wrapping_shared_dominates: String = "A shared (Rc-rendered) type NEVER needs Box: Rc is already the cycle-breaking indirection, so Box<Rc<T>> is a double wrap that no committed seed ever carried. shared_types must dominate the recursive_types check — the old ordering short-circuited recursive->Box first, which was benign only while emit-time recursive_types stayed module-local; once build_type_env propagated imported recursive types (B1), every Rc field of Node/TypeEnv/... would have double-wrapped."
+
 fn needs_box_wrapping(n: Node, recursive_types: Set<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>) -> Bool {
   let name = authored_name_at(source_indices: source_indices, node: n)
-  if set_contains(recursive_types, name) { true }
+  if set_contains(shared_types, name) { false }
+  else if set_contains(recursive_types, name) { true }
   else if n.children |> count == 0 {
-    if set_contains(shared_types, name) { false }
-    else if coerce_primitive_type(target: Rust, dag_name: name) != name { false }
+    if coerce_primitive_type(target: Rust, dag_name: name) != name { false }
     else { set_contains(recursive_types, name) }
   } else {
     let is_optional = n.return_cardinality == CardOptional
