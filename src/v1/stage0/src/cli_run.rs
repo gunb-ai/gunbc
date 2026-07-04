@@ -552,7 +552,9 @@ fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn path_to_source_lookup(index: &ModuleSourceIndex) -> HashMap<String, Rc<v1_compiler_compile::SourceFile>> {
+fn path_to_source_lookup(
+    index: &ModuleSourceIndex,
+) -> HashMap<String, Rc<v1_compiler_compile::SourceFile>> {
     let mut out = HashMap::new();
     for sf in index.values() {
         let rel = workspace_relative_repo_path(&sf.path);
@@ -681,9 +683,7 @@ fn resolve_transitively(
     let mut path_lookup = path_to_source_lookup(index);
     for entry in &entry_sources {
         let rel = workspace_relative_repo_path(&entry.path);
-        path_lookup
-            .entry(rel)
-            .or_insert_with(|| entry.clone());
+        path_lookup.entry(rel).or_insert_with(|| entry.clone());
         path_lookup
             .entry(entry.path.clone())
             .or_insert_with(|| entry.clone());
@@ -762,7 +762,9 @@ fn entry_source_from_index_or_disk(
     }))
 }
 
-fn load_sources(source_roots: &[String]) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+fn load_sources(
+    source_roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let index = build_module_index(source_roots);
     let facts = build_module_graph_facts_live(source_roots);
     let first_root = std::path::Path::new(&source_roots[0]);
@@ -1669,11 +1671,8 @@ pub fn whole_tree_resolved_ctx(
 }
 
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
-    let sources = load_sources_for_entry_with_index(
-        &index.source_files,
-        &index.module_graph_facts,
-        entry,
-    )?;
+    let sources =
+        load_sources_for_entry_with_index(&index.source_files, &index.module_graph_facts, entry)?;
     Ok(subject_digest_for_closure(&sources))
 }
 
@@ -4763,7 +4762,7 @@ fn run_discovery_rows(
                 &index.module_graph_facts,
                 &row.entry,
             )
-                .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
+            .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
             let resolve_started = std::time::Instant::now();
             set_phase(FloorPhase::Resolve, &row.entry);
@@ -10709,11 +10708,11 @@ mod doc_reachability_tests {
 #[cfg(test)]
 mod import_closure_equivalence_tests {
     use super::{
-        build_module_index, build_module_graph_facts_live, build_multi_entry_index,
+        build_module_graph_facts_live, build_module_index, build_multi_entry_index,
         closure_subject_for_entry, default_source_roots, floor_discovery_path_excluded,
         import_closure_live_paths, module_graph_facts_build_count_for_test,
         reset_module_graph_facts_build_count_for_test, resolve_transitively,
-        resolve_transitively_bfs_legacy, workspace_relative_repo_path, witness_layer_roots,
+        resolve_transitively_bfs_legacy, witness_layer_roots, workspace_relative_repo_path,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::{Path, PathBuf};
@@ -10743,8 +10742,8 @@ mod import_closure_equivalence_tests {
     ) {
         let ws = workspace_root();
         let entry_abs = ws.join(entry_rel);
-        let content = std::fs::read_to_string(&entry_abs)
-            .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
+        let content =
+            std::fs::read_to_string(&entry_abs).unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
         let entry_source = Rc::new(crate::v1_compiler_compile::SourceFile {
             path: entry_abs.to_string_lossy().into_owned(),
             content,
@@ -10987,9 +10986,7 @@ mod import_closure_equivalence_tests {
         let mut without_entry: std::collections::BTreeSet<String> = live
             .iter()
             .map(|p| workspace_relative_repo_path(p))
-            .filter(|p| {
-                p != "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag"
-            })
+            .filter(|p| p != "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag")
             .collect();
         let repointed = import_closure_live_paths(
             "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
@@ -11000,10 +10997,11 @@ mod import_closure_equivalence_tests {
             .iter()
             .map(|p| workspace_relative_repo_path(p))
             .collect();
-        assert_ne!(without_entry, full, "RED control: dropped entry must diverge");
-        without_entry.insert(
-            "src/v2/std/__bogus_never_imported__.dag".to_string(),
+        assert_ne!(
+            without_entry, full,
+            "RED control: dropped entry must diverge"
         );
+        without_entry.insert("src/v2/std/__bogus_never_imported__.dag".to_string());
         assert_ne!(
             without_entry, full,
             "RED control: bogus path must diverge from live closure"
