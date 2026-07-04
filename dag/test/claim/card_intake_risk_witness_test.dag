@@ -112,14 +112,16 @@ test fn witness_ambiguous_high_value_collects_both_reasons() -> Bool {
 }
 
 test fn witness_ready_to_list_disposition() -> Bool {
-  match ReadyToList {
+  let d = ReadyToList
+  match d {
     ReadyToList => true
     NeedsReview { reasons: _ } => false
   }
 }
 
 test fn witness_needs_review_disposition() -> Bool {
-  match NeedsReview { reasons: [] |> list_push(HighValue) } {
+  let d = NeedsReview { reasons: [] |> list_push(HighValue) }
+  match d {
     NeedsReview { reasons: rs } => count(rs) == 1 && any(rs, r => r == HighValue)
     ReadyToList => false
   }
