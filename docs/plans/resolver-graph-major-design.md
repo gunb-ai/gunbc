@@ -48,6 +48,22 @@ Adopted invariant (four terminal states, no fifth): every enrolled witness ends 
 
 The one structural primitive the executor lacks for unification (named by the M2 doc already): edges carry no payload — there is no obligation that *produces an artifact consumed by dependents*. Module obligations need exactly that (ModuleInterface flowing along edges). That is S2a's real content.
 
+## 1c. Operator ruling (2026-07-04): constructor ambiguity is an ERROR; resolution follows the binding edge
+
+The measured inference pathology (§0 phase verdict) traced to constructor-ownership resolution: bare variant names, legal cross-coproduct name sharing, expected-type tie-breaking, and — when the scope lookup misses (every *imported* constructor: the import binds the name to the ARM node, and `lookup_variant_parent_enum` rejects it for not being the parent Disj) — a per-literal whole-environment flatten+scan (`record_lit_variant_fields_from_visible_env`, ~1M invocations / 9.7M parent-recurses in 120s on an 80-line module). Operator ruling: **the ambiguity support itself is the bug** — accidental semantics, never intended. Do not optimize the search; delete it.
+
+The DAG already provides the namespace: an arm is a node whose parent edge names its owning coproduct, and the resolver's export machinery already binds imported arm names to those arm nodes (`get_exported_names` includes `get_variant_names`). Rules:
+
+1. A constructor literal's name must be **bound in scope** (local declaration or explicit import); owner = the binding's **parent edge**. O(1), no scan, no cache, no new syntax.
+2. **Unbound constructor name = typed error.** (Today the scan silently resolves constructors that were never imported — an undeclared-dependency fail-open.)
+3. **Name bound twice in one scope = collision error at env construction** (the only survivor of the index sketch: a one-fold collision detector in `build_type_env`).
+4. **Patterns resolve via the scrutinee's type** — already unambiguous; unimported arm names stay legal in pattern position.
+5. **Expected-type-as-owner-picker is deleted**; expected types return to ordinary mismatch checking.
+
+Consequences: `record_lit_variant_fields_from_visible_env` and both its call sites are removed, not memoized; the `04_env.dag` flatten-recurse==0 invariant becomes true and its witness gates the regression; the variant-owner canary fixture (two local coproducts sharing `SharedVariant`) becomes illegal by design — it is rewritten as the red-control asserting the collision diagnostic, and a different tiny witness takes the CI canary slot. Migration = census of (a) co-visible arm-name collisions and (b) never-imported constructor literals, then mechanical import additions. Fix home: `v1.compiler.infer` / `infer_env` dag sources + seed regen (RegenVerifyGate holds committed == regenerated).
+
+Census receipts (text-level, 2026-07-04): 5,526 distinct arm names corpus-wide; **221 collide globally** (e.g. `Absent` owned by 4 coproducts, `Assistant` by two API models) — so the uniqueness rule MUST be scoped to co-visibility, not global; most global collisions never share a scope. Upper bound on scan-reliant uses: 1,086 files reference arm names neither imported nor locally declared (4,572 distinct name-uses) — dominated by match patterns, which stay legal (rule 4); the literal-position migration subset is countable precisely once the resolver-side census runs (cheap after the fix lands). Termination receipt: the control typecheck of the 80-line module was killed at **60+ minutes still inside the single `typecheck_module` call**.
+
 ## 2. The windowed frontier (memory model)
 
 Holding "the whole graph" means holding the **edges** (cheap facts). Evaluating node `d` needs exactly: `d`'s source + the **results** of `d`'s direct dependencies. Not a→c's internals, not their inference traces. When `b`'s last dependent completes, `b`'s working state is dropped; what survives is its compact keyed result. Peak memory ≈ frontier width × result size, not closure size.
