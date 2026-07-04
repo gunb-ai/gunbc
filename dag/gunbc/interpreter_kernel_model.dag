@@ -59,3 +59,24 @@ fn interpreter_kernel_d_phase_is_model_only() -> Bool {
 fn v1_interpreter_not_classified_as_pinned_host_physics() -> Bool {
   !is_pinned_host_physics_stage0_file(basename: v1_interpreter_hybrid_seed_file)
 }
+
+fn seam_class_for_authority_module(path: String) -> InterpreterSeamClass? {
+  match is_pure_eval_authority_module(path: path) {
+    true => Present { value: PureEvalAuthority }
+    false => Absent
+  }
+}
+
+fn seam_class_for_pinned_basename(basename: String) -> InterpreterSeamClass? {
+  match is_pinned_host_physics_stage0_file(basename: basename) {
+    true => Present { value: PinnedHostPhysics }
+    false => Absent
+  }
+}
+
+fn hybrid_seed_file_is_seam_unclassified() -> Bool {
+  match seam_class_for_pinned_basename(basename: v1_interpreter_hybrid_seed_file) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
