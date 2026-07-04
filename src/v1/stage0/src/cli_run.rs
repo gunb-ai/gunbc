@@ -1113,6 +1113,9 @@ fn reconcile_with_typed_cache(
         let tc_result = match cached {
             Some(hit) => hit,
             None => {
+                if phase_profile::phase_profile_enabled() {
+                    eprintln!("[typecheck-attribution] module={mod_name} start");
+                }
                 let module_tc_started = std::time::Instant::now();
                 let computed = v1_compiler_infer::typecheck_module(
                     resolved.clone(),
