@@ -195,6 +195,23 @@ data medium_structure_exception_roster: List<String> = [
   "dag/gunbc/srv3_os_install_reconcile_record_approval.dag"
 ]
 
+data medium_structure_exception_roster_size_baseline: Int = 52
+
+fn roster_growth_ratchet_holds(live_size: Int, baseline: Int) -> Bool {
+  live_size <= baseline
+}
+
+fn medium_structure_exception_roster_size() -> Int {
+  length(xs: medium_structure_exception_roster)
+}
+
+fn medium_structure_roster_growth_ratchet_holds() -> Bool {
+  roster_growth_ratchet_holds(
+    live_size: medium_structure_exception_roster_size(),
+    baseline: medium_structure_exception_roster_size_baseline
+  )
+}
+
 fn char_eq(a: Char, b: Char) -> Bool {
   a == b
 }

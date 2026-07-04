@@ -47,7 +47,7 @@ import gunbc.host_effect {
   BmcController,
   HostOs,
   ShellCommand,
-  OneShotIdempotent,
+  host_effect_identity_evidence,
   HostEffectIntent,
   LocalShell,
 }
@@ -147,7 +147,7 @@ fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffec
           effect: RedfishAction {
             action: SetBootSourceOverride { target: t, enabled: e }
           },
-          policy: OneShotIdempotent,
+          evidence: host_effect_identity_evidence,
           transport: LocalShell,
           privilege_denial: none,
         }
@@ -159,7 +159,7 @@ fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffec
           effect: RedfishAction {
             action: ResetSystem { reset_type: r }
           },
-          policy: OneShotIdempotent,
+          evidence: host_effect_identity_evidence,
           transport: LocalShell,
           privilege_denial: none,
         }
@@ -179,7 +179,7 @@ fn actuator_step_to_host_effect_intent(step: OsInstallActuatorStep) -> HostEffec
               )
             )
           },
-          policy: OneShotIdempotent,
+          evidence: host_effect_identity_evidence,
           transport: LocalShell,
           privilege_denial: none,
         }

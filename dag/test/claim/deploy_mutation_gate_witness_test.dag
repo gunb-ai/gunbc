@@ -21,7 +21,7 @@ import gunbc.live_deploy.spec { deployment_spec_srv1 }
 import gunbc.host_effect {
   ShellCommand,
   LocalShell,
-  OneShotIdempotent,
+  host_effect_identity_evidence,
 }
 import std.realization_reconcile { reconciliation_converged, NotConverged, Converged }
 
