@@ -21,17 +21,42 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DagCollectSlot {
+    pub key: String,
+    pub fp: String,
+    pub node: Rc<Node>,
+    pub seq: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagCollectAcc {
     pub seen: Rc<HashMap<String, String>>,
     pub order: Rc<Vec<Rc<Node>>>,
     pub collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct DagCollectPending {
-    pub anchor: Rc<Node>,
-    pub key: String,
-    pub fp: String,
+pub fn dag_collect_slot_seq(slots: Rc<HashMap<String, Rc<DagCollectSlot>>>) -> i64 {
+    slots.len() as i64
+}
+
+pub fn dag_collect_pack_slots(
+    slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
+    collision_errors: Rc<Vec<Rc<ErrorNode>>>,
+) -> Rc<DagCollectAcc> {
+    let mut ordered_slots: Vec<Rc<DagCollectSlot>> = slots.values().cloned().collect();
+    ordered_slots.sort_by(|a, b| a.seq.cmp(&b.seq));
+    let order: Vec<Rc<Node>> = ordered_slots.iter().map(|s| s.node.clone()).collect();
+    let seen = ordered_slots.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, String>(),
+        |acc: Rc<HashMap<String, String>>, s: Rc<DagCollectSlot>| {
+            v1_rt::rc_map_insert(acc, s.key.clone(), s.fp.clone())
+        },
+    );
+    Rc::new(DagCollectAcc {
+        seen,
+        order: Rc::new(order),
+        collision_errors,
+    })
 }
 
 pub fn json_quote(s: String) -> String {
