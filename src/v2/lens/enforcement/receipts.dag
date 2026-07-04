@@ -1,0 +1,238 @@
+module v2.lens.enforcement.receipts
+
+import v2.std.algebra { Cons, Empty, any, contains, fold_list, fold_list_right }
+import v2.std.collection { List }
+import v2.std.integer { Int }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.std.node { Atom, ComputationNode, Edge, Loop, Named, Node, Positional, SyntheticOccurrence, TypeNode }
+import v2.std.witness { Holds, Violates, Witness }
+import v2.std.decl_index { DeclFact, decl_facts_is_fn_like }
+import v2.lens.cost { SymbolicCost, cost_lens }
+import v2.lens.enforcement.vocab {
+  SubjectRoster, subject_roster_covers,
+  ConsumerKind, FloorGate, PrePushHook, WitnessOnly, NoConsumer,
+  ConsumerWitnessBinding, BoundConsumerWitness, NoConsumerWitness,
+  ScopeSatisfaction, ScopeCovers, ScopeNarrowed, ScopeMissing,
+  NarrowingReason, TypeReflectionUnavailable,
+  RedControlStatus, RedControlPassed, RedControlFailedToFlip,
+  SelfApplicationStatus, SelfAppliesObserved, SelfApplicationAbsent,
+  ReceiptRef, HasReceiptRef, NoReceiptRef
+}
+import v2.lens.enforcement.contract { LensContract, CoverageReceipt }
+import std.realization_schedule { ScheduleWitnessEntry, schedule_witness_entry_eq }
+
+type SubjectJudgment
+  = BodyJudged { verdict: Witness<SymbolicCost> }
+  | BodyUnavailable
+
+fn node_contains_computation(n: Node) -> Bool {
+  match n.kind {
+    ComputationNode { behavior: _ } => true
+    TypeNode { connective: _ } =>
+      fold_list(xs: n.children, empty: false, cons: fn(acc, edge) {
+        acc || node_contains_computation(n: edge.target)
+      })
+  }
+}
+
+fn judge_subject_node(n: Node) -> SubjectJudgment {
+  if node_contains_computation(n: n) {
+    BodyJudged { verdict: cost_lens(n: n) }
+  } else {
+    BodyUnavailable
+  }
+}
+
+fn subject_is_body_unavailable(fact: DeclFact) -> Bool {
+  match judge_subject_node(n: fact.node) {
+    BodyJudged { verdict: _ } => false
+    BodyUnavailable => true
+  }
+}
+
+fn fn_item_count_of(facts: List<DeclFact>) -> Int {
+  fold_list(xs: facts, empty: 0, cons: fn(acc, fact) {
+    if decl_facts_is_fn_like(kind: fact.kind) { acc + 1 } else { acc }
+  })
+}
+
+fn body_unavailable_count_of(facts: List<DeclFact>) -> Int {
+  fold_list(xs: facts, empty: 0, cons: fn(acc, fact) {
+    if decl_facts_is_fn_like(kind: fact.kind) && subject_is_body_unavailable(fact: fact) {
+      acc + 1
+    } else {
+      acc
+    }
+  })
+}
+
+fn body_judged_count_of(facts: List<DeclFact>) -> Int {
+  fn_item_count_of(facts: facts) - body_unavailable_count_of(facts: facts)
+}
+
+fn discovered_fn_subjects(facts: List<DeclFact>) -> SubjectRoster {
+  SubjectRoster {
+    entries: fold_list_right(xs: facts, empty: Empty, snoc: fn(acc, fact) {
+      if decl_facts_is_fn_like(kind: fact.kind) {
+        Cons { head: fact.qualified_name, tail: acc }
+      } else {
+        acc
+      }
+    })
+  }
+}
+
+fn string_starts_with(s: String, prefix: String) -> Bool {
+  s.starts_with(prefix: prefix)
+}
+
+fn root_has_body_unavailable_subject(root: String, facts: List<DeclFact>) -> Bool {
+  any(xs: facts, predicate: fn(fact) {
+    decl_facts_is_fn_like(kind: fact.kind)
+      && string_starts_with(s: fact.rel_path, prefix: concat(root, "/"))
+      && subject_is_body_unavailable(fact: fact)
+  })
+}
+
+fn roots_with_body_unavailable(scope: SubjectRoster, facts: List<DeclFact>) -> SubjectRoster {
+  SubjectRoster {
+    entries: fold_list_right(xs: scope.entries, empty: Empty, snoc: fn(acc, root) {
+      if root_has_body_unavailable_subject(root: root, facts: facts) {
+        Cons { head: root, tail: acc }
+      } else {
+        acc
+      }
+    })
+  }
+}
+
+data fn_body_reflection_blocker: String = "fn-body reflection: decl_facts marshals the fn output skeleton only (marshal_decl_fact_node, coproduct_reflection.rs:1020) - the gunbc#5364 residue named at cli_run.rs:9039; bodies arrive via the v2 front-end ingest lane (grammar-coverage receipt), not a new host builtin"
+
+fn scope_satisfaction_for(
+  claimed_scope: SubjectRoster,
+  desired_scope: SubjectRoster,
+  facts: List<DeclFact>
+) -> ScopeSatisfaction {
+  if !subject_roster_covers(claimed: claimed_scope, desired: desired_scope) {
+    ScopeMissing
+  } else if body_unavailable_count_of(facts: facts) > 0 {
+    ScopeNarrowed {
+      missing: roots_with_body_unavailable(scope: desired_scope, facts: facts),
+      reason: TypeReflectionUnavailable { blocker: fn_body_reflection_blocker }
+    }
+  } else {
+    ScopeCovers
+  }
+}
+
+fn consumer_observed_for(
+  binding: ConsumerWitnessBinding,
+  ci_entries: List<ScheduleWitnessEntry>,
+  prepush_entries: List<ScheduleWitnessEntry>
+) -> ConsumerKind {
+  match binding {
+    NoConsumerWitness => NoConsumer
+    BoundConsumerWitness { witness } =>
+      if contains(xs: ci_entries, item: witness, eq: schedule_witness_entry_eq) {
+        FloorGate
+      } else if contains(xs: prepush_entries, item: witness, eq: schedule_witness_entry_eq) {
+        PrePushHook
+      } else {
+        WitnessOnly
+      }
+  }
+}
+
+fn consumer_receipt_ref_for(binding: ConsumerWitnessBinding, observed: ConsumerKind) -> ReceiptRef {
+  match binding {
+    NoConsumerWitness => NoReceiptRef
+    BoundConsumerWitness { witness } =>
+      match observed {
+        FloorGate => HasReceiptRef { ref: concat(witness.entry, "::", witness.function) }
+        PrePushHook => HasReceiptRef { ref: concat(witness.entry, "::", witness.function) }
+        _ => NoReceiptRef
+      }
+  }
+}
+
+data enforcement_red_probe_body_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^enforcement_red_probe_body } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data enforcement_red_probe_measure_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^enforcement_red_probe_measure } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data enforcement_red_probe_extra_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^enforcement_red_probe_extra } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data cost_red_control_probe: Node = Node {
+  kind: ComputationNode { behavior: Loop },
+  children: [
+    Edge { label: Positional, target: enforcement_red_probe_body_leaf },
+    Edge { label: Named { name: ^loop_bound_edge }, target: enforcement_red_probe_measure_leaf },
+    Edge { label: Named { name: ^enforcement_red_probe_extra }, target: enforcement_red_probe_extra_leaf }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data cost_red_probe_shape_citation: String = "cost_red_control_probe replicates the illegal-Named-edge Loop shape whose lens property is proven by src/v2/lens/cost/loop_illegal_named.dag (claim_loop_illegal_named); the probe is governance input - running it through cost_lens in-pass derives red_control_status by execution instead of declaring it"
+
+data cost_well_formed_probe: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^enforcement_well_formed_probe } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn red_control_status_for(probe: Node) -> RedControlStatus {
+  match cost_lens(n: probe) {
+    Violates { diagnostic: _ } => RedControlPassed
+    Holds { value: _ } => RedControlFailedToFlip
+  }
+}
+
+fn self_application_for(discovered: SubjectRoster, module_prefix: String) -> SelfApplicationStatus {
+  if any(xs: discovered.entries, predicate: fn(name) { string_starts_with(s: name, prefix: module_prefix) }) {
+    SelfAppliesObserved
+  } else {
+    SelfApplicationAbsent
+  }
+}
+
+fn derive_receipt(
+  contract: LensContract,
+  desired_scope: SubjectRoster,
+  self_module_prefix: String,
+  facts: List<DeclFact>,
+  ci_entries: List<ScheduleWitnessEntry>,
+  prepush_entries: List<ScheduleWitnessEntry>,
+  red_probe: Node
+) -> CoverageReceipt {
+  let discovered = discovered_fn_subjects(facts: facts)
+  let observed = consumer_observed_for(
+    binding: contract.consumer_witness,
+    ci_entries: ci_entries,
+    prepush_entries: prepush_entries
+  )
+  CoverageReceipt {
+    contract_id: contract.entry.lens_id,
+    discovered_subjects: discovered,
+    scope_satisfaction: scope_satisfaction_for(
+      claimed_scope: contract.claimed_scope,
+      desired_scope: desired_scope,
+      facts: facts
+    ),
+    consumer_observed: observed,
+    consumer_receipt_ref: consumer_receipt_ref_for(binding: contract.consumer_witness, observed: observed),
+    red_control_status: red_control_status_for(probe: red_probe),
+    self_application_status: self_application_for(discovered: discovered, module_prefix: self_module_prefix)
+  }
+}
