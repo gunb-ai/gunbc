@@ -11,9 +11,10 @@ use std::time::Instant;
 use v1_compiler::cli_run::workspace_root;
 use v1_compiler::cli_run::{
     compute_histogram_data, compute_witness_timing_rows, make_eval_context, resolve_entry_graph,
-    run_claim, run_discovery_corpus_with_options, run_value, set_phase, top_n_slowest_witnesses,
-    ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, FloorPhase, HistogramData,
-    PhaseProfile, TimingPercentiles, WitnessTimingRow, DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
+    resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
+    top_n_slowest_witnesses, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, FloorPhase,
+    HistogramData, PhaseProfile, TimingPercentiles, WitnessTimingRow,
+    DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::v1_interpreter::{
     color_enabled, paint, run_in_context_with_args, sgr, ExecutionMode, InterpContext, Value,
@@ -1788,7 +1789,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // Resolve the plan entry ONCE and evaluate both the batches (hermetic) and the
     // spawn width (wet) from the same resolved graph — this resolve was previously
     // paid twice back-to-back (the §2 double-paid-compute trap, at minutes each).
-    let (plan_graph, plan_indices) = match resolve_entry_graph(&source_roots, &plan_entry) {
+    let (plan_graph, plan_indices) = match resolve_entry_graph_shared(&source_roots, &plan_entry) {
         Ok(resolved) => resolved,
         Err(msg) => {
             eprintln!("claim_executor: resolve failed for plan {plan_entry}:\n{msg}");

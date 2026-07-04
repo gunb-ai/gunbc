@@ -828,6 +828,52 @@ pub fn resolve_entry_graph(
     resolve_entry_graph_with_index(&index, &facts, entry_file)
 }
 
+// Process-level (per-thread) resolve store — the S1a increment of the resolver
+// graph-major design (docs/plans/resolver-graph-major-design.md). Within one
+// process the source tree is a fixed snapshot, so a resolved entry graph is a
+// pure fact of (source_roots, entry) — the same purity assumption the walk memo
+// (M1) and typed_module_cache already ship on. Routing every fixed-entry
+// consumer (floor runner context, diff observer, output policy, group syntax,
+// the executor's plan entry) through this store makes "resolve the same declared
+// machinery twice in one process" unwritable on these paths, with failure
+// semantics unchanged: a miss resolves exactly as before, including the typed
+// error path. Thread-local by design: resolved graphs are Rc-based (not Send);
+// shard threads keep their own store rather than smuggling Rc across threads.
+thread_local! {
+    #[allow(clippy::type_complexity)]
+    static PROCESS_RESOLVE_STORE: RefCell<
+        HashMap<
+            (String, String),
+            (
+                Rc<v1_compiler_compile::ResolvedGraph>,
+                Rc<HashMap<String, Rc<NewlineIndex>>>,
+            ),
+        >,
+    > = RefCell::new(HashMap::new());
+}
+
+pub fn resolve_entry_graph_shared(
+    source_roots: &[String],
+    entry_file: &str,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    let key = (source_roots.join("\u{1f}"), entry_file.to_string());
+    let hit = PROCESS_RESOLVE_STORE.with(|s| s.borrow().get(&key).cloned());
+    if let Some(found) = hit {
+        return Ok(found);
+    }
+    let resolved = resolve_entry_graph(source_roots, entry_file)?;
+    PROCESS_RESOLVE_STORE.with(|s| {
+        s.borrow_mut().insert(key, resolved.clone());
+    });
+    Ok(resolved)
+}
+
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
     module_graph_facts: ModuleGraphFactsLive,
@@ -1080,9 +1126,7 @@ fn reconcile_with_typed_cache(
                 // anything over it is a pathology-lane candidate by name.
                 let module_tc_ms = module_tc_started.elapsed().as_millis();
                 if module_tc_ms >= 2_000 {
-                    eprintln!(
-                        "[typecheck-attribution] module={mod_name} ms={module_tc_ms}"
-                    );
+                    eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
                 }
                 typed_cache
                     .borrow_mut()
@@ -1243,7 +1287,7 @@ pub fn install_output_policy(source_roots: &[String]) {
         v1_interpreter::Verbosity::Normal => (false, false),
     };
     let entry = "dag/gunbc/output_policy.dag";
-    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+    let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
         Ok(g) => g,
         Err(_) => return,
     };
@@ -1299,7 +1343,7 @@ pub fn install_group_syntax(source_roots: &[String]) {
         .map(|v| v == "true")
         .unwrap_or(false);
     let entry = "dag/extdeps/render/surface.dag";
-    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+    let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
         Ok(g) => g,
         Err(_) => return,
     };
@@ -3011,7 +3055,7 @@ pub fn wet_hermetic_scaffold_roster_entry_prefix(
 ) -> Result<String, String> {
     let entry =
         resolve_entry_file_under_roots(source_roots, WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY)?;
-    let (graph, source_indices) = resolve_entry_graph(source_roots, &entry)?;
+    let (graph, source_indices) = resolve_entry_graph_shared(source_roots, &entry)?;
     let sources = load_sources_for_entry(source_roots, &entry)?;
     let entry_source = sources
         .iter()
@@ -3708,7 +3752,7 @@ fn floor_git_diff_range() -> Result<String, String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
-    let (graph, indices) = resolve_entry_graph(&roots, entry)
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
         .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let result =
@@ -4152,7 +4196,7 @@ fn resolve_floor_runner_context(
     ),
     String,
 > {
-    resolve_entry_graph(source_roots, FLOOR_RUNNER_ENTRY)
+    resolve_entry_graph_shared(source_roots, FLOOR_RUNNER_ENTRY)
 }
 
 fn call_floor_kernel_would_skip(
@@ -11661,5 +11705,41 @@ mod import_closure_equivalence_tests {
                 .collect::<std::collections::BTreeSet<_>>()
         };
         assert_eq!(norm(from_rel), norm(from_abs));
+    }
+}
+
+#[cfg(test)]
+mod process_resolve_store_tests {
+    use super::*;
+
+    // S1a purity + dedup receipt: the second resolve of the same (roots, entry)
+    // must be served from the process store — Rc identity proves zero recompute.
+    // A tiny self-contained fixture tree keeps this test milliseconds-cold.
+    #[test]
+    fn process_resolve_store_dedupes_repeat_resolve() {
+        // Fixture must live under the workspace (build_module_path_index requires it);
+        // target/ is workspace-local and git-ignored.
+        let dir = workspace_root()
+            .join("target")
+            .join(format!("gunbc-resolve-store-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create fixture dir");
+        std::fs::write(
+            dir.join("store_probe.dag"),
+            "module store_probe\n\nfn probe() -> Bool {\n  true\n}\n",
+        )
+        .expect("write fixture module");
+        let roots = vec![dir.to_string_lossy().into_owned()];
+        let entry = dir.join("store_probe.dag").to_string_lossy().into_owned();
+
+        let (g1, i1) = resolve_entry_graph_shared(&roots, &entry).expect("first resolve");
+        let (g2, i2) = resolve_entry_graph_shared(&roots, &entry).expect("second resolve");
+        assert!(
+            Rc::ptr_eq(&g1, &g2),
+            "second resolve must be the stored graph (Rc identity), not a recompute"
+        );
+        assert!(Rc::ptr_eq(&i1, &i2), "source indices must be stored too");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
