@@ -2845,10 +2845,20 @@ pub fn infer_expr(
                     false
                 };
                 if resolved_base_is_error {
+                    // HAND-PATCH (debug instrumentation, removed with regen):
+                    // name the error-typed base so the fail-open seam is located.
                     Rc::new(InferResult {
                         typed: make_expr_error_node(
                             ExprErrorKind::SemanticExprError,
-                            "error type cascade".to_string(),
+                            format!(
+                                "error type cascade (field '{}' on error-typed base '{}' in {})",
+                                field_name,
+                                authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    base_typed.clone()
+                                ),
+                                scope.module_name
+                            ),
                             span.clone(),
                         ),
                         diagnostics: base_diags,

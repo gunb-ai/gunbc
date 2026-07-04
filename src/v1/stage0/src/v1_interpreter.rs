@@ -1427,7 +1427,15 @@ fn eval_expr_inner(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> Inter
             Err(InterpError::EarlyReturn { value: val })
         }
 
-        ExprData::ExprError { message, .. } => Err(InterpError::TypeError { msg: message }),
+        ExprData::ExprError { message, .. } => Err(InterpError::TypeError {
+            // Located: an inference-side error node reaching evaluation is a
+            // fail-open seam (typed error without a blocking diagnostic); the
+            // span is the only thread back to the source.
+            msg: format!(
+                "{message} at {}:{}-{}",
+                node.span.file, node.span.start, node.span.end
+            ),
+        }),
 
         ExprData::NoExprData => Ok(Value::Unit),
     }
