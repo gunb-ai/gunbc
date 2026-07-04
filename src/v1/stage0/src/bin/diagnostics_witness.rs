@@ -165,9 +165,10 @@ fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
 }
 
 fn has_arity_mismatch(result: &PipelineResult) -> bool {
-    result.diagnostics.iter().any(|d| {
-        matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. })
-    })
+    result
+        .diagnostics
+        .iter()
+        .any(|d| matches!(&*d.diagnostic, CompilerDiagnostic::ArityMismatch { .. }))
 }
 
 fn first_arity_mismatch_message(result: &PipelineResult) -> Option<String> {
@@ -192,17 +193,32 @@ fn import_resolution_variants_and_span(module_index: &ModuleIndex) {
     assert_eq!(missing_result.diagnostics.len(), 1);
     let missing = &missing_result.diagnostics[0];
     assert!(
-        matches!(&*missing.diagnostic, CompilerDiagnostic::MissingExport { .. }),
+        matches!(
+            &*missing.diagnostic,
+            CompilerDiagnostic::MissingExport { .. }
+        ),
         "expected MissingExport, got: {:?}",
         missing.diagnostic
     );
     let missing_msg = diagnostic_to_message(missing.diagnostic.clone());
-    assert!(missing_msg.contains("NonExistent"), "missing export: {missing_msg}");
-    assert!(missing_msg.contains("provider"), "target module: {missing_msg}");
-    assert!(missing_msg.contains("consumer"), "importing module: {missing_msg}");
+    assert!(
+        missing_msg.contains("NonExistent"),
+        "missing export: {missing_msg}"
+    );
+    assert!(
+        missing_msg.contains("provider"),
+        "target module: {missing_msg}"
+    );
+    assert!(
+        missing_msg.contains("consumer"),
+        "importing module: {missing_msg}"
+    );
     let (line, col) = diag_line_col(missing, missing_export, "consumer.dag");
     assert_eq!(line, 2, "span should be on import line");
-    assert_eq!(col, 19, "span should point at missing name, not import keyword");
+    assert_eq!(
+        col, 19,
+        "span should point at missing name, not import keyword"
+    );
 
     let unresolved = "module consumer\nimport nonexistent { Thing }\n";
     let unresolved_result = compile_multi(module_index, &[("consumer.dag", unresolved)]);
@@ -286,8 +302,7 @@ fn type_and_arity_discrimination(module_index: &ModuleIndex) {
         diagnostic_messages(&parameterized_result)
     );
 
-    let user_defined =
-        "module custom\ntype Widget { label: String }\ntype Bag { item: Widget }\n";
+    let user_defined = "module custom\ntype Widget { label: String }\ntype Bag { item: Widget }\n";
     let user_defined_result = compile_multi(module_index, &[("custom.dag", user_defined)]);
     assert!(
         !has_arity_mismatch(&user_defined_result),
@@ -319,7 +334,8 @@ fn empty_list_literal_context(module_index: &ModuleIndex) {
         diagnostic_messages(&wrong_result)
     );
 
-    let ok = "module elist_ok\nimport std.types { List }\nfn make_list() -> List<String> {\n  []\n}\n";
+    let ok =
+        "module elist_ok\nimport std.types { List }\nfn make_list() -> List<String> {\n  []\n}\n";
     let ok_result = compile_multi(module_index, &[("elist_ok.dag", ok)]);
     let ok_diags: Vec<_> = ok_result
         .diagnostics

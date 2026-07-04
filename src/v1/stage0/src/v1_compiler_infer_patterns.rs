@@ -8,6 +8,9 @@ use crate::std_syntax::LiteralValue::LitBool;
 pub use crate::std_types::SourceSpan;
 pub use crate::v1_compiler_infer_env::TypeEnv;
 pub use crate::v1_compiler_infer_env::{lookup_type, lookup_type_by_name};
+pub use crate::v1_compiler_infer_resolve::{
+    is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
+};
 pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, extract_optional_inner_node,
 };
@@ -22,11 +25,7 @@ use crate::v1_std_core::InferredNode::{CompilerError, Resolved, TypeVariable};
 use crate::v1_std_core::MatchPattern::LitPattern;
 pub use crate::v1_std_core::{
     arm_pattern, authored_name_at, error_type, find_child_named, generic_param_name_at,
-    is_compiler_error, kernel_span,
-    make_error_node, no_span, none_type, with_optional_cardinality,
-};
-pub use crate::v1_compiler_infer_resolve::{
-    is_user_generic_use_site, resolve_generic_use_decl, substitute_type_slots,
+    is_compiler_error, kernel_span, make_error_node, no_span, none_type, with_optional_cardinality,
 };
 pub use crate::v1_std_core::{
     Cardinality, CompilerDiagnostic, Connective, ErrorNode, ExprData, InferredNode, MatchPattern,
@@ -361,14 +360,9 @@ pub fn generic_use_slot_bindings(
     )
 }
 
-pub fn expand_scrut_type_for_variant_lookup(
-    scrut_node: Rc<Node>,
-    env: Rc<TypeEnv>,
-) -> Rc<Node> {
+pub fn expand_scrut_type_for_variant_lookup(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
-    if (scrut_node.connective.clone() == Connective::Disj)
-        || is_witness_type_name(name.clone())
-    {
+    if (scrut_node.connective.clone() == Connective::Disj) || is_witness_type_name(name.clone()) {
         return scrut_node.clone();
     }
     if (((scrut_node.connective.clone() == Connective::NoConnective)
@@ -383,8 +377,7 @@ pub fn expand_scrut_type_for_variant_lookup(
                 {
                     match decl.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: target, .. }) => {
-                            let subst =
-                                generic_use_slot_bindings(scrut_node.clone(), env.clone());
+                            let subst = generic_use_slot_bindings(scrut_node.clone(), env.clone());
                             let expanded = substitute_type_slots(
                                 target,
                                 subst,
@@ -453,8 +446,7 @@ pub fn lookup_variant_in_type(
             node: scrut_node, ..
         } => {
             let source_indices = env.source_indices.clone();
-            let scrut_node =
-                expand_scrut_type_for_variant_lookup(scrut_node.clone(), env.clone());
+            let scrut_node = expand_scrut_type_for_variant_lookup(scrut_node.clone(), env.clone());
             let scrut_opt = (scrut_node.return_cardinality.clone() == Cardinality::CardOptional);
             if (((scrut_node.connective.clone() == Connective::NoConnective)
                 && ((scrut_node.children.clone().len() as i64) == 0))
