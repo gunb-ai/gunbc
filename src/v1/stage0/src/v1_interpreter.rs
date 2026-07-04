@@ -5085,6 +5085,17 @@ fn eval_builtin(
             Ok(Some(Value::Str(s)))
         }
 
+        "get" => match positional.as_slice() {
+            [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
+                let items = expect_list(list_val, "get")?;
+                let idx = expect_int(Some(idx_val), "get")?;
+                Ok(Some(
+                    items.get(idx as usize).cloned().unwrap_or(Value::Null),
+                ))
+            }
+            _ => Ok(None),
+        },
+
         "parse_int" => {
             let s = expect_str(positional.first().copied(), "parse_int")?;
             match s.parse::<i64>() {

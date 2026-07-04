@@ -564,6 +564,58 @@ fn path_to_source_lookup(
     out
 }
 
+fn build_import_adjacency(
+    edges: &[ImportResolutionFactRaw],
+    nodes: &[ModuleDeclarationFactRaw],
+) -> HashMap<String, Vec<String>> {
+    let mut module_to_path: HashMap<String, String> = HashMap::new();
+    for node in nodes {
+        module_to_path.insert(
+            node.module.clone(),
+            workspace_relative_repo_path(&node.path),
+        );
+    }
+
+    let mut adjacency: HashMap<String, Vec<String>> = HashMap::new();
+    for edge in edges {
+        let Some(imported) = module_to_path.get(&edge.import_module) else {
+            continue;
+        };
+        let importer = workspace_relative_repo_path(&edge.path);
+        let entry = adjacency.entry(importer).or_default();
+        if !entry.iter().any(|p| p == imported) {
+            entry.push(imported.clone());
+        }
+    }
+    adjacency
+}
+
+/// Worklist BFS over pre-normalized adjacency (O(V+E) per entry).
+pub fn import_closure_from_adjacency(
+    entry_path: &str,
+    adjacency: &HashMap<String, Vec<String>>,
+) -> Vec<String> {
+    let entry_path = workspace_relative_repo_path(entry_path);
+    let mut reached: HashSet<String> = HashSet::new();
+    reached.insert(entry_path.clone());
+    let mut queue: VecDeque<String> = VecDeque::from([entry_path]);
+
+    while let Some(importer) = queue.pop_front() {
+        let Some(targets) = adjacency.get(&importer) else {
+            continue;
+        };
+        for path in targets {
+            if reached.insert(path.clone()) {
+                queue.push_back(path.clone());
+            }
+        }
+    }
+
+    let mut result: Vec<String> = reached.into_iter().collect();
+    result.sort();
+    result
+}
+
 /// Host realization of `v2.lens.module_graph.import_closure` over modeled fact rows.
 /// Authority: `src/v2/lens/module_graph.dag` — this is the consumer repoint surface for
 /// `cli_run.rs` resolve/reconcile (Phase 1 de-fork); fact extraction stays on the existing
@@ -573,34 +625,8 @@ pub fn import_closure_from_facts(
     edges: &[ImportResolutionFactRaw],
     nodes: &[ModuleDeclarationFactRaw],
 ) -> Vec<String> {
-    let entry_path = workspace_relative_repo_path(entry_path);
-    let mut reached: Vec<String> = vec![entry_path];
-    let fuel = nodes.len();
-    for _ in 0..fuel {
-        let before = reached.len();
-        let mut next = reached.clone();
-        for importer in &reached {
-            let importer_norm = workspace_relative_repo_path(importer);
-            for edge in edges {
-                if workspace_relative_repo_path(&edge.path) != importer_norm {
-                    continue;
-                }
-                for node in nodes {
-                    if node.module == edge.import_module {
-                        let path = workspace_relative_repo_path(&node.path);
-                        if !next.iter().any(|p| p == &path) {
-                            next.push(path);
-                        }
-                    }
-                }
-            }
-        }
-        if next.len() == before {
-            break;
-        }
-        reached = next;
-    }
-    reached
+    let adjacency = build_import_adjacency(edges, nodes);
+    import_closure_from_adjacency(entry_path, &adjacency)
 }
 
 /// Pre-built `import_resolution_facts` / `module_declaration_facts` rows for one pool-root
@@ -609,6 +635,7 @@ pub fn import_closure_from_facts(
 pub struct ModuleGraphFactsLive {
     edges: Vec<ImportResolutionFactRaw>,
     nodes: Vec<ModuleDeclarationFactRaw>,
+    adjacency: HashMap<String, Vec<String>>,
 }
 
 #[cfg(test)]
@@ -661,9 +688,13 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
     MODULE_GRAPH_FACTS_BUILD_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     const EXCLUDE: &[String] = &[];
     let roots = pool_roots_for_module_graph_closure(pool_roots);
+    let edges = import_resolution_facts(&roots, &roots, EXCLUDE);
+    let nodes = module_declaration_facts(&roots);
+    let adjacency = build_import_adjacency(&edges, &nodes);
     ModuleGraphFactsLive {
-        edges: import_resolution_facts(&roots, &roots, EXCLUDE),
-        nodes: module_declaration_facts(&roots),
+        edges,
+        nodes,
+        adjacency,
     }
 }
 
@@ -680,7 +711,7 @@ pub fn import_closure_live_paths_with_facts(
     entry_path: &str,
     facts: &ModuleGraphFactsLive,
 ) -> Vec<String> {
-    import_closure_from_facts(entry_path, &facts.edges, &facts.nodes)
+    import_closure_from_adjacency(entry_path, &facts.adjacency)
 }
 
 #[cfg(test)]
