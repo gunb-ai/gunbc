@@ -5,7 +5,7 @@ import gunbc.commit_workflow {
   commit_gate_roster, enrollment_has_surface,
   witness_entries_from_enrollments, project_ci_floor_witness_entries
 }
-import v2.std.algebra { Cons, Empty, filter }
+import v2.std.algebra { filter, list_append }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -69,11 +69,11 @@ fn live_receipt_for_contract(
 fn coverage_receipts_from(facts: List<DeclFact>) -> List<CoverageReceipt> {
   let ci_entries = enforcement_ci_witness_entries()
   let prepush_entries = enforcement_prepush_witness_entries()
-  fold(lens_contract_registry, init: Empty, f: fn(acc, c) {
-    Cons {
-      head: live_receipt_for_contract(c: c, facts: facts, ci_entries: ci_entries, prepush_entries: prepush_entries),
-      tail: acc
-    }
+  fold(lens_contract_registry, init: [], f: fn(acc, c) {
+    list_append(
+      left: [live_receipt_for_contract(c: c, facts: facts, ci_entries: ci_entries, prepush_entries: prepush_entries)],
+      right: acc
+    )
   })
 }
 
