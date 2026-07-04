@@ -33,7 +33,7 @@ import std.types { Int }
 
 data corpus_sentinel: String = "__corpus__"
 
-data synthetic_optin_rows_note: String = "Synthetic opt-in rows: pure plan inputs, never executed. They exercise the enrollment machinery (partition, gating, serialization) that the live plan - whose roster is empty under the opt-in inversion - no longer exercises."
+data synthetic_optin_rows_note: String = "Synthetic opt-in rows: pure plan inputs for testing enrollment machinery. Live plan enrollment: one row enrolled (PR #6235); opt-in rows exercise partition, gating, serialization paths that live discovery-minimal roster exercises occasionally. Roster dynamically populated by witness discovery; synthetic rows verify the machinery remains responsive."
 
 data synthetic_corpus_row: ScheduleWitnessEntry = ScheduleWitnessEntry {
   entry: "dag/test/claim/synthetic_optin_corpus_witness_test.dag",

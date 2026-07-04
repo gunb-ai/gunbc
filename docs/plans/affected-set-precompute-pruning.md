@@ -15,8 +15,9 @@
 | Prep — disposition kernel both axes | **GREEN** (PR #6065) | `floor_witness_run_disposition` + `function_edited`; `affected_set_disposition_both_axes_test.dag`; `floor_disposition_kernel_alignment` in `cli_run.rs` (disposition tautology on shared Rust inputs — NOT witness (a)) |
 | Step 3 witness (a) — **edited_test_fns axis** | **GREEN (partial)** | `floor_witness_a_prove` in `cli_run.rs`: fixture unified diff → Rust `edited_test_fns` vs independent `.dag` `floor_test_fn_declaration_edited`; mandatory RED under-selection; `.dag` claim `affected_set_witness_a_prove_test.dag` |
 | Step 3 witness (a) — **node-frontier axis** | **BLOCKED** | Whole-tree `InferredTree` + `NodeArtifactProvenance` over live corpus — same resolve-grounding gate as `wiring_liveness_whole_tree` / `whole_tree_resolved_ctx` (`v2.lens.resolved_imports` open thread). `.dag` closure smoke on `provenance_producer` fixture only; Rust `NodeFrontierSeeds` equivalence deferred |
-| Step 4 migrate floor | **NOT STARTED** | Impl-2 live |
-| Step 5 delete Rust parallel | **NOT STARTED** | `NodeFrontierSeeds`, `entry_touches_frontier_seeds`, etc. intact |
+| Step 4 migrate floor — consumer 1 | **GREEN** (PR #6061) | Floor witness selection wired to `floor_witness_run_disposition` with three axes (`touches_frontier`, `function_edited`, `entry_file_touched`); disposition kernel aligned both axes; union-resolve S1 (PR #6234) co-resolved floor runner through shared index |
+| Step 4 migrate floor — consumer 2 | **IN PROGRESS** | Precompute-skip: gate `precompute_whole_tree_published_mock_keys` on FULL "no witness will run" predicate (empty frontier AND no directly-edited test functions); remaining: skip-before-resolve |
+| Step 5 delete Rust parallel | **NOT STARTED** | `NodeFrontierSeeds`, `entry_touches_frontier_seeds`, etc. intact; gates on Step 4 completion |
 
 **Hand-Rust harness discipline:** `floor_witness_a_prove` uses **deterministic fixture unified diffs** (structured shape identical to CI git diff parsing) so every checkout — including `main` after merge — executes impl-vs-impl proof by execution. Branch-only `origin/main...HEAD` non-empty asserts were removed (§5: a gate that only passes on feature branches is not a stable floor witness).
 
@@ -98,11 +99,12 @@ Given `dependency_lens(root: graph.root) → List<DependencyView>`, compute the 
 
 Three consumer sites; the full skip decision must be modeled before wiring any of them.
 
-**Consumer 1 — floor witness selection.** `run_discovery_rows` (cli_run.rs:3721–3731): the current Rust skip gate has TWO axes:
+**Consumer 1 — floor witness selection.** `run_discovery_rows` (cli_run.rs:3721–3731): the current Rust skip gate has THREE axes:
 - Axis (i) node-frontier: `entry_touches_frontier_seeds` → maps to `affected_set_closure` + `floor_witness_run_disposition`'s `touches_frontier` parameter
-- Axis (ii) function-edited: `frontier_seeds.edited_test_fns` check → currently ABSENT from `floor_witness_run_disposition`
+- Axis (ii) function-edited: `frontier_seeds.edited_test_fns` check → live in `floor_witness_run_disposition` at `src/v2/workflow/affected_set_floor_runner.dag:114-141` (landed PR #6065/#6072)
+- Axis (iii) entry-file-touched: `entry_touches_frontier_seeds` closure check for non-data-fn edits in import closure → live as `entry_file_touched` parameter
 
-Before migration, extend `affected_set_floor_runner.dag`'s `floor_witness_run_disposition` (or its calling context) to also take the `function_edited` result as an input. A witness runs when `touches_frontier || function_edited`; the `.dag` skip disposition must reflect that conjunction. Only after both axes are modeled can the per-row `entry_touches_frontier_seeds + function_edited` calls be replaced by the `.dag` disposition result.
+A witness runs when `touches_frontier || function_edited || entry_file_touched`; the `.dag` skip disposition correctly models all three axes. Migration can proceed to consumer-2 (precompute-skip) gates once all axes verification passes.
 
 **Consumer 2 — precompute-skip.** Gate `precompute_whole_tree_published_mock_keys` (cli_run.rs:3509) on the FULL "no witness will run" predicate, not just the node frontier. A scoped diff can still run witnesses via the `function_edited` path even when the `.dag` frontier is empty. Correct guard: `RerunNodeSetProduced { nodes: [] }` (empty node frontier) **AND** `edited_test_fns.is_empty()` (no directly-edited test functions). Both conditions together are required.
 

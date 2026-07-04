@@ -1,8 +1,6 @@
 module v2.test.fixture.floor_skip.provenance_fail_closed_contract
 
 import v2.std.algebra { length }
-
-data provenance_fail_closed_contract_note: String = "Scout fixture (#6105): fail-closed contract for affected-set witness disposition. Provenance ABSENT (committed host_source_root_ingest_manifest is Empty) => witness RUNS and precompute must NOT skip (run-all posture). Provenance PRESENT (frontier produced, witness off-frontier) => witness SKIPs => smaller affected set than run-all."
 import v2.std.logic { Bool }
 import v2.std.node { Atom, Node, SyntheticOccurrence, TypeNode }
 import v2.std.verification {
@@ -29,6 +27,8 @@ import v2.workflow.affected_set_floor_runner {
   floor_precompute_would_skip,
   floor_witness_run_disposition
 }
+
+data provenance_fail_closed_contract_note: String = "Scout fixture (#6105): fail-closed contract for affected-set witness disposition. Provenance ABSENT (committed host_source_root_ingest_manifest is Empty) => witness RUNS and precompute must NOT skip (run-all posture). Provenance PRESENT (frontier produced, witness off-frontier) => witness SKIPs => smaller affected set than run-all."
 
 data scout_manifest_provenance_live: Bool =
   host_source_root_ingest_coverage_receipt.coverage_complete
