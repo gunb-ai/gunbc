@@ -11,6 +11,7 @@ DESIGN refs: §2 (minimize redundancy — one concept, every scale), §5 (correc
 - Resolution is request-major: every entry gets a private universe. `resolve_entry_graph(entry)` walks the entry's import closure backward and re-parses + re-infers every module in it, sharing nothing with any other resolve — not across entries in one process, not across processes in one run, not across runs.
 - Five-entry census (static import closures): `unicode_xid` 2 modules · canary 2 · `realization_schedule_witness` 11 · `commit_workflow_witness` 163 · `ci_floor_plan` 188. Pairwise overlap `commit_workflow ∩ ci_floor_plan` = **160 shared modules**. Sum if resolved separately = 366; distinct = **194**. At n=5 the redundancy is already 1.9×; at the corpus's ~543 witness entries the shared std/spec prefix is re-inferred hundreds of times per run.
 - Cost is wildly non-uniform per module: 2-module closure = **7ms**; 11-module closure (generic-heavy `std.realization_schedule` prefix) = **killed at 5 minutes** (loaded box, ≤2.5× inflation). The expensive modules are exactly the widely-shared ones. (Non-uniformity itself is a separate lane: see resolver-pathology-profile-receipt.md — graph-major removes the *redundancy* factor, not a pathological per-module cost.)
+- **Phase verdict (isolated, instrumented, 2026-07-04):** with `GUNBC_FLOOR_PHASE_PROFILE` wired into `claim_batch`, the 11-module closure enters `phase=typecheck` at **t≈1.1s** — parse + name-resolution + normalize together are ~1 second — and then sits in typecheck for **13+ minutes and counting**. Inference is ~99.9% of the cold cost; the per-entry uncached global passes are a ~1-second item. Consequences: (a) the pathology lane (which module, why) is the top prize — a `[typecheck-attribution] module=… ms=…` line now names any module over 2s; (b) S1's union-of-global-passes is demoted to a minor cut; (c) the in-process `typed_module_cache` already amortizes the dominant phase across entries *within one index* — the surviving redundancy is per-shard, per-subprocess, per-run cold starts of that cache. Open oddity to settle: a 188-module *superset* closure resolved in under ~10 minutes (contended) while this 11-module subset exceeds 20 — plausibly the discovery path's *advisory* typecheck gate vs the single-entry *strict* gate checking different amounts; one controlled A/B settles it.
 - Fleet numbers: floor prelude (plan-closure resolve ×2 + interpreted scheduler evals) ran **35+ minutes silent** before the first output line; whole-tree compile-clean ≈ **48 min**. CI job timeout is now **10 minutes** (operator inversion, forcing function) — the floor cannot fit it until this design lands.
 - Prior mechanisms and why they underdelivered — all the same lesson, *wrong unit / wrong key / wrong medium*:
   - **M1 `walk_memo`** (landed #6008): keyed by **entry**; deduplicates the same gate entry across batches (~105s/run). Zero cross-entry sharing — 543 distinct witness entries get 543 private universes regardless.
@@ -27,6 +28,25 @@ Target shape (operator's formulation, 2026-07-04):
 2. **Minimal set up front.** Given requested targets {e, f, …}: union of reverse-reachability over the edge graph → the induced subgraph → topological order. (Sets, not paths.)
 3. **Forward, once per node.** Evaluate module nodes in dependency order; each node consumes its direct dependencies' **results**; requests are just leaf nodes. "Resolve a→d twice" becomes **unrepresentable** — a node appears once in the schedule. This is the §5 construction rung; a memoized backward resolver is the validation rung (the redundant recompute stays writable, one cache-key bug from returning).
 4. **The kernel already exists one layer up.** `parallel_executor_plan_from_dependencies` + `RealizationPlan` schedule the CI floor's eleven gates exactly this way. Module inference is the same concept at a different scale (§2: one kernel, N workloads); this design points the existing scheduler at module nodes instead of inventing a resolver-private one.
+
+## 1b. One scheduler, no special cases (operator formulation, 2026-07-04)
+
+The root defect, named: **resolution is the system's one special case.** The repo already owns a Bazel-shaped dependency executor — nodes, `DependencyView` edges, antichain batches, width from the budget tree — and uses it to schedule eleven coarse CI gates. Meanwhile the work that is 99.9% of the wall clock (module typecheck obligations) hides inside one opaque recursive host call, on one core, invisible to scheduling, receipts, coalescing, and budgets. "DAG processing for the DAG itself" is not a metaphor: module resolution IS dependency execution over the same substrate, and exempting it from the system's own model is the §7 recursion left unfinished (the compiler must be an ordinary substrate fact; today its front half isn't).
+
+Vocabulary mapping (§3 discipline — the concepts already have names here; do not mint nicknames):
+
+| external formulation | existing authority |
+|---|---|
+| Obligation (node × input × context, `demanded_by` witnesses) | `Runnable` + a demand set; the artifact-bearing variant is M2's staged `RunnableCompile` |
+| ExecutionKey (node, input digest, artifact digest, config, effect shape) | the Realization content-hash key + `EffectShape` — "one kernel, N handlers" applied to compile steps |
+| antichain frontier / cursor | the executor's batches (`parallel_executor_plan_from_dependencies`) |
+| typed Receipt instead of log-line truth | receipts + the merge-admission stamp; the `[t+Xs]` phase marks are the interim form |
+| "witnesses are assertions over graph cuts; run the graph, not the witnesses" | the end-state: witnesses check materialized node values at declared cuts; today's corpus witnesses are leaf assertions whose heavy shared "path" is module resolution itself — so the first obligation corpus the unified cursor runs is **modules** |
+| refusal instead of degradation; budget-exceeded = error, not fallback | landed 2026-07-04 (degradation arms deleted; 10-min budget as forcing function) |
+
+Adopted invariant (four terminal states, no fifth): every enrolled witness ends **Checked** (receipt) | **Skipped** (selector proof) | **Refused** (machinery/input absent — loud) | **Not enrolled**. "Silently fell back to something else" is the state that destroyed the gate and is now unrepresentable on the paths converted so far.
+
+The one structural primitive the executor lacks for unification (named by the M2 doc already): edges carry no payload — there is no obligation that *produces an artifact consumed by dependents*. Module obligations need exactly that (ModuleInterface flowing along edges). That is S2a's real content.
 
 ## 2. The windowed frontier (memory model)
 

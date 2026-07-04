@@ -1067,12 +1067,23 @@ fn reconcile_with_typed_cache(
         let tc_result = match cached {
             Some(hit) => hit,
             None => {
+                let module_tc_started = std::time::Instant::now();
                 let computed = v1_compiler_infer::typecheck_module(
                     resolved.clone(),
                     module_index.clone(),
                     source_indices.clone(),
                     intern_table.clone(),
                 );
+                // Per-module attribution for the typecheck-dominant resolves measured
+                // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
+                // parse+resolve+normalize). Threshold keeps the floor log quiet;
+                // anything over it is a pathology-lane candidate by name.
+                let module_tc_ms = module_tc_started.elapsed().as_millis();
+                if module_tc_ms >= 2_000 {
+                    eprintln!(
+                        "[typecheck-attribution] module={mod_name} ms={module_tc_ms}"
+                    );
+                }
                 typed_cache
                     .borrow_mut()
                     .insert(mod_name.clone(), computed.clone());
