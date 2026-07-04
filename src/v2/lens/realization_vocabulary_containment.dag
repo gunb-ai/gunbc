@@ -77,6 +77,14 @@ data realization_vocab_consumer_scan_roots: List<String> = [
   "src/v2/lens"
 ]
 
+data bash_program_module: String = "extdeps.languages.bash.program"
+data bash_program_importer_count_baseline: Int = 33
+
+data bash_program_importer_scan_roots: List<String> = [
+  "src/v2",
+  "dag"
+]
+
 type RealizationVocabularyLeak {
   path: String
   import_module: String
@@ -234,6 +242,40 @@ fn realization_vocab_roster_sound_live(scan_roots: List<String>) -> Bool {
   realization_vocab_roster_sound(
     roster: realization_vocab_exception_roster,
     live_leak_paths: realization_vocab_live_leak_candidate_paths(scan_roots: scan_roots)
+  )
+}
+
+fn importer_count_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
+  live_count <= baseline
+}
+
+fn bash_program_importer_count(facts: List<LayerImportFact>) -> Int {
+  fold_list(
+    xs: facts,
+    empty: 0,
+    cons: fn(count, fact) {
+      if fact.import_module == bash_program_module {
+        count + 1
+      } else {
+        count
+      }
+    }
+  )
+}
+
+fn bash_program_importer_count_live() -> Int {
+  bash_program_importer_count(
+    facts: layer_import_facts_live(
+      std_roots: bash_program_importer_scan_roots,
+      extdeps_roots: []
+    )
+  )
+}
+
+fn bash_program_importer_count_ratchet_holds() -> Bool {
+  importer_count_ratchet_holds(
+    live_count: bash_program_importer_count_live(),
+    baseline: bash_program_importer_count_baseline
   )
 }
 
