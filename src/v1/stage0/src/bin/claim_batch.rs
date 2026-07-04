@@ -456,6 +456,10 @@ fn run() -> Result<ExitCode, ExitCode> {
 
     // Funnel host-effect traces per the .dag output policy (see claim_executor).
     v1_compiler::cli_run::install_output_policy(&source_roots);
+    // GUNBC_FLOOR_PHASE_PROFILE support (same as claim_executor): without this,
+    // claim_batch diagnostics cannot attribute time to resolve/typecheck/eval
+    // phases — a 20-minute silent resolve is uninterpretable.
+    let _phase_profile = v1_compiler::cli_run::PhaseProfile::install_from_env();
 
     let (entry_groups, discovery_notice) = if let Some(disc) = parsed.discovery {
         if let Err(e) = check_floor_filename_hygiene(&source_roots) {
