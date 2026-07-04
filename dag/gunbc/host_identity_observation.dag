@@ -6,7 +6,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import gunbc.host_effect {
   ShellCommand,
   NodeControlPlane,
-  OneShotIdempotent,
+  host_effect_read_evidence,
   HostEffectTransport,
   HostEffectIntent,
   HostEffectEvidence,
@@ -85,7 +85,7 @@ fn host_identity_observation_apply(
   host_effect_apply(
     target: target,
     effect: ShellCommand { script: host_identity_short_hostname_script },
-    policy: OneShotIdempotent,
+    evidence: host_effect_read_evidence,
     transport: transport,
   )
 }

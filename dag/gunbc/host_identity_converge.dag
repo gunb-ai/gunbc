@@ -12,15 +12,11 @@ import std.effects {
   CompositeKey,
   IdempotencyEvidence,
   LatticeEffect,
-  is_idempotent_effect,
 }
 import gunbc.host_effect {
   ShellCommand,
   NodeControlPlane,
   HostEffectTransport,
-  Policy,
-  OneShotIdempotent,
-  ConvergeToFixpoint,
   HostEffectIntent,
   HostEffectEvidence,
 }
@@ -168,12 +164,8 @@ data host_identity_hostname_effect_shape: EffectShape = UpsertEffect { key_sourc
 
 data host_identity_hostname_idempotency_evidence: IdempotencyEvidence = LatticeEffect { shape: host_identity_hostname_effect_shape }
 
-fn host_identity_apply_policy() -> Policy {
-  if is_idempotent_effect(shape: host_identity_hostname_effect_shape) {
-    OneShotIdempotent
-  } else {
-    ConvergeToFixpoint
-  }
+fn host_identity_apply_evidence() -> IdempotencyEvidence {
+  host_identity_hostname_idempotency_evidence
 }
 
 fn host_identity_apply_denied(
@@ -187,7 +179,7 @@ fn host_identity_apply_denied(
     applied: HostEffectIntent {
       target: target,
       effect: ShellCommand { script: script },
-      policy: host_identity_apply_policy(),
+      evidence: host_identity_apply_evidence(),
       transport: transport,
       privilege_denial: none,
     },
@@ -208,7 +200,7 @@ fn host_identity_apply_gated(
           access: access,
           target: target,
           effect: ShellCommand { script: script },
-          policy: host_identity_apply_policy(),
+          evidence: host_identity_apply_evidence(),
           transport: transport,
           fixture_actor: fixture_actor,
         )
