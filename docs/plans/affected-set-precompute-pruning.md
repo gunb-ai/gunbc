@@ -1,6 +1,6 @@
 # Affected-set de-fork: `v2.lens.affected_set` as single authority; dissolve Rust parallel implementation
 
-**Status: PARTIAL IMPLEMENTATION — prep (#6065) + witness (a) partial (#6072) landed; Steps 4–5 blocked.**
+**Status: PARTIAL IMPLEMENTATION — prep (#6065) + witness (a) partial (#6072) landed; Step 4 consumer-1 landed (#6061); Steps 4–5 continuing.**
 
 **ROADMAP:** `1-affected-set-defork` (`dag/gunbc/roadmap_authority.dag:173`).
 
