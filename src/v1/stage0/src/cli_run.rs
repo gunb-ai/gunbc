@@ -3687,11 +3687,6 @@ impl Default for DiscoveryCorpusOptions {
     }
 }
 
-enum FloorGitDiffOutcome {
-    ObservationFailClosed { reason: String },
-    UnifiedProduced(String),
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FileLineRange {
     start: i64,
@@ -4381,23 +4376,23 @@ fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> b
     false
 }
 
-fn read_entry_content_for_host_scaffold(entry: &str) -> (String, bool) {
-    match std::fs::read_to_string(entry) {
-        Ok(content) => (content, false),
-        Err(e) => {
-            eprintln!(
-                "claim_executor: failed to read entry {entry} for host-scaffold classification ({e}) — fail-closed, treating as host-scaffold"
-            );
-            (String::new(), true)
-        }
-    }
+fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
+    std::fs::read_to_string(entry).map_err(|e| {
+        format!(
+            "failed to read entry {entry} for host-scaffold classification: {e} — a \
+             discovered roster row's file must be readable; no silent reclassification"
+        )
+    })
 }
 
-fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> bool {
-    rows.iter().any(|row| {
-        let (content, read_failed) = read_entry_content_for_host_scaffold(&row.entry);
-        read_failed || witness_test_fn_uses_live_host_scan(&content, &row.function)
-    })
+fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> Result<bool, String> {
+    for row in rows {
+        let content = read_entry_content_for_host_scaffold(&row.entry)?;
+        if witness_test_fn_uses_live_host_scan(&content, &row.function) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn floor_diff_edits_from_diff_text(
@@ -4565,10 +4560,10 @@ fn entry_touches_rerun_frontier(
             Ok(Some(true)) => return Ok(true),
             Ok(Some(false)) | Ok(None) => {}
             Err(msg) => {
-                eprintln!(
-                    "claim_executor: test_claim_evaluation_touches_rerun_frontier failed ({msg}) — fail-closed, running entry witnesses"
-                );
-                return Ok(true);
+                return Err(format!(
+                    "test_claim_evaluation_touches_rerun_frontier failed ({msg}) — declared \
+                     selection machinery must evaluate; no silent run-everything fallback"
+                ));
             }
         }
         match call_test_claim_fn_bool(
@@ -4581,10 +4576,10 @@ fn entry_touches_rerun_frontier(
             Ok(Some(true)) => return Ok(true),
             Ok(Some(false)) | Ok(None) => {}
             Err(msg) => {
-                eprintln!(
-                    "claim_executor: floor_claim_touches_rerun_frontier failed ({msg}) — fail-closed, running entry witnesses"
-                );
-                return Ok(true);
+                return Err(format!(
+                    "floor_claim_touches_rerun_frontier failed ({msg}) — declared selection \
+                     machinery must evaluate; no silent run-everything fallback"
+                ));
             }
         }
     }
@@ -4650,65 +4645,62 @@ pub fn run_discovery_corpus_with_options(
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
     set_phase(FloorPhase::Discovery, "discovery-roster");
-    let diff_outcome = if options.skip_unaffected_node_frontier {
-        match floor_git_diff_range() {
-            Ok(text) => FloorGitDiffOutcome::UnifiedProduced(text),
-            Err(msg) => {
-                eprintln!(
-                    "claim_executor: git diff unavailable ({msg}) — fail-closed, running full corpus"
-                );
-                FloorGitDiffOutcome::ObservationFailClosed { reason: msg }
-            }
-        }
+    // No degradation arm: skip_unaffected_node_frontier: true is a DECLARED capability,
+    // so every input it needs (the git-diff observation, the frontier attribution, the
+    // affected-set runner) must be present — a failure is a loud typed error, never a
+    // silent run-everything fallback. To run without selection, declare the flag false.
+    let diff_text = if options.skip_unaffected_node_frontier {
+        floor_git_diff_range().map_err(|msg| {
+            format!(
+                "git diff observation failed ({msg}) — skip_unaffected_node_frontier: true \
+                 requires the declared fetch/observe steps to succeed; no silent \
+                 full-corpus fallback (declare the flag false to run without selection)"
+            )
+        })?
     } else {
-        FloorGitDiffOutcome::UnifiedProduced(String::new())
+        String::new()
     };
-    let line_ranges_by_file = match &diff_outcome {
-        FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
-        FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_line_ranges(text),
-    };
-    let changed_new_lines_by_file = match &diff_outcome {
-        FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
-        FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_changed_new_lines(text),
-    };
+    let line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
+    let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let changed_paths: Vec<String> = line_ranges_by_file.keys().cloned().collect();
-    let (skip_enabled, diff_edits) = if options.skip_unaffected_node_frontier
-        && !line_ranges_by_file.is_empty()
-    {
-        let frontier_index = build_multi_entry_index(source_roots);
-        match floor_diff_edits_from_line_ranges(
-            &frontier_index,
-            &line_ranges_by_file,
-            &changed_new_lines_by_file,
-        ) {
-            Ok(edits) => (true, edits),
-            Err(msg) => {
-                eprintln!(
-                    "claim_executor: node-frontier population fail-closed ({msg}) — running full corpus"
-                );
-                (false, FloorDiffEdits::default())
+    let (skip_enabled, diff_edits) =
+        if options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty() {
+            let frontier_index = build_multi_entry_index(source_roots);
+            match floor_diff_edits_from_line_ranges(
+                &frontier_index,
+                &line_ranges_by_file,
+                &changed_new_lines_by_file,
+            ) {
+                Ok(edits) => (true, edits),
+                Err(msg) => {
+                    return Err(format!(
+                        "node-frontier population failed ({msg}) — the diff-to-declaration \
+                     attribution is declared selection machinery; no silent full-corpus \
+                     fallback"
+                    ));
+                }
             }
-        }
-    } else {
-        (false, FloorDiffEdits::default())
-    };
+        } else {
+            (false, FloorDiffEdits::default())
+        };
     let floor_runner_ctx = if options.skip_unaffected_node_frontier {
         match resolve_floor_runner_context(source_roots) {
             Ok((graph, source_indices)) => {
                 Some(make_eval_context(&graph, source_indices, execution_mode))
             }
             Err(msg) => {
-                eprintln!(
-                    "claim_executor: floor runner resolve failed ({msg}) — fail-closed, running full corpus"
-                );
-                None
+                return Err(format!(
+                    "floor runner resolve failed ({msg}) — skip_unaffected_node_frontier: \
+                     true declares the affected-set machinery ({FLOOR_RUNNER_ENTRY}) and it \
+                     must resolve; no silent full-corpus fallback"
+                ));
             }
         }
     } else {
         None
     };
     let skip_precompute = if skip_enabled {
-        let host_scaffold_corpus = discovery_rows_include_host_scaffold(&rows);
+        let host_scaffold_corpus = discovery_rows_include_host_scaffold(&rows)?;
         match floor_runner_ctx.as_ref() {
             Some(ctx) => {
                 let precompute = if host_scaffold_corpus {
@@ -4731,10 +4723,10 @@ pub fn run_discovery_corpus_with_options(
                 match precompute {
                     Ok(skip) => skip,
                     Err(msg) => {
-                        eprintln!(
-                            "claim_executor: floor precompute_would_skip failed ({msg}) — fail-closed, running precompute"
-                        );
-                        false
+                        return Err(format!(
+                            "floor precompute_would_skip failed ({msg}) — declared selection \
+                             machinery must evaluate; no silent fallback"
+                        ));
                     }
                 }
             }
@@ -4801,16 +4793,15 @@ pub fn run_discovery_corpus_with_options(
             let index = build_multi_entry_index(&roots);
             let runner = if skip_for_shards {
                 match resolve_floor_runner_context(&roots) {
-                    Ok((graph, source_indices)) => Some(make_eval_context(
-                        &graph,
-                        source_indices,
-                        execution_mode,
-                    )),
+                    Ok((graph, source_indices)) => {
+                        Some(make_eval_context(&graph, source_indices, execution_mode))
+                    }
                     Err(msg) => {
-                        eprintln!(
-                            "claim_executor: floor runner resolve failed in shard ({msg}) — fail-closed, running all rows in shard"
-                        );
-                        None
+                        return Err(format!(
+                            "floor runner resolve failed in shard ({msg}) — declared \
+                             affected-set machinery must resolve; no silent \
+                             run-everything fallback"
+                        ));
                     }
                 }
             } else {
@@ -4923,7 +4914,6 @@ fn run_discovery_rows(
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
     let mut current_entry_closure_files: HashSet<String> = HashSet::new();
     let mut current_entry_content: String = String::new();
-    let mut current_entry_host_scaffold_fail_closed: bool = false;
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
@@ -4972,9 +4962,7 @@ fn run_discovery_rows(
             }
             ctx = Some(entry_ctx);
             current_entry = Some(row.entry.clone());
-            let (content, read_failed) = read_entry_content_for_host_scaffold(&row.entry);
-            current_entry_content = content;
-            current_entry_host_scaffold_fail_closed = read_failed;
+            current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
         }
         let function_edited = skip_enabled
             && diff_edits.edited_test_fns.iter().any(|(file, func)| {
@@ -4986,8 +4974,8 @@ fn run_discovery_rows(
                 .iter()
                 .any(|file| touched_file_in_import_closure(file, &current_entry_closure_files));
         let should_skip = if skip_enabled {
-            let host_scaffold_witness = current_entry_host_scaffold_fail_closed
-                || witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
+            let host_scaffold_witness =
+                witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
             match floor_runner_ctx {
                 Some(runner_ctx) => {
                     let skip = if host_scaffold_witness {
@@ -5012,11 +5000,12 @@ fn run_discovery_rows(
                     match skip {
                         Ok(skip) => skip,
                         Err(msg) => {
-                            eprintln!(
-                                "claim_executor: floor would_skip failed ({msg}) — fail-closed, running {} ({})",
+                            return Err(format!(
+                                "floor would_skip failed for {} ({}): {msg} — declared \
+                                 selection machinery must evaluate; no silent \
+                                 run-everything fallback",
                                 row.function, row.entry
-                            );
-                            false
+                            ));
                         }
                     }
                 }
