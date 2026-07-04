@@ -141,6 +141,8 @@ mod typescript_field_access_typecheck_test;
 #[cfg(test)]
 mod typescript_program_emit_run_test;
 #[cfg(test)]
+mod union_resolve_receipts_test;
+#[cfg(test)]
 mod v1_compiler_lib_test;
 #[cfg(test)]
 mod value_carrier_swap_test;
