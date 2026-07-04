@@ -78,8 +78,7 @@ fn closure_capture_unaffected_by_lexical_base_env() {
     let src = r#"module test.lexical_closure
 fn run() -> Int {
   let base = 10
-  let add = (n: Int) -> base + n
-  add(5)
+  [5] |> fold(init: 0, f: (_acc, n) => base + n)
 }
 "#;
     let resolved = resolve(src);
