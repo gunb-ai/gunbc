@@ -317,6 +317,7 @@ fn copy_stage0_support_modules(stage1_dir: &std::path::Path, ws: &std::path::Pat
     for name in &[
         "v1_interpreter.rs",
         "cli_run.rs",
+        "main.rs",
         "coproduct_reflection.rs",
         "resolved_graph_cache.rs",
         "recorded_fixture.rs",
