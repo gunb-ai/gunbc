@@ -45,12 +45,12 @@ pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, EmitInfoBuildState, RustCorpusRepr, TypeRepr, TypeSummary,
 };
 pub use crate::v1_compiler_infer_env::{
-    deterministic_str_binding_map, empty_type_env_cache, flatten_visible_bindings,
-    inductive_fields_for, inductive_fields_list_to_map, is_recursive_type,
-    is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
-    merge_inductive_fields, merge_type_env_cache, put_inductive_field, put_inductive_field_cross,
-    record_build_type_env_call, record_rewire_type_env_import_str_binding_call,
-    record_rewire_type_env_parent_links_call, str_bindings_from_bindings,
+    empty_type_env_cache, flatten_visible_bindings, inductive_fields_for,
+    inductive_fields_list_to_map, is_recursive_type, is_recursive_type_by_name, lookup_type,
+    lookup_type_by_name, lookup_type_for, merge_envs, merge_inductive_fields, merge_type_env_cache,
+    put_inductive_field, put_inductive_field_cross, record_build_type_env_call,
+    record_rewire_type_env_import_str_binding_call, record_rewire_type_env_parent_links_call,
+    str_bindings_from_bindings,
 };
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv, TypeEnvCache};
 use crate::v1_compiler_infer_items::ItemKind::{
@@ -12747,14 +12747,12 @@ pub fn build_type_env(
         } else {
             ancestry_cache.str_bindings.clone()
         };
-        let visible_str_bindings = deterministic_str_binding_map(v1_rt::rc_map_merge(
-            ancestry_str_bindings.clone(),
-            local_str_bindings.clone(),
-        ));
+        let visible_str_bindings =
+            v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
         let unresolved_env = Rc::new(TypeEnv {
             bindings: all_local_bindings.clone(),
-            str_bindings: deterministic_str_binding_map(local_str_bindings.clone()),
-            ancestry_str_bindings: deterministic_str_binding_map(ancestry_str_bindings.clone()),
+            str_bindings: local_str_bindings.clone(),
+            ancestry_str_bindings: ancestry_str_bindings.clone(),
             parents: scope_parents.clone(),
             recursive_types: cycle_set,
             recursive_type_set: cross_type_set,
@@ -12772,10 +12770,8 @@ pub fn build_type_env(
         let resolved_diags = resolved.diagnostics.clone();
         let final_env = Rc::new(TypeEnv {
             bindings: resolved_env_out.bindings.clone(),
-            str_bindings: deterministic_str_binding_map(resolved_env_out.str_bindings.clone()),
-            ancestry_str_bindings: deterministic_str_binding_map(
-                resolved_env_out.ancestry_str_bindings.clone(),
-            ),
+            str_bindings: resolved_env_out.str_bindings.clone(),
+            ancestry_str_bindings: resolved_env_out.ancestry_str_bindings.clone(),
             parents: scope_parents.clone(),
             recursive_types: resolved_env_out.recursive_types.clone(),
             recursive_type_set: resolved_env_out.recursive_type_set.clone(),
@@ -13200,14 +13196,12 @@ pub fn build_type_env_unresolved(
         } else {
             ancestry_cache.str_bindings.clone()
         };
-        let visible_str_bindings = deterministic_str_binding_map(v1_rt::rc_map_merge(
-            ancestry_str_bindings.clone(),
-            local_str_bindings.clone(),
-        ));
+        let visible_str_bindings =
+            v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
         let unresolved_env = Rc::new(TypeEnv {
             bindings: local_bindings.clone(),
-            str_bindings: deterministic_str_binding_map(local_str_bindings.clone()),
-            ancestry_str_bindings: deterministic_str_binding_map(ancestry_str_bindings.clone()),
+            str_bindings: local_str_bindings.clone(),
+            ancestry_str_bindings: ancestry_str_bindings.clone(),
             parents: scope_parents.clone(),
             recursive_types: cycle_set,
             recursive_type_set: cross_type_set,

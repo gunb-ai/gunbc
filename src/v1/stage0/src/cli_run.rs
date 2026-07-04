@@ -11428,13 +11428,13 @@ fn serialize_untagged_variant(
 mod import_closure_equivalence_tests {
     use super::{
         build_module_graph_facts_live, build_module_index, build_multi_entry_index,
-        closure_subject_for_entry, default_source_roots, import_closure_live_paths,
-        module_graph_facts_build_count_for_test, reset_module_graph_facts_build_count_for_test,
-        resolve_transitively, resolve_transitively_bfs_legacy, witness_layer_roots,
-        workspace_relative_repo_path,
+        closure_subject_for_entry, default_source_roots, floor_discovery_path_excluded,
+        import_closure_live_paths, module_graph_facts_build_count_for_test,
+        reset_module_graph_facts_build_count_for_test, resolve_transitively,
+        resolve_transitively_bfs_legacy, witness_layer_roots, workspace_relative_repo_path,
     };
-    use std::collections::HashMap;
-    use std::path::PathBuf;
+    use std::collections::{BTreeSet, HashMap};
+    use std::path::{Path, PathBuf};
     use std::rc::Rc;
 
     fn workspace_root() -> PathBuf {
@@ -11454,10 +11454,13 @@ mod import_closure_equivalence_tests {
             .collect()
     }
 
-    fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
+    fn assert_bfs_matches_import_closure_live_with_facts(
+        entry_rel: &str,
+        index: &super::ModuleSourceIndex,
+        facts: &super::ModuleGraphFactsLive,
+    ) {
         let ws = workspace_root();
         let entry_abs = ws.join(entry_rel);
-        let index = build_module_index(pool_roots);
         let content =
             std::fs::read_to_string(&entry_abs).unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
         let entry_source = Rc::new(crate::v1_compiler_compile::SourceFile {
@@ -11468,14 +11471,13 @@ mod import_closure_equivalence_tests {
         if let Some(mod_path) = super::extract_module_path(&entry_source.content) {
             seen.insert(mod_path, entry_source.clone());
         }
-        let bfs = resolve_transitively_bfs_legacy(vec![entry_source.clone()], &index, seen);
-        let facts = super::build_module_graph_facts_live(pool_roots);
-        let repointed = resolve_transitively(vec![entry_source], &index, &facts)
+        let bfs = resolve_transitively_bfs_legacy(vec![entry_source.clone()], index, seen);
+        let repointed = resolve_transitively(vec![entry_source], index, facts)
             .unwrap_or_else(|e| panic!("resolve_transitively {entry_rel}: {e}"));
-        let live = super::import_closure_live_paths_with_facts(entry_rel, &facts);
+        let live = super::import_closure_live_paths_with_facts(entry_rel, facts);
         let bfs_paths = closure_paths(&bfs);
         let repointed_paths = closure_paths(&repointed);
-        let live_paths: std::collections::BTreeSet<String> = live
+        let live_paths: BTreeSet<String> = live
             .iter()
             .map(|p| workspace_relative_repo_path(p))
             .collect();
@@ -11487,6 +11489,48 @@ mod import_closure_equivalence_tests {
             live_paths, bfs_paths,
             "import_closure_live diverged from legacy BFS for {entry_rel}"
         );
+    }
+
+    fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
+        let index = build_module_index(pool_roots);
+        let facts = super::build_module_graph_facts_live(pool_roots);
+        assert_bfs_matches_import_closure_live_with_facts(entry_rel, &index, &facts);
+    }
+
+    /// Floor witness entry paths enrolled by the source-root `*_test.dag` pass
+    /// (`gunbc.ci_layer_roots.witness_layer_roots`), minus the model exclusion list.
+    /// Avoids `discover_floor_corpus_rows` lens-hygiene work — closure set-identity
+    /// only needs the witness entry roster, not inert-lens classification.
+    fn floor_witness_entry_paths_for_oracle() -> BTreeSet<String> {
+        let mut entries = BTreeSet::new();
+        for root in default_source_roots() {
+            let mut dag_files = Vec::new();
+            super::collect_dag_files_tolerant(Path::new(&root), &mut dag_files);
+            for path in dag_files {
+                let rel = workspace_relative_repo_path(&path.to_string_lossy());
+                if !rel.ends_with("_test.dag") || floor_discovery_path_excluded(&rel) {
+                    continue;
+                }
+                entries.insert(rel);
+            }
+        }
+        entries
+    }
+
+    #[test]
+    fn import_closure_live_matches_legacy_bfs_on_whole_floor_corpus() {
+        let roots = default_source_roots();
+        let entries = floor_witness_entry_paths_for_oracle();
+        assert!(
+            entries.len() >= 4,
+            "import-closure semantic oracle expects the full floor roster (got {})",
+            entries.len()
+        );
+        let index = build_module_index(&roots);
+        let facts = super::build_module_graph_facts_live(&roots);
+        for entry_rel in entries {
+            assert_bfs_matches_import_closure_live_with_facts(&entry_rel, &index, &facts);
+        }
     }
 
     #[test]
