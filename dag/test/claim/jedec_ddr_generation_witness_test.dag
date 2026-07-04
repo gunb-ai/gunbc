@@ -3,6 +3,7 @@ module test.claim.jedec_ddr_generation
 import std.logic { Bool }
 import std.measure { byte_size, byte_size_count, bit_width }
 import extdeps.memory.types {
+  DimmBuffering,
   DoubleDataRate,
   DramModuleCatalogRow,
   dram_module_is_realizable,

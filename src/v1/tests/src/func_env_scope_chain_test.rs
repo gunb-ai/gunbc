@@ -48,11 +48,13 @@ fn temp_dir(label: &str) -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!(
-        "gunbc-func-env-{label}-{}-{}",
-        std::process::id(),
-        nanos
-    ));
+    let dir = crate::helpers::workspace_root()
+        .join("target")
+        .join(format!(
+            "gunbc-func-env-{label}-{}-{}",
+            std::process::id(),
+            nanos
+        ));
     fs::create_dir_all(&dir).expect("temp dir");
     dir
 }

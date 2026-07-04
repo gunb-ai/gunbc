@@ -5,6 +5,7 @@ import tools.diagnostics_witness_transport {
   run_diagnostics_reexport_surface_witness,
   run_diagnostics_type_and_arity_witness,
   run_diagnostics_empty_list_context_witness,
+  run_diagnostics_constructor_owner_witness,
 }
 import std.logic { Bool }
 
@@ -24,4 +25,8 @@ test fn diagnostics_type_and_arity_holds() -> Bool {
 
 test fn diagnostics_empty_list_context_holds() -> Bool {
   run_diagnostics_empty_list_context_witness()
+}
+
+test fn diagnostics_constructor_owner_walls_hold() -> Bool {
+  run_diagnostics_constructor_owner_witness()
 }

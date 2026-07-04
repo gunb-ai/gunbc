@@ -2,6 +2,7 @@ module v2.test.fact_cardinality.lens_unit.synthetic_fork_red
 
 import v2.lens.fact_cardinality {
   FactCardinalityDeclFact,
+  FactCardinalityTree,
   fact_cardinality_cross_tree_diverged_fork
 }
 import v2.std.logic { Bool }

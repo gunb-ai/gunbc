@@ -110,6 +110,8 @@ use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_std_core::empty_intern_table;
+// HAND-PATCH (§1c re-export chains): accessor for the chain followers below.
+use crate::v1_std_core::import_specific_names_at;
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
@@ -797,6 +799,31 @@ pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option
     }
 }
 
+// HAND-PATCH (constructor-owner ruling §1c; seed two-step): O(1) owner lookup
+// via the binding edge — replaced by regen's true emission of variant_owner_node
+// in the convergence commit.
+pub fn variant_owner_node(scope: Rc<InferScope>, name: String) -> Option<Rc<Node>> {
+    match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
+        Some(binding) => match lookup_type_for(scope.type_env.clone(), binding.resolved.clone()) {
+            Some(owner) => {
+                if owner.connective.clone() == Connective::Disj
+                    && has_child_named(
+                        owner.clone(),
+                        name.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    )
+                {
+                    Some(owner)
+                } else {
+                    None
+                }
+            }
+            None => None,
+        },
+        None => None,
+    }
+}
+
 pub fn infer_var_binding_kind(scope: Rc<InferScope>, name: String) -> Rc<VarBindingKind> {
     match lookup_variant_parent_enum(scope.clone(), name.clone()) {
         Some(parent_enum) => Rc::new(VarBindingKind::VariantValueBinding {
@@ -927,36 +954,30 @@ pub fn record_lit_expected_fields(
     match type_name {
         Some(tn) => match lookup_type_by_name(scope.type_env.clone(), tn.clone()) {
             Some(direct) => direct.children.clone(),
-            None => match lookup_variant_parent_enum(scope.clone(), tn.clone()) {
-                Some(parent_name) => {
-                    match lookup_type_by_name(scope.type_env.clone(), parent_name.clone()) {
-                        Some(parent) => match Rc::new({
-                            let mut __result = Vec::new();
-                            for v in parent.children.clone().iter().cloned() {
-                                if (authored_name_at(
-                                    scope.type_env.clone().source_indices.clone(),
-                                    v.clone(),
-                                ) == tn.clone())
-                                {
-                                    __result.push(v);
-                                }
-                            }
-                            __result
-                        })
-                        .first()
-                        .cloned()
+            // HAND-PATCH (§1c): owner via the binding edge (variant_owner_node),
+            // no name round-trip, no whole-env scan fallback. Regen replaces
+            // this with the dag source's true emission.
+            None => match variant_owner_node(scope.clone(), tn.clone()) {
+                Some(parent) => match Rc::new({
+                    let mut __result = Vec::new();
+                    for v in parent.children.clone().iter().cloned() {
+                        if (authored_name_at(
+                            scope.type_env.clone().source_indices.clone(),
+                            v.clone(),
+                        ) == tn.clone())
                         {
-                            Some(variant) => variant.children.clone(),
-                            None => Rc::new(vec![]),
-                        },
-                        None => Rc::new(vec![]),
+                            __result.push(v);
+                        }
                     }
-                }
-                None => record_lit_variant_fields_from_visible_env(
-                    scope.type_env.clone(),
-                    tn.clone(),
-                    scope.module_name.clone(),
-                ),
+                    __result
+                })
+                .first()
+                .cloned()
+                {
+                    Some(variant) => variant.children.clone(),
+                    None => Rc::new(vec![]),
+                },
+                None => Rc::new(vec![]),
             },
         },
         None => Rc::new(vec![]),
@@ -2697,44 +2718,25 @@ pub fn infer_expr(
                     Some(binding) => {
                         let scope_parent = lookup_variant_parent_enum(scope.clone(), name.clone());
                         match scope_parent {
-                            Some(scope_enum) => {
-                                let override_enum = expected_type_override_enum(
-                                    scope.clone(),
-                                    name.clone(),
-                                    scope_enum.clone(),
-                                    expected.clone(),
-                                );
-                                let effective_enum = match override_enum.clone() {
-                                    Some(ov) => ov.clone(),
-                                    None => scope_enum.clone(),
-                                };
-                                let effective_resolved = match override_enum.clone() {
-                                    Some(ov) => match lookup_type_by_name(
-                                        scope.type_env.clone(),
-                                        ov.clone(),
-                                    ) {
-                                        Some(t) => t.clone(),
-                                        None => binding.resolved.clone(),
-                                    },
-                                    None => binding.resolved.clone(),
-                                };
-                                ok_infer(make_named_expr_node(
-                                    name.clone(),
-                                    Rc::new(ExprData::ExprVar {
-                                        binding_kind: Some(Rc::new(
-                                            VarBindingKind::VariantValueBinding {
-                                                parent_enum: effective_enum,
-                                            },
-                                        )),
-                                    }),
-                                    Rc::new(vec![]),
-                                    Some(Rc::new(InferredNode::Resolved {
-                                        node: effective_resolved,
-                                    })),
-                                    span.clone(),
-                                    span.clone(),
-                                ))
-                            }
+                            // HAND-PATCH (§1c): the expected-type-as-owner-picker
+                            // is deleted; the binding edge alone names the owner.
+                            // Regen replaces this with the dag source's true emission.
+                            Some(scope_enum) => ok_infer(make_named_expr_node(
+                                name.clone(),
+                                Rc::new(ExprData::ExprVar {
+                                    binding_kind: Some(Rc::new(
+                                        VarBindingKind::VariantValueBinding {
+                                            parent_enum: scope_enum.clone(),
+                                        },
+                                    )),
+                                }),
+                                Rc::new(vec![]),
+                                Some(Rc::new(InferredNode::Resolved {
+                                    node: binding.resolved.clone(),
+                                })),
+                                span.clone(),
+                                span.clone(),
+                            )),
                             None => {
                                 let binding_kind =
                                     infer_var_binding_kind(scope.clone(), name.clone());
@@ -2843,10 +2845,20 @@ pub fn infer_expr(
                     false
                 };
                 if resolved_base_is_error {
+                    // HAND-PATCH (debug instrumentation, removed with regen):
+                    // name the error-typed base so the fail-open seam is located.
                     Rc::new(InferResult {
                         typed: make_expr_error_node(
                             ExprErrorKind::SemanticExprError,
-                            "error type cascade".to_string(),
+                            format!(
+                                "error type cascade (field '{}' on error-typed base '{}' in {})",
+                                field_name,
+                                authored_name_at(
+                                    scope.type_env.clone().source_indices.clone(),
+                                    base_typed.clone()
+                                ),
+                                scope.module_name
+                            ),
                             span.clone(),
                         ),
                         diagnostics: base_diags,
@@ -5821,45 +5833,36 @@ pub fn infer_record_lit(
     expected: Option<Rc<Node>>,
 ) -> Rc<InferResult> {
     {
+        // HAND-PATCH (§1c): the unconditional whole-env scan-first rung is
+        // deleted; the ladder is instantiate -> expected -> declaration/
+        // binding-edge only. Regen replaces this with the dag source's true
+        // emission.
         let struct_fields = match type_name.clone() {
             Some(tn) => {
-                let visible_fields = record_lit_variant_fields_from_visible_env(
-                    scope.type_env.clone(),
-                    tn.clone(),
-                    scope.module_name.clone(),
-                );
-                if ((visible_fields.clone().len() as i64) > 0) {
-                    visible_fields.clone()
-                } else {
-                    match record_lit_instantiated_fields(
+                match record_lit_instantiated_fields(
+                    type_name.clone(),
+                    expected.clone(),
+                    scope.clone(),
+                ) {
+                    Some(fields) => fields.clone(),
+                    None => match record_lit_fields_from_expected(
                         type_name.clone(),
                         expected.clone(),
                         scope.clone(),
                     ) {
                         Some(fields) => fields.clone(),
-                        None => match record_lit_fields_from_expected(
-                            type_name.clone(),
-                            expected.clone(),
-                            scope.clone(),
-                        ) {
-                            Some(fields) => fields.clone(),
-                            None => match expected.clone() {
-                                Some(_) => {
-                                    record_lit_expected_fields(type_name.clone(), scope.clone())
-                                }
-                                None => {
-                                    match record_lit_alias_struct_fields(tn.clone(), scope.clone())
-                                    {
-                                        Some(fields) => fields.clone(),
-                                        None => record_lit_expected_fields(
-                                            type_name.clone(),
-                                            scope.clone(),
-                                        ),
+                        None => match expected.clone() {
+                            Some(_) => record_lit_expected_fields(type_name.clone(), scope.clone()),
+                            None => {
+                                match record_lit_alias_struct_fields(tn.clone(), scope.clone()) {
+                                    Some(fields) => fields.clone(),
+                                    None => {
+                                        record_lit_expected_fields(type_name.clone(), scope.clone())
                                     }
                                 }
-                            },
+                            }
                         },
-                    }
+                    },
                 }
             }
             None => match record_lit_instantiated_fields(
@@ -6148,14 +6151,16 @@ pub fn infer_record_lit(
                 } else {
                     raw_resolved
                 };
+                // HAND-PATCH (§1c): unbound constructor literal is the typed
+                // UnresolvedType diagnostic, not a generic InternalError message.
+                // Regen replaces this with the dag source's true emission.
                 let type_diags = match effective_lookup.clone() {
                     Some(_) => Rc::new(vec![]),
-                    None => Rc::new(vec![inference_error(
-                        v1_rt::concat(
-                            v1_rt::concat("type '".to_string(), type_name.clone().unwrap()),
-                            "' not found in scope".to_string(),
-                        ),
-                        span.clone(),
+                    None => Rc::new(vec![make_error_node(
+                        Rc::new(CompilerDiagnostic::UnresolvedType {
+                            name: type_name.clone().unwrap(),
+                            span: span.clone(),
+                        }),
                         scope.module_name.clone(),
                     )]),
                 };
@@ -13566,6 +13571,94 @@ pub fn build_imported_variants(
     )
 }
 
+// HAND-PATCH (constructor-owner ruling §1c; seed two-step): re-export chain
+// followers — a module re-exports its specific-name imports, so the binder
+// walks the acyclic import chain to the defining module's coproduct. Replaced
+// by regen's true emission in the convergence commit.
+pub fn owner_of_exported_arm(
+    module_path: String,
+    arm_name: String,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match v1_rt::map_get(&parent_index, module_path) {
+        None => None,
+        Some(tm) => {
+            let own = tm.items.iter().cloned().find(|item| {
+                item.connective.clone() == Connective::Disj
+                    && item
+                        .children
+                        .iter()
+                        .cloned()
+                        .any(|c| authored_name_at(source_indices.clone(), c) == arm_name)
+            });
+            match own {
+                Some(item) => Some(item),
+                None => {
+                    let reexport = module_imports(tm.module.clone())
+                        .iter()
+                        .cloned()
+                        .find(|imp| {
+                            !import_is_all(imp.clone())
+                                && import_specific_names_at(imp.clone(), source_indices.clone())
+                                    .iter()
+                                    .any(|n| *n == arm_name)
+                        });
+                    match reexport {
+                        Some(imp) => owner_of_exported_arm(
+                            authored_name_at(source_indices.clone(), imp),
+                            arm_name,
+                            parent_index,
+                            source_indices,
+                        ),
+                        None => None,
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn exported_coproduct_item(
+    module_path: String,
+    enum_name: String,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match v1_rt::map_get(&parent_index, module_path) {
+        None => None,
+        Some(tm) => {
+            let own = tm.items.iter().cloned().find(|item| {
+                item.connective.clone() == Connective::Disj
+                    && authored_name_at(source_indices.clone(), item.clone()) == enum_name
+            });
+            match own {
+                Some(item) => Some(item),
+                None => {
+                    let reexport = module_imports(tm.module.clone())
+                        .iter()
+                        .cloned()
+                        .find(|imp| {
+                            !import_is_all(imp.clone())
+                                && import_specific_names_at(imp.clone(), source_indices.clone())
+                                    .iter()
+                                    .any(|n| *n == enum_name)
+                        });
+                    match reexport {
+                        Some(imp) => exported_coproduct_item(
+                            authored_name_at(source_indices.clone(), imp),
+                            enum_name,
+                            parent_index,
+                            source_indices,
+                        ),
+                        None => None,
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn build_module_context(
     contributions: Rc<Vec<Rc<ItemContribution>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -13584,152 +13677,138 @@ pub fn build_module_context(
             Rc::new(vec![]),
             env.source_indices.clone(),
         );
-        let imported_variants = build_imported_variants(
-            resolved_imports.clone(),
-            parent_index.clone(),
-            env.source_indices.clone(),
-        );
-        let ancestry_cache =
-            union_parent_type_env_caches(resolved_imports.clone(), parent_index.clone());
-        let local_str_bindings = Rc::new(v1_rt::map_values(&env.bindings.clone()))
-            .iter()
-            .cloned()
-            .fold(
-                v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-                |acc: Rc<HashMap<String, Rc<TypeBinding>>>, b: Rc<TypeBinding>| {
-                    v1_rt::rc_map_insert(acc, b.name.clone(), b.clone())
-                },
-            );
-        let bindings_for_variants =
-            v1_rt::rc_map_merge(ancestry_cache.str_bindings.clone(), local_str_bindings);
-        let variant_fold = Rc::new({
-            let mut __sorted: Vec<_> = Rc::new(v1_rt::map_values(&bindings_for_variants))
-                .iter()
-                .cloned()
-                .collect();
-            __sorted.sort_by(|a: &Rc<TypeBinding>, b: &Rc<TypeBinding>| {
-                let __ka = (|b: Rc<TypeBinding>| b.name.clone())(a.clone());
-                let __kb = (|b: Rc<TypeBinding>| b.name.clone())(b.clone());
-                __ka.partial_cmp(&__kb).unwrap_or(std::cmp::Ordering::Equal)
-            });
-            __sorted
-        })
-        .iter()
-        .cloned()
-        .fold(
+        // HAND-PATCH (constructor-owner ruling §1c; seed two-step): functional
+        // realization of the new v1.compiler.infer dag source — replaced
+        // wholesale by regen output in the convergence commit. Constructor
+        // namespace is FLAT: local coproduct arms + direct imports'
+        // contributions; the binding carries the owner NODE; one arm name
+        // bound to two different owners = VariantCollision (per-file wall).
+        let insert_variant_owner_checked = |state: Rc<VariantFoldState>,
+                                            arm_name: String,
+                                            owner: Rc<Node>|
+         -> Rc<VariantFoldState> {
+            match v1_rt::map_get(&state.locals.clone(), arm_name.clone()) {
+                Some(prev) => {
+                    let prev_name =
+                        authored_name_at(env.source_indices.clone(), prev.resolved.clone());
+                    let owner_name = authored_name_at(env.source_indices.clone(), owner.clone());
+                    let same_owner = prev_name == owner_name
+                        && prev.resolved.span.file == owner.span.file
+                        && prev.resolved.span.start == owner.span.start;
+                    if same_owner {
+                        state
+                    } else {
+                        Rc::new(VariantFoldState {
+                            locals: state.locals.clone(),
+                            collision_errors: v1_rt::concat(
+                                state.collision_errors.clone(),
+                                Rc::new(vec![make_error_node(
+                                    Rc::new(CompilerDiagnostic::VariantCollision {
+                                        variant: arm_name,
+                                        enum1: prev_name,
+                                        enum2: owner_name,
+                                        span: owner.span.clone(),
+                                    }),
+                                    module_name.clone(),
+                                )]),
+                            ),
+                        })
+                    }
+                }
+                None => Rc::new(VariantFoldState {
+                    locals: v1_rt::rc_map_insert(
+                        state.locals.clone(),
+                        arm_name.clone(),
+                        Rc::new(TypeBinding {
+                            name: arm_name,
+                            resolved: owner,
+                            provenance: Rc::new(SubValueRelation::SubValueUnknown),
+                        }),
+                    ),
+                    collision_errors: state.collision_errors.clone(),
+                }),
+            }
+        };
+        let bind_coproduct_item_arms =
+            |state: Rc<VariantFoldState>, item: Rc<Node>| -> Rc<VariantFoldState> {
+                item.children
+                    .clone()
+                    .iter()
+                    .cloned()
+                    .fold(state, |vacc, child| {
+                        insert_variant_owner_checked(
+                            vacc,
+                            authored_name_at(env.source_indices.clone(), child.clone()),
+                            item.clone(),
+                        )
+                    })
+            };
+        let local_variant_fold = local.resolved_items.clone().iter().cloned().fold(
             Rc::new(VariantFoldState {
                 locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
                 collision_errors: Rc::new(vec![]),
             }),
-            |acc: Rc<VariantFoldState>, binding: Rc<TypeBinding>| {
-                let is_coproduct =
-                    (binding.resolved.clone().connective.clone() == Connective::Disj);
-                if is_coproduct.clone() {
-                    {
-                        let binding_enum_name =
-                            authored_name_at(env.source_indices.clone(), binding.resolved.clone());
-                        binding
-                            .resolved
-                            .clone()
-                            .children
-                            .clone()
-                            .iter()
-                            .cloned()
-                            .fold(
-                                acc.clone(),
-                                |vacc: Rc<VariantFoldState>, child: Rc<Node>| {
-                                    let child_name =
-                                        authored_name_at(env.source_indices.clone(), child.clone());
-                                    let curr_child_is_imported = is_imported_variant_owned_by(
-                                        imported_variants.clone(),
-                                        child_name.clone(),
-                                        binding_enum_name.clone(),
-                                    );
-                                    match v1_rt::map_get(&vacc.locals.clone(), child_name.clone()) {
-                                        Some(_prev) => {
-                                            if curr_child_is_imported.clone() {
-                                                Rc::new(VariantFoldState {
-                                                    locals: v1_rt::rc_map_insert(
-                                                        vacc.locals.clone(),
-                                                        child_name.clone(),
-                                                        Rc::new(TypeBinding {
-                                                            name: child_name.clone(),
-                                                            resolved: binding.resolved.clone(),
-                                                            provenance: Rc::new(
-                                                                SubValueRelation::SubValueUnknown,
-                                                            ),
-                                                        }),
-                                                    ),
-                                                    collision_errors: vacc.collision_errors.clone(),
-                                                })
-                                            } else {
-                                                vacc.clone()
-                                            }
-                                        }
-                                        None => Rc::new(VariantFoldState {
-                                            locals: v1_rt::rc_map_insert(
-                                                vacc.locals.clone(),
-                                                child_name.clone(),
-                                                Rc::new(TypeBinding {
-                                                    name: child_name.clone(),
-                                                    resolved: binding.resolved.clone(),
-                                                    provenance: Rc::new(
-                                                        SubValueRelation::SubValueUnknown,
-                                                    ),
-                                                }),
-                                            ),
-                                            collision_errors: vacc.collision_errors.clone(),
-                                        }),
-                                    }
-                                },
-                            )
-                    }
+            |acc: Rc<VariantFoldState>, item: Rc<Node>| {
+                if item.connective.clone() == Connective::Disj {
+                    bind_coproduct_item_arms(acc, item)
                 } else {
-                    acc.clone()
+                    acc
                 }
             },
         );
-        let imported_variant_locals =
-            merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
-        let imported_variant_locals = resolved_imports.clone().iter().cloned().fold(
-            imported_variant_locals.clone(),
-            |acc: Rc<HashMap<String, Rc<TypeBinding>>>, imp: Rc<ResolvedImport>| {
-                imp.specific_names.clone().iter().cloned().fold(
-                    acc,
-                    |inner: Rc<HashMap<String, Rc<TypeBinding>>>, variant_name: String| {
-                        if v1_rt::map_contains_key(&inner, variant_name.clone()) {
-                            inner.clone()
-                        } else {
-                            match v1_rt::map_get(&imported_variants, variant_name.clone()) {
-                                Some(enum_name) => {
-                                    match lookup_type_by_name(env.clone(), enum_name.clone()) {
-                                        Some(enum_node) => v1_rt::rc_map_insert(
-                                            inner.clone(),
-                                            variant_name.clone(),
-                                            Rc::new(TypeBinding {
-                                                name: variant_name.clone(),
-                                                resolved: enum_node.clone(),
-                                                provenance: Rc::new(
-                                                    SubValueRelation::SubValueUnknown,
-                                                ),
-                                            }),
-                                        ),
-                                        None => inner.clone(),
-                                    }
-                                }
-                                None => inner.clone(),
+        let variant_fold = resolved_imports.clone().iter().cloned().fold(
+            local_variant_fold,
+            |acc: Rc<VariantFoldState>, imp: Rc<ResolvedImport>| {
+                // Glob (is_all) imports bind the target's OWN coproduct arms only.
+                let with_glob = if imp.is_all {
+                    let source_items = match v1_rt::map_get(&parent_index, imp.module_path.clone())
+                    {
+                        Some(parent_tm) => parent_tm.items.clone(),
+                        None => Rc::new(vec![]),
+                    };
+                    source_items.iter().cloned().fold(
+                        acc,
+                        |iacc: Rc<VariantFoldState>, item: Rc<Node>| {
+                            if item.connective.clone() == Connective::Disj {
+                                bind_coproduct_item_arms(iacc, item)
+                            } else {
+                                iacc
                             }
+                        },
+                    )
+                } else {
+                    acc
+                };
+                // Specific names resolve through the re-export chain to the
+                // defining module (owner_of_exported_arm / exported_coproduct_item).
+                imp.specific_names.iter().cloned().fold(
+                    with_glob,
+                    |nacc: Rc<VariantFoldState>, name: String| {
+                        let after_enum = match exported_coproduct_item(
+                            imp.module_path.clone(),
+                            name.clone(),
+                            parent_index.clone(),
+                            env.source_indices.clone(),
+                        ) {
+                            Some(item) => bind_coproduct_item_arms(nacc, item),
+                            None => nacc,
+                        };
+                        match owner_of_exported_arm(
+                            imp.module_path.clone(),
+                            name.clone(),
+                            parent_index.clone(),
+                            env.source_indices.clone(),
+                        ) {
+                            Some(owner) => insert_variant_owner_checked(after_enum, name, owner),
+                            None => after_enum,
                         }
                     },
                 )
             },
         );
         let variant_collision_errors = variant_fold.collision_errors.clone();
-        let env_variant_locals = variant_locals_from_items(
-            local.resolved_items.clone(),
-            imported_variant_locals.clone(),
-            env.source_indices.clone(),
-        );
+        let env_variant_locals =
+            merge_kernel_variant_locals_low_priority(env.clone(), variant_fold.locals.clone());
         let merged_scope = merge_scope_from_imports(
             resolved_imports.clone(),
             parent_index.clone(),

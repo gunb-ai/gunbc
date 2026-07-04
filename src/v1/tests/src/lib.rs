@@ -17,6 +17,8 @@ mod bug_sentinel_ratchet;
 #[cfg(test)]
 mod cache_purity_oracle_test;
 #[cfg(test)]
+mod constructor_owner_ruling_test;
+#[cfg(test)]
 mod consumed_input_closure_drift_test;
 #[cfg(test)]
 mod coproduct_reflection_conformance_test;
@@ -70,6 +72,8 @@ mod interp_wire_serialize_test;
 mod interpreted_parse_termination_test;
 #[cfg(test)]
 mod ir_fixture_seam_soundness_test;
+#[cfg(test)]
+mod kernel_shadow_seams_test;
 #[cfg(test)]
 mod list_free_monoid_chokepoint_test;
 #[cfg(test)]

@@ -4,8 +4,9 @@ import std.logic { Bool }
 import std.types { Int, List }
 import std.measure { byte_size, byte_size_count, bit_width, watt, watt_count, hardware_thread_count, hertz, money_amount_micro }
 import product.hardware_selection { milliwatt }
-import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket }
-import extdeps.memory.types { DramModuleCatalogRow, dram_module_is_realizable, dram_module_required_die_density, dram_generation_ddr4 }
+import extdeps.cpu.types { CpuModelCatalogRow, CpuSocket, SocketPackage }
+import extdeps.toolchain.types { Architecture }
+import extdeps.memory.types { DimmBuffering, DramModuleCatalogRow, dram_module_is_realizable, dram_module_required_die_density, dram_generation_ddr4 }
 import extdeps.vendor.sk_hynix { sk_hynix }
 import extdeps.vendor.ampere { ampere }
 import extdeps.memory.jedec { ddr4_generation_catalog, jedec_ddr_generation_catalog_row }
@@ -16,6 +17,7 @@ import product.hardware_selection {
   CpuCandidate,
   Motherboard,
   PsuModel,
+  EfficiencyRating,
   SystemConfig,
   HardwareAxes,
   effective_data_rate_mts,

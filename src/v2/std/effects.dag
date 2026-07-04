@@ -17,8 +17,8 @@ type BreakingCreateCause
   | KeylessFallback { method: Symbol }
 
 type CreateCause
-  = PostAlways
-  | KeylessFallback { method: Symbol }
+  = CreatePostAlways
+  | CreateKeylessFallback { method: Symbol }
   | CreateIfAbsent { key_source: KeySource }
 
 type KeySource
@@ -107,9 +107,9 @@ fn effect_shape_for_create_cause(cause: CreateCause) -> EffectShape {
   match cause {
     CreateIfAbsent { key_source: key_source } =>
       IsIdempotent(CreateIfAbsentEffect { key_source: key_source })
-    PostAlways =>
+    CreatePostAlways =>
       IsBreaking(CreateEffect { cause: PostAlways })
-    KeylessFallback { method: method } =>
+    CreateKeylessFallback { method: method } =>
       IsBreaking(CreateEffect { cause: KeylessFallback { method: method } })
   }
 }
@@ -168,7 +168,7 @@ fn create_if_absent_shape(key_source: KeySource) -> EffectShape {
 }
 
 fn create_always_shape() -> EffectShape {
-  effect_shape_for_create_cause(cause: PostAlways)
+  effect_shape_for_create_cause(cause: CreatePostAlways)
 }
 
 fn atom_node(s: Symbol) -> Node {
@@ -400,7 +400,7 @@ data witness_create_if_absent_cause_is_idempotent: Bool = match effect_shape_for
   IsIdempotent(DeleteEffect { key_source: key_source }) => false
 }
 
-data witness_post_always_cause_is_breaking: Bool = match effect_shape_for_create_cause(cause: PostAlways) {
+data witness_post_always_cause_is_breaking: Bool = match effect_shape_for_create_cause(cause: CreatePostAlways) {
   IsBreaking(CreateEffect { cause: PostAlways }) => true
   IsIdempotent(CreateIfAbsentEffect { key_source: key_source }) => false
   IsBreaking(CreateEffect { cause: KeylessFallback { method: method } }) => false

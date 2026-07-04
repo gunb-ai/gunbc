@@ -1,9 +1,8 @@
 module extdeps.cache.buildbuddy
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
-  CasContentEncoding,
   ContentAddressLookup,
   WriteOnce,
   MissThenCreate,
@@ -34,7 +33,7 @@ data buildbuddy_cas_id: CacheInterfaceId = "buildbuddy_cas"
 data buildbuddy_cas_facts: CacheInterfaceCatalogFacts = {
   identity: buildbuddy_cas_id
   backing_surface: "buildbuddy-remote-cas"
-  transport_encoding: CasContentEncoding
+  transport_encoding: CatalogCasContentEncoding
   key_derivation: {
 
     key_inputs: ContentAddressed

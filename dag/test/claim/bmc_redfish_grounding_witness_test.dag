@@ -11,6 +11,7 @@ import std.measure {
   gibibyte_to_byte_size,
   memory_scale_factor_bytes,
   Mega,
+  Gibi,
   gibibyte_scale_factor_bytes,
 }
 import extdeps.bmc.types {

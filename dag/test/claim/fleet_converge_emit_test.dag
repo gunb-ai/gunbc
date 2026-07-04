@@ -20,7 +20,7 @@ import gunbc.host_converge {
   ConvergePolicyDerived,
   ConvergePolicyUnsound,
   ConvergeVerdict,
-  Converged,
+  VerdictConverged,
   Drifted,
   Absent,
   ConvergeKnob,

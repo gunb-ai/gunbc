@@ -4,6 +4,7 @@ import std.logic { Bool }
 import std.measure { byte_size_count, bandwidth_count }
 import extdeps.storage.types {
   NvmeDeviceCatalogRow,
+  PcieGeneration,
   pcie_link_bandwidth,
   pcie_generation_per_lane_bandwidth,
   nvme_storage_device,

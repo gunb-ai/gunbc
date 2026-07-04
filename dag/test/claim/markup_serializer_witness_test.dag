@@ -1,7 +1,7 @@
 module test.claim.markup_serializer_witness
 
 import std.markup {
-  Fragment, Element, TextNode,
+  Fragment, Element, FragmentText,
   Attribute, AttributeContext, UrlContext,
   escape_text, escape_attribute, escape_url,
   unescape_text, unescape_attribute, unescape_url
@@ -25,8 +25,8 @@ fn sample_fragment() -> Fragment {
     tag: "a",
     attributes: [ Attribute { name: "href", ctx: UrlContext, value: "/x?a=1&b=2" } ],
     children: [
-      TextNode { content: "hi <b> & \"q\"" },
-      Element { tag: "span", attributes: [], children: [ TextNode { content: ">end" } ] }
+      FragmentText { content: "hi <b> & \"q\"" },
+      Element { tag: "span", attributes: [], children: [ FragmentText { content: ">end" } ] }
     ]
   }
 }
@@ -40,7 +40,7 @@ fn html_consumer_button() -> Fragment {
   Element {
     tag: "button",
     attributes: [ Attribute { name: "class", ctx: AttributeContext, value: "primary" } ],
-    children: [ TextNode { content: "Go" } ]
+    children: [ FragmentText { content: "Go" } ]
   }
 }
 
@@ -48,7 +48,7 @@ fn react_consumer_button() -> Fragment {
   Element {
     tag: "button",
     attributes: [ Attribute { name: "class", ctx: AttributeContext, value: "primary" } ],
-    children: [ TextNode { content: "Go" } ]
+    children: [ FragmentText { content: "Go" } ]
   }
 }
 

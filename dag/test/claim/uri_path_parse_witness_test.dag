@@ -7,6 +7,7 @@ import extdeps.uri_path {
 }
 import std.http_path {
   PathTemplate,
+  UrlPathToken,
   has_path_params,
   last_path_param,
   PathParamBinding,

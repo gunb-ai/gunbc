@@ -23,4 +23,4 @@ type cpp_anchor_data_model = CppTargetDataModel<CppDataModelFamilyILP32, CppILP3
 type cpp_anchor_target_profile = CppTargetProfile<CppAbiModelItaniumCxxAbi186, cpp_anchor_data_model>
 type cpp_anchor_signed_width_selection = CppSignedIntegerWidthSelection { spelling: CppSignedIntegerSurfaceSpelling, target_profile: cpp_anchor_target_profile }
 type cpp_anchor_wchar_t_width_selection = CppWcharTWidthSelection { spelling: CppWcharTSurfaceSpelling, target_profile: cpp_anchor_target_profile }
-type cpp_anchor_signed_scalar = SignedIntegerScalar { width_selection: cpp_anchor_signed_width_selection, signed_representation: CppTwosComplement, overflow_disposition: CppRepresentableResultRequired }
+type cpp_anchor_signed_scalar = SignedIntegerScalarAnchor { width_selection: cpp_anchor_signed_width_selection, signed_representation: CppTwosComplement, overflow_disposition: CppRepresentableResultRequired }

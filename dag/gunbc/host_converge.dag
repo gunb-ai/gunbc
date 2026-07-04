@@ -113,19 +113,19 @@ type GunbcPinnedTreeDriftReceipt {
 }
 
 type ConvergeVerdict
-  = Converged
+  = VerdictConverged
   | Drifted
   | Absent
 
 
 fn converge_verdict(effective: String, expected: String) -> ConvergeVerdict {
   if effective == "" { Absent }
-  else { if effective == expected { Converged } else { Drifted } }
+  else { if effective == expected { VerdictConverged } else { Drifted } }
 }
 
 fn converge_verdict_label(v: ConvergeVerdict) -> String {
   match v {
-    Converged => "converged"
+    VerdictConverged => "converged"
     Drifted => "drifted"
     Absent => "absent"
   }

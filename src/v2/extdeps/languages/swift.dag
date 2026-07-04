@@ -116,8 +116,8 @@ type SwiftIntSignedness
   | Unsigned
 
 type SwiftFloatWidth
-  = Bits32
-  | Bits64
+  = FloatBits32
+  | FloatBits64
 
 type SwiftStringRepresentation {
   tag: Symbol
@@ -296,13 +296,13 @@ data swift_facts_uint64: SwiftIntegerPrimitiveFacts = SwiftIntegerPrimitiveFacts
 
 data swift_facts_float: SwiftFloatPrimitiveFacts = SwiftFloatPrimitiveFacts {
   surface_spelling: ^swift_surface_spelling_float,
-  width: Bits32,
+  width: FloatBits32,
   ieee754_binary: ^swift_tag_ieee754_binary32,
 }
 
 data swift_facts_double: SwiftFloatPrimitiveFacts = SwiftFloatPrimitiveFacts {
   surface_spelling: ^swift_surface_spelling_double,
-  width: Bits64,
+  width: FloatBits64,
   ieee754_binary: ^swift_tag_ieee754_binary64,
 }
 
@@ -384,8 +384,8 @@ fn swift_width_node(width: SwiftIntWidth) -> Node {
 
 fn swift_float_width_node(width: SwiftFloatWidth) -> Node {
   match width {
-    Bits32 => swift_atom(id: ^swift_tag_bits32)
-    Bits64 => swift_atom(id: ^swift_tag_bits64)
+    FloatBits32 => swift_atom(id: ^swift_tag_bits32)
+    FloatBits64 => swift_atom(id: ^swift_tag_bits64)
   }
 }
 

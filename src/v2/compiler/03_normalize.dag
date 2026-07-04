@@ -5,6 +5,7 @@ import v2.std.collection { Absent, Present }
 import v2.std.grammar { ParseTree }
 
 import v2.std.diagnostic {
+  Correction,
   Diagnostic,
   Diagnostics,
   node_locus,

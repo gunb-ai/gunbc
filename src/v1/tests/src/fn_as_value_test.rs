@@ -40,11 +40,13 @@ fn scoped_entry_resolves_import_closure_not_entire_v4_tree() {
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!(
-        "gunbc-scoped-entry-{}-{}",
-        std::process::id(),
-        nanos
-    ));
+    let dir = crate::helpers::workspace_root()
+        .join("target")
+        .join(format!(
+            "gunbc-scoped-entry-{}-{}",
+            std::process::id(),
+            nanos
+        ));
     fs::create_dir_all(&dir).expect("temp dir");
 
     let dep = "module test.scoped.dep\nfn dep_fn() -> Int { 1 }\n";

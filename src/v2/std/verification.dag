@@ -9,6 +9,7 @@ import v2.std.diagnostic {
   Accepted,
   Correction,
   Diagnostic,
+  Diagnostics,
   Extent,
   Locus,
   NodeLocus,

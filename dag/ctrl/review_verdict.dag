@@ -15,7 +15,7 @@ type ReviewProvider
   | ProviderOther { name: NonEmptyStr }
 
 type ReviewSource
-  = Llm
+  = LlmSource
   | Human
   | Policy
   | Unattributed
@@ -33,7 +33,7 @@ type Reviewer
 
 fn reviewer_source(reviewer: Reviewer) -> ReviewSource {
   match reviewer {
-    AgentReviewer { provider: _ } => Llm
+    AgentReviewer { provider: _ } => LlmSource
     HumanSeatReviewer => Human
     PolicyReviewer { policy: _ } => Policy
     UnattributedReviewer { provider_name: _ } => Unattributed

@@ -16,7 +16,7 @@ import v2.std.compilers.lexing {
   TriviaRule,
   WhitespaceChar
 }
-import v2.std.algebra { fold_list, list_snoc_item }
+import v2.std.algebra { Empty, fold_list, list_snoc_item }
 import v2.std.collection { List, Map }
 import v2.std.machine { Byte }
 import v2.std.text { String }

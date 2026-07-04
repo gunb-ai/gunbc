@@ -34,13 +34,13 @@ import gunbc.srv3_os_install_diagnostic {
   IsoHashMismatch,
   BootProgressNone,
   BootProgressOsRunning,
-  ReadyToBoot,
+  ReadyToBootVerdict,
   VirtualMediaServeDown,
   BootOverrideConsumedNoInstall,
   BootAttemptInProgress,
   AutoinstallRunning,
-  InstallerHung,
-  OsInstalled,
+  InstallerHungVerdict,
+  OsInstalledVerdict,
   OnlyBmcLeasePresent,
 }
 import gunbc.srv3_seeded_install_media { srv3_seeded_install_media_content_hash }
@@ -238,7 +238,7 @@ test fn router_srv3_dynamic_lease_is_os_installed() -> Bool {
     },
   )
   install_diagnostic_verdict_is_os_installed(verdict: verdict)
-    && verdict == OsInstalled
+    && verdict == OsInstalledVerdict
 }
 
 test fn kvm_frozen_alone_does_not_dominate_router_success() -> Bool {
@@ -279,7 +279,7 @@ test fn kvm_frozen_alone_does_not_dominate_router_success() -> Bool {
       elapsed_since_boot_once_ms: 0,
     },
   )
-  verdict == OsInstalled
+  verdict == OsInstalledVerdict
 }
 
 test fn sol_silent_past_timeout_is_hung_or_inconclusive_not_success() -> Bool {
@@ -304,7 +304,7 @@ test fn sol_silent_past_timeout_is_hung_or_inconclusive_not_success() -> Bool {
       router_table: srv3_pre_install_lease_table,
     ),
   )
-  hung == InstallerHung
+  hung == InstallerHungVerdict
     && !install_diagnostic_verdict_is_os_installed(verdict: hung)
 }
 
@@ -314,7 +314,7 @@ test fn serve_ready_pre_boot_is_ready_to_boot() -> Bool {
     observations: serve_ready_sol_silent_pre_boot_observations(),
   )
   install_diagnostic_verdict_is_ready_to_boot(verdict: verdict)
-    && verdict == ReadyToBoot
+    && verdict == ReadyToBootVerdict
 }
 
 test fn boot_once_armed_is_boot_attempt_in_progress() -> Bool {
