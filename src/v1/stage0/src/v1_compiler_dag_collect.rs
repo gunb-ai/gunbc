@@ -111,7 +111,7 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
 }
 
 pub fn dag_node_fingerprint(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint(dag_node_collection_anchor(node))
+    dag_node_surface_fingerprint_memo(dag_node_collection_anchor(node))
 }
 
 pub fn dag_collect_nodes_list(
@@ -201,7 +201,13 @@ pub fn dag_collect_insert_slots(
     match v1_rt::map_get(&slots, key.clone()) {
         Some(_) => slots,
         None => {
-            let fp = dag_node_fingerprint(anchor.clone());
+            let fp = if ((anchor.span.clone().start.clone() == 0)
+                && (anchor.span.clone().end.clone() == 0))
+            {
+                v1_rt::substring(&key, 6, v1_rt::string_length(&key))
+            } else {
+                dag_node_fingerprint(anchor.clone())
+            };
             let seq = slots.len() as i64;
             dag_collect_node_tree(
                 anchor.clone(),
@@ -238,6 +244,7 @@ pub fn dag_collect_from_module(
 }
 
 pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
+    dag_collect_fp_memo_reset();
     let collision_errors = Rc::new(vec![]);
     let slots = typed.modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<DagCollectSlot>>(),

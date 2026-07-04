@@ -10,8 +10,8 @@ import v1.std.core {
 }
 import v1.compiler.dag_collect_support {
   DagCollectAcc, DagCollectSlot,
-  dag_collect_pack_slots, dag_collect_slot_seq,
-  dag_node_surface_fingerprint
+  dag_collect_fp_memo_reset, dag_collect_pack_slots, dag_collect_slot_seq,
+  dag_node_surface_fingerprint, dag_node_surface_fingerprint_memo
 }
 import v1.compiler.infer_items { ResolvedGraph, TypedModule }
 
@@ -53,7 +53,7 @@ fn dag_node_collection_anchor(node: Node) -> Node {
 fn dag_node_key(node: Node) -> String {
   let anchor = dag_node_collection_anchor(node: node)
   if anchor.span.start == 0 && anchor.span.end == 0 {
-    concat(":0..0:", dag_node_surface_fingerprint(node: anchor))
+    concat(":0..0:", dag_node_surface_fingerprint_memo(node: anchor))
   } else {
     concat(
       anchor.span.file, ":", to_string(i: anchor.span.start), "..", to_string(i: anchor.span.end),
@@ -65,7 +65,7 @@ fn dag_node_key(node: Node) -> String {
 }
 
 fn dag_node_fingerprint(node: Node) -> String {
-  dag_node_surface_fingerprint(node: dag_node_collection_anchor(node: node))
+  dag_node_surface_fingerprint_memo(node: dag_node_collection_anchor(node: node))
 }
 
 fn dag_collect_nodes_list(nodes: List<Node>, slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> Map<String, DagCollectSlot> {
@@ -121,7 +121,12 @@ fn dag_collect_insert_slots(node: Node, slots: Map<String, DagCollectSlot>, coll
   match map_get(slots, key) {
     Present { value: _ } => slots
     Absent => {
-      let fp = dag_node_fingerprint(node: anchor)
+      let fp = if anchor.span.start == 0 && anchor.span.end == 0 {
+        // Synthetic keys embed the fingerprint; Absent branch must not re-hash.
+        substring(s: key, start: 6, end: string_length(s: key))
+      } else {
+        dag_node_fingerprint(node: anchor)
+      }
       let seq = dag_collect_slot_seq(slots: slots)
       dag_collect_node_tree(
         node: anchor,
@@ -138,6 +143,7 @@ fn dag_collect_from_module(module: TypedModule, slots: Map<String, DagCollectSlo
 }
 
 fn collect_dag_nodes(typed: ResolvedGraph) -> DagCollectAcc {
+  let _memo_reset = dag_collect_fp_memo_reset()
   let collision_errors = []
   let slots = typed.modules
     |> fold(init: empty_map(), f: (s, m) => dag_collect_from_module(module: m, slots: s, collision_errors: collision_errors))
