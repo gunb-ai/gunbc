@@ -1239,6 +1239,8 @@ fn reconcile_with_typed_cache(
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<Vec<Rc<ErrorNode>>>> = Vec::new();
+    let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
+        v1_rt::rc_empty_map();
 
     for resolved in graph.modules.iter().cloned() {
         let parent_result = v1_compiler_infer::collect_parent_envs(
@@ -1273,6 +1275,7 @@ fn reconcile_with_typed_cache(
                 let computed = v1_compiler_infer::typecheck_module(
                     resolved.clone(),
                     module_index.clone(),
+                    variant_surfaces.clone(),
                     source_indices.clone(),
                     intern_table.clone(),
                 );
@@ -1292,9 +1295,19 @@ fn reconcile_with_typed_cache(
         };
         let typed = tc_result.typed.clone();
         modules = v1_rt::rc_list_push(modules, typed.clone());
+        let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
+        variant_surfaces = v1_rt::rc_map_insert(
+            variant_surfaces.clone(),
+            typed_path.clone(),
+            v1_compiler_infer::build_variant_export_surface(
+                typed.clone(),
+                variant_surfaces.clone(),
+                source_indices.clone(),
+            ),
+        );
         module_index = v1_rt::rc_map_insert(
             module_index,
-            authored_name_at(source_indices.clone(), typed.module.clone()),
+            typed_path,
             typed.clone(),
         );
         item_registry = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());

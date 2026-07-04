@@ -6062,13 +6062,13 @@ fn reexport_variant_surface_fragment(imp: Node, surfaces: Map<String, VariantExp
     Absent => empty_variant_export_surface()
     Present { value: proxy } =>
       fold(import_specific_names_at(n: imp, source_indices: source_indices), init: empty_variant_export_surface(), f: (acc, name) =>
-        let acc = match map_get(proxy.arm_owners, name) {
+        let with_arm = match map_get(proxy.arm_owners, name) {
           Present { value: owner } => VariantExportSurface { arm_owners: map_insert(acc.arm_owners, name, owner), enum_items: acc.enum_items }
           Absent => acc
         }
         match map_get(proxy.enum_items, name) {
-          Present { value: item } => VariantExportSurface { arm_owners: acc.arm_owners, enum_items: map_insert(acc.enum_items, name, item) }
-          Absent => acc
+          Present { value: item } => VariantExportSurface { arm_owners: with_arm.arm_owners, enum_items: map_insert(with_arm.enum_items, name, item) }
+          Absent => with_arm
         }
       )
   }
@@ -6616,8 +6616,10 @@ fn direct_import_exporter_count(m: TypedModule, name: String, index: Map<String,
   ) |> count
 }
 
+data local_authority_for_name_dissolution_trigger: String = "🟡 dissolve-on: single-exporter rewire canonical picks last TypedModule in compilation list (filter then last); multi-exporter names skip rewire and defer to merge_type_env_cache overlay-wins — ground on import-order authority at v2 regen."
+
 fn rewire_inherited_str_binding(
-  modules: List<TypedModule>,
+  type_name_index: Map<String, TypeNameExportFacts>,
   module_index: Map<String, TypedModule>,
   consumer: TypedModule,
   source_indices: Map<String, NewlineIndex>,
@@ -6626,12 +6628,16 @@ fn rewire_inherited_str_binding(
   ancestry_str_bindings: Map<String, TypeBinding>,
   name: String
 ) -> StrBindingsRewireAccum {
-  if set_contains(local_names, name) || direct_import_exporter_count(m: consumer, name: name, index: module_index, source_indices: source_indices) > 1 || global_type_exporter_count(modules: modules, name: name) > 1 {
+  let exporter_count = match map_get(type_name_index, name) {
+    Present { value: facts } => facts.exporter_count
+    Absent => 0
+  }
+  if set_contains(local_names, name) || direct_import_exporter_count(m: consumer, name: name, index: module_index, source_indices: source_indices) > 1 || exporter_count > 1 {
     StrBindingsRewireAccum { str_bindings: str_bindings, ancestry_str_bindings: ancestry_str_bindings }
   } else {
-    match local_authority_for_name(modules: modules, name: name) {
-      Present { value: owner } =>
-        match local_authority_binding(owner: owner, name: name) {
+    match map_get(type_name_index, name) {
+      Present { value: facts } =>
+        match facts.canonical_binding {
           Present { value: canonical } =>
             let ancestry_str_bindings = map_insert(ancestry_str_bindings, name, canonical)
             let str_bindings = match map_get(str_bindings, name) {
@@ -6647,6 +6653,7 @@ fn rewire_inherited_str_binding(
 }
 
 fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
+  let type_name_index = build_type_name_export_index(modules: modules)
   let index = fold(modules, init: empty_map(), f: (acc, m) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
@@ -6657,7 +6664,7 @@ fn rewire_type_env_import_str_binding_identity(modules: List<TypedModule>, sourc
     let inherited_keys = concat(ancestry_keys, str_keys)
     let rewired = fold(inherited_keys, init: StrBindingsRewireAccum { str_bindings: m.type_env.str_bindings, ancestry_str_bindings: m.type_env.ancestry_str_bindings }, f: (acc, name) =>
       rewire_inherited_str_binding(
-        modules: modules,
+        type_name_index: type_name_index,
         module_index: index,
         consumer: m,
         source_indices: source_indices,
