@@ -139,10 +139,7 @@ pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -
         deps_map: v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone()),
         // Match 04_env.dag authority (plain map_merge). Cache-key determinism lives at
         // resolved_graph_cache::encode_cache_payload (sort_json_value), not here.
-        str_bindings: v1_rt::rc_map_merge(
-            base.str_bindings.clone(),
-            overlay.str_bindings.clone(),
-        ),
+        str_bindings: v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone()),
         cycle_set_str: v1_rt::rc_map_merge(
             base.cycle_set_str.clone(),
             overlay.cycle_set_str.clone(),

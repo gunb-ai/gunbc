@@ -1,13 +1,13 @@
 module v2.workflow.ci_floor_plan
 
-import gunbc.ci_layer_roots { witness_layer_roots, witness_discovery_scan_dirs, witness_exclusion_substrings }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
   SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
 }
-import v2.std.algebra { length, list_snoc_item, skip, zip_map }
+import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List }
 import v2.std.dependency { DataDependsOn, ResourceDependsOn, DependencyView }
 import v2.std.node { Atom, Node, TypeNode }
@@ -39,6 +39,7 @@ import std.realization_schedule {
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
+  ScheduleWitnessEntry,
   RunnableResourceProfile,
   runnable_resource_profile,
   runnable_resource_profile_negligible,
@@ -75,14 +76,28 @@ data floor_corpus_node: Node = Node {
   children: []
 }
 
-data floor_grounding_whole_tree_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^gunbc_floor_grounding_whole_tree } },
-  children: []
+data ci_floor_witness_optin_note: String = "CI witness enrollment is OPT-IN (operator inversion, 2026-07-04). The floor runs exactly spec.witness_entries (declared on the GithubActionsCiJob surface of gunbc.commit_workflow.commit_gate_roster), never a tree scan: scan_dirs and discovery_scope_dirs stay empty so the executor's glob path is unreachable from CI, and an EMPTY roster puts no witness-corpus node in the plan at all - the executor's empty-corpus fail-closed diagnostic stays meaningful for accidental emptiness. Tree-wide discovery remains the local path (claim_batch --roster-from-discovery). The former always-on grounding whole-tree node dissolved into this roster: re-enroll it as a CommitWitnessClaim row for src/v2/test/manual/grounding_lens_whole_tree_test.dag. Rows under the execution-corpus scope keep their own node so the measured per-witness RSS width still governs them."
+
+data execution_corpus_scope_prefix: String = "src/v2/test/claim/execution/"
+
+fn corpus_witness_entries(spec: CiSpec) -> List<ScheduleWitnessEntry> {
+  filter(xs: spec.witness_entries, predicate: fn(w) {
+    !starts_with(s: w.entry, prefix: execution_corpus_scope_prefix)
+  })
 }
 
-data floor_grounding_whole_tree_entry: String = "src/v2/test/manual/grounding_lens_whole_tree_test.dag"
+fn execution_witness_entries(spec: CiSpec) -> List<ScheduleWitnessEntry> {
+  filter(xs: spec.witness_entries, predicate: fn(w) {
+    starts_with(s: w.entry, prefix: execution_corpus_scope_prefix)
+  })
+}
 
-data floor_grounding_whole_tree_function: String = "grounding_lens_whole_tree_witnesses"
+fn corpus_plan_nodes(spec: CiSpec) -> List<Node> {
+  concat(
+    if length(xs: corpus_witness_entries(spec: spec)) > 0 { [floor_corpus_node] } else { [] },
+    if length(xs: execution_witness_entries(spec: spec)) > 0 { [execution_corpus_node] } else { [] }
+  )
+}
 
 fn gate_node(g: Gate) -> Node {
   match g {
@@ -182,27 +197,11 @@ fn corpus_source_roots() -> List<String> {
   witness_layer_roots
 }
 
-fn grounding_whole_tree_profile() -> RunnableResourceProfile {
-  runnable_resource_profile(
-    heavy_whole_tree_resolve: true,
-    spawns_host_compiler: false,
-    memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
-  )
-}
-
-fn grounding_whole_tree_runnable() -> Runnable {
-  RunnableSingleClaim {
-    entry: floor_grounding_whole_tree_entry,
-    function: floor_grounding_whole_tree_function,
-    profile: grounding_whole_tree_profile()
-  }
-}
-
-fn corpus_runnable() -> Runnable {
+fn corpus_runnable_for(spec: CiSpec) -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
-    scan_dirs: witness_discovery_scan_dirs,
-    explicit_entries: [],
+    scan_dirs: [],
+    explicit_entries: corpus_witness_entries(spec: spec),
     skip_unaffected_node_frontier: true,
     exclude_substrings: witness_exclusion_substrings,
     discovery_scope_dirs: [],
@@ -224,14 +223,14 @@ fn execution_corpus_spawn_width() -> Int {
   gunbc_ci_execution_corpus_available_width(each: gunbc_ci_floor_execution_corpus_per_witness_rss)
 }
 
-fn execution_corpus_runnable() -> Runnable {
+fn execution_corpus_runnable_for(spec: CiSpec) -> Runnable {
   RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
-    explicit_entries: [],
+    explicit_entries: execution_witness_entries(spec: spec),
     skip_unaffected_node_frontier: true,
     exclude_substrings: [],
-    discovery_scope_dirs: ["src/v2/test/claim/execution"],
+    discovery_scope_dirs: [],
     spawn_width_cap: execution_corpus_spawn_width(),
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
@@ -242,7 +241,7 @@ fn execution_corpus_runnable() -> Runnable {
 }
 
 fn floor_nodes(spec: CiSpec) -> List<Node> {
-  fold(spec.gates, init: [floor_corpus_node, execution_corpus_node, floor_grounding_whole_tree_node], f: fn(acc, g) {
+  fold(spec.gates, init: corpus_plan_nodes(spec: spec), f: fn(acc, g) {
     list_snoc_item(xs: acc, item: gate_node(g: g))
   })
 }
@@ -266,23 +265,23 @@ fn floor_resource_depends_on(source: Node, dependent: Node) -> DependencyView {
 }
 
 fn floor_corpus_exclusion_resource_edges(spec: CiSpec) -> List<DependencyView> {
-  let after_floor_corpus = [
-    floor_resource_depends_on(source: floor_corpus_node, dependent: execution_corpus_node),
-    floor_resource_depends_on(source: floor_corpus_node, dependent: floor_grounding_whole_tree_node),
-    floor_resource_depends_on(source: execution_corpus_node, dependent: floor_grounding_whole_tree_node)
-  ]
+  let corpus_nodes = corpus_plan_nodes(spec: spec)
+  let after_floor_corpus = if length(xs: corpus_nodes) > 1 {
+    [floor_resource_depends_on(source: floor_corpus_node, dependent: execution_corpus_node)]
+  } else {
+    []
+  }
   fold(spec.gates, init: after_floor_corpus, f: fn(acc, g) {
     let node = gate_node(g: g)
     if floor_resource_anchor_node(node: node) {
       acc
     } else if runnable_excludes_corpus_co_residence(profile: gate_runnable_profile(g: g)) {
-      list_snoc_item(
-        xs: list_snoc_item(
-          xs: acc,
-          item: floor_resource_depends_on(source: floor_corpus_node, dependent: node)
-        ),
-        item: floor_resource_depends_on(source: execution_corpus_node, dependent: node)
-      )
+      fold(corpus_nodes, init: acc, f: fn(edges, corpus_node) {
+        list_snoc_item(
+          xs: edges,
+          item: floor_resource_depends_on(source: corpus_node, dependent: node)
+        )
+      })
     } else {
       acc
     }
@@ -300,7 +299,6 @@ fn floor_heavy_resolve_chain_resource_edges(spec: CiSpec) -> List<DependencyView
       acc
     }
   })
-  let heavy_nodes = list_snoc_item(xs: heavy_nodes, item: floor_grounding_whole_tree_node)
   zip_map(
     a: heavy_nodes,
     b: skip(xs: heavy_nodes, n: 1),
@@ -313,11 +311,9 @@ fn floor_heavy_resolve_chain_resource_edges(spec: CiSpec) -> List<DependencyView
 fn floor_data_dependencies(spec: CiSpec) -> List<DependencyView> {
   fold(
     spec.gates,
-    init: [
-      floor_depends_on_compile(dependent: floor_corpus_node),
-      floor_depends_on_compile(dependent: execution_corpus_node),
-      floor_depends_on_compile(dependent: floor_grounding_whole_tree_node)
-    ],
+    init: fold(corpus_plan_nodes(spec: spec), init: [], f: fn(acc, corpus_node) {
+      list_snoc_item(xs: acc, item: floor_depends_on_compile(dependent: corpus_node))
+    }),
     f: fn(acc, g) {
       match g {
         DagCompileCleanGate => acc
@@ -368,10 +364,6 @@ fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<Dependen
   }
 }
 
-fn floor_dependencies(spec: CiSpec) -> List<DependencyView> {
-  floor_dependencies_with(spec: spec, serialize_heavy: true)
-}
-
 fn floor_unrunnable_sentinel() -> Runnable {
   RunnableSingleClaim {
     entry: "",
@@ -382,11 +374,9 @@ fn floor_unrunnable_sentinel() -> Runnable {
 
 fn runnable_for_node(node: Node, spec: CiSpec) -> Runnable {
   if node == floor_corpus_node {
-    corpus_runnable()
+    corpus_runnable_for(spec: spec)
   } else if node == execution_corpus_node {
-    execution_corpus_runnable()
-  } else if node == floor_grounding_whole_tree_node {
-    grounding_whole_tree_runnable()
+    execution_corpus_runnable_for(spec: spec)
   } else {
     fold(spec.gates, init: floor_unrunnable_sentinel(), f: fn(acc, g) {
       if node == gate_node(g: g) { gate_runnable(g: g) } else { acc }
@@ -400,15 +390,15 @@ fn runnables_for_batch(batch: ExecutorBatch, spec: CiSpec) -> List<Runnable> {
   })
 }
 
-fn floor_schedule_for_dependencies(dependencies: List<DependencyView>) -> List<List<Runnable>> {
+fn floor_schedule_for(spec: CiSpec, serialize_heavy: Bool) -> List<List<Runnable>> {
   match parallel_executor_plan_from_dependencies(
-    nodes: floor_nodes(spec: gunbc_ci_spec),
-    dependencies: dependencies,
+    nodes: floor_nodes(spec: spec),
+    dependencies: floor_dependencies_with(spec: spec, serialize_heavy: serialize_heavy),
     scheduled: []
   ) {
     ExecutorRunComplete { batches: batches, scheduled: _ } =>
       fold(batches, init: [], f: fn(acc, batch) {
-        list_snoc_item(xs: acc, item: runnables_for_batch(batch: batch, spec: gunbc_ci_spec))
+        list_snoc_item(xs: acc, item: runnables_for_batch(batch: batch, spec: spec))
       })
     ExecutorRunRunnable { batch: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
     ExecutorRunBlocked { evidence: _, batches: _, scheduled: _, remaining: _ } => [[floor_unrunnable_sentinel()]]
@@ -416,22 +406,24 @@ fn floor_schedule_for_dependencies(dependencies: List<DependencyView>) -> List<L
 }
 
 fn gunbc_ci_floor_schedule_inner() -> List<List<Runnable>> {
-  floor_schedule_for_dependencies(dependencies: floor_dependencies(spec: gunbc_ci_spec))
+  floor_schedule_for(spec: gunbc_ci_spec, serialize_heavy: true)
 }
 
 fn gunbc_ci_floor_schedule_without_serialization() -> List<List<Runnable>> {
-  floor_schedule_for_dependencies(
-    dependencies: floor_dependencies_with(spec: gunbc_ci_spec, serialize_heavy: false)
-  )
+  floor_schedule_for(spec: gunbc_ci_spec, serialize_heavy: false)
 }
 
-fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
+fn gunbc_ci_floor_realization_plan_for(spec: CiSpec) -> RealizationPlan {
   RealizationPlan {
     target: ci_floor_target_digest
     objective: RealizationObjective { goals: width_fold_objective_goals() }
-    schedule: gunbc_ci_floor_schedule_inner()
+    schedule: floor_schedule_for(spec: spec, serialize_heavy: true)
     total: cost_account_predicted_zero()
   }
+}
+
+fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
+  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec)
 }
 
 fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
@@ -554,6 +546,18 @@ fn floor_plan_at_most_one_heavy_gate_resolve_per_batch(batches: List<List<Runnab
   })
 }
 
+fn floor_plan_serializes_heavy_resolves_for(spec: CiSpec) -> Bool {
+  floor_plan_at_most_one_heavy_gate_resolve_per_batch(
+    batches: floor_schedule_for(spec: spec, serialize_heavy: true)
+  )
+}
+
+fn floor_plan_co_runs_heavy_without_serialization_for(spec: CiSpec) -> Bool {
+  floor_plan_at_most_one_heavy_gate_resolve_per_batch(
+    batches: floor_schedule_for(spec: spec, serialize_heavy: false)
+  ) == false
+}
+
 fn gunbc_ci_floor_plan_serializes_heavy_resolves() -> Bool {
   floor_plan_at_most_one_heavy_gate_resolve_per_batch(batches: gunbc_ci_floor_batches())
 }
@@ -564,8 +568,8 @@ fn gunbc_ci_floor_plan_co_runs_heavy_without_serialization() -> Bool {
   ) == false
 }
 
-fn witness_floor_corpus_exclusion_edges_exist() -> Bool {
-  length(xs: floor_corpus_exclusion_resource_edges(spec: gunbc_ci_spec)) > 0
+fn witness_floor_corpus_exclusion_edges_exist(spec: CiSpec) -> Bool {
+  length(xs: floor_corpus_exclusion_resource_edges(spec: spec)) > 0
 }
 
 fn witness_floor_compile_gate_honest_heavy_profile() -> Bool {
@@ -573,8 +577,8 @@ fn witness_floor_compile_gate_honest_heavy_profile() -> Bool {
     && runnable_excludes_corpus_co_residence(profile: gate_runnable_profile(g: DagCompileCleanGate))
 }
 
-fn witness_floor_no_corpus_resource_edge_to_compile_anchor() -> Bool {
-  fold(floor_corpus_exclusion_resource_edges(spec: gunbc_ci_spec), init: true, f: fn(ok, edge) {
+fn witness_floor_no_corpus_resource_edge_to_compile_anchor(spec: CiSpec) -> Bool {
+  fold(floor_corpus_exclusion_resource_edges(spec: spec), init: true, f: fn(ok, edge) {
     ok && (edge.dependent != floor_compile_root_node())
   })
 }

@@ -32,11 +32,8 @@ type FloorWitnessRow {
   function: String
 }
 
-// Declared on a `test fn` line (or its body) when the witness reads the live tree
-// via host intrinsics. The claim_executor host-scaffold classifier honors this
-// marker so detection is not limited to Rust substring heuristics alone.
-// DISSOLVE-ON: ROADMAP `2-host-scaffold-classifier-defork` — substrate-declared
-// `reads_live_tree` disposition on TestClaim rows.
+data floor_host_scaffold_witness_marker_note: String = "Declared on a `test fn` line (or its body) when the witness reads the live tree via host intrinsics. The claim_executor host-scaffold classifier honors this marker so detection is not limited to Rust substring heuristics alone. DISSOLVE-ON: ROADMAP `2-host-scaffold-classifier-defork` - substrate-declared `reads_live_tree` disposition on TestClaim rows. (Was a // comment block: the v1 interpreter grammar has no comments, so it broke resolve_floor_runner_context and silently disabled the affected-set skip - every floor run fell back to full corpus. Found during the 2026-07-04 CI witness opt-in inversion.)"
+
 data floor_host_scaffold_witness_marker: String = "floor:host_scaffold"
 
 type FloorDiffLineTouch {
