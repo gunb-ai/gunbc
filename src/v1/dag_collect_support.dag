@@ -9,16 +9,28 @@ import v1.std.core {
 }
 import v1.compiler.emit { escape_json_string }
 
+type DagCollectSlot {
+  key: String
+  fp: String
+  node: Node
+  seq: Int
+}
+
 type DagCollectAcc {
   seen: Map<String, String>
   order: List<Node>
   collision_errors: List<ErrorNode>
 }
 
-type DagCollectPending {
-  anchor: Node
-  key: String
-  fp: String
+fn dag_collect_slot_seq(slots: Map<String, DagCollectSlot>) -> Int {
+  slots |> count
+}
+
+fn dag_collect_pack_slots(slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> DagCollectAcc {
+  let ordered_slots = slots |> map_values |> sort_by(s => s.seq)
+  let order = ordered_slots |> map(s => s.node)
+  let seen = ordered_slots |> fold(init: empty_map(), f: (acc, s) => map_insert(acc, s.key, s.fp))
+  DagCollectAcc { seen: seen, order: order, collision_errors: collision_errors }
 }
 
 fn json_quote(s: String) -> String {
