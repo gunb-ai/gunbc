@@ -10710,14 +10710,13 @@ mod doc_reachability_tests {
 mod import_closure_equivalence_tests {
     use super::{
         build_module_index, build_module_graph_facts_live, build_multi_entry_index,
-        closure_subject_for_entry, default_source_roots, discover_floor_corpus_rows,
+        closure_subject_for_entry, default_source_roots, floor_discovery_path_excluded,
         import_closure_live_paths, module_graph_facts_build_count_for_test,
         reset_module_graph_facts_build_count_for_test, resolve_transitively,
-        resolve_transitively_bfs_legacy, workspace_relative_repo_path, witness_discovery_scan_dirs,
-        witness_layer_roots, FLOOR_DISCOVERY_EXCLUDES,
+        resolve_transitively_bfs_legacy, workspace_relative_repo_path, witness_layer_roots,
     };
     use std::collections::{BTreeSet, HashMap};
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use std::rc::Rc;
 
     fn workspace_root() -> PathBuf {
@@ -10780,26 +10779,30 @@ mod import_closure_equivalence_tests {
         assert_bfs_matches_import_closure_live_with_facts(entry_rel, &index, &facts);
     }
 
-    fn floor_corpus_unique_entry_paths() -> BTreeSet<String> {
-        let ws = workspace_root();
-        std::env::set_current_dir(&ws).expect("chdir to workspace root");
-        let roots = default_source_roots();
-        let scan_dirs = witness_discovery_scan_dirs();
-        let excludes: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
-        let rows = discover_floor_corpus_rows(&roots, &scan_dirs, &excludes)
-            .unwrap_or_else(|e| panic!("floor discovery for import-closure semantic oracle: {e}"));
-        rows.into_iter()
-            .map(|row| workspace_relative_repo_path(&row.entry))
-            .collect()
+    /// Floor witness entry paths enrolled by the source-root `*_test.dag` pass
+    /// (`gunbc.ci_layer_roots.witness_layer_roots`), minus the model exclusion list.
+    /// Avoids `discover_floor_corpus_rows` lens-hygiene work — closure set-identity
+    /// only needs the witness entry roster, not inert-lens classification.
+    fn floor_witness_entry_paths_for_oracle() -> BTreeSet<String> {
+        let mut entries = BTreeSet::new();
+        for root in default_source_roots() {
+            let mut dag_files = Vec::new();
+            super::collect_dag_files_tolerant(Path::new(&root), &mut dag_files);
+            for path in dag_files {
+                let rel = workspace_relative_repo_path(&path.to_string_lossy());
+                if !rel.ends_with("_test.dag") || floor_discovery_path_excluded(&rel) {
+                    continue;
+                }
+                entries.insert(rel);
+            }
+        }
+        entries
     }
 
     #[test]
     fn import_closure_live_matches_legacy_bfs_on_whole_floor_corpus() {
         let roots = default_source_roots();
-        let entries = floor_corpus_unique_entry_paths();
+        let entries = floor_witness_entry_paths_for_oracle();
         assert!(
             entries.len() >= 4,
             "import-closure semantic oracle expects the full floor roster (got {})",
