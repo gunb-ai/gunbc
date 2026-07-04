@@ -16,7 +16,7 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.markup {
   Fragment,
   Element,
-  TextNode,
+  FragmentText,
   RawNode,
   MarkupMedium,
   TagDelimiter,
@@ -155,13 +155,13 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> MarkupMedium {
 fn md_inline_to_fragment(inline: MarkdownInline, sp: MarkdownSpellings) -> Fragment {
   match inline {
     TextInline { text } =>
-      TextNode { content: text }
+      FragmentText { content: text }
     EmphasisInline { inlines } =>
       Element { tag: "em", attributes: [], children: md_inlines_to_fragments(inlines: inlines, sp: sp) }
     StrongInline { inlines } =>
       Element { tag: "strong", attributes: [], children: md_inlines_to_fragments(inlines: inlines, sp: sp) }
     CodeInline { text } =>
-      Element { tag: "code", attributes: [], children: [ TextNode { content: text } ] }
+      Element { tag: "code", attributes: [], children: [ FragmentText { content: text } ] }
     LinkInline { inlines, url } =>
       RawNode { content: md_link_form(text: md_render_inlines(inlines: inlines, sp: sp), url: url, sp: sp) }
     ImageInline { alt, url } =>
