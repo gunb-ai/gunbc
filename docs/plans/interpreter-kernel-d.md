@@ -1,6 +1,6 @@
 # HAND kernel D — v1_interpreter pure-eval authority + pinned host-physics
 
-**Status:** design-first (2026-06-29). Parent `sunny-crab-671` seed burn-down, **HAND kernel D**. **Original slice (landed):** `gunbc.interpreter_kernel_model` + pure `.dag` floor witness — no `v1_interpreter.rs` emit flip, no `regen --verify` flip. **Follow-on (this track):** dissolve HAND modules verified as pure fact-projection (zero fs/net/process) — `rest_transport_facts` · `wire_value_serialize` folded into `cli_run.rs` (#6217) — including targeted `HAND_MAINTAINED` registry and `05_emit_rust.dag` patch-hook edits for those modules only.
+**Status:** model-and-witness + seam classification landed (#6229 / session deep-crab-542). Parent seed burn-down **HAND kernel D**. **Original slice:** `gunbc.interpreter_kernel_model` + `interpreter_kernel_model_witnesses` — no `v1_interpreter.rs` emit flip, no `regen --verify` flip. **Follow-on (landed #6217):** `rest_transport_facts` · `wire_value_serialize` dissolved as pure fact-projection into `cli_run.rs` — pinned roster now 2 host-physics files.
 
 ## 0. Verdict — pure-eval authority vs pinned host-physics
 
