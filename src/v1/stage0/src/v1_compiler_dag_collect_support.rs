@@ -16,9 +16,30 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
+use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+thread_local! {
+    static DAG_NODE_SURFACE_FP_MEMO: RefCell<HashMap<usize, String>> = RefCell::new(HashMap::new());
+}
+
+pub fn dag_collect_fp_memo_reset() {
+    DAG_NODE_SURFACE_FP_MEMO.with(|memo| memo.borrow_mut().clear());
+}
+
+pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
+    let ptr = Rc::as_ptr(&node) as usize;
+    DAG_NODE_SURFACE_FP_MEMO.with(|memo| {
+        if let Some(fp) = memo.borrow().get(&ptr) {
+            return fp.clone();
+        }
+        let fp = dag_node_surface_fingerprint(node);
+        memo.borrow_mut().insert(ptr, fp.clone());
+        fp
+    })
+}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagCollectSlot {

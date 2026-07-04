@@ -2,7 +2,8 @@
 // Source module: v1.compiler.dag_collect
 
 pub use crate::v1_compiler_dag_collect_support::{
-    dag_collect_pack_slots, dag_collect_slot_seq, dag_node_surface_fingerprint,
+    dag_collect_fp_memo_reset, dag_collect_pack_slots, dag_node_surface_fingerprint,
+    dag_node_surface_fingerprint_memo,
 };
 pub use crate::v1_compiler_dag_collect_support::{DagCollectAcc, DagCollectSlot};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
@@ -86,7 +87,7 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
         if ((anchor.span.clone().start.clone() == 0) && (anchor.span.clone().end.clone() == 0)) {
             v1_rt::concat(
                 ":0..0:".to_string(),
-                dag_node_surface_fingerprint(anchor.clone()),
+                dag_node_surface_fingerprint_memo(anchor.clone()),
             )
         } else {
             v1_rt::concat(
