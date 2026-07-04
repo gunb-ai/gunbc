@@ -1,6 +1,6 @@
 module v2.lens.enforcement.receipts
 
-import v2.std.algebra { Cons, Empty, any, contains, fold_list, fold_list_right }
+import v2.std.algebra { Cons, Empty, any, contains }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -30,7 +30,7 @@ fn node_contains_computation(n: Node) -> Bool {
   match n.kind {
     ComputationNode { behavior: _ } => true
     TypeNode { connective: _ } =>
-      fold_list(xs: n.children, empty: false, cons: fn(acc, edge) {
+      fold(n.children, init: false, f: fn(acc, edge) {
         acc || node_contains_computation(n: edge.target)
       })
   }
@@ -52,13 +52,13 @@ fn subject_is_body_unavailable(fact: DeclFact) -> Bool {
 }
 
 fn fn_item_count_of(facts: List<DeclFact>) -> Int {
-  fold_list(xs: facts, empty: 0, cons: fn(acc, fact) {
+  fold(facts, init: 0, f: fn(acc, fact) {
     if decl_facts_is_fn_like(kind: fact.kind) { acc + 1 } else { acc }
   })
 }
 
 fn body_unavailable_count_of(facts: List<DeclFact>) -> Int {
-  fold_list(xs: facts, empty: 0, cons: fn(acc, fact) {
+  fold(facts, init: 0, f: fn(acc, fact) {
     if decl_facts_is_fn_like(kind: fact.kind) && subject_is_body_unavailable(fact: fact) {
       acc + 1
     } else {
@@ -73,7 +73,7 @@ fn body_judged_count_of(facts: List<DeclFact>) -> Int {
 
 fn discovered_fn_subjects(facts: List<DeclFact>) -> SubjectRoster {
   SubjectRoster {
-    entries: fold_list_right(xs: facts, empty: Empty, snoc: fn(acc, fact) {
+    entries: fold(facts, init: Empty, f: fn(acc, fact) {
       if decl_facts_is_fn_like(kind: fact.kind) {
         Cons { head: fact.qualified_name, tail: acc }
       } else {
@@ -87,17 +87,21 @@ fn string_starts_with(s: String, prefix: String) -> Bool {
   s.starts_with(prefix: prefix)
 }
 
+fn fact_is_unavailable_under_root(fact: DeclFact, root: String) -> Bool {
+  decl_facts_is_fn_like(kind: fact.kind)
+    && string_starts_with(s: fact.rel_path, prefix: concat(root, "/"))
+    && subject_is_body_unavailable(fact: fact)
+}
+
 fn root_has_body_unavailable_subject(root: String, facts: List<DeclFact>) -> Bool {
-  any(xs: facts, predicate: fn(fact) {
-    decl_facts_is_fn_like(kind: fact.kind)
-      && string_starts_with(s: fact.rel_path, prefix: concat(root, "/"))
-      && subject_is_body_unavailable(fact: fact)
+  fold(facts, init: false, f: fn(acc, fact) {
+    acc || fact_is_unavailable_under_root(fact: fact, root: root)
   })
 }
 
 fn roots_with_body_unavailable(scope: SubjectRoster, facts: List<DeclFact>) -> SubjectRoster {
   SubjectRoster {
-    entries: fold_list_right(xs: scope.entries, empty: Empty, snoc: fn(acc, root) {
+    entries: fold(scope.entries, init: Empty, f: fn(acc, root) {
       if root_has_body_unavailable_subject(root: root, facts: facts) {
         Cons { head: root, tail: acc }
       } else {

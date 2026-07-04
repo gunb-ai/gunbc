@@ -1,0 +1,17 @@
+module v2.test.claim.tmp_empty_probe
+
+import v2.std.algebra { Cons, Empty, length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import std.realization_schedule { ScheduleWitnessEntry }
+
+fn probe_local(xs: List<String>) -> List<String> {
+  fold(xs, init: Empty, f: fn(acc, x) {
+    Cons { head: x, tail: acc }
+  })
+}
+
+test fn tmp_probe_local_fold() -> Bool {
+  length(xs: probe_local(xs: ["a", "b"])) == 2
+}

@@ -5,7 +5,7 @@ import gunbc.commit_workflow {
   commit_gate_roster, enrollment_has_surface,
   witness_entries_from_enrollments, project_ci_floor_witness_entries
 }
-import v2.std.algebra { Cons, Empty, filter, fold_list_right }
+import v2.std.algebra { Cons, Empty, filter }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -49,20 +49,29 @@ fn enforcement_corpus_facts() -> List<DeclFact> {
   decl_facts(pool_roots: whole_corpus_scope.entries)
 }
 
+fn live_receipt_for_contract(
+  c: LensContract,
+  facts: List<DeclFact>,
+  ci_entries: List<ScheduleWitnessEntry>,
+  prepush_entries: List<ScheduleWitnessEntry>
+) -> CoverageReceipt {
+  derive_receipt(
+    contract: c,
+    desired_scope: whole_corpus_scope,
+    self_module_prefix: self_module_prefix_for(module_path: c.entry.module_path),
+    facts: facts,
+    ci_entries: ci_entries,
+    prepush_entries: prepush_entries,
+    red_probe: cost_red_control_probe
+  )
+}
+
 fn coverage_receipts_from(facts: List<DeclFact>) -> List<CoverageReceipt> {
   let ci_entries = enforcement_ci_witness_entries()
   let prepush_entries = enforcement_prepush_witness_entries()
-  fold_list_right(xs: lens_contract_registry, empty: Empty, snoc: fn(acc, c) {
+  fold(lens_contract_registry, init: Empty, f: fn(acc, c) {
     Cons {
-      head: derive_receipt(
-        contract: c,
-        desired_scope: whole_corpus_scope,
-        self_module_prefix: self_module_prefix_for(module_path: c.entry.module_path),
-        facts: facts,
-        ci_entries: ci_entries,
-        prepush_entries: prepush_entries,
-        red_probe: cost_red_control_probe
-      ),
+      head: live_receipt_for_contract(c: c, facts: facts, ci_entries: ci_entries, prepush_entries: prepush_entries),
       tail: acc
     }
   })
