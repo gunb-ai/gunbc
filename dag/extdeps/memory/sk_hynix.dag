@@ -1,7 +1,7 @@
 module extdeps.memory.sk_hynix
 
 import std.measure { ByteSize, byte_size, bit_width }
-import extdeps.memory.types { DramModuleCatalogRow, dram_generation_ddr4 }
+import extdeps.memory.types { DramModuleCatalogRow, DimmBuffering, dram_generation_ddr4 }
 import extdeps.vendor.sk_hynix { sk_hynix }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

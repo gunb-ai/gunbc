@@ -35,14 +35,14 @@ type OsInstallPreflightPlan
   | RefuseNotUnattendedByPolicy
 
 type OsInstallRuntimeDiagnosticVerdict
-  = ReadyToBoot
+  = RuntimeReadyToBoot
   | KvmFirmwareIdleObserved
-  | BootOverrideConsumedNoInstallEvidence
+  | RuntimeBootOverrideConsumedNoInstallEvidence
   | InstallerAwaitingStorage
   | InstallerRunning
-  | InstallerHung
+  | RuntimeInstallerHung
   | KvmSuggestsOsBooted
-  | OsInstalled
+  | RuntimeOsInstalled
 
 type KvmObservedScreen
   = FirmwareSetup
@@ -112,6 +112,6 @@ fn runtime_verdict_from_kvm_attestation(
     FirmwareSetup => KvmFirmwareIdleObserved
     UefiBootMenu => KvmFirmwareIdleObserved
     GrubMenu => InstallerRunning
-    ErrorScreen { summary: _ } => InstallerHung
+    ErrorScreen { summary: _ } => RuntimeInstallerHung
   }
 }

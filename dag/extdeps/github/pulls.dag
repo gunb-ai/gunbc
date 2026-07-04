@@ -25,7 +25,7 @@ type PullRequestState = Open | Closed
 
 type ReviewState = Pending | Commented | Approved | ChangesRequested | Dismissed
 
-type ReviewEvent = Approve | RequestChanges | Comment | Pending
+type ReviewEvent = Approve | RequestChanges | Comment | PendingEvent
 
 type PullRequestRef {
   ref: GitRef

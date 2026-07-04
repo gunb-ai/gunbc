@@ -48,13 +48,9 @@ fn build_type_env_calls() -> Int { 0 }
 fn merge_type_env_cache_calls() -> Int { 0 }
 fn rewire_type_env_parent_links_calls() -> Int { 0 }
 fn rewire_type_env_import_str_binding_calls() -> Int { 0 }
-fn record_build_type_env_call() -> Unit { }
-fn record_merge_type_env_cache_call() -> Unit { }
-fn record_rewire_type_env_parent_links_call() -> Unit { }
-fn record_rewire_type_env_import_str_binding_call() -> Unit { }
+data type_env_counter_dissolution: String = "The 2026-07-04 use-site inference pathology instrument (env-amplification counters) dissolves with the pathology it measured: the record_* statement calls and their stub fns are deleted (they were also the only corpus instances of a statement-then-expression block the Rust emitter mis-renders — that emitter deficiency is ledgered with the emit-stage work). The Int getter stubs below stay for API compatibility with the hand-maintained phase_profile heartbeat until that consumer drops them."
 
 fn merge_type_env_cache(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
-  record_merge_type_env_cache_call()
   TypeEnvCache {
     deps_map: map_merge(base.deps_map, overlay.deps_map),
     str_bindings: map_merge(base.str_bindings, overlay.str_bindings),
@@ -217,7 +213,6 @@ fn flatten_visible_parent_recurses() -> Int { 0 }
 fn reset_flatten_visible_profile() -> Unit { }
 fn reset_type_env_lookup_profile() -> Unit { reset_flatten_visible_profile() }
 fn maybe_print_type_env_lookup_profile() -> Unit { }
-fn record_flatten_visible_parent_recurse() -> Unit { }
 
 fn flatten_visible_bindings(env: TypeEnv) -> Map<String, TypeBinding> {
   let from_parents = fold(env.parents, init: empty_map(), f: (acc, parent) =>

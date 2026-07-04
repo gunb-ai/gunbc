@@ -16,7 +16,7 @@ import gunbc.host_converge {
   ConvergeTarget,
   PerSlotMemoryCap,
   ConvergeVerdict,
-  Converged,
+  VerdictConverged,
   Drifted,
   Absent,
   gunbc_runner_per_slot_dropin_path,
@@ -140,7 +140,7 @@ fn witness_fixture_swap_max_converges_to_zero() -> Bool {
 fn witness_matching_read_converges_on_memory_max_target() -> Bool {
   let read = runner_unit_live_read_typed(row: matching_memory_max_row())
   match converge_target_live_verdict(read: read, target: fixture_memory_max_target()) {
-    Present { value: Converged } => true
+    Present { value: VerdictConverged } => true
     _ => false
   }
 }
@@ -162,7 +162,7 @@ fn witness_target_bytes_value_is_single_authority() -> Bool {
     bytes_value: "30000000000",
   }
   match converge_target_live_verdict(read: read, target: target) {
-    Present { value: Converged } => true
+    Present { value: VerdictConverged } => true
     _ => false
   }
 }

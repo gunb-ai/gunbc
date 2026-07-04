@@ -1,6 +1,6 @@
 module gunbc.ci_render
 
-import std.render { Frame, Line, Span, SpanStyle, RenderCapability, repeat_string }
+import std.render { Frame, Line, Span, SpanStyle, RenderCapability, CursorAction, repeat_string }
 import std.symbols {
   SemanticColor, SymbolId, Tier, Unicode,
   BoxHorizontal, BoxVertical, BoxCornerTopLeft, BoxCornerTopRight, BoxCornerBottomLeft, BoxCornerBottomRight,

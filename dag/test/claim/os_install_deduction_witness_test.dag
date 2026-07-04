@@ -39,7 +39,7 @@ import gunbc.os_install_deduction {
   InstallerAwaitingStorage,
   KvmFirmwareIdleObserved,
   KvmSuggestsOsBooted,
-  OsInstalled,
+  RuntimeOsInstalled,
   runtime_verdict_from_kvm_attestation,
 }
 import gunbc.fleet_intent_network { operator_host_srv3 }
@@ -239,7 +239,7 @@ test fn kvm_login_prompt_is_weak_not_os_installed() -> Bool {
     preflight: CompleteForUnattended,
   ) {
     KvmSuggestsOsBooted => true
-    OsInstalled => false
+    RuntimeOsInstalled => false
     _ => false
   }
 }

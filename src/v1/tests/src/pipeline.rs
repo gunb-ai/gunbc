@@ -8084,7 +8084,7 @@ fn github_review_enums_wire_matches_screaming_snake_contract() {
         review_event_attrs
     );
     let review_event_body = enum_block(&content, "pub enum ReviewEvent");
-    for needle in ["Approve,", "RequestChanges,", "Comment,", "Pending,"] {
+    for needle in ["Approve,", "RequestChanges,", "Comment,", "PendingEvent,"] {
         assert!(
             review_event_body.contains(needle),
             "expected variant {needle} in ReviewEvent; got:\n{review_event_body}"
