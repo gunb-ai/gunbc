@@ -651,13 +651,19 @@ fn bootstrap_stage0_to_stage1() {
         check_stderr
     );
 
-    assert!(
-        error_count <= EMITTED_RUST_ERROR_RATCHET,
-        "emitted Rust errors {} exceeds ratchet {} — \
-         fix codegen or update EMITTED_RUST_ERROR_RATCHET if increase is justified",
-        error_count,
-        EMITTED_RUST_ERROR_RATCHET
-    );
+    // The ratchet is a tunable ceiling that currently sits at its minimum (0), which
+    // makes `<=` degenerate; keep the ratchet comparison rather than hardcoding `== 0`
+    // so raising the ceiling stays a one-constant edit.
+    #[allow(clippy::absurd_extreme_comparisons)]
+    {
+        assert!(
+            error_count <= EMITTED_RUST_ERROR_RATCHET,
+            "emitted Rust errors {} exceeds ratchet {} — \
+             fix codegen or update EMITTED_RUST_ERROR_RATCHET if increase is justified",
+            error_count,
+            EMITTED_RUST_ERROR_RATCHET
+        );
+    }
 
     let _ = std::fs::remove_dir_all(&stage1_dir);
 }

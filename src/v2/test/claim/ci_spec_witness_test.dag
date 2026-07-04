@@ -21,6 +21,7 @@ data reflect_gate_type: Symbol = ^Gate
 
 data spec_alternate_notice: CiSpec = {
   gates: [],
+  witness_entries: [],
   diff_policy: {
     base: "upstream/dev",
     head: "HEAD",

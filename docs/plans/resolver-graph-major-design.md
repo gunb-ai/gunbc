@@ -1,0 +1,129 @@
+# Resolver graph-major design — once-per-node module evaluation
+
+**Status:** design draft, 2026-07-04, from the CI dig-out session (PR #6232). Operator direction: aggressive — the request-major resolver is the top time-waster in the system. This doc names the target architecture, the guard rails, and the change surface in both trees; §7 splits it into a ship-now stage and a gated tail so it is NOT a 10-PR arc.
+
+DESIGN refs: §2 (minimize redundancy — one concept, every scale), §5 (correctness by construction: once-per-node by *schedule*, not by cache lookup), §6 (denominate in displaced cost). Supersedes-and-absorbs: [floor-shared-compute-memoization](floor-shared-compute-memoization.md) (M1 landed there is the entry-grained special case of this design; its own dissolution trigger — "dependency-batched resolve" — is this document).
+
+---
+
+## 0. The problem, measured (2026-07-04 receipts)
+
+- Resolution is request-major: every entry gets a private universe. `resolve_entry_graph(entry)` walks the entry's import closure backward and re-parses + re-infers every module in it, sharing nothing with any other resolve — not across entries in one process, not across processes in one run, not across runs.
+- Five-entry census (static import closures): `unicode_xid` 2 modules · canary 2 · `realization_schedule_witness` 11 · `commit_workflow_witness` 163 · `ci_floor_plan` 188. Pairwise overlap `commit_workflow ∩ ci_floor_plan` = **160 shared modules**. Sum if resolved separately = 366; distinct = **194**. At n=5 the redundancy is already 1.9×; at the corpus's ~543 witness entries the shared std/spec prefix is re-inferred hundreds of times per run.
+- Cost is wildly non-uniform per module: 2-module closure = **7ms**; 11-module closure (generic-heavy `std.realization_schedule` prefix) = **killed at 5 minutes** (loaded box, ≤2.5× inflation). The expensive modules are exactly the widely-shared ones. (Non-uniformity itself is a separate lane: see resolver-pathology-profile-receipt.md — graph-major removes the *redundancy* factor, not a pathological per-module cost.)
+- **Phase verdict (isolated, instrumented, 2026-07-04):** with `GUNBC_FLOOR_PHASE_PROFILE` wired into `claim_batch`, the 11-module closure enters `phase=typecheck` at **t≈1.1s** — parse + name-resolution + normalize together are ~1 second — and then sits in typecheck for **13+ minutes and counting**. Inference is ~99.9% of the cold cost; the per-entry uncached global passes are a ~1-second item. Consequences: (a) the pathology lane (which module, why) is the top prize — a `[typecheck-attribution] module=… ms=…` line now names any module over 2s; (b) S1's union-of-global-passes is demoted to a minor cut; (c) the in-process `typed_module_cache` already amortizes the dominant phase across entries *within one index* — the surviving redundancy is per-shard, per-subprocess, per-run cold starts of that cache. Open oddity to settle: a 188-module *superset* closure resolved in under ~10 minutes (contended) while this 11-module subset exceeds 20 — plausibly the discovery path's *advisory* typecheck gate vs the single-entry *strict* gate checking different amounts; one controlled A/B settles it.
+- Fleet numbers: floor prelude (plan-closure resolve ×2 + interpreted scheduler evals) ran **35+ minutes silent** before the first output line; whole-tree compile-clean ≈ **48 min**. CI job timeout is now **10 minutes** (operator inversion, forcing function) — the floor cannot fit it until this design lands.
+- Prior mechanisms and why they underdelivered — all the same lesson, *wrong unit / wrong key / wrong medium*:
+  - **M1 `walk_memo`** (landed #6008): keyed by **entry**; deduplicates the same gate entry across batches (~105s/run). Zero cross-entry sharing — 543 distinct witness entries get 543 private universes regardless.
+  - **`resolved_graph_cache.rs`** (#4867, dormant): keyed by **entry + compiler binary** (cold on every commit), serialized as **monolithic multi-GiB JSON** (unusable when warm).
+  - **`SharedClaims`** (within-batch) and the resolver's `seen` set (within-one-closure): correct, but scoped below the redundancy.
+
+## 1. The inversion: request-major → graph-major
+
+Current shape: "run e" → walk backward from e, build private universe, discard. "run f" → repeat the shared prefix.
+
+Target shape (operator's formulation, 2026-07-04):
+
+1. **Edge graph first (cheap, text-level).** One pass over the tree extracts module→import edges — milliseconds; the whole graph (~5.5k nodes) trivially fits in memory. This artifact exists (`build_multi_entry_index` host-side; `module_graph`/`decl_index` model-side).
+2. **Minimal set up front.** Given requested targets {e, f, …}: union of reverse-reachability over the edge graph → the induced subgraph → topological order. (Sets, not paths.)
+3. **Forward, once per node.** Evaluate module nodes in dependency order; each node consumes its direct dependencies' **results**; requests are just leaf nodes. "Resolve a→d twice" becomes **unrepresentable** — a node appears once in the schedule. This is the §5 construction rung; a memoized backward resolver is the validation rung (the redundant recompute stays writable, one cache-key bug from returning).
+4. **The kernel already exists one layer up.** `parallel_executor_plan_from_dependencies` + `RealizationPlan` schedule the CI floor's eleven gates exactly this way. Module inference is the same concept at a different scale (§2: one kernel, N workloads); this design points the existing scheduler at module nodes instead of inventing a resolver-private one.
+
+## 1b. One scheduler, no special cases (operator formulation, 2026-07-04)
+
+The root defect, named: **resolution is the system's one special case.** The repo already owns a Bazel-shaped dependency executor — nodes, `DependencyView` edges, antichain batches, width from the budget tree — and uses it to schedule eleven coarse CI gates. Meanwhile the work that is 99.9% of the wall clock (module typecheck obligations) hides inside one opaque recursive host call, on one core, invisible to scheduling, receipts, coalescing, and budgets. "DAG processing for the DAG itself" is not a metaphor: module resolution IS dependency execution over the same substrate, and exempting it from the system's own model is the §7 recursion left unfinished (the compiler must be an ordinary substrate fact; today its front half isn't).
+
+Vocabulary mapping (§3 discipline — the concepts already have names here; do not mint nicknames):
+
+| external formulation | existing authority |
+|---|---|
+| Obligation (node × input × context, `demanded_by` witnesses) | `Runnable` + a demand set; the artifact-bearing variant is M2's staged `RunnableCompile` |
+| ExecutionKey (node, input digest, artifact digest, config, effect shape) | the Realization content-hash key + `EffectShape` — "one kernel, N handlers" applied to compile steps |
+| antichain frontier / cursor | the executor's batches (`parallel_executor_plan_from_dependencies`) |
+| typed Receipt instead of log-line truth | receipts + the merge-admission stamp; the `[t+Xs]` phase marks are the interim form |
+| "witnesses are assertions over graph cuts; run the graph, not the witnesses" | the end-state: witnesses check materialized node values at declared cuts; today's corpus witnesses are leaf assertions whose heavy shared "path" is module resolution itself — so the first obligation corpus the unified cursor runs is **modules** |
+| refusal instead of degradation; budget-exceeded = error, not fallback | landed 2026-07-04 (degradation arms deleted; 10-min budget as forcing function) |
+
+Adopted invariant (four terminal states, no fifth): every enrolled witness ends **Checked** (receipt) | **Skipped** (selector proof) | **Refused** (machinery/input absent — loud) | **Not enrolled**. "Silently fell back to something else" is the state that destroyed the gate and is now unrepresentable on the paths converted so far.
+
+The one structural primitive the executor lacks for unification (named by the M2 doc already): edges carry no payload — there is no obligation that *produces an artifact consumed by dependents*. Module obligations need exactly that (ModuleInterface flowing along edges). That is S2a's real content.
+
+## 1c. Operator ruling (2026-07-04): constructor ambiguity is an ERROR; resolution follows the binding edge
+
+The measured inference pathology (§0 phase verdict) traced to constructor-ownership resolution: bare variant names, legal cross-coproduct name sharing, expected-type tie-breaking, and — when the scope lookup misses (every *imported* constructor: the import binds the name to the ARM node, and `lookup_variant_parent_enum` rejects it for not being the parent Disj) — a per-literal whole-environment flatten+scan (`record_lit_variant_fields_from_visible_env`, ~1M invocations / 9.7M parent-recurses in 120s on an 80-line module). Operator ruling: **the ambiguity support itself is the bug** — accidental semantics, never intended. Do not optimize the search; delete it.
+
+The DAG already provides the namespace: an arm is a node whose parent edge names its owning coproduct, and the resolver's export machinery already binds imported arm names to those arm nodes (`get_exported_names` includes `get_variant_names`). Rules:
+
+1. A constructor literal's name must be **bound in scope** (local declaration or explicit import); owner = the binding's **parent edge**. O(1), no scan, no cache, no new syntax.
+2. **Unbound constructor name = typed error.** (Today the scan silently resolves constructors that were never imported — an undeclared-dependency fail-open.)
+3. **Name bound twice in one scope = collision error at env construction** (the only survivor of the index sketch: a one-fold collision detector in `build_type_env`).
+4. **Patterns resolve via the scrutinee's type** — already unambiguous; unimported arm names stay legal in pattern position.
+5. **Expected-type-as-owner-picker is deleted**; expected types return to ordinary mismatch checking.
+
+Consequences: `record_lit_variant_fields_from_visible_env` and both its call sites are removed, not memoized; the `04_env.dag` flatten-recurse==0 invariant becomes true and its witness gates the regression; the variant-owner canary fixture (two local coproducts sharing `SharedVariant`) becomes illegal by design — it is rewritten as the red-control asserting the collision diagnostic, and a different tiny witness takes the CI canary slot. Migration = census of (a) co-visible arm-name collisions and (b) never-imported constructor literals, then mechanical import additions. Fix home: `v1.compiler.infer` / `infer_env` dag sources + seed regen (RegenVerifyGate holds committed == regenerated).
+
+Census receipts (text-level, 2026-07-04): 5,526 distinct arm names corpus-wide; **221 collide globally** (e.g. `Absent` owned by 4 coproducts, `Assistant` by two API models) — so the uniqueness rule MUST be scoped to co-visibility, not global; most global collisions never share a scope. Upper bound on scan-reliant uses: 1,086 files reference arm names neither imported nor locally declared (4,572 distinct name-uses) — dominated by match patterns, which stay legal (rule 4); the literal-position migration subset is countable precisely once the resolver-side census runs (cheap after the fix lands). Termination receipt: the control typecheck of the 80-line module was killed at **60+ minutes still inside the single `typecheck_module` call**.
+
+## 2. The windowed frontier (memory model)
+
+Holding "the whole graph" means holding the **edges** (cheap facts). Evaluating node `d` needs exactly: `d`'s source + the **results** of `d`'s direct dependencies. Not a→c's internals, not their inference traces. When `b`'s last dependent completes, `b`'s working state is dropped; what survives is its compact keyed result. Peak memory ≈ frontier width × result size, not closure size.
+
+Two immutable artifacts per node (the rustc `rmeta`/rlib split):
+- **ModuleInterface** — exported type/fn signatures and data heads. This is all *inference of dependents* may read (the §3 rename test: below-boundary representation is opaque). Small; participates in dependents' keys and in the evaluation window.
+- **ModuleBody** — the evaluable form of the module's definitions. Needed only at *interpretation* time (the interpreter executes imported fns); loaded on demand, never part of the inference window.
+
+## 3. Isolation = purity, not privacy
+
+In a dependency DAG, influence flows one way: e and f **cannot** affect d's meaning; if they could, that is a bug (a back-edge or impure evaluation) to fail on loudly, never a reason for private universes. The historical fresh-universe-per-witness guarded against *incidental shared mutable state*, not legitimate influence. The discipline that makes sharing sound: node results are **immutable values keyed by content** — then evaluation order is unobservable in any result, and any counterexample is the cache-impurity failure mode (DESIGN recurring list), walled by the oracles in §6.
+
+Key shape (Merkle): `key(m) = H(source_bytes(m), key(dep_1), …, key(dep_n), resolver_identity)`. Keys ground through `std.content_hash` — and this is the dissolution site for the §3 fnv1a64 dual-surface thread (v1 `atom_identity_hash`/`hash_combine` vs `std.content_hash`: module keys are the v2-carrier consumer that thread was waiting for). `resolver_identity` (compiler binary hash) stays in the key until resolve semantics are explicitly versioned — honest (never serves a stale-semantics artifact) at the cost of cross-commit reuse; removing it is a later, separately-justified step. **In-process sharing (S1, §7) needs none of this** — within one process, one tree snapshot, purity of resolve is the same assumption M1 already shipped on.
+
+## 4. Change surface — v1 (host, `src/v1/stage0`)
+
+| Site | Today | Becomes |
+|---|---|---|
+| `cli_run.rs run_discovery_corpus_with_options` / `run_discovery_rows` | per-row `resolve_entry_with_index_for_discovery_corpus` — one private closure per entry file (~543/run tree-wide) | rows are leaves: one shared resolution of the union closure; per-entry contexts assemble over shared immutable module facts |
+| `cli_run.rs resolve_entry_graph` and callers (`resolve_floor_runner_context`, `floor_git_diff_range`→`floor_diff_observe`, `install_output_policy`, `install_group_syntax`) | 4–5 separate private resolves per `claim_executor` process | consumers of one process-level store; union-resolved once |
+| shard threads in `run_discovery_corpus` | re-`build_multi_entry_index` + re-resolve runner context **per thread** | share the immutable store (needs `Rc`→`Arc` on resolved artifacts, or evaluate-prefix-then-fanout; decide early — this is the one real engineering constraint) |
+| `claim_executor.rs run_walk` `walk_memo` (M1) | entry-keyed context memo | dissolves into the store (M1's own dissolution trigger) |
+| `claim_batch.rs` discovery branch | per-row serial resolves | same store; the local corpus path gets the same collapse |
+| `v1_compiler_compile.rs compile_to_resolved` | whole-closure monolithic resolve+infer | **the deep cut (S2 only):** per-module parse+infer consuming dep ModuleInterfaces; `ResolvedGraph` becomes an assembled view. S1 does NOT touch this — it changes how often the monolith runs, not its internals |
+| `resolved_graph_cache.rs` (#4867) | dormant entry-keyed JSON cache | deleted, superseded by the per-module store (S2) |
+| `v1_interpreter` interior caches | per-context | must key per-context or per-content; covered by the purity oracle |
+
+## 5. Change surface — v2 (substrate, `src/v2` + `dag`)
+
+| Site | Role |
+|---|---|
+| `std.realization_schedule` | inhabit the staged `RunnableCompile` node (M2's shape) as the module-node workload: `{ module, source_key, dep_keys, profile }`; the resolver plan is a `RealizationPlan` over these — modeled in v2, realized by the v1 host, same seam as the CI floor |
+| `v2.workflow.executor` | unchanged — the point is reuse of `parallel_executor_plan_from_dependencies` for module nodes |
+| `v2.std.dependency` (`DependencyView`) | module import edges as rows — same vocabulary as floor edges |
+| `module_graph` / `decl_index` (v2) | the model-side edge-graph authority; a witness asserts host `build_multi_entry_index` edges == model edges (kills the dual representation) |
+| `std.content_hash` | key authority (fnv1a64 convergence thread lands here) |
+| `gunbc.ci_floor_measurement` / `ci_budget_tree` | width/memory rows for the module lane: peak = frontier × interface size |
+| `v2.std.determinism` (#5941) | gates ONLY the persistent tier (S2b): serving stored artifacts across runs requires proven determinism; in-process S1 does not |
+
+## 6. Oracles & red controls (all execute)
+
+1. **Purity oracle:** graph-major result == request-major result, byte-identical, for a sampled witness set (extend `memo_warm_cold_results_are_identical`). Red control: plant an interior-mutable leak (order-dependent memo) → oracle goes red.
+2. **Once-per-node receipt:** evaluation counter == distinct node count for the run; a private re-resolve sneaking back turns the receipt red (extends `memo_deduplicates_resolve_count`).
+3. **Collision honesty:** co-residence of previously never-co-resolved modules can surface name collisions (see resolver-type-name-collision-wall.md). The purity oracle catches divergence; a collision is a **loud typed error**, never a silently different resolution.
+4. **Planted-staleness (S2b only):** mutate a dep after key computation → keyed lookup must miss, never serve.
+5. **Budget receipt:** the `[t+Xs]` floor phase marks (landed 2026-07-04) are the standing measurement; the 10-minute job timeout is the acceptance bar.
+
+## 7. Staging — deliberately NOT a 10-PR arc
+
+**Operator sequencing + expectations (2026-07-04):** start the resolve lane with union resolve, explicitly as an INTERIM step with a contract: (a) **minimum upper bound** — a process's resolve cost is ≤ 1× its union closure, never N×, enforced by the once-per-node receipt; (b) the successor (S2a module obligations) must be **maximally parallel** — per-module typecheck scheduled as topo antichains with width from the budget tree, not the serial monolith union resolve keeps; (c) efficiency — frontier-window memory (§2), not closure-lifetime retention. Union resolve dissolves into S2a; it must not grow features that delay that dissolution. Name visibility is FLAT (§1c refinement): a module's name universe = its own declarations ∪ direct import lists — never transitive; collision detection is therefore per-file with zero graph traversal; types still propagate transitively by graph identity underneath (names are a surface-binding concern only).
+
+**S1 — union resolve, in-process (no substrate migration, no persistence, no determinism dependency).** Stop fragmenting demand: one `claim_executor`/`claim_batch` process resolves the union of everything it will need — prelude entries + all roster rows — once, forward, and every consumer assembles from the shared facts. This is the operator's "walk from a once, then evaluate e, then f" implemented with the existing monolithic resolver (the union closure IS one resolve; the `seen` set already deduplicates inside it). Displacement: N overlapping resolves per process → 1; the corpus's per-entry bill collapses to (union once) + (cheap per-entry assembly). Risks owned: name-collision surfacing (oracle §6.3), `Rc` thread boundary (§4).
+
+**S2a — module nodes + Merkle keys, still in-process.** Split `compile_to_resolved` at module boundaries (ModuleInterface/ModuleBody), schedule via `RunnableCompile` nodes, get frontier-window memory and per-module parallel inference (topo antichains × Altra cores — the 48-minute whole-tree resolve is single-threaded today). The one genuinely deep change (modular inference).
+
+**S2b — persistence across runs (gated on #5941).** Store node artifacts by Merkle key; a PR's run evaluates changed modules + dependents + uncached leaves. This — not S1 — is what makes the 10-minute budget comfortable rather than merely reachable; S1 makes a run cost ~1× union-resolve instead of ~N×, S2b makes warm runs cost ~Δ.
+
+**S3 — shared store across runner slots.** A Realization handler change (local disk → shared), no new semantics.
+
+## 8. Dissolution triggers
+
+- S1 dissolves into S2a when module nodes land (the union monolith becomes the degenerate one-batch plan).
+- This doc dissolves into the carriers when: the resolver plan is expressed as `RealizationPlan` rows, the oracles of §6 are enrolled witnesses, and the floor fits its declared budget — at which point DESIGN's open-thread bullet and this file are redundant with the model.

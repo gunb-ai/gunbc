@@ -828,6 +828,52 @@ pub fn resolve_entry_graph(
     resolve_entry_graph_with_index(&index, &facts, entry_file)
 }
 
+// Process-level (per-thread) resolve store — the S1a increment of the resolver
+// graph-major design (docs/plans/resolver-graph-major-design.md). Within one
+// process the source tree is a fixed snapshot, so a resolved entry graph is a
+// pure fact of (source_roots, entry) — the same purity assumption the walk memo
+// (M1) and typed_module_cache already ship on. Routing every fixed-entry
+// consumer (floor runner context, diff observer, output policy, group syntax,
+// the executor's plan entry) through this store makes "resolve the same declared
+// machinery twice in one process" unwritable on these paths, with failure
+// semantics unchanged: a miss resolves exactly as before, including the typed
+// error path. Thread-local by design: resolved graphs are Rc-based (not Send);
+// shard threads keep their own store rather than smuggling Rc across threads.
+thread_local! {
+    #[allow(clippy::type_complexity)]
+    static PROCESS_RESOLVE_STORE: RefCell<
+        HashMap<
+            (String, String),
+            (
+                Rc<v1_compiler_compile::ResolvedGraph>,
+                Rc<HashMap<String, Rc<NewlineIndex>>>,
+            ),
+        >,
+    > = RefCell::new(HashMap::new());
+}
+
+pub fn resolve_entry_graph_shared(
+    source_roots: &[String],
+    entry_file: &str,
+) -> Result<
+    (
+        Rc<v1_compiler_compile::ResolvedGraph>,
+        Rc<HashMap<String, Rc<NewlineIndex>>>,
+    ),
+    String,
+> {
+    let key = (source_roots.join("\u{1f}"), entry_file.to_string());
+    let hit = PROCESS_RESOLVE_STORE.with(|s| s.borrow().get(&key).cloned());
+    if let Some(found) = hit {
+        return Ok(found);
+    }
+    let resolved = resolve_entry_graph(source_roots, entry_file)?;
+    PROCESS_RESOLVE_STORE.with(|s| {
+        s.borrow_mut().insert(key, resolved.clone());
+    });
+    Ok(resolved)
+}
+
 pub struct MultiEntryIndex {
     source_files: ModuleSourceIndex,
     module_graph_facts: ModuleGraphFactsLive,
@@ -1067,12 +1113,24 @@ fn reconcile_with_typed_cache(
         let tc_result = match cached {
             Some(hit) => hit,
             None => {
+                if phase_profile::phase_profile_enabled() {
+                    eprintln!("[typecheck-attribution] module={mod_name} start");
+                }
+                let module_tc_started = std::time::Instant::now();
                 let computed = v1_compiler_infer::typecheck_module(
                     resolved.clone(),
                     module_index.clone(),
                     source_indices.clone(),
                     intern_table.clone(),
                 );
+                // Per-module attribution for the typecheck-dominant resolves measured
+                // 2026-07-04 (a closure sat in typecheck for 13+ min after ~1s of
+                // parse+resolve+normalize). Threshold keeps the floor log quiet;
+                // anything over it is a pathology-lane candidate by name.
+                let module_tc_ms = module_tc_started.elapsed().as_millis();
+                if module_tc_ms >= 2_000 {
+                    eprintln!("[typecheck-attribution] module={mod_name} ms={module_tc_ms}");
+                }
                 typed_cache
                     .borrow_mut()
                     .insert(mod_name.clone(), computed.clone());
@@ -1232,7 +1290,7 @@ pub fn install_output_policy(source_roots: &[String]) {
         v1_interpreter::Verbosity::Normal => (false, false),
     };
     let entry = "dag/gunbc/output_policy.dag";
-    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+    let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
         Ok(g) => g,
         Err(_) => return,
     };
@@ -1288,7 +1346,7 @@ pub fn install_group_syntax(source_roots: &[String]) {
         .map(|v| v == "true")
         .unwrap_or(false);
     let entry = "dag/extdeps/render/surface.dag";
-    let (graph, indices) = match resolve_entry_graph(source_roots, entry) {
+    let (graph, indices) = match resolve_entry_graph_shared(source_roots, entry) {
         Ok(g) => g,
         Err(_) => return,
     };
@@ -3000,7 +3058,7 @@ pub fn wet_hermetic_scaffold_roster_entry_prefix(
 ) -> Result<String, String> {
     let entry =
         resolve_entry_file_under_roots(source_roots, WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY)?;
-    let (graph, source_indices) = resolve_entry_graph(source_roots, &entry)?;
+    let (graph, source_indices) = resolve_entry_graph_shared(source_roots, &entry)?;
     let sources = load_sources_for_entry(source_roots, &entry)?;
     let entry_source = sources
         .iter()
@@ -3687,11 +3745,6 @@ impl Default for DiscoveryCorpusOptions {
     }
 }
 
-enum FloorGitDiffOutcome {
-    ObservationFailClosed { reason: String },
-    UnifiedProduced(String),
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct FileLineRange {
     start: i64,
@@ -3702,7 +3755,7 @@ fn floor_git_diff_range() -> Result<String, String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
-    let (graph, indices) = resolve_entry_graph(&roots, entry)
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
         .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let result =
@@ -4146,7 +4199,7 @@ fn resolve_floor_runner_context(
     ),
     String,
 > {
-    resolve_entry_graph(source_roots, FLOOR_RUNNER_ENTRY)
+    resolve_entry_graph_shared(source_roots, FLOOR_RUNNER_ENTRY)
 }
 
 fn call_floor_kernel_would_skip(
@@ -4381,23 +4434,23 @@ fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> b
     false
 }
 
-fn read_entry_content_for_host_scaffold(entry: &str) -> (String, bool) {
-    match std::fs::read_to_string(entry) {
-        Ok(content) => (content, false),
-        Err(e) => {
-            eprintln!(
-                "claim_executor: failed to read entry {entry} for host-scaffold classification ({e}) — fail-closed, treating as host-scaffold"
-            );
-            (String::new(), true)
-        }
-    }
+fn read_entry_content_for_host_scaffold(entry: &str) -> Result<String, String> {
+    std::fs::read_to_string(entry).map_err(|e| {
+        format!(
+            "failed to read entry {entry} for host-scaffold classification: {e} — a \
+             discovered roster row's file must be readable; no silent reclassification"
+        )
+    })
 }
 
-fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> bool {
-    rows.iter().any(|row| {
-        let (content, read_failed) = read_entry_content_for_host_scaffold(&row.entry);
-        read_failed || witness_test_fn_uses_live_host_scan(&content, &row.function)
-    })
+fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> Result<bool, String> {
+    for row in rows {
+        let content = read_entry_content_for_host_scaffold(&row.entry)?;
+        if witness_test_fn_uses_live_host_scan(&content, &row.function) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn floor_diff_edits_from_diff_text(
@@ -4565,10 +4618,10 @@ fn entry_touches_rerun_frontier(
             Ok(Some(true)) => return Ok(true),
             Ok(Some(false)) | Ok(None) => {}
             Err(msg) => {
-                eprintln!(
-                    "claim_executor: test_claim_evaluation_touches_rerun_frontier failed ({msg}) — fail-closed, running entry witnesses"
-                );
-                return Ok(true);
+                return Err(format!(
+                    "test_claim_evaluation_touches_rerun_frontier failed ({msg}) — declared \
+                     selection machinery must evaluate; no silent run-everything fallback"
+                ));
             }
         }
         match call_test_claim_fn_bool(
@@ -4581,10 +4634,10 @@ fn entry_touches_rerun_frontier(
             Ok(Some(true)) => return Ok(true),
             Ok(Some(false)) | Ok(None) => {}
             Err(msg) => {
-                eprintln!(
-                    "claim_executor: floor_claim_touches_rerun_frontier failed ({msg}) — fail-closed, running entry witnesses"
-                );
-                return Ok(true);
+                return Err(format!(
+                    "floor_claim_touches_rerun_frontier failed ({msg}) — declared selection \
+                     machinery must evaluate; no silent run-everything fallback"
+                ));
             }
         }
     }
@@ -4650,65 +4703,62 @@ pub fn run_discovery_corpus_with_options(
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
     set_phase(FloorPhase::Discovery, "discovery-roster");
-    let diff_outcome = if options.skip_unaffected_node_frontier {
-        match floor_git_diff_range() {
-            Ok(text) => FloorGitDiffOutcome::UnifiedProduced(text),
-            Err(msg) => {
-                eprintln!(
-                    "claim_executor: git diff unavailable ({msg}) — fail-closed, running full corpus"
-                );
-                FloorGitDiffOutcome::ObservationFailClosed { reason: msg }
-            }
-        }
+    // No degradation arm: skip_unaffected_node_frontier: true is a DECLARED capability,
+    // so every input it needs (the git-diff observation, the frontier attribution, the
+    // affected-set runner) must be present — a failure is a loud typed error, never a
+    // silent run-everything fallback. To run without selection, declare the flag false.
+    let diff_text = if options.skip_unaffected_node_frontier {
+        floor_git_diff_range().map_err(|msg| {
+            format!(
+                "git diff observation failed ({msg}) — skip_unaffected_node_frontier: true \
+                 requires the declared fetch/observe steps to succeed; no silent \
+                 full-corpus fallback (declare the flag false to run without selection)"
+            )
+        })?
     } else {
-        FloorGitDiffOutcome::UnifiedProduced(String::new())
+        String::new()
     };
-    let line_ranges_by_file = match &diff_outcome {
-        FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
-        FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_line_ranges(text),
-    };
-    let changed_new_lines_by_file = match &diff_outcome {
-        FloorGitDiffOutcome::ObservationFailClosed { .. } => HashMap::new(),
-        FloorGitDiffOutcome::UnifiedProduced(text) => parse_unified_diff_changed_new_lines(text),
-    };
+    let line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
+    let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
     let changed_paths: Vec<String> = line_ranges_by_file.keys().cloned().collect();
-    let (skip_enabled, diff_edits) = if options.skip_unaffected_node_frontier
-        && !line_ranges_by_file.is_empty()
-    {
-        let frontier_index = build_multi_entry_index(source_roots);
-        match floor_diff_edits_from_line_ranges(
-            &frontier_index,
-            &line_ranges_by_file,
-            &changed_new_lines_by_file,
-        ) {
-            Ok(edits) => (true, edits),
-            Err(msg) => {
-                eprintln!(
-                    "claim_executor: node-frontier population fail-closed ({msg}) — running full corpus"
-                );
-                (false, FloorDiffEdits::default())
+    let (skip_enabled, diff_edits) =
+        if options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty() {
+            let frontier_index = build_multi_entry_index(source_roots);
+            match floor_diff_edits_from_line_ranges(
+                &frontier_index,
+                &line_ranges_by_file,
+                &changed_new_lines_by_file,
+            ) {
+                Ok(edits) => (true, edits),
+                Err(msg) => {
+                    return Err(format!(
+                        "node-frontier population failed ({msg}) — the diff-to-declaration \
+                     attribution is declared selection machinery; no silent full-corpus \
+                     fallback"
+                    ));
+                }
             }
-        }
-    } else {
-        (false, FloorDiffEdits::default())
-    };
+        } else {
+            (false, FloorDiffEdits::default())
+        };
     let floor_runner_ctx = if options.skip_unaffected_node_frontier {
         match resolve_floor_runner_context(source_roots) {
             Ok((graph, source_indices)) => {
                 Some(make_eval_context(&graph, source_indices, execution_mode))
             }
             Err(msg) => {
-                eprintln!(
-                    "claim_executor: floor runner resolve failed ({msg}) — fail-closed, running full corpus"
-                );
-                None
+                return Err(format!(
+                    "floor runner resolve failed ({msg}) — skip_unaffected_node_frontier: \
+                     true declares the affected-set machinery ({FLOOR_RUNNER_ENTRY}) and it \
+                     must resolve; no silent full-corpus fallback"
+                ));
             }
         }
     } else {
         None
     };
     let skip_precompute = if skip_enabled {
-        let host_scaffold_corpus = discovery_rows_include_host_scaffold(&rows);
+        let host_scaffold_corpus = discovery_rows_include_host_scaffold(&rows)?;
         match floor_runner_ctx.as_ref() {
             Some(ctx) => {
                 let precompute = if host_scaffold_corpus {
@@ -4731,10 +4781,10 @@ pub fn run_discovery_corpus_with_options(
                 match precompute {
                     Ok(skip) => skip,
                     Err(msg) => {
-                        eprintln!(
-                            "claim_executor: floor precompute_would_skip failed ({msg}) — fail-closed, running precompute"
-                        );
-                        false
+                        return Err(format!(
+                            "floor precompute_would_skip failed ({msg}) — declared selection \
+                             machinery must evaluate; no silent fallback"
+                        ));
                     }
                 }
             }
@@ -4801,16 +4851,15 @@ pub fn run_discovery_corpus_with_options(
             let index = build_multi_entry_index(&roots);
             let runner = if skip_for_shards {
                 match resolve_floor_runner_context(&roots) {
-                    Ok((graph, source_indices)) => Some(make_eval_context(
-                        &graph,
-                        source_indices,
-                        execution_mode,
-                    )),
+                    Ok((graph, source_indices)) => {
+                        Some(make_eval_context(&graph, source_indices, execution_mode))
+                    }
                     Err(msg) => {
-                        eprintln!(
-                            "claim_executor: floor runner resolve failed in shard ({msg}) — fail-closed, running all rows in shard"
-                        );
-                        None
+                        return Err(format!(
+                            "floor runner resolve failed in shard ({msg}) — declared \
+                             affected-set machinery must resolve; no silent \
+                             run-everything fallback"
+                        ));
                     }
                 }
             } else {
@@ -4923,7 +4972,6 @@ fn run_discovery_rows(
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
     let mut current_entry_closure_files: HashSet<String> = HashSet::new();
     let mut current_entry_content: String = String::new();
-    let mut current_entry_host_scaffold_fail_closed: bool = false;
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
@@ -4972,9 +5020,7 @@ fn run_discovery_rows(
             }
             ctx = Some(entry_ctx);
             current_entry = Some(row.entry.clone());
-            let (content, read_failed) = read_entry_content_for_host_scaffold(&row.entry);
-            current_entry_content = content;
-            current_entry_host_scaffold_fail_closed = read_failed;
+            current_entry_content = read_entry_content_for_host_scaffold(&row.entry)?;
         }
         let function_edited = skip_enabled
             && diff_edits.edited_test_fns.iter().any(|(file, func)| {
@@ -4986,8 +5032,8 @@ fn run_discovery_rows(
                 .iter()
                 .any(|file| touched_file_in_import_closure(file, &current_entry_closure_files));
         let should_skip = if skip_enabled {
-            let host_scaffold_witness = current_entry_host_scaffold_fail_closed
-                || witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
+            let host_scaffold_witness =
+                witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
             match floor_runner_ctx {
                 Some(runner_ctx) => {
                     let skip = if host_scaffold_witness {
@@ -5012,11 +5058,12 @@ fn run_discovery_rows(
                     match skip {
                         Ok(skip) => skip,
                         Err(msg) => {
-                            eprintln!(
-                                "claim_executor: floor would_skip failed ({msg}) — fail-closed, running {} ({})",
+                            return Err(format!(
+                                "floor would_skip failed for {} ({}): {msg} — declared \
+                                 selection machinery must evaluate; no silent \
+                                 run-everything fallback",
                                 row.function, row.entry
-                            );
-                            false
+                            ));
                         }
                     }
                 }
@@ -11290,8 +11337,8 @@ fn serialize_variant_to_wire_json(
     ctx: &v1_interpreter::InterpContext,
 ) -> WireSerializeResult<serde_json::Value> {
     use crate::v1_compiler_emit_rust::{
-        policy_is_string_variant, policy_is_untagged, policy_serde_tag_field,
-        rust_serde_tag_attr, rust_tagged_object_policy, wire_variant_tag_for_policy,
+        policy_is_string_variant, policy_is_untagged, policy_serde_tag_field, rust_serde_tag_attr,
+        rust_tagged_object_policy, wire_variant_tag_for_policy,
     };
     let policy = resolve_coproduct_wire_policy(
         type_name,
@@ -11705,5 +11752,41 @@ mod import_closure_equivalence_tests {
                 .collect::<std::collections::BTreeSet<_>>()
         };
         assert_eq!(norm(from_rel), norm(from_abs));
+    }
+}
+
+#[cfg(test)]
+mod process_resolve_store_tests {
+    use super::*;
+
+    // S1a purity + dedup receipt: the second resolve of the same (roots, entry)
+    // must be served from the process store — Rc identity proves zero recompute.
+    // A tiny self-contained fixture tree keeps this test milliseconds-cold.
+    #[test]
+    fn process_resolve_store_dedupes_repeat_resolve() {
+        // Fixture must live under the workspace (build_module_path_index requires it);
+        // target/ is workspace-local and git-ignored.
+        let dir = workspace_root()
+            .join("target")
+            .join(format!("gunbc-resolve-store-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create fixture dir");
+        std::fs::write(
+            dir.join("store_probe.dag"),
+            "module store_probe\n\nfn probe() -> Bool {\n  true\n}\n",
+        )
+        .expect("write fixture module");
+        let roots = vec![dir.to_string_lossy().into_owned()];
+        let entry = dir.join("store_probe.dag").to_string_lossy().into_owned();
+
+        let (g1, i1) = resolve_entry_graph_shared(&roots, &entry).expect("first resolve");
+        let (g2, i2) = resolve_entry_graph_shared(&roots, &entry).expect("second resolve");
+        assert!(
+            Rc::ptr_eq(&g1, &g2),
+            "second resolve must be the stored graph (Rc identity), not a recompute"
+        );
+        assert!(Rc::ptr_eq(&i1, &i2), "source indices must be stored too");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

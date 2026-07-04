@@ -145,6 +145,7 @@ fn baseline_corpus_roots(corpus_dir: &Path) -> Vec<String> {
 }
 
 #[test]
+#[ignore = "CI witness opt-in inversion (2026-07-04): whole-corpus strict resolve + semantic-oracle snapshot over dag+src/v1 — the rust-lane twin of the corpus witnesses inverted out of the per-PR floor (run-everything had pushed both CI jobs to the 90-min timeout: max cost, zero signal). Run explicitly: cargo nextest run -p v1-compiler-tests -- --ignored func_env_whole_corpus_semantic_oracle_matches_pre_change_baseline. Re-enroll when affected-set selection + floor memoization land (see ci_witness_optin_inversion in gunbc.commit_workflow)."]
 fn func_env_whole_corpus_semantic_oracle_matches_pre_change_baseline() {
     let fixture_path = workspace_root().join(BASELINE_FIXTURE);
     let raw = fs::read_to_string(&fixture_path)
