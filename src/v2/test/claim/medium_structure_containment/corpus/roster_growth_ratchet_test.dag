@@ -1,0 +1,36 @@
+module v2.test.medium_structure_containment.corpus.roster_growth_ratchet
+
+import v2.lens.medium_structure_containment {
+  medium_structure_exception_roster,
+  medium_structure_exception_roster_size_baseline,
+  medium_structure_roster_growth_ratchet_holds,
+  roster_growth_ratchet_holds
+}
+import v2.std.algebra { list_append, length }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+
+data planted_roster_growth_entry: String = "dag/gunbc/_perturb_fresh_medium_structure_roster_entry.dag"
+
+test fn corpus_medium_structure_roster_growth_ratchet_holds() -> Bool {
+  medium_structure_roster_growth_ratchet_holds()
+}
+
+test fn medium_structure_roster_growth_planted_red_holds() -> Bool {
+  roster_growth_ratchet_holds(
+    live_size: medium_structure_exception_roster_size_baseline + 1,
+    baseline: medium_structure_exception_roster_size_baseline
+  ) == false
+}
+
+test fn medium_structure_roster_growth_planted_entry_red_holds() -> Bool {
+  roster_growth_ratchet_holds(
+    live_size: length(
+      xs: list_append(
+        left: medium_structure_exception_roster,
+        right: [planted_roster_growth_entry]
+      )
+    ),
+    baseline: medium_structure_exception_roster_size_baseline
+  ) == false
+}

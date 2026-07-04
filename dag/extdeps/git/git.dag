@@ -185,3 +185,23 @@ service git.Core {
     }
   }
 }
+
+fn shape_git_worktree_add_argv(path: FilePath, branch: NonEmptyStr, remote_ref: GitRef) -> List<String> {
+  ["worktree", "add", path as String, "-b", branch as String, remote_ref as String]
+}
+
+service git.Worktree {
+  operation Add {
+    input { path: FilePath, branch: NonEmptyStr, remote_ref: GitRef }
+    output {
+      success: Bool from "exit_success"
+      stdout: String from "stdout"
+      stderr: String from "stderr"
+    }
+    transport shell { argv: ["git", "worktree", "add", "{path}", "-b", "{branch}", "{remote_ref}"] }
+    exit {
+      0 => Unit
+      nonzero => String "Worktree add failed"
+    }
+  }
+}

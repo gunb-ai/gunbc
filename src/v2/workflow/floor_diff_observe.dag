@@ -11,7 +11,7 @@ import gunbc.host_effect {
   ShellCommand,
   NodeControlPlane,
   HostOs,
-  OneShotIdempotent,
+  host_effect_read_evidence,
   LocalShell,
   HostEffectIntent,
   HostEffectEvidence,
@@ -183,7 +183,7 @@ fn floor_observe_git_diff_unified(policy: DiffPolicy) -> FloorUnifiedDiffResult 
     r: host_effect_apply(
       target: floor_ci_host_os(),
       effect: ShellCommand { script: floor_git_diff_unified_script(policy: policy) },
-      policy: OneShotIdempotent,
+      evidence: host_effect_read_evidence,
       transport: LocalShell
     )
   )

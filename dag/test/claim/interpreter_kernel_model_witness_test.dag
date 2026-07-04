@@ -23,11 +23,11 @@ fn w_pure_eval_authority_modules() -> Bool {
 fn w_pinned_host_physics_roster() -> Bool {
   is_pinned_host_physics_stage0_file(basename: "recorded_fixture.rs") &&
   is_pinned_host_physics_stage0_file(basename: "resolved_graph_cache.rs") &&
-  is_pinned_host_physics_stage0_file(basename: "rest_transport_facts.rs") &&
-  is_pinned_host_physics_stage0_file(basename: "wire_value_serialize.rs") &&
-  pinned_host_physics_file_count() == 4 &&
+  pinned_host_physics_file_count() == 2 &&
   !is_pinned_host_physics_stage0_file(basename: "cache_purity_oracle.rs") &&
-  !is_pinned_host_physics_stage0_file(basename: "cli_run.rs")
+  !is_pinned_host_physics_stage0_file(basename: "cli_run.rs") &&
+  !is_pinned_host_physics_stage0_file(basename: "rest_transport_facts.rs") &&
+  !is_pinned_host_physics_stage0_file(basename: "wire_value_serialize.rs")
 }
 
 fn w_hybrid_interpreter_file_boundary() -> Bool {

@@ -1,0 +1,27 @@
+module test.claim.diagnostics_test
+
+import tools.diagnostics_witness_transport {
+  run_diagnostics_import_resolution_witness,
+  run_diagnostics_reexport_surface_witness,
+  run_diagnostics_type_and_arity_witness,
+  run_diagnostics_empty_list_context_witness,
+}
+import std.logic { Bool }
+
+data diagnostics_witness_provenance: String = "Floor witnesses curated from src/v1/tests/src/diagnostics.rs (12 v1 #[test] fns, not 1:1 parity). Four high-signal suites via diagnostics_witness host physics: import-resolution variants + span grounding, re-export surface MissingExport, UnresolvedType + ArityMismatch discrimination (bare List positive; List<Int> and user-defined Widget negative controls), empty-list literal context sensitivity. Dropped tautological/redundant v1 cases (clean-compile zero-diags sanity, duplicate multi-export span bookkeeping, duplicate_module #[ignore] PERF)."
+
+test fn diagnostics_import_resolution_holds() -> Bool {
+  run_diagnostics_import_resolution_witness()
+}
+
+test fn diagnostics_reexport_surface_holds() -> Bool {
+  run_diagnostics_reexport_surface_witness()
+}
+
+test fn diagnostics_type_and_arity_holds() -> Bool {
+  run_diagnostics_type_and_arity_witness()
+}
+
+test fn diagnostics_empty_list_context_holds() -> Bool {
+  run_diagnostics_empty_list_context_witness()
+}

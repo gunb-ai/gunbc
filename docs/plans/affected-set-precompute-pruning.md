@@ -112,6 +112,8 @@ Before migration, extend `affected_set_floor_runner.dag`'s `floor_witness_run_di
 
 **Seam shape:** the `.dag` query result (`RerunNodeSet`) crosses the realization boundary once at floor entry — the same point `collect_frontier_seeds_from_diff_line_ranges` is called today. One query evaluation, two consumers, zero parallel impls.
 
+**Host-scaffold witness classifier (ROADMAP `2-host-scaffold-classifier-defork`, #6224):** live-tree witnesses must never take node-frontier skip (`floor_host_scaffold_would_skip` → `false`). Interim classification is the `floor:host_scaffold` marker plus the Rust `witness_test_fn_uses_live_host_scan` scaffold in `cli_run.rs` (conservative, fail-closed). **Dissolve-on:** `reads_live_tree` disposition on `TestClaim` rows — delete the text classifier when the substrate carries the fact.
+
 ---
 
 ## Step 5 — DELETE: dissolve the Rust parallel implementation

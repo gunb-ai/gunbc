@@ -14,7 +14,6 @@
 #![recursion_limit = "256"]
 
 pub mod cli_run;
-pub mod complexity_linearity_audit_project;
 pub mod coproduct_reflection;
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
@@ -35,11 +34,9 @@ pub mod extdeps_uri;
 pub mod extdeps_uri_path;
 pub mod extdeps_version;
 pub mod extdeps_version_semver;
-pub mod external_authority_project;
 pub mod module_path_index;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
-pub mod rest_transport_facts;
 pub mod std_algebra;
 pub mod std_coercion;
 pub mod std_computation;
@@ -109,7 +106,6 @@ pub mod v1_probe_emit_interp;
 pub mod v1_rt;
 pub mod v1_std_core;
 pub mod v1_test_non_ascii_perf_fixture;
-pub mod wire_value_serialize;
 pub mod wt_a;
 pub mod wt_b;
 pub mod wt_common;
