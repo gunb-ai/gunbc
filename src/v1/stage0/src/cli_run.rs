@@ -552,7 +552,9 @@ fn pool_roots_for_module_graph_closure(source_roots: &[String]) -> Vec<String> {
         .collect()
 }
 
-fn path_to_source_lookup(index: &ModuleSourceIndex) -> HashMap<String, Rc<v1_compiler_compile::SourceFile>> {
+fn path_to_source_lookup(
+    index: &ModuleSourceIndex,
+) -> HashMap<String, Rc<v1_compiler_compile::SourceFile>> {
     let mut out = HashMap::new();
     for sf in index.values() {
         let rel = workspace_relative_repo_path(&sf.path);
@@ -681,9 +683,7 @@ fn resolve_transitively(
     let mut path_lookup = path_to_source_lookup(index);
     for entry in &entry_sources {
         let rel = workspace_relative_repo_path(&entry.path);
-        path_lookup
-            .entry(rel)
-            .or_insert_with(|| entry.clone());
+        path_lookup.entry(rel).or_insert_with(|| entry.clone());
         path_lookup
             .entry(entry.path.clone())
             .or_insert_with(|| entry.clone());
@@ -762,7 +762,9 @@ fn entry_source_from_index_or_disk(
     }))
 }
 
-fn load_sources(source_roots: &[String]) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+fn load_sources(
+    source_roots: &[String],
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let index = build_module_index(source_roots);
     let facts = build_module_graph_facts_live(source_roots);
     let first_root = std::path::Path::new(&source_roots[0]);
@@ -1669,11 +1671,8 @@ pub fn whole_tree_resolved_ctx(
 }
 
 pub fn closure_subject_for_entry(index: &MultiEntryIndex, entry: &str) -> Result<String, String> {
-    let sources = load_sources_for_entry_with_index(
-        &index.source_files,
-        &index.module_graph_facts,
-        entry,
-    )?;
+    let sources =
+        load_sources_for_entry_with_index(&index.source_files, &index.module_graph_facts, entry)?;
     Ok(subject_digest_for_closure(&sources))
 }
 
@@ -4261,9 +4260,7 @@ fn call_floor_host_scaffold_would_skip(
         .item_registry
         .contains_key("floor_host_scaffold_would_skip")
     {
-        return Err(
-            "floor_host_scaffold_would_skip missing from floor runner context".to_string(),
-        );
+        return Err("floor_host_scaffold_would_skip missing from floor runner context".to_string());
     }
     let paths: Vec<v1_interpreter::Value> = changed_paths
         .iter()
@@ -4375,7 +4372,8 @@ fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> b
     }
     let decl_needle = format!("test fn {function}");
     if let Some(start) = entry_content.find(&decl_needle) {
-        let decl_tail = &entry_content[start..entry_content.len().min(start + decl_needle.len() + 120)];
+        let decl_tail =
+            &entry_content[start..entry_content.len().min(start + decl_needle.len() + 120)];
         if decl_tail.contains(FLOOR_HOST_SCAFFOLD_WITNESS_MARKER) {
             return true;
         }
@@ -4934,7 +4932,7 @@ fn run_discovery_rows(
                 &index.module_graph_facts,
                 &row.entry,
             )
-                .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
+            .map_err(|msg| format!("load sources failed for {}: {}", row.entry, msg))?;
             let closure_subject = subject_digest_for_closure(&sources);
             let resolve_started = std::time::Instant::now();
             set_phase(FloorPhase::Resolve, &row.entry);
@@ -5168,10 +5166,7 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let pairs = scan_test_decl_lines(source);
         assert_eq!(
             pairs,
-            vec![
-                ("witness_a".to_string(), 5),
-                ("witness_b".to_string(), 7)
-            ]
+            vec![("witness_a".to_string(), 5), ("witness_b".to_string(), 7)]
         );
     }
 
@@ -5183,32 +5178,51 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
             "clean_tree_holds"
         ));
         // File-wide fail-closed: sibling witnesses in the same entry also run.
-        assert!(super::witness_test_fn_uses_live_host_scan(source, "pure_holds"));
+        assert!(super::witness_test_fn_uses_live_host_scan(
+            source,
+            "pure_holds"
+        ));
     }
 
     #[test]
     fn witness_test_fn_uses_live_host_scan_pure_entry_stays_kernel_eligible() {
         let source = "module m\n\ntest fn pure_holds() -> Bool { true }\n\ntest fn also_pure() -> Bool { false }\n";
-        assert!(!super::witness_test_fn_uses_live_host_scan(source, "pure_holds"));
-        assert!(!super::witness_test_fn_uses_live_host_scan(source, "also_pure"));
+        assert!(!super::witness_test_fn_uses_live_host_scan(
+            source,
+            "pure_holds"
+        ));
+        assert!(!super::witness_test_fn_uses_live_host_scan(
+            source,
+            "also_pure"
+        ));
     }
 
     #[test]
     fn witness_test_fn_uses_live_host_scan_detects_declared_marker() {
-        let source = "module m\n\ntest fn marked_holds() -> Bool { // floor:host_scaffold\n  true\n}\n";
-        assert!(super::witness_test_fn_uses_live_host_scan(source, "marked_holds"));
+        let source =
+            "module m\n\ntest fn marked_holds() -> Bool { // floor:host_scaffold\n  true\n}\n";
+        assert!(super::witness_test_fn_uses_live_host_scan(
+            source,
+            "marked_holds"
+        ));
     }
 
     #[test]
     fn witness_test_fn_uses_live_host_scan_follows_same_file_helper() {
         let source = "module m\n\nfn helper_holds() -> Bool {\n  layer_import_facts(std_roots: [], extdeps_roots: [])\n}\n\ntest fn witness_holds() -> Bool {\n  helper_holds()\n}\n";
-        assert!(super::witness_test_fn_uses_live_host_scan(source, "witness_holds"));
+        assert!(super::witness_test_fn_uses_live_host_scan(
+            source,
+            "witness_holds"
+        ));
     }
 
     #[test]
     fn witness_test_fn_uses_live_host_scan_follows_nested_same_file_helper() {
         let source = "module m\n\nfn helper_b() -> Bool {\n  realization_vocab_containment_clean_live(scan_roots: roots)\n}\n\nfn helper_a() -> Bool {\n  helper_b()\n}\n\ntest fn witness_holds() -> Bool {\n  helper_a()\n}\n";
-        assert!(super::witness_test_fn_uses_live_host_scan(source, "witness_holds"));
+        assert!(super::witness_test_fn_uses_live_host_scan(
+            source,
+            "witness_holds"
+        ));
     }
 
     #[test]
@@ -11366,14 +11380,14 @@ fn serialize_untagged_variant(
 #[cfg(test)]
 mod import_closure_equivalence_tests {
     use super::{
-        build_module_index, build_module_graph_facts_live, build_multi_entry_index,
-        closure_subject_for_entry, default_source_roots, import_closure_live_paths,
-        module_graph_facts_build_count_for_test, reset_module_graph_facts_build_count_for_test,
-        resolve_transitively, resolve_transitively_bfs_legacy, workspace_relative_repo_path,
-        witness_layer_roots,
+        build_module_graph_facts_live, build_module_index, build_multi_entry_index,
+        closure_subject_for_entry, default_source_roots, floor_discovery_path_excluded,
+        import_closure_live_paths, module_graph_facts_build_count_for_test,
+        reset_module_graph_facts_build_count_for_test, resolve_transitively,
+        resolve_transitively_bfs_legacy, witness_layer_roots, workspace_relative_repo_path,
     };
-    use std::collections::HashMap;
-    use std::path::PathBuf;
+    use std::collections::{BTreeSet, HashMap};
+    use std::path::{Path, PathBuf};
     use std::rc::Rc;
 
     fn workspace_root() -> PathBuf {
@@ -11393,12 +11407,15 @@ mod import_closure_equivalence_tests {
             .collect()
     }
 
-    fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
+    fn assert_bfs_matches_import_closure_live_with_facts(
+        entry_rel: &str,
+        index: &super::ModuleSourceIndex,
+        facts: &super::ModuleGraphFactsLive,
+    ) {
         let ws = workspace_root();
         let entry_abs = ws.join(entry_rel);
-        let index = build_module_index(pool_roots);
-        let content = std::fs::read_to_string(&entry_abs)
-            .unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
+        let content =
+            std::fs::read_to_string(&entry_abs).unwrap_or_else(|e| panic!("read {entry_rel}: {e}"));
         let entry_source = Rc::new(crate::v1_compiler_compile::SourceFile {
             path: entry_abs.to_string_lossy().into_owned(),
             content,
@@ -11407,14 +11424,13 @@ mod import_closure_equivalence_tests {
         if let Some(mod_path) = super::extract_module_path(&entry_source.content) {
             seen.insert(mod_path, entry_source.clone());
         }
-        let bfs = resolve_transitively_bfs_legacy(vec![entry_source.clone()], &index, seen);
-        let facts = super::build_module_graph_facts_live(pool_roots);
-        let repointed = resolve_transitively(vec![entry_source], &index, &facts)
+        let bfs = resolve_transitively_bfs_legacy(vec![entry_source.clone()], index, seen);
+        let repointed = resolve_transitively(vec![entry_source], index, facts)
             .unwrap_or_else(|e| panic!("resolve_transitively {entry_rel}: {e}"));
-        let live = super::import_closure_live_paths_with_facts(entry_rel, &facts);
+        let live = super::import_closure_live_paths_with_facts(entry_rel, facts);
         let bfs_paths = closure_paths(&bfs);
         let repointed_paths = closure_paths(&repointed);
-        let live_paths: std::collections::BTreeSet<String> = live
+        let live_paths: BTreeSet<String> = live
             .iter()
             .map(|p| workspace_relative_repo_path(p))
             .collect();
@@ -11426,6 +11442,48 @@ mod import_closure_equivalence_tests {
             live_paths, bfs_paths,
             "import_closure_live diverged from legacy BFS for {entry_rel}"
         );
+    }
+
+    fn assert_bfs_matches_import_closure_live(entry_rel: &str, pool_roots: &[String]) {
+        let index = build_module_index(pool_roots);
+        let facts = super::build_module_graph_facts_live(pool_roots);
+        assert_bfs_matches_import_closure_live_with_facts(entry_rel, &index, &facts);
+    }
+
+    /// Floor witness entry paths enrolled by the source-root `*_test.dag` pass
+    /// (`gunbc.ci_layer_roots.witness_layer_roots`), minus the model exclusion list.
+    /// Avoids `discover_floor_corpus_rows` lens-hygiene work — closure set-identity
+    /// only needs the witness entry roster, not inert-lens classification.
+    fn floor_witness_entry_paths_for_oracle() -> BTreeSet<String> {
+        let mut entries = BTreeSet::new();
+        for root in default_source_roots() {
+            let mut dag_files = Vec::new();
+            super::collect_dag_files_tolerant(Path::new(&root), &mut dag_files);
+            for path in dag_files {
+                let rel = workspace_relative_repo_path(&path.to_string_lossy());
+                if !rel.ends_with("_test.dag") || floor_discovery_path_excluded(&rel) {
+                    continue;
+                }
+                entries.insert(rel);
+            }
+        }
+        entries
+    }
+
+    #[test]
+    fn import_closure_live_matches_legacy_bfs_on_whole_floor_corpus() {
+        let roots = default_source_roots();
+        let entries = floor_witness_entry_paths_for_oracle();
+        assert!(
+            entries.len() >= 4,
+            "import-closure semantic oracle expects the full floor roster (got {})",
+            entries.len()
+        );
+        let index = build_module_index(&roots);
+        let facts = super::build_module_graph_facts_live(&roots);
+        for entry_rel in entries {
+            assert_bfs_matches_import_closure_live_with_facts(&entry_rel, &index, &facts);
+        }
     }
 
     #[test]
@@ -11600,9 +11658,7 @@ mod import_closure_equivalence_tests {
         let mut without_entry: std::collections::BTreeSet<String> = live
             .iter()
             .map(|p| workspace_relative_repo_path(p))
-            .filter(|p| {
-                p != "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag"
-            })
+            .filter(|p| p != "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag")
             .collect();
         let repointed = import_closure_live_paths(
             "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
@@ -11613,10 +11669,11 @@ mod import_closure_equivalence_tests {
             .iter()
             .map(|p| workspace_relative_repo_path(p))
             .collect();
-        assert_ne!(without_entry, full, "RED control: dropped entry must diverge");
-        without_entry.insert(
-            "src/v2/std/__bogus_never_imported__.dag".to_string(),
+        assert_ne!(
+            without_entry, full,
+            "RED control: dropped entry must diverge"
         );
+        without_entry.insert("src/v2/std/__bogus_never_imported__.dag".to_string());
         assert_ne!(
             without_entry, full,
             "RED control: bogus path must diverge from live closure"
