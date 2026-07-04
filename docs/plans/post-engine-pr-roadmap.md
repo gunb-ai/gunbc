@@ -38,6 +38,51 @@ Ordered by weight, heaviest first.
 
 **Known entries ahead of the survey** (from this session's receipts): emit `--target dag` (PATHOLOGICAL, measured >20 min / 89 modules); per-shard union-index duplication (ACCEPTABLE-interim, W× bounded, S2b retires); interpreted v2 stages amplify constants ~100× so anything super-linear there is a priority multiplier.
 
-## Survey results
+## Survey results (2026-07-04)
 
-_(appended when the fleet reports)_
+Eight parallel stage surveys, all reported; raw catalogs with full per-pass tables in [compiler-algorithm-survey-2026-07-04.md](compiler-algorithm-survey-2026-07-04.md). These are read-verdicts with file:line anchors; the four highest-leverage claims were spot-verified against the live tree (`dag_collect_insert` clone pattern in the generated Rust; the `skip |> first` token accessor + its tail-materializing builtin; the discarded v2 packrat insert; the phantom-match flatten — confirmed present but in its post-ruling FLAT one-level form, fallback-only). Every PATHOLOGICAL row still owes a corpus-scale measurement before its fix lands (§B step 3).
+
+### Ranked findings — PATHOLOGICAL tier
+
+| # | Stage | Site | Shape | Cost | Fix direction |
+|---|---|---|---|---|---|
+| P1 | emit `--target dag` | `dag_collect_insert` (dag_collect.dag:117,157) + `dag_node_surface_fingerprint_rec` (dag_collect_support.dag:98) | `Rc`-wrapped accumulator: `inner.seen.clone()` while `inner` is live → `Rc::make_mut` deep-clones the whole growing map **per node**; fingerprint recomputed per **edge**, before the `seen` check, unmemoized | **O(M²)** in total corpus nodes — the prime suspect for the measured >20-min emit (typecheck of the same closure: 21s). Key structural fact: `--target dag` never touches `05_emit_rust.dag`; it is `compile.dag → dag_collect` | Thread the accumulator by move (the healthy sibling `build_dag_key_to_id` proves the idiom); memoize fingerprint on node key, compute only in the Absent branch |
+| P2 | parse (v1) | `token_stream_first/peek` (02_parse.dag:79,87) → `skip` builtin (v1_interpreter.rs:3187) | Every peek = `skip(all, pos) \|> first`; `skip` clones the **entire tail** into a fresh Vec, `first` discards all but the head; 263 call sites × O(M) driver steps | **O(M²)** time+allocation per module; likely the "legacy CYK floor ≈63s" | Index by position (RRB `get` is O(log M)) → parse drops to O(M log M); also fixes `scan_for_fat_arrow_after_braces` lookahead for free |
+| P3 | infer-env | `rewire_type_env_import_str_binding_identity` (04_infer.dag:6613) → `global_type_exporter_count`/`local_authority_for_name` (:6556,:6562) | Whole-corpus scan (all N modules × all B bindings) **per visible name per module** during reconcile | **Θ(N²·C·B)**; fires on every full-corpus compile | One O(corpus) pass building `name → {exporters, canonical binding}`; each rewire becomes O(1) |
+| P4 | floor-host | `import_closure_from_facts` (cli_run.rs:571) | Non-worklist fixpoint: N passes × all edges × path-normalization allocs × O(R) dedup; invoked ≥2× per distinct entry, unmemoized. A regression — `resolve_transitively_bfs_legacy` directly above it IS a proper O(V+E) worklist | ~O(D·R·E) per entry, every discovery/claim resolve | Prebuild normalized adjacency once per `ModuleGraphFactsLive`; worklist BFS |
+| P5 | infer-core | `build_imported_variants` + `owner_of_exported_arm`/`exported_coproduct_item` (04_infer.dag:6079,6033,6056) | Full Disj-scan + re-export chain walk of the exporting module **per imported name per importer** — fires for every name incl. non-variants (common case scans and finds nothing). Part of the machinery this PR built; already ledgered as §A.8's sibling | **O(N·K·D·M_target)** — core imported by all N modules is re-scanned N·K times | Per-exporting-module `Map<arm→owner>` + `Map<enum→item>` computed once (re-exports baked in), stored on `TypedModule`; binder does O(1) `map_get` |
+| P6 | interpreter | `Env::extend` chain (v1_interpreter.rs:538-576, 1328, 5988) | `call_function` extends the **caller's** env, not a fixed base → chain depth = dynamic call depth d; every var/global read walks O(d) | **O(d²)** per depth-d recursion; multiplies every interpreted workload incl. all v2 stages (~100× constant on top) | Invoke top-level fn bodies against a fixed global base env (true lexical scoping) — chain depth becomes lexical nesting |
+| P7 | v2 translate/serialize | `06_translate.dag:3555→1270→397` facts lookup; `:814,931,1076` serialization | `InferredTree.facts.lookup` = linear scan over all entries, called per node (O(M²)); output built with `list_append(partial, …)` (O(L²)) | Two independent quadratics on the v2 emit path, ×100 interpreted | Index facts by `occurrence_id`; accumulate output reversed / join once |
+| P8 | v2 parse | packrat memo table (src/v2/compiler/02_parse.dag:744,774) | **Dead memo**: `let _memo = parse_table_insert(...)` — result discarded, table never threaded out, lookup always sees the empty table; position key recomputed via `length` O(T) per attempt | Exponential worst-case backtracking; every production re-parses at every position. The performance twin of the "inert lens" (coverage by illusion — the machinery exists, nothing flows through it) | Thread the updated table through `ParseExprResult` (state-monad); carry an integer cursor |
+| P9 | v2 resolve + infer | `03_resolve.dag:200,261` namespace closure-chain; `04_infer.dag:298→cardinality.dag:260` nested catamorphism | `Map` primitive is a closure chain → O(E) per atom lookup × A atoms = O(M²)/module (the resolver lesson verbatim, interpreted); termination-proof witness re-runs a full `fold_node` over each node's subtree = O(M²) | O(M²) per module, ×100 interpreted | Indexed map for `Namespace.bindings`; compute descent proofs compositionally inside the existing bottom-up fold |
+
+### SUSPICIOUS tier (fix-worthy, lower share)
+
+- **infer-env:** per-module full-closure `TypeEnvCache` re-materialization — every module holds its own O(C) clone of the shared std core (Θ(N·C), toward Θ(N²·M) on deep chains); `TypeEnv.parents` shares by reference but the parallel cache clones. Store the local delta, resolve through the parent chain. Also: `flatten_visible_bindings` is exponential-on-diamonds but **cold** (witness `flatten_visible_parent_recurses == 0` holds) — a loaded gun, memoize before any re-enable.
+- **resolve (v1):** `collect_unit_variant_phantom_matches` (04_resolve.dag:81) still flattens+scans the flat visible set per fallback call — the surviving sibling of the deleted constructor scan, tempered post-ruling (one-level, fallback-only). Invert to a `variant_name → owners` index per env. Generic/alias use-site re-expansion: `substitute_type_slots` re-runs per use-site with no instantiation cache; `resolve_generic_use_decl` recomputed 2-3× per node.
+- **infer-core:** `ExprMatch` two-pass arm re-inference — O(A²) enumerate+filter positional lookup (zip instead) + latent 2^nesting re-inference; `infer_record_lit` O(A²) field match + per-use-site field-template rederivation.
+- **floor-host:** per-shard cold `build_multi_entry_index` (W× whole-tree walk) and per-claim-unit cold `resolve_entry_graph` — the request-major shape half-retired by S1; the `Rc`→`Arc` frontier (§A.12) retires it. `precompute_whole_tree_published_mock_keys` builds a private duplicate substrate.
+- **interpreter (constants that multiply everything):** `match_pattern` re-slices field names from source per arm-eval (the un-memoized sibling of the existing node-ptr caches); ~89-arm string dispatch in `eval_builtin` on **every** user call; `Value::Str(String)` is the only non-Rc payload → deep copy on every bind/read (→ `Rc<str>`).
+- **v2 stages, cross-cutting:** `list_snoc_item`/`list_append` fold-accumulation is O(n²) in every stage's child rebuild (prepend+reverse); grammar validation ~O(P³) recomputed per module instead of once per `grammar_digest`.
+
+### Root-cause clusters (§6: fix the language layer, not the site)
+
+1. **Wrong caching unit / request-major** — P3, P4, P5, floor per-shard/per-claim: the resolver lesson's first axis, still live in four places. One fix shape: build the index once at the owning scope, O(1) at the use-site.
+2. **Per-unit whole-structure scan** — P2, P7, P9, phantom-matches: the second axis. Fix shape: index or cursor.
+3. **`Rc`-shared accumulator defeating `make_mut`** — P1: a *codegen/idiom* class, not a site bug. The emitter (or the accumulator convention) must thread moves; audit for other `Rc`-struct-in-fold accumulators at regen time.
+4. **Dead/inert memo** — P8: machinery present, nothing flows through it. The §5 "inert lens" failure mode in performance clothing; a memo that exists must have a witness that it *hits*.
+5. **Quadratic list accumulation** — snoc/append folds corpus-wide in v2.
+6. **Interpreter amplifier** — P6 + Str clones + name re-slicing: constants that multiply every interpreted v2 stage; fixing these is a priority multiplier on everything in cluster 5/P7/P9.
+
+### Proposed fix order (priced by displaced cost, §6)
+
+1. **P1** — unblocks the CI compile-clean gate's 10-min budget (the only measured PATHOLOGICAL: >20 min). Verify first by the scaling curve: time `--target dag` at 20/40/89 modules — O(M²) shows ~4× per doubling against typecheck's linear 21s baseline; then fix, then re-curve.
+2. **P4** — every discovery/claim resolve pays it ≥2× per entry; the worklist fix is small and the legacy BFS is the in-file template.
+3. **P3** — every full-corpus compile pays it during reconcile.
+4. **P5** — request-major re-scan in the machinery this PR just built (fold into §A.8's collision-aware binder rework).
+5. **P2** — per-module parse floor; the accessor fix is one function + covers the lookahead scan.
+6. **P6 + interpreter constants** — multiplies all interpreted work; do before investing in v2-stage fixes.
+7. **P7/P8/P9 + snoc sweep** — the v2 lane, in emit → parse → resolve/infer order (P7 is on the live `serialize_target ∘ translate` path).
+8. Phantom-match index + SUSPICIOUS residue, in measured-share order once the profiler extension (§B step 3) lands.
+
+Every fix carries: before/after receipt on the same fixture + a budget witness (§B step 5) so regression is a red gate.
