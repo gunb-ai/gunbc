@@ -843,26 +843,32 @@ fn run_discovery_batch_node(
     }
 }
 
-fn eval_plan(
-    source_roots: &[String],
+fn eval_plan_in_ctx(
+    plan_ctx: &InterpContext,
     plan_entry: &str,
     plan_function: &str,
 ) -> Result<Vec<Vec<Runnable>>, String> {
     set_phase(FloorPhase::Gate, &format!("{plan_entry}::{plan_function}"));
-    let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
-        .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
-    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Hermetic);
-    let plan_value = run_value(&plan_ctx, plan_function).map_err(|msg| {
+    let plan_value = run_value(plan_ctx, plan_function).map_err(|msg| {
         format!(
             "plan eval failed ({}::{}): {}",
             plan_entry, plan_function, msg
         )
     })?;
-    let batches = batches_from_plan(&plan_value, &plan_ctx)
+    let batches = batches_from_plan(&plan_value, plan_ctx)
         .map_err(|msg| format!("malformed plan value: {}", msg))?;
-    drop(plan_value);
-    drop(plan_graph);
     Ok(batches)
+}
+
+fn eval_plan(
+    source_roots: &[String],
+    plan_entry: &str,
+    plan_function: &str,
+) -> Result<Vec<Vec<Runnable>>, String> {
+    let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
+        .map_err(|msg| format!("resolve failed for plan {}:\n{}", plan_entry, msg))?;
+    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Hermetic);
+    eval_plan_in_ctx(&plan_ctx, plan_entry, plan_function)
 }
 
 fn spawn_width_function_name(plan_function: &str) -> Option<String> {
@@ -934,17 +940,14 @@ fn read_host_memory_budget_bytes() -> Option<u64> {
     None
 }
 
-fn eval_spawn_width(
-    source_roots: &[String],
+fn eval_spawn_width_in(
+    plan_ctx: &InterpContext,
     plan_entry: &str,
     plan_function: &str,
 ) -> Result<usize, String> {
     let Some(width_fn) = spawn_width_function_name(plan_function) else {
         return Ok(1);
     };
-    let (plan_graph, plan_indices) = resolve_entry_graph(source_roots, plan_entry)
-        .map_err(|msg| format!("resolve failed for spawn width {}:\n{}", plan_entry, msg))?;
-    let plan_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
     let budget_bytes = read_host_memory_budget_bytes().unwrap_or(0);
     match budget_bytes {
         0 => eprintln!(
@@ -954,7 +957,7 @@ fn eval_spawn_width(
     }
     let budget_arg = i64::try_from(budget_bytes).unwrap_or(i64::MAX);
     let width_value = run_in_context_with_args(
-        &plan_ctx,
+        plan_ctx,
         &width_fn,
         &[(
             Some("memory_budget_bytes".to_string()),
@@ -968,7 +971,7 @@ fn eval_spawn_width(
             plan_entry, width_fn, e
         )
     })?;
-    hardware_thread_count_from_value(&width_value, &plan_ctx)
+    hardware_thread_count_from_value(&width_value, plan_ctx)
 }
 
 struct WalkOutcome {
@@ -1732,6 +1735,18 @@ fn run() -> Result<ExitCode, ExitCode> {
         }
     };
 
+    // Coarse wall-clock phase marks: the pre-walk phases (hygiene walk, policy
+    // install, plan resolve, plan eval, width eval) are interpreter-heavy and used
+    // to be SILENT — a 30-minute prelude looked identical to a hang. Every phase
+    // now stamps a line so the floor log itemizes its own time.
+    let floor_started = Instant::now();
+    let phase_mark = |label: &str| {
+        eprintln!(
+            "claim_executor: [t+{:.1}s] {label}",
+            floor_started.elapsed().as_secs_f64()
+        );
+    };
+
     // Under the opt-in inversion the plan's DiscoveryBatches carry explicit entries
     // only (or are absent entirely on an empty roster), and the explicit-only path
     // skips the tree-walk naming hygiene (`test fn` outside `*_test.dag`, `__`
@@ -1754,6 +1769,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             return Err(ExitCode::from(1));
         }
     }
+    phase_mark("naming-hygiene walk complete");
 
     // Install the host-effect trace policy from the .dag authority once, before
     // discovery threads spawn, so `[file] read` / `[rest]` / `[hermetic:mock]` etc.
@@ -1763,18 +1779,34 @@ fn run() -> Result<ExitCode, ExitCode> {
     // plain-terminal header) from the .dag authority, so the parallel walk folds each
     // batch's host-effect traces into a collapsible group.
     v1_compiler::cli_run::install_group_syntax(&source_roots);
+    phase_mark("output policy + group syntax installed");
 
     if perturb_check {
         return run_perturb_check(&source_roots, &plan_entry, &plan_function);
     }
 
-    let batches = match eval_plan(&source_roots, &plan_entry, &plan_function) {
+    // Resolve the plan entry ONCE and evaluate both the batches (hermetic) and the
+    // spawn width (wet) from the same resolved graph — this resolve was previously
+    // paid twice back-to-back (the §2 double-paid-compute trap, at minutes each).
+    let (plan_graph, plan_indices) = match resolve_entry_graph(&source_roots, &plan_entry) {
+        Ok(resolved) => resolved,
+        Err(msg) => {
+            eprintln!("claim_executor: resolve failed for plan {plan_entry}:\n{msg}");
+            return Err(ExitCode::from(1));
+        }
+    };
+    phase_mark("plan entry resolved");
+
+    let plan_ctx = make_eval_context(&plan_graph, plan_indices.clone(), ExecutionMode::Hermetic);
+    let batches = match eval_plan_in_ctx(&plan_ctx, &plan_entry, &plan_function) {
         Ok(b) => b,
         Err(msg) => {
             eprintln!("claim_executor: {msg}");
             return Err(ExitCode::from(1));
         }
     };
+    drop(plan_ctx);
+    phase_mark("plan evaluated");
 
     eprintln!(
         "claim_executor: [{}] executor plan = {} batch(es) from {}::{}",
@@ -1789,13 +1821,16 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(1));
     }
 
-    let spawn_width = match eval_spawn_width(&source_roots, &plan_entry, &plan_function) {
+    let width_ctx = make_eval_context(&plan_graph, plan_indices, ExecutionMode::Wet);
+    let spawn_width = match eval_spawn_width_in(&width_ctx, &plan_entry, &plan_function) {
         Ok(w) => w,
         Err(msg) => {
             eprintln!("claim_executor: {msg}");
             return Err(ExitCode::from(1));
         }
     };
+    drop(width_ctx);
+    drop(plan_graph);
     eprintln!(
         "claim_executor: spawn_width={} from {}::{}",
         spawn_width,
@@ -1804,6 +1839,7 @@ fn run() -> Result<ExitCode, ExitCode> {
             .as_deref()
             .unwrap_or("<serial>")
     );
+    phase_mark("spawn width evaluated; starting batch walk");
 
     let outcome = run_walk(&source_roots, &batches, spawn_width);
     match peak_rss_bytes() {
