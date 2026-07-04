@@ -8,6 +8,7 @@ use std::time::Instant;
 use im_rc::HashMap as HamtMap;
 use im_rc::Vector as RrbVector;
 
+use crate::cli_run::value_to_wire_json;
 use crate::std_syntax::BinOp;
 use crate::std_syntax::LiteralValue;
 use crate::v1_compiler_emit::{extract_string_interp_parts, has_mock_prefix};
@@ -31,7 +32,6 @@ use crate::v1_std_core::{
     FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node, SourceSpan,
     StringPart, UnaryOpKind, VarBindingKind,
 };
-use crate::cli_run::value_to_wire_json;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Symbol(u32);

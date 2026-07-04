@@ -13,8 +13,10 @@ import gunbc.ci_layer_roots {
 import gunbc.commit_workflow {
   commit_gate_roster,
   project_ci_floor_gates,
-  project_ci_rust_job_gates
+  project_ci_rust_job_gates,
+  project_ci_floor_witness_entries
 }
+import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
@@ -39,14 +41,19 @@ type DeployStage {
   runner: RunnerSpec
 }
 
+data ci_spec_witness_entries_note: String = "witness_entries is the opt-in CI witness roster (operator inversion 2026-07-04): the floor runs exactly these declared witnesses, never a tree scan; empty means the plan carries no witness-corpus node at all. Enrollment authority: gunbc.commit_workflow.commit_gate_roster CommitWitnessClaim rows on the GithubActionsCiJob surface (see ci_witness_optin_inversion there)."
+
 type CiSpec {
   gates: List<Gate>
+  witness_entries: List<ScheduleWitnessEntry>
   diff_policy: DiffPolicy
   notice_title: String
   deploy_stages: List<DeployStage>
 }
 
 data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
+
+data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
 
 data gunbc_ci_rust_job_gates: List<Gate> = project_ci_rust_job_gates(roster: commit_gate_roster)
 
@@ -69,6 +76,7 @@ data gunbc_ci_deploy_stages: List<DeployStage> = [gunbc_ci_deploy_srv1_stage]
 
 data gunbc_ci_spec: CiSpec = {
   gates: gunbc_ci_floor_gates,
+  witness_entries: gunbc_ci_floor_witness_entries,
   diff_policy: {
     base: "origin/main",
     head: "HEAD",
@@ -76,6 +84,16 @@ data gunbc_ci_spec: CiSpec = {
   },
   notice_title: "v2 claim corpus",
   deploy_stages: gunbc_ci_deploy_stages,
+}
+
+fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<ScheduleWitnessEntry>) -> CiSpec {
+  CiSpec {
+    gates: spec.gates,
+    witness_entries: entries,
+    diff_policy: spec.diff_policy,
+    notice_title: spec.notice_title,
+    deploy_stages: spec.deploy_stages,
+  }
 }
 
 data ci_release_features: String = "text_lookup_work_counter"

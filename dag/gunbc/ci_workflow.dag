@@ -12,7 +12,7 @@ import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
 }
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
-import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates }
+import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -145,6 +145,7 @@ fn ci_prelude_steps() -> List<Step> {
 fn ci_floor_spec_from_roster() -> CiSpec {
   {
     gates: project_ci_floor_gates(roster: commit_gate_roster),
+    witness_entries: project_ci_floor_witness_entries(roster: commit_gate_roster),
     diff_policy: gunbc_ci_spec.diff_policy,
     notice_title: gunbc_ci_spec.notice_title,
     deploy_stages: [],
@@ -267,10 +268,10 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
   }
 }
 
-data gunbc_ci_job_timeout_policy_minutes: Int = 90
+data gunbc_ci_job_timeout_policy_minutes: Int = 10
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
-  reason: "gunbc CI policy (operator, 2026-07-02; interim 2026-07-03): CI jobs time out at 90 minutes. The 30min smoke alarm and subsequent 50min raise both sat below the live floor wall: batch-1 compile-clean alone ran ~48min still in progress when a 50min job cap canceled run 28645912887 (plus ~2min release build overhead in the same step). Measured whole-step wall is ~50min+ on ARM fleet (ROADMAP §3 `2-compile-clean-serial`); 90min is interim headroom until compile-clean is scoped/memoized below 30min again. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default — workflow-layer policy on top."
+  reason: "gunbc CI policy (operator, 2026-07-04): CI jobs time out at 10 minutes - a deliberate INVERSION of the prior ratchet (30min alarm -> 50min -> 90min, each raise buying headroom for the unfixed resolve cost; at 90min the queue backed up and runs still timed out delivering zero signal). The budget is now a forcing function: the floor must FIT it, and the itemized [t+Xs] phase marks say exactly which phase does not (measured 2026-07-04: plan-closure resolve was 15min+, whole-tree compile-clean ~48min on the ARM fleet - both resolve-dominated; see the floor-shared-compute-memoization plan). Every job stays red-by-timeout until resolve memoization lands; that red is honest, unlike a 90min lane that never completed. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default - workflow-layer policy on top."
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
