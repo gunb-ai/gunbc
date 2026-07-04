@@ -39,6 +39,7 @@ import v2.std.node {
   Conj,
   Disj,
   Edge,
+  EdgeLabel,
   Instantiation,
   Loop,
   Node,

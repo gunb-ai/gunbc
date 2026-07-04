@@ -3,10 +3,15 @@ module extdeps.realization.reconcile_in_process
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, HandAuthored, FilePaths, UpsertSubject }
+import extdeps.cache.types {
+  CacheInterfaceCatalogFacts,
+  HandAuthored,
+  FilePaths,
+  UpsertSubject,
+  CatalogOpaqueStringEncoding,
+}
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
-  OpaqueStringEncoding,
   ExactKeyOnly,
   OverwriteAllowed,
   MissThenCreate,
@@ -35,7 +40,7 @@ data typed_module_cache_id: CacheInterfaceId = "typed_module_cache"
 data parse_cache_facts: CacheInterfaceCatalogFacts = {
   identity: parse_cache_id
   backing_surface: "gunbc-cli-run-parse-in-process"
-  transport_encoding: OpaqueStringEncoding
+  transport_encoding: CatalogOpaqueStringEncoding
   key_derivation: {
 
     key_inputs: HandAuthored { cited_inputs: [FilePaths] }
@@ -80,7 +85,7 @@ data parse_cache_facts: CacheInterfaceCatalogFacts = {
 data typed_module_cache_facts: CacheInterfaceCatalogFacts = {
   identity: typed_module_cache_id
   backing_surface: "gunbc-cli-run-typed-module-in-process"
-  transport_encoding: OpaqueStringEncoding
+  transport_encoding: CatalogOpaqueStringEncoding
   key_derivation: {
 
     key_inputs: HandAuthored { cited_inputs: [UpsertSubject] }

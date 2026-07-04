@@ -123,12 +123,12 @@ type UnsignedIntWidth
   | UnsignedPointerSized
 
 type GoFloatWidth
-  = Bits32
-  | Bits64
+  = FloatBits32
+  | FloatBits64
 
 type GoComplexWidth
-  = Bits64
-  | Bits128
+  = ComplexBits64
+  | ComplexBits128
 
 type GoScalarKind
   = Int
@@ -335,28 +335,28 @@ data go_facts_uintptr: GoIntegerPrimitiveFacts = GoUnsignedIntegerPrimitiveFacts
 
 data go_facts_float32: GoFloatPrimitiveFacts = GoFloatPrimitiveFacts {
   surface_spelling: ^go_surface_spelling_float32,
-  width: Bits32,
+  width: FloatBits32,
   ieee754_binary: ^go_ieee754_binary32,
   std_projection: ^go_std_projection_float32,
 }
 
 data go_facts_float64: GoFloatPrimitiveFacts = GoFloatPrimitiveFacts {
   surface_spelling: ^go_surface_spelling_float64,
-  width: Bits64,
+  width: FloatBits64,
   ieee754_binary: ^go_ieee754_binary64,
   std_projection: ^go_std_projection_float64,
 }
 
 data go_facts_complex64: GoComplexPrimitiveFacts = GoComplexPrimitiveFacts {
   surface_spelling: ^go_surface_spelling_complex64,
-  width: Bits64,
+  width: ComplexBits64,
   component_ieee754_binary: ^go_repr_complex_pair_binary32,
   std_projection: ^go_std_projection_complex64,
 }
 
 data go_facts_complex128: GoComplexPrimitiveFacts = GoComplexPrimitiveFacts {
   surface_spelling: ^go_surface_spelling_complex128,
-  width: Bits128,
+  width: ComplexBits128,
   component_ieee754_binary: ^go_repr_complex_pair_binary64,
   std_projection: ^go_std_projection_complex128,
 }
@@ -449,15 +449,15 @@ fn go_unsigned_int_width_node(width: UnsignedIntWidth) -> Node {
 
 fn go_float_width_node(width: GoFloatWidth) -> Node {
   match width {
-    Bits32 => go_inhabitant_atom(id: ^go_tag_float_bits32)
-    Bits64 => go_inhabitant_atom(id: ^go_tag_float_bits64)
+    FloatBits32 => go_inhabitant_atom(id: ^go_tag_float_bits32)
+    FloatBits64 => go_inhabitant_atom(id: ^go_tag_float_bits64)
   }
 }
 
 fn go_complex_width_node(width: GoComplexWidth) -> Node {
   match width {
-    Bits64 => go_inhabitant_atom(id: ^go_tag_complex_bits64)
-    Bits128 => go_inhabitant_atom(id: ^go_tag_complex_bits128)
+    ComplexBits64 => go_inhabitant_atom(id: ^go_tag_complex_bits64)
+    ComplexBits128 => go_inhabitant_atom(id: ^go_tag_complex_bits128)
   }
 }
 

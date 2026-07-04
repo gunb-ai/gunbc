@@ -14,6 +14,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostics,
   Outcome,
   Rejected,
   bind_outcome,

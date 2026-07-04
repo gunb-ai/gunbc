@@ -24,6 +24,7 @@ import v2.std.witness { Holds, Witness }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   Outcome,
   Rejected,

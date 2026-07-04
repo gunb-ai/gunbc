@@ -25,6 +25,7 @@ import v2.std.constraints {
 }
 import v2.std.diagnostic {
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   Locus,
   node_locus,

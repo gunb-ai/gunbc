@@ -68,15 +68,15 @@ type BitsWidth
   | Bits128
 
 type IntegerWidth
-  = Bits8
-  | Bits16
-  | Bits32
-  | Bits64
+  = IntBits8
+  | IntBits16
+  | IntBits32
+  | IntBits64
 
 type FloatWidth
-  = Bits16
-  | Bits32
-  | Bits64
+  = FloatBits16
+  | FloatBits32
+  | FloatBits64
 
 type RegisterScalarKind
   = Bits

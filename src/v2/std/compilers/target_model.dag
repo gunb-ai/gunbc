@@ -17,6 +17,7 @@ import v2.std.collection {
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   Outcome,
   Rejected,
@@ -9832,8 +9833,8 @@ fn target_reference_layer_apply_value_expression(
 }
 
 type TargetReferenceLayerWrapped
-  = ReferenceLayerRc
-  | ReferenceLayerBox
+  = WrappedReferenceLayerRc
+  | WrappedReferenceLayerBox
 
 type TargetReferenceLayerProbe
   = ReferenceLayerProbe { value: TargetReferenceLayerWrapped }
@@ -9857,10 +9858,10 @@ fn target_reference_layer_probe_from_emitted_type(
               match target_model_node_atom_identity(node: head, source_carrier: emitted) {
                 Accepted { value: head_id, diagnostics: _ } =>
                   if head_id == tokens.rc_type_head {
-                    ReferenceLayerProbe { value: ReferenceLayerRc }
+                    ReferenceLayerProbe { value: WrappedReferenceLayerRc }
                   } else {
                     if head_id == tokens.box_type_head {
-                      ReferenceLayerProbe { value: ReferenceLayerBox }
+                      ReferenceLayerProbe { value: WrappedReferenceLayerBox }
                     } else {
                       ReferenceLayerProbeNotWrapped
                     }

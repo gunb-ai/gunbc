@@ -95,7 +95,7 @@ import v2.std.leaf_model_verification {
   TargetTypeScriptCompileAccepted,
   TargetTypeScriptCompileRejected,
 }
-import v2.std.node { Node, Symbol, SyntheticOccurrence }
+import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
 import v2.std.text { String }
 
 data rust_r1_happy_fixture_source: String = "pub fn r1_test() -> i32 { 0i32 }\n"

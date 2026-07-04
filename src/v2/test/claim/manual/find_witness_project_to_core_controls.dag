@@ -51,6 +51,7 @@ import v2.std.verification {
   BoolWitnessClaim,
   UnifiedTestClaim
 }
+import v2.std.algebra { Ordering }
 
 fn control_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
   CandidateSet {

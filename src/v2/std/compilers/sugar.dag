@@ -12,6 +12,7 @@ import v2.std.algebra {
 }
 import v2.std.collection { Absent, Present, optional_absent, optional_present }
 import v2.std.diagnostic {
+  Correction,
   Diagnostic,
   node_locus,
   Outcome,

@@ -29,6 +29,7 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic {
   Accepted,
+  None,
   Outcome,
   Rejected,
   bind_outcome,
@@ -37,6 +38,7 @@ import v2.std.diagnostic {
 import v2.std.grammar { formal_productions_catalog_to_node }
 import v2.std.logic { Bool }
 import v2.std.node {
+  Conj,
   Edge,
   Named,
   Node,
