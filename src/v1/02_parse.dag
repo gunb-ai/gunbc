@@ -40,7 +40,7 @@ import v1.std.core {
   ShStrBegin, ShStrMid, ShStrEnd,
   ShNewline, ShEof, ShUnknown,
   SourceSpan, make_span,
-  ErrorNode, make_error_node, ParseError,
+  ErrorNode, make_error_node, ParseError, InternalError,
   with_required_cardinality,
   error_type, is_compiler_error,
   node_name_span, no_span,

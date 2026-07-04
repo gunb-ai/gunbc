@@ -15,18 +15,20 @@ import std.algebra {
   kernel_algebra_profile
 }
 
+data subtree_size_rename_marker: String = "Constructor-owner ruling (§1c) collision fix: SizeBound's tree bound arm was named TreeSize, colliding with RankingDimension.TreeSize (std.termination) in this module's own scope once one arm name may have only one owner. Renamed to SubtreeSize — the more precise fact: a tree-descent bound measures the shrinking SUBTREE consumed per step. RankingDimension.TreeSize (the ranking-dimension taxonomy, ~12 sites in v1.complexity/induction) keeps the shared name."
+
 type SizeBound
   = CollectionSize { param: String }
   | ParserStreamSize { witness: String }
   | WorklistDrainSize { element: String }
-  | TreeSize { param: String }
+  | SubtreeSize { param: String }
   | ArithmeticParam { param: String }
   | ExplicitCountZero
   | ExplicitCountPositive { steps: PositiveDescentAmount }
   | Forever
 
 fn tree_size_bound(param: String) -> SizeBound {
-  TreeSize { param: param }
+  SubtreeSize { param: param }
 }
 
 type CallPattern
@@ -60,7 +62,7 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
   match pattern {
     ChildAccessorCall { accessor: a } =>
       LoweringTarget { primitive: Descend,
-        bound: TreeSize { param: a },
+        bound: SubtreeSize { param: a },
         evidence: Strict, factor: none }
 
     CollectionShrinkCall { amount: p, collection: c } =>
@@ -105,7 +107,7 @@ fn lower_call_pattern(pattern: CallPattern) -> LoweringTarget {
 
 fn size_bound_param(bound: SizeBound) -> String? {
   match bound {
-    TreeSize { param: p }       => Present { value: p }
+    SubtreeSize { param: p }    => Present { value: p }
     CollectionSize { param: p } => Present { value: p }
     ParserStreamSize { witness: w } => Present { value: w }
     WorklistDrainSize { element: e } => Present { value: e }

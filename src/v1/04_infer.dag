@@ -22,7 +22,7 @@ import v1.std.core {
   has_inferred, is_compiler_error, InferredNode, Resolved, CompilerError, TypeVariable,
   Cardinality, Required, CardOptional,
   ErrorNode, make_error_node, is_error_diagnostic,
-  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType,
+  InternalError, TypeMismatch, VariantCollision, SoleConstructorViolation, UnresolvedType, FieldNotFound,
   resource_use_name_at, resource_use_resource,
   kernel_type_set, is_kernel_type,
   is_child_accessor_in_model, is_tree_size_reducing, is_property_contraction,
