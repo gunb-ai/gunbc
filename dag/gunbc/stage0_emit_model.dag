@@ -24,7 +24,6 @@ data generated_stage0_files: List<String> = [
   "extdeps_version.rs",
   "extdeps_version_semver.rs",
   "lib.rs",
-  "main.rs",
   "std_algebra.rs",
   "std_coercion.rs",
   "std_computation.rs",
