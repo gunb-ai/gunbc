@@ -13594,31 +13594,34 @@ pub fn collect_own_variant_export_surface(
     items: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<VariantExportSurface> {
-    items.iter().cloned().fold(empty_variant_export_surface(), |acc, item| {
-        if item.connective.clone() == Connective::Disj {
-            let enum_items = v1_rt::rc_map_insert(
-                acc.enum_items.clone(),
-                authored_name_at(source_indices.clone(), item.clone()),
-                item.clone(),
-            );
-            let arm_owners = item.children.clone().iter().cloned().fold(
-                acc.arm_owners.clone(),
-                |arms: Rc<HashMap<String, Rc<Node>>>, child: Rc<Node>| {
-                    v1_rt::rc_map_insert(
-                        arms,
-                        authored_name_at(source_indices.clone(), child),
-                        item.clone(),
-                    )
-                },
-            );
-            Rc::new(VariantExportSurface {
-                arm_owners,
-                enum_items,
-            })
-        } else {
-            acc
-        }
-    })
+    items
+        .iter()
+        .cloned()
+        .fold(empty_variant_export_surface(), |acc, item| {
+            if item.connective.clone() == Connective::Disj {
+                let enum_items = v1_rt::rc_map_insert(
+                    acc.enum_items.clone(),
+                    authored_name_at(source_indices.clone(), item.clone()),
+                    item.clone(),
+                );
+                let arm_owners = item.children.clone().iter().cloned().fold(
+                    acc.arm_owners.clone(),
+                    |arms: Rc<HashMap<String, Rc<Node>>>, child: Rc<Node>| {
+                        v1_rt::rc_map_insert(
+                            arms,
+                            authored_name_at(source_indices.clone(), child),
+                            item.clone(),
+                        )
+                    },
+                );
+                Rc::new(VariantExportSurface {
+                    arm_owners,
+                    enum_items,
+                })
+            } else {
+                acc
+            }
+        })
 }
 
 fn reexport_variant_surface_fragment(
@@ -13635,7 +13638,11 @@ fn reexport_variant_surface_fragment(
             .fold(empty_variant_export_surface(), |acc, name| {
                 let with_arm = match v1_rt::map_get(&proxy.arm_owners, name.clone()) {
                     Some(owner) => Rc::new(VariantExportSurface {
-                        arm_owners: v1_rt::rc_map_insert(acc.arm_owners.clone(), name.clone(), owner),
+                        arm_owners: v1_rt::rc_map_insert(
+                            acc.arm_owners.clone(),
+                            name.clone(),
+                            owner,
+                        ),
                         enum_items: acc.enum_items.clone(),
                     }),
                     None => acc.clone(),
@@ -13662,7 +13669,8 @@ pub fn build_variant_export_surface(
         .cloned()
         .filter(|imp| !import_is_all(imp.clone()))
         .fold(empty_variant_export_surface(), |acc, imp| {
-            let frag = reexport_variant_surface_fragment(imp, surfaces.clone(), source_indices.clone());
+            let frag =
+                reexport_variant_surface_fragment(imp, surfaces.clone(), source_indices.clone());
             Rc::new(VariantExportSurface {
                 arm_owners: v1_rt::rc_map_merge(acc.arm_owners.clone(), frag.arm_owners.clone()),
                 enum_items: v1_rt::rc_map_merge(acc.enum_items.clone(), frag.enum_items.clone()),
@@ -14719,8 +14727,7 @@ pub fn typecheck_modules(
                 );
                 let typed = tc_result.typed.clone();
                 let tc_diags = tc_result.diagnostics.clone();
-                let typed_path =
-                    authored_name_at(source_indices.clone(), typed.module.clone());
+                let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
                 variant_surfaces = v1_rt::rc_map_insert(
                     variant_surfaces.clone(),
                     typed_path.clone(),

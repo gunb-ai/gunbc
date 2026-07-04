@@ -1305,11 +1305,7 @@ fn reconcile_with_typed_cache(
                 source_indices.clone(),
             ),
         );
-        module_index = v1_rt::rc_map_insert(
-            module_index,
-            typed_path,
-            typed.clone(),
-        );
+        module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
         item_registry = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());
         diag_chunks.push(parent_result.diagnostics.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
