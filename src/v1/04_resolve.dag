@@ -238,10 +238,12 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
       else if n.children |> count > 0 {
         let ancestry_generic = fold(env.parents, init: none, f: (acc, parent) =>
           if acc != none { acc }
-          else match map_get(parent.str_bindings, brand) {
-            Present { value: b } =>
-              if b.resolved.params |> count > 0 { Present { value: b.resolved } } else { acc }
-            Absent => acc
+          else {
+            match map_get(parent.str_bindings, brand) {
+              Present { value: b } =>
+                if b.resolved.params |> count > 0 { Present { value: b.resolved } } else { acc }
+              Absent => acc
+            }
           }
         )
         match ancestry_generic {
