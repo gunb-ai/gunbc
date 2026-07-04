@@ -147,6 +147,19 @@ Where Rust sits, stated once so no architecture decision quietly treats it as fo
 
 **S3 — shared store across runner slots.** A Realization handler change (local disk → shared), no new semantics.
 
+## 7b. Emitter restoration ledger (2026-07-04, discovered by the constructor-ruling PR's regen attempt)
+
+RegenVerifyGate's red-by-timeout had been masking that **regen was semantically broken**: the seed on main could not be reproduced by the current emitter, and B1/B2 co-landed hand-edited generated files because of it. The constructor-ruling PR fixed what it could and ledgers the rest; every item below has an execution receipt from the regen probes:
+
+1. **FIXED — statement-then-expression blocks** emitted without a separator (invalid Rust). Only corpus instances were the B1 env-counter statements; dissolved with the counters (their pathology is dead).
+2. **FIXED — `needs_box_wrapping` ordering**: recursive→Box short-circuited before the shared(Rc)→no-Box check; benign while emit-time recursive_types stayed module-local, a full ABI break (`Box<Rc<Node>>` ×150 fields) once B1's build_type_env propagated imported recursive types. shared now dominates (dag + seed two-step).
+3. **FIXED — `phase_profile.rs`** unregistered in HAND_MAINTAINED_STAGE0_FILES (fresh-crate assembly failed).
+4. **OPEN — deref-side boxing asymmetry**: field-ACCESS emission still derefs per the old boxing policy while declarations honor the new one (~800 `Option<Rc<...>> cannot be dereferenced` errors); the deref decision lives in a second site that must consult the same `needs_box_wrapping` authority (§3: one boxing authority, N consumers).
+5. **OPEN — alias-brand rendering**: signatures render the DEALIASED grounding (`Nat` → `Rc<CommutativeSemiring<Magnitude>>`, ~250 errors) instead of the authored alias the committed seed carries — drift from the Nat-grounding era, never propagated through a green regen.
+6. **OPEN — misc residue** (~80 errors: move-out-of-shared-ref, `?`-on-non-Try, annotations) — classify after 4–5 land.
+
+Until 4–6 land, the seed remains the functionally-verified hand-patched realization (all suites + witnesses green by execution); `bootstrap_fixed_point` and byte-identity are the restoration PR's acceptance gates, with `--emit-fresh` probes (~2 min each, post-pathology) as the loop.
+
 ## 8. Dissolution triggers
 
 - **S1 interim contract (the operator's ship-now expectations, held by the §6 receipts):** (a) minimum upper bound — a process's resolve cost is ≤ 1× its union closure (per-shard under the `Rc` constraint; §7), enforced by the once-per-node counter, *now enforced not aspired*; (b) no feature growth — S1 must dissolve into S2a's parallel module-obligation architecture, not accrete knobs that delay it; (c) frontier-window memory is S2a's, not S1's (S1 keeps the monolith's retention). S1 landing does NOT close this doc — it is the interim rung.
