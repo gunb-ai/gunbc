@@ -7,7 +7,7 @@ import extdeps.uri { Uri, Https }
 import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
 import extdeps.ebay.ebay { production_api_base, MarketplaceEnum }
 import extdeps.ebay.errors { EbayErrorShape }
-import extdeps.ebay.contracts { condition_wire_contract, format_type_wire_contract }
+import extdeps.ebay.ebay_contracts { condition_wire_contract, format_type_wire_contract }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   uri: Uri {
