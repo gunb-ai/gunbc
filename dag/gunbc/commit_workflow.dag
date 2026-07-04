@@ -86,8 +86,8 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "dag/test/claim/variant_owner_expected_type_test.dag",
-      check_fns: ["expected_type_picks_variant_owner_not_alpha_order"]
+      entry: "dag/test/claim/github_merge_state_witness_test.dag",
+      check_fns: ["witness_clean_and_blocked_are_distinct_variants"]
     },
     surfaces: [GithubActionsCiJob]
   },
