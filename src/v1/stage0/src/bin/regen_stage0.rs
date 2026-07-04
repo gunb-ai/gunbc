@@ -126,6 +126,9 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     // Dissolution: run regen_stage0 --verify; on green, move to GENERATED_STAGE0_FILES.
     "main.rs",
     "v1_interpreter.rs",
+    // Phase-local heartbeat for long floor walks (2026-07-04); its own header
+    // carries the dissolution trigger (realization_measurement_loop Phase 0).
+    "phase_profile.rs",
 ];
 
 /// Hand-maintained stage0 support living in subdirectories (not flat `.rs` files).

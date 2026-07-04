@@ -147,6 +147,7 @@ fn strict_dependency_pool_index_panics_on_cross_root_collision() {
 }
 
 #[test]
+#[ignore = "CI witness opt-in inversion (2026-07-04): whole-tree compile over dag+src/v2 via the release gunbc binary — the rust-lane twin of the corpus witnesses inverted out of the per-PR floor. Missed by the original inversion because it self-skips on CI (no release binary); locally it is the same unbounded corpus walk. Run explicitly: cargo test -p v1-compiler-tests -- --ignored primary_precedence_keeps_dag_extdeps_shell_for_dag_only_services. Re-enroll when affected-set selection + floor memoization land (see ci_witness_optin_inversion in gunbc.commit_workflow)."]
 fn primary_precedence_keeps_dag_extdeps_shell_for_dag_only_services() {
     let Some(gunbc) = gunbc_bin() else {
         eprintln!("skipping: release gunbc binary not found");
@@ -184,6 +185,7 @@ fn primary_precedence_keeps_dag_extdeps_shell_for_dag_only_services() {
 }
 
 #[test]
+#[ignore = "CI witness opt-in inversion (2026-07-04): whole-tree compile over dag+src/v2 via the release gunbc binary — the rust-lane twin of the corpus witnesses inverted out of the per-PR floor. Missed by the original inversion because it self-skips on CI (no release binary); locally it is the same unbounded corpus walk. Run explicitly: cargo test -p v1-compiler-tests -- --ignored primary_precedence_two_root_compile_with_shadow_masked_fixture_succeeds. Re-enroll when affected-set selection + floor memoization land (see ci_witness_optin_inversion in gunbc.commit_workflow)."]
 fn primary_precedence_two_root_compile_with_shadow_masked_fixture_succeeds() {
     let Some(gunbc) = gunbc_bin() else {
         eprintln!("skipping: release gunbc binary not found");

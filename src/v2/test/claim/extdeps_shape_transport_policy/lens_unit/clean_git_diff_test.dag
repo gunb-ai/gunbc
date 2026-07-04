@@ -4,6 +4,7 @@ import v2.lens.extdeps_shape_transport_policy {
   ExtdepsOperationInputFact,
   ExtdepsTransportArgvFact,
   ExtdepsTransportFusionFact,
+  ExtdepsTransportKind,
   extdeps_shape_transport_policy_dead_param_count_for_operation,
   extdeps_shape_transport_policy_violation_count_for_operation
 }

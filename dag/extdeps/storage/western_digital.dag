@@ -1,7 +1,7 @@
 module extdeps.storage.western_digital
 
 import std.measure { ByteSize, byte_size, bandwidth }
-import extdeps.storage.types { NvmeDeviceCatalogRow, PcieLink }
+import extdeps.storage.types { NvmeDeviceCatalogRow, PcieLink, PcieGeneration, NvmeFormFactor }
 import extdeps.vendor.western_digital { western_digital }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }

@@ -1,9 +1,13 @@
 module extdeps.cache.rustup
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, NativeInternal, ToolchainSpec }
+import extdeps.cache.types {
+  CacheInterfaceCatalogFacts,
+  NativeInternal,
+  ToolchainSpec,
+  CatalogOpaqueStringEncoding,
+}
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
-  OpaqueStringEncoding,
   NativeInternalLookup,
   ProviderInternal,
   MissThenCreate,
@@ -35,7 +39,7 @@ data rustup_toolchain_store_id: CacheInterfaceId = "rustup_toolchain_store"
 data rustup_toolchain_store_facts: CacheInterfaceCatalogFacts = {
   identity: rustup_toolchain_store_id
   backing_surface: "rustup-toolchains-dir"
-  transport_encoding: OpaqueStringEncoding
+  transport_encoding: CatalogOpaqueStringEncoding
   key_derivation: {
 
     key_inputs: NativeInternal { cited_inputs: [ToolchainSpec] }

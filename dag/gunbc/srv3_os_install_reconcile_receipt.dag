@@ -150,14 +150,14 @@ fn os_install_preflight_verdict_wire(verdict: OsInstallPreflightVerdict) -> Stri
 
 fn os_install_runtime_verdict_wire(verdict: OsInstallRuntimeDiagnosticVerdict) -> String {
   match verdict {
-    ReadyToBoot => "ReadyToBoot"
+    RuntimeReadyToBoot => "ReadyToBoot"
     KvmFirmwareIdleObserved => "KvmFirmwareIdleObserved"
-    BootOverrideConsumedNoInstallEvidence => "BootOverrideConsumedNoInstallEvidence"
+    RuntimeBootOverrideConsumedNoInstallEvidence => "BootOverrideConsumedNoInstallEvidence"
     InstallerAwaitingStorage => "InstallerAwaitingStorage"
     InstallerRunning => "InstallerRunning"
-    InstallerHung => "InstallerHung"
+    RuntimeInstallerHung => "InstallerHung"
     KvmSuggestsOsBooted => "KvmSuggestsOsBooted"
-    OsInstalled => "OsInstalled"
+    RuntimeOsInstalled => "OsInstalled"
   }
 }
 

@@ -26,6 +26,7 @@ import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.collection { List }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostics,
   Outcome,
   Rejected,
   bind_outcome,

@@ -26,7 +26,7 @@ import gunbc.fleet_intent { srv1_host, srv2_host }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
 import gunbc.host_converge {
   ConvergeVerdict,
-  Converged,
+  VerdictConverged,
   Drifted,
   Absent,
 }
@@ -330,7 +330,7 @@ fn slice_property_memory_max_verdict(
 
 fn oom_pressure_limit_converge_verdict(read: OomPressureLimitLiveRead, desired: Percent) -> ConvergeVerdict {
   if percent_count(p: read.pressure_limit) == percent_count(p: desired) {
-    Converged
+    VerdictConverged
   } else {
     Drifted
   }
@@ -364,7 +364,7 @@ fn runner_width_live_read_typed(row: RunnerWidthLiveReadRow) -> RunnerWidthLiveR
 }
 
 fn runner_width_converge_verdict(observed: Int, desired: Int) -> ConvergeVerdict {
-  if observed == desired { Converged } else { Drifted }
+  if observed == desired { VerdictConverged } else { Drifted }
 }
 
 fn show_effective_read_cannot_converge(read: ShowEffectiveRead<RunnerSliceCapEffectiveness>) -> Bool {

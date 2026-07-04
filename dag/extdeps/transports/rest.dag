@@ -1,6 +1,6 @@
 module extdeps.transports.rest
 
-import std.types { HttpMethod }
+import std.types { HttpMethod, FermiDepth }
 import std.serialization { WireFormat }
 import std.fidelity { TransportFidelity }
 import extdeps.external_authority { ExternalAuthority }

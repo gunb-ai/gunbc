@@ -7,6 +7,7 @@ import v2.std.collection { Absent, Optional, Present }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   Outcome,
   Rejected,

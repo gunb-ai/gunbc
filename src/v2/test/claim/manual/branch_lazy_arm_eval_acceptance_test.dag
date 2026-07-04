@@ -27,6 +27,7 @@ import v2.std.witness { Holds, Witness }
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   Outcome,
   Rejected,
@@ -82,6 +83,7 @@ import v2.std.verification {
   Unit,
   manual_claim_anchor
 }
+import v2.std.algebra { FreeMonoid }
 
 fn lazy_arm_atom(s: Symbol) -> Node {
   Node {

@@ -12,6 +12,7 @@ import v2.std.collection { List, Map }
 import v2.std.dependency { DependencyView }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostics,
   Outcome,
   Rejected,
   diagnostics_singleton

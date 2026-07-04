@@ -29,6 +29,7 @@ import v2.std.collection {
 }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostics,
   Outcome,
   Rejected,
   diagnostics_singleton

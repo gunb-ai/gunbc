@@ -16,7 +16,7 @@ import extdeps.os.systemd {
 import gunbc.host_converge {
   ConvergeTarget,
   ConvergeVerdict,
-  Converged,
+  VerdictConverged,
   Drifted,
   Absent,
   converge_verdict,
@@ -138,7 +138,7 @@ fn runner_unit_memory_max_drifts_against_cap(
 
 fn runner_unit_swap_max_converged(read: RunnerUnitMemoryLiveRead, target: ConvergeTarget) -> Bool {
   match converge_target_live_verdict(read: read, target: target) {
-    Present { value: Converged } => true
+    Present { value: VerdictConverged } => true
     _ => false
   }
 }

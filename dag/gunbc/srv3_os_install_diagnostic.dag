@@ -118,10 +118,10 @@ type IsoServeReadinessObservation
 
 type NbdServeReadinessVerdict
   = ServeAbsent
-  | ServePortAbsent
-  | ServePortConflict
-  | TokenMissing
-  | IsoMissing
+  | ServePortAbsentVerdict
+  | ServePortConflictVerdict
+  | TokenMissingVerdict
+  | IsoMissingVerdict
   | IsoHashMismatch
   | ServeReady
 
@@ -199,7 +199,7 @@ type KvmObservation {
 }
 
 type KvmDiagnosticVerdict
-  = KvmUntrusted
+  = KvmWeakUntrusted
   | KvmWeakInconclusive
 
 type OsInstallActuationObservations {
@@ -216,7 +216,7 @@ type OsInstallActuationObservations {
 }
 
 type InstallDiagnosticVerdict
-  = ReadyToBoot
+  = ReadyToBootVerdict
   | VirtualMediaServeDown
   | VirtualMediaNotMounted
   | BootOverrideNotSet
@@ -225,10 +225,10 @@ type InstallDiagnosticVerdict
   | FirmwareIdle
   | InstallerBooted
   | AutoinstallRunning
-  | InstallerHung
-  | OsInstalled
+  | InstallerHungVerdict
+  | OsInstalledVerdict
   | KvmUntrustedVerdict
-  | Inconclusive
+  | InconclusiveVerdict
 
 type BmcWebsocketObservation
   = WebsocketUpgradeAccepted
@@ -292,20 +292,20 @@ fn classify_nbd_serve_readiness(
     WebsocatAbsent => ServeAbsent
     ServeProcessesPresent =>
       match session {
-        TokenMissing => TokenMissing
+        TokenMissing => TokenMissingVerdict
         TokenPresent =>
           match iso {
-            IsoMissing => IsoMissing
+            IsoMissing => IsoMissingVerdict
             IsoPresent { observed_content_hash: observed } =>
               if (observed as String) != (intent.iso_content_hash as String) {
                 IsoHashMismatch
               } else {
                 match port {
-                  ServePortAbsent => ServePortAbsent
-                  ServePortConflict => ServePortConflict
+                  ServePortAbsent => ServePortAbsentVerdict
+                  ServePortConflict => ServePortConflictVerdict
                   ServePortListening { port: p, owner_matches_expected: owner_ok } =>
                     if p != intent.serve_port || !owner_ok {
-                      ServePortConflict
+                      ServePortConflictVerdict
                     } else {
                       ServeReady
                     }
@@ -320,10 +320,10 @@ fn nbd_serve_readiness_is_ready(verdict: NbdServeReadinessVerdict) -> Bool {
   match verdict {
     ServeReady => true
     ServeAbsent => false
-    ServePortAbsent => false
-    ServePortConflict => false
-    TokenMissing => false
-    IsoMissing => false
+    ServePortAbsentVerdict => false
+    ServePortConflictVerdict => false
+    TokenMissingVerdict => false
+    IsoMissingVerdict => false
     IsoHashMismatch => false
   }
 }
@@ -477,7 +477,7 @@ fn classify_router_lease_table(
 
 fn classify_kvm(obs: KvmObservation) -> KvmDiagnosticVerdict {
   if !obs.keyboard_accepted {
-    KvmUntrusted
+    KvmWeakUntrusted
   } else {
     KvmWeakInconclusive
   }
@@ -546,7 +546,7 @@ fn diagnose_when_serve_ready(
       match virtual_media {
         VirtualMediaMountedExpectedIso =>
           if observations.elapsed_since_boot_once_ms == 0 {
-            ReadyToBoot
+            ReadyToBootVerdict
           } else {
             diagnose_when_not_pre_boot_ready(
               observations: observations,
@@ -616,7 +616,7 @@ fn diagnose_install_hung_or_idle(
   if sol_has_installer_evidence(verdict: sol) {
     if observations.elapsed_since_boot_once_ms >= srv3_install_hang_no_installer_progress_ms {
       if router_lacks_os_installed_lease(router: router) {
-        InstallerHung
+        InstallerHungVerdict
       } else {
         InstallerBooted
       }
@@ -646,10 +646,10 @@ fn diagnose_boot_override_consumed_or_weak(
           SolFirmwareMenu => BootOverrideConsumedNoInstall
           SolSilent =>
             if observations.elapsed_since_boot_once_ms >= srv3_install_hang_no_router_lease_ms {
-              InstallerHung
+              InstallerHungVerdict
             } else {
               if observations.sol_console.duration_ms >= srv3_install_hang_no_installer_progress_ms {
-                Inconclusive
+                InconclusiveVerdict
               } else {
                 BootOverrideConsumedNoInstall
               }
@@ -678,9 +678,9 @@ fn diagnose_weak_kvm_or_inconclusive(
           if !observations.kvm.keyboard_accepted {
             KvmUntrustedVerdict
           } else {
-            Inconclusive
+            InconclusiveVerdict
           }
-        _ => Inconclusive
+        _ => InconclusiveVerdict
       }
   }
 }
@@ -706,7 +706,7 @@ fn diagnose_os_install_actuation(
   let _kvm = classify_kvm(obs: observations.kvm)
 
   match router {
-    Srv3OsLeasePresent => OsInstalled
+    Srv3OsLeasePresent => OsInstalledVerdict
     _ =>
       diagnose_when_router_not_installed(
         intent: intent,
@@ -722,14 +722,14 @@ fn diagnose_os_install_actuation(
 
 fn install_diagnostic_verdict_is_ready_to_boot(verdict: InstallDiagnosticVerdict) -> Bool {
   match verdict {
-    ReadyToBoot => true
+    ReadyToBootVerdict => true
     _ => false
   }
 }
 
 fn install_diagnostic_verdict_is_os_installed(verdict: InstallDiagnosticVerdict) -> Bool {
   match verdict {
-    OsInstalled => true
+    OsInstalledVerdict => true
     _ => false
   }
 }

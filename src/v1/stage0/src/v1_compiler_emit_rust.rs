@@ -7600,14 +7600,18 @@ pub fn needs_box_wrapping(
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     loop {
+        // HAND-PATCH (seed two-step): shared (Rc-rendered) types never need Box
+        // — shared_types dominates the recursive check. Replaced by regen's
+        // true emission of the reordered dag source in the convergence commit.
         let name = authored_name_at(source_indices.clone(), n.clone());
+        if v1_rt::set_contains(&shared_types, name.clone()) {
+            break false;
+        }
         if v1_rt::set_contains(&recursive_types, name.clone()) {
             break true;
         }
         if ((n.children.clone().len() as i64) == 0) {
-            if v1_rt::set_contains(&shared_types, name.clone()) {
-                break false;
-            } else {
+            {
                 if (coerce_primitive_type(RenderTarget::Rust, name.clone()) != name.clone()) {
                     break false;
                 } else {

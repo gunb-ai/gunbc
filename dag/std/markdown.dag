@@ -3,7 +3,7 @@ module std.markdown
 import std.markup {
   Fragment,
   Element,
-  TextNode,
+  FragmentText,
   Attribute,
   AttributeContext,
   UrlContext,
@@ -62,12 +62,12 @@ fn heading_level_to_tag(level: HeadingLevel) -> String {
 fn markdown_inline_to_fragments(inline: MarkdownInline) -> List<Fragment> {
   match inline {
     TextInline { text } =>
-      [ TextNode { content: text } ]
+      [ FragmentText { content: text } ]
     CodeInline { text } =>
       [ Element {
         tag: "code",
         attributes: [],
-        children: [ TextNode { content: text } ],
+        children: [ FragmentText { content: text } ],
       } ]
     EmphasisInline { inlines } =>
       [ Element {
@@ -128,7 +128,7 @@ fn markdown_task_item_to_fragment(item: MarkdownTaskItem) -> Fragment {
     tag: "li",
     attributes: [],
     children: concat(
-      [ TextNode { content: checkbox_label(state: item.state) } ],
+      [ FragmentText { content: checkbox_label(state: item.state) } ],
       markdown_blocks_to_fragments(blocks: item.blocks)
     ),
   }
@@ -172,7 +172,7 @@ fn markdown_block_to_fragment(block: MarkdownBlock) -> Fragment {
           Element {
             tag: "code",
             attributes: [],
-            children: [ TextNode { content: code } ],
+            children: [ FragmentText { content: code } ],
           },
         ],
       }

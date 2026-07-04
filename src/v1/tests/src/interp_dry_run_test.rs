@@ -17,7 +17,7 @@ fn claim_batch_exe() -> std::path::PathBuf {
 }
 
 fn hermetic_witness_temp_root() -> std::path::PathBuf {
-    std::env::temp_dir().join(format!(
+    workspace_root().join("target").join(format!(
         "gunbc-claim-batch-hermetic-{}-{}",
         std::process::id(),
         std::time::SystemTime::now()

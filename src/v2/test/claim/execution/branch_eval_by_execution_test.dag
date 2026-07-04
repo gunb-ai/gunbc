@@ -20,6 +20,7 @@ import v2.compiler.eval {
   test_claim_typed_input_node
 }
 import v2.compiler.infer { InferredFacts, InferredTree }
+import v2.std.algebra { Empty }
 import v2.std.collection {
   Absent,
   List,
@@ -34,6 +35,7 @@ import v2.std.diagnostic {
   Accepted,
   Diagnostic,
   ExternalContractUnknown,
+  None,
   Outcome,
   Rejected,
   Unavailable,

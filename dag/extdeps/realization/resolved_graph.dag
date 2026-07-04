@@ -3,10 +3,9 @@ module extdeps.realization.resolved_graph
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 
-import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed }
+import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
 import std.cache_identity { CacheInterfaceId }
 import std.cache_interface {
-  CasContentEncoding,
   ContentAddressLookup,
   WriteOnce,
   MissThenCreate,
@@ -38,7 +37,7 @@ data resolved_graph_cache_id: CacheInterfaceId = "resolved_graph_cache"
 data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
   identity: resolved_graph_cache_id
   backing_surface: "gunbc-resolved-graph-per-host-cache"
-  transport_encoding: CasContentEncoding
+  transport_encoding: CatalogCasContentEncoding
   key_derivation: {
 
     key_inputs: ContentAddressed

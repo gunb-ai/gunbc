@@ -1,6 +1,7 @@
 module test.claim.transport_fidelity
 
 import std.fidelity { TransportClass, TestClass, DerivedClassification }
+import std.types { FermiDepth }
 import std.fermi { fermi_eq }
 import std.logic { Bool }
 import extdeps.transports.fidelity {

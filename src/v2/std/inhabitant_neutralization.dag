@@ -9,6 +9,7 @@ import v2.std.compilers.target_model {
 import v2.std.diagnostic {
   Accepted,
   Diagnostic,
+  Diagnostics,
   ExternalContractUnknown,
   Outcome,
   Rejected,

@@ -15,7 +15,7 @@ import extdeps.os.oomd {
 }
 import gunbc.host_converge {
   PerSlotMemoryCap,
-  Converged,
+  VerdictConverged,
   Drifted,
   gunbc_runner_per_slot_dropin_path,
   runner_instance_glob,
@@ -127,7 +127,7 @@ fn witness_oom_fixture_converges_to_policy_percent() -> Bool {
       oom_pressure_limit_converge_verdict(
         read: read,
         desired: gunbc_oomd_sessions_policy.managed_oom_memory_pressure_limit
-      ) == Converged
+      ) == VerdictConverged
     Absent => false
   }
 }
@@ -151,7 +151,7 @@ fn witness_srv2_slice_cap_converges_to_pool_budget() -> Bool {
     property: systemd_memory_max_property,
     expected: gunbc_runner_pool_budget,
   ) {
-    Present { value: Converged } => true
+    Present { value: VerdictConverged } => true
     _ => false
   }
 }
@@ -176,7 +176,7 @@ fn witness_srv1_width_converges_to_declared_count() -> Bool {
       runner_width_converge_verdict(
         observed: read.active_count,
         desired: declared_runner_count()
-      ) == Converged
+      ) == VerdictConverged
     Absent => false
   }
 }
