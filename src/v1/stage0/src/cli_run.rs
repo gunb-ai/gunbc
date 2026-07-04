@@ -4135,6 +4135,8 @@ struct FloorDiffEdits {
 }
 
 const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
+// Keep in sync with `floor_host_scaffold_witness_marker` in affected_set_floor_runner.dag.
+const FLOOR_HOST_SCAFFOLD_WITNESS_MARKER: &str = "floor:host_scaffold";
 
 fn resolve_floor_runner_context(
     source_roots: &[String],
@@ -4245,6 +4247,159 @@ fn call_floor_kernel_precompute_would_skip(
         )),
         Err(e) => Err(format!("floor_kernel_precompute_would_skip: {e}")),
     }
+}
+
+fn call_floor_host_scaffold_would_skip(
+    ctx: &v1_interpreter::InterpContext,
+    changed_paths: &[String],
+    frontier_nodes: &[v1_interpreter::Value],
+    touches_frontier: bool,
+    function_edited: bool,
+    entry_file_touched: bool,
+) -> Result<bool, String> {
+    if !ctx
+        .item_registry
+        .contains_key("floor_host_scaffold_would_skip")
+    {
+        return Err(
+            "floor_host_scaffold_would_skip missing from floor runner context".to_string(),
+        );
+    }
+    let paths: Vec<v1_interpreter::Value> = changed_paths
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let args = [
+        (
+            Some("changed_paths".to_string()),
+            list_value_from_vec(paths),
+        ),
+        (
+            Some("frontier_nodes".to_string()),
+            list_value_from_vec(frontier_nodes.to_vec()),
+        ),
+        (
+            Some("touches_frontier".to_string()),
+            v1_interpreter::Value::Bool(touches_frontier),
+        ),
+        (
+            Some("function_edited".to_string()),
+            v1_interpreter::Value::Bool(function_edited),
+        ),
+        (
+            Some("entry_file_touched".to_string()),
+            v1_interpreter::Value::Bool(entry_file_touched),
+        ),
+    ];
+    match v1_interpreter::run_in_context_with_args(
+        ctx,
+        "floor_host_scaffold_would_skip",
+        &args,
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "floor_host_scaffold_would_skip returned `{}`, expected Bool",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("floor_host_scaffold_would_skip: {e}")),
+    }
+}
+
+fn call_floor_host_scaffold_precompute_would_skip(
+    ctx: &v1_interpreter::InterpContext,
+    changed_paths: &[String],
+    frontier_node_count: usize,
+    edited_test_fn_count: usize,
+    touched_entry_file_count: usize,
+) -> Result<bool, String> {
+    if !ctx
+        .item_registry
+        .contains_key("floor_host_scaffold_precompute_would_skip")
+    {
+        return Err(
+            "floor_host_scaffold_precompute_would_skip missing from floor runner context"
+                .to_string(),
+        );
+    }
+    let paths: Vec<v1_interpreter::Value> = changed_paths
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let args = [
+        (
+            Some("changed_paths".to_string()),
+            list_value_from_vec(paths),
+        ),
+        (
+            Some("frontier_node_count".to_string()),
+            v1_interpreter::Value::Int(frontier_node_count as i64),
+        ),
+        (
+            Some("edited_test_fn_count".to_string()),
+            v1_interpreter::Value::Int(edited_test_fn_count as i64),
+        ),
+        (
+            Some("touched_entry_file_count".to_string()),
+            v1_interpreter::Value::Int(touched_entry_file_count as i64),
+        ),
+    ];
+    match v1_interpreter::run_in_context_with_args(
+        ctx,
+        "floor_host_scaffold_precompute_would_skip",
+        &args,
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "floor_host_scaffold_precompute_would_skip returned `{}`, expected Bool",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("floor_host_scaffold_precompute_would_skip: {e}")),
+    }
+}
+
+fn entry_text_indicates_live_host_scan(text: &str) -> bool {
+    text.contains(FLOOR_HOST_SCAFFOLD_WITNESS_MARKER)
+        || text.contains("layer_import_facts")
+        || text.contains("_live(")
+        || text.contains("_facts_live(")
+}
+
+fn witness_test_fn_uses_live_host_scan(entry_content: &str, function: &str) -> bool {
+    // Fail-closed (file-wide): any live-tree scan signal anywhere in the entry
+    // classifies every witness in that file as host-scaffold — nested helper
+    // chains (test → helper_a → helper_b → _live) cannot fall back to kernel-skip.
+    if entry_text_indicates_live_host_scan(entry_content) {
+        return true;
+    }
+    let decl_needle = format!("test fn {function}");
+    if let Some(start) = entry_content.find(&decl_needle) {
+        let decl_tail = &entry_content[start..entry_content.len().min(start + decl_needle.len() + 120)];
+        if decl_tail.contains(FLOOR_HOST_SCAFFOLD_WITNESS_MARKER) {
+            return true;
+        }
+    }
+    false
+}
+
+fn read_entry_content_for_host_scaffold(entry: &str) -> (String, bool) {
+    match std::fs::read_to_string(entry) {
+        Ok(content) => (content, false),
+        Err(e) => {
+            eprintln!(
+                "claim_executor: failed to read entry {entry} for host-scaffold classification ({e}) — fail-closed, treating as host-scaffold"
+            );
+            (String::new(), true)
+        }
+    }
+}
+
+fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> bool {
+    rows.iter().any(|row| {
+        let (content, read_failed) = read_entry_content_for_host_scaffold(&row.entry);
+        read_failed || witness_test_fn_uses_live_host_scan(&content, &row.function)
+    })
 }
 
 fn floor_diff_edits_from_diff_text(
@@ -4555,22 +4710,36 @@ pub fn run_discovery_corpus_with_options(
         None
     };
     let skip_precompute = if skip_enabled {
+        let host_scaffold_corpus = discovery_rows_include_host_scaffold(&rows);
         match floor_runner_ctx.as_ref() {
-            Some(ctx) => match call_floor_kernel_precompute_would_skip(
-                ctx,
-                &changed_paths,
-                diff_edits.overlapping_data_items.len(),
-                diff_edits.edited_test_fns.len(),
-                diff_edits.touched_entry_files.len(),
-            ) {
-                Ok(skip) => skip,
-                Err(msg) => {
-                    eprintln!(
-                        "claim_executor: floor_kernel_precompute_would_skip failed ({msg}) — fail-closed, running precompute"
-                    );
-                    false
+            Some(ctx) => {
+                let precompute = if host_scaffold_corpus {
+                    call_floor_host_scaffold_precompute_would_skip(
+                        ctx,
+                        &changed_paths,
+                        diff_edits.overlapping_data_items.len(),
+                        diff_edits.edited_test_fns.len(),
+                        diff_edits.touched_entry_files.len(),
+                    )
+                } else {
+                    call_floor_kernel_precompute_would_skip(
+                        ctx,
+                        &changed_paths,
+                        diff_edits.overlapping_data_items.len(),
+                        diff_edits.edited_test_fns.len(),
+                        diff_edits.touched_entry_files.len(),
+                    )
+                };
+                match precompute {
+                    Ok(skip) => skip,
+                    Err(msg) => {
+                        eprintln!(
+                            "claim_executor: floor precompute_would_skip failed ({msg}) — fail-closed, running precompute"
+                        );
+                        false
+                    }
                 }
-            },
+            }
             None => false,
         }
     } else {
@@ -4755,6 +4924,8 @@ fn run_discovery_rows(
     let mut current_entry_touches = true;
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
     let mut current_entry_closure_files: HashSet<String> = HashSet::new();
+    let mut current_entry_content: String = String::new();
+    let mut current_entry_host_scaffold_fail_closed: bool = false;
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
@@ -4803,6 +4974,9 @@ fn run_discovery_rows(
             }
             ctx = Some(entry_ctx);
             current_entry = Some(row.entry.clone());
+            let (content, read_failed) = read_entry_content_for_host_scaffold(&row.entry);
+            current_entry_content = content;
+            current_entry_host_scaffold_fail_closed = read_failed;
         }
         let function_edited = skip_enabled
             && diff_edits.edited_test_fns.iter().any(|(file, func)| {
@@ -4814,24 +4988,40 @@ fn run_discovery_rows(
                 .iter()
                 .any(|file| touched_file_in_import_closure(file, &current_entry_closure_files));
         let should_skip = if skip_enabled {
+            let host_scaffold_witness = current_entry_host_scaffold_fail_closed
+                || witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
             match floor_runner_ctx {
-                Some(runner_ctx) => match call_floor_kernel_would_skip(
-                    runner_ctx,
-                    changed_paths,
-                    &current_entry_frontier_nodes,
-                    current_entry_touches,
-                    function_edited,
-                    entry_file_touched,
-                ) {
-                    Ok(skip) => skip,
-                    Err(msg) => {
-                        eprintln!(
-                            "claim_executor: floor_kernel_would_skip failed ({msg}) — fail-closed, running {} ({})",
-                            row.function, row.entry
-                        );
-                        false
+                Some(runner_ctx) => {
+                    let skip = if host_scaffold_witness {
+                        call_floor_host_scaffold_would_skip(
+                            runner_ctx,
+                            changed_paths,
+                            &current_entry_frontier_nodes,
+                            current_entry_touches,
+                            function_edited,
+                            entry_file_touched,
+                        )
+                    } else {
+                        call_floor_kernel_would_skip(
+                            runner_ctx,
+                            changed_paths,
+                            &current_entry_frontier_nodes,
+                            current_entry_touches,
+                            function_edited,
+                            entry_file_touched,
+                        )
+                    };
+                    match skip {
+                        Ok(skip) => skip,
+                        Err(msg) => {
+                            eprintln!(
+                                "claim_executor: floor would_skip failed ({msg}) — fail-closed, running {} ({})",
+                                row.function, row.entry
+                            );
+                            false
+                        }
                     }
-                },
+                }
                 None => false,
             }
         } else {
@@ -4978,7 +5168,81 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let pairs = scan_test_decl_lines(source);
         assert_eq!(
             pairs,
-            vec![("witness_a".to_string(), 5), ("witness_b".to_string(), 7)]
+            vec![
+                ("witness_a".to_string(), 5),
+                ("witness_b".to_string(), 7)
+            ]
+        );
+    }
+
+    #[test]
+    fn witness_test_fn_uses_live_host_scan_detects_live_calls() {
+        let source = "module m\n\ntest fn clean_tree_holds() -> Bool {\n  realization_vocab_containment_clean_live(scan_roots: roots)\n}\n\ntest fn pure_holds() -> Bool { true }\n";
+        assert!(super::witness_test_fn_uses_live_host_scan(
+            source,
+            "clean_tree_holds"
+        ));
+        // File-wide fail-closed: sibling witnesses in the same entry also run.
+        assert!(super::witness_test_fn_uses_live_host_scan(source, "pure_holds"));
+    }
+
+    #[test]
+    fn witness_test_fn_uses_live_host_scan_pure_entry_stays_kernel_eligible() {
+        let source = "module m\n\ntest fn pure_holds() -> Bool { true }\n\ntest fn also_pure() -> Bool { false }\n";
+        assert!(!super::witness_test_fn_uses_live_host_scan(source, "pure_holds"));
+        assert!(!super::witness_test_fn_uses_live_host_scan(source, "also_pure"));
+    }
+
+    #[test]
+    fn witness_test_fn_uses_live_host_scan_detects_declared_marker() {
+        let source = "module m\n\ntest fn marked_holds() -> Bool { // floor:host_scaffold\n  true\n}\n";
+        assert!(super::witness_test_fn_uses_live_host_scan(source, "marked_holds"));
+    }
+
+    #[test]
+    fn witness_test_fn_uses_live_host_scan_follows_same_file_helper() {
+        let source = "module m\n\nfn helper_holds() -> Bool {\n  layer_import_facts(std_roots: [], extdeps_roots: [])\n}\n\ntest fn witness_holds() -> Bool {\n  helper_holds()\n}\n";
+        assert!(super::witness_test_fn_uses_live_host_scan(source, "witness_holds"));
+    }
+
+    #[test]
+    fn witness_test_fn_uses_live_host_scan_follows_nested_same_file_helper() {
+        let source = "module m\n\nfn helper_b() -> Bool {\n  realization_vocab_containment_clean_live(scan_roots: roots)\n}\n\nfn helper_a() -> Bool {\n  helper_b()\n}\n\ntest fn witness_holds() -> Bool {\n  helper_a()\n}\n";
+        assert!(super::witness_test_fn_uses_live_host_scan(source, "witness_holds"));
+    }
+
+    #[test]
+    fn host_scaffold_witness_not_skipped_on_unrelated_diff() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = vec![
+            ws.join("src/v2").to_string_lossy().into_owned(),
+            ws.join("dag").to_string_lossy().into_owned(),
+        ];
+        let (runner_graph, runner_indices) =
+            super::resolve_entry_graph(&roots, super::FLOOR_RUNNER_ENTRY)
+                .expect("floor runner resolves");
+        let runner_ctx =
+            super::make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
+        let entry = "src/v2/test/claim/realization_vocabulary_containment/clean_tree_test.dag";
+        let content = std::fs::read_to_string(entry).expect("clean_tree readable");
+        assert!(super::witness_test_fn_uses_live_host_scan(
+            &content,
+            "realization_vocab_clean_tree_holds"
+        ));
+        let changed_paths = vec!["src/v2/lens/affected_set.dag".to_string()];
+        let skip = super::call_floor_host_scaffold_would_skip(
+            &runner_ctx,
+            &changed_paths,
+            &[],
+            false,
+            false,
+            false,
+        )
+        .expect("host scaffold skip");
+        assert!(
+            !skip,
+            "host-scaffold witness must not skip on unrelated node-frontier diff"
         );
     }
 
