@@ -34,10 +34,9 @@ fn typed_module_cache_matches_cold_oracle_in_every_order() {
     // build_module_path_index fails closed on paths outside the workspace, so
     // std::env::temp_dir() fixtures cannot resolve (same precedent as
     // union_resolve_receipts_test).
-    let dir = workspace_root().join("target").join(format!(
-        "gunbc-typed-cache-eq-{}",
-        std::process::id()
-    ));
+    let dir = workspace_root()
+        .join("target")
+        .join(format!("gunbc-typed-cache-eq-{}", std::process::id()));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).expect("temp dir");
 

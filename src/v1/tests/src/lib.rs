@@ -17,9 +17,9 @@ mod bug_sentinel_ratchet;
 #[cfg(test)]
 mod cache_purity_oracle_test;
 #[cfg(test)]
-mod consumed_input_closure_drift_test;
-#[cfg(test)]
 mod constructor_owner_ruling_test;
+#[cfg(test)]
+mod consumed_input_closure_drift_test;
 #[cfg(test)]
 mod coproduct_reflection_conformance_test;
 #[cfg(test)]

@@ -392,18 +392,6 @@ fn generic_type_declaration_smoke() {
 }
 
 #[test]
-fn ambiguous_variant_name_resolves_correctly() {
-    let source = "module ambig_test\n\ntype Color = Red | Blue | Green\ntype Signal = Red | Yellow | Green\n\nfn pick_color() -> Color { Red }\nfn pick_signal() -> Signal { Yellow }\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/ambig_test.rs");
-    assert!(
-        content.contains("Color::Red") || content.contains("Signal::Red"),
-        "ambiguous variant Red should be qualified to a parent enum"
-    );
-}
-
-#[test]
 fn fold_returns_accumulator_type() {
     let source = "module fold_acc_test\n\ntype Entry { label: String }\n\nfn pick(items: List<Entry>) -> String {\n  let found = fold(items, init: { label: \"default\" }, f: (acc, e) => e)\n  found.label\n}\n";
     let result = compile_dag(source);
@@ -1366,11 +1354,13 @@ fn resolve_entry_parse_cache_fail_closed_on_closure_parse_errors() {
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!(
-        "gunbc_parse_fail_closed_{}_{}",
-        std::process::id(),
-        stamp
-    ));
+    let dir = crate::helpers::workspace_root()
+        .join("target")
+        .join(format!(
+            "gunbc_parse_fail_closed_{}_{}",
+            std::process::id(),
+            stamp
+        ));
     std::fs::create_dir_all(&dir).expect("create temp dir");
     let root = dir.to_string_lossy().into_owned();
     let cleanup = || {
@@ -5793,35 +5783,37 @@ fn total_cost(items: List<Item>) -> Int {
     assert_no_diagnostics(&result);
 }
 
+// Constructor-owner ruling (§1c) rule 4: patterns resolve via the scrutinee's
+// type — arm names that are NOT bound in constructor scope stay legal in
+// pattern position. The consumer imports ONLY the producing fn (never the
+// enum or its arms), so the match arms have no constructor binding at all;
+// the scrutinee's type is the sole authority, and the emitted match still
+// carries the owner qualifier.
 #[test]
-fn duplicate_variant_names_across_enums_dont_collide() {
-    let source = "\
-module test_dup_variants
-type Color = Red | Blue | Green
-type Signal = Red | Yellow | Green
-
-fn pick_color() -> Color { Blue }
-fn pick_signal() -> Signal { Yellow }
-fn use_both(c: Color, s: Signal) -> String {
-  let c_str = match c {
-    Red => \"red\"
-    Blue => \"blue\"
-    Green => \"green\"
-  }
-  let s_str = match s {
-    Red => \"stop\"
-    Yellow => \"caution\"
-    Green => \"go\"
-  }
-  concat(c_str, s_str)
-}
-";
-    let result = compile_dag(source);
+fn pattern_position_arms_resolve_via_scrutinee_without_imports() {
+    let producer = (
+        "pattern_arms_producer.dag",
+        "module test_pattern_arms_producer\n\
+         type Level = Low | High\n\
+         fn make() -> Level { Low }\n",
+    );
+    let consumer = (
+        "pattern_arms_consumer.dag",
+        "module test_pattern_arms_consumer\n\
+         import test_pattern_arms_producer { make }\n\
+         fn describe() -> String {\n\
+           match make() {\n\
+             Low => \"low\"\n\
+             High => \"high\"\n\
+           }\n\
+         }\n",
+    );
+    let result = compile_multi(&[producer, consumer]);
     assert_no_diagnostics(&result);
-    let content = find_file(&result, "src/test_dup_variants.rs");
+    let content = find_file(&result, "src/test_pattern_arms_consumer.rs");
     assert!(
-        content.contains("Color::") && content.contains("Signal::"),
-        "both Color:: and Signal:: qualifiers should appear in match arms, got:\n{}",
+        content.contains("Level::Low") && content.contains("Level::High"),
+        "pattern arms must qualify to the scrutinee's owner enum, got:\n{}",
         content
     );
 }
@@ -8230,7 +8222,7 @@ fn anthropic_request_coproduct_wire_contracts_emit_targeted_serde() {
 #[test]
 fn coproduct_wire_contract_target_must_name_local_coproduct() {
     let source = r#"module stale_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data stale_contract: CoproductWireContract = {
@@ -8260,7 +8252,7 @@ type RealEnum
 #[test]
 fn structural_coproduct_wire_contract_shape_is_not_authority() {
     let source = r#"module structural_coproduct_wire_contract
-import std.serialization { VariantEncoding }
+import std.serialization { VariantEncoding, VariantNaming }
 
 type FakeContract {
   coproduct: String
@@ -8297,7 +8289,7 @@ type RealEnum
 #[test]
 fn local_same_name_coproduct_wire_contract_is_not_authority() {
     let source = r#"module local_spoof_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 
 type CoproductWireContract {
   coproduct: String
@@ -8330,7 +8322,7 @@ type RealEnum
 #[test]
 fn local_alias_coproduct_wire_contract_is_not_authority() {
     let source = r#"module local_alias_spoof_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 
 type LocalContractShape {
   coproduct: String
@@ -8369,7 +8361,7 @@ type RealEnum
 #[test]
 fn local_decl_coproduct_wire_contract_suppresses_std_import() {
     let source = r#"module local_decl_spoof_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 
 type CoproductWireContract
 
@@ -8398,7 +8390,7 @@ type RealEnum
 #[test]
 fn coproduct_wire_contract_affix_policy_must_match_variant_names() {
     let source = r#"module bad_affix_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data bad_affix_contract: CoproductWireContract = {
@@ -8427,7 +8419,7 @@ type RealEnum
 #[test]
 fn coproduct_wire_contract_string_variant_requires_unit_variants() {
     let source = r#"module fielded_string_variant_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data string_contract: CoproductWireContract = {
@@ -8460,7 +8452,7 @@ type RealEnum
 #[test]
 fn internally_tagged_coproduct_wire_contract_requires_literal_tag_field() {
     let source = r#"module malformed_internal_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data bad_internal_contract: CoproductWireContract = {
@@ -8488,7 +8480,7 @@ type RealEnum
 #[test]
 fn coproduct_wire_contract_requires_declared_naming_fields() {
     let source = r#"module malformed_naming_coproduct_wire_contract
-import std.serialization { CoproductWireContract, VariantEncoding }
+import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data missing_naming_contract: CoproductWireContract = {

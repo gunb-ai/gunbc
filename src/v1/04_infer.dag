@@ -6,7 +6,7 @@ import v1.std.core {
   Node, InternTable,
   intern, intern_str,
   authored_name_at, generic_param_name_at, NewlineIndex, find_child_named, has_child_named, build_newline_index,
-  module_node, module_imports, module_items, import_is_all,
+  module_node, module_imports, module_items, import_is_all, import_specific_names_at,
   make_param_node, param_node_name_at, param_node_type_expr,
   field_node_type_expr, field_node_name_at,
   Connective, Conj, Disj, NoConnective, Arrow,
@@ -6031,29 +6031,77 @@ fn build_local_variants(items: List<Node>, source_indices: Map<String, NewlineIn
   )
 }
 
+data reexport_chain_authority: String = "A module re-exports its specific-name imports (get_exported_names in v1.compiler.resolve), so `import proxy { B }` where proxy itself imports B is an EXPLICIT import under the §1c ruling — the binder follows the specific-name chain to the defining module's coproduct (the import DAG is acyclic, so the recursion terminates; a chain hop that dead-ends binds nothing and the use site fails closed as UnresolvedType). Glob (is_all) imports bind the target's OWN coproduct arms only — glob re-export pass-through is not modeled here, matching get_exported_names which excludes is_all imports from the export surface."
+
+fn owner_of_exported_arm(module_path: String, arm_name: String, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match map_get(parent_index, module_path) {
+    Absent => none
+    Present { value: tm } =>
+      let own = tm.items
+        |> filter(item => item.connective == Disj)
+        |> filter(item => item.children |> any(c => authored_name_at(source_indices: source_indices, node: c) == arm_name))
+        |> first
+      match own {
+        Present { value: item } => Present { value: item }
+        Absent =>
+          let reexport = module_imports(n: tm.module)
+            |> filter(imp => !import_is_all(n: imp))
+            |> filter(imp => import_specific_names_at(n: imp, source_indices: source_indices) |> any(n => n == arm_name))
+            |> first
+          match reexport {
+            Present { value: imp } => owner_of_exported_arm(module_path: authored_name_at(source_indices: source_indices, node: imp), arm_name: arm_name, parent_index: parent_index, source_indices: source_indices)
+            Absent => none
+          }
+      }
+  }
+}
+
+fn exported_coproduct_item(module_path: String, enum_name: String, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>) -> Node? {
+  match map_get(parent_index, module_path) {
+    Absent => none
+    Present { value: tm } =>
+      let own = tm.items
+        |> filter(item => item.connective == Disj)
+        |> filter(item => authored_name_at(source_indices: source_indices, node: item) == enum_name)
+        |> first
+      match own {
+        Present { value: item } => Present { value: item }
+        Absent =>
+          let reexport = module_imports(n: tm.module)
+            |> filter(imp => !import_is_all(n: imp))
+            |> filter(imp => import_specific_names_at(n: imp, source_indices: source_indices) |> any(n => n == enum_name))
+            |> first
+          match reexport {
+            Present { value: imp } => exported_coproduct_item(module_path: authored_name_at(source_indices: source_indices, node: imp), enum_name: enum_name, parent_index: parent_index, source_indices: source_indices)
+            Absent => none
+          }
+      }
+  }
+}
+
 fn build_imported_variants(resolved_imports: List<ResolvedImport>, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, module_name: String, init: VariantFoldState) -> VariantFoldState {
   fold(resolved_imports, init: init, f: (acc, imp) =>
-    let source_items = match map_get(parent_index, imp.module_path) {
-      Present { value: parent_tm } => parent_tm.items
-      Absent => []
-    }
-    fold(source_items, init: acc, f: (iacc, item) =>
-      let item_is_coproduct = item.connective == Disj
-      if item_is_coproduct {
-        let item_name = authored_name_at(source_indices: source_indices, node: item)
-        let enum_visible = imp.is_all || (imp.specific_names |> any(n => n == item_name))
-        if enum_visible {
+    let with_glob = if imp.is_all {
+      let source_items = match map_get(parent_index, imp.module_path) {
+        Present { value: parent_tm } => parent_tm.items
+        Absent => []
+      }
+      fold(source_items, init: acc, f: (iacc, item) =>
+        let item_is_coproduct = item.connective == Disj
+        if item_is_coproduct {
           bind_coproduct_item_arms(state: iacc, item: item, source_indices: source_indices, module_name: module_name)
-        } else {
-          fold(item.children, init: iacc, f: (vacc, child) =>
-            let child_name = authored_name_at(source_indices: source_indices, node: child)
-            let arm_named = imp.specific_names |> any(n => n == child_name)
-            if arm_named {
-              insert_variant_owner_checked(state: vacc, arm_name: child_name, owner: item, source_indices: source_indices, module_name: module_name)
-            } else { vacc }
-          )
-        }
-      } else { iacc }
+        } else { iacc }
+      )
+    } else { acc }
+    fold(imp.specific_names, init: with_glob, f: (nacc, name) =>
+      let after_enum = match exported_coproduct_item(module_path: imp.module_path, enum_name: name, parent_index: parent_index, source_indices: source_indices) {
+        Present { value: item } => bind_coproduct_item_arms(state: nacc, item: item, source_indices: source_indices, module_name: module_name)
+        Absent => nacc
+      }
+      match owner_of_exported_arm(module_path: imp.module_path, arm_name: name, parent_index: parent_index, source_indices: source_indices) {
+        Present { value: owner } => insert_variant_owner_checked(state: after_enum, arm_name: name, owner: owner, source_indices: source_indices, module_name: module_name)
+        Absent => after_enum
+      }
     )
   )
 }

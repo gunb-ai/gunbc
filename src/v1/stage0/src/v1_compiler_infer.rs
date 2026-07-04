@@ -110,6 +110,8 @@ use crate::v1_rt;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_std_core::empty_intern_table;
+// HAND-PATCH (§1c re-export chains): accessor for the chain followers below.
+use crate::v1_std_core::import_specific_names_at;
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{
@@ -5840,16 +5842,13 @@ pub fn infer_record_lit(
                     ) {
                         Some(fields) => fields.clone(),
                         None => match expected.clone() {
-                            Some(_) => {
-                                record_lit_expected_fields(type_name.clone(), scope.clone())
-                            }
+                            Some(_) => record_lit_expected_fields(type_name.clone(), scope.clone()),
                             None => {
                                 match record_lit_alias_struct_fields(tn.clone(), scope.clone()) {
                                     Some(fields) => fields.clone(),
-                                    None => record_lit_expected_fields(
-                                        type_name.clone(),
-                                        scope.clone(),
-                                    ),
+                                    None => {
+                                        record_lit_expected_fields(type_name.clone(), scope.clone())
+                                    }
                                 }
                             }
                         },
@@ -13562,6 +13561,94 @@ pub fn build_imported_variants(
     )
 }
 
+// HAND-PATCH (constructor-owner ruling §1c; seed two-step): re-export chain
+// followers — a module re-exports its specific-name imports, so the binder
+// walks the acyclic import chain to the defining module's coproduct. Replaced
+// by regen's true emission in the convergence commit.
+pub fn owner_of_exported_arm(
+    module_path: String,
+    arm_name: String,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match v1_rt::map_get(&parent_index, module_path) {
+        None => None,
+        Some(tm) => {
+            let own = tm.items.iter().cloned().find(|item| {
+                item.connective.clone() == Connective::Disj
+                    && item
+                        .children
+                        .iter()
+                        .cloned()
+                        .any(|c| authored_name_at(source_indices.clone(), c) == arm_name)
+            });
+            match own {
+                Some(item) => Some(item),
+                None => {
+                    let reexport = module_imports(tm.module.clone())
+                        .iter()
+                        .cloned()
+                        .find(|imp| {
+                            !import_is_all(imp.clone())
+                                && import_specific_names_at(imp.clone(), source_indices.clone())
+                                    .iter()
+                                    .any(|n| *n == arm_name)
+                        });
+                    match reexport {
+                        Some(imp) => owner_of_exported_arm(
+                            authored_name_at(source_indices.clone(), imp),
+                            arm_name,
+                            parent_index,
+                            source_indices,
+                        ),
+                        None => None,
+                    }
+                }
+            }
+        }
+    }
+}
+
+pub fn exported_coproduct_item(
+    module_path: String,
+    enum_name: String,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Option<Rc<Node>> {
+    match v1_rt::map_get(&parent_index, module_path) {
+        None => None,
+        Some(tm) => {
+            let own = tm.items.iter().cloned().find(|item| {
+                item.connective.clone() == Connective::Disj
+                    && authored_name_at(source_indices.clone(), item.clone()) == enum_name
+            });
+            match own {
+                Some(item) => Some(item),
+                None => {
+                    let reexport = module_imports(tm.module.clone())
+                        .iter()
+                        .cloned()
+                        .find(|imp| {
+                            !import_is_all(imp.clone())
+                                && import_specific_names_at(imp.clone(), source_indices.clone())
+                                    .iter()
+                                    .any(|n| *n == enum_name)
+                        });
+                    match reexport {
+                        Some(imp) => exported_coproduct_item(
+                            authored_name_at(source_indices.clone(), imp),
+                            enum_name,
+                            parent_index,
+                            source_indices,
+                        ),
+                        None => None,
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn build_module_context(
     contributions: Rc<Vec<Rc<ItemContribution>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
@@ -13662,36 +13749,48 @@ pub fn build_module_context(
         let variant_fold = resolved_imports.clone().iter().cloned().fold(
             local_variant_fold,
             |acc: Rc<VariantFoldState>, imp: Rc<ResolvedImport>| {
-                let source_items = match v1_rt::map_get(&parent_index, imp.module_path.clone()) {
-                    Some(parent_tm) => parent_tm.items.clone(),
-                    None => Rc::new(vec![]),
+                // Glob (is_all) imports bind the target's OWN coproduct arms only.
+                let with_glob = if imp.is_all {
+                    let source_items = match v1_rt::map_get(&parent_index, imp.module_path.clone())
+                    {
+                        Some(parent_tm) => parent_tm.items.clone(),
+                        None => Rc::new(vec![]),
+                    };
+                    source_items.iter().cloned().fold(
+                        acc,
+                        |iacc: Rc<VariantFoldState>, item: Rc<Node>| {
+                            if item.connective.clone() == Connective::Disj {
+                                bind_coproduct_item_arms(iacc, item)
+                            } else {
+                                iacc
+                            }
+                        },
+                    )
+                } else {
+                    acc
                 };
-                source_items.iter().cloned().fold(
-                    acc,
-                    |iacc: Rc<VariantFoldState>, item: Rc<Node>| {
-                        if item.connective.clone() != Connective::Disj {
-                            return iacc;
-                        }
-                        let item_name = authored_name_at(env.source_indices.clone(), item.clone());
-                        let enum_visible =
-                            imp.is_all || imp.specific_names.iter().any(|n| *n == item_name);
-                        if enum_visible {
-                            bind_coproduct_item_arms(iacc, item)
-                        } else {
-                            item.children.clone().iter().cloned().fold(
-                                iacc,
-                                |vacc: Rc<VariantFoldState>, child: Rc<Node>| {
-                                    let child_name = authored_name_at(
-                                        env.source_indices.clone(),
-                                        child.clone(),
-                                    );
-                                    if imp.specific_names.iter().any(|n| *n == child_name) {
-                                        insert_variant_owner_checked(vacc, child_name, item.clone())
-                                    } else {
-                                        vacc
-                                    }
-                                },
-                            )
+                // Specific names resolve through the re-export chain to the
+                // defining module (owner_of_exported_arm / exported_coproduct_item).
+                imp.specific_names.iter().cloned().fold(
+                    with_glob,
+                    |nacc: Rc<VariantFoldState>, name: String| {
+                        let after_enum = match exported_coproduct_item(
+                            imp.module_path.clone(),
+                            name.clone(),
+                            parent_index.clone(),
+                            env.source_indices.clone(),
+                        ) {
+                            Some(item) => bind_coproduct_item_arms(nacc, item),
+                            None => nacc,
+                        };
+                        match owner_of_exported_arm(
+                            imp.module_path.clone(),
+                            name.clone(),
+                            parent_index.clone(),
+                            env.source_indices.clone(),
+                        ) {
+                            Some(owner) => insert_variant_owner_checked(after_enum, name, owner),
+                            None => after_enum,
                         }
                     },
                 )
