@@ -105,10 +105,6 @@ fn positive_upper_bounded_nat_well_formed(b: PositiveUpperBoundedNat) -> Bool {
   positive_nat_le_witness_well_formed(w: b.le)
 }
 
-type DescentEvidence
-  = Strict
-  | NonIncreasing
-  | DescentUnknown
 type RankingDimension {
   measured: Symbol
 }
