@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 90
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -99,7 +99,7 @@ jobs:
           "$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/tools/merge_admission_gate.dag --function main
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 90
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -201,7 +201,7 @@ jobs:
   deploy_dashboard_srv1:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [ci]
-    timeout-minutes: 90
+    timeout-minutes: 10
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: Checkout
