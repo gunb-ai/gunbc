@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
+use v1_compiler::cli_run::value_to_wire_json;
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult};
 use v1_compiler::v1_interpreter::{self, Value};
-use v1_compiler::cli_run::value_to_wire_json;
 
 use crate::helpers::{resolve_imports_transitively, workspace_root};
 

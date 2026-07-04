@@ -252,6 +252,7 @@ fn func_env_unique_sig_ptr_count_matches_defined_functions() {
 }
 
 #[test]
+#[ignore = "CI witness opt-in inversion (2026-07-04): whole-tree resolve over dag+src/v1 — the rust-lane twin of the corpus witnesses inverted out of the per-PR floor (run-everything had pushed both CI jobs to the 90-min timeout: max cost, zero signal). Run explicitly: cargo nextest run -p v1-compiler-tests -- --ignored func_env_whole_tree_unique_ptr_count_equals_local_definitions. Re-enroll when affected-set selection + floor memoization land (see ci_witness_optin_inversion in gunbc.commit_workflow)."]
 fn func_env_whole_tree_unique_ptr_count_equals_local_definitions() {
     let mut exclude_subpaths: Vec<String> = FLOOR_DISCOVERY_EXCLUDES
         .iter()

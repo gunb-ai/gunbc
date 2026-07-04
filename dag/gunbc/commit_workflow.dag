@@ -9,7 +9,7 @@ import gunbc.ci_gate {
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
-import std.realization_schedule { string_list_eq }
+import std.realization_schedule { string_list_eq, ScheduleWitnessEntry }
 
 data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_witness_test.dag"
 
@@ -168,6 +168,26 @@ fn project_ci_floor_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
 fn project_ci_rust_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
   gates_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsRustTestsJob))
+  )
+}
+
+data ci_witness_optin_inversion: String = "CI witness enrollment is OPT-IN (operator inversion, 2026-07-04). Witness existence in the tree does not enroll it in CI: the tree-wide glob roster grows quadratically with the corpus (a witness is definable between any two pipeline segments) and had reached the point where the floor timed out - maximum cost, zero delivered signal. A witness gates CI exactly when a CommitWitnessClaim row on the GithubActionsCiJob surface declares it, projected by project_ci_floor_witness_entries into the floor plan's explicit entries (entry x check_fn). Tree-wide discovery remains the local path (claim_batch --roster-from-discovery). dissolve-on: affected-set selection (v2.lens.affected_set) plus floor memoization make per-PR selection-by-affectedness affordable; re-enroll the corpus through the affected set and dissolve this projection back into discovery."
+
+fn witness_entries_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<ScheduleWitnessEntry> {
+  fold(rows, init: [], f: fn(acc, row) {
+    match row.check {
+      CommitWitnessClaim { entry, check_fns } =>
+        concat(acc, fold(check_fns, init: [], f: fn(fns, check_fn) {
+          concat(fns, [ScheduleWitnessEntry { entry: entry, function: check_fn }])
+        }))
+      _ => acc
+    }
+  })
+}
+
+fn project_ci_floor_witness_entries(roster: List<CommitCheckEnrollment>) -> List<ScheduleWitnessEntry> {
+  witness_entries_from_enrollments(
+    rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiJob))
   )
 }
 

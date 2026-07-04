@@ -12,7 +12,7 @@ import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
 }
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
-import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates }
+import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -145,6 +145,7 @@ fn ci_prelude_steps() -> List<Step> {
 fn ci_floor_spec_from_roster() -> CiSpec {
   {
     gates: project_ci_floor_gates(roster: commit_gate_roster),
+    witness_entries: project_ci_floor_witness_entries(roster: commit_gate_roster),
     diff_policy: gunbc_ci_spec.diff_policy,
     notice_title: gunbc_ci_spec.notice_title,
     deploy_stages: [],

@@ -1766,6 +1766,32 @@ fn run() -> Result<ExitCode, ExitCode> {
         return Err(ExitCode::from(1));
     }
 
+    // The opt-in witness roster can be empty, removing every DiscoveryBatch from the
+    // plan — and with it the only CI path through the tree-walk naming hygiene
+    // (`test fn` outside `*_test.dag`, `__` basenames). A witness must stay NAMEABLE
+    // even when not enrolled (an unnameable witness could never be opted in), so run
+    // the same fail-closed walk once here, discarding the roster. Skipped when a
+    // DiscoveryBatch is scheduled: that batch runs the identical checks itself.
+    let plan_has_discovery_batch = batches
+        .iter()
+        .flatten()
+        .any(|r| matches!(r, Runnable::DiscoveryBatch { .. }));
+    if !plan_has_discovery_batch {
+        let excludes: Vec<String> = v1_compiler::cli_run::FLOOR_DISCOVERY_EXCLUDES
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        if let Err(msg) = v1_compiler::cli_run::check_floor_filename_hygiene(&source_roots)
+            .and_then(|_| {
+                v1_compiler::cli_run::discover_floor_corpus_rows(&source_roots, &[], &excludes)
+                    .map(|_| ())
+            })
+        {
+            eprintln!("claim_executor: witness naming hygiene (zero-enrollment walk): {msg}");
+            return Err(ExitCode::from(1));
+        }
+    }
+
     let spawn_width = match eval_spawn_width(&source_roots, &plan_entry, &plan_function) {
         Ok(w) => w,
         Err(msg) => {
