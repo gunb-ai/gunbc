@@ -13,15 +13,8 @@ import extdeps.languages.bash.program {
 }
 import tools.host_prelude { ensure_gunbc_built }
 
-data dcc_v1_compile_pool_root_note: String = "dag/test/claim/ownership_movable_test.dag (#6249) imports v1.compiler.ownership from src/v1/ownership.dag; compile-clean must include src/v1 as a dependency pool root."
-data dcc_v1_compile_pool_root: String = "src/v1"
-
-fn dcc_compile_pool_roots() -> List<String> {
-  concat(witness_layer_roots, [dcc_v1_compile_pool_root])
-}
-
 fn dcc_source_root_flags() -> List<ShellWord> {
-  fold(dcc_compile_pool_roots(), init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
+  fold(witness_layer_roots, init: [], f: (acc, r) => concat(acc, [lit(text: "--source-root"), lit(text: r)]))
 }
 
 fn dcc_pool_index_flags() -> List<ShellWord> {
@@ -227,7 +220,6 @@ data dcc_target_dag_marker: String = "'--target' 'dag'"
 data dcc_source_root_marker: String = "'--source-root'"
 data dcc_witness_root_dag_marker: String = "'dag'"
 data dcc_witness_root_v2_marker: String = "'src/v2'"
-data dcc_witness_root_v1_marker: String = "'src/v1'"
 data dcc_pool_index_marker: String = "'--dependency-pool-index' 'primary-precedence'"
 
 data clean_tree_compile_invocation_marker: String = "'compile' '--source-root' 'dag'"
@@ -245,7 +237,6 @@ fn shell_serializes_dcc_common_compile_invocation(script: String) -> Bool {
     && string_contains(s: script, pattern: dcc_source_root_marker)
     && string_contains(s: script, pattern: dcc_witness_root_dag_marker)
     && string_contains(s: script, pattern: dcc_witness_root_v2_marker)
-    && string_contains(s: script, pattern: dcc_witness_root_v1_marker)
     && string_contains(s: script, pattern: dcc_pool_index_marker)
 }
 
