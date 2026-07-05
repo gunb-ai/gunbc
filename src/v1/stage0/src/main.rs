@@ -10,8 +10,7 @@ use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile;
 use v1_compiler::v1_compiler_compile::PipelineResult;
 use v1_compiler::v1_std_core::{
-    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at,
-    CompilerDiagnostic, NewlineIndex,
+    byte_to_line_col, diagnostic_to_message, diagnostic_to_span, source_line_at, NewlineIndex,
 };
 
 #[derive(Parser)]

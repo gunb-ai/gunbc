@@ -36,6 +36,7 @@ data ownership_path: String = "src/v1/ownership.dag"
 
 data std_graph_stage0_path: String = "src/v1/stage0/src/std_graph.rs"
 data compile_stage0_path: String = "src/v1/stage0/src/v1_compiler_compile.rs"
+data regen_stage0_path: String = "src/v1/stage0/src/bin/regen_stage0.rs"
 data complexity_stage0_path: String = "src/v1/stage0/src/v1_compiler_complexity.rs"
 data emit_stage0_path: String = "src/v1/stage0/src/v1_compiler_emit.rs"
 data infer_env_stage0_path: String = "src/v1/stage0/src/v1_compiler_infer_env.rs"
@@ -258,6 +259,13 @@ test fn compile_gate_keeps_infer_errors_blocking_in_stage0() -> Bool {
     && src_lacks(compile_path, "bootstrap_mode")
     && src_has(compile_stage0_path, "typed_diags")
     && src_lacks(compile_stage0_path, "BOOTSTRAP_MODE")
+    && src_has(compile_path, "fn stage0_self_compile_refusal_message")
+    && src_has(compile_stage0_path, "stage0_self_compile_refusal_message")
+}
+
+test fn regen_stage0_write_and_verify_share_compile_refusal() -> Bool {
+  src_has(regen_stage0_path, "stage0_self_compile_refusal_message")
+    && src_lacks(regen_stage0_path, "hard_errors: Vec")
 }
 
 test fn testgen_emits_valid_rust() -> Bool {

@@ -1258,6 +1258,13 @@ mod tests {
     }
 
     #[test]
+    fn compile_stage0_uses_shared_refusal_authority() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/bin/regen_stage0.rs");
+        let source = fs::read_to_string(path).expect("read regen_stage0.rs");
+        assert!(source.contains("stage0_self_compile_refusal_message"));
+    }
+
+    #[test]
     fn bootstrap_timing_receipt_json_pins_v2_schema() {
         let workspace = temp_test_dir("receipt-workspace");
         let manifest_dir = workspace.join("src").join("v2").join("stage0");
