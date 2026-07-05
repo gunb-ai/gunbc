@@ -1640,6 +1640,10 @@ mod compiler_tests {
                         acc
                     },
                 ));
+                let mut variant_surfaces = crate::v1_rt::rc_empty_map::<
+                    String,
+                    std::rc::Rc<crate::v1_compiler_infer::VariantExportSurface>,
+                >();
 
                 for resolved in graph.modules.iter() {
                     let name = resolved.module.name.to_string();
@@ -1714,9 +1718,10 @@ mod compiler_tests {
                     }
 
                     let t_full = Instant::now();
-                    let tc_result = crate::v1_compiler_infer::typecheck_module_isolated(
+                    let tc_result = crate::v1_compiler_infer::typecheck_module(
                         resolved.clone(),
                         module_index.clone(),
+                        variant_surfaces.clone(),
                         source_indices.clone(),
                         intern_table.clone(),
                     );
@@ -1749,6 +1754,19 @@ mod compiler_tests {
                     }
 
                     let typed = tc_result.typed.clone();
+                    let typed_path = crate::v1_std_core::authored_name_at(
+                        source_indices.clone(),
+                        typed.module.clone(),
+                    );
+                    variant_surfaces = crate::v1_rt::rc_map_insert(
+                        variant_surfaces.clone(),
+                        typed_path,
+                        crate::v1_compiler_infer::build_variant_export_surface(
+                            typed.clone(),
+                            variant_surfaces.clone(),
+                            source_indices.clone(),
+                        ),
+                    );
                     mi_raw.insert(name, typed);
                 }
 
