@@ -1,8 +1,8 @@
 module gunbc.runner_slot_allocation
 
 import std.types { Int, String, List, Bool }
-import std.measure { ByteSize, byte_size, byte_size_count }
-import std.disposition { Disposition, Terminal, SingleAuthority }
+import std.measure { ByteSize, byte_size, byte_size_count, HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import std.disposition { Disposition, Terminal, SingleAuthority, Scaffold }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import product.placement_supply { HostIdentity }
 import gunbc.fleet_intent_network { operator_host_srv1, operator_host_srv2 }
@@ -23,7 +23,7 @@ type RunnerSlotDesired {
 type HostRunnerSlotAllocation {
   host: HostIdentity
   slots_per_host: Int
-  cores_per_slot: Int
+  cores_per_slot: HardwareThreadCount
   runner_slice_cap: ByteSize
   per_slot: RunnerSlotDesired
 }
@@ -49,8 +49,8 @@ fn gunbc_runner_slots_per_host() -> Int {
   10
 }
 
-fn gunbc_runner_cores_per_slot() -> Int {
-  8
+fn gunbc_runner_cores_per_slot() -> HardwareThreadCount {
+  hardware_thread_count(count: 8)
 }
 
 fn gunbc_runner_slice_cap_declared() -> ByteSize {
@@ -95,7 +95,7 @@ fn gunbc_runner_slot_allocation_wall_holds() -> Bool {
   let slots = gunbc_runner_slots_per_host()
   let slice_cap = gunbc_runner_slice_cap_declared()
   gunbc_runner_slot_oversubscription_within_slice(slots: slots, per_slot: per_slot.memory_max, slice_cap: slice_cap)
-    && (gunbc_runner_cores_per_slot() == 8)
+    && (hardware_thread_count_value(t: gunbc_runner_cores_per_slot()) == 8)
     && (byte_size_count(b: per_slot.memory_max) == byte_size_count(b: byte_size(8589934592)))
     && (byte_size_count(b: per_slot.memory_swap_max) == byte_size_count(b: byte_size(34359738368)))
 }
