@@ -3,7 +3,7 @@ module v2.lens.module_graph
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
 import v2.std.algebra { FreeMonoid, fold_list, contains, list_snoc_item, any }
-import v2.std.collection { Absent, List, Map, Present, empty_map, map_get, map_insert }
+import v2.std.collection { Absent, List, Map, Optional, Present, empty_map, map_get, map_insert }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -57,6 +57,13 @@ type ImportClosureBfsState {
   queue: List<String>
 }
 
+fn map_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+  match map_get(m: m, key: key) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
 fn build_module_to_path(nodes: List<ModuleDeclarationFact>) -> Map<String, String> {
   fold_list(
     xs: nodes,
@@ -80,9 +87,9 @@ fn extend_adjacency_for_edge(
   edge: ImportResolutionFact,
   module_to_path: Map<String, String>
 ) -> Map<String, List<String>> {
-  match map_get(m: module_to_path, key: edge.import_module) {
+  match map_lookup(m: module_to_path, key: edge.import_module) {
     Present { value: imported_path } =>
-      match map_get(m: acc, key: edge.path) {
+      match map_lookup(m: acc, key: edge.path) {
         Present { value: existing } =>
           map_insert(
             m: acc,
@@ -147,7 +154,7 @@ fn import_closure_bfs_walk(
   match state.queue |> first {
     Present { value: importer } =>
       let rest = state.queue |> skip(1)
-      let neighbors = match map_get(m: adjacency, key: importer) {
+      let neighbors = match map_lookup(m: adjacency, key: importer) {
         Present { value: paths } => paths
         Absent => no_paths
       }
@@ -201,15 +208,6 @@ fn import_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMono
   )
 }
 
-// Module-grain affected decision: an entry E is affected by a touched-path set T exactly when
-// T intersects import_closure_live(E) (closure includes E itself). This is the .dag-authority
-// mirror of the Rust host's `entry_file_touched` decision (`cli_run.rs` `touched_file_in_import_closure`
-// applied over `import_closure_files_from_graph`) — both are fed by the same host-realized
-// import_resolution_facts/module_declaration_facts, so this is a projection over the same facts,
-// not a second closure algorithm (DESIGN §2/§3). The `_excluding` variant threads through the
-// same exclude_substrings knob `import_closure_live_excluding` already exposes, reused (not
-// re-derived) by the discriminating-control receipt to perturb real wiring by dropping an
-// importer's outgoing edges.
 fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
   contains(xs: closure, item: path, eq: string_eq)
 }

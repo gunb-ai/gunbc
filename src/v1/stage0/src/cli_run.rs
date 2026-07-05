@@ -6501,7 +6501,7 @@ mod module_grain_affected_equivalence_tests {
 
         let index = build_multi_entry_index(&roots);
         let (mg_graph, mg_indices) =
-            resolve_entry_with_index(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
+            resolve_entry_with_index_for_discovery_corpus(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
@@ -6673,7 +6673,7 @@ mod module_grain_affected_equivalence_tests {
         let rel_roots = pool_roots_rel();
         let index = build_multi_entry_index(&roots);
         let (mg_graph, mg_indices) =
-            resolve_entry_with_index(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
+            resolve_entry_with_index_for_discovery_corpus(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
