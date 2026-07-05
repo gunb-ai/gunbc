@@ -5,13 +5,18 @@ import v2.std.integer { Int }
 import v2.std.text { String }
 import v2.std.collection { List }
 import v2.std.algebra { for_all, contains }
+import v2.std.qualified_name { QualifiedName }
 import std.realization_schedule { ScheduleWitnessEntry }
 
 type SubjectRoster {
-  entries: List<String>
+  entries: List<QualifiedName>
 }
 
-data subject_roster_string_dissolution_trigger: String = "🟡 dissolve-on: SubjectRoster modeled as List<String> (StandingIntent.required_subjects + desired_scope + CoverageReceipt.discovered_subjects), not List<QualifiedName> as enforcement-intent-design SS12 sketched — a residue of when std qualified_name_from_dotted_string was an infinite-recursion OOM stub (gunb-ai/gunbc#6169, since fixed). #6169 is now grounded and QualifiedName is FreeMonoid<Symbol>, so the blocker is cleared: DISSOLVES BY restoring required_subjects to List<QualifiedName> and comparing against the discovered set via structural ==."
+type ScopeRoster {
+  roots: List<String>
+}
+
+data subject_scope_roster_split_note: String = "SubjectRoster (declaration names, QualifiedName, structural ==) and ScopeRoster (filesystem tree roots, String) were one List<String> carrier until 2026-07-05 - a state-space conflation: two facts with different comparison semantics (segment-structural vs path-literal) shared one representation, so the type could not stop a root being compared as a name. The split is the fired subject_roster_string_dissolution_trigger (enforcement-intent-design SS12; unblocked by gunb-ai/gunbc#6169 grounding qualified_name_from_dotted_string)."
 
 type EnforcementMode = Advisory | AuditOnly | Blocking
 
@@ -36,7 +41,7 @@ type NarrowingReason
 
 type ScopeSatisfaction
   = ScopeCovers
-  | ScopeNarrowed { missing: SubjectRoster, reason: NarrowingReason }
+  | ScopeNarrowed { missing: ScopeRoster, reason: NarrowingReason }
   | ScopeMissing
 
 type RedControlStatus
@@ -149,6 +154,14 @@ fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
+fn qualified_name_eq(a: QualifiedName, b: QualifiedName) -> Bool {
+  a == b
+}
+
 fn subject_roster_covers(claimed: SubjectRoster, desired: SubjectRoster) -> Bool {
-  for_all(xs: desired.entries, predicate: fn(r) { contains(xs: claimed.entries, item: r, eq: string_eq) })
+  for_all(xs: desired.entries, predicate: fn(r) { contains(xs: claimed.entries, item: r, eq: qualified_name_eq) })
+}
+
+fn scope_roster_covers(claimed: ScopeRoster, desired: ScopeRoster) -> Bool {
+  for_all(xs: desired.roots, predicate: fn(r) { contains(xs: claimed.roots, item: r, eq: string_eq) })
 }
