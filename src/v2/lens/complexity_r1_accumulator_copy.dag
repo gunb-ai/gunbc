@@ -14,7 +14,6 @@ import v2.std.algebra {
   Empty,
   CopiedPortFact,
   copied_port_fact_registry,
-  fold_list,
   list_append
 }
 import v2.std.collection {
@@ -99,21 +98,17 @@ fn r1_some_copied_port_index(idx: Int) -> Optional<Int> {
 }
 
 fn r1_copied_port_index(combiner: Symbol) -> Optional<Int> {
-  fold_list(
-    xs: copied_port_fact_registry,
-    empty: optional_absent(),
-    cons: fn(acc, row) {
-      match acc {
-        Present { value: _ } => acc
-        Absent =>
-          if r1_row_matches_combiner(row: row, combiner: combiner) {
-            r1_some_copied_port_index(idx: row.copied_port_index)
-          } else {
-            Absent
-          }
-      }
+  fold(copied_port_fact_registry, init: optional_absent(), f: fn(acc, row) {
+    match acc {
+      Present { value: _ } => acc
+      Absent =>
+        if r1_row_matches_combiner(row: row, combiner: combiner) {
+          r1_some_copied_port_index(idx: row.copied_port_index)
+        } else {
+          Absent
+        }
     }
-  )
+  })
 }
 
 fn r1_poly_two_cost(n: Node) -> SymbolicCost {

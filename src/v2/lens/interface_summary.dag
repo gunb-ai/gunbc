@@ -36,7 +36,7 @@ import v2.std.decl_index {
   export_signature_facts
 }
 import v2.std.node { Node, content_hash }
-import v2.std.algebra { Empty, list_snoc_item, fold_list }
+import v2.std.algebra { Empty, list_snoc_item }
 import v2.std.collection { Present, Absent, optional_absent }
 import v2.std.logic { Bool }
 
@@ -136,20 +136,16 @@ fn interface_hash_for_module_path(
   summaries: List<InterfaceSummary>,
   module_path: String
 ) -> InterfaceHash? {
-  fold_list(
-    xs: summaries,
-    empty: optional_absent(),
-    cons: fn(found, summary) {
-      match found {
-        Present { value: _ } => found
-        Absent =>
-          match module_path_eq(a: summary.module_path, b: module_path) {
-            true => Present { value: summary.interface_hash }
-            false => found
-          }
-      }
+  fold(summaries, init: optional_absent(), f: fn(found, summary) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match module_path_eq(a: summary.module_path, b: module_path) {
+          true => Present { value: summary.interface_hash }
+          false => found
+        }
     }
-  )
+  })
 }
 
 fn direct_import_modules(
@@ -208,20 +204,16 @@ fn interface_summary_for_module(
   module_path: NonEmptyStr,
   pool_roots: List<String>
 ) -> InterfaceSummary? {
-  fold_list(
-    xs: interface_summaries_live(pool_roots: pool_roots),
-    empty: optional_absent(),
-    cons: fn(found, summary) {
-      match found {
-        Present { value: _ } => found
-        Absent =>
-          match module_path_eq(a: summary.module_path, b: module_path) {
-            true => Present { value: summary }
-            false => found
-          }
-      }
+  fold(interface_summaries_live(pool_roots: pool_roots), init: optional_absent(), f: fn(found, summary) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        match module_path_eq(a: summary.module_path, b: module_path) {
+          true => Present { value: summary }
+          false => found
+        }
     }
-  )
+  })
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
