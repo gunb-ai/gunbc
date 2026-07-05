@@ -7931,11 +7931,42 @@ fn is_excluded_import_path(rel: &str, exclude_substrings: &[String]) -> bool {
     exclude_substrings.iter().any(|s| rel.contains(s.as_str()))
 }
 
+// Per-call counters for the two host builtins the `.dag` interpreter actually invokes when a
+// `.dag` fold reads `import_resolution_facts_live`/`module_declaration_facts_live` (e.g.
+// `v2.lens.module_graph.import_closure_live`). Distinct from `MODULE_GRAPH_FACTS_BUILD_COUNT`
+// above, which counts the separate Rust-side `build_module_graph_facts_live` batching path used
+// by `current_entry_closure_files` — the two paths are not the same call site, so a cost receipt
+// comparing them needs its own counter (module-grain affected-set equivalence receipt).
+#[cfg(test)]
+static IMPORT_RESOLUTION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+#[cfg(test)]
+static MODULE_DECLARATION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
+pub(crate) fn reset_import_resolution_facts_call_counts_for_test() {
+    IMPORT_RESOLUTION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+    MODULE_DECLARATION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[cfg(test)]
+pub(crate) fn import_resolution_facts_call_count_for_test() -> usize {
+    IMPORT_RESOLUTION_FACTS_CALL_COUNT.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[cfg(test)]
+pub(crate) fn module_declaration_facts_call_count_for_test() -> usize {
+    MODULE_DECLARATION_FACTS_CALL_COUNT.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 pub fn import_resolution_facts(
     pool_roots: &[String],
     importer_roots: &[String],
     exclude_substrings: &[String],
 ) -> Vec<ImportResolutionFactRaw> {
+    #[cfg(test)]
+    IMPORT_RESOLUTION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let abs_importer_roots = pool_roots_abs(importer_roots);
     let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)

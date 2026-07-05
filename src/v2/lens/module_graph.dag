@@ -2,7 +2,7 @@ module v2.lens.module_graph
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
-import v2.std.algebra { FreeMonoid, fold_list, contains, list_snoc_item }
+import v2.std.algebra { FreeMonoid, fold_list, contains, list_snoc_item, any }
 import v2.std.collection { Absent, List, Map, Present, empty_map, map_get, map_insert }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -187,6 +187,25 @@ fn import_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMono
     ),
     nodes: module_declaration_facts_live(pool_roots: pool_roots)
   )
+}
+
+// Module-grain affected decision: an entry E is affected by a touched-path set T exactly when
+// T intersects import_closure_live(E) (closure includes E itself). This is the .dag-authority
+// mirror of the Rust host's `entry_file_touched` decision (`cli_run.rs` `touched_file_in_import_closure`
+// applied over `import_closure_files_from_graph`) — both are fed by the same host-realized
+// import_resolution_facts/module_declaration_facts, so this is a projection over the same facts,
+// not a second closure algorithm (DESIGN §2/§3).
+fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
+  contains(xs: closure, item: path, eq: string_eq)
+}
+
+fn entry_affected_by_touched_paths(
+  entry_path: String,
+  pool_roots: List<String>,
+  touched_paths: List<String>
+) -> Bool {
+  let closure = import_closure_live(entry_path: entry_path, pool_roots: pool_roots)
+  any(xs: touched_paths, predicate: fn(path) { touched_path_in_closure(closure: closure, path: path) })
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
