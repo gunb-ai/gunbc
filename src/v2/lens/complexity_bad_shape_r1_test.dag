@@ -1,0 +1,27 @@
+module v2.test.lens_complexity_bad_shape_r1.complexity_bad_shape_r1_test
+
+import v2.std.logic { Bool }
+import v2.lens.complexity_bad_shape_r1 {
+  complexity_bad_shape_r1_fixture_count_live,
+  complexity_bad_shape_r1_fixture_red_control_fires_live,
+  complexity_bad_shape_r1_fixture_green_control_holds_live,
+  complexity_bad_shape_r1_fixture_site_fired_live
+}
+
+test fn complexity_bad_shape_r1_fixture_red_control_fires() -> Bool {
+  return complexity_bad_shape_r1_fixture_red_control_fires_live()
+}
+
+test fn complexity_bad_shape_r1_fixture_green_control_holds() -> Bool {
+  return complexity_bad_shape_r1_fixture_green_control_holds_live()
+}
+
+test fn complexity_bad_shape_r1_fixture_count_is_positive() -> Bool {
+  return complexity_bad_shape_r1_fixture_count_live() >= 3
+}
+
+test fn merge_envs_negative_fixture_fires() -> Bool {
+  return complexity_bad_shape_r1_fixture_site_fired_live(
+    site: "src/v2/lens/fixture/complexity_bad_shape_r1/merge_envs_negative.dag::merge_envs_like"
+  )
+}

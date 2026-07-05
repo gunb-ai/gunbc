@@ -337,6 +337,26 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
+            "complexity_bad_shape_r1_fixture_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "complexity_bad_shape_r1_fixture_site_fired".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "complexity_bad_shape_r1_fixture_red_control_fires".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "complexity_bad_shape_r1_fixture_green_control_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
             "census_corpus_roots_follow_layer_authority".to_string(),
             bool_type(),
         );

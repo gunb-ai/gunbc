@@ -1,0 +1,11 @@
+module v2.lens.fixture.complexity_bad_shape_r1.good_cons_prepend
+
+fn prepend_good(items: List<Int>) -> List<Int> {
+  fold_list(
+    xs: items,
+    empty: Empty,
+    cons: fn(acc, x) {
+      Cons { head: x, tail: acc }
+    }
+  )
+}

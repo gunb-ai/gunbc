@@ -1,0 +1,11 @@
+module v2.lens.fixture.complexity_bad_shape_r1.merge_envs_negative
+
+fn merge_envs_like(envs: List<Map<String, Int>>) -> Map<String, Int> {
+  fold(envs, init: empty_map(), f: (acc, env) =>
+    map_merge(acc, flatten_visible_bindings(env: env))
+  )
+}
+
+fn flatten_visible_bindings(env: Map<String, Int>) -> Map<String, Int> {
+  env
+}

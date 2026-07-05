@@ -1,0 +1,7 @@
+module v2.lens.fixture.complexity_bad_shape_r1.bad_map_merge_acc
+
+fn merge_bad(items: List<Map<String, Int>>) -> Map<String, Int> {
+  fold(items, init: empty_map(), f: (acc, item) =>
+    map_merge(acc, item)
+  )
+}

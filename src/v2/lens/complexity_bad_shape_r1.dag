@@ -1,0 +1,38 @@
+module v2.lens.complexity_bad_shape_r1
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SubstrateMandatoryTag }
+import v2.std.logic { Bool }
+
+data complexity_bad_shape_r1_fixture_red_sites: List<String> = [
+  "src/v2/lens/fixture/complexity_bad_shape_r1/bad_map_merge_acc.dag::merge_bad",
+  "src/v2/lens/fixture/complexity_bad_shape_r1/bad_list_append_acc.dag::append_bad",
+  "src/v2/lens/fixture/complexity_bad_shape_r1/merge_envs_negative.dag::merge_envs_like"
+]
+
+data complexity_bad_shape_r1_fixture_green_sites: List<String> = [
+  "src/v2/lens/fixture/complexity_bad_shape_r1/good_overlay_port.dag::merge_good",
+  "src/v2/lens/fixture/complexity_bad_shape_r1/good_cons_prepend.dag::prepend_good"
+]
+
+data complexity_bad_shape_r1_corpus_census_dissolution_trigger: String = "🟡 dissolve-on: complexity_bad_shape_r1 scans synthetic fixtures only (src/v2/lens/fixture/complexity_bad_shape_r1) — E2-prep before whole-corpus enrollment. DISSOLVES WHEN decl_facts(roots) reflection (#5966) grounds a Node-tree reader over witness_layer_roots and the enforcement-intent gate enrolls the R1 object rule AuditOnly over the corpus."
+
+fn complexity_bad_shape_r1_fixture_count_live() -> Int {
+  complexity_bad_shape_r1_fixture_count()
+}
+
+fn complexity_bad_shape_r1_fixture_site_fired_live(site: String) -> Bool {
+  complexity_bad_shape_r1_fixture_site_fired(site: site)
+}
+
+fn complexity_bad_shape_r1_fixture_red_control_fires_live() -> Bool {
+  complexity_bad_shape_r1_fixture_red_control_fires()
+}
+
+fn complexity_bad_shape_r1_fixture_green_control_holds_live() -> Bool {
+  complexity_bad_shape_r1_fixture_green_control_holds()
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}
