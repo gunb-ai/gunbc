@@ -7,6 +7,7 @@ import gunbc.ci_workflow_expressions {
 import gunbc.ci_spec {
   CiSpec, gunbc_ci_spec, gunbc_ci_workflow_run, gunbc_ci_rust_job_run,
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
+  ci_release_build_script,
 }
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
@@ -152,6 +153,20 @@ fn ci_floor_spec_from_roster() -> CiSpec {
   }
 }
 
+fn ci_release_build_step() -> Step {
+  RunStep {
+    name: Present { value: "Build release bins (claim_executor + gunbc)" },
+    id: none,
+    run: ci_release_build_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_rust_gate_step_timeout_minutes }
+  }
+}
+
 fn ci_floor_step() -> Step {
   RunStep {
     name: Present { value: "gunbc ci (.dag witnesses + gates)" },
@@ -281,7 +296,7 @@ data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
 }
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_job_timeout_policy_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_rust_gate_step_timeout_minutes + gunbc_ci_job_timeout_policy_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
@@ -314,8 +329,8 @@ fn ci_job() -> Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_floor_step(), ci_merge_admission_gate_step()]),
-    needs: ["rust_tests"],
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_step(), ci_merge_admission_gate_step()]),
+    needs: [],
     env: none,
     outputs: none,
     if_condition: none,
