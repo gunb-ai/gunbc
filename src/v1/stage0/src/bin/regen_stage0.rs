@@ -73,6 +73,8 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_compile.rs",
     "v1_compiler_compiler_tests_rust.rs",
     "v1_compiler_complexity.rs",
+    "v1_compiler_dag_collect.rs",
+    "v1_compiler_dag_collect_support.rs",
     "v1_compiler_effect_derivation.rs",
     "v1_compiler_emit.rs",
     "v1_compiler_emit_core_support.rs",
@@ -127,12 +129,6 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     // Phase-local heartbeat for long floor walks (2026-07-04); its own header
     // carries the dissolution trigger (realization_measurement_loop Phase 0).
     "phase_profile.rs",
-    // P1 dag_collect perf (#6242): slot-map + fp/key memo live only in hand-edited seed until
-    // regen is unblocked (04_resolve.dag) and std.content_hash memo rows emit. Regen without
-    // this guard reverted to DagCollectPending / O(M²) three times (90ad8fa, 42c8f3d, …).
-    // Dissolution: regen_stage0 --verify green with .dag model = emitted seed; drop from here.
-    "v1_compiler_dag_collect.rs",
-    "v1_compiler_dag_collect_support.rs",
 ];
 
 /// Hand-maintained stage0 support living in subdirectories (not flat `.rs` files).
