@@ -663,6 +663,10 @@ thread_local! {
         std::cell::RefCell::new(HashMap::new());
 }
 
+/// INVARIANT: `site` must be a string literal (the emitter always passes one).
+/// Counts key on `&'static str`; a non-literal static with duplicate content
+/// could fragment one site's count across entries and silently degrade the
+/// per-site observability this function exists to provide (DESIGN.md 5).
 pub fn take_owned_counted<T: Clone>(x: Rc<T>, site: &'static str) -> T {
     Rc::try_unwrap(x).unwrap_or_else(|rc| {
         TAKE_OWNED_CLONE_FALLBACKS.with(|m| *m.borrow_mut().entry(site).or_insert(0) += 1);

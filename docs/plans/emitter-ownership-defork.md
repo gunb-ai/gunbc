@@ -124,6 +124,18 @@ Emitter changes (all *readers* of the proof):
   (`analyze_single_fold` stops being consulted at emit time — the proof rows in
   `OwnershipProof.fold_acc_unwrap` already exist and become the only surface).
 
+## Ordering assumption in `license_walk` (review note, opus-4-7 on #6249)
+
+`license_walk` visits children in `reverse` for `ExprCall`/`ExprBlock`/`ExprReturn`/
+`ExprRecordLit`. The backward-liveness semantics ("the LAST whole/field use gets the
+license") is correct only because those child lists are stored in source order —
+`reverse` of source order is reverse evaluation order, which is what a backward walk
+requires. The parser constructs all of these lists in source order (args as parsed,
+block statements as parsed, record fields as written), so the assumption holds today;
+if a future normalization pass reorders any of these child lists, `license_walk` must
+switch to an explicit evaluation-order key rather than positional reverse. (`.dag` has
+no comment syntax, so this note lives here rather than at `ownership.dag`'s walk.)
+
 ## Gen-2 adjudication verdict (2026-07-05, pre-restoration seed, differential)
 
 Method: gen-1 (old binary emitting this corpus) vs gen-2 (gen-1 binary — which runs this
