@@ -9,7 +9,11 @@ import gunbc.ci_gate {
 import gunbc.generated_artifact {
   GeneratedArtifact, CiYamlArtifact, GithooksPrePushArtifact, artifact_path
 }
-import std.realization_schedule { string_list_eq, ScheduleWitnessEntry }
+import std.realization_schedule {
+  string_list_eq, ScheduleWitnessEntry,
+  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind, witness_kind_eq,
+  WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams
+}
 
 data doc_reachability_witness_entry: String = "dag/test/claim/doc_reachability_witness_test.dag"
 
@@ -25,7 +29,7 @@ type CommitWorkflowSurface
 
 type CommitCheckKind
   = CommitSpecGate { gate: Gate }
-  | CommitWitnessClaim { entry: String, check_fns: List<String> }
+  | CommitWitnessClaim { entry: String, check_fns: List<String>, kind: WitnessKind, span: WitnessSpan }
   | CommitCargoFmtCheck
 
 type CommitCheckEnrollment {
@@ -87,14 +91,18 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: "dag/test/claim/github_merge_state_witness_test.dag",
-      check_fns: ["witness_clean_and_blocked_are_distinct_variants"]
+      check_fns: ["witness_clean_and_blocked_are_distinct_variants"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
     },
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
       entry: doc_reachability_witness_entry,
-      check_fns: ["doc_graph_has_no_orphan_docs", "doc_graph_has_no_dangling_links"]
+      check_fns: ["doc_graph_has_no_orphan_docs", "doc_graph_has_no_dangling_links"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
     },
     surfaces: [GitPrePushHook]
   },
@@ -160,7 +168,7 @@ fn gates_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<Gate> {
   fold(rows, init: [], f: fn(acc, row) {
     match row.check {
       CommitSpecGate { gate: g } => concat(acc, [g])
-      CommitWitnessClaim { entry: _, check_fns: _ } => acc
+      CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => acc
       CommitCargoFmtCheck => acc
     }
   })
@@ -180,14 +188,17 @@ fn project_ci_rust_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> 
 
 data ci_witness_optin_inversion: String = "CI witness enrollment is OPT-IN (operator inversion, 2026-07-04). Witness existence in the tree does not enroll it in CI: the tree-wide glob roster grows quadratically with the corpus (a witness is definable between any two pipeline segments) and had reached the point where the floor timed out - maximum cost, zero delivered signal. A witness gates CI exactly when a CommitWitnessClaim row on the GithubActionsCiJob surface declares it, projected by project_ci_floor_witness_entries into the floor plan's explicit entries (entry x check_fn). Tree-wide discovery remains the local path (claim_batch --roster-from-discovery). dissolve-on: affected-set selection (v2.lens.affected_set) plus floor memoization make per-PR selection-by-affectedness affordable; re-enroll the corpus through the affected set and dissolve this projection back into discovery."
 
+data witness_projection_explicit_arms_note: String = "The enrollment projections match EXPLICITLY on every CommitCheckKind variant (no wildcard arm): a future variant added to the coproduct then reds every projection at compile time instead of being silently dropped by a `_ => acc` absorption - fail-open enrollment (a declared row contributing zero entries with no diagnostic) is unwritable, not detected."
+
 fn witness_entries_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<ScheduleWitnessEntry> {
   fold(rows, init: [], f: fn(acc, row) {
     match row.check {
-      CommitWitnessClaim { entry, check_fns } =>
+      CommitWitnessClaim { entry, check_fns, kind, span: _ } =>
         concat(acc, fold(check_fns, init: [], f: fn(fns, check_fn) {
-          concat(fns, [ScheduleWitnessEntry { entry: entry, function: check_fn }])
+          concat(fns, [ScheduleWitnessEntry { entry: entry, function: check_fn, kind: kind }])
         }))
-      _ => acc
+      CommitSpecGate { gate: _ } => acc
+      CommitCargoFmtCheck => acc
     }
   })
 }
@@ -196,6 +207,46 @@ fn project_ci_floor_witness_entries(roster: List<CommitCheckEnrollment>) -> List
   witness_entries_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiJob))
   )
+}
+
+fn witness_seam_eq(a: WitnessSeam, b: WitnessSeam) -> Bool {
+  (a.producer == b.producer) && (a.consumer == b.consumer)
+}
+
+fn witness_seam_wellformed(seam: WitnessSeam) -> Bool {
+  !(seam.producer == seam.consumer)
+}
+
+fn seam_list_contains(seams: List<WitnessSeam>, seam: WitnessSeam) -> Bool {
+  fold(seams, init: false, f: fn(acc, s) { acc || witness_seam_eq(a: s, b: seam) })
+}
+
+fn seams_wellformed_and_distinct(seams: List<WitnessSeam>) -> Bool {
+  if seams.count() == 0 {
+    true
+  } else {
+    witness_seam_wellformed(seam: seams.first())
+      && !seam_list_contains(seams: seams.skip(n: 1), seam: seams.first())
+      && seams_wellformed_and_distinct(seams: seams.skip(n: 1))
+  }
+}
+
+fn witness_span_wellformed(span: WitnessSpan) -> Bool {
+  match span {
+    SpanUndeclared => true
+    SpanSeams { seams } => seams.count() > 0 && seams_wellformed_and_distinct(seams: seams)
+  }
+}
+
+fn roster_witness_spans_wellformed(roster: List<CommitCheckEnrollment>) -> Bool {
+  fold(roster, init: true, f: fn(acc, row) {
+    match row.check {
+      CommitWitnessClaim { entry: _, check_fns: _, kind: _, span } =>
+        acc && witness_span_wellformed(span: span)
+      CommitSpecGate { gate: _ } => acc
+      CommitCargoFmtCheck => acc
+    }
+  })
 }
 
 fn local_tidy_check_eq(a: LocalTidyCheck, b: LocalTidyCheck) -> Bool {
@@ -230,9 +281,10 @@ fn project_local_tidy_checks(roster: List<CommitCheckEnrollment>) -> List<LocalT
 fn project_local_tidy_witness_rows(roster: List<CommitCheckEnrollment>) -> List<LocalTidyCheck> {
   fold(roster, init: [], f: fn(acc, row) {
     match row.check {
-      CommitWitnessClaim { entry, check_fns } =>
+      CommitWitnessClaim { entry, check_fns, kind: _, span: _ } =>
         concat(acc, [LocalTidyWitnessCheck { entry: entry, check_fns: check_fns }])
-      _ => acc
+      CommitSpecGate { gate: _ } => acc
+      CommitCargoFmtCheck => acc
     }
   })
 }
@@ -242,7 +294,8 @@ fn project_local_tidy_gate_rows(roster: List<CommitCheckEnrollment>) -> List<Loc
     match row.check {
       CommitSpecGate { gate: g } =>
         concat(acc, [LocalTidyGateCheck { gate: g }])
-      _ => acc
+      CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => acc
+      CommitCargoFmtCheck => acc
     }
   })
 }

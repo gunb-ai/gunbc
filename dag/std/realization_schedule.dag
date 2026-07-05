@@ -319,7 +319,7 @@ fn schedule_generates_same_batch_count<S>(left: RealizationPlan<S>, right: Reali
 }
 
 fn schedule_witness_entry_eq(a: ScheduleWitnessEntry, b: ScheduleWitnessEntry) -> Bool {
-  (a.entry == b.entry) && (a.function == b.function)
+  (a.entry == b.entry) && (a.function == b.function) && witness_kind_eq(a: a.kind, b: b.kind)
 }
 
 fn string_list_eq(left: List<String>, right: List<String>) -> Bool {

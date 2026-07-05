@@ -5,6 +5,7 @@ import std.realization_schedule {
   Runnable,
   RunnableDiscoveryBatch,
   ScheduleWitnessEntry,
+  CorpusWitnessKind,
   runnable_resource_profile_negligible
 }
 import std.measure { HardwareThreadCount, hardware_thread_count }
@@ -16,11 +17,13 @@ fn floor_skip_proof_roster() -> List<ScheduleWitnessEntry> {
   [
     ScheduleWitnessEntry {
       entry: floor_skip_disc_entry,
-      function: "floor_disc_witness_transitive_holds"
+      function: "floor_disc_witness_transitive_holds",
+      kind: CorpusWitnessKind
     },
     ScheduleWitnessEntry {
       entry: floor_skip_disc_entry,
-      function: "floor_disc_witness_a_only_holds"
+      function: "floor_disc_witness_a_only_holds",
+      kind: CorpusWitnessKind
     }
   ]
 }

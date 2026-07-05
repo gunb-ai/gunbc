@@ -7,6 +7,8 @@ import v2.workflow.ci_floor_plan {
   gunbc_ci_floor_batches,
   floor_schedule_for,
   corpus_runnable_for, execution_corpus_runnable_for,
+  corpus_witness_entries, execution_witness_entries,
+  witness_entries_kind_path_all_agree,
   floor_corpus_exclusion_resource_edges,
   gunbc_ci_floor_plan_serializes_heavy_resolves,
   gunbc_ci_floor_plan_co_runs_heavy_without_serialization,
@@ -26,7 +28,10 @@ import v2.workflow.ci_floor_plan {
 }
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, CiSpec, EmitHostGate, LayeringImportsGate }
-import std.realization_schedule { runnable_forbids_corpus_co_residence, ScheduleWitnessEntry, schedule_witness_entry_eq }
+import std.realization_schedule {
+  runnable_forbids_corpus_co_residence, ScheduleWitnessEntry, schedule_witness_entry_eq,
+  CorpusWitnessKind, ExecutionWitnessKind
+}
 import v2.std.algebra { length, list_snoc_item, skip }
 import v2.std.collection { List }
 import std.types { Int }
@@ -37,12 +42,22 @@ data synthetic_optin_rows_note: String = "Synthetic opt-in rows: pure plan input
 
 data synthetic_corpus_row: ScheduleWitnessEntry = ScheduleWitnessEntry {
   entry: "dag/test/claim/synthetic_optin_corpus_witness_test.dag",
-  function: "synthetic_optin_corpus_witness"
+  function: "synthetic_optin_corpus_witness",
+  kind: CorpusWitnessKind
 }
 
 data synthetic_execution_row: ScheduleWitnessEntry = ScheduleWitnessEntry {
   entry: "src/v2/test/claim/execution/synthetic_optin_exec_witness_test.dag",
-  function: "synthetic_optin_exec_witness"
+  function: "synthetic_optin_exec_witness",
+  kind: ExecutionWitnessKind
+}
+
+data synthetic_kind_over_path_note: String = "Discriminating input for the kind cutover: an entry DECLARED ExecutionWitnessKind whose path is NOT under the execution/ prefix. Under the retired path-prefix partition this row lands in the plain corpus; under the declared-kind partition it must land in the execution corpus. The witness below goes red if the partition silently regresses to path convention."
+
+data synthetic_exec_kind_nonexec_path_row: ScheduleWitnessEntry = ScheduleWitnessEntry {
+  entry: "dag/test/claim/synthetic_kind_wins_over_path_witness_test.dag",
+  function: "synthetic_kind_wins_over_path_witness",
+  kind: ExecutionWitnessKind
 }
 
 data optin_spec: CiSpec = ci_spec_with_witness_entries(
@@ -144,6 +159,23 @@ fn witness_optin_execution_partition() -> Bool {
   discovery_carries_exactly(r: execution_corpus_runnable_for(spec: optin_spec), expected: synthetic_execution_row)
 }
 
+fn witness_kind_wins_over_path() -> Bool {
+  let spec = ci_spec_with_witness_entries(
+    spec: gunbc_ci_spec,
+    entries: [synthetic_exec_kind_nonexec_path_row]
+  )
+  (length(xs: execution_witness_entries(spec: spec)) == 1) &&
+    (length(xs: corpus_witness_entries(spec: spec)) == 0) &&
+    discovery_carries_exactly(
+      r: execution_corpus_runnable_for(spec: spec),
+      expected: synthetic_exec_kind_nonexec_path_row
+    )
+}
+
+fn witness_live_roster_kind_path_agree() -> Bool {
+  witness_entries_kind_path_all_agree(entries: gunbc_ci_spec.witness_entries)
+}
+
 fn witness_optin_roster_drives_corpus_presence() -> Bool {
   (schedule_discovery_batch_count(batches: floor_schedule_for(spec: zero_roster_spec, serialize_heavy: true)) == 0) &&
     (schedule_discovery_batch_count(batches: floor_schedule_for(spec: corpus_only_spec, serialize_heavy: true)) == 1) &&
@@ -214,6 +246,8 @@ test fn ci_floor_optin_roster_witnesses() -> Bool {
   witness_optin_roster_drives_corpus_presence() &&
     witness_optin_corpus_carries_exactly_roster_rows() &&
     witness_optin_execution_partition() &&
+    witness_kind_wins_over_path() &&
+    witness_live_roster_kind_path_agree() &&
     witness_optin_plan_gates_corpus_after_compile() &&
     witness_optin_source_ingest_serialized_after_corpus() &&
     witness_optin_exclusion_edges_track_roster() &&
