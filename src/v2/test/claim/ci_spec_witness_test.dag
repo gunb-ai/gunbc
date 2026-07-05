@@ -11,7 +11,7 @@ import gunbc.ci_spec {
   CiSpec, DiffPolicy, DiffMergeBase, Gate, RustMonolithGate,
   gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates, gunbc_ci_rust_job_gates,
   ci_release_features,
-  scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, git_fetch_script,
+  scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
   ci_release_build_script, gunbc_ci_rust_job_run, ci_floor_build_verify_script
 }
 
@@ -179,8 +179,15 @@ fn witness_scheduler_uses_release_binary() -> Bool {
     !string_contains(s: scheduler_invoke(spec: gunbc_ci_spec), pattern: "cargo run")
 }
 
-fn witness_workflow_run_is_collapsed_script() -> Bool {
-  gunbc_ci_workflow_run(spec: gunbc_ci_spec) == gunbc_ci_run_script(spec: gunbc_ci_spec)
+fn witness_workflow_run_is_floor_only_script() -> Bool {
+  gunbc_ci_workflow_run(spec: gunbc_ci_spec) == gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
+}
+
+fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {
+  gunbc_ci_run_script(spec: gunbc_ci_spec) == concat(
+    concat(ci_release_build_script(), "\n"),
+    gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
+  )
 }
 
 test fn ci_spec_witnesses() -> Bool {
@@ -196,7 +203,8 @@ test fn ci_spec_witnesses() -> Bool {
     witness_release_build_verifies_nonempty_artifacts() &&
     witness_floor_build_verify_script_byte_identical() &&
     witness_scheduler_uses_release_binary() &&
-    witness_workflow_run_is_collapsed_script() &&
+    witness_workflow_run_is_floor_only_script() &&
+    witness_collapsed_run_script_is_build_plus_floor() &&
     witness_gate_roster_matches_coproduct_arms() &&
     witness_rust_gate_split_is_real()
 }
