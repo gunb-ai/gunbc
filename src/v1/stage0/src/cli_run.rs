@@ -4070,7 +4070,18 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
     let mut current_file: Option<String> = None;
     for line in diff_text.lines() {
-        if let Some(rest) = line.strip_prefix("+++ b/") {
+        if let Some(rest) = line.strip_prefix("diff --git a/") {
+            // Path-grain attribution for every diff entry, including hunkless ones
+            // (pure rename, binary, mode-only, deletion): those emit no `+++ b/`
+            // line, so keying on hunks alone loses their paths from changed_paths
+            // entirely (operator ruling 2026-07-05: hunkless changes attribute at
+            // path grain). Both sides of a rename are touched paths. Exact git
+            // surface (name-status grain, quoting) is flagged open in PR-A.
+            if let Some((old, new)) = rest.split_once(" b/") {
+                out.entry(normalize_repo_path(old)).or_default();
+                out.entry(normalize_repo_path(new)).or_default();
+            }
+        } else if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
         } else if line.starts_with("@@ ") {
             let Some(file) = current_file.clone() else {
@@ -4738,6 +4749,13 @@ fn floor_diff_edits_from_line_ranges(
         }
         saw_dag = true;
         let file_norm = normalize_repo_path(file_path);
+        if !std::path::Path::new(file_path).exists() {
+            // Departed path (renamed-from / deleted): its decl set is empty by
+            // construction — the file has no declarations to attribute. The
+            // path-grain fact stays in changed_paths; dependents that imported
+            // it fail loudly at their own resolve.
+            continue;
+        }
         let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
             Ok(pair) => pair,
             Err(e) => return Err(format!("resolve failed for {file_path}: {e}")),
@@ -4969,9 +4987,12 @@ pub fn run_discovery_corpus_with_options(
     let diff_text = if options.skip_unaffected_node_frontier {
         floor_git_diff_range().map_err(|msg| {
             format!(
-                "git diff observation failed ({msg}) — skip_unaffected_node_frontier: true \
-                 requires the declared fetch/observe steps to succeed; no silent \
-                 full-corpus fallback (declare the flag false to run without selection)"
+                "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git diff \
+                 observation failed ({msg}); observation failure is the only ignorance \
+                 state (operator ruling 2026-07-05) and refuses every enrolled row rather \
+                 than widening to a full-corpus run (declare skip_unaffected_node_frontier: \
+                 false to run without selection)",
+                rows.len()
             )
         })?
     } else {
@@ -4990,8 +5011,12 @@ pub fn run_discovery_corpus_with_options(
     // when the executor prelude already resolved its entries on this thread, discovery
     // reuses that index's parse/typed caches instead of paying the union cold a second time.
     let index = process_shared_index(source_roots);
+    // Empty diff is not a state (operator ruling 2026-07-05): an empty touched-path
+    // set flows through the general selection machinery — empty frontier, zero edited
+    // fns — so every row takes the normal not-affected skip. Disabling selection here
+    // was the run-everything absorbing arm.
     let (skip_enabled, diff_edits) =
-        if options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty() {
+        if options.skip_unaffected_node_frontier {
             match floor_diff_edits_from_line_ranges(
                 &index,
                 &line_ranges_by_file,
