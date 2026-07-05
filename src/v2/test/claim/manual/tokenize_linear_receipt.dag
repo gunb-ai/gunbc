@@ -12,9 +12,9 @@ import v2.std.text { String }
 data tlr_path: String = "src/v1/01_tokenize.dag"
 data tlr_anchor: Symbol = ^tlr_anchor
 
-data tlr_timing_note: String = "Post string_head->list_head fix (2026-07-05): eighth 11s, quarter 21s, half 47s, full 125s. Doubling ratios ~2x (was 2.6/3.3/3.7 toward 4x). Full 01_tokenize.dag down from 501s."
+data tlr_timing_note: String = "Wall-clock bisect receipt only (manual/; not enrolled). With list_head fix in src/v2/std/text.dag:34-38 (43007e788b): eighth 11s, quarter 21s, half 47s, full 125s on census_path_trunc fixtures; doubling ~2x (was 2.6/3.3/3.7 toward 4x pre-fix). Executable claim/: string_head_linear_trunc_fixtures_tokenize_accept_holds."
 
-fn tlr_tokenize_accepts() -> Bool {
+fn tlr_full_tokenize_accepts() -> Bool {
   let source = filesystem_read(path: tlr_path).content
   let lm = dag_language_model_wave1()
   match tokenize(text: source, file: tlr_anchor, rules: lm.lex) {

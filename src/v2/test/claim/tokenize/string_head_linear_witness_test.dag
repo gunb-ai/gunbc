@@ -3,7 +3,7 @@ module v2.test.tokenize.string_head_linear_witness
 import extdeps.filesystem.filesystem_io
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag { dag_language_model_wave1 }
-import v2.std.algebra { Cons, Empty, length }
+import v2.std.algebra { Cons, Empty, fold_list, length }
 import v2.std.collection { Absent, List, Present, list_at_optional }
 import v2.std.compilers.lexing { Token, token_stream_all }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -43,7 +43,20 @@ data shlw_purity_lexeme: String = shlw_purity_source
 
 data shlw_logic_token_count: Int = 81
 
-data shlw_note: String = "string_head grounded on list_head (O(1); was fold_list_right O(n) per call). R1 rule: per-char string_head on native Str = Poly(2). Mechanistic accept check: OLD fold_list_right and NEW list_head both ACCEPT src/v1/01_tokenize.dag at tokenize (witness_stage_tokenize_only_holds true on both, 2026-07-05); no verdict flip from this fix — E1a tokenize-stage reject pin was never true on current wave-1 lexer+file."
+data shlw_trunc_eighth_path: String = "src/v2/test/fixture/census_path_trunc/eighth.txt"
+data shlw_trunc_quarter_path: String = "src/v2/test/fixture/census_path_trunc/quarter.txt"
+data shlw_trunc_half_path: String = "src/v2/test/fixture/census_path_trunc/half.txt"
+data shlw_trunc_full_path: String = "src/v2/test/fixture/census_path_trunc/full.txt"
+
+data shlw_trunc_byte_sizes: List<Int> = Cons {
+  head: 2185,
+  tail: Cons {
+    head: 4370,
+    tail: Cons { head: 8741, tail: Cons { head: 17483, tail: Empty } }
+  }
+}
+
+data shlw_note: String = "string_head uses list_head in src/v2/std/text.dag:34-38 (restored 43007e788b after accidental 8b328359 revert). R1: per-char string_head on native Str was Poly(2) via fold_list_right materialization. Executable scale bisect: string_head_linear_trunc_fixtures_tokenize_accept_holds on committed census_path_trunc byte-prefix fixtures (2185/4370/8741/17483 B); wall-clock ~2x doubling ratios live in manual/tokenize_linear_receipt.dag only."
 
 fn shlw_first_token_lexeme(tokens: List<Token>) -> String {
   match list_at_optional(xs: tokens, index: 0) {
@@ -67,13 +80,36 @@ fn shlw_tokenize_logic_token_count() -> Int {
   }
 }
 
-fn shlw_v1_tokenize_large_file_accepts() -> Bool {
+fn shlw_tokenize_path_accepts(path: String) -> Bool {
   let lm = dag_language_model_wave1()
-  let source = filesystem_read(path: shlw_v1_tokenize_path).content
+  let source = filesystem_read(path: path).content
   match tokenize(text: source, file: shlw_file_anchor, rules: lm.lex) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
+}
+
+fn shlw_trunc_paths() -> List<String> {
+  Cons {
+    head: shlw_trunc_eighth_path,
+    tail: Cons {
+      head: shlw_trunc_quarter_path,
+      tail: Cons {
+        head: shlw_trunc_half_path,
+        tail: Cons { head: shlw_trunc_full_path, tail: Empty }
+      }
+    }
+  }
+}
+
+fn shlw_trunc_paths_all_tokenize_accept() -> Bool {
+  fold_list(
+    xs: shlw_trunc_paths(),
+    empty: true,
+    cons: fn(acc, path) {
+      acc && shlw_tokenize_path_accepts(path: path)
+    }
+  )
 }
 
 test fn string_head_linear_purity_oracle_holds() -> Bool {
@@ -89,6 +125,6 @@ test fn string_head_linear_logic_token_count_oracle_holds() -> Bool {
   shlw_tokenize_logic_token_count() == shlw_logic_token_count
 }
 
-test fn string_head_linear_v1_tokenize_large_file_accepts_holds() -> Bool {
-  shlw_v1_tokenize_large_file_accepts()
+test fn string_head_linear_trunc_fixtures_tokenize_accept_holds() -> Bool {
+  shlw_trunc_paths_all_tokenize_accept()
 }
