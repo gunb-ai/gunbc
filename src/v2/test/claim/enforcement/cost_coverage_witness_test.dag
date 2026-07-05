@@ -36,7 +36,7 @@ data cc_witness_v2_paths: List<String> = [
   "src/v2/std/nat.dag"
 ]
 
-data cc_witness_integer_dag_pulled_note: String = "src/v2/std/integer.dag (26KB) was in this roster and did NOT complete v2-ingest+judging within 144min local (killed, no verdict) — ~10x beyond the residual tokenize curve for its size. Stage-split receipt (clever-hawk-315 / PR #6300): guilty stage = parse (parse_module packrat), not tokenize (~147s full) and not cost_lens judge (never reached). Pathology: parse-packrat-superlinear-on-nested-match-and-generic-fn-bodies. Pulled from claim/ per manual-vs-claim split (#6280); scale receipt in manual/integer_census_stage_receipt.dag."
+data cc_witness_integer_dag_pulled_note: String = "src/v2/std/integer.dag (26KB) was in this roster and did NOT complete v2-ingest+judging within 144min local (killed, no verdict). Stage-split receipt (clever-hawk-315 / PR #6300): guilty stage = parse (parse_module packrat), not tokenize (~147s full) and not cost_lens judge (never reached). Pathology: parse-packrat-superlinear-on-nested-match-fn-bodies. Pulled from claim/ per manual-vs-claim split (#6280); scale receipt in manual/integer_census_stage_receipt.dag."
 
 fn cc_witness_smoke_receipt_live() -> CostCoverageTreeReceipt {
   cost_coverage_tree_census(tree_root: "dag", paths: cc_witness_smoke_paths)
