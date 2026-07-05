@@ -300,9 +300,16 @@ fn is_owned_local(kind: VarBindingKind?) -> Bool {
   }
 }
 
-fn build_movable_set(proof: OwnershipProof) -> Set<String> {
+fn whole_value_borrow_count(usage: BindingUsage) -> Int {
+  usage.consumers |> filter(c => match c.kind { Read => true, Threaded => true, _ => false }) |> count
+}
+
+fn build_movable_set(proof: OwnershipProof, param_names: Set<String>) -> Set<String> {
   proof.bindings |> map_values
-    |> filter(usage => binding_fan_out(usage: usage) == 1 && is_owned_local(kind: usage.binding_kind))
+    |> filter(usage =>
+      (match make_decision(usage: usage) { SoleOwner { binding: _, site: _ } => true, _ => false })
+      && whole_value_borrow_count(usage: usage) == 0
+      && (is_owned_local(kind: usage.binding_kind) || set_contains(param_names, usage.name)))
     |> fold(init: empty_set(), f: (acc, usage) => set_insert(acc, usage.name))
 }
 
@@ -559,4 +566,155 @@ fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<
     decisions: decisions,
     fold_acc_unwrap: fold_proofs
   }
+}
+
+type LiveState {
+  name: String
+  whole: Bool
+  any_field: Bool
+  fields: Set<String>
+}
+
+type MoveLicenseAccum {
+  live: Map<String, LiveState>
+  licensed: Map<String, Bool>
+}
+
+fn move_site_key(name: String, span_start: Int) -> String {
+  concat(name, "@", to_string(value: span_start))
+}
+
+fn empty_live_state(name: String) -> LiveState {
+  LiveState { name: name, whole: false, any_field: false, fields: empty_set() }
+}
+
+fn live_state_of(acc: MoveLicenseAccum, name: String) -> LiveState {
+  match map_get(acc.live, name) {
+    Present { value: st } => st
+    Absent => empty_live_state(name: name)
+  }
+}
+
+fn record_whole_use_site(acc: MoveLicenseAccum, name: String, span_start: Int, in_capture: Bool) -> MoveLicenseAccum {
+  let st = live_state_of(acc: acc, name: name)
+  let movable_here = !in_capture && span_start != 0 && !st.whole && !st.any_field
+  let licensed = if movable_here { map_insert(acc.licensed, move_site_key(name: name, span_start: span_start), true) } else { acc.licensed }
+  MoveLicenseAccum {
+    live: map_insert(acc.live, name, LiveState { name: name, whole: true, any_field: st.any_field, fields: st.fields }),
+    licensed: licensed
+  }
+}
+
+fn record_field_use_site(acc: MoveLicenseAccum, name: String, field: String, span_start: Int, in_capture: Bool) -> MoveLicenseAccum {
+  let st = live_state_of(acc: acc, name: name)
+  let movable_here = !in_capture && span_start != 0 && !st.whole && !set_contains(st.fields, field)
+  let licensed = if movable_here { map_insert(acc.licensed, move_site_key(name: name, span_start: span_start), true) } else { acc.licensed }
+  MoveLicenseAccum {
+    live: map_insert(acc.live, name, LiveState { name: name, whole: st.whole, any_field: true, fields: set_insert(st.fields, field) }),
+    licensed: licensed
+  }
+}
+
+fn merge_live_states(a: LiveState, b: LiveState) -> LiveState {
+  LiveState { name: a.name, whole: a.whole || b.whole, any_field: a.any_field || b.any_field, fields: set_union(a.fields, b.fields) }
+}
+
+fn merge_branch_licenses(branches: List<MoveLicenseAccum>) -> MoveLicenseAccum {
+  branches |> fold(init: MoveLicenseAccum { live: empty_map(), licensed: empty_map() }, f: (acc, br) =>
+    let live_merged = map_keys(br.live) |> fold(init: acc.live, f: (lm, k) =>
+      let b_st = match map_get(br.live, k) {
+        Present { value: s } => s
+        Absent => empty_live_state(name: k)
+      }
+      match map_get(lm, k) {
+        Present { value: a_st } => map_insert(lm, k, merge_live_states(a: a_st, b: b_st))
+        Absent => map_insert(lm, k, b_st)
+      }
+    )
+    let lic_merged = map_keys(br.licensed) |> fold(init: acc.licensed, f: (l, k) => map_insert(l, k, true))
+    MoveLicenseAccum { live: live_merged, licensed: lic_merged }
+  )
+}
+
+fn license_walk(acc: MoveLicenseAccum, texpr: Node, in_capture: Bool, si: Map<String, NewlineIndex>) -> MoveLicenseAccum {
+  match texpr.expr_data {
+    ExprVar { binding_kind: _ } =>
+      record_whole_use_site(acc: acc, name: expr_var_name_at(texpr: texpr, source_indices: si), span_start: texpr.span.start, in_capture: in_capture)
+
+    ExprLiteral { value: _ } => acc
+
+    ExprFieldAccess =>
+      let base_node = field_access_base(texpr: texpr)
+      match base_node.expr_data {
+        ExprVar { binding_kind: _ } =>
+          record_field_use_site(acc: acc, name: expr_var_name_at(texpr: base_node, source_indices: si), field: field_access_field_at(texpr: texpr, source_indices: si), span_start: texpr.span.start, in_capture: in_capture)
+        _ => license_walk(acc: acc, texpr: base_node, in_capture: in_capture, si: si)
+      }
+
+    ExprCall =>
+      texpr.children |> reverse |> fold(init: acc, f: (a, arg) =>
+        license_walk(acc: a, texpr: arg_value(n: arg), in_capture: in_capture, si: si)
+      )
+
+    ExprMethodCall =>
+      let args_acc = method_arg_nodes(texpr: texpr) |> reverse |> fold(init: acc, f: (a, arg) =>
+        license_walk(acc: a, texpr: arg_value(n: arg), in_capture: in_capture, si: si)
+      )
+      license_walk(acc: args_acc, texpr: method_receiver(texpr: texpr), in_capture: in_capture, si: si)
+
+    ExprIf =>
+      let t_acc = license_walk(acc: acc, texpr: if_then_branch(texpr: texpr), in_capture: in_capture, si: si)
+      let e_acc = match if_else_branch(texpr: texpr) {
+        Present { value: eb } => license_walk(acc: acc, texpr: eb, in_capture: in_capture, si: si)
+        Absent => acc
+      }
+      let merged = merge_branch_licenses(branches: [t_acc, e_acc])
+      license_walk(acc: merged, texpr: if_condition(texpr: texpr), in_capture: in_capture, si: si)
+
+    ExprMatch =>
+      let branch_accs = match_arm_nodes(texpr: texpr) |> map(arm_node =>
+        license_walk(acc: acc, texpr: arm_body(n: arm_node), in_capture: in_capture, si: si)
+      )
+      let merged = merge_branch_licenses(branches: branch_accs)
+      license_walk(acc: merged, texpr: match_scrutinee(texpr: texpr), in_capture: in_capture, si: si)
+
+    ExprLet =>
+      let body_acc = match let_body(texpr: texpr) {
+        Present { value: b } => license_walk(acc: acc, texpr: b, in_capture: in_capture, si: si)
+        Absent => acc
+      }
+      license_walk(acc: body_acc, texpr: let_value(texpr: texpr), in_capture: in_capture, si: si)
+
+    ExprBlock =>
+      texpr.children |> reverse |> fold(init: acc, f: (a, child) =>
+        license_walk(acc: a, texpr: child, in_capture: in_capture, si: si)
+      )
+
+    ExprReturn =>
+      texpr.children |> reverse |> fold(init: acc, f: (a, child) =>
+        license_walk(acc: a, texpr: child, in_capture: in_capture, si: si)
+      )
+
+    ExprLambda =>
+      license_walk(acc: acc, texpr: lambda_body(texpr: texpr), in_capture: true, si: si)
+
+    ExprForEach =>
+      let body_acc = license_walk(acc: acc, texpr: foreach_body(texpr: texpr), in_capture: true, si: si)
+      license_walk(acc: body_acc, texpr: foreach_collection(texpr: texpr), in_capture: in_capture, si: si)
+
+    ExprRecordLit =>
+      texpr.children |> reverse |> fold(init: acc, f: (a, field) =>
+        license_walk(acc: a, texpr: arg_value(n: field), in_capture: in_capture, si: si)
+      )
+
+    _ =>
+      texpr.children |> reverse |> fold(init: acc, f: (a, child) =>
+        license_walk(acc: a, texpr: child, in_capture: in_capture, si: si)
+      )
+  }
+}
+
+fn build_move_site_licenses(body: Node, si: Map<String, NewlineIndex>) -> Map<String, Bool> {
+  let walked = license_walk(acc: MoveLicenseAccum { live: empty_map(), licensed: empty_map() }, texpr: body, in_capture: false, si: si)
+  walked.licensed
 }

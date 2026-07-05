@@ -1,6 +1,6 @@
 module v2.lens.enforcement.receipts
 
-import v2.std.algebra { any, contains, list_append }
+import v2.std.algebra { Cons, Empty, any, contains }
 import v2.std.collection { List }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
@@ -26,8 +26,6 @@ import std.realization_schedule { ScheduleWitnessEntry, schedule_witness_entry_e
 type SubjectJudgment
   = BodyJudged { verdict: Witness<SymbolicCost> }
   | BodyUnavailable
-
-data freemonoid_constructor_avoidance_note: String = "🟡 dissolve-on: list construction in this module uses [] literals + list_append(left: [item], right: acc) instead of the imported Empty/Cons constructors. The entry closure of the enforcement witness includes dag-tree modules (std.realization_schedule via gunbc.commit_workflow), and the dag<->v2 algebra fork (ROADMAP pillar-1 de-fork cluster, LIVE fail-open) makes a bare imported `Empty` resolve against the wrong FreeMonoid authority at runtime (undefined variable: Empty - reproduced 2026-07-04). DISSOLVES WHEN the algebra de-fork lands one std authority: restore Empty/Cons and delete this row."
 
 fn node_contains_computation(n: Node) -> Bool {
   match n.kind {
@@ -79,9 +77,9 @@ fn subject_qn_of(fact: DeclFact) -> QualifiedName {
 }
 
 fn discovered_fn_subjects(facts: List<DeclFact>) -> SubjectRoster {
-  let discovered_entries = fold(facts, init: [], f: fn(acc, fact) {
+  let discovered_entries = fold(facts, init: Empty, f: fn(acc, fact) {
     if decl_facts_is_fn_like(kind: fact.kind) {
-      list_append(left: [subject_qn_of(fact: fact)], right: acc)
+      Cons { head: subject_qn_of(fact: fact), tail: acc }
     } else {
       acc
     }
@@ -107,9 +105,9 @@ fn root_has_body_unavailable_subject(root: String, facts: List<DeclFact>) -> Boo
 
 fn roots_with_body_unavailable(scope: ScopeRoster, facts: List<DeclFact>) -> ScopeRoster {
   ScopeRoster {
-    roots: fold(scope.roots, init: [], f: fn(acc, root) {
+    roots: fold(scope.roots, init: Empty, f: fn(acc, root) {
       if root_has_body_unavailable_subject(root: root, facts: facts) {
-        list_append(left: [root], right: acc)
+        Cons { head: root, tail: acc }
       } else {
         acc
       }

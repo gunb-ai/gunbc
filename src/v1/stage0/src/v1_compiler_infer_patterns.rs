@@ -362,7 +362,10 @@ pub fn generic_use_slot_bindings(
 
 pub fn expand_scrut_type_for_variant_lookup(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
-    if (scrut_node.connective.clone() == Connective::Disj) || is_witness_type_name(name.clone()) {
+    if ((scrut_node.return_cardinality.clone() == CardOptional)
+        || (scrut_node.connective.clone() == Connective::Disj))
+        || is_witness_type_name(name.clone())
+    {
         return scrut_node.clone();
     }
     if (((scrut_node.connective.clone() == Connective::NoConnective)

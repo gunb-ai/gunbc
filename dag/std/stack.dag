@@ -1,7 +1,5 @@
 module std.stack
 
-import std.algebra { FreeMonoid }
-
 type Stack<T>
   = Empty
   | Push { top: T, rest: Stack<T> }
