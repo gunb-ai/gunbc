@@ -13,7 +13,7 @@ import extdeps.languages.bash.program {
 }
 import tools.host_prelude { ensure_gunbc_built }
 
-// dag/test/claim/ownership_movable_test.dag (#6249) imports v1.compiler.ownership from src/v1/.
+data dcc_v1_compile_pool_root_note: String = "dag/test/claim/ownership_movable_test.dag (#6249) imports v1.compiler.ownership from src/v1/ownership.dag; compile-clean must include src/v1 as a dependency pool root."
 data dcc_v1_compile_pool_root: String = "src/v1"
 
 fn dcc_compile_pool_roots() -> List<String> {
