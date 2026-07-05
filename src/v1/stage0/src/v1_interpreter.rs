@@ -1741,6 +1741,33 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
             ))
         }
         (
+            Value::Bool(_),
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            },
+        )
+        | (
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            },
+            Value::Bool(_),
+        ) if fields.is_empty()
+            && matches!(resolve_sym(*variant_name).as_str(), "True" | "False") =>
+        {
+            Some(format!(
+                "{} vs {} — a native Bool and its True/False coproduct encoding are \
+                 two representations of one value; Value::eq cannot decide them, so \
+                 `==` would silently fabricate `false` (DESIGN §5). Ground the \
+                 primitive into its realization to compare (DESIGN §1/§2/§7).",
+                describe_repr(a),
+                describe_repr(b),
+            ))
+        }
+        (
             Value::Int(_)
             | Value::Float(_)
             | Value::Bool(_)

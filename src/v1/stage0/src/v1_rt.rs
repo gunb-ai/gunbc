@@ -769,12 +769,21 @@ pub fn take_owned_counted<T: Clone>(x: Rc<T>, site: &'static str) -> T {
             panic!(
                 "clone-fallback refused: take_owned at emitted site {} on a shared Rc \
                  (strong={}) — the licensed move found the value still shared. \
-                 GUNBC_CLONE_FALLBACK=count to degrade-and-count, =allow to silence.",
+                 GUNBC_CLONE_FALLBACK=count runs the stopped-line audit.",
                 site,
                 Rc::strong_count(&rc)
             );
         }
         TAKE_OWNED_CLONE_FALLBACKS.with(|m| *m.borrow_mut().entry(site).or_insert(0) += 1);
+        let key = format!("take_owned at {}", site);
+        RC_CLONE_FALLBACKS.with(|m| {
+            let mut m = m.0.borrow_mut();
+            let n = m.entry(key.clone()).or_insert(0);
+            *n += 1;
+            if *n == 1 {
+                eprintln!("clone-fallback (count): {}", key);
+            }
+        });
         (*rc).clone()
     })
 }

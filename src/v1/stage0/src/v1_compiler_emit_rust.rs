@@ -3403,7 +3403,10 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                 >(),
             }),
             |acc: Rc<OwnershipBuildResult>, entry: Rc<OwnershipProofEntry>| {
-                let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
+                let acc = v1_rt::take_owned_counted(
+                    acc,
+                    "src/v1/stage0/src/v1_compiler_emit_rust.rs:3406",
+                );
                 {
                     let read_only = if v1_rt::set_contains(
                         &callable_set,

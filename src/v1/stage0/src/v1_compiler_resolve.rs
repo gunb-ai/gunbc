@@ -99,7 +99,8 @@ pub fn resolve_modules(
                 diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<ResolveAccum>, m: Rc<Node>| {
-                let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
+                let acc =
+                    v1_rt::take_owned_counted(acc, "src/v1/stage0/src/v1_compiler_resolve.rs:102");
                 {
                     let result = resolve_module_imports(
                         m.clone(),
@@ -673,7 +674,10 @@ pub fn kahn_drain(
                 in_degree_map: in_degree_map.clone(),
             }),
             |state: Rc<KahnDrainState>, node: String| {
-                let state = Rc::try_unwrap(state).unwrap_or_else(|rc| (*rc).clone());
+                let state = v1_rt::take_owned_counted(
+                    state,
+                    "src/v1/stage0/src/v1_compiler_resolve.rs:676",
+                );
                 {
                     let new_sorted = v1_rt::rc_list_push(state.sorted, node.clone());
                     let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {

@@ -2241,7 +2241,8 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 intern_table: intern_table,
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
-                let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
+                let acc =
+                    v1_rt::take_owned_counted(acc, "src/v1/stage0/src/v1_compiler_compile.rs:2244");
                 {
                     let parsed = parse_with_table(
                         p.tokens.clone(),

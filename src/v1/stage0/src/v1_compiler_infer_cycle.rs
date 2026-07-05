@@ -160,7 +160,10 @@ pub fn kahn_cycle_drain(
                 removed_count: removed_count.clone(),
             }),
             |state: Rc<KahnState>, node: String| {
-                let state = Rc::try_unwrap(state).unwrap_or_else(|rc| (*rc).clone());
+                let state = v1_rt::take_owned_counted(
+                    state,
+                    "src/v1/stage0/src/v1_compiler_infer_cycle.rs:163",
+                );
                 {
                     let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
                         Some(v) => v.clone(),
