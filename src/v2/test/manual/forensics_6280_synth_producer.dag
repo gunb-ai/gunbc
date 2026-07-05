@@ -2,7 +2,8 @@ module v2.test.manual.forensics_6280_synth_producer
 
 import v2.test.manual.forensics_6280_synth_owner_a { SynthOwnerAAlt }
 import v2.test.manual.forensics_6280_synth_owner_b { SynthOwnerBAlt }
+import v2.test.manual.forensics_6280_synth_owner_c { SynthOwnerCAlt }
 
 fn forensics_6280_synth_produce() -> SynthOwnerA {
-  Rejected { tag: ^forensics_6280_synth_probe_tag }
+  Rejected { tag: "forensics_6280_synth_probe_tag" }
 }
