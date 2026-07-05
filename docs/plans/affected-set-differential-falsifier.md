@@ -1,6 +1,6 @@
 # Affected-set differential falsifier + non-hermetic residue cadence
 
-Status: design draft for operator sign (the cadence surface touches `gunbc.commit_workflow`, load-bearing).
+Status: SIGNED 2026-07-05 (via cool-hawk-899 relay) — (1) roster authority = existing `reads_live_tree` / host-scaffold disposition facts, no parallel roster; (2) N=8 with automatic counted re-arm on later divergence; (3) cadence shape/window signed as proposed here (delegated); re-flag only if implementation materially changes the load-bearing `commit_workflow` carrier's cost.
 Lane: affected-set (gentle-owl-459). Companion to `interface-summary-declared-use-arity.md` (#6244) and the PR-A typed-refusal rulings.
 
 ## What this is — and the trap it is not
