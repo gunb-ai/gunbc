@@ -12,7 +12,7 @@
 
 | Step | Status | Receipt |
 |------|--------|---------|
-| Prep — disposition kernel all axes | **GREEN** (PR #6065/#6072) | `floor_witness_run_disposition` with all three axes; `affected_set_disposition_both_axes_test.dag`; `floor_disposition_kernel_alignment` in `cli_run.rs` (disposition tautology on shared Rust inputs — NOT witness (a)); union-resolve S1 adds shared index |
+| Prep — disposition kernel all axes | **GREEN** (PR #6065/#6072) | `floor_witness_run_disposition` with all three axes; `affected_set_disposition_both_axes_test.dag` (exercises touches_frontier + function_edited; entry_file_touched fixture gap — see Step 3 witness (a) for full-axes proof); `floor_disposition_kernel_alignment` in `cli_run.rs` (disposition tautology on shared Rust inputs — NOT witness (a)); union-resolve S1 adds shared index |
 | Step 3 witness (a) — **edited_test_fns axis** | **GREEN (partial)** | `floor_witness_a_prove` in `cli_run.rs`: fixture unified diff → Rust `edited_test_fns` vs independent `.dag` `floor_test_fn_declaration_edited`; mandatory RED under-selection; `.dag` claim `affected_set_witness_a_prove_test.dag` |
 | Step 3 witness (a) — **node-frontier axis** | **BLOCKED** | Whole-tree `InferredTree` + `NodeArtifactProvenance` over live corpus — same resolve-grounding gate as `wiring_liveness_whole_tree` / `whole_tree_resolved_ctx` (`v2.lens.resolved_imports` open thread). `.dag` closure smoke on `provenance_producer` fixture only; Rust `NodeFrontierSeeds` equivalence deferred |
 | Step 4 migrate floor — consumer 1 | **GREEN** (PR #6061) | Floor witness selection wired to `floor_witness_run_disposition` with all three axes (`touches_frontier`, `function_edited`, `entry_file_touched`); disposition kernel covers all three; union-resolve S1 (PR #6234) co-resolved floor runner through shared index |
@@ -92,7 +92,7 @@ Given `dependency_lens(root: graph.root) → List<DependencyView>`, compute the 
 
 **Never delete the live Rust implementation before the replacement is proven live-and-correct on the real corpus.**
 
-**Acceptance bar for (a):** run both implementations against the same real gunbc corpus diff; assert that for every witness, the FULL RUN/SKIP decision from the `.dag` authority (all three axes: touches-frontier, function-edited, entry-file-touched — see Step 4) agrees with the Rust predicate `current_entry_touches || function_edited || entry_touches_frontier_seeds` (run) vs all-false (skip). The `.dag` query is superset-safe on the node-frontier axis — `affected_set_closure` result ⊇ `entry_touches_frontier_seeds` result — and models function-edited and entry-file-touched axes for equivalence to hold end-to-end. Must use a real diff that fires at least one witness on each of the three axes (not a clean-tree trivial case).
+**Acceptance bar for (a):** run both implementations against the same real gunbc corpus diff; assert that for every witness, the FULL RUN/SKIP decision from the `.dag` authority (all three axes: touches-frontier, function-edited, entry-file-touched — see Step 4) agrees with the Rust predicate `current_entry_touches || function_edited || entry_file_touched` (run) vs all-false (skip). The `.dag` query is superset-safe on the node-frontier axis — `affected_set_closure` result ⊇ `entry_touches_frontier_seeds` result — and models function-edited and entry-file-touched axes for equivalence to hold end-to-end. Must use a real diff that fires at least one witness on each of the three axes (not a clean-tree trivial case).
 
 ---
 
@@ -103,13 +103,13 @@ Three consumer sites; the full skip decision must be modeled before wiring any o
 **Consumer 1 — floor witness selection.** `run_discovery_rows` (cli_run.rs:3721–3731): the current Rust skip gate has THREE axes:
 - Axis (i) node-frontier: `entry_touches_frontier_seeds` → maps to `affected_set_closure` + `floor_witness_run_disposition`'s `touches_frontier` parameter
 - Axis (ii) function-edited: `frontier_seeds.edited_test_fns` check → live in `floor_witness_run_disposition` at `src/v2/workflow/affected_set_floor_runner.dag:114-141` (landed PR #6065/#6072)
-- Axis (iii) entry-file-touched: `entry_touches_frontier_seeds` closure check for non-data-fn edits in import closure → live as `entry_file_touched` parameter
+- Axis (iii) entry-file-touched: `diff_edits.touched_entry_files` check for non-data-fn edits in import closure → live as `entry_file_touched` parameter
 
 A witness runs when `touches_frontier || function_edited || entry_file_touched`; the `.dag` skip disposition correctly models all three axes. Migration can proceed to consumer-2 (precompute-skip) gates once all axes verification passes.
 
 **Consumer 2 — precompute-skip.** Gate `precompute_whole_tree_published_mock_keys` (cli_run.rs:3509) on the FULL "no witness will run" predicate, not just the node frontier. A scoped diff can still run witnesses via any of the three axes. Correct guard: `RerunNodeSetProduced { nodes: [] }` (empty node frontier) **AND** `edited_test_fns.is_empty()` (no directly-edited test functions) **AND** `touched_entry_files.is_empty()` (no entry files with non-data-fn edits). All three conditions together are required.
 
-**Conservative gate acknowledged:** gating on empty-frontier + empty-edited-test-fns is stricter than the mock-declarer-closure disjointness gate (the closure check at cli_run.rs:890–937 would allow skipping precompute even when witnesses run, as long as none touch the mock closure). This plan chooses the simpler, conservative empty-frontier+empty-edited gate. A future tightening to the mock-closure gate is a follow-on optimization, not in scope here.
+**Conservative gate acknowledged:** gating on all three conditions (empty-frontier AND empty-edited-test-fns AND empty-touched-entry-files) is stricter than the mock-declarer-closure disjointness gate (the closure check at cli_run.rs:890–937 would allow skipping precompute even when witnesses run, as long as none touch the mock closure). This plan chooses the simpler, conservative three-condition gate. A future tightening to the mock-closure gate is a follow-on optimization, not in scope here.
 
 **Consumer 3 — wiring_liveness preflight.** `wiring_liveness_preflight.dag` already imports `ReExecFrontier` from `affected_set.dag` as a consumer. Verify it remains correctly positioned (consumer, not reimplementor) after migration. No migration needed.
 
@@ -147,7 +147,7 @@ The `fail_closed_lockdown.dag` INERT marker on `affected_set.dag` is removed whe
 
 **All three required before implementation-complete (loyal-bee + operator). Strict sequence: (a) must be green before Step 5 begins.**
 
-**(a) `.dag`-vs-Rust FULL-PREDICATE equivalence on real corpus diff** — run both impls against the same real gunbc diff; for every witness, assert the `.dag` authority (all three axes: touches-frontier, function-edited, entry-file-touched) produces the same run/skip decision as the Rust predicate `current_entry_touches || function_edited || (entry_touches_frontier_seeds on non-data-fns)`. Must fire at least one witness on each axis. Proves the `.dag` authority is not inert and is safe to substitute end-to-end (all three axes, not just the node-frontier component).
+**(a) `.dag`-vs-Rust FULL-PREDICATE equivalence on real corpus diff** — run both impls against the same real gunbc diff; for every witness, assert the `.dag` authority (all three axes: touches-frontier, function-edited, entry-file-touched) produces the same run/skip decision as the Rust predicate `current_entry_touches || function_edited || entry_file_touched`. Must fire at least one witness on each axis. Proves the `.dag` authority is not inert and is safe to substitute end-to-end (all three axes, not just the node-frontier component).
 
 **(b) N→1 confirmed** — the Rust path (Step 5) is deleted; `NodeFrontierSeeds` no longer exists in the codebase. CI floor stays green. Proves de-fork completed, not merely layered.
 
