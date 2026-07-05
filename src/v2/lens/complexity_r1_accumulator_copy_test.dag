@@ -1,0 +1,47 @@
+module v2.test.lens_complexity_r1_accumulator_copy
+
+import v2.lens.complexity_r1_accumulator_copy {
+  complexity_r1_is_clean,
+  complexity_r1_is_poly_two_suspect,
+  r1_fold_step_subject
+}
+import v2.std.algebra { combiner_list_append, combiner_map_merge }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+data r1_hygiene_acc: Symbol = ^r1_hygiene_acc
+data r1_hygiene_item: Symbol = ^r1_hygiene_item
+data r1_hygiene_chunk: Symbol = ^r1_hygiene_chunk
+
+test fn complexity_r1_red_list_append_left_holds() -> Bool {
+  complexity_r1_is_poly_two_suspect(
+    n: r1_fold_step_subject(
+      acc_binder: r1_hygiene_acc,
+      combiner: combiner_list_append,
+      port0_arg: r1_hygiene_acc,
+      port1_arg: r1_hygiene_item
+    )
+  )
+}
+
+test fn complexity_r1_red_map_merge_base_holds() -> Bool {
+  complexity_r1_is_poly_two_suspect(
+    n: r1_fold_step_subject(
+      acc_binder: r1_hygiene_acc,
+      combiner: combiner_map_merge,
+      port0_arg: r1_hygiene_acc,
+      port1_arg: r1_hygiene_chunk
+    )
+  )
+}
+
+test fn complexity_r1_green_map_merge_overlay_holds() -> Bool {
+  complexity_r1_is_clean(
+    n: r1_fold_step_subject(
+      acc_binder: r1_hygiene_acc,
+      combiner: combiner_map_merge,
+      port0_arg: r1_hygiene_chunk,
+      port1_arg: r1_hygiene_acc
+    )
+  )
+}
