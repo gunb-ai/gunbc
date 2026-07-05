@@ -8,6 +8,7 @@ import gunbc.ci_spec {
   CiSpec, gunbc_ci_spec, gunbc_ci_floor_run,
   ci_release_build_script,
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
+  gunbc_ci_rust_gate_only_script,
 }
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
