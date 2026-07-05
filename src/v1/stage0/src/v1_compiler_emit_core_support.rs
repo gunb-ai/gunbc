@@ -602,7 +602,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                     __result.push(Rc::new(TestProjection {
                                         module_name: authored_name_at(
                                             (*tm.type_env).clone().source_indices.clone(),
-                                            (*tm.module).clone(),
+                                            tm.module.clone(),
                                         ),
                                         service_name: authored_name_at(
                                             (*tm.type_env).clone().source_indices.clone(),
@@ -656,17 +656,17 @@ pub fn is_type_alias_return_node(
 }
 
 pub fn is_service_item(item: Rc<Node>) -> bool {
-    (((*item.transport).clone() != None) && ((item.children.clone().len() as i64) > 0))
+    ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
 }
 
 pub fn is_type_def_item(item: Rc<Node>) -> bool {
-    ((item.connective.clone() != Connective::NoConnective) && ((*item.transport).clone() == None))
+    ((item.connective.clone() != Connective::NoConnective) && (item.transport.clone() == None))
 }
 
 pub fn is_bare_leaf_item(item: Rc<Node>) -> bool {
-    (((((item.connective.clone() == Connective::NoConnective) && ((*item.body).clone() == None))
+    (((((item.connective.clone() == Connective::NoConnective) && (item.body.clone() == None))
         && ((item.params.clone().len() as i64) == 0))
-        && ((*item.transport).clone() == None))
+        && (item.transport.clone() == None))
         && ((item.children.clone().len() as i64) == 0))
 }
 
@@ -684,26 +684,26 @@ pub fn is_type_decl_item(
 ) -> bool {
     ((is_bare_leaf_item(item.clone())
         && !is_type_alias_return_node(resolved_type(item.clone()), source_indices))
-        || (((((item.params.clone().len() as i64) > 0) && ((*item.body).clone() == None))
-            && ((*item.transport).clone() == None))
+        || (((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None))
+            && (item.transport.clone() == None))
             && ((item.children.clone().len() as i64) == 0)))
 }
 
 pub fn is_function_item(item: Rc<Node>) -> bool {
-    (((*item.body).clone() != None) && ((*item.type_annotation).clone() == None))
+    ((item.body.clone() != None) && (item.type_annotation.clone() == None))
 }
 
 pub fn is_data_def_item(item: Rc<Node>) -> bool {
-    (((*item.body).clone() != None) && ((*item.type_annotation).clone() != None))
+    ((item.body.clone() != None) && (item.type_annotation.clone() != None))
 }
 
 pub fn is_service_def_item(item: Rc<Node>) -> bool {
-    (((*item.transport).clone() != None) && ((item.children.clone().len() as i64) > 0))
+    ((item.transport.clone() != None) && ((item.children.clone().len() as i64) > 0))
 }
 
 pub fn is_resource_def_item(item: Rc<Node>) -> bool {
-    ((((*item.transport).clone() == None) && ((item.children.clone().len() as i64) > 0))
-        || (((((*item.transport).clone() == None) && ((item.children.clone().len() as i64) == 0))
+    (((item.transport.clone() == None) && ((item.children.clone().len() as i64) > 0))
+        || ((((item.transport.clone() == None) && ((item.children.clone().len() as i64) == 0))
             && ((item.properties.clone().len() as i64) > 0))
-            && ((*item.body).clone() == None)))
+            && (item.body.clone() == None)))
 }

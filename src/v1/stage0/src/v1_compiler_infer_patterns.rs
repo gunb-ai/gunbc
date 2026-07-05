@@ -80,14 +80,14 @@ pub fn expand_scrut_from_decl(
 ) -> Rc<Node> {
     {
         let decl_is_disj = (decl.connective.clone() == Connective::Disj);
-        let has_inferred_alias = ((((*decl.inferred).clone() != None)
+        let has_inferred_alias = (((decl.inferred.clone() != None)
             && (decl.connective.clone() == Connective::NoConnective))
             && ((decl.children.clone().len() as i64) == 0));
         if decl_is_disj {
             decl
         } else {
             if has_inferred_alias {
-                match (*decl.inferred).clone().as_deref().cloned() {
+                match decl.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: target, .. }) => {
                         let subst = generic_use_slot_bindings(scrut_node, env.clone());
                         substitute_type_slots(target, subst, name, env.source_indices.clone())
@@ -114,13 +114,13 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
                 } else {
                     {
                         let def_is_disj = (decl.connective.clone() == Connective::Disj);
-                        let has_inferred_body = (((*decl.inferred).clone() != None)
+                        let has_inferred_body = ((decl.inferred.clone() != None)
                             && (decl.connective.clone() == Connective::NoConnective));
                         if def_is_disj {
                             decl
                         } else {
                             if has_inferred_body {
-                                match (*decl.inferred).clone().as_deref().cloned() {
+                                match decl.inferred.clone().as_deref().cloned() {
                                     Some(InferredNode::Resolved { node: target, .. }) => {
                                         let target_is_disj =
                                             (target.connective.clone() == Connective::Disj);
@@ -155,7 +155,7 @@ pub fn expand_scrut_type_for_variant_lookup(
         if (is_disj.clone() || is_witness.clone()) {
             break scrut_node.clone();
         } else {
-            match (*scrut_node.inferred).clone().as_deref().cloned() {
+            match scrut_node.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
                     let __tco_0 = target.clone();
                     scrut_node = __tco_0;
@@ -374,8 +374,8 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
 
 pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
     loop {
-        let is_error = if ((*n.inferred).clone() != None) {
-            is_compiler_error((*n.inferred).clone().clone().unwrap())
+        let is_error = if (n.inferred.clone() != None) {
+            is_compiler_error(n.inferred.clone().clone().unwrap())
         } else {
             false
         };
@@ -384,9 +384,9 @@ pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
         } else {
             if (((n.connective.clone() == Connective::NoConnective)
                 && ((n.children.clone().len() as i64) > 0))
-                && ((*n.inferred).clone() != None))
+                && (n.inferred.clone() != None))
             {
-                match (*n.inferred).clone().as_deref().cloned() {
+                match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: target, .. }) => {
                         let __tco_0 = target.clone();
                         n = __tco_0;

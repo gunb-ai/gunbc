@@ -536,8 +536,8 @@ pub fn is_rt_function(name: String) -> bool {
 
 pub fn rt_bridge_name(name: String) -> String {
     match v1_rt::map_get(&rt_bridge_function_names(), name.clone()) {
-        Some(bridge) => bridge,
-        None => name,
+        Some(bridge) => bridge.clone(),
+        None => name.clone(),
     }
 }
 

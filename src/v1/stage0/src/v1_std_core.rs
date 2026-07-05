@@ -167,7 +167,7 @@ pub enum InferredNode {
 
 pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Option<Rc<Node>> {
     match (*inferred).clone() {
-        InferredNode::Resolved { node: n, .. } => Some(n),
+        InferredNode::Resolved { node: n, .. } => Some(n.clone()),
         InferredNode::CompilerError { .. } => None,
         InferredNode::TypeVariable { id: _, .. } => None,
     }
@@ -182,7 +182,7 @@ pub fn is_compiler_error(inferred: Rc<InferredNode>) -> bool {
 }
 
 pub fn has_inferred(n: Rc<Node>) -> bool {
-    ((*n.inferred).clone() != None)
+    (n.inferred.clone() != None)
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -468,23 +468,23 @@ pub struct ErrorDAG {
 
 pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
     match (*d).clone() {
-        CompilerDiagnostic::UnresolvedImport { span: s, .. } => s,
-        CompilerDiagnostic::MissingExport { span: s, .. } => s,
-        CompilerDiagnostic::UnresolvedType { span: s, .. } => s,
-        CompilerDiagnostic::TypeMismatch { span: s, .. } => s,
-        CompilerDiagnostic::ArityMismatch { span: s, .. } => s,
-        CompilerDiagnostic::VariantNotFound { span: s, .. } => s,
-        CompilerDiagnostic::FieldNotFound { span: s, .. } => s,
-        CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s,
-        CompilerDiagnostic::CircularDependency { span: s, .. } => s,
-        CompilerDiagnostic::DuplicateModule { span: s, .. } => s,
-        CompilerDiagnostic::MissingAnnotation { span: s, .. } => s,
-        CompilerDiagnostic::ParseError { span: s, .. } => s,
-        CompilerDiagnostic::InternalError { span: s, .. } => s,
-        CompilerDiagnostic::ComplexityUnknown { span: s, .. } => s,
-        CompilerDiagnostic::OwnershipViolation { span: s, .. } => s,
-        CompilerDiagnostic::VariantCollision { span: s, .. } => s,
-        CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s,
+        CompilerDiagnostic::UnresolvedImport { span: s, .. } => s.clone(),
+        CompilerDiagnostic::MissingExport { span: s, .. } => s.clone(),
+        CompilerDiagnostic::UnresolvedType { span: s, .. } => s.clone(),
+        CompilerDiagnostic::TypeMismatch { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ArityMismatch { span: s, .. } => s.clone(),
+        CompilerDiagnostic::VariantNotFound { span: s, .. } => s.clone(),
+        CompilerDiagnostic::FieldNotFound { span: s, .. } => s.clone(),
+        CompilerDiagnostic::NonExhaustiveMatch { span: s, .. } => s.clone(),
+        CompilerDiagnostic::CircularDependency { span: s, .. } => s.clone(),
+        CompilerDiagnostic::DuplicateModule { span: s, .. } => s.clone(),
+        CompilerDiagnostic::MissingAnnotation { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ParseError { span: s, .. } => s.clone(),
+        CompilerDiagnostic::InternalError { span: s, .. } => s.clone(),
+        CompilerDiagnostic::ComplexityUnknown { span: s, .. } => s.clone(),
+        CompilerDiagnostic::OwnershipViolation { span: s, .. } => s.clone(),
+        CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
+        CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
     }
 }
 
@@ -497,10 +497,10 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
         } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat("unresolved import: module '".to_string(), m),
+                    v1_rt::concat("unresolved import: module '".to_string(), m.clone()),
                     "' not found (imported by '".to_string(),
                 ),
-                i,
+                i.clone(),
             ),
             "')".to_string(),
         ),
@@ -514,19 +514,19 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat("name '".to_string(), n),
+                            v1_rt::concat("name '".to_string(), n.clone()),
                             "' not found in module '".to_string(),
                         ),
-                        m,
+                        m.clone(),
                     ),
                     "' (imported by '".to_string(),
                 ),
-                i,
+                i.clone(),
             ),
             "')".to_string(),
         ),
         CompilerDiagnostic::UnresolvedType { name: n, .. } => v1_rt::concat(
-            v1_rt::concat("unresolved type '".to_string(), n),
+            v1_rt::concat("unresolved type '".to_string(), n.clone()),
             "'".to_string(),
         ),
         CompilerDiagnostic::TypeMismatch {
@@ -536,10 +536,10 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
         } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat("type mismatch: expected '".to_string(), e),
+                    v1_rt::concat("type mismatch: expected '".to_string(), e.clone()),
                     "', got '".to_string(),
                 ),
-                g,
+                g.clone(),
             ),
             "'".to_string(),
         ),
@@ -552,14 +552,14 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat("type ".to_string(), n),
+                        v1_rt::concat("type ".to_string(), n.clone()),
                         " expects ".to_string(),
                     ),
-                    (e).to_string(),
+                    (e.clone()).to_string(),
                 ),
                 " type arguments, got ".to_string(),
             ),
-            (g).to_string(),
+            (g.clone()).to_string(),
         ),
         CompilerDiagnostic::VariantNotFound {
             variant: v,
@@ -568,10 +568,10 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
         } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat("variant '".to_string(), v),
+                    v1_rt::concat("variant '".to_string(), v.clone()),
                     "' not found in type '".to_string(),
                 ),
-                t,
+                t.clone(),
             ),
             "'".to_string(),
         ),
@@ -582,23 +582,23 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
         } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat("field '".to_string(), f),
+                    v1_rt::concat("field '".to_string(), f.clone()),
                     "' not found in type '".to_string(),
                 ),
-                t,
+                t.clone(),
             ),
             "'".to_string(),
         ),
         CompilerDiagnostic::NonExhaustiveMatch { missing: ms, .. } => v1_rt::concat(
             "non-exhaustive match: missing variant(s) ".to_string(),
-            ms.join(&", ".to_string()),
+            ms.clone().join(&", ".to_string()),
         ),
         CompilerDiagnostic::CircularDependency { modules: ms, .. } => v1_rt::concat(
             "circular dependency detected: ".to_string(),
-            ms.join(&" -> ".to_string()),
+            ms.clone().join(&" -> ".to_string()),
         ),
         CompilerDiagnostic::DuplicateModule { name: n, .. } => v1_rt::concat(
-            v1_rt::concat("duplicate module declaration: '".to_string(), n),
+            v1_rt::concat("duplicate module declaration: '".to_string(), n.clone()),
             "'".to_string(),
         ),
         CompilerDiagnostic::MissingAnnotation {
@@ -608,25 +608,25 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
         } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat("function '".to_string(), f),
+                    v1_rt::concat("function '".to_string(), f.clone()),
                     "' requires ".to_string(),
                 ),
-                w,
+                w.clone(),
             ),
             " annotation".to_string(),
         ),
-        CompilerDiagnostic::ParseError { message: m, .. } => m,
-        CompilerDiagnostic::InternalError { message: m, .. } => m,
+        CompilerDiagnostic::ParseError { message: m, .. } => m.clone(),
+        CompilerDiagnostic::InternalError { message: m, .. } => m.clone(),
         CompilerDiagnostic::ComplexityUnknown {
             func_name: f,
             reason: r,
             ..
         } => v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat("complexity: ".to_string(), f),
+                v1_rt::concat("complexity: ".to_string(), f.clone()),
                 ": ".to_string(),
             ),
-            r,
+            r.clone(),
         ),
         CompilerDiagnostic::OwnershipViolation {
             binding: b,
@@ -638,14 +638,14 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat("ownership: binding '".to_string(), b),
+                            v1_rt::concat("ownership: binding '".to_string(), b.clone()),
                             "' in '".to_string(),
                         ),
-                        f,
+                        f.clone(),
                     ),
                     "' has ".to_string(),
                 ),
-                (c).to_string(),
+                (c.clone()).to_string(),
             ),
             " consumers".to_string(),
         ),
@@ -659,19 +659,19 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
                 v1_rt::concat(
                     v1_rt::concat(
                         v1_rt::concat(
-                            v1_rt::concat("variant '".to_string(), v),
+                            v1_rt::concat("variant '".to_string(), v.clone()),
                             "' appears in both '".to_string(),
                         ),
-                        e1,
+                        e1.clone(),
                     ),
                     "' and '".to_string(),
                 ),
-                e2,
+                e2.clone(),
             ),
             "'".to_string(),
         ),
         CompilerDiagnostic::SoleConstructorViolation { type_name: t, .. } => v1_rt::concat(
-            v1_rt::concat("sole_constructor type '".to_string(), t),
+            v1_rt::concat("sole_constructor type '".to_string(), t.clone()),
             "' cannot be constructed outside its defining module".to_string(),
         ),
     }
@@ -770,7 +770,7 @@ pub fn default_ident_span(name: String, span: Rc<SourceSpan>) -> Option<Rc<Sourc
 
 pub fn node_name_span(n: Rc<Node>) -> Rc<SourceSpan> {
     match n.ident_span.clone() {
-        Some(s) => s,
+        Some(s) => s.clone(),
         None => n.span.clone(),
     }
 }
@@ -878,13 +878,13 @@ pub fn make_arg_node(
 ) -> Rc<Node> {
     {
         let arg_name = match name {
-            Some(n) => n,
+            Some(n) => n.clone(),
             None => "".to_string(),
         };
         Rc::new(Node {
             name: arg_name.clone(),
             span: span,
-            ident_span: default_ident_span(arg_name, name_span),
+            ident_span: default_ident_span(arg_name.clone(), name_span),
             children: Rc::new(vec![value]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
@@ -912,7 +912,7 @@ pub fn make_arm_node(
 ) -> Rc<Node> {
     {
         let children = match guard {
-            Some(g) => Rc::new(vec![g, body]),
+            Some(g) => Rc::new(vec![g.clone(), body]),
             None => Rc::new(vec![body]),
         };
         Rc::new(Node {
@@ -975,7 +975,7 @@ pub fn resource_use_name_at(
 
 pub fn resource_use_resource(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
-        Some(v) => v,
+        Some(v) => v.clone(),
         None => make_expr_error_node(
             ExprErrorKind::InternalExprError,
             "malformed resource-use: missing resource".to_string(),
@@ -1048,8 +1048,8 @@ pub fn field_binding_name_at(
 }
 
 pub fn field_binding_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
-    match (*n.match_pattern).clone() {
-        Some(p) => p,
+    match n.match_pattern.clone() {
+        Some(p) => p.clone(),
         None => Rc::new(MatchPattern::Wildcard),
     }
 }
@@ -1111,7 +1111,7 @@ pub fn make_param_node(
 ) -> Rc<Node> {
     {
         let children = match default_value {
-            Some(dv) => Rc::new(vec![type_expr, dv]),
+            Some(dv) => Rc::new(vec![type_expr, dv.clone()]),
             None => Rc::new(vec![type_expr]),
         };
         Rc::new(Node {
@@ -1147,7 +1147,7 @@ pub fn make_resolved_param_node(
 ) -> Rc<Node> {
     {
         let children = match default_value {
-            Some(dv) => Rc::new(vec![type_expr.clone(), dv]),
+            Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
             None => Rc::new(vec![type_expr.clone()]),
         };
         Rc::new(Node {
@@ -1196,11 +1196,11 @@ pub fn authored_name_at(
     match node.ident_span.clone() {
         Some(span) => match v1_rt::map_get(&source_indices, span.file.clone()) {
             Some(index) => {
-                let text = source_text_at(index, span);
+                let text = source_text_at(index.clone(), span.clone());
                 if (text.clone() == "".to_string()) {
                     "".to_string()
                 } else {
-                    text
+                    text.clone()
                 }
             }
             None => {
@@ -1238,7 +1238,7 @@ pub fn find_child_named(
     .first()
     .cloned()
     {
-        Some(ch) => Some(ch),
+        Some(ch) => Some(ch.clone()),
         None => None,
     }
 }
@@ -1262,7 +1262,7 @@ pub fn has_child_named(
 
 pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
-        Some(v) => v,
+        Some(v) => v.clone(),
         None => make_expr_error_node(
             ExprErrorKind::InternalExprError,
             "malformed param: missing type_expr".to_string(),
@@ -1294,7 +1294,7 @@ pub fn make_field_node(
 ) -> Rc<Node> {
     {
         let children = match default_value {
-            Some(dv) => Rc::new(vec![type_expr.clone(), dv]),
+            Some(dv) => Rc::new(vec![type_expr.clone(), dv.clone()]),
             None => Rc::new(vec![type_expr.clone()]),
         };
         let props = match from_key {
@@ -1303,7 +1303,7 @@ pub fn make_field_node(
                 Rc::new(Node {
                     name: fk.clone(),
                     span: make_span(0, 0),
-                    ident_span: default_ident_span(fk, make_span(0, 0)),
+                    ident_span: default_ident_span(fk.clone(), make_span(0, 0)),
                     children: Rc::new(vec![]),
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
@@ -1357,7 +1357,7 @@ pub fn field_node_name_at(
 
 pub fn field_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
-        Some(v) => v,
+        Some(v) => v.clone(),
         None => make_expr_error_node(
             ExprErrorKind::InternalExprError,
             "malformed field: missing type_expr".to_string(),
@@ -1387,7 +1387,7 @@ pub fn field_node_from_key(
         "from_key".to_string(),
         source_indices.clone(),
     ) {
-        Some(p) => Some(authored_name_at(source_indices.clone(), p)),
+        Some(p) => Some(authored_name_at(source_indices.clone(), p.clone())),
         None => None,
     }
 }
@@ -1606,7 +1606,7 @@ pub fn function_size_effects() -> Rc<HashMap<String, Rc<FunctionSizeEffect>>> {
 
 pub fn is_tree_size_preserving(func_name: String) -> bool {
     match v1_rt::lookup(&function_size_effects(), func_name) {
-        v1_rt::Witness::Holds { value: effect, .. } => match (*effect).clone() {
+        v1_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
             FunctionSizeEffect::TreeSizePreserving => true,
             FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
             _ => false,
@@ -1617,7 +1617,7 @@ pub fn is_tree_size_preserving(func_name: String) -> bool {
 
 pub fn is_tree_size_reducing(func_name: String) -> bool {
     match v1_rt::lookup(&function_size_effects(), func_name) {
-        v1_rt::Witness::Holds { value: effect, .. } => match (*effect).clone() {
+        v1_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
             FunctionSizeEffect::TreeSizeReducing => true,
             _ => false,
         },
@@ -1627,7 +1627,7 @@ pub fn is_tree_size_reducing(func_name: String) -> bool {
 
 pub fn is_property_contraction(func_name: String) -> bool {
     match v1_rt::lookup(&function_size_effects(), func_name) {
-        v1_rt::Witness::Holds { value: effect, .. } => match (*effect).clone() {
+        v1_rt::Witness::Holds { value: effect, .. } => match (*effect.clone()).clone() {
             FunctionSizeEffect::PropertyContraction { domain_size: _, .. } => true,
             _ => false,
         },
@@ -1637,7 +1637,7 @@ pub fn is_property_contraction(func_name: String) -> bool {
 
 pub fn expr_child_at(texpr: Rc<Node>, index: i64, role: String) -> Rc<Node> {
     match texpr.children.clone().get(index as usize).cloned() {
-        Some(v) => v,
+        Some(v) => v.clone(),
         None => make_expr_error_node(
             ExprErrorKind::InternalExprError,
             v1_rt::concat("malformed node: missing ".to_string(), role),
@@ -1655,14 +1655,14 @@ pub fn arg_name_at(
         if (name.clone() == "".to_string()) {
             None
         } else {
-            Some(name)
+            Some(name.clone())
         }
     }
 }
 
 pub fn arg_value(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
-        Some(v) => v,
+        Some(v) => v.clone(),
         None => make_expr_error_node(
             ExprErrorKind::InternalExprError,
             "malformed arg: missing value".to_string(),
@@ -1672,8 +1672,8 @@ pub fn arg_value(n: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn arm_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
-    match (*n.match_pattern).clone() {
-        Some(p) => p,
+    match n.match_pattern.clone() {
+        Some(p) => p.clone(),
         None => Rc::new(MatchPattern::Wildcard),
     }
 }
@@ -1688,7 +1688,7 @@ pub fn arm_guard(n: Rc<Node>) -> Option<Rc<Node>> {
 
 pub fn arm_body(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().last().cloned() {
-        Some(v) => v,
+        Some(v) => v.clone(),
         None => make_expr_error_node(
             ExprErrorKind::InternalExprError,
             "malformed arm: missing body".to_string(),
@@ -1706,7 +1706,7 @@ pub fn field_init_node_name_at(
 
 pub fn field_init_node_value(n: Rc<Node>) -> Rc<Node> {
     match n.children.clone().first().cloned() {
-        Some(v) => v,
+        Some(v) => v.clone(),
         None => make_expr_error_node(
             ExprErrorKind::InternalExprError,
             "malformed field-init: missing value".to_string(),
@@ -1775,7 +1775,7 @@ pub fn field_access_field_at(
 
 pub fn expr_field_access_summary(texpr: Rc<Node>) -> Option<Rc<FieldSummary>> {
     match (*texpr.expr_data.clone()).clone() {
-        ExprData::ExprFieldAccess { summary: s, .. } => s,
+        ExprData::ExprFieldAccess { summary: s, .. } => s.clone(),
         _ => None,
     }
 }
@@ -1792,7 +1792,7 @@ pub fn expr_call_descent_evidence(texpr: Rc<Node>) -> Option<Rc<Vec<Rc<SubValueR
         ExprData::ExprCall {
             descent_evidence: de,
             ..
-        } => de,
+        } => de.clone(),
         _ => None,
     }
 }
@@ -1825,7 +1825,7 @@ pub fn expr_method_call_semantics(texpr: Rc<Node>) -> Option<Rc<MethodSemantics>
         ExprData::ExprMethodCall {
             method_semantics: ms,
             ..
-        } => ms,
+        } => ms.clone(),
         _ => None,
     }
 }
@@ -1933,7 +1933,7 @@ pub fn record_lit_type_name_at(
         if (name.clone() == "".to_string()) {
             None
         } else {
-            Some(name)
+            Some(name.clone())
         }
     }
 }
@@ -2100,7 +2100,7 @@ pub fn rest_transport_node(
         let method_props = match method {
             Some(m) => Rc::new(vec![make_field_init_node(
                 transport_method_key(),
-                m,
+                m.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
@@ -2109,7 +2109,7 @@ pub fn rest_transport_node(
         let path_props = match path {
             Some(p) => Rc::new(vec![make_field_init_node(
                 transport_path_template_key(),
-                p,
+                p.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
@@ -2118,7 +2118,7 @@ pub fn rest_transport_node(
         let query_props = match query {
             Some(q) => Rc::new(vec![make_field_init_node(
                 transport_query_key(),
-                q,
+                q.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
@@ -2127,7 +2127,7 @@ pub fn rest_transport_node(
         let body_props = match request_body {
             Some(b) => Rc::new(vec![make_field_init_node(
                 transport_body_key(),
-                b,
+                b.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
@@ -2136,9 +2136,9 @@ pub fn rest_transport_node(
         let rf_props = match response_format {
             Some(rf) => Rc::new(vec![make_field_init_node(
                 transport_response_format_key(),
-                rf,
+                rf.clone(),
                 zero_span.clone(),
-                zero_span,
+                zero_span.clone(),
             )]),
             None => Rc::new(vec![]),
         };
@@ -2196,9 +2196,9 @@ pub fn shell_transport_node(
         let stdin_props = match stdin {
             Some(s) => Rc::new(vec![make_field_init_node(
                 transport_stdin_key(),
-                s,
+                s.clone(),
                 zero_span.clone(),
-                zero_span,
+                zero_span.clone(),
             )]),
             None => Rc::new(vec![]),
         };
@@ -2255,7 +2255,7 @@ pub fn find_property(
     .first()
     .cloned()
     {
-        Some(fi) => Some(field_init_node_value(fi)),
+        Some(fi) => Some(field_init_node_value(fi.clone())),
         None => None,
     }
 }
@@ -2271,7 +2271,7 @@ pub fn find_property_string(
                 let LiteralValue::LitStr { value: s, .. } = value.as_ref() else {
                     unreachable!()
                 };
-                Some(s)
+                Some(s.clone())
             }
             _ => None,
         },
@@ -2298,7 +2298,7 @@ pub fn is_rest_transport(
 }
 
 pub fn is_shell_transport(t: Rc<Node>) -> bool {
-    ((*t.body).clone() != None)
+    (t.body.clone() != None)
 }
 
 pub fn is_file_transport(
@@ -2328,7 +2328,7 @@ pub fn field_init_operation_modifier(
             if (fi_name.clone() == "readonly".to_string()) {
                 Some(OperationModifier::Readonly)
             } else {
-                if (fi_name == "hermetic".to_string()) {
+                if (fi_name.clone() == "hermetic".to_string()) {
                     Some(OperationModifier::Hermetic)
                 } else {
                     None
@@ -2499,16 +2499,16 @@ pub fn map_children(node: Rc<Node>, transform: impl Fn(Rc<Node>) -> Rc<Node> + C
         }),
         connective: node.connective.clone(),
         params: node.params.clone(),
-        inferred: (*node.inferred).clone(),
+        inferred: node.inferred.clone(),
         return_cardinality: node.return_cardinality.clone(),
         uses: node.uses.clone(),
-        body: (*node.body).clone(),
-        transport: (*node.transport).clone(),
+        body: node.body.clone(),
+        transport: node.transport.clone(),
         properties: node.properties.clone(),
-        type_annotation: (*node.type_annotation).clone(),
+        type_annotation: node.type_annotation.clone(),
         is_self_recursive: node.is_self_recursive.clone(),
         has_non_tail_self_call: node.has_non_tail_self_call.clone(),
-        match_pattern: (*node.match_pattern).clone(),
+        match_pattern: node.match_pattern.clone(),
         expr_data: node.expr_data.clone(),
     })
 }
@@ -2654,7 +2654,7 @@ pub fn expr_has_non_tail_self_call(
                 );
                 let else_bad = match if_else_branch(texpr.clone()) {
                     Some(e) => expr_has_non_tail_self_call(
-                        e,
+                        e.clone(),
                         fn_name.clone(),
                         in_tail.clone(),
                         source_indices.clone(),
@@ -2696,7 +2696,7 @@ pub fn expr_has_non_tail_self_call(
                 );
                 let body_bad = match let_body(texpr.clone()) {
                     Some(b) => expr_has_non_tail_self_call(
-                        b,
+                        b.clone(),
                         fn_name.clone(),
                         in_tail.clone(),
                         source_indices.clone(),
@@ -2748,9 +2748,9 @@ pub fn expr_has_non_tail_self_call(
                             }
                             __found
                         };
-                        let last_bad = match ss.last().cloned() {
+                        let last_bad = match ss.clone().last().cloned() {
                             Some(last_expr) => expr_has_non_tail_self_call(
-                                last_expr,
+                                last_expr.clone(),
                                 fn_name.clone(),
                                 in_tail.clone(),
                                 source_indices.clone(),
@@ -2829,7 +2829,7 @@ pub fn service_config_properties(
         let auth_prop = match auth {
             Some(a) => Rc::new(vec![make_field_init_node(
                 "svc_auth".to_string(),
-                a,
+                a.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
@@ -2838,7 +2838,7 @@ pub fn service_config_properties(
         let auth_input_prop = match auth_input {
             Some(ai) => Rc::new(vec![make_field_init_node(
                 "svc_auth_input".to_string(),
-                ai,
+                ai.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
@@ -2847,7 +2847,7 @@ pub fn service_config_properties(
         let auth_source_prop = match auth_source {
             Some(src) => Rc::new(vec![make_field_init_node(
                 "svc_auth_source".to_string(),
-                src,
+                src.clone(),
                 zero_span.clone(),
                 zero_span.clone(),
             )]),
@@ -2865,9 +2865,9 @@ pub fn service_config_properties(
         let retry_prop = match retry {
             Some(r) => Rc::new(vec![make_field_init_node(
                 "svc_retry".to_string(),
-                r,
+                r.clone(),
                 zero_span.clone(),
-                zero_span,
+                zero_span.clone(),
             )]),
             None => Rc::new(vec![]),
         };
@@ -3048,7 +3048,7 @@ pub fn import_node(
 }
 
 pub fn import_is_all(n: Rc<Node>) -> bool {
-    ((*n.body).clone() != None)
+    (n.body.clone() != None)
 }
 
 pub fn import_specific_names_at(
@@ -3402,7 +3402,7 @@ pub fn build_newline_index(file: String, source: String) -> Rc<NewlineIndex> {
         Rc::new(NewlineIndex {
             file: file,
             offsets: offsets,
-            char_codes: char_codes,
+            char_codes: char_codes.clone(),
         })
     }
 }
@@ -3434,13 +3434,13 @@ pub fn byte_to_line_col(index: Rc<NewlineIndex>, offset: i64) -> LineCol {
                 .get((line.clone() - 2) as usize)
                 .cloned()
             {
-                Some(o) => (o + 1),
+                Some(o) => (o.clone() + 1),
                 None => 0,
             }
         };
-        let col = ((clamped - line_start) + 1);
+        let col = ((clamped.clone() - line_start) + 1);
         LineCol {
-            line: line,
+            line: line.clone(),
             col: col,
         }
     }
@@ -3468,8 +3468,8 @@ pub fn source_line_at(index: Rc<NewlineIndex>, line: i64) -> String {
             .get((line.clone() - 1) as usize)
             .cloned()
         {
-            Some(o) => o,
-            None => src_len,
+            Some(o) => o.clone(),
+            None => src_len.clone(),
         };
         v1_rt::chars_to_string(&index.char_codes.clone(), line_start, line_end)
     }
@@ -3508,7 +3508,7 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
     match v1_rt::map_get(&table.index.clone(), s.clone()) {
         Some(id) => Rc::new(InternResult {
             table: table.clone(),
-            id: id,
+            id: id.clone(),
         }),
         None => {
             let id = table.next_id.clone();
@@ -3518,7 +3518,7 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
                     index: v1_rt::rc_map_insert(table.index.clone(), s.clone(), id.clone()),
                     next_id: (id.clone() + 1),
                 }),
-                id: id,
+                id: id.clone(),
             })
         }
     }
@@ -3526,21 +3526,21 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
 
 pub fn intern_str(table: Rc<InternTable>, id: i64) -> String {
     match table.strings.clone().get(id as usize).cloned() {
-        Some(s) => s,
+        Some(s) => s.clone(),
         None => "".to_string(),
     }
 }
 
 pub fn intern_find(table: Rc<InternTable>, s: String) -> Option<i64> {
     match v1_rt::map_get(&table.index.clone(), s) {
-        Some(id) => Some(id),
+        Some(id) => Some(id.clone()),
         None => None,
     }
 }
 
 pub fn intern_find_or_empty(table: Rc<InternTable>, s: String) -> i64 {
     match v1_rt::map_get(&table.index.clone(), s) {
-        Some(id) => id,
+        Some(id) => id.clone(),
         None => 0,
     }
 }
@@ -3594,16 +3594,16 @@ pub fn with_optional_cardinality(n: Rc<Node>) -> Rc<Node> {
         children: n.children.clone(),
         connective: n.connective.clone(),
         params: n.params.clone(),
-        inferred: (*n.inferred).clone(),
+        inferred: n.inferred.clone(),
         return_cardinality: Cardinality::CardOptional,
         uses: n.uses.clone(),
-        body: (*n.body).clone(),
-        transport: (*n.transport).clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
         properties: n.properties.clone(),
-        type_annotation: (*n.type_annotation).clone(),
+        type_annotation: n.type_annotation.clone(),
         is_self_recursive: n.is_self_recursive.clone(),
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-        match_pattern: (*n.match_pattern).clone(),
+        match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
     })
 }
@@ -3617,16 +3617,16 @@ pub fn with_required_cardinality(n: Rc<Node>) -> Rc<Node> {
         children: n.children.clone(),
         connective: n.connective.clone(),
         params: n.params.clone(),
-        inferred: (*n.inferred).clone(),
+        inferred: n.inferred.clone(),
         return_cardinality: Cardinality::Required,
         uses: n.uses.clone(),
-        body: (*n.body).clone(),
-        transport: (*n.transport).clone(),
+        body: n.body.clone(),
+        transport: n.transport.clone(),
         properties: n.properties.clone(),
-        type_annotation: (*n.type_annotation).clone(),
+        type_annotation: n.type_annotation.clone(),
         is_self_recursive: n.is_self_recursive.clone(),
         has_non_tail_self_call: n.has_non_tail_self_call.clone(),
-        match_pattern: (*n.match_pattern).clone(),
+        match_pattern: n.match_pattern.clone(),
         expr_data: n.expr_data.clone(),
     })
 }

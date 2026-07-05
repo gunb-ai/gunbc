@@ -130,7 +130,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                     __result.push(emit_go_test_file(
                         authored_name_at(
                             (*tm.type_env).clone().source_indices.clone(),
-                            (*tm.module).clone(),
+                            tm.module.clone(),
                         ),
                         Rc::new({
                             let mut __result = Vec::new();
@@ -138,7 +138,7 @@ pub fn emit_go(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                                 if (p.module_name.clone()
                                     == authored_name_at(
                                         (*tm.type_env).clone().source_indices.clone(),
-                                        (*tm.module).clone(),
+                                        tm.module.clone(),
                                     ))
                                 {
                                     __result.push(p);
@@ -286,7 +286,7 @@ pub fn go_test_signature_comment(projection: Rc<TestProjection>) -> String {
                 ") ".to_string(),
             ),
             emit_node_type(
-                (*projection.inferred).clone(),
+                projection.inferred.clone(),
                 RenderTarget::Go,
                 projection.source_indices.clone(),
             ),
@@ -465,7 +465,7 @@ pub fn emit_go_module(
         let m = (*typed_module.module).clone();
         let scope = module_emit_scope(typed_module.clone());
         let si = (*typed_module.type_env).clone().source_indices.clone();
-        let mod_name_str = authored_name_at(si.clone(), m.clone());
+        let mod_name_str = authored_name_at(si.clone(), Rc::new(m.clone()));
         let pkg_name = go_package_name(mod_name_str.clone());
         let pkg_decl = v1_rt::concat(
             v1_rt::concat(
@@ -478,7 +478,7 @@ pub fn emit_go_module(
             ),
             pkg_name,
         );
-        let imports_str = emit_go_imports(typed_module.items.clone(), module_imports(m), si);
+        let imports_str = emit_go_imports(typed_module.items.clone(), module_imports(Rc::new(m)), si);
         let imports_section = if (imports_str.clone() == "".to_string()) {
             "".to_string()
         } else {
@@ -686,9 +686,9 @@ pub fn emit_go_typed_item(
 ) -> String {
     {
         let env = (*scope.type_env).clone();
-        let item_text = authored_name(env.clone(), item.clone());
+        let item_text = authored_name(Rc::new(env.clone()), item.clone());
         if is_type_def_item(item.clone()) {
-            emit_go_type_def_from_connective(item.clone(), env)
+            emit_go_type_def_from_connective(item.clone(), Rc::new(env))
         } else {
             if is_type_alias_item(item.clone(), env.source_indices.clone()) {
                 emit_go_type_alias(
@@ -707,7 +707,7 @@ pub fn emit_go_typed_item(
                                 item.params.clone(),
                                 resolved_type(item.clone()),
                                 item.uses.clone(),
-                                (*item.body).clone().clone().unwrap(),
+                                item.body.clone().clone().unwrap(),
                                 registry,
                                 scope.clone(),
                             )
@@ -716,7 +716,7 @@ pub fn emit_go_typed_item(
                                 item_text,
                                 item.params.clone(),
                                 resolved_type(item.clone()),
-                                (*item.body).clone().clone().unwrap(),
+                                item.body.clone().clone().unwrap(),
                                 registry,
                                 scope.clone(),
                             )
@@ -725,18 +725,18 @@ pub fn emit_go_typed_item(
                         if is_data_def_item(item.clone()) {
                             emit_go_data_def(
                                 item_text,
-                                (*item.type_annotation).clone().clone().unwrap(),
-                                (*item.body).clone().clone().unwrap(),
+                                item.type_annotation.clone().clone().unwrap(),
+                                item.body.clone().clone().unwrap(),
                                 registry,
                                 scope.clone(),
                                 0,
                             )
                         } else {
                             if is_service_def_item(item.clone()) {
-                                emit_go_service_def(item.clone(), registry, env)
+                                emit_go_service_def(item.clone(), registry, Rc::new(env))
                             } else {
                                 if is_resource_def_item(item.clone()) {
-                                    emit_go_resource_def(item.clone(), env)
+                                    emit_go_resource_def(item.clone(), Rc::new(env))
                                 } else {
                                     v1_rt::concat(
                                         v1_rt::concat(

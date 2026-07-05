@@ -73,7 +73,7 @@ pub fn container_param_names_for(kind_name: String) -> Rc<Vec<String>> {
         Rc::new(vec!["T".to_string()])
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), kind_name.clone()) {
-            Some(p) => algebra_type_param_names(p),
+            Some(p) => algebra_type_param_names(p.clone()),
             None => Rc::new(vec![]),
         }
     }
@@ -113,7 +113,7 @@ pub fn container_param_name(kind_name: String, index: i64) -> Option<String> {
         .first()
         .cloned()
         {
-            Some(name) => Some(name),
+            Some(name) => Some(name.clone()),
             None => None,
         }
     }

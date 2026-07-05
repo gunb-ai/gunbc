@@ -30,22 +30,13 @@ use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub fn subtree_size_rename_marker() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Constructor-owner ruling (§1c) collision fix: SizeBound's tree bound arm was named TreeSize, colliding with RankingDimension.TreeSize (std.termination) in this module's own scope once one arm name may have only one owner. Renamed to SubtreeSize — the more precise fact: a tree-descent bound measures the shrinking SUBTREE consumed per step. RankingDimension.TreeSize (the ranking-dimension taxonomy, ~12 sites in v1.complexity/induction) keeps the shared name.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum SizeBound {
     CollectionSize { param: String },
     ParserStreamSize { witness: String },
     WorklistDrainSize { element: String },
-    SubtreeSize { param: String },
+    TreeSize { param: String },
     ArithmeticParam { param: String },
     ExplicitCountZero,
     ExplicitCountPositive { steps: Rc<PositiveDescentAmount> },
@@ -53,7 +44,7 @@ pub enum SizeBound {
 }
 
 pub fn tree_size_bound(param: String) -> Rc<SizeBound> {
-    Rc::new(SizeBound::SubtreeSize { param: param })
+    Rc::new(SizeBound::TreeSize { param: param })
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -116,7 +107,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
     match (*pattern).clone() {
         CallPattern::ChildAccessorCall { accessor: a, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Descend,
-            bound: Rc::new(SizeBound::SubtreeSize { param: a }),
+            bound: Rc::new(SizeBound::TreeSize { param: a.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
@@ -126,9 +117,9 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             ..
         } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize { param: c }),
+            bound: Rc::new(SizeBound::CollectionSize { param: c.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p })),
+            factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
         }),
         CallPattern::ArithmeticSubtractCall {
             steps: p,
@@ -136,9 +127,9 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             ..
         } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: Rc::new(SizeBound::ArithmeticParam { param: r }),
+            bound: Rc::new(SizeBound::ArithmeticParam { param: r.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p })),
+            factor: Some(Rc::new(ShrinkFactor::ConstantShrink { steps: p.clone() })),
         }),
         CallPattern::ArithmeticDivideCall {
             divisor: d,
@@ -146,19 +137,21 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             ..
         } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Repeat,
-            bound: Rc::new(SizeBound::ArithmeticParam { param: r }),
+            bound: Rc::new(SizeBound::ArithmeticParam { param: r.clone() }),
             evidence: DescentEvidence::Strict,
-            factor: Some(Rc::new(ShrinkFactor::ProportionalShrink { divisor: d })),
+            factor: Some(Rc::new(ShrinkFactor::ProportionalShrink {
+                divisor: d.clone(),
+            })),
         }),
         CallPattern::ParserAdvanceCall { witness: w, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::ParserStreamSize { witness: w }),
+            bound: Rc::new(SizeBound::ParserStreamSize { witness: w.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
         CallPattern::WorklistDrainCall { element: e, .. } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::WorklistDrainSize { element: e }),
+            bound: Rc::new(SizeBound::WorklistDrainSize { element: e.clone() }),
             evidence: DescentEvidence::Strict,
             factor: None,
         }),
@@ -167,7 +160,7 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
             ..
         } => Rc::new(LoweringTarget {
             primitive: IterationPrimitive::Fold,
-            bound: Rc::new(SizeBound::CollectionSize { param: oc }),
+            bound: Rc::new(SizeBound::CollectionSize { param: oc.clone() }),
             evidence: DescentEvidence::NonIncreasing,
             factor: None,
         }),
@@ -182,11 +175,11 @@ pub fn lower_call_pattern(pattern: Rc<CallPattern>) -> Rc<LoweringTarget> {
 
 pub fn size_bound_param(bound: Rc<SizeBound>) -> Option<String> {
     match (*bound).clone() {
-        SizeBound::SubtreeSize { param: p, .. } => Some(p),
-        SizeBound::CollectionSize { param: p, .. } => Some(p),
-        SizeBound::ParserStreamSize { witness: w, .. } => Some(w),
-        SizeBound::WorklistDrainSize { element: e, .. } => Some(e),
-        SizeBound::ArithmeticParam { param: p, .. } => Some(p),
+        SizeBound::TreeSize { param: p, .. } => Some(p.clone()),
+        SizeBound::CollectionSize { param: p, .. } => Some(p.clone()),
+        SizeBound::ParserStreamSize { witness: w, .. } => Some(w.clone()),
+        SizeBound::WorklistDrainSize { element: e, .. } => Some(e.clone()),
+        SizeBound::ArithmeticParam { param: p, .. } => Some(p.clone()),
         SizeBound::ExplicitCountZero => None,
         SizeBound::ExplicitCountPositive { steps: _, .. } => None,
         SizeBound::Forever => None,
@@ -209,7 +202,9 @@ pub fn forever_iteration_bound() -> i64 {
 pub fn constant_bound_value(bound: Rc<SizeBound>) -> Option<i64> {
     match (*bound).clone() {
         SizeBound::ExplicitCountZero => Some(0),
-        SizeBound::ExplicitCountPositive { steps: s, .. } => Some(positive_descent_count(s)),
+        SizeBound::ExplicitCountPositive { steps: s, .. } => {
+            Some(positive_descent_count(s.clone()))
+        }
         SizeBound::Forever => Some(forever_iteration_bound()),
         _ => None,
     }
@@ -242,7 +237,7 @@ pub fn type_iteration_dimension(type_name: String) -> Option<IterationDimension>
         Some(IterationDimension::TreeDescent)
     } else {
         match v1_rt::map_get(&kernel_algebra_profile(), type_name.clone()) {
-            Some(p) => algebra_profile_to_dimension(p),
+            Some(p) => algebra_profile_to_dimension(p.clone()),
             None => None,
         }
     }

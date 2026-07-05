@@ -1158,13 +1158,13 @@ pub fn analyze_single_fold(
             }
             _ => "".to_string(),
         };
-        let acc_type_name = match (*init_arg_node.inferred).clone().as_deref().cloned() {
+        let acc_type_name = match init_arg_node.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved {
                 node: type_node, ..
             }) => authored_name_at(si.clone(), type_node.clone()),
             _ => "".to_string(),
         };
-        let cond_required = match (*init_arg_node.inferred).clone().as_deref().cloned() {
+        let cond_required = match init_arg_node.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved {
                 node: type_node, ..
             }) => (type_node.return_cardinality.clone() == Cardinality::Required),

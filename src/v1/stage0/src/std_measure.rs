@@ -86,15 +86,15 @@ pub fn scale_exponent(s: Scale) -> i64 {
     }
 }
 
-pub fn gibibyte_scale_factor_bytes() -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn gibibyte_scale_factor_bytes() -> Nat {
     1073741824
 }
 
-pub fn kibi_factor() -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn kibi_factor() -> Nat {
     1024
 }
 
-pub fn memory_scale_factor_bytes(s: Scale) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn memory_scale_factor_bytes(s: Scale) -> Option<Nat> {
     match s {
         Scale::One => Some(1),
         Scale::Kibi => Some(kibi_factor()),
@@ -127,10 +127,10 @@ pub fn measure_count<Q, S, M: Clone>(m: Rc<Measure<Q, S, M>>) -> M {
 }
 
 pub fn measure_scale_fraction_floor<Q, S>(
-    m: Rc<Measure<Q, S, Rc<CommutativeSemiring<Magnitude>>>>,
-    num: Rc<CommutativeSemiring<Magnitude>>,
-    den: Rc<CommutativeSemiring<Magnitude>>,
-) -> Rc<Measure<Q, S, Rc<CommutativeSemiring<Magnitude>>>> {
+    m: Rc<Measure<Q, S, Nat>>,
+    num: Nat,
+    den: Nat,
+) -> Rc<Measure<Q, S, Nat>> {
     Rc::new(Measure {
         count: if (den.clone() == 0) {
             den.clone()
@@ -142,24 +142,24 @@ pub fn measure_scale_fraction_floor<Q, S>(
 }
 
 pub fn measure_fit_count_floor<Q, S>(
-    capacity: Rc<Measure<Q, S, Rc<CommutativeSemiring<Magnitude>>>>,
-    each: Rc<Measure<Q, S, Rc<CommutativeSemiring<Magnitude>>>>,
-) -> Rc<CommutativeSemiring<Magnitude>> {
+    capacity: Rc<Measure<Q, S, Nat>>,
+    each: Rc<Measure<Q, S, Nat>>,
+) -> Nat {
     {
         let each_count = each.count.clone();
         if (each_count.clone() == 0) {
-            each_count
+            each_count.clone()
         } else {
-            (capacity.count.clone() / each_count)
+            (capacity.count.clone() / each_count.clone())
         }
     }
 }
 
 pub fn measure_scale_fraction_ceil<Q, S>(
-    m: Rc<Measure<Q, S, Rc<CommutativeSemiring<Magnitude>>>>,
-    num: Rc<CommutativeSemiring<Magnitude>>,
-    den: Rc<CommutativeSemiring<Magnitude>>,
-) -> Rc<Measure<Q, S, Rc<CommutativeSemiring<Magnitude>>>> {
+    m: Rc<Measure<Q, S, Nat>>,
+    num: Nat,
+    den: Nat,
+) -> Rc<Measure<Q, S, Nat>> {
     Rc::new(Measure {
         count: if (den.clone() == 0) {
             (m.count.clone() * num)
@@ -171,58 +171,40 @@ pub fn measure_scale_fraction_ceil<Q, S>(
 }
 
 pub fn measure_add<Q, S>(
-    a: Rc<Measure<Q, S, Rc<CommutativeSemiring<Magnitude>>>>,
-    b: Rc<Measure<Q, S, Rc<CommutativeSemiring<Magnitude>>>>,
-) -> Rc<Measure<Q, S, Rc<CommutativeSemiring<Magnitude>>>> {
+    a: Rc<Measure<Q, S, Nat>>,
+    b: Rc<Measure<Q, S, Nat>>,
+) -> Rc<Measure<Q, S, Nat>> {
     Rc::new(Measure {
         count: (a.count.clone() + b.count.clone()),
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn measure_le<Q, S>(
-    a: Rc<Measure<Q, S, Rc<CommutativeSemiring<Magnitude>>>>,
-    b: Rc<Measure<Q, S, Rc<CommutativeSemiring<Magnitude>>>>,
-) -> bool {
+pub fn measure_le<Q, S>(a: Rc<Measure<Q, S, Nat>>, b: Rc<Measure<Q, S, Nat>>) -> bool {
     (a.count.clone() <= b.count.clone())
 }
 
-pub fn time_measure<S>(
-    count: Rc<CommutativeSemiring<Magnitude>>,
-) -> Rc<Measure<(), S, Rc<CommutativeSemiring<Magnitude>>>> {
+pub fn time_measure<S>(count: Nat) -> Rc<Measure<(), S, Nat>> {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub type ByteSize = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type ByteSize = Rc<Measure<(), (), i64>>;
 
-pub type Kibibyte = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type Kibibyte = Rc<Measure<(), (), i64>>;
 
-pub type Mebibyte = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type Gibibyte = Rc<Measure<(), (), i64>>;
 
-pub type Gibibyte = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
-
-pub fn mebibyte(count: Rc<CommutativeSemiring<Magnitude>>) -> Mebibyte {
+pub fn gibibyte(count: Nat) -> Gibibyte {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn mebibyte_count(m: Mebibyte) -> Rc<CommutativeSemiring<Magnitude>> {
-    measure_count(m)
-}
-
-pub fn gibibyte(count: Rc<CommutativeSemiring<Magnitude>>) -> Gibibyte {
-    Rc::new(Measure {
-        count: count,
-        _phantom: std::marker::PhantomData,
-    })
-}
-
-pub fn gibibyte_count(g: Gibibyte) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn gibibyte_count(g: Gibibyte) -> Nat {
     measure_count(g)
 }
 
@@ -230,34 +212,30 @@ pub fn gibibyte_to_byte_size(g: Gibibyte) -> ByteSize {
     byte_size((gibibyte_count(g) * gibibyte_scale_factor_bytes()))
 }
 
-pub type BitWidth = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type BitWidth = Rc<Measure<(), (), i64>>;
 
-pub fn bits_per_byte() -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn bits_per_byte() -> Nat {
     8
 }
 
-pub type Hertz = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type Hertz = Rc<Measure<(), (), i64>>;
 
-pub type HardwareThreadCount =
-    Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type HardwareThreadCount = Rc<Measure<(), (), i64>>;
 
-pub type Millicore = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
-
-pub type Watt = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type Watt = Rc<Measure<(), (), i64>>;
 
 pub type Celsius = Rc<Measure<(), (), i64>>;
 
-pub type RevolutionsPerMinute =
-    Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type RevolutionsPerMinute = Rc<Measure<(), (), i64>>;
 
-pub fn watt(count: Rc<CommutativeSemiring<Magnitude>>) -> Watt {
+pub fn watt(count: Nat) -> Watt {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn watt_count(w: Watt) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn watt_count(w: Watt) -> Nat {
     measure_count(w)
 }
 
@@ -272,150 +250,138 @@ pub fn celsius_count(c: Celsius) -> i64 {
     measure_count(c)
 }
 
-pub fn rpm(count: Rc<CommutativeSemiring<Magnitude>>) -> RevolutionsPerMinute {
+pub fn rpm(count: Nat) -> RevolutionsPerMinute {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn rpm_count(r: RevolutionsPerMinute) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn rpm_count(r: RevolutionsPerMinute) -> Nat {
     measure_count(r)
 }
 
-pub type MoneyAmount<S> =
-    Rc<Measure<(), S, Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type MoneyAmount<S> = Rc<Measure<(), S, i64>>;
 
 pub type MoneyAmountMicro = MoneyAmount<()>;
 
-pub fn money_amount_micro(count: Rc<CommutativeSemiring<Magnitude>>) -> MoneyAmountMicro {
+pub fn money_amount_micro(count: Nat) -> MoneyAmountMicro {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn money_amount_micro_count(m: MoneyAmountMicro) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
     measure_count(m)
 }
 
-pub fn byte_size(count: Rc<CommutativeSemiring<Magnitude>>) -> ByteSize {
+pub fn byte_size(count: Nat) -> ByteSize {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn byte_size_count(b: ByteSize) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn byte_size_count(b: ByteSize) -> Nat {
     measure_count(b)
 }
 
-pub fn bit_width(count: Rc<CommutativeSemiring<Magnitude>>) -> BitWidth {
+pub fn bit_width(count: Nat) -> BitWidth {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn bit_width_count(b: BitWidth) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn bit_width_count(b: BitWidth) -> Nat {
     measure_count(b)
 }
 
-pub fn hertz(count: Rc<CommutativeSemiring<Magnitude>>) -> Hertz {
+pub fn hertz(count: Nat) -> Hertz {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn hertz_count(h: Hertz) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn hertz_count(h: Hertz) -> Nat {
     measure_count(h)
 }
 
-pub fn hardware_thread_count(count: Rc<CommutativeSemiring<Magnitude>>) -> HardwareThreadCount {
+pub fn hardware_thread_count(count: Nat) -> HardwareThreadCount {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn hardware_thread_count_value(t: HardwareThreadCount) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn hardware_thread_count_value(t: HardwareThreadCount) -> Nat {
     measure_count(t)
 }
 
-pub fn millicore(count: Rc<CommutativeSemiring<Magnitude>>) -> Millicore {
+pub type Bandwidth = Rc<Measure<(), (), i64>>;
+
+pub fn bandwidth(count: Nat) -> Bandwidth {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn millicore_count(m: Millicore) -> Rc<CommutativeSemiring<Magnitude>> {
-    measure_count(m)
-}
-
-pub type Bandwidth = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
-
-pub fn bandwidth(count: Rc<CommutativeSemiring<Magnitude>>) -> Bandwidth {
-    Rc::new(Measure {
-        count: count,
-        _phantom: std::marker::PhantomData,
-    })
-}
-
-pub fn bandwidth_count(b: Bandwidth) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn bandwidth_count(b: Bandwidth) -> Nat {
     measure_count(b)
 }
 
-pub type Nanosecond = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type Nanosecond = Rc<Measure<(), (), i64>>;
 
-pub fn nanosecond(count: Rc<CommutativeSemiring<Magnitude>>) -> Nanosecond {
+pub fn nanosecond(count: Nat) -> Nanosecond {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn nanosecond_count(n: Nanosecond) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn nanosecond_count(n: Nanosecond) -> Nat {
     measure_count(n)
 }
 
-pub type Microsecond = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type Microsecond = Rc<Measure<(), (), i64>>;
 
-pub fn microsecond(count: Rc<CommutativeSemiring<Magnitude>>) -> Microsecond {
+pub fn microsecond(count: Nat) -> Microsecond {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn microsecond_count(m: Microsecond) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn microsecond_count(m: Microsecond) -> Nat {
     measure_count(m)
 }
 
-pub type Second = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type Second = Rc<Measure<(), (), i64>>;
 
-pub fn second(count: Rc<CommutativeSemiring<Magnitude>>) -> Second {
+pub fn second(count: Nat) -> Second {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn second_count(s: Second) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn second_count(s: Second) -> Nat {
     measure_count(s)
 }
 
-pub type Percent = Rc<Measure<(), (), Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>>>;
+pub type Percent = Rc<Measure<(), (), i64>>;
 
-pub fn percent(count: Rc<CommutativeSemiring<Magnitude>>) -> Percent {
+pub fn percent(count: Nat) -> Percent {
     Rc::new(Measure {
         count: count,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn percent_count(p: Percent) -> Rc<CommutativeSemiring<Magnitude>> {
+pub fn percent_count(p: Percent) -> Nat {
     measure_count(p)
 }
 

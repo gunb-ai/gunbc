@@ -151,7 +151,7 @@ pub fn dfs_finish_order(
             {
                 let next_visited = v1_rt::rc_set_insert(acc.visited.clone(), node.clone());
                 let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
-                    Some(ns) => ns,
+                    Some(ns) => ns.clone(),
                     None => Rc::new(vec![]),
                 };
                 let explored = neighbors.iter().cloned().fold(
@@ -185,7 +185,7 @@ pub fn dfs_collect_component(
                 let next_visited = v1_rt::rc_set_insert(acc.visited.clone(), node.clone());
                 let next_members = v1_rt::rc_list_push(acc.members.clone(), node.clone());
                 let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
-                    Some(ns) => ns,
+                    Some(ns) => ns.clone(),
                     None => Rc::new(vec![]),
                 };
                 neighbors.iter().cloned().fold(
@@ -314,8 +314,9 @@ pub fn is_valid_proof(proof: Rc<TerminationProof>, edges: Rc<Vec<Rc<ProofEdge>>>
                     }
                     __result
                 });
-                let nd_graph = build_call_graph_from_proof_edges(members.clone(), non_descending);
-                (graph_has_multi_node_scc(members, nd_graph) == false)
+                let nd_graph =
+                    build_call_graph_from_proof_edges(members.clone(), non_descending.clone());
+                (graph_has_multi_node_scc(members.clone(), nd_graph) == false)
             }
         }
     }

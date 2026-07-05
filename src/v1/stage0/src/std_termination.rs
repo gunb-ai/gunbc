@@ -92,8 +92,8 @@ pub fn optional_evidence_meet(
     match a.clone() {
         None => b,
         Some(va) => match b {
-            None => a,
-            Some(vb) => Some(descent_evidence_lattice_meet(va, vb)),
+            None => a.clone(),
+            Some(vb) => Some(descent_evidence_lattice_meet(va.clone(), vb.clone())),
         },
     }
 }
@@ -107,7 +107,7 @@ pub fn map_evidence_merge_at(
         Some(existing) => v1_rt::rc_map_insert(
             base.clone(),
             key.clone(),
-            descent_evidence_lattice_meet(existing, new_val),
+            descent_evidence_lattice_meet(existing.clone(), new_val),
         ),
         None => v1_rt::rc_map_insert(base.clone(), key.clone(), new_val),
     }
@@ -155,7 +155,7 @@ pub fn positive_descent_count(steps: Rc<PositiveDescentAmount>) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*steps).clone() {
         PositiveDescentAmount::OneStep => 1,
         PositiveDescentAmount::AdditionalStep { previous: p, .. } => {
-            (1 + positive_descent_count(p))
+            (1 + positive_descent_count(p.clone()))
         }
     })
 }
@@ -179,7 +179,7 @@ pub fn proportional_divisor_to_int(d: Rc<ProportionalDivisor>) -> i64 {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || match (*d).clone() {
         ProportionalDivisor::DivideByTwo => 2,
         ProportionalDivisor::StrictlyLarger { inner: p, .. } => {
-            (1 + proportional_divisor_to_int(p))
+            (1 + proportional_divisor_to_int(p.clone()))
         }
     })
 }
@@ -201,7 +201,7 @@ pub fn positive_descent_amount_from_positive_int(k: i64) -> Option<Rc<PositiveDe
                 } else {
                     match positive_descent_amount_from_positive_int((k.clone() - 1)) {
                         Some(prev) => Some(Rc::new(PositiveDescentAmount::AdditionalStep {
-                            previous: prev,
+                            previous: prev.clone(),
                         })),
                         None => None,
                     }
@@ -223,9 +223,9 @@ pub fn proportional_divisor_from_int_at_least_two(k: i64) -> Option<Rc<Proportio
                     Some(Rc::new(ProportionalDivisor::DivideByTwo))
                 } else {
                     match proportional_divisor_from_int_at_least_two((k.clone() - 1)) {
-                        Some(prev) => {
-                            Some(Rc::new(ProportionalDivisor::StrictlyLarger { inner: prev }))
-                        }
+                        Some(prev) => Some(Rc::new(ProportionalDivisor::StrictlyLarger {
+                            inner: prev.clone(),
+                        })),
                         None => None,
                     }
                 }

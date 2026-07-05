@@ -164,26 +164,26 @@ pub fn inferred_to_outputs(
 pub fn item_kind(item: Rc<Node>) -> ItemKind {
     {
         let kind = if ((item.connective.clone() != Connective::NoConnective)
-            && ((*item.transport).clone() == None))
+            && (item.transport.clone() == None))
         {
             ItemKind::TypeItem
         } else {
-            if ((*item.transport).clone() != None) {
+            if (item.transport.clone() != None) {
                 ItemKind::ServiceItem
             } else {
-                if (((*item.body).clone() != None) && ((item.uses.clone().len() as i64) > 0)) {
+                if ((item.body.clone() != None) && ((item.uses.clone().len() as i64) > 0)) {
                     ItemKind::FuncItem
                 } else {
-                    if (((*item.body).clone() != None) && ((item.params.clone().len() as i64) > 0))
+                    if ((item.body.clone() != None) && ((item.params.clone().len() as i64) > 0))
                     {
                         ItemKind::FnItem
                     } else {
-                        if (((*item.body).clone() != None)
-                            && ((*item.type_annotation).clone() != None))
+                        if ((item.body.clone() != None)
+                            && (item.type_annotation.clone() != None))
                         {
                             ItemKind::DataItem
                         } else {
-                            if ((*item.body).clone() != None) {
+                            if (item.body.clone() != None) {
                                 ItemKind::FnItem
                             } else {
                                 ItemKind::OtherItem

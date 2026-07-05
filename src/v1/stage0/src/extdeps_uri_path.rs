@@ -88,8 +88,8 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
                     })
                 }
             };
-            let after_open = match before_and_rest.get(1 as usize).cloned() {
-                Some(r) => r,
+            let after_open = match before_and_rest.clone().get(1 as usize).cloned() {
+                Some(r) => r.clone(),
                 None => {
                     return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
                         segment: seg.clone(),
@@ -112,7 +112,7 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
                 });
             }
             let param_name = match name_and_suffix.clone().first().cloned() {
-                Some(p) => p,
+                Some(p) => p.clone(),
                 None => {
                     return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
                         segment: seg.clone(),
@@ -121,8 +121,8 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
                     })
                 }
             };
-            let suffix = match name_and_suffix.get(1 as usize).cloned() {
-                Some(s) => s,
+            let suffix = match name_and_suffix.clone().get(1 as usize).cloned() {
+                Some(s) => s.clone(),
                 None => {
                     return Rc::new(PathSegmentTokensResult::MalformedPathSegment {
                         segment: seg.clone(),
@@ -131,7 +131,9 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
                 }
             };
             let prefix_tokens = if (prefix.clone() != "".to_string()) {
-                Rc::new(vec![Rc::new(UrlPathToken::LiteralToken { text: prefix })])
+                Rc::new(vec![Rc::new(UrlPathToken::LiteralToken {
+                    text: prefix.clone(),
+                })])
             } else {
                 Rc::new(vec![])
             };
@@ -149,9 +151,9 @@ pub fn parse_segment_tokens(seg: String) -> Rc<PathSegmentTokensResult> {
             } else {
                 Rc::new(vec![])
             };
-            if (((param_name == "".to_string())
+            if (((param_name.clone() == "".to_string())
                 || v1_rt::contains(suffix.clone(), "{".to_string()))
-                || v1_rt::contains(suffix, "}".to_string()))
+                || v1_rt::contains(suffix.clone(), "}".to_string()))
             {
                 Rc::new(PathSegmentTokensResult::MalformedPathSegment {
                     segment: seg.clone(),
@@ -180,7 +182,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
         .first()
         .cloned()
         {
-            Some(p) => p,
+            Some(p) => p.clone(),
             None => raw.clone(),
         };
         let segments = Rc::new({
@@ -206,15 +208,15 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                     tokens: Rc::new(vec![]),
                 }),
             }),
-            Some(first_seg) => match (*parse_segment_tokens(first_seg)).clone() {
+            Some(first_seg) => match (*parse_segment_tokens(first_seg.clone())).clone() {
                 PathSegmentTokensResult::MalformedPathSegment {
                     segment: s,
                     reason: r,
                     ..
                 } => Rc::new(PathTemplateParseResult::MalformedPathTemplate {
                     raw: raw.clone(),
-                    segment: s,
-                    reason: r,
+                    segment: s.clone(),
+                    reason: r.clone(),
                 }),
                 PathSegmentTokensResult::ParsedSegmentTokens {
                     tokens: first_tokens,
@@ -222,6 +224,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                 } => {
                     let parsed = Rc::new(
                         segments
+                            .clone()
                             .iter()
                             .cloned()
                             .skip(1 as usize)
@@ -232,7 +235,7 @@ pub fn parse_path_template(raw: String) -> Rc<PathTemplateParseResult> {
                     .fold(
                         Rc::new(PathTemplateParseResult::ParsedPathTemplate {
                             template: Rc::new(PathTemplate {
-                                tokens: first_tokens,
+                                tokens: first_tokens.clone(),
                             }),
                         }),
                         |acc: Rc<PathTemplateParseResult>, seg: String| match (*acc.clone()).clone()
