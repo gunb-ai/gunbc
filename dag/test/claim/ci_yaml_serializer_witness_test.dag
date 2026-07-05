@@ -8,14 +8,15 @@ import extdeps.languages.yaml.types {
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml, steps_yaml, jobs_yaml, step_yaml }
 import gunbc.ci_yaml_emit { expected_ci_yml, ci_yml_drifted }
-import gunbc.ci_workflow { ci_workflow, ci_cargo_build_jobs_count }
+import gunbc.ci_workflow { ci_workflow, ci_cargo_build_jobs_count, ci_rust_gate_step }
 import gunbc.ci_workflow_expressions { ci_workflow_expression_templates, ci_cache_path_template }
+import extdeps.github.actions { RunStep, UsesStep }
 import extdeps.github.expressions {
   ExpressionTemplate, TemplateSegment, LiteralText, Interpolation,
   ContextAccess, Env, Runner,
   any_template_accesses_runner_var_via_env, template_uses_context
 }
-import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_workflow_run, ci_release_build_script }
+import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_workflow_run, ci_release_build_script, gunbc_ci_rust_gate_only_script }
 
 fn witness_fetch_depth_is_int_not_string() -> Bool {
   let with_block = yaml_mapping(entries: [kv(key: "fetch-depth", value: yaml_int(n: 0))])
@@ -181,8 +182,24 @@ fn witness_cargo_jobs_derived_and_jobserver_decoupled() -> Bool {
     n >= 2
 }
 
+fn witness_rust_tests_job_has_nine_steps() -> Bool {
+  let rust_job = ci_workflow.jobs.skip(n: 1).first()
+  match steps_yaml(steps: rust_job.steps) {
+    YamlSequence { elements: els } => els.length() == 9
+    _ => false
+  }
+}
+
+fn witness_rust_gate_step_is_gate_only_in_workflow() -> Bool {
+  match ci_rust_gate_step() {
+    RunStep { run: script, name: _, id: _, shell: _, env: _, working_directory: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } =>
+      script == gunbc_ci_rust_gate_only_script()
+        && !string_contains(s: script, pattern: "cargo\" build -p v1-compiler")
+    UsesStep { name: _, id: _, uses: _, with: _, env: _, if_condition: _, continue_on_error: _, timeout_minutes: _ } => false
+  }
+}
+
 fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
-  let yaml = expected_ci_yml()
   let floor_script = gunbc_ci_workflow_run(spec: gunbc_ci_spec)
   let build_script = ci_release_build_script()
   string_contains(s: yaml, pattern: "Build release bins (claim_executor + gunbc)") &&
@@ -238,6 +255,8 @@ test fn ci_yaml_serializer_keystone_holds() -> Bool {
     witness_restore_keys_content_deeper_than_key() &&
     witness_sccache_wired_when_fleet_daemon_up() &&
     witness_cargo_jobs_derived_and_jobserver_decoupled() &&
+    witness_rust_tests_job_has_nine_steps() &&
+    witness_rust_gate_step_is_gate_only_in_workflow() &&
     witness_gunbc_ci_step_projects_run_script_markers() &&
     witness_cache_uses_runner_context_not_env() &&
     witness_cache_runner_env_scope_red_control() &&

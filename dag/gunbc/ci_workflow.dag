@@ -5,7 +5,7 @@ import gunbc.ci_workflow_expressions {
   ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys
 }
 import gunbc.ci_spec {
-  CiSpec, gunbc_ci_spec, gunbc_ci_workflow_run, gunbc_ci_rust_job_run,
+  CiSpec, gunbc_ci_spec, gunbc_ci_workflow_run,
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
   ci_release_build_script,
   gunbc_ci_rust_gate_only_script,
@@ -250,7 +250,7 @@ fn ci_rust_gate_step() -> Step {
   RunStep {
     name: Present { value: "v1 rust gate (fmt + clippy + nextest)" },
     id: none,
-    run: gunbc_ci_rust_job_run(),
+    run: gunbc_ci_rust_gate_only_script(),
     shell: none,
     env: none,
     working_directory: none,
@@ -311,7 +311,11 @@ fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
 }
 
 fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_rust_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_rust_gate_step_timeout_minutes
+    + gunbc_ci_rust_gate_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + gunbc_ci_aux_step_timeout_minutes
+    + gunbc_ci_prelude_allowance_minutes
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
@@ -357,7 +361,10 @@ fn rust_tests_job() -> Job {
     id: "rust_tests",
     name: none,
     runner: gunbc_ci_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_nextest_install_step(), ci_rust_gate_step(), ci_rust_cgroup_measurement_step()]),
+    steps: concat(
+      ci_prelude_steps(),
+      [ci_nextest_install_step(), ci_release_build_step(), ci_rust_gate_step(), ci_rust_cgroup_measurement_step()]
+    ),
     needs: [],
     env: none,
     outputs: none,
