@@ -12,7 +12,8 @@ import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates, gunbc_ci_rust_job_gates,
   ci_release_features,
   scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
-  ci_release_build_script, gunbc_ci_rust_job_run, gunbc_ci_rust_gate_only_script, ci_floor_build_verify_script
+  ci_release_build_script, gunbc_ci_rust_job_run, gunbc_ci_rust_gate_only_script, ci_floor_build_verify_script,
+  gunbc_ci_rust_gate_invoke, ci_repo_root_shell,
 }
 
 data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\"\n"
