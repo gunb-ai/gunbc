@@ -18,6 +18,11 @@ type GrammarCoverageParseVerdict
   = ParsedClean
   | ParseRejected { stage: String, reason: Symbol }
 
+type GrammarCoverageFileReceipt {
+  rel_path: String
+  verdict: GrammarCoverageParseVerdict
+}
+
 type GrammarCoverageRejectedRow {
   stage: String
   reason: Symbol
@@ -42,6 +47,7 @@ type GrammarCoverageCensusAcc {
   parsed_clean: Int
   rejected_count: Int
   rejected_rows: List<GrammarCoverageRejectedRow>
+  file_rows: List<GrammarCoverageFileReceipt>
 }
 
 type GrammarCoverageTakeAcc {
