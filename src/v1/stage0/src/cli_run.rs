@@ -4225,7 +4225,10 @@ struct FileLineRange {
 
 fn floor_git_diff_range() -> Result<String, String> {
     use v1_interpreter::Value;
-    let roots = default_source_roots();
+    // Match claim_executor's workspace-relative --source-root argv (witness_layer_roots),
+    // not default_source_roots() absolute paths. Mixed path keys in the shared module index
+    // made resolve_transitively emit the same module twice → duplicate module declaration.
+    let roots: Vec<String> = witness_layer_roots();
     let entry = "src/v2/workflow/floor_diff_observe.dag";
     let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
         .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;

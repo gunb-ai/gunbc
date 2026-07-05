@@ -1,0 +1,24 @@
+module v2.std.interface_summary
+
+import std.interface_summary {
+  ContractAbsent,
+  ExportData,
+  ExportEntry,
+  ExportFn,
+  ExportKind,
+  ExportService,
+  ExportType,
+  InterfaceContract,
+  InterfaceHash,
+  InterfaceSummary,
+  ModuleKey,
+  SignatureContract,
+  SignatureFingerprint,
+  contract_absent,
+  export_entry_fingerprint,
+  export_kind_tag,
+  interface_summary_rollup,
+  interface_summary_v0_dissolution_trigger,
+  module_key,
+  signature_contract
+}

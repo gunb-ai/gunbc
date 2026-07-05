@@ -5680,6 +5680,14 @@ fn eval_builtin(
             )?))
         }
 
+        "export_signature_facts" => {
+            let pool_roots =
+                expect_str_list(positional.first().copied(), "export_signature_facts")?;
+            Ok(Some(
+                crate::coproduct_reflection::eval_export_signature_facts(ctx, &pool_roots)?,
+            ))
+        }
+
         "module_declaration_facts" => {
             let pool_roots =
                 expect_str_list(positional.first().copied(), "module_declaration_facts")?;

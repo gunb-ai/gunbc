@@ -6,9 +6,8 @@ import gunbc.ci_workflow_expressions {
 }
 import gunbc.ci_spec {
   CiSpec, gunbc_ci_spec, gunbc_ci_floor_run,
-  gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
   ci_release_build_script,
-  gunbc_ci_rust_gate_only_script,
+  gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
 }
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
@@ -167,7 +166,7 @@ fn ci_floor_spec_from_roster() -> CiSpec {
 
 fn ci_release_build_step() -> Step {
   RunStep {
-    name: Present { value: "Build release bins (claim_executor + gunbc)" },
+    name: Present { value: "Build v1-compiler (release)" },
     id: none,
     run: ci_release_build_script(),
     shell: none,
