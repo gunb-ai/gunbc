@@ -148,16 +148,16 @@ test fn grammar_coverage_dag_tree_receipt_by_execution() -> Bool {
 test fn grammar_coverage_v1_core_file_reject_locus_by_execution() -> Bool {
   grammar_coverage_file_reject_locus_matches(
     receipt: grammar_coverage_file_receipt(rel_path: "src/v1/00_core.dag"),
-    stage: "parse",
-    reason: ^parse_g0_tokens_remain
+    stage: "tokenize",
+    reason: ^tokenize_lex_e1_unrecognized_char
   )
 }
 
 test fn grammar_coverage_v1_tokenize_file_reject_locus_by_execution() -> Bool {
   grammar_coverage_file_reject_locus_matches(
     receipt: grammar_coverage_file_receipt(rel_path: "src/v1/01_tokenize.dag"),
-    stage: "tokenize",
-    reason: ^tokenize_lex_e1_unrecognized_char
+    stage: "parse",
+    reason: ^parse_g0_tokens_remain
   )
 }
 
