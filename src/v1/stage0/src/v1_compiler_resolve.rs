@@ -99,7 +99,7 @@ pub fn resolve_modules(
                 diagnostics: Rc::new(vec![]),
             }),
             |acc: Rc<ResolveAccum>, m: Rc<Node>| {
-                let acc = v1_rt::take_owned_counted(acc, "src/v1/03_resolve.dag:1814:acc");
+                let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
                 {
                     let result = resolve_module_imports(
                         m.clone(),
@@ -122,7 +122,7 @@ pub fn resolve_modules(
         let import_diags = resolve_accum.diagnostics.clone();
         let topo_result = topological_sort(modules.clone(), source_indices.clone());
         let topo_diags = match topo_result.cycle_error.clone() {
-            Some(diag) => Rc::new(vec![diag]),
+            Some(diag) => Rc::new(vec![diag.clone()]),
             None => Rc::new(vec![]),
         };
         let sorted_names = topo_result.sorted.clone();
@@ -237,7 +237,7 @@ pub fn resolve_module_imports(
         });
         let diags = Rc::new({
             let mut __result = Vec::new();
-            for r in results.iter().cloned() {
+            for r in results.clone().iter().cloned() {
                 __result.extend((*r.diagnostics.clone()).iter().cloned());
             }
             __result
@@ -277,7 +277,7 @@ pub fn resolve_import(
                 );
                 Rc::new(ImportResolveResult {
                     resolved: Rc::new(ResolvedImport {
-                        module_path: import_path,
+                        module_path: import_path.clone(),
                         is_all: import_is_all(import.clone()),
                         specific_names: import_specific_names_at(
                             import.clone(),
@@ -290,7 +290,7 @@ pub fn resolve_import(
             }
             Some(target_mod) => {
                 let exported_set = match v1_rt::map_get(&export_sets, import_path.clone()) {
-                    Some(set) => set,
+                    Some(set) => set.clone(),
                     None => v1_rt::rc_empty_map::<String, bool>(),
                 };
                 let name_diags = if import_is_all(import.clone()) {
@@ -329,13 +329,13 @@ pub fn resolve_import(
                 };
                 Rc::new(ImportResolveResult {
                     resolved: Rc::new(ResolvedImport {
-                        module_path: import_path,
+                        module_path: import_path.clone(),
                         is_all: import_is_all(import.clone()),
                         specific_names: import_specific_names_at(
                             import.clone(),
                             source_indices.clone(),
                         ),
-                        target_module: Some(target_mod),
+                        target_module: Some(target_mod.clone()),
                     }),
                     diagnostics: name_diags,
                 })
@@ -478,7 +478,7 @@ pub fn adjacency_add_edge(
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
         let existing = match v1_rt::map_get(&adjacency, from_module.clone()) {
-            Some(lst) => lst,
+            Some(lst) => lst.clone(),
             None => Rc::new(vec![]),
         };
         v1_rt::rc_map_insert(
@@ -493,7 +493,7 @@ pub fn topo_sort_key(name: String) -> String {
     if (name.clone() == "std.types".to_string()) {
         "".to_string()
     } else {
-        name
+        name.clone()
     }
 }
 
@@ -605,11 +605,11 @@ pub fn topological_sort(
         let result = kahn_drain(
             initial_queue,
             Rc::new(vec![]),
-            in_degree_map,
+            in_degree_map.clone(),
             adjacency,
             module_count.clone(),
         );
-        if ((result.sorted.clone().len() as i64) == module_count) {
+        if ((result.sorted.clone().len() as i64) == module_count.clone()) {
             Rc::new(TopoResult {
                 sorted: result.sorted.clone(),
                 cycle_error: None,
@@ -624,7 +624,7 @@ pub fn topological_sort(
                 );
                 let cycle_members = Rc::new({
                     let mut __result = Vec::new();
-                    for name in module_names.iter().cloned() {
+                    for name in module_names.clone().iter().cloned() {
                         if (v1_rt::map_has(&sorted_set, name.clone()) == false) {
                             __result.push(name);
                         }
@@ -636,7 +636,7 @@ pub fn topological_sort(
                     sorted: result.sorted.clone(),
                     cycle_error: Some(make_error_node(
                         Rc::new(CompilerDiagnostic::CircularDependency {
-                            modules: cycle_members,
+                            modules: cycle_members.clone(),
                             span: no_span(),
                         }),
                         "".to_string(),
@@ -673,7 +673,7 @@ pub fn kahn_drain(
                 in_degree_map: in_degree_map.clone(),
             }),
             |state: Rc<KahnDrainState>, node: String| {
-                let state = v1_rt::take_owned_counted(state, "src/v1/03_resolve.dag:11425:state");
+                let state = Rc::try_unwrap(state).unwrap_or_else(|rc| (*rc).clone());
                 {
                     let new_sorted = v1_rt::rc_list_push(state.sorted, node.clone());
                     let neighbors = match v1_rt::map_get(&adjacency, node.clone()) {
@@ -750,7 +750,7 @@ pub fn kahn_drain(
             __sorted
         });
         {
-            let __tco_0 = new_zero.clone();
+            let __tco_0 = new_zero;
             let __tco_1 = batch_result.sorted.clone();
             let __tco_2 = batch_result.in_degree_map.clone();
             let __tco_3 = (fuel - 1);

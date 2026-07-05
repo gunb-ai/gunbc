@@ -98,7 +98,7 @@ pub fn lookup_field_type_node(
                 } else {
                     match lookup_field_type_node(inner, field_name.clone(), source_indices.clone())
                     {
-                        Some(inner_result) => Some(with_optional_cardinality(inner_result)),
+                        Some(inner_result) => Some(with_optional_cardinality(inner_result.clone())),
                         None => None,
                     }
                 }
@@ -122,7 +122,7 @@ pub fn lookup_field_type_node(
                                         {
                                             let value_child =
                                                 match n.children.clone().get(1 as usize).cloned() {
-                                                    Some(child) => child_type_node(child),
+                                                    Some(child) => child_type_node(child.clone()),
                                                     None => nominal_type_ref("V".to_string()),
                                                 };
                                             Some(
@@ -135,7 +135,7 @@ pub fn lookup_field_type_node(
                                             )
                                         }
                                     } else {
-                                        Some(child_type_node(field_child))
+                                        Some(child_type_node(field_child.clone()))
                                     }
                                 }
                                 None => None,
@@ -152,7 +152,7 @@ pub fn lookup_field_type_node(
                     match n.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: target, .. }) => {
                             lookup_field_type_node(
-                                target,
+                                target.clone(),
                                 field_name.clone(),
                                 source_indices.clone(),
                             )
@@ -183,16 +183,18 @@ pub fn lookup_coproduct_common_field_node(
         };
         let first_field = if found_in_all {
             match variants.clone().first().cloned() {
-                Some(first_variant) => {
-                    find_child_named(first_variant, field_name.clone(), source_indices.clone())
-                }
+                Some(first_variant) => find_child_named(
+                    first_variant.clone(),
+                    field_name.clone(),
+                    source_indices.clone(),
+                ),
                 None => None,
             }
         } else {
             None
         };
         match first_field {
-            Some(field_child) => Some(child_type_node(field_child)),
+            Some(field_child) => Some(child_type_node(field_child.clone())),
             None => None,
         }
     }
@@ -208,7 +210,7 @@ pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -
         if ((receiver_type.connective.clone() == Connective::Conj)
             || is_declared_container_alias_spelling(raw_name.clone()))
         {
-            receiver_type
+            receiver_type.clone()
         } else {
             {
                 let resolved = reground_alias_carrier_identity(
@@ -217,12 +219,12 @@ pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -
                 );
                 let resolved_name = authored_name_at(env.source_indices.clone(), resolved.clone());
                 if ((resolved.connective.clone() == Connective::Conj)
-                    || ((resolved_name.clone() != raw_name)
-                        && is_declared_container_alias_spelling(resolved_name)))
+                    || ((resolved_name.clone() != raw_name.clone())
+                        && is_declared_container_alias_spelling(resolved_name.clone())))
                 {
-                    resolved
+                    resolved.clone()
                 } else {
-                    receiver_type
+                    receiver_type.clone()
                 }
             }
         }
@@ -243,16 +245,16 @@ pub fn resolve_scrutinee_type_node_seen(
         if n_is_type_var {
             return n.clone();
         }
-        let normed = normalize_access_type_node(n);
+        let normed = normalize_access_type_node(n.clone());
         if (((normed.connective.clone() == Connective::NoConnective)
             && ((normed.children.clone().len() as i64) > 0))
             && (normed.inferred.clone() != None))
         {
             match normed.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
-                    resolve_scrutinee_type_node_seen(env.clone(), target, seen.clone())
+                    resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone())
                 }
-                _ => normed,
+                _ => normed.clone(),
             }
         } else {
             if ((normed.connective.clone() == Connective::NoConnective)
@@ -270,28 +272,28 @@ pub fn resolve_scrutinee_type_node_seen(
                             match normed.inferred.clone().as_deref().cloned() {
                                 Some(InferredNode::Resolved { node: target, .. }) => {
                                     if ((((authored_name(env.clone(), target.clone())
-                                        == canonical)
+                                        == canonical.clone())
                                         && (target.inferred.clone() == None))
                                         && (target.connective.clone() == Connective::NoConnective))
                                         && ((target.children.clone().len() as i64) == 0))
                                     {
-                                        normed
+                                        normed.clone()
                                     } else {
                                         resolve_scrutinee_type_node_seen(
                                             env.clone(),
-                                            target,
+                                            target.clone(),
                                             next_seen,
                                         )
                                     }
                                 }
-                                _ => normed,
+                                _ => normed.clone(),
                             }
                         }
                     } else {
                         if ((canonical.clone() != "".to_string())
                             && emit_map_has(seen.clone(), canonical.clone()))
                         {
-                            nominal_type_ref(canonical)
+                            nominal_type_ref(canonical.clone())
                         } else {
                             {
                                 let next_seen = if (canonical.clone() == "".to_string()) {
@@ -302,18 +304,18 @@ pub fn resolve_scrutinee_type_node_seen(
                                 match lookup_type_for(env.clone(), normed.clone()) {
                                     Some(resolved) => {
                                         if ((((authored_name(env.clone(), resolved.clone())
-                                            == canonical)
+                                            == canonical.clone())
                                             && (resolved.inferred.clone() == None))
                                             && (resolved.connective.clone()
                                                 == Connective::NoConnective))
                                             && ((resolved.children.clone().len() as i64) == 0))
                                         {
-                                            normed
+                                            normed.clone()
                                         } else {
                                             {
                                                 let result = resolve_scrutinee_type_node_seen(
                                                     env.clone(),
-                                                    resolved,
+                                                    resolved.clone(),
                                                     next_seen,
                                                 );
                                                 let is_optional =
@@ -327,14 +329,14 @@ pub fn resolve_scrutinee_type_node_seen(
                                             }
                                         }
                                     }
-                                    None => normed,
+                                    None => normed.clone(),
                                 }
                             }
                         }
                     }
                 }
             } else {
-                normed
+                normed.clone()
             }
         }
     })
@@ -349,7 +351,7 @@ pub fn map_value_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc
             && ((map_type.children.clone().len() as i64) >= 2))
         {
             match map_type.children.clone().get(1 as usize).cloned() {
-                Some(value_type) => Some(value_type),
+                Some(value_type) => Some(value_type.clone()),
                 None => None,
             }
         } else {
@@ -367,7 +369,7 @@ pub fn map_key_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<Rc<N
             && ((map_type.children.clone().len() as i64) >= 1))
         {
             match map_type.children.clone().first().cloned() {
-                Some(key_type) => Some(key_type),
+                Some(key_type) => Some(key_type.clone()),
                 None => None,
             }
         } else {
@@ -385,7 +387,7 @@ pub fn set_element_type_in_env(type_node: Rc<Node>, env: Rc<TypeEnv>) -> Option<
             && ((set_type.children.clone().len() as i64) >= 1))
         {
             match set_type.children.clone().first().cloned() {
-                Some(elem_type) => Some(elem_type),
+                Some(elem_type) => Some(elem_type.clone()),
                 None => None,
             }
         } else {
@@ -409,9 +411,9 @@ pub fn field_summary_for_type(
                 value_shape: FieldValueShape::PlainValue,
             }))
         } else {
-            if normed_opt {
+            if normed_opt.clone() {
                 {
-                    let inner = with_required_cardinality(normed);
+                    let inner = with_required_cardinality(normed.clone());
                     match field_summary_for_type(inner, env.clone(), field.clone()) {
                         Some(inner_summary) => Some(Rc::new(FieldSummary {
                             access_style: inner_summary.access_style.clone(),
@@ -431,7 +433,7 @@ pub fn field_summary_for_type(
                             if is_product {
                                 v1_rt::map_get(
                                     &build_struct_field_summaries(
-                                        resolved,
+                                        resolved.clone(),
                                         env.source_indices.clone(),
                                     ),
                                     field.clone(),
@@ -475,11 +477,11 @@ pub fn product_field_result_type(field: Rc<Node>) -> Option<Rc<Node>> {
                 match rt.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved {
                         node: return_type, ..
-                    }) => Some(return_type),
-                    _ => Some(rt),
+                    }) => Some(return_type.clone()),
+                    _ => Some(rt.clone()),
                 }
             } else {
-                Some(rt)
+                Some(rt.clone())
             }
         }
         _ => None,
@@ -495,9 +497,9 @@ pub fn map_lookup_result_type(
         match product_field_result_type(field) {
             Some(raw) => {
                 if is_witness_type_name(authored_name_at(source_indices.clone(), raw.clone())) {
-                    Some(raw)
+                    Some(raw.clone())
                 } else {
-                    Some(make_container_type("Witness".to_string(), raw).ty.clone())
+                    Some(make_container_type("Witness".to_string(), raw.clone()).ty.clone())
                 }
             }
             None => None,
@@ -529,16 +531,16 @@ pub fn lookup_field_in_product(
                 None
             } {
                 Some(lookup_rt) => Some(Rc::new(MethodFieldResult {
-                    field_node: field,
-                    result_type: lookup_rt,
+                    field_node: field.clone(),
+                    result_type: lookup_rt.clone(),
                     size_effect: None,
                     cost_shape: None,
                     algebra_template: None,
                 })),
                 None => match product_field_result_type(field.clone()) {
                     Some(rt) => Some(Rc::new(MethodFieldResult {
-                        field_node: field,
-                        result_type: rt,
+                        field_node: field.clone(),
+                        result_type: rt.clone(),
                         size_effect: None,
                         cost_shape: None,
                         algebra_template: None,
@@ -594,7 +596,7 @@ pub fn lookup_structural_method(
                                 );
                                 let template_match = match profile {
                                     Some(p) => {
-                                        let templates = algebra_templates_for_profile(p);
+                                        let templates = algebra_templates_for_profile(p.clone());
                                         Rc::new({
                                             let mut __result = Vec::new();
                                             for t in templates.iter().cloned() {
@@ -615,9 +617,9 @@ pub fn lookup_structural_method(
                                         result_type: mfr.result_type.clone(),
                                         size_effect: t.size_effect.clone(),
                                         cost_shape: t.cost_shape.clone(),
-                                        algebra_template: Some(t),
+                                        algebra_template: Some(t.clone()),
                                     })),
-                                    None => base_result,
+                                    None => base_result.clone(),
                                 };
                                 Rc::new(StructuralMethodLookup {
                                     resolution: resolution,

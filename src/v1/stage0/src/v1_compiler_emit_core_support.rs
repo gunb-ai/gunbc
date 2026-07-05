@@ -157,7 +157,6 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
                 let mut __result = Vec::new();
                 for p in Rc::new(
                     digit_chars
-                        .clone()
                         .iter()
                         .cloned()
                         .enumerate()
@@ -181,7 +180,7 @@ pub fn to_string_helper(mut value: i64, mut acc: Rc<Vec<String>>) -> Rc<Vec<Stri
             };
             {
                 let __tco_0 = rest.clone();
-                let __tco_1 = v1_rt::concat(Rc::new(vec![ch.clone()]), acc);
+                let __tco_1 = v1_rt::concat(Rc::new(vec![ch]), acc);
                 value = __tco_0;
                 acc = __tco_1;
                 continue;
@@ -252,7 +251,7 @@ pub fn to_lower_char(ch: i64) -> String {
         let cp = ch.clone();
         if ((cp.clone() >= 65) && (cp.clone() <= 90)) {
             {
-                let lower_cp = (cp + 32);
+                let lower_cp = (cp.clone() + 32);
                 v1_rt::from_code_point(lower_cp)
             }
         } else {
@@ -266,7 +265,7 @@ pub fn to_upper_char(ch: i64) -> String {
         let cp = ch.clone();
         if ((cp.clone() >= 97) && (cp.clone() <= 122)) {
             {
-                let upper_cp = (cp - 32);
+                let upper_cp = (cp.clone() - 32);
                 v1_rt::from_code_point(upper_cp)
             }
         } else {
@@ -303,6 +302,7 @@ pub fn capitalize_first(s: String) -> String {
                 let mut __result = Vec::new();
                 for pair in Rc::new(
                     chars_list
+                        .clone()
                         .iter()
                         .cloned()
                         .enumerate()
@@ -493,9 +493,11 @@ pub fn apply_named_template_nested(
                             }
                             __result
                         });
-                        processed.join(&val)
+                        processed.join(&val.clone())
                     }
-                    None => v1_rt::concat("TEMPLATE_ERROR_MISSING_BINDING_".to_string(), key),
+                    None => {
+                        v1_rt::concat("TEMPLATE_ERROR_MISSING_BINDING_".to_string(), key.clone())
+                    }
                 }
             }
         }

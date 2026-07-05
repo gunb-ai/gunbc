@@ -321,8 +321,8 @@ pub fn find_first_enum_field_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match variants.first().cloned() {
-        Some(variant) => match find_child_named(variant, field_name, source_indices) {
-            Some(field_child) => Some(field_child),
+        Some(variant) => match find_child_named(variant.clone(), field_name, source_indices) {
+            Some(field_child) => Some(field_child.clone()),
             None => None,
         },
         None => None,
@@ -707,7 +707,8 @@ pub fn add_emit_item_summary(
                 }
                 _ => state.type_summaries.clone(),
             };
-            let next_summaries = v1_rt::rc_map_insert(with_variants, summary.name.clone(), summary);
+            let next_summaries =
+                v1_rt::rc_map_insert(with_variants, summary.name.clone(), summary.clone());
             Rc::new(EmitInfoBuildState {
                 type_summaries: next_summaries,
             })

@@ -131,7 +131,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             .clone();
         let m = v1_rt::rc_map_insert(m.clone(), "empty_set".to_string(), Rc::new(set_ty.clone()));
         let m = v1_rt::rc_map_insert(m.clone(), "set_insert".to_string(), Rc::new(set_ty.clone()));
-        let m = v1_rt::rc_map_insert(m.clone(), "set_union".to_string(), Rc::new(set_ty));
+        let m = v1_rt::rc_map_insert(m.clone(), "set_union".to_string(), Rc::new(set_ty.clone()));
         let m = v1_rt::rc_map_insert(m.clone(), "map_contains_key".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "map_has".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "map_is_empty".to_string(), bool_type());
@@ -379,7 +379,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(m.clone(), "is_xid_start".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "is_xid_continue".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "is_emoji_ident".to_string(), bool_type());
-        m
+        m.clone()
     }
 }
 
@@ -389,7 +389,7 @@ pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
 
 pub fn resolve_builtin_call_type(name: String) -> Rc<Node> {
     match infer_builtin_call_type(name) {
-        Some(v) => v,
+        Some(v) => v.clone(),
         None => unit_type(),
     }
 }

@@ -135,14 +135,14 @@ pub fn render_coercion_test_rust(entry: Rc<CoercionTestEntry>) -> String {
 
 pub fn first_or_empty(items: Rc<Vec<String>>) -> String {
     match items.first().cloned() {
-        Some(v) => v,
+        Some(v) => v.clone(),
         None => "".to_string(),
     }
 }
 
 pub fn second_or_empty(items: Rc<Vec<String>>) -> String {
     match items.get(1 as usize).cloned() {
-        Some(v) => v,
+        Some(v) => v.clone(),
         None => "".to_string(),
     }
 }
@@ -161,15 +161,15 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
                         v1_rt::concat(
                             v1_rt::concat(
                                 "        assert_eq!(coerce_primitive_type(".to_string(),
-                                render_target_rust_enum(t),
+                                render_target_rust_enum(t.clone()),
                             ),
                             ", \"".to_string(),
                         ),
-                        name,
+                        name.clone(),
                     ),
                     "\".into()), \"".to_string(),
                 ),
-                expected,
+                expected.clone(),
             ),
             "\");\n".to_string(),
         ),
@@ -185,15 +185,15 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
                         v1_rt::concat(
                             v1_rt::concat(
                                 "        assert_eq!(coerce_container_template(".to_string(),
-                                render_target_rust_enum(t),
+                                render_target_rust_enum(t.clone()),
                             ),
                             ", \"".to_string(),
                         ),
-                        name,
+                        name.clone(),
                     ),
                     "\".into()), Some(\"".to_string(),
                 ),
-                expected,
+                expected.clone(),
             ),
             "\".to_string()));\n".to_string(),
         ),
@@ -209,15 +209,15 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
                         v1_rt::concat(
                             v1_rt::concat(
                                 "        assert_eq!(is_copy(".to_string(),
-                                render_target_rust_enum(t),
+                                render_target_rust_enum(t.clone()),
                             ),
                             ", \"".to_string(),
                         ),
-                        name,
+                        name.clone(),
                     ),
                     "\".into()), Some(".to_string(),
                 ),
-                if expected {
+                if expected.clone() {
                     "true".to_string()
                 } else {
                     "false".to_string()
@@ -233,7 +233,7 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
         } => {
             if ((arg_list.clone().len() as i64) == 1) {
                 {
-                    let arg0 = first_or_empty(arg_list);
+                    let arg0 = first_or_empty(arg_list.clone());
                     v1_rt::concat(
                         v1_rt::concat(
                             v1_rt::concat(
@@ -242,7 +242,7 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
                                         v1_rt::concat(
                                             "        assert_eq!(apply_inhabitant_template1(\""
                                                 .to_string(),
-                                            tmpl,
+                                            tmpl.clone(),
                                         ),
                                         "\".into(), \"".to_string(),
                                     ),
@@ -250,7 +250,7 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
                                 ),
                                 "\".into()), \"".to_string(),
                             ),
-                            expected,
+                            expected.clone(),
                         ),
                         "\");\n".to_string(),
                     )
@@ -259,8 +259,8 @@ pub fn render_coercion_assertion_rust(a: Rc<CoercionAssertion>) -> String {
                 if ((arg_list.clone().len() as i64) == 2) {
                     {
                         let arg0 = first_or_empty(arg_list.clone());
-                        let arg1 = second_or_empty(arg_list);
-                        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(apply_inhabitant_template2(\"".to_string(), tmpl), "\".into(), \"".to_string()), arg0), "\".into(), \"".to_string()), arg1), "\".into()), \"".to_string()), expected), "\");\n".to_string())
+                        let arg1 = second_or_empty(arg_list.clone());
+                        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("        assert_eq!(apply_inhabitant_template2(\"".to_string(), tmpl.clone()), "\".into(), \"".to_string()), arg0), "\".into(), \"".to_string()), arg1), "\".into()), \"".to_string()), expected.clone()), "\");\n".to_string())
                     }
                 } else {
                     "".to_string()

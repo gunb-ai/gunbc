@@ -106,7 +106,7 @@ pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
                         .clone()
                         .iter()
                         .cloned()
-                        .take((n - 1) as usize)
+                        .take((n.clone() - 1) as usize)
                         .collect::<Vec<_>>(),
                 ),
             })
@@ -116,17 +116,17 @@ pub fn trace_pop_frame(trace: Rc<Trace>) -> Rc<Trace> {
 
 pub fn event_span(event: Rc<TraceEvent>) -> Rc<SourceSpan> {
     match (*event).clone() {
-        TraceEvent::TraceEnter { span: s, .. } => s,
-        TraceEvent::TraceExit { span: s, .. } => s,
-        TraceEvent::TraceError { span: s, .. } => s,
+        TraceEvent::TraceEnter { span: s, .. } => s.clone(),
+        TraceEvent::TraceExit { span: s, .. } => s.clone(),
+        TraceEvent::TraceError { span: s, .. } => s.clone(),
     }
 }
 
 pub fn event_node_id(event: Rc<TraceEvent>) -> String {
     match (*event).clone() {
-        TraceEvent::TraceEnter { node_id: id, .. } => id,
-        TraceEvent::TraceExit { node_id: id, .. } => id,
-        TraceEvent::TraceError { node_id: id, .. } => id,
+        TraceEvent::TraceEnter { node_id: id, .. } => id.clone(),
+        TraceEvent::TraceExit { node_id: id, .. } => id.clone(),
+        TraceEvent::TraceError { node_id: id, .. } => id.clone(),
     }
 }
 
@@ -204,8 +204,11 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
             span: sp,
             ..
         } => v1_rt::concat(
-            v1_rt::concat(v1_rt::concat("> ".to_string(), id), " at ".to_string()),
-            format_span(sp),
+            v1_rt::concat(
+                v1_rt::concat("> ".to_string(), id.clone()),
+                " at ".to_string(),
+            ),
+            format_span(sp.clone()),
         ),
         TraceEvent::TraceExit {
             node_id: id,
@@ -215,12 +218,15 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
         } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(v1_rt::concat("< ".to_string(), id), " at ".to_string()),
-                    format_span(sp),
+                    v1_rt::concat(
+                        v1_rt::concat("< ".to_string(), id.clone()),
+                        " at ".to_string(),
+                    ),
+                    format_span(sp.clone()),
                 ),
                 ": ".to_string(),
             ),
-            out,
+            out.clone(),
         ),
         TraceEvent::TraceError {
             node_id: id,
@@ -230,12 +236,15 @@ pub fn format_trace_event(event: Rc<TraceEvent>) -> String {
         } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
-                    v1_rt::concat(v1_rt::concat("! ".to_string(), id), " at ".to_string()),
-                    format_span(sp),
+                    v1_rt::concat(
+                        v1_rt::concat("! ".to_string(), id.clone()),
+                        " at ".to_string(),
+                    ),
+                    format_span(sp.clone()),
                 ),
                 ": ".to_string(),
             ),
-            msg,
+            msg.clone(),
         ),
     }
 }

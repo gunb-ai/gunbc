@@ -85,7 +85,7 @@ pub fn lookup_in_parent_chain(
 
 pub fn lookup_resolved_sig(env: Rc<ResolvedFuncEnv>, name: String) -> Option<Rc<ResolvedFuncSig>> {
     match v1_rt::map_get(&env.local.clone(), name.clone()) {
-        Some(sig) => Some(sig),
+        Some(sig) => Some(sig.clone()),
         None => lookup_in_parent_chain(env.parents.clone(), name.clone()),
     }
 }
@@ -130,7 +130,7 @@ pub fn collect_calls_in_expr(
                 if emit_map_has(local_func_set.clone(), f.clone()) {
                     Rc::new(vec![Rc::new(CallEdge {
                         caller: caller.clone(),
-                        callee: f,
+                        callee: f.clone(),
                     })])
                 } else {
                     Rc::new(vec![])
@@ -472,7 +472,7 @@ pub fn topo_resolve_loop(
             __result
         });
         {
-            let __tco_0 = next_remaining.clone();
+            let __tco_0 = next_remaining;
             let __tco_1 = ready_accum.signatures.clone();
             let __tco_2 = ready_accum.diagnostics.clone();
             let __tco_3 = (fuel - 1);
@@ -523,11 +523,11 @@ pub fn resolve_func_sigs(
             v1_rt::rc_empty_map::<String, Rc<ResolvedFuncSig>>(),
             declared_sigs,
             call_edges,
-            local_func_set,
+            local_func_set.clone(),
             module_name,
             Rc::new(vec![]),
             parent_envs,
-            (local_func_names.len() as i64),
+            (local_func_names.clone().len() as i64),
         )
     }
 }

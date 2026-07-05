@@ -110,7 +110,7 @@ pub fn kahn_remove_loop(
         });
         let final_state = kahn_cycle_drain(
             initial_queue,
-            in_degree,
+            in_degree.clone(),
             reverse_adj,
             0,
             (remaining.clone().len() as i64),
@@ -160,7 +160,7 @@ pub fn kahn_cycle_drain(
                 removed_count: removed_count.clone(),
             }),
             |state: Rc<KahnState>, node: String| {
-                let state = v1_rt::take_owned_counted(state, "src/v1/04_cycle.dag:2601:state");
+                let state = Rc::try_unwrap(state).unwrap_or_else(|rc| (*rc).clone());
                 {
                     let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
                         Some(v) => v.clone(),
@@ -210,7 +210,7 @@ pub fn kahn_cycle_drain(
                         })
                 });
         {
-            let __tco_0 = next_queue.clone();
+            let __tco_0 = next_queue;
             let __tco_1 = result.in_degree.clone();
             let __tco_2 = result.removed_count.clone();
             let __tco_3 = (fuel - 1);
@@ -279,7 +279,7 @@ pub fn detect_type_cycles_kahn(
             });
         let result = Rc::new({
             let mut __result = Vec::new();
-            for n in all_names.iter().cloned() {
+            for n in all_names.clone().iter().cloned() {
                 if v1_rt::set_contains(&cm_set, n.clone()) {
                     __result.push(n);
                 }

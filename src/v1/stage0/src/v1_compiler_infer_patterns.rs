@@ -84,13 +84,18 @@ pub fn expand_scrut_from_decl(
             && (decl.connective.clone() == Connective::NoConnective))
             && ((decl.children.clone().len() as i64) == 0));
         if decl_is_disj {
-            decl
+            decl.clone()
         } else {
             if has_inferred_alias {
                 match decl.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: target, .. }) => {
                         let subst = generic_use_slot_bindings(scrut_node, env.clone());
-                        substitute_type_slots(target, subst, name, env.source_indices.clone())
+                        substitute_type_slots(
+                            target.clone(),
+                            subst,
+                            name,
+                            env.source_indices.clone(),
+                        )
                     }
                     _ => scrut_node,
                 }
@@ -110,14 +115,19 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
         match lookup_type_by_name(env.clone(), name.clone()) {
             Some(decl) => {
                 if is_generic_use {
-                    expand_scrut_from_decl(decl, scrut_node.clone(), name, env.clone())
+                    expand_scrut_from_decl(
+                        decl.clone(),
+                        scrut_node.clone(),
+                        name.clone(),
+                        env.clone(),
+                    )
                 } else {
                     {
                         let def_is_disj = (decl.connective.clone() == Connective::Disj);
                         let has_inferred_body = ((decl.inferred.clone() != None)
                             && (decl.connective.clone() == Connective::NoConnective));
                         if def_is_disj {
-                            decl
+                            decl.clone()
                         } else {
                             if has_inferred_body {
                                 match decl.inferred.clone().as_deref().cloned() {
@@ -125,7 +135,7 @@ pub fn expand_scrut_from_type_name(scrut_node: Rc<Node>, env: Rc<TypeEnv>) -> Rc
                                         let target_is_disj =
                                             (target.connective.clone() == Connective::Disj);
                                         if target_is_disj {
-                                            target
+                                            target.clone()
                                         } else {
                                             scrut_node.clone()
                                         }
@@ -151,8 +161,8 @@ pub fn expand_scrut_type_for_variant_lookup(
     loop {
         let name = authored_name_at(env.source_indices.clone(), scrut_node.clone());
         let is_disj = (scrut_node.connective.clone() == Connective::Disj);
-        let is_witness = is_witness_type_name(name.clone());
-        if (is_disj.clone() || is_witness.clone()) {
+        let is_witness = is_witness_type_name(name);
+        if (is_disj || is_witness) {
             break scrut_node.clone();
         } else {
             match scrut_node.inferred.clone().as_deref().cloned() {
@@ -259,7 +269,7 @@ pub fn synthesize_optional_present_variant(scrut: Rc<Node>) -> Rc<Node> {
 pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
     {
         let inner = match scrut.children.clone().first().cloned() {
-            Some(child) => child_type_node(child),
+            Some(child) => child_type_node(child.clone()),
             None => error_type(),
         };
         let value_field = Rc::new(Node {
@@ -379,7 +389,7 @@ pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
         } else {
             false
         };
-        if is_error.clone() {
+        if is_error {
             break Rc::new(PatternSubject::PatternLookupBlocked);
         } else {
             if (((n.connective.clone() == Connective::NoConnective)
@@ -405,7 +415,9 @@ pub fn pattern_subject_from_node(mut n: Rc<Node>) -> Rc<PatternSubject> {
 
 pub fn pattern_subject_from_inferred(n: Option<Rc<InferredNode>>) -> Rc<PatternSubject> {
     match n.as_deref().cloned() {
-        Some(InferredNode::Resolved { node: resolved, .. }) => pattern_subject_from_node(resolved),
+        Some(InferredNode::Resolved { node: resolved, .. }) => {
+            pattern_subject_from_node(resolved.clone())
+        }
         _ => Rc::new(PatternSubject::PatternLookupBlocked),
     }
 }
@@ -427,7 +439,7 @@ pub fn node_lookup_failed(diagnostics: Rc<Vec<Rc<ErrorNode>>>) -> Rc<NodeLookupR
 pub fn lookup_result_subject(result: Rc<NodeLookupResult>) -> Rc<PatternSubject> {
     match (*result.status.clone()).clone() {
         NodeLookupStatus::LookupResolved { node: resolved, .. } => {
-            pattern_subject_from_node(resolved)
+            pattern_subject_from_node(resolved.clone())
         }
         NodeLookupStatus::LookupFailed => Rc::new(PatternSubject::PatternLookupBlocked),
     }
@@ -435,7 +447,7 @@ pub fn lookup_result_subject(result: Rc<NodeLookupResult>) -> Rc<PatternSubject>
 
 pub fn pattern_binding_type(subject: Rc<PatternSubject>) -> Rc<Node> {
     match (*subject).clone() {
-        PatternSubject::PatternResolved { node: resolved, .. } => resolved,
+        PatternSubject::PatternResolved { node: resolved, .. } => resolved.clone(),
         PatternSubject::PatternDynamic { span: _, .. } => error_type(),
         PatternSubject::PatternLookupBlocked => error_type(),
     }
@@ -472,7 +484,7 @@ pub fn lookup_variant_in_type(
             Rc::new(CompilerDiagnostic::VariantNotFound {
                 variant: variant_name.clone(),
                 type_name: "unresolved".to_string(),
-                span: dynamic_span,
+                span: dynamic_span.clone(),
             }),
             module_name,
         )])),
@@ -489,7 +501,7 @@ pub fn lookup_variant_in_type(
                 node_lookup_failed(Rc::new(vec![]))
             } else {
                 {
-                    let optional_cardinality_subject = (scrut_opt
+                    let optional_cardinality_subject = (scrut_opt.clone()
                         && (authored_name_at(source_indices.clone(), scrut_node.clone())
                             != "Optional".to_string()));
                     let witness_subject = (is_witness_type_name(authored_name_at(
@@ -499,9 +511,11 @@ pub fn lookup_variant_in_type(
                     if (optional_cardinality_subject.clone()
                         && (variant_name.clone() == "Present".to_string()))
                     {
-                        node_lookup_resolved(synthesize_optional_present_variant(scrut_node))
+                        node_lookup_resolved(synthesize_optional_present_variant(
+                            scrut_node.clone(),
+                        ))
                     } else {
-                        if (optional_cardinality_subject
+                        if (optional_cardinality_subject.clone()
                             && (variant_name.clone() == "Absent".to_string()))
                         {
                             node_lookup_resolved(none_type())
@@ -509,13 +523,15 @@ pub fn lookup_variant_in_type(
                             if (witness_subject.clone()
                                 && (variant_name.clone() == "Holds".to_string()))
                             {
-                                node_lookup_resolved(synthesize_witness_holds_variant(scrut_node))
+                                node_lookup_resolved(synthesize_witness_holds_variant(
+                                    scrut_node.clone(),
+                                ))
                             } else {
-                                if (witness_subject
+                                if (witness_subject.clone()
                                     && (variant_name.clone() == "Violates".to_string()))
                                 {
                                     node_lookup_resolved(synthesize_witness_violates_variant(
-                                        scrut_node,
+                                        scrut_node.clone(),
                                     ))
                                 } else {
                                     {
@@ -535,34 +551,36 @@ pub fn lookup_variant_in_type(
                                         let record_destructure = (((field_binding_count > 0)
                                             && (scrut_node.connective.clone()
                                                 == Connective::Conj))
-                                            && (scrut_name == variant_name.clone()));
+                                            && (scrut_name.clone() == variant_name.clone()));
                                         let fallback = if record_destructure {
-                                            node_lookup_resolved(scrut_node)
+                                            node_lookup_resolved(scrut_node.clone())
                                         } else {
                                             if (optional_coproduct_subject.clone()
                                                 && (variant_name.clone() == "Present".to_string()))
                                             {
                                                 node_lookup_resolved(
-                                                    synthesize_optional_present_variant(scrut_node),
+                                                    synthesize_optional_present_variant(
+                                                        scrut_node.clone(),
+                                                    ),
                                                 )
                                             } else {
-                                                if (optional_coproduct_subject
+                                                if (optional_coproduct_subject.clone()
                                                     && (variant_name.clone()
                                                         == "Absent".to_string()))
                                                 {
                                                     node_lookup_resolved(none_type())
                                                 } else {
                                                     variant_not_found_result(
-                                                        scrut_node,
+                                                        scrut_node.clone(),
                                                         variant_name.clone(),
                                                         module_name,
-                                                        source_indices,
+                                                        source_indices.clone(),
                                                     )
                                                 }
                                             }
                                         };
                                         match direct_match {
-                                            Some(v) => node_lookup_resolved(v),
+                                            Some(v) => node_lookup_resolved(v.clone()),
                                             None => fallback,
                                         }
                                     }
@@ -590,7 +608,7 @@ pub fn lookup_field_in_variant(
             Rc::new(CompilerDiagnostic::FieldNotFound {
                 field: field_name.clone(),
                 type_name: "unresolved".to_string(),
-                span: dynamic_span,
+                span: dynamic_span.clone(),
             }),
             module_name,
         )])),
@@ -602,7 +620,7 @@ pub fn lookup_field_in_variant(
             source_indices.clone(),
         ) {
             Some(field_child) => {
-                let resolved = child_type_node(field_child);
+                let resolved = child_type_node(field_child.clone());
                 node_lookup_resolved(resolved)
             }
             None => node_lookup_failed(Rc::new(vec![make_error_node(
@@ -635,7 +653,7 @@ pub fn check_match_exhaustiveness(
                 env.clone(),
                 authored_name_at(env.source_indices.clone(), scrutinee_type.clone()),
             ) {
-                Some(def) => def,
+                Some(def) => def.clone(),
                 None => scrutinee_type.clone(),
             }
         };
@@ -653,10 +671,10 @@ pub fn check_match_exhaustiveness(
         )) && ((resolved.children.clone().len() as i64) == 1));
         if ((is_coproduct || resolved_is_optional.clone()) || resolved_is_witness.clone()) {
             {
-                let variant_names = if resolved_is_optional {
+                let variant_names = if resolved_is_optional.clone() {
                     Rc::new(vec!["Present".to_string(), "Absent".to_string()])
                 } else {
-                    if resolved_is_witness {
+                    if resolved_is_witness.clone() {
                         Rc::new(vec!["Holds".to_string(), "Violates".to_string()])
                     } else {
                         Rc::new({
@@ -732,7 +750,7 @@ pub fn check_match_exhaustiveness(
                         if ((uncovered.clone().len() as i64) > 0) {
                             Rc::new(vec![make_error_node(
                                 Rc::new(CompilerDiagnostic::NonExhaustiveMatch {
-                                    missing: uncovered,
+                                    missing: uncovered.clone(),
                                     span: span,
                                 }),
                                 module_name,

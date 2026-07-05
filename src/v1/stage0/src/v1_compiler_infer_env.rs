@@ -151,8 +151,8 @@ pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -
 
 pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match intern_find(env.intern_table.clone(), name) {
-        Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident) {
-            Some(binding) => Some(binding),
+        Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
+            Some(binding) => Some(binding.clone()),
             None => None,
         },
         None => None,
@@ -172,11 +172,11 @@ pub fn str_bindings_from_bindings(
 
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
-        Some(binding) => Some(binding),
+        Some(binding) => Some(binding.clone()),
         None => match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
-            Some(binding) => Some(binding),
+            Some(binding) => Some(binding.clone()),
             None => match intern_find(env.intern_table.clone(), name.clone()) {
-                Some(id) => v1_rt::map_get(&env.bindings.clone(), id),
+                Some(id) => v1_rt::map_get(&env.bindings.clone(), id.clone()),
                 None => None,
             },
         },
@@ -185,7 +185,7 @@ pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeB
 
 pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
-        Some(binding) => Some(binding),
+        Some(binding) => Some(binding.clone()),
         None => {
             let name = intern_str(env.intern_table.clone(), ident.clone());
             lookup_binding_by_name(env.clone(), name)
@@ -202,7 +202,7 @@ pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
 
 pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
     match intern_find(env.intern_table.clone(), name) {
-        Some(id) => is_recursive_type(env.clone(), id),
+        Some(id) => is_recursive_type(env.clone(), id.clone()),
         None => false,
     }
 }
@@ -227,14 +227,14 @@ pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
     match node.ident.clone() {
-        Some(id) => lookup_type(env.clone(), id),
+        Some(id) => lookup_type(env.clone(), id.clone()),
         None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
 }
 
 pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
     match node.ident.clone() {
-        Some(id) => is_recursive_type(env.clone(), id),
+        Some(id) => is_recursive_type(env.clone(), id.clone()),
         None => is_recursive_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
 }
@@ -242,11 +242,11 @@ pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
 pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<InductiveField>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let local = match v1_rt::map_get(&env.inductive_fields.clone(), type_name.clone()) {
-            Some(fields) => fields,
+            Some(fields) => fields.clone(),
             None => Rc::new(vec![]),
         };
         if ((local.clone().len() as i64) > 0) {
-            local
+            local.clone()
         } else {
             env.parents.clone().iter().cloned().fold(
                 Rc::new(vec![]),
@@ -291,7 +291,7 @@ pub fn put_inductive_field(
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
-            Some(fs) => fs,
+            Some(fs) => fs.clone(),
             None => Rc::new(vec![]),
         };
         v1_rt::rc_map_insert(
@@ -321,7 +321,7 @@ pub fn put_inductive_field_cross(
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
-            Some(fs) => fs,
+            Some(fs) => fs.clone(),
             None => Rc::new(vec![]),
         };
         v1_rt::rc_map_insert(
@@ -346,7 +346,7 @@ pub fn merge_inductive_fields(
     right: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     Rc::new(v1_rt::map_keys(&right)).iter().cloned().fold(
-        left,
+        left.clone(),
         |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String| {
             match v1_rt::map_get(&right, type_name.clone()) {
                 Some(incoming) => {
@@ -469,14 +469,14 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
             );
         Rc::new(TypeEnv {
             bindings: merged_bindings_by_ident,
-            str_bindings: merged_bindings,
+            str_bindings: merged_bindings.clone(),
             ancestry_str_bindings: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             parents: Rc::new(vec![]),
             recursive_types: merged_recursive,
             recursive_type_set: merged_recursive_set,
             inductive_fields: merged_inductive_fields,
             source_indices: merged_source_indices,
-            intern_table: merged_intern_table,
+            intern_table: merged_intern_table.clone(),
         })
     }
 }

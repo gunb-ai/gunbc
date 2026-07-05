@@ -54,8 +54,8 @@ pub fn check_bare_containers(
                     {
                         Rc::new(vec![make_error_node(
                             Rc::new(CompilerDiagnostic::ArityMismatch {
-                                name: nname,
-                                expected: expected,
+                                name: nname.clone(),
+                                expected: expected.clone(),
                                 got: 0,
                                 span: n.span.clone(),
                             }),
@@ -99,21 +99,27 @@ pub fn check_bare_containers(
             __result
         });
         let type_ann_diags = match n.type_annotation.clone() {
-            Some(ta) => check_bare_containers(ta, module_name.clone(), source_indices.clone()),
+            Some(ta) => {
+                check_bare_containers(ta.clone(), module_name.clone(), source_indices.clone())
+            }
             None => Rc::new(vec![]),
         };
         let body_diags = match n.body.clone() {
-            Some(b) => check_bare_containers(b, module_name.clone(), source_indices.clone()),
+            Some(b) => {
+                check_bare_containers(b.clone(), module_name.clone(), source_indices.clone())
+            }
             None => Rc::new(vec![]),
         };
         let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
             Rc::new(vec![])
         } else {
             match n.inferred.clone() {
-                Some(inf) => match (*inf).clone() {
-                    InferredNode::Resolved { node: rn, .. } => {
-                        check_bare_containers(rn, module_name.clone(), source_indices.clone())
-                    }
+                Some(inf) => match (*inf.clone()).clone() {
+                    InferredNode::Resolved { node: rn, .. } => check_bare_containers(
+                        rn.clone(),
+                        module_name.clone(),
+                        source_indices.clone(),
+                    ),
                     _ => Rc::new(vec![]),
                 },
                 None => Rc::new(vec![]),

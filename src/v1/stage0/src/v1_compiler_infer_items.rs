@@ -119,22 +119,22 @@ pub fn inferred_to_outputs(
                             } else {
                                 Rc::new(vec![make_field_node(
                                     "value".to_string(),
-                                    rt,
+                                    rt.clone(),
                                     Cardinality::Required,
                                     None,
                                     None,
-                                    span,
+                                    span.clone(),
                                     no_span(),
                                 )])
                             }
                         } else {
                             Rc::new(vec![make_field_node(
                                 "value".to_string(),
-                                rt,
+                                rt.clone(),
                                 Cardinality::Required,
                                 None,
                                 None,
-                                span,
+                                span.clone(),
                                 no_span(),
                             )])
                         }
@@ -147,11 +147,11 @@ pub fn inferred_to_outputs(
                     } else {
                         Rc::new(vec![make_field_node(
                             "value".to_string(),
-                            rt,
+                            rt.clone(),
                             Cardinality::Required,
                             None,
                             None,
-                            span,
+                            span.clone(),
                             no_span(),
                         )])
                     }

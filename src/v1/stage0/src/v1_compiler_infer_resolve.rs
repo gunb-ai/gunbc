@@ -92,11 +92,11 @@ pub fn unit_variant_in_coproduct(
 pub fn structural_type_for_variant_lookup(env: Rc<TypeEnv>, ty: Rc<Node>) -> Rc<Node> {
     if ((ty.connective.clone() == Connective::NoConnective) && (ty.inferred.clone() != None)) {
         match ty.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: target, .. }) => target,
-            _ => ty,
+            Some(InferredNode::Resolved { node: target, .. }) => target.clone(),
+            _ => ty.clone(),
         }
     } else {
-        ty
+        ty.clone()
     }
 }
 
@@ -107,8 +107,8 @@ pub fn lookup_unit_variant_phantom_type(
     {
         let matches = collect_unit_variant_phantom_matches(env, variant_name);
         if ((matches.clone().len() as i64) == 1) {
-            match matches.first().cloned() {
-                Some(variant) => Some(variant),
+            match matches.clone().first().cloned() {
+                Some(variant) => Some(variant.clone()),
                 None => None,
             }
         } else {
@@ -269,10 +269,13 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                 if ((((brand.clone() != "".to_string())
                     && (brand.clone()
                         != authored_name_at(source_indices.clone(), Rc::new(structural.clone()))))
-                    && !is_declared_container_alias_spelling(brand))
-                    && !is_transparent_primitive_alias_rhs(Rc::new(structural.clone()), source_indices))
+                    && !is_declared_container_alias_spelling(brand.clone()))
+                    && !is_transparent_primitive_alias_rhs(
+                        Rc::new(structural.clone()),
+                        source_indices.clone(),
+                    ))
                 {
-                    with_authored_identity(n.clone(), Rc::new(structural))
+                    with_authored_identity(n.clone(), Rc::new(structural.clone()))
                 } else {
                     if (((resolved.connective.clone() == Connective::NoConnective)
                         && ((resolved.children.clone().len() as i64) == 0))
@@ -281,7 +284,7 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                         match resolved.inferred.clone().as_deref().cloned() {
                             Some(InferredNode::Resolved { node: target, .. }) => {
                                 let target_resolved = (*resolve_node_bounded(
-                                    target,
+                                    target.clone(),
                                     env.clone(),
                                     module_name.clone(),
                                     0,
@@ -290,10 +293,10 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                                     .clone();
                                 with_authored_identity(n.clone(), Rc::new(target_resolved))
                             }
-                            _ => resolved,
+                            _ => resolved.clone(),
                         }
                     } else {
-                        resolved
+                        resolved.clone()
                     }
                 }
             }
@@ -413,11 +416,11 @@ pub fn resolve_paramless_generic_use_decl(
 ) -> Rc<Node> {
     match ((n.children.clone().len() as i64) > 0) {
         true => match lookup_ancestry_parameterized_decl(env.clone(), brand.clone()) {
-            Some(user_decl) => user_decl,
+            Some(user_decl) => user_decl.clone(),
             None => match ((n.name.clone() != "".to_string()) && (n.name.clone() != brand.clone()))
             {
                 true => match lookup_type_by_name(env.clone(), n.name.clone()) {
-                    Some(structural) => structural,
+                    Some(structural) => structural.clone(),
                     None => decl,
                 },
                 false => decl,
@@ -433,14 +436,14 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
         match lookup_type_for(env.clone(), n.clone()) {
             Some(decl) => {
                 if ((decl.params.clone().len() as i64) > 0) {
-                    decl
+                    decl.clone()
                 } else {
-                    resolve_paramless_generic_use_decl(env.clone(), n, decl, brand)
+                    resolve_paramless_generic_use_decl(env.clone(), n.clone(), decl.clone(), brand)
                 }
             }
             None => match lookup_type_by_name(env.clone(), n.name.clone()) {
-                Some(decl) => decl,
-                None => n,
+                Some(decl) => decl.clone(),
+                None => n.clone(),
             },
         }
     }
@@ -488,7 +491,7 @@ pub fn substitute_type_slots(
                 &slot_bindings,
                 authored_name_at(source_indices.clone(), n.clone()),
             ) {
-                Some(concrete) => concrete,
+                Some(concrete) => concrete.clone(),
                 None => n.clone(),
             }
         } else {
@@ -552,7 +555,7 @@ pub fn substitute_type_slots(
                     Some(InferredNode::Resolved { node: rt, .. }) => {
                         Some(Rc::new(InferredNode::Resolved {
                             node: substitute_type_slots(
-                                rt,
+                                rt.clone(),
                                 slot_bindings.clone(),
                                 decl_name.clone(),
                                 source_indices.clone(),
@@ -602,7 +605,7 @@ pub fn classify_alias(target: Rc<Node>) -> AliasKind {
         if (((target.children.clone().len() as i64) > 0) && nc.clone()) {
             AliasKind::AliasParameterized
         } else {
-            if ((((target.children.clone().len() as i64) == 0) && nc)
+            if ((((target.children.clone().len() as i64) == 0) && nc.clone())
                 && (target.ident_span.clone() != None))
             {
                 AliasKind::AliasLeaf
@@ -621,16 +624,17 @@ pub fn resolve_alias_target(
 ) -> Rc<Node> {
     match classify_alias(target.clone()) {
         AliasKind::AliasParameterized => {
-            resolve_node_bounded(target, env.clone(), module_name, (depth + 1)).resolved.clone()
+            Rc::new((*resolve_node_bounded(target.clone(), env.clone(), module_name, (depth + 1)).resolved)
+                .clone())
         }
         AliasKind::AliasLeaf => match lookup_type_by_name(
             env.clone(),
             authored_name_at(env.source_indices.clone(), target.clone()),
         ) {
-            Some(env_target) => env_target,
-            None => target,
+            Some(env_target) => env_target.clone(),
+            None => target.clone(),
         },
-        AliasKind::AliasPassthrough => target,
+        AliasKind::AliasPassthrough => target.clone(),
     }
 }
 
@@ -672,7 +676,7 @@ pub fn resolve_nominal_alias_rhs(
                 });
                 let arg_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for ar in arg_results.iter().cloned() {
+                    for ar in arg_results.clone().iter().cloned() {
                         __result.extend((*ar.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -742,7 +746,7 @@ pub fn resolve_node_bounded(
                         match n.children.clone().first().cloned() {
                             Some(base) => {
                                 let base_result = resolve_node_bounded(
-                                    base,
+                                    base.clone(),
                                     env.clone(),
                                     module_name.clone(),
                                     (depth.clone() + 1),
@@ -846,7 +850,7 @@ pub fn resolve_node_bounded(
                             });
                             let all_diags = Rc::new({
                                 let mut __result = Vec::new();
-                                for cr in child_results.iter().cloned() {
+                                for cr in child_results.clone().iter().cloned() {
                                     __result.extend((*cr.diagnostics.clone()).iter().cloned());
                                 }
                                 __result
@@ -1040,7 +1044,7 @@ pub fn resolve_node_bounded(
                                 });
                                 let all_diags = Rc::new({
                                     let mut __result = Vec::new();
-                                    for vr in variant_results.iter().cloned() {
+                                    for vr in variant_results.clone().iter().cloned() {
                                         __result.extend((*vr.diagnostics.clone()).iter().cloned());
                                     }
                                     __result
@@ -1086,8 +1090,8 @@ pub fn resolve_node_bounded(
                         Rc::new(vec![make_error_node(
                             Rc::new(CompilerDiagnostic::ArityMismatch {
                                 name: type_name.clone(),
-                                expected: expected_arity,
-                                got: actual_arity,
+                                expected: expected_arity.clone(),
+                                got: actual_arity.clone(),
                                 span: n.span.clone(),
                             }),
                             module_name.clone(),
@@ -1116,7 +1120,7 @@ pub fn resolve_node_bounded(
                     });
                     let arg_diags = Rc::new({
                         let mut __result = Vec::new();
-                        for ar in arg_results.iter().cloned() {
+                        for ar in arg_results.clone().iter().cloned() {
                             __result.extend((*ar.diagnostics.clone()).iter().cloned());
                         }
                         __result
@@ -1187,8 +1191,8 @@ pub fn resolve_node_bounded(
                             let alias_target = match decl.inferred.clone().as_deref().cloned() {
                                 Some(InferredNode::Resolved { node: target, .. }) => {
                                     substitute_type_slots(
-                                        target,
-                                        slot_bindings,
+                                        target.clone(),
+                                        slot_bindings.clone(),
                                         type_name.clone(),
                                         env.source_indices.clone(),
                                     )
@@ -1224,10 +1228,10 @@ pub fn resolve_node_bounded(
                                 ident: None,
                             });
                             let resolved_node = Rc::new(Node {
-                                name: type_name,
+                                name: type_name.clone(),
                                 span: n.span.clone(),
                                 ident_span: n.ident_span.clone(),
-                                children: resolved_args,
+                                children: resolved_args.clone(),
                                 connective: Connective::NoConnective,
                                 params: Rc::new(vec![]),
                                 inferred: Some(Rc::new(InferredNode::Resolved {
@@ -1239,7 +1243,7 @@ pub fn resolve_node_bounded(
                                 transport: n.transport.clone(),
                                 properties: (*target_result.resolved).clone().properties.clone(),
                                 type_annotation: n.type_annotation.clone(),
-                                is_self_recursive: is_recursive,
+                                is_self_recursive: is_recursive.clone(),
                                 has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                 match_pattern: n.match_pattern.clone(),
                                 expr_data: n.expr_data.clone(),
@@ -1291,10 +1295,10 @@ pub fn resolve_node_bounded(
                             });
                             let result = Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
-                                    name: type_name,
+                                    name: type_name.clone(),
                                     span: n.span.clone(),
                                     ident_span: n.ident_span.clone(),
-                                    children: resolved_args,
+                                    children: resolved_args.clone(),
                                     connective: Connective::NoConnective,
                                     params: Rc::new(vec![]),
                                     inferred: Some(Rc::new(InferredNode::Resolved {
@@ -1306,7 +1310,7 @@ pub fn resolve_node_bounded(
                                     transport: n.transport.clone(),
                                     properties: decl.properties.clone(),
                                     type_annotation: n.type_annotation.clone(),
-                                    is_self_recursive: is_recursive,
+                                    is_self_recursive: is_recursive.clone(),
                                     has_non_tail_self_call: n.has_non_tail_self_call.clone(),
                                     match_pattern: n.match_pattern.clone(),
                                     expr_data: n.expr_data.clone(),
@@ -1325,11 +1329,11 @@ pub fn resolve_node_bounded(
                         {
                             let type_name = authored_name(env.clone(), n.clone());
                             let key_child_node = match n.children.clone().first().cloned() {
-                                Some(k) => k,
+                                Some(k) => k.clone(),
                                 None => unit_type(),
                             };
                             let val_child_node = match n.children.clone().get(1 as usize).cloned() {
-                                Some(v) => v,
+                                Some(v) => v.clone(),
                                 None => unit_type(),
                             };
                             let key_type = child_type_node(key_child_node.clone());
@@ -1362,7 +1366,7 @@ pub fn resolve_node_bounded(
                                 authored_name(env.clone(), val_child_node.clone())
                             } else {
                                 match container_param_name(type_name.clone(), 1) {
-                                    Some(pn) => pn,
+                                    Some(pn) => pn.clone(),
                                     None => authored_name(env.clone(), val_child_node.clone()),
                                 }
                             };
@@ -1412,7 +1416,7 @@ pub fn resolve_node_bounded(
                             });
                             Rc::new(NodeResolveResult {
                                 resolved: Rc::new(Node {
-                                    name: type_name,
+                                    name: type_name.clone(),
                                     span: n.span.clone(),
                                     ident_span: n.ident_span.clone(),
                                     children: Rc::new(vec![resolved_key_child, resolved_val_child]),
@@ -1455,7 +1459,7 @@ pub fn resolve_node_bounded(
                                             authored_name(env.clone(), child_node.clone())
                                         } else {
                                             match container_param_name(type_name.clone(), 0) {
-                                                Some(pn) => pn,
+                                                Some(pn) => pn.clone(),
                                                 None => {
                                                     authored_name(env.clone(), child_node.clone())
                                                 }
@@ -1485,7 +1489,7 @@ pub fn resolve_node_bounded(
                                         });
                                         Rc::new(NodeResolveResult {
                                             resolved: Rc::new(Node {
-                                                name: type_name,
+                                                name: type_name.clone(),
                                                 span: n.span.clone(),
                                                 ident_span: n.ident_span.clone(),
                                                 children: Rc::new(vec![resolved_child]),
@@ -1583,7 +1587,7 @@ pub fn resolve_node_bounded(
                                                                     == Connective::Disj));
                                                             if target_is_coproduct_use {
                                                                 (*resolve_node_bounded(
-                                                                    target,
+                                                                    target.clone(),
                                                                     env.clone(),
                                                                     module_name.clone(),
                                                                     (depth.clone() + 1),
@@ -1591,13 +1595,13 @@ pub fn resolve_node_bounded(
                                                                 .resolved)
                                                                     .clone()
                                                             } else {
-                                                                target
+                                                                target.clone()
                                                             }
                                                         }
-                                                        _ => resolved,
+                                                        _ => resolved.clone(),
                                                     }
                                                 } else {
-                                                    resolved
+                                                    resolved.clone()
                                                 };
                                                 let is_optional = (n.return_cardinality.clone()
                                                     == Cardinality::CardOptional);
@@ -1646,7 +1650,7 @@ pub fn resolve_node_bounded(
                                                 } else {
                                                     match lookup_unit_variant_phantom_type(env.clone(), authored_name(env.clone(), n.clone())) {
     Some(phantom) => Rc::new(NodeResolveResult {
-    resolved: phantom,
+    resolved: phantom.clone(),
     diagnostics: Rc::new(vec![]),
 }),
     None => Rc::new(NodeResolveResult {
@@ -1687,7 +1691,7 @@ pub fn missing_generic_args_diagnostics(
         {
             let type_name = authored_name(env.clone(), n.clone());
             let decl = match lookup_type_for(env.clone(), n.clone()) {
-                Some(d) => d,
+                Some(d) => d.clone(),
                 None => n.clone(),
             };
             Rc::new(vec![make_error_node(
@@ -1717,7 +1721,9 @@ pub fn resolve_optional_node(
         })
     } else {
         match (*n.clone().unwrap()).clone() {
-            InferredNode::Resolved { node: inner, .. } => resolve_node(inner, env, module_name),
+            InferredNode::Resolved { node: inner, .. } => {
+                resolve_node(inner.clone(), env, module_name)
+            }
             InferredNode::CompilerError {
                 message: msg,
                 span: sp,
@@ -1730,8 +1736,8 @@ pub fn resolve_optional_node(
                 ),
                 diagnostics: Rc::new(vec![make_error_node(
                     Rc::new(CompilerDiagnostic::InternalError {
-                        message: msg,
-                        span: sp,
+                        message: msg.clone(),
+                        span: sp.clone(),
                     }),
                     module_name,
                 )]),
@@ -1744,7 +1750,7 @@ pub fn resolve_optional_node(
                     children: Rc::new(vec![]),
                     connective: Connective::NoConnective,
                     params: Rc::new(vec![]),
-                    inferred: Some(Rc::new(InferredNode::TypeVariable { id: tv })),
+                    inferred: Some(Rc::new(InferredNode::TypeVariable { id: tv.clone() })),
                     return_cardinality: Cardinality::Required,
                     uses: Rc::new(vec![]),
                     body: None,
@@ -1770,11 +1776,15 @@ pub fn resolve_field(field: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
         let type_resolved = (*type_result.resolved).clone();
         let type_diags = v1_rt::concat(
             type_result.diagnostics.clone(),
-            missing_generic_args_diagnostics(authored_type, env.clone(), module_name.clone()),
+            missing_generic_args_diagnostics(
+                authored_type.clone(),
+                env.clone(),
+                module_name.clone(),
+            ),
         );
         let default_resolved = match field_node_default_value(field.clone()) {
             Some(default_value) => Some(resolve_expr_types(
-                default_value,
+                default_value.clone(),
                 env.clone(),
                 module_name.clone(),
             )),
@@ -1789,7 +1799,7 @@ pub fn resolve_field(field: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
                 field_node_name_at(field.clone(), env.source_indices.clone()),
                 Rc::new(type_resolved),
                 field_node_cardinality(field.clone()),
-                match default_resolved {
+                match default_resolved.clone() {
                     Some(result) => Some(result.expr.clone()),
                     None => None,
                 },
@@ -1835,11 +1845,15 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
         };
         let type_diags = v1_rt::concat(
             type_result.diagnostics.clone(),
-            missing_generic_args_diagnostics(authored_type, env.clone(), module_name.clone()),
+            missing_generic_args_diagnostics(
+                authored_type.clone(),
+                env.clone(),
+                module_name.clone(),
+            ),
         );
         let default_resolved = match param_node_default_value(param.clone()) {
             Some(default_value) => Some(resolve_expr_types(
-                default_value,
+                default_value.clone(),
                 env.clone(),
                 module_name.clone(),
             )),
@@ -1849,7 +1863,7 @@ pub fn resolve_param(param: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> 
             Some(result) => result.diagnostics.clone(),
             None => Rc::new(vec![]),
         };
-        let default_expr = match default_resolved {
+        let default_expr = match default_resolved.clone() {
             Some(result) => Some((*result.expr).clone()),
             None => None,
         };
@@ -1942,7 +1956,11 @@ pub fn resolve_match_arm(
     {
         let arm_g = arm_guard(arm.clone());
         let guard_result = match arm_g {
-            Some(guard) => Some(resolve_expr_types(guard, env.clone(), module_name.clone())),
+            Some(guard) => Some(resolve_expr_types(
+                guard.clone(),
+                env.clone(),
+                module_name.clone(),
+            )),
             None => None,
         };
         let guard_diags = match guard_result.clone() {
@@ -1956,7 +1974,7 @@ pub fn resolve_match_arm(
         Rc::new(MatchArmResolveResult {
             arm: make_arm_node(
                 arm_pattern(arm.clone()),
-                match guard_result {
+                match guard_result.clone() {
                     Some(result) => Some(result.expr.clone()),
                     None => None,
                 },
@@ -1975,11 +1993,13 @@ pub fn resolve_string_part(
 ) -> Rc<StringPartResolveResult> {
     match (*part).clone() {
         StringPart::Text { value: value, .. } => Rc::new(StringPartResolveResult {
-            part: Rc::new(StringPart::Text { value: value }),
+            part: Rc::new(StringPart::Text {
+                value: value.clone(),
+            }),
             diagnostics: Rc::new(vec![]),
         }),
         StringPart::Interpolation { expr: expr, .. } => {
-            let expr_result = resolve_expr_types(expr, env, module_name);
+            let expr_result = resolve_expr_types(expr.clone(), env, module_name);
             let resolved_expr = (*expr_result.expr).clone();
             let expr_diags = expr_result.diagnostics.clone();
             Rc::new(StringPartResolveResult {
@@ -2035,7 +2055,7 @@ pub fn resolve_transport_binding(
             });
             let prop_diags = Rc::new({
                 let mut __result = Vec::new();
-                for pr in prop_results.iter().cloned() {
+                for pr in prop_results.clone().iter().cloned() {
                     __result.extend((*pr.diagnostics.clone()).iter().cloned());
                 }
                 __result
@@ -2060,7 +2080,7 @@ pub fn resolve_transport_binding(
             });
             let child_diags = Rc::new({
                 let mut __result = Vec::new();
-                for cr in child_results.iter().cloned() {
+                for cr in child_results.clone().iter().cloned() {
                     __result.extend((*cr.diagnostics.clone()).iter().cloned());
                 }
                 __result
@@ -2103,10 +2123,10 @@ pub fn resolve_expr_types(
                 diagnostics: Rc::new(vec![]),
             }),
             ExprData::ExprError { kind, message, .. } => Rc::new(ExprResolveResult {
-                expr: make_expr_error_node(kind, message.clone(), texpr.span.clone()),
+                expr: make_expr_error_node(kind.clone(), message.clone(), texpr.span.clone()),
                 diagnostics: Rc::new(vec![make_error_node(
                     Rc::new(CompilerDiagnostic::InternalError {
-                        message: message,
+                        message: message.clone(),
                         span: texpr.span.clone(),
                     }),
                     module_name.clone(),
@@ -2120,7 +2140,9 @@ pub fn resolve_expr_types(
             }),
             ExprData::ExprFieldAccess { summary: _, .. } => {
                 let r = match texpr.children.clone().first().cloned() {
-                    Some(base) => resolve_expr_types(base, env.clone(), module_name.clone()),
+                    Some(base) => {
+                        resolve_expr_types(base.clone(), env.clone(), module_name.clone())
+                    }
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
@@ -2172,7 +2194,7 @@ pub fn resolve_expr_types(
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in arg_results.iter().cloned() {
+                    for r in arg_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2181,8 +2203,8 @@ pub fn resolve_expr_types(
                     expr: make_named_expr_node(
                         expr_call_func_at(texpr.clone(), env.source_indices.clone()),
                         Rc::new(ExprData::ExprCall {
-                            call_semantics: cs,
-                            descent_evidence: de,
+                            call_semantics: cs.clone(),
+                            descent_evidence: de.clone(),
                         }),
                         resolved_children,
                         texpr.inferred.clone(),
@@ -2268,7 +2290,7 @@ pub fn resolve_expr_types(
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in mc_results.iter().cloned() {
+                    for r in mc_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2277,7 +2299,7 @@ pub fn resolve_expr_types(
                     expr: make_named_expr_node(
                         expr_method_name_at(texpr.clone(), env.source_indices.clone()),
                         Rc::new(ExprData::ExprMethodCall {
-                            method_semantics: ms,
+                            method_semantics: ms.clone(),
                         }),
                         resolved_children,
                         texpr.inferred.clone(),
@@ -2405,7 +2427,7 @@ pub fn resolve_expr_types(
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in match_results.iter().cloned() {
+                    for r in match_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2423,21 +2445,25 @@ pub fn resolve_expr_types(
             ExprData::ExprIf => {
                 let ch = texpr.children.clone();
                 let cr = match ch.clone().first().cloned() {
-                    Some(c) => resolve_expr_types(c, env.clone(), module_name.clone()),
+                    Some(c) => resolve_expr_types(c.clone(), env.clone(), module_name.clone()),
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
                 let tr = match ch.clone().get(1 as usize).cloned() {
-                    Some(t) => resolve_expr_types(t, env.clone(), module_name.clone()),
+                    Some(t) => resolve_expr_types(t.clone(), env.clone(), module_name.clone()),
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let er = match ch.get(2 as usize).cloned() {
-                    Some(e) => Some(resolve_expr_types(e, env.clone(), module_name.clone())),
+                let er = match ch.clone().get(2 as usize).cloned() {
+                    Some(e) => Some(resolve_expr_types(
+                        e.clone(),
+                        env.clone(),
+                        module_name.clone(),
+                    )),
                     None => None,
                 };
                 let resolved_children = match er.clone() {
@@ -2457,7 +2483,7 @@ pub fn resolve_expr_types(
                     ),
                     diagnostics: v1_rt::concat(
                         v1_rt::concat(cr.diagnostics.clone(), tr.diagnostics.clone()),
-                        match er {
+                        match er.clone() {
                             Some(r) => r.diagnostics.clone(),
                             None => Rc::new(vec![]),
                         },
@@ -2467,14 +2493,18 @@ pub fn resolve_expr_types(
             ExprData::ExprLet => {
                 let ch = texpr.children.clone();
                 let vr = match ch.clone().first().cloned() {
-                    Some(v) => resolve_expr_types(v, env.clone(), module_name.clone()),
+                    Some(v) => resolve_expr_types(v.clone(), env.clone(), module_name.clone()),
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let br = match ch.get(1 as usize).cloned() {
-                    Some(bd) => Some(resolve_expr_types(bd, env.clone(), module_name.clone())),
+                let br = match ch.clone().get(1 as usize).cloned() {
+                    Some(bd) => Some(resolve_expr_types(
+                        bd.clone(),
+                        env.clone(),
+                        module_name.clone(),
+                    )),
                     None => None,
                 };
                 let resolved_children = match br.clone() {
@@ -2492,7 +2522,7 @@ pub fn resolve_expr_types(
                     ),
                     diagnostics: v1_rt::concat(
                         vr.diagnostics.clone(),
-                        match br {
+                        match br.clone() {
                             Some(r) => r.diagnostics.clone(),
                             None => Rc::new(vec![]),
                         },
@@ -2534,7 +2564,7 @@ pub fn resolve_expr_types(
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in fi_results.iter().cloned() {
+                    for r in fi_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2542,7 +2572,9 @@ pub fn resolve_expr_types(
                 Rc::new(ExprResolveResult {
                     expr: make_named_expr_node(
                         authored_name_at(env.source_indices.clone(), texpr.clone()),
-                        Rc::new(ExprData::ExprRecordLit { parent_enum: pe }),
+                        Rc::new(ExprData::ExprRecordLit {
+                            parent_enum: pe.clone(),
+                        }),
                         resolved_children,
                         texpr.inferred.clone(),
                         texpr.span.clone(),
@@ -2572,7 +2604,7 @@ pub fn resolve_expr_types(
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in el_results.iter().cloned() {
+                    for r in el_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2594,14 +2626,14 @@ pub fn resolve_expr_types(
             } => {
                 let ch = texpr.children.clone();
                 let lr = match ch.clone().first().cloned() {
-                    Some(l) => resolve_expr_types(l, env.clone(), module_name.clone()),
+                    Some(l) => resolve_expr_types(l.clone(), env.clone(), module_name.clone()),
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let rr = match ch.get(1 as usize).cloned() {
-                    Some(r) => resolve_expr_types(r, env.clone(), module_name.clone()),
+                let rr = match ch.clone().get(1 as usize).cloned() {
+                    Some(r) => resolve_expr_types(r.clone(), env.clone(), module_name.clone()),
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
@@ -2610,8 +2642,8 @@ pub fn resolve_expr_types(
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
                         Rc::new(ExprData::ExprBinOp {
-                            op: op,
-                            algebra_field: af,
+                            op: op.clone(),
+                            algebra_field: af.clone(),
                         }),
                         Rc::new(vec![lr.expr.clone(), rr.expr.clone()]),
                         texpr.inferred.clone(),
@@ -2622,7 +2654,7 @@ pub fn resolve_expr_types(
             }
             ExprData::ExprUnaryOp { op: op, .. } => {
                 let r = match texpr.children.clone().first().cloned() {
-                    Some(o) => resolve_expr_types(o, env.clone(), module_name.clone()),
+                    Some(o) => resolve_expr_types(o.clone(), env.clone(), module_name.clone()),
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
@@ -2630,7 +2662,7 @@ pub fn resolve_expr_types(
                 };
                 Rc::new(ExprResolveResult {
                     expr: make_expr_node(
-                        Rc::new(ExprData::ExprUnaryOp { op: op }),
+                        Rc::new(ExprData::ExprUnaryOp { op: op.clone() }),
                         Rc::new(vec![r.expr.clone()]),
                         texpr.inferred.clone(),
                         texpr.span.clone(),
@@ -2649,7 +2681,7 @@ pub fn resolve_expr_types(
                         .collect::<Vec<_>>(),
                 );
                 let r = match texpr.children.clone().first().cloned() {
-                    Some(b) => resolve_expr_types(b, env.clone(), module_name.clone()),
+                    Some(b) => resolve_expr_types(b.clone(), env.clone(), module_name.clone()),
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
@@ -2707,7 +2739,7 @@ pub fn resolve_expr_types(
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in part_results.iter().cloned() {
+                    for r in part_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2743,7 +2775,7 @@ pub fn resolve_expr_types(
                 });
                 let all_diags = Rc::new({
                     let mut __result = Vec::new();
-                    for r in stmt_results.iter().cloned() {
+                    for r in stmt_results.clone().iter().cloned() {
                         __result.extend((*r.diagnostics.clone()).iter().cloned());
                     }
                     __result
@@ -2761,14 +2793,16 @@ pub fn resolve_expr_types(
             ExprData::ExprCast => {
                 let ch = texpr.children.clone();
                 let r = match ch.clone().first().cloned() {
-                    Some(inner) => resolve_expr_types(inner, env.clone(), module_name.clone()),
+                    Some(inner) => {
+                        resolve_expr_types(inner.clone(), env.clone(), module_name.clone())
+                    }
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let tr = match ch.get(1 as usize).cloned() {
-                    Some(target) => resolve_node(target, env.clone(), module_name.clone()),
+                let tr = match ch.clone().get(1 as usize).cloned() {
+                    Some(target) => resolve_node(target.clone(), env.clone(), module_name.clone()),
                     None => Rc::new(NodeResolveResult {
                         resolved: unit_type(),
                         diagnostics: Rc::new(vec![]),
@@ -2787,14 +2821,14 @@ pub fn resolve_expr_types(
             ExprData::ExprForEach => {
                 let ch = texpr.children.clone();
                 let cr = match ch.clone().first().cloned() {
-                    Some(c) => resolve_expr_types(c, env.clone(), module_name.clone()),
+                    Some(c) => resolve_expr_types(c.clone(), env.clone(), module_name.clone()),
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let br = match ch.get(1 as usize).cloned() {
-                    Some(b) => resolve_expr_types(b, env.clone(), module_name.clone()),
+                let br = match ch.clone().get(1 as usize).cloned() {
+                    Some(b) => resolve_expr_types(b.clone(), env.clone(), module_name.clone()),
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
@@ -2815,14 +2849,18 @@ pub fn resolve_expr_types(
             ExprData::ExprIndex => {
                 let ch = texpr.children.clone();
                 let br = match ch.clone().first().cloned() {
-                    Some(base) => resolve_expr_types(base, env.clone(), module_name.clone()),
+                    Some(base) => {
+                        resolve_expr_types(base.clone(), env.clone(), module_name.clone())
+                    }
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let ir = match ch.get(1 as usize).cloned() {
-                    Some(index) => resolve_expr_types(index, env.clone(), module_name.clone()),
+                let ir = match ch.clone().get(1 as usize).cloned() {
+                    Some(index) => {
+                        resolve_expr_types(index.clone(), env.clone(), module_name.clone())
+                    }
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
@@ -2841,21 +2879,27 @@ pub fn resolve_expr_types(
             ExprData::ExprSlice => {
                 let ch = texpr.children.clone();
                 let br = match ch.clone().first().cloned() {
-                    Some(base) => resolve_expr_types(base, env.clone(), module_name.clone()),
+                    Some(base) => {
+                        resolve_expr_types(base.clone(), env.clone(), module_name.clone())
+                    }
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
                 let sr = match ch.clone().get(1 as usize).cloned() {
-                    Some(start) => resolve_expr_types(start, env.clone(), module_name.clone()),
+                    Some(start) => {
+                        resolve_expr_types(start.clone(), env.clone(), module_name.clone())
+                    }
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
                     }),
                 };
-                let er = match ch.get(2 as usize).cloned() {
-                    Some(end_e) => resolve_expr_types(end_e, env.clone(), module_name.clone()),
+                let er = match ch.clone().get(2 as usize).cloned() {
+                    Some(end_e) => {
+                        resolve_expr_types(end_e.clone(), env.clone(), module_name.clone())
+                    }
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
@@ -2880,7 +2924,9 @@ pub fn resolve_expr_types(
             }
             ExprData::ExprReturn => {
                 let r = match texpr.children.clone().first().cloned() {
-                    Some(inner) => resolve_expr_types(inner, env.clone(), module_name.clone()),
+                    Some(inner) => {
+                        resolve_expr_types(inner.clone(), env.clone(), module_name.clone())
+                    }
                     None => Rc::new(ExprResolveResult {
                         expr: texpr.clone(),
                         diagnostics: Rc::new(vec![]),
@@ -3000,10 +3046,9 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         } else {
             Rc::new(vec![])
         };
-        let env = tp_names
-            .iter()
-            .cloned()
-            .fold(env.clone(), |e: Rc<TypeEnv>, tp_name: String| {
+        let env = tp_names.clone().iter().cloned().fold(
+            env.clone(),
+            |e: Rc<TypeEnv>, tp_name: String| {
                 let tp_binding = Rc::new(TypeBinding {
                     name: tp_name.clone(),
                     resolved: Rc::new(Node {
@@ -3049,7 +3094,8 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                     source_indices: e.source_indices.clone(),
                     intern_table: e.intern_table.clone(),
                 })
-            });
+            },
+        );
         let param_results = Rc::new({
             let mut __result = Vec::new();
             for p in item.params.clone().iter().cloned() {
@@ -3066,7 +3112,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         });
         let param_diags = Rc::new({
             let mut __result = Vec::new();
-            for pr in param_results.iter().cloned() {
+            for pr in param_results.clone().iter().cloned() {
                 __result.extend((*pr.diagnostics.clone()).iter().cloned());
             }
             __result
@@ -3075,7 +3121,11 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
             match item.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved {
                     node: authored_rhs, ..
-                }) => resolve_nominal_alias_rhs(authored_rhs, env.clone(), module_name.clone()),
+                }) => resolve_nominal_alias_rhs(
+                    authored_rhs.clone(),
+                    env.clone(),
+                    module_name.clone(),
+                ),
                 _ => resolve_optional_node(
                     item.inferred.clone(),
                     env.clone(),
@@ -3112,7 +3162,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         });
         let use_diags = Rc::new({
             let mut __result = Vec::new();
-            for ur in use_results.iter().cloned() {
+            for ur in use_results.clone().iter().cloned() {
                 __result.extend((*ur.diagnostics.clone()).iter().cloned());
             }
             __result
@@ -3195,7 +3245,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         });
         let prop_diags = Rc::new({
             let mut __result = Vec::new();
-            for pr in prop_results.iter().cloned() {
+            for pr in prop_results.clone().iter().cloned() {
                 __result.extend((*pr.diagnostics.clone()).iter().cloned());
             }
             __result
@@ -3370,7 +3420,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
         });
         let child_diags = Rc::new({
             let mut __result = Vec::new();
-            for cr in child_results.iter().cloned() {
+            for cr in child_results.clone().iter().cloned() {
                 __result.extend((*cr.diagnostics.clone()).iter().cloned());
             }
             __result
