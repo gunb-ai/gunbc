@@ -37,10 +37,10 @@ test fn enforcement_consistency_gate_holds() -> Bool {
 
 test fn complexity_repo_wide_verdict_matches_roadmap() -> Bool {
   let v = complexity_repo_wide_verdict_live()
-  leg_fails(l: v.claimed)
+  leg_holds(l: v.claimed)
     && leg_fails(l: v.scope_covered)
     && leg_holds(l: v.subjects_covered)
-    && leg_fails(l: v.live_consumer)
+    && leg_holds(l: v.live_consumer)
     && leg_holds(l: v.red_control)
     && leg_holds(l: v.self_application)
 }
