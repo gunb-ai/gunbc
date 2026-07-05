@@ -294,9 +294,9 @@ data gunbc_ci_prelude_allowance_minutes: Int = 5
 
 data ci_build_floor_step_split_note: String = "Build and floor are separate workflow steps so gate budgets apply to claim_executor only, not cargo build: bundling both under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: PR #6259 ci job 85192573905, 2026-07-05). Build step carries gunbc_ci_release_build_step_timeout_minutes; floor step carries gunbc_ci_floor_gate_step_timeout_minutes."
 
-data gunbc_ci_release_build_step_timeout_minutes: Int = 15
+data gunbc_ci_release_build_step_timeout_minutes: Int = 30
 
-data gunbc_ci_release_build_step_budget_note: String = "Interim release-build step budget: 15 matches gunbc_ci_rust_gate_step_timeout_minutes (build is a strict subset of that step). Receipt: job 85194092138 timed out at 10m during v1-compiler compile (~6m dep prelude + ~4m into stage0). gunbc_ci_job_timeout_policy_minutes (10) stays the nominal floor-gate target, not the build-step cap."
+data gunbc_ci_release_build_step_budget_note: String = "Interim release-build step budget until cold v1-compiler fits 15m: 30 = same derivation as gunbc_ci_floor_gate_step_timeout_minutes (last-green ci 27min + margin). Receipts: job 85194092138 timed out at 10m (~4m into stage0); job 85194701830 timed out at 15m (~12m into stage0, still compiling). Re-derive DOWNWARD when fleet cache/build path stabilizes."
 
 data gunbc_ci_floor_gate_step_timeout_minutes: Int = 30
 
