@@ -3185,6 +3185,11 @@ pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
     pub skipped: usize,
+    /// PredictOnly mode: rows the selection predicted unaffected (they still ran).
+    pub predicted_unaffected: Vec<(String, String)>,
+    /// PredictOnly mode: predicted-unaffected rows whose cold run was red — each line is a
+    /// counted, typed attribution of a missing selection edge (never a rerun trigger).
+    pub divergences: Vec<String>,
     pub failures: Vec<String>,
     pub witness_outcomes: Vec<DiscoveryWitnessOutcome>,
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
@@ -4053,8 +4058,19 @@ fn inert_lens_modules(
     inert
 }
 
+/// Host realization of std.realization_schedule.NodeFrontierSelection (signed design:
+/// docs/plans/affected-set-differential-falsifier.md). PredictOnly computes would-skip
+/// per row, RECORDS the prediction, and runs the row anyway — the falsifier cadence
+/// compares predictions against cold verdicts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeFrontierSelectionMode {
+    Off,
+    Applied,
+    PredictOnly,
+}
+
 pub struct DiscoveryCorpusOptions {
-    pub skip_unaffected_node_frontier: bool,
+    pub node_frontier_selection: NodeFrontierSelectionMode,
     pub explicit_roster_only: bool,
     /// Path-substring exclusion list. Non-plan callers default to FLOOR_DISCOVERY_EXCLUDES;
     /// plan-driven paths supply this from RunnableDiscoveryBatch.exclude_substrings (the model authority).
@@ -4071,7 +4087,7 @@ pub struct DiscoveryCorpusOptions {
 impl Default for DiscoveryCorpusOptions {
     fn default() -> Self {
         Self {
-            skip_unaffected_node_frontier: false,
+            node_frontier_selection: NodeFrontierSelectionMode::Off,
             explicit_roster_only: false,
             exclude_substrings: FLOOR_DISCOVERY_EXCLUDES
                 .iter()
@@ -5084,18 +5100,19 @@ pub fn run_discovery_corpus_with_options(
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
     set_phase(FloorPhase::Discovery, "discovery-roster");
-    // No degradation arm: skip_unaffected_node_frontier: true is a DECLARED capability,
+    let selection_enabled = options.node_frontier_selection != NodeFrontierSelectionMode::Off;
+    // No degradation arm: a non-Off node_frontier_selection is a DECLARED capability,
     // so every input it needs (the git-diff observation, the frontier attribution, the
     // affected-set runner) must be present — a failure is a loud typed error, never a
     // silent run-everything fallback. To run without selection, declare the flag false.
-    let diff_text = if options.skip_unaffected_node_frontier {
+    let diff_text = if selection_enabled {
         floor_git_diff_range().map_err(|msg| {
             format!(
                 "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git diff \
                  observation failed ({msg}); observation failure is the only ignorance \
                  state (operator ruling 2026-07-05) and refuses every enrolled row rather \
-                 than widening to a full-corpus run (declare skip_unaffected_node_frontier: \
-                 false to run without selection)",
+                 than widening to a full-corpus run (declare node_frontier_selection: \
+                 SelectionOff to run without selection)",
                 rows.len()
             )
         })?
@@ -5119,7 +5136,7 @@ pub fn run_discovery_corpus_with_options(
     // set flows through the general selection machinery — empty frontier, zero edited
     // fns — so every row takes the normal not-affected skip. Disabling selection here
     // was the run-everything absorbing arm.
-    let (skip_enabled, diff_edits) = if options.skip_unaffected_node_frontier {
+    let (skip_enabled, diff_edits) = if selection_enabled {
         match floor_diff_edits_from_line_ranges(
             &index,
             &line_ranges_by_file,
@@ -5138,7 +5155,7 @@ pub fn run_discovery_corpus_with_options(
     } else {
         (false, FloorDiffEdits::default())
     };
-    let floor_runner_ctx = if options.skip_unaffected_node_frontier {
+    let floor_runner_ctx = if selection_enabled {
         // Resolve the floor runner through the SAME shared index as the rows (union-resolve
         // S1) rather than a private per-call resolve — its closure shares the std/spec prefix
         // with the roster, so co-resolving here means that prefix is not typechecked twice.
@@ -5148,8 +5165,8 @@ pub fn run_discovery_corpus_with_options(
             }
             Err(msg) => {
                 return Err(format!(
-                    "floor runner resolve failed ({msg}) — skip_unaffected_node_frontier: \
-                     true declares the affected-set machinery ({FLOOR_RUNNER_ENTRY}) and it \
+                    "floor runner resolve failed ({msg}) — a non-Off node_frontier_selection \
+                     declares the affected-set machinery ({FLOOR_RUNNER_ENTRY}) and it \
                      must resolve; no silent full-corpus fallback"
                 ));
             }
@@ -5220,7 +5237,7 @@ pub fn run_discovery_corpus_with_options(
             &rows,
             &index,
             execution_mode,
-            skip_enabled,
+            options.node_frontier_selection,
             &changed_paths,
             &diff_edits,
             floor_runner_ctx.as_ref(),
@@ -5234,7 +5251,7 @@ pub fn run_discovery_corpus_with_options(
         shards.iter().filter(|s| !s.is_empty()).count()
     );
     let source_roots_owned = source_roots.to_vec();
-    let skip_for_shards = skip_enabled;
+    let selection_for_shards = options.node_frontier_selection;
     let mut handles = Vec::new();
     for shard in shards {
         if shard.is_empty() {
@@ -5253,7 +5270,7 @@ pub fn run_discovery_corpus_with_options(
             // runner's closure privately alongside the rows' — the std/spec prefix typechecks
             // once per shard, not twice.
             let index = build_multi_entry_index(&roots);
-            let runner = if skip_for_shards {
+            let runner = if selection_for_shards != NodeFrontierSelectionMode::Off {
                 match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
                     Ok((graph, source_indices)) => {
                         Some(make_eval_context(&graph, source_indices, execution_mode))
@@ -5273,7 +5290,7 @@ pub fn run_discovery_corpus_with_options(
                 &shard_rows,
                 &index,
                 execution_mode,
-                skip_for_shards,
+                selection_for_shards,
                 &paths,
                 &seeds,
                 runner.as_ref(),
@@ -5323,6 +5340,8 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         total: 0,
         passed: 0,
         skipped: 0,
+        predicted_unaffected: Vec::new(),
+        divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::new(),
         entry_resolve_receipts: Vec::new(),
@@ -5334,6 +5353,10 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         merged.total += summary.total;
         merged.passed += summary.passed;
         merged.skipped += summary.skipped;
+        merged
+            .predicted_unaffected
+            .extend(summary.predicted_unaffected);
+        merged.divergences.extend(summary.divergences);
         merged.failures.extend(summary.failures);
         merged.witness_outcomes.extend(summary.witness_outcomes);
         merged
@@ -5352,7 +5375,7 @@ fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
     execution_mode: v1_interpreter::ExecutionMode,
-    skip_enabled: bool,
+    selection: NodeFrontierSelectionMode,
     changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
@@ -5362,6 +5385,8 @@ fn run_discovery_rows(
         total: rows.len(),
         passed: 0,
         skipped: 0,
+        predicted_unaffected: Vec::new(),
+        divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::with_capacity(rows.len()),
         entry_resolve_receipts: Vec::new(),
@@ -5369,6 +5394,7 @@ fn run_discovery_rows(
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
     };
+    let skip_enabled = selection != NodeFrontierSelectionMode::Off;
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
@@ -5435,7 +5461,7 @@ fn run_discovery_rows(
                 .touched_entry_files
                 .iter()
                 .any(|file| touched_file_in_import_closure(file, &current_entry_closure_files));
-        let should_skip = if skip_enabled {
+        let would_skip = if skip_enabled {
             let host_scaffold_witness =
                 witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
             match floor_runner_ctx {
@@ -5476,13 +5502,29 @@ fn run_discovery_rows(
         } else {
             false
         };
-        if should_skip {
-            summary.skipped += 1;
-            eprintln!(
-                "SKIP [assumed-green node-frontier] {} ({})",
-                row.function, row.entry
-            );
-            continue;
+        if would_skip {
+            match selection {
+                NodeFrontierSelectionMode::Applied => {
+                    summary.skipped += 1;
+                    eprintln!(
+                        "SKIP [assumed-green node-frontier] {} ({})",
+                        row.function, row.entry
+                    );
+                    continue;
+                }
+                NodeFrontierSelectionMode::PredictOnly => {
+                    // Falsifier semantics: record the prediction and run the row cold anyway.
+                    summary
+                        .predicted_unaffected
+                        .push((row.entry.clone(), row.function.clone()));
+                    eprintln!(
+                        "PREDICT [unaffected node-frontier] {} ({})",
+                        row.function, row.entry
+                    );
+                }
+                // would_skip is only computed when selection is enabled.
+                NodeFrontierSelectionMode::Off => {}
+            }
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
         let closure_subject = current_closure_subject
@@ -5500,6 +5542,20 @@ fn run_discovery_rows(
             function: row.function.clone(),
             outcome: outcome.clone(),
         });
+        if selection == NodeFrontierSelectionMode::PredictOnly
+            && would_skip
+            && !matches!(outcome, ClaimOutcome::Pass)
+        {
+            // The red itself already fails the batch through the failure channel below;
+            // this line is the ATTRIBUTION receipt — a missing selection edge, counted.
+            let line = format!(
+                "DIVERGENCE [affected-set-falsifier] {} ({}) predicted=unaffected \
+                 actual=red class=node-frontier",
+                row.function, row.entry
+            );
+            eprintln!("{line}");
+            summary.divergences.push(line);
+        }
         match outcome {
             ClaimOutcome::Pass => summary.passed += 1,
             ClaimOutcome::Fail => summary.failures.push(format!(
@@ -7840,6 +7896,8 @@ mod witness_timing_attribution_tests {
             total: 3,
             passed: 3,
             skipped: 0,
+            predicted_unaffected: Vec::new(),
+            divergences: Vec::new(),
             failures: Vec::new(),
             witness_outcomes: vec![
                 DiscoveryWitnessOutcome {

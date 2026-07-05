@@ -4,6 +4,7 @@ import std.realization {
   Runnable, RunnableSingleClaim, RunnableDiscoveryBatch,
 }
 import v2.workflow.ci_floor_plan {
+  gunbc_falsifier_batches,
   gunbc_ci_floor_batches,
   floor_schedule_for,
   corpus_runnable_for, execution_corpus_runnable_for,
@@ -29,6 +30,7 @@ import v2.workflow.ci_floor_plan {
 import gunbc.ci_layer_roots { witness_layer_roots }
 import gunbc.ci_spec { gunbc_ci_spec, ci_spec_with_witness_entries, CiSpec, EmitHostGate, LayeringImportsGate }
 import std.realization_schedule {
+  SelectionOff, SelectionApplied, SelectionPredictOnly, NodeFrontierSelection,
   runnable_forbids_corpus_co_residence, ScheduleWitnessEntry, schedule_witness_entry_eq,
   CorpusWitnessKind, ExecutionWitnessKind
 }
@@ -78,7 +80,7 @@ data zero_roster_spec: CiSpec = ci_spec_with_witness_entries(
 fn runnable_function(r: Runnable) -> String {
   match r {
     RunnableSingleClaim { entry: _, function: f, profile: _ } => f
-    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => corpus_sentinel
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => corpus_sentinel
     RunnableKernelWorkload { fused_op_count: _ } => "__kernel_workload__"
   }
 }
@@ -141,7 +143,7 @@ fn witness_plan_serializes_heavy_resolves() -> Bool {
 
 fn discovery_carries_exactly(r: Runnable, expected: ScheduleWitnessEntry) -> Bool {
   match r {
-    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: dirs, explicit_entries: entries, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: scope, spawn_width_cap: _, profile: _ } =>
+    RunnableDiscoveryBatch { source_roots: roots, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: scope, spawn_width_cap: _, profile: _ } =>
       (length(xs: dirs) == 0) &&
         (length(xs: scope) == 0) &&
         (length(xs: entries) == 1) &&
@@ -233,6 +235,29 @@ fn witness_light_gate_profile_allows_corpus_co_residence() -> Bool {
   !runnable_forbids_corpus_co_residence(r: gate_runnable(g: LayeringImportsGate))
 }
 
+
+fn falsifier_batch_selection(mode: NodeFrontierSelection) -> Bool {
+  match mode {
+    SelectionPredictOnly => true
+    SelectionApplied => false
+    SelectionOff => false
+  }
+}
+
+fn falsifier_plan_is_one_predict_only_batch() -> Bool {
+  let batches = gunbc_falsifier_batches()
+  (length(xs: batches) == 1)
+    && (length(xs: batches.first()) == 1)
+    && match batches.first().first() {
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
+        falsifier_batch_selection(mode: mode)
+          && (length(xs: entries) == 0)
+          && (length(xs: dirs) == 2)
+      RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+      RunnableKernelWorkload { fused_op_count: _ } => false
+    }
+}
+
 test fn ci_floor_plan_witnesses() -> Bool {
   witness_floor_compile_gate_honest_heavy_profile() &&
     witness_live_floor_discovery_tracks_optin_roster() &&
@@ -240,6 +265,7 @@ test fn ci_floor_plan_witnesses() -> Bool {
     witness_corpus_not_before_compile() &&
     witness_independent_jobs_parallelize() &&
     witness_plan_serializes_heavy_resolves()
+    && falsifier_plan_is_one_predict_only_batch()
 }
 
 test fn ci_floor_optin_roster_witnesses() -> Bool {

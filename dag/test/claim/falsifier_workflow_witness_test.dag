@@ -1,0 +1,45 @@
+module test.claim.falsifier_workflow_witness_test
+
+import std.types { Bool, Int, String }
+import extdeps.cron.schedule_model { render_cron_schedule }
+import gunbc.falsifier_workflow {
+  falsifier_nightly_cron,
+  gunbc_falsifier_job_backstop_timeout_minutes,
+  gunbc_falsifier_step_timeout_minutes,
+  expected_falsifier_yml
+}
+import gunbc.generated_artifact { FalsifierYamlArtifact, artifact_path }
+
+data falsifier_witness_note: String = "Witnesses for the falsifier cadence surface (signed design: docs/plans/affected-set-differential-falsifier.md). The full yaml projection is witnessed by execution through the generated-artifact drift gate (byte-identity against the committed falsifier.yml); these unit witnesses pin the grounded facts the projection consumes: the rendered cron string, the backstop arithmetic (step-sum plus prelude allowance, per the step-level budget ruling), and the artifact path."
+
+fn falsifier_cron_renders_nightly_utc() -> Bool {
+  render_cron_schedule(s: falsifier_nightly_cron) == "0 7 * * *"
+}
+
+fn falsifier_cron_render_discriminates() -> Bool {
+  !(render_cron_schedule(s: falsifier_nightly_cron) == "0 7 * * * *")
+}
+
+fn falsifier_backstop_is_step_sum_plus_prelude() -> Bool {
+  gunbc_falsifier_job_backstop_timeout_minutes() == (30 + gunbc_falsifier_step_timeout_minutes + 5)
+}
+
+fn falsifier_artifact_path_is_workflow_file() -> Bool {
+  artifact_path(a: FalsifierYamlArtifact) == ".github/workflows/falsifier.yml"
+}
+
+fn falsifier_yaml_projection_evaluates() -> Bool {
+  length_of(s: expected_falsifier_yml()) > 0
+}
+
+fn length_of(s: String) -> Int {
+  s.length()
+}
+
+test fn falsifier_workflow_witness_holds() -> Bool {
+  falsifier_cron_renders_nightly_utc()
+    && falsifier_cron_render_discriminates()
+    && falsifier_backstop_is_step_sum_plus_prelude()
+    && falsifier_artifact_path_is_workflow_file()
+    && falsifier_yaml_projection_evaluates()
+}

@@ -34,6 +34,8 @@ import gunbc.ci_floor_measurement {
 import gunbc.ci_budget_tree { srv1_floor_memory_budget }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import std.realization_schedule {
+  SelectionApplied,
+  SelectionPredictOnly,
   RealizationPlan,
   RealizationObjective,
   Runnable,
@@ -225,7 +227,7 @@ fn corpus_runnable_for(spec: CiSpec) -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: corpus_witness_entries(spec: spec),
-    skip_unaffected_node_frontier: true,
+    node_frontier_selection: SelectionApplied,
     exclude_substrings: witness_exclusion_substrings,
     discovery_scope_dirs: [],
     spawn_width_cap: hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree()),
@@ -251,7 +253,7 @@ fn execution_corpus_runnable_for(spec: CiSpec) -> Runnable {
     source_roots: corpus_source_roots(),
     scan_dirs: [],
     explicit_entries: execution_witness_entries(spec: spec),
-    skip_unaffected_node_frontier: true,
+    node_frontier_selection: SelectionApplied,
     exclude_substrings: [],
     discovery_scope_dirs: [],
     spawn_width_cap: execution_corpus_spawn_width(),
@@ -449,6 +451,27 @@ fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
   gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec)
 }
 
+data gunbc_falsifier_scan_dirs: List<String> = ["dag/test/claim", "src/v2/test/claim/manual"]
+
+data gunbc_falsifier_note: String = "Differential falsifier cadence batch (signed design: docs/plans/affected-set-differential-falsifier.md). One cold tree-wide discovery run with SelectionPredictOnly: every row runs, would-skip predictions are recorded per row, and a predicted-unaffected row that runs red is a counted DIVERGENCE naming a missing selection edge (the red also fails the batch through the normal failure channel). Refused observation aborts the run typed - a refusal is not a divergence. Component 1 (non-hermetic residue) is covered by construction: host-scaffold rows never predict-skip and always run cold; a residue-only cadence shape waits on the reads_live_tree classifier defork (ROADMAP 2-host-scaffold-classifier-defork). Dissolution: divergence rate 0 across 8 consecutive windows retires this batch (delete the falsifier workflow, receipt = the Actions run history); recurrence re-arms for another 8-window cycle, counted."
+
+fn gunbc_falsifier_batches() -> List<List<Runnable>> {
+  [[RunnableDiscoveryBatch {
+    source_roots: corpus_source_roots(),
+    scan_dirs: gunbc_falsifier_scan_dirs,
+    explicit_entries: [],
+    node_frontier_selection: SelectionPredictOnly,
+    exclude_substrings: witness_exclusion_substrings,
+    discovery_scope_dirs: [],
+    spawn_width_cap: hardware_thread_count_value(t: gunbc_ci_floor_spawn_width_from_tree()),
+    profile: runnable_resource_profile(
+      heavy_whole_tree_resolve: true,
+      spawns_host_compiler: false,
+      memory: runnable_memory_substantial(predicted_peak: gunbc_ci_floor_per_shard_peak_rss_bytes())
+    )
+  }]]
+}
+
 fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan().schedule
 }
@@ -549,7 +572,7 @@ fn witness_floor_spawn_width_zero_budget_falls_back() -> Bool {
 fn floor_batch_heavy_gate_resolve_count(batch: List<Runnable>) -> Int {
   fold(batch, init: 0, f: fn(acc, r) {
     match r {
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, skip_unaffected_node_frontier: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => acc
+      RunnableDiscoveryBatch { source_roots: _, scan_dirs: _, explicit_entries: _, node_frontier_selection: _, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } => acc
       RunnableKernelWorkload { fused_op_count: _ } => acc
       RunnableSingleClaim { entry: _, function: f, profile: p } =>
         if f == ci_floor_compile_gate_fn {
