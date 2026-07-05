@@ -14680,6 +14680,15 @@ pub fn seed_kernel_intern_table(intern_table: Rc<InternTable>) -> Rc<InternTable
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypecheckAccum {
+    pub modules: Rc<Vec<Rc<TypedModule>>>,
+    pub module_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    pub variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
+    pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    pub diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
+}
+
 pub fn typecheck(
     graph: Rc<ModuleGraph>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -14687,8 +14696,8 @@ pub fn typecheck(
 ) -> Rc<TypedGraph> {
     {
         let intern_table = seed_kernel_intern_table(intern_table.clone());
-        typecheck_modules(
-            graph.modules.clone(),
+        let final_acc = typecheck_batches(
+            graph.batches.clone(),
             Rc::new(vec![]),
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
             v1_rt::rc_empty_map::<String, Rc<VariantExportSurface>>(),
@@ -14696,7 +14705,82 @@ pub fn typecheck(
             Rc::new(vec![]),
             source_indices,
             intern_table.clone(),
-        )
+        );
+        let expanded_registry = expand_transitive_services(
+            final_acc.modules.clone(),
+            final_acc.item_registry.clone(),
+            5,
+        );
+        Rc::new(TypedGraph {
+            modules: final_acc.modules.clone(),
+            item_registry: expanded_registry,
+            diagnostics: Rc::new({
+                let mut __result = Vec::new();
+                for c in final_acc.diag_chunks.iter().cloned() {
+                    __result.extend((*c.clone()).iter().cloned());
+                }
+                __result
+            }),
+        })
+    }
+}
+
+pub fn typecheck_batches(
+    mut remaining_batches: Rc<Vec<Rc<Vec<Rc<ResolvedModule>>>>>,
+    mut modules: Rc<Vec<Rc<TypedModule>>>,
+    mut module_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    mut variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
+    mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
+    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    mut intern_table: Rc<InternTable>,
+) -> Rc<TypecheckAccum> {
+    loop {
+        match remaining_batches.clone().first().cloned() {
+            None => {
+                break Rc::new(TypecheckAccum {
+                    modules: modules.clone(),
+                    module_index: module_index.clone(),
+                    variant_surfaces: variant_surfaces.clone(),
+                    item_registry: item_registry.clone(),
+                    diag_chunks: diag_chunks.clone(),
+                });
+            }
+            Some(batch) => {
+                v1_rt::trace_mark("compile.reconcile.batch.done".to_string());
+                let batch_acc = typecheck_modules(
+                    batch.clone(),
+                    modules.clone(),
+                    module_index.clone(),
+                    variant_surfaces.clone(),
+                    item_registry.clone(),
+                    diag_chunks.clone(),
+                    source_indices.clone(),
+                    intern_table.clone(),
+                );
+                {
+                    let __tco_0 = Rc::new(
+                        remaining_batches
+                            .iter()
+                            .cloned()
+                            .skip(1 as usize)
+                            .collect::<Vec<_>>(),
+                    );
+                    let __tco_1 = batch_acc.modules.clone();
+                    let __tco_2 = batch_acc.module_index.clone();
+                    let __tco_3 = batch_acc.variant_surfaces.clone();
+                    let __tco_4 = batch_acc.item_registry.clone();
+                    let __tco_5 = batch_acc.diag_chunks.clone();
+                    remaining_batches = __tco_0;
+                    modules = __tco_1;
+                    module_index = __tco_2;
+                    variant_surfaces = __tco_3;
+                    item_registry = __tco_4;
+                    diag_chunks = __tco_5;
+                    continue;
+                }
+            }
+        }
     }
 }
 
@@ -14709,22 +14793,16 @@ pub fn typecheck_modules(
     mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     mut intern_table: Rc<InternTable>,
-) -> Rc<TypedGraph> {
+) -> Rc<TypecheckAccum> {
     loop {
         match remaining.clone().first().cloned() {
             None => {
-                let expanded_registry =
-                    expand_transitive_services(modules.clone(), item_registry, 5);
-                break Rc::new(TypedGraph {
+                break Rc::new(TypecheckAccum {
                     modules: modules.clone(),
-                    item_registry: expanded_registry,
-                    diagnostics: Rc::new({
-                        let mut __result = Vec::new();
-                        for c in diag_chunks.iter().cloned() {
-                            __result.extend((*c.clone()).iter().cloned());
-                        }
-                        __result
-                    }),
+                    module_index: module_index.clone(),
+                    variant_surfaces: variant_surfaces.clone(),
+                    item_registry: item_registry.clone(),
+                    diag_chunks: diag_chunks.clone(),
                 });
             }
             Some(resolved) => {

@@ -6542,10 +6542,18 @@ fn seed_kernel_intern_table(intern_table: InternTable) -> InternTable {
   fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
 }
 
+type TypecheckAccum {
+  modules: List<TypedModule>
+  module_index: Map<String, TypedModule>
+  variant_surfaces: Map<String, VariantExportSurface>
+  item_registry: Map<String, ItemInfo>
+  diag_chunks: List<List<ErrorNode>>
+}
+
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
-  typecheck_modules(
-    remaining: graph.modules,
+  let final_acc = typecheck_batches(
+    remaining_batches: graph.batches,
     modules: [],
     module_index: empty_map(),
     variant_surfaces: empty_map(),
@@ -6554,6 +6562,46 @@ fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, inte
     source_indices: source_indices,
     intern_table: intern_table
   )
+  let expanded_registry = expand_transitive_services(modules: final_acc.modules, registry: final_acc.item_registry, remaining_passes: 5)
+  TypedGraph { modules: final_acc.modules, item_registry: expanded_registry, diagnostics: flat_map(final_acc.diag_chunks, c => c) }
+}
+
+fn typecheck_batches(
+  remaining_batches: List<List<ResolvedModule>>,
+  modules: List<TypedModule>,
+  module_index: Map<String, TypedModule>,
+  variant_surfaces: Map<String, VariantExportSurface>,
+  item_registry: Map<String, ItemInfo>,
+  diag_chunks: List<List<ErrorNode>>,
+  source_indices: Map<String, NewlineIndex>,
+  intern_table: InternTable
+) -> TypecheckAccum {
+  match remaining_batches |> first {
+    Absent =>
+      TypecheckAccum { modules: modules, module_index: module_index, variant_surfaces: variant_surfaces, item_registry: item_registry, diag_chunks: diag_chunks }
+    Present { value: batch } =>
+      let _ = trace_mark("compile.reconcile.batch.done")
+      let batch_acc = typecheck_modules(
+        remaining: batch,
+        modules: modules,
+        module_index: module_index,
+        variant_surfaces: variant_surfaces,
+        item_registry: item_registry,
+        diag_chunks: diag_chunks,
+        source_indices: source_indices,
+        intern_table: intern_table
+      )
+      typecheck_batches(
+        remaining_batches: remaining_batches |> skip(1),
+        modules: batch_acc.modules,
+        module_index: batch_acc.module_index,
+        variant_surfaces: batch_acc.variant_surfaces,
+        item_registry: batch_acc.item_registry,
+        diag_chunks: batch_acc.diag_chunks,
+        source_indices: source_indices,
+        intern_table: intern_table
+      )
+  }
 }
 
 fn typecheck_modules(
@@ -6565,11 +6613,10 @@ fn typecheck_modules(
   diag_chunks: List<List<ErrorNode>>,
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable
-) -> TypedGraph {
+) -> TypecheckAccum {
   match remaining |> first {
     Absent =>
-      let expanded_registry = expand_transitive_services(modules: modules, registry: item_registry, remaining_passes: 5)
-      TypedGraph { modules: modules, item_registry: expanded_registry, diagnostics: flat_map(diag_chunks, c => c) }
+      TypecheckAccum { modules: modules, module_index: module_index, variant_surfaces: variant_surfaces, item_registry: item_registry, diag_chunks: diag_chunks }
     Present { value: resolved } =>
       let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index, source_indices: source_indices)
       let tc_result = typecheck_module(resolved: resolved, parent_index: module_index, variant_surfaces: variant_surfaces, source_indices: source_indices, intern_table: intern_table)
