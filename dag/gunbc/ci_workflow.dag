@@ -270,6 +270,8 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 
 data gunbc_ci_job_timeout_policy_minutes: Int = 10
 
+data gunbc_ci_floor_job_timeout_policy_minutes: Int = 20
+
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
   reason: "gunbc CI policy (operator, 2026-07-04): CI jobs time out at 10 minutes - a deliberate INVERSION of the prior ratchet (30min alarm -> 50min -> 90min, each raise buying headroom for the unfixed resolve cost; at 90min the queue backed up and runs still timed out delivering zero signal). The budget is now a forcing function: the floor must FIT it, and the itemized [t+Xs] phase marks say exactly which phase does not (measured 2026-07-04: plan-closure resolve was 15min+, whole-tree compile-clean ~48min on the ARM fleet - both resolve-dominated; see the floor-shared-compute-memoization plan). Every job stays red-by-timeout until resolve memoization lands; that red is honest, unlike a 90min lane that never completed. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default - workflow-layer policy on top."
 }
@@ -301,12 +303,12 @@ fn ci_job() -> Job {
     name: none,
     runner: gunbc_ci_runner_spec(),
     steps: concat(ci_prelude_steps(), [ci_floor_step(), ci_merge_admission_gate_step()]),
-    needs: [],
+    needs: ["rust_tests"],
     env: none,
     outputs: none,
     if_condition: none,
     strategy: none,
-    timeout_minutes: Present { value: gunbc_ci_job_timeout_policy_minutes },
+    timeout_minutes: Present { value: gunbc_ci_floor_job_timeout_policy_minutes },
     continue_on_error: none,
     concurrency: none
   }

@@ -16,7 +16,7 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
 jobs:
-  ci:
+  rust_tests:
     runs-on: [self-hosted, linux, arm64]
     timeout-minutes: 10
     steps:
