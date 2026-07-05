@@ -1,0 +1,120 @@
+module v2.test.tokenize.string_head_linear_witness
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.algebra { Cons, Empty, fold_list, length }
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.compilers.lexing { Token, token_stream_all }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data shlw_file_anchor: Symbol = ^shlw_file_anchor
+
+data shlw_logic_path: String = "dag/std/logic.dag"
+
+data shlw_purity_source: String = Cons {
+  head: 109,
+  tail: Cons {
+    head: 111,
+    tail: Cons {
+      head: 100,
+      tail: Cons {
+        head: 117,
+        tail: Cons {
+          head: 108,
+          tail: Cons {
+            head: 101,
+            tail: Empty
+          }
+        }
+      }
+    }
+  }
+}
+
+data shlw_purity_token_count: Int = 1
+
+data shlw_purity_lexeme: String = shlw_purity_source
+
+data shlw_logic_token_count: Int = 81
+
+data shlw_trunc_eighth_path: String = "src/v2/test/fixture/census_path_trunc/eighth.txt"
+data shlw_trunc_quarter_path: String = "src/v2/test/fixture/census_path_trunc/quarter.txt"
+data shlw_trunc_half_path: String = "src/v2/test/fixture/census_path_trunc/half.txt"
+data shlw_trunc_full_path: String = "src/v2/test/fixture/census_path_trunc/full.txt"
+
+data shlw_note: String = "string_head uses list_head in src/v2/std/text.dag:34-38 (O(1) head; was Poly(2) via fold_list_right). Re-cut 2026-07-05 on calm-bear-548-rebase atop main post-forensics #6283. Executable: string_head_linear_trunc_fixtures_tokenize_accept_holds on census_path_trunc byte-prefix fixtures (2185/4370/8741/17483 B); wall-clock bisect in manual/tokenize_linear_receipt.dag."
+
+fn shlw_first_token_lexeme(tokens: List<Token>) -> String {
+  match list_at_optional(xs: tokens, index: 0) {
+    Absent => Empty
+    Present { value: tok } => tok.lexeme
+  }
+}
+
+fn shlw_tokens_match_pinned_oracle(tokens: List<Token>) -> Bool {
+  (length(xs: tokens) == shlw_purity_token_count)
+    && (shlw_first_token_lexeme(tokens: tokens) == shlw_purity_lexeme)
+}
+
+fn shlw_tokenize_logic_token_count() -> Int {
+  let lm = dag_language_model_wave1()
+  let source = filesystem_read(path: shlw_logic_path).content
+  match tokenize(text: source, file: shlw_file_anchor, rules: lm.lex) {
+    Accepted { value: stream, diagnostics: _ } =>
+      length(xs: token_stream_all(stream: stream))
+    Rejected { diagnostics: _ } => 0
+  }
+}
+
+fn shlw_tokenize_path_accepts(path: String) -> Bool {
+  let lm = dag_language_model_wave1()
+  let source = filesystem_read(path: path).content
+  match tokenize(text: source, file: shlw_file_anchor, rules: lm.lex) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn shlw_trunc_paths() -> List<String> {
+  Cons {
+    head: shlw_trunc_eighth_path,
+    tail: Cons {
+      head: shlw_trunc_quarter_path,
+      tail: Cons {
+        head: shlw_trunc_half_path,
+        tail: Cons { head: shlw_trunc_full_path, tail: Empty }
+      }
+    }
+  }
+}
+
+fn shlw_trunc_paths_all_tokenize_accept() -> Bool {
+  fold_list(
+    xs: shlw_trunc_paths(),
+    empty: true,
+    cons: fn(acc, path) {
+      acc && shlw_tokenize_path_accepts(path: path)
+    }
+  )
+}
+
+test fn string_head_linear_purity_oracle_holds() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: shlw_purity_source, file: shlw_file_anchor, rules: lm.lex) {
+    Accepted { value: stream, diagnostics: _ } =>
+      shlw_tokens_match_pinned_oracle(tokens: token_stream_all(stream: stream))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn string_head_linear_logic_token_count_oracle_holds() -> Bool {
+  shlw_tokenize_logic_token_count() == shlw_logic_token_count
+}
+
+test fn string_head_linear_trunc_fixtures_tokenize_accept_holds() -> Bool {
+  shlw_trunc_paths_all_tokenize_accept()
+}

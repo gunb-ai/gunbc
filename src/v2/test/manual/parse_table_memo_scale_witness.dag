@@ -1,0 +1,103 @@
+module v2.test.manual.parse_table_memo_scale_witness
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.parse {
+  ParseMemoStats,
+  grammar_validate_for_parse,
+  parse_production_memo_stats
+}
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { ModeledGrammar, ParseGrammar }
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+type FilesystemReadResult { content: String }
+
+data parse_memo_scale_tokenize_path: String = "src/v1/01_tokenize.dag"
+
+data parse_memo_scale_witness_note: String = "Local scale receipt for P8 packrat memo on src/v1/01_tokenize.dag (~8min). Not CI-enrolled. Counters fire only in parse_nonterminal_memoized_core (packrat lookup/insert). parse_nonterminal_memoized bypasses core for dag_production_match_arm_stmt_body only; all other nonterminal references use core. lookup_calls counts memo-guarded sites only, not every grammar production attempt. lookup_calls==0 wiring gap; lookup_calls>0 hits==0 no memo-level re-visit on file; lookup_calls==hits+misses invariant."
+
+data parse_memo_scale_memo_scope_note: String = "Memoized granularity: parse_table_lookup/insert in parse_nonterminal_memoized_core, reached from parse_expr nonterminal thunk via parse_nonterminal_memoized except dag_production_match_arm_stmt_body (parse_match_arm_stmt_body). Terminals and pure combinators never increment lookup_calls."
+
+fn parse_memo_scale_stats_for_grammar(
+  source_text: String,
+  grammar: ParseGrammar
+) -> ParseMemoStats {
+  let lm = dag_language_model_wave1()
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match tokenize(text: source_text, file: ^parse_memo_scale_file_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } =>
+      ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+    Accepted { value: stream, diagnostics: _ } =>
+      match grammar {
+        ModeledGrammar { root: root } =>
+          match grammar_validate_for_parse(root: root, at: at) {
+            Rejected { diagnostics: _ } =>
+              ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+            Accepted { value: validated, diagnostics: _ } =>
+              parse_production_memo_stats(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              )
+          }
+        VoidGrammar =>
+          ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+      }
+  }
+}
+
+fn parse_memo_scale_tokenize_stats() -> ParseMemoStats {
+  let source_text = filesystem_read(path: parse_memo_scale_tokenize_path).content
+  parse_memo_scale_stats_for_grammar(
+    source_text: source_text,
+    grammar: dag_language_model_wave1().grammar
+  )
+}
+
+fn witness_parse_memo_scale_tokenize_hits() -> Int {
+  parse_memo_scale_tokenize_stats().hits
+}
+
+fn witness_parse_memo_scale_tokenize_misses() -> Int {
+  parse_memo_scale_tokenize_stats().misses
+}
+
+fn witness_parse_memo_scale_tokenize_lookup_calls() -> Int {
+  parse_memo_scale_tokenize_stats().lookup_calls
+}
+
+fn witness_parse_memo_scale_tokenize_report() -> List<Int> {
+  let stats = parse_memo_scale_tokenize_stats()
+  Cons {
+    head: stats.hits,
+    tail: Cons {
+      head: stats.misses,
+      tail: Cons { head: stats.lookup_calls, tail: Empty }
+    }
+  }
+}
+
+fn witness_stage_tokenize_only_holds() -> Bool {
+  let lm = dag_language_model_wave1()
+  let source_text = filesystem_read(path: parse_memo_scale_tokenize_path).content
+  match tokenize(text: source_text, file: ^parse_memo_scale_file_anchor, rules: lm.lex) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_stage_parse_only_holds() -> Bool {
+  let source_text = filesystem_read(path: parse_memo_scale_tokenize_path).content
+  match parse_memo_scale_stats_for_grammar(
+    source_text: source_text,
+    grammar: dag_language_model_wave1().grammar
+  ) {
+    ParseMemoStats { hits: _, misses: misses, lookup_calls: calls } =>
+      (misses > 0) && (calls > 0)
+  }
+}
