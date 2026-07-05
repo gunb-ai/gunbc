@@ -6401,6 +6401,17 @@ mod module_grain_affected_equivalence_tests {
         vec!["dag".to_string(), "src/v2".to_string()]
     }
 
+    // `entry_source_from_index_or_disk` stats `entry_path` directly against the process cwd (it
+    // does not consult `workspace_root()`), so a bare repo-relative constant only resolves when
+    // cwd happens to already be the workspace root. Rather than mutate the global process cwd
+    // (the project's known `set_current_dir` parallel-test race — see the sibling
+    // `node_frontier_plumbing_controls` module's `abs` helper for the same fix), build an absolute
+    // path up front. `pool_roots`/`import_module` facts stay repo-relative (`rel_path_for_layer_import`),
+    // so only the disk-touching entry lookups need this.
+    fn abs(ws: &PathBuf, rel: &str) -> String {
+        ws.join(rel).to_string_lossy().into_owned()
+    }
+
     fn touched_paths_for_commit(sha: &str) -> Vec<String> {
         let output = std::process::Command::new("git")
             .args(["show", "--format=", "--name-only", sha])
@@ -6461,8 +6472,14 @@ mod module_grain_affected_equivalence_tests {
         }
     }
 
-    fn rust_entry_affected(index: &MultiEntryIndex, entry_rel: &str, touched: &[String]) -> bool {
-        let (graph, _) = resolve_entry_with_index_for_discovery_corpus(index, entry_rel)
+    fn rust_entry_affected(
+        ws: &PathBuf,
+        index: &MultiEntryIndex,
+        entry_rel: &str,
+        touched: &[String],
+    ) -> bool {
+        let entry_abs = abs(ws, entry_rel);
+        let (graph, _) = resolve_entry_with_index_for_discovery_corpus(index, &entry_abs)
             .unwrap_or_else(|e| panic!("resolve {entry_rel}: {e}"));
         let closure_files: HashSet<String> = import_closure_files_from_graph(&graph);
         touched
@@ -6483,13 +6500,14 @@ mod module_grain_affected_equivalence_tests {
         let touched = touched_paths_for_commit(sha);
 
         let index = build_multi_entry_index(&roots);
-        let (mg_graph, mg_indices) = resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY)
-            .expect("module_graph.dag resolves as an interpreter entry");
+        let (mg_graph, mg_indices) =
+            resolve_entry_with_index(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
+                .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
         let mut rows = Vec::new();
         for entry in entries {
-            let rust_decision = rust_entry_affected(&index, entry, &touched);
+            let rust_decision = rust_entry_affected(&ws, &index, entry, &touched);
             let dag_decision = dag_entry_affected(&dag_ctx, entry, &rel_roots, &touched);
             rows.push((entry.to_string(), rust_decision, dag_decision));
         }
@@ -6654,8 +6672,9 @@ mod module_grain_affected_equivalence_tests {
         let roots = setup_roots(&ws);
         let rel_roots = pool_roots_rel();
         let index = build_multi_entry_index(&roots);
-        let (mg_graph, mg_indices) = resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY)
-            .expect("module_graph.dag resolves as an interpreter entry");
+        let (mg_graph, mg_indices) =
+            resolve_entry_with_index(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
+                .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
         // `orchestration_emit_test.dag` imports `bash_orchestration_emit.dag` directly, which in
