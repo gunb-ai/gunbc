@@ -19,7 +19,7 @@ jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
     needs: [rust_tests]
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v5
