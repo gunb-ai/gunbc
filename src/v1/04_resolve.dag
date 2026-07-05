@@ -236,7 +236,7 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
     Present { value: decl } =>
       if decl.params |> count > 0 { decl }
       else if n.children |> count > 0 {
-        let ancestry_generic = fold(env.parents, init: none, f: (acc, parent) =>
+        match fold(env.parents, init: none, f: (acc, parent) =>
           if acc != none { acc }
           else {
             match map_get(parent.str_bindings, brand) {
@@ -245,8 +245,7 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
               Absent => acc
             }
           }
-        )
-        match ancestry_generic {
+        ) {
           Present { value: user_decl } => user_decl
           Absent =>
             if n.name != "" && n.name != brand {
