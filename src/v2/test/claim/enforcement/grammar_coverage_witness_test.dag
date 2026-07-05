@@ -17,7 +17,8 @@ import v2.lens.enforcement.grammar_coverage {
   grammar_coverage_parse_fraction_bps,
   grammar_coverage_timing_work_units_match_take_n,
   grammar_coverage_file_receipt,
-  grammar_coverage_file_reject_locus_matches
+  grammar_coverage_file_reject_locus_matches,
+  grammar_coverage_rejected_row_present
 }
 import v2.std.algebra { length }
 import v2.std.collection { List }
@@ -158,6 +159,20 @@ test fn grammar_coverage_v1_tokenize_file_reject_locus_by_execution() -> Bool {
     stage: "tokenize",
     reason: ^tokenize_lex_e1_unrecognized_char
   )
+}
+
+test fn grammar_coverage_v1_rejected_rows_identity_by_execution() -> Bool {
+  let receipt = gc_witness_v1_tree_receipt_live()
+  grammar_coverage_rejected_row_present(
+    rows: receipt.rejected_rows,
+    stage: "parse",
+    reason: ^parse_g0_tokens_remain
+  )
+    && grammar_coverage_rejected_row_present(
+      rows: receipt.rejected_rows,
+      stage: "tokenize",
+      reason: ^tokenize_lex_e1_unrecognized_char
+    )
 }
 
 test fn grammar_coverage_v1_tree_receipt_by_execution() -> Bool {

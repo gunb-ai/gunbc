@@ -290,6 +290,20 @@ fn grammar_coverage_timing_work_units_match_take_n(
   work_units == expected
 }
 
+fn grammar_coverage_rejected_row_present(
+  rows: List<GrammarCoverageRejectedRow>,
+  stage: String,
+  reason: Symbol
+) -> Bool {
+  fold_list(
+    xs: rows,
+    empty: false,
+    cons: fn(acc, row) {
+      acc || ((row.stage == stage) && (row.reason == reason))
+    }
+  )
+}
+
 fn grammar_coverage_receipt_totality_holds(receipt: GrammarCoverageTreeReceipt) -> Bool {
   receipt.files_attempted == (receipt.parsed_clean + receipt.rejected_count)
 }
