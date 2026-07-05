@@ -90,11 +90,11 @@ jobs:
           git fetch --no-tags origin main 2>/dev/null || true
           _ci_changed=$(git diff --name-only origin/main...HEAD 2>/dev/null || true)
           if [ -n "$_ci_changed" ]; then
-          # Interim compile-clean scoping: merge-base diffs touching only docs/, root doc symlinks, or .gitignore (census-script whitelist) skip the compose floor. dissolve-on: affected-set-scoped compile-clean or batch-1 fits the 10-minute step budget.
+          # Interim compile-clean scoping: merge-base diffs touching only docs/, root doc symlinks, or .gitignore skip the compose floor. CI substrate (.github/workflows/ci.yml, dag/gunbc/ci_spec.dag, ci_spec witnesses) is excluded — those paths always run the full floor so drift gates cannot be self-shortcut. dissolve-on: affected-set-scoped compile-clean or batch-1 fits the 10-minute step budget.
             DOCS_ONLY=1
             while IFS= read -r _ci_path; do
               [ -z "$_ci_path" ] && continue
-              if [[ "$_ci_path" == docs/* ]] || [[ "$_ci_path" == README.md ]] || [[ "$_ci_path" == CLAUDE.md ]] || [[ "$_ci_path" == DESIGN.md ]] || [[ "$_ci_path" == .gitignore ]] || [[ "$_ci_path" == .github/workflows/ci.yml ]] || [[ "$_ci_path" == dag/gunbc/ci_spec.dag ]] || [[ "$_ci_path" == src/v2/test/claim/ci_spec_witness_test.dag ]]; then
+              if [[ "$_ci_path" == docs/* ]] || [[ "$_ci_path" == README.md ]] || [[ "$_ci_path" == CLAUDE.md ]] || [[ "$_ci_path" == DESIGN.md ]] || [[ "$_ci_path" == .gitignore ]]; then
                 :
               else
                 DOCS_ONLY=0

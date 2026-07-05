@@ -206,7 +206,8 @@ fn witness_documentation_only_shortcut_in_floor_script() -> Bool {
   let script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
   string_contains(s: script, pattern: "documentation-only diff") &&
     string_contains(s: script, pattern: "[[ \"$_ci_path\" == docs/* ]]") &&
-    string_contains(s: script, pattern: ci_documentation_only_diff_note)
+    string_contains(s: script, pattern: ci_documentation_only_diff_note) &&
+    !string_contains(s: script, pattern: ".github/workflows/ci.yml")
 }
 
 fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {
