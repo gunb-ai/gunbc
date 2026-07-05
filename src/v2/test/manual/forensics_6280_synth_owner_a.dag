@@ -1,5 +1,5 @@
 module v2.test.manual.forensics_6280_synth_owner_a
 
-type SynthOwnerA
-  = Rejected { tag: String }
-  | SynthOwnerAAlt { tag: String }
+type SynthOwnerA<T>
+  = Rejected { reason: String }
+  | SynthOwnerAAlt { value: T }

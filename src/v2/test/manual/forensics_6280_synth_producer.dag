@@ -45,6 +45,6 @@ import v2.test.manual.forensics_6280_synth_decoy_38 { SynthDecoy38One }
 import v2.test.manual.forensics_6280_synth_decoy_39 { SynthDecoy39One }
 import v2.test.manual.forensics_6280_synth_decoy_40 { SynthDecoy40One }
 
-fn forensics_6280_synth_produce() -> SynthOwnerA {
-  Rejected { tag: "forensics_6280_synth_probe_tag" }
+fn forensics_6280_synth_produce() -> SynthOwnerA<String> {
+  Rejected { reason: "forensics_6280_synth_probe_tag" }
 }
