@@ -57,9 +57,9 @@ type ImportClosureBfsState {
   queue: List<String>
 }
 
-data map_lookup_rejected_unreachability_proof: String = "map_lookup is NOT a general-purpose Map accessor: map_get's Rejected (a non-absent lookup failure, witness_option_bridge_test.dag's map_get_rejects_non_absent_lookup_failure) must stay Rejected, never be coerced to a miss. This helper is only ever called (below, both call sites) on maps built exclusively via empty_map/map_insert (build_module_to_path, build_import_adjacency's acc), whose lookup closure chain can only ever surface Holds or a Violates tagged ^map_key_absent -- map_get itself maps that exact tag to Accepted(Absent), so Rejected is decidably unreachable here by construction, not by assumption. If this helper is ever reused on a differently-constructed Map, this coercion is wrong for that caller -- do not reuse it outside this module without re-deriving the proof."
+data map_lookup_where_rejected_unreachable_proof: String = "map_lookup_where_rejected_unreachable is NOT a general-purpose Map accessor: map_get's Rejected (a non-absent lookup failure, witness_option_bridge_test.dag's map_get_rejects_non_absent_lookup_failure) must stay Rejected, never be coerced to a miss. This helper is only ever called (below, both call sites) on maps built exclusively via empty_map/map_insert (build_module_to_path, build_import_adjacency's acc), whose lookup closure chain can only ever surface Holds or a Violates tagged ^map_key_absent -- map_get itself maps that exact tag to Accepted(Absent), so Rejected is decidably unreachable here by construction, not by assumption. If this helper is ever reused on a differently-constructed Map, this coercion is wrong for that caller -- do not reuse it outside this module without re-deriving the proof."
 
-fn map_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+fn map_lookup_where_rejected_unreachable<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
   match map_get(m: m, key: key) {
     Accepted { value: v, diagnostics: _ } => v
     Rejected { diagnostics: _ } => Absent
@@ -89,9 +89,9 @@ fn extend_adjacency_for_edge(
   edge: ImportResolutionFact,
   module_to_path: Map<String, String>
 ) -> Map<String, List<String>> {
-  match map_lookup(m: module_to_path, key: edge.import_module) {
+  match map_lookup_where_rejected_unreachable(m: module_to_path, key: edge.import_module) {
     Present { value: imported_path } =>
-      match map_lookup(m: acc, key: edge.path) {
+      match map_lookup_where_rejected_unreachable(m: acc, key: edge.path) {
         Present { value: existing } =>
           map_insert(
             m: acc,
@@ -156,7 +156,7 @@ fn import_closure_bfs_walk(
   match state.queue |> first {
     Present { value: importer } =>
       let rest = state.queue |> skip(1)
-      let neighbors = match map_lookup(m: adjacency, key: importer) {
+      let neighbors = match map_lookup_where_rejected_unreachable(m: adjacency, key: importer) {
         Present { value: paths } => paths
         Absent => no_paths
       }
