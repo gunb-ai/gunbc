@@ -1,0 +1,411 @@
+module v2.lens.enforcement.cost_coverage
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag {
+  dag_language_model_wave1,
+  parse_production_emitted_identity_optional,
+  parse_subtree_find_production_captured
+}
+import v2.lens.cost {
+  AsymptoticClass,
+  ClassUnknown,
+  SymbolicCost,
+  asymptotic_class_of_cost,
+  cost_lens
+}
+import v2.lens.enforcement.grammar_coverage {
+  grammar_coverage_corpus_roster_live,
+  grammar_coverage_distinct_rel_paths,
+  grammar_coverage_paths_for_tree,
+  grammar_coverage_take_n,
+  grammar_coverage_tree_root_for_path
+}
+import v2.lens.enforcement.receipts { BodyJudged, BodyUnavailable, judge_subject_node }
+import v2.lens.enforcement.standing_intent { whole_corpus_scope }
+import v2.std.algebra { Empty, filter, fold_list, length, list_append }
+import v2.std.collection { List }
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates, Witness }
+
+type CostCoverageIngestVerdict
+  = IngestParsedClean
+  | IngestRejected { stage: String, reason: Symbol }
+
+type CostCoverageFnVerdict
+  = FnCostKnown { asymptotic_class: AsymptoticClass }
+  | FnCostUnknown { reason: Symbol }
+  | FnBodyUnavailable
+
+type CostCoverageFnReceipt {
+  rel_path: String
+  fn_index: Int
+  verdict: CostCoverageFnVerdict
+}
+
+type CostCoverageFileReceipt {
+  rel_path: String
+  ingest_verdict: CostCoverageIngestVerdict
+  fn_attempted: Int
+  fn_known: Int
+  fn_unknown: Int
+  fn_body_unavailable: Int
+  fn_rows: List<CostCoverageFnReceipt>
+}
+
+type CostCoverageTreeReceipt {
+  tree_root: String
+  files_attempted: Int
+  files_parsed_clean: Int
+  files_rejected: Int
+  fn_attempted: Int
+  fn_known: Int
+  fn_unknown: Int
+  fn_body_unavailable: Int
+  file_rows: List<CostCoverageFileReceipt>
+}
+
+type CostCoverageCensusAcc {
+  files_attempted: Int
+  files_parsed_clean: Int
+  files_rejected: Int
+  fn_attempted: Int
+  fn_known: Int
+  fn_unknown: Int
+  fn_body_unavailable: Int
+  file_rows: List<CostCoverageFileReceipt>
+}
+
+data cost_coverage_scope_note: String = "Per-file census runs tokenize -> parse -> normalize (program_assembly_read_to_normalized_root terminal), then cost_lens per fn body. Cross-module resolve via SourceRootIngest is a follow-on slice on this receipt carrier."
+
+data cost_coverage_unknown_asymptotic_class: Symbol = ^cost_coverage_unknown_asymptotic_class
+
+data cost_coverage_file_anchor: Symbol = ^cost_coverage_file_anchor
+
+data cost_coverage_reject_probe: Symbol = ^cost_coverage_reject_probe
+
+fn cost_coverage_string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn cost_coverage_is_fn_decl(node: Node) -> Bool {
+  match parse_production_emitted_identity_optional(node: node) {
+    Present { value: id } => id == ^dag_surface_fn_decl
+    Absent => false
+  }
+}
+
+fn cost_coverage_collect_fn_decls(root: Node, acc: List<Node>) -> List<Node> {
+  let acc1 = if cost_coverage_is_fn_decl(node: root) {
+    list_append(left: acc, right: [root])
+  } else {
+    acc
+  }
+  fold(root.children, init: acc1, f: fn(a, edge) {
+    cost_coverage_collect_fn_decls(root: edge.target, acc: a)
+  })
+}
+
+fn cost_coverage_fn_body_from_decl(fn_decl: Node) -> Optional<Node> {
+  match parse_subtree_find_production_captured(
+    root: fn_decl,
+    emitted: ^dag_surface_fn_body
+  ) {
+    ParseSubtreeFound { captured: body } => Present { value: body }
+    ParseSubtreeAbsent => Absent
+  }
+}
+
+fn cost_coverage_fn_verdict_from_body(body: Node) -> CostCoverageFnVerdict {
+  match judge_subject_node(n: body) {
+    BodyUnavailable =>
+      FnBodyUnavailable
+    BodyJudged { verdict: witness } =>
+      match witness {
+        Violates { diagnostic: d } =>
+          FnCostUnknown { reason: d.reason }
+        Holds { value: cost } =>
+          let class = asymptotic_class_of_cost(cost: cost)
+          if class == ClassUnknown {
+            FnCostUnknown { reason: cost_coverage_unknown_asymptotic_class }
+          } else {
+            FnCostKnown { asymptotic_class: class }
+          }
+      }
+  }
+}
+
+fn cost_coverage_fn_verdict_is_unknown(verdict: CostCoverageFnVerdict) -> Bool {
+  match verdict {
+    FnCostUnknown { reason: _ } => true
+    _ => false
+  }
+}
+
+fn cost_coverage_fn_verdict_is_known(verdict: CostCoverageFnVerdict) -> Bool {
+  match verdict {
+    FnCostKnown { asymptotic_class: _ } => true
+    _ => false
+  }
+}
+
+fn cost_coverage_fn_verdict_is_body_unavailable(verdict: CostCoverageFnVerdict) -> Bool {
+  match verdict {
+    FnBodyUnavailable => true
+    _ => false
+  }
+}
+
+fn cost_coverage_fn_receipt_step(
+  acc: List<CostCoverageFnReceipt>,
+  rel_path: String,
+  fn_index: Int,
+  fn_decl: Node
+) -> List<CostCoverageFnReceipt> {
+  match cost_coverage_fn_body_from_decl(fn_decl: fn_decl) {
+    Absent =>
+      list_append(
+        left: acc,
+        right: [
+          CostCoverageFnReceipt {
+            rel_path: rel_path,
+            fn_index: fn_index,
+            verdict: FnBodyUnavailable
+          }
+        ]
+      )
+    Present { value: body } =>
+      list_append(
+        left: acc,
+        right: [
+          CostCoverageFnReceipt {
+            rel_path: rel_path,
+            fn_index: fn_index,
+            verdict: cost_coverage_fn_verdict_from_body(body: body)
+          }
+        ]
+      )
+  }
+}
+
+fn cost_coverage_fn_receipts_for_module(
+  rel_path: String,
+  module_root: Node
+) -> List<CostCoverageFnReceipt> {
+  let fn_decls = cost_coverage_collect_fn_decls(root: module_root, acc: Empty)
+  fold_list(
+    xs: fn_decls,
+    empty: Empty,
+    cons: fn(acc, fn_decl) {
+      cost_coverage_fn_receipt_step(
+        acc: acc,
+        rel_path: rel_path,
+        fn_index: length(xs: acc),
+        fn_decl: fn_decl
+      )
+    }
+  )
+}
+
+fn cost_coverage_count_fn_verdict(
+  rows: List<CostCoverageFnReceipt>,
+  predicate: fn(CostCoverageFnVerdict) -> Bool
+) -> Int {
+  fold_list(
+    xs: rows,
+    empty: 0,
+    cons: fn(acc, row) {
+      if predicate(verdict: row.verdict) { acc + 1 } else { acc }
+    }
+  )
+}
+
+fn cost_coverage_file_receipt_from_module(
+  rel_path: String,
+  module_root: Node
+) -> CostCoverageFileReceipt {
+  let fn_rows = cost_coverage_fn_receipts_for_module(rel_path: rel_path, module_root: module_root)
+  let attempted = length(xs: fn_rows)
+  CostCoverageFileReceipt {
+    rel_path: rel_path,
+    ingest_verdict: IngestParsedClean,
+    fn_attempted: attempted,
+    fn_known: cost_coverage_count_fn_verdict(
+      rows: fn_rows,
+      predicate: cost_coverage_fn_verdict_is_known
+    ),
+    fn_unknown: cost_coverage_count_fn_verdict(
+      rows: fn_rows,
+      predicate: cost_coverage_fn_verdict_is_unknown
+    ),
+    fn_body_unavailable: cost_coverage_count_fn_verdict(
+      rows: fn_rows,
+      predicate: cost_coverage_fn_verdict_is_body_unavailable
+    ),
+    fn_rows: fn_rows
+  }
+}
+
+fn cost_coverage_ingest_source_text(
+  source_text: String,
+  file: Symbol
+) -> Outcome<Node> {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source_text, file: file, rules: lm.lex) {
+    Rejected { diagnostics: d } =>
+      Rejected { diagnostics: d }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } =>
+          Rejected { diagnostics: d }
+        Accepted { value: artifact, diagnostics: _ } =>
+          normalize(parse_tree: artifact.tree)
+      }
+  }
+}
+
+fn cost_coverage_rejected_file_receipt(
+  rel_path: String,
+  stage: String,
+  reason: Symbol
+) -> CostCoverageFileReceipt {
+  CostCoverageFileReceipt {
+    rel_path: rel_path,
+    ingest_verdict: IngestRejected { stage: stage, reason: reason },
+    fn_attempted: 0,
+    fn_known: 0,
+    fn_unknown: 0,
+    fn_body_unavailable: 0,
+    fn_rows: Empty
+  }
+}
+
+fn cost_coverage_file_receipt(rel_path: String) -> CostCoverageFileReceipt {
+  let source_text = filesystem_read(path: rel_path).content
+  match cost_coverage_ingest_source_text(source_text: source_text, file: cost_coverage_file_anchor) {
+    Rejected { diagnostics: d } =>
+      cost_coverage_rejected_file_receipt(
+        rel_path: rel_path,
+        stage: "ingest",
+        reason: d.head.reason
+      )
+    Accepted { value: module_root, diagnostics: _ } =>
+      cost_coverage_file_receipt_from_module(rel_path: rel_path, module_root: module_root)
+  }
+}
+
+fn cost_coverage_census_fold_step(
+  acc: CostCoverageCensusAcc,
+  path: String
+) -> CostCoverageCensusAcc {
+  let file_row = cost_coverage_file_receipt(rel_path: path)
+  match file_row.ingest_verdict {
+    IngestParsedClean =>
+      CostCoverageCensusAcc {
+        files_attempted: acc.files_attempted + 1,
+        files_parsed_clean: acc.files_parsed_clean + 1,
+        files_rejected: acc.files_rejected,
+        fn_attempted: acc.fn_attempted + file_row.fn_attempted,
+        fn_known: acc.fn_known + file_row.fn_known,
+        fn_unknown: acc.fn_unknown + file_row.fn_unknown,
+        fn_body_unavailable: acc.fn_body_unavailable + file_row.fn_body_unavailable,
+        file_rows: list_append(left: acc.file_rows, right: [file_row])
+      }
+    IngestRejected { stage: _, reason: _ } =>
+      CostCoverageCensusAcc {
+        files_attempted: acc.files_attempted + 1,
+        files_parsed_clean: acc.files_parsed_clean,
+        files_rejected: acc.files_rejected + 1,
+        fn_attempted: acc.fn_attempted,
+        fn_known: acc.fn_known,
+        fn_unknown: acc.fn_unknown,
+        fn_body_unavailable: acc.fn_body_unavailable,
+        file_rows: list_append(left: acc.file_rows, right: [file_row])
+      }
+  }
+}
+
+fn cost_coverage_tree_census(
+  tree_root: String,
+  paths: List<String>
+) -> CostCoverageTreeReceipt {
+  let acc = fold_list(
+    xs: paths,
+    empty: CostCoverageCensusAcc {
+      files_attempted: 0,
+      files_parsed_clean: 0,
+      files_rejected: 0,
+      fn_attempted: 0,
+      fn_known: 0,
+      fn_unknown: 0,
+      fn_body_unavailable: 0,
+      file_rows: Empty
+    },
+    cons: fn(a, p) {
+      cost_coverage_census_fold_step(acc: a, path: p)
+    }
+  )
+  CostCoverageTreeReceipt {
+    tree_root: tree_root,
+    files_attempted: acc.files_attempted,
+    files_parsed_clean: acc.files_parsed_clean,
+    files_rejected: acc.files_rejected,
+    fn_attempted: acc.fn_attempted,
+    fn_known: acc.fn_known,
+    fn_unknown: acc.fn_unknown,
+    fn_body_unavailable: acc.fn_body_unavailable,
+    file_rows: acc.file_rows
+  }
+}
+
+fn cost_coverage_tree_census_from_roster(
+  tree_root: String,
+  roster: List<String>
+) -> CostCoverageTreeReceipt {
+  cost_coverage_tree_census(
+    tree_root: tree_root,
+    paths: grammar_coverage_paths_for_tree(paths: roster, tree_root: tree_root)
+  )
+}
+
+fn cost_coverage_corpus_roster_live() -> List<String> {
+  grammar_coverage_distinct_rel_paths(
+    facts: decl_facts(pool_roots: whole_corpus_scope.roots)
+  )
+}
+
+fn cost_coverage_receipt_totality_holds(receipt: CostCoverageTreeReceipt) -> Bool {
+  (receipt.files_attempted == (receipt.files_parsed_clean + receipt.files_rejected))
+    && (receipt.fn_attempted
+      == (receipt.fn_known + receipt.fn_unknown + receipt.fn_body_unavailable))
+}
+
+fn cost_coverage_file_totality_holds(receipt: CostCoverageFileReceipt) -> Bool {
+  receipt.fn_attempted
+    == (receipt.fn_known + receipt.fn_unknown + receipt.fn_body_unavailable)
+}
+
+fn cost_coverage_tree_receipt_eq(a: CostCoverageTreeReceipt, b: CostCoverageTreeReceipt) -> Bool {
+  (a.tree_root == b.tree_root)
+    && (a.files_attempted == b.files_attempted)
+    && (a.files_parsed_clean == b.files_parsed_clean)
+    && (a.files_rejected == b.files_rejected)
+    && (a.fn_attempted == b.fn_attempted)
+    && (a.fn_known == b.fn_known)
+    && (a.fn_unknown == b.fn_unknown)
+    && (a.fn_body_unavailable == b.fn_body_unavailable)
+}
+
+fn cost_coverage_unknown_fraction_bps(receipt: CostCoverageTreeReceipt) -> Int {
+  if receipt.fn_attempted == 0 {
+    0
+  } else {
+    (receipt.fn_unknown * 10000) / receipt.fn_attempted
+  }
+}
