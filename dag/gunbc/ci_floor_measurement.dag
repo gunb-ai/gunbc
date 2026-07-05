@@ -18,6 +18,7 @@ import std.realization_width {
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 
 data gunbc_ci_floor_measured_peak: ConcurrentMemoryPeakSample = ConcurrentMemoryPeakSample {
   peak: byte_size(6452113408)
@@ -50,18 +51,18 @@ fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
   gunbc_ci_floor_per_shard_peak_max()
 }
 
-data gunbc_ci_runner_cgroup_memory_cap: ByteSize = byte_size(8589934592)
+data gunbc_ci_runner_cgroup_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_max
 
 data gunbc_ci_dashboard_session_container_cap: ByteSize = byte_size(33578549248)
 
 data gunbc_ci_cap_split_disposition: Disposition = Terminal {
-  reason: "DESIGN §3 de-conflation (PR-A): gunbc_ci_runner_cgroup_memory_cap (8GiB, actions-runner@ MemoryMax, within-run OOM authority) vs gunbc_ci_dashboard_session_container_cap (31.27GiB, dashboard session pool, inter-run). Retired gunbc_ci_host_container_memory_cap nickname that fused both."
+  reason: "DESIGN §3 de-conflation (PR-A): gunbc_ci_runner_cgroup_memory_cap (declared per-slot MemoryMax from gunbc.runner_slot_allocation) vs gunbc_ci_dashboard_session_container_cap (31.27GiB, dashboard session pool, inter-run). Retired gunbc_ci_host_container_memory_cap nickname that fused both."
 }
 
 data gunbc_ci_runner_slot_memory_max_live: ByteSize = byte_size(25769803776)
 
 data gunbc_ci_runner_slot_memory_max_live_source: Disposition = Terminal {
-  reason: "Converge receipt 2026-07-05 (rust_tests cgroup-peak step, run 28731491727, srv1-03): memory.max=25769803776 (24 GiB) live on the actions-runner@ slot cgroup, host_ram=134314582016. DIVERGES from gunbc_ci_runner_cgroup_memory_cap (8 GiB): the live MemoryMax is hand-set on the hosts (roadmap 1-g3-caps: caps are host-set by hand and only read live), so the 8 GiB row is the declared budget-tree share while THIS row is the enforcement ceiling actually governing a slot's within-run OOM today. Consumers sizing within-run compile parallelism (gunbc.ci_compile_jobs call sites) read this row. Dissolve-on: the G3 caps-derived-converge roadmap item reconciles declared vs live, then collapse the pair back to a single authority."
+  reason: "Converge receipt 2026-07-05 (rust_tests cgroup-peak step, run 28731491727, srv1-03): memory.max=25769803776 (24 GiB) live on the actions-runner@ slot cgroup, host_ram=134314582016. DIVERGES from gunbc_ci_runner_cgroup_memory_cap (declared 8 GiB per gunbc.runner_slot_allocation): the live MemoryMax is hand-set on the hosts until converge applies the model. Consumers sizing within-run compile parallelism read gunbc_ci_runner_slot_memory_max_live until gunbc_runner_slot_allocation_live_cap_dissolve_on closes. Dissolve-on: converge read-back proves live == declared, then collapse to gunbc.runner_slot_allocation single authority."
 }
 
 type ExecutorBaseOverhead
