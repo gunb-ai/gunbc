@@ -344,10 +344,12 @@ pub fn replace(s: String, from: String, to: String) -> String {
 // map_contains_key, map_has) work with Rc<HashMap> via auto-deref.
 
 // Shared-Rc update guard (operator ruling 2026-07-05): a clone fallback in an
-// rc_* update is a degradation arm — it must refuse (fail) or be counted and
-// loud (count), never silent (DESIGN.md 5). GUNBC_CLONE_FALLBACK=fail|count|allow,
-// default fail. #[track_caller] threads the generated caller's file:line into
-// the diagnostic so each refusal names the exact emitted site to license.
+// rc_* update is a degradation arm — it must refuse (fail, the default and the
+// only production mode) or be counted and loud (count: the stopped-line audit
+// instrument, never a way to keep producing), per DESIGN.md 5. There is no
+// silence mode — escape hatches are banned (operator ruling 2026-07-05).
+// #[track_caller] threads the generated caller's file:line into the diagnostic
+// so each refusal names the exact emitted site to license.
 struct RcCloneFallbackLedger(std::cell::RefCell<HashMap<String, u64>>);
 
 impl Drop for RcCloneFallbackLedger {
@@ -373,7 +375,6 @@ thread_local! {
 fn clone_fallback_mode() -> u8 {
     static MODE: std::sync::OnceLock<u8> = std::sync::OnceLock::new();
     *MODE.get_or_init(|| match std::env::var("GUNBC_CLONE_FALLBACK").as_deref() {
-        Ok("allow") => 0,
         Ok("count") => 1,
         _ => 2,
     })
@@ -382,7 +383,6 @@ fn clone_fallback_mode() -> u8 {
 #[track_caller]
 fn rc_shared_update_guard(op: &str, strong: usize) {
     match clone_fallback_mode() {
-        0 => {}
         1 => {
             let key = format!("{} at {}", op, std::panic::Location::caller());
             RC_CLONE_FALLBACKS.with(|m| {
@@ -398,8 +398,8 @@ fn rc_shared_update_guard(op: &str, strong: usize) {
             "clone-fallback refused: {} at {} on a shared Rc (strong={}) — this update \
              deep-copies the whole container. Last use? -> missing move license \
              (emitter site). Genuinely still live? -> the copy needs structural \
-             sharing, not a clone. GUNBC_CLONE_FALLBACK=count to degrade-and-count, \
-             =allow to silence.",
+             sharing, not a clone. GUNBC_CLONE_FALLBACK=count runs the stopped-line \
+             audit (full ledger, still not a green run).",
             op,
             std::panic::Location::caller(),
             strong
