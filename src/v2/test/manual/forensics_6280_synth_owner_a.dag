@@ -1,0 +1,5 @@
+module v2.test.manual.forensics_6280_synth_owner_a
+
+type SynthOwnerA
+  = Rejected { tag: Symbol }
+  | SynthOwnerAAlt { tag: Symbol }

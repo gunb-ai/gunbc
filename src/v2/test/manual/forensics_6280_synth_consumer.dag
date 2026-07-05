@@ -1,0 +1,11 @@
+module v2.test.manual.forensics_6280_synth_consumer
+
+import v2.test.manual.forensics_6280_synth_producer { forensics_6280_synth_produce }
+import v2.test.manual.forensics_6280_synth_owner_a { Rejected, SynthOwnerAAlt }
+
+fn forensics_6280_synth_witness_stable_owner() -> Bool {
+  match forensics_6280_synth_produce() {
+    Rejected { tag: _ } => true
+    SynthOwnerAAlt { tag: _ } => false
+  }
+}
