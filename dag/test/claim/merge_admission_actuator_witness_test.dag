@@ -3,12 +3,14 @@ module test.claim.merge_admission_actuator_witness
 import gunbc.merge_admission {
   MergeAdmissionReceipt,
   Success,
+  Skipped,
   KeyedReceipt,
   MergeAdmissionVerdict,
   MergeAdmitted, MergeDeniedStaleBase, MergeDeniedStaleRoster, MergeDeniedNotSuccess,
   classify_merge_admission_verdict,
   merge_admission_would_block,
   merge_admission_enforcement_policy,
+  merge_admission_documentation_only_skipped_admit_policy,
 }
 import gunbc.ci_failure_class {
   merge_admission_blocks_merge,
@@ -71,6 +73,33 @@ test fn enforcement_admits_fresh_verdict() -> Bool {
     MergeDeniedStaleRoster => false
     MergeDeniedNotSuccess => false
   }
+}
+
+test fn enforcement_admits_documentation_only_skipped_fresh_receipt() -> Bool {
+  let receipt = MergeAdmissionReceipt {
+    pr_number: Present { value: 5933 },
+    head_sha: scenario_pr_x_receipt.head_sha,
+    base_tree_hash: scenario_base_b0,
+    gate_roster_hash: scenario_roster_r0,
+    conclusion: Skipped,
+  }
+  match classify_merge_admission_verdict(
+    receipt: receipt,
+    merge_target_tree_hash: scenario_base_b0,
+    current_roster_hash: scenario_roster_r0,
+  ) {
+    MergeAdmitted => true
+    MergeDeniedStaleBase => false
+    MergeDeniedStaleRoster => false
+    MergeDeniedNotSuccess => false
+  }
+}
+
+test fn documentation_only_skipped_admit_policy_is_on_carrier() -> Bool {
+  string_contains(
+    s: merge_admission_documentation_only_skipped_admit_policy,
+    pattern: "GatingEnforced"
+  )
 }
 
 test fn enforcement_red_on_revert_stale_base() -> Bool {
