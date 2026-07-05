@@ -11705,6 +11705,90 @@ mod import_closure_equivalence_tests {
         entries
     }
 
+    /// Pre-BFS fixpoint from `origin/main` — retained for perf receipt only.
+    fn import_closure_from_facts_fixpoint_legacy(
+        entry_path: &str,
+        edges: &[super::ImportResolutionFactRaw],
+        nodes: &[super::ModuleDeclarationFactRaw],
+    ) -> Vec<String> {
+        let entry_path = workspace_relative_repo_path(entry_path);
+        let mut reached: Vec<String> = vec![entry_path];
+        let fuel = nodes.len();
+        for _ in 0..fuel {
+            let before = reached.len();
+            let mut next = reached.clone();
+            for importer in &reached {
+                let importer_norm = workspace_relative_repo_path(importer);
+                for edge in edges {
+                    if workspace_relative_repo_path(&edge.path) != importer_norm {
+                        continue;
+                    }
+                    for node in nodes {
+                        if node.module == edge.import_module {
+                            let path = workspace_relative_repo_path(&node.path);
+                            if !next.iter().any(|p| p == &path) {
+                                next.push(path);
+                            }
+                        }
+                    }
+                }
+            }
+            if next.len() == before {
+                break;
+            }
+            reached = next;
+        }
+        reached
+    }
+
+    /// Manual perf receipt (P4): `cargo test -p v1-compiler --lib import_closure_bfs_vs_fixpoint_perf_receipt -- --ignored --nocapture`
+    #[test]
+    #[ignore = "manual perf receipt: import_closure BFS vs fixpoint on floor witness roster"]
+    fn import_closure_bfs_vs_fixpoint_perf_receipt() {
+        use std::time::Instant;
+
+        const CLOSURE_CALLS_PER_ENTRY: usize = 2;
+
+        let roots = default_source_roots();
+        let entries: Vec<String> = floor_witness_entry_paths_for_oracle().into_iter().collect();
+        let facts = super::build_module_graph_facts_live(&roots);
+        let call_count = entries.len() * CLOSURE_CALLS_PER_ENTRY;
+
+        let t0 = Instant::now();
+        for entry_rel in &entries {
+            for _ in 0..CLOSURE_CALLS_PER_ENTRY {
+                let _ = import_closure_from_facts_fixpoint_legacy(
+                    entry_rel,
+                    &facts.edges,
+                    &facts.nodes,
+                );
+            }
+        }
+        let fixpoint_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+        let t1 = Instant::now();
+        for entry_rel in &entries {
+            for _ in 0..CLOSURE_CALLS_PER_ENTRY {
+                let _ = super::import_closure_live_paths_with_facts(entry_rel, &facts);
+            }
+        }
+        let bfs_ms = t1.elapsed().as_secs_f64() * 1000.0;
+
+        let speedup = fixpoint_ms / bfs_ms.max(0.001);
+        eprintln!(
+            "import_closure perf receipt: entries={} calls={} fixpoint_ms={:.1} bfs_ms={:.1} speedup={:.1}x",
+            entries.len(),
+            call_count,
+            fixpoint_ms,
+            bfs_ms,
+            speedup
+        );
+        assert!(
+            bfs_ms < fixpoint_ms,
+            "BFS should beat fixpoint on floor roster (fixpoint={fixpoint_ms:.1}ms bfs={bfs_ms:.1}ms)"
+        );
+    }
+
     #[test]
     fn import_closure_live_matches_legacy_bfs_on_whole_floor_corpus() {
         let roots = default_source_roots();

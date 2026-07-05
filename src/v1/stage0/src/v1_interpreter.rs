@@ -3281,7 +3281,7 @@ fn eval_algebra_method(
                 raw_map_lookup(&receiver, key, env, ctx)
             } else if let Ok(items) = expect_list(&receiver, "get") {
                 let idx = expect_int(args.first(), "get")?;
-                Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
+                Ok(list_get_at_or_null(&items, idx))
             } else {
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "get requires a key argument".to_string(),
@@ -5089,9 +5089,7 @@ fn eval_builtin(
             [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
                 let items = expect_list(list_val, "get")?;
                 let idx = expect_int(Some(idx_val), "get")?;
-                Ok(Some(
-                    items.get(idx as usize).cloned().unwrap_or(Value::Null),
-                ))
+                Ok(Some(list_get_at_or_null(&items, idx)))
             }
             _ => Ok(None),
         },
@@ -6338,6 +6336,10 @@ fn value_to_list_carrier(val: &Value) -> Option<(Rc<RrbVector<Value>>, u64)> {
             (Rc::new(RrbVector::from(items)), copied)
         }),
     }
+}
+
+fn list_get_at_or_null(items: &RrbVector<Value>, idx: i64) -> Value {
+    items.get(idx as usize).cloned().unwrap_or(Value::Null)
 }
 
 fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>> {
