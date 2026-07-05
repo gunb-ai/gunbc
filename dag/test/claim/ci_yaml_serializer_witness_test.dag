@@ -19,7 +19,7 @@ import extdeps.github.expressions {
   ContextAccess, Env, Runner,
   any_template_accesses_runner_var_via_env, template_uses_context
 }
-import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_workflow_run, ci_release_build_script, gunbc_ci_rust_gate_only_script }
+import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_floor_run, ci_release_build_script, gunbc_ci_rust_gate_only_script }
 
 fn witness_fetch_depth_is_int_not_string() -> Bool {
   let with_block = yaml_mapping(entries: [kv(key: "fetch-depth", value: yaml_int(n: 0))])
@@ -234,7 +234,7 @@ fn witness_rust_tests_yaml_has_observable_warm_step_before_gate() -> Bool {
 
 fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
   let yaml = expected_ci_yml()
-  let floor_script = gunbc_ci_workflow_run(spec: gunbc_ci_spec)
+  let floor_script = gunbc_ci_floor_run(spec: gunbc_ci_spec)
   let build_script = ci_release_build_script()
   string_contains(s: yaml, pattern: "Build release bins (claim_executor + gunbc)") &&
     string_contains(s: yaml, pattern: "env -u RUSTC_WRAPPER") &&
