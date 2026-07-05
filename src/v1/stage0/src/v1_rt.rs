@@ -564,7 +564,7 @@ pub fn trace_mark(label: String) {
     use std::time::Instant;
     static TRACE_T0: OnceLock<Instant> = OnceLock::new();
     let ms = TRACE_T0.get_or_init(Instant::now).elapsed().as_millis();
-    let mut rss_mib: i64 = -1;
+    let mut rss_mib = String::from("absent");
     if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
         for line in status.lines() {
             if let Some(rest) = line.strip_prefix("VmRSS:") {
@@ -573,7 +573,7 @@ pub fn trace_mark(label: String) {
                     .next()
                     .and_then(|k| k.parse::<i64>().ok())
                 {
-                    rss_mib = kib / 1024;
+                    rss_mib = (kib / 1024).to_string();
                 }
             }
         }
