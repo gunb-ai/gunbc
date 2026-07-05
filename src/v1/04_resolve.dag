@@ -44,21 +44,15 @@ fn is_unit_variant_node(variant: Node) -> Bool {
   (variant.children |> count) == 0
 }
 
-fn find_unit_variant_in_children(env: TypeEnv, children: List<Node>, variant_name: String) -> Node? {
-  children |> fold(init: none, f: (acc, v) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        if authored_name_at(source_indices: env.source_indices, node: v) == variant_name && is_unit_variant_node(variant: v) {
-          Present { value: v }
-        } else { none }
-    }
-  )
-}
-
 fn unit_variant_in_coproduct(env: TypeEnv, ty: Node, variant_name: String) -> Node? {
   match ty.connective {
-    Disj => find_unit_variant_in_children(env: env, children: ty.children, variant_name: variant_name)
+    Disj =>
+      fold(ty.children, init: none, f: (acc, v) =>
+        if acc != none { acc }
+        else if authored_name_at(source_indices: env.source_indices, node: v) == variant_name && is_unit_variant_node(variant: v) {
+          Present { value: v }
+        } else { none }
+      )
     _ => none
   }
 }
