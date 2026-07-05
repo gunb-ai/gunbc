@@ -168,7 +168,8 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use std::collections::BTreeSet;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
+use crate::v1_rt::VecCompat;
 use std::rc::Rc;
 
 pub fn is_witness_type_name(name: String) -> bool {
@@ -525,7 +526,7 @@ pub struct FieldRecursionResult {
 pub fn classify_field_recursion(
     field_node: Rc<Node>,
     parent_name: String,
-    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    recursive_type_set: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<FieldRecursionResult>> {
     {
@@ -615,7 +616,7 @@ pub fn collect_fields_inductive(
     fields: Rc<Vec<Rc<Node>>>,
     parent_name: String,
     variant_name: String,
-    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    recursive_type_set: Rc<BTreeSet<String>>,
     acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
@@ -644,7 +645,7 @@ pub fn collect_fields_inductive(
 
 pub fn collect_item_inductive_fields(
     item: Rc<Node>,
-    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    recursive_type_set: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
@@ -679,7 +680,7 @@ pub fn collect_item_inductive_fields(
 
 pub fn build_item_inductive_fields(
     items: Rc<Vec<Rc<Node>>>,
-    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    recursive_type_set: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     items.iter().cloned().fold(
@@ -14428,7 +14429,7 @@ pub fn variant_has_positional_payload_shape(
 pub fn build_fielded_variants(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<std::collections::BTreeSet<String>> {
+) -> Rc<BTreeSet<String>> {
     {
         let result = modules.iter().cloned().fold(
             v1_rt::rc_empty_set::<_>(),
@@ -14494,15 +14495,15 @@ pub fn build_fielded_variants(
 pub fn build_positional_payload_variants(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<std::collections::BTreeSet<String>> {
+) -> Rc<BTreeSet<String>> {
     modules.iter().cloned().fold(
         v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<std::collections::BTreeSet<String>>, m: Rc<TypedModule>| {
+        |acc: Rc<BTreeSet<String>>, m: Rc<TypedModule>| {
             let items = m.items.clone();
             let si = m.type_env.clone().source_indices.clone();
             items.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<std::collections::BTreeSet<String>>, item: Rc<Node>| {
+                |inner: Rc<BTreeSet<String>>, item: Rc<Node>| {
                     let is_enum = match v1_rt::map_get(
                         &type_summaries,
                         authored_name_at(si.clone(), item.clone()),
@@ -14519,7 +14520,7 @@ pub fn build_positional_payload_variants(
                             let variants = item.children.clone();
                             variants.clone().iter().cloned().fold(
                                 inner.clone(),
-                                |vacc: Rc<std::collections::BTreeSet<String>>,
+                                |vacc: Rc<BTreeSet<String>>,
                                  variant: Rc<Node>| {
                                     if variant_has_positional_payload_shape(
                                         variant.clone(),
@@ -14630,14 +14631,14 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             fielded_variants: fielded,
             positional_payload_variants: positional,
             shared_types: v1_rt::rc_empty_set::<String>(),
-            ownership_index: v1_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
+            ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(
             ),
             movable: v1_rt::rc_empty_set::<String>(),
             variant_to_enum: vtoe,
             owned_bindings: v1_rt::rc_empty_set::<String>(),
             read_only_params_index: v1_rt::rc_empty_map::<
                 String,
-                Rc<std::collections::BTreeSet<String>>,
+                Rc<BTreeSet<String>>,
             >(),
             read_only_params: v1_rt::rc_empty_set::<String>(),
             corpus_repr: rust_corpus_repr(modules.clone()),

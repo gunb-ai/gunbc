@@ -11,7 +11,8 @@ use crate::v1_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use std::collections::BTreeSet;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
+use crate::v1_rt::VecCompat;
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -50,7 +51,7 @@ pub fn rust_container_templates() -> Rc<HashMap<String, String>> {
         static CACHED: Rc<HashMap<String, String>> = {
             let mut __m = HashMap::new();
             __m.insert("list".to_string(), "Vec<{0}>".to_string());
-            __m.insert("set".to_string(), "std::collections::BTreeSet<{0}>".to_string());
+            __m.insert("set".to_string(), "BTreeSet<{0}>".to_string());
             __m.insert("optional".to_string(), "Option<{0}>".to_string());
             __m.insert("map".to_string(), "HashMap<{0}, {1}>".to_string());
             __m.insert("free_monoid".to_string(), "Vec<{0}>".to_string());

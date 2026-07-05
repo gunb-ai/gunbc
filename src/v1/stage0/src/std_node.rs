@@ -11,7 +11,7 @@ use crate::v1_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use std::collections::BTreeSet;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
 use std::rc::Rc;
 
 pub fn compiler_inductive_fields() -> Rc<Vec<Rc<InductiveField>>> {

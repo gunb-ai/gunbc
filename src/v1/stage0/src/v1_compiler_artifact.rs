@@ -14,7 +14,7 @@ pub use crate::v1_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use std::collections::BTreeSet;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
 use std::rc::Rc;
 
 #[derive(

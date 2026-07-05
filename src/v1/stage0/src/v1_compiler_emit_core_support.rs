@@ -18,7 +18,8 @@ pub use crate::v1_std_core::{Connective, ErrorNode, NewlineIndex, Node, TextFile
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use std::collections::BTreeSet;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
+use crate::v1_rt::VecCompat;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

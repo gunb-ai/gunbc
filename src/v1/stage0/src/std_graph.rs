@@ -9,7 +9,8 @@ use crate::v1_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use std::collections::BTreeSet;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
+use crate::v1_rt::VecCompat;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -31,19 +32,19 @@ pub struct CallGraphAdjacencyViews {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DfsFinishAcc {
-    pub visited: Rc<std::collections::BTreeSet<String>>,
+    pub visited: Rc<BTreeSet<String>>,
     pub order: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccComponentAcc {
-    pub visited: Rc<std::collections::BTreeSet<String>>,
+    pub visited: Rc<BTreeSet<String>>,
     pub members: Rc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccCycleAcc {
-    pub visited: Rc<std::collections::BTreeSet<String>>,
+    pub visited: Rc<BTreeSet<String>>,
     pub has_cycle: bool,
 }
 

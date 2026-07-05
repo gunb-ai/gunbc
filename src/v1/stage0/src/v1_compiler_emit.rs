@@ -117,7 +117,8 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use std::collections::BTreeSet;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
+use crate::v1_rt::VecCompat;
 use std::rc::Rc;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
@@ -1318,7 +1319,7 @@ pub fn render_named_type_base(
 pub fn render_node_type(
     n: Rc<Node>,
     target: RenderTarget,
-    shared_types: Rc<std::collections::BTreeSet<String>>,
+    shared_types: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {

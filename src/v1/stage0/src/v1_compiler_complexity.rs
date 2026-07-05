@@ -93,7 +93,8 @@ pub use crate::v1_std_core::{ExprData, MatchPattern, MethodSemantics, NewlineInd
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use std::collections::BTreeSet;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
+use crate::v1_rt::VecCompat;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -220,13 +221,13 @@ pub struct CallEdge {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccInfo {
     pub members: Rc<Vec<String>>,
-    pub member_set: Rc<std::collections::BTreeSet<String>>,
+    pub member_set: Rc<BTreeSet<String>>,
     pub pattern: Rc<LoweringTarget>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SccBuildAcc {
-    pub assigned: Rc<std::collections::BTreeSet<String>>,
+    pub assigned: Rc<BTreeSet<String>>,
     pub index: Rc<HashMap<String, Rc<SccInfo>>>,
 }
 

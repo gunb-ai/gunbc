@@ -4,7 +4,7 @@
 #![allow(unused_variables, dead_code)]
 
 use im_rc::HashMap;
-use std::collections::BTreeSet;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[cfg(feature = "text_lookup_work_counter")]

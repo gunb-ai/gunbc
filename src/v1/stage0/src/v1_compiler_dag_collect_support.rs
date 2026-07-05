@@ -17,8 +17,8 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec};
 use std::cell::RefCell;
-use std::collections::BTreeSet;
 use std::rc::Rc;
 
 thread_local! {

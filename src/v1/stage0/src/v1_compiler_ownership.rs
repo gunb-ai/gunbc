@@ -26,7 +26,8 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use std::collections::BTreeSet;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
+use crate::v1_rt::VecCompat;
 use std::rc::Rc;
 
 #[derive(
@@ -690,7 +691,7 @@ pub fn is_owned_local(kind: Option<Rc<VarBindingKind>>) -> bool {
     }
 }
 
-pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<std::collections::BTreeSet<String>> {
+pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<BTreeSet<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for usage in Rc::new(v1_rt::map_values(&proof.bindings.clone()))
@@ -708,7 +709,7 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<std::collections::BTre
     .cloned()
     .fold(
         v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
+        |acc: Rc<BTreeSet<String>>, usage: Rc<BindingUsage>| {
             v1_rt::rc_set_insert(acc, usage.name.clone())
         },
     )
@@ -716,8 +717,8 @@ pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<std::collections::BTre
 
 pub fn build_read_only_params(
     proof: Rc<OwnershipProof>,
-    param_names: Rc<std::collections::BTreeSet<String>>,
-) -> Rc<std::collections::BTreeSet<String>> {
+    param_names: Rc<BTreeSet<String>>,
+) -> Rc<BTreeSet<String>> {
     Rc::new({
         let mut __result = Vec::new();
         for usage in Rc::new(v1_rt::map_values(&proof.bindings.clone()))
@@ -752,7 +753,7 @@ pub fn build_read_only_params(
     .cloned()
     .fold(
         v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<std::collections::BTreeSet<String>>, usage: Rc<BindingUsage>| {
+        |acc: Rc<BTreeSet<String>>, usage: Rc<BindingUsage>| {
             v1_rt::rc_set_insert(acc, usage.name.clone())
         },
     )
@@ -761,7 +762,7 @@ pub fn build_read_only_params(
 pub fn collect_callable_refs(
     texpr: Rc<Node>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<std::collections::BTreeSet<String>> {
+) -> Rc<BTreeSet<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         match (*texpr.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -779,7 +780,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprCall { .. } => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<std::collections::BTreeSet<String>>, a: Rc<Node>| {
+                |acc: Rc<BTreeSet<String>>, a: Rc<Node>| {
                     v1_rt::rc_set_union(
                         acc,
                         collect_callable_refs(arg_value(a.clone()), si.clone()),
@@ -793,7 +794,7 @@ pub fn collect_callable_refs(
                 let recv = collect_callable_refs(method_receiver(texpr.clone()), si.clone());
                 method_arg_nodes(texpr.clone()).iter().cloned().fold(
                     recv.clone(),
-                    |acc: Rc<std::collections::BTreeSet<String>>, a: Rc<Node>| {
+                    |acc: Rc<BTreeSet<String>>, a: Rc<Node>| {
                         v1_rt::rc_set_union(
                             acc,
                             collect_callable_refs(arg_value(a.clone()), si.clone()),
@@ -814,7 +815,7 @@ pub fn collect_callable_refs(
                 let scrut = collect_callable_refs(match_scrutinee(texpr.clone()), si.clone());
                 match_arm_nodes(texpr.clone()).iter().cloned().fold(
                     scrut.clone(),
-                    |acc: Rc<std::collections::BTreeSet<String>>, arm: Rc<Node>| {
+                    |acc: Rc<BTreeSet<String>>, arm: Rc<Node>| {
                         v1_rt::rc_set_union(
                             acc,
                             collect_callable_refs(arm_body(arm.clone()), si.clone()),
@@ -833,7 +834,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprBlock => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<std::collections::BTreeSet<String>>, child: Rc<Node>| {
+                |acc: Rc<BTreeSet<String>>, child: Rc<Node>| {
                     v1_rt::rc_set_union(acc, collect_callable_refs(child.clone(), si.clone()))
                 },
             ),
@@ -851,7 +852,7 @@ pub fn collect_callable_refs(
             }
             ExprData::ExprRecordLit { .. } => texpr.children.clone().iter().cloned().fold(
                 v1_rt::rc_empty_set::<String>(),
-                |acc: Rc<std::collections::BTreeSet<String>>, field: Rc<Node>| {
+                |acc: Rc<BTreeSet<String>>, field: Rc<Node>| {
                     v1_rt::rc_set_union(
                         acc,
                         collect_callable_refs(arg_value(field.clone()), si.clone()),

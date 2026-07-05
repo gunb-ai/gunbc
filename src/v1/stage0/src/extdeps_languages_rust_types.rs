@@ -13,7 +13,7 @@ use crate::v1_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use im_rc::HashMap;
-use std::collections::BTreeSet;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec, vector as vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
@@ -43,7 +43,7 @@ pub fn rust_type_checkpoints() -> Rc<Vec<Rc<TypeCheckpoint>>> {
 pub fn rust_algebra_inhabitants() -> Rc<Vec<Rc<InhabitantDecl>>> {
     thread_local! {
         static CACHED: Rc<Vec<Rc<InhabitantDecl>>> = {
-            serde_json::from_value(serde_json::json!([{"algebra": "FreeMonoid", "template": "Vec<{0}>", "arity": 1, "identity_expr": "Vec::new()", "import_path": null, "is_copy": false}, {"algebra": "BooleanAlgebra", "template": "std::collections::BTreeSet<{0}>", "arity": 1, "identity_expr": "BTreeSet::new()", "import_path": "use std::collections::BTreeSet;", "is_copy": false}, {"algebra": "PartialFunction", "template": "HashMap<{0}, {1}>", "arity": 2, "identity_expr": "HashMap::new()", "import_path": "use std::collections::HashMap;", "is_copy": false}, {"algebra": "OrderedRing", "template": "i64", "arity": 0, "identity_expr": "0i64", "import_path": null, "is_copy": true}, {"algebra": "ApproximateField", "template": "f64", "arity": 0, "identity_expr": "0.0f64", "import_path": null, "is_copy": true}]))
+            serde_json::from_value(serde_json::json!([{"algebra": "FreeMonoid", "template": "Vec<{0}>", "arity": 1, "identity_expr": "Vec::new()", "import_path": null, "is_copy": false}, {"algebra": "BooleanAlgebra", "template": "BTreeSet<{0}>", "arity": 1, "identity_expr": "BTreeSet::new()", "import_path": "use std::collections::BTreeSet;", "is_copy": false}, {"algebra": "PartialFunction", "template": "HashMap<{0}, {1}>", "arity": 2, "identity_expr": "HashMap::new()", "import_path": "use std::collections::HashMap;", "is_copy": false}, {"algebra": "OrderedRing", "template": "i64", "arity": 0, "identity_expr": "0i64", "import_path": null, "is_copy": true}, {"algebra": "ApproximateField", "template": "f64", "arity": 0, "identity_expr": "0.0f64", "import_path": null, "is_copy": true}]))
                 .expect("valid data definition")
         };
     }
