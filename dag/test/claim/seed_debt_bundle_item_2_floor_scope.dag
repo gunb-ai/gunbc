@@ -4,7 +4,8 @@ import gunbc.ci_layer_roots { witness_layer_roots }
 import std.realization_schedule {
   Runnable,
   RunnableDiscoveryBatch,
-  ScheduleWitnessEntry
+  ScheduleWitnessEntry,
+  CorpusWitnessKind
 }
 import std.measure { HardwareThreadCount, hardware_thread_count }
 import std.types { List }
@@ -13,7 +14,8 @@ fn seed_debt_witness_entries() -> List<ScheduleWitnessEntry> {
   [
     ScheduleWitnessEntry {
       entry: "dag/test/claim/compile_source_model_witness_test.dag",
-      function: "compile_source_model_witnesses"
+      function: "compile_source_model_witnesses",
+      kind: CorpusWitnessKind
     }
   ]
 }
