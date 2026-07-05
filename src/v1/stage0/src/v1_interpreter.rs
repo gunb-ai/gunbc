@@ -5303,7 +5303,7 @@ fn eval_builtin(
         "starts_with" => {
             let s = expect_str(positional.first().copied(), "starts_with")?;
             let prefix = expect_str(positional.get(1).copied(), "starts_with prefix")?;
-            Ok(Some(Value::Bool(s.starts_with(prefix))))
+            Ok(Some(Value::Bool(s.starts_with(&prefix))))
         }
 
         "length" => match positional.first() {
