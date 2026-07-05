@@ -16,9 +16,10 @@ env:
   CARGO_TERM_COLOR: always
   RUSTFLAGS: -D warnings
 jobs:
-  rust_tests:
+  ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 10
+    needs: [rust_tests]
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -268,3 +269,4 @@ jobs:
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
           "$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
+
