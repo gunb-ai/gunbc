@@ -9,7 +9,7 @@ use std::time::Instant;
 
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::{compile_sources, SourceFile};
-use v1_compiler::v1_std_core::{diagnostic_to_message, diagnostic_to_span, CompilerDiagnostic};
+use v1_compiler::v1_compiler_compile::stage0_self_compile_refusal_message;
 
 const BOOTSTRAP_TIMING_RECEIPT_VERSION: u32 = 2;
 const BOOTSTRAP_TIMING_RECEIPT_SCHEMA: &str = "gunbc.bootstrap_timing_receipt.v2";
@@ -617,36 +617,8 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
     let roots = vec![workspace.join("src/v1"), workspace.join("dag")];
     let sources = source_files_for_roots(&roots, workspace)?;
     let result = compile_sources(Rc::new(sources), RenderTarget::Rust);
-
-    let hard_errors: Vec<String> = result
-        .diagnostics
-        .iter()
-        .filter(|d| {
-            !matches!(
-                *d.diagnostic.clone(),
-                CompilerDiagnostic::ComplexityUnknown { .. }
-            )
-        })
-        .map(|d| {
-            let span = diagnostic_to_span(d.diagnostic.clone());
-            format!(
-                "{} ({}:{}-{})",
-                diagnostic_to_message(d.diagnostic.clone()),
-                span.file,
-                span.start,
-                span.end
-            )
-        })
-        .collect();
-    if !hard_errors.is_empty() {
-        return Err(format!(
-            "v2 self-compile produced {} hard diagnostic(s):\n{}",
-            hard_errors.len(),
-            hard_errors.join("\n")
-        ));
-    }
-    if result.files.is_empty() {
-        return Err("v2 self-compile emitted no files".to_string());
+    if let Some(message) = stage0_self_compile_refusal_message(result.as_ref()) {
+        return Err(message);
     }
 
     let mut out = HashMap::new();

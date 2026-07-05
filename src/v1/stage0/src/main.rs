@@ -299,15 +299,6 @@ fn write_output_files(output_dir: &str, result: &v1_compiler::v1_compiler_compil
     }
 }
 
-fn hard_errors(result: &v1_compiler::v1_compiler_compile::PipelineResult) -> bool {
-    result.diagnostics.iter().any(|d| {
-        !matches!(
-            *d.diagnostic.clone(),
-            CompilerDiagnostic::ComplexityUnknown { .. }
-        )
-    })
-}
-
 fn main() {
     let cli = Cli::parse();
     let _result = match cli.command {
@@ -406,6 +397,12 @@ fn main() {
                     Rc::new(sources),
                     render_targets[0].1.clone(),
                 );
+                if let Some(message) =
+                    v1_compiler_compile::stage0_self_compile_refusal_message(result.as_ref())
+                {
+                    eprintln!("{message}");
+                    std::process::exit(1);
+                }
                 write_output_files(&output_dir, &result);
                 eprintln!(
                     "compiled: {} files emitted, {} diagnostics",
@@ -413,17 +410,8 @@ fn main() {
                     result.diagnostics.len()
                 );
                 render_diagnostics(&result);
-                if hard_errors(&result) {
-                    std::process::exit(1);
-                }
-                if result.files.is_empty() {
-                    eprintln!("error: no files emitted");
-                    std::process::exit(1);
-                }
             } else {
                 let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
-                let mut any_hard_errors = false;
-                let mut any_empty = false;
                 let mut total_files = 0usize;
                 let mut total_diagnostics = 0usize;
                 for (name, render_target) in render_targets {
@@ -431,6 +419,12 @@ fn main() {
                         resolved.clone(),
                         render_target,
                     );
+                    if let Some(message) =
+                        v1_compiler_compile::stage0_self_compile_refusal_message(result.as_ref())
+                    {
+                        eprintln!("{message}");
+                        std::process::exit(1);
+                    }
                     let target_output_dir = format!("{}/{}", output_dir, name);
                     write_output_files(&target_output_dir, &result);
                     eprintln!(
@@ -440,8 +434,6 @@ fn main() {
                         result.diagnostics.len()
                     );
                     render_diagnostics(&result);
-                    any_hard_errors |= hard_errors(&result);
-                    any_empty |= result.files.is_empty();
                     total_files += result.files.len();
                     total_diagnostics += result.diagnostics.len();
                 }
@@ -449,13 +441,6 @@ fn main() {
                     "compiled: {} files emitted, {} diagnostics",
                     total_files, total_diagnostics
                 );
-                if any_hard_errors {
-                    std::process::exit(1);
-                }
-                if any_empty {
-                    eprintln!("error: no files emitted for at least one target");
-                    std::process::exit(1);
-                }
             }
         }
 

@@ -937,6 +937,42 @@ fn compile_sources_with_options(sources: List<SourceFile>, target: RenderTarget,
   )
 }
 
+fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> List<String> {
+  diagnostics
+    |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
+    |> map(d => {
+      let span = diagnostic_to_span(d: d.diagnostic)
+      concat(
+        diagnostic_to_message(d: d.diagnostic),
+        " (",
+        span.file,
+        ":",
+        to_string(i: span.start),
+        "-",
+        to_string(i: span.end),
+        ")"
+      )
+    })
+}
+
+fn stage0_self_compile_refusal_message(result: PipelineResult) -> String? {
+  let hard_messages = interpreter_blocking_diagnostic_messages(diagnostics: result.diagnostics)
+  if hard_messages |> count > 0 {
+    Present {
+      value: concat(
+        "v2 self-compile produced ",
+        to_string(i: hard_messages |> count),
+        " hard diagnostic(s):\n",
+        hard_messages |> join(separator: "\n")
+      )
+    }
+  } else if result.files |> count == 0 {
+    Present { value: "v2 self-compile emitted no files" }
+  } else {
+    none
+  }
+}
+
 type ResolvedPipelineResult {
   graph: ResolvedGraph?
   diagnostics: List<ErrorNode>
