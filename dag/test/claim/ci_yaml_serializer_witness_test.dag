@@ -31,7 +31,7 @@ fn witness_rustflags_empty_string_quoted() -> Bool {
 fn witness_steps_sequence_elements_are_yaml_values() -> Bool {
   let job = ci_workflow.jobs.first()
   match steps_yaml(steps: job.steps) {
-    YamlSequence { elements: els } => els.length() == 7
+    YamlSequence { elements: els } => els.length() == 8
     _ => false
   }
 }
