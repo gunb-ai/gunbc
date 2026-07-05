@@ -218,7 +218,7 @@ fn strip_leading_dot_slash(s: String) -> String {
   }
 }
 
-data path_matches_touched_provenance: String = "Mirrors the Rust production predicate exactly (span_file_matches/normalize_repo_path, cli_run.rs:4079-4083) -- normalize + suffix-tolerant, not bare exact equality. A path pair where suffix matching succeeds but exact equality fails must decide the SAME on both sides."
+data path_matches_touched_provenance: String = "Mirrors the Rust production predicate exactly (span_file_matches/normalize_repo_path, cli_run.rs:4079-4083) -- normalize + suffix-tolerant, not bare exact equality. A path pair where suffix matching succeeds but exact equality fails must decide the SAME on both sides. SCAFFOLD: this is a parallel representation of that Rust predicate, not a single authority (DESIGN Sec3) -- it is load-bearing for the receipt's own equivalence proof (it must be independently expressed to prove agreement, not call the Rust fn). Dissolves when path normalization/suffix-matching is grounded as its own std authority both sides call -- at that point delete this fn and repoint touched_path_in_closure at the shared authority, do not keep both."
 
 fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
   let file = strip_leading_dot_slash(closure_path)
