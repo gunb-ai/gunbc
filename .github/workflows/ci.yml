@@ -104,7 +104,7 @@ jobs:
         timeout-minutes: 5
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 30
+    timeout-minutes: 75
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -152,7 +152,7 @@ jobs:
             curl -LsSf --retry 3 "https://get.nexte.st/0.9.138/$A" | tar zxf - -C "$CARGO_HOME/bin"
           fi
         timeout-minutes: 5
-      - name: v1 rust gate (fmt + clippy + nextest)
+      - name: sccache warm (release bins + cache prime)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
@@ -177,6 +177,9 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
+        timeout-minutes: 45
+      - name: v1 rust gate (fmt + clippy + nextest)
+        run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
           set -o pipefail
@@ -209,7 +212,7 @@ jobs:
   deploy_dashboard_srv1:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [ci]
-    timeout-minutes: 10
+    timeout-minutes: 40
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     steps:
       - name: Checkout

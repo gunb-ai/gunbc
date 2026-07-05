@@ -327,11 +327,7 @@ fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
 }
 
 fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_rust_sccache_warm_step_timeout_minutes
-    + gunbc_ci_rust_gate_step_timeout_minutes
-    + gunbc_ci_aux_step_timeout_minutes
-    + gunbc_ci_aux_step_timeout_minutes
-    + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_rust_sccache_warm_step_timeout_minutes + gunbc_ci_rust_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
