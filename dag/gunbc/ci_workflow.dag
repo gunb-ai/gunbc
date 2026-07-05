@@ -5,7 +5,7 @@ import gunbc.ci_workflow_expressions {
   ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys
 }
 import gunbc.ci_spec {
-  CiSpec, gunbc_ci_spec, gunbc_ci_floor_run, gunbc_ci_rust_job_run,
+  CiSpec, gunbc_ci_spec, gunbc_ci_floor_run,
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
   ci_release_build_script,
   gunbc_ci_rust_gate_only_script,
