@@ -90,13 +90,16 @@ jobs:
           git fetch --no-tags origin main 2>/dev/null || true
           _ci_changed=$(git diff --name-only origin/main...HEAD 2>/dev/null || true)
           if [ -n "$_ci_changed" ]; then
+          # Interim compile-clean scoping: merge-base diffs touching only docs/, root doc symlinks, or .gitignore (census-script whitelist) skip the compose floor. dissolve-on: affected-set-scoped compile-clean or batch-1 fits the 10-minute step budget.
             DOCS_ONLY=1
             while IFS= read -r _ci_path; do
               [ -z "$_ci_path" ] && continue
-              case "$_ci_path" in
-                docs/*|README.md|CLAUDE.md|DESIGN.md|.gitignore|.github/workflows/ci.yml|dag/gunbc/ci_spec.dag|src/v2/test/claim/ci_spec_witness_test.dag) ;;
-                *) DOCS_ONLY=0; break ;;
-              esac
+              if [[ "$_ci_path" == docs/* ]] || [[ "$_ci_path" == README.md ]] || [[ "$_ci_path" == CLAUDE.md ]] || [[ "$_ci_path" == DESIGN.md ]] || [[ "$_ci_path" == .gitignore ]] || [[ "$_ci_path" == .github/workflows/ci.yml ]] || [[ "$_ci_path" == dag/gunbc/ci_spec.dag ]] || [[ "$_ci_path" == src/v2/test/claim/ci_spec_witness_test.dag ]]; then
+                :
+              else
+                DOCS_ONLY=0
+                break
+              fi
             done <<_ci_diff_eof_
           $_ci_changed
           _ci_diff_eof_

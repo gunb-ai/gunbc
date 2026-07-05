@@ -221,7 +221,10 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
         concat("_ci_changed=$(git diff --name-only ", range),
         " 2>/dev/null || true)\n"
       ),
-      "if [ -n \"$_ci_changed\" ]; then\n"
+      concat(
+        "if [ -n \"$_ci_changed\" ]; then\n",
+        concat("# ", concat(ci_documentation_only_diff_note, "\n"))
+      )
     ),
     concat(
       concat(
@@ -229,42 +232,46 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
           "  DOCS_ONLY=1\n",
           "  while IFS= read -r _ci_path; do\n"
         ),
-        concat(
-          "    [ -z \"$_ci_path\" ] && continue\n",
-          "    case \"$_ci_path\" in\n"
-        )
+        "    [ -z \"$_ci_path\" ] && continue\n"
       ),
       concat(
         concat(
           concat(
-            "      docs/*|README.md|CLAUDE.md|DESIGN.md|.gitignore|.github/workflows/ci.yml|dag/gunbc/ci_spec.dag|src/v2/test/claim/ci_spec_witness_test.dag) ;;\n",
-            "      *) DOCS_ONLY=0; break ;;\n"
+            "    if [[ \"$_ci_path\" == docs/* ]] || [[ \"$_ci_path\" == README.md ]] || [[ \"$_ci_path\" == CLAUDE.md ]] || [[ \"$_ci_path\" == DESIGN.md ]] || [[ \"$_ci_path\" == .gitignore ]] || [[ \"$_ci_path\" == .github/workflows/ci.yml ]] || [[ \"$_ci_path\" == dag/gunbc/ci_spec.dag ]] || [[ \"$_ci_path\" == src/v2/test/claim/ci_spec_witness_test.dag ]]; then\n",
+            "      :\n"
           ),
-          "    esac\n"
+          "    else\n"
         ),
         concat(
           concat(
-            "  done <<_ci_diff_eof_\n",
-            "$_ci_changed\n"
+            "      DOCS_ONLY=0\n",
+            "      break\n"
           ),
           concat(
+            "    fi\n",
             concat(
-              "_ci_diff_eof_\n",
-              "  if [ \"$DOCS_ONLY\" = \"1\" ]; then\n"
-            ),
-            concat(
-              concat(
-                "    echo \"claim_executor: documentation-only diff — skipping compose floor\"\n",
-                "    FLOOR_EXIT=0\n"
-              ),
-              concat(
-                concat("    CI_FLOOR_EXIT=0 ", merge_admission_stamp_invoke()),
-                concat(
-                  "    exit $?\n",
-                  "  fi\nfi\n"
-                )
-              )
+              "  done <<_ci_diff_eof_\n",
+              "$_ci_changed\n"
             )
+          )
+        )
+      )
+    ),
+    concat(
+      concat(
+        "_ci_diff_eof_\n",
+        "  if [ \"$DOCS_ONLY\" = \"1\" ]; then\n"
+      ),
+      concat(
+        concat(
+          "    echo \"claim_executor: documentation-only diff — skipping compose floor\"\n",
+          "    FLOOR_EXIT=0\n"
+        ),
+        concat(
+          concat("    CI_FLOOR_EXIT=0 ", merge_admission_stamp_invoke()),
+          concat(
+            "    exit $?\n",
+            "  fi\nfi\n"
           )
         )
       )
