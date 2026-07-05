@@ -178,7 +178,7 @@ fn ci_floor_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_job_timeout_policy_minutes }
+    timeout_minutes: Present { value: gunbc_ci_floor_gate_step_timeout_minutes }
   }
 }
 
@@ -292,14 +292,18 @@ data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
 data gunbc_ci_prelude_allowance_minutes: Int = 5
 
-data ci_build_floor_step_split_note: String = "Build and floor are separate workflow steps so the 10-minute floor step budget applies to claim_executor gates only, not cargo build: bundling both under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: PR #6259 ci job 85192573905, 2026-07-05). Build step carries gunbc_ci_job_timeout_policy_minutes; floor step keeps the same gate budget."
+data ci_build_floor_step_split_note: String = "Build and floor are separate workflow steps so gate budgets apply to claim_executor only, not cargo build: bundling both under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: PR #6259 ci job 85192573905, 2026-07-05). Build step carries gunbc_ci_job_timeout_policy_minutes; floor step carries gunbc_ci_floor_gate_step_timeout_minutes."
+
+data gunbc_ci_floor_gate_step_timeout_minutes: Int = 30
+
+data gunbc_ci_floor_gate_step_budget_note: String = "Interim floor-gate step budget until dag_compile_clean_gate fits gunbc_ci_job_timeout_policy_minutes (10): 30 = last-green ci job duration (27min, run 2026-07-01T01:00Z) + margin. Receipt: job 85193296999 timed out at 10m mid batch-1 compile-clean (~7m in, zero verdict). Re-derive DOWNWARD when S2a node store / compile-clean scoping lands."
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
   reason: "gunbc CI budget semantics (operator ruling, 2026-07-05): any timed-out gate is a FAILURE, not a silent pass - no verdict == failure. The budget is enforced at the STEP level (GitHub Actions step timeout-minutes fails the step, conclusion=failure, logs + [t+Xs] phase marks intact), never as a job-level kill: the prior 10-minute job-kill policy (2026-07-04) produced conclusion=cancelled, which every consumer treated as not-red - operationally a silent pass. Receipt: the last successful main ci run was 2026-07-01T01:00Z; 29 of the next 30 main runs were cancelled; four days of merges landed with zero gate verdicts while two latent reds entered the tree (04_resolve.dag emit-fresh hard diagnostics; inert_lens witness-builtin scope errors). Budgets stay SHORT by operator ruling (2026-07-05, twice confirmed): floor 10 minutes, rust gate 15, aux steps 5 - the forcing function survives, only its breach semantics changed. Until resolver-graph work (S2a node store, compile-clean scoping) fits the floor inside 10 minutes, main runs red-by-STEP-FAILURE with [t+Xs] phase attribution: an honest, countable deficit signal, unlike the cancelled-silence it replaces. Job-level timeouts are retained only as per-job backstops = that job's step-budget sum + prelude allowance: step timeouts start at step start, so a tighter backstop could job-cancel (silence) before a step fails red, resurrecting the exact defect this policy removes. Every post-prelude step is step-budgeted and fails RED first; a backstop firing means a wedged prelude - itself a mechanism bug to investigate, never a gate verdict. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default - workflow-layer policy on top."
 }
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_job_timeout_policy_minutes + gunbc_ci_job_timeout_policy_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_job_timeout_policy_minutes + gunbc_ci_floor_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
