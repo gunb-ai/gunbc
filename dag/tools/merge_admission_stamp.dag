@@ -7,12 +7,15 @@ import extdeps.shell
 import extdeps.filesystem.filesystem_io { Filesystem }
 import gunbc.merge_admission_produce {
   merge_admission_receipt_path,
-  stamp_floor_receipt,
+  stamp_floor_receipt_with_conclusion,
   render_receipt_wire,
   ci_repo_root_shell,
   shell_stdout_line,
+  floor_exit_to_check_conclusion,
+  floor_disposition_to_check_conclusion,
 }
 import gunbc.ci_spec { gunbc_ci_spec }
+import extdeps.github.checks { CheckConclusion }
 
 data merge_admission_stamp_missing_floor_exit_is_failure: String = "CI_FLOOR_EXIT unset stamps floor_exit_code as Failure (non-zero) — fail-closed per §5; only the ci.yml floor tail sets CI_FLOOR_EXIT from claim_executor"
 
@@ -67,6 +70,17 @@ fn floor_exit_code_from_env() -> Int {
   }
 }
 
+fn conclusion_from_env() -> CheckConclusion {
+  match env_var(name: "CI_FLOOR_DISPOSITION") {
+    Present { value: disposition } =>
+      match floor_disposition_to_check_conclusion(disposition: disposition) {
+        Present { value: conclusion } => conclusion
+        Absent => floor_exit_to_check_conclusion(exit_code: floor_exit_code_from_env())
+      }
+    Absent => floor_exit_to_check_conclusion(exit_code: floor_exit_code_from_env())
+  }
+}
+
 func main() -> ProcessExit {
   let head = git.Core.HeadCommit()
   if !head.success {
@@ -76,11 +90,11 @@ func main() -> ProcessExit {
   if base_tree == "" {
     return exit_failure(reason: "merge_admission_stamp: merge-target tree hash unavailable")
   }
-  let receipt = stamp_floor_receipt(
+  let receipt = stamp_floor_receipt_with_conclusion(
     pr_number: pr_number_from_event(),
     head_sha: head.sha,
     base_tree_hash: base_tree,
-    floor_exit_code: floor_exit_code_from_env(),
+    conclusion: conclusion_from_env(),
   )
   let root = repo_root()
   let path = merge_admission_receipt_path(root: root)
