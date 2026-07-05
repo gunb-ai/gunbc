@@ -498,8 +498,7 @@ pub fn resolve_func_sigs(
             for item in Rc::new({
                 let mut __result = Vec::new();
                 for item in items.clone().iter().cloned() {
-                    if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None))
-                    {
+                    if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
                         __result.push(item);
                     }
                 }

@@ -452,7 +452,8 @@ pub fn build_field_type_map(
 ) -> Rc<HashMap<String, String>> {
     children.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, child: Rc<Node>| match child.inferred
+        |acc: Rc<HashMap<String, String>>, child: Rc<Node>| match child
+            .inferred
             .clone()
             .as_deref()
             .cloned()

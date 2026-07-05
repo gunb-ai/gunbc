@@ -167,7 +167,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                     {
                         __result.push(Rc::new(FuncEntry {
                             name: authored_name_at(
-                                (*m.type_env).clone().source_indices.clone(),
+                                m.type_env.clone().source_indices.clone(),
                                 item.clone(),
                             ),
                             body: item.body.clone().clone().unwrap(),
@@ -232,12 +232,12 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
                     {
                         __result.push(analyze_ownership(
                             authored_name_at(
-                                (*m.type_env).clone().source_indices.clone(),
+                                m.type_env.clone().source_indices.clone(),
                                 item.clone(),
                             ),
                             item.params.clone(),
                             item.body.clone().clone().unwrap(),
-                            (*m.type_env).clone().source_indices.clone(),
+                            m.type_env.clone().source_indices.clone(),
                         ));
                     }
                     __result
@@ -479,10 +479,7 @@ pub fn dag_emit_check_node_refs(
                         ),
                         dag_emit_check_optional_ref_target(node.body.clone(), key_to_id.clone()),
                     ),
-                    dag_emit_check_optional_ref_target(
-                        node.transport.clone(),
-                        key_to_id.clone(),
-                    ),
+                    dag_emit_check_optional_ref_target(node.transport.clone(), key_to_id.clone()),
                 ),
                 Rc::new({
                     let mut __result = Vec::new();
@@ -546,7 +543,7 @@ pub fn dag_graph_source_indices(typed: Rc<ResolvedGraph>) -> Rc<HashMap<String, 
     typed.modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
-            v1_rt::rc_map_merge(acc, (*m.type_env).clone().source_indices.clone())
+            v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
         },
     )
 }
@@ -1894,7 +1891,7 @@ pub fn serialize_typed_module(
                     v1_rt::concat(
                         v1_rt::concat(
                             "{\"module\": ".to_string(),
-                            serialize_node_ref((*module.module).clone(), key_to_id.clone()),
+                            serialize_node_ref(module.module.clone(), key_to_id.clone()),
                         ),
                         ", \"items\": ".to_string(),
                     ),
@@ -2431,7 +2428,7 @@ pub fn emit_resolved_for_target(
                     for m in typed.modules.clone().iter().cloned() {
                         __result.push(authored_name_at(
                             resolved.source_indices.clone(),
-                            (*m.module).clone(),
+                            m.module.clone(),
                         ));
                     }
                     __result

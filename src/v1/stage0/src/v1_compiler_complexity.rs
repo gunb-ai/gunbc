@@ -1372,7 +1372,7 @@ pub fn parser_member_is_always_advancing(
         Some(state_param) => {
             let edges = collect_parser_progress_edges(
                 entry.name.clone(),
-                (*entry.body).clone(),
+                entry.body.clone(),
                 state_param.clone(),
                 parser_name_set,
                 empty_parser_progress_env(),
@@ -1393,7 +1393,7 @@ pub fn parser_member_is_always_advancing(
                 }
                 __all
             } && (parser_success_progress(
-                (*entry.body).clone(),
+                entry.body.clone(),
                 state_param.clone(),
                 empty_parser_progress_env(),
                 proven.clone(),
@@ -1671,7 +1671,7 @@ pub fn collect_parser_edges_for_scc(
                                     match parser_state_param(entry.params.clone(), si.clone()) {
                                         Some(state_param) => collect_parser_progress_edges(
                                             name.clone(),
-                                            (*entry.body).clone(),
+                                            entry.body.clone(),
                                             state_param.clone(),
                                             scc_name_set.clone(),
                                             empty_parser_progress_env(),
@@ -2207,11 +2207,7 @@ pub fn build_scc_measure_params(
             Some(entry) => v1_rt::rc_map_insert(
                 acc.clone(),
                 name.clone(),
-                recursive_measure_param_names(
-                    (*entry.body).clone(),
-                    entry.params.clone(),
-                    si.clone(),
-                ),
+                recursive_measure_param_names(entry.body.clone(), entry.params.clone(), si.clone()),
             ),
             None => acc.clone(),
         },
@@ -5757,7 +5753,7 @@ pub fn build_call_graph(
                 __result.extend(
                     (*collect_local_call_edges_in_expr(
                         entry.name.clone(),
-                        (*entry.body).clone(),
+                        entry.body.clone(),
                         local_func_set.clone(),
                         si.clone(),
                     ))
@@ -6478,7 +6474,7 @@ pub fn is_scc_container_child_descent(
                                 |best: _, p: Rc<Node>| {
                                     let pname = param_node_name_at(p.clone(), si.clone());
                                     let descent_vars = collect_descent_vars(
-                                        (*entry.body).clone(),
+                                        entry.body.clone(),
                                         pname.clone(),
                                         v1_rt::rc_empty_map::<String, bool>(),
                                         true,
@@ -6486,7 +6482,7 @@ pub fn is_scc_container_child_descent(
                                         si.clone(),
                                     );
                                     let param_edges = collect_scc_child_edges(
-                                        (*entry.body).clone(),
+                                        entry.body.clone(),
                                         name.clone(),
                                         pname.clone(),
                                         descent_vars.clone(),
@@ -6579,8 +6575,8 @@ pub fn collect_scc_proof_edges_for_dim(
     Some(entry) => {
             let best_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = param_node_name_at(p.clone(), si.clone());
-let descent_vars = collect_descent_vars((*entry.body).clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), check_child.clone(), check_list.clone(), si.clone());
-let param_edges = collect_scc_child_edges((*entry.body).clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone(), check_child.clone(), check_list.clone(), measure_params.clone(), si.clone());
+let descent_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), check_child.clone(), check_list.clone(), si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), descent_vars.clone(), scc_name_set.clone(), check_child.clone(), check_list.clone(), measure_params.clone(), si.clone());
 let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best, param_map.clone())
 });
@@ -6654,15 +6650,15 @@ pub fn collect_scc_independent_dim_edges(
     Some(entry) => {
             let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = param_node_name_at(p.clone(), si.clone());
-let tree_vars = collect_descent_vars((*entry.body).clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
-let param_edges = collect_scc_child_edges((*entry.body).clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
+let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
 let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
 });
 let list_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                 let pname = param_node_name_at(p.clone(), si.clone());
-let list_vars = collect_descent_vars((*entry.body).clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), false, true, si.clone());
-let param_edges = collect_scc_child_edges((*entry.body).clone(), name.clone(), pname.clone(), list_vars.clone(), scc_name_set.clone(), false, true, measure_params.clone(), si.clone());
+let list_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), false, true, si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), list_vars.clone(), scc_name_set.clone(), false, true, measure_params.clone(), si.clone());
 let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
 });
@@ -6736,8 +6732,8 @@ pub fn collect_scc_tree_parser_dim_edges(
     Some(entry) => {
                     let tree_edge_map = entry.params.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |best_map: Rc<HashMap<String, DescentEvidence>>, p: Rc<Node>| {
                         let pname = param_node_name_at(p.clone(), si.clone());
-let tree_vars = collect_descent_vars((*entry.body).clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
-let param_edges = collect_scc_child_edges((*entry.body).clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
+let tree_vars = collect_descent_vars(entry.body.clone(), pname.clone(), v1_rt::rc_empty_map::<String, bool>(), true, false, si.clone());
+let param_edges = collect_scc_child_edges(entry.body.clone(), name.clone(), pname.clone(), tree_vars.clone(), scc_name_set.clone(), true, false, measure_params.clone(), si.clone());
 let param_map = param_edges.clone().iter().cloned().fold(v1_rt::rc_empty_map::<String, DescentEvidence>(), |bm: Rc<HashMap<String, DescentEvidence>>, pe: Rc<ParserProgressEdge>| merge_edge_evidence(bm, pe.clone()));
 pick_best_param_edges(best_map, param_map.clone())
 });
@@ -6785,7 +6781,7 @@ pub fn collect_scc_cx_l2_tree_edges(
             for name in members.clone().iter().cloned() {
                 __result.extend((*match v1_rt::map_get(&func_index, name.clone()) {
     Some(entry) => {
-            let self_evidence = collect_self_call_evidence((*entry.body).clone(), name.clone(), si.clone());
+            let self_evidence = collect_self_call_evidence(entry.body.clone(), name.clone(), si.clone());
 let self_has_calls = ((self_evidence.clone().len() as i64) > 0);
 let self_all_structural = (self_has_calls.clone() && { let mut __all = true; for call_ev in self_evidence.clone().iter().cloned() { if !({ let mut __found = false; for rel in call_ev.clone().iter().cloned() { if match (*rel.clone()).clone() {
     SubValueRelation::StrictSubValue { .. } => true,
@@ -6840,7 +6836,7 @@ Rc::new(vec![Rc::new(ProofEdge {
             };
 let other_members = Rc::new({ let mut __result = Vec::new(); for m in Rc::new(v1_rt::map_keys(&scc_name_set)).iter().cloned() { if (m.clone() != name.clone()) { __result.push(m); } } __result });
 let cross_edges = Rc::new({ let mut __result = Vec::new(); for callee in other_members.clone().iter().cloned() { __result.extend((*{
-                let callee_evidence = collect_callee_evidence((*entry.body).clone(), callee.clone(), si.clone());
+                let callee_evidence = collect_callee_evidence(entry.body.clone(), callee.clone(), si.clone());
 if ((callee_evidence.clone().len() as i64) > 0) {
                     {
                         let ev = derive_edge_evidence(callee_evidence.clone());
@@ -6879,7 +6875,7 @@ pub fn scc_descending_param(
                 match v1_rt::map_get(&func_index, name.clone()) {
                     Some(entry) => {
                         let evidence = collect_self_call_evidence(
-                            (*entry.body).clone(),
+                            entry.body.clone(),
                             name.clone(),
                             si.clone(),
                         );
@@ -7216,12 +7212,12 @@ pub fn classify_scc_recursion_pattern(
                                 if !(match v1_rt::map_get(&func_index, name.clone()) {
                                     Some(entry) => {
                                         ((max_path_target_calls(
-                                            (*entry.body).clone(),
+                                            entry.body.clone(),
                                             scc_name_set.clone(),
                                             si.clone(),
                                         ) <= 1)
                                             && scc_calls_have_arithmetic_descent(
-                                                (*entry.body).clone(),
+                                                entry.body.clone(),
                                                 scc_name_set.clone(),
                                                 func_index.clone(),
                                                 scc_measure_params.clone(),
@@ -7550,7 +7546,7 @@ pub fn resolve_callback_cost(
                         fn_ref.clone(),
                         func_index.clone(),
                         scc_index,
-                        (*recv_r.table).clone(),
+                        recv_r.table.clone(),
                         parser_always_advancing,
                         recursion_ctx,
                         si.clone(),
@@ -7559,7 +7555,7 @@ pub fn resolve_callback_cost(
                         la.clone(),
                         func_index.clone(),
                         scc_index,
-                        (*recv_r.table).clone(),
+                        recv_r.table.clone(),
                         parser_always_advancing,
                         recursion_ctx,
                         si.clone(),
@@ -7570,7 +7566,7 @@ pub fn resolve_callback_cost(
                 la.clone(),
                 func_index.clone(),
                 scc_index,
-                (*recv_r.table).clone(),
+                recv_r.table.clone(),
                 parser_always_advancing,
                 recursion_ctx,
                 si.clone(),
@@ -7583,7 +7579,7 @@ pub fn resolve_callback_cost(
                 output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                 certainty: Certainty::Conservative,
             }),
-            table: (*recv_r.table).clone(),
+            table: recv_r.table.clone(),
         }),
     }
 }
@@ -7616,7 +7612,7 @@ pub fn cost_of_method_by_shape(
             let loop_work = cost_loop(
                 binder.clone(),
                 size.clone(),
-                (*body_result.summary.clone().work).clone(),
+                body_result.summary.clone().work.clone(),
             );
             let os = if (produces_collection == false) {
                 body_result.summary.clone().output_size.clone()
@@ -7635,12 +7631,12 @@ pub fn cost_of_method_by_shape(
             };
             Rc::new(SummaryResult {
                 summary: Rc::new(ComplexitySummary {
-                    work: cost_seq((*recv_r.summary.clone().work).clone(), loop_work.clone()),
-                    span: cost_seq((*recv_r.summary.clone().span).clone(), loop_work.clone()),
+                    work: cost_seq(recv_r.summary.clone().work.clone(), loop_work.clone()),
+                    span: cost_seq(recv_r.summary.clone().span.clone(), loop_work.clone()),
                     output_size: os,
                     certainty: body_result.summary.clone().certainty.clone(),
                 }),
-                table: (*body_result.table).clone(),
+                table: body_result.table.clone(),
             })
         }
         CostShape::ShapeSortBody => {
@@ -7650,7 +7646,7 @@ pub fn cost_of_method_by_shape(
                     la.clone(),
                     func_index,
                     scc_index,
-                    (*recv_r.table).clone(),
+                    recv_r.table.clone(),
                     parser_always_advancing,
                     recursion_ctx,
                     si.clone(),
@@ -7662,14 +7658,14 @@ pub fn cost_of_method_by_shape(
                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
                     }),
-                    table: (*recv_r.table).clone(),
+                    table: recv_r.table.clone(),
                 }),
             };
             let log_factor = Rc::new(CostExpr::CostLog {
                 base: 2,
                 argument: size.clone(),
             });
-            let per_comparison = (*key_result.summary.clone().work).clone();
+            let per_comparison = key_result.summary.clone().work.clone();
             let sort_work = Rc::new(CostExpr::CostMul {
                 left: cost_loop(binder.clone(), size.clone(), per_comparison),
                 right: log_factor,
@@ -7684,12 +7680,12 @@ pub fn cost_of_method_by_shape(
             );
             Rc::new(SummaryResult {
                 summary: Rc::new(ComplexitySummary {
-                    work: cost_seq((*recv_r.summary.clone().work).clone(), sort_work.clone()),
-                    span: cost_seq((*recv_r.summary.clone().span).clone(), sort_work.clone()),
+                    work: cost_seq(recv_r.summary.clone().work.clone(), sort_work.clone()),
+                    span: cost_seq(recv_r.summary.clone().span.clone(), sort_work.clone()),
                     output_size: sort_os,
                     certainty: key_result.summary.clone().certainty.clone(),
                 }),
-                table: (*key_result.table).clone(),
+                table: key_result.table.clone(),
             })
         }
         CostShape::ShapeLinearScan => {
@@ -7712,28 +7708,28 @@ pub fn cost_of_method_by_shape(
             };
             Rc::new(SummaryResult {
                 summary: Rc::new(ComplexitySummary {
-                    work: cost_seq((*recv_r.summary.clone().work).clone(), loop_work.clone()),
-                    span: cost_seq((*recv_r.summary.clone().span).clone(), loop_work.clone()),
+                    work: cost_seq(recv_r.summary.clone().work.clone(), loop_work.clone()),
+                    span: cost_seq(recv_r.summary.clone().span.clone(), loop_work.clone()),
                     output_size: scan_os,
                     certainty: recv_r.summary.clone().certainty.clone(),
                 }),
-                table: (*recv_r.table).clone(),
+                table: recv_r.table.clone(),
             })
         }
         CostShape::ShapeConstant => Rc::new(SummaryResult {
             summary: Rc::new(ComplexitySummary {
                 work: cost_seq(
-                    (*recv_r.summary.clone().work).clone(),
+                    recv_r.summary.clone().work.clone(),
                     Rc::new(CostExpr::CostConst { value: 1 }),
                 ),
                 span: cost_seq(
-                    (*recv_r.summary.clone().span).clone(),
+                    recv_r.summary.clone().span.clone(),
                     Rc::new(CostExpr::CostConst { value: 1 }),
                 ),
                 output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                 certainty: recv_r.summary.clone().certainty.clone(),
             }),
-            table: (*recv_r.table).clone(),
+            table: recv_r.table.clone(),
         }),
     }
 }
@@ -8557,7 +8553,7 @@ pub fn cost_of_expr(
                     r,
                     func_index.clone(),
                     scc_index.clone(),
-                    (*lr.table).clone(),
+                    lr.table.clone(),
                     parser_always_advancing.clone(),
                     recursion_ctx.clone(),
                     si.clone(),
@@ -8565,23 +8561,23 @@ pub fn cost_of_expr(
                 Rc::new(SummaryResult {
                     summary: Rc::new(ComplexitySummary {
                         work: cost_seq(
-                            (*lr.summary.clone().work).clone(),
+                            lr.summary.clone().work.clone(),
                             cost_seq(
                                 Rc::new(CostExpr::CostConst { value: 1 }),
-                                (*rr.summary.clone().work).clone(),
+                                rr.summary.clone().work.clone(),
                             ),
                         ),
                         span: cost_seq(
-                            (*lr.summary.clone().span).clone(),
+                            lr.summary.clone().span.clone(),
                             cost_seq(
                                 Rc::new(CostExpr::CostConst { value: 1 }),
-                                (*rr.summary.clone().span).clone(),
+                                rr.summary.clone().span.clone(),
                             ),
                         ),
                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: Certainty::Proven,
                     }),
-                    table: (*rr.table).clone(),
+                    table: rr.table.clone(),
                 })
             }
             ExprData::ExprCall { .. } => {
@@ -8614,14 +8610,14 @@ pub fn cost_of_expr(
                             output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Proven,
                         }),
-                        table: (*callee_result.table).clone(),
+                        table: callee_result.table.clone(),
                     }),
                     |acc: Rc<SummaryResult>, a: Rc<Node>| {
                         let ar = cost_of_expr(
                             arg_value(a.clone()),
                             func_index.clone(),
                             scc_index.clone(),
-                            (*acc.table).clone(),
+                            acc.table.clone(),
                             parser_always_advancing.clone(),
                             recursion_ctx.clone(),
                             si.clone(),
@@ -8629,34 +8625,34 @@ pub fn cost_of_expr(
                         Rc::new(SummaryResult {
                             summary: Rc::new(ComplexitySummary {
                                 work: cost_seq(
-                                    (*acc.summary.clone().work).clone(),
-                                    (*ar.summary.clone().work).clone(),
+                                    acc.summary.clone().work.clone(),
+                                    ar.summary.clone().work.clone(),
                                 ),
                                 span: cost_seq(
-                                    (*acc.summary.clone().span).clone(),
-                                    (*ar.summary.clone().span).clone(),
+                                    acc.summary.clone().span.clone(),
+                                    ar.summary.clone().span.clone(),
                                 ),
                                 output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                 certainty: Certainty::Proven,
                             }),
-                            table: (*ar.table).clone(),
+                            table: ar.table.clone(),
                         })
                     },
                 );
                 Rc::new(SummaryResult {
                     summary: Rc::new(ComplexitySummary {
                         work: cost_seq(
-                            (*args_result.summary.clone().work).clone(),
-                            (*callee_result.summary.clone().work).clone(),
+                            args_result.summary.clone().work.clone(),
+                            callee_result.summary.clone().work.clone(),
                         ),
                         span: cost_seq(
-                            (*args_result.summary.clone().span).clone(),
-                            (*callee_result.summary.clone().span).clone(),
+                            args_result.summary.clone().span.clone(),
+                            callee_result.summary.clone().span.clone(),
                         ),
                         output_size: callee_result.summary.clone().output_size.clone(),
                         certainty: callee_result.summary.clone().certainty.clone(),
                     }),
-                    table: (*args_result.table).clone(),
+                    table: args_result.table.clone(),
                 })
             }
             ExprData::ExprMethodCall {
@@ -8703,17 +8699,17 @@ pub fn cost_of_expr(
                                 None => Some(Rc::new(SummaryResult {
                                     summary: Rc::new(ComplexitySummary {
                                         work: cost_seq(
-                                            (*recv_r.summary.clone().work).clone(),
+                                            recv_r.summary.clone().work.clone(),
                                             Rc::new(CostExpr::CostConst { value: 1 }),
                                         ),
                                         span: cost_seq(
-                                            (*recv_r.summary.clone().span).clone(),
+                                            recv_r.summary.clone().span.clone(),
                                             Rc::new(CostExpr::CostConst { value: 1 }),
                                         ),
                                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                         certainty: recv_r.summary.clone().certainty.clone(),
                                     }),
-                                    table: (*recv_r.table).clone(),
+                                    table: recv_r.table.clone(),
                                 })),
                             }
                         }
@@ -8731,14 +8727,14 @@ pub fn cost_of_expr(
                                     output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                     certainty: Certainty::Proven,
                                 }),
-                                table: (*recv_r.table).clone(),
+                                table: recv_r.table.clone(),
                             }),
                             |acc: Rc<SummaryResult>, a: Rc<Node>| {
                                 let ar = cost_of_expr(
                                     arg_value(a.clone()),
                                     func_index.clone(),
                                     scc_index.clone(),
-                                    (*acc.table).clone(),
+                                    acc.table.clone(),
                                     parser_always_advancing.clone(),
                                     recursion_ctx.clone(),
                                     si.clone(),
@@ -8746,40 +8742,40 @@ pub fn cost_of_expr(
                                 Rc::new(SummaryResult {
                                     summary: Rc::new(ComplexitySummary {
                                         work: cost_seq(
-                                            (*acc.summary.clone().work).clone(),
-                                            (*ar.summary.clone().work).clone(),
+                                            acc.summary.clone().work.clone(),
+                                            ar.summary.clone().work.clone(),
                                         ),
                                         span: cost_seq(
-                                            (*acc.summary.clone().span).clone(),
-                                            (*ar.summary.clone().span).clone(),
+                                            acc.summary.clone().span.clone(),
+                                            ar.summary.clone().span.clone(),
                                         ),
                                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                         certainty: Certainty::Proven,
                                     }),
-                                    table: (*ar.table).clone(),
+                                    table: ar.table.clone(),
                                 })
                             },
                         );
                         Rc::new(SummaryResult {
                             summary: Rc::new(ComplexitySummary {
                                 work: cost_seq(
-                                    (*recv_r.summary.clone().work).clone(),
+                                    recv_r.summary.clone().work.clone(),
                                     cost_seq(
                                         Rc::new(CostExpr::CostConst { value: 1 }),
-                                        (*args_result.summary.clone().work).clone(),
+                                        args_result.summary.clone().work.clone(),
                                     ),
                                 ),
                                 span: cost_seq(
-                                    (*recv_r.summary.clone().span).clone(),
+                                    recv_r.summary.clone().span.clone(),
                                     cost_seq(
                                         Rc::new(CostExpr::CostConst { value: 1 }),
-                                        (*args_result.summary.clone().span).clone(),
+                                        args_result.summary.clone().span.clone(),
                                     ),
                                 ),
                                 output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                 certainty: Certainty::Proven,
                             }),
-                            table: (*args_result.table).clone(),
+                            table: args_result.table.clone(),
                         })
                     }
                 }
@@ -8805,7 +8801,7 @@ pub fn cost_of_expr(
                                 output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                                 certainty: Certainty::Proven,
                             }),
-                            table: (*s_r.table).clone(),
+                            table: s_r.table.clone(),
                         }),
                         branch_costs: Rc::new(vec![]),
                     }),
@@ -8814,7 +8810,7 @@ pub fn cost_of_expr(
                             arm_body(arm_node.clone()),
                             func_index.clone(),
                             scc_index.clone(),
-                            (*(*acc.result).clone().table).clone(),
+                            acc.result.clone().table.clone(),
                             parser_always_advancing.clone(),
                             recursion_ctx.clone(),
                             si.clone(),
@@ -8823,21 +8819,21 @@ pub fn cost_of_expr(
                             result: Rc::new(SummaryResult {
                                 summary: Rc::new(ComplexitySummary {
                                     work: cost_par(
-                                        (*(*acc.result).clone().summary.clone().work).clone(),
-                                        (*ar.summary.clone().work).clone(),
+                                        acc.result.clone().summary.clone().work.clone(),
+                                        ar.summary.clone().work.clone(),
                                     ),
                                     span: cost_par(
-                                        (*(*acc.result).clone().summary.clone().span).clone(),
-                                        (*ar.summary.clone().span).clone(),
+                                        acc.result.clone().summary.clone().span.clone(),
+                                        ar.summary.clone().span.clone(),
                                     ),
                                     output_size: ar.summary.clone().output_size.clone(),
                                     certainty: ar.summary.clone().certainty.clone(),
                                 }),
-                                table: (*ar.table).clone(),
+                                table: ar.table.clone(),
                             }),
                             branch_costs: v1_rt::concat(
                                 acc.branch_costs.clone(),
-                                Rc::new(vec![(*ar.summary.clone().work).clone()]),
+                                Rc::new(vec![ar.summary.clone().work.clone()]),
                             ),
                         })
                     },
@@ -8845,29 +8841,23 @@ pub fn cost_of_expr(
                 Rc::new(SummaryResult {
                     summary: Rc::new(ComplexitySummary {
                         work: cost_conditional(
-                            (*s_r.summary.clone().work).clone(),
+                            s_r.summary.clone().work.clone(),
                             arms_accum.branch_costs.clone(),
                         ),
                         span: cost_conditional(
-                            (*s_r.summary.clone().span).clone(),
-                            Rc::new(vec![
-                                (*(*arms_accum.result).clone().summary.clone().span).clone()
-                            ]),
+                            s_r.summary.clone().span.clone(),
+                            Rc::new(vec![arms_accum.result.clone().summary.clone().span.clone()]),
                         ),
-                        output_size: (*arms_accum.result)
+                        output_size: arms_accum
+                            .result
                             .clone()
                             .summary
                             .clone()
                             .output_size
                             .clone(),
-                        certainty: (*arms_accum.result)
-                            .clone()
-                            .summary
-                            .clone()
-                            .certainty
-                            .clone(),
+                        certainty: arms_accum.result.clone().summary.clone().certainty.clone(),
                     }),
-                    table: (*(*arms_accum.result).clone().table).clone(),
+                    table: arms_accum.result.clone().table.clone(),
                 })
             }
             ExprData::ExprIf => {
@@ -8886,7 +8876,7 @@ pub fn cost_of_expr(
                     t,
                     func_index.clone(),
                     scc_index.clone(),
-                    (*c_r.table).clone(),
+                    c_r.table.clone(),
                     parser_always_advancing.clone(),
                     recursion_ctx.clone(),
                     si.clone(),
@@ -8897,14 +8887,14 @@ pub fn cost_of_expr(
                             eb.clone(),
                             func_index.clone(),
                             scc_index.clone(),
-                            (*t_r.table).clone(),
+                            t_r.table.clone(),
                             parser_always_advancing.clone(),
                             recursion_ctx.clone(),
                             si.clone(),
                         );
                         Rc::new(SummaryResult {
                             summary: er.summary.clone(),
-                            table: (*er.table).clone(),
+                            table: er.table.clone(),
                         })
                     }
                     None => Rc::new(SummaryResult {
@@ -8914,29 +8904,29 @@ pub fn cost_of_expr(
                             output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                             certainty: Certainty::Proven,
                         }),
-                        table: (*t_r.table).clone(),
+                        table: t_r.table.clone(),
                     }),
                 };
                 Rc::new(SummaryResult {
                     summary: Rc::new(ComplexitySummary {
                         work: cost_conditional(
-                            (*c_r.summary.clone().work).clone(),
+                            c_r.summary.clone().work.clone(),
                             Rc::new(vec![
-                                (*t_r.summary.clone().work).clone(),
-                                (*e_result.summary.clone().work).clone(),
+                                t_r.summary.clone().work.clone(),
+                                e_result.summary.clone().work.clone(),
                             ]),
                         ),
                         span: cost_conditional(
-                            (*c_r.summary.clone().span).clone(),
+                            c_r.summary.clone().span.clone(),
                             Rc::new(vec![
-                                (*t_r.summary.clone().span).clone(),
-                                (*e_result.summary.clone().span).clone(),
+                                t_r.summary.clone().span.clone(),
+                                e_result.summary.clone().span.clone(),
                             ]),
                         ),
                         output_size: t_r.summary.clone().output_size.clone(),
                         certainty: Certainty::Proven,
                     }),
-                    table: (*e_result.table).clone(),
+                    table: e_result.table.clone(),
                 })
             }
             ExprData::ExprLet => {
@@ -8956,7 +8946,7 @@ pub fn cost_of_expr(
                             b.clone(),
                             func_index.clone(),
                             scc_index.clone(),
-                            (*v_r.table).clone(),
+                            v_r.table.clone(),
                             parser_always_advancing.clone(),
                             recursion_ctx.clone(),
                             si.clone(),
@@ -8964,17 +8954,17 @@ pub fn cost_of_expr(
                         Rc::new(SummaryResult {
                             summary: Rc::new(ComplexitySummary {
                                 work: cost_seq(
-                                    (*v_r.summary.clone().work).clone(),
-                                    (*b_r.summary.clone().work).clone(),
+                                    v_r.summary.clone().work.clone(),
+                                    b_r.summary.clone().work.clone(),
                                 ),
                                 span: cost_seq(
-                                    (*v_r.summary.clone().span).clone(),
-                                    (*b_r.summary.clone().span).clone(),
+                                    v_r.summary.clone().span.clone(),
+                                    b_r.summary.clone().span.clone(),
                                 ),
                                 output_size: b_r.summary.clone().output_size.clone(),
                                 certainty: b_r.summary.clone().certainty.clone(),
                             }),
-                            table: (*b_r.table).clone(),
+                            table: b_r.table.clone(),
                         })
                     }
                     None => v_r.clone(),
@@ -8995,7 +8985,7 @@ pub fn cost_of_expr(
                         s.clone(),
                         func_index.clone(),
                         scc_index.clone(),
-                        (*acc.table).clone(),
+                        acc.table.clone(),
                         parser_always_advancing.clone(),
                         recursion_ctx.clone(),
                         si.clone(),
@@ -9003,17 +8993,17 @@ pub fn cost_of_expr(
                     Rc::new(SummaryResult {
                         summary: Rc::new(ComplexitySummary {
                             work: cost_seq(
-                                (*acc.summary.clone().work).clone(),
-                                (*sr.summary.clone().work).clone(),
+                                acc.summary.clone().work.clone(),
+                                sr.summary.clone().work.clone(),
                             ),
                             span: cost_seq(
-                                (*acc.summary.clone().span).clone(),
-                                (*sr.summary.clone().span).clone(),
+                                acc.summary.clone().span.clone(),
+                                sr.summary.clone().span.clone(),
                             ),
                             output_size: sr.summary.clone().output_size.clone(),
                             certainty: sr.summary.clone().certainty.clone(),
                         }),
-                        table: (*sr.table).clone(),
+                        table: sr.table.clone(),
                     })
                 },
             ),
@@ -9033,23 +9023,22 @@ pub fn cost_of_expr(
                     bd,
                     func_index.clone(),
                     scc_index.clone(),
-                    (*c_r.table).clone(),
+                    c_r.table.clone(),
                     parser_always_advancing.clone(),
                     recursion_ctx.clone(),
                     si.clone(),
                 );
                 let size = receiver_size_var(c.clone(), si.clone());
                 let binder = size_binder_name(size.clone());
-                let loop_work =
-                    cost_loop(binder, size.clone(), (*bd_r.summary.clone().work).clone());
+                let loop_work = cost_loop(binder, size.clone(), bd_r.summary.clone().work.clone());
                 Rc::new(SummaryResult {
                     summary: Rc::new(ComplexitySummary {
-                        work: cost_seq((*c_r.summary.clone().work).clone(), loop_work.clone()),
-                        span: cost_seq((*c_r.summary.clone().span).clone(), loop_work.clone()),
+                        work: cost_seq(c_r.summary.clone().work.clone(), loop_work.clone()),
+                        span: cost_seq(c_r.summary.clone().span.clone(), loop_work.clone()),
                         output_size: v1_rt::rc_empty_map::<String, Rc<CostExpr>>(),
                         certainty: bd_r.summary.clone().certainty.clone(),
                     }),
-                    table: (*bd_r.table).clone(),
+                    table: bd_r.table.clone(),
                 })
             }
             ExprData::NoExprData => texpr.children.clone().iter().cloned().fold(
@@ -9067,7 +9056,7 @@ pub fn cost_of_expr(
                         child.clone(),
                         func_index.clone(),
                         scc_index.clone(),
-                        (*acc.table).clone(),
+                        acc.table.clone(),
                         parser_always_advancing.clone(),
                         recursion_ctx.clone(),
                         si.clone(),
@@ -9075,17 +9064,17 @@ pub fn cost_of_expr(
                     Rc::new(SummaryResult {
                         summary: Rc::new(ComplexitySummary {
                             work: cost_seq(
-                                (*acc.summary.clone().work).clone(),
-                                (*cr.summary.clone().work).clone(),
+                                acc.summary.clone().work.clone(),
+                                cr.summary.clone().work.clone(),
                             ),
                             span: cost_seq(
-                                (*acc.summary.clone().span).clone(),
-                                (*cr.summary.clone().span).clone(),
+                                acc.summary.clone().span.clone(),
+                                cr.summary.clone().span.clone(),
                             ),
                             output_size: cr.summary.clone().output_size.clone(),
                             certainty: cr.summary.clone().certainty.clone(),
                         }),
-                        table: (*cr.table).clone(),
+                        table: cr.table.clone(),
                     })
                 },
             ),
@@ -9104,7 +9093,7 @@ pub fn cost_of_expr(
                         child.clone(),
                         func_index.clone(),
                         scc_index.clone(),
-                        (*acc.table).clone(),
+                        acc.table.clone(),
                         parser_always_advancing.clone(),
                         recursion_ctx.clone(),
                         si.clone(),
@@ -9112,17 +9101,17 @@ pub fn cost_of_expr(
                     Rc::new(SummaryResult {
                         summary: Rc::new(ComplexitySummary {
                             work: cost_seq(
-                                (*acc.summary.clone().work).clone(),
-                                (*cr.summary.clone().work).clone(),
+                                acc.summary.clone().work.clone(),
+                                cr.summary.clone().work.clone(),
                             ),
                             span: cost_seq(
-                                (*acc.summary.clone().span).clone(),
-                                (*cr.summary.clone().span).clone(),
+                                acc.summary.clone().span.clone(),
+                                cr.summary.clone().span.clone(),
                             ),
                             output_size: cr.summary.clone().output_size.clone(),
                             certainty: cr.summary.clone().certainty.clone(),
                         }),
-                        table: (*cr.table).clone(),
+                        table: cr.table.clone(),
                     })
                 },
             ),
@@ -9180,7 +9169,7 @@ pub fn get_or_compute_summary(
                     table.clone()
                 };
                 let result = cost_of_expr(
-                    (*entry.body).clone(),
+                    entry.body.clone(),
                     func_index.clone(),
                     scc_index.clone(),
                     table_prepped,
@@ -9199,12 +9188,12 @@ pub fn get_or_compute_summary(
                             Rc::new(ComplexitySummary {
                                 work: bounded_scc_cost(
                                     t.clone(),
-                                    (*result.summary.clone().work).clone(),
+                                    result.summary.clone().work.clone(),
                                     scc_members.clone(),
                                 ),
                                 span: bounded_scc_cost(
                                     t.clone(),
-                                    (*result.summary.clone().span).clone(),
+                                    result.summary.clone().span.clone(),
                                     scc_members.clone(),
                                 ),
                                 output_size: result.summary.clone().output_size.clone(),
@@ -9214,12 +9203,12 @@ pub fn get_or_compute_summary(
                             Rc::new(ComplexitySummary {
                                 work: bounded_recursive_cost(
                                     t.clone(),
-                                    (*result.summary.clone().work).clone(),
+                                    result.summary.clone().work.clone(),
                                     func_name.clone(),
                                 ),
                                 span: bounded_recursive_cost(
                                     t.clone(),
-                                    (*result.summary.clone().span).clone(),
+                                    result.summary.clone().span.clone(),
                                     func_name.clone(),
                                 ),
                                 output_size: result.summary.clone().output_size.clone(),
@@ -9230,16 +9219,13 @@ pub fn get_or_compute_summary(
                     None => result.summary.clone(),
                 };
                 let simplified = Rc::new(ComplexitySummary {
-                    work: simplify_cost((*bounded.work).clone()),
-                    span: simplify_cost((*bounded.span).clone()),
+                    work: simplify_cost(bounded.work.clone()),
+                    span: simplify_cost(bounded.span.clone()),
                     output_size: bounded.output_size.clone(),
                     certainty: bounded.certainty.clone(),
                 });
-                let final_table = cache_summary(
-                    (*result.table).clone(),
-                    func_name.clone(),
-                    simplified.clone(),
-                );
+                let final_table =
+                    cache_summary(result.table.clone(), func_name.clone(), simplified.clone());
                 Rc::new(SummaryResult {
                     summary: simplified.clone(),
                     table: final_table,
@@ -9605,7 +9591,7 @@ pub fn analyze_structural_bounds(
         Rc::new(vec![]),
         |acc: Rc<Vec<Rc<StructuralBoundResult>>>, entry: Rc<FuncEntry>| {
             let all_calls =
-                collect_self_call_evidence((*entry.body).clone(), entry.name.clone(), si.clone());
+                collect_self_call_evidence(entry.body.clone(), entry.name.clone(), si.clone());
             if ((all_calls.clone().len() as i64) == 0) {
                 acc.clone()
             } else {
@@ -9634,7 +9620,7 @@ pub fn analyze_structural_bounds(
                                 match factor_opt.clone() {
                                     Some(factor) => {
                                         let branches = max_path_descending(
-                                            (*entry.body).clone(),
+                                            entry.body.clone(),
                                             entry.name.clone(),
                                             param_index.clone(),
                                             si.clone(),
@@ -9734,13 +9720,12 @@ pub fn build_complexity_report(
             ) {
                 Some(_) => acc.clone(),
                 None => {
-                    if (max_path_self_calls((*entry.body).clone(), entry.name.clone(), si.clone())
-                        > 0)
+                    if (max_path_self_calls(entry.body.clone(), entry.name.clone(), si.clone()) > 0)
                     {
                         {
                             let pattern = classify_recursion_pattern(
                                 entry.name.clone(),
-                                (*entry.body).clone(),
+                                entry.body.clone(),
                                 entry.params.clone(),
                                 parser_always_advancing.clone(),
                                 si.clone(),
@@ -9813,12 +9798,12 @@ pub fn build_complexity_report(
                         func_name.clone(),
                         func_index.clone(),
                         full_scc_index.clone(),
-                        (*acc.table).clone(),
+                        acc.table.clone(),
                         parser_always_advancing.clone(),
                         recursion_ctx.clone(),
                         si.clone(),
                     );
-                    let class_str = classify_complexity((*sr.summary.clone().work).clone());
+                    let class_str = classify_complexity(sr.summary.clone().work.clone());
                     let new_classes = v1_rt::rc_map_insert(
                         acc.classes.clone(),
                         func_name.clone(),
@@ -9826,12 +9811,12 @@ pub fn build_complexity_report(
                     );
                     let new_processed =
                         v1_rt::rc_map_insert(acc.processed.clone(), func_name.clone(), true);
-                    let new_violations = if is_unknown_cost((*sr.summary.clone().work).clone()) {
+                    let new_violations = if is_unknown_cost(sr.summary.clone().work.clone()) {
                         v1_rt::concat(
                             acc.violations.clone(),
                             Rc::new(vec![Rc::new(ComplexityViolation {
                                 func_name: func_name.clone(),
-                                reason: extract_unknown_reason((*sr.summary.clone().work).clone()),
+                                reason: extract_unknown_reason(sr.summary.clone().work.clone()),
                                 span: entry.span.clone(),
                             })]),
                         )
@@ -9860,7 +9845,7 @@ pub fn build_complexity_report(
                         },
                     );
                     let evicted_table = unique_callees.clone().iter().cloned().fold(
-                        (*sr.table).clone(),
+                        sr.table.clone(),
                         |t: Rc<CostInternTable>, callee: String| {
                             let remaining = match v1_rt::map_get(&new_fan_in, callee.clone()) {
                                 Some(v) => v.clone(),

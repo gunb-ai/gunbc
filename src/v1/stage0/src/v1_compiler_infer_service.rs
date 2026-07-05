@@ -210,7 +210,7 @@ pub fn expand_transitive_services_once(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<HashMap<String, Rc<ItemInfo>>> {
     modules.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| {
-        let item_name = authored_name_at((*m.type_env).clone().source_indices.clone(), item.clone());
+        let item_name = authored_name_at(m.type_env.clone().source_indices.clone(), item.clone());
 match v1_rt::map_get(&reg2, item_name.clone()) {
     Some(info) => {
             let has_no_body = (item.body.clone() == None);
@@ -218,7 +218,7 @@ if has_no_body.clone() {
                 reg2.clone()
             } else {
                 {
-                    let called = collect_called_func_names(item.body.clone().clone().unwrap(), (*m.type_env).clone().source_indices.clone());
+                    let called = collect_called_func_names(item.body.clone().clone().unwrap(), m.type_env.clone().source_indices.clone());
 let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v1_rt::map_get(&reg2, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
