@@ -77,7 +77,7 @@ fn witness_b_ordered_interleaving() -> Bool {
   let o = out()
   string_contains(s: o, pattern: "[seed census](docs/plans/seed-shrink-census.md)\n\nGround truth (2026-07-05):")
     && string_contains(s: o, pattern: "until the §2 compile-clean work lands.\n\n**◆ Milestones:** front-end ✓")
-    && string_contains(s: o, pattern: "[charter](docs/plans/ci-process-end-to-end.md)\n\n**The core design rule (operator-signed, 2026-07-01):**")
+    && string_contains(s: o, pattern: "[host-converge inventory](docs/plans/host-converge-inventory.md)\n\n**The core design rule (operator-signed, 2026-07-01):**")
     && string_contains(s: o, pattern: "Phase 2, earned by receipts.\n\n**◆ Milestones:** OOM root-caused")
 }
 
