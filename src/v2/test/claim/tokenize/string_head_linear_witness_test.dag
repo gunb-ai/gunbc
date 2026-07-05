@@ -43,7 +43,7 @@ data shlw_purity_lexeme: String = shlw_purity_source
 
 data shlw_logic_token_count: Int = 81
 
-data shlw_note: String = "string_head grounded on list_head (O(1)); string_tail already list_tail. R1 rule: string_tail inside per-char loop with suffix-copy realization = Poly(2); list head/tail stepping is linear."
+data shlw_note: String = "string_head grounded on list_head (O(1); was fold_list_right O(n) per call). R1 rule: per-char string_head on native Str = Poly(2). Mechanistic accept check: OLD fold_list_right and NEW list_head both ACCEPT src/v1/01_tokenize.dag at tokenize (witness_stage_tokenize_only_holds true on both, 2026-07-05); no verdict flip from this fix — E1a tokenize-stage reject pin was never true on current wave-1 lexer+file."
 
 fn shlw_first_token_lexeme(tokens: List<Token>) -> String {
   match list_at_optional(xs: tokens, index: 0) {
