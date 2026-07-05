@@ -585,7 +585,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                             for p in c.properties.clone().iter().cloned() {
                                                 if has_mock_prefix(field_init_node_name_at(
                                                     p.clone(),
-                                                    (*tm.type_env).clone().source_indices.clone(),
+                                                    tm.type_env.clone().source_indices.clone(),
                                                 )) {
                                                     __found = true;
                                                     break;
@@ -603,15 +603,15 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                 {
                                     __result.push(Rc::new(TestProjection {
                                         module_name: authored_name_at(
-                                            (*tm.type_env).clone().source_indices.clone(),
+                                            tm.type_env.clone().source_indices.clone(),
                                             tm.module.clone(),
                                         ),
                                         service_name: authored_name_at(
-                                            (*tm.type_env).clone().source_indices.clone(),
+                                            tm.type_env.clone().source_indices.clone(),
                                             item.clone(),
                                         ),
                                         operation_name: authored_name_at(
-                                            (*tm.type_env).clone().source_indices.clone(),
+                                            tm.type_env.clone().source_indices.clone(),
                                             c.clone(),
                                         ),
                                         inferred: resolved_type(c.clone()),
@@ -621,17 +621,14 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                             for p in c.properties.clone().iter().cloned() {
                                                 if has_mock_prefix(field_init_node_name_at(
                                                     p.clone(),
-                                                    (*tm.type_env).clone().source_indices.clone(),
+                                                    tm.type_env.clone().source_indices.clone(),
                                                 )) {
                                                     __result.push(p);
                                                 }
                                             }
                                             __result
                                         }),
-                                        source_indices: (*tm.type_env)
-                                            .clone()
-                                            .source_indices
-                                            .clone(),
+                                        source_indices: tm.type_env.clone().source_indices.clone(),
                                     }));
                                 }
                                 __result

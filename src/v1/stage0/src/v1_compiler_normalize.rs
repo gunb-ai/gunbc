@@ -194,10 +194,7 @@ pub fn normalize_graph(
                                 __result.extend(
                                     (*check_bare_containers(
                                         item.clone(),
-                                        authored_name_at(
-                                            source_indices.clone(),
-                                            m.module.clone(),
-                                        ),
+                                        authored_name_at(source_indices.clone(), m.module.clone()),
                                         source_indices.clone(),
                                     ))
                                     .iter()

@@ -122,6 +122,7 @@ fn dag_collect_insert_slots(node: Node, slots: Map<String, DagCollectSlot>, coll
     Present { value: _ } => slots
     Absent => {
       let fp = if anchor.span.start == 0 && anchor.span.end == 0 {
+        // Synthetic keys embed the fingerprint; Absent branch must not re-hash.
         substring(s: key, start: 6, end: string_length(s: key))
       } else {
         dag_node_fingerprint(node: anchor)
@@ -143,6 +144,8 @@ fn dag_collect_from_module(module: TypedModule, slots: Map<String, DagCollectSlo
 
 fn collect_dag_nodes(typed: ResolvedGraph) -> DagCollectAcc {
   let _memo_reset = dag_collect_fp_memo_reset()
+  // Dissolve-on: drop collision_errors threading once synthetic-key construction proof
+  // is a typed wall (key embeds fp ⇒ key-equal ⇒ fp-equal); kept for emit_dag gate shape.
   let collision_errors = []
   let slots = typed.modules
     |> fold(init: empty_map(), f: (s, m) => dag_collect_from_module(module: m, slots: s, collision_errors: collision_errors))
