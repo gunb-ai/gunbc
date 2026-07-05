@@ -231,17 +231,17 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
 data parameterized_use_site_prefers_parameterized_decl: String = "A use site WITH type arguments (children > 0) whose primary name lookup lands on a PARAMLESS decl is definitionally mis-resolved - type args imply a generic declaration. The concrete seam: the kernel prelude binding for a name (e.g. the kernel Optional) shadows an explicitly imported user generic of the same name in the ancestry rung, so v2's Optional<T> consumers resolved the paramless kernel decl, is_user_generic_use_site went false, the sig return was never expanded, and pattern bindings went error-typed with zero diagnostics (the interpreted-parse cascade; pre-existing on main). Retry the DIRECT import parents (str_bindings) for a parameterized decl before accepting the paramless one - the params filter naturally excludes the kernel parent, and the ancestry rung itself carries the kernel-shadowed entry so it cannot serve as the retry source."
 
 fn resolve_paramless_generic_use_decl_with_children(env: TypeEnv, n: Node, decl: Node, brand: String) -> Node {
-  match fold(env.parents, init: none, f: (acc, parent) =>
-    if acc != none { acc }
-    else {
-      match map_get(parent.str_bindings, brand) {
-        Present { value: b } =>
-          if b.resolved.params |> count > 0 { Present { value: b.resolved } } else { acc }
-        Absent => acc
-      }
+  match env.parents |> filter(parent =>
+    match map_get(parent.str_bindings, brand) {
+      Present { value: b } => b.resolved.params |> count > 0
+      Absent => false
     }
-  ) {
-    Present { value: user_decl } => user_decl
+  ) |> first {
+    Present { value: parent } =>
+      match map_get(parent.str_bindings, brand) {
+        Present { value: b } => b.resolved
+        Absent => decl
+      }
     Absent =>
       if n.name != "" && n.name != brand {
         match lookup_type_by_name(env: env, name: n.name) {
