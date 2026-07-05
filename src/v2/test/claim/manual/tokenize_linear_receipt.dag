@@ -1,0 +1,67 @@
+module v2.test.manual.tokenize_linear_receipt
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data tlr_path: String = "src/v1/01_tokenize.dag"
+data tlr_anchor: Symbol = ^tlr_anchor
+
+data tlr_trunc_eighth_path: String = "src/v2/test/fixture/census_path_trunc/eighth.txt"
+data tlr_trunc_quarter_path: String = "src/v2/test/fixture/census_path_trunc/quarter.txt"
+data tlr_trunc_half_path: String = "src/v2/test/fixture/census_path_trunc/half.txt"
+data tlr_trunc_full_path: String = "src/v2/test/fixture/census_path_trunc/full.txt"
+
+data tlr_timing_note: String = "Wall-clock bisect receipt only (manual/; not enrolled). Re-cut 2026-07-05 on session/calm-bear-548-rebase atop main (post-forensics #6283). list_head string_head in src/v2/std/text.dag:34-38. debug gunbc on census_path_trunc byte-prefix fixtures: eighth 11s, quarter 23s, half 51s, full 132s (~2x doubling; pre-fix fold_list_right was ~501s full)."
+
+fn tlr_tokenize_path_accepts(path: String) -> Bool {
+  let source = filesystem_read(path: path).content
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source, file: tlr_anchor, rules: lm.lex) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn tlr_trunc_eighth_accepts() -> Bool {
+  tlr_tokenize_path_accepts(path: tlr_trunc_eighth_path)
+}
+
+fn tlr_trunc_quarter_accepts() -> Bool {
+  tlr_tokenize_path_accepts(path: tlr_trunc_quarter_path)
+}
+
+fn tlr_trunc_half_accepts() -> Bool {
+  tlr_tokenize_path_accepts(path: tlr_trunc_half_path)
+}
+
+fn tlr_trunc_full_accepts() -> Bool {
+  tlr_tokenize_path_accepts(path: tlr_trunc_full_path)
+}
+
+fn tlr_full_tokenize_accepts() -> Bool {
+  let source = filesystem_read(path: tlr_path).content
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source, file: tlr_anchor, rules: lm.lex) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn tlr_ingest_stage_tokenize_or_parse_rejects() -> Bool {
+  let source = filesystem_read(path: tlr_path).content
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source, file: tlr_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}

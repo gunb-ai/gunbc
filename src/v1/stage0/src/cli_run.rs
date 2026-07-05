@@ -875,6 +875,13 @@ fn load_sources_for_entry_with_index(
     Ok(sources)
 }
 
+fn same_canonical_file(a: &str, b: &str) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => false,
+    }
+}
+
 fn entry_source_from_index_or_disk(
     index: &ModuleSourceIndex,
     entry_path: &str,
@@ -891,7 +898,13 @@ fn entry_source_from_index_or_disk(
     let rel_path = path.to_string_lossy().to_string();
     if let Some(mod_path) = extract_module_path(&content) {
         if let Some(cached) = index.get(&mod_path) {
-            if cached.path == rel_path {
+            // Identity is the FILE, not the spelling: a relative entry against an
+            // absolutely-rooted index (or vice versa) must unify with the indexed
+            // source, not mint a second declaring file — that false fork trips the
+            // module-identity collision wall as "duplicate module declaration"
+            // (red on main since the S1 shared index; blackout-masked). Genuine
+            // two-file duplicates still collide: different canonical paths.
+            if cached.path == rel_path || same_canonical_file(&cached.path, &rel_path) {
                 return Ok(cached.clone());
             }
         }
@@ -3114,6 +3127,7 @@ pub struct DiscoveryWitnessOutcome {
     pub outcome: ClaimOutcome,
 }
 
+#[derive(Debug)]
 pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
@@ -4070,7 +4084,18 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
     let mut current_file: Option<String> = None;
     for line in diff_text.lines() {
-        if let Some(rest) = line.strip_prefix("+++ b/") {
+        if let Some(rest) = line.strip_prefix("diff --git a/") {
+            // Path-grain attribution for every diff entry, including hunkless ones
+            // (pure rename, binary, mode-only, deletion): those emit no `+++ b/`
+            // line, so keying on hunks alone loses their paths from changed_paths
+            // entirely (operator ruling 2026-07-05: hunkless changes attribute at
+            // path grain). Both sides of a rename are touched paths. Exact git
+            // surface (name-status grain, quoting) is flagged open in PR-A.
+            if let Some((old, new)) = rest.split_once(" b/") {
+                out.entry(normalize_repo_path(old)).or_default();
+                out.entry(normalize_repo_path(new)).or_default();
+            }
+        } else if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
         } else if line.starts_with("@@ ") {
             let Some(file) = current_file.clone() else {
@@ -4712,19 +4737,46 @@ fn discovery_rows_include_host_scaffold(rows: &[DiscoveryRow]) -> Result<bool, S
     Ok(false)
 }
 
+fn parse_unified_diff_departed_paths(diff_text: &str) -> HashSet<String> {
+    // The diff itself is the single authority on departure: a path leaves the
+    // tree only as a deletion (`+++ /dev/null`) or the from-side of a rename
+    // (`diff --git a/old b/new`, old != new). Any other diff-named path that is
+    // absent from the working tree is observation incoherence, not a departure.
+    let mut departed = HashSet::new();
+    let mut last_minus: Option<String> = None;
+    for line in diff_text.lines() {
+        if let Some(rest) = line.strip_prefix("diff --git a/") {
+            if let Some((old, new)) = rest.split_once(" b/") {
+                if old != new {
+                    departed.insert(normalize_repo_path(old));
+                }
+            }
+        } else if let Some(rest) = line.strip_prefix("--- a/") {
+            last_minus = Some(normalize_repo_path(rest));
+        } else if line.starts_with("+++ /dev/null") {
+            if let Some(gone) = last_minus.take() {
+                departed.insert(gone);
+            }
+        }
+    }
+    departed
+}
+
 fn floor_diff_edits_from_diff_text(
     index: &MultiEntryIndex,
     diff_text: &str,
 ) -> Result<FloorDiffEdits, String> {
     let line_ranges = parse_unified_diff_line_ranges(diff_text);
     let changed = parse_unified_diff_changed_new_lines(diff_text);
-    floor_diff_edits_from_line_ranges(index, &line_ranges, &changed)
+    let departed = parse_unified_diff_departed_paths(diff_text);
+    floor_diff_edits_from_line_ranges(index, &line_ranges, &changed, &departed)
 }
 
 fn floor_diff_edits_from_line_ranges(
     index: &MultiEntryIndex,
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
     changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
+    departed_paths: &HashSet<String>,
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
@@ -4738,6 +4790,23 @@ fn floor_diff_edits_from_line_ranges(
         }
         saw_dag = true;
         let file_norm = normalize_repo_path(file_path);
+        if !std::path::Path::new(file_path).exists() {
+            if departed_paths.contains(&file_norm) {
+                // Departed per the diff (deletion / rename-from): its decl set
+                // is empty by construction — the file has no declarations to
+                // attribute. The path-grain fact stays in changed_paths;
+                // dependents that imported it fail loudly at their own resolve.
+                continue;
+            }
+            // Absent from the tree but NOT marked departed by the diff: the
+            // observation is incoherent (stale tree, quoting artifact, bogus
+            // path). Structural-∅ and ignorance are different states — refuse.
+            return Err(format!(
+                "affected-set derivation refused: diff names {file_path} with \
+                 content changes but the path is absent from the working tree \
+                 and the diff does not mark it departed (deletion/rename)"
+            ));
+        }
         let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
             Ok(pair) => pair,
             Err(e) => return Err(format!("resolve failed for {file_path}: {e}")),
@@ -4969,9 +5038,12 @@ pub fn run_discovery_corpus_with_options(
     let diff_text = if options.skip_unaffected_node_frontier {
         floor_git_diff_range().map_err(|msg| {
             format!(
-                "git diff observation failed ({msg}) — skip_unaffected_node_frontier: true \
-                 requires the declared fetch/observe steps to succeed; no silent \
-                 full-corpus fallback (declare the flag false to run without selection)"
+                "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git diff \
+                 observation failed ({msg}); observation failure is the only ignorance \
+                 state (operator ruling 2026-07-05) and refuses every enrolled row rather \
+                 than widening to a full-corpus run (declare skip_unaffected_node_frontier: \
+                 false to run without selection)",
+                rows.len()
             )
         })?
     } else {
@@ -4990,25 +5062,29 @@ pub fn run_discovery_corpus_with_options(
     // when the executor prelude already resolved its entries on this thread, discovery
     // reuses that index's parse/typed caches instead of paying the union cold a second time.
     let index = process_shared_index(source_roots);
-    let (skip_enabled, diff_edits) =
-        if options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty() {
-            match floor_diff_edits_from_line_ranges(
-                &index,
-                &line_ranges_by_file,
-                &changed_new_lines_by_file,
-            ) {
-                Ok(edits) => (true, edits),
-                Err(msg) => {
-                    return Err(format!(
-                        "node-frontier population failed ({msg}) — the diff-to-declaration \
+    // Empty diff is not a state (operator ruling 2026-07-05): an empty touched-path
+    // set flows through the general selection machinery — empty frontier, zero edited
+    // fns — so every row takes the normal not-affected skip. Disabling selection here
+    // was the run-everything absorbing arm.
+    let (skip_enabled, diff_edits) = if options.skip_unaffected_node_frontier {
+        match floor_diff_edits_from_line_ranges(
+            &index,
+            &line_ranges_by_file,
+            &changed_new_lines_by_file,
+            &parse_unified_diff_departed_paths(&diff_text),
+        ) {
+            Ok(edits) => (true, edits),
+            Err(msg) => {
+                return Err(format!(
+                    "node-frontier population failed ({msg}) — the diff-to-declaration \
                      attribution is declared selection machinery; no silent full-corpus \
                      fallback"
-                    ));
-                }
+                ));
             }
-        } else {
-            (false, FloorDiffEdits::default())
-        };
+        }
+    } else {
+        (false, FloorDiffEdits::default())
+    };
     let floor_runner_ctx = if options.skip_unaffected_node_frontier {
         // Resolve the floor runner through the SAME shared index as the rows (union-resolve
         // S1) rather than a private per-call resolve — its closure shares the std/spec prefix
@@ -7246,19 +7322,39 @@ mod node_frontier_plumbing_controls {
         );
     }
 
-    // Control 6 (fail-closed / Q2 resolve-failure): diff names a .dag path that does not
-    // exist → resolve_entry_with_index fails → fail-closed.
+    // Control 6 (fail-closed / Q2): diff names a .dag path with content changes that is
+    // absent from the tree and NOT marked departed by the diff → typed refusal
+    // (observation incoherence), never silently absorbed as a departure.
     #[test]
-    fn fail_closed_nonexistent_dag_path_forces_run_all() {
+    fn fail_closed_nonexistent_dag_path_refuses() {
         let ws = workspace_root();
         let roots = setup_roots(&ws);
         let index = build_multi_entry_index(&roots);
         let diff = diff_at(&abs(&ws, "src/v2/lens/does_not_exist_sentinel.dag"), 10);
         let err = floor_diff_edits_from_diff_text(&index, &diff)
-            .expect_err("diff naming a non-existent .dag path must fail-closed");
+            .expect_err("diff naming a non-existent, non-departed .dag path must refuse");
         assert!(
-            err.contains("resolve failed"),
-            "expected resolve fail-closed, got: {err}"
+            err.contains("absent from the working tree"),
+            "expected observation-incoherence refusal, got: {err}"
+        );
+    }
+
+    // Control 6b (departure is the diff's fact): a deletion-shaped diff for the same
+    // absent path attributes at path grain with an empty decl set — Ok, no refusal.
+    #[test]
+    fn deletion_shaped_diff_for_absent_path_attributes_path_grain() {
+        let ws = workspace_root();
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let gone = abs(&ws, "src/v2/lens/does_not_exist_sentinel.dag");
+        let diff = format!(
+            "diff --git a/{gone} b/{gone}\n--- a/{gone}\n+++ /dev/null\n@@ -1,3 +0,0 @@\n-a\n-b\n-c\n"
+        );
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("deletion-shaped diff for an absent path must not refuse");
+        assert!(
+            edits.edited_test_fns.is_empty() && edits.overlapping_data_items.is_empty(),
+            "departed path has a structurally-empty decl set"
         );
     }
 }
