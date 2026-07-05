@@ -875,6 +875,13 @@ fn load_sources_for_entry_with_index(
     Ok(sources)
 }
 
+fn same_canonical_file(a: &str, b: &str) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(ca), Ok(cb)) => ca == cb,
+        _ => false,
+    }
+}
+
 fn entry_source_from_index_or_disk(
     index: &ModuleSourceIndex,
     entry_path: &str,
@@ -891,7 +898,13 @@ fn entry_source_from_index_or_disk(
     let rel_path = path.to_string_lossy().to_string();
     if let Some(mod_path) = extract_module_path(&content) {
         if let Some(cached) = index.get(&mod_path) {
-            if cached.path == rel_path {
+            // Identity is the FILE, not the spelling: a relative entry against an
+            // absolutely-rooted index (or vice versa) must unify with the indexed
+            // source, not mint a second declaring file — that false fork trips the
+            // module-identity collision wall as "duplicate module declaration"
+            // (red on main since the S1 shared index; blackout-masked). Genuine
+            // two-file duplicates still collide: different canonical paths.
+            if cached.path == rel_path || same_canonical_file(&cached.path, &rel_path) {
                 return Ok(cached.clone());
             }
         }
@@ -4026,16 +4039,8 @@ struct FileLineRange {
 fn floor_git_diff_range() -> Result<String, String> {
     use v1_interpreter::Value;
     let roots = default_source_roots();
-    // Entry spelling must match the index's root spelling (absolute): a relative
-    // entry against absolutely-rooted process_shared_index loads the file as a
-    // SECOND declaring source and trips the module-identity collision wall
-    // ("duplicate module declaration") — red on main since the S1 shared index;
-    // canonical identity normalization belongs to the collision-wall engine lane.
-    let entry = workspace_root()
-        .join("src/v2/workflow/floor_diff_observe.dag")
-        .to_string_lossy()
-        .into_owned();
-    let (graph, indices) = resolve_entry_graph_shared(&roots, &entry)
+    let entry = "src/v2/workflow/floor_diff_observe.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
         .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
     let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
     let result =
@@ -5061,26 +5066,25 @@ pub fn run_discovery_corpus_with_options(
     // set flows through the general selection machinery — empty frontier, zero edited
     // fns — so every row takes the normal not-affected skip. Disabling selection here
     // was the run-everything absorbing arm.
-    let (skip_enabled, diff_edits) =
-        if options.skip_unaffected_node_frontier {
-            match floor_diff_edits_from_line_ranges(
-                &index,
-                &line_ranges_by_file,
-                &changed_new_lines_by_file,
-                &parse_unified_diff_departed_paths(&diff_text),
-            ) {
-                Ok(edits) => (true, edits),
-                Err(msg) => {
-                    return Err(format!(
-                        "node-frontier population failed ({msg}) — the diff-to-declaration \
+    let (skip_enabled, diff_edits) = if options.skip_unaffected_node_frontier {
+        match floor_diff_edits_from_line_ranges(
+            &index,
+            &line_ranges_by_file,
+            &changed_new_lines_by_file,
+            &parse_unified_diff_departed_paths(&diff_text),
+        ) {
+            Ok(edits) => (true, edits),
+            Err(msg) => {
+                return Err(format!(
+                    "node-frontier population failed ({msg}) — the diff-to-declaration \
                      attribution is declared selection machinery; no silent full-corpus \
                      fallback"
-                    ));
-                }
+                ));
             }
-        } else {
-            (false, FloorDiffEdits::default())
-        };
+        }
+    } else {
+        (false, FloorDiffEdits::default())
+    };
     let floor_runner_ctx = if options.skip_unaffected_node_frontier {
         // Resolve the floor runner through the SAME shared index as the rows (union-resolve
         // S1) rather than a private per-call resolve — its closure shares the std/spec prefix
