@@ -15,8 +15,6 @@ data shlw_file_anchor: Symbol = ^shlw_file_anchor
 
 data shlw_logic_path: String = "dag/std/logic.dag"
 
-data shlw_v1_tokenize_path: String = "src/v1/01_tokenize.dag"
-
 data shlw_purity_source: String = Cons {
   head: 109,
   tail: Cons {
