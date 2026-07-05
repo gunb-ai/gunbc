@@ -38,7 +38,10 @@ type CostCoverageIngestVerdict
 type CostCoverageFnVerdict
   = FnCostKnown { asymptotic_class: AsymptoticClass }
   | FnCostUnknown { reason: Symbol }
-  | FnBodyUnavailable
+  | FnBodyParseTreeOpaque
+  | FnBodyNotLocated
+
+data cost_coverage_parse_tree_opaque_note: String = "fn_body located under v2-ingest parse tree but judge_subject_node finds no ComputationNode yet — counted separately from FnBodyNotLocated and from cost Unknowns; dissolves when body-lowering lands (body-lowering design, FLAG B/C)."
 
 type CostCoverageFnReceipt {
   rel_path: String
@@ -53,6 +56,8 @@ type CostCoverageFileReceipt {
   fn_known: Int
   fn_unknown: Int
   fn_body_unavailable: Int
+  fn_body_parse_tree_opaque: Int
+  fn_body_not_located: Int
   fn_rows: List<CostCoverageFnReceipt>
 }
 
@@ -65,6 +70,8 @@ type CostCoverageTreeReceipt {
   fn_known: Int
   fn_unknown: Int
   fn_body_unavailable: Int
+  fn_body_parse_tree_opaque: Int
+  fn_body_not_located: Int
   file_rows: List<CostCoverageFileReceipt>
 }
 
@@ -76,6 +83,8 @@ type CostCoverageCensusAcc {
   fn_known: Int
   fn_unknown: Int
   fn_body_unavailable: Int
+  fn_body_parse_tree_opaque: Int
+  fn_body_not_located: Int
   file_rows: List<CostCoverageFileReceipt>
 }
 
