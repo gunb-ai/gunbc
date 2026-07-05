@@ -3364,6 +3364,10 @@ fn eval_algebra_method(
             }
         }
 
+        // These 4 arms were absent here but present in the free-function builtin dispatch --
+        // eval_algebra_method (method/pipe calls) and that dispatch (direct calls) are two
+        // surfaces over one builtin set that have diverged; they should be one authority
+        // (dedicated audit/consolidation tracked separately, not in this PR's scope).
         "map_keys" => {
             let m = expect_map(&receiver, "map_keys")?;
             let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
