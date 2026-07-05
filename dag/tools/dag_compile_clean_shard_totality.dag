@@ -1,0 +1,131 @@
+module tools.dag_compile_clean_shard_totality
+
+import tools.dag_compile_clean_shard_roster {
+  compile_clean_shard_entry_paths,
+  list_contains_path,
+  path_occurrence_count
+}
+import tools.dag_compile_clean_shard_totality_transport {
+  run_live_dag_entry_glob
+}
+import std.types { String, Bool, Int, List, list_length }
+
+type PartitionTotalityVerdict
+  = PartitionTotal { module_count: Int }
+  | PartitionOrphan { unclaimed_paths: List<String> }
+  | PartitionDuplicateClaim { duplicated_paths: List<String> }
+  | PartitionGlobUnavailable { stderr: String }
+
+fn nonempty_lines(text: String) -> List<String> {
+  filter(xs: split(s: text, delimiter: "\n"), f: fn(line) { line != "" })
+}
+
+fn duplicated_entry_paths(paths: List<String>) -> List<String> {
+  fold(paths, init: [], f: fn(acc, p) {
+    if (path_occurrence_count(xs: paths, target: p) > 1) && !list_contains_path(xs: acc, target: p) {
+      concat(acc, [p])
+    } else {
+      acc
+    }
+  })
+}
+
+fn compile_clean_partition_totality_verdict_from(
+  glob_success: Bool,
+  glob_stdout: String,
+  glob_stderr: String,
+  roster_paths: List<String>
+) -> PartitionTotalityVerdict {
+  if !glob_success {
+    PartitionGlobUnavailable { stderr: glob_stderr }
+  } else {
+    let glob_paths = nonempty_lines(glob_stdout)
+    let orphans = filter(xs: glob_paths, f: fn(p) { !list_contains_path(xs: roster_paths, target: p) })
+    let duplicated = duplicated_entry_paths(paths: roster_paths)
+    if !orphans.is_empty() {
+      PartitionOrphan { unclaimed_paths: orphans }
+    } else if !duplicated.is_empty() {
+      PartitionDuplicateClaim { duplicated_paths: duplicated }
+    } else {
+      PartitionTotal { module_count: list_length(items: roster_paths) }
+    }
+  }
+}
+
+fn compile_clean_partition_totality_verdict_live() -> PartitionTotalityVerdict {
+  let glob = run_live_dag_entry_glob()
+  compile_clean_partition_totality_verdict_from(
+    glob_success: glob.success,
+    glob_stdout: glob.stdout,
+    glob_stderr: glob.stderr,
+    roster_paths: compile_clean_shard_entry_paths()
+  )
+}
+
+fn compile_clean_partition_totality_is_total(v: PartitionTotalityVerdict) -> Bool {
+  match v {
+    PartitionTotal { .. } => true
+    PartitionOrphan { .. } => false
+    PartitionDuplicateClaim { .. } => false
+    PartitionGlobUnavailable { .. } => false
+  }
+}
+
+fn witness_totality_holds_on_live_tree() -> Bool {
+  compile_clean_partition_totality_is_total(compile_clean_partition_totality_verdict_live())
+}
+
+fn witness_totality_reds_on_synthetic_orphan() -> Bool {
+  let roster_paths = ["dag/std/logic.dag"]
+  let verdict = compile_clean_partition_totality_verdict_from(
+    glob_success: true,
+    glob_stdout: "dag/std/logic.dag\ndag/std/orphan_not_in_roster.dag\n",
+    glob_stderr: "",
+    roster_paths: roster_paths
+  )
+  match verdict {
+    PartitionOrphan { unclaimed_paths: paths } =>
+      list_length(items: paths) == 1 && paths.first() == "dag/std/orphan_not_in_roster.dag"
+    _ => false
+  }
+}
+
+fn witness_totality_reds_on_synthetic_double_claim() -> Bool {
+  let verdict = compile_clean_partition_totality_verdict_from(
+    glob_success: true,
+    glob_stdout: "dag/std/logic.dag\n",
+    glob_stderr: "",
+    roster_paths: ["dag/std/logic.dag", "dag/std/logic.dag"]
+  )
+  match verdict {
+    PartitionDuplicateClaim { duplicated_paths: paths } =>
+      list_length(items: paths) == 1 && paths.first() == "dag/std/logic.dag"
+    _ => false
+  }
+}
+
+fn witness_totality_fails_closed_on_glob_failure() -> Bool {
+  let verdict = compile_clean_partition_totality_verdict_from(
+    glob_success: false,
+    glob_stdout: "",
+    glob_stderr: "find: permission denied",
+    roster_paths: ["dag/std/logic.dag"]
+  )
+  match verdict {
+    PartitionGlobUnavailable { stderr: s } => s == "find: permission denied"
+    _ => false
+  }
+}
+
+fn witness_totality_green_when_glob_matches_roster() -> Bool {
+  let verdict = compile_clean_partition_totality_verdict_from(
+    glob_success: true,
+    glob_stdout: "dag/std/logic.dag\ndag/std/types.dag\n",
+    glob_stderr: "",
+    roster_paths: ["dag/std/logic.dag", "dag/std/types.dag"]
+  )
+  match verdict {
+    PartitionTotal { module_count: n } => n == 2
+    _ => false
+  }
+}
