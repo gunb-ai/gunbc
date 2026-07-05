@@ -1,0 +1,41 @@
+module v2.test.manual.probe_tokenize_flip
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse_module }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected }
+
+type Verdict
+  = TokenizeReject { reason: Symbol }
+  | ParseReject { reason: Symbol }
+  | ParsedClean
+
+fn probe_verdict() -> Verdict {
+  let lm = dag_language_model_wave1()
+  let source_text = filesystem_read(path: "src/v1/01_tokenize.dag").content
+  match tokenize(text: source_text, file: ^probe_file_anchor, rules: lm.lex) {
+    Rejected { diagnostics: d } => TokenizeReject { reason: d.head.reason }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => ParseReject { reason: d.head.reason }
+        Accepted { value: _, diagnostics: _ } => ParsedClean
+      }
+  }
+}
+
+fn witness_probe_verdict_is_tokenize_reject() -> Bool {
+  match probe_verdict() {
+    TokenizeReject { reason: _ } => true
+    ParseReject { reason: _ } => false
+    ParsedClean => false
+  }
+}
+
+fn witness_probe_verdict_is_parse_reject() -> Bool {
+  match probe_verdict() {
+    TokenizeReject { reason: _ } => false
+    ParseReject { reason: _ } => true
+    ParsedClean => false
+  }
+}
