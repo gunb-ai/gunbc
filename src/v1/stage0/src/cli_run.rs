@@ -4123,6 +4123,64 @@ fn floor_git_diff_range() -> Result<String, String> {
     }
 }
 
+fn string_list_from_value(val: &v1_interpreter::Value, field: &str) -> Result<Vec<String>, String> {
+    use v1_interpreter::Value;
+    match val {
+        Value::List(items) => items
+            .iter()
+            .map(|v| match v {
+                Value::Str(s) => Ok(s.clone()),
+                other => Err(format!("{field} entry not a String: `{other:?}`")),
+            })
+            .collect(),
+        other => Err(format!("{field} not a List: `{other:?}`")),
+    }
+}
+
+fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet<String>), String> {
+    use v1_interpreter::Value;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_diff_observe.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
+        .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let result =
+        v1_interpreter::run_in_context(&ctx, "floor_observe_git_diff_name_status_for_ci", false)
+            .map_err(|e| format!("floor_observe_git_diff_name_status_for_ci: {e}"))?;
+    match &result {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "NameStatusDiffOk") => {
+            let changed = match ctx.field(fields, "changed_paths") {
+                Some(v) => string_list_from_value(v, "changed_paths")?,
+                None => return Err("NameStatusDiffOk missing `changed_paths` field".to_string()),
+            };
+            let departed = match ctx.field(fields, "departed_paths") {
+                Some(v) => string_list_from_value(v, "departed_paths")?,
+                None => return Err("NameStatusDiffOk missing `departed_paths` field".to_string()),
+            };
+            Ok((
+                changed.iter().map(|p| normalize_repo_path(p)).collect(),
+                departed.iter().map(|p| normalize_repo_path(p)).collect(),
+            ))
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "NameStatusDiffFail") => match ctx.field(fields, "reason") {
+            Some(Value::Str(r)) => Err(r.clone()),
+            _ => Err("git diff --name-status observation failed (no reason)".to_string()),
+        },
+        other => Err(format!(
+            "floor_observe_git_diff_name_status_for_ci returned `{}`, expected FloorNameStatusDiffResult",
+            ctx.format_value(other)
+        )),
+    }
+}
+
 fn normalize_repo_path(path: &str) -> String {
     path.strip_prefix("./").unwrap_or(path).replace('\\', "/")
 }
@@ -4137,18 +4195,7 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
     let mut current_file: Option<String> = None;
     for line in diff_text.lines() {
-        if let Some(rest) = line.strip_prefix("diff --git a/") {
-            // Path-grain attribution for every diff entry, including hunkless ones
-            // (pure rename, binary, mode-only, deletion): those emit no `+++ b/`
-            // line, so keying on hunks alone loses their paths from changed_paths
-            // entirely (operator ruling 2026-07-05: hunkless changes attribute at
-            // path grain). Both sides of a rename are touched paths. Exact git
-            // surface (name-status grain, quoting) is flagged open in PR-A.
-            if let Some((old, new)) = rest.split_once(" b/") {
-                out.entry(normalize_repo_path(old)).or_default();
-                out.entry(normalize_repo_path(new)).or_default();
-            }
-        } else if let Some(rest) = line.strip_prefix("+++ b/") {
+        if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
         } else if line.starts_with("@@ ") {
             let Some(file) = current_file.clone() else {
@@ -5102,9 +5149,33 @@ pub fn run_discovery_corpus_with_options(
     } else {
         String::new()
     };
-    let line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
+    // Path grain (changed_paths, departed_paths) is observed via the typed
+    // `git diff --name-status -z` interface (extdeps.git), not scraped from the
+    // unified diff's `diff --git a/OLD b/NEW` header: name-status is git's own
+    // machine surface for path identity/rename, so it is the single authority —
+    // the unified diff below stays scoped to LINE grain (hunk ranges) only.
+    let (name_status_changed_paths, name_status_departed_paths) =
+        if options.skip_unaffected_node_frontier {
+            floor_git_diff_name_status_range().map_err(|msg| {
+                format!(
+                    "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git \
+                     diff --name-status observation failed ({msg}); observation failure \
+                     is the only ignorance state (operator ruling 2026-07-05) and \
+                     refuses every enrolled row rather than widening to a full-corpus \
+                     run (declare skip_unaffected_node_frontier: false to run without \
+                     selection)",
+                    rows.len()
+                )
+            })?
+        } else {
+            (Vec::new(), HashSet::new())
+        };
+    let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
+    for path in &name_status_changed_paths {
+        line_ranges_by_file.entry(path.clone()).or_default();
+    }
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
-    let changed_paths: Vec<String> = line_ranges_by_file.keys().cloned().collect();
+    let changed_paths: Vec<String> = name_status_changed_paths;
     // Union-resolve S1 (docs/plans/resolver-graph-major-design.md §7): ONE index for the
     // whole process step. Frontier attribution, the floor runner context, and every roster
     // row resolve against this single MultiEntryIndex, so the union of their closures — the
@@ -5124,7 +5195,7 @@ pub fn run_discovery_corpus_with_options(
             &index,
             &line_ranges_by_file,
             &changed_new_lines_by_file,
-            &parse_unified_diff_departed_paths(&diff_text),
+            &name_status_departed_paths,
         ) {
             Ok(edits) => (true, edits),
             Err(msg) => {
