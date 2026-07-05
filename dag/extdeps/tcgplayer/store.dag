@@ -1,0 +1,87 @@
+module extdeps.tcgplayer.store
+
+import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tcgplayer.tcgplayer { production_api_base, TcgplayerErrorEnvelope }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.tcgplayer.com/reference/stores_updatestoreskuprice-1"
+  }
+}
+
+type StoreInventoryUpdateResponse {
+  success: Bool?
+  errors: List<String>?
+}
+
+data tcgplayer_store_money_measure_grounding_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: UpdateSkuPrice price input is a bare USD Float pending value-Measure grounding on std.measure MoneyAmountMicro. BLOCKED on the numeric-tower decimal <-> money_amount_micro conversion std lacks today (the store encode seam needs Nat micros -> decimal string, and there is no Nat div/mod primitive to format it). Wire-fidelity Float is the reviewer-sanctioned transport-seam representation until it lands. See gunbc.tools.card_intake tcgplayer_money_measure_grounding_dissolution_trigger for the shared gate. DISSOLVES WHEN std.measure gains that conversion and the price input lifts to MoneyAmountMicro encoded to decimal at the seam."
+
+data structural_coverage_gap_store_operations_residual: List<String> = [
+  "modeled operations cover sku price and quantity updates for an authenticated store; the",
+  "upstream store resource also carries product summaries, orders, and shipping options",
+  "extend on demand when a consumer needs them"
+]
+
+service tcgplayer.Store {
+  config {
+    endpoint: production_api_base
+    auth: Bearer
+    auth_input: bearer_token
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
+  }
+
+  operation UpdateSkuPrice {
+    input {
+      bearer_token: Secret
+      store_key: NonEmptyStr
+      sku_id: Int
+      price: Float
+      channel_id: Int = 0
+    }
+    output {
+      success: Bool from "success"
+    }
+    idempotent
+    transport rest {
+      method: PUT,
+      path: "/stores/\{store_key\}/inventory/skus/\{sku_id\}/price",
+      body: { price: price, channelId: channel_id }
+    }
+    response {
+      200 => StoreInventoryUpdateResponse
+      401 => TcgplayerErrorEnvelope
+      403 => TcgplayerErrorEnvelope
+      404 => TcgplayerErrorEnvelope
+      5xx => TcgplayerErrorEnvelope
+    }
+  }
+
+  operation IncrementSkuQuantity {
+    input {
+      bearer_token: Secret
+      store_key: NonEmptyStr
+      sku_id: Int
+      quantity: Int
+      channel_id: Int = 0
+    }
+    output {
+      success: Bool from "success"
+    }
+    transport rest {
+      method: POST,
+      path: "/stores/\{store_key\}/inventory/skus/\{sku_id\}/quantity",
+      body: { quantity: quantity, channelId: channel_id }
+    }
+    response {
+      200 => StoreInventoryUpdateResponse
+      401 => TcgplayerErrorEnvelope
+      403 => TcgplayerErrorEnvelope
+      404 => TcgplayerErrorEnvelope
+      5xx => TcgplayerErrorEnvelope
+    }
+  }
+}

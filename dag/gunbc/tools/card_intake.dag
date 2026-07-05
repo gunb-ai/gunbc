@@ -1,0 +1,229 @@
+module gunbc.tools.card_intake
+
+import std.types { FilePath, NonEmptyStr }
+import std.credentials { CredentialSource, EnvVar }
+import extdeps.llm.anthropic {
+  AnthropicChatMessage,
+  UserMessage,
+  UserTextBlock,
+  AnthropicImageBlock,
+  ImageSource,
+  Base64Image,
+  AnthropicImageMediaType,
+  ImageJpeg
+}
+import extdeps.llm.anthropic_rest
+import extdeps.filesystem.filesystem_io
+import extdeps.tcgplayer.tcgplayer
+import extdeps.tcgplayer.catalog
+import extdeps.tcgplayer.pricing
+import extdeps.tcgplayer.store
+
+data tcgplayer_client_id_source: CredentialSource = EnvVar { name: "TCGPLAYER_CLIENT_ID" }
+
+data tcgplayer_client_secret_source: CredentialSource = EnvVar { name: "TCGPLAYER_CLIENT_SECRET" }
+
+data tcgplayer_store_key_source: CredentialSource = EnvVar { name: "TCGPLAYER_STORE_KEY" }
+
+data default_recognition_model: String = "claude-sonnet-4-6-20250929"
+
+data default_high_value_threshold_usd: Float = 50.0
+
+data tcgplayer_money_measure_grounding_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: TCGplayer money fields (default_high_value_threshold_usd, market_price, list_card_sku price, extdeps.tcgplayer.pricing/store Float money) are USD-denominated bare Float pending value-Measure grounding on std.measure MoneyAmountMicro (as extdeps.cloud.hetzner does for static catalog rows). Grounding is BLOCKED on a numeric-tower capability that does not exist yet: a decimal-dollars <-> money_amount_micro conversion (Float -> Nat micros with round-half-even, and Nat micros -> decimal string for the store encode seam) — there is no Float->Nat primitive in std today, and TCGplayer's pricing API returns money as live JSON floats (not static literals like hetzner). eBay's EbayAmount already grounds on CurrencyCode + wire-faithful decimal String, so this gate is TCGplayer-only. DISSOLVES WHEN std.measure gains the decimal <-> money_amount_micro conversion, at which point these fields lift to MoneyAmountMicro and the comparison/threshold move to Nat-micros."
+
+data recognition_instruction: String = "Identify the single trading card in this photo. Reply with only the exact printed card name, nothing else. If no card is clearly identifiable, reply with only the word UNKNOWN."
+
+data unrecognized_card_sentinel: String = "UNKNOWN"
+
+data structural_coverage_gap_intake_recognition_residual: List<String> = [
+  "v0 recognition extracts the card name only; set, collector number, condition, and finish",
+  "enrichment (and per-condition sku selection from them) lands when the intake consumer",
+  "prices per-condition skus instead of products"
+]
+
+type CatalogMatch
+  = ExactMatch { product_id: Int }
+  | AmbiguousMatch { candidate_count: Int }
+  | NoMatch
+
+type RiskReason
+  = UnmatchedCard
+  | AmbiguousCatalogMatch
+  | UnpricedCard
+  | HighValue
+
+type IntakeDisposition
+  = ReadyToList
+  | NeedsReview { reasons: List<RiskReason> }
+
+fn classify_catalog_match(total_items: Int, first_product_id: Int) -> CatalogMatch {
+  if total_items == 0 { NoMatch }
+  else if total_items == 1 { ExactMatch { product_id: first_product_id } }
+  else { AmbiguousMatch { candidate_count: total_items } }
+}
+
+fn match_risk_reasons(card_match: CatalogMatch) -> List<RiskReason> {
+  match card_match {
+    NoMatch => [] |> list_push(UnmatchedCard)
+    AmbiguousMatch { candidate_count: _ } => [] |> list_push(AmbiguousCatalogMatch)
+    ExactMatch { product_id: _ } => []
+  }
+}
+
+fn price_risk_reasons(
+  base: List<RiskReason>,
+  market_price: Float?,
+  high_value_threshold: Float
+) -> List<RiskReason> {
+  match market_price {
+    Present { value: p } =>
+      if p >= high_value_threshold { base |> list_push(HighValue) } else { base }
+    Absent => base |> list_push(UnpricedCard)
+  }
+}
+
+fn assess_intake(
+  card_match: CatalogMatch,
+  market_price: Float?,
+  high_value_threshold: Float
+) -> IntakeDisposition {
+  let reasons = price_risk_reasons(
+    base: match_risk_reasons(card_match: card_match),
+    market_price: market_price,
+    high_value_threshold: high_value_threshold
+  )
+  if count(reasons) == 0 { ReadyToList } else { NeedsReview { reasons: reasons } }
+}
+
+fn count_true(flags: List<Bool>) -> Int {
+  fold(flags, init: 0, f: (acc, b) => if b { acc + 1 } else { acc })
+}
+
+
+func recognize_binder_photo(
+  photo_path: FilePath,
+  model: String = default_recognition_model
+) -> { card_name: String } {
+
+  photo = Filesystem.Read(path: photo_path)
+
+  response = llm.Anthropic.Messages(
+    api_key: "",
+    model: model,
+    messages: [
+      UserMessage {
+        content: [
+          AnthropicImageBlock { source: Base64Image { media_type: ImageJpeg, data: photo.content } },
+          UserTextBlock { text: recognition_instruction }
+        ]
+      }
+    ],
+    max_tokens: 256,
+    temperature: none,
+    system: none
+  )
+
+  return { card_name: response.content }
+}
+
+func intake_binder_photo(
+  photo_path: FilePath,
+  bearer_token: Secret,
+  category_id: Int,
+  high_value_threshold: Float = default_high_value_threshold_usd
+) -> { card_name: String, disposition: IntakeDisposition, product_id: Int, market_price: Float? } {
+
+  recognized = recognize_binder_photo(photo_path: photo_path)
+
+  search = tcgplayer.Catalog.SearchProducts(
+    bearer_token: bearer_token,
+    product_name: recognized.card_name,
+    category_id: category_id
+  )
+
+  prices = tcgplayer.Pricing.GetProductPrices(
+    bearer_token: bearer_token,
+    product_ids: "{search.first_product_id}"
+  )
+
+  card_match = classify_catalog_match(
+    total_items: search.total_items,
+    first_product_id: search.first_product_id
+  )
+
+  disposition = assess_intake(
+    card_match: card_match,
+    market_price: prices.market_price,
+    high_value_threshold: high_value_threshold
+  )
+
+  return {
+    card_name: recognized.card_name,
+    disposition: disposition,
+    product_id: search.first_product_id,
+    market_price: prices.market_price
+  }
+}
+
+func intake_binder(
+  photo_paths: List<FilePath>,
+  client_id: String,
+  client_secret: Secret,
+  category_id: Int,
+  high_value_threshold: Float = default_high_value_threshold_usd
+) -> { total: Int, flagged: Int } {
+
+  token = tcgplayer.Auth.MintBearerToken(
+    client_id: client_id,
+    client_secret: client_secret
+  )
+
+  results = for p in photo_paths {
+    intake_binder_photo(
+      photo_path: p,
+      bearer_token: token.access_token,
+      category_id: category_id,
+      high_value_threshold: high_value_threshold
+    )
+  }
+
+  flags = for r in results {
+    match r.disposition {
+      ReadyToList => false
+      NeedsReview { reasons: _ } => true
+    }
+  }
+
+  return { total: count(results), flagged: count_true(flags: flags) }
+}
+
+func list_card_sku(
+  client_id: String,
+  client_secret: Secret,
+  store_key: NonEmptyStr,
+  sku_id: Int,
+  price: Float,
+  quantity: Int
+) -> { price_updated: Bool, quantity_updated: Bool } {
+
+  token = tcgplayer.Auth.MintBearerToken(
+    client_id: client_id,
+    client_secret: client_secret
+  )
+
+  priced = tcgplayer.Store.UpdateSkuPrice(
+    bearer_token: token.access_token,
+    store_key: store_key,
+    sku_id: sku_id,
+    price: price
+  )
+
+  stocked = tcgplayer.Store.IncrementSkuQuantity(
+    bearer_token: token.access_token,
+    store_key: store_key,
+    sku_id: sku_id,
+    quantity: quantity
+  )
+
+  return { price_updated: priced.success, quantity_updated: stocked.success }
+}
