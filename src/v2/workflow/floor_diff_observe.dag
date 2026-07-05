@@ -34,6 +34,7 @@ import extdeps.languages.bash.program {
 import extdeps.git {
   parse_git_diff_name_status_z,
   git_diff_status_entries_touched_paths,
+  git_diff_status_entries_departed_paths,
   git_diff_status_entries_any_unknown
 }
 
@@ -42,7 +43,7 @@ type FloorUnifiedDiffResult
   | UnifiedDiffFail { reason: String }
 
 type FloorNameStatusDiffResult
-  = NameStatusDiffOk { changed_paths: List<String> }
+  = NameStatusDiffOk { changed_paths: List<String>, departed_paths: List<String> }
   | NameStatusDiffFail { reason: String }
 
 fn floor_ci_host_os() -> NodeControlPlane {
@@ -307,7 +308,10 @@ fn floor_name_status_diff_from_reconciliation(
             if git_diff_status_entries_any_unknown(entries: entries) {
               NameStatusDiffFail { reason: "unrecognized git diff --name-status status letter in observation" }
             } else {
-              NameStatusDiffOk { changed_paths: git_diff_status_entries_touched_paths(entries: entries) }
+              NameStatusDiffOk {
+                changed_paths: git_diff_status_entries_touched_paths(entries: entries),
+                departed_paths: git_diff_status_entries_departed_paths(entries: entries)
+              }
             }
           }
       }
