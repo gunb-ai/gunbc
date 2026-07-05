@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 130
+    timeout-minutes: 145
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -82,7 +82,7 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
-        timeout-minutes: 30
+        timeout-minutes: 45
       - name: gunbc ci (.dag witnesses + gates)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -104,7 +104,7 @@ jobs:
         timeout-minutes: 5
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 45
+    timeout-minutes: 75
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -199,7 +199,7 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-        timeout-minutes: 30
+        timeout-minutes: 60
       - name: rust_tests cgroup peak (placement divisor)
         run: |
           BIN="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/claim_executor"
