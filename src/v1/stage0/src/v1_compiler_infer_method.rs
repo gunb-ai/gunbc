@@ -44,24 +44,24 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
 }
 
 pub fn map_of_type_variables() -> Rc<Node> {
-    (*make_map_type(
+    Rc::new((*make_map_type(
         type_variable_node("map_key".to_string()),
         type_variable_node("map_value".to_string()),
     )
     .ty)
-        .clone()
+        .clone())
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    (*make_container_type("List".to_string(), type_variable_node(id)).ty).clone()
+    make_container_type("List".to_string(), type_variable_node(id)).ty.clone()
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    (*make_container_type("List".to_string(), element).ty).clone()
+    make_container_type("List".to_string(), element).ty.clone()
 }
 
 pub fn witness_of_element(element: Rc<Node>) -> Rc<Node> {
-    (*make_container_type("Witness".to_string(), element).ty).clone()
+    make_container_type("Witness".to_string(), element).ty.clone()
 }
 
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
@@ -129,9 +129,9 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         )
         .ty)
             .clone();
-        let m = v1_rt::rc_map_insert(m.clone(), "empty_set".to_string(), set_ty.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "set_insert".to_string(), set_ty.clone());
-        let m = v1_rt::rc_map_insert(m.clone(), "set_union".to_string(), set_ty.clone());
+        let m = v1_rt::rc_map_insert(m.clone(), "empty_set".to_string(), Rc::new(set_ty.clone()));
+        let m = v1_rt::rc_map_insert(m.clone(), "set_insert".to_string(), Rc::new(set_ty.clone()));
+        let m = v1_rt::rc_map_insert(m.clone(), "set_union".to_string(), Rc::new(set_ty.clone()));
         let m = v1_rt::rc_map_insert(m.clone(), "map_contains_key".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "map_has".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "map_is_empty".to_string(), bool_type());

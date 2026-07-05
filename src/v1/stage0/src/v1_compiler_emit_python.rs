@@ -118,7 +118,7 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                     __result.push(emit_py_test_file(
                         authored_name_at(
                             (*tm.type_env).clone().source_indices.clone(),
-                            (*tm.module).clone(),
+                            tm.module.clone(),
                         ),
                         Rc::new({
                             let mut __result = Vec::new();
@@ -126,7 +126,7 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                                 if (p.module_name.clone()
                                     == authored_name_at(
                                         (*tm.type_env).clone().source_indices.clone(),
-                                        (*tm.module).clone(),
+                                        tm.module.clone(),
                                     ))
                                 {
                                     __result.push(p);
@@ -188,7 +188,7 @@ pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
                 __result.push({
                     let mod_name = module_to_filename(authored_name_at(
                         (*tm.type_env).clone().source_indices.clone(),
-                        (*tm.module).clone(),
+                        tm.module.clone(),
                     ));
                     let items = language_spec(RenderTarget::Python).items.clone();
                     v1_rt::concat(
@@ -267,7 +267,7 @@ pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> String {
                 ") -> ".to_string(),
             ),
             emit_node_type(
-                (*projection.inferred).clone(),
+                projection.inferred.clone(),
                 RenderTarget::Python,
                 projection.source_indices.clone(),
             ),
@@ -367,9 +367,9 @@ pub fn emit_py_module(
         let m = (*typed_module.module).clone();
         let scope = module_emit_scope(typed_module.clone());
         let si = (*scope.type_env).clone().source_indices.clone();
-        let mod_name_str = authored_name_at(si.clone(), m.clone());
+        let mod_name_str = authored_name_at(si.clone(), Rc::new(m.clone()));
         let prelude = emit_py_prelude(typed_module.clone());
-        let imports_str = emit_py_imports(module_imports(m.clone()), si.clone());
+        let imports_str = emit_py_imports(module_imports(Rc::new(m.clone())), si.clone());
         let imports_section = if (imports_str.clone() == "".to_string()) {
             "".to_string()
         } else {
@@ -583,9 +583,9 @@ pub fn emit_py_typed_item(
 ) -> String {
     {
         let env = (*scope.type_env).clone();
-        let item_text = authored_name(env.clone(), item.clone());
+        let item_text = authored_name(Rc::new(env.clone()), item.clone());
         if is_type_def_item(item.clone()) {
-            emit_py_type_def_from_connective(item.clone(), env.clone())
+            emit_py_type_def_from_connective(item.clone(), Rc::new(env.clone()))
         } else {
             if is_type_alias_item(item.clone(), env.source_indices.clone()) {
                 v1_rt::concat(
@@ -632,10 +632,10 @@ pub fn emit_py_typed_item(
                             )
                         } else {
                             if is_service_def_item(item.clone()) {
-                                emit_py_service_def(item.clone(), registry, env.clone())
+                                emit_py_service_def(item.clone(), registry, Rc::new(env.clone()))
                             } else {
                                 if is_resource_def_item(item.clone()) {
-                                    emit_py_resource_def(item.clone(), env.clone())
+                                    emit_py_resource_def(item.clone(), Rc::new(env.clone()))
                                 } else {
                                     v1_rt::concat("# unhandled node: ".to_string(), item_text)
                                 }

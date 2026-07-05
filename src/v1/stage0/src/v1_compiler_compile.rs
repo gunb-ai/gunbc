@@ -1894,7 +1894,7 @@ pub fn serialize_typed_module(
                     v1_rt::concat(
                         v1_rt::concat(
                             "{\"module\": ".to_string(),
-                            serialize_node_ref((*module.module).clone(), key_to_id.clone()),
+                            serialize_node_ref(module.module.clone(), key_to_id.clone()),
                         ),
                         ", \"items\": ".to_string(),
                     ),
@@ -2431,7 +2431,7 @@ pub fn emit_resolved_for_target(
                     for m in typed.modules.clone().iter().cloned() {
                         __result.push(authored_name_at(
                             resolved.source_indices.clone(),
-                            (*m.module).clone(),
+                            m.module.clone(),
                         ));
                     }
                     __result

@@ -209,14 +209,14 @@ pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
 
 pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
     match lookup_binding(env, ident) {
-        Some(binding) => Some((*binding.resolved).clone()),
+        Some(binding) => Some(binding.resolved.clone()),
         None => None,
     }
 }
 
 pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     match lookup_binding_by_name(env, name) {
-        Some(binding) => Some((*binding.resolved).clone()),
+        Some(binding) => Some(binding.resolved.clone()),
         None => None,
     }
 }

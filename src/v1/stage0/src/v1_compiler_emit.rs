@@ -594,13 +594,13 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
 
 pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
     Rc::new(InferScope {
-        type_env: (*typed_module.type_env).clone(),
-        func_env: (*typed_module.func_env).clone(),
+        type_env: typed_module.type_env.clone(),
+        func_env: typed_module.func_env.clone(),
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: authored_name_at(
             (*typed_module.type_env).clone().source_indices.clone(),
-            (*typed_module.module).clone(),
+            typed_module.module.clone(),
         ),
         service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
         item_registry: typed_module.item_registry.clone(),
@@ -645,7 +645,7 @@ pub fn lookup_func_sig_in_scope(
     scope: Rc<InferScope>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
-    lookup_func_sig((*scope.func_env).clone(), name)
+    lookup_func_sig(scope.func_env.clone(), name)
 }
 
 pub fn typed_named_arg_matches(
@@ -2550,7 +2550,7 @@ pub fn emit_shared_tco_expr(
             .clone();
         match (*(*frame.expr).clone().expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                if (expr_call_func_at((*frame.expr).clone(), si) == fn_name) {
+                if (expr_call_func_at(frame.expr.clone(), si) == fn_name) {
                     break emit_self_call_reassign(Rc::new(TcoReassignInput {
                         args: (*frame.expr).clone().children.clone(),
                         scope: frame.scope.clone(),
@@ -2561,7 +2561,7 @@ pub fn emit_shared_tco_expr(
                 }
             }
             ExprData::ExprReturn => {
-                let inner = return_value((*frame.expr).clone());
+                let inner = return_value(frame.expr.clone());
                 {
                     let __tco_0 = Rc::new(TcoFrame {
                         expr: inner,
@@ -2628,7 +2628,7 @@ pub fn shared_tco_default_return(
 ) -> String {
     {
         let val_str = recurse_expr(
-            (*frame.expr).clone(),
+            frame.expr.clone(),
             frame.scope.clone(),
             frame.depth.clone(),
         );
@@ -2648,7 +2648,7 @@ pub fn shared_tco_non_self_call(
     match (*(*frame.expr).clone().expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let f = expr_call_func_at(
-                (*frame.expr).clone(),
+                frame.expr.clone(),
                 (*frame.scope.clone().type_env)
                     .clone()
                     .source_indices
@@ -2685,9 +2685,9 @@ pub fn shared_tco_if(
         let syntax = spec.block_syntax.clone();
         match (*(*frame.expr).clone().expr_data.clone()).clone() {
             ExprData::ExprIf => {
-                let c = if_condition((*frame.expr).clone());
-                let t = if_then_branch((*frame.expr).clone());
-                let e = if_else_branch((*frame.expr).clone());
+                let c = if_condition(frame.expr.clone());
+                let t = if_then_branch(frame.expr.clone());
+                let e = if_else_branch(frame.expr.clone());
                 let cond_str = recurse_expr(c, frame.scope.clone(), frame.depth.clone());
                 let then_str = recurse_tco(t, frame.scope.clone(), (frame.depth.clone() + 1));
                 let else_prefix = if syntax.significant_whitespace.clone() {
@@ -2811,14 +2811,14 @@ pub fn shared_tco_let(
     match (*(*frame.expr).clone().expr_data.clone()).clone() {
         ExprData::ExprLet => {
             let n = let_binding_name_at(
-                (*frame.expr).clone(),
+                frame.expr.clone(),
                 (*frame.scope.clone().type_env)
                     .clone()
                     .source_indices
                     .clone(),
             );
-            let v = let_value((*frame.expr).clone());
-            let bd = let_body((*frame.expr).clone());
+            let v = let_value(frame.expr.clone());
+            let bd = let_body(frame.expr.clone());
             let val_str = recurse_expr(v.clone(), frame.scope.clone(), frame.depth.clone());
             let let_line = emit_let_binding(n.clone(), val_str, target);
             let next_scope = extend_scope(
@@ -3232,8 +3232,8 @@ pub fn emit_unified_tco_match(
 ) -> String {
     match (*(*frame.expr).clone().expr_data.clone()).clone() {
         ExprData::ExprMatch => {
-            let s = match_scrutinee((*frame.expr).clone());
-            let arm_list = match_arm_nodes((*frame.expr).clone());
+            let s = match_scrutinee(frame.expr.clone());
+            let arm_list = match_arm_nodes(frame.expr.clone());
             let scrut_str = emit_unified_typed_expr(
                 s,
                 target.clone(),

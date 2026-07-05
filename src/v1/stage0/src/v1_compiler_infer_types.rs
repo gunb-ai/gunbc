@@ -866,9 +866,9 @@ pub fn instantiate_algebra_type(
                 };
                 let inner_b =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
-                let built = make_container_type(kind_name, (*inner_b.ty).clone());
+                let built = make_container_type(kind_name, inner_b.ty.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: (*built.ty).clone(),
+                    ty: built.ty.clone(),
                     diagnostics: v1_rt::concat(
                         inner_b.diagnostics.clone(),
                         built.diagnostics.clone(),
@@ -879,16 +879,16 @@ pub fn instantiate_algebra_type(
                 let ib =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: with_optional_cardinality((*ib.ty).clone()),
+                    ty: with_optional_cardinality(ib.ty.clone()),
                     diagnostics: ib.diagnostics.clone(),
                 })
             }
             AlgebraTypeTemplate::WitnessOf { inner: inner, .. } => {
                 let ib =
                     instantiate_algebra_type(inner.clone(), base.clone(), source_indices.clone());
-                let built = make_container_type("Witness".to_string(), (*ib.ty).clone());
+                let built = make_container_type("Witness".to_string(), ib.ty.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: (*built.ty).clone(),
+                    ty: built.ty.clone(),
                     diagnostics: v1_rt::concat(ib.diagnostics.clone(), built.diagnostics.clone()),
                 })
             }
@@ -898,7 +898,7 @@ pub fn instantiate_algebra_type(
                 let sb =
                     instantiate_algebra_type(second.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: make_tuple_type((*fb.ty).clone(), (*sb.ty).clone()),
+                    ty: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_tuple_type))))))((*fb.ty).clone(), (*sb.ty).clone()),
                     diagnostics: v1_rt::concat(fb.diagnostics.clone(), sb.diagnostics.clone()),
                 })
             }
@@ -934,7 +934,7 @@ pub fn instantiate_algebra_type(
                 });
                 let rb = instantiate_algebra_type(r.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: make_callable_type(param_nodes, (*rb.ty).clone()),
+                    ty: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_callable_type))))))(param_nodes, (*rb.ty).clone()),
                     diagnostics: v1_rt::concat(param_diags, rb.diagnostics.clone()),
                 })
             }
@@ -974,18 +974,18 @@ pub fn instantiate_algebra_field(
             __result
         });
         let return_b = instantiate_algebra_type(
-            (*template.return_type).clone(),
+            template.return_type.clone(),
             base.clone(),
             source_indices.clone(),
         );
         let field_ty = if ((param_types.clone().len() as i64) > 0) {
-            algebra_method_field(
+            Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(algebra_method_field))))))(
                 template.name.clone(),
                 param_types.clone(),
                 (*return_b.ty).clone(),
             )
         } else {
-            algebra_value_field(template.name.clone(), (*return_b.ty).clone())
+            algebra_value_field(template.name.clone(), return_b.ty.clone())
         };
         Rc::new(KernelTypeBuild {
             ty: field_ty,
@@ -1475,9 +1475,9 @@ pub fn apply_type_substitution(
                 receiver.clone(),
                 source_indices.clone(),
             );
-            let built = make_container_type(kind_name, (*inner_applied.ty).clone());
+            let built = make_container_type(kind_name, inner_applied.ty.clone());
             Rc::new(KernelTypeBuild {
-                ty: (*built.ty).clone(),
+                ty: built.ty.clone(),
                 diagnostics: v1_rt::concat(
                     inner_applied.diagnostics.clone(),
                     built.diagnostics.clone(),
@@ -1492,7 +1492,7 @@ pub fn apply_type_substitution(
                 source_indices.clone(),
             );
             Rc::new(KernelTypeBuild {
-                ty: with_optional_cardinality((*ib.ty).clone()),
+                ty: with_optional_cardinality(ib.ty.clone()),
                 diagnostics: ib.diagnostics.clone(),
             })
         }
@@ -1503,9 +1503,9 @@ pub fn apply_type_substitution(
                 receiver.clone(),
                 source_indices.clone(),
             );
-            let built = make_container_type("Witness".to_string(), (*ib.ty).clone());
+            let built = make_container_type("Witness".to_string(), ib.ty.clone());
             Rc::new(KernelTypeBuild {
-                ty: (*built.ty).clone(),
+                ty: built.ty.clone(),
                 diagnostics: v1_rt::concat(ib.diagnostics.clone(), built.diagnostics.clone()),
             })
         }
@@ -1527,7 +1527,7 @@ pub fn apply_type_substitution(
                 source_indices.clone(),
             );
             Rc::new(KernelTypeBuild {
-                ty: make_tuple_type((*fb.ty).clone(), (*sb.ty).clone()),
+                ty: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_tuple_type))))))((*fb.ty).clone(), (*sb.ty).clone()),
                 diagnostics: v1_rt::concat(fb.diagnostics.clone(), sb.diagnostics.clone()),
             })
         }
@@ -1575,7 +1575,7 @@ pub fn apply_type_substitution(
                         for pn in param_nodes.iter().cloned() {
                             __result.push(make_param_node(
                                 "_".to_string(),
-                                pn.clone(),
+                                Rc::new(pn.clone()),
                                 None,
                                 no_span(),
                                 no_span(),
@@ -1583,7 +1583,7 @@ pub fn apply_type_substitution(
                         }
                         __result
                     }),
-                    (*rb.ty).clone(),
+                    rb.ty.clone(),
                 ),
                 diagnostics: v1_rt::concat(param_diags, rb.diagnostics.clone()),
             })
@@ -1592,11 +1592,11 @@ pub fn apply_type_substitution(
 }
 
 pub fn template_return_is_receiver_self(template: Rc<AlgebraFieldTemplate>) -> bool {
-    is_receiver_self((*template.return_type).clone())
+    is_receiver_self(template.return_type.clone())
 }
 
 pub fn template_return_has_variables(template: Rc<AlgebraFieldTemplate>) -> bool {
-    has_type_variable((*template.return_type).clone())
+    has_type_variable(template.return_type.clone())
 }
 
 pub fn has_type_variable(t: Rc<AlgebraTypeTemplate>) -> bool {
@@ -1631,7 +1631,7 @@ pub fn resolve_type_variables_from_template(
             source_indices.clone(),
         );
         apply_type_substitution(
-            (*template.return_type).clone(),
+            template.return_type.clone(),
             subst,
             receiver_type.clone(),
             source_indices.clone(),

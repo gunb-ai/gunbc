@@ -604,7 +604,7 @@ pub fn extract_test_projections(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<TestProje
                                     __result.push(Rc::new(TestProjection {
                                         module_name: authored_name_at(
                                             (*tm.type_env).clone().source_indices.clone(),
-                                            (*tm.module).clone(),
+                                            tm.module.clone(),
                                         ),
                                         service_name: authored_name_at(
                                             (*tm.type_env).clone().source_indices.clone(),
