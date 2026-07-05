@@ -6,9 +6,15 @@ import v2.workflow.floor_diff_observe {
   FloorUnifiedDiffResult,
   UnifiedDiffOk,
   UnifiedDiffFail,
+  FloorNameStatusDiffResult,
+  NameStatusDiffOk,
+  NameStatusDiffFail,
   floor_observe_git_diff_unified,
   floor_observe_git_diff_unified_for_ci,
-  floor_diff_script_serializes_git_diff_unified
+  floor_diff_script_serializes_git_diff_unified,
+  floor_observe_git_diff_name_status,
+  floor_observe_git_diff_name_status_for_ci,
+  floor_diff_script_serializes_git_diff_name_status
 }
 
 fn witness_ci_policy_observation_succeeds() -> Bool {
