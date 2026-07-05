@@ -25,7 +25,7 @@ While confidence in selection is being established, an off-PR cadence run execut
 - A PR-A `Refused` row is **not** a divergence — refusals are already counted, attributed reds; the differential only falsifies confident predictions.
 - The comparison consumes: the module-grain closure (#6274's `entry_affected_by_touched_paths`), enrollment kind/span (#6247 — a declared span tells the falsifier *which seams* a witness certifies, so a divergence attributes to a seam, not just a file), and Ruling 1/2 semantics for the empty and refused arms.
 
-**Dissolution trigger:** divergence rate = 0 across N consecutive cadence windows (N to be signed with the cadence; proposed N=8). At that point the differential retires and only Component 1 remains. If divergence recurs later (a new edge class enters the language), the differential re-arms for another N-window cycle — re-arming is itself a counted event.
+**Dissolution trigger:** divergence rate = 0 across N consecutive cadence windows (SIGNED: N=8). At that point the differential retires and only Component 1 remains. If divergence recurs later (a new edge class enters the language), the differential re-arms for another N-window cycle — re-arming is itself a counted event.
 
 ## Why this is §5-clean
 
@@ -36,11 +36,11 @@ The distinction DESIGN §5 draws: an absorbing fallback is a *failure arm* that 
 - **Dissolving:** the trigger is objective (divergence rate), not vibes; the mechanism measurably argues for its own retirement.
 - Crucially it **preserves the deficit signal** the backstop would destroy: a missed edge becomes a ranked work item with a frequency, which is what lets §6 price the fix.
 
-## What needs operator sign
+## Sign items — all SIGNED 2026-07-05 (operator, via cool-hawk-899 relay)
 
-1. The cadence surface: a scheduled entry on `gunbc.commit_workflow` / CI workflow (load-bearing carrier) — shape and window length.
-2. N (consecutive clean windows) for the dissolution trigger.
-3. Confirmation that residue-roster enumeration may reuse the `reads_live_tree` / host-scaffold disposition facts as its authority (no parallel roster).
+1. Cadence surface: signed at the shape/window proposed here (delegated to cool-hawk, signed as-is); re-flag only if implementation materially changes the load-bearing `commit_workflow` carrier's cost.
+2. N = 8 consecutive clean windows, with automatic counted re-arm on later divergence.
+3. Residue-roster authority = the existing `reads_live_tree` / host-scaffold disposition facts (single authority, no parallel roster).
 
 ## Sequencing
 
