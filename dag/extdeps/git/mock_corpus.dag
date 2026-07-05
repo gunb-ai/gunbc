@@ -44,6 +44,20 @@ data git_core_mock_case_diff_name_only_merge: PublishedMockCase = PublishedMockC
   case_id: 0
 }
 
+data git_core_mock_case_diff_name_status: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.DiffNameStatus",
+  service: "git.Core",
+  operation: "DiffNameStatus",
+  case_id: 0
+}
+
+data git_core_mock_case_diff_name_status_merge: PublishedMockCase = PublishedMockCase {
+  operation_key: "git.Core.DiffNameStatusMerge",
+  service: "git.Core",
+  operation: "DiffNameStatusMerge",
+  case_id: 0
+}
+
 data git_core_mock_case_rev_list: PublishedMockCase = PublishedMockCase {
   operation_key: "git.Core.RevList",
   service: "git.Core",
@@ -72,6 +86,8 @@ data git_published_mock_corpus: List<PublishedMockCase> = [
   git_core_mock_case_diff,
   git_core_mock_case_diff_name_only,
   git_core_mock_case_diff_name_only_merge,
+  git_core_mock_case_diff_name_status,
+  git_core_mock_case_diff_name_status_merge,
   git_core_mock_case_rev_list,
   git_core_mock_case_rev_list_before,
   git_core_mock_case_show

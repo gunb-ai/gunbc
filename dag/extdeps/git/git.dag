@@ -13,6 +13,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
+data git_diff_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "git-scm.com/docs/git-diff"
+  }
+}
+
 type ObjectType = BlobObj | TreeObj | CommitObj | TagObj
 
 type GitAuthor {
@@ -60,6 +67,163 @@ type DiffHunk {
   old_start: Int
   new_start: Int
   lines: List<DiffLine>
+}
+
+type GitDiffChangeStatus
+  = DiffAddedStatus
+  | DiffCopiedStatus { similarity: Percent }
+  | DiffDeletedStatus
+  | DiffModifiedStatus
+  | DiffPairingBrokenStatus
+  | DiffRenamedStatus { similarity: Percent }
+  | DiffTypeChangedStatus
+  | DiffUnmergedStatus
+  | DiffUnknownGitStatus { raw: String }
+
+type GitDiffStatusEntry {
+  status: GitDiffChangeStatus
+  path: FilePath
+  old_path: FilePath?
+}
+
+type GitDiffNameStatusParsePending
+  = AwaitingStatusToken
+  | AwaitingSinglePath { status: GitDiffChangeStatus }
+  | AwaitingOldPath { status: GitDiffChangeStatus }
+  | AwaitingNewPath { status: GitDiffChangeStatus, old_path: FilePath }
+
+type GitDiffNameStatusParseState {
+  pending: GitDiffNameStatusParsePending
+  entries: List<GitDiffStatusEntry>
+}
+
+data git_diff_name_status_field_separator: String = from_code_point(0)
+
+fn git_diff_change_status_from_token(token: String) -> GitDiffChangeStatus {
+  let letter = substring(s: token, start: 0, end: 1)
+  let rest = substring(s: token, start: 1, end: string_length(s: token))
+  if letter == "A" { DiffAddedStatus }
+  else if letter == "D" { DiffDeletedStatus }
+  else if letter == "M" { DiffModifiedStatus }
+  else if letter == "T" { DiffTypeChangedStatus }
+  else if letter == "U" { DiffUnmergedStatus }
+  else if letter == "B" { DiffPairingBrokenStatus }
+  else if letter == "R" {
+    match parse_int(s: rest) {
+      Present { value: score } => DiffRenamedStatus { similarity: percent(score) }
+      Absent => DiffUnknownGitStatus { raw: token }
+    }
+  }
+  else if letter == "C" {
+    match parse_int(s: rest) {
+      Present { value: score } => DiffCopiedStatus { similarity: percent(score) }
+      Absent => DiffUnknownGitStatus { raw: token }
+    }
+  }
+  else { DiffUnknownGitStatus { raw: token } }
+}
+
+fn git_diff_name_status_pending_after_status(status: GitDiffChangeStatus) -> GitDiffNameStatusParsePending {
+  match status {
+    DiffRenamedStatus { similarity: _ } => AwaitingOldPath { status: status }
+    DiffCopiedStatus { similarity: _ } => AwaitingOldPath { status: status }
+    _ => AwaitingSinglePath { status: status }
+  }
+}
+
+fn git_diff_name_status_advance(state: GitDiffNameStatusParseState, token: String) -> GitDiffNameStatusParseState {
+  if token == "" {
+    state
+  } else {
+    match state.pending {
+      AwaitingStatusToken => GitDiffNameStatusParseState {
+        pending: git_diff_name_status_pending_after_status(status: git_diff_change_status_from_token(token: token)),
+        entries: state.entries
+      }
+      AwaitingSinglePath { status: status } => GitDiffNameStatusParseState {
+        pending: AwaitingStatusToken,
+        entries: append(state.entries, items: [GitDiffStatusEntry { status: status, path: token, old_path: Absent }])
+      }
+      AwaitingOldPath { status: status } => GitDiffNameStatusParseState {
+        pending: AwaitingNewPath { status: status, old_path: token },
+        entries: state.entries
+      }
+      AwaitingNewPath { status: status, old_path: old_path } => GitDiffNameStatusParseState {
+        pending: AwaitingStatusToken,
+        entries: append(state.entries, items: [GitDiffStatusEntry { status: status, path: token, old_path: Present { value: old_path } }])
+      }
+    }
+  }
+}
+
+fn parse_git_diff_name_status_z(raw: String) -> List<GitDiffStatusEntry> {
+  let tokens = split(s: raw, delimiter: git_diff_name_status_field_separator)
+  let final_state = fold(
+    tokens,
+    init: GitDiffNameStatusParseState { pending: AwaitingStatusToken, entries: [] },
+    f: git_diff_name_status_advance
+  )
+  final_state.entries
+}
+
+fn git_diff_status_entry_touched_paths(entry: GitDiffStatusEntry) -> List<FilePath> {
+  match entry.old_path {
+    Present { value: old } => [entry.path, old]
+    Absent => [entry.path]
+  }
+}
+
+fn git_diff_status_touched_paths_step(acc: List<FilePath>, entry: GitDiffStatusEntry) -> List<FilePath> {
+  append(acc, items: git_diff_status_entry_touched_paths(entry: entry))
+}
+
+fn git_diff_status_entries_touched_paths(entries: List<GitDiffStatusEntry>) -> List<FilePath> {
+  fold(entries, init: [], f: git_diff_status_touched_paths_step)
+}
+
+fn git_diff_status_entry_is_departure(status: GitDiffChangeStatus) -> Bool {
+  match status {
+    DiffDeletedStatus => true
+    DiffRenamedStatus { similarity: _ } => true
+    _ => false
+  }
+}
+
+fn git_diff_status_entry_departed_path(entry: GitDiffStatusEntry) -> FilePath? {
+  if git_diff_status_entry_is_departure(status: entry.status) {
+    match entry.status {
+      DiffRenamedStatus { similarity: _ } => entry.old_path
+      _ => Present { value: entry.path }
+    }
+  } else {
+    Absent
+  }
+}
+
+fn git_diff_status_departed_paths_step(acc: List<FilePath>, entry: GitDiffStatusEntry) -> List<FilePath> {
+  match git_diff_status_entry_departed_path(entry: entry) {
+    Present { value: path } => append(acc, items: [path])
+    Absent => acc
+  }
+}
+
+fn git_diff_status_entries_departed_paths(entries: List<GitDiffStatusEntry>) -> List<FilePath> {
+  fold(entries, init: [], f: git_diff_status_departed_paths_step)
+}
+
+fn git_diff_status_entry_is_unknown(entry: GitDiffStatusEntry) -> Bool {
+  match entry.status {
+    DiffUnknownGitStatus { raw: _ } => true
+    _ => false
+  }
+}
+
+fn git_diff_status_unknown_step(acc: Bool, entry: GitDiffStatusEntry) -> Bool {
+  acc || git_diff_status_entry_is_unknown(entry: entry)
+}
+
+fn git_diff_status_entries_any_unknown(entries: List<GitDiffStatusEntry>) -> Bool {
+  fold(entries, init: false, f: git_diff_status_unknown_step)
 }
 
 data default_remote: String = "origin"
@@ -147,6 +311,34 @@ service git.Core {
     }
     readonly
     transport shell { argv: ["git", "diff", "--name-only", "{base}...{head}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation DiffNameStatus {
+    input { base: GitRef, head: GitRef = "HEAD" }
+    output {
+      raw: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "--name-status", "-z", "{base}", "{head}"] }
+    exit {
+      0 => Unit
+      128 => String "Invalid ref or not a git repository"
+    }
+  }
+
+  operation DiffNameStatusMerge {
+    input { base: GitRef, head: GitRef = "HEAD" }
+    output {
+      raw: String from "stdout"
+      success: Bool from "exit_success"
+    }
+    readonly
+    transport shell { argv: ["git", "diff", "--name-status", "-z", "{base}...{head}"] }
     exit {
       0 => Unit
       128 => String "Invalid ref or not a git repository"
