@@ -12,10 +12,10 @@
 
 | Step | Status | Receipt |
 |------|--------|---------|
-| Prep — disposition kernel both axes | **GREEN** (PR #6065) | `floor_witness_run_disposition` + `function_edited`; `affected_set_disposition_both_axes_test.dag`; `floor_disposition_kernel_alignment` in `cli_run.rs` (disposition tautology on shared Rust inputs — NOT witness (a)) |
+| Prep — disposition kernel all axes | **GREEN** (PR #6065/#6072) | `floor_witness_run_disposition` with all three axes; `affected_set_disposition_both_axes_test.dag`; `floor_disposition_kernel_alignment` in `cli_run.rs` (disposition tautology on shared Rust inputs — NOT witness (a)); union-resolve S1 adds shared index |
 | Step 3 witness (a) — **edited_test_fns axis** | **GREEN (partial)** | `floor_witness_a_prove` in `cli_run.rs`: fixture unified diff → Rust `edited_test_fns` vs independent `.dag` `floor_test_fn_declaration_edited`; mandatory RED under-selection; `.dag` claim `affected_set_witness_a_prove_test.dag` |
 | Step 3 witness (a) — **node-frontier axis** | **BLOCKED** | Whole-tree `InferredTree` + `NodeArtifactProvenance` over live corpus — same resolve-grounding gate as `wiring_liveness_whole_tree` / `whole_tree_resolved_ctx` (`v2.lens.resolved_imports` open thread). `.dag` closure smoke on `provenance_producer` fixture only; Rust `NodeFrontierSeeds` equivalence deferred |
-| Step 4 migrate floor — consumer 1 | **GREEN** (PR #6061) | Floor witness selection wired to `floor_witness_run_disposition` with three axes (`touches_frontier`, `function_edited`, `entry_file_touched`); disposition kernel aligned both axes; union-resolve S1 (PR #6234) co-resolved floor runner through shared index |
+| Step 4 migrate floor — consumer 1 | **GREEN** (PR #6061) | Floor witness selection wired to `floor_witness_run_disposition` with all three axes (`touches_frontier`, `function_edited`, `entry_file_touched`); disposition kernel covers all three; union-resolve S1 (PR #6234) co-resolved floor runner through shared index |
 | Step 4 migrate floor — consumer 2 | **IN PROGRESS** | Precompute-skip: gate `precompute_whole_tree_published_mock_keys` on FULL "no witness will run" predicate (empty frontier AND no directly-edited test functions); remaining: skip-before-resolve |
 | Step 5 delete Rust parallel | **NOT STARTED** | `NodeFrontierSeeds`, `entry_touches_frontier_seeds`, etc. intact; gates on Step 4 completion |
 
@@ -51,11 +51,12 @@
 
 **Status: LIVE.** Runs on every CI floor invocation. The per-row skip (L3725) and the unconditional precompute (L3509) are the two hot paths this de-fork dissolves.
 
-**Full skip decision (cli_run.rs:3721–3731):** a witness is SKIPPED only when BOTH conditions hold:
-1. `!current_entry_touches` — node frontier: `entry_touches_frontier_seeds` returns false
-2. `!function_edited` — function directly edited: `frontier_seeds.edited_test_fns` has no match for this row's `(entry, function)` pair
+**Full skip decision (cli_run.rs:3721–3731):** a witness is SKIPPED only when ALL three conditions hold:
+1. `!touches_frontier` — node frontier: affected set does not touch this witness
+2. `!function_edited` — function not directly edited: the witness's function declaration is unchanged
+3. `!entry_file_touched` — entry file closure unchanged: no non-data-fn edits in the entry's import closure
 
-A witness RUNS when EITHER fires. The `.dag` authority's `floor_witness_run_disposition` currently models only condition (1) — the `function_edited` bypass (condition 2) is a gap that must be closed before migration (see Step 4 and acceptance witness (a)).
+A witness RUNS when ANY condition fires. The `.dag` authority's `floor_witness_run_disposition` now models all three axes (landed PR #6061/#6065/#6072). Migration wired consumer-1 (witness selection) with all three axes live; consumer-2 (precompute-skip) gates remain in Step 4.
 
 ### False positives (NOT affected-set / reverse-reachability for change propagation)
 
