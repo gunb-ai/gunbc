@@ -1,0 +1,5 @@
+module v2.test.manual.forensics_6280_synth_unrelated_decoy
+
+type SynthUnrelatedDecoy
+  = SynthUnrelatedDecoyOne { note: String }
+  | SynthUnrelatedDecoyTwo { note: String }

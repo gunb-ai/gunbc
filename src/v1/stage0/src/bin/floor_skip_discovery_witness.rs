@@ -142,27 +142,38 @@ fn discovery_corpus_skip_disabled_runs_without_panic() {
     );
 }
 
-fn discovery_corpus_skip_enabled_empty_diff_runs_corpus() {
+fn discovery_corpus_skip_enabled_empty_diff_skips_unaffected() {
     let _base = EnvVarGuard::set("GUNBC_CI_DIFF_BASE", "HEAD");
     let _head = EnvVarGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
     let summary = run_explicit_roster(true).expect("empty diff path must not panic");
-    assert_eq!(
-        summary.skipped, 0,
-        "empty diff → fail-closed run-all (no stateless skip)"
+    // Ruling 2026-07-05: empty diff is not a state — an empty touched-path set
+    // flows through the general disposition, so every unaffected row skips.
+    // The old assertion here (skipped == 0, "fail-closed run-all") enshrined
+    // the absorbing fallback this contract now forbids.
+    assert!(
+        summary.skipped >= 1,
+        "empty diff = computed ∅ — unaffected rows must skip (got {} skips)",
+        summary.skipped
     );
-    assert!(summary.passed >= 1);
+    assert_eq!(
+        summary.passed, 0,
+        "empty diff must not run unaffected witnesses (run-all is the absorbing arm)"
+    );
 }
 
-fn discovery_corpus_skip_enabled_git_observation_fail_closed_runs() {
+fn discovery_corpus_skip_enabled_git_observation_refuses() {
     let _base = EnvVarGuard::set("GUNBC_CI_DIFF_BASE", "__gunbc_invalid_diff_base__");
     let _head = EnvVarGuard::set("GUNBC_CI_DIFF_HEAD", "HEAD");
     let _merge = EnvVarGuard::set("GUNBC_CI_DIFF_MERGE_BASE", "0");
-    let summary = run_explicit_roster(true).expect("git observation fail-closed must not panic");
-    assert_eq!(
-        summary.skipped, 0,
-        "git diff failure → skip inactive → run full explicit roster"
+    // Ruling 2026-07-05: observation failure is the one ignorance state and it
+    // REFUSES — a typed, counted error naming its cause — never a silent
+    // run-everything or a silent selection-off.
+    let err = run_explicit_roster(true)
+        .expect_err("git observation failure must refuse, not run or skip");
+    assert!(
+        err.contains("DiffObservationRefusal"),
+        "refusal must name its cause (got: {err})"
     );
-    assert!(summary.passed >= 1);
 }
 
 fn node_precise_referenced_runs_orphan_skips_by_execution() {
@@ -403,12 +414,12 @@ fn main() -> ExitCode {
             discovery_corpus_skip_disabled_runs_without_panic,
         ),
         (
-            "discovery_corpus_skip_enabled_empty_diff_runs_corpus",
-            discovery_corpus_skip_enabled_empty_diff_runs_corpus,
+            "discovery_corpus_skip_enabled_empty_diff_skips_unaffected",
+            discovery_corpus_skip_enabled_empty_diff_skips_unaffected,
         ),
         (
-            "discovery_corpus_skip_enabled_git_observation_fail_closed_runs",
-            discovery_corpus_skip_enabled_git_observation_fail_closed_runs,
+            "discovery_corpus_skip_enabled_git_observation_refuses",
+            discovery_corpus_skip_enabled_git_observation_refuses,
         ),
         (
             "node_precise_referenced_runs_orphan_skips_by_execution",
