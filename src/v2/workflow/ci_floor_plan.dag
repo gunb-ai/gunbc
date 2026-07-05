@@ -1,6 +1,6 @@
 module v2.workflow.ci_floor_plan
 
-import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_exclusion_substrings, witness_discovery_scan_dirs }
 import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
@@ -451,14 +451,12 @@ fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
   gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_spec)
 }
 
-data gunbc_falsifier_scan_dirs: List<String> = ["dag/test/claim", "src/v2/test/claim/manual"]
-
 data gunbc_falsifier_note: String = "Differential falsifier cadence batch (signed design: docs/plans/affected-set-differential-falsifier.md). One cold tree-wide discovery run with SelectionPredictOnly: every row runs, would-skip predictions are recorded per row, and a predicted-unaffected row that runs red is a counted DIVERGENCE naming a missing selection edge (the red also fails the batch through the normal failure channel). Refused observation aborts the run typed - a refusal is not a divergence. Component 1 (non-hermetic residue) is covered by construction: host-scaffold rows never predict-skip and always run cold; a residue-only cadence shape waits on the reads_live_tree classifier defork (ROADMAP 2-host-scaffold-classifier-defork). Dissolution: divergence rate 0 across 8 consecutive windows retires this batch (delete the falsifier workflow, receipt = the Actions run history); recurrence re-arms for another 8-window cycle, counted."
 
 fn gunbc_falsifier_batches() -> List<List<Runnable>> {
   [[RunnableDiscoveryBatch {
     source_roots: corpus_source_roots(),
-    scan_dirs: gunbc_falsifier_scan_dirs,
+    scan_dirs: witness_discovery_scan_dirs,
     explicit_entries: [],
     node_frontier_selection: SelectionPredictOnly,
     exclude_substrings: witness_exclusion_substrings,
