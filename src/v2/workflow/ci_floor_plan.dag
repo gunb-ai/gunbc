@@ -40,6 +40,7 @@ import std.realization_schedule {
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
   ScheduleWitnessEntry,
+  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind,
   RunnableResourceProfile,
   runnable_resource_profile,
   runnable_resource_profile_negligible,
@@ -80,15 +81,37 @@ data ci_floor_witness_optin_note: String = "CI witness enrollment is OPT-IN (ope
 
 data execution_corpus_scope_prefix: String = "src/v2/test/claim/execution/"
 
+data kind_partition_note: String = "The corpus/execution partition is decided by the DECLARED WitnessKind on each enrolled entry (single authority: the CommitWitnessClaim row in gunbc.commit_workflow), not by path convention. Discrimination is an exhaustive match, never equality: an entry whose kind was never stamped is a loud runtime refusal at the match, where an eq would silently partition it. execution_corpus_scope_prefix is DEMOTED from partition authority to an agreement cross-check (witness_entry_kind_path_agree, consumed by the ci_floor_plan witness test over the live roster) during the migration. dissolve-on: delete the prefix and the agreement check when directory layout no longer mirrors kind - the declared fact is then the only representation."
+
+fn entry_kind_is_execution(w: ScheduleWitnessEntry) -> Bool {
+  match w.kind {
+    ExecutionWitnessKind => true
+    CorpusWitnessKind => false
+  }
+}
+
 fn corpus_witness_entries(spec: CiSpec) -> List<ScheduleWitnessEntry> {
   filter(xs: spec.witness_entries, predicate: fn(w) {
-    !starts_with(s: w.entry, prefix: execution_corpus_scope_prefix)
+    !entry_kind_is_execution(w: w)
   })
 }
 
 fn execution_witness_entries(spec: CiSpec) -> List<ScheduleWitnessEntry> {
   filter(xs: spec.witness_entries, predicate: fn(w) {
-    starts_with(s: w.entry, prefix: execution_corpus_scope_prefix)
+    entry_kind_is_execution(w: w)
+  })
+}
+
+fn witness_entry_kind_path_agree(w: ScheduleWitnessEntry) -> Bool {
+  match w.kind {
+    ExecutionWitnessKind => starts_with(s: w.entry, prefix: execution_corpus_scope_prefix)
+    CorpusWitnessKind => !starts_with(s: w.entry, prefix: execution_corpus_scope_prefix)
+  }
+}
+
+fn witness_entries_kind_path_all_agree(entries: List<ScheduleWitnessEntry>) -> Bool {
+  fold(entries, init: true, f: fn(acc, w) {
+    acc && witness_entry_kind_path_agree(w: w)
   })
 }
 

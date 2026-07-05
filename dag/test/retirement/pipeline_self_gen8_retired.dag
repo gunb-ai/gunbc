@@ -1,0 +1,17 @@
+module test.retirement.pipeline_self_gen8_retired
+
+import test.retirement.model { TestModuleRetirement, DeleteRedundant, DeleteLowValue }
+
+data pipeline_self_gen8_green_retirement: TestModuleRetirement = TestModuleRetirement {
+  module: "pipeline.rs self_gen8 cluster, 22 green fns of 31 (the file survives, so this row is a triage receipt, not a delete-guard stem: pipeline.rs itself still needs its own coverage when the file is finally deleted)",
+  disposition: DeleteRedundant {
+    covered_by: "Union of two live consumers. (a) RegenVerifyGate (regen_stage0 --verify, #5873, src/v2/workflow/ci_floor_plan.dag) byte-pins the v1 emitter over the src/v1 seed corpus, which contains every pattern family these greens pin that the seed itself uses: homonymous type names across modules (CallEdge, ItemResult, VariantResult, ParamResult, FieldResult, SizeExpr each defined in two modules), variant-specific imports (Conj, Disj, NoConnective, UnresolvedImport, MissingExport, DuplicateModule, CircularDependency in v1.std.core import lists), kernel-ambient types, and direct type imports; plus the emitted-seed rustc and clippy monolith gate, so a wrong use-line or variant-parent line on any seed-reachable pattern is a loud drift or compile failure, never silent. (b) For the synthetic patterns beyond the seed corpus (parametric-alias RHS, opaque parametric decls, re-export proxy chains, wildcard imports) the executing consumer is the v2 self-host fresh-emit lane, which compiles the same shapes where they really live in dag/std (List<element> = FreeMonoid<element>, MoneyAmount<S> = Measure<Currency, S, Nat>, opaque GroupCompletion<M>, wildcard extdeps imports) and enumerates emit deficits by execution in the 1667-error fresh-emit receipt (#6253, #6258). Census fact behind this row: 8 of the 22 greens carried stale #[ignore] reasons claiming red-on-main; measured 2026-07-05 via cargo test -p v1-compiler-tests self_gen8 -- --include-ignored (22 passed, 9 failed), they pass on main today, and an #[ignore]d pin runs in no gate, so keeping them delivered zero signal (#5427 discipline)."
+  }
+}
+
+data pipeline_self_gen8_red_retirement: TestModuleRetirement = TestModuleRetirement {
+  module: "pipeline.rs self_gen8 cluster, 6 red #[ignore] fns of 31",
+  disposition: DeleteLowValue {
+    reason: "The 6 retired reds (f1 variant-parent expansion; type-import vs global-variant-homonym pair; re-exported variant vs proxy-local enum homonym; the two wildcard multi-hop proxy-chain variant tests) pin desired-but-absent v1 seed-emitter behavior on synthetic fixtures. All carry #[ignore] since #5427 (red on main, never run in any gate), so deleting them removes no executing signal. The deficit they describe displaces no cost today: no src/v1 seed pattern triggers it (regen no-drift gate green) and emit-deficit enumeration is owned by execution in the v2 self-host fresh-emit receipt lane (#6253, #6258). Bodies are recoverable at the commit that deletes them. The remaining 3 red fns of the 31-fn cluster are deliberately NOT retired here: self_gen8_nested_parametric_alias_with_opaque_inner_stays_unemitted, self_gen8_parametric_alias_to_imported_opaque_homonym_stays_unemitted and self_gen8_parametric_alias_to_opaque_carrier_stays_unemitted stay in pipeline.rs because dag/gunbc/plans/dag_v2_defork_audit.dag claims them for the def-unification lane (node://adhoc-9d2bb9c3-e7b), where their premise flips from stays-unemitted to grounded List<T> = Vec<T> emission."
+  }
+}

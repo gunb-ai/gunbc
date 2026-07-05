@@ -11,7 +11,14 @@ import gunbc.commit_workflow {
   gate_lists_eq, local_tidy_lists_eq,
   realization_artifact_path,
   realization_handler_for_surface,
-  realization_artifact_for_surface
+  realization_artifact_for_surface,
+  project_ci_floor_witness_entries,
+  roster_witness_spans_wellformed,
+  witness_span_wellformed
+}
+import std.realization_schedule {
+  WitnessSeam, SpanSeams, SpanUndeclared,
+  CorpusWitnessKind, witness_kind_eq
 }
 import gunbc.ci_spec { gunbc_ci_floor_gates, gunbc_ci_rust_job_gates }
 import gunbc.local_tidy_spec { local_tidy_checks }
@@ -58,6 +65,45 @@ fn witness_roster_nonempty() -> Bool {
     && length(commit_workflow_realization_bindings) == 3
 }
 
+fn witness_roster_spans_wellformed() -> Bool {
+  roster_witness_spans_wellformed(roster: commit_gate_roster)
+}
+
+fn witness_span_undeclared_is_wellformed() -> Bool {
+  witness_span_wellformed(span: SpanUndeclared)
+}
+
+fn witness_span_accepts_declared_seam() -> Bool {
+  witness_span_wellformed(span: SpanSeams {
+    seams: [WitnessSeam { producer: "v2.04_infer", consumer: "v2.06_translate" }]
+  })
+}
+
+fn witness_span_rejects_self_seam() -> Bool {
+  !witness_span_wellformed(span: SpanSeams {
+    seams: [WitnessSeam { producer: "v2.04_infer", consumer: "v2.04_infer" }]
+  })
+}
+
+fn witness_span_rejects_duplicate_seams() -> Bool {
+  !witness_span_wellformed(span: SpanSeams {
+    seams: [
+      WitnessSeam { producer: "v2.04_infer", consumer: "v2.06_translate" },
+      WitnessSeam { producer: "v2.04_infer", consumer: "v2.06_translate" }
+    ]
+  })
+}
+
+fn witness_span_rejects_empty_seam_list() -> Bool {
+  !witness_span_wellformed(span: SpanSeams { seams: [] })
+}
+
+fn witness_projected_ci_entries_kind_stamped() -> Bool {
+  fold(project_ci_floor_witness_entries(roster: commit_gate_roster), init: true, f: fn(acc, w) {
+    acc && witness_kind_eq(a: w.kind, b: CorpusWitnessKind)
+  })
+}
+
 test fn commit_workflow_witnesses() -> Bool {
   witness_roster_nonempty()
     && witness_ci_spec_projects_from_roster()
@@ -66,4 +112,14 @@ test fn commit_workflow_witnesses() -> Bool {
     && witness_pre_push_handler_binding()
     && witness_realization_bindings_match_dispatch()
     && witness_realization_artifact_paths()
+}
+
+test fn commit_workflow_span_kind_witnesses() -> Bool {
+  witness_roster_spans_wellformed()
+    && witness_span_undeclared_is_wellformed()
+    && witness_span_accepts_declared_seam()
+    && witness_span_rejects_self_seam()
+    && witness_span_rejects_duplicate_seams()
+    && witness_span_rejects_empty_seam_list()
+    && witness_projected_ci_entries_kind_stamped()
 }
