@@ -246,6 +246,20 @@ fn ci_nextest_install_step() -> Step {
   }
 }
 
+fn ci_rust_sccache_warm_step() -> Step {
+  RunStep {
+    name: Present { value: "sccache warm (release bins + cache prime)" },
+    id: none,
+    run: ci_release_build_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_rust_sccache_warm_step_timeout_minutes }
+  }
+}
+
 fn ci_rust_gate_step() -> Step {
   RunStep {
     name: Present { value: "v1 rust gate (fmt + clippy + nextest)" },
@@ -296,11 +310,15 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 
 data gunbc_ci_job_timeout_policy_minutes: Int = 90
 
-data gunbc_ci_rust_gate_step_timeout_minutes: Int = 45
+data gunbc_ci_rust_gate_step_timeout_minutes: Int = 15
 
-data gunbc_ci_rust_gate_step_budget_note: String = "Interim rust-gate-only step budget (fmt/clippy/nextest after release build): 45 = prior 30m + margin after post-main-merge cold clippy exceeded gates-only step (job 85246635625, run 28749725167 on f2aa0ab). Prior: job 85237415376 bundled build+gates at 60m (10c53165bd split); job 85235032960 bundled at 30m. Re-derive DOWNWARD when fleet cache/build path stabilizes."
+data gunbc_ci_rust_gate_step_budget_note: String = "Budgeted rust-gate-only step (fmt/clippy/nextest after sccache warm): 15m measures steady-state gate cost once ci_rust_sccache_warm_step has primed release bins + sccache. Cold-cache storms are isolated in gunbc_ci_rust_sccache_warm_step_timeout_minutes (45m), not absorbed into this budget (operator ruling, cool-hawk-899 / valiant-bee-192)."
 
-data ci_rust_build_gate_step_split_note: String = "Build and rust gate are separate workflow steps (same discipline as ci_build_floor_step_split_note): bundling cargo build + rust_gates_ci under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: rust_tests job 85237415376, run 28746200534 on dfbff0f). Build step carries gunbc_ci_release_build_step_timeout_minutes; rust gate step carries gunbc_ci_rust_gate_step_timeout_minutes."
+data ci_rust_build_gate_step_split_note: String = "Build and rust gate are separate workflow steps (same discipline as ci_build_floor_step_split_note): bundling cargo build + rust_gates_ci under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: rust_tests job 85237415376, run 28746200534 on dfbff0f). Warm step ci_rust_sccache_warm_step carries gunbc_ci_rust_sccache_warm_step_timeout_minutes; rust gate step carries gunbc_ci_rust_gate_step_timeout_minutes."
+
+data gunbc_ci_rust_sccache_warm_step_timeout_minutes: Int = 45
+
+data gunbc_ci_rust_sccache_warm_step_budget_note: String = "Observable sccache-warm step (release bins + cache prime) before the budgeted rust gate: cold-cache fallback storms are counted here, not in gunbc_ci_rust_gate_step_timeout_minutes (operator ruling, cool-hawk-899 / valiant-bee-192). Receipt: PRs 6286/6274/6290 timed out at 15m with clippy never finishing under sccache cold-cache fallback while bundled with build."
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
@@ -327,7 +345,7 @@ fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
 }
 
 fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_rust_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_rust_sccache_warm_step_timeout_minutes + gunbc_ci_rust_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
@@ -373,7 +391,10 @@ fn rust_tests_job() -> Job {
     id: "rust_tests",
     name: none,
     runner: gunbc_ci_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_nextest_install_step(), ci_release_build_step(), ci_rust_gate_step(), ci_rust_cgroup_measurement_step()]),
+    steps: concat(
+      ci_prelude_steps(),
+      [ci_nextest_install_step(), ci_rust_sccache_warm_step(), ci_rust_gate_step(), ci_rust_cgroup_measurement_step()]
+    ),
     needs: [],
     env: none,
     outputs: none,
