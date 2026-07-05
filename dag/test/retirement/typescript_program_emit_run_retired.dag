@@ -1,0 +1,10 @@
+module test.retirement.typescript_program_emit_run_retired
+
+import test.retirement.model { TestModuleRetirement, DeleteLowValue }
+
+data typescript_program_emit_run_retirement: TestModuleRetirement = TestModuleRetirement {
+  module: "typescript_program_emit_run_test.rs",
+  disposition: DeleteLowValue {
+    reason: "Residual node --experimental-strip-types execution oracle (honestly skips where node < ~22.6). Floor witnesses in src/v2/test/claim/manual/typescript_program_emit_run_test.dag cover the emitted-string pin and Char atom-realization (CI-gated coverage). Dissolve the skip when the CI runner ships node >= 22.6 or a tsc --noEmit gate lands."
+  }
+}

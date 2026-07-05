@@ -1,0 +1,10 @@
+module test.retirement.dag_comment_wall_retired
+
+import test.retirement.model { TestModuleRetirement, DeleteRedundant }
+
+data dag_comment_wall_retirement: TestModuleRetirement = TestModuleRetirement {
+  module: "dag_comment_wall_test.rs",
+  disposition: DeleteRedundant {
+    covered_by: "src/v2/test/claim/round_trip/dag_comment_wall_test.dag"
+  }
+}

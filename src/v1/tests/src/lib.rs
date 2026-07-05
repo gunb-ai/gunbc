@@ -29,8 +29,6 @@ mod cross_representation_equality_test;
 #[cfg(test)]
 mod dag_collect_fingerprint_witness_test;
 #[cfg(test)]
-mod dag_comment_wall_test;
-#[cfg(test)]
 mod data_cache_scoping_test;
 #[cfg(test)]
 mod data_def_brand_alias_type_test;
@@ -142,8 +140,6 @@ mod type_param_casing_test;
 mod typescript_effect_io_receipt_test;
 #[cfg(test)]
 mod typescript_field_access_typecheck_test;
-#[cfg(test)]
-mod typescript_program_emit_run_test;
 #[cfg(test)]
 mod union_resolve_receipts_test;
 #[cfg(test)]
