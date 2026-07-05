@@ -16,7 +16,7 @@
 - `src/v2/test/manual/**`
 - `src/v2/workflow/**`
 
-**Total:** 1,789 witness test functions across 553 `*_test.dag` files.
+**Total:** 1,792 witness test functions across 553 `*_test.dag` files (class buckets below are authoritative; each `test fn` row counted once per file path).
 
 **Classification** (each test fn, with transitive helper analysis):
 
@@ -35,15 +35,15 @@ Additionally: **18** Rust `#[test]` equivalence modules outside floor discovery 
 
 | Class | Test fns | Share |
 |-------|----------|-------|
-| **(a)** interpreter | 1,652 | 92.3% |
+| **(a)** interpreter | 1,653 | 92.2% |
 | **(b)** host/shell transport | 11 | 0.6% |
-| **(b-danger)** host reimpl with `.dag` twin | 27 | 1.5% |
+| **(b-danger)** host reimpl with `.dag` twin | 26 | 1.5% |
 | **(c)** grep-shaped | 102 | 5.7% |
-| **Total** | **1,789** | |
+| **Total** | **1,792** | |
 
 Plus **18** Rust-only equivalence `#[test]` fns (not floor-discovered; all class (b), 12 are (b-danger)).
 
-**Illusion rate (b + b-danger + c):** 140 / 1,789 = **7.8%** of floor witnesses never interpreter-evaluate their claimed `.dag` subject. Of those, **(b-danger)** is the silent-divergence subset: **27** floor fns + **12** Rust equivalence fns = **39** high-risk sites.
+**Illusion rate (b + b-danger + c):** 139 / 1,792 = **7.8%** of floor witnesses never interpreter-evaluate their claimed `.dag` subject. Of those, **(b-danger)** is the silent-divergence subset: **26** floor fns + **12** Rust equivalence fns = **38** high-risk sites.
 
 ---
 
@@ -59,7 +59,7 @@ Ordered by divergence risk. **Claims** = what the name/provenance implies; **Exe
 | `src/v2/test/claim/intent_linearity/lens_unit/import_closure_completeness_test.dag:35–44` | 3× completeness fold tests | declared consumed-input closure = derived `import_closure_live` | Rust `import_closure_is_clean_live` only; `.dag` `import_closure_is_clean` not evaluated |
 | `src/v2/test/claim/intent_linearity/lens_unit/import_graph_live_test.dag:42–58` | 3× live lens row tests | declared vs derived import closure | Rust `import_closure_is_clean_live` only |
 
-**Positive counterexample (class-a template):** `src/v2/test/claim/module_graph/import_closure_live_test.dag:55–60` calls `.dag` `import_closure_live(...)` through the interpreter and compares to declared conformance closure — the class-(a) twin of the class-(b) Rust `import_closure_equivalence_tests`. This is the witness pattern a dual-oracle enrollment gate would enforce: every class-(b) host reimpl must be paired with a class-(a) interpreter call to the same `.dag` authority on a discriminating fixture. It would have caught the `map_get`/`Outcome` bugs had it been the sole green signal (instead of the Rust mirror).
+**Positive counterexample (class-a template):** `src/v2/test/claim/module_graph/import_closure_live_test.dag:55–60` calls `.dag` `import_closure_live(...)` through the interpreter and compares to declared conformance closure — the class-(a) twin of the class-(b) Rust `import_closure_equivalence_tests`. **Same pattern:** `src/v2/test/claim/layering_imports/clean_tree_test.dag:11–15` calls `.dag` `layering_imports_clean_holds(...)` with host-fed `layer_import_facts_live` inputs — the lens body is interpreter-evaluated; only the fact projection is Rust-hosted. This is the witness pattern a dual-oracle enrollment gate would enforce: every class-(b) host reimpl must be paired with a class-(a) interpreter call to the same `.dag` authority on a discriminating fixture. It would have caught the `map_get`/`Outcome` bugs had it been the sole green signal (instead of the Rust mirror).
 
 ### Tier 2 — Lens scanner walls (`*_live` bypasses `.dag` lens)
 
@@ -70,7 +70,8 @@ Ordered by divergence risk. **Claims** = what the name/provenance implies; **Exe
 | `src/v2/test/claim/realization_vocabulary_containment/roster_soundness_test.dag:30` | `realization_vocab_roster_soundness_holds` | same (+ roster `*_live`) |
 | `src/v2/test/claim/medium_structure_containment/clean_tree_test.dag:11` | `medium_structure_clean_tree_holds` | `v2.lens.medium_structure_containment` |
 | `src/v2/test/claim/medium_structure_containment/scanner/*.dag` | 2× planted/perturb tests | same |
-| `src/v2/test/claim/layering_imports/clean_tree_test.dag:11` | `clean_tree_no_wrong_direction_imports_holds` | `v2.lens.layering_imports` (`layering_imports_clean_holds` vs `layering_imports_clean_holds` host) |
+
+*Not tier-2:* `layering_imports/clean_tree_test.dag:11` calls `.dag` `layering_imports_clean_holds` (class-a); host-fed facts only.
 
 ### Tier 3 — Repo-wide / syntactic host audits
 
