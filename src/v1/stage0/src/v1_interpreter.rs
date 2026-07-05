@@ -6004,6 +6004,18 @@ fn eval_builtin(
         ))),
         "doc_graph_doc_count" => Ok(Some(Value::Int(crate::cli_run::doc_graph_doc_count()))),
 
+        "compile_dag_rust_emit_check" => {
+            let source = expect_str(positional.first().copied(), name)?;
+            let file_path = expect_str(positional.get(1).copied(), name)?;
+            let includes = expect_str_list(positional.get(2).copied(), name)?;
+            let excludes = expect_str_list(positional.get(3).copied(), name)?;
+            Ok(Some(Value::Bool(
+                crate::cli_run::compile_dag_rust_emit_check(
+                    &source, &file_path, &includes, &excludes,
+                ),
+            )))
+        }
+
         "test_migration_debt_module_count" => Ok(Some(Value::Int(
             crate::cli_run::test_migration_debt_module_count(),
         ))),
