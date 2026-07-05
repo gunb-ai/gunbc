@@ -1,6 +1,7 @@
 module tools.rust_stage0_gates
 
 import std.list { List }
+import std.types { FilePath }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -13,7 +14,7 @@ fn path_is_rust_monolith(path: String) -> Bool {
   fold(rust_monolith_suffixes(), false, fn(acc, suffix) { acc || ends_with(s: path, suffix: suffix) })
 }
 
-fn any_rust_monolith(paths: List<String>) -> Bool {
+fn any_rust_monolith(paths: List<FilePath>) -> Bool {
   fold(paths, false, fn(acc, p) { acc || path_is_rust_monolith(path: p) })
 }
 
@@ -41,8 +42,8 @@ data consumed_input_closure_slice1_status: Disposition = Scaffold {
 
 type ConsumedInputClosure {
   unit: String
-  entry_path: String
-  consumed_dag_paths: List<String>
+  entry_path: FilePath
+  consumed_dag_paths: List<FilePath>
 }
 
 data coproduct_reflection_conformance_consumed_closure: ConsumedInputClosure = ConsumedInputClosure {
@@ -64,15 +65,15 @@ data declared_consumed_input_closures: List<ConsumedInputClosure> = [
   coproduct_reflection_conformance_consumed_closure
 ]
 
-fn closure_contains_path(closure: ConsumedInputClosure, path: String) -> Bool {
+fn closure_contains_path(closure: ConsumedInputClosure, path: FilePath) -> Bool {
   fold(closure.consumed_dag_paths, false, fn(acc, p) { acc || (p == path) })
 }
 
-fn closure_hit_by_any(closure: ConsumedInputClosure, paths: List<String>) -> Bool {
+fn closure_hit_by_any(closure: ConsumedInputClosure, paths: List<FilePath>) -> Bool {
   fold(paths, false, fn(acc, p) { acc || closure_contains_path(closure: closure, path: p) })
 }
 
-fn any_declared_closure_hit(paths: List<String>) -> Bool {
+fn any_declared_closure_hit(paths: List<FilePath>) -> Bool {
   fold(declared_consumed_input_closures, false, fn(acc, c) { acc || closure_hit_by_any(closure: c, paths: paths) })
 }
 
@@ -89,7 +90,7 @@ data unit_must_run_staged_note: Disposition = Scaffold {
   }
 }
 
-fn unit_must_run(unit: String, paths: List<String>) -> Bool {
+fn unit_must_run(unit: String, paths: List<FilePath>) -> Bool {
   fold(declared_consumed_input_closures, true, fn(acc, c) {
     if c.unit == unit { closure_hit_by_any(closure: c, paths: paths) } else { acc }
   })
@@ -99,7 +100,7 @@ data should_run_gates_coverage_note: Disposition = Terminal {
   reason: "Coverage fire (Edge-(b)) is a permanent §5 design invariant: the rust gate ALSO runs when a changed .dag is in the union of declared consumed-input closures, only ever ADDING fires, never newly skipping"
 }
 
-fn should_run_gates(paths: List<String>, git_success: Bool) -> Bool {
+fn should_run_gates(paths: List<FilePath>, git_success: Bool) -> Bool {
   if git_success {
     any_rust_monolith(paths: paths) || any_declared_closure_hit(paths: paths)
   } else {
