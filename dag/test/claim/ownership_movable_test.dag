@@ -1,0 +1,36 @@
+module test.claim.ownership_movable
+
+import v1.compiler.ownership { build_movable_set, make_decision, BindingUsage, EdgeClassification, EdgeKind, OwnershipProof, OwnershipDecision }
+
+fn proof_one(name: String, consumers: List<EdgeClassification>) -> OwnershipProof {
+  let usage = BindingUsage { name: name, binding_kind: none, consumers: consumers }
+  OwnershipProof {
+    func_name: "fixture",
+    bindings: map_insert(empty_map(), name, usage),
+    decisions: [],
+    fold_acc_unwrap: []
+  }
+}
+
+fn edge(k: EdgeKind, s: String) -> EdgeClassification {
+  EdgeClassification { kind: k, site: s, span_start: 0 }
+}
+
+fn movable_of(proof: OwnershipProof, name: String) -> Bool {
+  set_contains(build_movable_set(proof: proof, param_names: set_insert(empty_set(), name)), name)
+}
+
+fn witness_read_then_consume_param_is_movable() -> Bool {
+  let proof = proof_one(name: "acc", consumers: [edge(k: Projected, s: ".seen"), edge(k: Consumed, s: "return")])
+  movable_of(proof: proof, name: "acc")
+}
+
+fn witness_double_consume_is_not_movable() -> Bool {
+  let proof = proof_one(name: "x", consumers: [edge(k: Consumed, s: "a"), edge(k: Consumed, s: "b")])
+  movable_of(proof: proof, name: "x") == false
+}
+
+fn witness_zero_consume_is_not_movable() -> Bool {
+  let proof = proof_one(name: "r", consumers: [edge(k: Read, s: "a"), edge(k: Projected, s: ".f")])
+  movable_of(proof: proof, name: "r") == false
+}

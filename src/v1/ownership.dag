@@ -300,9 +300,11 @@ fn is_owned_local(kind: VarBindingKind?) -> Bool {
   }
 }
 
-fn build_movable_set(proof: OwnershipProof) -> Set<String> {
+fn build_movable_set(proof: OwnershipProof, param_names: Set<String>) -> Set<String> {
   proof.bindings |> map_values
-    |> filter(usage => binding_fan_out(usage: usage) == 1 && is_owned_local(kind: usage.binding_kind))
+    |> filter(usage =>
+      (match make_decision(usage: usage) { SoleOwner { binding: _, site: _ } => true, _ => false })
+      && (is_owned_local(kind: usage.binding_kind) || set_contains(param_names, usage.name)))
     |> fold(init: empty_set(), f: (acc, usage) => set_insert(acc, usage.name))
 }
 
