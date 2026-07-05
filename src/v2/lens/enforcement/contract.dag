@@ -17,7 +17,7 @@ import v2.lens.enforcement.vocab {
 import v2.lens.common.construction_justification { ConstructionJustification, WallNow, RatchetForever }
 import std.disposition { SubstrateMandatoryTag }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
-import std.realization_schedule { ScheduleWitnessEntry }
+import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
 
 type LensContract {
   entry: LensRegistryEntryV0
@@ -47,7 +47,8 @@ data lens_contract_cost: LensContract = {
   consumer_witness: BoundConsumerWitness {
     witness: ScheduleWitnessEntry {
       entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag",
-      function: "complexity_budget_roster_family_gate_holds"
+      function: "complexity_budget_roster_family_gate_holds",
+      kind: CorpusWitnessKind
     }
   },
   exemptions: [],

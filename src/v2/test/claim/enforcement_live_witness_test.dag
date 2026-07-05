@@ -30,7 +30,7 @@ import v2.workflow.enforcement_live {
   enforcement_consistency_live, complexity_repo_wide_verdict_live,
   enforcement_corpus_facts
 }
-import std.realization_schedule { ScheduleWitnessEntry }
+import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
 
 test fn enforcement_consistency_gate_holds() -> Bool {
   enforcement_consistency_live() && all_intents_admissible(intents: standing_intent_registry)
@@ -48,7 +48,8 @@ test fn complexity_repo_wide_verdict_matches_roadmap() -> Bool {
 
 data synthetic_binding_witness: ScheduleWitnessEntry = {
   entry: "src/v2/test/claim/synthetic_enforcement_probe_test.dag",
-  function: "synthetic_probe_holds"
+  function: "synthetic_probe_holds",
+  kind: CorpusWitnessKind
 }
 
 test fn roster_read_liveness_discriminates() -> Bool {
