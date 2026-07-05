@@ -2,7 +2,7 @@ module v2.lens.module_graph
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
-import v2.std.algebra { FreeMonoid, fold_list, contains, list_snoc_item, any }
+import v2.std.algebra { FreeMonoid, fold_list, contains, list_snoc_item, any, is_prefix_of, length, skip }
 import v2.std.collection { Absent, List, Map, Optional, Present, empty_map, map_get, map_insert }
 import v2.std.logic { Bool }
 import v2.std.text { String }
@@ -208,8 +208,46 @@ fn import_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMono
   )
 }
 
+fn char_eq(a: Char, b: Char) -> Bool {
+  a == b
+}
+
+fn str_starts_with(s: String, prefix: String) -> Bool {
+  is_prefix_of(prefix: prefix, xs: s, eq: char_eq)
+}
+
+fn strip_leading_dot_slash(s: String) -> String {
+  if str_starts_with(s: s, prefix: "./") {
+    skip(xs: s, n: 2)
+  } else {
+    s
+  }
+}
+
+// Suffix check via `is_prefix_of` on the tail of `s` sized to `suffix` — no `reverse` needed.
+fn ends_with_str(s: String, suffix: String) -> Bool {
+  let s_len = length(xs: s)
+  let suffix_len = length(xs: suffix)
+  if suffix_len > s_len {
+    false
+  } else {
+    is_prefix_of(prefix: suffix, xs: skip(xs: s, n: s_len - suffix_len), eq: char_eq)
+  }
+}
+
+// Mirrors the Rust production predicate exactly (`span_file_matches`/`normalize_repo_path`,
+// cli_run.rs:4079-4083) — normalize + suffix-tolerant, not bare exact equality. A path pair
+// where suffix matching succeeds but exact equality fails must decide the SAME on both sides.
+fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
+  let file = strip_leading_dot_slash(closure_path)
+  let target = strip_leading_dot_slash(touched_path)
+  string_eq(a: file, b: target)
+    || ends_with_str(s: file, suffix: target)
+    || ends_with_str(s: target, suffix: file)
+}
+
 fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
-  contains(xs: closure, item: path, eq: string_eq)
+  any(xs: closure, predicate: fn(closure_path) { path_matches_touched(closure_path: closure_path, touched_path: path) })
 }
 
 fn entry_affected_by_touched_paths_excluding(
