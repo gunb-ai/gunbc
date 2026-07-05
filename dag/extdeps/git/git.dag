@@ -181,22 +181,11 @@ fn git_diff_status_entries_touched_paths(entries: List<GitDiffStatusEntry>) -> L
   fold(entries, init: [], f: git_diff_status_touched_paths_step)
 }
 
-fn git_diff_status_entry_is_departure(status: GitDiffChangeStatus) -> Bool {
-  match status {
-    DiffDeletedStatus => true
-    DiffRenamedStatus { similarity: _ } => true
-    _ => false
-  }
-}
-
 fn git_diff_status_entry_departed_path(entry: GitDiffStatusEntry) -> FilePath? {
-  if git_diff_status_entry_is_departure(status: entry.status) {
-    match entry.status {
-      DiffRenamedStatus { similarity: _ } => entry.old_path
-      _ => Present { value: entry.path }
-    }
-  } else {
-    Absent
+  match entry.status {
+    DiffDeletedStatus => Present { value: entry.path }
+    DiffRenamedStatus { similarity: _ } => entry.old_path
+    _ => Absent
   }
 }
 
