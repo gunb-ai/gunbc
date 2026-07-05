@@ -64,7 +64,7 @@ fn scope_push(scope: Scope, binding: ScopeBinding) -> Scope {
   Scope { locals: map_insert(scope.locals, binding.name, binding) }
 }
 
-data symbol_index_single_authority_dissolution_trigger: String = "🟡 dissolve-on: SymbolIndex + Scope replace TypeEnv.ancestry_str_bindings materialization — see docs/plans/type-env-single-authority-design.md §4–§5; gated on floor scaling-curve receipt (§6)."
+data symbol_index_single_authority_dissolution_trigger: String = "🟡 dissolve-on: SymbolIndex + Scope replace TypeEnv.ancestry_str_bindings materialization — see docs/plans/type-env-single-authority-design.md §4–§5; gated on import-chain sub-quadratic scaling receipt (reference_carrier_witness_test) + whole-corpus compile-clean wall-clock baseline."
 
 type TypeEnvCache {
   deps_map: Map<String, List<String>>

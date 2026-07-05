@@ -1,13 +1,20 @@
-//! Reference-carrier witnesses: O(1) intern_str lookup + floor scaling-curve receipt.
+//! Reference-carrier witnesses: O(1) intern_str lookup + import-chain scaling receipt.
 //!
 //! intern_str previously used `skip(id) |> first` (O(id) per lookup). The .dag model now
 //! uses `get(id)` — the same reference-by-key pattern as the Rust seed's Vec::get.
+//!
+//! The import-chain scaling receipt mirrors `type_env_scope_chain_test` (median sampling +
+//! `SUB_QUADRATIC_DOUBLING_BUDGET`). It is a discriminating proxy for §6 baseline measurement
+//! on synthetic chains; the whole-corpus `dag_compile_clean_gate` wall-clock is tracked separately.
 
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, SourceFile};
 use v1_compiler::v1_std_core::{empty_intern_table, intern, intern_str, InternTable};
+
+/// O(M²) shows ~4× wall-clock per module-count doubling; linear stays sub-4×.
+const SUB_QUADRATIC_DOUBLING_BUDGET: f64 = 4.0;
 
 fn build_intern_table(count: usize) -> Rc<InternTable> {
     let mut table = empty_intern_table();
@@ -58,6 +65,19 @@ fn compile_modules(sources: Vec<Rc<SourceFile>>) {
     assert_resolved_no_hard_errors(&resolved);
 }
 
+fn time_import_chain_compile(depth: usize) -> Duration {
+    let sources = synthetic_import_chain_sources(depth);
+    compile_modules(sources.clone());
+    let mut samples = Vec::new();
+    for _ in 0..7 {
+        let start = Instant::now();
+        compile_modules(sources.clone());
+        samples.push(start.elapsed());
+    }
+    samples.sort();
+    samples[samples.len() / 2]
+}
+
 #[test]
 fn intern_str_o1_lookup_returns_correct_strings() {
     let table = build_intern_table(8);
@@ -78,17 +98,17 @@ fn intern_str_lookup_stays_linear_not_quadratic() {
     let large = build_intern_table(LARGE);
 
     let time_table = |table: Rc<InternTable>, lookups: usize| -> Duration {
+        let len = table.strings.len().max(1);
         let mut sink = String::new();
         let start = Instant::now();
         for i in 0..lookups {
-            let id = (i % table.strings.len().max(1) as usize) as i64;
+            let id = (i % len) as i64;
             sink = intern_str(table.clone(), id);
         }
         let _ = sink;
         start.elapsed()
     };
 
-    // Warmup
     time_table(small.clone(), LOOKUPS);
     time_table(large.clone(), LOOKUPS);
 
@@ -97,44 +117,41 @@ fn intern_str_lookup_stays_linear_not_quadratic() {
     let ratio = t_large.as_secs_f64() / t_small.as_secs_f64().max(1e-9);
 
     eprintln!(
-        "intern_str scaling: small={t_small:?} large={t_large:?} ratio={ratio:.2} (4× table → budget <4× time)"
+        "intern_str scaling: small={t_small:?} large={t_large:?} ratio={ratio:.2} (4× table → budget <{SUB_QUADRATIC_DOUBLING_BUDGET}× time)"
     );
 
-    // Quadratic would show ~16× when table quadruples; linear stays ~4×.
-    const LINEAR_DOUBLING_BUDGET: f64 = 6.0;
     assert!(
-        ratio < LINEAR_DOUBLING_BUDGET,
-        "intern_str must stay sub-quadratic: time(large)/time(small)={ratio:.2} (budget <{LINEAR_DOUBLING_BUDGET})"
+        ratio < SUB_QUADRATIC_DOUBLING_BUDGET,
+        "intern_str must stay sub-quadratic: time(large)/time(small)={ratio:.2} (budget <{SUB_QUADRATIC_DOUBLING_BUDGET})"
     );
 }
 
 #[test]
-fn floor_scaling_curve_import_chain_receipt() {
-    let depths = [50_usize, 100, 200, 400];
-    let mut rows: Vec<(usize, Duration)> = Vec::new();
+fn floor_scaling_curve_import_chain_sub_quadratic_receipt() {
+    let d50 = time_import_chain_compile(50);
+    let d100 = time_import_chain_compile(100);
+    let d200 = time_import_chain_compile(200);
+    let d400 = time_import_chain_compile(400);
 
-    for depth in depths {
-        let sources = synthetic_import_chain_sources(depth);
-        compile_modules(sources.clone());
-        let start = Instant::now();
-        compile_modules(sources);
-        rows.push((depth, start.elapsed()));
-    }
+    let ratio_100_50 = d100.as_secs_f64() / d50.as_secs_f64().max(1e-9);
+    let ratio_200_100 = d200.as_secs_f64() / d100.as_secs_f64().max(1e-9);
+    let ratio_400_200 = d400.as_secs_f64() / d200.as_secs_f64().max(1e-9);
 
-    eprintln!("floor scaling-curve (import-chain compile_modules, median-style single sample):");
-    for (depth, elapsed) in &rows {
-        eprintln!("  depth={depth} elapsed={elapsed:?}");
-    }
+    eprintln!(
+        "import-chain scaling receipt: d50={d50:?} d100={d100:?} d200={d200:?} d400={d400:?} \
+         ratio_100/50={ratio_100_50:.2} ratio_200/100={ratio_200_100:.2} ratio_400/200={ratio_400_200:.2}"
+    );
 
-    if rows.len() >= 2 {
-        let (d0, t0) = rows[rows.len() - 2];
-        let (d1, t1) = rows[rows.len() - 1];
-        let ratio = t1.as_secs_f64() / t0.as_secs_f64().max(1e-9);
-        eprintln!(
-            "  ratio depth {d1}/depth {d0} = {ratio:.2} (O(M²) red control: ~4× per module-count doubling)"
-        );
-    }
-
-    // Receipt test: must complete without panic; ratios are logged for operator review.
-    assert!(rows.iter().all(|(_, t)| *t < Duration::from_secs(120)));
+    assert!(
+        ratio_100_50 < SUB_QUADRATIC_DOUBLING_BUDGET,
+        "import-chain compile must stay sub-quadratic: time(100)/time(50)={ratio_100_50:.2} (budget <{SUB_QUADRATIC_DOUBLING_BUDGET})"
+    );
+    assert!(
+        ratio_200_100 < SUB_QUADRATIC_DOUBLING_BUDGET,
+        "import-chain compile must stay sub-quadratic: time(200)/time(100)={ratio_200_100:.2} (budget <{SUB_QUADRATIC_DOUBLING_BUDGET})"
+    );
+    assert!(
+        ratio_400_200 < SUB_QUADRATIC_DOUBLING_BUDGET,
+        "import-chain compile must stay sub-quadratic: time(400)/time(200)={ratio_400_200:.2} (budget <{SUB_QUADRATIC_DOUBLING_BUDGET})"
+    );
 }
