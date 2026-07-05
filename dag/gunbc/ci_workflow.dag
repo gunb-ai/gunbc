@@ -16,6 +16,8 @@ import gunbc.merge_admission_produce {
 import gunbc.ci_workflow_expressions { ci_deploy_push_to_main_if }
 import gunbc.commit_workflow { commit_gate_roster, project_ci_floor_gates, project_ci_floor_witness_entries }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
+import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
+import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_memory_max_live }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.github.actions {
@@ -42,6 +44,20 @@ fn ci_checkout_step() -> Step {
   }
 }
 
+fn ci_cargo_build_jobs_count() -> Int {
+  compile_jobs_count_or_serial(jobs: ci_compile_jobs(
+    memory_budget: gunbc_ci_runner_slot_memory_max_live,
+    force_serial: false
+  ))
+}
+
+fn ci_cargo_build_jobs_line() -> String {
+  concat(
+    "echo \"CARGO_BUILD_JOBS=",
+    concat(to_string(ci_cargo_build_jobs_count()), "\" >> \"$GITHUB_ENV\"\n")
+  )
+}
+
 fn ci_isolate_toolchain_step() -> Step {
   RunStep {
     name: Present { value: "Isolate toolchain dirs" },
@@ -58,26 +74,20 @@ fn ci_isolate_toolchain_step() -> Step {
             "echo \"RUSTUP_HOME=$RUNNER_TEMP/rustup\" >> \"$GITHUB_ENV\"\n"
           )
         ),
-        "if sccache --show-stats >/dev/null 2>&1; then\n"
+        concat(
+          "echo \"MAKEFLAGS=\" >> \"$GITHUB_ENV\"\n",
+          ci_cargo_build_jobs_line()
+        )
       ),
       concat(
+        "if sccache --show-stats >/dev/null 2>&1; then\n",
         concat(
           "  echo \"RUSTC_WRAPPER=sccache\" >> \"$GITHUB_ENV\"\n",
           concat(
             "  echo \"CARGO_INCREMENTAL=0\" >> \"$GITHUB_ENV\"\n",
-            concat(
-              "  echo \"CARGO_BUILD_JOBS=1\" >> \"$GITHUB_ENV\"\n",
-              concat(
-                "else\n",
-                concat(
-                  "  echo \"CARGO_BUILD_JOBS=2\" >> \"$GITHUB_ENV\"\n",
-                  "fi"
-                )
-              )
-            )
+            "fi"
           )
-        ),
-        ""
+        )
       )
     ),
     shell: none,
