@@ -15,7 +15,7 @@ import extdeps.github.expressions {
   ContextAccess, Env, Runner,
   any_template_accesses_runner_var_via_env, template_uses_context
 }
-import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_workflow_run }
+import gunbc.ci_spec { gunbc_ci_spec, gunbc_ci_workflow_run, ci_release_build_script }
 
 fn witness_fetch_depth_is_int_not_string() -> Bool {
   let with_block = yaml_mapping(entries: [kv(key: "fetch-depth", value: yaml_int(n: 0))])
@@ -31,7 +31,7 @@ fn witness_rustflags_empty_string_quoted() -> Bool {
 fn witness_steps_sequence_elements_are_yaml_values() -> Bool {
   let job = ci_workflow.jobs.first()
   match steps_yaml(steps: job.steps) {
-    YamlSequence { elements: els } => els.length() == 7
+    YamlSequence { elements: els } => els.length() == 8
     _ => false
   }
 }
@@ -174,10 +174,14 @@ fn witness_sccache_wired_when_fleet_daemon_up() -> Bool {
 
 fn witness_gunbc_ci_step_projects_run_script_markers() -> Bool {
   let yaml = expected_ci_yml()
-  let script = gunbc_ci_workflow_run(spec: gunbc_ci_spec)
-  string_contains(s: yaml, pattern: "env -u RUSTC_WRAPPER") &&
+  let floor_script = gunbc_ci_workflow_run(spec: gunbc_ci_spec)
+  let build_script = ci_release_build_script()
+  string_contains(s: yaml, pattern: "Build release bins (claim_executor + gunbc)") &&
+    string_contains(s: yaml, pattern: "env -u RUSTC_WRAPPER") &&
     string_contains(s: yaml, pattern: "$ROOT/target/release/claim_executor") &&
-    string_contains(s: script, pattern: "env -u RUSTC_WRAPPER")
+    string_contains(s: build_script, pattern: "env -u RUSTC_WRAPPER") &&
+    !string_contains(s: floor_script, pattern: "env -u RUSTC_WRAPPER") &&
+    string_contains(s: floor_script, pattern: "$ROOT/target/release/claim_executor")
 }
 
 fn witness_cache_uses_runner_context_not_env() -> Bool {
