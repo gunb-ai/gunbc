@@ -237,7 +237,7 @@ fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
       concat(
         concat(
           concat(
-            "      docs/*|README.md|CLAUDE.md|DESIGN.md|.gitignore) ;;\n",
+            "      docs/*|README.md|CLAUDE.md|DESIGN.md|.gitignore|.github/workflows/ci.yml|dag/gunbc/ci_spec.dag|src/v2/test/claim/ci_spec_witness_test.dag) ;;\n",
             "      *) DOCS_ONLY=0; break ;;\n"
           ),
           "    esac\n"

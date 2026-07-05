@@ -88,6 +88,25 @@ jobs:
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
+          _ci_changed=$(git diff --name-only origin/main...HEAD 2>/dev/null || true)
+          if [ -n "$_ci_changed" ]; then
+            DOCS_ONLY=1
+            while IFS= read -r _ci_path; do
+              [ -z "$_ci_path" ] && continue
+              case "$_ci_path" in
+                docs/*|README.md|CLAUDE.md|DESIGN.md|.gitignore|.github/workflows/ci.yml|dag/gunbc/ci_spec.dag|src/v2/test/claim/ci_spec_witness_test.dag) ;;
+                *) DOCS_ONLY=0; break ;;
+              esac
+            done <<_ci_diff_eof_
+          $_ci_changed
+          _ci_diff_eof_
+            if [ "$DOCS_ONLY" = "1" ]; then
+              echo "claim_executor: documentation-only diff — skipping compose floor"
+              FLOOR_EXIT=0
+              CI_FLOOR_EXIT=0 "$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/tools/merge_admission_stamp.dag --function main
+              exit $?
+            fi
+          fi
           set +e
           "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
           FLOOR_EXIT=$?

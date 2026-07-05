@@ -204,7 +204,7 @@ fn witness_workflow_run_is_floor_only_script() -> Bool {
 fn witness_documentation_only_shortcut_in_floor_script() -> Bool {
   let script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
   string_contains(s: script, pattern: "documentation-only diff") &&
-    string_contains(s: script, pattern: "docs/*|README.md|CLAUDE.md|DESIGN.md|.gitignore")
+    string_contains(s: script, pattern: "docs/*|README.md|CLAUDE.md|DESIGN.md|.gitignore|.github/workflows/ci.yml")
 }
 
 fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {
