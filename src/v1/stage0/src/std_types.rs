@@ -15,7 +15,7 @@ use crate::v1_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::rc::Rc;
 
 pub fn kernel_type_set() -> Rc<HashMap<String, bool>> {

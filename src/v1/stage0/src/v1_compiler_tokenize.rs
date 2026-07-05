@@ -21,7 +21,7 @@ pub use crate::v1_std_core::{Token, TokenShape};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::rc::Rc;
 
 pub fn is_keyword_text(text: String) -> bool {

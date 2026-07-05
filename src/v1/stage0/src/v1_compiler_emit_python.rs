@@ -96,7 +96,7 @@ pub use crate::v1_std_core::{
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::rc::Rc;
 
 pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {

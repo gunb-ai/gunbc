@@ -4,7 +4,7 @@
 #![allow(unused_variables, dead_code)]
 
 use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::rc::Rc;
 
 #[cfg(feature = "text_lookup_work_counter")]

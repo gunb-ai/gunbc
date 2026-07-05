@@ -18,7 +18,7 @@ use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::rc::Rc;
 
 thread_local! {
