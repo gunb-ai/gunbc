@@ -117,16 +117,16 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 for tm in typed.modules.clone().iter().cloned() {
                     __result.push(emit_py_test_file(
                         authored_name_at(
-                            tm.type_env.clone().source_indices.clone(),
-                            tm.module.clone(),
+                            (*tm.type_env).clone().source_indices.clone(),
+                            (*tm.module).clone(),
                         ),
                         Rc::new({
                             let mut __result = Vec::new();
                             for p in test_projections.clone().iter().cloned() {
                                 if (p.module_name.clone()
                                     == authored_name_at(
-                                        tm.type_env.clone().source_indices.clone(),
-                                        tm.module.clone(),
+                                        (*tm.type_env).clone().source_indices.clone(),
+                                        (*tm.module).clone(),
                                     ))
                                 {
                                     __result.push(p);
@@ -187,8 +187,8 @@ pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
             for tm in modules.iter().cloned() {
                 __result.push({
                     let mod_name = module_to_filename(authored_name_at(
-                        tm.type_env.clone().source_indices.clone(),
-                        tm.module.clone(),
+                        (*tm.type_env).clone().source_indices.clone(),
+                        (*tm.module).clone(),
                     ));
                     let items = language_spec(RenderTarget::Python).items.clone();
                     v1_rt::concat(
@@ -267,7 +267,7 @@ pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> String {
                 ") -> ".to_string(),
             ),
             emit_node_type(
-                projection.inferred.clone(),
+                (*projection.inferred).clone(),
                 RenderTarget::Python,
                 projection.source_indices.clone(),
             ),
@@ -364,9 +364,9 @@ pub fn emit_py_module(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<TextFile> {
     {
-        let m = typed_module.module.clone();
+        let m = (*typed_module.module).clone();
         let scope = module_emit_scope(typed_module.clone());
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = (*scope.type_env).clone().source_indices.clone();
         let mod_name_str = authored_name_at(si.clone(), m.clone());
         let prelude = emit_py_prelude(typed_module.clone());
         let imports_str = emit_py_imports(module_imports(m.clone()), si.clone());
@@ -582,7 +582,7 @@ pub fn emit_py_typed_item(
     scope: Rc<InferScope>,
 ) -> String {
     {
-        let env = scope.type_env.clone();
+        let env = (*scope.type_env).clone();
         let item_text = authored_name(env.clone(), item.clone());
         if is_type_def_item(item.clone()) {
             emit_py_type_def_from_connective(item.clone(), env.clone())
@@ -876,7 +876,7 @@ pub fn emit_py_fn_def(
 ) -> String {
     {
         let depth = 0;
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = (*scope.type_env).clone().source_indices.clone();
         let params_str = emit_params_shared(params.clone(), RenderTarget::Python, si.clone());
         let ret_str = emit_inferred_shared(inferred, RenderTarget::Python, si.clone());
         let body_scope = build_params_scope(scope.clone(), params.clone());
@@ -990,15 +990,15 @@ pub fn emit_py_func_def(
             params.clone(),
             uses.clone(),
             service_names,
-            scope.type_env.clone().source_indices.clone(),
+            (*scope.type_env).clone().source_indices.clone(),
         );
         let ret_str = emit_inferred_shared(
             inferred,
             RenderTarget::Python,
-            scope.type_env.clone().source_indices.clone(),
+            (*scope.type_env).clone().source_indices.clone(),
         );
         let body_scope = build_params_scope(scope.clone(), params.clone());
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = (*scope.type_env).clone().source_indices.clone();
         let body_scope = uses.clone().iter().cloned().fold(
             body_scope.clone(),
             |s: Rc<InferScope>, u: Rc<Node>| {
@@ -1123,7 +1123,7 @@ pub fn emit_py_typed_expr(
             emit_unified_pattern(
                 pat.clone(),
                 RenderTarget::Python,
-                scope.type_env.clone().source_indices.clone(),
+                (*scope.type_env).clone().source_indices.clone(),
             )
         },
     )
@@ -1536,7 +1536,7 @@ pub fn emit_py_data_def(
         let ty_str = emit_node_type(
             type_node,
             RenderTarget::Python,
-            scope.type_env.clone().source_indices.clone(),
+            (*scope.type_env).clone().source_indices.clone(),
         );
         let upper_name = to_screaming_snake(name);
         let val_str = emit_py_typed_expr(value, registry, scope.clone(), 0, 1024);

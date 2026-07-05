@@ -187,14 +187,17 @@ pub fn normalize_graph(
             for m in graph.modules.clone().iter().cloned() {
                 __result.extend(
                     (*{
-                        let items = module_items(m.module.clone());
+                        let items = module_items((*m.module).clone());
                         Rc::new({
                             let mut __result = Vec::new();
                             for item in items.clone().iter().cloned() {
                                 __result.extend(
                                     (*check_bare_containers(
                                         item.clone(),
-                                        authored_name_at(source_indices.clone(), m.module.clone()),
+                                        authored_name_at(
+                                            source_indices.clone(),
+                                            (*m.module).clone(),
+                                        ),
                                         source_indices.clone(),
                                     ))
                                     .iter()

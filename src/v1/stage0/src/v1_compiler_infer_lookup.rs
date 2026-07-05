@@ -74,7 +74,7 @@ pub fn lookup_in_scope(
     name: String,
 ) -> Option<Rc<Node>> {
     match v1_rt::map_get(&locals, name) {
-        Some(binding) => Some(binding.resolved.clone()),
+        Some(binding) => Some((*binding.resolved).clone()),
         None => None,
     }
 }
@@ -126,12 +126,12 @@ pub fn lookup_field_type_node(
                                                     None => nominal_type_ref("V".to_string()),
                                                 };
                                             Some(
-                                                make_container_type(
+                                                (*make_container_type(
                                                     "Witness".to_string(),
                                                     value_child,
                                                 )
-                                                .ty
-                                                .clone(),
+                                                .ty)
+                                                    .clone(),
                                             )
                                         }
                                     } else {
@@ -217,18 +217,14 @@ pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -
                     resolve_scrutinee_type_node(env.clone(), receiver_type.clone()),
                     env.source_indices.clone(),
                 );
-                if (resolved.connective.clone() == Connective::Conj) {
+                let resolved_name = authored_name_at(env.source_indices.clone(), resolved.clone());
+                if ((resolved.connective.clone() == Connective::Conj)
+                    || ((resolved_name.clone() != raw_name.clone())
+                        && is_declared_container_alias_spelling(resolved_name.clone())))
+                {
                     resolved.clone()
                 } else {
-                    let resolved_name =
-                        authored_name_at(env.source_indices.clone(), resolved.clone());
-                    if ((resolved_name.clone() != raw_name.clone())
-                        && is_declared_container_alias_spelling(resolved_name.clone()))
-                    {
-                        resolved.clone()
-                    } else {
-                        receiver_type.clone()
-                    }
+                    receiver_type.clone()
                 }
             }
         }
@@ -503,11 +499,7 @@ pub fn map_lookup_result_type(
                 if is_witness_type_name(authored_name_at(source_indices.clone(), raw.clone())) {
                     Some(raw.clone())
                 } else {
-                    Some(
-                        make_container_type("Witness".to_string(), raw.clone())
-                            .ty
-                            .clone(),
-                    )
+                    Some((*make_container_type("Witness".to_string(), raw.clone()).ty).clone())
                 }
             }
             None => None,
@@ -587,12 +579,12 @@ pub fn lookup_structural_method(
                     receiver_type.clone(),
                     source_indices.clone(),
                 );
-                if ((enriched.ty.clone().connective.clone() == Connective::Conj)
-                    && ((enriched.ty.clone().children.clone().len() as i64) > 0))
+                if (((*enriched.ty).clone().connective.clone() == Connective::Conj)
+                    && (((*enriched.ty).clone().children.clone().len() as i64) > 0))
                 {
                     {
                         let base_result = lookup_field_in_product(
-                            enriched.ty.clone(),
+                            (*enriched.ty).clone(),
                             method_name.clone(),
                             source_indices.clone(),
                         );
@@ -621,8 +613,8 @@ pub fn lookup_structural_method(
                                 };
                                 let resolution = match template_match {
                                     Some(t) => Some(Rc::new(MethodFieldResult {
-                                        field_node: mfr.field_node.clone(),
-                                        result_type: mfr.result_type.clone(),
+                                        field_node: (*mfr.field_node).clone(),
+                                        result_type: (*mfr.result_type).clone(),
                                         size_effect: t.size_effect.clone(),
                                         cost_shape: t.cost_shape.clone(),
                                         algebra_template: Some(t.clone()),
@@ -668,7 +660,7 @@ pub fn resolve_known_method_node(
         match tier0.resolution.clone() {
             Some(mfr) => {
                 let semantics = Rc::new(MethodSemantics::AlgebraMethodSemantics {
-                    method_def: mfr.field_node.clone(),
+                    method_def: (*mfr.field_node).clone(),
                     fold_accumulator_type: fold_accumulator_type,
                     size_effect: mfr.size_effect.clone(),
                     cost_shape: mfr.cost_shape.clone(),
@@ -676,7 +668,7 @@ pub fn resolve_known_method_node(
                 });
                 Rc::new(KnownMethodResolution {
                     semantics: Some(semantics),
-                    result_type: Some(mfr.result_type.clone()),
+                    result_type: Some((*mfr.result_type).clone()),
                     diagnostics: tier0.kernel_diagnostics.clone(),
                 })
             }
@@ -694,7 +686,7 @@ pub fn resolve_known_method_node(
                         ),
                         op_params: svc_result.op_params.clone(),
                     })),
-                    result_type: Some(svc_result.result_type.clone()),
+                    result_type: Some((*svc_result.result_type).clone()),
                     diagnostics: tier0.kernel_diagnostics.clone(),
                 }),
                 None => Rc::new(KnownMethodResolution {
