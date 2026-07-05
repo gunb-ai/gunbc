@@ -104,7 +104,7 @@ jobs:
         timeout-minutes: 5
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 90
+    timeout-minutes: 105
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -202,7 +202,7 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-        timeout-minutes: 30
+        timeout-minutes: 45
       - name: rust_tests cgroup peak (placement divisor)
         run: |
           BIN="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/claim_executor"

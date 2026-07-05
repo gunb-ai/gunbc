@@ -296,9 +296,9 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 
 data gunbc_ci_job_timeout_policy_minutes: Int = 40
 
-data gunbc_ci_rust_gate_step_timeout_minutes: Int = 30
+data gunbc_ci_rust_gate_step_timeout_minutes: Int = 45
 
-data gunbc_ci_rust_gate_step_budget_note: String = "Interim rust-gate-only step budget (fmt/clippy/nextest after release build): 30 = gates-only after build/floor split extended to rust_tests job. Receipt: job 85237415376 timed out at 60m with build+gates bundled (run 28746200534 on dfbff0f). Prior bundled: job 85235032960 at 30m, job 85195659048 at 15m. Re-derive DOWNWARD when fleet cache/build path stabilizes."
+data gunbc_ci_rust_gate_step_budget_note: String = "Interim rust-gate-only step budget (fmt/clippy/nextest after release build): 45 = prior 30m + margin after post-main-merge cold clippy exceeded gates-only step (job 85246635625, run 28749725167 on f2aa0ab). Prior: job 85237415376 bundled build+gates at 60m (10c53165bd split); job 85235032960 bundled at 30m. Re-derive DOWNWARD when fleet cache/build path stabilizes."
 
 data ci_rust_build_gate_step_split_note: String = "Build and rust gate are separate workflow steps (same discipline as ci_build_floor_step_split_note): bundling cargo build + rust_gates_ci under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: rust_tests job 85237415376, run 28746200534 on dfbff0f). Build step carries gunbc_ci_release_build_step_timeout_minutes; rust gate step carries gunbc_ci_rust_gate_step_timeout_minutes."
 
