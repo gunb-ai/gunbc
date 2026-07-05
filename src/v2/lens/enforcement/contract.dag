@@ -68,22 +68,7 @@ data lens_contract_complexity: LensContract = {
   boundary: ConstructionJustification { class: RatchetForever }
 }
 
-data lens_contract_complexity_r1_accumulator_copy: LensContract = {
-  entry: lens_registry_v0_complexity,
-  mode: AuditOnly,
-  claimed_scope: SubjectRoster { entries: ["src/v2/lens/complexity_r1_accumulator_copy"] },
-  consumer_witness: BoundConsumerWitness {
-    witness: ScheduleWitnessEntry {
-      entry: "src/v2/lens/complexity_r1_accumulator_copy/red_list_append_left.dag",
-      function: "red_list_append_left_claim_holds"
-    }
-  },
-  exemptions: [],
-  boundary: ConstructionJustification { class: RatchetForever }
-}
-
 data lens_contract_registry: List<LensContract> = [
   lens_contract_cost,
-  lens_contract_complexity,
-  lens_contract_complexity_r1_accumulator_copy
+  lens_contract_complexity
 ]

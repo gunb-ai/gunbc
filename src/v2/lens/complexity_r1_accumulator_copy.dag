@@ -7,17 +7,13 @@ import v2.lens.cost {
   PolynomialCost,
   SizeVariable,
   SymbolicCost,
-  asymptotic_class_of_cost,
-  ClassPolynomial,
   polynomial_degree_two
 }
 import v2.std.algebra {
   Cons,
   Empty,
   CopiedPortFact,
-  copied_port_fact_list_append_left,
-  copied_port_fact_list_snoc_left,
-  copied_port_fact_map_merge_base,
+  copied_port_fact_registry,
   fold_list,
   list_append
 }
@@ -46,7 +42,13 @@ import v2.std.witness { Holds, Violates, Witness }
 
 data complexity_r1_corpus_census_recall_note: String = "RECALL: future whole-corpus census must rediscover survey suspects — src/v2/workflow/glob_discovery_law.dag:63,94,115 (list_append left:acc); ~10 src/v2/compiler/06_translate.dag list_append(partial,…) sites; v2.std.decl_index.decl_facts_fn_items (fractal: the decl_facts walk itself burned 3m41s in step-0). E2-prep is synthetic Node fixtures only; enrollment waits on E1a body access + enforcement-intent gate."
 
-data complexity_r1_flow_opaque_residue_note: String = "FlowOpaque: accumulator binder not a direct-reference at either combiner call port (opaque through lets/nested calls). Counted in R1JudgeResult.flow_opaque_count — never silently skipped."
+data copied_port_fact_list_append_left_citation: String = "v2.std.algebra.list_append — left port is fold-over-left copy port (fold_list_right snoc over left)"
+
+data copied_port_fact_list_snoc_left_citation: String = "v2.std.algebra.list_snoc_item — xs port copies via list_append(left: xs, …)"
+
+data copied_port_fact_map_merge_overlay_citation: String = "v1_rt.rs:360 rc_map_merge iterates overlay into Rc::make_mut(base); src/v1/04_env.dag:226 merge_envs acc in base port is blessed — acc in overlay is R1 copied-port"
+
+data complexity_r1_flow_opaque_residue_note: String = "FlowOpaque: accumulator binder not a direct-reference at either combiner call port (opaque through lets/nested calls). Counted in R1JudgeResult.flow_opaque_count — never silently skipped; lens boundary Violates."
 
 type R1JudgeResult
   = R1PolyTwoSuspect { implied_cost: SymbolicCost, flow_opaque_count: Int }
@@ -95,19 +97,21 @@ fn r1_some_copied_port_index(idx: Int) -> Optional<Int> {
 }
 
 fn r1_copied_port_index(combiner: Symbol) -> Optional<Int> {
-  if r1_row_matches_combiner(row: copied_port_fact_list_append_left, combiner: combiner) {
-    r1_some_copied_port_index(idx: copied_port_fact_list_append_left.copied_port_index)
-  } else {
-    if r1_row_matches_combiner(row: copied_port_fact_list_snoc_left, combiner: combiner) {
-      r1_some_copied_port_index(idx: copied_port_fact_list_snoc_left.copied_port_index)
-    } else {
-      if r1_row_matches_combiner(row: copied_port_fact_map_merge_base, combiner: combiner) {
-        r1_some_copied_port_index(idx: copied_port_fact_map_merge_base.copied_port_index)
-      } else {
-        Absent
+  fold_list(
+    xs: copied_port_fact_registry,
+    empty: Absent,
+    cons: fn(acc, row) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if r1_row_matches_combiner(row: row, combiner: combiner) {
+            r1_some_copied_port_index(idx: row.copied_port_index)
+          } else {
+            Absent
+          }
       }
     }
-  }
+  )
 }
 
 fn r1_poly_two_cost(n: Node) -> SymbolicCost {
@@ -227,16 +231,10 @@ fn r1_judge_fold_step(n: Node) -> R1JudgeResult {
   }
 }
 
-fn complexity_r1_accumulator_copy_lens(n: Node) -> Witness<SymbolicCost> {
-  match r1_judge_fold_step(n: n) {
-    R1PolyTwoSuspect { implied_cost: cost, flow_opaque_count: _ } =>
-      Holds { value: cost }
-    R1Clean { flow_opaque_count: _ } =>
-      Holds { value: ConstantCost }
-    R1MalformedSubject =>
-      Violates {
-        diagnostic: complexity_r1_malformed_subject_diagnostic()
-      }
+fn complexity_r1_flow_opaque_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^complexity_r1_flow_opaque_residue,
+    at: Textual { file: ^complexity_r1_lens_virtual_file, extent: WholeFile }
   }
 }
 
@@ -247,25 +245,16 @@ fn complexity_r1_malformed_subject_diagnostic() -> Diagnostic {
   }
 }
 
-fn complexity_r1_is_poly_two_suspect(n: Node) -> Bool {
-  match complexity_r1_accumulator_copy_lens(n: n) {
-    Holds { value: cost } =>
-      match asymptotic_class_of_cost(cost: cost) {
-        ClassPolynomial { degree: _ } => true
-        _ => false
-      }
-    Violates { diagnostic: _ } => false
-  }
-}
-
-fn complexity_r1_is_clean(n: Node) -> Bool {
-  match complexity_r1_accumulator_copy_lens(n: n) {
-    Holds { value: cost } =>
-      match asymptotic_class_of_cost(cost: cost) {
-        ClassPolynomial { degree: _ } => false
-        _ => true
-      }
-    Violates { diagnostic: _ } => false
+fn complexity_r1_accumulator_copy_lens(n: Node) -> Witness<SymbolicCost> {
+  match r1_judge_fold_step(n: n) {
+    R1PolyTwoSuspect { implied_cost: cost, flow_opaque_count: _ } =>
+      Holds { value: cost }
+    R1Clean { flow_opaque_count: 0 } =>
+      Holds { value: ConstantCost }
+    R1Clean { flow_opaque_count: _ } =>
+      Violates { diagnostic: complexity_r1_flow_opaque_diagnostic() }
+    R1MalformedSubject =>
+      Violates { diagnostic: complexity_r1_malformed_subject_diagnostic() }
   }
 }
 

@@ -1,10 +1,10 @@
 module v2.test.lens_complexity_r1_accumulator_copy.red_list_append_left
 
 import v2.lens.complexity_r1_accumulator_copy {
-  complexity_r1_is_poly_two_suspect,
-  r1_fold_step_subject
+  R1PolyTwoSuspect,
+  r1_fold_step_subject,
+  r1_judge_fold_step
 }
-import v2.std.algebra { combiner_list_append }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, SyntheticOccurrence, Symbol, TypeNode }
 import v2.std.verification {
@@ -22,13 +22,16 @@ data r1_red_item: Symbol = ^r1_red_item
 
 data red_list_append_left_input: Node = r1_fold_step_subject(
   acc_binder: r1_red_acc,
-  combiner: combiner_list_append,
+  combiner: ^list_append,
   port0_arg: r1_red_acc,
   port1_arg: r1_red_item
 )
 
 fn red_list_append_left_claim_holds() -> Bool {
-  complexity_r1_is_poly_two_suspect(n: red_list_append_left_input)
+  match r1_judge_fold_step(n: red_list_append_left_input) {
+    R1PolyTwoSuspect { implied_cost: _, flow_opaque_count: _ } => true
+    _ => false
+  }
 }
 
 fn red_list_append_left_claim_rhs() -> Node {

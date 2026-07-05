@@ -1,10 +1,10 @@
 module v2.test.lens_complexity_r1_accumulator_copy.green_cons_prepend
 
 import v2.lens.complexity_r1_accumulator_copy {
-  complexity_r1_is_clean,
-  r1_fold_step_subject
+  R1Clean,
+  r1_fold_step_subject,
+  r1_judge_fold_step
 }
-import v2.std.algebra { combiner_cons_prepend }
 import v2.std.logic { Bool }
 import v2.std.node { Conj, Node, SyntheticOccurrence, Symbol, TypeNode }
 import v2.std.verification {
@@ -19,17 +19,19 @@ import v2.std.verification {
 
 data r1_prepend_acc: Symbol = ^r1_prepend_acc
 data r1_prepend_head: Symbol = ^r1_prepend_head
-data r1_prepend_unused: Symbol = ^r1_prepend_unused
 
 data green_cons_prepend_input: Node = r1_fold_step_subject(
   acc_binder: r1_prepend_acc,
-  combiner: combiner_cons_prepend,
+  combiner: ^Cons,
   port0_arg: r1_prepend_head,
   port1_arg: r1_prepend_acc
 )
 
 fn green_cons_prepend_claim_holds() -> Bool {
-  complexity_r1_is_clean(n: green_cons_prepend_input)
+  match r1_judge_fold_step(n: green_cons_prepend_input) {
+    R1Clean { flow_opaque_count: 0 } => true
+    _ => false
+  }
 }
 
 fn green_cons_prepend_claim_rhs() -> Node {

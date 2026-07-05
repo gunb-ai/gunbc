@@ -711,30 +711,25 @@ type CopiedPortFact {
   copied_port_index: Int
 }
 
-data combiner_list_append: Symbol = ^combiner_list_append
-data combiner_list_snoc_item: Symbol = ^combiner_list_snoc_item
-data combiner_map_merge: Symbol = ^combiner_map_merge
-data combiner_cons_prepend: Symbol = ^combiner_cons_prepend
-
 data copied_port_fact_list_append_left: CopiedPortFact = CopiedPortFact {
-  combiner: combiner_list_append,
+  combiner: ^list_append,
   copied_port_index: 0
 }
 
 data copied_port_fact_list_snoc_left: CopiedPortFact = CopiedPortFact {
-  combiner: combiner_list_snoc_item,
+  combiner: ^list_snoc_item,
   copied_port_index: 0
 }
 
-data copied_port_fact_map_merge_base: CopiedPortFact = CopiedPortFact {
-  combiner: combiner_map_merge,
-  copied_port_index: 0
+data copied_port_fact_map_merge_overlay: CopiedPortFact = CopiedPortFact {
+  combiner: ^map_merge,
+  copied_port_index: 1
 }
 
 data copied_port_fact_registry: FreeMonoid<CopiedPortFact> = [
   copied_port_fact_list_append_left,
   copied_port_fact_list_snoc_left,
-  copied_port_fact_map_merge_base
+  copied_port_fact_map_merge_overlay
 ]
 
 fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {

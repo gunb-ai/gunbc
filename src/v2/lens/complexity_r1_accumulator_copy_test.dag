@@ -1,11 +1,11 @@
 module v2.test.lens_complexity_r1_accumulator_copy
 
 import v2.lens.complexity_r1_accumulator_copy {
-  complexity_r1_is_clean,
-  complexity_r1_is_poly_two_suspect,
-  r1_fold_step_subject
+  R1Clean,
+  R1PolyTwoSuspect,
+  r1_fold_step_subject,
+  r1_judge_fold_step
 }
-import v2.std.algebra { combiner_list_append, combiner_map_merge }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
@@ -14,34 +14,43 @@ data r1_hygiene_item: Symbol = ^r1_hygiene_item
 data r1_hygiene_chunk: Symbol = ^r1_hygiene_chunk
 
 test fn complexity_r1_red_list_append_left_holds() -> Bool {
-  complexity_r1_is_poly_two_suspect(
+  match r1_judge_fold_step(
     n: r1_fold_step_subject(
       acc_binder: r1_hygiene_acc,
-      combiner: combiner_list_append,
+      combiner: ^list_append,
       port0_arg: r1_hygiene_acc,
       port1_arg: r1_hygiene_item
     )
-  )
+  ) {
+    R1PolyTwoSuspect { implied_cost: _, flow_opaque_count: _ } => true
+    _ => false
+  }
 }
 
-test fn complexity_r1_red_map_merge_base_holds() -> Bool {
-  complexity_r1_is_poly_two_suspect(
+test fn complexity_r1_green_merge_envs_base_holds() -> Bool {
+  match r1_judge_fold_step(
     n: r1_fold_step_subject(
       acc_binder: r1_hygiene_acc,
-      combiner: combiner_map_merge,
+      combiner: ^map_merge,
       port0_arg: r1_hygiene_acc,
       port1_arg: r1_hygiene_chunk
     )
-  )
+  ) {
+    R1Clean { flow_opaque_count: 0 } => true
+    _ => false
+  }
 }
 
-test fn complexity_r1_green_map_merge_overlay_holds() -> Bool {
-  complexity_r1_is_clean(
+test fn complexity_r1_red_map_merge_overlay_holds() -> Bool {
+  match r1_judge_fold_step(
     n: r1_fold_step_subject(
       acc_binder: r1_hygiene_acc,
-      combiner: combiner_map_merge,
+      combiner: ^map_merge,
       port0_arg: r1_hygiene_chunk,
       port1_arg: r1_hygiene_acc
     )
-  )
+  ) {
+    R1PolyTwoSuspect { implied_cost: _, flow_opaque_count: _ } => true
+    _ => false
+  }
 }
