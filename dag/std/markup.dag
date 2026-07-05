@@ -10,9 +10,11 @@ type Attribute {
   value: String
 }
 
+data fragment_text_rename_marker: String = "Constructor-owner ruling (§1c) collision fix: Fragment's text arm was named TextNode, colliding with MarkupNode.TextNode in this module's own scope (markup_node_to_fragment even converted one to the other cross-owner via the deleted expected-type pick). Renamed to FragmentText — Fragment is the escaped render tree; MarkupNode (the larger consumer surface, ~15 files) keeps TextNode."
+
 type Fragment
   = Element { tag: String, attributes: List<Attribute>, children: List<Fragment> }
-  | TextNode { content: String }
+  | FragmentText { content: String }
   | RawNode { content: String }
 
 fn escape_text(s: String) -> String {
@@ -116,7 +118,7 @@ fn serialize_attributes_with(attrs: List<Attribute>, bracket: MarkupBracket) -> 
 
 fn serialize_fragment_with(frag: Fragment, medium: MarkupMedium) -> String {
   match frag {
-    TextNode { content: c } => escape_text_for(mode: medium.text_escape, s: c)
+    FragmentText { content: c } => escape_text_for(mode: medium.text_escape, s: c)
     RawNode { content: c } => c
     Element { tag: t, attributes: attrs, children: kids } => {
       let attrs_str = serialize_attributes_with(attrs: attrs, bracket: medium.bracket)
@@ -181,7 +183,7 @@ fn markup_attr_to_fragment(attr: MarkupAttr) -> Attribute {
 fn markup_node_to_fragment(node: MarkupNode) -> Fragment {
   match node {
     TextNode { text } =>
-      TextNode { content: text }
+      FragmentText { content: text }
     ElementNode { tag, attrs, children } =>
       Element {
         tag: tag,

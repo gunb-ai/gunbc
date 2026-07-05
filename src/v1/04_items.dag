@@ -15,9 +15,8 @@ import v1.std.core {
 import v1.compiler.infer_types {
   child_type_node
 }
-import std.induction { SubValueUnknown }
 import v1.compiler.infer_env {
-  TypeEnv, TypeBinding, TypeEnvCache, empty_type_env_cache
+  TypeEnv, TypeEnvCache, empty_type_env_cache
 }
 import v1.compiler.infer_sigs {
   ResolvedFuncEnv
@@ -110,18 +109,3 @@ fn item_kind(item: Node) -> ItemKind {
   kind
 }
 
-fn variant_locals_from_items(items: List<Node>, init: Map<String, TypeBinding>, source_indices: Map<String, NewlineIndex>) -> Map<String, TypeBinding> {
-  fold(items, init: init, f: (acc, item) =>
-    let is_coproduct = item.connective == Disj
-    if is_coproduct {
-      fold(item.children, init: acc, f: (vacc, child) =>
-        let child_name = authored_name_at(source_indices: source_indices, node: child)
-        map_insert(vacc, child_name, TypeBinding {
-          name: child_name,
-          resolved: item,
-          provenance: SubValueUnknown
-        })
-      )
-    } else { acc }
-  )
-}

@@ -85,6 +85,8 @@ import v2.std.algebra {
   boolean_algebra_type_node,
   commutative_semiring_node,
   commutative_semiring_type_node,
+  Cons,
+  Empty,
   fold_list,
   fold_list_right,
   list_append,
@@ -103,8 +105,8 @@ type JavaIntWidth
   | Bits64
 
 type JavaFloatWidth
-  = Bits32
-  | Bits64
+  = FloatBits32
+  | FloatBits64
 
 type JavaScalar
   = IntScalar { kind: JavaIntKind, width: JavaIntWidth }
@@ -128,7 +130,7 @@ type JavaFloatPrimitiveFacts {
 }
 
 type JavaNonIntegerScalar
-  = BoolScalar
+  = NonIntegerBoolScalar
   | JavaNonIntegerScalarReserved
 
 type JavaNonIntegerPrimitiveFacts {
@@ -215,21 +217,21 @@ data java_facts_long: JavaIntegerPrimitiveFacts = JavaIntegerPrimitiveFacts {
 
 data java_facts_float: JavaFloatPrimitiveFacts = JavaFloatPrimitiveFacts {
   surface_spelling: ^java_surface_spelling_float,
-  width: Bits32,
+  width: FloatBits32,
   ieee754_binary: ^java_ieee754_binary32,
   std_projection: ^java_std_projection_float,
 }
 
 data java_facts_double: JavaFloatPrimitiveFacts = JavaFloatPrimitiveFacts {
   surface_spelling: ^java_surface_spelling_double,
-  width: Bits64,
+  width: FloatBits64,
   ieee754_binary: ^java_ieee754_binary64,
   std_projection: ^java_std_projection_double,
 }
 
 data java_facts_boolean: JavaNonIntegerPrimitiveFacts = JavaNonIntegerPrimitiveFacts {
   surface_spelling: ^java_surface_spelling_boolean,
-  scalar: BoolScalar,
+  scalar: NonIntegerBoolScalar,
   std_projection: ^java_std_projection_boolean,
   representation: ^java_repr_boolean,
 }
@@ -292,8 +294,8 @@ fn java_int_width_node(width: JavaIntWidth) -> Node {
 
 fn java_float_width_node(width: JavaFloatWidth) -> Node {
   match width {
-    Bits32 => java_inhabitant_atom(id: ^java_tag_bits32)
-    Bits64 => java_inhabitant_atom(id: ^java_tag_bits64)
+    FloatBits32 => java_inhabitant_atom(id: ^java_tag_bits32)
+    FloatBits64 => java_inhabitant_atom(id: ^java_tag_bits64)
   }
 }
 
@@ -336,7 +338,7 @@ fn java_scalar_node(scalar: JavaScalar) -> Node {
 
 fn java_noninteger_scalar_as_java_scalar(scalar: JavaNonIntegerScalar) -> JavaScalar {
   match scalar {
-    BoolScalar => BoolScalar
+    NonIntegerBoolScalar => BoolScalar
     JavaNonIntegerScalarReserved => BoolScalar
   }
 }

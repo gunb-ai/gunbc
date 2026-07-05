@@ -25,6 +25,7 @@ const SUITE_IMPORT_RESOLUTION: &str = "import_resolution";
 const SUITE_REEXPORT_SURFACE: &str = "reexport_surface";
 const SUITE_TYPE_AND_ARITY: &str = "type_and_arity";
 const SUITE_EMPTY_LIST_CONTEXT: &str = "empty_list_context";
+const SUITE_CONSTRUCTOR_OWNER: &str = "constructor_owner";
 
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
     eprintln!("diagnostics_witness: {msg}");
@@ -357,6 +358,53 @@ fn empty_list_literal_context(module_index: &ModuleIndex) {
     );
 }
 
+/// Constructor-owner ruling (§1c) walls. RED control: the retired CI canary
+/// fixture (two local coproducts sharing SharedVariant, disambiguated by the
+/// deleted expected-type pick) must now raise VariantCollision. RED control:
+/// an unbound constructor literal must raise UnresolvedType. GREEN control:
+/// a sole-owner arm constructs clean.
+fn constructor_owner_ruling_walls(module_index: &ModuleIndex) {
+    let collided = "module test.claim.variant_owner_expected_type\n\
+        import std.logic { Bool }\n\
+        type AEarlyOwner = SharedVariant | AOnlyVariant\n\
+        type ZLaterOwner = SharedVariant | ZOnlyVariant\n\
+        fn make_z_variant() -> ZLaterOwner { SharedVariant }\n";
+    let collided_result = compile_multi(module_index, &[("variant_owner.dag", collided)]);
+    assert!(
+        collided_result.diagnostics.iter().any(|d| matches!(
+            &*d.diagnostic,
+            CompilerDiagnostic::VariantCollision { variant, .. } if variant == "SharedVariant"
+        )),
+        "retired canary fixture must raise VariantCollision, got: {:?}",
+        diagnostic_messages(&collided_result)
+    );
+
+    let unbound = "module test.claim.unbound_ctor\n\
+        fn mk() -> Int { let g = GhostArm { x: 1 } 2 }\n";
+    let unbound_result = compile_multi(module_index, &[("unbound_ctor.dag", unbound)]);
+    assert!(
+        unbound_result.diagnostics.iter().any(|d| matches!(
+            &*d.diagnostic,
+            CompilerDiagnostic::UnresolvedType { name, .. } if name == "GhostArm"
+        )),
+        "unbound constructor literal must raise UnresolvedType, got: {:?}",
+        diagnostic_messages(&unbound_result)
+    );
+
+    let sole = "module test.claim.sole_owner\n\
+        type OnlyOwner = SoleArm | OtherArm\n\
+        fn mk() -> OnlyOwner { SoleArm }\n";
+    let sole_result = compile_multi(module_index, &[("sole_owner.dag", sole)]);
+    let sole_hard: Vec<String> = diagnostic_messages(&sole_result)
+        .into_iter()
+        .filter(|m| !m.starts_with("complexity: "))
+        .collect();
+    assert!(
+        sole_hard.is_empty(),
+        "sole-owner construction must stay clean, got: {sole_hard:?}"
+    );
+}
+
 fn suite_cases(suite: &str) -> Result<Vec<WitnessCase>, String> {
     match suite {
         SUITE_IMPORT_RESOLUTION => Ok(vec![(
@@ -375,9 +423,14 @@ fn suite_cases(suite: &str) -> Result<Vec<WitnessCase>, String> {
             "empty_list_literal_context",
             empty_list_literal_context,
         )]),
+        SUITE_CONSTRUCTOR_OWNER => Ok(vec![(
+            "constructor_owner_ruling_walls",
+            constructor_owner_ruling_walls,
+        )]),
         _ => Err(format!(
             "unknown suite '{suite}'; expected one of: {SUITE_IMPORT_RESOLUTION}, \
-             {SUITE_REEXPORT_SURFACE}, {SUITE_TYPE_AND_ARITY}, {SUITE_EMPTY_LIST_CONTEXT}"
+             {SUITE_REEXPORT_SURFACE}, {SUITE_TYPE_AND_ARITY}, {SUITE_EMPTY_LIST_CONTEXT}, \
+             {SUITE_CONSTRUCTOR_OWNER}"
         )),
     }
 }

@@ -102,8 +102,8 @@ type KotlinIntWidth
   | Bits64
 
 type KotlinFloatWidth
-  = Bits32
-  | Bits64
+  = FloatBits32
+  | FloatBits64
 
 type KotlinRuntimeRepresentation {}
 
@@ -138,8 +138,8 @@ type KotlinIntegerPrimitiveFacts {
 }
 
 type KotlinOrderedRingIntWidth
-  = Bits32
-  | Bits64
+  = OrderedRingBits32
+  | OrderedRingBits64
 
 type KotlinOrderedRingIntegerFacts
   = KotlinOrderedRingIntFacts {
@@ -224,14 +224,14 @@ data kotlin_facts_long: KotlinIntegerPrimitiveFacts = KotlinIntegerPrimitiveFact
 
 data kotlin_facts_float: KotlinFloatPrimitiveFacts = KotlinFloatPrimitiveFacts {
   surface_spelling: ^kotlin_surface_spelling_float,
-  width: Bits32,
+  width: FloatBits32,
   value_format: Ieee754Binary32Precision,
   representation: kotlin_platform_specific_runtime_representation,
 }
 
 data kotlin_facts_double: KotlinFloatPrimitiveFacts = KotlinFloatPrimitiveFacts {
   surface_spelling: ^kotlin_surface_spelling_double,
-  width: Bits64,
+  width: FloatBits64,
   value_format: Ieee754Binary64Precision,
   representation: kotlin_platform_specific_runtime_representation,
 }
@@ -354,8 +354,8 @@ fn kotlin_int_width_node(width: KotlinIntWidth) -> Node {
 
 fn kotlin_float_width_node(width: KotlinFloatWidth) -> Node {
   match width {
-    Bits32 => kotlin_atom(id: ^kotlin_tag_bits32)
-    Bits64 => kotlin_atom(id: ^kotlin_tag_bits64)
+    FloatBits32 => kotlin_atom(id: ^kotlin_tag_bits32)
+    FloatBits64 => kotlin_atom(id: ^kotlin_tag_bits64)
   }
 }
 

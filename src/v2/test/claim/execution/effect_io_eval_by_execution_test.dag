@@ -27,6 +27,7 @@ import v2.std.cardinality { RankingDimension, TerminationProof }
 import v2.std.collection { List, Map }
 import v2.std.diagnostic {
   Accepted,
+  None,
   Outcome,
   Rejected,
   diagnostics_singleton

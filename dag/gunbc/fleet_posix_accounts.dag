@@ -2,7 +2,7 @@ module gunbc.fleet_posix_accounts
 
 import extdeps.access.posix { PosixUser }
 import std.types { NonEmptyStr, List, String, Bool }
-import std.disposition { Disposition, Terminal, Scaffold }
+import std.disposition { Disposition, Terminal, Scaffold, ConstructionMechanism }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 data fleet_posix_accounts_scope_disposition: Disposition = Terminal {

@@ -24,6 +24,7 @@ import v2.std.collection {
 }
 import v2.std.compilers.target_model { target_model_canonical_operation_wire_node }
 import v2.std.diagnostic {
+  Correction,
   Diagnostic,
   node_locus,
   Outcome,

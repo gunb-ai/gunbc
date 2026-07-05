@@ -28,6 +28,7 @@ import v2.std.compilers.target_model {
   ReferenceLayerProbe,
   ReferenceLayerProbeNotWrapped,
   ReferenceLayerRc,
+  WrappedReferenceLayerRc,
   target_carrier_diagnostics_node,
   target_carrier_node_node,
   target_carrier_probe_heap_node,
@@ -380,7 +381,7 @@ fn sg_rc_f6_round_trip_rc() -> Bool {
     projection: rust_type_expression_projection(),
     tokens: rust_reference_layer_tokens()
   ) {
-    ReferenceLayerProbe { value: ReferenceLayerRc } => true
+    ReferenceLayerProbe { value: WrappedReferenceLayerRc } => true
     _ => false
   }
 }

@@ -127,7 +127,7 @@ type OpenAiChatCompletion200UrlCitation {
 }
 
 type OpenAiChatCompletion200Annotation
-  = UrlCitation { url_citation: OpenAiChatCompletion200UrlCitation }
+  = ChatUrlCitation { url_citation: OpenAiChatCompletion200UrlCitation }
 
 type OpenAiChatCompletion200Message {
   role: String
@@ -335,7 +335,7 @@ data structural_coverage_gap_openai_responses_200_residual: List<CoverageClosure
 
 type OpenAiResponses200Annotation
   = FileCitation { file_id: String, filename: String, index: Int }
-  | UrlCitation { start_index: Int, end_index: Int, title: String, url: String }
+  | ResponsesUrlCitation { start_index: Int, end_index: Int, title: String, url: String }
   | ContainerFileCitation { container_id: String, file_id: String, filename: String, start_index: Int, end_index: Int }
   | FilePath { file_id: String, index: Int }
 

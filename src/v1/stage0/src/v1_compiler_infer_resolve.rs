@@ -354,18 +354,45 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
             Some(decl) => {
                 if ((decl.params.clone().len() as i64) > 0) {
                     decl.clone()
-                } else {
-                    if ((((n.children.clone().len() as i64) > 0)
-                        && (n.name.clone() != "".to_string()))
-                        && (n.name.clone() != brand))
-                    {
-                        match lookup_type_by_name(env.clone(), n.name.clone()) {
-                            Some(structural) => structural.clone(),
-                            None => decl.clone(),
+                } else if ((n.children.clone().len() as i64) > 0) {
+                    // HAND-PATCH (parameterized use site prefers parameterized
+                    // decl; replaced at regen): a use site WITH type args whose
+                    // primary lookup lands paramless (kernel prelude shadowing
+                    // an imported user generic, e.g. Optional) retries the
+                    // ancestry binding for a parameterized decl.
+                    let ancestry_generic = env.parents.iter().fold(
+                        None,
+                        |acc: Option<Rc<Node>>, parent: &Rc<TypeEnv>| {
+                            if acc.is_some() {
+                                return acc;
+                            }
+                            match v1_rt::map_get(&parent.str_bindings, brand.clone()) {
+                                Some(b) => {
+                                    if ((b.resolved.params.clone().len() as i64) > 0) {
+                                        Some(b.resolved.clone())
+                                    } else {
+                                        acc
+                                    }
+                                }
+                                None => acc,
+                            }
+                        },
+                    );
+                    match ancestry_generic {
+                        Some(user_decl) => user_decl,
+                        None => {
+                            if ((n.name.clone() != "".to_string()) && (n.name.clone() != brand)) {
+                                match lookup_type_by_name(env.clone(), n.name.clone()) {
+                                    Some(structural) => structural.clone(),
+                                    None => decl.clone(),
+                                }
+                            } else {
+                                decl.clone()
+                            }
                         }
-                    } else {
-                        decl.clone()
                     }
+                } else {
+                    decl.clone()
                 }
             }
             None => match lookup_type_by_name(env.clone(), n.name.clone()) {

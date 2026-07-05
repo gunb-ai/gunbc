@@ -1,7 +1,7 @@
 module v2.test.fixture.medium_structure_scan.leak_plant
 import v2.std.logic { Bool }
 import v2.std.text { String }
-import std.markup { Fragment, TextNode }
+import std.markup { Fragment, FragmentText }
 import extdeps.languages.html_fragment { serialize_fragment }
 
 fn planted_emit_side_leak() -> String {
@@ -30,7 +30,7 @@ fn planted_shell_emit_side_leak() -> String {
 }
 
 fn planted_html_check_side_leak() -> Bool {
-  let html = serialize_fragment(frag: TextNode { content: "x" })
+  let html = serialize_fragment(frag: FragmentText { content: "x" })
   starts_with(s: html, prefix: "<")
 }
 

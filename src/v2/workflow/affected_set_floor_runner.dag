@@ -162,6 +162,8 @@ fn floor_kernel_would_skip(
   }
 }
 
+data floor_host_scaffold_would_skip_note: String = "Host-scan walls read the live tree via host intrinsics (`layer_import_facts`, `*_facts_live`, ...). Node-frontier skip is unsound for them: an unrelated diff can leave a corpus-wide violation red while the witness is assumed green."
+
 fn floor_host_scaffold_would_skip(
   changed_paths: List<String>,
   frontier_nodes: List<Node>,
@@ -169,9 +171,6 @@ fn floor_host_scaffold_would_skip(
   function_edited: Bool,
   entry_file_touched: Bool
 ) -> Bool {
-  // Host-scan walls read the live tree via host intrinsics (`layer_import_facts`,
-  // `*_facts_live`, …). Node-frontier skip is unsound for them: an unrelated diff
-  // can leave a corpus-wide violation red while the witness is assumed green.
   false
 }
 
@@ -216,14 +215,14 @@ fn floor_kernel_precompute_would_skip(
   }
 }
 
+data floor_host_scaffold_precompute_would_skip_note: String = "Conservative: host-scaffold witnesses in the corpus always run, so the whole-tree published-mock precompute they may depend on must not be skipped."
+
 fn floor_host_scaffold_precompute_would_skip(
   changed_paths: List<String>,
   frontier_node_count: Int,
   edited_test_fn_count: Int,
   touched_entry_file_count: Int
 ) -> Bool {
-  // Conservative: host-scaffold witnesses in the corpus always run, so the
-  // whole-tree published-mock precompute they may depend on must not be skipped.
   false
 }
 

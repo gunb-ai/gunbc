@@ -36,15 +36,21 @@ impl Drop for CacheEnvGuard {
 }
 
 fn temp_dir(label: &str) -> std::path::PathBuf {
+    // Workspace-relative fixture root (target/ is gitignored + ephemeral):
+    // build_module_path_index fails closed on paths outside the workspace, so
+    // std::env::temp_dir() fixtures cannot resolve (union_resolve_receipts_test
+    // precedent).
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("clock")
         .as_nanos();
-    let dir = std::env::temp_dir().join(format!(
-        "gunbc-type-env-{label}-{}-{}",
-        std::process::id(),
-        nanos
-    ));
+    let dir = crate::helpers::workspace_root()
+        .join("target")
+        .join(format!(
+            "gunbc-type-env-{label}-{}-{}",
+            std::process::id(),
+            nanos
+        ));
     fs::create_dir_all(&dir).expect("temp dir");
     dir
 }
@@ -578,8 +584,13 @@ fn type_env_std_types_type_variable_filtered_from_import() {
     );
 }
 
+// Constructor-owner ruling (§1c, 2026-07-04): local-shadows-imported is deleted
+// semantics. A glob import binding Alpha to E while a local coproduct binds
+// Alpha to F is two owners in one scope — a VariantCollision, never a silent
+// shadow. The fixture survives as that wall's red control; the parent module
+// (sole owner) stays clean.
 #[test]
-fn type_env_local_variant_shadows_imported_variant_local() {
+fn local_variant_over_glob_imported_variant_is_a_collision() {
     let sources = vec![
         Rc::new(SourceFile {
             path: "parent.dag".to_string(),
@@ -590,51 +601,49 @@ fn type_env_local_variant_shadows_imported_variant_local() {
             content: "module test.variant_shadow_consumer\nimport test.variant_shadow_parent\ntype F = Alpha { x: String } | Gamma { z: Int }\n".to_string(),
         }),
     ];
-    let resolved = compile_modules(sources);
-    let graph = resolved.graph.as_ref().expect("graph");
-    let parent = typed_module_by_name(
-        &graph.modules,
-        &resolved.source_indices,
-        "test.variant_shadow_parent",
-    );
-    let consumer = typed_module_by_name(
-        &graph.modules,
-        &resolved.source_indices,
-        "test.variant_shadow_consumer",
-    );
-    let parent_alpha = parent
-        .type_env_cache
-        .variant_locals
-        .get("Alpha")
-        .expect("parent Alpha variant local");
-    let consumer_alpha = consumer
-        .type_env_cache
-        .variant_locals
-        .get("Alpha")
-        .expect("consumer Alpha variant local");
-    assert_eq!(
-        authored_name_at(
-            parent.type_env.source_indices.clone(),
-            parent_alpha.resolved.clone()
-        ),
-        "E",
-        "parent Alpha must point at imported enum E"
-    );
-    assert_eq!(
-        authored_name_at(
-            consumer.type_env.source_indices.clone(),
-            consumer_alpha.resolved.clone()
-        ),
-        "F",
-        "consumer Alpha must shadow parent variant with local enum F"
-    );
+    // Raw compile (not compile_modules): the collision IS the expected outcome,
+    // so the no-hard-errors helper assertion does not apply here.
+    let resolved = compile_to_resolved(Rc::new(sources));
+    let has_collision = resolved.diagnostics.iter().any(|d| {
+        matches!(
+            &*d.diagnostic,
+            v1_compiler::v1_std_core::CompilerDiagnostic::VariantCollision { variant, enum1, enum2, .. }
+                if variant == "Alpha"
+                    && ((enum1 == "E" && enum2 == "F") || (enum1 == "F" && enum2 == "E"))
+        )
+    });
     assert!(
-        parent_alpha.resolved.connective == Connective::Disj
-            && consumer_alpha.resolved.connective == Connective::Disj,
-        "variant locals must reference coproduct carriers"
+        has_collision,
+        "a local arm sharing a glob-imported arm's name must collide (shadowing is deleted), got: {:?}",
+        resolved
+            .diagnostics
+            .iter()
+            .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
+            .collect::<Vec<_>>()
     );
-    assert!(
-        !Rc::ptr_eq(&parent_alpha.resolved, &consumer_alpha.resolved),
-        "parent variant locals must not replace consumer-local variant bindings"
-    );
+    // GREEN control: the sole-owner parent module still binds Alpha -> E.
+    if let Some(graph) = resolved.graph.as_ref() {
+        let parent = typed_module_by_name(
+            &graph.modules,
+            &resolved.source_indices,
+            "test.variant_shadow_parent",
+        );
+        let parent_alpha = parent
+            .type_env_cache
+            .variant_locals
+            .get("Alpha")
+            .expect("parent Alpha variant local");
+        assert_eq!(
+            authored_name_at(
+                parent.type_env.source_indices.clone(),
+                parent_alpha.resolved.clone()
+            ),
+            "E",
+            "parent Alpha must point at its sole owner E"
+        );
+        assert!(
+            parent_alpha.resolved.connective == Connective::Disj,
+            "variant locals must reference coproduct carriers"
+        );
+    }
 }

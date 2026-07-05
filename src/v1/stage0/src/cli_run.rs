@@ -4868,7 +4868,10 @@ pub fn run_discovery_corpus_with_options(
     // shared std/spec prefix above all — typechecks once per node instead of once per
     // consumer. Previously the frontier build, the floor runner (via a separate thread-local
     // store), and the rows each carried a private cold cache of that same prefix.
-    let index = build_multi_entry_index(source_roots);
+    // The index is the THREAD's shared one (process_shared_index), not a private build:
+    // when the executor prelude already resolved its entries on this thread, discovery
+    // reuses that index's parse/typed caches instead of paying the union cold a second time.
+    let index = process_shared_index(source_roots);
     let (skip_enabled, diff_edits) =
         if options.skip_unaffected_node_frontier && !line_ranges_by_file.is_empty() {
             match floor_diff_edits_from_line_ranges(

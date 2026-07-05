@@ -229,8 +229,8 @@ type RustIntWidth
   | Pointer
 
 type RustFloatWidth
-  = Bits32
-  | Bits64
+  = FloatBits32
+  | FloatBits64
 
 type RustScalar
   = IntScalar { kind: RustIntKind, width: RustIntWidth }
@@ -260,11 +260,11 @@ type RustFloatPrimitiveFacts {
 }
 
 type RustNonIntegerScalar
-  = BoolScalar
-  | CharScalar
-  | StrScalar
-  | UnitScalar
-  | NeverScalar
+  = NonIntegerBoolScalar
+  | NonIntegerCharScalar
+  | NonIntegerStrScalar
+  | NonIntegerUnitScalar
+  | NonIntegerNeverScalar
 
 type RustNonIntegerPrimitiveFacts {
   surface_spelling: Symbol
@@ -438,49 +438,49 @@ data rust_facts_usize: RustIntegerPrimitiveFacts = RustIntegerPrimitiveFacts {
 
 data rust_facts_f32: RustFloatPrimitiveFacts = RustFloatPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_f32,
-  width: Bits32,
+  width: FloatBits32,
   ieee754_binary: ^rust_ieee754_binary32,
   std_projection: ^rust_std_projection_float32,
 }
 
 data rust_facts_f64: RustFloatPrimitiveFacts = RustFloatPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_f64,
-  width: Bits64,
+  width: FloatBits64,
   ieee754_binary: ^rust_ieee754_binary64,
   std_projection: ^rust_std_projection_float64,
 }
 
 data rust_facts_bool: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_bool,
-  scalar: BoolScalar,
+  scalar: NonIntegerBoolScalar,
   std_projection: ^rust_std_projection_bool,
   representation: ^rust_repr_bool
 }
 
 data rust_facts_char: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_char,
-  scalar: CharScalar,
+  scalar: NonIntegerCharScalar,
   std_projection: ^rust_std_projection_char,
   representation: ^rust_char_unicode_scalar
 }
 
 data rust_facts_str: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_str,
-  scalar: StrScalar,
+  scalar: NonIntegerStrScalar,
   std_projection: ^rust_std_projection_str,
   representation: ^rust_str_unsized
 }
 
 data rust_facts_unit: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_unit,
-  scalar: UnitScalar,
+  scalar: NonIntegerUnitScalar,
   std_projection: ^rust_std_projection_unit,
   representation: ^rust_repr_unit
 }
 
 data rust_facts_never: RustNonIntegerPrimitiveFacts = RustNonIntegerPrimitiveFacts {
   surface_spelling: ^rust_surface_spelling_never,
-  scalar: NeverScalar,
+  scalar: NonIntegerNeverScalar,
   std_projection: ^rust_std_projection_never,
   representation: ^rust_repr_never
 }
@@ -561,8 +561,8 @@ fn rust_int_width_node(width: RustIntWidth) -> Node {
 
 fn rust_float_width_node(width: RustFloatWidth) -> Node {
   match width {
-    Bits32 => rust_inhabitant_atom(id: ^rust_tag_bits32)
-    Bits64 => rust_inhabitant_atom(id: ^rust_tag_bits64)
+    FloatBits32 => rust_inhabitant_atom(id: ^rust_tag_bits32)
+    FloatBits64 => rust_inhabitant_atom(id: ^rust_tag_bits64)
   }
 }
 
@@ -664,11 +664,11 @@ fn rust_scalar_node(scalar: RustScalar) -> Node {
 
 fn rust_noninteger_scalar_as_rust_scalar(scalar: RustNonIntegerScalar) -> RustScalar {
   match scalar {
-    BoolScalar => BoolScalar
-    CharScalar => CharScalar
-    StrScalar => StrScalar
-    UnitScalar => UnitScalar
-    NeverScalar => NeverScalar
+    NonIntegerBoolScalar => BoolScalar
+    NonIntegerCharScalar => CharScalar
+    NonIntegerStrScalar => StrScalar
+    NonIntegerUnitScalar => UnitScalar
+    NonIntegerNeverScalar => NeverScalar
   }
 }
 

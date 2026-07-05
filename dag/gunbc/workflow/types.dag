@@ -12,7 +12,7 @@ import extdeps.cloud.gcp.gcp { GcpProjectId, ServiceAccountEmail }
 import extdeps.uri { Uri }
 import ctrl.review_verdict { FindingSeverity }
 
-type ArtifactKind = Design | Review | Plan | CiReport
+type ArtifactKind = DesignDoc | Review | Plan | CiReport
 type AuthorSource = Llm | Human
 
 type ReviewDimension = Coherence | Quality | Requirements | Aspirational
@@ -165,7 +165,7 @@ type OutcomeStatus
   | Failed
   | PendingApproval
   | Skipped
-  | TerminalFailed
+  | OutcomeTerminalFailed
 
 type StageOutcome {
   run_key: NonEmptyStr

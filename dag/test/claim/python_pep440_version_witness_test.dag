@@ -1,5 +1,6 @@
 module test.claim.python_pep440_version_witness
 
+import std.algebra { Ordering }
 import extdeps.version.pep440 {
   Pep440Alpha,
   Pep440PreRelease,
