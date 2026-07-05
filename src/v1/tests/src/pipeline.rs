@@ -2516,9 +2516,6 @@ fn parse_error_does_not_leak_to_resolve() {
     );
 }
 
-
-
-
 #[test]
 fn complexity_linear_recursion_bounded() {
     let source = r#"module recur
@@ -2532,11 +2529,6 @@ fn sum_list(items: List<Int>) -> Int {
     let result = compile_dag(source);
     assert_no_diagnostics(&result);
 }
-
-
-
-
-
 
 fn compile_dag_with_complexity(
     source: &str,
@@ -2566,17 +2558,7 @@ fn compile_dag_with_complexity(
     build_complexity_report(func_entries, recursion_ctx, Rc::new(HashMap::new()))
 }
 
-
-
 use v1_compiler::v1_compiler_complexity::{classify_complexity, CostExpr, SizeExpr};
-
-
-
-
-
-
-
-
 
 #[test]
 fn complexity_class_add_keeps_log_terms() {
@@ -2614,11 +2596,6 @@ fn complexity_class_max_keeps_log_terms() {
     );
 }
 
-
-
-
-
-
 #[test]
 fn compile_sources_returns_ownership_proofs() {
     let source =
@@ -2642,7 +2619,6 @@ fn match_bound_variable_always_cloned() {
         content,
     );
 }
-
 
 #[test]
 fn compile_sources_returns_default_artifact_plan() {
@@ -3505,15 +3481,6 @@ fn mutual_recursion_only_descending_on_unmeasured_param_is_rejected() {
     );
 }
 
-
-
-
-
-
-
-
-
-
 #[test]
 fn cx_forever_bound_produces_violation() {
     let source = "module cx_forever\n\nfn count_up(n: Int) -> Int {\n  if n > 100 { n }\n  else { count_up(n: n + 1) }\n}\n";
@@ -3536,7 +3503,6 @@ fn cx_forever_bound_produces_violation() {
         result.complexity.violations.len()
     );
 }
-
 
 #[test]
 fn soundness_conditional_descent_not_accepted() {
