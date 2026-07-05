@@ -8,22 +8,23 @@ import v2.lens.enforcement.vocab {
   Blocking, AuditOnly, Advisory,
   ConsumerRequirement, Exact, AnyLiveConsumer, OneOf,
   FloorGate, WitnessOnly, MergeAdmission,
+  NoConsumerWitness,
   ScopeCovers, ScopeNarrowed, ExternalRuntimeOnly,
   RedControlPassed, RedControlFailedToFlip,
-  SelfAppliesObserved, NoReceiptRef, Timestamp,
+  SelfAppliesObserved, NoReceiptRef,
   consumer_satisfies, enforcement_mode_satisfies
 }
 import v2.lens.enforcement.contract {
-  LensContract, CoverageReceipt, lens_contract_cost, lens_contract_registry, coverage_receipt_registry
+  LensContract, CoverageReceipt
 }
 import v2.lens.enforcement.standing_intent {
   StandingIntent, LensFamily, Refuse,
-  standing_intent_complexity_repo_wide, standing_intent_registry
+  standing_intent_registry
 }
 import v2.lens.enforcement.gate {
   leg_holds, leg_fails, intent_family_holds, intent_family_verdict,
-  complexity_repo_wide_verdict, contract_internally_consistent,
-  enforcement_consistency_holds, lenses_self_apply_or_exempt_holds,
+  contract_internally_consistent,
+  enforcement_consistency_holds,
   all_intents_admissible
 }
 import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
@@ -35,7 +36,7 @@ data synthetic_intent: StandingIntent = {
   mechanism_class: "synthetic mechanism",
   recurring: true,
   receiptable: true,
-  desired_scope: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
+  desired_scope: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
   required_subjects: SubjectRoster { entries: [] },
   default_mode: Blocking,
   required_consumer: Exact { kind: FloorGate },
@@ -47,45 +48,62 @@ data synthetic_intent: StandingIntent = {
 data synthetic_contract: LensContract = {
   entry: lens_registry_v0_parallelism,
   mode: Blocking,
-  claimed_scope: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
+  claimed_scope: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
+  exemptions: [],
+  boundary: ConstructionJustification { class: RatchetForever }
+}
+
+data synthetic_contract_audit_only: LensContract = {
+  entry: lens_registry_v0_parallelism,
+  mode: AuditOnly,
+  claimed_scope: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
+  consumer_witness: NoConsumerWitness,
   exemptions: [],
   boundary: ConstructionJustification { class: RatchetForever }
 }
 
 data synthetic_receipt_good: CoverageReceipt = {
   contract_id: Parallelism,
-  discovered_subjects: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
+  discovered_subjects: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
   scope_satisfaction: ScopeCovers,
   consumer_observed: FloorGate,
   consumer_receipt_ref: NoReceiptRef,
   red_control_status: RedControlPassed,
-  self_application_status: SelfAppliesObserved,
-  probed_at: Timestamp { iso: "2026-07-02" }
+  self_application_status: SelfAppliesObserved
 }
 
 data synthetic_receipt_narrow: CoverageReceipt = {
   contract_id: Parallelism,
   discovered_subjects: SubjectRoster { entries: ["src/v2"] },
   scope_satisfaction: ScopeNarrowed {
-    missing: SubjectRoster { entries: ["dsl", "src/v1"] },
+    missing: SubjectRoster { entries: ["dag", "src/v1"] },
     reason: ExternalRuntimeOnly { reason: "synthetic off-substrate gap" }
   },
   consumer_observed: FloorGate,
   consumer_receipt_ref: NoReceiptRef,
   red_control_status: RedControlPassed,
-  self_application_status: SelfAppliesObserved,
-  probed_at: Timestamp { iso: "2026-07-02" }
+  self_application_status: SelfAppliesObserved
 }
 
 data synthetic_receipt_redfail: CoverageReceipt = {
   contract_id: Parallelism,
-  discovered_subjects: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
+  discovered_subjects: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
   scope_satisfaction: ScopeCovers,
   consumer_observed: FloorGate,
   consumer_receipt_ref: NoReceiptRef,
   red_control_status: RedControlFailedToFlip,
-  self_application_status: SelfAppliesObserved,
-  probed_at: Timestamp { iso: "2026-07-02" }
+  self_application_status: SelfAppliesObserved
+}
+
+data synthetic_receipt_witness_only: CoverageReceipt = {
+  contract_id: Parallelism,
+  discovered_subjects: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
+  scope_satisfaction: ScopeCovers,
+  consumer_observed: WitnessOnly,
+  consumer_receipt_ref: NoReceiptRef,
+  red_control_status: RedControlPassed,
+  self_application_status: SelfAppliesObserved
 }
 
 data synthetic_intent_with_subject: StandingIntent = {
@@ -95,8 +113,8 @@ data synthetic_intent_with_subject: StandingIntent = {
   mechanism_class: "synthetic mechanism",
   recurring: true,
   receiptable: true,
-  desired_scope: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
-  required_subjects: SubjectRoster { entries: ["dsl"] },
+  desired_scope: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
+  required_subjects: SubjectRoster { entries: ["dag"] },
   default_mode: Blocking,
   required_consumer: Exact { kind: FloorGate },
   self_application_required: true,
@@ -111,7 +129,7 @@ data synthetic_intent_missing_subject: StandingIntent = {
   mechanism_class: "synthetic mechanism",
   recurring: true,
   receiptable: true,
-  desired_scope: SubjectRoster { entries: ["dsl", "src/v1", "src/v2"] },
+  desired_scope: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
   required_subjects: SubjectRoster { entries: ["not-discovered"] },
   default_mode: Blocking,
   required_consumer: Exact { kind: FloorGate },
@@ -121,30 +139,29 @@ data synthetic_intent_missing_subject: StandingIntent = {
 }
 
 data synthetic_contracts: List<LensContract> = [synthetic_contract]
+data synthetic_contracts_audit_only: List<LensContract> = [synthetic_contract_audit_only]
 data receipts_good: List<CoverageReceipt> = [synthetic_receipt_good]
 data receipts_narrow: List<CoverageReceipt> = [synthetic_receipt_narrow]
 data receipts_redfail: List<CoverageReceipt> = [synthetic_receipt_redfail]
-
-test fn complexity_repo_wide_reds_on_scope_subjects_consumer_self() -> Bool {
-  return leg_holds(l: complexity_repo_wide_verdict().claimed)
-    && leg_holds(l: complexity_repo_wide_verdict().red_control)
-    && leg_fails(l: complexity_repo_wide_verdict().scope_covered)
-    && leg_fails(l: complexity_repo_wide_verdict().subjects_covered)
-    && leg_fails(l: complexity_repo_wide_verdict().live_consumer)
-    && leg_fails(l: complexity_repo_wide_verdict().self_application)
-}
+data receipts_witness_only: List<CoverageReceipt> = [synthetic_receipt_witness_only]
 
 test fn subjects_leg_discriminates() -> Bool {
   return leg_holds(l: intent_family_verdict(intent: synthetic_intent_with_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
     && leg_fails(l: intent_family_verdict(intent: synthetic_intent_missing_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
 }
 
-test fn complexity_repo_wide_intent_does_not_hold() -> Bool {
-  return !intent_family_holds(intent: standing_intent_complexity_repo_wide, contracts: lens_contract_registry, receipts: coverage_receipt_registry)
-}
-
 test fn gate_passes_a_fully_consistent_intent() -> Bool {
   return intent_family_holds(intent: synthetic_intent, contracts: synthetic_contracts, receipts: receipts_good)
+}
+
+test fn audit_only_contract_reds_claimed_leg_but_keeps_per_leg_diagnostics() -> Bool {
+  let v = intent_family_verdict(intent: synthetic_intent, contracts: synthetic_contracts_audit_only, receipts: receipts_good)
+  return leg_fails(l: v.claimed)
+    && leg_holds(l: v.scope_covered)
+    && leg_holds(l: v.subjects_covered)
+    && leg_holds(l: v.live_consumer)
+    && leg_holds(l: v.red_control)
+    && leg_holds(l: v.self_application)
 }
 
 test fn narrowed_scope_reds_scope_leg_only() -> Bool {
@@ -158,16 +175,15 @@ test fn receipt_red_fail_overrides_the_claim() -> Bool {
     && !intent_family_holds(intent: synthetic_intent, contracts: synthetic_contracts, receipts: receipts_redfail)
 }
 
-test fn cost_contract_blocking_without_live_consumer_is_inconsistent() -> Bool {
-  return !contract_internally_consistent(c: lens_contract_cost, receipts: coverage_receipt_registry)
+test fn blocking_contract_without_live_consumer_is_inconsistent() -> Bool {
+  return !contract_internally_consistent(c: synthetic_contract, receipts: receipts_witness_only)
+    && contract_internally_consistent(c: synthetic_contract, receipts: receipts_good)
+    && contract_internally_consistent(c: synthetic_contract_audit_only, receipts: receipts_witness_only)
 }
 
-test fn live_registry_fails_consistency_today() -> Bool {
-  return !enforcement_consistency_holds(contracts: lens_contract_registry, receipts: coverage_receipt_registry)
-}
-
-test fn live_registry_fails_self_apply_today() -> Bool {
-  return !lenses_self_apply_or_exempt_holds(receipts: coverage_receipt_registry)
+test fn blocking_registry_with_witness_only_receipt_fails_consistency() -> Bool {
+  return !enforcement_consistency_holds(contracts: synthetic_contracts, receipts: receipts_witness_only)
+    && enforcement_consistency_holds(contracts: synthetic_contracts_audit_only, receipts: receipts_witness_only)
 }
 
 test fn all_standing_intents_are_admissible() -> Bool {

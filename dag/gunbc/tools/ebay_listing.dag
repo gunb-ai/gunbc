@@ -1,0 +1,148 @@
+module gunbc.tools.ebay_listing
+
+import std.types { NonEmptyStr }
+import std.currency { CurrencyCode, Usd }
+import std.credentials { CredentialSource, EnvVar }
+import extdeps.ebay.ebay { MarketplaceEnum, marketplace_wire_label }
+import extdeps.ebay.oauth
+import extdeps.ebay.inventory
+
+data ebay_client_id_source: CredentialSource = EnvVar { name: "EBAY_CLIENT_ID" }
+
+data ebay_client_secret_source: CredentialSource = EnvVar { name: "EBAY_CLIENT_SECRET" }
+
+data ebay_refresh_token_source: CredentialSource = EnvVar { name: "EBAY_REFRESH_TOKEN" }
+
+data default_marketplace: MarketplaceEnum = EbayUs
+
+data default_format: FormatTypeEnum = FixedPrice
+
+data default_content_language: NonEmptyStr = "en-US"
+
+data default_currency: CurrencyCode = Usd
+
+data fixed_price_listing_duration: NonEmptyStr = "GTC"
+
+type EbayListingDraft {
+  sku: NonEmptyStr
+  title: NonEmptyStr
+  description: String
+  image_urls: List<String>
+  condition: ConditionEnum
+  price_value: String
+  quantity: Int
+  category_id: String
+  fulfillment_policy_id: NonEmptyStr
+  payment_policy_id: NonEmptyStr
+  return_policy_id: NonEmptyStr
+  merchant_location_key: String
+}
+
+fn build_inventory_item(draft: EbayListingDraft) -> InventoryItem {
+  InventoryItem {
+    availability: InventoryItemAvailability {
+      shipToLocationAvailability: ShipToLocationAvailability { quantity: draft.quantity }
+    },
+    condition: draft.condition,
+    conditionDescription: none,
+    product: InventoryItemProduct {
+      title: draft.title,
+      description: draft.description,
+      aspects: none,
+      imageUrls: draft.image_urls
+    }
+  }
+}
+
+fn build_offer(draft: EbayListingDraft) -> EbayOfferDetailsWithKeys {
+  EbayOfferDetailsWithKeys {
+    sku: draft.sku,
+    marketplaceId: default_marketplace,
+    format: default_format,
+    availableQuantity: draft.quantity,
+    categoryId: draft.category_id,
+    listingDescription: draft.description,
+    listingDuration: fixed_price_listing_duration,
+    listingPolicies: ListingPolicies {
+      fulfillmentPolicyId: draft.fulfillment_policy_id,
+      paymentPolicyId: draft.payment_policy_id,
+      returnPolicyId: draft.return_policy_id
+    },
+    pricingSummary: PricingSummary {
+      price: EbayAmount { value: draft.price_value, currency: default_currency }
+    },
+    merchantLocationKey: draft.merchant_location_key
+  }
+}
+
+func mint_seller_token(
+  client_id: String,
+  client_secret: Secret,
+  refresh_token: Secret
+) -> { access_token: Secret } {
+
+  token = ebay.OAuth.MintUserToken(
+    client_id: client_id,
+    client_secret: client_secret,
+    refresh_token: refresh_token,
+    scope: sell_inventory_scope
+  )
+
+  return { access_token: token.access_token }
+}
+
+func list_item(
+  draft: EbayListingDraft,
+  client_id: String,
+  client_secret: Secret,
+  refresh_token: Secret
+) -> { offer_id: String, listing_id: String } {
+
+  seller = mint_seller_token(
+    client_id: client_id,
+    client_secret: client_secret,
+    refresh_token: refresh_token
+  )
+
+  ebay.Inventory.CreateOrReplaceInventoryItem(
+    access_token: seller.access_token,
+    sku: draft.sku,
+    content_language: default_content_language,
+    item: build_inventory_item(draft: draft)
+  )
+
+  offer = ebay.Inventory.CreateOffer(
+    access_token: seller.access_token,
+    content_language: default_content_language,
+    offer: build_offer(draft: draft)
+  )
+
+  published = ebay.Inventory.PublishOffer(
+    access_token: seller.access_token,
+    offer_id: offer.offer_id
+  )
+
+  return { offer_id: offer.offer_id, listing_id: published.listing_id }
+}
+
+func show_inventory(
+  client_id: String,
+  client_secret: Secret,
+  refresh_token: Secret,
+  limit: Int = default_inventory_items_limit
+) -> { total: Int, size: Int } {
+
+  seller = mint_seller_token(
+    client_id: client_id,
+    client_secret: client_secret,
+    refresh_token: refresh_token
+  )
+
+  page = ebay.Inventory.GetInventoryItems(
+    access_token: seller.access_token,
+    limit: limit,
+    offset: 0
+  )
+
+  return { total: page.total, size: page.size }
+}
