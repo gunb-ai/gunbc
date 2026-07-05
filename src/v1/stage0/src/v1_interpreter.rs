@@ -2987,7 +2987,7 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     let target_node = cast_target(node.clone());
     let target_name = authored_name_at(ctx.si(), target_node.clone());
 
-    if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
+    if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node.clone()) {
         return Ok(v);
     }
 
