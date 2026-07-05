@@ -104,7 +104,7 @@ import v1.compiler.infer_emit_info {
 }
 import v1.compiler.resolve { get_exported_names }
 import v1.compiler.infer_resolve { resolve_node, lookup_unit_variant_phantom_type, is_width_nat_type_literal }
-import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, collect_callable_refs }
+import v1.compiler.ownership { OwnershipProof, analyze_ownership, analyze_single_fold, build_movable_set, build_read_only_params, build_move_site_licenses, move_site_key, collect_callable_refs }
 import std.induction { SubValueUnknown, InductiveField }
 
 import v1.compiler.emit {
@@ -1570,11 +1570,13 @@ type OwnershipProofEntry {
   name: String
   proof: OwnershipProof
   param_names: Set<String>
+  move_sites: Map<String, Bool>
 }
 
 type OwnershipBuildResult {
   ownership_index: Map<String, Set<String>>
   read_only_params_index: Map<String, Set<String>>
+  move_sites_index: Map<String, Map<String, Bool>>
 }
 
 fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
@@ -1590,16 +1592,17 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
       )
       let si = m.type_env.source_indices
       let qualified = concat(authored_name_at(source_indices: si, node: m.module), ".", authored_name_at(source_indices: si, node: item))
-      OwnershipProofEntry { name: qualified, proof: analyze_ownership(func_name: authored_name_at(source_indices: si, node: item), params: item.params, body: item.body.value, si: si), param_names: pnames }
+      OwnershipProofEntry { name: qualified, proof: analyze_ownership(func_name: authored_name_at(source_indices: si, node: item), params: item.params, body: item.body.value, si: si), param_names: pnames, move_sites: build_move_site_licenses(body: item.body.value, si: si) }
     )
   )
-  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), read_only_params_index: empty_map() }, f: (acc, entry) =>
+  proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), read_only_params_index: empty_map(), move_sites_index: empty_map() }, f: (acc, entry) =>
     let read_only = if set_contains(callable_set, entry.proof.func_name) { empty_set() }
       else { build_read_only_params(proof: entry.proof, param_names: entry.param_names) }
-    let movable = build_movable_set(proof: entry.proof)
+    let movable = build_movable_set(proof: entry.proof, param_names: entry.param_names)
     OwnershipBuildResult {
       ownership_index: map_insert(acc.ownership_index, entry.name, movable),
-      read_only_params_index: map_insert(acc.read_only_params_index, entry.name, read_only)
+      read_only_params_index: map_insert(acc.read_only_params_index, entry.name, read_only),
+      move_sites_index: map_insert(acc.move_sites_index, entry.name, entry.move_sites)
     }
   )
 }
@@ -1618,6 +1621,8 @@ fn emit_rust(typed: ResolvedGraph) -> EmitResult {
     movable: empty_set(),
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_set(),
+    move_sites_index: ownership.move_sites_index,
+    move_sites: empty_map(),
     read_only_params_index: ownership.read_only_params_index,
     read_only_params: empty_set(),
     corpus_repr: base_info.corpus_repr
@@ -1718,6 +1723,8 @@ fn emit_module(typed_module: TypedModule, registry: Map<String, ItemInfo>) -> Te
     movable: base_info.movable,
     variant_to_enum: base_info.variant_to_enum,
     owned_bindings: empty_set(),
+    move_sites_index: base_info.move_sites_index,
+    move_sites: base_info.move_sites,
     read_only_params_index: base_info.read_only_params_index,
     read_only_params: empty_set(),
     corpus_repr: base_info.corpus_repr
@@ -3152,6 +3159,12 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
         Absent => empty_set()
       }
     }
+    let fn_move_sites = if item_is_tco { empty_map() } else {
+      match map_get(emit_info.move_sites_index, qualified_name) {
+        Present { value: m } => m
+        Absent => empty_map()
+      }
+    }
     let fn_emit_info = EmitGraphInfo {
       type_summaries: emit_info.type_summaries,
       recursive_type_set: emit_info.recursive_type_set,
@@ -3162,6 +3175,8 @@ fn emit_typed_item(item: Node, module_name: String, registry: Map<String, ItemIn
       movable: fn_movable,
       variant_to_enum: emit_info.variant_to_enum,
       owned_bindings: empty_set(),
+      move_sites_index: emit_info.move_sites_index,
+      move_sites: fn_move_sites,
       read_only_params_index: emit_info.read_only_params_index,
       read_only_params: fn_read_only,
       corpus_repr: emit_info.corpus_repr
@@ -4627,12 +4642,27 @@ fn variant_ref_self_wraps(name: String, enum_name: String, shared_types: Set<Str
   (name == "Empty" && enum_name == "FreeMonoid" && corpus_repr_is_host(corpus_repr: corpus_repr)) || set_contains(shared_types, enum_name)
 }
 
-fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
+fn move_licensed_at_site(emit_info: EmitGraphInfo, name: String, use_span: Int) -> Bool {
+  if use_span == 0 { false } else {
+    match map_get(emit_info.move_sites, move_site_key(name: name, span_start: use_span)) {
+      Present { value: v } => v && !set_contains(emit_info.read_only_params, name)
+      Absent => false
+    }
+  }
+}
+
+fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: InferredNode?, use_span: Int, shared_types: Set<String>, registry: Map<String, ItemInfo>, emit_info: EmitGraphInfo, source_indices: Map<String, NewlineIndex>) -> String {
   if name == "none" || name == "None" { emit_keyword(key: "null", target: Rust) }
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
 
-    let moves_by_value = set_contains(emit_info.movable, name)
+    let site_move_kind_allowed = match binding_kind {
+      Present { value: MatchBoundBinding } => false
+      Present { value: FunctionValueBinding } => false
+      Present { value: VariantValueBinding { parent_enum: _ } } => false
+      _ => true
+    }
+    let moves_by_value = set_contains(emit_info.movable, name) || (site_move_kind_allowed && move_licensed_at_site(emit_info: emit_info, name: name, use_span: use_span))
     let sharing = language_spec(target: Rust).sharing
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
     let ref_str = match variant_parent {
@@ -4927,7 +4957,7 @@ fn emit_rust_expr_var(expr: Node, registry: Map<String, ItemInfo>, shared_types:
   match expr.expr_data {
     ExprVar { binding_kind: binding_kind } =>
       let n = expr_var_name_at(texpr: expr, source_indices: source_indices)
-      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: source_indices)
+      emit_var_ref(name: n, binding_kind: binding_kind, resolved_type: expr.inferred, use_span: expr.span.start, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: source_indices)
     _ => emit_error_expr(message: "emit_rust_expr_var expected ExprVar", target: Rust)
   }
 }
@@ -5587,7 +5617,8 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let needs_unwrap = acc_name != "" && set_contains(emit_info.owned_bindings, acc_name)
       if needs_unwrap {
         let acc_ident = emit_ident(name: acc_name, target: Rust)
-        concat("|", params_str, "| { let ", acc_ident, " = Rc::try_unwrap(", acc_ident, ").unwrap_or_else(|rc| (*rc).clone()); ", body_str, " }")
+        let site = concat(lambda_expr.span.file, ":", to_string(value: lambda_expr.span.start), ":", acc_name)
+        concat("|", params_str, "| { let ", acc_ident, " = v1_rt::take_owned_counted(", acc_ident, ", \"", site, "\"); ", body_str, " }")
       } else {
         concat("|", params_str, "| ", body_str)
       }
@@ -5660,6 +5691,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               movable: emit_info.movable,
               variant_to_enum: emit_info.variant_to_enum,
               owned_bindings: set_insert(emit_info.owned_bindings, acc_name),
+              move_sites_index: emit_info.move_sites_index,
+              move_sites: emit_info.move_sites,
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params,
               corpus_repr: emit_info.corpus_repr
@@ -5684,6 +5717,8 @@ fn emit_rust_fold_method_call(method_call_node: Node, fold_accumulator_type: Nod
               movable: set_insert(emit_info.movable, acc_name),
               variant_to_enum: emit_info.variant_to_enum,
               owned_bindings: emit_info.owned_bindings,
+              move_sites_index: emit_info.move_sites_index,
+              move_sites: emit_info.move_sites,
               read_only_params_index: emit_info.read_only_params_index,
               read_only_params: emit_info.read_only_params,
               corpus_repr: emit_info.corpus_repr
@@ -6226,7 +6261,7 @@ fn emit_typed_match_arm(arm: Node, registry: Map<String, ItemInfo>, scope: Infer
     ExprVar { binding_kind: body_binding_kind } =>
       let body_name = expr_var_name_at(texpr: arm_b, source_indices: si)
       if variant_parent_from_binding_kind(binding_kind: body_binding_kind) != none {
-        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: Resolved { node: match_result_type } }, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si)
+        emit_var_ref(name: body_name, binding_kind: body_binding_kind, resolved_type: Present { value: Resolved { node: match_result_type } }, use_span: arm_b.span.start, shared_types: shared_types, registry: registry, emit_info: emit_info, source_indices: si)
       } else {
         emit_typed_expr(texpr: arm_b, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, fuel: 1024)
       }

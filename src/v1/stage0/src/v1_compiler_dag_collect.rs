@@ -214,38 +214,37 @@ pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagColle
                 let fp = if ((anchor.span.clone().start.clone() == 0)
                     && (anchor.span.clone().end.clone() == 0))
                 {
-                    v1_rt::substring(
-                        &key,
-                        6,
-                        v1_rt::string_length(&key),
-                    )
+                    v1_rt::substring(&key, 6, v1_rt::string_length(&key))
                 } else {
                     dag_node_fingerprint(anchor.clone())
                 };
                 Rc::new(vec![Rc::new(DagCollectPending {
-                anchor: anchor.clone(),
-                key: key.clone(),
-                fp: fp,
-            })])
-            .iter()
-            .cloned()
-            .fold(
-                acc.clone(),
-                |inner: Rc<DagCollectAcc>, pending: Rc<DagCollectPending>| {
-                    dag_collect_node_tree(
-                        pending.anchor.clone(),
-                        Rc::new(DagCollectAcc {
-                            seen: v1_rt::rc_map_insert(
-                                inner.seen.clone(),
-                                pending.key.clone(),
-                                pending.fp.clone(),
-                            ),
-                            order: v1_rt::rc_list_push(inner.order.clone(), pending.anchor.clone()),
-                            collision_errors: inner.collision_errors.clone(),
-                        }),
-                    )
-                },
-            )
+                    anchor: anchor.clone(),
+                    key: key.clone(),
+                    fp: fp,
+                })])
+                .iter()
+                .cloned()
+                .fold(
+                    acc.clone(),
+                    |inner: Rc<DagCollectAcc>, pending: Rc<DagCollectPending>| {
+                        dag_collect_node_tree(
+                            pending.anchor.clone(),
+                            Rc::new(DagCollectAcc {
+                                seen: v1_rt::rc_map_insert(
+                                    inner.seen.clone(),
+                                    pending.key.clone(),
+                                    pending.fp.clone(),
+                                ),
+                                order: v1_rt::rc_list_push(
+                                    inner.order.clone(),
+                                    pending.anchor.clone(),
+                                ),
+                                collision_errors: inner.collision_errors.clone(),
+                            }),
+                        )
+                    },
+                )
             }
         }
     }
