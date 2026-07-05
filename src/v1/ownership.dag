@@ -203,7 +203,7 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
         let walked = non_init |> fold(init: threaded_accum, f: (acc, a) =>
           walk_expr(accum: acc, texpr: arg_value(n: a), in_tail: false, si: si)
         )
-        UsageAccum { bindings: walked.bindings, fold_call_nodes: list_push(walked.fold_call_nodes, texpr) }
+        UsageAccum { bindings: walked.bindings, fold_call_nodes: list_push(walked.fold_call_nodes, texpr), touched: walked.touched }
       } else {
         let recv_accum = walk_expr(accum: accum, texpr: recv, in_tail: false, si: si)
         mc_args |> fold(init: recv_accum, f: (acc, a) =>
@@ -215,8 +215,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let scrut = match_scrutinee(texpr: texpr)
       let arm_nodes = match_arm_nodes(texpr: texpr)
       let s_accum = walk_expr(accum: accum, texpr: scrut, in_tail: false, si: si)
+      let seed = branch_seed(from: s_accum)
       let branch_accums = arm_nodes |> map(arm_node =>
-        walk_expr(accum: s_accum, texpr: arm_body(n: arm_node), in_tail: in_tail, si: si)
+        walk_expr(accum: seed, texpr: arm_body(n: arm_node), in_tail: in_tail, si: si)
       )
       merge_branch_usages(base: s_accum, branches: branch_accums)
 
@@ -224,10 +225,11 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let c = if_condition(texpr: texpr)
       let t = if_then_branch(texpr: texpr)
       let c_accum = walk_expr(accum: accum, texpr: c, in_tail: false, si: si)
-      let t_accum = walk_expr(accum: c_accum, texpr: t, in_tail: in_tail, si: si)
+      let seed = branch_seed(from: c_accum)
+      let t_accum = walk_expr(accum: seed, texpr: t, in_tail: in_tail, si: si)
       let e_accum = match if_else_branch(texpr: texpr) {
-        Present { value: eb } => walk_expr(accum: c_accum, texpr: eb, in_tail: in_tail, si: si)
-        Absent => c_accum
+        Present { value: eb } => walk_expr(accum: seed, texpr: eb, in_tail: in_tail, si: si)
+        Absent => seed
       }
       merge_branch_usages(base: c_accum, branches: [t_accum, e_accum])
 
@@ -265,10 +267,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let body = lambda_body(texpr: texpr)
       let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: accum, f: (acc, usage) =>
-        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
-        record_use(accum: a1, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
+        record_use(accum: acc, name: usage.name, kind: Read, site: "lambda-capture", binding_kind: none, span_start: 0)
       )
-      UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes) }
+      UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes), touched: binding_merged.touched }
 
     ExprForEach =>
       let coll = foreach_collection(texpr: texpr)
@@ -276,10 +277,9 @@ fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, Newl
       let body = foreach_body(texpr: texpr)
       let inner = walk_expr(accum: empty_usage_accum(), texpr: body, in_tail: false, si: si)
       let binding_merged = inner.bindings |> map_values |> fold(init: coll_accum, f: (acc, usage) =>
-        let a1 = record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
-        record_use(accum: a1, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
+        record_use(accum: acc, name: usage.name, kind: Read, site: "foreach-capture", binding_kind: none, span_start: 0)
       )
-      UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes) }
+      UsageAccum { bindings: binding_merged.bindings, fold_call_nodes: binding_merged.fold_call_nodes |> concat(inner.fold_call_nodes), touched: binding_merged.touched }
 
     _ =>
       texpr.children |> fold(init: accum, f: (acc, child) =>
@@ -569,7 +569,8 @@ fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<
     let p_name = authored_name_at(source_indices: si, node: p)
     UsageAccum {
       bindings: map_insert(acc.bindings, p_name, BindingUsage { name: p_name, binding_kind: none, consumers: [] }),
-      fold_call_nodes: acc.fold_call_nodes
+      fold_call_nodes: acc.fold_call_nodes,
+      touched: acc.touched
     }
   )
   let result = walk_expr(accum: initial, texpr: body, in_tail: true, si: si)
