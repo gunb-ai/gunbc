@@ -73,6 +73,7 @@ fn faithful_boxed_nat_field_access_still_dereferenced() {
     // boxed recursive coproduct, STILL derefs — proving the no-deref rule is grounded(host)-KEYED,
     // not a blanket removal that would also break legitimately-boxed fields.
     let body = fn_body(&emit_at("test.dag"), "get_nat");
+    eprintln!("DEBUG BODY:\n{body}");
     assert!(
         body.contains("(*"),
         "under FaithfulFreeMonoid a genuinely boxed Nat field must still deref, got:\n{body}"
