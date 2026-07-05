@@ -27,6 +27,12 @@ const REEXPORT: &str = "module test.reexport\nimport test.provider { B }\n";
 
 const CONSUMER: &str = "module test.consumer\nimport test.reexport { B }\nfn f() -> E { B }\n";
 
+type ResolvedGraphFixture = (
+    Rc<Vec<Rc<ResolvedModule>>>,
+    Rc<HashMap<String, Rc<NewlineIndex>>>,
+    Rc<InternTable>,
+);
+
 fn fixture_sources() -> Vec<Rc<SourceFile>> {
     resolve_imports_transitively("consumer.dag", CONSUMER)
         .into_iter()
@@ -40,13 +46,7 @@ fn fixture_sources() -> Vec<Rc<SourceFile>> {
         .collect()
 }
 
-fn resolved_module_graph(
-    sources: Rc<Vec<Rc<SourceFile>>>,
-) -> (
-    Rc<Vec<Rc<ResolvedModule>>>,
-    Rc<HashMap<String, Rc<NewlineIndex>>>,
-    Rc<InternTable>,
-) {
+fn resolved_module_graph(sources: Rc<Vec<Rc<SourceFile>>>) -> ResolvedGraphFixture {
     let frontend = front_end_sources(sources);
     let graph = frontend.graph.clone().expect("resolved module graph");
     let source_indices = frontend.newline_indices.iter().cloned().fold(
