@@ -18,9 +18,44 @@ use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
+use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+thread_local! {
+    static DAG_NODE_KEY_MEMO: RefCell<HashMap<usize, String>> = RefCell::new(HashMap::new());
+}
+
+fn dag_collect_key_memo_reset() {
+    DAG_NODE_KEY_MEMO.with(|memo| memo.borrow_mut().clear());
+}
+
+fn dag_node_key_uncached(anchor: Rc<Node>) -> String {
+    if ((anchor.span.clone().start.clone() == 0) && (anchor.span.clone().end.clone() == 0)) {
+        v1_rt::concat(
+            ":0..0:".to_string(),
+            dag_node_surface_fingerprint_memo(anchor.clone()),
+        )
+    } else {
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(anchor.span.clone().file.clone(), ":".to_string()),
+                        (anchor.span.clone().start.clone()).to_string(),
+                    ),
+                    "..".to_string(),
+                ),
+                (anchor.span.clone().end.clone()).to_string(),
+            ),
+            match anchor.ident.clone() {
+                Some(id) => v1_rt::concat(":".to_string(), (id.clone()).to_string()),
+                None => "".to_string(),
+            },
+        )
+    }
+}
 
 pub fn is_import_slot_node(n: Rc<Node>) -> bool {
     (import_is_all(n.clone())
@@ -82,32 +117,16 @@ pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
 }
 
 pub fn dag_node_key(node: Rc<Node>) -> String {
-    {
-        let anchor = dag_node_collection_anchor(node);
-        if ((anchor.span.clone().start.clone() == 0) && (anchor.span.clone().end.clone() == 0)) {
-            v1_rt::concat(
-                ":0..0:".to_string(),
-                dag_node_surface_fingerprint_memo(anchor.clone()),
-            )
-        } else {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(anchor.span.clone().file.clone(), ":".to_string()),
-                            (anchor.span.clone().start.clone()).to_string(),
-                        ),
-                        "..".to_string(),
-                    ),
-                    (anchor.span.clone().end.clone()).to_string(),
-                ),
-                match anchor.ident.clone() {
-                    Some(id) => v1_rt::concat(":".to_string(), (id.clone()).to_string()),
-                    None => "".to_string(),
-                },
-            )
+    let anchor = dag_node_collection_anchor(node);
+    let ptr = Rc::as_ptr(&anchor) as usize;
+    DAG_NODE_KEY_MEMO.with(|memo| {
+        if let Some(key) = memo.borrow().get(&ptr) {
+            return key.clone();
         }
-    }
+        let key = dag_node_key_uncached(anchor);
+        memo.borrow_mut().insert(ptr, key.clone());
+        key
+    })
 }
 
 pub fn dag_node_fingerprint(node: Rc<Node>) -> String {

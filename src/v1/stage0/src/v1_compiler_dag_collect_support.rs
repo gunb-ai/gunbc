@@ -29,13 +29,37 @@ pub fn dag_collect_fp_memo_reset() {
     DAG_NODE_SURFACE_FP_MEMO.with(|memo| memo.borrow_mut().clear());
 }
 
+fn dag_node_surface_fingerprint_compute(node: Rc<Node>) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let child_hashes = Rc::new({
+            let mut __result = Vec::new();
+            for c in node.children.clone().iter().cloned() {
+                __result.push(dag_node_surface_fingerprint_memo(c.clone()));
+            }
+            __result
+        });
+        let param_hashes = Rc::new({
+            let mut __result = Vec::new();
+            for p in node.params.clone().iter().cloned() {
+                __result.push(dag_node_surface_fingerprint_memo(p.clone()));
+            }
+            __result
+        });
+        let with_children = v1_rt::hash_combine(
+            dag_node_surface_leaf_mix(node.clone()),
+            child_subtree_hash(node.connective.clone(), child_hashes),
+        );
+        v1_rt::hash_combine(with_children, dag_node_seq_hash(param_hashes))
+    })
+}
+
 pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
     let ptr = Rc::as_ptr(&node) as usize;
     DAG_NODE_SURFACE_FP_MEMO.with(|memo| {
         if let Some(fp) = memo.borrow().get(&ptr) {
             return fp.clone();
         }
-        let fp = dag_node_surface_fingerprint(node);
+        let fp = dag_node_surface_fingerprint_compute(node);
         memo.borrow_mut().insert(ptr, fp.clone());
         fp
     })
@@ -195,31 +219,11 @@ pub fn dag_node_surface_leaf_mix(node: Rc<Node>) -> String {
 }
 
 pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let child_hashes = Rc::new({
-            let mut __result = Vec::new();
-            for c in node.children.clone().iter().cloned() {
-                __result.push(dag_node_surface_fingerprint_rec(c.clone()));
-            }
-            __result
-        });
-        let param_hashes = Rc::new({
-            let mut __result = Vec::new();
-            for p in node.params.clone().iter().cloned() {
-                __result.push(dag_node_surface_fingerprint_rec(p.clone()));
-            }
-            __result
-        });
-        let with_children = v1_rt::hash_combine(
-            dag_node_surface_leaf_mix(node.clone()),
-            child_subtree_hash(node.connective.clone(), child_hashes),
-        );
-        v1_rt::hash_combine(with_children, dag_node_seq_hash(param_hashes))
-    })
+    dag_node_surface_fingerprint_memo(node)
 }
 
 pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint_rec(node)
+    dag_node_surface_fingerprint_memo(node)
 }
 
 pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {
