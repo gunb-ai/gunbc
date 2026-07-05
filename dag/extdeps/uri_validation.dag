@@ -1,5 +1,6 @@
 module extdeps.uri_validation
 
+import v2.std.algebra { fold_list }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri {
   Uri, Https,
@@ -59,30 +60,36 @@ fn find_first_rejected_url(node: MarkupNode) -> RejectedUrl? {
   match node {
     TextNode { text: _ } => Absent
     ElementNode { tag: _, attrs, children } => {
-      let from_attr = fold(attrs,
-        init: Absent,
-        f: (acc, a) => match acc {
-          Present { value: r } => Present { value: r }
-          Absent =>
-            if attr_is_url_attr(name: a.name) {
-              match validate_href(url: a.value) {
-                SafeHref { url: _ } => Absent
-                RejectedHref { reason: rs } =>
-                  Present { value: RejectedUrl { url: a.value, reason: rs } }
+      let from_attr = fold_list(
+        xs: attrs,
+        empty: Absent,
+        cons: fn(acc, a) {
+          match acc {
+            Present { value: r } => Present { value: r }
+            Absent =>
+              if attr_is_url_attr(name: a.name) {
+                match validate_href(url: a.value) {
+                  SafeHref { url: _ } => Absent
+                  RejectedHref { reason: rs } =>
+                    Present { value: RejectedUrl { url: a.value, reason: rs } }
+                }
+              } else {
+                Absent
               }
-            } else {
-              Absent
-            }
+          }
         }
       )
       match from_attr {
         Present { value: r } => Present { value: r }
         Absent =>
-          fold(children,
-            init: Absent,
-            f: (acc, c) => match acc {
-              Present { value: r } => Present { value: r }
-              Absent => find_first_rejected_url(node: c)
+          fold_list(
+            xs: children,
+            empty: Absent,
+            cons: fn(acc, c) {
+              match acc {
+                Present { value: r } => Present { value: r }
+                Absent => find_first_rejected_url(node: c)
+              }
             }
           )
       }

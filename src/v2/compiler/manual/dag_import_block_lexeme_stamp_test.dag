@@ -7,6 +7,7 @@ import v2.extdeps.languages.dag {
   parse_import_block_idents,
   parse_production_emitted_identity_optional
 }
+import v2.std.algebra { fold_list }
 import v2.std.collection { Absent, List, Optional, Present, optional_present }
 import v2.std.diagnostic {
   Accepted,
@@ -40,10 +41,10 @@ fn dag_lex_stamp_parse_tree() -> Outcome<Node> {
 }
 
 fn dag_lex_stamp_find_import_node_in_children(tree: Node) -> Optional<Node> {
-  fold(
-    tree.children,
-    init: Absent,
-    f: fn(acc, edge) {
+  fold_list(
+    xs: tree.children,
+    empty: Absent,
+    cons: fn(acc, edge) {
       match acc {
         Present { value: _ } => acc
         Absent => dag_lex_stamp_find_import_node(tree: edge.target)

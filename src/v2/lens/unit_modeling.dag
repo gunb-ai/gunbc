@@ -1,6 +1,7 @@
 module v2.lens.unit_modeling
 import v2.lens.common.construction_justification { ConstructionJustification, RatchetForever }
 
+import v2.std.algebra { fold_list }
 import v2.std.node {
   Node,
   Edge,
@@ -136,17 +137,25 @@ fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
 fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
   match carrier.kind {
     TypeNode { connective: _ } =>
-      fold(carrier.children, init: Absent, f: fn(acc, edge) {
-        optional_prefer_first_present(left: acc, right: field_unit_violation(carrier: carrier, edge: edge))
-      })
+      fold_list(
+        xs: carrier.children,
+        empty: Absent,
+        cons: fn(acc, edge) {
+          optional_prefer_first_present(left: acc, right: field_unit_violation(carrier: carrier, edge: edge))
+        }
+      )
     ComputationNode { behavior: _ } => Absent
   }
 }
 
 fn subtree_first_unit_violation(node: Node) -> Optional<Diagnostic> {
-  fold(node_subtree_nodes(root: node), init: Absent, f: fn(acc, n) {
-    optional_prefer_first_present(left: acc, right: carrier_first_unit_violation(carrier: n))
-  })
+  fold_list(
+    xs: node_subtree_nodes(root: node),
+    empty: Absent,
+    cons: fn(acc, n) {
+      optional_prefer_first_present(left: acc, right: carrier_first_unit_violation(carrier: n))
+    }
+  )
 }
 
 fn unit_modeling_diagnostic(carrier: Node, name: Symbol) -> Diagnostic {

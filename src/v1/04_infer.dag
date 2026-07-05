@@ -6757,20 +6757,22 @@ fn compiler_kernel_type_env(source_indices: Map<String, NewlineIndex>, intern_ta
   TypeEnv { bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table }
 }
 
+fn shared_kernel_from_typed_modules(modules: List<TypedModule>) -> TypeEnv? {
+  match modules |> first {
+    Present { value: m } =>
+      match m.type_env.parents |> last {
+        Present { value: kernel } => Present { value: kernel }
+        Absent => shared_kernel_from_typed_modules(modules: modules |> skip(1))
+      }
+    Absent => Absent
+  }
+}
+
 fn rewire_type_env_parent_links(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> List<TypedModule> {
   let index = fold(modules, init: empty_map(), f: (acc, m) =>
     map_insert(acc, authored_name_at(source_indices: source_indices, node: m.module), m)
   )
-  let shared_kernel = match fold(modules, init: Absent, f: (acc, m) =>
-    match acc {
-      Present { value: _ } => acc
-      Absent =>
-        match m.type_env.parents |> last {
-          Present { value: kernel } => Present { value: kernel }
-          Absent => Absent
-        }
-    }
-  ) {
+  let shared_kernel = match shared_kernel_from_typed_modules(modules: modules) {
     Present { value: kernel } => kernel
     Absent =>
       match modules |> first {

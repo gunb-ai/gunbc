@@ -1,5 +1,6 @@
 module extdeps.bmc.redfish
 
+import v2.std.algebra { fold_list }
 import extdeps.bmc.types {
   BmcGroundedHostObservations,
   BmcTelemetrySnapshot,
@@ -80,10 +81,10 @@ fn redfish_system_inventory(
 }
 
 fn redfish_power_consumed_total_watts(controls: List<RedfishPowerControl>) -> Watt? {
-  fold(
-    controls,
-    init: Absent,
-    f: (acc, ctrl) =>
+  fold_list(
+    xs: controls,
+    empty: Absent,
+    cons: fn(acc, ctrl) {
       match ctrl.power_consumed_watts {
         Absent => acc
         Present { value: w } =>
@@ -92,14 +93,15 @@ fn redfish_power_consumed_total_watts(controls: List<RedfishPowerControl>) -> Wa
             Present { value: sum } => Present { value: watt(count: watt_count(sum) + watt_count(w)) }
           }
       }
+    }
   )
 }
 
 fn redfish_sensors_power_total_watts(sensors: List<RedfishSensorReading>) -> Watt? {
-  fold(
-    sensors,
-    init: Absent,
-    f: (acc, sensor) =>
+  fold_list(
+    xs: sensors,
+    empty: Absent,
+    cons: fn(acc, sensor) {
       match sensor {
         PowerSensor { name: _, watts: reading } =>
           match reading {
@@ -113,6 +115,7 @@ fn redfish_sensors_power_total_watts(sensors: List<RedfishSensorReading>) -> Wat
         TemperatureSensor { name: _, celsius: _ } => acc
         FanTachSensor { name: _, rpm: _ } => acc
       }
+    }
   )
 }
 
@@ -136,14 +139,15 @@ fn bmc_telemetry_power_consumed_watts(snapshot: BmcTelemetrySnapshot) -> Watt? {
 }
 
 fn redfish_primary_power_control(power: RedfishPowerSubsystem) -> RedfishPowerControl? {
-  fold(
-    power.controls,
-    init: Absent,
-    f: (acc, ctrl) =>
+  fold_list(
+    xs: power.controls,
+    empty: Absent,
+    cons: fn(acc, ctrl) {
       match acc {
         Present { value: _ } => acc
         Absent => Present { value: ctrl }
       }
+    }
   )
 }
 
