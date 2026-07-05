@@ -37,7 +37,7 @@ import v2.std.decl_index {
 }
 import v2.std.node { Node, content_hash }
 import v2.std.algebra { Empty, list_snoc_item, fold_list }
-import v2.std.collection { Present, Absent }
+import v2.std.collection { Present, Absent, optional_absent }
 import v2.std.logic { Bool }
 
 fn decl_kind_to_export_kind(kind: ItemKind) -> ExportKind? {
@@ -138,7 +138,7 @@ fn interface_hash_for_module_path(
 ) -> InterfaceHash? {
   fold_list(
     xs: summaries,
-    empty: Absent,
+    empty: optional_absent(),
     cons: fn(found, summary) {
       match found {
         Present { value: _ } => found
@@ -210,7 +210,7 @@ fn interface_summary_for_module(
 ) -> InterfaceSummary? {
   fold_list(
     xs: interface_summaries_live(pool_roots: pool_roots),
-    empty: Absent,
+    empty: optional_absent(),
     cons: fn(found, summary) {
       match found {
         Present { value: _ } => found

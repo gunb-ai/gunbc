@@ -4,7 +4,7 @@ import std.interface_summary { export_entry_fingerprint }
 import std.types { ContentHash, NonEmptyStr, List }
 import v2.lens.interface_summary { interface_summary_for_module }
 import v2.std.algebra { fold_list }
-import v2.std.collection { Present, Absent }
+import v2.std.collection { Present, Absent, optional_absent }
 import v2.std.logic { Bool }
 
 data interface_summary_firewall_host_scaffold_note: String = "Host-scaffold witness: reads the live tree via export_signature_facts and module_declaration_facts_live host intrinsics (_facts_live( pattern); floor:host_scaffold — never node-skipped on the CI floor."
@@ -19,7 +19,7 @@ fn export_fingerprint_for_gate(module_path: NonEmptyStr) -> ContentHash? {
     Present { value: summary } =>
       fold_list(
         xs: summary.exports,
-        empty: Absent,
+        empty: optional_absent(),
         cons: fn(found, entry) {
           match found {
             Present { value: _ } => found

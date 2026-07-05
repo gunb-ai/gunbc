@@ -1,7 +1,6 @@
 module tools.compile_dag_rust_emit_check_bridge
 
-import v2.std.text { String }
-import v2.std.algebra { List }
+import std.types { List, String }
 
 data compile_dag_rust_emit_check_bridge_note: String = "Host-scaffold bridge: self-recursive body dispatches to the compile_dag_rust_emit_check builtin at eval time (same pattern as v2.lens.inert_lens substrate stubs)."
 

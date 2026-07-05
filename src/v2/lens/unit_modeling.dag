@@ -139,7 +139,7 @@ fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
     TypeNode { connective: _ } =>
       fold_list(
         xs: carrier.children,
-        empty: Absent,
+        empty: optional_absent(),
         cons: fn(acc, edge) {
           optional_prefer_first_present(left: acc, right: field_unit_violation(carrier: carrier, edge: edge))
         }
@@ -151,7 +151,7 @@ fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
 fn subtree_first_unit_violation(node: Node) -> Optional<Diagnostic> {
   fold_list(
     xs: node_subtree_nodes(root: node),
-    empty: Absent,
+    empty: optional_absent(),
     cons: fn(acc, n) {
       optional_prefer_first_present(left: acc, right: carrier_first_unit_violation(carrier: n))
     }

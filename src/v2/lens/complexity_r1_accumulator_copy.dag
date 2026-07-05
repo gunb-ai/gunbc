@@ -22,7 +22,8 @@ import v2.std.collection {
   Optional,
   Present,
   Absent,
-  list_at_optional
+  list_at_optional,
+  optional_absent
 }
 import v2.std.diagnostic { Diagnostic, Textual, WholeFile, Unavailable, ExternalContractUnknown }
 import v2.std.integer { Int }
@@ -100,7 +101,7 @@ fn r1_some_copied_port_index(idx: Int) -> Optional<Int> {
 fn r1_copied_port_index(combiner: Symbol) -> Optional<Int> {
   fold_list(
     xs: copied_port_fact_registry,
-    empty: Absent,
+    empty: optional_absent(),
     cons: fn(acc, row) {
       match acc {
         Present { value: _ } => acc
