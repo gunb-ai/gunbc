@@ -32,7 +32,8 @@ import extdeps.languages.bash.program {
   lit, var_ref, command, assign, serialize_bash
 }
 import extdeps.git {
-  parse_git_diff_name_status_z,
+  git_diff_name_status_parse_state,
+  git_diff_name_status_parse_state_is_truncated,
   git_diff_status_entries_touched_paths,
   git_diff_status_entries_departed_paths,
   git_diff_status_entries_any_unknown
@@ -304,13 +305,18 @@ fn floor_name_status_diff_from_reconciliation(
           if code != 0 {
             NameStatusDiffFail { reason: "git diff --name-status -z exited nonzero: invalid ref or not a git repository" }
           } else {
-            let entries = parse_git_diff_name_status_z(raw: text)
-            if git_diff_status_entries_any_unknown(entries: entries) {
-              NameStatusDiffFail { reason: "unrecognized git diff --name-status status letter in observation" }
+            let state = git_diff_name_status_parse_state(raw: text)
+            if git_diff_name_status_parse_state_is_truncated(state: state) {
+              NameStatusDiffFail { reason: "git diff --name-status -z observation ended mid-record (truncated stream)" }
             } else {
-              NameStatusDiffOk {
-                changed_paths: git_diff_status_entries_touched_paths(entries: entries),
-                departed_paths: git_diff_status_entries_departed_paths(entries: entries)
+              let entries = state.entries
+              if git_diff_status_entries_any_unknown(entries: entries) {
+                NameStatusDiffFail { reason: "unrecognized git diff --name-status status letter in observation" }
+              } else {
+                NameStatusDiffOk {
+                  changed_paths: git_diff_status_entries_touched_paths(entries: entries),
+                  departed_paths: git_diff_status_entries_departed_paths(entries: entries)
+                }
               }
             }
           }

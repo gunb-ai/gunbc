@@ -156,14 +156,24 @@ fn git_diff_name_status_advance(state: GitDiffNameStatusParseState, token: Strin
   }
 }
 
-fn parse_git_diff_name_status_z(raw: String) -> List<GitDiffStatusEntry> {
+fn git_diff_name_status_parse_state(raw: String) -> GitDiffNameStatusParseState {
   let tokens = split(s: raw, delimiter: git_diff_name_status_field_separator)
-  let final_state = fold(
+  fold(
     tokens,
     init: GitDiffNameStatusParseState { pending: AwaitingStatusToken, entries: [] },
     f: git_diff_name_status_advance
   )
-  final_state.entries
+}
+
+fn parse_git_diff_name_status_z(raw: String) -> List<GitDiffStatusEntry> {
+  git_diff_name_status_parse_state(raw: raw).entries
+}
+
+fn git_diff_name_status_parse_state_is_truncated(state: GitDiffNameStatusParseState) -> Bool {
+  match state.pending {
+    AwaitingStatusToken => false
+    _ => true
+  }
 }
 
 fn git_diff_status_entry_touched_paths(entry: GitDiffStatusEntry) -> List<FilePath> {
@@ -200,19 +210,11 @@ fn git_diff_status_entries_departed_paths(entries: List<GitDiffStatusEntry>) -> 
   fold(entries, init: [], f: git_diff_status_departed_paths_step)
 }
 
-fn git_diff_status_entry_is_unknown(entry: GitDiffStatusEntry) -> Bool {
-  match entry.status {
-    DiffUnknownGitStatus { raw: _ } => true
-    _ => false
-  }
-}
-
-fn git_diff_status_unknown_step(acc: Bool, entry: GitDiffStatusEntry) -> Bool {
-  acc || git_diff_status_entry_is_unknown(entry: entry)
-}
-
 fn git_diff_status_entries_any_unknown(entries: List<GitDiffStatusEntry>) -> Bool {
-  fold(entries, init: false, f: git_diff_status_unknown_step)
+  let unknown_tag = discriminant(v: DiffUnknownGitStatus { raw: "" })
+  fold(entries, init: false, f: fn(acc, entry) {
+    acc || (discriminant(v: entry.status) == unknown_tag)
+  })
 }
 
 data default_remote: String = "origin"

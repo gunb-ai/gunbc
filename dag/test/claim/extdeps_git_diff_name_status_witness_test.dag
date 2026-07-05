@@ -13,6 +13,8 @@ import extdeps.git {
   DiffUnknownGitStatus,
   git_diff_name_status_field_separator,
   parse_git_diff_name_status_z,
+  git_diff_name_status_parse_state,
+  git_diff_name_status_parse_state_is_truncated,
   git_diff_status_entries_touched_paths,
   git_diff_status_entries_departed_paths,
   git_diff_status_entries_any_unknown
