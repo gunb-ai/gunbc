@@ -248,6 +248,19 @@ fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
   gunbc_ci_floor_only_script(spec: spec)
 }
 
+fn gunbc_ci_floor_run(spec: CiSpec) -> String {
+  concat(
+    concat(
+      concat("ROOT=", ci_repo_root_shell(), "\n"),
+      concat(git_fetch_script(policy: spec.diff_policy), "\n")
+    ),
+    concat(
+      concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
+      ci_floor_stamp_merge_admission_script()
+    )
+  )
+}
+
 fn gunbc_ci_rust_gate_invoke() -> String {
   ci_cargo_eagain_retry_script(
     command: concat(
