@@ -105,7 +105,7 @@ fn r1_copied_port_index(combiner: Symbol) -> Optional<Int> {
         if r1_row_matches_combiner(row: row, combiner: combiner) {
           r1_some_copied_port_index(idx: row.copied_port_index)
         } else {
-          Absent
+          optional_absent()
         }
     }
   })

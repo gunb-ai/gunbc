@@ -7137,17 +7137,13 @@ fn target_atom_realization_lookup_extract_row(
   catalog: List<TargetAtomRealization>,
   source_carrier: Node
 ) -> Optional<TargetAtomRealization> {
-  fold_list(
-    xs: catalog,
-    empty: optional_absent(),
-    cons: fn(acc, item) {
-      target_atom_realization_lookup_extract_row_step(
-        acc: acc,
-        row: item,
-        source_carrier: source_carrier
-      )
-    }
-  )
+  fold(catalog, init: optional_absent(), f: fn(acc, item) {
+    target_atom_realization_lookup_extract_row_step(
+      acc: acc,
+      row: item,
+      source_carrier: source_carrier
+    )
+  })
 }
 
 fn target_atom_realization_lookup_in_catalog(

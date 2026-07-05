@@ -261,7 +261,7 @@ fn mvp1_resolved_first_atom_with_binding(
       Absent =>
         match mvp1_atom_has_binding_identity(node: atom, wanted_binding: wanted_binding) {
           true => Present { value: atom }
-          false => Absent
+          false => optional_absent()
         }
     }
   }) {
