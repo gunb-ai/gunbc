@@ -50,7 +50,7 @@ O(n²) is the runtime `Rc::make_mut` deep-clone when the accumulator Rc is alias
 | 16 | tokenize per-token allocation | 01_tokenize.dag | const ×tokens | open | **MISS-constant** |
 | 17 | ownership doubled record_use (copy-paste 2×) | ownership.dag:251/262 | const 2× | open (follow-up) | **MISS-constant** |
 | 18 | analyze_single_fold walks each fold body 2× | ownership.dag:505 | const 2× | open | **MISS-constant** |
-| 19 | emit field-access type re-resolution per node | 05_emit_rust.dag:4724 | const ×nodes | post-cutover (ROOT D) | **MISS-constant** (correctness = #6266) |
+| 19 | emit field-access type re-resolution per node | 05_emit_rust.dag:4724 | const ×nodes | post-cutover (ROOT D) | **MISS-constant** (correctness = #6243 predicate; #6266 retracted as over-broad) |
 
 ## D — Borderline / bounded-inner
 | # | Finding | Location | Cost | Status | Verdict |
@@ -65,8 +65,7 @@ O(n²) is the runtime `Rc::make_mut` deep-clone when the accumulator Rc is alias
 | 23 | TypeBinding fuses import-resolution + termination-provenance | 04_env.dag:18 | §2/§3 concern-fusion |
 
 ## Correctness / §5 / dark-CI (other lenses — listed so the audit is complete)
-- field_is_boxed Rc-strip (1482 errors) — #6266. Ownership/type lens.
-- #6243 no-clone fast-path lying-predicate hole. Ownership/type lens.
+- field_access_field_is_boxed wrongly routes SHARED types down the deref path (1482 errors) — FIX = #6243 (drops the `is_recursive_type_by_name` disjunct). #6266 was a blanket `clone_value` template fix, RETRACTED (over-broad — broke Nat cycle-only boxing which genuinely needs the deref); #6266 is now byte-identical hygiene only. The single-predicate diagnosis (explains 1482/1667) stands. Ownership/type lens.
 - match-bound &ref emitted bare (use-after-move-adjacent) — snappy-newt wall. Ownership lens.
 - Silent clone-fallback = §5 absorbing-fallback. §5 lens.
 - #6235 resolver break / #6241 get-unregistered / #6242 registry+comment — all invisible-while-dark. Dark-CI class → merge-norm recommendation (regen self-compile receipt in corpus-touching PR bodies).
