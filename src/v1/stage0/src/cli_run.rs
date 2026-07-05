@@ -214,6 +214,84 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
     index
 }
 
+/// Resolve `import` statements transitively for an in-memory (not-on-disk) entry source
+/// against `module_index` (from `build_module_path_index`), reading each imported module's
+/// real file content from the workspace. This is the production-side counterpart of the
+/// v1 test-harness's `resolve_imports_transitively` — the same BFS over `extract_import_paths`,
+/// grounded on the same module index the floor already uses, so a `.dag` witness can compile
+/// an arbitrary in-memory program (not just files already on disk) without a second resolver.
+fn resolve_virtual_source_with_imports(
+    entry_path: &str,
+    entry_content: &str,
+    module_index: &HashMap<String, String>,
+) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
+    let ws = workspace_root();
+    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    let mut queue: Vec<String> = vec![entry_content.to_string()];
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            if seen.contains_key(&module_path) {
+                continue;
+            }
+            if let Some(rel_path) = module_index.get(&module_path) {
+                let abs_path = ws.join(rel_path);
+                if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
+                    seen.insert(
+                        module_path,
+                        Rc::new(v1_compiler_compile::SourceFile {
+                            path: rel_path.clone(),
+                            content: file_content.clone(),
+                        }),
+                    );
+                    queue.push(file_content);
+                }
+            }
+        }
+    }
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = seen.into_values().collect();
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.push(Rc::new(v1_compiler_compile::SourceFile {
+        path: entry_path.to_string(),
+        content: entry_content.to_string(),
+    }));
+    sources
+}
+
+/// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
+/// `.dag` program to Rust and check that the named emitted file contains every string in
+/// `includes` and none of `excludes`, with zero non-`complexity:` diagnostics. A real,
+/// green-by-execution consumer of the v1 Rust emitter (DESIGN §5 spec-without-execution) —
+/// not a re-derivation of the emitter's own formula, so it can go red on a real emission
+/// regression.
+pub fn compile_dag_rust_emit_check(
+    source: &str,
+    file_path: &str,
+    includes: &[String],
+    excludes: &[String],
+) -> bool {
+    let module_index = build_module_path_index_from_witness_roots();
+    let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
+    let result = v1_compiler_compile::compile_sources(
+        Rc::new(sources),
+        crate::v1_compiler_artifact::RenderTarget::Rust,
+    );
+    let hard_diagnostics = result
+        .diagnostics
+        .iter()
+        .filter(|d| !diagnostic_to_message(d.diagnostic.clone()).starts_with("complexity: "))
+        .count();
+    if hard_diagnostics != 0 {
+        return false;
+    }
+    match result.files.iter().find(|f| f.path == file_path) {
+        Some(f) => {
+            includes.iter().all(|n| f.content.contains(n.as_str()))
+                && excludes.iter().all(|n| !f.content.contains(n.as_str()))
+        }
+        None => false,
+    }
+}
+
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
@@ -1270,6 +1348,8 @@ fn reconcile_with_typed_cache(
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<Vec<Rc<ErrorNode>>>> = Vec::new();
+    let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
+        v1_rt::rc_empty_map();
 
     for resolved in graph.modules.iter().cloned() {
         let parent_result = v1_compiler_infer::collect_parent_envs(
@@ -1304,6 +1384,7 @@ fn reconcile_with_typed_cache(
                 let computed = v1_compiler_infer::typecheck_module(
                     resolved.clone(),
                     module_index.clone(),
+                    variant_surfaces.clone(),
                     source_indices.clone(),
                     intern_table.clone(),
                 );
@@ -1323,11 +1404,17 @@ fn reconcile_with_typed_cache(
         };
         let typed = tc_result.typed.clone();
         modules = v1_rt::rc_list_push(modules, typed.clone());
-        module_index = v1_rt::rc_map_insert(
-            module_index,
-            authored_name_at(source_indices.clone(), typed.module.clone()),
-            typed.clone(),
+        let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
+        variant_surfaces = v1_rt::rc_map_insert(
+            variant_surfaces.clone(),
+            typed_path.clone(),
+            v1_compiler_infer::build_variant_export_surface(
+                typed.clone(),
+                variant_surfaces.clone(),
+                source_indices.clone(),
+            ),
         );
+        module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
         item_registry = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());
         diag_chunks.push(parent_result.diagnostics.clone());
         diag_chunks.push(tc_result.diagnostics.clone());
@@ -9668,9 +9755,48 @@ fn test_migration_debt_stem_covered(v1_stem: &str, floor_stems: &[String]) -> bo
     floor_stems.iter().any(|floor_stem| floor_stem == v1_stem)
 }
 
+// Second stem source (typed retirement path): a `<stem>_retired.dag` declaration under the
+// corpus records a reviewed, typed retirement (delete-redundant / delete-low-value) for a v1
+// test module whose behavior does NOT migrate to an exact-stem floor `*_test.dag` witness. A
+// retired stem covers the module identically to a floor-witness stem — it excludes the module
+// from the debt roster and authorizes its delete through the delete-guard. The typed disposition
+// and its justification live in the `.dag` decl (`test.retirement.model`, single authority,
+// type-checked by the compile-clean gate); this guard reads only the filename stem, exactly as
+// it reads floor witnesses. A file counts only if it actually *constructs* a `TestModuleRetirement`
+// (the `TestModuleRetirement {` constructor form) — an empty stub, or one that merely imports the
+// type without declaring a retirement (`{ TestModuleRetirement }`), cannot silence the guard. The
+// compile-clean gate independently type-checks the constructed value against `test.retirement.model`.
+fn test_migration_retired_stems() -> Vec<String> {
+    let mut stems: Vec<String> = corpus_dag_files()
+        .into_iter()
+        .filter(|(_, content)| content.contains("TestModuleRetirement {"))
+        .filter_map(|(path, _)| {
+            let file_name = std::path::Path::new(&path)
+                .file_name()
+                .and_then(|n| n.to_str())?;
+            file_name
+                .strip_suffix("_retired.dag")
+                .map(|s| s.to_string())
+        })
+        .collect();
+    stems.sort();
+    stems.dedup();
+    stems
+}
+
+// The covered set consumed by both the debt roster and the delete-guard: floor-witness stems
+// (migrate path) unioned with retired stems (delete path). One union, two consumers.
+fn test_migration_covered_stems() -> Vec<String> {
+    let mut stems = test_migration_debt_floor_stems();
+    stems.extend(test_migration_retired_stems());
+    stems.sort();
+    stems.dedup();
+    stems
+}
+
 fn build_test_migration_debt_report() -> TestMigrationDebtReport {
     let dir = test_migration_debt_v1_test_dir();
-    let floor_stems = test_migration_debt_floor_stems();
+    let floor_stems = test_migration_covered_stems();
     let mut entries = Vec::new();
     let read_dir = match std::fs::read_dir(&dir) {
         Ok(rd) => rd,
@@ -9847,7 +9973,7 @@ fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, 
     if base_rev == head_rev {
         return Ok(Vec::new());
     }
-    let floor_stems = test_migration_debt_floor_stems();
+    let floor_stems = test_migration_covered_stems();
     let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base, &head)?;
     let mut violations = Vec::new();
     for path in deleted {
@@ -9915,6 +10041,38 @@ mod test_migration_debt_tests {
         let floor_stems = test_migration_debt_floor_stems();
         let stem = test_migration_debt_stem("cron_tag_test.rs");
         assert!(!test_migration_debt_stem_covered(&stem, &floor_stems));
+    }
+
+    // Green-by-execution for the typed retirement path: the demonstrator
+    // `dag/test/retirement/map_lookup_dual_dispatch_retired.dag` declares a `TestModuleRetirement`
+    // whose stem is `map_lookup_dual_dispatch`. That stem is NOT a floor-witness stem (its covering
+    // witness is `map_lookup_dual_dispatch_witness_test.dag`, stem `map_lookup_dual_dispatch_witness`),
+    // so the retirement is the *only* thing that covers it — the union must pick it up.
+    #[test]
+    fn retired_stem_is_covered_but_not_a_floor_stem() {
+        let stem = "map_lookup_dual_dispatch";
+        assert!(
+            test_migration_retired_stems().iter().any(|s| s == stem),
+            "retirement declaration must contribute its stem"
+        );
+        // Discriminating control: the same stem is NOT a floor-witness stem — so the coverage
+        // comes strictly from the retirement path, not an accidental floor match.
+        assert!(
+            !test_migration_debt_floor_stems().iter().any(|s| s == stem),
+            "stem must be covered only via retirement, not a floor witness"
+        );
+        assert!(test_migration_covered_stems().iter().any(|s| s == stem));
+    }
+
+    // The retired module no longer appears in the debt roster (the retirement excluded it).
+    #[test]
+    fn retired_module_is_not_debt() {
+        assert!(
+            !test_migration_debt_module_names()
+                .iter()
+                .any(|m| m == "map_lookup_dual_dispatch_test.rs"),
+            "a retired module must drop out of the debt roster"
+        );
     }
 }
 

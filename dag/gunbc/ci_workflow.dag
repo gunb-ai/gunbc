@@ -7,6 +7,8 @@ import gunbc.ci_workflow_expressions {
 import gunbc.ci_spec {
   CiSpec, gunbc_ci_spec, gunbc_ci_workflow_run, gunbc_ci_rust_job_run,
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
+  ci_release_build_script,
+  gunbc_ci_rust_gate_only_script,
 }
 import gunbc.merge_admission_produce {
   ci_merge_admission_gate_script,
@@ -152,6 +154,20 @@ fn ci_floor_spec_from_roster() -> CiSpec {
   }
 }
 
+fn ci_release_build_step() -> Step {
+  RunStep {
+    name: Present { value: "Build release bins (claim_executor + gunbc)" },
+    id: none,
+    run: ci_release_build_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_rust_gate_step_timeout_minutes }
+  }
+}
+
 fn ci_floor_step() -> Step {
   RunStep {
     name: Present { value: "gunbc ci (.dag witnesses + gates)" },
@@ -162,7 +178,7 @@ fn ci_floor_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: Present { value: gunbc_ci_job_timeout_policy_minutes }
   }
 }
 
@@ -187,7 +203,7 @@ fn ci_merge_admission_gate_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
 }
 
@@ -216,7 +232,7 @@ fn ci_nextest_install_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
 }
 
@@ -230,7 +246,7 @@ fn ci_rust_gate_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: Present { value: gunbc_ci_rust_gate_step_timeout_minutes }
   }
 }
 
@@ -250,7 +266,7 @@ fn ci_rust_cgroup_measurement_step() -> Step {
     working_directory: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
   }
 }
 
@@ -270,8 +286,22 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 
 data gunbc_ci_job_timeout_policy_minutes: Int = 10
 
+data gunbc_ci_rust_gate_step_timeout_minutes: Int = 15
+
+data gunbc_ci_aux_step_timeout_minutes: Int = 5
+
+data gunbc_ci_prelude_allowance_minutes: Int = 5
+
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
-  reason: "gunbc CI policy (operator, 2026-07-04): CI jobs time out at 10 minutes - a deliberate INVERSION of the prior ratchet (30min alarm -> 50min -> 90min, each raise buying headroom for the unfixed resolve cost; at 90min the queue backed up and runs still timed out delivering zero signal). The budget is now a forcing function: the floor must FIT it, and the itemized [t+Xs] phase marks say exactly which phase does not (measured 2026-07-04: plan-closure resolve was 15min+, whole-tree compile-clean ~48min on the ARM fleet - both resolve-dominated; see the floor-shared-compute-memoization plan). Every job stays red-by-timeout until resolve memoization lands; that red is honest, unlike a 90min lane that never completed. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default - workflow-layer policy on top."
+  reason: "gunbc CI budget semantics (operator ruling, 2026-07-05): any timed-out gate is a FAILURE, not a silent pass - no verdict == failure. The budget is enforced at the STEP level (GitHub Actions step timeout-minutes fails the step, conclusion=failure, logs + [t+Xs] phase marks intact), never as a job-level kill: the prior 10-minute job-kill policy (2026-07-04) produced conclusion=cancelled, which every consumer treated as not-red - operationally a silent pass. Receipt: the last successful main ci run was 2026-07-01T01:00Z; 29 of the next 30 main runs were cancelled; four days of merges landed with zero gate verdicts while two latent reds entered the tree (04_resolve.dag emit-fresh hard diagnostics; inert_lens witness-builtin scope errors). Budgets stay SHORT by operator ruling (2026-07-05, twice confirmed): floor 10 minutes, rust gate 15, aux steps 5 - the forcing function survives, only its breach semantics changed. Until resolver-graph work (S2a node store, compile-clean scoping) fits the floor inside 10 minutes, main runs red-by-STEP-FAILURE with [t+Xs] phase attribution: an honest, countable deficit signal, unlike the cancelled-silence it replaces. Job-level timeouts are retained only as per-job backstops = that job's step-budget sum + prelude allowance: step timeouts start at step start, so a tighter backstop could job-cancel (silence) before a step fails red, resurrecting the exact defect this policy removes. Every post-prelude step is step-budgeted and fails RED first; a backstop firing means a wedged prelude - itself a mechanism bug to investigate, never a gate verdict. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default - workflow-layer policy on top."
+}
+
+fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_rust_gate_step_timeout_minutes + gunbc_ci_job_timeout_policy_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
+
+fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_rust_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
@@ -300,13 +330,13 @@ fn ci_job() -> Job {
     id: "ci",
     name: none,
     runner: gunbc_ci_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_floor_step(), ci_merge_admission_gate_step()]),
+    steps: concat(ci_prelude_steps(), [ci_release_build_step(), ci_floor_step(), ci_merge_admission_gate_step()]),
     needs: [],
     env: none,
     outputs: none,
     if_condition: none,
     strategy: none,
-    timeout_minutes: Present { value: gunbc_ci_job_timeout_policy_minutes },
+    timeout_minutes: Present { value: gunbc_ci_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none
   }
@@ -323,7 +353,7 @@ fn rust_tests_job() -> Job {
     outputs: none,
     if_condition: none,
     strategy: none,
-    timeout_minutes: Present { value: gunbc_ci_job_timeout_policy_minutes },
+    timeout_minutes: Present { value: gunbc_ci_rust_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none
   }

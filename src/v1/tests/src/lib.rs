@@ -81,8 +81,6 @@ mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
 mod map_literal_string_key_test;
 #[cfg(test)]
-mod map_lookup_dual_dispatch_test;
-#[cfg(test)]
 mod measure_alias_ctor_test;
 #[cfg(test)]
 mod measure_field_access_test;
@@ -127,6 +125,8 @@ mod route_a_emit_fresh_cargo_green_test;
 #[cfg(test)]
 mod route_a_final_six_test;
 #[cfg(test)]
+mod shared_recursive_field_access_test;
+#[cfg(test)]
 mod shell_transport_stdin_wet_test;
 #[cfg(test)]
 mod source_root_ingest_manifest_host_test;
@@ -152,6 +152,8 @@ mod union_resolve_receipts_test;
 mod v1_compiler_lib_test;
 #[cfg(test)]
 mod value_carrier_swap_test;
+#[cfg(test)]
+mod variant_export_surface_witness_test;
 #[cfg(test)]
 mod variant_owner_disambiguation_test;
 #[cfg(test)]

@@ -1,0 +1,122 @@
+module test.claim.ownership_movable
+
+import v1.compiler.ownership { build_movable_set, make_decision, BindingUsage, EdgeClassification, EdgeKind, OwnershipProof, OwnershipDecision, MoveLicenseAccum, record_whole_use_site, record_field_use_site, merge_branch_licenses, move_site_key }
+
+fn proof_one(name: String, consumers: List<EdgeClassification>) -> OwnershipProof {
+  let usage = BindingUsage { name: name, binding_kind: none, consumers: consumers }
+  OwnershipProof {
+    func_name: "fixture",
+    bindings: map_insert(empty_map(), name, usage),
+    decisions: [],
+    fold_acc_unwrap: []
+  }
+}
+
+fn edge(k: EdgeKind, s: String) -> EdgeClassification {
+  EdgeClassification { kind: k, site: s, span_start: 0 }
+}
+
+fn movable_of(proof: OwnershipProof, name: String) -> Bool {
+  set_contains(build_movable_set(proof: proof, param_names: set_insert(empty_set(), name)), name)
+}
+
+fn witness_read_then_consume_param_is_movable() -> Bool {
+  let proof = proof_one(name: "acc", consumers: [edge(k: Projected, s: ".seen"), edge(k: Consumed, s: "return")])
+  movable_of(proof: proof, name: "acc")
+}
+
+fn witness_double_consume_is_not_movable() -> Bool {
+  let proof = proof_one(name: "x", consumers: [edge(k: Consumed, s: "a"), edge(k: Consumed, s: "b")])
+  movable_of(proof: proof, name: "x") == false
+}
+
+fn witness_zero_consume_is_not_movable() -> Bool {
+  let proof = proof_one(name: "r", consumers: [edge(k: Read, s: "a"), edge(k: Projected, s: ".f")])
+  movable_of(proof: proof, name: "r") == false
+}
+
+fn witness_whole_read_then_consume_is_not_movable() -> Bool {
+  let proof = proof_one(name: "x", consumers: [edge(k: Read, s: "read"), edge(k: Consumed, s: "return")])
+  movable_of(proof: proof, name: "x") == false
+}
+
+fn witness_threaded_then_consume_is_not_movable() -> Bool {
+  let proof = proof_one(name: "x", consumers: [edge(k: Threaded, s: "fold_init"), edge(k: Consumed, s: "return")])
+  movable_of(proof: proof, name: "x") == false
+}
+
+fn empty_license_accum() -> MoveLicenseAccum {
+  MoveLicenseAccum { live: empty_map(), licensed: empty_map() }
+}
+
+fn licensed_at(acc: MoveLicenseAccum, name: String, span: Int) -> Bool {
+  match map_get(acc.licensed, move_site_key(name: name, span_start: span)) {
+    Present { value: v } => v
+    Absent => false
+  }
+}
+
+fn witness_site_last_whole_use_is_licensed() -> Bool {
+  let acc = record_whole_use_site(acc: empty_license_accum(), name: "acc", span_start: 40, in_capture: false)
+  licensed_at(acc: acc, name: "acc", span: 40)
+}
+
+fn witness_site_zero_span_fails_closed() -> Bool {
+  let acc = record_whole_use_site(acc: empty_license_accum(), name: "acc", span_start: 0, in_capture: false)
+  licensed_at(acc: acc, name: "acc", span: 0) == false
+}
+
+fn witness_site_capture_fails_closed() -> Bool {
+  let acc = record_whole_use_site(acc: empty_license_accum(), name: "acc", span_start: 40, in_capture: true)
+  licensed_at(acc: acc, name: "acc", span: 40) == false
+}
+
+fn witness_site_earlier_use_before_whole_is_not_licensed() -> Bool {
+  let later = record_whole_use_site(acc: empty_license_accum(), name: "acc", span_start: 40, in_capture: false)
+  let earlier = record_whole_use_site(acc: later, name: "acc", span_start: 10, in_capture: false)
+  licensed_at(acc: earlier, name: "acc", span: 40) && licensed_at(acc: earlier, name: "acc", span: 10) == false
+}
+
+fn witness_site_field_move_then_whole_use_same_path_blocked() -> Bool {
+  let later_whole = record_whole_use_site(acc: empty_license_accum(), name: "acc", span_start: 40, in_capture: false)
+  let earlier_field = record_field_use_site(acc: later_whole, name: "acc", field: "seen", span_start: 10, in_capture: false)
+  licensed_at(acc: earlier_field, name: "acc", span: 10) == false
+}
+
+fn witness_site_distinct_field_moves_both_licensed() -> Bool {
+  let later = record_field_use_site(acc: empty_license_accum(), name: "acc", field: "seen", span_start: 40, in_capture: false)
+  let earlier = record_field_use_site(acc: later, name: "acc", field: "count", span_start: 10, in_capture: false)
+  licensed_at(acc: earlier, name: "acc", span: 40) && licensed_at(acc: earlier, name: "acc", span: 10)
+}
+
+fn witness_site_same_field_twice_only_last_licensed() -> Bool {
+  let later = record_field_use_site(acc: empty_license_accum(), name: "acc", field: "seen", span_start: 40, in_capture: false)
+  let earlier = record_field_use_site(acc: later, name: "acc", field: "seen", span_start: 10, in_capture: false)
+  licensed_at(acc: earlier, name: "acc", span: 40) && licensed_at(acc: earlier, name: "acc", span: 10) == false
+}
+
+fn witness_site_branch_licenses_are_per_path() -> Bool {
+  let arm_a = record_whole_use_site(acc: empty_license_accum(), name: "acc", span_start: 40, in_capture: false)
+  let arm_b = record_field_use_site(acc: empty_license_accum(), name: "acc", field: "seen", span_start: 50, in_capture: false)
+  let merged = merge_branch_licenses(branches: [arm_a, arm_b])
+  let before = record_whole_use_site(acc: merged, name: "acc", span_start: 10, in_capture: false)
+  licensed_at(acc: before, name: "acc", span: 40)
+    && licensed_at(acc: before, name: "acc", span: 50)
+    && licensed_at(acc: before, name: "acc", span: 10) == false
+}
+
+test fn ownership_movable_witnesses() -> Bool {
+  witness_read_then_consume_param_is_movable()
+    && witness_double_consume_is_not_movable()
+    && witness_zero_consume_is_not_movable()
+    && witness_whole_read_then_consume_is_not_movable()
+    && witness_threaded_then_consume_is_not_movable()
+    && witness_site_last_whole_use_is_licensed()
+    && witness_site_zero_span_fails_closed()
+    && witness_site_capture_fails_closed()
+    && witness_site_earlier_use_before_whole_is_not_licensed()
+    && witness_site_field_move_then_whole_use_same_path_blocked()
+    && witness_site_distinct_field_moves_both_licensed()
+    && witness_site_same_field_twice_only_last_licensed()
+    && witness_site_branch_licenses_are_per_path()
+}
