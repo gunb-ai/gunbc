@@ -56,12 +56,21 @@ data ci_cache_key_template: ExpressionTemplate = {
     LiteralText { text: "-" },
     Interpolation { expression: runner_arch() },
     LiteralText { text: "-" },
-    Interpolation { expression: ci_cache_hash_files() }
+    Interpolation { expression: ci_cache_hash_files() },
+    LiteralText { text: "-" },
+    Interpolation { expression: ContextAccess { context: Github, path: ["sha"] } }
   ]
 }
 
 data ci_cache_restore_keys_template: ExpressionTemplate = {
   segments: [
+    LiteralText { text: "cargo-ci-" },
+    Interpolation { expression: runner_os() },
+    LiteralText { text: "-" },
+    Interpolation { expression: runner_arch() },
+    LiteralText { text: "-" },
+    Interpolation { expression: ci_cache_hash_files() },
+    LiteralText { text: "-\n" },
     LiteralText { text: "cargo-ci-" },
     Interpolation { expression: runner_os() },
     LiteralText { text: "-" },

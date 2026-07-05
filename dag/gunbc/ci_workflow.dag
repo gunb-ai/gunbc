@@ -270,10 +270,10 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 
 data gunbc_ci_job_timeout_policy_minutes: Int = 10
 
-data gunbc_ci_floor_job_timeout_policy_minutes: Int = 20
+data gunbc_ci_floor_job_timeout_policy_minutes: Int = 30
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
-  reason: "gunbc CI timeout policy (operator, 2026-07-04/05): two lanes, one disposition. rust_tests + deploy stay at gunbc_ci_job_timeout_policy_minutes (10) — deliberate inversion of the prior 30→50→90min ratchet; the budget is a forcing function until resolve memoization lands (measured 2026-07-04: plan-closure resolve 15min+, compile-clean ~48min on ARM). ci floor alone uses gunbc_ci_floor_job_timeout_policy_minutes (20): not a ratchet step — ci needs rust_tests (warm target/ cache), then rebuild + batch-1 dag_compile_clean; 10min killed mid-compile with zero floor signal (PR #6239, 2026-07-05). Dissolves when floor-shared-compute-memoization lands and batch-1 fits 10min; then floor reverts to the single 10min constant. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default."
+  reason: "gunbc CI timeout policy (operator, 2026-07-04/05): two lanes, one disposition. rust_tests + deploy stay at gunbc_ci_job_timeout_policy_minutes (10) — deliberate inversion of the prior 30→50→90min ratchet; the budget is a forcing function until resolve memoization lands (measured 2026-07-04: plan-closure resolve 15min+, compile-clean ~48min on ARM). ci floor alone uses gunbc_ci_floor_job_timeout_policy_minutes (30): interim budget — ci needs rust_tests then batch-1 dag_compile_clean; 20min still timed out mid-batch-1 after a 14min cold cargo rebuild (PR #6239, 2026-07-05). Cargo cache key scopes github.sha so rust_tests saves warmed target/ and ci restores it (lockfile-only keys skipped save on hit, forcing cold rebuild). Dissolves when floor-shared-compute-memoization lands and batch-1 fits 10min; then floor reverts to the single 10min constant. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default."
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
