@@ -4656,7 +4656,13 @@ fn emit_var_ref(name: String, binding_kind: VarBindingKind?, resolved_type: Infe
   else if name == "true" || name == "false" { emit_keyword(key: name, target: Rust) }
   else {
 
-    let moves_by_value = set_contains(emit_info.movable, name) || move_licensed_at_site(emit_info: emit_info, name: name, use_span: use_span)
+    let site_move_kind_allowed = match binding_kind {
+      Present { value: MatchBoundBinding } => false
+      Present { value: FunctionValueBinding } => false
+      Present { value: VariantValueBinding { parent_enum: _ } } => false
+      _ => true
+    }
+    let moves_by_value = set_contains(emit_info.movable, name) || (site_move_kind_allowed && move_licensed_at_site(emit_info: emit_info, name: name, use_span: use_span))
     let sharing = language_spec(target: Rust).sharing
     let variant_parent = effective_variant_parent(name: name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
     let ref_str = match variant_parent {

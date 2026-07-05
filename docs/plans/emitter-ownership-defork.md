@@ -124,6 +124,29 @@ Emitter changes (all *readers* of the proof):
   (`analyze_single_fold` stops being consulted at emit time — the proof rows in
   `OwnershipProof.fold_acc_unwrap` already exist and become the only surface).
 
+## Gen-2 adjudication verdict (2026-07-05, pre-restoration seed, differential)
+
+Method: gen-1 (old binary emitting this corpus) vs gen-2 (gen-1 binary — which runs this
+branch's emit logic — re-emitting the corpus), both installed at identical compiler-file
+scope over the committed std/extdeps periphery, with identical mechanical debt patches
+(the deref-boxing and Rc-shape classes tracked by the restoration lane). Receipts in the
+session scratchpad (`gen1-errors.txt`, `gen2-errors.txt`, `gen2-final-state`).
+
+- **Zero E0382** (use-after-move / borrow-of-moved) in gen-2 — the per-site last-use
+  licenses moved thousands of sites without a single ownership violation.
+- Emitted-clone counts drop ~10%: `infer.rs` 4768→4294, `emit_rust.rs` 6543→5805,
+  `ownership.rs` 407→361, `resolve.rs` 157→145.
+- The silent fold fallback is **gone from emitted output**: `unwrap_or_else(|rc|
+  (*rc).clone())` 2→0 in `ownership.rs`, replaced by located `take_owned_counted` calls;
+  gen-2's `v1_rt.rs` carries the counted helper from the template.
+- Exactly one defect class was mine (+20 errors over the 112-error pre-existing-drift
+  control, all one shape): a **match-bound reference binding** (`&i64`/`&String` from
+  borrow patterns) licensed at its last use emitted the bare ident, but the `.clone()` it
+  replaced was doubling as the deref. Wall (landed here): `emit_var_ref` refuses per-site
+  moves for `MatchBoundBinding` / `FunctionValueBinding` / `VariantValueBinding` —
+  per-name `movable` already excluded them via `is_owned_local`. RED control at next
+  regen: the `(n > 0)` sites in `complexity.rs` (gen-1: 0, gen-2: 3) must disappear.
+
 ## §5 conversion of the fallback [lands with increment 2, first in sequence]
 
 Replace the emitted `Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())` with a runtime
