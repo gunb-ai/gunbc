@@ -1000,7 +1000,6 @@ pub fn enrich_kernel_type(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<KernelTypeBuild> {
     {
-        if std::env::var_os("GUNBC_DEBUG_ENRICH").is_some() { eprintln!("[enrich_kernel_type] name={:?} connective={:?} children={}", name, base.connective, base.children.len()); }
         let profile = v1_rt::map_get(&kernel_algebra_profile(), name.clone());
         match profile {
             Some(p) => {
