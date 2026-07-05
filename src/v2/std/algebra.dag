@@ -706,6 +706,32 @@ fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   list_append(left: xs, right: Cons { head: item, tail: Empty })
 }
 
+type CopiedPortFact {
+  combiner: Symbol
+  copied_port_index: Int
+}
+
+data copied_port_fact_list_append_left: CopiedPortFact = CopiedPortFact {
+  combiner: ^list_append,
+  copied_port_index: 0
+}
+
+data copied_port_fact_list_snoc_left: CopiedPortFact = CopiedPortFact {
+  combiner: ^list_snoc_item,
+  copied_port_index: 0
+}
+
+data copied_port_fact_map_merge_overlay: CopiedPortFact = CopiedPortFact {
+  combiner: ^map_merge,
+  copied_port_index: 1
+}
+
+data copied_port_fact_registry: FreeMonoid<CopiedPortFact> = [
+  copied_port_fact_list_append_left,
+  copied_port_fact_list_snoc_left,
+  copied_port_fact_map_merge_overlay
+]
+
 fn bag_eq<T>(xs: FreeMonoid<T>, ys: FreeMonoid<T>, eq: fn(T, T) -> Bool) -> Bool {
   if length(xs: xs) != length(xs: ys) {
     false
