@@ -13,7 +13,8 @@ fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {
     token_stream_digest: tokens,
     entries: empty_map(),
     memo_hits: 0,
-    memo_misses: 0
+    memo_misses: 0,
+    memo_lookup_calls: 0
   }
 }
 

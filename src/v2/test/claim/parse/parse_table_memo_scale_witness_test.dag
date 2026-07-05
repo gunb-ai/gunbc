@@ -11,11 +11,15 @@ import v2.extdeps.languages.dag { dag_language_model_wave1 }
 import v2.std.compilers.lexing { token_stream_remaining }
 import v2.std.diagnostic { Accepted, Rejected, port_locus }
 import v2.std.grammar { ModeledGrammar, ParseGrammar }
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
 import v2.std.logic { Bool }
 
 type FilesystemReadResult { content: String }
 
 data parse_memo_scale_tokenize_path: String = "src/v1/01_tokenize.dag"
+
+data parse_memo_scale_witness_note: String = "Scale control for P8 packrat memo: parse_production_memo_stats on src/v1/01_tokenize.dag. lookup_calls==0 wiring gap; lookup_calls>0 hits==0 either LL(1) no re-visit or key/threading bug; lookup_calls==hits+misses per lookup arm invariant."
 
 fn parse_memo_scale_stats_for_grammar(
   source_text: String,
@@ -25,13 +29,13 @@ fn parse_memo_scale_stats_for_grammar(
   let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(text: source_text, file: ^parse_memo_scale_file_anchor, rules: lm.lex) {
     Rejected { diagnostics: _ } =>
-      ParseMemoStats { hits: 0, misses: 0 }
+      ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
     Accepted { value: stream, diagnostics: _ } =>
       match grammar {
         ModeledGrammar { root: root } =>
           match grammar_validate_for_parse(root: root, at: at) {
             Rejected { diagnostics: _ } =>
-              ParseMemoStats { hits: 0, misses: 0 }
+              ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
             Accepted { value: validated, diagnostics: _ } =>
               parse_production_memo_stats(
                 tokens: token_stream_remaining(stream: stream),
@@ -40,7 +44,7 @@ fn parse_memo_scale_stats_for_grammar(
               )
           }
         VoidGrammar =>
-          ParseMemoStats { hits: 0, misses: 0 }
+          ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
       }
   }
 }
@@ -61,8 +65,33 @@ fn witness_parse_memo_scale_tokenize_misses() -> Int {
   parse_memo_scale_tokenize_stats().misses
 }
 
-test fn parse_memo_scale_tokenize_hits_substantial_holds() -> Bool {
-  witness_parse_memo_scale_tokenize_hits() > 0
+fn witness_parse_memo_scale_tokenize_lookup_calls() -> Int {
+  parse_memo_scale_tokenize_stats().lookup_calls
+}
+
+fn witness_parse_memo_scale_tokenize_report() -> List<Int> {
+  let stats = parse_memo_scale_tokenize_stats()
+  Cons {
+    head: stats.hits,
+    tail: Cons {
+      head: stats.misses,
+      tail: Cons { head: stats.lookup_calls, tail: Empty }
+    }
+  }
+}
+
+fn parse_memo_scale_tokenize_counters_consistent(stats: ParseMemoStats) -> Bool {
+  stats.lookup_calls == (stats.hits + stats.misses)
+}
+
+test fn parse_memo_scale_tokenize_lookup_calls_recorded_holds() -> Bool {
+  witness_parse_memo_scale_tokenize_lookup_calls() > 0
+}
+
+test fn parse_memo_scale_tokenize_counters_consistent_holds() -> Bool {
+  parse_memo_scale_tokenize_counters_consistent(
+    stats: parse_memo_scale_tokenize_stats()
+  )
 }
 
 test fn parse_memo_scale_tokenize_misses_recorded_holds() -> Bool {

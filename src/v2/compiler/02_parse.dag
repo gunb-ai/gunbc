@@ -121,6 +121,7 @@ type ParseStampResult {
 type ParseMemoStats {
   hits: Int
   misses: Int
+  lookup_calls: Int
 }
 
 type ParseMemoEntry
@@ -177,6 +178,7 @@ type ParseTableRealization {
   entries: Map<ParsePositionKey, ParseMemoEntry>
   memo_hits: Int
   memo_misses: Int
+  memo_lookup_calls: Int
 }
 
 type ParseTable = ParseTableRealization
@@ -270,7 +272,24 @@ fn parse_expr_result_table(result: ParseExprResult) -> ParseTable {
 }
 
 fn parse_table_memo_stats(table: ParseTable) -> ParseMemoStats {
-  ParseMemoStats { hits: table.memo_hits, misses: table.memo_misses }
+  ParseMemoStats {
+    hits: table.memo_hits,
+    misses: table.memo_misses,
+    lookup_calls: table.memo_lookup_calls
+  }
+}
+
+fn parse_table_record_lookup_call(table: ParseTable) -> ParseTable {
+  ParseTableRealization {
+    artifact_kind: table.artifact_kind,
+    interface: table.interface,
+    grammar_digest: table.grammar_digest,
+    token_stream_digest: table.token_stream_digest,
+    entries: table.entries,
+    memo_hits: table.memo_hits,
+    memo_misses: table.memo_misses,
+    memo_lookup_calls: table.memo_lookup_calls + 1
+  }
 }
 
 fn parse_table_record_hit(table: ParseTable) -> ParseTable {
@@ -281,7 +300,8 @@ fn parse_table_record_hit(table: ParseTable) -> ParseTable {
     token_stream_digest: table.token_stream_digest,
     entries: table.entries,
     memo_hits: table.memo_hits + 1,
-    memo_misses: table.memo_misses
+    memo_misses: table.memo_misses,
+    memo_lookup_calls: table.memo_lookup_calls
   }
 }
 
@@ -293,7 +313,8 @@ fn parse_table_record_miss(table: ParseTable) -> ParseTable {
     token_stream_digest: table.token_stream_digest,
     entries: table.entries,
     memo_hits: table.memo_hits,
-    memo_misses: table.memo_misses + 1
+    memo_misses: table.memo_misses + 1,
+    memo_lookup_calls: table.memo_lookup_calls
   }
 }
 
@@ -305,7 +326,8 @@ fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseMemo
     token_stream_digest: table.token_stream_digest,
     entries: map_insert(m: table.entries, key: key, value: value),
     memo_hits: table.memo_hits,
-    memo_misses: table.memo_misses
+    memo_misses: table.memo_misses,
+    memo_lookup_calls: table.memo_lookup_calls
   }
 }
 
@@ -361,7 +383,8 @@ fn parse_table_for_production(
     token_stream_digest: parse_token_stream_digest(all_tokens: all_tokens),
     entries: empty_map(),
     memo_hits: 0,
-    memo_misses: 0
+    memo_misses: 0,
+    memo_lookup_calls: 0
   }
 }
 
@@ -373,7 +396,8 @@ fn parse_table_empty() -> ParseTable {
     token_stream_digest: atom_identity_hash(s: ^parse_table_empty_token_stream),
     entries: empty_map(),
     memo_hits: 0,
-    memo_misses: 0
+    memo_misses: 0,
+    memo_lookup_calls: 0
   }
 }
 
@@ -821,9 +845,10 @@ fn parse_nonterminal_memoized_core(
     Violates { diagnostic: d } =>
       ParseExprRejected { diagnostics: [d], table: table }
     Holds { value: production } =>
-      match parse_table_lookup(table: table, key: key) {
+      let table_at_lookup = parse_table_record_lookup_call(table: table)
+      match parse_table_lookup(table: table_at_lookup, key: key) {
         Holds { value: inner } =>
-          let table_hit = parse_table_record_hit(table: table)
+          let table_hit = parse_table_record_hit(table: table_at_lookup)
           match inner {
             ParseMemoRejected { diagnostics: diags } =>
               ParseExprRejected { diagnostics: diags, table: table_hit }
@@ -843,7 +868,7 @@ fn parse_nonterminal_memoized_core(
               }
           }
         Violates { diagnostic: _ } =>
-          let table_miss = parse_table_record_miss(table: table)
+          let table_miss = parse_table_record_miss(table: table_at_lookup)
           let inner = parse_expr(
             expr: production.expression,
             tokens: tokens,
@@ -1327,7 +1352,7 @@ fn parse_production_memo_stats(
   let root = validated.root
   match grammar_lookup_production(root: root, name: production_name) {
     Violates { diagnostic: _ } =>
-      ParseMemoStats { hits: 0, misses: 0 }
+      ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
     Holds { value: production } =>
       let prov = parse_prov_initial()
       let table = parse_table_for_production(validated: validated, all_tokens: tokens)
