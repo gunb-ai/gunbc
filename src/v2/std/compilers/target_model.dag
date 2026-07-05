@@ -9023,21 +9023,17 @@ fn target_collection_select_choice(
   if target_collection_choice_constraints_satisfied(choice: primary, elem: elem) {
     optional_present(value: primary)
   } else {
-    fold_list(
-      xs: alternatives,
-      empty: optional_absent(),
-      cons: fn(acc, choice) {
-        match acc {
-          Present { value: _ } => acc
-          Absent =>
-            if target_collection_choice_constraints_satisfied(choice: choice, elem: elem) {
-              optional_present(value: choice)
-            } else {
-              optional_absent()
-            }
-        }
+    fold(alternatives, init: optional_absent(), f: fn(acc, choice) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          if target_collection_choice_constraints_satisfied(choice: choice, elem: elem) {
+            optional_present(value: choice)
+          } else {
+            optional_absent()
+          }
       }
-    )
+    })
   }
 }
 
