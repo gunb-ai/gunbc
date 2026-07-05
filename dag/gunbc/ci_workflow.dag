@@ -187,7 +187,7 @@ fn ci_merge_admission_gate_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: Present { value: 10 }
   }
 }
 
@@ -216,7 +216,7 @@ fn ci_nextest_install_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: Present { value: 10 }
   }
 }
 
@@ -250,7 +250,7 @@ fn ci_rust_cgroup_measurement_step() -> Step {
     working_directory: none,
     if_condition: Present { value: "always()" },
     continue_on_error: none,
-    timeout_minutes: none
+    timeout_minutes: Present { value: 10 }
   }
 }
 
@@ -271,11 +271,11 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 data gunbc_ci_job_timeout_policy_minutes: Int = 30
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
-  reason: "gunbc CI budget semantics (operator ruling, 2026-07-05): any timed-out gate is a FAILURE, not a silent pass - no verdict == failure. The budget is enforced at the STEP level (GitHub Actions step timeout-minutes fails the step, conclusion=failure, logs + [t+Xs] phase marks intact), never as a job-level kill: the prior 10-minute job-kill policy (2026-07-04) produced conclusion=cancelled, which every consumer treated as not-red - operationally a silent pass. Receipt: the last successful main ci run was 2026-07-01T01:00Z; 29 of the next 30 main runs were cancelled; four days of merges landed with zero gate verdicts while two latent reds entered the tree (04_resolve.dag emit-fresh hard diagnostics; inert_lens witness-builtin scope errors). Value derivation, not ratchet: 30 = last-green ci job duration (27min, run 2026-07-01T01:00:41Z-01:27:50Z) + margin; re-derive DOWNWARD as resolver-graph work (S2a node store, compile-clean scoping) lands - the 10-minute floor-fit target moves to that lane's dissolve-on, where the mechanism to meet it lives. The job-level timeout is retained only as gunbc_ci_job_backstop_timeout_minutes (+5): its firing means the step-level failure mechanism itself wedged, and is a bug in the mechanism, not a budget breach. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default - workflow-layer policy on top."
+  reason: "gunbc CI budget semantics (operator ruling, 2026-07-05): any timed-out gate is a FAILURE, not a silent pass - no verdict == failure. The budget is enforced at the STEP level (GitHub Actions step timeout-minutes fails the step, conclusion=failure, logs + [t+Xs] phase marks intact), never as a job-level kill: the prior 10-minute job-kill policy (2026-07-04) produced conclusion=cancelled, which every consumer treated as not-red - operationally a silent pass. Receipt: the last successful main ci run was 2026-07-01T01:00Z; 29 of the next 30 main runs were cancelled; four days of merges landed with zero gate verdicts while two latent reds entered the tree (04_resolve.dag emit-fresh hard diagnostics; inert_lens witness-builtin scope errors). Value derivation, not ratchet: 30 = last-green ci job duration (27min, run 2026-07-01T01:00:41Z-01:27:50Z) + margin; re-derive DOWNWARD as resolver-graph work (S2a node store, compile-clean scoping) lands - the 10-minute floor-fit target moves to that lane's dissolve-on, where the mechanism to meet it lives. The job-level timeout is retained only as gunbc_ci_job_backstop_timeout_minutes (+30): step timeouts start when the step starts, so the backstop must exceed worst-case prelude (checkout/toolchain, unbudgeted, seconds-to-minutes honest) PLUS the largest step budget - a tighter backstop could job-cancel (silence) before the gate step fails red, resurrecting the exact defect this policy removes. Every gate-bearing step is step-budgeted and fails RED first; the backstop fires only on a wedged prelude, and its firing is itself a mechanism bug to investigate, never a gate verdict. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default - workflow-layer policy on top."
 }
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_job_timeout_policy_minutes + 5
+  gunbc_ci_job_timeout_policy_minutes + 30
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
