@@ -6361,7 +6361,14 @@ mod floor_witness_a_prove {
 // Step 3 module-grain PROVE receipt (docs/plans/affected-set-precompute-pruning.md,
 // ROADMAP 1-affected-set-defork). Node-grain (whole-tree `InferredTree`) equivalence stays
 // BLOCKED (unaffordable resolve); this receipt is re-scoped to MODULE grain, using the landed
-// `import_closure_live` authority (#6210/#6231). It proves the module-grain "affected" decision
+// `import_closure_live` authority (#6210/#6231).
+//
+// SCAFFOLD: dissolves into a .dag execution witness when the discovery/diff seed plumbing
+// migrates off the v1 host layer (same trigger as `node_frontier_plumbing_controls` below,
+// §6 dissolution trigger) — the equivalence lens itself moves on-carrier at that point, this
+// hand-Rust harness is no longer needed to exercise it.
+//
+// It proves the module-grain "affected" decision
 // computed by the `.dag` authority (`v2.lens.module_graph.entry_affected_by_touched_paths`, a
 // thin projection over `import_closure_live`) agrees with the Rust host's module-grain
 // `entry_file_touched` decision (`touched_file_in_import_closure` over
