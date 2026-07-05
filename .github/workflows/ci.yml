@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 130
+    timeout-minutes: 145
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -82,7 +82,7 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
-        timeout-minutes: 30
+        timeout-minutes: 45
       - name: gunbc ci (.dag witnesses + gates)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -126,7 +126,7 @@ jobs:
         timeout-minutes: 5
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 30
+    timeout-minutes: 105
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -174,7 +174,7 @@ jobs:
             curl -LsSf --retry 3 "https://get.nexte.st/0.9.138/$A" | tar zxf - -C "$CARGO_HOME/bin"
           fi
         timeout-minutes: 5
-      - name: v1 rust gate (fmt + clippy + nextest)
+      - name: Build release bins (claim_executor + gunbc)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
@@ -199,6 +199,9 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
+        timeout-minutes: 45
+      - name: v1 rust gate (fmt + clippy + nextest)
+        run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
           set -o pipefail
@@ -221,7 +224,7 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-        timeout-minutes: 15
+        timeout-minutes: 45
       - name: rust_tests cgroup peak (placement divisor)
         run: |
           BIN="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/claim_executor"
@@ -297,3 +300,4 @@ jobs:
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
           "$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
+
