@@ -1,0 +1,37 @@
+module v2.test.manual.tokenize_linear_receipt
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data tlr_path: String = "src/v1/01_tokenize.dag"
+data tlr_anchor: Symbol = ^tlr_anchor
+
+data tlr_timing_note: String = "Post string_head->list_head fix (2026-07-05): eighth 11s, quarter 21s, half 47s, full 125s. Doubling ratios ~2x (was 2.6/3.3/3.7 toward 4x). Full 01_tokenize.dag down from 501s."
+
+fn tlr_tokenize_accepts() -> Bool {
+  let source = filesystem_read(path: tlr_path).content
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source, file: tlr_anchor, rules: lm.lex) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn tlr_ingest_stage_tokenize_or_parse_rejects() -> Bool {
+  let source = filesystem_read(path: tlr_path).content
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source, file: tlr_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => true
+        Accepted { value: _, diagnostics: _ } => false
+      }
+  }
+}

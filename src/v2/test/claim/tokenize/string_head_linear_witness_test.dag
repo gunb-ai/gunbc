@@ -1,0 +1,97 @@
+module v2.test.tokenize.string_head_linear_witness
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.tokenize { tokenize, tokenize_lex_e1_unrecognized_char_diagnostic }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.algebra { Cons, Empty, length }
+import v2.std.collection { Absent, List, Present, list_at_optional }
+import v2.std.compilers.lexing { Token, token_stream_all }
+import v2.std.diagnostic { Accepted, Rejected, Textual, WholeFile }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data shlw_file_anchor: Symbol = ^shlw_file_anchor
+
+data shlw_logic_path: String = "dag/std/logic.dag"
+
+data shlw_v1_tokenize_path: String = "src/v1/01_tokenize.dag"
+
+data shlw_purity_source: String = Cons {
+  head: 109,
+  tail: Cons {
+    head: 111,
+    tail: Cons {
+      head: 100,
+      tail: Cons {
+        head: 117,
+        tail: Cons {
+          head: 108,
+          tail: Cons {
+            head: 101,
+            tail: Empty
+          }
+        }
+      }
+    }
+  }
+}
+
+data shlw_purity_token_count: Int = 1
+
+data shlw_purity_lexeme: String = shlw_purity_source
+
+data shlw_logic_token_count: Int = 81
+
+data shlw_note: String = "string_head grounded on list_head (O(1)); string_tail already list_tail. R1 rule: string_tail inside per-char loop with suffix-copy realization = Poly(2); list head/tail stepping is linear."
+
+fn shlw_first_token_lexeme(tokens: List<Token>) -> String {
+  match list_at_optional(xs: tokens, index: 0) {
+    Absent => Empty
+    Present { value: tok } => tok.lexeme
+  }
+}
+
+fn shlw_tokens_match_pinned_oracle(tokens: List<Token>) -> Bool {
+  (length(xs: tokens) == shlw_purity_token_count)
+    && (shlw_first_token_lexeme(tokens: tokens) == shlw_purity_lexeme)
+}
+
+fn shlw_tokenize_logic_token_count() -> Int {
+  let lm = dag_language_model_wave1()
+  let source = filesystem_read(path: shlw_logic_path).content
+  match tokenize(text: source, file: shlw_file_anchor, rules: lm.lex) {
+    Accepted { value: stream, diagnostics: _ } =>
+      length(xs: token_stream_all(stream: stream))
+    Rejected { diagnostics: _ } => 0
+  }
+}
+
+fn shlw_v1_tokenize_rejects_at_e1() -> Bool {
+  let lm = dag_language_model_wave1()
+  let source = filesystem_read(path: shlw_v1_tokenize_path).content
+  let at = Textual { file: shlw_file_anchor, extent: WholeFile }
+  let expected = tokenize_lex_e1_unrecognized_char_diagnostic(at: at)
+  match tokenize(text: source, file: shlw_file_anchor, rules: lm.lex) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: diags } =>
+      (diags.head.reason == expected.reason)
+  }
+}
+
+test fn string_head_linear_purity_oracle_holds() -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: shlw_purity_source, file: shlw_file_anchor, rules: lm.lex) {
+    Accepted { value: stream, diagnostics: _ } =>
+      shlw_tokens_match_pinned_oracle(tokens: token_stream_all(stream: stream))
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+test fn string_head_linear_logic_token_count_oracle_holds() -> Bool {
+  shlw_tokenize_logic_token_count() == shlw_logic_token_count
+}
+
+test fn string_head_linear_v1_tokenize_e1_reject_oracle_holds() -> Bool {
+  shlw_v1_tokenize_rejects_at_e1()
+}
