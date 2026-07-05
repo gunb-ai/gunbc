@@ -1,6 +1,6 @@
 module v2.std.text
 
-import v2.std.algebra { FreeMonoid, HeadAbsent, HeadFound, ListHeadResult, ListTailResult, TailAbsent, TailFound, fold_list, is_empty, list_head, list_tail }
+import v2.std.algebra { FreeMonoid, ListTailResult, TailAbsent, TailFound, fold_list, fold_list_right, is_empty, list_tail }
 import v2.std.logic { Bool }
 import v2.std.nat { Nat }
 type Char = Nat
@@ -32,10 +32,7 @@ fn string_is_empty(s: String) -> Bool {
   is_empty(xs: s)
 }
 fn string_head(s: String) -> CharResult {
-  match list_head(xs: s) {
-    HeadFound { value: c } => CharFound { value: c }
-    HeadAbsent => CharAbsent
-  }
+  fold_list_right(xs: s, empty: CharAbsent, snoc: fn(_acc, c) { CharFound { value: c } })
 }
 fn string_tail(s: String) -> ListTailResult<Char> {
   list_tail(xs: s)
