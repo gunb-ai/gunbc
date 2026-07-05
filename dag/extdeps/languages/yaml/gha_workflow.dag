@@ -27,7 +27,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
   }
 }
 
-data gha_schedule_trigger_note: String = "schedule renders as the GHA-required list-of-mappings (schedule: [{cron: <5-field POSIX string>}], authority above). Formerly a payload-dropping stub (bare schedule: key — invalid GHA syntax); first live constructor is the affected-set falsifier workflow. GHA quirks vs plain crontab, per the cited syntax authority: cron strings are evaluated in UTC only, and the shortest supported interval is 5 minutes."
+data gha_schedule_trigger_note: String = "schedule renders as the GHA-required list-of-mappings - a schedule key holding a sequence of cron mappings, each cron value a 5-field POSIX string (authority above). Formerly a payload-dropping stub (bare schedule: key — invalid GHA syntax); first live constructor is the affected-set falsifier workflow. GHA quirks vs plain crontab, per the cited syntax authority: cron strings are evaluated in UTC only, and the shortest supported interval is 5 minutes."
 
 fn permission_level_yaml(level: PermissionLevel) -> YamlValue {
   match level {

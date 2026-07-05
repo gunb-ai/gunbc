@@ -244,18 +244,22 @@ fn falsifier_batch_selection(mode: NodeFrontierSelection) -> Bool {
   }
 }
 
+fn falsifier_runnable_is_predict_only(r: Runnable) -> Bool {
+  match r {
+    RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
+      falsifier_batch_selection(mode: mode)
+        && (length(xs: entries) == 0)
+        && (length(xs: dirs) == 2)
+    RunnableSingleClaim { entry: _, function: _, profile: _ } => false
+    RunnableKernelWorkload { fused_op_count: _ } => false
+  }
+}
+
 fn falsifier_plan_is_one_predict_only_batch() -> Bool {
   let batches = gunbc_falsifier_batches()
   (length(xs: batches) == 1)
-    && (length(xs: batches.first()) == 1)
-    && match batches.first().first() {
-      RunnableDiscoveryBatch { source_roots: _, scan_dirs: dirs, explicit_entries: entries, node_frontier_selection: mode, exclude_substrings: _, discovery_scope_dirs: _, spawn_width_cap: _, profile: _ } =>
-        falsifier_batch_selection(mode: mode)
-          && (length(xs: entries) == 0)
-          && (length(xs: dirs) == 2)
-      RunnableSingleClaim { entry: _, function: _, profile: _ } => false
-      RunnableKernelWorkload { fused_op_count: _ } => false
-    }
+    && (batches.first().length() == 1)
+    && falsifier_runnable_is_predict_only(r: batches.first().first())
 }
 
 test fn ci_floor_plan_witnesses() -> Bool {
