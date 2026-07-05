@@ -3114,6 +3114,7 @@ pub struct DiscoveryWitnessOutcome {
     pub outcome: ClaimOutcome,
 }
 
+#[derive(Debug)]
 pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
