@@ -194,7 +194,7 @@ fn predict_only_red_predicted_affected_is_not_divergence() {
     let ws = workspace_root();
     let text = std::fs::read_to_string(ws.join(FALSIFIER_CONTROL_REL))
         .expect("falsifier control fixture readable");
-    let line = fixture_line(&text, "falsifier_red_control_holds");
+    let line = fixture_line(&text, "test fn falsifier_red_control_holds");
     let summary = run_injected_diff_roster_with_mode(
         FALSIFIER_CONTROL_REL,
         line,

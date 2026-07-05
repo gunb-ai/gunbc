@@ -13,8 +13,9 @@ import gunbc.ci_workflow {
 }
 import gunbc.runner_spec_from_offer { gunbc_ci_runner_spec }
 import gunbc.ci_spec {
-  claim_executor_bin_shell, witness_layer_source_flags, witness_layer_roots, ci_repo_root_shell
+  claim_executor_bin_shell, ci_repo_root_shell
 }
+import gunbc.ci_layer_roots { witness_layer_roots, witness_layer_source_flags }
 import extdeps.languages.yaml.emit { serialize_yaml }
 import extdeps.languages.yaml.gha_workflow { project_workflow_to_yaml }
 
