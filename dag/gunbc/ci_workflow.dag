@@ -286,7 +286,9 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 
 data gunbc_ci_job_timeout_policy_minutes: Int = 10
 
-data gunbc_ci_rust_gate_step_timeout_minutes: Int = 15
+data gunbc_ci_rust_gate_step_timeout_minutes: Int = 30
+
+data gunbc_ci_rust_gate_step_budget_note: String = "Interim rust-gate step budget (release build + fmt/clippy/nextest in one step): 30 = same interim derivation as gunbc_ci_release_build_step_timeout_minutes. Receipt: job 85195659048 timed out at 15m on srv1-03 (full 15m, zero gate verdict). Re-derive DOWNWARD when fleet cache/build path stabilizes."
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
