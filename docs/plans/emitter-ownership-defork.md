@@ -140,6 +140,20 @@ helper `v1_rt::take_owned_counted(x, site: &'static str)`:
 The helper lands in both runtimes: `v1_rt.rs` (seed) and the emitted-runtime template
 (`v1_compiler_runtime_rust.rs` source in `.dag`).
 
+## Validation-time checklist (one combined pass when the fixpoint PR #6250 greens)
+
+1. Regenerate the seed (picks up 2-arg `build_movable_set`, `move_sites` wiring,
+   `take_owned_counted` emission).
+2. Update `pipeline.rs count_ownership_violations` to the 2-arg `build_movable_set`
+   **in the same change** (it will not compile against the new seed otherwise), and add
+   the licensed-but-cloned counted check (span-keying drift must be observable).
+3. Land the generalized entry take-owned rewrite (field moves; deletes `owned_bindings`)
+   with rustc feedback.
+4. Run `bootstrap_fixed_point` (byte-identical), the `dag_collect` emit receipt (min → s),
+   and the `take_owned_counted` by-execution RED/GREEN count test.
+5. Confirm all ownership witnesses green (per-name and per-site: span-0, capture,
+   field-then-whole, distinct-fields, same-field-twice, branch).
+
 ## Guards / acceptance
 
 - `bootstrap_fixed_point` byte-identical emit fixpoint (blocked-on: v1 self-resolution
