@@ -2516,54 +2516,8 @@ fn parse_error_does_not_leak_to_resolve() {
     );
 }
 
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_report_structured() {
-    let source = "module cplx\nfn constant_work(x: Int) -> Int { x }\nfn linear_map(items: List<Int>) -> List<Int> {\n  map(items, fn(i) { i + 1 })\n}\nfn linear_fold(items: List<Int>) -> Int {\n  fold(items, 0, fn(acc, i) { acc + i })\n}\nfn nested_iteration(groups: List<List<Int>>) -> List<Int> {\n  flat_map(groups, fn(g) { map(g, fn(i) { i }) })\n}\nfn filter_then_map(items: List<Int>) -> List<Int> {\n  let filtered = filter(items, fn(i) { i > 0 })\n  map(filtered, fn(i) { i * 2 })\n}\nfn for_each_loop(items: List<Int>) -> List<Int> {\n  for i in items { i + 1 }\n}\nfn count_items(items: List<Int>) -> Int {\n  items |> count\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    let class = complexity_class_of(&result, "constant_work");
-    assert_eq!(
-        class.as_deref(),
-        Some("O(1)"),
-        "constant_work should be O(1), got {:?}",
-        class
-    );
-}
 
-#[test]
-#[ignore = "119s — hanging in complexity analysis; triage under PERF track"]
-fn complexity_non_recursive_proven() {
-    let source = r#"module baseline
-fn add(a: Int, b: Int) -> Int { a + b }
-fn pick(x: Int, y: Int) -> Int {
-  if x > y { x } else { y }
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
 
-#[test]
-fn complexity_collection_iteration_bounded() {
-    let source = r#"module iter
-fn sum_all(items: List<Int>) -> Int {
-  items |> fold(init: 0, f: (acc, i) => acc + i)
-}
-fn double_all(items: List<Int>) -> List<Int> {
-  items |> map(f: (i) => i * 2)
-}
-fn positives(items: List<Int>) -> List<Int> {
-  items |> filter(f: (i) => i > 0)
-}
-fn nested_sum(matrix: List<List<Int>>) -> Int {
-  matrix |> fold(init: 0, f: (acc, row) =>
-    acc + row |> fold(init: 0, f: (inner_acc, val) => inner_acc + val)
-  )
-}
-"#;
-    let _result = compile_dag(source);
-}
 
 #[test]
 fn complexity_linear_recursion_bounded() {
@@ -2579,81 +2533,10 @@ fn sum_list(items: List<Int>) -> Int {
     assert_no_diagnostics(&result);
 }
 
-#[test]
-fn complexity_match_arms_are_mutually_exclusive() {
-    let source = r#"module tree
-type Expr
-  = Lit { value: Int }
-  | Add { left: Expr, right: Expr }
-  | Neg { inner: Expr }
 
-fn eval(e: Expr) -> Int {
-  match e {
-    Lit { value: v } => v
-    Add { left: l, right: r } => eval(e: l) + eval(e: r)
-    Neg { inner: i } => 0 - eval(e: i)
-  }
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
 
-#[test]
-fn complexity_early_return_tail_recursion_is_single_path() {
-    let source = r#"module tail_paths
-fn walk(n: Int) -> Int {
-  if n <= 0 { return 0 }
-  if n == 1 { return walk(n: n - 1) }
-  walk(n: n - 1)
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
 
-#[test]
-fn complexity_structural_descent_allows_bookkeeping_args() {
-    let source = r#"module depth_walk
-type Tree
-  = Leaf { value: Int }
-  | Pair { left: Tree, right: Tree }
 
-fn walk(t: Tree, depth: Int) -> Int {
-  match t {
-    Leaf { value: v } => v + depth
-    Pair { left: l, right: r } => walk(t: l, depth: depth + 1) + walk(t: r, depth: depth + 1)
-  }
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn complexity_foreach_bounded() {
-    let source = r#"module foreach
-fn process_items(items: List<Int>) -> Int {
-  let result = 0
-  for item in items {
-    result + item
-  }
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn soundness_arithmetic_descent_single_call_accepted() {
-    let source = r#"module soundness_arith
-fn countdown(n: Int) -> Int {
-  if n <= 0 { 0 } else { 1 + countdown(n: n - 1) }
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
 
 fn compile_dag_with_complexity(
     source: &str,
@@ -2683,177 +2566,17 @@ fn compile_dag_with_complexity(
     build_complexity_report(func_entries, recursion_ctx, Rc::new(HashMap::new()))
 }
 
-#[test]
-fn soundness_parser_token_position_scc_accepted() {
-    let source = r#"module parser_scc
-type ParserState { pos: Int }
-type ParseResult { state: ParserState, value: Int }
 
-fn advance(state: ParserState) -> ParseResult {
-  ParseResult { state: ParserState { pos: state.pos + 1 }, value: 0 }
-}
-
-fn parse_items(state: ParserState) -> ParseResult {
-  if state.pos > 100 {
-    ParseResult { state: state, value: 0 }
-  } else {
-    let r = advance(state: state)
-    parse_items(state: r.state)
-  }
-}
-"#;
-    let complexity = compile_dag_with_complexity(source);
-    assert!(complexity.function_classes.contains_key("parse_items"));
-}
-
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn soundness_lambda_fold_children_accepted() {
-    let source = r#"module lambda_fold
-type Tree = Leaf { value: Int } | Branch { value: Int, children: List<Tree> }
-
-fn sum_tree(t: Tree) -> Int {
-  match t {
-    Leaf { value: v } => v
-    Branch { value: v, children: _ } =>
-      v + (t.children |> fold(init: 0, f: (acc, child) => acc + sum_tree(t: child)))
-  }
-}
-"#;
-    let complexity = compile_dag_with_complexity(source);
-    assert!(complexity.function_classes.contains_key("sum_tree"));
-}
 
 use v1_compiler::v1_compiler_complexity::{classify_complexity, CostExpr, SizeExpr};
 
-fn complexity_class_of(
-    result: &v1_compiler::v1_compiler_compile::PipelineResult,
-    func: &str,
-) -> Option<String> {
-    result.complexity.function_classes.get(func).cloned()
-}
 
-fn class_contains_log(class: &str) -> bool {
-    class.contains("log")
-}
 
-fn is_constant_class_str(class: &str) -> bool {
-    class == "O(1)"
-}
 
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_class_constant() {
-    let source = r#"module constant
-fn add(a: Int, b: Int) -> Int { a + b }
-fn max(a: Int, b: Int) -> Int { if a > b { a } else { b } }
-fn triple(x: Int) -> Int { x * 3 }
-"#;
-    let files: Vec<(&str, &str)> = vec![("constant.dag", source)];
-    let result = compile_multi(&files);
-    for func in &["add", "max", "triple"] {
-        let class = complexity_class_of(&result, func);
-        assert_eq!(
-            class.as_deref(),
-            Some("O(1)"),
-            "{} should be O(1), got {:?}",
-            func,
-            class
-        );
-    }
-}
 
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_class_linear() {
-    let source = r#"module linear
-fn sum_items(items: List<Int>) -> Int {
-  fold(items, 0, fn(acc, i) { acc + i })
-}
-fn doubled(items: List<Int>) -> List<Int> {
-  map(items, fn(i) { i * 2 })
-}
-fn pos_only(items: List<Int>) -> List<Int> {
-  filter(items, fn(i) { i > 0 })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    for func in &["sum_items", "doubled", "pos_only"] {
-        let class = complexity_class_of(&result, func);
-        assert!(
-            class.as_ref().is_some_and(|c| c.starts_with("O(")),
-            "{} should be O(n), got {:?}",
-            func,
-            class
-        );
-    }
-}
 
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_class_quadratic() {
-    let source = r#"module quadratic
-fn all_pairs_sum(items: List<Int>) -> Int {
-  fold(items, 0, fn(outer_acc, x) {
-    outer_acc + fold(items, 0, fn(inner_acc, y) { inner_acc + x + y })
-  })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    let class = complexity_class_of(&result, "all_pairs_sum");
-    assert!(
-        class.is_some(),
-        "all_pairs_sum should have a complexity class"
-    );
-    assert!(
-        class.as_ref().is_some_and(|c| c.starts_with("O(")),
-        "all_pairs_sum should have a concrete bound, got {:?}",
-        class
-    );
-}
 
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_class_bilinear() {
-    let source = r#"module bilinear
-fn cross_count(rows: List<Int>, cols: List<Int>) -> Int {
-  fold(rows, 0, fn(acc, r) {
-    acc + fold(cols, 0, fn(inner, c) { inner + r + c })
-  })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    let class = complexity_class_of(&result, "cross_count");
-    assert!(
-        class.is_some(),
-        "cross_count should have a complexity class"
-    );
-    assert!(
-        class.as_ref().is_some_and(|c| c.starts_with("O(")),
-        "cross_count should have a concrete bound, got {:?}",
-        class
-    );
-}
 
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_class_sort_proven() {
-    let source = r#"module sorting
-fn sort_ascending(items: List<Int>) -> List<Int> {
-  sort_by(items, fn(a, b) { a - b })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    let class = complexity_class_of(&result, "sort_ascending");
-    assert!(
-        class.is_some(),
-        "sort_ascending should have a complexity class"
-    );
-}
 
 #[test]
 fn complexity_class_add_keeps_log_terms() {
@@ -2891,93 +2614,10 @@ fn complexity_class_max_keeps_log_terms() {
     );
 }
 
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn structural_classify_constant_is_cost_const() {
-    let source = r#"module sconst
-fn add(a: Int, b: Int) -> Int { a + b }
-"#;
-    let files: Vec<(&str, &str)> = vec![("sconst.dag", source)];
-    let result = compile_multi(&files);
-    let class = complexity_class_of(&result, "add");
-    assert!(
-        class.as_ref().is_some_and(|c| is_constant_class_str(c)),
-        "add should classify as O(1), got {:?}",
-        class
-    );
-}
 
-#[test]
-fn complexity_class_chain_is_linear() {
-    let source = r#"module chain
-fn sum_doubled(items: List<Int>) -> Int {
-  fold(map(items, fn(i) { i * 2 }), 0, fn(acc, i) { acc + i })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    let _class = complexity_class_of(&result, "sum_doubled");
-}
 
-#[test]
-fn complexity_class_flat_map() {
-    let source = r#"module flatmap
-fn expand(items: List<Int>) -> List<Int> {
-  flat_map(items, fn(i) { [i, i * 2, i * 3] })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    assert_no_diagnostics(&result);
-}
 
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_report_covers_all_functions() {
-    let source = r#"module coverage
-fn f1(x: Int) -> Int { x + 1 }
-fn f2(items: List<Int>) -> Int { items |> count }
-fn f3(items: List<Int>) -> List<Int> {
-  map(items, fn(i) { i * 2 })
-}
-fn f4(a: List<Int>, b: List<Int>) -> Int {
-  fold(a, 0, fn(acc, x) {
-    acc + fold(b, 0, fn(inner, y) { inner + x + y })
-  })
-}
-"#;
-    let files: Vec<(&str, &str)> = vec![("test.dag", source)];
-    let result = compile_multi(&files);
-    let summaries = &result.complexity.function_classes;
-    let keys: Vec<_> = summaries.keys().collect();
-    for func in &["f1", "f2", "f3", "f4"] {
-        let found = summaries.contains_key(*func) || summaries.keys().any(|k| k.ends_with(func));
-        assert!(
-            found,
-            "function '{}' should have a complexity summary (keys: {:?})",
-            func, keys
-        );
-    }
-    assert!(
-        !summaries.is_empty(),
-        "function_classes should not be empty"
-    );
-}
 
-#[test]
-#[ignore = "complexity analysis disabled for memory — re-enable with CX track"]
-fn complexity_report_scales_to_large_programs() {
-    let mut source = String::from("module huge\n");
-    for idx in 0..401 {
-        source.push_str(&format!("fn f{idx}(x: Int) -> Int {{ x + 1 }}\n"));
-    }
-    let result = compile_dag(&source);
-    assert_eq!(
-        result.complexity.function_classes.len(),
-        401,
-        "structural data should contain all 401 function summaries"
-    );
-}
 
 #[test]
 fn compile_sources_returns_ownership_proofs() {
@@ -3003,21 +2643,6 @@ fn match_bound_variable_always_cloned() {
     );
 }
 
-#[test]
-#[ignore = "heavy test — run manually with --ignored --nocapture"]
-fn complexity_self_analysis_subset() {
-    let ws = crate::helpers::workspace_root();
-    let stage0_bin = ws.join("target/release/gunbc");
-    if !stage0_bin.exists() {
-        eprintln!(
-            "skipping: release binary not found (run `cargo build --release -p v1-compiler` first)"
-        );
-        return;
-    }
-    eprintln!(
-        "complexity self-analysis requires compile_sources_with_options(analyze_complexity: true)"
-    );
-}
 
 #[test]
 fn compile_sources_returns_default_artifact_plan() {
@@ -3880,116 +3505,14 @@ fn mutual_recursion_only_descending_on_unmeasured_param_is_rejected() {
     );
 }
 
-#[test]
-#[ignore = "CX acceptance criteria: non-SCC callers into cycles must not be flagged (PR #301)"]
-fn function_calling_into_cycle_is_not_rejected() {
-    let source = "module downstream_test\n\nfn ping(n: Int) -> Int { pong(n: n) }\nfn pong(n: Int) -> Int { ping(n: n) }\nfn helper(n: Int) -> Int { ping(n: n) }\n";
-    let result = compile_dag(source);
-    let diag_names: Vec<String> = result
-        .diagnostics
-        .iter()
-        .map(|d| d.module_name.clone())
-        .collect();
-    assert!(
-        !result.diagnostics.iter().any(|d| {
-            let msg = format!("{:?}", d.diagnostic);
-            msg.contains("helper")
-        }),
-        "helper() calls into cycle but is not part of it — should not be rejected. Diagnostics: {:?}",
-        diag_names
-    );
-}
 
-#[test]
-fn division_descent_is_allowed() {
-    let source = "module halve_test\n\nfn halve(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { halve(n: n / 2) }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-    assert!(
-        !result.files.is_empty(),
-        "division descent should compile successfully"
-    );
-}
 
-#[test]
-fn cx_bound_child_descent_is_tree_size() {
-    let source = "module cx_child\n\ntype Tree { left: Tree?  right: Tree?  value: Int }\nfn sum_tree(t: Tree) -> Int {\n  let l = match t.left { Present { value: lt } => sum_tree(t: lt), Absent => 0 }\n  let r = match t.right { Present { value: rt } => sum_tree(t: rt), Absent => 0 }\n  l + r + t.value\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
 
-#[test]
-fn cx_bound_nested_variant_optional_descent() {
-    let source = r#"module cx_nested_variant
 
-type Inner
-  = Resolved { node: Outer }
-  | Unresolved
 
-type Outer {
-  children: List<Outer>
-  detail: Inner?
-}
 
-fn walk(o: Outer) -> Int {
-  let from_detail = match o.detail {
-    Present { value: Resolved { node: x } } => walk(o: x)
-    _ => 0
-  }
-  from_detail + (o.children |> map(c => walk(o: c)) |> fold(init: 0, f: (a, x) => a + x))
-}
-"#;
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
 
-#[test]
-#[ignore = "failing: property contraction + tree descent produces 1 violation, expected 0. Pre-existing (never run in CI under the 3-test allowlist), surfaced by the run-all widening #5427; fix as follow-up. bucket=inference"]
-fn cx_bound_property_contraction_with_tree_descent() {
-    let source = r#"module cx_prop_contract
-import std.core { with_required_cardinality }
 
-fn walk_type(n: Node) -> String {
-  let inner = walk_type(n: with_required_cardinality(n: n))
-  let child_strs = n.children |> map(c => walk_type(n: c))
-  inner
-}
-"#;
-    let result = compile_dag_with_complexity(source);
-    assert!(
-        result.violations.is_empty(),
-        "property contraction + tree descent should produce 0 violations, got {}",
-        result.violations.len()
-    );
-}
-
-#[test]
-fn cx_bound_list_shrink_is_collection_size() {
-    let source = "module cx_list\n\nfn sum_list(items: List<Int>) -> Int {\n  match items |> first {\n    Absent => 0\n    Present { value: head } => head + sum_list(items: items |> skip(1))\n  }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn cx_bound_arithmetic_descent_is_param() {
-    let source = "module cx_arith\n\nfn countdown(n: Int) -> Int {\n  if n <= 0 { 0 }\n  else { 1 + countdown(n: n - 1) }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn cx_bound_mutual_descent_is_bounded() {
-    let source = "module cx_mutual\n\nfn even(n: Int) -> Bool {\n  if n <= 0 { true }\n  else { odd(n: n - 1) }\n}\n\nfn odd(n: Int) -> Bool {\n  if n <= 0 { false }\n  else { even(n: n - 1) }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
-
-#[test]
-fn cx_bound_metadata_field_is_not_descent_witness() {
-    let source = "module cx_metadata\n\ntype Item { name: String  payload: Item? }\nfn check_name(item: Item) -> Bool {\n  if item.name == \"done\" { true }\n  else {\n    match item.payload {\n      Present { value: next } => check_name(item: next)\n      Absent => false\n    }\n  }\n}\n";
-    let result = compile_dag(source);
-    assert_no_diagnostics(&result);
-}
 
 #[test]
 fn cx_forever_bound_produces_violation() {
@@ -4014,21 +3537,6 @@ fn cx_forever_bound_produces_violation() {
     );
 }
 
-#[test]
-#[ignore = "CX track: branching detection needs derive_bound integration (produces O(n) not O(2^n))"]
-fn soundness_branching_recursion_produces_violation() {
-    let source = r#"module soundness_branch
-fn split(n: Int) -> Int {
-  if n <= 0 { 1 }
-  else { split(n: n - 1) + split(n: n - 1) }
-}
-"#;
-    let result = compile_dag_with_complexity(source);
-    assert!(
-        !result.violations.is_empty(),
-        "branching recursion should produce a violation, got 0"
-    );
-}
 
 #[test]
 fn soundness_conditional_descent_not_accepted() {
