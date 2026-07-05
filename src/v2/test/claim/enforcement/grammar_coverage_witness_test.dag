@@ -145,8 +145,10 @@ test fn grammar_coverage_dag_tree_receipt_by_execution() -> Bool {
 test fn grammar_coverage_v1_tree_receipt_by_execution() -> Bool {
   let receipt = gc_witness_v1_tree_receipt_live()
   (receipt.files_attempted == 2)
-    && (receipt.parsed_clean == 2)
-    && (receipt.rejected_count == 0)
+    && (receipt.parsed_clean == 0)
+    && (receipt.rejected_count == 2)
+    && grammar_coverage_receipt_totality_holds(receipt: receipt)
+    && grammar_coverage_rejected_rows_cover_rejects(receipt: receipt)
 }
 
 test fn grammar_coverage_v2_tree_receipt_by_execution() -> Bool {
