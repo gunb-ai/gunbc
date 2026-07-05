@@ -185,6 +185,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(m.clone(), "hash_combine".to_string(), hash_type());
         let m = v1_rt::rc_map_insert(m.clone(), "atom_identity_hash".to_string(), hash_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "trace_mark".to_string(), unit_type());
         let m = v1_rt::rc_map_insert(m.clone(), "string_contains".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "replace".to_string(), string_type());
         let m = v1_rt::rc_map_insert(

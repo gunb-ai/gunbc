@@ -92,6 +92,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "list_push", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "hash_combine", hash_type)
   let m = map_insert(m, "atom_identity_hash", hash_type)
+  let m = map_insert(m, "trace_mark", unit_type)
   let m = map_insert(m, "string_contains", bool_type)
   let m = map_insert(m, "replace", string_type)
   let m = map_insert(m, "filesystem_read", type_variable_node(id: "filesystem_read_result"))
