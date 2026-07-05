@@ -1496,7 +1496,7 @@ fn use_wrap<S>(w: Wrapper<Boxed<S>>) -> Wrapper<Boxed<S>> {
 }
 
 #[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
+#[ignore = "failing: red on main; claimed by the def-unification lane (dag/gunbc/plans/dag_v2_defork_audit.dag, node://adhoc-9d2bb9c3-e7b) where the premise flips from stays-unemitted to grounded List<T>=Vec<T> emission. Kept out of the self_gen8 cluster retirement (dag/test/retirement/pipeline_self_gen8_retired.dag) for that lane; FLAG-DON'T-FIX here."]
 fn self_gen8_nested_parametric_alias_with_opaque_inner_stays_unemitted() {
     let files = &[
         ("inner.dag", "module self_gen8_inner\ntype OpaqueInner<T>\n"),
@@ -1519,7 +1519,7 @@ fn self_gen8_nested_parametric_alias_with_opaque_inner_stays_unemitted() {
 }
 
 #[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
+#[ignore = "failing: red on main; claimed by the def-unification lane (dag/gunbc/plans/dag_v2_defork_audit.dag, node://adhoc-9d2bb9c3-e7b) where the premise flips from stays-unemitted to grounded List<T>=Vec<T> emission. Kept out of the self_gen8 cluster retirement (dag/test/retirement/pipeline_self_gen8_retired.dag) for that lane; FLAG-DON'T-FIX here."]
 fn self_gen8_parametric_alias_to_imported_opaque_homonym_stays_unemitted() {
     let files = &[
         ("carrier_a.dag", "module self_gen8_carrier_a\ntype SharedCarrier<T>\n"),
@@ -1546,7 +1546,7 @@ fn self_gen8_parametric_alias_to_imported_opaque_homonym_stays_unemitted() {
 }
 
 #[test]
-#[ignore = "failing: pre-existing self-host emit regression (parametric-alias-RHS / reexported-type-import module resolution, from prior emission changes) — red on main, surfaced by widening the rust gate (#5427), NOT caused by it. Route to the v2 self-host Route-A (cargo-green) owner; FLAG-DON'T-FIX, draining-worklist not permanent."]
+#[ignore = "failing: red on main; claimed by the def-unification lane (dag/gunbc/plans/dag_v2_defork_audit.dag, node://adhoc-9d2bb9c3-e7b) where the premise flips from stays-unemitted to grounded List<T>=Vec<T> emission. Kept out of the self_gen8 cluster retirement (dag/test/retirement/pipeline_self_gen8_retired.dag) for that lane; FLAG-DON'T-FIX here."]
 fn self_gen8_parametric_alias_to_opaque_carrier_stays_unemitted() {
     let files = &[
         (
