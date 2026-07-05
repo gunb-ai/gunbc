@@ -715,14 +715,14 @@ fn parse_match_arm_stmt_body(
                 prod_name: ^dag_production_stmt,
                 prov: acc.prov
               ) {
-                ParseExprRejected { diagnostics: _, table: _ } =>
+                ParseExprRejected { diagnostics: _, table: table1 } =>
                   ParseMatchArmStmtAcc {
                     remaining: acc.remaining,
                     acc_nodes: acc.acc_nodes,
                     acc_diags: acc.acc_diags,
                     done: true,
                     prov: acc.prov,
-                    table: acc.table
+                    table: table1
                   }
                 ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
                   if length(xs: rest) != length(xs: acc.remaining) {
@@ -741,7 +741,7 @@ fn parse_match_arm_stmt_body(
                       acc_diags: acc.acc_diags,
                       done: true,
                       prov: acc.prov,
-                      table: acc.table
+                      table: table1
                     }
                   }
               }
@@ -1254,7 +1254,7 @@ fn parse_expr(
                             acc_diags: acc.acc_diags,
                             done: true,
                             prov: acc.prov,
-                            table: acc.table
+                            table: table1
                           }
                       }
                   }
