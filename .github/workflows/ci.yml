@@ -273,3 +273,4 @@ jobs:
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
           "$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
+
