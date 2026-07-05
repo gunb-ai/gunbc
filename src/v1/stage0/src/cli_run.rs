@@ -9668,9 +9668,44 @@ fn test_migration_debt_stem_covered(v1_stem: &str, floor_stems: &[String]) -> bo
     floor_stems.iter().any(|floor_stem| floor_stem == v1_stem)
 }
 
+// Second stem source (typed retirement path): a `<stem>_retired.dag` declaration under the
+// corpus records a reviewed, typed retirement (delete-redundant / delete-low-value) for a v1
+// test module whose behavior does NOT migrate to an exact-stem floor `*_test.dag` witness. A
+// retired stem covers the module identically to a floor-witness stem — it excludes the module
+// from the debt roster and authorizes its delete through the delete-guard. The typed disposition
+// and its justification live in the `.dag` decl (`test.retirement.model`, single authority,
+// type-checked by the compile-clean gate); this guard reads only the filename stem, exactly as
+// it reads floor witnesses. A file counts only if it actually declares a `TestModuleRetirement`,
+// so an empty stub cannot silence the guard.
+fn test_migration_retired_stems() -> Vec<String> {
+    let mut stems: Vec<String> = corpus_dag_files()
+        .into_iter()
+        .filter(|(_, content)| content.contains("TestModuleRetirement"))
+        .filter_map(|(path, _)| {
+            let file_name = std::path::Path::new(&path)
+                .file_name()
+                .and_then(|n| n.to_str())?;
+            file_name.strip_suffix("_retired.dag").map(|s| s.to_string())
+        })
+        .collect();
+    stems.sort();
+    stems.dedup();
+    stems
+}
+
+// The covered set consumed by both the debt roster and the delete-guard: floor-witness stems
+// (migrate path) unioned with retired stems (delete path). One union, two consumers.
+fn test_migration_covered_stems() -> Vec<String> {
+    let mut stems = test_migration_debt_floor_stems();
+    stems.extend(test_migration_retired_stems());
+    stems.sort();
+    stems.dedup();
+    stems
+}
+
 fn build_test_migration_debt_report() -> TestMigrationDebtReport {
     let dir = test_migration_debt_v1_test_dir();
-    let floor_stems = test_migration_debt_floor_stems();
+    let floor_stems = test_migration_covered_stems();
     let mut entries = Vec::new();
     let read_dir = match std::fs::read_dir(&dir) {
         Ok(rd) => rd,
@@ -9847,7 +9882,7 @@ fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, 
     if base_rev == head_rev {
         return Ok(Vec::new());
     }
-    let floor_stems = test_migration_debt_floor_stems();
+    let floor_stems = test_migration_covered_stems();
     let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base, &head)?;
     let mut violations = Vec::new();
     for path in deleted {
@@ -9915,6 +9950,38 @@ mod test_migration_debt_tests {
         let floor_stems = test_migration_debt_floor_stems();
         let stem = test_migration_debt_stem("cron_tag_test.rs");
         assert!(!test_migration_debt_stem_covered(&stem, &floor_stems));
+    }
+
+    // Green-by-execution for the typed retirement path: the demonstrator
+    // `dag/test/retirement/map_lookup_dual_dispatch_retired.dag` declares a `TestModuleRetirement`
+    // whose stem is `map_lookup_dual_dispatch`. That stem is NOT a floor-witness stem (its covering
+    // witness is `map_lookup_dual_dispatch_witness_test.dag`, stem `map_lookup_dual_dispatch_witness`),
+    // so the retirement is the *only* thing that covers it — the union must pick it up.
+    #[test]
+    fn retired_stem_is_covered_but_not_a_floor_stem() {
+        let stem = "map_lookup_dual_dispatch";
+        assert!(
+            test_migration_retired_stems().iter().any(|s| s == stem),
+            "retirement declaration must contribute its stem"
+        );
+        // Discriminating control: the same stem is NOT a floor-witness stem — so the coverage
+        // comes strictly from the retirement path, not an accidental floor match.
+        assert!(
+            !test_migration_debt_floor_stems().iter().any(|s| s == stem),
+            "stem must be covered only via retirement, not a floor witness"
+        );
+        assert!(test_migration_covered_stems().iter().any(|s| s == stem));
+    }
+
+    // The retired module no longer appears in the debt roster (the retirement excluded it).
+    #[test]
+    fn retired_module_is_not_debt() {
+        assert!(
+            !test_migration_debt_module_names()
+                .iter()
+                .any(|m| m == "map_lookup_dual_dispatch_test.rs"),
+            "a retired module must drop out of the debt roster"
+        );
     }
 }
 
