@@ -3,11 +3,11 @@ module v2.lens.complexity_r1_accumulator_copy
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SubstrateMandatoryTag }
 import v2.lens.cost {
-  ConstantCost,
   PolynomialCost,
   SizeVariable,
   SymbolicCost,
-  polynomial_degree_two
+  polynomial_degree_two,
+  zero_cost
 }
 import v2.std.algebra {
   Cons,
@@ -253,7 +253,7 @@ fn complexity_r1_accumulator_copy_lens(n: Node) -> Witness<SymbolicCost> {
     R1PolyTwoSuspect { implied_cost: cost, flow_opaque_count: _ } =>
       Holds { value: cost }
     R1Clean { flow_opaque_count: 0 } =>
-      Holds { value: ConstantCost }
+      Holds { value: zero_cost() }
     R1Clean { flow_opaque_count: _ } =>
       Violates { diagnostic: complexity_r1_flow_opaque_diagnostic() }
     R1MalformedSubject =>
