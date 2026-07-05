@@ -1,6 +1,5 @@
 module extdeps.languages.markdown
 
-import v2.std.algebra { fold_list }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
 import extdeps.communication.medium { Medium, Lossless }
@@ -505,16 +504,14 @@ fn markdown_url_validation(url: String) -> RejectedUrlScheme? {
 }
 
 fn find_first_rejected_url_in_inlines(inlines: List<MarkdownInline>) -> RejectedUrlScheme? {
-  fold_list(
-    xs: inlines,
-    empty: Absent,
-    cons: fn(acc, inline) {
-      match acc {
-      Present { value: r } => Present { value: r }
-      Absent => find_first_rejected_url_in_inline(inline: inline)
+  match inlines |> first {
+    Present { value: inline } =>
+      match find_first_rejected_url_in_inline(inline: inline) {
+        Present { value: r } => Present { value: r }
+        Absent => find_first_rejected_url_in_inlines(inlines: inlines |> skip(1))
       }
-    }
-  )
+    Absent => Absent
+  }
 }
 
 fn find_first_rejected_url_in_inline(inline: MarkdownInline) -> RejectedUrlScheme? {
@@ -535,42 +532,47 @@ fn find_first_rejected_url_in_inline(inline: MarkdownInline) -> RejectedUrlSchem
 }
 
 fn find_first_rejected_url_in_blocks(blocks: List<MarkdownBlock>) -> RejectedUrlScheme? {
-  fold_list(
-    xs: blocks,
-    empty: Absent,
-    cons: fn(acc, block) {
-      match acc {
-      Present { value: r } => Present { value: r }
-      Absent => find_first_rejected_url_in_block(block: block)
+  match blocks |> first {
+    Present { value: block } =>
+      match find_first_rejected_url_in_block(block: block) {
+        Present { value: r } => Present { value: r }
+        Absent => find_first_rejected_url_in_blocks(blocks: blocks |> skip(1))
       }
-    }
-  )
+    Absent => Absent
+  }
 }
 
 fn find_first_rejected_url_in_cells(cells: List<MarkdownTableCell>) -> RejectedUrlScheme? {
-  fold_list(
-    xs: cells,
-    empty: Absent,
-    cons: fn(acc, cell) {
-      match acc {
-      Present { value: r } => Present { value: r }
-      Absent => find_first_rejected_url_in_inlines(inlines: cell.inlines)
+  match cells |> first {
+    Present { value: cell } =>
+      match find_first_rejected_url_in_inlines(inlines: cell.inlines) {
+        Present { value: r } => Present { value: r }
+        Absent => find_first_rejected_url_in_cells(cells: cells |> skip(1))
       }
-    }
-  )
+    Absent => Absent
+  }
 }
 
 fn find_first_rejected_url_in_rows(rows: List<MarkdownTableRow>) -> RejectedUrlScheme? {
-  fold_list(
-    xs: rows,
-    empty: Absent,
-    cons: fn(acc, row) {
-      match acc {
-      Present { value: r } => Present { value: r }
-      Absent => find_first_rejected_url_in_cells(cells: row.cells)
+  match rows |> first {
+    Present { value: row } =>
+      match find_first_rejected_url_in_cells(cells: row.cells) {
+        Present { value: r } => Present { value: r }
+        Absent => find_first_rejected_url_in_rows(rows: rows |> skip(1))
       }
-    }
-  )
+    Absent => Absent
+  }
+}
+
+fn find_first_rejected_url_in_list_items(items: List<MarkdownListItem>) -> RejectedUrlScheme? {
+  match items |> first {
+    Present { value: item } =>
+      match find_first_rejected_url_in_blocks(blocks: item.blocks) {
+        Present { value: r } => Present { value: r }
+        Absent => find_first_rejected_url_in_list_items(items: items |> skip(1))
+      }
+    Absent => Absent
+  }
 }
 
 fn find_first_rejected_url_in_block(block: MarkdownBlock) -> RejectedUrlScheme? {
@@ -581,41 +583,11 @@ fn find_first_rejected_url_in_block(block: MarkdownBlock) -> RejectedUrlScheme? 
     ParagraphBlock { inlines } =>
       find_first_rejected_url_in_inlines(inlines: inlines)
     UnorderedListBlock { items } =>
-      fold_list(
-    xs: items,
-    empty: Absent,
-    cons: fn(acc, item) {
-      match acc {
-          Present { value: r } => Present { value: r }
-          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
-      }
-    }
-        }
-      )
+      find_first_rejected_url_in_list_items(items: items)
     OrderedListBlock { items } =>
-      fold_list(
-    xs: items,
-    empty: Absent,
-    cons: fn(acc, item) {
-      match acc {
-          Present { value: r } => Present { value: r }
-          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
-      }
-    }
-        }
-      )
+      find_first_rejected_url_in_list_items(items: items)
     TaskListBlock { items } =>
-      fold_list(
-    xs: items,
-    empty: Absent,
-    cons: fn(acc, item) {
-      match acc {
-          Present { value: r } => Present { value: r }
-          Absent => find_first_rejected_url_in_blocks(blocks: item.blocks)
-      }
-    }
-        }
-      )
+      find_first_rejected_url_in_list_items(items: items)
     TableBlock { header, alignments: _, rows } =>
       match find_first_rejected_url_in_cells(cells: header.cells) {
         Present { value: r } => Present { value: r }
