@@ -33,8 +33,10 @@ data cc_witness_dag_paths: List<String> = [
 
 data cc_witness_v2_paths: List<String> = [
   "src/v2/std/logic.dag",
-  "src/v2/std/integer.dag"
+  "src/v2/std/nat.dag"
 ]
+
+data cc_witness_integer_dag_pulled_note: String = "src/v2/std/integer.dag (26KB) was in this roster and did NOT complete v2-ingest+judging within 144min local (killed, no verdict) - ~10x beyond the known residual-superlinear projection for its size, so a distinct pathology (suspects: cost_lens judging of algebra-heavy bodies, or generics-heavy parse-table blowup on Compose rows). Pulled from claim/ per the manual-vs-claim split precedent (#6280); pathology tracked as its own census-scale blocker work item. A claim/ witness must complete in bounded local time - a roster member that cannot is a scale receipt, not a smoke."
 
 fn cc_witness_smoke_receipt_live() -> CostCoverageTreeReceipt {
   cost_coverage_tree_census(tree_root: "dag", paths: cc_witness_smoke_paths)
