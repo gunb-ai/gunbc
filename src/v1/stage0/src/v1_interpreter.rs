@@ -2264,6 +2264,11 @@ pub(crate) const STD_FN_INDEX_BRIDGE_FNS: &[&str] = &["fn_arrow_decl_facts_live"
 
 pub(crate) const STD_DATA_INDEX_BRIDGE_FNS: &[&str] = &["data_init_decl_facts_live"];
 
+pub(crate) const INERT_LENS_BRIDGE_FNS: &[&str] = &[
+    "inert_lens_unreached_module_count",
+    "inert_lens_top_level_module_count",
+];
+
 pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
     STD_NODE_BRIDGE_FNS
 }
@@ -2351,6 +2356,15 @@ fn is_v4_std_qualified_name_bridge_call(ctx: &InterpContext, func_name: &str) ->
         .is_some_and(|info| info.module_name == "v2.std.qualified_name")
 }
 
+fn is_v4_inert_lens_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !INERT_LENS_BRIDGE_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v2.lens.inert_lens")
+}
+
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let func_name = {
         let key = Rc::as_ptr(node) as usize;
@@ -2434,6 +2448,18 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
                 crate::coproduct_reflection::eval_data_init_decl_facts_live(ctx, &args)
             }
             _ => unreachable!("data_index bridge fn set mismatch"),
+        };
+    }
+
+    if is_v4_inert_lens_bridge_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "inert_lens_unreached_module_count" => Ok(Value::Int(
+                crate::cli_run::inert_lens_unreached_module_count(),
+            )),
+            "inert_lens_top_level_module_count" => Ok(Value::Int(
+                crate::cli_run::inert_lens_top_level_module_count(),
+            )),
+            _ => unreachable!("inert_lens bridge fn set mismatch"),
         };
     }
 
@@ -5318,6 +5344,21 @@ fn eval_builtin(
             let sub = expect_str(positional.get(1).copied(), "contains sub")?;
             Ok(Some(Value::Bool(s.contains(&sub))))
         }
+
+        "starts_with" => {
+            let s = expect_str(positional.first().copied(), "starts_with")?;
+            let prefix = expect_str(positional.get(1).copied(), "starts_with prefix")?;
+            Ok(Some(Value::Bool(s.starts_with(&prefix))))
+        }
+
+        "length" => match positional.first() {
+            Some(Value::Str(s)) => Ok(Some(Value::Int(s.chars().count() as i64))),
+            Some(v) => match free_monoid_to_vec(v) {
+                Some(items) => Ok(Some(Value::Int(items.len() as i64))),
+                None => Ok(None),
+            },
+            None => Ok(None),
+        },
 
         "contains" => match positional.as_slice() {
             [Value::Str(s), Value::Str(sub), ..] => Ok(Some(Value::Bool(s.contains(sub)))),
