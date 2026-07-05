@@ -1,0 +1,112 @@
+module tools.dag_compile_clean_seam
+
+import tools.dag_compile_clean_partition {
+  CompileCleanShardVerdict, ShardClean, ShardFailed,
+  compose_compile_clean_shard_verdicts
+}
+import tools.dag_compile_clean_seam_transport {
+  run_cross_shard_seam_probe,
+  cross_shard_seam_importer_entry_path,
+  cross_shard_seam_importee_entry_path,
+  cross_shard_seam_result_marker
+}
+import std.types { String, Bool }
+
+type CrossShardSeamReceipt {
+  raw: String
+  probe_ran: Bool
+}
+
+fn cross_shard_seam_receipt_from(probe_success: Bool, probe_stdout: String) -> CrossShardSeamReceipt {
+  CrossShardSeamReceipt {
+    raw: probe_stdout,
+    probe_ran: probe_success && string_contains(s: probe_stdout, pattern: cross_shard_seam_result_marker)
+  }
+}
+
+fn seam_exit_nonzero(receipt: CrossShardSeamReceipt, field: String) -> Bool {
+  !string_contains(s: receipt.raw, pattern: concat(field, "=0"))
+}
+
+fn seam_field_zero(receipt: CrossShardSeamReceipt, field: String) -> Bool {
+  string_contains(s: receipt.raw, pattern: concat(field, "=0"))
+}
+
+fn seam_field_nonzero(receipt: CrossShardSeamReceipt, field: String) -> Bool {
+  !seam_field_zero(receipt: receipt, field: field)
+}
+
+fn shard_y_reds(receipt: CrossShardSeamReceipt) -> Bool {
+  seam_exit_nonzero(receipt: receipt, field: "Y_EXIT")
+    && seam_field_nonzero(receipt: receipt, field: "Y_HAS")
+}
+
+fn shard_x_reds_with_seam_attribution(receipt: CrossShardSeamReceipt) -> Bool {
+  seam_exit_nonzero(receipt: receipt, field: "X_EXIT")
+    && seam_field_nonzero(receipt: receipt, field: "X_HAS")
+}
+
+fn monolith_control_reds_with_same_diagnostic_class(receipt: CrossShardSeamReceipt) -> Bool {
+  seam_exit_nonzero(receipt: receipt, field: "M_EXIT")
+    && seam_field_nonzero(receipt: receipt, field: "M_HAS")
+}
+
+fn cross_shard_seam_composed_verdict(receipt: CrossShardSeamReceipt) -> CompileCleanShardVerdict {
+  let verdict_y = if shard_y_reds(receipt: receipt) {
+    ShardFailed { entry_path: cross_shard_seam_importee_entry_path }
+  } else {
+    ShardClean
+  }
+  let verdict_x = if shard_x_reds_with_seam_attribution(receipt: receipt) {
+    ShardFailed { entry_path: cross_shard_seam_importer_entry_path }
+  } else {
+    ShardClean
+  }
+  compose_compile_clean_shard_verdicts(verdicts: [verdict_y, verdict_x])
+}
+
+fn composed_verdict_reds_and_names_cause(receipt: CrossShardSeamReceipt) -> Bool {
+  match cross_shard_seam_composed_verdict(receipt: receipt) {
+    ShardFailed { entry_path: p } => p != ""
+    ShardClean => false
+  }
+}
+
+fn witness_cross_shard_seam_preservation_holds_from(receipt: CrossShardSeamReceipt) -> Bool {
+  receipt.probe_ran
+    && shard_y_reds(receipt: receipt)
+    && shard_x_reds_with_seam_attribution(receipt: receipt)
+    && composed_verdict_reds_and_names_cause(receipt: receipt)
+    && monolith_control_reds_with_same_diagnostic_class(receipt: receipt)
+}
+
+fn witness_cross_shard_seam_preservation_holds() -> Bool {
+  let probe = run_cross_shard_seam_probe()
+  let receipt = cross_shard_seam_receipt_from(probe_success: probe.success, probe_stdout: probe.stdout)
+  witness_cross_shard_seam_preservation_holds_from(receipt: receipt)
+}
+
+fn synthetic_seam_receipt(raw: String) -> CrossShardSeamReceipt {
+  cross_shard_seam_receipt_from(probe_success: true, probe_stdout: raw)
+}
+
+fn witness_seam_algebra_reds_on_synthetic_break() -> Bool {
+  let receipt = synthetic_seam_receipt(
+    raw: "SEAM_RESULT Y_EXIT=1 X_EXIT=1 M_EXIT=1 Y_HAS=2 X_HAS=1 M_HAS=1"
+  )
+  witness_cross_shard_seam_preservation_holds_from(receipt: receipt)
+}
+
+fn witness_seam_algebra_fails_closed_when_class_missing() -> Bool {
+  let receipt = synthetic_seam_receipt(
+    raw: "SEAM_RESULT Y_EXIT=1 X_EXIT=1 M_EXIT=1 Y_HAS=2 X_HAS=1 M_HAS=0"
+  )
+  !witness_cross_shard_seam_preservation_holds_from(receipt: receipt)
+}
+
+fn witness_seam_algebra_fails_closed_when_importer_silently_passes() -> Bool {
+  let receipt = synthetic_seam_receipt(
+    raw: "SEAM_RESULT Y_EXIT=1 X_EXIT=0 M_EXIT=1 Y_HAS=2 X_HAS=0 M_HAS=1"
+  )
+  !witness_cross_shard_seam_preservation_holds_from(receipt: receipt)
+}
