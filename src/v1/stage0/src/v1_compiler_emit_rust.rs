@@ -941,6 +941,22 @@ pub fn render_rust_decl_type(
         if is_host_text_carrier_type(n.clone(), source_indices.clone(), corpus_repr.clone()) {
             return rust_carrier_optional_wrap(n.clone(), "String".to_string());
         }
+        let decl_name = authored_name_at(source_indices.clone(), n.clone());
+        if n.connective.clone() == Connective::NoConnective
+            && ((n.children.clone().len() as i64) == 0)
+            && decl_name.clone() != "".to_string()
+            && decl_name.clone() != "String".to_string()
+            && !is_container_type(decl_name.clone())
+            && rust_fn_sig_peel_closed_alias(env.clone(), n.clone())
+            && rust_fn_sig_preserves_authored_alias_leaf(decl_name.clone(), corpus_repr.clone())
+        {
+            return render_rust_shared_type_with_optional(
+                n.clone(),
+                decl_name.clone(),
+                decl_name.clone(),
+                shared_types.clone(),
+            );
+        }
         let applied_prop = find_property(
             n.properties.clone(),
             "__applied_type_args".to_string(),
@@ -1203,6 +1219,133 @@ pub fn rust_fn_sig_preserves_authored_alias_leaf(
         true
     } else {
         rust_seed_host_numeric_alias(name.clone(), corpus_repr.clone()) == None
+    }
+}
+
+pub fn unqualified_foreign_alias_rhs_leaf_import_names(
+    n: Rc<Node>,
+    module_name: String,
+    imports: Rc<Vec<Rc<Node>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    scope: Rc<InferScope>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    module_index: Rc<ModuleIndex>,
+) -> Rc<Vec<String>> {
+    let name = authored_name_at(source_indices.clone(), n.clone());
+    if n.connective.clone() == Connective::NoConnective && ((n.children.clone().len() as i64) == 0)
+    {
+        if name.clone() == "".to_string() || is_kernel_type(name.clone()) {
+            Rc::new(vec![])
+        } else {
+            let local_mod = module_to_filename(module_name.clone());
+            let def_mod = alias_rhs_base_module_filename(
+                name.clone(),
+                module_name.clone(),
+                imports.clone(),
+                source_indices.clone(),
+                scope.clone(),
+                registry.clone(),
+                export_sets.clone(),
+                typed_modules.clone(),
+                module_index.clone(),
+            );
+            if def_mod.clone() != local_mod.clone()
+                && has_physical_type_def_in_module_filename(
+                    name.clone(),
+                    def_mod.clone(),
+                    typed_modules.clone(),
+                    source_indices.clone(),
+                    module_index.clone(),
+                )
+            {
+                Rc::new(vec![name.clone()])
+            } else {
+                Rc::new(vec![])
+            }
+        }
+    } else if n.connective.clone() == Connective::NoConnective
+        && ((n.children.clone().len() as i64) > 0)
+    {
+        Rc::new({
+            let mut __result = Vec::new();
+            for c in n.children.clone().iter().cloned() {
+                __result.extend(
+                    (*unqualified_foreign_alias_rhs_leaf_import_names(
+                        child_type_node(c.clone()),
+                        module_name.clone(),
+                        imports.clone(),
+                        source_indices.clone(),
+                        scope.clone(),
+                        registry.clone(),
+                        export_sets.clone(),
+                        typed_modules.clone(),
+                        module_index.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        })
+    } else {
+        Rc::new(vec![])
+    }
+}
+
+pub fn emit_dealiased_grounding_use_lines(
+    names: Rc<Vec<String>>,
+    local_type_names: Rc<Vec<String>>,
+    module_name: String,
+    imports: Rc<Vec<Rc<Node>>>,
+    scope: Rc<InferScope>,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    export_sets: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
+    typed_modules: Rc<Vec<Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    module_index: Rc<ModuleIndex>,
+) -> String {
+    let needed = unique_strings(Rc::new({
+        let mut __result = Vec::new();
+        for n in names.iter().cloned() {
+            if local_type_names.iter().all(|ln| ln.clone() != n.clone()) {
+                __result.push(n.clone());
+            }
+        }
+        __result
+    }));
+    if ((needed.clone().len() as i64) == 0) {
+        "".to_string()
+    } else {
+        dedupe_rust_import_lines(Rc::new({
+            let mut __result = Vec::new();
+            for n in needed.iter().cloned() {
+                let def_mod = alias_rhs_base_module_filename(
+                    n.clone(),
+                    module_name.clone(),
+                    imports.clone(),
+                    source_indices.clone(),
+                    scope.clone(),
+                    registry.clone(),
+                    export_sets.clone(),
+                    typed_modules.clone(),
+                    module_index.clone(),
+                );
+                __result.push(v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(rust_visibility_prefix(), "use crate::".to_string()),
+                            def_mod.clone(),
+                        ),
+                        "::".to_string(),
+                    ),
+                    v1_rt::concat(n.clone(), ";".to_string()),
+                ));
+            }
+            __result
+        }))
+        .join(&"\n".to_string())
     }
 }
 
@@ -3828,8 +3971,57 @@ pub fn emit_module_full(
             }
             __result
         });
+        let module_import_items = module_imports(m.clone());
+        let this_module_name = authored_name(scope.type_env.clone(), m.clone());
+        let dealiased_rhs_import_names = Rc::new({
+            let mut __result = Vec::new();
+            for item in Rc::new({
+                let mut __result = Vec::new();
+                for item in typed_module.items.clone().iter().cloned() {
+                    if is_type_alias_item(
+                        item.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                    ) {
+                        __result.push(item);
+                    }
+                }
+                __result
+            })
+            .iter()
+            .cloned()
+            {
+                __result.extend(
+                    (*unqualified_foreign_alias_rhs_leaf_import_names(
+                        resolved_type(item.clone()),
+                        this_module_name.clone(),
+                        module_import_items.clone(),
+                        scope.type_env.clone().source_indices.clone(),
+                        scope.clone(),
+                        registry.clone(),
+                        export_sets.clone(),
+                        typed_modules.clone(),
+                        module_index.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        });
+        let dealiased_uses_str = emit_dealiased_grounding_use_lines(
+            dealiased_rhs_import_names,
+            local_type_names.clone(),
+            this_module_name.clone(),
+            module_import_items.clone(),
+            scope.clone(),
+            registry.clone(),
+            export_sets.clone(),
+            typed_modules.clone(),
+            scope.type_env.clone().source_indices.clone(),
+            module_index.clone(),
+        );
         let imports_str = emit_imports(
-            module_imports(m.clone()),
+            module_import_items.clone(),
             emit_info.clone(),
             registry.clone(),
             local_type_names,
@@ -3838,10 +4030,24 @@ pub fn emit_module_full(
             scope.type_env.clone().source_indices.clone(),
             module_index.clone(),
         );
-        let imports_section = if (imports_str.clone() == "".to_string()) {
+        let imports_combined = if imports_str.clone() == "".to_string()
+            && dealiased_uses_str.clone() == "".to_string()
+        {
+            "".to_string()
+        } else if imports_str.clone() == "".to_string() {
+            dealiased_uses_str.clone()
+        } else if dealiased_uses_str.clone() == "".to_string() {
+            imports_str.clone()
+        } else {
+            v1_rt::concat(
+                v1_rt::concat(imports_str.clone(), "\n".to_string()),
+                dealiased_uses_str.clone(),
+            )
+        };
+        let imports_section = if (imports_combined.clone() == "".to_string()) {
             "".to_string()
         } else {
-            v1_rt::concat("\n".to_string(), imports_str.clone())
+            v1_rt::concat("\n".to_string(), imports_combined.clone())
         };
         let this_mod_filename =
             module_to_filename(authored_name(scope.type_env.clone(), m.clone()));
@@ -3952,8 +4158,6 @@ pub fn emit_module_full(
             }
             __result
         });
-        let module_import_items = module_imports(m.clone());
-        let this_module_name = authored_name(scope.type_env.clone(), m.clone());
         let wire_context_items = v1_rt::concat(
             typed_module.items.clone(),
             contracts_items_for_module(
@@ -8305,6 +8509,21 @@ pub fn render_rust_field_type_with_applied_binding(
 ) -> String {
     {
         let authored_type = field_node_type_expr(field.clone());
+        let authored_name = authored_name_at(source_indices.clone(), authored_type.clone());
+        if authored_name.clone() != "".to_string()
+            && authored_type.connective.clone() == Connective::NoConnective
+            && ((authored_type.children.clone().len() as i64) == 0)
+            && !is_container_type(authored_name.clone())
+            && rust_fn_sig_peel_closed_alias(env.clone(), authored_type.clone())
+            && rust_fn_sig_preserves_authored_alias_leaf(authored_name.clone(), corpus_repr.clone())
+        {
+            return render_rust_shared_type_with_optional(
+                authored_type.clone(),
+                authored_name.clone(),
+                authored_name.clone(),
+                shared_types.clone(),
+            );
+        }
         if ((generic_param_names.clone().len() as i64) > 0) {
             render_rust_decl_type(
                 resolved_type(field.clone()),

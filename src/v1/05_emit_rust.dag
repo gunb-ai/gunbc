@@ -522,6 +522,10 @@ fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, s
 
 fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   if is_host_text_carrier_type(n: n, source_indices: source_indices, corpus_repr: corpus_repr) { return rust_carrier_optional_wrap(n: n, rendered: "String") }
+  let decl_name = authored_name_at(source_indices: source_indices, node: n)
+  if n.connective == NoConnective && n.children |> count == 0 && decl_name != "" && decl_name != "String" && !is_container_type(name: decl_name) && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: decl_name, corpus_repr: corpus_repr) {
+    return render_rust_shared_type_with_optional(n: n, type_name: decl_name, rendered: decl_name, shared_types: shared_types)
+  }
   let applied_prop = find_property(props: n.properties, prop_name: "__applied_type_args", source_indices: source_indices)
   let applied_overlay = match applied_prop {
     Present { value: applied } =>
@@ -605,6 +609,40 @@ fn rust_fn_sig_preserves_authored_alias_leaf(name: String, corpus_repr: RustCorp
     true
   } else {
     rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr) == none
+  }
+}
+
+fn unqualified_foreign_alias_rhs_leaf_import_names(n: Node, module_name: String, imports: List<Node>, source_indices: Map<String, NewlineIndex>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, module_index: ModuleIndex) -> List<String> {
+  let name = authored_name_at(source_indices: source_indices, node: n)
+  if n.connective == NoConnective && (n.children |> count) == 0 {
+    if name == "" || is_kernel_type(name: name) {
+      []
+    } else {
+      let local_mod = module_to_filename(name: module_name)
+      let def_mod = alias_rhs_base_module_filename(name: name, alias_module: module_name, imports: imports, source_indices: source_indices, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index)
+      if def_mod != local_mod && has_physical_type_def_in_module_filename(rhs_name: name, mod_filename: def_mod, typed_modules: typed_modules, source_indices: source_indices, module_index: module_index) {
+        [name]
+      } else {
+        []
+      }
+    }
+  } else if n.connective == NoConnective && (n.children |> count) > 0 {
+    n.children |> flat_map(c => unqualified_foreign_alias_rhs_leaf_import_names(n: child_type_node(ch: c), module_name: module_name, imports: imports, source_indices: source_indices, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index))
+  } else {
+    []
+  }
+}
+
+fn emit_dealiased_grounding_use_lines(names: List<String>, local_type_names: List<String>, module_name: String, imports: List<Node>, scope: InferScope, registry: Map<String, ItemInfo>, export_sets: Map<String, Map<String, Bool>>, typed_modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>, module_index: ModuleIndex) -> String {
+  let needed = unique_strings(items: names |> filter(n => local_type_names |> all(ln => ln != n)))
+  if needed |> count == 0 {
+    ""
+  } else {
+    let lines = needed |> map(n => {
+      let def_mod = alias_rhs_base_module_filename(name: n, alias_module: module_name, imports: imports, source_indices: source_indices, scope: scope, registry: registry, export_sets: export_sets, typed_modules: typed_modules, module_index: module_index)
+      concat(rust_visibility_prefix(), "use crate::", def_mod, "::", n, ";")
+    })
+    dedupe_rust_import_lines(lines: lines) |> join(separator: "\n")
   }
 }
 
@@ -1779,8 +1817,37 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
       || is_type_decl_item(item: item, source_indices: scope.type_env.source_indices)
     )
     |> map(item => authored_name(env: scope.type_env, node: item))
-  let imports_str = emit_imports(imports: module_imports(n: m), emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
-  let imports_section = if imports_str == "" { "" } else { concat("\n", imports_str) }
+  let module_import_items = module_imports(n: m)
+  let this_module_name = authored_name(env: scope.type_env, node: m)
+  let dealiased_rhs_import_names = typed_module.items
+    |> filter(item => is_type_alias_item(item: item, source_indices: scope.type_env.source_indices))
+    |> flat_map(item => unqualified_foreign_alias_rhs_leaf_import_names(
+      n: resolved_type(n: item),
+      module_name: this_module_name,
+      imports: module_import_items,
+      source_indices: scope.type_env.source_indices,
+      scope: scope,
+      registry: registry,
+      export_sets: export_sets,
+      typed_modules: typed_modules,
+      module_index: module_index))
+  let dealiased_uses_str = emit_dealiased_grounding_use_lines(
+    names: dealiased_rhs_import_names,
+    local_type_names: local_type_names,
+    module_name: this_module_name,
+    imports: module_import_items,
+    scope: scope,
+    registry: registry,
+    export_sets: export_sets,
+    typed_modules: typed_modules,
+    source_indices: scope.type_env.source_indices,
+    module_index: module_index)
+  let imports_str = emit_imports(imports: module_import_items, emit_info: emit_info, registry: registry, local_names: local_type_names, export_sets: export_sets, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index)
+  let imports_combined = if imports_str == "" && dealiased_uses_str == "" { "" }
+    else if imports_str == "" { dealiased_uses_str }
+    else if dealiased_uses_str == "" { imports_str }
+    else { concat(imports_str, "\n", dealiased_uses_str) }
+  let imports_section = if imports_combined == "" { "" } else { concat("\n", imports_combined) }
   let this_mod_filename = module_to_filename(name: authored_name(env: scope.type_env, node: m))
   let all_svc_names = typed_module.items |> flat_map(item =>
     match map_get(registry, authored_name(env: scope.type_env, node: item)) {
@@ -1805,8 +1872,6 @@ fn emit_module_full(typed_module: TypedModule, registry: Map<String, ItemInfo>, 
   let local_coproduct_names = typed_module.items
     |> filter(item => is_type_def_item(item: item) && is_coproduct_type(n: item))
     |> map(item => authored_name(env: scope.type_env, node: item))
-  let module_import_items = module_imports(n: m)
-  let this_module_name = authored_name(env: scope.type_env, node: m)
   let wire_context_items = concat(typed_module.items, contracts_items_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
   let wire_context_imports = concat(module_import_items, contracts_imports_for_module(module_name: this_module_name, typed_modules: typed_modules, source_indices: scope.type_env.source_indices, module_index: module_index))
   let coproduct_wire_contract_validations = emit_coproduct_wire_contract_validations(module_items: wire_context_items, imports: wire_context_imports, local_coproduct_names: local_coproduct_names, source_indices: scope.type_env.source_indices)
@@ -3413,6 +3478,10 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, cor
 
 fn render_rust_field_type_with_applied_binding(field: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let authored_type = field_node_type_expr(n: field)
+  let authored_name = authored_name_at(source_indices: source_indices, node: authored_type)
+  if authored_name != "" && authored_type.connective == NoConnective && authored_type.children |> count == 0 && !is_container_type(name: authored_name) && rust_fn_sig_peel_closed_alias(env: env, n: authored_type) && rust_fn_sig_preserves_authored_alias_leaf(name: authored_name, corpus_repr: corpus_repr) {
+    return render_rust_shared_type_with_optional(n: authored_type, type_name: authored_name, rendered: authored_name, shared_types: shared_types)
+  }
   if generic_param_names |> count > 0 {
     render_rust_decl_type(n: resolved_type(n: field), generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else if find_property(props: field.properties, prop_name: "__applied_type_args", source_indices: source_indices) != none {
