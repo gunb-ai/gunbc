@@ -6313,6 +6313,10 @@ fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedMod
   }
 }
 
+fn typecheck_module_isolated(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypecheckModuleResult {
+  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table)
+}
+
 type EnvResolveResult {
   env: TypeEnv
   diagnostics: List<ErrorNode>

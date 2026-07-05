@@ -1714,13 +1714,9 @@ mod compiler_tests {
                     }
 
                     let t_full = Instant::now();
-                    let tc_result = crate::v1_compiler_infer::typecheck_module(
+                    let tc_result = crate::v1_compiler_infer::typecheck_module_isolated(
                         resolved.clone(),
                         module_index.clone(),
-                        std::rc::Rc::new(std::collections::HashMap::<
-                            String,
-                            std::rc::Rc<crate::v1_compiler_infer::VariantExportSurface>,
-                        >::new()),
                         source_indices.clone(),
                         intern_table.clone(),
                     );
