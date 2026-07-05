@@ -11,6 +11,10 @@ import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind,
   CommitSpecGate, CommitWitnessClaim, CommitCargoFmtCheck,
 }
+import std.realization_schedule {
+  WitnessKind, CorpusWitnessKind, ExecutionWitnessKind,
+  WitnessSeam, WitnessSpan, SpanUndeclared, SpanSeams,
+}
 import gunbc.ci_gate {
   Gate,
   RustMonolithGate, EmitHostGate, LayeringImportsGate,
@@ -85,14 +89,44 @@ fn witness_fn_list_hash(fns: List<String>) -> ContentHash {
   })
 }
 
+fn witness_kind_content_hash(kind: WitnessKind) -> ContentHash {
+  match kind {
+    CorpusWitnessKind => content_hash_atom(value: "CorpusWitnessKind")
+    ExecutionWitnessKind => content_hash_atom(value: "ExecutionWitnessKind")
+  }
+}
+
+fn witness_seam_content_hash(seam: WitnessSeam) -> ContentHash {
+  content_hash_combine(
+    content_hash_atom(value: seam.producer),
+    content_hash_atom(value: seam.consumer)
+  )
+}
+
+fn witness_span_content_hash(span: WitnessSpan) -> ContentHash {
+  match span {
+    SpanUndeclared => content_hash_atom(value: "SpanUndeclared")
+    SpanSeams { seams } =>
+      fold(seams, init: content_hash_atom(value: "SpanSeams"), f: fn(acc, seam) {
+        content_hash_combine(acc, witness_seam_content_hash(seam: seam))
+      })
+  }
+}
+
 fn check_kind_content_hash(check: CommitCheckKind) -> ContentHash {
   match check {
     CommitSpecGate { gate: g } =>
       content_hash_tagged(tag: "CommitSpecGate", payload: gate_content_hash(g: g))
-    CommitWitnessClaim { entry, check_fns } =>
+    CommitWitnessClaim { entry, check_fns, kind, span } =>
       content_hash_combine(
-        content_hash_tagged(tag: "CommitWitnessClaim", payload: content_hash_atom(value: entry)),
-        witness_fn_list_hash(fns: check_fns)
+        content_hash_combine(
+          content_hash_tagged(tag: "CommitWitnessClaim", payload: content_hash_atom(value: entry)),
+          witness_fn_list_hash(fns: check_fns)
+        ),
+        content_hash_combine(
+          witness_kind_content_hash(kind: kind),
+          witness_span_content_hash(span: span)
+        )
       )
     CommitCargoFmtCheck =>
       content_hash_atom(value: "CommitCargoFmtCheck")

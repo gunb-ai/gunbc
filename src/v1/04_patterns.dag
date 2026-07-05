@@ -94,7 +94,8 @@ fn expand_scrut_type_for_variant_lookup(scrut_node: Node, env: TypeEnv) -> Node 
   let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
   let is_disj = scrut_node.connective == Disj
   let is_witness = is_witness_type_name(name: name)
-  if is_disj || is_witness {
+  let is_optional = scrut_node.return_cardinality == CardOptional
+  if is_optional || is_disj || is_witness {
     scrut_node
   } else {
     match scrut_node.inferred {

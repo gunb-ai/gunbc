@@ -55,15 +55,6 @@ data gunbc_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_ga
 
 data gunbc_ci_floor_witness_entries: List<ScheduleWitnessEntry> = project_ci_floor_witness_entries(roster: commit_gate_roster)
 
-fn project_ci_floor_gates_without_compile_clean(gates: List<Gate>) -> List<Gate> {
-  filter(gates, f: g =>
-    match g {
-      DagCompileCleanGate => false
-      _ => true
-    }
-  )
-}
-
 data gunbc_ci_rust_job_gates: List<Gate> = project_ci_rust_job_gates(roster: commit_gate_roster)
 
 data gunbc_ci_gates: List<Gate> = concat(gunbc_ci_floor_gates, gunbc_ci_rust_job_gates)
@@ -93,20 +84,6 @@ data gunbc_ci_spec: CiSpec = {
   },
   notice_title: "v2 claim corpus",
   deploy_stages: gunbc_ci_deploy_stages,
-}
-
-data gunbc_ci_floor_executor_gates: List<Gate> = project_ci_floor_gates_without_compile_clean(gates: gunbc_ci_floor_gates)
-
-data gunbc_ci_executor_spec: CiSpec = {
-  gates: gunbc_ci_floor_executor_gates,
-  witness_entries: gunbc_ci_floor_witness_entries,
-  diff_policy: {
-    base: "origin/main",
-    head: "HEAD",
-    mode: DiffMergeBase
-  },
-  notice_title: "v2 claim corpus",
-  deploy_stages: [],
 }
 
 fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<ScheduleWitnessEntry>) -> CiSpec {
@@ -236,52 +213,17 @@ fn git_fetch_script(policy: DiffPolicy) -> String {
 
 data floor_plan_entry: String = "src/v2/workflow/ci_floor_plan.dag"
 data floor_plan_function: String = "gunbc_ci_floor_batches"
-data floor_plan_executor_function: String = "gunbc_ci_floor_executor_batches"
-
-fn spec_includes_compile_clean_gate(spec: CiSpec) -> Bool {
-  fold(spec.gates, init: false, f: fn(acc, g) {
-    match g {
-      DagCompileCleanGate => true
-      _ => acc
-    }
-  })
-}
-
-fn floor_plan_function_for(spec: CiSpec) -> String {
-  if spec_includes_compile_clean_gate(spec: spec) {
-    floor_plan_function
-  } else {
-    floor_plan_executor_function
-  }
-}
 
 fn scheduler_invoke(spec: CiSpec) -> String {
   concat(
     concat(
       concat(
         concat(concat(claim_executor_bin_shell(), witness_layer_source_flags(roots: witness_layer_roots)), concat(" --plan-entry ", floor_plan_entry)),
-        concat(" --plan-function ", floor_plan_function_for(spec: spec))
+        concat(" --plan-function ", floor_plan_function)
       ),
       concat(concat(" --notice-title \"", spec.notice_title), "\"")
     ),
     ""
-  )
-}
-
-fn gunbc_ci_compile_clean_gate_invoke() -> String {
-  concat(
-    concat("\"$ROOT/target/release/gunbc\" run", witness_layer_source_flags(roots: witness_layer_roots)),
-    " --entry dag/tools/floor_effect_gate_witness.dag --function dag_compile_clean_gate_passes --claim-run"
-  )
-}
-
-fn gunbc_ci_compile_clean_step_script() -> String {
-  concat(
-    concat("ROOT=", ci_repo_root_shell(), "\n"),
-    concat(
-      concat(git_fetch_script(policy: gunbc_ci_spec.diff_policy), "\n"),
-      gunbc_ci_compile_clean_gate_invoke()
-    )
   )
 }
 
@@ -315,14 +257,18 @@ fn gunbc_ci_rust_gate_invoke() -> String {
   )
 }
 
-fn gunbc_ci_rust_job_run() -> String {
+fn gunbc_ci_rust_gate_only_script() -> String {
   concat(
-    concat(ci_release_build_script(), "\n"),
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
     concat(
       concat(git_fetch_script(policy: gunbc_ci_spec.diff_policy), "\n"),
       gunbc_ci_rust_gate_invoke()
     )
   )
+}
+
+fn gunbc_ci_rust_job_run() -> String {
+  concat(concat(ci_release_build_script(), "\n"), gunbc_ci_rust_gate_only_script())
 }
 
 fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {

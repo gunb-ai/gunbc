@@ -52,9 +52,34 @@ type RealizationObjective {
   goals: List<AxisGoal>
 }
 
+data witness_kind_note: String = "WitnessKind is the declared kind fact for enrolled witnesses (design: docs/plans/interface-summary-declared-use-arity.md section 4). v0 carries exactly the two kinds with a live scheduling consumer: the corpus/execution partition in v2.workflow.ci_floor_plan (formerly a path-prefix convention, now a declared fact). Further kinds (lens-unit, scanner) land only when a consumer projects them; the host-scaffold/live-tree axis stays on the floor:host_scaffold marker authority (v2.workflow.affected_set_floor_runner) and is NOT a kind. Partition consumers must discriminate by exhaustive match, never by equality: a missed kind stamp is Value-absent at runtime, and an exhaustive match refuses loudly where an eq would silently return false."
+
+type WitnessKind
+  = CorpusWitnessKind
+  | ExecutionWitnessKind
+
+data witness_span_note: String = "WitnessSpan declares which pipeline seam(s) a witness asserts (producer/consumer module-path pair grain). SpanUndeclared is the honest default for the existing population - typed absent, never fabricated. Consumers today: span well-formedness witnessing over the enrollment roster (gunbc.commit_workflow). The derivability/factorability refusal (a span witness derivable from the seam basis is redundant) waits on seam contracts (InterfaceSummary contract slots) and a segment-witness basis; until then span is a declared fact plus well-formedness, nothing more."
+
+type WitnessSeam {
+  producer: String
+  consumer: String
+}
+
+type WitnessSpan
+  = SpanUndeclared
+  | SpanSeams { seams: List<WitnessSeam> }
+
+fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> Bool {
+  match a {
+    CorpusWitnessKind => match b { CorpusWitnessKind => true  ExecutionWitnessKind => false }
+    ExecutionWitnessKind => match b { ExecutionWitnessKind => true  CorpusWitnessKind => false }
+  }
+}
+
 type ScheduleWitnessEntry {
   entry: String
   function: String
+  kind: WitnessKind
 }
 
 type RunnableMemoryPeak {
@@ -294,7 +319,7 @@ fn schedule_generates_same_batch_count<S>(left: RealizationPlan<S>, right: Reali
 }
 
 fn schedule_witness_entry_eq(a: ScheduleWitnessEntry, b: ScheduleWitnessEntry) -> Bool {
-  (a.entry == b.entry) && (a.function == b.function)
+  (a.entry == b.entry) && (a.function == b.function) && witness_kind_eq(a: a.kind, b: b.kind)
 }
 
 fn string_list_eq(left: List<String>, right: List<String>) -> Bool {

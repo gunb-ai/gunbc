@@ -12,8 +12,8 @@ import gunbc.ci_spec {
   gunbc_ci_spec, gunbc_ci_gates, gunbc_ci_floor_gates, gunbc_ci_rust_job_gates,
   ci_release_features,
   scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
-  ci_release_build_script, gunbc_ci_rust_job_run, ci_floor_build_verify_script,
-  gunbc_ci_executor_spec,
+  ci_release_build_script, gunbc_ci_rust_job_run, gunbc_ci_rust_gate_only_script, ci_floor_build_verify_script,
+  gunbc_ci_rust_gate_invoke, ci_repo_root_shell,
 }
 
 data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\"\n"
@@ -56,6 +56,23 @@ fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol>
 
 fn symbol_in(syms: List<Symbol>, s: Symbol) -> Bool {
   fold(syms, init: false, f: fn(acc, x) { acc || (x == s) })
+}
+
+fn witness_rust_gate_step_is_gate_only_script() -> Bool {
+  gunbc_ci_rust_gate_only_script() == concat(
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
+    concat(
+      concat(git_fetch_script(policy: gunbc_ci_spec.diff_policy), "\n"),
+      gunbc_ci_rust_gate_invoke()
+    )
+  ) && !string_contains(s: gunbc_ci_rust_gate_only_script(), pattern: "cargo\" build -p v1-compiler")
+}
+
+fn witness_collapsed_rust_job_is_build_plus_gate() -> Bool {
+  gunbc_ci_rust_job_run() == concat(
+    concat(ci_release_build_script(), "\n"),
+    gunbc_ci_rust_gate_only_script()
+  )
 }
 
 fn witness_rust_gate_split_is_real() -> Bool {
@@ -184,16 +201,6 @@ fn witness_workflow_run_is_floor_only_script() -> Bool {
   gunbc_ci_workflow_run(spec: gunbc_ci_spec) == gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
 }
 
-fn witness_executor_workflow_uses_executor_batches_plan() -> Bool {
-  string_contains(
-    s: gunbc_ci_workflow_run(spec: gunbc_ci_executor_spec),
-    pattern: "--plan-function gunbc_ci_floor_executor_batches"
-  ) && !string_contains(
-    s: gunbc_ci_workflow_run(spec: gunbc_ci_executor_spec),
-    pattern: "--plan-function gunbc_ci_floor_batches"
-  )
-}
-
 fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {
   gunbc_ci_run_script(spec: gunbc_ci_spec) == concat(
     concat(ci_release_build_script(), "\n"),
@@ -215,8 +222,9 @@ test fn ci_spec_witnesses() -> Bool {
     witness_floor_build_verify_script_byte_identical() &&
     witness_scheduler_uses_release_binary() &&
     witness_workflow_run_is_floor_only_script() &&
-    witness_executor_workflow_uses_executor_batches_plan() &&
     witness_collapsed_run_script_is_build_plus_floor() &&
+    witness_rust_gate_step_is_gate_only_script() &&
+    witness_collapsed_rust_job_is_build_plus_gate() &&
     witness_gate_roster_matches_coproduct_arms() &&
     witness_rust_gate_split_is_real()
 }
