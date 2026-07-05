@@ -63,7 +63,8 @@ fn non_optional_string_return_stays_bare() {
 
 #[test]
 fn optional_shared_type_return_renders_option_rc_signature() {
-    let source = "module optsig.fixture\n\ntype Node = Product { }\n\nfn maybe_node(flag: Bool) -> Node? {\n  if flag { Present { value: Node { } } } else { none }\n}\n";
+    // Recursive struct so `Node` is in `shared_types` and fn-sig emission applies Rc.
+    let source = "module optsig.fixture\n\ntype Node = Product { child: Node? }\n\nfn maybe_node(flag: Bool) -> Node? {\n  if flag { Present { value: Node { child: none } } } else { none }\n}\n";
     let emitted = emit(source);
     let sig = return_sig(&emitted, "maybe_node");
     assert!(
@@ -74,7 +75,7 @@ fn optional_shared_type_return_renders_option_rc_signature() {
 
 #[test]
 fn non_optional_shared_type_return_stays_bare_rc() {
-    let source = "module optsig.fixture\n\ntype Node = Product { }\n\nfn always_node(flag: Bool) -> Node {\n  Node { }\n}\n";
+    let source = "module optsig.fixture\n\ntype Node = Product { child: Node? }\n\nfn always_node(_flag: Bool) -> Node {\n  Node { child: none }\n}\n";
     let emitted = emit(source);
     let sig = return_sig(&emitted, "always_node");
     assert!(
