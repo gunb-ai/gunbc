@@ -32,8 +32,9 @@ import extdeps.languages.bash.program {
   lit, var_ref, command, assign, serialize_bash
 }
 import extdeps.git {
-  git_diff_name_status_parse_state,
-  git_diff_name_status_parse_state_is_truncated,
+  GitDiffNameStatusComplete,
+  GitDiffNameStatusTruncated,
+  git_diff_name_status_parse,
   git_diff_status_entries_touched_paths,
   git_diff_status_entries_departed_paths,
   git_diff_status_entries_any_unknown
@@ -305,19 +306,18 @@ fn floor_name_status_diff_from_reconciliation(
           if code != 0 {
             NameStatusDiffFail { reason: "git diff --name-status -z exited nonzero: invalid ref or not a git repository" }
           } else {
-            let state = git_diff_name_status_parse_state(raw: text)
-            if git_diff_name_status_parse_state_is_truncated(state: state) {
-              NameStatusDiffFail { reason: "git diff --name-status -z observation ended mid-record (truncated stream)" }
-            } else {
-              let entries = state.entries
-              if git_diff_status_entries_any_unknown(entries: entries) {
-                NameStatusDiffFail { reason: "unrecognized git diff --name-status status letter in observation" }
-              } else {
-                NameStatusDiffOk {
-                  changed_paths: git_diff_status_entries_touched_paths(entries: entries),
-                  departed_paths: git_diff_status_entries_departed_paths(entries: entries)
+            match git_diff_name_status_parse(raw: text) {
+              GitDiffNameStatusTruncated { pending: _, entries: _ } =>
+                NameStatusDiffFail { reason: "git diff --name-status -z observation ended mid-record (truncated stream)" }
+              GitDiffNameStatusComplete { entries: entries } =>
+                if git_diff_status_entries_any_unknown(entries: entries) {
+                  NameStatusDiffFail { reason: "unrecognized git diff --name-status status letter in observation" }
+                } else {
+                  NameStatusDiffOk {
+                    changed_paths: git_diff_status_entries_touched_paths(entries: entries),
+                    departed_paths: git_diff_status_entries_departed_paths(entries: entries)
+                  }
                 }
-              }
             }
           }
       }

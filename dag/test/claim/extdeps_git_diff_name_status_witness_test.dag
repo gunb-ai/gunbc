@@ -5,6 +5,8 @@ import std.measure { percent_count }
 import extdeps.git {
   GitDiffChangeStatus,
   GitDiffStatusEntry,
+  GitDiffNameStatusComplete,
+  GitDiffNameStatusTruncated,
   DiffAddedStatus,
   DiffCopiedStatus,
   DiffDeletedStatus,
@@ -12,9 +14,7 @@ import extdeps.git {
   DiffRenamedStatus,
   DiffUnknownGitStatus,
   git_diff_name_status_field_separator,
-  parse_git_diff_name_status_z,
-  git_diff_name_status_parse_state,
-  git_diff_name_status_parse_state_is_truncated,
+  git_diff_name_status_parse,
   git_diff_status_entries_touched_paths,
   git_diff_status_entries_departed_paths,
   git_diff_status_entries_any_unknown
@@ -32,9 +32,23 @@ fn list_contains_string(xs: List<String>, needle: String) -> Bool {
   fold(xs, init: false, f: (acc, x) => acc || (x == needle))
 }
 
+fn well_formed_entries(raw: String) -> List<GitDiffStatusEntry> {
+  match git_diff_name_status_parse(raw: raw) {
+    GitDiffNameStatusComplete { entries: entries } => entries
+    GitDiffNameStatusTruncated { pending: _, entries: entries } => entries
+  }
+}
+
+fn is_truncated(raw: String) -> Bool {
+  match git_diff_name_status_parse(raw: raw) {
+    GitDiffNameStatusComplete { entries: _ } => false
+    GitDiffNameStatusTruncated { pending: _, entries: _ } => true
+  }
+}
+
 fn w_modified_single_entry() -> Bool {
   let raw = join_name_status_tokens(["M", "file.txt"])
-  let entries = parse_git_diff_name_status_z(raw: raw)
+  let entries = well_formed_entries(raw: raw)
   entries.length() == 1
     && entries.first().path == "file.txt"
     && match entries.first().old_path {
@@ -49,7 +63,7 @@ fn w_modified_single_entry() -> Bool {
 
 fn w_added_entry() -> Bool {
   let raw = join_name_status_tokens(["A", "new_file.txt"])
-  let entries = parse_git_diff_name_status_z(raw: raw)
+  let entries = well_formed_entries(raw: raw)
   entries.length() == 1
     && match entries.first().status {
       DiffAddedStatus => true
@@ -59,7 +73,7 @@ fn w_added_entry() -> Bool {
 
 fn w_deleted_entry() -> Bool {
   let raw = join_name_status_tokens(["D", "gone.txt"])
-  let entries = parse_git_diff_name_status_z(raw: raw)
+  let entries = well_formed_entries(raw: raw)
   entries.length() == 1
     && entries.first().path == "gone.txt"
     && match entries.first().status {
@@ -70,7 +84,7 @@ fn w_deleted_entry() -> Bool {
 
 fn w_renamed_entry_carries_similarity_and_old_path() -> Bool {
   let raw = join_name_status_tokens(["R100", "old_name.txt", "new_name.txt"])
-  let entries = parse_git_diff_name_status_z(raw: raw)
+  let entries = well_formed_entries(raw: raw)
   entries.length() == 1
     && entries.first().path == "new_name.txt"
     && match entries.first().old_path {
@@ -85,7 +99,7 @@ fn w_renamed_entry_carries_similarity_and_old_path() -> Bool {
 
 fn w_copied_entry_carries_similarity_and_old_path() -> Bool {
   let raw = join_name_status_tokens(["C87", "source.txt", "copy.txt"])
-  let entries = parse_git_diff_name_status_z(raw: raw)
+  let entries = well_formed_entries(raw: raw)
   entries.length() == 1
     && entries.first().path == "copy.txt"
     && match entries.first().old_path {
@@ -105,7 +119,7 @@ fn w_mixed_multi_entry_blob_preserves_order_and_arity() -> Bool {
     "D", "c.txt",
     "R92", "old_d.txt", "new_d.txt"
   ])
-  let entries = parse_git_diff_name_status_z(raw: raw)
+  let entries = well_formed_entries(raw: raw)
   entries.length() == 4
     && entries.first().path == "a.txt"
     && entries.skip(n: 1).first().path == "b.txt"
@@ -119,7 +133,7 @@ fn w_mixed_multi_entry_blob_preserves_order_and_arity() -> Bool {
 
 fn w_unrecognized_status_letter_is_typed_not_absorbed() -> Bool {
   let raw = join_name_status_tokens(["X", "weird.txt"])
-  let entries = parse_git_diff_name_status_z(raw: raw)
+  let entries = well_formed_entries(raw: raw)
   entries.length() == 1
     && match entries.first().status {
       DiffUnknownGitStatus { raw: token } => token == "X"
@@ -130,7 +144,7 @@ fn w_unrecognized_status_letter_is_typed_not_absorbed() -> Bool {
 
 fn w_malformed_rename_score_is_typed_unknown_not_absorbed() -> Bool {
   let raw = join_name_status_tokens(["Rxx", "old.txt", "new.txt"])
-  let entries = parse_git_diff_name_status_z(raw: raw)
+  let entries = well_formed_entries(raw: raw)
   match entries.first().status {
     DiffUnknownGitStatus { raw: token } => token == "Rxx"
     _ => false
@@ -140,13 +154,13 @@ fn w_malformed_rename_score_is_typed_unknown_not_absorbed() -> Bool {
 
 fn w_malformed_rename_score_corruption_stays_fail_closed_downstream() -> Bool {
   let raw = join_name_status_tokens(["Rxx", "old.txt", "new.txt", "M", "trailing.txt"])
-  let entries = parse_git_diff_name_status_z(raw: raw)
+  let entries = well_formed_entries(raw: raw)
   git_diff_status_entries_any_unknown(entries: entries)
 }
 
 fn w_recognized_entries_are_never_flagged_unknown() -> Bool {
   let raw = join_name_status_tokens(["M", "a.txt", "A", "b.txt"])
-  let entries = parse_git_diff_name_status_z(raw: raw)
+  let entries = well_formed_entries(raw: raw)
   !git_diff_status_entries_any_unknown(entries: entries)
 }
 
@@ -172,7 +186,7 @@ fn w_complete_stream_is_never_flagged_truncated() -> Bool {
 
 fn w_touched_paths_derives_both_sides_of_a_rename() -> Bool {
   let raw = join_name_status_tokens(["M", "a.txt", "R100", "old_d.txt", "new_d.txt"])
-  let entries = parse_git_diff_name_status_z(raw: raw)
+  let entries = well_formed_entries(raw: raw)
   let touched = git_diff_status_entries_touched_paths(entries: entries)
   touched.length() == 3
     && list_contains_string(xs: touched, needle: "a.txt")
@@ -187,7 +201,7 @@ fn w_departed_paths_names_deletions_and_rename_sources_only() -> Bool {
     "R100", "old_d.txt", "new_d.txt",
     "C87", "source.txt", "copy.txt"
   ])
-  let entries = parse_git_diff_name_status_z(raw: raw)
+  let entries = well_formed_entries(raw: raw)
   let departed = git_diff_status_entries_departed_paths(entries: entries)
   departed.length() == 2
     && list_contains_string(xs: departed, needle: "gone.txt")
@@ -199,7 +213,7 @@ fn w_departed_paths_names_deletions_and_rename_sources_only() -> Bool {
 }
 
 fn w_empty_raw_produces_no_entries() -> Bool {
-  parse_git_diff_name_status_z(raw: "").length() == 0
+  well_formed_entries(raw: "").length() == 0
 }
 
 test fn extdeps_git_diff_name_status_witnesses() -> Bool {
