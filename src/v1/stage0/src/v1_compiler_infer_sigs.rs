@@ -99,10 +99,10 @@ pub fn collect_func_call_edges(
         let mut __result = Vec::new();
         for item in items.iter().cloned() {
             __result.extend(
-                (*if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
+                (*if (((item.params.clone().len() as i64) > 0) && ((*item.body).clone() != None)) {
                     collect_calls_in_expr(
                         authored_name_at(source_indices.clone(), item.clone()),
-                        item.body.clone().clone().unwrap(),
+                        (*item.body).clone().clone().unwrap(),
                         local_func_set.clone(),
                         source_indices.clone(),
                     )
@@ -226,7 +226,7 @@ pub fn declared_to_resolved(dsig: Rc<DeclaredFuncSig>) -> Rc<ResolvedFuncSig> {
     Rc::new(ResolvedFuncSig {
         name: dsig.name.clone(),
         params: dsig.params.clone(),
-        inferred: dsig.inferred.clone().clone().unwrap(),
+        inferred: (*dsig.inferred).clone().clone().unwrap(),
         is_async: dsig.is_async.clone(),
         output_provenance: dsig.output_provenance.clone(),
         variant_provenance: dsig.variant_provenance.clone(),
@@ -243,7 +243,7 @@ pub fn merge_remaining_declared(
         .fold(
             resolved,
             |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>, dsig: Rc<DeclaredFuncSig>| {
-                if (dsig.inferred.clone() != None) {
+                if ((*dsig.inferred).clone() != None) {
                     v1_rt::rc_map_insert(
                         acc.clone(),
                         dsig.name.clone(),
@@ -277,7 +277,7 @@ pub fn topo_resolve_loop(
                         resolved.clone(),
                         |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
                          dsig: Rc<DeclaredFuncSig>| {
-                            if (dsig.inferred.clone() != None) {
+                            if ((*dsig.inferred).clone() != None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
                                     dsig.name.clone(),
@@ -358,7 +358,7 @@ pub fn topo_resolve_loop(
                         fn_name.clone(),
                     ) {
                         Some(dsig) => {
-                            if (dsig.inferred.clone() != None) {
+                            if ((*dsig.inferred).clone() != None) {
                                 Rc::new(SigsAccum {
                                     signatures: v1_rt::rc_map_insert(
                                         acc.signatures.clone(),
@@ -394,7 +394,7 @@ pub fn topo_resolve_loop(
                         cycle_accum.signatures.clone(),
                         |acc: Rc<HashMap<String, Rc<ResolvedFuncSig>>>,
                          dsig: Rc<DeclaredFuncSig>| {
-                            if (dsig.inferred.clone() != None) {
+                            if ((*dsig.inferred).clone() != None) {
                                 v1_rt::rc_map_insert(
                                     acc.clone(),
                                     dsig.name.clone(),
@@ -427,7 +427,7 @@ pub fn topo_resolve_loop(
                 fn_name.clone(),
             ) {
                 Some(dsig) => {
-                    if (dsig.inferred.clone() != None) {
+                    if ((*dsig.inferred).clone() != None) {
                         Rc::new(SigsAccum {
                             signatures: v1_rt::rc_map_insert(
                                 acc.signatures.clone(),
@@ -498,7 +498,8 @@ pub fn resolve_func_sigs(
             for item in Rc::new({
                 let mut __result = Vec::new();
                 for item in items.clone().iter().cloned() {
-                    if (((item.params.clone().len() as i64) > 0) && (item.body.clone() != None)) {
+                    if (((item.params.clone().len() as i64) > 0) && ((*item.body).clone() != None))
+                    {
                         __result.push(item);
                     }
                 }

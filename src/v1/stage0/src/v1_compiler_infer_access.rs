@@ -131,7 +131,7 @@ pub fn check_index_access_node(
             match keyed_collection_parts(normed.clone(), source_indices.clone()) {
                 Some(parts) => {
                     let key_diags = if node_type_equals(
-                        parts.key_type.clone(),
+                        (*parts.key_type).clone(),
                         normed_index.clone(),
                         source_indices.clone(),
                     ) {
@@ -140,7 +140,7 @@ pub fn check_index_access_node(
                         Rc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name)])
                     };
                     access_result(
-                        with_optional_cardinality(parts.value_type.clone()),
+                        with_optional_cardinality((*parts.value_type).clone()),
                         key_diags,
                         span.clone(),
                         "invalid keyed collection index access".to_string(),

@@ -135,7 +135,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                 if {
                     let mut __found = false;
                     for item in m.items.clone().iter().cloned() {
-                        if (item.body.clone() != None) {
+                        if ((*item.body).clone() != None) {
                             __found = true;
                             break;
                         }
@@ -156,7 +156,7 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                     for item in Rc::new({
                         let mut __result = Vec::new();
                         for item in m.items.clone().iter().cloned() {
-                            if (item.body.clone() != None) {
+                            if ((*item.body).clone() != None) {
                                 __result.push(item);
                             }
                         }
@@ -167,10 +167,10 @@ pub fn extract_func_entries(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<FuncEntry>>> 
                     {
                         __result.push(Rc::new(FuncEntry {
                             name: authored_name_at(
-                                m.type_env.clone().source_indices.clone(),
+                                (*m.type_env).clone().source_indices.clone(),
                                 item.clone(),
                             ),
-                            body: item.body.clone().clone().unwrap(),
+                            body: (*item.body).clone().clone().unwrap(),
                             params: item.params.clone(),
                             span: item.span.clone(),
                             is_tail_recursive: (item.is_self_recursive.clone()
@@ -200,7 +200,7 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
                 if {
                     let mut __found = false;
                     for item in m.items.clone().iter().cloned() {
-                        if (item.body.clone() != None) {
+                        if ((*item.body).clone() != None) {
                             __found = true;
                             break;
                         }
@@ -221,7 +221,7 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
                     for item in Rc::new({
                         let mut __result = Vec::new();
                         for item in m.items.clone().iter().cloned() {
-                            if (item.body.clone() != None) {
+                            if ((*item.body).clone() != None) {
                                 __result.push(item);
                             }
                         }
@@ -232,12 +232,12 @@ pub fn extract_ownership_proofs(typed: Rc<ResolvedGraph>) -> Rc<Vec<Rc<Ownership
                     {
                         __result.push(analyze_ownership(
                             authored_name_at(
-                                m.type_env.clone().source_indices.clone(),
+                                (*m.type_env).clone().source_indices.clone(),
                                 item.clone(),
                             ),
                             item.params.clone(),
-                            item.body.clone().clone().unwrap(),
-                            m.type_env.clone().source_indices.clone(),
+                            (*item.body).clone().clone().unwrap(),
+                            (*m.type_env).clone().source_indices.clone(),
                         ));
                     }
                     __result
@@ -477,9 +477,12 @@ pub fn dag_emit_check_node_refs(
                                 __result
                             }),
                         ),
-                        dag_emit_check_optional_ref_target(node.body.clone(), key_to_id.clone()),
+                        dag_emit_check_optional_ref_target((*node.body).clone(), key_to_id.clone()),
                     ),
-                    dag_emit_check_optional_ref_target(node.transport.clone(), key_to_id.clone()),
+                    dag_emit_check_optional_ref_target(
+                        (*node.transport).clone(),
+                        key_to_id.clone(),
+                    ),
                 ),
                 Rc::new({
                     let mut __result = Vec::new();
@@ -493,9 +496,9 @@ pub fn dag_emit_check_node_refs(
                     __result
                 }),
             ),
-            dag_emit_check_optional_ref_target(node.type_annotation.clone(), key_to_id.clone()),
+            dag_emit_check_optional_ref_target((*node.type_annotation).clone(), key_to_id.clone()),
         ),
-        dag_emit_check_inferred_ref_target(node.inferred.clone(), key_to_id.clone()),
+        dag_emit_check_inferred_ref_target((*node.inferred).clone(), key_to_id.clone()),
     )
 }
 
@@ -543,7 +546,7 @@ pub fn dag_graph_source_indices(typed: Rc<ResolvedGraph>) -> Rc<HashMap<String, 
     typed.modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
         |acc: Rc<HashMap<String, Rc<NewlineIndex>>>, m: Rc<TypedModule>| {
-            v1_rt::rc_map_merge(acc, m.type_env.clone().source_indices.clone())
+            v1_rt::rc_map_merge(acc, (*m.type_env).clone().source_indices.clone())
         },
     )
 }
@@ -1807,7 +1810,7 @@ pub fn serialize_param(
 
 pub fn is_import_statement_node(n: Rc<Node>) -> bool {
     (import_is_all(n.clone())
-        || (((((n.children.clone().len() as i64) > 0) && (n.body.clone() == None))
+        || (((((n.children.clone().len() as i64) > 0) && ((*n.body).clone() == None))
             && (n.expr_data.clone() == Rc::new(ExprData::NoExprData)))
             && ((n.params.clone().len() as i64) == 0)))
 }
@@ -1877,7 +1880,7 @@ pub fn serialize_node_record(
     Connective::Disj => json_quote(connective_name(Connective::Disj)),
     Connective::NoConnective => "null".to_string(),
     Connective::Arrow => json_quote(connective_name(Connective::Arrow)),
-}), ", \"params\": ".to_string()), serialize_node_params_json(node.clone(), source_indices.clone(), key_to_id.clone())), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref(node.inferred.clone(), key_to_id.clone())), ", \"return_cardinality\": ".to_string()), json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(item.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref(node.body.clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref(node.transport.clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(prop.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref(node.type_annotation.clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(node.clone(), source_indices.clone(), key_to_id.clone())), "}".to_string())
+}), ", \"params\": ".to_string()), serialize_node_params_json(node.clone(), source_indices.clone(), key_to_id.clone())), ", \"inferred\": ".to_string()), json_optional_inferred_node_ref((*node.inferred).clone(), key_to_id.clone())), ", \"return_cardinality\": ".to_string()), json_quote(cardinality_name(node.return_cardinality.clone()))), ", \"uses\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for item in node.uses.clone().iter().cloned() { __result.push(serialize_resource_use(item.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"body\": ".to_string()), json_optional_node_ref((*node.body).clone(), key_to_id.clone())), ", \"transport\": ".to_string()), json_optional_node_ref((*node.transport).clone(), key_to_id.clone())), ", \"properties\": ".to_string()), json_list(Rc::new({ let mut __result = Vec::new(); for prop in node.properties.clone().iter().cloned() { __result.push(serialize_field_init(prop.clone(), source_indices.clone(), key_to_id.clone())); } __result }))), ", \"type_annotation\": ".to_string()), json_optional_node_ref((*node.type_annotation).clone(), key_to_id.clone())), ", \"is_self_recursive\": ".to_string()), json_bool(node.is_self_recursive.clone())), ", \"has_non_tail_self_call\": ".to_string()), json_bool(node.has_non_tail_self_call.clone())), ", \"expr_data\": ".to_string()), serialize_expr_data(node.clone(), source_indices.clone(), key_to_id.clone())), "}".to_string())
 }
 
 pub fn serialize_typed_module(
@@ -1891,7 +1894,7 @@ pub fn serialize_typed_module(
                     v1_rt::concat(
                         v1_rt::concat(
                             "{\"module\": ".to_string(),
-                            serialize_node_ref(module.module.clone(), key_to_id.clone()),
+                            serialize_node_ref((*module.module).clone(), key_to_id.clone()),
                         ),
                         ", \"items\": ".to_string(),
                     ),
@@ -2273,7 +2276,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
             let mut __result = Vec::new();
             for p in parse_results.clone().iter().cloned() {
                 __result.extend(
-                    (*match p.module.clone() {
+                    (*match (*p.module).clone() {
                         Some(m) => Rc::new(vec![m.clone()]),
                         None => Rc::new(vec![]),
                     })
@@ -2428,7 +2431,7 @@ pub fn emit_resolved_for_target(
                     for m in typed.modules.clone().iter().cloned() {
                         __result.push(authored_name_at(
                             resolved.source_indices.clone(),
-                            m.module.clone(),
+                            (*m.module).clone(),
                         ));
                     }
                     __result

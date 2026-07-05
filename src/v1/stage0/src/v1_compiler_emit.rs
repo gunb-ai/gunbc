@@ -594,13 +594,13 @@ pub fn empty_emit_scope() -> Rc<InferScope> {
 
 pub fn module_emit_scope(typed_module: Rc<TypedModule>) -> Rc<InferScope> {
     Rc::new(InferScope {
-        type_env: typed_module.type_env.clone(),
-        func_env: typed_module.func_env.clone(),
+        type_env: (*typed_module.type_env).clone(),
+        func_env: (*typed_module.func_env).clone(),
         locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         match_bound_names: v1_rt::rc_empty_map::<String, bool>(),
         module_name: authored_name_at(
-            typed_module.type_env.clone().source_indices.clone(),
-            typed_module.module.clone(),
+            (*typed_module.type_env).clone().source_indices.clone(),
+            (*typed_module.module).clone(),
         ),
         service_registry: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<OpEntry>>>>(),
         item_registry: typed_module.item_registry.clone(),
@@ -620,7 +620,7 @@ pub fn scope_after_expr(texpr: Rc<Node>, scope: Rc<InferScope>) -> Rc<InferScope
                         scope.clone(),
                         let_binding_name_at(
                             texpr.clone(),
-                            scope.type_env.clone().source_indices.clone(),
+                            (*scope.type_env).clone().source_indices.clone(),
                         ),
                         resolved_type(value),
                         Rc::new(SubValueRelation::SubValueUnknown),
@@ -645,7 +645,7 @@ pub fn lookup_func_sig_in_scope(
     scope: Rc<InferScope>,
     name: String,
 ) -> Option<Rc<ResolvedFuncSig>> {
-    lookup_func_sig(scope.func_env.clone(), name)
+    lookup_func_sig((*scope.func_env).clone(), name)
 }
 
 pub fn typed_named_arg_matches(
@@ -672,7 +672,10 @@ pub fn order_typed_call_args(
         let has_unnamed = {
             let mut __found = false;
             for arg in args.clone().iter().cloned() {
-                if (arg_name_at(arg.clone(), scope.type_env.clone().source_indices.clone()) == None)
+                if (arg_name_at(
+                    arg.clone(),
+                    (*scope.type_env).clone().source_indices.clone(),
+                ) == None)
                 {
                     __found = true;
                     break;
@@ -691,7 +694,7 @@ pub fn order_typed_call_args(
                         |acc: Rc<HashMap<String, Rc<Node>>>, arg: Rc<Node>| {
                             let n = arg_name_at(
                                 arg.clone(),
-                                scope.type_env.clone().source_indices.clone(),
+                                (*scope.type_env).clone().source_indices.clone(),
                             );
                             if (n.clone() != None) {
                                 v1_rt::rc_map_insert(acc.clone(), n.clone().unwrap(), arg.clone())
@@ -707,7 +710,7 @@ pub fn order_typed_call_args(
                                 acc,
                                 param_node_name_at(
                                     param.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
+                                    (*scope.type_env).clone().source_indices.clone(),
                                 ),
                                 true,
                             )
@@ -721,7 +724,7 @@ pub fn order_typed_call_args(
                                     &arg_map,
                                     param_node_name_at(
                                         param.clone(),
-                                        scope.type_env.clone().source_indices.clone(),
+                                        (*scope.type_env).clone().source_indices.clone(),
                                     ),
                                 ) {
                                     Some(arg) => Rc::new(vec![arg.clone()]),
@@ -739,7 +742,7 @@ pub fn order_typed_call_args(
                             if {
                                 let n = arg_name_at(
                                     arg.clone(),
-                                    scope.type_env.clone().source_indices.clone(),
+                                    (*scope.type_env).clone().source_indices.clone(),
                                 );
                                 if (n.clone() == None) {
                                     true
@@ -1246,7 +1249,7 @@ pub fn named_type_vars_in_inferred(inferred: Option<Rc<InferredNode>>) -> Rc<Vec
 
 pub fn named_type_vars_in_node(n: Rc<Node>) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let self_vars = named_type_vars_in_inferred(n.inferred.clone());
+        let self_vars = named_type_vars_in_inferred((*n.inferred).clone());
         let child_vars = Rc::new({
             let mut __result = Vec::new();
             for ch in n.children.clone().iter().cloned() {
@@ -1323,13 +1326,13 @@ pub fn render_node_type(
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let tn = authored_name_at(source_indices.clone(), n.clone());
-        let n_is_error = if (n.inferred.clone() != None) {
-            is_compiler_error(n.inferred.clone().clone().unwrap())
+        let n_is_error = if ((*n.inferred).clone() != None) {
+            is_compiler_error((*n.inferred).clone().clone().unwrap())
         } else {
             false
         };
-        let n_is_type_var = if (n.inferred.clone() != None) {
-            is_type_variable(n.inferred.clone().clone().unwrap())
+        let n_is_type_var = if ((*n.inferred).clone() != None) {
+            is_type_variable((*n.inferred).clone().clone().unwrap())
         } else {
             false
         };
@@ -1337,7 +1340,7 @@ pub fn render_node_type(
             && ((n.children.clone().len() as i64) == 0))
         {
             {
-                let is_named_type_var = match n.inferred.clone().as_deref().cloned() {
+                let is_named_type_var = match (*n.inferred).clone().as_deref().cloned() {
                     Some(InferredNode::TypeVariable { id: var_id, .. }) => {
                         ((tn.clone() != "".to_string()) && (tn.clone() == var_id.clone()))
                     }
@@ -1376,7 +1379,7 @@ pub fn render_node_type(
                     __result
                 });
                 let param_str = param_strs.clone().join(&repr.param_separator.clone());
-                let ret_str = match n.inferred.clone().as_deref().cloned() {
+                let ret_str = match (*n.inferred).clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => render_node_type(
                         rt.clone(),
                         target.clone(),
@@ -1460,7 +1463,7 @@ pub fn render_node_type(
         }
         if is_conj {
             {
-                if (n.type_annotation.clone() != None) {
+                if ((*n.type_annotation).clone() != None) {
                     {
                         let refined_str = match n.children.clone().first().cloned() {
                             Some(base) => render_node_type(
@@ -1481,7 +1484,7 @@ pub fn render_node_type(
                     {
                         let first_child = match n.children.clone().first().cloned() {
                             Some(c) => {
-                                if (c.inferred.clone() != None) {
+                                if ((*c.inferred).clone() != None) {
                                     render_node_type(
                                         resolved_type(c.clone()),
                                         target.clone(),
@@ -1501,7 +1504,7 @@ pub fn render_node_type(
                         };
                         let second_child = match n.children.clone().get(1 as usize).cloned() {
                             Some(c) => {
-                                if (c.inferred.clone() != None) {
+                                if ((*c.inferred).clone() != None) {
                                     render_node_type(
                                         resolved_type(c.clone()),
                                         target.clone(),
@@ -1810,15 +1813,15 @@ pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
 }
 
 pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
-    if (item.transport.clone() == None) {
+    if ((*item.transport).clone() == None) {
         local_transport_node(item.span.clone())
     } else {
-        item.transport.clone().clone().unwrap()
+        (*item.transport).clone().clone().unwrap()
     }
 }
 
 pub fn effective_operation_transport(op_node: Rc<Node>, fallback: Rc<Node>) -> Rc<Node> {
-    match op_node.transport.clone() {
+    match (*op_node.transport).clone() {
         Some(op_transport) => op_transport.clone(),
         None => fallback,
     }
@@ -1834,9 +1837,9 @@ pub fn service_has_rest(
         let from_ops = {
             let mut __found = false;
             for op in op_children.iter().cloned() {
-                if if (op.transport.clone() != None) {
+                if if ((*op.transport).clone() != None) {
                     is_rest_transport(
-                        op.transport.clone().clone().unwrap(),
+                        (*op.transport).clone().clone().unwrap(),
                         source_indices.clone(),
                     )
                 } else {
@@ -1858,8 +1861,8 @@ pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<No
         let from_ops = {
             let mut __found = false;
             for op in op_children.iter().cloned() {
-                if if (op.transport.clone() != None) {
-                    is_shell_transport(op.transport.clone().clone().unwrap())
+                if if ((*op.transport).clone() != None) {
+                    is_shell_transport((*op.transport).clone().clone().unwrap())
                 } else {
                     false
                 } {
@@ -1883,9 +1886,9 @@ pub fn service_has_file(
         let from_ops = {
             let mut __found = false;
             for op in op_children.iter().cloned() {
-                if if (op.transport.clone() != None) {
+                if if ((*op.transport).clone() != None) {
                     is_file_transport(
-                        op.transport.clone().clone().unwrap(),
+                        (*op.transport).clone().clone().unwrap(),
                         source_indices.clone(),
                     )
                 } else {
@@ -1917,9 +1920,9 @@ pub fn service_has_rest_auth(
         let from_ops = {
             let mut __found = false;
             for op in op_children.iter().cloned() {
-                if if (op.transport.clone() != None) {
+                if if ((*op.transport).clone() != None) {
                     {
-                        let t = op.transport.clone().clone().unwrap();
+                        let t = (*op.transport).clone().clone().unwrap();
                         if is_rest_transport(t.clone(), source_indices.clone()) {
                             transport_has_auth(t.clone(), source_indices.clone())
                         } else {
@@ -2541,12 +2544,15 @@ pub fn emit_shared_tco_expr(
     mut emit_default_return: impl Fn(Rc<TcoFrame>) -> String + Clone,
 ) -> String {
     loop {
-        let si = frame.scope.clone().type_env.clone().source_indices.clone();
-        match (*frame.expr.clone().expr_data.clone()).clone() {
+        let si = (*frame.scope.clone().type_env)
+            .clone()
+            .source_indices
+            .clone();
+        match (*(*frame.expr).clone().expr_data.clone()).clone() {
             ExprData::ExprCall { .. } => {
-                if (expr_call_func_at(frame.expr.clone(), si) == fn_name) {
+                if (expr_call_func_at((*frame.expr).clone(), si) == fn_name) {
                     break emit_self_call_reassign(Rc::new(TcoReassignInput {
-                        args: frame.expr.clone().children.clone(),
+                        args: (*frame.expr).clone().children.clone(),
                         scope: frame.scope.clone(),
                         depth: frame.depth.clone(),
                     }));
@@ -2555,7 +2561,7 @@ pub fn emit_shared_tco_expr(
                 }
             }
             ExprData::ExprReturn => {
-                let inner = return_value(frame.expr.clone());
+                let inner = return_value((*frame.expr).clone());
                 {
                     let __tco_0 = Rc::new(TcoFrame {
                         expr: inner,
@@ -2621,7 +2627,11 @@ pub fn shared_tco_default_return(
     recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
     {
-        let val_str = recurse_expr(frame.expr.clone(), frame.scope.clone(), frame.depth.clone());
+        let val_str = recurse_expr(
+            (*frame.expr).clone(),
+            frame.scope.clone(),
+            frame.depth.clone(),
+        );
         v1_rt::concat(
             v1_rt::concat(spec.tco.clone().break_return.clone(), " ".to_string()),
             val_str,
@@ -2635,15 +2645,18 @@ pub fn shared_tco_non_self_call(
     spec: Rc<LanguageSpec>,
     recurse_call: impl Fn(String, Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
-    match (*frame.expr.clone().expr_data.clone()).clone() {
+    match (*(*frame.expr).clone().expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             let f = expr_call_func_at(
-                frame.expr.clone(),
-                frame.scope.clone().type_env.clone().source_indices.clone(),
+                (*frame.expr).clone(),
+                (*frame.scope.clone().type_env)
+                    .clone()
+                    .source_indices
+                    .clone(),
             );
             let call_str = recurse_call(
                 f,
-                frame.expr.clone().children.clone(),
+                (*frame.expr).clone().children.clone(),
                 frame.scope.clone(),
                 frame.depth.clone(),
             );
@@ -2670,11 +2683,11 @@ pub fn shared_tco_if(
 ) -> String {
     {
         let syntax = spec.block_syntax.clone();
-        match (*frame.expr.clone().expr_data.clone()).clone() {
+        match (*(*frame.expr).clone().expr_data.clone()).clone() {
             ExprData::ExprIf => {
-                let c = if_condition(frame.expr.clone());
-                let t = if_then_branch(frame.expr.clone());
-                let e = if_else_branch(frame.expr.clone());
+                let c = if_condition((*frame.expr).clone());
+                let t = if_then_branch((*frame.expr).clone());
+                let e = if_else_branch((*frame.expr).clone());
                 let cond_str = recurse_expr(c, frame.scope.clone(), frame.depth.clone());
                 let then_str = recurse_tco(t, frame.scope.clone(), (frame.depth.clone() + 1));
                 let else_prefix = if syntax.significant_whitespace.clone() {
@@ -2795,14 +2808,17 @@ pub fn shared_tco_let(
     recurse_expr: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
     recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
-    match (*frame.expr.clone().expr_data.clone()).clone() {
+    match (*(*frame.expr).clone().expr_data.clone()).clone() {
         ExprData::ExprLet => {
             let n = let_binding_name_at(
-                frame.expr.clone(),
-                frame.scope.clone().type_env.clone().source_indices.clone(),
+                (*frame.expr).clone(),
+                (*frame.scope.clone().type_env)
+                    .clone()
+                    .source_indices
+                    .clone(),
             );
-            let v = let_value(frame.expr.clone());
-            let bd = let_body(frame.expr.clone());
+            let v = let_value((*frame.expr).clone());
+            let bd = let_body((*frame.expr).clone());
             let val_str = recurse_expr(v.clone(), frame.scope.clone(), frame.depth.clone());
             let let_line = emit_let_binding(n.clone(), val_str, target);
             let next_scope = extend_scope(
@@ -2832,9 +2848,9 @@ pub fn shared_tco_block(
     emit_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
     recurse_tco: impl Fn(Rc<Node>, Rc<InferScope>, i64) -> String + Clone,
 ) -> String {
-    match (*frame.expr.clone().expr_data.clone()).clone() {
+    match (*(*frame.expr).clone().expr_data.clone()).clone() {
         ExprData::ExprBlock => {
-            let ss = frame.expr.clone().children.clone();
+            let ss = (*frame.expr).clone().children.clone();
             if ((ss.clone().len() as i64) == 0) {
                 spec.tco.clone().break_return.clone()
             } else {
@@ -2936,7 +2952,10 @@ pub fn emit_unified_tco_expr(
                     params.clone(),
                     target.clone(),
                     |child| recurse_expr(child.clone(), input.scope.clone(), input.depth.clone()),
-                    input.scope.clone().type_env.clone().source_indices.clone(),
+                    (*input.scope.clone().type_env)
+                        .clone()
+                        .source_indices
+                        .clone(),
                 )
             },
             |frame| {
@@ -3111,7 +3130,7 @@ pub fn emit_tco_match_go(
     render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
     {
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = (*scope.type_env).clone().source_indices.clone();
         let bs = language_spec(RenderTarget::Go).block_syntax.clone();
         let case_depth = (depth.clone() + 1);
         let body_depth = (case_depth.clone() + 1);
@@ -3211,10 +3230,10 @@ pub fn emit_unified_tco_match(
     render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
     render_init_stmts: impl Fn(Rc<Vec<Rc<Node>>>, Rc<InferScope>, i64) -> Rc<BlockEmitState> + Clone,
 ) -> String {
-    match (*frame.expr.clone().expr_data.clone()).clone() {
+    match (*(*frame.expr).clone().expr_data.clone()).clone() {
         ExprData::ExprMatch => {
-            let s = match_scrutinee(frame.expr.clone());
-            let arm_list = match_arm_nodes(frame.expr.clone());
+            let s = match_scrutinee((*frame.expr).clone());
+            let arm_list = match_arm_nodes((*frame.expr).clone());
             let scrut_str = emit_unified_typed_expr(
                 s,
                 target.clone(),
@@ -3442,7 +3461,7 @@ pub fn emit_unified_typed_func_body(
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let es = language_spec(target.clone()).expression_semantics.clone();
         let bs = language_spec(target.clone()).block_syntax.clone();
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = (*scope.type_env).clone().source_indices.clone();
         let prefix = if bs.significant_whitespace.clone() {
             "".to_string()
         } else {
@@ -4099,7 +4118,7 @@ pub fn emit_typed_cast_shared(
     {
         let expr_str = recurse(expr.clone());
         let ty_str = emit_node_type(cast_target_node, target.clone(), source_indices.clone());
-        let src_ty = match expr.inferred.clone().as_deref().cloned() {
+        let src_ty = match (*expr.inferred).clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: n, .. }) => {
                 emit_node_type(n.clone(), target.clone(), source_indices.clone())
             }
@@ -5245,7 +5264,7 @@ pub fn emit_typed_method_call_unified(
 ) -> String {
     {
         let spec = language_spec(target.clone());
-        let source_indices = scope.type_env.clone().source_indices.clone();
+        let source_indices = (*scope.type_env).clone().source_indices.clone();
         if (method_semantics.clone() != None) {
             match (*method_semantics.clone().unwrap()).clone() {
                 MethodSemantics::ServiceMethodSemantics {
@@ -5733,7 +5752,7 @@ pub fn emit_unified_typed_expr(
     render_pattern: impl Fn(Rc<MatchPattern>) -> String + Clone,
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = (*scope.type_env).clone().source_indices.clone();
         let spec = language_spec(target.clone());
         emit_shared_expr(
             texpr,
@@ -5753,7 +5772,7 @@ pub fn emit_unified_typed_expr(
             },
             |expr| emit_expr_var_shared(expr.clone(), target.clone(), si.clone()),
             |expr| {
-                let fa_si = scope.type_env.clone().source_indices.clone();
+                let fa_si = (*scope.type_env).clone().source_indices.clone();
                 if is_typed_service_call_receiver(expr.clone(), fa_si.clone()) {
                     match extract_typed_service_name(expr.clone(), fa_si.clone()) {
                         Some(svc_name) => service_var_name(svc_name.clone()),
