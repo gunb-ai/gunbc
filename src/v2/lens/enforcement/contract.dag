@@ -4,7 +4,7 @@ import v2.std.collection { List }
 import v2.std.text { String }
 import v2.lens.registry { LensRegistryEntryV0, LensIdV0, Cost, Complexity, lens_registry_v0_cost, lens_registry_v0_complexity }
 import v2.lens.enforcement.vocab {
-  SubjectRoster,
+  SubjectRoster, ScopeRoster,
   EnforcementMode, Blocking, AuditOnly, Advisory,
   ConsumerKind, FloorGate, WitnessOnly, NoConsumer,
   ConsumerWitnessBinding, BoundConsumerWitness, NoConsumerWitness,
@@ -22,7 +22,7 @@ import std.realization_schedule { ScheduleWitnessEntry, CorpusWitnessKind }
 type LensContract {
   entry: LensRegistryEntryV0
   mode: EnforcementMode
-  claimed_scope: SubjectRoster
+  claimed_scope: ScopeRoster
   consumer_witness: ConsumerWitnessBinding
   exemptions: List<String>
   boundary: ConstructionJustification
@@ -43,7 +43,7 @@ data lens_contract_cost_mode_repromotion_trigger: String = "🟡 dissolve-on: le
 data lens_contract_cost: LensContract = {
   entry: lens_registry_v0_cost,
   mode: AuditOnly,
-  claimed_scope: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: BoundConsumerWitness {
     witness: ScheduleWitnessEntry {
       entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag",
@@ -63,7 +63,7 @@ data lens_contract_cost: LensContract = {
 data lens_contract_complexity: LensContract = {
   entry: lens_registry_v0_complexity,
   mode: AuditOnly,
-  claimed_scope: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
   boundary: ConstructionJustification { class: RatchetForever }

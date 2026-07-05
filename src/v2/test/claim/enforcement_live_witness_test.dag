@@ -6,7 +6,6 @@ import v2.std.text { String }
 import v2.std.node { Node }
 import v2.std.decl_index { DeclFact, FnItem, TypeItem }
 import v2.lens.enforcement.vocab {
-  SubjectRoster,
   ConsumerKind, FloorGate, WitnessOnly, NoConsumer, consumer_kind_eq,
   ConsumerWitnessBinding, BoundConsumerWitness, NoConsumerWitness,
   RedControlStatus, RedControlPassed, RedControlFailedToFlip,
@@ -120,18 +119,39 @@ fn self_status_is_absent(s: SelfApplicationStatus) -> Bool {
   }
 }
 
+data synthetic_self_fn_fact: DeclFact = {
+  qualified_name: "lens.cost.cost_lens",
+  name: "cost_lens",
+  kind: FnItem,
+  node: enforcement_red_probe_body_leaf,
+  rel_path: "src/v2/lens/cost.dag"
+}
+
+data synthetic_other_fn_fact: DeclFact = {
+  qualified_name: "workflow.other_fn",
+  name: "other_fn",
+  kind: FnItem,
+  node: enforcement_red_probe_body_leaf,
+  rel_path: "src/v2/workflow/other.dag"
+}
+
+data synthetic_self_type_fact: DeclFact = {
+  qualified_name: "lens.cost.some_cost_type",
+  name: "some_cost_type",
+  kind: TypeItem,
+  node: enforcement_red_probe_body_leaf,
+  rel_path: "src/v2/lens/cost.dag"
+}
+
 test fn self_application_liveness_discriminates() -> Bool {
   self_status_is_observed(
-    s: self_application_for(
-      discovered: SubjectRoster { entries: ["lens.cost.cost_lens"] },
-      module_prefix: "lens.cost."
-    )
+    s: self_application_for(facts: [synthetic_self_fn_fact], module_prefix: "lens.cost.")
   )
     && self_status_is_absent(
-      s: self_application_for(
-        discovered: SubjectRoster { entries: ["workflow.other_fn"] },
-        module_prefix: "lens.cost."
-      )
+      s: self_application_for(facts: [synthetic_other_fn_fact], module_prefix: "lens.cost.")
+    )
+    && self_status_is_absent(
+      s: self_application_for(facts: [synthetic_self_type_fact], module_prefix: "lens.cost.")
     )
 }
 
