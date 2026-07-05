@@ -214,6 +214,84 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
     index
 }
 
+/// Resolve `import` statements transitively for an in-memory (not-on-disk) entry source
+/// against `module_index` (from `build_module_path_index`), reading each imported module's
+/// real file content from the workspace. This is the production-side counterpart of the
+/// v1 test-harness's `resolve_imports_transitively` — the same BFS over `extract_import_paths`,
+/// grounded on the same module index the floor already uses, so a `.dag` witness can compile
+/// an arbitrary in-memory program (not just files already on disk) without a second resolver.
+fn resolve_virtual_source_with_imports(
+    entry_path: &str,
+    entry_content: &str,
+    module_index: &HashMap<String, String>,
+) -> Vec<Rc<v1_compiler_compile::SourceFile>> {
+    let ws = workspace_root();
+    let mut seen: HashMap<String, Rc<v1_compiler_compile::SourceFile>> = HashMap::new();
+    let mut queue: Vec<String> = vec![entry_content.to_string()];
+    while let Some(content) = queue.pop() {
+        for module_path in extract_import_paths(&content) {
+            if seen.contains_key(&module_path) {
+                continue;
+            }
+            if let Some(rel_path) = module_index.get(&module_path) {
+                let abs_path = ws.join(rel_path);
+                if let Ok(file_content) = std::fs::read_to_string(&abs_path) {
+                    seen.insert(
+                        module_path,
+                        Rc::new(v1_compiler_compile::SourceFile {
+                            path: rel_path.clone(),
+                            content: file_content.clone(),
+                        }),
+                    );
+                    queue.push(file_content);
+                }
+            }
+        }
+    }
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = seen.into_values().collect();
+    sources.sort_by(|a, b| a.path.cmp(&b.path));
+    sources.push(Rc::new(v1_compiler_compile::SourceFile {
+        path: entry_path.to_string(),
+        content: entry_content.to_string(),
+    }));
+    sources
+}
+
+/// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
+/// `.dag` program to Rust and check that the named emitted file contains every string in
+/// `includes` and none of `excludes`, with zero non-`complexity:` diagnostics. A real,
+/// green-by-execution consumer of the v1 Rust emitter (DESIGN §5 spec-without-execution) —
+/// not a re-derivation of the emitter's own formula, so it can go red on a real emission
+/// regression.
+pub fn compile_dag_rust_emit_check(
+    source: &str,
+    file_path: &str,
+    includes: &[String],
+    excludes: &[String],
+) -> bool {
+    let module_index = build_module_path_index_from_witness_roots();
+    let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
+    let result = v1_compiler_compile::compile_sources(
+        Rc::new(sources),
+        crate::v1_compiler_artifact::RenderTarget::Rust,
+    );
+    let hard_diagnostics = result
+        .diagnostics
+        .iter()
+        .filter(|d| !diagnostic_to_message(d.diagnostic.clone()).starts_with("complexity: "))
+        .count();
+    if hard_diagnostics != 0 {
+        return false;
+    }
+    match result.files.iter().find(|f| f.path == file_path) {
+        Some(f) => {
+            includes.iter().all(|n| f.content.contains(n.as_str()))
+                && excludes.iter().all(|n| !f.content.contains(n.as_str()))
+        }
+        None => false,
+    }
+}
+
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
 const WITNESS_LAYER_ROOTS_DATA_NAME: &str = "witness_layer_roots";
 const WITNESS_DISCOVERY_SCAN_DIRS_DATA_NAME: &str = "witness_discovery_scan_dirs";
@@ -1270,6 +1348,8 @@ fn reconcile_with_typed_cache(
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = v1_rt::rc_empty_map();
     let mut diag_chunks: Vec<Rc<Vec<Rc<ErrorNode>>>> = Vec::new();
+    let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
+        v1_rt::rc_empty_map();
 
     for resolved in graph.modules.iter().cloned() {
         let parent_result = v1_compiler_infer::collect_parent_envs(
@@ -1304,6 +1384,7 @@ fn reconcile_with_typed_cache(
                 let computed = v1_compiler_infer::typecheck_module(
                     resolved.clone(),
                     module_index.clone(),
+                    variant_surfaces.clone(),
                     source_indices.clone(),
                     intern_table.clone(),
                 );
@@ -1323,11 +1404,17 @@ fn reconcile_with_typed_cache(
         };
         let typed = tc_result.typed.clone();
         modules = v1_rt::rc_list_push(modules, typed.clone());
-        module_index = v1_rt::rc_map_insert(
-            module_index,
-            authored_name_at(source_indices.clone(), typed.module.clone()),
-            typed.clone(),
+        let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
+        variant_surfaces = v1_rt::rc_map_insert(
+            variant_surfaces.clone(),
+            typed_path.clone(),
+            v1_compiler_infer::build_variant_export_surface(
+                typed.clone(),
+                variant_surfaces.clone(),
+                source_indices.clone(),
+            ),
         );
+        module_index = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
         item_registry = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());
         diag_chunks.push(parent_result.diagnostics.clone());
         diag_chunks.push(tc_result.diagnostics.clone());

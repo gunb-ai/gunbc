@@ -7,8 +7,8 @@ import v2.std.logic { Bool }
 import v2.std.text { String }
 
 data test_migration_debt_module_count_baseline: Int = 77
-data test_migration_debt_total_loc_baseline: Int = 28546
-data test_migration_debt_total_test_fns_baseline: Int = 912
+data test_migration_debt_total_loc_baseline: Int = 28054
+data test_migration_debt_total_test_fns_baseline: Int = 881
 
 fn test_migration_debt_ratchet_holds(live_count: Int, baseline: Int) -> Bool {
   live_count <= baseline

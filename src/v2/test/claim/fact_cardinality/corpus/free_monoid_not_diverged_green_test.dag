@@ -1,0 +1,10 @@
+module v2.test.fact_cardinality.corpus.free_monoid_not_diverged_green
+
+import v2.lens.fact_cardinality { fact_cardinality_live_cross_tree_is_diverged_fork }
+import v2.std.logic { Bool }
+
+data free_monoid_key: String = "std/algebra.dag:FreeMonoid"
+
+test fn corpus_free_monoid_not_diverged_green_holds() -> Bool {
+  !fact_cardinality_live_cross_tree_is_diverged_fork(rel_path_decl_key: free_monoid_key)
+}

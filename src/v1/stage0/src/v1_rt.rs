@@ -651,3 +651,41 @@ pub fn contiguous_loop_elementwise_kernel(
     }
     out
 }
+
+// take_owned_counted: the fail-closed replacement for the silent
+// `Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())` fallback (DESIGN.md §5:
+// a failure arm must refuse or be counted, never silently widen). The ownership
+// proof licenses the take-owned; a shared Rc at runtime is a proof deficit whose
+// per-site frequency must stay observable, so the clone arm counts per emitted
+// site (site = "<module>:<span_start>" of the use-site the emitter rewrote).
+thread_local! {
+    static TAKE_OWNED_CLONE_FALLBACKS: std::cell::RefCell<HashMap<&'static str, u64>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+/// INVARIANT: `site` must be a string literal (the emitter always passes one).
+/// Counts key on `&'static str`; a non-literal static with duplicate content
+/// could fragment one site's count across entries and silently degrade the
+/// per-site observability this function exists to provide (DESIGN.md 5).
+pub fn take_owned_counted<T: Clone>(x: Rc<T>, site: &'static str) -> T {
+    Rc::try_unwrap(x).unwrap_or_else(|rc| {
+        TAKE_OWNED_CLONE_FALLBACKS.with(|m| *m.borrow_mut().entry(site).or_insert(0) += 1);
+        (*rc).clone()
+    })
+}
+
+pub fn take_owned_clone_fallback_counts() -> Vec<(String, u64)> {
+    TAKE_OWNED_CLONE_FALLBACKS.with(|m| {
+        let mut v: Vec<(String, u64)> = m
+            .borrow()
+            .iter()
+            .map(|(site, n)| (site.to_string(), *n))
+            .collect();
+        v.sort();
+        v
+    })
+}
+
+pub fn reset_take_owned_clone_fallbacks() {
+    TAKE_OWNED_CLONE_FALLBACKS.with(|m| m.borrow_mut().clear());
+}
