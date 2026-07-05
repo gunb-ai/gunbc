@@ -9946,7 +9946,13 @@ mod test_migration_debt_tests {
 
     #[test]
     fn delete_guard_holds_with_no_v1_test_deletions_in_diff() {
-        assert!(test_migration_delete_guard_holds());
+        match test_migration_delete_guard_uncovered_deletes_inner() {
+            Ok(violations) => assert!(
+                violations.is_empty(),
+                "delete guard violations: {violations:?}"
+            ),
+            Err(e) => panic!("delete guard git error: {e}"),
+        }
     }
 
     #[test]
