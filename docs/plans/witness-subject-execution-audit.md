@@ -143,12 +143,14 @@ All other `src/v2` consumers (`affected_set`, `frontier_observation`, `03_resolv
 
 ---
 
-## Recommendation (one paragraph)
+## Recommendation (design note — parked)
 
-**Make class (b-danger) unwritable by construction:** extend witness enrollment (`BoolWitnessClaim` / floor discovery) with a **dual-oracle gate** — when a witness body (transitively) calls a host `*_live` builtin that reimplements a `.dag` function with the same contract, enrollment is **refused** unless the same witness entry also contains an interpreter call to the `.dag` authority (or a dedicated paired RED control that executes the `.dag` fn on a discriminating fixture). The gate is a row in the existing construction-justification / `StandingIntent` machinery, not a new ad-hoc grep. **Dissolve-on:** `gunbc#5364` node-tree readers eliminate the host-bridge seam; until then, Rust equivalence modules like `import_closure_equivalence_tests` should be demoted from "equivalence" to "host perf receipt" and must not be the sole green signal for a load-bearing `.dag` lens. Class (c) grep witnesses remain honest interim for emit/CI-shape subjects but should carry an explicit `DecodeFidelity: Lossy` / `WitnessExecutionClass: GrepShaped` stamp so affected-set skip and enrollment optics do not treat them as behavioral coverage.
+**Direction:** make class (b-danger) unwritable by construction via a **dual-oracle enrollment gate** — when a witness body (transitively) calls a host `*_live` builtin that reimplements a `.dag` function with the same contract, enrollment is **refused** unless the same witness entry also contains an interpreter call to the `.dag` authority (template: `import_closure_live_test.dag`, class-a twin of the class-b Rust tests above). **Dissolve-on:** `gunbc#5364` node-tree readers eliminate the host-bridge seam; until then, Rust equivalence modules like `import_closure_equivalence_tests` should be demoted from "equivalence" to "host perf receipt" and must not be the sole green signal for a load-bearing `.dag` lens.
+
+**Parked deliberately:** this gate interacts with PR-A typed-refusal semantics and the `enforcement-intent` `StandingIntent` machinery — it lands as a design-note section **after PR-A's rulings**, not as a floating lens now. **This report is the receipt that future enrollment work will cite.** Class (c) grep witnesses remain honest interim for emit/CI-shape subjects but should eventually carry an explicit `DecodeFidelity: Lossy` / `WitnessExecutionClass: GrepShaped` stamp so affected-set skip and enrollment optics do not treat them as behavioral coverage.
 
 ---
 
 ## Audit artifact
 
-Classification script: one-shot Python over witness roots (transitive helper analysis + provenance overrides). Re-run after roster changes; no checked-in ratchet (this is a census, not a gate — the gate is the recommendation above).
+Classification script: one-shot Python over witness roots (transitive helper analysis + provenance overrides). Re-run after roster changes; no checked-in ratchet (this is a census, not a gate — the gate is the parked design note above).
