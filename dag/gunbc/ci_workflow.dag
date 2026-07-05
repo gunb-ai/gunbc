@@ -164,7 +164,7 @@ fn ci_release_build_step() -> Step {
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_job_timeout_policy_minutes }
+    timeout_minutes: Present { value: gunbc_ci_release_build_step_timeout_minutes }
   }
 }
 
@@ -292,7 +292,11 @@ data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
 data gunbc_ci_prelude_allowance_minutes: Int = 5
 
-data ci_build_floor_step_split_note: String = "Build and floor are separate workflow steps so gate budgets apply to claim_executor only, not cargo build: bundling both under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: PR #6259 ci job 85192573905, 2026-07-05). Build step carries gunbc_ci_job_timeout_policy_minutes; floor step carries gunbc_ci_floor_gate_step_timeout_minutes."
+data ci_build_floor_step_split_note: String = "Build and floor are separate workflow steps so gate budgets apply to claim_executor only, not cargo build: bundling both under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: PR #6259 ci job 85192573905, 2026-07-05). Build step carries gunbc_ci_release_build_step_timeout_minutes; floor step carries gunbc_ci_floor_gate_step_timeout_minutes."
+
+data gunbc_ci_release_build_step_timeout_minutes: Int = 15
+
+data gunbc_ci_release_build_step_budget_note: String = "Interim release-build step budget: 15 matches gunbc_ci_rust_gate_step_timeout_minutes (build is a strict subset of that step). Receipt: job 85194092138 timed out at 10m during v1-compiler compile (~6m dep prelude + ~4m into stage0). gunbc_ci_job_timeout_policy_minutes (10) stays the nominal floor-gate target, not the build-step cap."
 
 data gunbc_ci_floor_gate_step_timeout_minutes: Int = 30
 
@@ -303,7 +307,7 @@ data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
 }
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_job_timeout_policy_minutes + gunbc_ci_floor_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_floor_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
