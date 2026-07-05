@@ -85,8 +85,7 @@ import v1.compiler.infer_env {
   rewire_type_env_parent_links_calls, rewire_type_env_import_str_binding_calls,
   is_recursive_type, is_recursive_type_by_name, lookup_type, lookup_type_by_name, lookup_type_for, merge_envs,
   put_inductive_field, put_inductive_field_cross, merge_inductive_fields, inductive_fields_for,
-  inductive_fields_list_to_map,
-  SymbolIndex, empty_symbol_index, symbol_index_insert, symbol_index_lookup, qualified_symbol_name
+  inductive_fields_list_to_map
 }
 import std.node { compiler_inductive_fields, compiler_recursive_types }
 import std.induction {
@@ -6831,30 +6830,11 @@ fn rewire_func_env_parent_links(modules: List<TypedModule>, source_indices: Map<
   )
 }
 
-fn symbol_index_fill_module(index: SymbolIndex, tm: TypedModule, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  let module_path = authored_name_at(source_indices: source_indices, node: tm.module)
-  tm.items |> fold(init: index, f: (acc, item) =>
-    symbol_index_insert(
-      index: acc,
-      qualified_name: qualified_symbol_name(
-        module_path: module_path,
-        item_name: authored_name_at(source_indices: source_indices, node: item)
-      ),
-      resolved: item
-    )
-  )
-}
-
-fn build_symbol_index(modules: List<TypedModule>, source_indices: Map<String, NewlineIndex>) -> SymbolIndex {
-  modules |> fold(init: empty_symbol_index(), f: (acc, m) => symbol_index_fill_module(index: acc, tm: m, source_indices: source_indices))
-}
-
 fn reconcile(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> ResolvedGraph {
   let typed = typecheck(graph: graph, source_indices: source_indices, intern_table: intern_table)
   let modules = rewire_type_env_parent_links(modules: typed.modules, source_indices: source_indices)
   let modules = rewire_type_env_import_str_binding_identity(modules: modules, source_indices: source_indices)
   let modules = rewire_func_env_parent_links(modules: modules, source_indices: source_indices)
-  let _symbol_index = build_symbol_index(modules: modules, source_indices: source_indices)
   let emit_info = build_emit_graph_info(modules: modules)
   ResolvedGraph { modules: modules, item_registry: typed.item_registry, diagnostics: typed.diagnostics, emit_graph_info: emit_info }
 }
