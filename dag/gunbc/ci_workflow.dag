@@ -315,7 +315,7 @@ fn ci_job() -> Job {
     name: none,
     runner: gunbc_ci_runner_spec(),
     steps: concat(ci_prelude_steps(), [ci_floor_step(), ci_merge_admission_gate_step()]),
-    needs: [],
+    needs: ["rust_tests"],
     env: none,
     outputs: none,
     if_condition: none,
