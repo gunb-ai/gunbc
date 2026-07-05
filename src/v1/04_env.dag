@@ -21,6 +21,51 @@ type TypeBinding {
   provenance: SubValueRelation
 }
 
+type ImportBinding {
+  name: String
+  resolved: Node
+}
+
+type ScopeBinding {
+  name: String
+  resolved: Node
+  provenance: SubValueRelation
+}
+
+type SymbolIndex {
+  entries: Map<String, Node>
+}
+
+type Scope {
+  locals: Map<String, ScopeBinding>
+}
+
+fn empty_symbol_index() -> SymbolIndex {
+  SymbolIndex { entries: empty_map() }
+}
+
+fn symbol_index_lookup(index: SymbolIndex, qualified_name: String) -> Node? {
+  map_get(index.entries, qualified_name)
+}
+
+fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Node) -> SymbolIndex {
+  SymbolIndex { entries: map_insert(index.entries, qualified_name, resolved) }
+}
+
+fn empty_scope() -> Scope {
+  Scope { locals: empty_map() }
+}
+
+fn scope_lookup(scope: Scope, name: String) -> ScopeBinding? {
+  map_get(scope.locals, name)
+}
+
+fn scope_push(scope: Scope, binding: ScopeBinding) -> Scope {
+  Scope { locals: map_insert(scope.locals, binding.name, binding) }
+}
+
+data symbol_index_single_authority_dissolution_trigger: String = "🟡 dissolve-on: SymbolIndex + Scope replace TypeEnv.ancestry_str_bindings materialization — see docs/plans/type-env-single-authority-design.md §4–§5; gated on floor scaling-curve receipt (§6)."
+
 type TypeEnvCache {
   deps_map: Map<String, List<String>>
   str_bindings: Map<String, TypeBinding>
