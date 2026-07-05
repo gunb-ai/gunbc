@@ -4123,6 +4123,64 @@ fn floor_git_diff_range() -> Result<String, String> {
     }
 }
 
+fn string_list_from_value(val: &v1_interpreter::Value, field: &str) -> Result<Vec<String>, String> {
+    use v1_interpreter::Value;
+    match val {
+        Value::List(items) => items
+            .iter()
+            .map(|v| match v {
+                Value::Str(s) => Ok(s.clone()),
+                other => Err(format!("{field} entry not a String: `{other:?}`")),
+            })
+            .collect(),
+        other => Err(format!("{field} not a List: `{other:?}`")),
+    }
+}
+
+fn floor_git_diff_name_status_range() -> Result<(Vec<String>, HashSet<String>), String> {
+    use v1_interpreter::Value;
+    let roots = default_source_roots();
+    let entry = "src/v2/workflow/floor_diff_observe.dag";
+    let (graph, indices) = resolve_entry_graph_shared(&roots, entry)
+        .map_err(|e| format!("floor_diff_observe resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let result =
+        v1_interpreter::run_in_context(&ctx, "floor_observe_git_diff_name_status_for_ci", false)
+            .map_err(|e| format!("floor_observe_git_diff_name_status_for_ci: {e}"))?;
+    match &result {
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "NameStatusDiffOk") => {
+            let changed = match ctx.field(fields, "changed_paths") {
+                Some(v) => string_list_from_value(v, "changed_paths")?,
+                None => return Err("NameStatusDiffOk missing `changed_paths` field".to_string()),
+            };
+            let departed = match ctx.field(fields, "departed_paths") {
+                Some(v) => string_list_from_value(v, "departed_paths")?,
+                None => return Err("NameStatusDiffOk missing `departed_paths` field".to_string()),
+            };
+            Ok((
+                changed.iter().map(|p| normalize_repo_path(p)).collect(),
+                departed.iter().map(|p| normalize_repo_path(p)).collect(),
+            ))
+        }
+        Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "NameStatusDiffFail") => match ctx.field(fields, "reason") {
+            Some(Value::Str(r)) => Err(r.clone()),
+            _ => Err("git diff --name-status observation failed (no reason)".to_string()),
+        },
+        other => Err(format!(
+            "floor_observe_git_diff_name_status_for_ci returned `{}`, expected FloorNameStatusDiffResult",
+            ctx.format_value(other)
+        )),
+    }
+}
+
 fn normalize_repo_path(path: &str) -> String {
     path.strip_prefix("./").unwrap_or(path).replace('\\', "/")
 }
@@ -4137,18 +4195,7 @@ fn parse_unified_diff_line_ranges(diff_text: &str) -> HashMap<String, Vec<FileLi
     let mut out: HashMap<String, Vec<FileLineRange>> = HashMap::new();
     let mut current_file: Option<String> = None;
     for line in diff_text.lines() {
-        if let Some(rest) = line.strip_prefix("diff --git a/") {
-            // Path-grain attribution for every diff entry, including hunkless ones
-            // (pure rename, binary, mode-only, deletion): those emit no `+++ b/`
-            // line, so keying on hunks alone loses their paths from changed_paths
-            // entirely (operator ruling 2026-07-05: hunkless changes attribute at
-            // path grain). Both sides of a rename are touched paths. Exact git
-            // surface (name-status grain, quoting) is flagged open in PR-A.
-            if let Some((old, new)) = rest.split_once(" b/") {
-                out.entry(normalize_repo_path(old)).or_default();
-                out.entry(normalize_repo_path(new)).or_default();
-            }
-        } else if let Some(rest) = line.strip_prefix("+++ b/") {
+        if let Some(rest) = line.strip_prefix("+++ b/") {
             current_file = Some(normalize_repo_path(rest));
         } else if line.starts_with("@@ ") {
             let Some(file) = current_file.clone() else {
@@ -5102,9 +5149,33 @@ pub fn run_discovery_corpus_with_options(
     } else {
         String::new()
     };
-    let line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
+    // Path grain (changed_paths, departed_paths) is observed via the typed
+    // `git diff --name-status -z` interface (extdeps.git), not scraped from the
+    // unified diff's `diff --git a/OLD b/NEW` header: name-status is git's own
+    // machine surface for path identity/rename, so it is the single authority —
+    // the unified diff below stays scoped to LINE grain (hunk ranges) only.
+    let (name_status_changed_paths, name_status_departed_paths) =
+        if options.skip_unaffected_node_frontier {
+            floor_git_diff_name_status_range().map_err(|msg| {
+                format!(
+                    "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git \
+                     diff --name-status observation failed ({msg}); observation failure \
+                     is the only ignorance state (operator ruling 2026-07-05) and \
+                     refuses every enrolled row rather than widening to a full-corpus \
+                     run (declare skip_unaffected_node_frontier: false to run without \
+                     selection)",
+                    rows.len()
+                )
+            })?
+        } else {
+            (Vec::new(), HashSet::new())
+        };
+    let mut line_ranges_by_file = parse_unified_diff_line_ranges(&diff_text);
+    for path in &name_status_changed_paths {
+        line_ranges_by_file.entry(path.clone()).or_default();
+    }
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
-    let changed_paths: Vec<String> = line_ranges_by_file.keys().cloned().collect();
+    let changed_paths: Vec<String> = name_status_changed_paths;
     // Union-resolve S1 (docs/plans/resolver-graph-major-design.md §7): ONE index for the
     // whole process step. Frontier attribution, the floor runner context, and every roster
     // row resolve against this single MultiEntryIndex, so the union of their closures — the
@@ -5124,7 +5195,7 @@ pub fn run_discovery_corpus_with_options(
             &index,
             &line_ranges_by_file,
             &changed_new_lines_by_file,
-            &parse_unified_diff_departed_paths(&diff_text),
+            &name_status_departed_paths,
         ) {
             Ok(edits) => (true, edits),
             Err(msg) => {
@@ -6570,6 +6641,432 @@ mod floor_witness_a_prove {
             &ws,
             &diff,
             &discriminator_roster(&fixture_abs),
+        );
+    }
+}
+
+// Step 3 module-grain PROVE receipt (docs/plans/affected-set-precompute-pruning.md,
+// ROADMAP 1-affected-set-defork). Node-grain (whole-tree `InferredTree`) equivalence stays
+// BLOCKED (unaffordable resolve); this receipt is re-scoped to MODULE grain, using the landed
+// `import_closure_live` authority (#6210/#6231).
+//
+// SCAFFOLD: dissolves into a .dag execution witness when the discovery/diff seed plumbing
+// migrates off the v1 host layer (same trigger as `node_frontier_plumbing_controls` below,
+// §6 dissolution trigger) — the equivalence lens itself moves on-carrier at that point, this
+// hand-Rust harness is no longer needed to exercise it.
+//
+// It proves the module-grain "affected" decision
+// computed by the `.dag` authority (`v2.lens.module_graph.entry_affected_by_touched_paths`, a
+// thin projection over `import_closure_live`) agrees with the Rust host's module-grain
+// `entry_file_touched` decision (`touched_file_in_import_closure` over
+// `import_closure_files_from_graph` — the exact function `run_discovery_rows` uses to compute
+// `current_entry_closure_files` for the live floor skip decision) on real merged-commit diffs.
+// Both sides are fed by the same host-realized `import_resolution_facts`/`module_declaration_facts`,
+// so this is a decision-level proof (§5: execution, not a grep/typecheck spec), not a re-proof of
+// closure membership (already covered by `import_closure_equivalence_tests` above).
+//
+// Touched-paths derivation (fixed post-#6274 review): the input fed to BOTH sides is NOT the raw
+// `git show --name-only` file list. `entry_file_touched` in live production
+// (`run_discovery_rows`, cli_run.rs:5217-5221) is decided over `diff_edits.touched_entry_files` —
+// the FILTERED set `floor_diff_edits_from_line_ranges` produces after excluding pure data-item
+// edits (→ `overlapping_data_items`) and test-fn edits (→ `edited_test_fns`); only non-data,
+// non-test-fn declaration edits land in `touched_entry_files`. A raw touched-path superset can
+// diverge from this filtered set, so proving equivalence against raw paths only proves a
+// stronger/looser predicate, not the live decision. This receipt instead runs the exact same
+// production call the floor uses — `floor_diff_edits_from_diff_text(&index, &git_show_diff_text)`
+// — on each commit's full unified diff (`git show <sha>`, not `--name-only`) and feeds
+// `.touched_entry_files` to both `dag_entry_affected` and `rust_entry_affected`, matching the
+// sibling `green_import_closure_helper_fn_edit_runs_importer_entry` pattern above.
+//
+// `floor_diff_edits_from_line_ranges` fail-closes (`Err`) when a touched `.dag` file's diff
+// includes changed line 1 (the module declaration line) — see cli_run.rs:4703-4705 — so a commit
+// that wholly ADDS new files (every new file's diff touches line 1) cannot be exercised via this
+// real path (`entry_file_touched` is unreachable for that commit shape upstream of this receipt).
+// Both SHAs below were chosen to be all-status-`M` (modify-only) commits for this reason.
+#[cfg(test)]
+mod module_grain_affected_equivalence_tests {
+    use super::{
+        build_multi_entry_index, floor_diff_edits_from_diff_text, import_closure_files_from_graph,
+        import_resolution_facts_call_count_for_test, make_eval_context,
+        module_declaration_facts_call_count_for_test, module_graph_facts_build_count_for_test,
+        peak_rss_vhwm_bytes, reset_import_resolution_facts_call_counts_for_test,
+        reset_module_graph_facts_build_count_for_test, resolve_entry_with_index,
+        resolve_entry_with_index_for_discovery_corpus, touched_file_in_import_closure,
+        workspace_root, MultiEntryIndex,
+    };
+    use crate::v1_interpreter::{self, ExecutionMode, Value};
+    use std::collections::HashSet;
+    use std::path::PathBuf;
+    use std::time::Instant;
+
+    const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
+
+    fn setup_roots(ws: &PathBuf) -> Vec<String> {
+        vec![
+            ws.join("dag").to_string_lossy().into_owned(),
+            ws.join("src/v2").to_string_lossy().into_owned(),
+        ]
+    }
+
+    // Mirrors `gunbc.ci_layer_roots.witness_layer_roots` (`data witness_layer_roots: List<String>
+    // = ["dag", "src/v2"]`) — the single authority for pool roots this receipt exercises against.
+    fn pool_roots_rel() -> Vec<String> {
+        vec!["dag".to_string(), "src/v2".to_string()]
+    }
+
+    // `entry_source_from_index_or_disk` stats `entry_path` directly against the process cwd (it
+    // does not consult `workspace_root()`), so a bare repo-relative constant only resolves when
+    // cwd happens to already be the workspace root. Rather than mutate the global process cwd
+    // (the project's known `set_current_dir` parallel-test race — see the sibling
+    // `node_frontier_plumbing_controls` module's `abs` helper for the same fix), build an absolute
+    // path up front. `pool_roots`/`import_module` facts stay repo-relative (`rel_path_for_layer_import`),
+    // so only the disk-touching entry lookups need this.
+    fn abs(ws: &PathBuf, rel: &str) -> String {
+        ws.join(rel).to_string_lossy().into_owned()
+    }
+
+    // Full unified diff for `sha` (NOT `--name-only`) — the same shape the live floor parses via
+    // `parse_unified_diff_line_ranges`/`parse_unified_diff_changed_new_lines`.
+    fn diff_text_for_commit(sha: &str) -> String {
+        let output = std::process::Command::new("git")
+            .args(["show", sha])
+            .current_dir(workspace_root())
+            .output()
+            .unwrap_or_else(|e| panic!("git show {sha}: {e}"));
+        assert!(
+            output.status.success(),
+            "git show {sha} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let text = String::from_utf8_lossy(&output.stdout).into_owned();
+        assert!(
+            !text.trim().is_empty(),
+            "commit {sha} produced empty diff text"
+        );
+        text
+    }
+
+    fn str_list_value(items: &[String]) -> Value {
+        v1_interpreter::list_value(
+            items
+                .iter()
+                .map(|s| Value::Str(s.clone()))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    fn dag_entry_affected(
+        ctx: &v1_interpreter::InterpContext,
+        entry_rel: &str,
+        roots: &[String],
+        touched: &[String],
+    ) -> bool {
+        let args = [
+            (
+                Some("entry_path".to_string()),
+                Value::Str(entry_rel.to_string()),
+            ),
+            (Some("pool_roots".to_string()), str_list_value(roots)),
+            (Some("touched_paths".to_string()), str_list_value(touched)),
+        ];
+        match v1_interpreter::run_in_context_with_args(
+            ctx,
+            "entry_affected_by_touched_paths",
+            &args,
+            true,
+        ) {
+            Ok(Value::Bool(b)) => b,
+            Ok(other) => panic!(
+                "entry_affected_by_touched_paths returned `{}`",
+                ctx.format_value(&other)
+            ),
+            Err(e) => panic!("entry_affected_by_touched_paths: {e}"),
+        }
+    }
+
+    fn rust_entry_affected(index: &MultiEntryIndex, entry_rel: &str, touched: &[String]) -> bool {
+        let (graph, _) = resolve_entry_with_index_for_discovery_corpus(index, entry_rel)
+            .unwrap_or_else(|e| panic!("resolve {entry_rel}: {e}"));
+        let closure_files: HashSet<String> = import_closure_files_from_graph(&graph);
+        touched
+            .iter()
+            .any(|f| touched_file_in_import_closure(f, &closure_files))
+    }
+
+    struct EquivalenceReceipt {
+        sha: String,
+        touched: Vec<String>,
+        rows: Vec<(String, bool, bool)>, // (entry, rust_decision, dag_decision)
+    }
+
+    fn run_equivalence_for_commit(sha: &str, entries: &[&str]) -> EquivalenceReceipt {
+        let ws = workspace_root();
+        // `entry_source_from_index_or_disk` and `floor_diff_edits_from_line_ranges` both read
+        // paths off disk relative to cwd, matching the live floor's process cwd == workspace
+        // root. Use the SAME relative roots/paths the live floor uses throughout (`dag`,
+        // `src/v2`, `src/v2/workflow/affected_set_floor_runner.dag`-style constants) rather than
+        // absolute paths — mixing the two conventions for the same physical file inside one
+        // `MultiEntryIndex` re-resolves it under a second identity and trips the interpreter's
+        // "duplicate module declaration" / circular-dependency guard.
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let rel_roots = pool_roots_rel();
+
+        let index = build_multi_entry_index(&rel_roots);
+        let diff_text = diff_text_for_commit(sha);
+        let edits = floor_diff_edits_from_diff_text(&index, &diff_text).unwrap_or_else(|e| {
+            panic!(
+                "floor_diff_edits_from_diff_text failed for commit {sha}: {e} — pick a \
+                 different all-`M`-status dag/ or src/v2/ commit whose diffs never touch line 1"
+            )
+        });
+        let mut touched: Vec<String> = edits.touched_entry_files.into_iter().collect();
+        touched.sort();
+        assert!(
+            !touched.is_empty(),
+            "commit {sha} produced an empty touched_entry_files set — pick a commit whose diff \
+             touches at least one non-data, non-test-fn declaration"
+        );
+        let (mg_graph, mg_indices) =
+            resolve_entry_with_index_for_discovery_corpus(&index, MODULE_GRAPH_ENTRY)
+                .expect("module_graph.dag resolves as an interpreter entry");
+        let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
+
+        let mut rows = Vec::new();
+        for entry in entries {
+            let rust_decision = rust_entry_affected(&index, entry, &touched);
+            let dag_decision = dag_entry_affected(&dag_ctx, entry, &rel_roots, &touched);
+            rows.push((entry.to_string(), rust_decision, dag_decision));
+        }
+        EquivalenceReceipt {
+            sha: sha.to_string(),
+            touched,
+            rows,
+        }
+    }
+
+    fn assert_receipt_matches(receipt: &EquivalenceReceipt) {
+        let mut divergences = Vec::new();
+        for (entry, rust, dag) in &receipt.rows {
+            if rust != dag {
+                divergences.push(format!("{entry}: rust={rust} dag={dag}"));
+            }
+        }
+        assert!(
+            divergences.is_empty(),
+            "module-grain decision diverged for commit {}: {}",
+            receipt.sha,
+            divergences.join(", ")
+        );
+    }
+
+    fn write_receipt_log(name: &str, receipt: &EquivalenceReceipt) {
+        let mut out = String::new();
+        out.push_str(&format!("commit: {}\n", receipt.sha));
+        out.push_str("touched paths:\n");
+        for t in &receipt.touched {
+            out.push_str(&format!("  {t}\n"));
+        }
+        out.push_str("entry decisions (rust_decision, dag_decision):\n");
+        for (entry, rust, dag) in &receipt.rows {
+            out.push_str(&format!("  {entry}: rust={rust} dag={dag}\n"));
+        }
+        let dir = workspace_root().join("target/module_grain_affected_receipts");
+        std::fs::create_dir_all(&dir).expect("create receipt dir");
+        let path = dir.join(format!("{name}.txt"));
+        std::fs::write(&path, &out).unwrap_or_else(|e| panic!("write receipt {path:?}: {e}"));
+        eprintln!("--- module-grain affected-set receipt: {name} ---\n{out}");
+    }
+
+    // Real diff 1: dag/-only merged commit, all-status-`M` (4 modified files: healthz grammar
+    // JSON + structured shell in v1_dag_parse transport, #6166) — chosen over the original
+    // all-new-file commit because `floor_diff_edits_from_line_ranges` fail-closes on any diff
+    // that touches a file's line 1 (every wholly-new file does), which the real production path
+    // can never reach for an all-added-files commit; a modify-only commit exercises it for real.
+    const DAG_ONLY_SHA: &str = "6edafbb5e29370c0ac791038a1c64e1a4ddbd40d";
+    // Real diff 2: src/v2/-only merged commit (6 modified files, bash orchestration-emit dissolve).
+    const V2_ONLY_SHA: &str = "bb6e65649c9625d021467b0d7fe33ca7dd086e4f";
+
+    // Representative sample for the dag/-only diff: the two witness files that directly declare
+    // `import`s of the new ebay/tcgplayer/card_intake modules (expected affected=true on both
+    // sides), plus a spread of unrelated floor witnesses drawn from both pool roots and both
+    // near (same-directory) and far (cross-tree) module-graph distance from the touched files
+    // (expected affected=false) — enough to show the equivalence holds both when it fires and
+    // when it doesn't, without requiring the full ~514-entry roster.
+    fn dag_only_entry_sample() -> Vec<&'static str> {
+        vec![
+            "dag/test/claim/card_intake_risk_witness_test.dag",
+            "dag/test/claim/ebay_listing_witness_test.dag",
+            "dag/test/claim/bash_serializer_witness_test.dag",
+            "dag/test/claim/v1_dag_parse_witness_test.dag",
+            "dag/tools/host_prelude.dag",
+            "dag/tools/build_step.dag",
+            "dag/gunbc/ci_layer_roots.dag",
+            "src/v2/test/claim/bash_command_fold_test.dag",
+            "src/v2/workflow/orchestration_emit_test.dag",
+            "src/v2/test/claim/module_graph/import_closure_live_test.dag",
+            "src/v2/test/claim/affected_set_universe_test.dag",
+            "src/v2/lens/module_graph.dag",
+        ]
+    }
+
+    // Representative sample for the src/v2/-only diff: the two directly touched test files
+    // (affected=true), a set of witnesses that import `bash.dag`/`bash_orchestration_emit.dag`
+    // transitively (via the same import chain the discriminating control below exercises;
+    // affected=true), and unrelated witnesses from both trees (affected=false).
+    fn v2_only_entry_sample() -> Vec<&'static str> {
+        vec![
+            "src/v2/workflow/orchestration_bash_test.dag",
+            "src/v2/workflow/orchestration_emit_test.dag",
+            "src/v2/test/claim/bash_command_fold_test.dag",
+            "src/v2/test/claim/bash_program_fold_test.dag",
+            "src/v2/test/claim/manual/bash_emit_command_test.dag",
+            "src/v2/test/claim/manual/emit_directive_bash_test.dag",
+            "src/v2/test/claim/manual/emit_directive_gha_test.dag",
+            "src/v2/workflow/orchestration_retry_emit_test.dag",
+            "src/v2/test/claim/realization_vocabulary_containment/lens_unit/discriminators_test.dag",
+            "dag/test/claim/card_intake_risk_witness_test.dag",
+            "dag/tools/host_prelude.dag",
+            "src/v2/test/claim/affected_set_universe_test.dag",
+            "src/v2/test/claim/module_graph/import_closure_live_test.dag",
+        ]
+    }
+
+    #[test]
+    fn module_grain_affected_equivalence_dag_only_real_diff() {
+        let entries = dag_only_entry_sample();
+        let receipt = run_equivalence_for_commit(DAG_ONLY_SHA, &entries);
+        write_receipt_log("dag_only_real_diff", &receipt);
+        // A vacuously all-false (or all-true) receipt would not be a real proof of agreement —
+        // require the sample to actually exercise both outcomes on both sides.
+        assert!(
+            receipt.rows.iter().any(|(_, rust, dag)| *rust && *dag),
+            "receipt must contain at least one true/true (affected) row to be discriminating"
+        );
+        assert!(
+            receipt.rows.iter().any(|(_, rust, dag)| !*rust && !*dag),
+            "receipt must contain at least one false/false (unaffected) row"
+        );
+        assert_receipt_matches(&receipt);
+    }
+
+    #[test]
+    fn module_grain_affected_equivalence_v2_only_real_diff() {
+        let entries = v2_only_entry_sample();
+
+        reset_import_resolution_facts_call_counts_for_test();
+        reset_module_graph_facts_build_count_for_test();
+        let t0 = Instant::now();
+        let receipt = run_equivalence_for_commit(V2_ONLY_SHA, &entries);
+        let elapsed = t0.elapsed();
+        let dag_side_import_resolution_calls = import_resolution_facts_call_count_for_test();
+        let dag_side_module_decl_calls = module_declaration_facts_call_count_for_test();
+        let rust_side_facts_batch_builds = module_graph_facts_build_count_for_test();
+        let peak_rss = peak_rss_vhwm_bytes();
+
+        write_receipt_log("v2_only_real_diff", &receipt);
+
+        let mut cost_log = String::new();
+        cost_log.push_str(&format!("entries_sampled: {}\n", entries.len()));
+        cost_log.push_str(&format!(
+            "wall_clock_ms_for_equivalence_run: {:.2}\n",
+            elapsed.as_secs_f64() * 1000.0
+        ));
+        cost_log.push_str(&format!(
+            "dag_side_import_resolution_facts_calls: {dag_side_import_resolution_calls}\n"
+        ));
+        cost_log.push_str(&format!(
+            "dag_side_module_declaration_facts_calls: {dag_side_module_decl_calls}\n"
+        ));
+        cost_log.push_str(&format!(
+            "rust_side_build_module_graph_facts_live_calls: {rust_side_facts_batch_builds}\n"
+        ));
+        cost_log.push_str(&format!("peak_rss_vhwm_bytes: {peak_rss:?}\n"));
+        let dir = workspace_root().join("target/module_grain_affected_receipts");
+        std::fs::create_dir_all(&dir).expect("create receipt dir");
+        std::fs::write(dir.join("v2_only_real_diff_cost.txt"), &cost_log)
+            .expect("write cost receipt");
+        eprintln!("--- module-grain affected-set cost receipt ---\n{cost_log}");
+
+        assert_receipt_matches(&receipt);
+    }
+
+    // Discriminating control: perturb REAL wiring by dropping an intermediate importer's
+    // outgoing edges (via `import_closure_live_excluding`'s `exclude_substrings` — the same knob
+    // `import_closure_live` delegates through, not a bespoke test-only mechanism) and prove the
+    // module-grain decision actually flips. This shows the equivalence assertions above are a
+    // real discriminator: if this control could not go RED, the checks above could pass
+    // vacuously (§5 "witness re-asserting realizer is tautological").
+    #[test]
+    fn module_grain_affected_decision_discriminates_under_wiring_perturbation() {
+        let ws = workspace_root();
+        let roots = setup_roots(&ws);
+        let rel_roots = pool_roots_rel();
+        let index = build_multi_entry_index(&roots);
+        let (mg_graph, mg_indices) =
+            resolve_entry_with_index_for_discovery_corpus(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
+                .expect("module_graph.dag resolves as an interpreter entry");
+        let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
+
+        // `orchestration_emit_test.dag` imports `bash_orchestration_emit.dag` directly, which in
+        // turn imports `bash.dag` — a genuine 2-hop chain (not a 1-hop direct import), so
+        // dropping the intermediate's edges is the only way to sever reachability to the leaf.
+        let entry = "src/v2/workflow/orchestration_emit_test.dag";
+        let leaf = "src/v2/extdeps/languages/bash.dag".to_string();
+        let intermediate_exclude = "extdeps/languages/bash_orchestration_emit.dag".to_string();
+
+        let content = std::fs::read_to_string(ws.join(entry))
+            .unwrap_or_else(|e| panic!("read {entry} for precondition: {e}"));
+        assert!(
+            !content.contains("v2.extdeps.languages.bash "),
+            "precondition: {entry} must reach {leaf} only transitively (via \
+             bash_orchestration_emit.dag), not via a direct import — otherwise excluding the \
+             intermediate would not discriminate"
+        );
+
+        let touched = vec![leaf.clone()];
+
+        let unperturbed = dag_entry_affected(&dag_ctx, entry, &rel_roots, &touched);
+        assert!(
+            unperturbed,
+            "precondition failed: the full (unperturbed) closure of {entry} must reach {leaf} \
+             transitively via bash_orchestration_emit.dag for this control to be meaningful"
+        );
+
+        let args = [
+            (
+                Some("entry_path".to_string()),
+                Value::Str(entry.to_string()),
+            ),
+            (Some("pool_roots".to_string()), str_list_value(&rel_roots)),
+            (Some("touched_paths".to_string()), str_list_value(&touched)),
+            (
+                Some("exclude_substrings".to_string()),
+                str_list_value(&[intermediate_exclude.clone()]),
+            ),
+        ];
+        let perturbed = match v1_interpreter::run_in_context_with_args(
+            &dag_ctx,
+            "entry_affected_by_touched_paths_excluding",
+            &args,
+            true,
+        ) {
+            Ok(Value::Bool(b)) => b,
+            Ok(other) => panic!(
+                "entry_affected_by_touched_paths_excluding returned `{}`",
+                dag_ctx.format_value(&other)
+            ),
+            Err(e) => panic!("entry_affected_by_touched_paths_excluding: {e}"),
+        };
+
+        assert!(
+            !perturbed,
+            "dropping {intermediate_exclude}'s outgoing edges must remove {leaf} from {entry}'s \
+             closure (a real wiring perturbation), but the decision stayed true"
+        );
+        assert_ne!(
+            unperturbed, perturbed,
+            "discriminating control must actually flip the decision under a real wiring \
+             perturbation, not merely execute the code path unchanged"
         );
     }
 }
@@ -8167,11 +8664,42 @@ fn is_excluded_import_path(rel: &str, exclude_substrings: &[String]) -> bool {
     exclude_substrings.iter().any(|s| rel.contains(s.as_str()))
 }
 
+// Per-call counters for the two host builtins the `.dag` interpreter actually invokes when a
+// `.dag` fold reads `import_resolution_facts_live`/`module_declaration_facts_live` (e.g.
+// `v2.lens.module_graph.import_closure_live`). Distinct from `MODULE_GRAPH_FACTS_BUILD_COUNT`
+// above, which counts the separate Rust-side `build_module_graph_facts_live` batching path used
+// by `current_entry_closure_files` — the two paths are not the same call site, so a cost receipt
+// comparing them needs its own counter (module-grain affected-set equivalence receipt).
+#[cfg(test)]
+static IMPORT_RESOLUTION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+#[cfg(test)]
+static MODULE_DECLARATION_FACTS_CALL_COUNT: std::sync::atomic::AtomicUsize =
+    std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
+pub(crate) fn reset_import_resolution_facts_call_counts_for_test() {
+    IMPORT_RESOLUTION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+    MODULE_DECLARATION_FACTS_CALL_COUNT.store(0, std::sync::atomic::Ordering::SeqCst);
+}
+
+#[cfg(test)]
+pub(crate) fn import_resolution_facts_call_count_for_test() -> usize {
+    IMPORT_RESOLUTION_FACTS_CALL_COUNT.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+#[cfg(test)]
+pub(crate) fn module_declaration_facts_call_count_for_test() -> usize {
+    MODULE_DECLARATION_FACTS_CALL_COUNT.load(std::sync::atomic::Ordering::SeqCst)
+}
+
 pub fn import_resolution_facts(
     pool_roots: &[String],
     importer_roots: &[String],
     exclude_substrings: &[String],
 ) -> Vec<ImportResolutionFactRaw> {
+    #[cfg(test)]
+    IMPORT_RESOLUTION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let abs_importer_roots = pool_roots_abs(importer_roots);
     let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
@@ -8209,6 +8737,8 @@ pub fn import_resolution_facts(
 }
 
 pub fn module_declaration_facts(pool_roots: &[String]) -> Vec<ModuleDeclarationFactRaw> {
+    #[cfg(test)]
+    MODULE_DECLARATION_FACTS_CALL_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let mut out: Vec<ModuleDeclarationFactRaw> = build_module_path_index(&abs_pool_roots)
         .into_iter()

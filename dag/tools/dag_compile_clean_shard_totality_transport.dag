@@ -1,0 +1,58 @@
+module tools.dag_compile_clean_shard_totality_transport
+
+import extdeps.shell
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  Command, Pipe,
+  Lit, VarRef, Concat,
+  lit, var_ref, command, serialize_bash
+}
+import tools.host_prelude { assign_root_stmt }
+import std.types { String, Bool, List }
+
+data dag_entry_glob_transport_invocation_substring_witness_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.lens.medium_structure_containment",
+    decl_name: "medium_structure_containment_holds",
+    field: WholeDeclaration
+  }
+}
+
+fn live_dag_entry_glob_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  ShellProgram {
+    set_e: true,
+    statements: [
+      assign_root_stmt(),
+      command(words: [lit(text: "cd"), root]),
+      Pipe {
+        left: command(words: [lit(text: "find"), lit(text: "dag"), lit(text: "-name"), lit(text: "*.dag")]),
+        right: command(words: [lit(text: "sort")])
+      }
+    ]
+  }
+}
+
+type LiveDagEntryGlobResult {
+  success: Bool
+  stdout: String
+  stderr: String
+}
+
+fn run_live_dag_entry_glob() -> LiveDagEntryGlobResult {
+  let result = shell.Exec.Run(script: serialize_bash(p: live_dag_entry_glob_program()))
+  LiveDagEntryGlobResult { success: result.success, stdout: result.stdout, stderr: result.stderr }
+}
+
+data live_dag_entry_glob_find_marker: String = "'find' 'dag' '-name' '*.dag'"
+data live_dag_entry_glob_sort_marker: String = "'sort'"
+
+fn live_dag_entry_glob_transport_serializes_find_sort_pipe() -> Bool {
+  let script = serialize_bash(p: live_dag_entry_glob_program())
+  script != ""
+    && string_contains(s: script, pattern: live_dag_entry_glob_find_marker)
+    && string_contains(s: script, pattern: live_dag_entry_glob_sort_marker)
+}
