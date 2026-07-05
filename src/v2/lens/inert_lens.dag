@@ -12,6 +12,8 @@ fn inert_lens_universe_nonempty_for_count(module_count: Int) -> Bool {
   module_count > 0
 }
 
+data inert_lens_substrate_bridge_stub_note: String = "Self-recursive bodies below are compile-time substrate stubs, not evaluable semantics: v1_interpreter is_v4_inert_lens_bridge_call dispatches v2.lens.inert_lens module-qualified calls before body evaluation (same shape as v2.std.concept_index / fn_index). DISSOLVE-ON: construction_justification.class."
+
 fn inert_lens_unreached_module_count() -> Int {
   inert_lens_unreached_module_count()
 }
