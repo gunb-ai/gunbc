@@ -12,6 +12,7 @@ import tools.dag_compile_clean_shard_totality {
   witness_totality_holds_on_live_tree,
   witness_totality_reds_on_synthetic_orphan,
   witness_totality_reds_on_synthetic_double_claim,
+  witness_totality_reds_on_synthetic_surplus,
   witness_totality_fails_closed_on_glob_failure,
   witness_totality_green_when_glob_matches_roster
 }
@@ -29,6 +30,7 @@ test fn compile_clean_shard_totality_transport_serializes_find_sort() -> Bool {
 test fn compile_clean_shard_totality_algebra_holds() -> Bool {
   witness_totality_reds_on_synthetic_orphan()
     && witness_totality_reds_on_synthetic_double_claim()
+    && witness_totality_reds_on_synthetic_surplus()
     && witness_totality_fails_closed_on_glob_failure()
     && witness_totality_green_when_glob_matches_roster()
 }

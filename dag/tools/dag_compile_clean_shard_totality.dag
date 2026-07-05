@@ -43,10 +43,13 @@ fn compile_clean_partition_totality_verdict_from(
     let glob_paths = nonempty_lines(glob_stdout)
     let orphans = filter(xs: glob_paths, f: fn(p) { !list_contains_path(xs: roster_paths, target: p) })
     let duplicated = duplicated_entry_paths(paths: roster_paths)
+    let surplus = filter(xs: roster_paths, f: fn(p) { !list_contains_path(xs: glob_paths, target: p) })
     if list_length(items: orphans) > 0 {
       PartitionOrphan { unclaimed_paths: orphans }
     } else if list_length(items: duplicated) > 0 {
       PartitionDuplicateClaim { duplicated_paths: duplicated }
+    } else if list_length(items: surplus) > 0 {
+      PartitionSurplusClaim { surplus_paths: surplus }
     } else {
       PartitionTotal { module_count: list_length(items: roster_paths) }
     }
@@ -68,6 +71,7 @@ fn compile_clean_partition_totality_is_total(v: PartitionTotalityVerdict) -> Boo
     PartitionTotal { module_count: n } => true
     PartitionOrphan { unclaimed_paths: paths } => false
     PartitionDuplicateClaim { duplicated_paths: paths } => false
+    PartitionSurplusClaim { surplus_paths: paths } => false
     PartitionGlobUnavailable { stderr: s } => false
   }
 }
@@ -101,6 +105,21 @@ fn witness_totality_reds_on_synthetic_double_claim() -> Bool {
   match verdict {
     PartitionDuplicateClaim { duplicated_paths: paths } =>
       list_length(items: paths) == 1 && paths.first() == "dag/std/logic.dag"
+    _ => false
+  }
+}
+
+fn witness_totality_reds_on_synthetic_surplus() -> Bool {
+  let roster_paths = ["dag/std/logic.dag", "dag/std/phantom_not_in_glob.dag"]
+  let verdict = compile_clean_partition_totality_verdict_from(
+    glob_success: true,
+    glob_stdout: "dag/std/logic.dag\n",
+    glob_stderr: "",
+    roster_paths: roster_paths
+  )
+  match verdict {
+    PartitionSurplusClaim { surplus_paths: paths } =>
+      list_length(items: paths) == 1 && paths.first() == "dag/std/phantom_not_in_glob.dag"
     _ => false
   }
 }
