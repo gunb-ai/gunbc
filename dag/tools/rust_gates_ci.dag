@@ -10,6 +10,7 @@ import gunbc.ci_spec {
   DiffMergeBase,
   DiffTwoDot,
 }
+import std.types { GitRef }
 import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_memory_max_live }
 
@@ -57,8 +58,8 @@ func run_gates() -> ProcessExit {
 func run_rust_monolith_gate() -> ProcessExit {
   let policy = gunbc_ci_spec.diff_policy
   let changed = match policy.mode {
-    DiffMergeBase => git.Core.DiffNameOnlyMerge(base: policy.base, head: policy.head)
-    DiffTwoDot => git.Core.DiffNameOnly(base: policy.base, head: policy.head)
+    DiffMergeBase => git.Core.DiffNameOnlyMerge(base: policy.base as GitRef, head: policy.head as GitRef)
+    DiffTwoDot => git.Core.DiffNameOnly(base: policy.base as GitRef, head: policy.head as GitRef)
   }
   return if should_run_gates(paths: changed.paths, git_success: changed.success) {
     run_gates()
