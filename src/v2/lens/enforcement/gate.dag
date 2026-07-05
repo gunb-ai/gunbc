@@ -197,7 +197,7 @@ fn intent_admissible(i: StandingIntent) -> Bool {
     && i.receiptable
     && non_empty_string(s: i.displaced_cost)
     && non_empty_string(s: i.mechanism_class)
-    && non_empty(xs: i.desired_scope.entries)
+    && non_empty(xs: i.desired_scope.roots)
 }
 
 fn all_intents_admissible(intents: List<StandingIntent>) -> Bool {

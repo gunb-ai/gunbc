@@ -45,7 +45,7 @@ fn phase_profile_sigterm_mid_walk_flushes_last_tick() {
         .env("GUNBC_FLOOR_PHASE_PROFILE_INTERVAL_SECS", "1")
         .args([
             "--source-root",
-            "dsl",
+            "dag",
             "--source-root",
             "src/v2",
             "--plan-entry",
