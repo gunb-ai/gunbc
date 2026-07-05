@@ -8,7 +8,7 @@
 
 ## Scope and method
 
-**Corpus:** all `test fn … -> Bool` witnesses discoverable under floor witness roots:
+**Corpus:** all `test fn … -> Bool` witnesses under floor witness roots:
 
 - `dag/test/claim/**`
 - `src/v2/test/claim/**` (including `manual/`, `execution/`)
@@ -16,7 +16,9 @@
 - `src/v2/test/manual/**`
 - `src/v2/workflow/**`
 
-**Total:** 1,792 witness test functions across 553 `*_test.dag` files (class buckets below are authoritative; each `test fn` row counted once per file path).
+**Total:** **1,532** witness `test fn … -> Bool` rows across **523** `*_test.dag` files (22 of those files contain no Bool witness — e.g. manual translate/oracle shells).
+
+**Reproducible consumer:** `docs/plans/witness-subject-execution-audit.py` — line-oriented recount + transitive classifier; exits non-zero on census drift from the committed totals below.
 
 **Classification** (each test fn, with transitive helper analysis):
 
@@ -35,15 +37,15 @@ Additionally: **18** Rust `#[test]` equivalence modules outside floor discovery 
 
 | Class | Test fns | Share |
 |-------|----------|-------|
-| **(a)** interpreter | 1,653 | 92.2% |
-| **(b)** host/shell transport | 11 | 0.6% |
-| **(b-danger)** host reimpl with `.dag` twin | 26 | 1.5% |
-| **(c)** grep-shaped | 102 | 5.7% |
-| **Total** | **1,792** | |
+| **(a)** interpreter | 1,393 | 90.9% |
+| **(b)** host/shell transport | 11 | 0.7% |
+| **(b-danger)** host reimpl with `.dag` twin | 25 | 1.6% |
+| **(c)** grep-shaped | 103 | 6.7% |
+| **Total** | **1,532** | |
 
 Plus **18** Rust-only equivalence `#[test]` fns (not floor-discovered; all class (b), 12 are (b-danger)).
 
-**Illusion rate (b + b-danger + c):** 139 / 1,792 = **7.8%** of floor witnesses never interpreter-evaluate their claimed `.dag` subject. Of those, **(b-danger)** is the silent-divergence subset: **26** floor fns + **12** Rust equivalence fns = **38** high-risk sites.
+**Illusion rate (b + b-danger + c):** 139 / 1,532 = **9.1%** of floor witnesses never interpreter-evaluate their claimed `.dag` subject. Of those, **(b-danger)** is the silent-divergence subset: **25** floor fns + **12** Rust equivalence fns = **37** high-risk sites.
 
 ---
 
@@ -105,7 +107,7 @@ These are **honest spec-without-execution** (provenance strings say "host physic
 
 ---
 
-## Class (c) — grep-shaped witnesses (102 test fns, 41 files)
+## Class (c) — grep-shaped witnesses (103 test fns, 41 files)
 
 Largest clusters:
 
@@ -154,4 +156,6 @@ All other `src/v2` consumers (`affected_set`, `frontier_observation`, `03_resolv
 
 ## Audit artifact
 
-Classification script: one-shot Python over witness roots (transitive helper analysis + provenance overrides). Re-run after roster changes; no checked-in ratchet (this is a census, not a gate — the gate is the parked design note above).
+**Consumer:** `python3 docs/plans/witness-subject-execution-audit.py` (from repo root). Re-run after roster changes; script self-checks against the committed totals in this doc. This is a census receipt, not a floor gate — the gate is the parked design note above.
+
+**Prior error (fixed):** an earlier draft counted ~260 non-witness helper `fn` bodies (e.g. `witness_*` helpers inside `*_test.dag` files) as if they were `test fn` rows, inflating the denominator to 1,792. The corrected census counts **only** `test fn … -> Bool` declarations.
