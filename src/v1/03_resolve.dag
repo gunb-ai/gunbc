@@ -5,7 +5,6 @@ import v1.std.core { Node, Connective, Conj, Disj, NoConnective, ErrorNode, make
 
 type ModuleGraph {
   modules: List<ResolvedModule>
-  batches: List<List<ResolvedModule>>
   diagnostics: List<ErrorNode>
 }
 
@@ -94,21 +93,8 @@ fn resolve_modules(modules: List<Node>, source_indices: Map<String, NewlineIndex
 
   let sorted_resolved = acyclic_resolved |> sort_by(m => m.dep_order)
 
-  let resolved_by_name = sorted_resolved |> fold(init: empty_map(), f: (acc, rm) =>
-    map_insert(acc, authored_name_at(source_indices: source_indices, node: rm.module), rm)
-  )
-  let batches = topo_result.waves |> map(wave =>
-    wave |> flat_map(name =>
-      match map_get(resolved_by_name, name) {
-        Present { value: rm } => [rm]
-        Absent => []
-      }
-    )
-  )
-
   ModuleGraph {
     modules: sorted_resolved,
-    batches: batches,
     diagnostics: concat(dup_diags, import_diags, topo_diags)
   }
 }
@@ -236,7 +222,6 @@ fn check_duplicate_modules(modules: List<Node>, source_indices: Map<String, Newl
 
 type TopoResult {
   sorted: List<String>
-  waves: List<List<String>>
   cycle_error: ErrorNode?
 }
 
@@ -288,14 +273,13 @@ fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineInde
   let result = kahn_drain(
     queue: initial_queue,
     sorted: [],
-    waves: [],
     in_degree_map: in_degree_map,
     adjacency: adjacency,
     fuel: module_count
   )
 
   if result.sorted |> count == module_count {
-    TopoResult { sorted: result.sorted, waves: result.waves, cycle_error: Absent }
+    TopoResult { sorted: result.sorted, cycle_error: Absent }
   } else {
     let sorted_set = result.sorted |> fold(init: empty_map(), f: (acc, name) =>
       map_insert(acc, name, true)
@@ -305,7 +289,6 @@ fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineInde
     let cycle_desc = cycle_members |> join(separator: " -> ")
     TopoResult {
       sorted: result.sorted,
-      waves: result.waves,
       cycle_error: Present { value: make_error_node(diagnostic: CircularDependency { modules: cycle_members, span: no_span() }, module_name: "") }
     }
   }
@@ -313,16 +296,15 @@ fn topological_sort(modules: List<Node>, source_indices: Map<String, NewlineInde
 
 type KahnDrainState {
   sorted: List<String>
-  waves: List<List<String>>
   in_degree_map: Map<String, Int>
 }
 
-fn kahn_drain(queue: List<String>, sorted: List<String>, waves: List<List<String>>, in_degree_map: Map<String, Int>, adjacency: Map<String, List<String>>, fuel: Int) -> KahnDrainState {
+fn kahn_drain(queue: List<String>, sorted: List<String>, in_degree_map: Map<String, Int>, adjacency: Map<String, List<String>>, fuel: Int) -> KahnDrainState {
   if queue |> count == 0 {
-    return KahnDrainState { sorted: sorted, waves: waves, in_degree_map: in_degree_map }
+    return KahnDrainState { sorted: sorted, in_degree_map: in_degree_map }
   }
 
-  let batch_result = queue |> fold(init: KahnDrainState { sorted: sorted, waves: waves, in_degree_map: in_degree_map }, f: fn(state, node) {
+  let batch_result = queue |> fold(init: KahnDrainState { sorted: sorted, in_degree_map: in_degree_map }, f: fn(state, node) {
     let new_sorted = list_push(state.sorted, node)
     let neighbors = match map_get(adjacency, node) {
       Present { value: ns } => ns
@@ -335,7 +317,7 @@ fn kahn_drain(queue: List<String>, sorted: List<String>, waves: List<List<String
       }
       map_insert(deg_map, neighbor, current - 1)
     })
-    KahnDrainState { sorted: new_sorted, waves: state.waves, in_degree_map: new_degrees }
+    KahnDrainState { sorted: new_sorted, in_degree_map: new_degrees }
   })
 
   let new_zero_set = queue |> flat_map(node =>
@@ -354,7 +336,6 @@ fn kahn_drain(queue: List<String>, sorted: List<String>, waves: List<List<String
   kahn_drain(
     queue: new_zero,
     sorted: batch_result.sorted,
-    waves: list_push(waves, queue),
     in_degree_map: batch_result.in_degree_map,
     adjacency: adjacency,
     fuel: fuel - 1
