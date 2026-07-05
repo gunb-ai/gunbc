@@ -183,6 +183,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
         }
         let mut dag_files = Vec::new();
         collect_dag_files(root_path, &mut dag_files);
+        let mut seen_in_root: HashMap<String, String> = HashMap::new();
         for path in dag_files {
             let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {
                 panic!("build_module_path_index: failed to read {:?}: {}", path, e)
@@ -199,14 +200,17 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                     })
                     .to_string_lossy()
                     .replace('\\', "/");
-                if let Some(existing) = index.get(&module_path) {
-                    if existing != &rel {
+                if let Some(existing_in_root) = seen_in_root.get(&module_path) {
+                    if existing_in_root != &rel
+                        && !same_canonical_file(existing_in_root, &rel)
+                    {
                         panic!(
-                            "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
-                            module_path, existing, rel
+                            "module-path collision within source root '{}': module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3)",
+                            root, module_path, existing_in_root, rel
                         );
                     }
                 }
+                seen_in_root.insert(module_path.clone(), rel.clone());
                 index.insert(module_path.clone(), rel);
             }
         }
@@ -571,19 +575,23 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
         }
         let mut dag_files = Vec::new();
         collect_dag_files(root_path, &mut dag_files);
+        let mut seen_in_root: HashMap<String, String> = HashMap::new();
         for path in dag_files {
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             if let Some(module_path) = extract_module_path(&content) {
                 let rel_path = path.to_string_lossy().to_string();
-                if let Some(existing) = index.get(&module_path) {
-                    if existing.path != rel_path {
+                if let Some(existing_in_root) = seen_in_root.get(&module_path) {
+                    if existing_in_root != &rel_path
+                        && !same_canonical_file(existing_in_root, &rel_path)
+                    {
                         panic!(
-                            "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
-                            module_path, existing.path, rel_path
+                            "module-path collision within source root '{}': module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3)",
+                            root, module_path, existing_in_root, rel_path
                         );
                     }
                 }
+                seen_in_root.insert(module_path.clone(), rel_path.clone());
                 index.insert(
                     module_path,
                     Rc::new(v1_compiler_compile::SourceFile {
