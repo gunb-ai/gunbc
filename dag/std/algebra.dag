@@ -108,33 +108,11 @@ type BooleanAlgebra<T> {
   bottom: T
 }
 
-type FreeMonoid<T> {
+type FreeMonoid<T>
+  = Empty
+  | Cons { head: T, tail: FreeMonoid<T> }
 
-  concat: fn(FreeMonoid<T>, FreeMonoid<T>) -> FreeMonoid<T>
-  empty: FreeMonoid<T>
-  append: fn(T) -> FreeMonoid<T>
-
-  slice: fn(Int, Int) -> FreeMonoid<T>
-  length: fn() -> Int
-  is_empty: fn() -> Bool
-  count: fn() -> Int
-  first: fn() -> T?
-  last: fn() -> T?
-
-  map: fn(fn(T) -> T) -> FreeMonoid<T>
-  filter: fn(fn(T) -> Bool) -> FreeMonoid<T>
-  fold: fn(T, fn(T, T) -> T) -> T
-  flat_map: fn(fn(T) -> FreeMonoid<T>) -> FreeMonoid<T>
-  any: fn(fn(T) -> Bool) -> Bool
-  all: fn(fn(T) -> Bool) -> Bool
-
-  enumerate: fn() -> FreeMonoid<Tuple<Int, T>>
-  reverse: fn() -> FreeMonoid<T>
-  skip: fn(Int) -> FreeMonoid<T>
-  take: fn(Int) -> FreeMonoid<T>
-  sort_by: fn(fn(T, T) -> Int) -> FreeMonoid<T>
-  contains: fn(T) -> Bool
-}
+data free_monoid_coproduct_authority: String = "Structural authority = the coproduct (operator ruling 2026-06-22, dag-v2-defork-audit §3b): the record-of-methods surface this decl once carried is DERIVED from inhabitance (DESIGN §4 — ops from inhabitance, no per-type ops); the method-type table lives in free_monoid_scalar_templates/free_monoid_collection_templates, which never read this decl. The prior record form shadowed src/v2/std/algebra.dag's byte-identical coproduct on the unqualified name and silently dropped Empty/Cons variant bindings in any closure containing both trees (undefined variable: Empty — reproduced 2026-07-05)."
 
 type PartialFunction<K, V> {
   lookup: fn(K) -> Witness<V>
