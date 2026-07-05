@@ -9833,19 +9833,19 @@ fn test_migration_v1_test_module_had_line_anchored_tests(content: &str) -> bool 
 }
 
 fn test_migration_delete_guard_deleted_v1_test_paths(
-    base: &str,
-    head: &str,
+    base_rev: &str,
+    head_rev: &str,
 ) -> Result<Vec<String>, String> {
     let out = if test_migration_delete_guard_merge_base_mode() {
-        let range = format!("{base}...{head}");
+        let range = format!("{base_rev}...{head_rev}");
         test_migration_delete_guard_run_git(&["diff", "--name-only", "--diff-filter=D", &range])?
     } else {
         test_migration_delete_guard_run_git(&[
             "diff",
             "--name-only",
             "--diff-filter=D",
-            base,
-            head,
+            base_rev,
+            head_rev,
         ])?
     };
     Ok(out
@@ -9887,10 +9887,19 @@ fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, 
         return Ok(Vec::new());
     }
     let floor_stems = test_migration_covered_stems();
-    let deleted = test_migration_delete_guard_deleted_v1_test_paths(&base, &head)?;
+    let deleted = match test_migration_delete_guard_deleted_v1_test_paths(&base_rev, &head_rev) {
+        Ok(v) => v,
+        Err(_) if !ci_diff_configured => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
     let mut violations = Vec::new();
     for path in deleted {
-        let content = test_migration_delete_guard_run_git(&["show", &format!("{base}:{path}")])?;
+        let content = match test_migration_delete_guard_run_git(&["show", &format!("{base_rev}:{path}")])
+        {
+            Ok(v) => v,
+            Err(_) if !ci_diff_configured => continue,
+            Err(e) => return Err(e),
+        };
         if !test_migration_v1_test_module_had_line_anchored_tests(&content) {
             continue;
         }
