@@ -23,6 +23,7 @@ use std::rc::Rc;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ModuleGraph {
     pub modules: Rc<Vec<Rc<ResolvedModule>>>,
+    pub batches: Rc<Vec<Rc<Vec<Rc<ResolvedModule>>>>>,
     pub diagnostics: Rc<Vec<Rc<ErrorNode>>>,
 }
 
@@ -178,8 +179,35 @@ pub fn resolve_modules(
             });
             __sorted
         });
+        let resolved_by_name = sorted_resolved.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<ResolvedModule>>(),
+            |acc: Rc<HashMap<String, Rc<ResolvedModule>>>, rm: Rc<ResolvedModule>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    authored_name_at(source_indices.clone(), rm.module.clone()),
+                    rm.clone(),
+                )
+            },
+        );
+        let batches = Rc::new({
+            let mut __result: Vec<Rc<Vec<Rc<ResolvedModule>>>> = Vec::new();
+            for wave in topo_result.waves.clone().iter().cloned() {
+                __result.push(Rc::new({
+                    let mut __inner: Vec<Rc<ResolvedModule>> = Vec::new();
+                    for name in wave.iter().cloned() {
+                        match v1_rt::map_get(&resolved_by_name, name.clone()) {
+                            Some(rm) => __inner.push(rm.clone()),
+                            None => {}
+                        }
+                    }
+                    __inner
+                }));
+            }
+            __result
+        });
         Rc::new(ModuleGraph {
             modules: sorted_resolved,
+            batches: batches,
             diagnostics: v1_rt::concat(v1_rt::concat(dup_diags, import_diags), topo_diags),
         })
     }
@@ -468,6 +496,7 @@ pub fn check_duplicate_modules(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TopoResult {
     pub sorted: Rc<Vec<String>>,
+    pub waves: Rc<Vec<Rc<Vec<String>>>>,
     pub cycle_error: Option<Rc<ErrorNode>>,
 }
 
@@ -605,6 +634,7 @@ pub fn topological_sort(
         let result = kahn_drain(
             initial_queue,
             Rc::new(vec![]),
+            Rc::new(vec![]),
             in_degree_map.clone(),
             adjacency,
             module_count.clone(),
@@ -612,6 +642,7 @@ pub fn topological_sort(
         if ((result.sorted.clone().len() as i64) == module_count.clone()) {
             Rc::new(TopoResult {
                 sorted: result.sorted.clone(),
+                waves: result.waves.clone(),
                 cycle_error: None,
             })
         } else {
@@ -634,6 +665,7 @@ pub fn topological_sort(
                 let cycle_desc = cycle_members.clone().join(&" -> ".to_string());
                 Rc::new(TopoResult {
                     sorted: result.sorted.clone(),
+                    waves: result.waves.clone(),
                     cycle_error: Some(make_error_node(
                         Rc::new(CompilerDiagnostic::CircularDependency {
                             modules: cycle_members.clone(),
@@ -650,12 +682,14 @@ pub fn topological_sort(
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KahnDrainState {
     pub sorted: Rc<Vec<String>>,
+    pub waves: Rc<Vec<Rc<Vec<String>>>>,
     pub in_degree_map: Rc<HashMap<String, i64>>,
 }
 
 pub fn kahn_drain(
     mut queue: Rc<Vec<String>>,
     mut sorted: Rc<Vec<String>>,
+    mut waves: Rc<Vec<Rc<Vec<String>>>>,
     mut in_degree_map: Rc<HashMap<String, i64>>,
     mut adjacency: Rc<HashMap<String, Rc<Vec<String>>>>,
     mut fuel: i64,
@@ -664,12 +698,14 @@ pub fn kahn_drain(
         if ((queue.clone().len() as i64) == 0) {
             return Rc::new(KahnDrainState {
                 sorted: sorted.clone(),
+                waves: waves.clone(),
                 in_degree_map: in_degree_map.clone(),
             });
         }
         let batch_result = queue.clone().iter().cloned().fold(
             Rc::new(KahnDrainState {
                 sorted: sorted.clone(),
+                waves: waves.clone(),
                 in_degree_map: in_degree_map.clone(),
             }),
             |state: Rc<KahnDrainState>, node: String| {
@@ -696,6 +732,7 @@ pub fn kahn_drain(
                     );
                     Rc::new(KahnDrainState {
                         sorted: new_sorted.clone(),
+                        waves: state.waves.clone(),
                         in_degree_map: new_degrees.clone(),
                     })
                 }
@@ -752,10 +789,12 @@ pub fn kahn_drain(
         {
             let __tco_0 = new_zero;
             let __tco_1 = batch_result.sorted.clone();
+            let __tco_waves = v1_rt::rc_list_push(waves.clone(), queue.clone());
             let __tco_2 = batch_result.in_degree_map.clone();
             let __tco_3 = (fuel - 1);
             queue = __tco_0;
             sorted = __tco_1;
+            waves = __tco_waves;
             in_degree_map = __tco_2;
             fuel = __tco_3;
             continue;
