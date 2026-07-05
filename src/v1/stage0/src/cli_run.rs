@@ -9894,12 +9894,12 @@ fn test_migration_delete_guard_uncovered_deletes_inner() -> Result<Vec<String>, 
     };
     let mut violations = Vec::new();
     for path in deleted {
-        let content = match test_migration_delete_guard_run_git(&["show", &format!("{base_rev}:{path}")])
-        {
-            Ok(v) => v,
-            Err(_) if !ci_diff_configured => continue,
-            Err(e) => return Err(e),
-        };
+        let content =
+            match test_migration_delete_guard_run_git(&["show", &format!("{base_rev}:{path}")]) {
+                Ok(v) => v,
+                Err(_) if !ci_diff_configured => continue,
+                Err(e) => return Err(e),
+            };
         if !test_migration_v1_test_module_had_line_anchored_tests(&content) {
             continue;
         }
