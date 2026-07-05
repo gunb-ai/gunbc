@@ -27,7 +27,7 @@ data parse_memo_scale_trunc_eighth_path: String = "src/v2/test/fixture/census_pa
 
 data parse_memo_scale_file_anchor: Symbol = ^parse_memo_scale_file_anchor
 
-data parse_memo_scale_trunc_discriminator_note: String = "Byte-truncation discriminator for interpreted v2 tokenize: shell head -c into census_path_trunc txt fixtures. Quadratic lexer halving bytes gives about 4x speedup; linear constant gives about 2x. Wall-clock in PR body; dag witnesses assert tokenize accepts only."
+data parse_memo_scale_trunc_fixture_note: String = "Committed byte-prefix truncations of src/v1/01_tokenize.dag (17483 B): eighth=2185, quarter=4370, half=8741, full=17483. Regenerate: head -c N src/v1/01_tokenize.dag. .txt extension avoids module-path collision under src/v2."
 
 data parse_memo_scale_witness_note: String = "Scale control for P8 packrat memo on src/v1/01_tokenize.dag. Counters fire only in parse_nonterminal_memoized_core (packrat lookup/insert). parse_nonterminal_memoized bypasses core for dag_production_match_arm_stmt_body only; all other nonterminal references use core. lookup_calls counts memo-guarded sites only, not every grammar production attempt. lookup_calls==0 wiring gap; lookup_calls>0 hits==0 no memo-level re-visit on file; lookup_calls==hits+misses invariant."
 
