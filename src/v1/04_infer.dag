@@ -5750,9 +5750,10 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
     source_indices: resolved_env_out.source_indices,
     intern_table: intern_table,
   }
+  let cache_str_bindings = map_merge(final_env.ancestry_str_bindings, final_env.str_bindings)
   let type_env_cache = TypeEnvCache {
     deps_map: all_deps_map,
-    str_bindings: visible_str_bindings,
+    str_bindings: cache_str_bindings,
     cycle_set_str: cycle_set_str,
     variant_locals: empty_map()
   }
