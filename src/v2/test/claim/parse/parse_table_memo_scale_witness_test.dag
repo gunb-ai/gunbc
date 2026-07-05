@@ -14,10 +14,20 @@ import v2.std.grammar { ModeledGrammar, ParseGrammar }
 import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
+import v2.std.node { Symbol }
 
 type FilesystemReadResult { content: String }
 
 data parse_memo_scale_tokenize_path: String = "src/v1/01_tokenize.dag"
+
+data parse_memo_scale_trunc_full_path: String = "src/v2/test/fixture/census_path_trunc/full.txt"
+data parse_memo_scale_trunc_half_path: String = "src/v2/test/fixture/census_path_trunc/half.txt"
+data parse_memo_scale_trunc_quarter_path: String = "src/v2/test/fixture/census_path_trunc/quarter.txt"
+data parse_memo_scale_trunc_eighth_path: String = "src/v2/test/fixture/census_path_trunc/eighth.txt"
+
+data parse_memo_scale_file_anchor: Symbol = ^parse_memo_scale_file_anchor
+
+data parse_memo_scale_trunc_discriminator_note: String = "Byte-truncation discriminator for interpreted v2 tokenize: shell head -c into census_path_trunc txt fixtures. Quadratic lexer halving bytes gives about 4x speedup; linear constant gives about 2x. Wall-clock in PR body; dag witnesses assert tokenize accepts only."
 
 data parse_memo_scale_witness_note: String = "Scale control for P8 packrat memo on src/v1/01_tokenize.dag. Counters fire only in parse_nonterminal_memoized_core (packrat lookup/insert). parse_nonterminal_memoized bypasses core for dag_production_match_arm_stmt_body only; all other nonterminal references use core. lookup_calls counts memo-guarded sites only, not every grammar production attempt. lookup_calls==0 wiring gap; lookup_calls>0 hits==0 no memo-level re-visit on file; lookup_calls==hits+misses invariant."
 
@@ -82,13 +92,38 @@ fn witness_parse_memo_scale_tokenize_report() -> List<Int> {
   }
 }
 
-fn witness_stage_tokenize_only_holds() -> Bool {
+fn witness_tokenize_source_text_holds(source_text: String) -> Bool {
   let lm = dag_language_model_wave1()
-  let source_text = filesystem_read(path: parse_memo_scale_tokenize_path).content
-  match tokenize(text: source_text, file: ^parse_memo_scale_file_anchor, rules: lm.lex) {
+  match tokenize(text: source_text, file: parse_memo_scale_file_anchor, rules: lm.lex) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
+}
+
+fn witness_tokenize_path_holds(path: String) -> Bool {
+  witness_tokenize_source_text_holds(
+    source_text: filesystem_read(path: path).content
+  )
+}
+
+fn witness_stage_tokenize_only_holds() -> Bool {
+  witness_tokenize_path_holds(path: parse_memo_scale_tokenize_path)
+}
+
+fn witness_stage_tokenize_trunc_full_holds() -> Bool {
+  witness_tokenize_path_holds(path: parse_memo_scale_trunc_full_path)
+}
+
+fn witness_stage_tokenize_trunc_half_holds() -> Bool {
+  witness_tokenize_path_holds(path: parse_memo_scale_trunc_half_path)
+}
+
+fn witness_stage_tokenize_trunc_quarter_holds() -> Bool {
+  witness_tokenize_path_holds(path: parse_memo_scale_trunc_quarter_path)
+}
+
+fn witness_stage_tokenize_trunc_eighth_holds() -> Bool {
+  witness_tokenize_path_holds(path: parse_memo_scale_trunc_eighth_path)
 }
 
 fn witness_stage_parse_only_holds() -> Bool {
@@ -118,4 +153,11 @@ test fn parse_memo_scale_tokenize_counters_consistent_holds() -> Bool {
 
 test fn parse_memo_scale_tokenize_misses_recorded_holds() -> Bool {
   witness_parse_memo_scale_tokenize_misses() > 0
+}
+
+test fn parse_memo_scale_trunc_tokenize_fixture_paths_accept_holds() -> Bool {
+  witness_stage_tokenize_trunc_full_holds()
+    && witness_stage_tokenize_trunc_half_holds()
+    && witness_stage_tokenize_trunc_quarter_holds()
+    && witness_stage_tokenize_trunc_eighth_holds()
 }
