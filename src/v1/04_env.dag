@@ -64,6 +64,14 @@ fn scope_push(scope: Scope, binding: ScopeBinding) -> Scope {
   Scope { locals: map_insert(scope.locals, binding.name, binding) }
 }
 
+fn qualified_symbol_name(module_path: String, item_name: String) -> String {
+  concat(module_path, ".", item_name)
+}
+
+data symbol_index_fill_once_dissolution_trigger: String = "🟡 dissolve-on: build_symbol_index prepass replaces per-module ancestry_str_bindings materialization in build_type_env — consumer wiring lands after scaling receipt (type-env-single-authority-design.md §5–§6)."
+
+data ancestry_cache_sharing_dissolution_trigger: String = "🟡 dissolve-on: single-parent ancestry_str_bindings borrows parent.type_env_cache.str_bindings (Rc-shared visible surface) instead of map_merge(parent.ancestry_str_bindings, parent.str_bindings) per module — kills O(M²) SipHash/map_merge churn on import chains; full SymbolIndex authority is the follow-on (type-env-single-authority-design.md)."
+
 data symbol_index_single_authority_dissolution_trigger: String = "🟡 dissolve-on: SymbolIndex + Scope replace TypeEnv.ancestry_str_bindings materialization — see docs/plans/type-env-single-authority-design.md §4–§5; gated on import-chain sub-quadratic scaling receipt (reference_carrier_witness_test) + whole-corpus compile-clean wall-clock baseline."
 
 type TypeEnvCache {
