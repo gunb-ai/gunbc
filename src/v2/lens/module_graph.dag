@@ -177,15 +177,27 @@ fn import_closure(
 
 data module_graph_exclude_substrings: List<String> = []
 
-fn import_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMonoid<String> {
+fn import_closure_live_excluding(
+  entry_path: String,
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> FreeMonoid<String> {
   import_closure(
     entry_path: entry_path,
     edges: import_resolution_facts_live(
       pool_roots: pool_roots,
       importer_roots: pool_roots,
-      exclude_substrings: module_graph_exclude_substrings
+      exclude_substrings: exclude_substrings
     ),
     nodes: module_declaration_facts_live(pool_roots: pool_roots)
+  )
+}
+
+fn import_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMonoid<String> {
+  import_closure_live_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    exclude_substrings: module_graph_exclude_substrings
   )
 }
 
@@ -194,9 +206,26 @@ fn import_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMono
 // mirror of the Rust host's `entry_file_touched` decision (`cli_run.rs` `touched_file_in_import_closure`
 // applied over `import_closure_files_from_graph`) — both are fed by the same host-realized
 // import_resolution_facts/module_declaration_facts, so this is a projection over the same facts,
-// not a second closure algorithm (DESIGN §2/§3).
+// not a second closure algorithm (DESIGN §2/§3). The `_excluding` variant threads through the
+// same exclude_substrings knob `import_closure_live_excluding` already exposes, reused (not
+// re-derived) by the discriminating-control receipt to perturb real wiring by dropping an
+// importer's outgoing edges.
 fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
   contains(xs: closure, item: path, eq: string_eq)
+}
+
+fn entry_affected_by_touched_paths_excluding(
+  entry_path: String,
+  pool_roots: List<String>,
+  touched_paths: List<String>,
+  exclude_substrings: List<String>
+) -> Bool {
+  let closure = import_closure_live_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    exclude_substrings: exclude_substrings
+  )
+  any(xs: touched_paths, predicate: fn(path) { touched_path_in_closure(closure: closure, path: path) })
 }
 
 fn entry_affected_by_touched_paths(
@@ -204,8 +233,12 @@ fn entry_affected_by_touched_paths(
   pool_roots: List<String>,
   touched_paths: List<String>
 ) -> Bool {
-  let closure = import_closure_live(entry_path: entry_path, pool_roots: pool_roots)
-  any(xs: touched_paths, predicate: fn(path) { touched_path_in_closure(closure: closure, path: path) })
+  entry_affected_by_touched_paths_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    touched_paths: touched_paths,
+    exclude_substrings: module_graph_exclude_substrings
+  )
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
