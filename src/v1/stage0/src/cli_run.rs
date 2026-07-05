@@ -6445,7 +6445,10 @@ mod module_grain_affected_equivalence_tests {
             String::from_utf8_lossy(&output.stderr)
         );
         let text = String::from_utf8_lossy(&output.stdout).into_owned();
-        assert!(!text.trim().is_empty(), "commit {sha} produced empty diff text");
+        assert!(
+            !text.trim().is_empty(),
+            "commit {sha} produced empty diff text"
+        );
         text
     }
 
@@ -6487,11 +6490,7 @@ mod module_grain_affected_equivalence_tests {
         }
     }
 
-    fn rust_entry_affected(
-        index: &MultiEntryIndex,
-        entry_rel: &str,
-        touched: &[String],
-    ) -> bool {
+    fn rust_entry_affected(index: &MultiEntryIndex, entry_rel: &str, touched: &[String]) -> bool {
         let (graph, _) = resolve_entry_with_index_for_discovery_corpus(index, entry_rel)
             .unwrap_or_else(|e| panic!("resolve {entry_rel}: {e}"));
         let closure_files: HashSet<String> = import_closure_files_from_graph(&graph);
