@@ -1,7 +1,0 @@
-module v2.lens.fixture.complexity_bad_shape_r1.good_overlay_port
-
-fn merge_good(items: List<Map<String, Int>>) -> Map<String, Int> {
-  fold(items, init: empty_map(), f: (acc, item) =>
-    map_merge(item, acc)
-  )
-}

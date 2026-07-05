@@ -6049,25 +6049,6 @@ fn eval_builtin(
             )))
         }
 
-        "complexity_bad_shape_r1_fixture_count" => Ok(Some(Value::Int(
-            crate::cli_run::complexity_bad_shape_r1_fixture_count(),
-        ))),
-        "complexity_bad_shape_r1_fixture_site_fired" => {
-            let site = expect_str(
-                positional.first().copied(),
-                "complexity_bad_shape_r1_fixture_site_fired",
-            )?;
-            Ok(Some(Value::Bool(
-                crate::cli_run::complexity_bad_shape_r1_fixture_site_fired(&site),
-            )))
-        }
-        "complexity_bad_shape_r1_fixture_red_control_fires" => Ok(Some(Value::Bool(
-            crate::cli_run::complexity_bad_shape_r1_fixture_red_control_fires(),
-        ))),
-        "complexity_bad_shape_r1_fixture_green_control_holds" => Ok(Some(Value::Bool(
-            crate::cli_run::complexity_bad_shape_r1_fixture_green_control_holds(),
-        ))),
-
         "census_corpus_roots_follow_layer_authority" => Ok(Some(Value::Bool(
             crate::cli_run::census_corpus_roots_follow_layer_authority(),
         ))),

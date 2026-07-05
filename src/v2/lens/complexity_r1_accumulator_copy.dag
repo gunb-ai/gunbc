@@ -1,0 +1,267 @@
+module v2.lens.complexity_r1_accumulator_copy
+
+import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
+import std.disposition { SubstrateMandatoryTag }
+import v2.lens.cost {
+  ConstantCost,
+  PolynomialCost,
+  SizeVariable,
+  SymbolicCost,
+  asymptotic_class_of_cost,
+  ClassPolynomial,
+  polynomial_degree_two
+}
+import v2.std.algebra {
+  Cons,
+  Empty,
+  CopiedPortFact,
+  copied_port_fact_list_append_left,
+  copied_port_fact_list_snoc_left,
+  copied_port_fact_map_merge_base,
+  fold_list,
+  list_append
+}
+import v2.std.collection {
+  List,
+  Optional,
+  Present,
+  Absent,
+  list_at_optional,
+  optional_absent,
+  optional_present
+}
+import v2.std.diagnostic { Diagnostic, Textual, WholeFile }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Edge,
+  Instantiation,
+  Node,
+  Positional,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.text { String }
+import v2.std.witness { Holds, Violates, Witness }
+
+data complexity_r1_corpus_census_recall_note: String = "RECALL: future whole-corpus census must rediscover survey suspects — src/v2/workflow/glob_discovery_law.dag:63,94,115 (list_append left:acc); ~10 src/v2/compiler/06_translate.dag list_append(partial,…) sites; v2.std.decl_index.decl_facts_fn_items (fractal: the decl_facts walk itself burned 3m41s in step-0). E2-prep is synthetic Node fixtures only; enrollment waits on E1a body access + enforcement-intent gate."
+
+data complexity_r1_flow_opaque_residue_note: String = "FlowOpaque: accumulator binder not a direct-reference at either combiner call port (opaque through lets/nested calls). Counted in R1JudgeResult.flow_opaque_count — never silently skipped."
+
+type R1JudgeResult
+  = R1PolyTwoSuspect { implied_cost: SymbolicCost, flow_opaque_count: Int }
+  | R1Clean { flow_opaque_count: Int }
+  | R1MalformedSubject
+
+fn r1_symbol_atom(s: Symbol) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: s } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn r1_positional_targets(n: Node) -> List<Node> {
+  fold_list(
+    xs: n.children,
+    empty: Empty,
+    cons: fn(acc, e) {
+      match e.label {
+        Positional =>
+          list_append(left: acc, right: Cons { head: e.target, tail: Empty })
+        Named { name: _ } => acc
+      }
+    }
+  )
+}
+
+fn r1_symbol_of(n: Node) -> Optional<Symbol> {
+  match n.kind {
+    TypeNode { connective: Atom { identity: s } } => Present { value: s }
+    _ => Absent
+  }
+}
+
+fn r1_symbols_equal(a: Symbol, b: Symbol) -> Bool {
+  a == b
+}
+
+fn r1_row_matches_combiner(row: CopiedPortFact, combiner: Symbol) -> Bool {
+  r1_symbols_equal(a: row.combiner, b: combiner)
+}
+
+fn r1_copied_port_index(combiner: Symbol) -> Optional<Int> {
+  if r1_row_matches_combiner(row: copied_port_fact_list_append_left, combiner: combiner) {
+    optional_present(value: copied_port_fact_list_append_left.copied_port_index)
+  } else if r1_row_matches_combiner(row: copied_port_fact_list_snoc_left, combiner: combiner) {
+    optional_present(value: copied_port_fact_list_snoc_left.copied_port_index)
+  } else if r1_row_matches_combiner(row: copied_port_fact_map_merge_base, combiner: combiner) {
+    optional_present(value: copied_port_fact_map_merge_base.copied_port_index)
+  } else {
+    optional_absent<Int>()
+  }
+}
+
+fn r1_poly_two_cost(n: Node) -> SymbolicCost {
+  PolynomialCost {
+    variable: SizeVariable { source: n },
+    degree: polynomial_degree_two()
+  }
+}
+
+fn r1_acc_direct_in_copied_port(
+  acc: Symbol,
+  combiner: Symbol,
+  port0: Symbol,
+  port1: Symbol
+) -> Bool {
+  match r1_copied_port_index(combiner: combiner) {
+    Present { value: copied_idx } =>
+      if copied_idx == 0 {
+        r1_symbols_equal(a: acc, b: port0)
+      } else {
+        r1_symbols_equal(a: acc, b: port1)
+      }
+    Absent => false
+  }
+}
+
+fn r1_acc_visible_in_call(acc: Symbol, port0: Symbol, port1: Symbol) -> Bool {
+  r1_symbols_equal(a: acc, b: port0) || r1_symbols_equal(a: acc, b: port1)
+}
+
+fn r1_fold_step_subject(
+  acc_binder: Symbol,
+  combiner: Symbol,
+  port0_arg: Symbol,
+  port1_arg: Symbol
+) -> Node {
+  Node {
+    kind: TypeNode { connective: Instantiation },
+    children: [
+      Edge { label: Positional, target: r1_symbol_atom(s: acc_binder) },
+      Edge { label: Positional, target: r1_symbol_atom(s: combiner) },
+      Edge {
+        label: Positional,
+        target: Node {
+          kind: TypeNode { connective: Instantiation },
+          children: [
+            Edge { label: Positional, target: r1_symbol_atom(s: port0_arg) },
+            Edge { label: Positional, target: r1_symbol_atom(s: port1_arg) }
+          ],
+          occurrence_id: SyntheticOccurrence
+        }
+      }
+    ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn r1_judge_fold_step(n: Node) -> R1JudgeResult {
+  let positions = r1_positional_targets(n: n)
+  match list_at_optional(xs: positions, index: 0) {
+    Absent => R1MalformedSubject
+    Present { value: acc_node } =>
+      match r1_symbol_of(n: acc_node) {
+        Absent => R1MalformedSubject
+        Present { value: acc } =>
+          match list_at_optional(xs: positions, index: 1) {
+            Absent => R1MalformedSubject
+            Present { value: combiner_node } =>
+              match r1_symbol_of(n: combiner_node) {
+                Absent => R1MalformedSubject
+                Present { value: combiner } =>
+                  match list_at_optional(xs: positions, index: 2) {
+                    Absent => R1Clean { flow_opaque_count: 0 }
+                    Present { value: call_node } =>
+                      let call_ports = r1_positional_targets(n: call_node)
+                      match list_at_optional(xs: call_ports, index: 0) {
+                        Absent => R1Clean { flow_opaque_count: 0 }
+                        Present { value: p0_node } =>
+                          match r1_symbol_of(n: p0_node) {
+                            Absent => R1Clean { flow_opaque_count: 1 }
+                            Present { value: port0 } =>
+                              match list_at_optional(xs: call_ports, index: 1) {
+                                Absent => R1Clean { flow_opaque_count: 1 }
+                                Present { value: p1_node } =>
+                                  match r1_symbol_of(n: p1_node) {
+                                    Absent => R1Clean { flow_opaque_count: 1 }
+                                    Present { value: port1 } =>
+                                      if r1_acc_direct_in_copied_port(
+                                        acc: acc,
+                                        combiner: combiner,
+                                        port0: port0,
+                                        port1: port1
+                                      ) {
+                                        R1PolyTwoSuspect {
+                                          implied_cost: r1_poly_two_cost(n: n),
+                                          flow_opaque_count: 0
+                                        }
+                                      } else {
+                                        if r1_acc_visible_in_call(
+                                          acc: acc,
+                                          port0: port0,
+                                          port1: port1
+                                        ) {
+                                          R1Clean { flow_opaque_count: 0 }
+                                        } else {
+                                          R1Clean { flow_opaque_count: 1 }
+                                        }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+      }
+  }
+}
+
+fn complexity_r1_accumulator_copy_lens(n: Node) -> Witness<SymbolicCost> {
+  match r1_judge_fold_step(n: n) {
+    R1PolyTwoSuspect { implied_cost: cost, flow_opaque_count: _ } =>
+      Holds { value: cost }
+    R1Clean { flow_opaque_count: _ } =>
+      Holds { value: ConstantCost }
+    R1MalformedSubject =>
+      Violates {
+        diagnostic: complexity_r1_malformed_subject_diagnostic()
+      }
+  }
+}
+
+fn complexity_r1_malformed_subject_diagnostic() -> Diagnostic {
+  Diagnostic {
+    reason: ^complexity_r1_malformed_fold_step_subject,
+    at: Textual { file: ^complexity_r1_lens_virtual_file, extent: WholeFile }
+  }
+}
+
+fn complexity_r1_is_poly_two_suspect(n: Node) -> Bool {
+  match complexity_r1_accumulator_copy_lens(n: n) {
+    Holds { value: cost } =>
+      match asymptotic_class_of_cost(cost: cost) {
+        ClassPolynomial { degree: _ } => true
+        _ => false
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+fn complexity_r1_is_clean(n: Node) -> Bool {
+  match complexity_r1_accumulator_copy_lens(n: n) {
+    Holds { value: cost } =>
+      match asymptotic_class_of_cost(cost: cost) {
+        ClassPolynomial { degree: _ } => false
+        _ => true
+      }
+    Violates { diagnostic: _ } => false
+  }
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
+}
