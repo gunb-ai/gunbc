@@ -75,14 +75,14 @@ fn witness_a_prose_verbatim() -> Bool {
 
 fn witness_b_ordered_interleaving() -> Bool {
   let o = out()
-  string_contains(s: o, pattern: "[seed census](docs/plans/seed-shrink-census.md)\n\nGround truth (2026-07-01):")
-    && string_contains(s: o, pattern: "byte-identity + the interim fixpoint + well-typed emit.\n\n**◆ Milestones:** front-end ✓")
+  string_contains(s: o, pattern: "[seed census](docs/plans/seed-shrink-census.md)\n\nGround truth (2026-07-05):")
+    && string_contains(s: o, pattern: "until the §2 compile-clean work lands.\n\n**◆ Milestones:** front-end ✓")
     && string_contains(s: o, pattern: "[charter](docs/plans/ci-process-end-to-end.md)\n\n**The core design rule (operator-signed, 2026-07-01):**")
     && string_contains(s: o, pattern: "Phase 2, earned by receipts.\n\n**◆ Milestones:** OOM root-caused")
 }
 
 fn witness_b_order_discriminator() -> Bool {
-  !string_contains(s: out(), pattern: "**◆ Milestones:** front-end ✓ · emit-rust well-typed ✓ · cross-tree import ✓ (#5473)\n\nGround truth (2026-07-01):")
+  !string_contains(s: out(), pattern: "**◆ Milestones:** front-end ✓ · emit-rust well-typed ✓ · cross-tree import ✓ (#5473)\n\nGround truth (2026-07-05):")
 }
 
 fn witness_merge_perturb_does_not_flip_boxes() -> Bool {
