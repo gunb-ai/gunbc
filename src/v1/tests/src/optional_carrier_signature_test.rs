@@ -60,3 +60,25 @@ fn non_optional_string_return_stays_bare() {
         "a non-optional `-> String` must NOT be wrapped in Option, got:\n{sig}"
     );
 }
+
+#[test]
+fn optional_shared_type_return_renders_option_rc_signature() {
+    let source = "module optsig.fixture\n\ntype Node = Product { }\n\nfn maybe_node(flag: Bool) -> Node? {\n  if flag { Present { value: Node { } } } else { none }\n}\n";
+    let emitted = emit(source);
+    let sig = return_sig(&emitted, "maybe_node");
+    assert!(
+        sig.contains("Option<") && sig.contains("Rc<"),
+        "a `-> Node?` return on a shared type must render `Option<Rc<..>>`, got:\n{sig}"
+    );
+}
+
+#[test]
+fn non_optional_shared_type_return_stays_bare_rc() {
+    let source = "module optsig.fixture\n\ntype Node = Product { }\n\nfn always_node(flag: Bool) -> Node {\n  Node { }\n}\n";
+    let emitted = emit(source);
+    let sig = return_sig(&emitted, "always_node");
+    assert!(
+        sig.contains("Rc<") && !sig.contains("Option<"),
+        "a non-optional `-> Node` must render bare `Rc<..>` without Option, got:\n{sig}"
+    );
+}
