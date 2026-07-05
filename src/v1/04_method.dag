@@ -84,6 +84,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "set_contains", bool_type)
   let m = map_insert(m, "lookup", witness_of_element(element: type_variable_node(id: "map_value")))
   let m = map_insert(m, "map_get", with_optional_cardinality(n: type_variable_node(id: "map_value")))
+  let m = map_insert(m, "get", with_optional_cardinality(n: type_variable_node(id: "collection_element")))
   let m = map_insert(m, "Some", with_optional_cardinality(n: type_variable_node(id: "some_inner")))
   let m = map_insert(m, "map_keys", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "map_values", list_of_type_variable(id: "collection_element"))

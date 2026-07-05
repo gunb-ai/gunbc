@@ -1,6 +1,6 @@
 module v1.compiler.infer
 
-import std.types { SourceSpan, container_param_name }
+import std.types { SourceSpan, container_param_name, is_ordered_element_collection }
 import std.coercion { dag_can_cast, is_dag_cast_domain_type }
 import v1.std.core {
   Node, InternTable,
@@ -851,6 +851,31 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
           _ => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
         }
       Absent => Tier2bBt { bt: resolve_builtin_call_type(name: func_name), kernel_diags: [] }
+    }
+  } else if func_name == "get" {
+    Tier2bBt {
+      bt: match typed_args |> first {
+        Present { value: receiver_arg } =>
+          match arg_value(n: receiver_arg).inferred {
+            Present { value: Resolved { node: receiver_type } } =>
+              let normed = normalize_access_type_node(n: receiver_type)
+              let resolved = resolve_scrutinee_type_node(env: scope.type_env, n: normed)
+              let list_type = normalize_access_type_node(n: resolved)
+              if is_ordered_element_collection(name: authored_name_at(source_indices: scope.type_env.source_indices, node: list_type))
+                && node_is_element_collection(n: list_type, source_indices: scope.type_env.source_indices)
+                && !node_is_set_collection(n: list_type, source_indices: scope.type_env.source_indices) {
+                with_optional_cardinality(n: for_each_element_type_node(n: list_type, source_indices: scope.type_env.source_indices))
+              } else {
+                match map_value_type_in_env(type_node: receiver_type, env: scope.type_env) {
+                  Present { value: value_type } => with_optional_cardinality(n: value_type)
+                  Absent => resolve_builtin_call_type(name: func_name)
+                }
+              }
+            _ => resolve_builtin_call_type(name: func_name)
+          }
+        Absent => resolve_builtin_call_type(name: func_name)
+      },
+      kernel_diags: []
     }
   } else if func_name == "set_insert" || func_name == "set_union" || func_name == "set_contains" {
     let operand_elem = if func_name == "set_insert" || func_name == "set_contains" {
