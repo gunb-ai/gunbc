@@ -1,0 +1,179 @@
+module extdeps.tcgplayer.catalog
+
+import std.types { NonEmptyStr, Timestamp, HttpMethod, AuthScheme }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+import extdeps.tcgplayer.tcgplayer { production_api_base, TcgplayerErrorEnvelope }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.tcgplayer.com/reference/catalog_getproducts-1"
+  }
+}
+
+type CatalogProduct {
+  productId: Int
+  name: String
+  cleanName: String?
+  imageUrl: String?
+  categoryId: Int
+  groupId: Int
+  url: String?
+  modifiedOn: Timestamp?
+}
+
+data structural_coverage_gap_catalog_product_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "CatalogProduct" },
+      JsonPending { field: "extendedData" },
+      JsonPending { field: "skus" }
+    ],
+    trigger: "catalog consumer needs extended fields or inline sku rows (getExtendedFields, includeSkus)"
+  }
+]
+
+type ProductSku {
+  skuId: Int
+  productId: Int
+  languageId: Int
+  printingId: Int
+  conditionId: Int
+}
+
+type CategoryCondition {
+  conditionId: Int
+  name: String
+  abbreviation: String?
+  displayOrder: Int?
+}
+
+type CardCondition
+  = NearMint
+  | LightlyPlayed
+  | ModeratelyPlayed
+  | HeavilyPlayed
+  | Damaged
+  | Unopened
+
+fn card_condition_display_name(c: CardCondition) -> String {
+  match c {
+    NearMint => "Near Mint"
+    LightlyPlayed => "Lightly Played"
+    ModeratelyPlayed => "Moderately Played"
+    HeavilyPlayed => "Heavily Played"
+    Damaged => "Damaged"
+    Unopened => "Unopened"
+  }
+}
+
+fn parse_card_condition(raw: String) -> CardCondition? {
+  if raw == "Near Mint" { Present { value: NearMint } }
+  else if raw == "Lightly Played" { Present { value: LightlyPlayed } }
+  else if raw == "Moderately Played" { Present { value: ModeratelyPlayed } }
+  else if raw == "Heavily Played" { Present { value: HeavilyPlayed } }
+  else if raw == "Damaged" { Present { value: Damaged } }
+  else if raw == "Unopened" { Present { value: Unopened } }
+  else { none }
+}
+
+type CatalogProductsResponse {
+  totalItems: Int?
+  success: Bool
+  errors: List<String>?
+  results: List<CatalogProduct>?
+}
+
+type ProductSkusResponse {
+  success: Bool
+  errors: List<String>?
+  results: List<ProductSku>?
+}
+
+type CategoryConditionsResponse {
+  success: Bool
+  errors: List<String>?
+  results: List<CategoryCondition>?
+}
+
+service tcgplayer.Catalog {
+  config {
+    endpoint: production_api_base
+    auth: Bearer
+    auth_input: bearer_token
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
+  }
+
+  operation SearchProducts {
+    input {
+      bearer_token: Secret
+      product_name: String
+      category_id: Int
+      limit: Int = 10
+      offset: Int = 0
+      include_skus: Bool = false
+    }
+    output {
+      total_items: Int from "totalItems"
+      first_product_id: Int from "results/0/productId"
+      first_product_name: String from "results/0/name"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/catalog/products",
+      query: { productName: product_name, categoryId: category_id, limit: limit, offset: offset, includeSkus: include_skus }
+    }
+    response {
+      200 => CatalogProductsResponse
+      401 => TcgplayerErrorEnvelope
+      404 => TcgplayerErrorEnvelope
+      5xx => TcgplayerErrorEnvelope
+    }
+  }
+
+  operation GetProductSkus {
+    input {
+      bearer_token: Secret
+      product_id: Int
+    }
+    output {
+      first_sku_id: Int from "results/0/skuId"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/catalog/products/\{product_id\}/skus"
+    }
+    response {
+      200 => ProductSkusResponse
+      401 => TcgplayerErrorEnvelope
+      404 => TcgplayerErrorEnvelope
+      5xx => TcgplayerErrorEnvelope
+    }
+  }
+
+  operation GetCategoryConditions {
+    input {
+      bearer_token: Secret
+      category_id: Int
+    }
+    output {
+      first_condition_id: Int from "results/0/conditionId"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/catalog/categories/\{category_id\}/conditions"
+    }
+    response {
+      200 => CategoryConditionsResponse
+      401 => TcgplayerErrorEnvelope
+      404 => TcgplayerErrorEnvelope
+      5xx => TcgplayerErrorEnvelope
+    }
+  }
+}

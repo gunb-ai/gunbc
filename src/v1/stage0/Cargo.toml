@@ -6,6 +6,7 @@ edition = "2021"
 [features]
 default = []
 text_lookup_work_counter = []
+interp_test_witness = []
 
 [dependencies]
 # Persistent value carriers (ctrl#1533 phase 2). im-rc is the Rc-backed

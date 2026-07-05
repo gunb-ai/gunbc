@@ -1,0 +1,467 @@
+module extdeps.ebay.inventory
+
+import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import std.currency { CurrencyCode }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.coverage { CoverageClosureEntry, CoverageClosureFact }
+import extdeps.ebay.ebay { production_api_base, MarketplaceEnum }
+import extdeps.ebay.errors { EbayErrorShape }
+import extdeps.ebay.ebay_contracts { condition_wire_contract, format_type_wire_contract }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.ebay.com/api-docs/sell/inventory/resources/methods"
+  }
+}
+
+data inventory_api_contract_version: NonEmptyStr = "1.18.5"
+
+type ConditionEnum
+  = New
+  | LikeNew
+  | NewOther
+  | NewWithDefects
+  | ManufacturerRefurbished
+  | CertifiedRefurbished
+  | ExcellentRefurbished
+  | VeryGoodRefurbished
+  | GoodRefurbished
+  | SellerRefurbished
+  | UsedExcellent
+  | UsedVeryGood
+  | UsedGood
+  | UsedAcceptable
+  | ForPartsOrNotWorking
+  | PreOwnedExcellent
+  | PreOwnedFair
+
+data structural_coverage_gap_condition_codec_hand_rolled: List<String> = [
+  "parse_condition and condition_wire_label hand-roll the ScreamingSnakeCase mapping",
+  "already declared in condition_wire_contract. Dissolve when the codec-from-contract bridge",
+  "derives decode and encode from CoproductWireContract rows directly."
+]
+
+fn condition_wire_label(c: ConditionEnum) -> String {
+  match c {
+    New => "NEW"
+    LikeNew => "LIKE_NEW"
+    NewOther => "NEW_OTHER"
+    NewWithDefects => "NEW_WITH_DEFECTS"
+    ManufacturerRefurbished => "MANUFACTURER_REFURBISHED"
+    CertifiedRefurbished => "CERTIFIED_REFURBISHED"
+    ExcellentRefurbished => "EXCELLENT_REFURBISHED"
+    VeryGoodRefurbished => "VERY_GOOD_REFURBISHED"
+    GoodRefurbished => "GOOD_REFURBISHED"
+    SellerRefurbished => "SELLER_REFURBISHED"
+    UsedExcellent => "USED_EXCELLENT"
+    UsedVeryGood => "USED_VERY_GOOD"
+    UsedGood => "USED_GOOD"
+    UsedAcceptable => "USED_ACCEPTABLE"
+    ForPartsOrNotWorking => "FOR_PARTS_OR_NOT_WORKING"
+    PreOwnedExcellent => "PRE_OWNED_EXCELLENT"
+    PreOwnedFair => "PRE_OWNED_FAIR"
+  }
+}
+
+fn parse_condition(raw: String) -> ConditionEnum? {
+  if raw == "NEW" { Present { value: New } }
+  else if raw == "LIKE_NEW" { Present { value: LikeNew } }
+  else if raw == "NEW_OTHER" { Present { value: NewOther } }
+  else if raw == "NEW_WITH_DEFECTS" { Present { value: NewWithDefects } }
+  else if raw == "MANUFACTURER_REFURBISHED" { Present { value: ManufacturerRefurbished } }
+  else if raw == "CERTIFIED_REFURBISHED" { Present { value: CertifiedRefurbished } }
+  else if raw == "EXCELLENT_REFURBISHED" { Present { value: ExcellentRefurbished } }
+  else if raw == "VERY_GOOD_REFURBISHED" { Present { value: VeryGoodRefurbished } }
+  else if raw == "GOOD_REFURBISHED" { Present { value: GoodRefurbished } }
+  else if raw == "SELLER_REFURBISHED" { Present { value: SellerRefurbished } }
+  else if raw == "USED_EXCELLENT" { Present { value: UsedExcellent } }
+  else if raw == "USED_VERY_GOOD" { Present { value: UsedVeryGood } }
+  else if raw == "USED_GOOD" { Present { value: UsedGood } }
+  else if raw == "USED_ACCEPTABLE" { Present { value: UsedAcceptable } }
+  else if raw == "FOR_PARTS_OR_NOT_WORKING" { Present { value: ForPartsOrNotWorking } }
+  else if raw == "PRE_OWNED_EXCELLENT" { Present { value: PreOwnedExcellent } }
+  else if raw == "PRE_OWNED_FAIR" { Present { value: PreOwnedFair } }
+  else { none }
+}
+
+type FormatTypeEnum
+  = Auction
+  | FixedPrice
+
+data structural_coverage_gap_format_codec_hand_rolled: List<String> = [
+  "parse_format_type and format_type_wire_label hand-roll the ScreamingSnakeCase mapping",
+  "already declared in format_type_wire_contract. Dissolve when the codec-from-contract bridge",
+  "derives decode and encode from CoproductWireContract rows directly."
+]
+
+fn format_type_wire_label(f: FormatTypeEnum) -> String {
+  match f {
+    Auction => "AUCTION"
+    FixedPrice => "FIXED_PRICE"
+  }
+}
+
+fn parse_format_type(raw: String) -> FormatTypeEnum? {
+  if raw == "AUCTION" { Present { value: Auction } }
+  else if raw == "FIXED_PRICE" { Present { value: FixedPrice } }
+  else { none }
+}
+
+type EbayAmount {
+  value: String
+  currency: CurrencyCode
+}
+
+type ShipToLocationAvailability {
+  quantity: Int
+}
+
+type InventoryItemAvailability {
+  shipToLocationAvailability: ShipToLocationAvailability
+}
+
+type InventoryItemProduct {
+  title: NonEmptyStr
+  description: String?
+  aspects: Json?
+  imageUrls: List<String>?
+}
+
+type InventoryItem {
+  availability: InventoryItemAvailability?
+  condition: ConditionEnum?
+  conditionDescription: String?
+  product: InventoryItemProduct?
+}
+
+data structural_coverage_gap_inventory_item_response_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "InventoryItem" },
+      JsonPending { field: "packageWeightAndSize" },
+      JsonPending { field: "conditionDescriptors" },
+      JsonPending { field: "availability/pickupAtLocationAvailability" },
+      JsonPending { field: "product/brand" },
+      JsonPending { field: "product/mpn" },
+      JsonPending { field: "product/upc" },
+      JsonPending { field: "product/isbn" },
+      JsonPending { field: "product/ean" },
+      JsonPending { field: "product/epid" },
+      JsonPending { field: "product/subtitle" },
+      JsonPending { field: "product/videoIds" }
+    ],
+    trigger: "eBay inventory consumer needs full item fidelity (package dimensions, pickup availability, product identifiers)"
+  }
+]
+
+type InventoryItemWithSkuLocaleGroupid {
+  sku: NonEmptyStr
+  locale: String?
+  condition: ConditionEnum?
+  availability: InventoryItemAvailability?
+  product: InventoryItemProduct?
+}
+
+data structural_coverage_gap_inventory_item_row_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "InventoryItemWithSkuLocaleGroupid" },
+      JsonPending { field: "groupIds" },
+      JsonPending { field: "inventoryItemGroupKeys" }
+    ],
+    trigger: "eBay inventory consumer needs item-group (multi-variation listing) fidelity"
+  }
+]
+
+type InventoryItemsWithTotal {
+  inventoryItems: List<InventoryItemWithSkuLocaleGroupid>?
+  total: Int?
+  size: Int?
+  limit: Int?
+  href: String?
+  next: String?
+  prev: String?
+}
+
+type BaseResponse {
+  warnings: Json?
+}
+
+type PricingSummary {
+  price: EbayAmount
+}
+
+data structural_coverage_gap_pricing_summary_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "PricingSummary" },
+      JsonPending { field: "auctionReservePrice" },
+      JsonPending { field: "auctionStartPrice" },
+      JsonPending { field: "minimumAdvertisedPrice" },
+      JsonPending { field: "originallySoldForRetailPriceOn" },
+      JsonPending { field: "originalRetailPrice" },
+      JsonPending { field: "pricingVisibility" }
+    ],
+    trigger: "eBay offer consumer needs auction or strike-through pricing fidelity"
+  }
+]
+
+type ListingPolicies {
+  fulfillmentPolicyId: NonEmptyStr
+  paymentPolicyId: NonEmptyStr
+  returnPolicyId: NonEmptyStr
+}
+
+data structural_coverage_gap_listing_policies_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "ListingPolicies" },
+      JsonPending { field: "bestOfferTerms" },
+      JsonPending { field: "eBayPlusIfEligible" },
+      JsonPending { field: "shippingCostOverrides" },
+      JsonPending { field: "productCompliancePolicyIds" },
+      JsonPending { field: "takeBackPolicyId" }
+    ],
+    trigger: "eBay offer consumer needs best-offer or shipping-override policy fidelity"
+  }
+]
+
+type EbayOfferDetailsWithKeys {
+  sku: NonEmptyStr
+  marketplaceId: MarketplaceEnum
+  format: FormatTypeEnum
+  availableQuantity: Int?
+  categoryId: String?
+  listingDescription: String?
+  listingDuration: String?
+  listingPolicies: ListingPolicies?
+  pricingSummary: PricingSummary?
+  merchantLocationKey: String?
+}
+
+data structural_coverage_gap_offer_details_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "EbayOfferDetailsWithKeys" },
+      JsonPending { field: "tax" },
+      JsonPending { field: "charity" },
+      JsonPending { field: "extendedProducerResponsibility" },
+      JsonPending { field: "regulatory" },
+      JsonPending { field: "lotSize" },
+      JsonPending { field: "quantityLimitPerBuyer" },
+      JsonPending { field: "secondaryCategoryId" },
+      JsonPending { field: "storeCategoryNames" },
+      JsonPending { field: "hideBuyerDetails" },
+      JsonPending { field: "includeCatalogProductDetails" },
+      JsonPending { field: "listingStartDate" }
+    ],
+    trigger: "eBay offer consumer needs tax, charity, regulatory, or scheduled-listing fidelity"
+  }
+]
+
+type OfferResponse {
+  offerId: NonEmptyStr
+  warnings: Json?
+}
+
+type PublishResponse {
+  listingId: NonEmptyStr
+  warnings: Json?
+}
+
+type EbayOfferDetailsWithAll {
+  offerId: NonEmptyStr
+  sku: NonEmptyStr?
+  marketplaceId: MarketplaceEnum?
+  format: FormatTypeEnum?
+  availableQuantity: Int?
+  pricingSummary: PricingSummary?
+  listing: Json?
+}
+
+data structural_coverage_gap_offer_row_residual: List<CoverageClosureEntry> = [
+  {
+    facts: [
+      Subject { path: "EbayOfferDetailsWithAll" },
+      JsonPending { field: "listing/listingStatus" },
+      JsonPending { field: "listing/soldQuantity" },
+      JsonPending { field: "status" },
+      JsonPending { field: "statusReason" }
+    ],
+    trigger: "eBay offer consumer needs published-listing status fidelity"
+  }
+]
+
+type Offers {
+  offers: List<EbayOfferDetailsWithAll>?
+  total: Int?
+  size: Int?
+  limit: Int?
+  href: String?
+  next: String?
+  prev: String?
+}
+
+data structural_coverage_gap_inventory_operations_residual: List<String> = [
+  "modeled operations cover the single-item listing path; the upstream resource set also carries",
+  "bulk ops, inventory item groups, listing migration, locations, withdrawOffer, and getListingFees",
+  "extend on demand when a consumer needs them"
+]
+
+data default_inventory_items_limit: Int = 25
+
+service ebay.Inventory {
+  config {
+    endpoint: production_api_base
+    auth: Bearer
+    auth_input: access_token
+
+    rate_limit: { requests: 2000000, per: day, scope: sell_inventory }
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
+  }
+
+  operation CreateOrReplaceInventoryItem {
+    input {
+      access_token: Secret
+      sku: NonEmptyStr
+      content_language: NonEmptyStr
+      item: InventoryItem
+    }
+    output {
+      warnings: Json from "warnings"
+    }
+    idempotent
+    transport rest {
+      method: PUT,
+      path: "/sell/inventory/v1/inventory_item/\{sku\}",
+      headers: { "Content-Language": content_language, "Content-Type": "application/json" },
+      body: { availability: item.availability, condition: item.condition, conditionDescription: item.conditionDescription, product: item.product }
+    }
+    response {
+      200 => BaseResponse
+      201 => BaseResponse
+      400 => EbayErrorShape
+      401 => EbayErrorShape
+      403 => EbayErrorShape
+      429 => EbayErrorShape
+      5xx => EbayErrorShape
+    }
+  }
+
+  operation GetInventoryItem {
+    input {
+      access_token: Secret
+      sku: NonEmptyStr
+    }
+    output {
+      item_sku: NonEmptyStr from "sku"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/sell/inventory/v1/inventory_item/\{sku\}"
+    }
+    response {
+      200 => InventoryItemWithSkuLocaleGroupid
+      401 => EbayErrorShape
+      404 => EbayErrorShape
+      5xx => EbayErrorShape
+    }
+  }
+
+  operation GetInventoryItems {
+    input {
+      access_token: Secret
+      limit: Int = default_inventory_items_limit
+      offset: Int = 0
+    }
+    output {
+      total: Int from "total"
+      size: Int from "size"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/sell/inventory/v1/inventory_item",
+      query: { limit: limit, offset: offset }
+    }
+    response {
+      200 => InventoryItemsWithTotal
+      400 => EbayErrorShape
+      401 => EbayErrorShape
+      5xx => EbayErrorShape
+    }
+  }
+
+  operation CreateOffer {
+    input {
+      access_token: Secret
+      content_language: NonEmptyStr
+      offer: EbayOfferDetailsWithKeys
+    }
+    output {
+      offer_id: NonEmptyStr from "offerId"
+    }
+    transport rest {
+      method: POST,
+      path: "/sell/inventory/v1/offer",
+      headers: { "Content-Language": content_language, "Content-Type": "application/json" },
+      body: { sku: offer.sku, marketplaceId: offer.marketplaceId, format: offer.format, availableQuantity: offer.availableQuantity, categoryId: offer.categoryId, listingDescription: offer.listingDescription, listingDuration: offer.listingDuration, listingPolicies: offer.listingPolicies, pricingSummary: offer.pricingSummary, merchantLocationKey: offer.merchantLocationKey }
+    }
+    response {
+      201 => OfferResponse
+      400 => EbayErrorShape
+      401 => EbayErrorShape
+      403 => EbayErrorShape
+      409 => EbayErrorShape
+      5xx => EbayErrorShape
+    }
+  }
+
+  operation GetOffers {
+    input {
+      access_token: Secret
+      sku: NonEmptyStr
+    }
+    output {
+      total: Int from "total"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/sell/inventory/v1/offer",
+      query: { sku: sku }
+    }
+    response {
+      200 => Offers
+      400 => EbayErrorShape
+      401 => EbayErrorShape
+      404 => EbayErrorShape
+      5xx => EbayErrorShape
+    }
+  }
+
+  operation PublishOffer {
+    input {
+      access_token: Secret
+      offer_id: NonEmptyStr
+    }
+    output {
+      listing_id: NonEmptyStr from "listingId"
+    }
+    transport rest {
+      method: POST,
+      path: "/sell/inventory/v1/offer/\{offer_id\}/publish"
+    }
+    response {
+      200 => PublishResponse
+      400 => EbayErrorShape
+      401 => EbayErrorShape
+      404 => EbayErrorShape
+      5xx => EbayErrorShape
+    }
+  }
+}
