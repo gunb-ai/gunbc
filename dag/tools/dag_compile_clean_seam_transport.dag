@@ -1,0 +1,96 @@
+module tools.dag_compile_clean_seam_transport
+
+import extdeps.shell
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.languages.bash.program {
+  ShellProgram, ShellStmt, ShellWord,
+  RawLine,
+  lit, var_ref, command, assign, serialize_bash
+}
+import tools.host_prelude { ensure_gunbc_built }
+
+data cross_shard_seam_importer_entry_path: String = "dag/std/bit.dag"
+data cross_shard_seam_importee_entry_path: String = "dag/std/logic.dag"
+data cross_shard_seam_break_needle: String = "type Classical = True | False"
+data cross_shard_seam_break_replacement: String = "type ClassicalRenamedBug = True | False"
+data cross_shard_seam_class_marker: String = "Classical"
+
+data cross_shard_seam_disposition_note: String = "🟡 dissolve-on: cross-shard seam probe body composed as RawLine shell text (medium-as-string, matching the established ubuntu_install_media_fetch.dag precedent) because the ShellStmt/Redir grammar has no combinator yet for 'capture stdout+stderr and exit code of one command into named vars without aborting under set -e'; DISSOLVES WHEN the bash.program grammar grows a CaptureOutputAndStatus (or equivalent 2>&1 + $? ) ShellStmt row and this probe re-expresses fully in structured combinators."
+
+fn cross_shard_seam_sed_line() -> String {
+  let p1 = concat("sed -i 's/", cross_shard_seam_break_needle)
+  let p2 = concat(p1, "/")
+  let p3 = concat(p2, cross_shard_seam_break_replacement)
+  let p4 = concat(p3, "/' \"$BROKEN/")
+  let p5 = concat(p4, cross_shard_seam_importee_entry_path)
+  concat(p5, "\"")
+}
+
+fn cross_shard_seam_stage_y_cp_line() -> String {
+  let p1 = concat("cp \"$BROKEN/", cross_shard_seam_importee_entry_path)
+  concat(p1, "\" \"$STAGE_Y/\"")
+}
+
+fn cross_shard_seam_stage_x_cp_line() -> String {
+  let p1 = concat("cp \"$BROKEN/", cross_shard_seam_importer_entry_path)
+  concat(p1, "\" \"$STAGE_X/\"")
+}
+
+fn cross_shard_seam_grep_line(var_name: String) -> String {
+  let p1 = concat(var_name, "_HAS=$(printf '%s' \"$")
+  let p2 = concat(p1, var_name)
+  let p3 = concat(p2, "_OUT\" | grep -c ")
+  let p4 = concat(p3, cross_shard_seam_class_marker)
+  concat(p4, " || true)")
+}
+
+fn cross_shard_seam_probe_program() -> ShellProgram {
+  let gunbc = var_ref(name: "GUNBC")
+  ShellProgram {
+    set_e: false,
+    statements: concat(ensure_gunbc_built(), [
+      RawLine { text: "cd \"$ROOT\"" },
+      RawLine { text: "BROKEN=$(mktemp -d)" },
+      RawLine { text: "STAGE_Y=$(mktemp -d)" },
+      RawLine { text: "STAGE_X=$(mktemp -d)" },
+      RawLine { text: "OUT_Y=$(mktemp -d)" },
+      RawLine { text: "OUT_X=$(mktemp -d)" },
+      RawLine { text: "OUT_M=$(mktemp -d)" },
+      RawLine { text: "cp -r dag \"$BROKEN/dag\"" },
+      RawLine { text: cross_shard_seam_sed_line() },
+      RawLine { text: cross_shard_seam_stage_y_cp_line() },
+      RawLine { text: cross_shard_seam_stage_x_cp_line() },
+      RawLine { text: "Y_OUT=$(\"$GUNBC\" compile --source-root \"$STAGE_Y\" --source-root \"$BROKEN/dag\" --source-root src/v2 --dependency-pool-index primary-precedence --output-dir \"$OUT_Y\" --target dag 2>&1); Y_EXIT=$?" },
+      RawLine { text: "X_OUT=$(\"$GUNBC\" compile --source-root \"$STAGE_X\" --source-root \"$BROKEN/dag\" --source-root src/v2 --dependency-pool-index primary-precedence --output-dir \"$OUT_X\" --target dag 2>&1); X_EXIT=$?" },
+      RawLine { text: "M_OUT=$(\"$GUNBC\" compile --source-root \"$BROKEN/dag\" --source-root src/v2 --dependency-pool-index primary-precedence --output-dir \"$OUT_M\" --target dag 2>&1); M_EXIT=$?" },
+      RawLine { text: cross_shard_seam_grep_line(var_name: "Y") },
+      RawLine { text: cross_shard_seam_grep_line(var_name: "X") },
+      RawLine { text: cross_shard_seam_grep_line(var_name: "M") },
+      RawLine { text: "echo \"SEAM_RESULT Y_EXIT=$Y_EXIT X_EXIT=$X_EXIT M_EXIT=$M_EXIT Y_HAS=$Y_HAS X_HAS=$X_HAS M_HAS=$M_HAS\"" },
+      RawLine { text: "rm -rf \"$BROKEN\" \"$STAGE_Y\" \"$STAGE_X\" \"$OUT_Y\" \"$OUT_X\" \"$OUT_M\"" }
+    ])
+  }
+}
+
+type CrossShardSeamProbeResult {
+  success: Bool
+  stdout: String
+  stderr: String
+}
+
+fn run_cross_shard_seam_probe() -> CrossShardSeamProbeResult {
+  let result = shell.Exec.Run(script: serialize_bash(p: cross_shard_seam_probe_program()))
+  CrossShardSeamProbeResult { success: result.success, stdout: result.stdout, stderr: result.stderr }
+}
+
+data cross_shard_seam_result_marker: String = "SEAM_RESULT"
+
+fn cross_shard_seam_probe_transport_serializes_expected_shape() -> Bool {
+  let script = serialize_bash(p: cross_shard_seam_probe_program())
+  script != ""
+    && string_contains(s: script, pattern: cross_shard_seam_result_marker)
+    && string_contains(s: script, pattern: cross_shard_seam_break_needle)
+    && string_contains(s: script, pattern: cross_shard_seam_importer_entry_path)
+    && string_contains(s: script, pattern: cross_shard_seam_importee_entry_path)
+}
