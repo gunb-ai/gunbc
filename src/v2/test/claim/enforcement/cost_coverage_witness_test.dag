@@ -1,0 +1,140 @@
+module v2.test.claim.enforcement.cost_coverage_witness
+
+import v2.lens.enforcement.cost_coverage {
+  CostCoverageTreeReceipt,
+  IngestParsedClean,
+  IngestRejected,
+  cost_coverage_corpus_roster_live,
+  cost_coverage_file_receipt,
+  cost_coverage_file_totality_holds,
+  cost_coverage_receipt_totality_holds,
+  cost_coverage_tree_census,
+  cost_coverage_tree_receipt_eq,
+  cost_coverage_unknown_fraction_bps,
+  cost_coverage_ingest_source_text,
+  cost_coverage_reject_probe
+}
+import v2.lens.enforcement.grammar_coverage {
+  grammar_coverage_paths_for_tree,
+  grammar_coverage_take_n
+}
+import v2.std.algebra { length }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+
+data cc_witness_smoke_paths: List<String> = [
+  "dag/std/logic.dag"
+]
+
+data cc_witness_dag_paths: List<String> = [
+  "dag/std/logic.dag",
+  "dag/std/bytes.dag"
+]
+
+data cc_witness_v2_paths: List<String> = [
+  "src/v2/std/logic.dag",
+  "src/v2/std/integer.dag"
+]
+
+fn cc_witness_smoke_receipt_live() -> CostCoverageTreeReceipt {
+  cost_coverage_tree_census(tree_root: "dag", paths: cc_witness_smoke_paths)
+}
+
+fn cc_witness_dag_tree_receipt_live() -> CostCoverageTreeReceipt {
+  cost_coverage_tree_census(tree_root: "dag", paths: cc_witness_dag_paths)
+}
+
+fn cc_witness_v2_tree_receipt_live() -> CostCoverageTreeReceipt {
+  cost_coverage_tree_census(tree_root: "src/v2", paths: cc_witness_v2_paths)
+}
+
+test fn cost_coverage_smoke_totality_holds() -> Bool {
+  let receipt = cc_witness_smoke_receipt_live()
+  cost_coverage_receipt_totality_holds(receipt: receipt)
+}
+
+test fn cost_coverage_smoke_recomputed_by_execution_holds() -> Bool {
+  cost_coverage_tree_receipt_eq(
+    a: cc_witness_smoke_receipt_live(),
+    b: cost_coverage_tree_census(tree_root: "dag", paths: cc_witness_smoke_paths)
+  )
+}
+
+test fn cost_coverage_dag_logic_has_three_fn_bodies() -> Bool {
+  let receipt = cc_witness_smoke_receipt_live()
+  (receipt.files_attempted == 1)
+    && (receipt.files_parsed_clean == 1)
+    && (receipt.fn_attempted == 3)
+    && (receipt.fn_body_not_located == 0)
+    && (receipt.fn_body_parse_tree_opaque == 3)
+}
+
+test fn cost_coverage_reject_is_typed_not_silent() -> Bool {
+  match cost_coverage_ingest_source_text(
+    source_text: "module broken\nfn f( -> Int { x }",
+    file: cost_coverage_reject_probe
+  ) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+test fn cost_coverage_dag_tree_receipt_by_execution() -> Bool {
+  let receipt = cc_witness_dag_tree_receipt_live()
+  (receipt.files_attempted == 2)
+    && (receipt.files_parsed_clean == 2)
+    && (receipt.files_rejected == 0)
+    && (receipt.fn_attempted > 0)
+    && cost_coverage_receipt_totality_holds(receipt: receipt)
+}
+
+test fn cost_coverage_v2_tree_receipt_by_execution() -> Bool {
+  let receipt = cc_witness_v2_tree_receipt_live()
+  (receipt.files_attempted == 2)
+    && (receipt.files_parsed_clean == 2)
+    && (receipt.fn_attempted > 0)
+    && cost_coverage_receipt_totality_holds(receipt: receipt)
+}
+
+test fn cost_coverage_unknown_fraction_is_derived() -> Bool {
+  let receipt = cc_witness_smoke_receipt_live()
+  cost_coverage_unknown_fraction_bps(receipt: receipt) == ((receipt.fn_unknown * 10000) / receipt.fn_attempted)
+}
+
+test fn cost_coverage_corpus_roster_nonempty() -> Bool {
+  length(xs: cost_coverage_corpus_roster_live()) > 100
+}
+
+test fn cost_coverage_decl_facts_roster_smoke_totality_holds() -> Bool {
+  let roster = grammar_coverage_paths_for_tree(
+    paths: cost_coverage_corpus_roster_live(),
+    tree_root: "dag"
+  )
+  let receipt = cost_coverage_tree_census(
+    tree_root: "dag",
+    paths: grammar_coverage_take_n(paths: roster, n: 2)
+  )
+  (receipt.files_attempted == 0) || cost_coverage_receipt_totality_holds(receipt: receipt)
+}
+
+test fn cost_coverage_file_row_totality_holds_on_smoke() -> Bool {
+  let file_row = cost_coverage_file_receipt(rel_path: "dag/std/logic.dag")
+  match file_row.ingest_verdict {
+    IngestParsedClean =>
+      cost_coverage_file_totality_holds(receipt: file_row)
+        && (file_row.fn_attempted == 3)
+        && (file_row.fn_body_parse_tree_opaque == 3)
+    IngestRejected { stage: _, reason: _ } => false
+  }
+}
+
+test fn cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton() -> Bool {
+  let file_row = cost_coverage_file_receipt(rel_path: "dag/std/logic.dag")
+  match file_row.ingest_verdict {
+    IngestParsedClean =>
+      (file_row.fn_attempted == 3)
+        && (file_row.fn_body_not_located == 0)
+        && (file_row.fn_body_parse_tree_opaque == 3)
+    IngestRejected { stage: _, reason: _ } => false
+  }
+}

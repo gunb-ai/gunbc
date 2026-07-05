@@ -20,8 +20,14 @@ import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
-import gunbc.merge_admission_produce { ci_floor_stamp_merge_admission_script }
+import gunbc.merge_admission_produce {
+  ci_floor_stamp_merge_admission_script,
+  merge_admission_stamp_invoke,
+  merge_admission_floor_disposition_documentation_only_skipped,
+}
 import extdeps.github.actions { RunnerSpec }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 type DiffMode = DiffMergeBase | DiffTwoDot
 
@@ -201,6 +207,104 @@ fn join_slash(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
 }
 
+data ci_documentation_only_floor_shortcut_scaffold: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.ci_spec",
+    decl_name: "ci_documentation_only_floor_shortcut_script",
+    field: WholeDeclaration
+  }
+}
+
+data ci_documentation_only_floor_shortcut_shell_emit_dissolution_trigger: String = "🟡 dissolve-on: ci_documentation_only_floor_shortcut_script — concat-built bash path-prefix predicate + heredoc over git diff --name-only (interim path heuristic until affected-set-scoped compile-clean); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes floor scoping through orchestration emit and this shortcut retires"
+
+data ci_documentation_only_diff_note: String = "Interim compile-clean scoping: merge-base diffs whose only changed paths are under docs/ skip the compose floor. Path-prefix matching is an interim heuristic — dissolve-on: affected-set-scoped compile-clean (Ruling 1 path grain) replaces it. Empty _ci_changed (git fetch/diff failure) short-circuits this block and falls through to the full floor (fail-closed, not widening). Merge-admission stamps Skipped (not Success) via CI_FLOOR_DISPOSITION=documentation_only_skipped so floor-not-run ≠ floor-green. Generated-artifact carriers (.gitignore, README.md/CLAUDE.md/DESIGN.md symlinks) are excluded from the allowlist — their only drift guard is floor-resident; whitelisting them would self-shortcut that gate (#6236 class). CI substrate (.github/workflows/ci.yml, dag/gunbc/ci_spec.dag, ci_spec witnesses) is likewise excluded."
+
+fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
+  match policy.mode {
+    DiffMergeBase => concat(concat(policy.base, "..."), policy.head)
+    DiffTwoDot => concat(concat(policy.base, ".."), policy.head)
+  }
+}
+
+fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
+  let range = ci_merge_base_diff_range(policy: policy)
+  concat(
+    concat(
+      concat(
+        concat("_ci_changed=$(git diff --name-only ", range),
+        " 2>/dev/null || true)\n"
+      ),
+      concat(
+        "if [ -n \"$_ci_changed\" ]; then\n",
+        concat(
+          concat("# ", concat(ci_documentation_only_diff_note, "\n")),
+          concat("# ", concat(ci_documentation_only_floor_shortcut_shell_emit_dissolution_trigger, "\n"))
+        )
+      )
+    ),
+    concat(
+      concat(
+        concat(
+          "  DOCS_ONLY=1\n",
+          "  while IFS= read -r _ci_path; do\n"
+        ),
+        "    [ -z \"$_ci_path\" ] && continue\n"
+      ),
+      concat(
+        concat(
+          concat(
+            "    if [[ \"$_ci_path\" == docs/* ]]; then\n",
+            "      :\n"
+          ),
+          "    else\n"
+        ),
+        concat(
+          concat(
+            "      DOCS_ONLY=0\n",
+            "      break\n"
+          ),
+          concat(
+            "    fi\n",
+            concat(
+              "  done <<_ci_diff_eof_\n",
+              "$_ci_changed\n"
+            )
+          )
+        )
+      )
+    ),
+    concat(
+      concat(
+        "_ci_diff_eof_\n",
+        "  if [ \"$DOCS_ONLY\" = \"1\" ]; then\n"
+      ),
+      concat(
+        concat(
+          concat(
+            "    echo \"claim_executor: documentation-only diff — floor skipped (CI_FLOOR_DISPOSITION=",
+            merge_admission_floor_disposition_documentation_only_skipped
+          ),
+          concat(
+            ")\"\n",
+            concat(
+              "    CI_FLOOR_DISPOSITION=",
+              concat(
+                merge_admission_floor_disposition_documentation_only_skipped,
+                concat(" ", merge_admission_stamp_invoke())
+              )
+            )
+          )
+        ),
+        concat(
+          "    exit $?\n",
+          "  fi\nfi\n"
+        )
+      )
+    )
+  )
+}
+
 fn git_fetch_script(policy: DiffPolicy) -> String {
   let parts = split(s: policy.base, delimiter: "/")
   let remote = parts.first()
@@ -233,8 +337,11 @@ fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
     concat(
       concat(git_fetch_script(policy: spec.diff_policy), "\n"),
       concat(
-        concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
-        ci_floor_stamp_merge_admission_script()
+        concat(ci_documentation_only_floor_shortcut_script(policy: spec.diff_policy), "\n"),
+        concat(
+          concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
+          ci_floor_stamp_merge_admission_script()
+        )
       )
     )
   )
