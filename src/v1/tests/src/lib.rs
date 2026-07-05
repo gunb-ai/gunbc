@@ -149,6 +149,8 @@ mod union_resolve_receipts_test;
 #[cfg(test)]
 mod v1_compiler_lib_test;
 #[cfg(test)]
+mod variant_export_surface_witness_test;
+#[cfg(test)]
 mod value_carrier_swap_test;
 #[cfg(test)]
 mod variant_owner_disambiguation_test;
