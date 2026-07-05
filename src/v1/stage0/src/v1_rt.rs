@@ -348,20 +348,35 @@ pub fn replace(s: String, from: String, to: String) -> String {
 // loud (count), never silent (DESIGN.md 5). GUNBC_CLONE_FALLBACK=fail|count|allow,
 // default fail. #[track_caller] threads the generated caller's file:line into
 // the diagnostic so each refusal names the exact emitted site to license.
+struct RcCloneFallbackLedger(std::cell::RefCell<HashMap<String, u64>>);
+
+impl Drop for RcCloneFallbackLedger {
+    fn drop(&mut self) {
+        let m = self.0.borrow();
+        if m.is_empty() {
+            return;
+        }
+        let mut v: Vec<(&String, &u64)> = m.iter().collect();
+        v.sort_by(|a, b| b.1.cmp(a.1).then(a.0.cmp(b.0)));
+        eprintln!("clone-fallback report: {} sites degraded this run", v.len());
+        for (site, n) in v {
+            eprintln!("clone-fallback total: {:>12}  {}", n, site);
+        }
+    }
+}
+
 thread_local! {
-    static RC_CLONE_FALLBACKS: std::cell::RefCell<HashMap<String, u64>> =
-        std::cell::RefCell::new(HashMap::new());
+    static RC_CLONE_FALLBACKS: RcCloneFallbackLedger =
+        RcCloneFallbackLedger(std::cell::RefCell::new(HashMap::new()));
 }
 
 fn clone_fallback_mode() -> u8 {
     static MODE: std::sync::OnceLock<u8> = std::sync::OnceLock::new();
-    *MODE.get_or_init(
-        || match std::env::var("GUNBC_CLONE_FALLBACK").as_deref() {
-            Ok("allow") => 0,
-            Ok("count") => 1,
-            _ => 2,
-        },
-    )
+    *MODE.get_or_init(|| match std::env::var("GUNBC_CLONE_FALLBACK").as_deref() {
+        Ok("allow") => 0,
+        Ok("count") => 1,
+        _ => 2,
+    })
 }
 
 #[track_caller]
@@ -371,7 +386,7 @@ fn rc_shared_update_guard(op: &str, strong: usize) {
         1 => {
             let key = format!("{} at {}", op, std::panic::Location::caller());
             RC_CLONE_FALLBACKS.with(|m| {
-                let mut m = m.borrow_mut();
+                let mut m = m.0.borrow_mut();
                 let n = m.entry(key.clone()).or_insert(0);
                 *n += 1;
                 if *n == 1 {
@@ -394,7 +409,7 @@ fn rc_shared_update_guard(op: &str, strong: usize) {
 
 pub fn rc_clone_fallback_counts() -> Vec<(String, u64)> {
     RC_CLONE_FALLBACKS.with(|m| {
-        let mut v: Vec<(String, u64)> = m.borrow().iter().map(|(k, n)| (k.clone(), *n)).collect();
+        let mut v: Vec<(String, u64)> = m.0.borrow().iter().map(|(k, n)| (k.clone(), *n)).collect();
         v.sort();
         v
     })
