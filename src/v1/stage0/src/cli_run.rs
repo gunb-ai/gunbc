@@ -1,5 +1,6 @@
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use im_rc::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -287,7 +288,7 @@ fn resolve_virtual_source_with_imports(
             }
         }
     }
-    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = seen.into_values().collect();
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
     sources.sort_by(|a, b| a.path.cmp(&b.path));
     sources.push(Rc::new(v1_compiler_compile::SourceFile {
         path: entry_path.to_string(),
@@ -860,7 +861,7 @@ fn resolve_transitively_bfs_legacy(
             }
         }
     }
-    let mut result: Vec<_> = seen.into_values().collect();
+    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();
     result.sort_by(|a, b| a.path.cmp(&b.path));
     result
 }
@@ -2871,7 +2872,7 @@ pub fn discover_owned_data_decls(
     let mut all_records = Vec::new();
     for group in groups {
         let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-            group.sources.into_values().collect();
+            group.sources.into_iter().map(|(_, v)| v).collect();
         sources.sort_by(|a, b| a.path.cmp(&b.path));
         let (graph, source_indices) =
             resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)?;
@@ -8703,7 +8704,7 @@ pub fn import_resolution_facts(
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let abs_importer_roots = pool_roots_abs(importer_roots);
     let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
-        .into_keys()
+        .into_iter().map(|(k, _)| k)
         .collect();
     let mut out = Vec::new();
     for root in &abs_importer_roots {
@@ -11632,7 +11633,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
     }
 
     let index = build_module_path_index_from_witness_roots();
-    let real_paths: std::collections::HashSet<String> = index.into_values().collect();
+    let real_paths: std::collections::HashSet<String> = index.into_iter().map(|(_, v)| v).collect();
     let mut source_nickname_literal_count = 0i64;
     for item in items.iter() {
         source_nickname_literal_count +=

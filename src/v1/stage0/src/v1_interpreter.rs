@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeSet, HashMap};
+use im_rc::HashMap;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;

@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_macros)]
 
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::process::ExitCode;
 use std::rc::Rc;
 
@@ -220,7 +220,7 @@ fn resolve_imports_transitively(
         }
     }
 
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_values().collect();
+    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
     sources.push(Rc::new(SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),

@@ -1,4 +1,5 @@
-use std::collections::{BTreeSet, HashMap};
+use im_rc::HashMap;
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -681,7 +682,7 @@ fn source_files_for_roots(
         }
     }
 
-    let mut result: Vec<Rc<SourceFile>> = seen.into_values().collect();
+    let mut result: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
     result.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(result)
 }

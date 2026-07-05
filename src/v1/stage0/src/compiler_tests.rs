@@ -171,7 +171,7 @@ mod compiler_tests {
             }
         }
 
-        let mut result: Vec<_> = seen.into_values().collect();
+        let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();
         result.sort_by(|a, b| a.path.cmp(&b.path));
         result
     }

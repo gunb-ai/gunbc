@@ -201,7 +201,7 @@ pub fn empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> HashMap<K, V> {
     HashMap::new()
 }
 
-pub fn map_insert<K: std::cmp::Eq + std::hash::Hash, V>(
+pub fn map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     mut map: HashMap<K, V>,
     key: K,
     value: V,
@@ -210,7 +210,7 @@ pub fn map_insert<K: std::cmp::Eq + std::hash::Hash, V>(
     map
 }
 
-pub fn map_merge<K: std::cmp::Eq + std::hash::Hash, V>(
+pub fn map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     mut base: HashMap<K, V>,
     overlay: HashMap<K, V>,
 ) -> HashMap<K, V> {
@@ -350,7 +350,7 @@ pub fn replace(s: String, from: String, to: String) -> String {
 // silence mode — escape hatches are banned (operator ruling 2026-07-05).
 // #[track_caller] threads the generated caller's file:line into the diagnostic
 // so each refusal names the exact emitted site to license.
-struct RcCloneFallbackLedger(std::cell::RefCell<HashMap<String, u64>>);
+struct RcCloneFallbackLedger(std::cell::RefCell<std::collections::HashMap<String, u64>>);
 
 impl Drop for RcCloneFallbackLedger {
     fn drop(&mut self) {
@@ -369,7 +369,7 @@ impl Drop for RcCloneFallbackLedger {
 
 thread_local! {
     static RC_CLONE_FALLBACKS: RcCloneFallbackLedger =
-        RcCloneFallbackLedger(std::cell::RefCell::new(HashMap::new()));
+        RcCloneFallbackLedger(std::cell::RefCell::new(std::collections::HashMap::new()));
 }
 
 fn clone_fallback_mode() -> u8 {
@@ -435,29 +435,26 @@ pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     result
 }
 
-#[track_caller]
+// Map updates carry no shared-Rc guard: HashMap here is im_rc's persistent
+// HAMT (one realization with the interpreter's Value::Map), so make_mut's
+// clone arm is O(1) structural sharing and each insert copies an O(log n)
+// node path — a designed update, not a degradation arm. Lists/sets above
+// remain O(n)-copy carriers and keep the guard until they migrate too.
 pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     map: Rc<HashMap<K, V>>,
     key: K,
     value: V,
 ) -> Rc<HashMap<K, V>> {
     let mut m = map;
-    if Rc::strong_count(&m) > 1 {
-        rc_shared_update_guard("rc_map_insert", Rc::strong_count(&m));
-    }
     Rc::make_mut(&mut m).insert(key, value);
     m
 }
 
-#[track_caller]
 pub fn rc_map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     base: Rc<HashMap<K, V>>,
     overlay: Rc<HashMap<K, V>>,
 ) -> Rc<HashMap<K, V>> {
     let mut result = base;
-    if Rc::strong_count(&result) > 1 {
-        rc_shared_update_guard("rc_map_merge", Rc::strong_count(&result));
-    }
     let inner = Rc::make_mut(&mut result);
     for (k, v) in overlay.iter() {
         inner.insert(k.clone(), v.clone());
@@ -790,8 +787,8 @@ pub fn contiguous_loop_elementwise_kernel(
 // per-site frequency must stay observable, so the clone arm counts per emitted
 // site (site = "<module>:<span_start>" of the use-site the emitter rewrote).
 thread_local! {
-    static TAKE_OWNED_CLONE_FALLBACKS: std::cell::RefCell<HashMap<&'static str, u64>> =
-        std::cell::RefCell::new(HashMap::new());
+    static TAKE_OWNED_CLONE_FALLBACKS: std::cell::RefCell<std::collections::HashMap<&'static str, u64>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 /// INVARIANT: `site` must be a string literal (the emitter always passes one).

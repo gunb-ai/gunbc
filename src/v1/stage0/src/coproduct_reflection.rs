@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::path::PathBuf;
 use std::rc::Rc;
 

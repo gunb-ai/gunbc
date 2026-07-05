@@ -1,6 +1,7 @@
 #![allow(clippy::disallowed_macros)]
 
-use std::collections::{HashMap, HashSet};
+use im_rc::HashMap;
+use std::collections::HashSet;
 use std::process::ExitCode;
 use std::rc::Rc;
 
