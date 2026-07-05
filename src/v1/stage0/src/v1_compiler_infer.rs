@@ -203,6 +203,18 @@ pub struct VariantFoldState {
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct VariantExportSurface {
+    pub arm_owners: Rc<HashMap<String, Rc<Node>>>,
+    pub enum_items: Rc<HashMap<String, Rc<Node>>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct TypeNameExportFacts {
+    pub exporter_count: i64,
+    pub canonical_binding: Option<Rc<TypeBinding>>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InferScope {
     pub type_env: Rc<TypeEnv>,
     pub func_env: Rc<ResolvedFuncEnv>,
@@ -13571,97 +13583,112 @@ pub fn build_imported_variants(
     )
 }
 
-// HAND-PATCH (constructor-owner ruling §1c; seed two-step): re-export chain
-// followers — a module re-exports its specific-name imports, so the binder
-// walks the acyclic import chain to the defining module's coproduct. Replaced
-// by regen's true emission in the convergence commit.
-pub fn owner_of_exported_arm(
-    module_path: String,
-    arm_name: String,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+pub fn empty_variant_export_surface() -> Rc<VariantExportSurface> {
+    Rc::new(VariantExportSurface {
+        arm_owners: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+        enum_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
+    })
+}
+
+pub fn collect_own_variant_export_surface(
+    items: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    match v1_rt::map_get(&parent_index, module_path) {
-        None => None,
-        Some(tm) => {
-            let own = tm.items.iter().cloned().find(|item| {
-                item.connective.clone() == Connective::Disj
-                    && item
-                        .children
-                        .iter()
-                        .cloned()
-                        .any(|c| authored_name_at(source_indices.clone(), c) == arm_name)
-            });
-            match own {
-                Some(item) => Some(item),
-                None => {
-                    let reexport = module_imports(tm.module.clone())
-                        .iter()
-                        .cloned()
-                        .find(|imp| {
-                            !import_is_all(imp.clone())
-                                && import_specific_names_at(imp.clone(), source_indices.clone())
-                                    .iter()
-                                    .any(|n| *n == arm_name)
-                        });
-                    match reexport {
-                        Some(imp) => owner_of_exported_arm(
-                            authored_name_at(source_indices.clone(), imp),
-                            arm_name,
-                            parent_index,
-                            source_indices,
-                        ),
-                        None => None,
-                    }
-                }
+) -> Rc<VariantExportSurface> {
+    items
+        .iter()
+        .cloned()
+        .fold(empty_variant_export_surface(), |acc, item| {
+            if item.connective.clone() == Connective::Disj {
+                let enum_items = v1_rt::rc_map_insert(
+                    acc.enum_items.clone(),
+                    authored_name_at(source_indices.clone(), item.clone()),
+                    item.clone(),
+                );
+                let arm_owners = item.children.clone().iter().cloned().fold(
+                    acc.arm_owners.clone(),
+                    |arms: Rc<HashMap<String, Rc<Node>>>, child: Rc<Node>| {
+                        v1_rt::rc_map_insert(
+                            arms,
+                            authored_name_at(source_indices.clone(), child),
+                            item.clone(),
+                        )
+                    },
+                );
+                Rc::new(VariantExportSurface {
+                    arm_owners,
+                    enum_items,
+                })
+            } else {
+                acc
             }
-        }
+        })
+}
+
+fn reexport_variant_surface_fragment(
+    imp: Rc<Node>,
+    surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<VariantExportSurface> {
+    let proxy_path = import_module_path_at(imp.clone(), source_indices.clone());
+    match v1_rt::map_get(&surfaces, proxy_path) {
+        None => empty_variant_export_surface(),
+        Some(proxy) => import_specific_names_at(imp, source_indices.clone())
+            .iter()
+            .cloned()
+            .fold(empty_variant_export_surface(), |acc, name| {
+                let with_arm = match v1_rt::map_get(&proxy.arm_owners, name.clone()) {
+                    Some(owner) => Rc::new(VariantExportSurface {
+                        arm_owners: v1_rt::rc_map_insert(
+                            acc.arm_owners.clone(),
+                            name.clone(),
+                            owner,
+                        ),
+                        enum_items: acc.enum_items.clone(),
+                    }),
+                    None => acc.clone(),
+                };
+                match v1_rt::map_get(&proxy.enum_items, name.clone()) {
+                    Some(item) => Rc::new(VariantExportSurface {
+                        arm_owners: with_arm.arm_owners.clone(),
+                        enum_items: v1_rt::rc_map_insert(with_arm.enum_items.clone(), name, item),
+                    }),
+                    None => with_arm,
+                }
+            }),
     }
 }
 
-pub fn exported_coproduct_item(
-    module_path: String,
-    enum_name: String,
-    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+pub fn build_variant_export_surface(
+    tm: Rc<TypedModule>,
+    surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
-    match v1_rt::map_get(&parent_index, module_path) {
-        None => None,
-        Some(tm) => {
-            let own = tm.items.iter().cloned().find(|item| {
-                item.connective.clone() == Connective::Disj
-                    && authored_name_at(source_indices.clone(), item.clone()) == enum_name
-            });
-            match own {
-                Some(item) => Some(item),
-                None => {
-                    let reexport = module_imports(tm.module.clone())
-                        .iter()
-                        .cloned()
-                        .find(|imp| {
-                            !import_is_all(imp.clone())
-                                && import_specific_names_at(imp.clone(), source_indices.clone())
-                                    .iter()
-                                    .any(|n| *n == enum_name)
-                        });
-                    match reexport {
-                        Some(imp) => exported_coproduct_item(
-                            authored_name_at(source_indices.clone(), imp),
-                            enum_name,
-                            parent_index,
-                            source_indices,
-                        ),
-                        None => None,
-                    }
-                }
-            }
-        }
-    }
+) -> Rc<VariantExportSurface> {
+    let own = collect_own_variant_export_surface(tm.items.clone(), source_indices.clone());
+    let reexports = module_imports(tm.module.clone())
+        .iter()
+        .cloned()
+        .filter(|imp| !import_is_all(imp.clone()))
+        .fold(empty_variant_export_surface(), |acc, imp| {
+            let frag =
+                reexport_variant_surface_fragment(imp, surfaces.clone(), source_indices.clone());
+            Rc::new(VariantExportSurface {
+                arm_owners: v1_rt::rc_map_merge(acc.arm_owners.clone(), frag.arm_owners.clone()),
+                enum_items: v1_rt::rc_map_merge(acc.enum_items.clone(), frag.enum_items.clone()),
+            })
+        });
+    Rc::new(VariantExportSurface {
+        arm_owners: v1_rt::rc_map_merge(reexports.arm_owners.clone(), own.arm_owners.clone()),
+        enum_items: v1_rt::rc_map_merge(reexports.enum_items.clone(), own.enum_items.clone()),
+    })
 }
+
+// HAND-PATCH (P3+P5): per-module variant export surface replaces whole-corpus
+// Disj-scan + re-export chain walk per imported name. Dissolves at v2 regen.
 
 pub fn build_module_context(
     contributions: Rc<Vec<Rc<ItemContribution>>>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     resolved_imports: Rc<Vec<Rc<ResolvedImport>>>,
     env: Rc<TypeEnv>,
     module_name: String,
@@ -13779,26 +13806,17 @@ pub fn build_module_context(
                 } else {
                     acc
                 };
-                // Specific names resolve through the re-export chain to the
-                // defining module (owner_of_exported_arm / exported_coproduct_item).
+                // Specific names resolve through the precomputed per-module export surface.
                 imp.specific_names.iter().cloned().fold(
                     with_glob,
                     |nacc: Rc<VariantFoldState>, name: String| {
-                        let after_enum = match exported_coproduct_item(
-                            imp.module_path.clone(),
-                            name.clone(),
-                            parent_index.clone(),
-                            env.source_indices.clone(),
-                        ) {
+                        let surface = v1_rt::map_get(&variant_surfaces, imp.module_path.clone())
+                            .unwrap_or_else(empty_variant_export_surface);
+                        let after_enum = match v1_rt::map_get(&surface.enum_items, name.clone()) {
                             Some(item) => bind_coproduct_item_arms(nacc, item),
                             None => nacc,
                         };
-                        match owner_of_exported_arm(
-                            imp.module_path.clone(),
-                            name.clone(),
-                            parent_index.clone(),
-                            env.source_indices.clone(),
-                        ) {
+                        match v1_rt::map_get(&surface.arm_owners, name.clone()) {
                             Some(owner) => insert_variant_owner_checked(after_enum, name, owner),
                             None => after_enum,
                         }
@@ -13879,6 +13897,7 @@ pub struct TypecheckModuleResult {
 pub fn typecheck_module(
     resolved: Rc<ResolvedModule>,
     parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Rc<TypecheckModuleResult> {
@@ -13934,6 +13953,7 @@ pub fn typecheck_module(
         let ctx = build_module_context(
             contributions,
             parent_index.clone(),
+            variant_surfaces.clone(),
             resolved.resolved_imports.clone(),
             env.clone(),
             resolved_module_name.clone(),
@@ -14062,6 +14082,21 @@ pub fn typecheck_module(
             ),
         })
     }
+}
+
+pub fn typecheck_module_isolated(
+    resolved: Rc<ResolvedModule>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+) -> Rc<TypecheckModuleResult> {
+    typecheck_module(
+        resolved,
+        parent_index,
+        Rc::new(HashMap::new()),
+        source_indices,
+        intern_table,
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -14656,6 +14691,7 @@ pub fn typecheck(
             graph.modules.clone(),
             Rc::new(vec![]),
             v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
+            v1_rt::rc_empty_map::<String, Rc<VariantExportSurface>>(),
             v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
             Rc::new(vec![]),
             source_indices,
@@ -14668,6 +14704,7 @@ pub fn typecheck_modules(
     mut remaining: Rc<Vec<Rc<ResolvedModule>>>,
     mut modules: Rc<Vec<Rc<TypedModule>>>,
     mut module_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    mut variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
     mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -14699,11 +14736,22 @@ pub fn typecheck_modules(
                 let tc_result = typecheck_module(
                     resolved.clone(),
                     module_index.clone(),
+                    variant_surfaces.clone(),
                     source_indices.clone(),
                     intern_table.clone(),
                 );
                 let typed = tc_result.typed.clone();
                 let tc_diags = tc_result.diagnostics.clone();
+                let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
+                variant_surfaces = v1_rt::rc_map_insert(
+                    variant_surfaces.clone(),
+                    typed_path.clone(),
+                    build_variant_export_surface(
+                        typed.clone(),
+                        variant_surfaces.clone(),
+                        source_indices.clone(),
+                    ),
+                );
                 {
                     let __tco_0 = Rc::new(
                         remaining
@@ -14713,11 +14761,7 @@ pub fn typecheck_modules(
                             .collect::<Vec<_>>(),
                     );
                     let __tco_1 = v1_rt::rc_list_push(modules, typed.clone());
-                    let __tco_2 = v1_rt::rc_map_insert(
-                        module_index,
-                        authored_name_at(source_indices.clone(), typed.module.clone()),
-                        typed.clone(),
-                    );
+                    let __tco_2 = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
                     let __tco_3 = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());
                     let __tco_4 = v1_rt::rc_list_push(
                         v1_rt::rc_list_push(diag_chunks, parent_result.diagnostics.clone()),
@@ -14742,38 +14786,58 @@ pub fn import_module_path_at(
     authored_name_at(source_indices, imp)
 }
 
+pub fn build_type_name_export_index(
+    modules: Rc<Vec<Rc<TypedModule>>>,
+) -> Rc<HashMap<String, Rc<TypeNameExportFacts>>> {
+    modules.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<TypeNameExportFacts>>(),
+        |acc: Rc<HashMap<String, Rc<TypeNameExportFacts>>>, m: Rc<TypedModule>| {
+            let mut seen_names = std::collections::HashSet::<String>::new();
+            m.type_env
+                .bindings
+                .values()
+                .cloned()
+                .fold(acc, |acc2, binding| {
+                    let name = binding.name.clone();
+                    if !seen_names.insert(name.clone()) {
+                        return acc2;
+                    }
+                    let canonical = m
+                        .type_env
+                        .bindings
+                        .values()
+                        .filter(|b| b.name == name)
+                        .next()
+                        .cloned()
+                        .unwrap_or(binding);
+                    match v1_rt::map_get(&acc2, name.clone()) {
+                        None => v1_rt::rc_map_insert(
+                            acc2,
+                            name,
+                            Rc::new(TypeNameExportFacts {
+                                exporter_count: 1,
+                                canonical_binding: Some(canonical),
+                            }),
+                        ),
+                        Some(facts) => v1_rt::rc_map_insert(
+                            acc2,
+                            name,
+                            Rc::new(TypeNameExportFacts {
+                                exporter_count: facts.exporter_count + 1,
+                                canonical_binding: Some(canonical),
+                            }),
+                        ),
+                    }
+                })
+        },
+    )
+}
+
 pub fn rewire_type_env_import_str_binding_identity(
     modules: Rc<Vec<Rc<TypedModule>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<TypedModule>>> {
     record_rewire_type_env_import_str_binding_call();
-    fn local_authority_binding(owner: Rc<TypedModule>, name: String) -> Option<Rc<TypeBinding>> {
-        owner
-            .type_env
-            .bindings
-            .values()
-            .find(|b| b.name.clone() == name)
-            .cloned()
-    }
-
-    fn global_type_exporter_count(modules: Rc<Vec<Rc<TypedModule>>>, name: &str) -> usize {
-        modules
-            .iter()
-            .filter(|m| module_exports_type_name((**m).clone(), name))
-            .count()
-    }
-
-    fn local_authority_for_name(
-        modules: Rc<Vec<Rc<TypedModule>>>,
-        name: String,
-    ) -> Option<Rc<TypedModule>> {
-        // 🟡 dissolve-on: local_authority_for_name_dissolution_trigger (04_infer.dag)
-        modules
-            .iter()
-            .rev()
-            .find(|m| m.type_env.bindings.values().any(|b| b.name.clone() == name))
-            .cloned()
-    }
 
     fn module_exports_type_name(m: Rc<TypedModule>, name: &str) -> bool {
         m.type_env
@@ -14799,6 +14863,7 @@ pub fn rewire_type_env_import_str_binding_identity(
             .count()
     }
 
+    let type_name_index = build_type_name_export_index(modules.clone());
     let index = modules.clone().iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
         |acc: Rc<HashMap<String, Rc<TypedModule>>>, m: Rc<TypedModule>| {
@@ -14829,18 +14894,21 @@ pub fn rewire_type_env_import_str_binding_identity(
                 .collect();
             inherited_names.sort();
             for name in inherited_names {
+                let exporter_count = v1_rt::map_get(&type_name_index, name.clone())
+                    .map(|facts| facts.exporter_count)
+                    .unwrap_or(0);
                 if direct_import_exporter_count(
                     m.clone(),
                     name.as_str(),
                     &index,
                     source_indices.clone(),
                 ) > 1
-                    || global_type_exporter_count(modules.clone(), name.as_str()) > 1
+                    || exporter_count > 1
                 {
                     continue;
                 }
-                if let Some(owner) = local_authority_for_name(modules.clone(), name.clone()) {
-                    if let Some(canonical) = local_authority_binding(owner, name.clone()) {
+                if let Some(facts) = v1_rt::map_get(&type_name_index, name.clone()) {
+                    if let Some(canonical) = facts.canonical_binding.clone() {
                         if match v1_rt::map_get(&ancestry_str_bindings, name.clone()) {
                             Some(existing) => {
                                 Rc::ptr_eq(&existing.resolved, &canonical.resolved)
