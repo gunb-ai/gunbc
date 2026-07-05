@@ -14,6 +14,9 @@ import gunbc.merge_admission_produce {
   parse_receipt_wire,
   stamp_floor_receipt,
   floor_exit_to_check_conclusion,
+  floor_disposition_to_check_conclusion,
+  merge_admission_floor_disposition_documentation_only_skipped,
+  merge_admission_stamp_documentation_only_skip_policy,
   ci_floor_stamp_merge_admission_script,
   shell_stdout_line,
 }
@@ -21,7 +24,7 @@ import tools.merge_admission_stamp {
   merge_admission_stamp_missing_floor_exit_is_failure,
   merge_admission_stamp_non_pr_omits_pr_number,
 }
-import extdeps.github.checks { check_conclusion_wire_label }
+import extdeps.github.checks { check_conclusion_wire_label, Skipped }
 import std.types { ContentHash }
 
 data scenario_base: ContentHash = "merge-admission-producer-base"
@@ -68,6 +71,22 @@ test fn floor_exit_zero_maps_to_success() -> Bool {
 
 test fn floor_exit_nonzero_maps_to_failure() -> Bool {
   floor_exit_to_check_conclusion(exit_code: 1) == Failure
+}
+
+test fn documentation_only_disposition_maps_to_skipped() -> Bool {
+  match floor_disposition_to_check_conclusion(
+    disposition: merge_admission_floor_disposition_documentation_only_skipped
+  ) {
+    Present { value: conclusion } => conclusion == Skipped
+    Absent => false
+  }
+}
+
+test fn documentation_only_skip_policy_is_on_carrier() -> Bool {
+  string_contains(
+    s: merge_admission_stamp_documentation_only_skip_policy,
+    pattern: "Skipped (not Success)"
+  )
 }
 
 test fn mint_binds_current_gate_roster_hash() -> Bool {

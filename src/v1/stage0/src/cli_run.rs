@@ -173,10 +173,44 @@ pub fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+/// Empty ingest-manifest placeholder excluded from the module index when a later
+/// source root carries the host-emitted manifest (source-root ingest / closure gates).
+const SOURCE_ROOT_INGEST_MANIFEST_STUB_REL: &str =
+    "src/v2/test/claim/workflow/host_source_root_ingest_manifest.dag";
+
+fn is_source_root_ingest_manifest_stub_rel(rel_forward: &str) -> bool {
+    rel_forward.replace('\\', "/") == SOURCE_ROOT_INGEST_MANIFEST_STUB_REL
+}
+
+fn source_root_ingest_manifest_overlay_in_later_roots(
+    source_roots: &[String],
+    after_root_idx: usize,
+) -> bool {
+    source_roots.iter().skip(after_root_idx + 1).any(|root| {
+        let root_path = Path::new(root);
+        root_path
+            .join("v2-source-root-ingest-manifest.dag")
+            .is_file()
+            || root_path
+                .join("host_source_root_ingest_manifest.dag")
+                .is_file()
+    })
+}
+
+fn module_path_collision_panic_message(
+    declaring_module: &str,
+    existing_path: &str,
+    candidate_path: &str,
+) -> String {
+    format!(
+        "module-path collision: module '{declaring_module}' is declared by both '{existing_path}' and '{candidate_path}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side"
+    )
+}
+
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
     let ws = workspace_root();
-    let mut index = HashMap::new();
-    for root in source_roots {
+    let mut index: HashMap<String, String> = HashMap::new();
+    for (root_idx, root) in source_roots.iter().enumerate() {
         let root_path = Path::new(root);
         if !root_path.is_dir() {
             continue;
@@ -199,11 +233,16 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                     })
                     .to_string_lossy()
                     .replace('\\', "/");
+                if is_source_root_ingest_manifest_stub_rel(&rel)
+                    && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
+                {
+                    continue;
+                }
                 if let Some(existing) = index.get(&module_path) {
-                    if existing != &rel {
+                    if existing != &rel && !same_canonical_file(existing, &rel) {
                         panic!(
-                            "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
-                            module_path, existing, rel
+                            "{}",
+                            module_path_collision_panic_message(&module_path, existing, &rel)
                         );
                     }
                 }
@@ -564,7 +603,7 @@ type ModuleSourceIndex = HashMap<String, Rc<v1_compiler_compile::SourceFile>>;
 
 fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
     let mut index = ModuleSourceIndex::new();
-    for root in source_roots {
+    for (root_idx, root) in source_roots.iter().enumerate() {
         let root_path = std::path::Path::new(root);
         if !root_path.exists() {
             panic!("source root does not exist: {}", root);
@@ -576,11 +615,22 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             if let Some(module_path) = extract_module_path(&content) {
                 let rel_path = path.to_string_lossy().to_string();
+                let rel_forward = workspace_relative_repo_path(&rel_path);
+                if is_source_root_ingest_manifest_stub_rel(&rel_forward)
+                    && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
+                {
+                    continue;
+                }
                 if let Some(existing) = index.get(&module_path) {
-                    if existing.path != rel_path {
+                    if existing.path != rel_path && !same_canonical_file(&existing.path, &rel_path)
+                    {
                         panic!(
-                            "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
-                            module_path, existing.path, rel_path
+                            "{}",
+                            module_path_collision_panic_message(
+                                &module_path,
+                                &existing.path,
+                                &rel_path,
+                            )
                         );
                     }
                 }
@@ -869,7 +919,10 @@ fn load_sources_for_entry_with_index(
 
     let sources = resolve_transitively(vec![entry_source.clone()], index, facts)?;
     let mut sources = sources;
-    if !sources.iter().any(|s| s.path == rel_path) {
+    if !sources
+        .iter()
+        .any(|s| s.path == rel_path || same_canonical_file(&s.path, &rel_path))
+    {
         sources.push(entry_source);
     }
     Ok(sources)
@@ -11871,9 +11924,10 @@ mod import_closure_equivalence_tests {
     use super::{
         build_module_graph_facts_live, build_module_index, build_multi_entry_index,
         closure_subject_for_entry, default_source_roots, floor_discovery_path_excluded,
-        import_closure_live_paths, module_graph_facts_build_count_for_test,
-        reset_module_graph_facts_build_count_for_test, resolve_transitively,
-        resolve_transitively_bfs_legacy, witness_layer_roots, workspace_relative_repo_path,
+        import_closure_live_paths, load_sources_for_entry_with_index,
+        module_graph_facts_build_count_for_test, reset_module_graph_facts_build_count_for_test,
+        resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
+        witness_layer_roots, workspace_relative_repo_path,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::{Path, PathBuf};
@@ -12218,6 +12272,29 @@ mod import_closure_equivalence_tests {
             1,
             "multi-entry resolve_transitively must not re-scan when facts are threaded"
         );
+    }
+
+    #[test]
+    fn load_sources_for_entry_does_not_duplicate_entry_under_path_alias() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace root");
+        let roots = default_source_roots();
+        let index = build_module_index(&roots);
+        let facts = build_module_graph_facts_live(&roots);
+        let entry_rel = "src/v2/workflow/floor_diff_observe.dag";
+        let sources =
+            load_sources_for_entry_with_index(&index, &facts, entry_rel).expect("load closure");
+        let entry_norm = workspace_relative_repo_path(entry_rel);
+        let entry_count = sources
+            .iter()
+            .filter(|s| workspace_relative_repo_path(&s.path) == entry_norm)
+            .count();
+        assert_eq!(
+            entry_count, 1,
+            "relative entry path must not duplicate an absolute-indexed closure member"
+        );
+        resolve_entry_with_index(&build_multi_entry_index(&roots), entry_rel)
+            .expect("floor_diff_observe must resolve without duplicate-module error");
     }
 
     #[test]
