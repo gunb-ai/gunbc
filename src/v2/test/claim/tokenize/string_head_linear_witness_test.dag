@@ -48,14 +48,6 @@ data shlw_trunc_quarter_path: String = "src/v2/test/fixture/census_path_trunc/qu
 data shlw_trunc_half_path: String = "src/v2/test/fixture/census_path_trunc/half.txt"
 data shlw_trunc_full_path: String = "src/v2/test/fixture/census_path_trunc/full.txt"
 
-data shlw_trunc_byte_sizes: List<Int> = Cons {
-  head: 2185,
-  tail: Cons {
-    head: 4370,
-    tail: Cons { head: 8741, tail: Cons { head: 17483, tail: Empty } }
-  }
-}
-
 data shlw_note: String = "string_head uses list_head in src/v2/std/text.dag:34-38 (restored 43007e788b after accidental 8b328359 revert). R1: per-char string_head on native Str was Poly(2) via fold_list_right materialization. Executable scale bisect: string_head_linear_trunc_fixtures_tokenize_accept_holds on committed census_path_trunc byte-prefix fixtures (2185/4370/8741/17483 B); wall-clock ~2x doubling ratios live in manual/tokenize_linear_receipt.dag only."
 
 fn shlw_first_token_lexeme(tokens: List<Token>) -> String {
