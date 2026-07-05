@@ -148,12 +148,6 @@ fn child_node(name: String, b: ByteSize) -> BudgetNode {
   }
 }
 
-
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_desired,
-  gunbc_runner_slice_cap_declared
-}
-
 data gunbc_runner_pool_budget: ByteSize = gunbc_runner_slice_cap_declared()
 
 data gunbc_per_runner_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_max
