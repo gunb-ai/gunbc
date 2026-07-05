@@ -3364,6 +3364,41 @@ fn eval_algebra_method(
             }
         }
 
+        // These 4 arms were absent here but present in the free-function builtin dispatch --
+        // eval_algebra_method (method/pipe calls) and that dispatch (direct calls) are two
+        // surfaces over one builtin set that have diverged; they should be one authority.
+        // Pure-eval logic, in scope of ROADMAP HAND kernel D (`v1_interpreter` pure-eval
+        // dissolution, docs/plans/interpreter-kernel-d.md): dissolution trigger is the
+        // pure-eval seam (`emit_host` transport wiring) grounding this dispatch into
+        // `v2.compiler.eval`, at which point per-builtin arms stop being hand-Rust here.
+        "map_keys" => {
+            let m = expect_map(&receiver, "map_keys")?;
+            let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
+            Ok(list_value((keys)))
+        }
+
+        "map_values" => {
+            let m = expect_map(&receiver, "map_values")?;
+            let vals: Vec<Value> = m.values().cloned().collect();
+            Ok(list_value((vals)))
+        }
+
+        "map_contains_key" | "map_has" => {
+            let m = expect_map(&receiver, "map_contains_key")?;
+            let key = args.first().ok_or_else(|| InterpError::TypeError {
+                msg: "map_contains_key requires a key argument".to_string(),
+            })?;
+            match CanonKey::new(key.clone()) {
+                Some(ck) => Ok(Value::Bool(m.contains_key(&ck))),
+                None => Ok(Value::Bool(false)),
+            }
+        }
+
+        "map_is_empty" => {
+            let m = expect_map(&receiver, "map_is_empty")?;
+            Ok(Value::Bool(m.is_empty()))
+        }
+
         "insert" | "map_insert" => {
             let m = expect_map(&receiver, "insert")?;
             let (key, val) = match args {

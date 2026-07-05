@@ -24,16 +24,18 @@ import v2.workflow.affected_set_floor_runner {
   FrontierProduced,
   RunWitness,
   SkipAssumedGreen,
+  Refused,
+  DiffObservationRefusal,
+  FrontierQueryRefusal,
   floor_precompute_would_skip,
   floor_witness_run_disposition
 }
 
-data provenance_fail_closed_contract_note: String = "Scout fixture (#6105): fail-closed contract for affected-set witness disposition. Provenance ABSENT (committed host_source_root_ingest_manifest is Empty) => witness RUNS and precompute must NOT skip (run-all posture). Provenance PRESENT (frontier produced, witness off-frontier) => witness SKIPs => smaller affected set than run-all."
+data provenance_fail_closed_contract_note: String = "Scout fixture (#6105), re-ruled 2026-07-05: refusal contract for affected-set witness disposition. Provenance ABSENT (frontier query fails) => the row REFUSES (Refused/FrontierQueryRefusal — counted, typed, located; witness NOT run; siblings continue) and precompute must NOT skip. It never widens to a run-all posture: a failure arm refuses, never widens (DESIGN section 5). Provenance PRESENT (frontier produced, witness off-frontier) => witness SKIPs => smaller affected set."
 
-data scout_manifest_provenance_live: Bool =
-  host_source_root_ingest_coverage_receipt.coverage_complete
-    && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0)
-    && (length(xs: host_source_root_ingest) > 0)
+data scout_manifest_provenance_note: String = "This entry was NEVER parseable until PR-A: the multiline data initializer (a newline directly after =) is outside the v1 grammar, so every prior consumer of this file was specification-without-execution — the contract was asserted by nothing. Joined to one line; the contract test now runs by execution."
+
+data scout_manifest_provenance_live: Bool = host_source_root_ingest_coverage_receipt.coverage_complete && (host_source_root_ingest_coverage_receipt.ingest_read_count > 0) && (length(xs: host_source_root_ingest) > 0)
 
 data scout_unrelated_frontier_node: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^scout_unrelated_frontier_symbol } },
@@ -69,14 +71,19 @@ data scout_provenance_absent_frontier: FloorRerunFrontier = FrontierFailClosed {
 
 test fn provenance_fail_closed_contract_holds() -> Bool {
   let manifest_absent = scout_manifest_provenance_live == false
-  let absent_witness_runs = match floor_witness_run_disposition(
+  let absent_witness_refuses = match floor_witness_run_disposition(
     diff: scout_nonempty_diff,
     frontier: scout_provenance_absent_frontier,
     touches_frontier: false,
     function_edited: false,
     entry_file_touched: false
   ) {
-    RunWitness { reason: _ } => true
+    Refused { cause: cause } =>
+      match cause {
+        FrontierQueryRefusal { reason: reason } => reason == "provenance unavailable"
+        DiffObservationRefusal { reason: _ } => false
+      }
+    RunWitness { reason: _ } => false
     SkipAssumedGreen => false
   }
   let present_witness_skips = match floor_witness_run_disposition(
@@ -88,6 +95,7 @@ test fn provenance_fail_closed_contract_holds() -> Bool {
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
+    Refused { cause: _ } => false
   }
   let absent_precompute_runs_all = !floor_precompute_would_skip(
     diff: scout_nonempty_diff,
@@ -95,5 +103,5 @@ test fn provenance_fail_closed_contract_holds() -> Bool {
     edited_test_fn_count: 0,
     touched_entry_file_count: 0
   )
-  manifest_absent && absent_witness_runs && present_witness_skips && absent_precompute_runs_all
+  manifest_absent && absent_witness_refuses && present_witness_skips && absent_precompute_runs_all
 }

@@ -1,0 +1,5 @@
+module v2.test.manual.forensics_6280_synth_decoy_04
+
+type SynthDecoy04
+  = SynthDecoy04One { note: String }
+  | SynthDecoy04Two { note: String }

@@ -1,12 +1,21 @@
 module gunbc.ci_compile_measurement
 
-import std.measure { ByteSize }
+import std.measure { ByteSize, byte_size }
 import std.types { Int }
+import std.disposition { Disposition, Terminal }
 
 type CompileJobMeasurement
   = CompileJobMeasured { per_rustc_peak: ByteSize, procs_per_job: Int, pids_budget: Int }
   | CompileJobUnmeasured
 
-data gunbc_ci_compile_measurement: CompileJobMeasurement = CompileJobUnmeasured
+data gunbc_ci_compile_measurement: CompileJobMeasurement = CompileJobMeasured {
+  per_rustc_peak: byte_size(3221225472),
+  procs_per_job: 256,
+  pids_budget: 16384,
+}
+
+data gunbc_ci_compile_measurement_source: Disposition = Terminal {
+  reason: "Stamped 2026-07-05 from fleet receipts. per_rustc_peak = 3 GiB: the operator's build-token demand class (2026-07-01 directive, roadmap 2-admission-model: 1 core -> 3 GiB + swap per token), an upper budget consistent with the measured whole-job cgroup peak 2933690368 bytes at CARGO_BUILD_JOBS=1 (rust_tests cgroup-peak step, run 28731491727, srv1-03). pids_budget = 16384: measured pids.max on the actions-runner@ slot cgroup, same run (pids.current=200 at that width, so 16384 is the enforcement wall not a working point). procs_per_job = 256: debug codegen-units fan-out ceiling per rustc (compute-envelope-model.md section 1, the sccache x codegen-units EAGAIN incident) - conservative; release builds fan out less. Re-stamp when the fleet or the token class changes; the width fold (std.realization_width.process_memory_aware_spawn_width) applies its own 4/5 safety fraction on the memory axis."
+}
 
 data gunbc_ci_compile_conservative_fallback_jobs: Int = 1
