@@ -1,7 +1,5 @@
 module test.retirement.model
 
-import v2.std.text { String }
-
 type RetirementDisposition
   = DeleteRedundant { covered_by: String }
   | DeleteLowValue { reason: String }
