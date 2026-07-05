@@ -131,6 +131,15 @@ const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     // regen is unblocked (04_resolve.dag) and std.content_hash memo rows emit. Regen without
     // this guard reverted to DagCollectPending / O(M²) three times (90ad8fa, 42c8f3d, …).
     // Dissolution: regen_stage0 --verify green with .dag model = emitted seed; drop from here.
+    // Re-homed dissolution triggers from the (unparseable) .dag comments #6242 added:
+    //  - dag_collect_support.dag fp memo: ground dag_node_surface_fingerprint_memo on
+    //    std.content_hash + a node-keyed memo table once v2 adoption clears for this stage
+    //    (realization threads a per-collect memo reset at collect_dag_nodes entry; the Rust
+    //    seed uses Rc::as_ptr until then).
+    //  - dag_collect.dag collision_errors threading: drop once synthetic-key construction
+    //    proof is a typed wall (key embeds fp => key-equal => fp-equal); kept for the
+    //    emit_dag gate shape. Synthetic keys embed the fingerprint; the Absent branch must
+    //    not re-hash.
     "v1_compiler_dag_collect.rs",
     "v1_compiler_dag_collect_support.rs",
 ];
