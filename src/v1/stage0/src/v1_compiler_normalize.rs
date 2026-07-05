@@ -32,7 +32,7 @@ pub fn check_bare_containers(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let has_structure = ((match n.body.clone() {
+        let has_structure = ((match (*n.body).clone() {
             Some(_) => true,
             None => false,
         } || ((n.uses.clone().len() as i64) > 0))
@@ -54,8 +54,8 @@ pub fn check_bare_containers(
                     {
                         Rc::new(vec![make_error_node(
                             Rc::new(CompilerDiagnostic::ArityMismatch {
-                                name: nname.clone(),
-                                expected: expected.clone(),
+                                name: nname,
+                                expected: expected,
                                 got: 0,
                                 span: n.span.clone(),
                             }),
@@ -98,28 +98,22 @@ pub fn check_bare_containers(
             }
             __result
         });
-        let type_ann_diags = match n.type_annotation.clone() {
-            Some(ta) => {
-                check_bare_containers(ta.clone(), module_name.clone(), source_indices.clone())
-            }
+        let type_ann_diags = match (*n.type_annotation).clone() {
+            Some(ta) => check_bare_containers(ta, module_name.clone(), source_indices.clone()),
             None => Rc::new(vec![]),
         };
-        let body_diags = match n.body.clone() {
-            Some(b) => {
-                check_bare_containers(b.clone(), module_name.clone(), source_indices.clone())
-            }
+        let body_diags = match (*n.body).clone() {
+            Some(b) => check_bare_containers(b, module_name.clone(), source_indices.clone()),
             None => Rc::new(vec![]),
         };
         let inferred_diags = if ((n.params.clone().len() as i64) > 0) {
             Rc::new(vec![])
         } else {
-            match n.inferred.clone() {
-                Some(inf) => match (*inf.clone()).clone() {
-                    InferredNode::Resolved { node: rn, .. } => check_bare_containers(
-                        rn.clone(),
-                        module_name.clone(),
-                        source_indices.clone(),
-                    ),
+            match (*n.inferred).clone() {
+                Some(inf) => match (*inf).clone() {
+                    InferredNode::Resolved { node: rn, .. } => {
+                        check_bare_containers(rn, module_name.clone(), source_indices.clone())
+                    }
                     _ => Rc::new(vec![]),
                 },
                 None => Rc::new(vec![]),
@@ -187,14 +181,17 @@ pub fn normalize_graph(
             for m in graph.modules.clone().iter().cloned() {
                 __result.extend(
                     (*{
-                        let items = module_items(m.module.clone());
+                        let items = module_items((*m.module).clone());
                         Rc::new({
                             let mut __result = Vec::new();
                             for item in items.clone().iter().cloned() {
                                 __result.extend(
                                     (*check_bare_containers(
                                         item.clone(),
-                                        authored_name_at(source_indices.clone(), m.module.clone()),
+                                        authored_name_at(
+                                            source_indices.clone(),
+                                            (*m.module).clone(),
+                                        ),
                                         source_indices.clone(),
                                     ))
                                     .iter()

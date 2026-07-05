@@ -138,7 +138,7 @@ pub fn parse_href_scheme(url: String) -> Rc<ParsedHrefScheme> {
                                     })
                                 } else {
                                     if (v1_rt::starts_with(s.clone(), "mailto:".to_string())
-                                        || v1_rt::starts_with(s.clone(), "MAILTO:".to_string()))
+                                        || v1_rt::starts_with(s, "MAILTO:".to_string()))
                                     {
                                         Rc::new(ParsedHrefScheme::HrefScheme {
                                             scheme: UriScheme::Mailto,

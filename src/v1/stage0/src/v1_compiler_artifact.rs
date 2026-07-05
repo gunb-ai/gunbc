@@ -94,7 +94,7 @@ pub fn plan_artifacts(rule: Rc<PartitionRule>) -> Rc<ArtifactPlan> {
         PartitionRule::Explicit {
             artifacts: arts, ..
         } => Rc::new(ArtifactPlan {
-            artifacts: arts.clone(),
+            artifacts: arts,
             boundaries: Rc::new(vec![]),
         }),
     }

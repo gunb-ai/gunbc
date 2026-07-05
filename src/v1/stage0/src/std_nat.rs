@@ -29,16 +29,16 @@ pub fn nat_compare(a: Nat, b: Nat) -> Ordering {
 
 pub fn nat_max(a: Nat, b: Nat) -> Nat {
     if (a.clone() > b.clone()) {
-        a.clone()
+        a
     } else {
-        b.clone()
+        b
     }
 }
 
 pub fn nat_min(a: Nat, b: Nat) -> Nat {
     if (a.clone() < b.clone()) {
-        a.clone()
+        a
     } else {
-        b.clone()
+        b
     }
 }

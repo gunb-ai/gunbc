@@ -229,12 +229,6 @@ pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
 }
 
-pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
-    let mut keys = map_keys(m);
-    keys.sort();
-    keys
-}
-
 pub fn map_is_empty<K, V>(m: &HashMap<K, V>) -> bool {
     m.is_empty()
 }
@@ -335,12 +329,11 @@ pub fn replace(s: String, from: String, to: String) -> String {
 // will call these. Read-only functions (map_get, map_keys, map_values, lookup,
 // map_contains_key, map_has) work with Rc<HashMap> via auto-deref.
 
-// take_owned_counted: the fail-closed replacement for the silent
-// `Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())` fallback (DESIGN.md §5:
-// a failure arm must refuse or be counted, never silently widen). The ownership
-// proof licenses the take-owned; a shared Rc at runtime is a proof deficit whose
-// per-site frequency must stay observable, so the clone arm counts per emitted
-// site (site = "<module>:<span_start>" of the use-site the emitter rewrote).
+// take_owned_counted: fail-closed replacement for the silent
+// Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone()) fallback (DESIGN.md 5:
+// a failure arm must refuse or be counted, never silently widen). A shared Rc
+// at a proof-licensed take-owned site is a proof deficit; the clone arm counts
+// per emitted site so the deficit frequency stays observable.
 thread_local! {
     static TAKE_OWNED_CLONE_FALLBACKS: std::cell::RefCell<HashMap<&'static str, u64>> =
         std::cell::RefCell::new(HashMap::new());

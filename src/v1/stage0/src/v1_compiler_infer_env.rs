@@ -17,92 +17,18 @@ use crate::NonEmptyVec;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicU64, Ordering};
-
-// 🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0).
-static FLATTEN_VISIBLE_PARENT_RECURSES: AtomicU64 = AtomicU64::new(0);
-static BUILD_TYPE_ENV_CALLS: AtomicU64 = AtomicU64::new(0);
-static MERGE_TYPE_ENV_CACHE_CALLS: AtomicU64 = AtomicU64::new(0);
-static REWIRE_TYPE_ENV_PARENT_LINKS_CALLS: AtomicU64 = AtomicU64::new(0);
-static REWIRE_TYPE_ENV_IMPORT_STR_BINDING_CALLS: AtomicU64 = AtomicU64::new(0);
-
-pub fn flatten_visible_parent_recurses() -> u64 {
-    FLATTEN_VISIBLE_PARENT_RECURSES.load(Ordering::Relaxed)
-}
-
-pub fn build_type_env_calls() -> u64 {
-    BUILD_TYPE_ENV_CALLS.load(Ordering::Relaxed)
-}
-
-pub fn merge_type_env_cache_calls() -> u64 {
-    MERGE_TYPE_ENV_CACHE_CALLS.load(Ordering::Relaxed)
-}
-
-pub fn rewire_type_env_parent_links_calls() -> u64 {
-    REWIRE_TYPE_ENV_PARENT_LINKS_CALLS.load(Ordering::Relaxed)
-}
-
-pub fn rewire_type_env_import_str_binding_calls() -> u64 {
-    REWIRE_TYPE_ENV_IMPORT_STR_BINDING_CALLS.load(Ordering::Relaxed)
-}
-
-pub fn reset_flatten_visible_profile() {
-    FLATTEN_VISIBLE_PARENT_RECURSES.store(0, Ordering::Relaxed);
-}
-
-pub fn reset_type_env_lookup_profile() {
-    reset_flatten_visible_profile();
-    BUILD_TYPE_ENV_CALLS.store(0, Ordering::Relaxed);
-    MERGE_TYPE_ENV_CACHE_CALLS.store(0, Ordering::Relaxed);
-    REWIRE_TYPE_ENV_PARENT_LINKS_CALLS.store(0, Ordering::Relaxed);
-    REWIRE_TYPE_ENV_IMPORT_STR_BINDING_CALLS.store(0, Ordering::Relaxed);
-}
-
-pub fn maybe_print_type_env_lookup_profile() {
-    if std::env::var("GUNBC_TYPE_ENV_PROFILE").ok().as_deref() == Some("1") {
-        eprintln!(
-            "type_env profile: flatten_parent_recurses={} build_type_env_calls={} merge_cache_calls={} rewire_parent_links={} rewire_import_str={}",
-            flatten_visible_parent_recurses(),
-            build_type_env_calls(),
-            merge_type_env_cache_calls(),
-            rewire_type_env_parent_links_calls(),
-            rewire_type_env_import_str_binding_calls(),
-        );
-    }
-}
-
-pub fn record_flatten_visible_parent_recurse() {
-    FLATTEN_VISIBLE_PARENT_RECURSES.fetch_add(1, Ordering::Relaxed);
-}
-
-pub fn record_build_type_env_call() {
-    BUILD_TYPE_ENV_CALLS.fetch_add(1, Ordering::Relaxed);
-}
-
-pub fn record_rewire_type_env_parent_links_call() {
-    REWIRE_TYPE_ENV_PARENT_LINKS_CALLS.fetch_add(1, Ordering::Relaxed);
-}
-
-pub fn record_rewire_type_env_import_str_binding_call() {
-    REWIRE_TYPE_ENV_IMPORT_STR_BINDING_CALLS.fetch_add(1, Ordering::Relaxed);
-}
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TypeEnv {
     pub bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
     pub str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
     pub ancestry_str_bindings: Rc<HashMap<String, Rc<TypeBinding>>>,
-    #[serde(skip, default = "empty_type_env_parents")]
     pub parents: Rc<Vec<Rc<TypeEnv>>>,
     pub recursive_types: Rc<Vec<i64>>,
     pub recursive_type_set: Rc<HashMap<i64, bool>>,
     pub inductive_fields: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub intern_table: Rc<InternTable>,
-}
-
-fn empty_type_env_parents() -> Rc<Vec<Rc<TypeEnv>>> {
-    Rc::new(vec![])
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -120,6 +46,60 @@ pub struct TypeEnvCache {
     pub variant_locals: Rc<HashMap<String, Rc<TypeBinding>>>,
 }
 
+pub fn type_env_compositional_authority_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: compositional TypeEnv.parents + ancestry_str_bindings rewire passes in stage0 — ground in v2 std.type_env when PerformanceReceipt subsumes type_env_work_count_profiling_dissolution_trigger.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_env_profiling_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: host atomic profiling until PerformanceReceipt carrier lands (realization-measurement-loop Phase 0).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_env_work_count_profiling_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: build_type_env + merge_type_env_cache + rewire pass counters — fold into PerformanceReceipt at realization-measurement-loop Phase 0.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_env_cache_parallel_repr_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟡 dissolve-on: TypeEnvCache String-keyed str_bindings and cycle_set_str parallel to TypeEnv Int-keyed bindings and recursive_type_set — fold into single authority at v2 regen.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn type_env_cache_key_determinism_authority() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Cache-key determinism for resolved_graph disk tier: resolved_graph_cache::encode_cache_payload applies sort_json_value at serialization boundary (not merge_type_env_cache / build_type_env hot paths). B2 de-fork: Rust seed must match this .dag plain map_merge authority.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn flatten_visible_bindings_invariant() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "B1 build_type_env populates ancestry_str_bindings for import chains; lookup_binding_by_name is fail-closed on miss (str_bindings then ancestry_str_bindings then intern+bindings only — no flatten_visible_bindings fallback; 6de571f3 reverted in 80ab63a). flatten_visible_bindings: parent fold map_merge(flatten(parent), acc) — earlier env.parents win over later on collision; local map_merge(ancestry_str_bindings, str_bindings) then map_merge(from_parents, local) — str_bindings wins ancestry, local wins parents. Parent-recurse counter is stub-only on import chains (witness flatten_visible_parent_recurses==0); merge_envs still calls flatten for one-shot env merge.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
     Rc::new(TypeEnvCache {
         deps_map: v1_rt::rc_empty_map::<String, Rc<Vec<String>>>(),
@@ -129,16 +109,34 @@ pub fn empty_type_env_cache() -> Rc<TypeEnvCache> {
     })
 }
 
-pub fn record_merge_type_env_cache_call() {
-    MERGE_TYPE_ENV_CACHE_CALLS.fetch_add(1, Ordering::Relaxed);
+pub fn build_type_env_calls() -> i64 {
+    0
+}
+
+pub fn merge_type_env_cache_calls() -> i64 {
+    0
+}
+
+pub fn rewire_type_env_parent_links_calls() -> i64 {
+    0
+}
+
+pub fn rewire_type_env_import_str_binding_calls() -> i64 {
+    0
+}
+
+pub fn type_env_counter_dissolution() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "The 2026-07-04 use-site inference pathology instrument (env-amplification counters) dissolves with the pathology it measured: the record_* statement calls and their stub fns are deleted (they were also the only corpus instances of a statement-then-expression block the Rust emitter mis-renders — that emitter deficiency is ledgered with the emit-stage work). The Int getter stubs below stay for API compatibility with the hand-maintained phase_profile heartbeat until that consumer drops them.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -> Rc<TypeEnvCache> {
-    record_merge_type_env_cache_call();
     Rc::new(TypeEnvCache {
         deps_map: v1_rt::rc_map_merge(base.deps_map.clone(), overlay.deps_map.clone()),
-        // Match 04_env.dag authority (plain map_merge). Cache-key determinism lives at
-        // resolved_graph_cache::encode_cache_payload (sort_json_value), not here.
         str_bindings: v1_rt::rc_map_merge(base.str_bindings.clone(), overlay.str_bindings.clone()),
         cycle_set_str: v1_rt::rc_map_merge(
             base.cycle_set_str.clone(),
@@ -153,8 +151,8 @@ pub fn merge_type_env_cache(base: Rc<TypeEnvCache>, overlay: Rc<TypeEnvCache>) -
 
 pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
     match intern_find(env.intern_table.clone(), name) {
-        Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
-            Some(binding) => Some(binding.clone()),
+        Some(ident) => match v1_rt::map_get(&env.bindings.clone(), ident) {
+            Some(binding) => Some(binding),
             None => None,
         },
         None => None,
@@ -164,42 +162,21 @@ pub fn lookup_binding_local_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc
 pub fn str_bindings_from_bindings(
     bindings: Rc<HashMap<i64, Rc<TypeBinding>>>,
 ) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    let mut pairs: Vec<(String, Rc<TypeBinding>)> = bindings
-        .values()
-        .map(|binding| (binding.name.clone(), binding.clone()))
-        .collect();
-    pairs.sort_by(|a, b| a.0.cmp(&b.0));
-    pairs.into_iter().fold(
+    Rc::new(v1_rt::map_values(&bindings)).iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, (name, binding)| {
-            v1_rt::rc_map_insert(acc, name, binding)
-        },
-    )
-}
-
-// Serialization-boundary canonicalization only (resolved_graph_cache::sort_json_value
-// subsumes this for disk cache; do not call from build_type_env / merge_type_env_cache).
-#[allow(dead_code)]
-pub fn deterministic_str_binding_map(
-    m: Rc<HashMap<String, Rc<TypeBinding>>>,
-) -> Rc<HashMap<String, Rc<TypeBinding>>> {
-    let mut keys: Vec<String> = m.keys().cloned().collect();
-    keys.sort();
-    keys.iter().fold(
-        v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
-        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, key: &String| {
-            v1_rt::rc_map_insert(acc, key.clone(), m.get(key).unwrap().clone())
+        |acc: Rc<HashMap<String, Rc<TypeBinding>>>, binding: Rc<TypeBinding>| {
+            v1_rt::rc_map_insert(acc, binding.name.clone(), binding.clone())
         },
     )
 }
 
 pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeBinding>> {
-    match v1_rt::map_get(&env.str_bindings, name.clone()) {
-        Some(binding) => Some(binding.clone()),
-        None => match v1_rt::map_get(&env.ancestry_str_bindings, name.clone()) {
-            Some(binding) => Some(binding.clone()),
-            None => match intern_find(env.intern_table.clone(), name) {
-                Some(id) => v1_rt::map_get(&env.bindings, id),
+    match v1_rt::map_get(&env.str_bindings.clone(), name.clone()) {
+        Some(binding) => Some(binding),
+        None => match v1_rt::map_get(&env.ancestry_str_bindings.clone(), name.clone()) {
+            Some(binding) => Some(binding),
+            None => match intern_find(env.intern_table.clone(), name.clone()) {
+                Some(id) => v1_rt::map_get(&env.bindings.clone(), id),
                 None => None,
             },
         },
@@ -208,10 +185,10 @@ pub fn lookup_binding_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<TypeB
 
 pub fn lookup_binding(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<TypeBinding>> {
     match v1_rt::map_get(&env.bindings.clone(), ident.clone()) {
-        Some(binding) => Some(binding.clone()),
+        Some(binding) => Some(binding),
         None => {
             let name = intern_str(env.intern_table.clone(), ident.clone());
-            lookup_binding_by_name(env, name)
+            lookup_binding_by_name(env.clone(), name)
         }
     }
 }
@@ -224,22 +201,22 @@ pub fn is_recursive_type(env: Rc<TypeEnv>, ident: i64) -> bool {
 }
 
 pub fn is_recursive_type_by_name(env: Rc<TypeEnv>, name: String) -> bool {
-    match intern_find(env.intern_table.clone(), name.clone()) {
-        Some(id) => is_recursive_type(env.clone(), id.clone()),
+    match intern_find(env.intern_table.clone(), name) {
+        Some(id) => is_recursive_type(env.clone(), id),
         None => false,
     }
 }
 
 pub fn lookup_type(env: Rc<TypeEnv>, ident: i64) -> Option<Rc<Node>> {
     match lookup_binding(env, ident) {
-        Some(binding) => Some(binding.resolved.clone()),
+        Some(binding) => Some((*binding.resolved).clone()),
         None => None,
     }
 }
 
 pub fn lookup_type_by_name(env: Rc<TypeEnv>, name: String) -> Option<Rc<Node>> {
     match lookup_binding_by_name(env, name) {
-        Some(binding) => Some(binding.resolved.clone()),
+        Some(binding) => Some((*binding.resolved).clone()),
         None => None,
     }
 }
@@ -250,31 +227,39 @@ pub fn authored_name(env: Rc<TypeEnv>, node: Rc<Node>) -> String {
 
 pub fn lookup_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> Option<Rc<Node>> {
     match node.ident.clone() {
-        Some(id) => lookup_type(env.clone(), id.clone()),
+        Some(id) => lookup_type(env.clone(), id),
         None => lookup_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
 }
 
 pub fn is_recursive_type_for(env: Rc<TypeEnv>, node: Rc<Node>) -> bool {
     match node.ident.clone() {
-        Some(id) => is_recursive_type(env.clone(), id.clone()),
+        Some(id) => is_recursive_type(env.clone(), id),
         None => is_recursive_type_by_name(env.clone(), authored_name(env.clone(), node.clone())),
     }
 }
 
 pub fn inductive_fields_for(env: Rc<TypeEnv>, type_name: String) -> Rc<Vec<Rc<InductiveField>>> {
-    match v1_rt::map_get(&env.inductive_fields.clone(), type_name.clone()) {
-        Some(fields) if !fields.is_empty() => fields.clone(),
-        _ => {
-            for parent in env.parents.iter() {
-                let fields = inductive_fields_for(parent.clone(), type_name.clone());
-                if !fields.is_empty() {
-                    return fields;
-                }
-            }
-            Rc::new(vec![])
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let local = match v1_rt::map_get(&env.inductive_fields.clone(), type_name.clone()) {
+            Some(fields) => fields,
+            None => Rc::new(vec![]),
+        };
+        if ((local.clone().len() as i64) > 0) {
+            local
+        } else {
+            env.parents.clone().iter().cloned().fold(
+                Rc::new(vec![]),
+                |acc: Rc<Vec<Rc<InductiveField>>>, parent: Rc<TypeEnv>| {
+                    if ((acc.clone().len() as i64) > 0) {
+                        acc.clone()
+                    } else {
+                        inductive_fields_for(parent.clone(), type_name.clone())
+                    }
+                },
+            )
         }
-    }
+    })
 }
 
 pub fn is_inductive_field(
@@ -306,7 +291,7 @@ pub fn put_inductive_field(
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
-            Some(fs) => fs.clone(),
+            Some(fs) => fs,
             None => Rc::new(vec![]),
         };
         v1_rt::rc_map_insert(
@@ -336,7 +321,7 @@ pub fn put_inductive_field_cross(
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
         let existing = match v1_rt::map_get(&fields, type_name.clone()) {
-            Some(fs) => fs.clone(),
+            Some(fs) => fs,
             None => Rc::new(vec![]),
         };
         v1_rt::rc_map_insert(
@@ -361,7 +346,7 @@ pub fn merge_inductive_fields(
     right: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     Rc::new(v1_rt::map_keys(&right)).iter().cloned().fold(
-        left.clone(),
+        left,
         |acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>, type_name: String| {
             match v1_rt::map_get(&right, type_name.clone()) {
                 Some(incoming) => {
@@ -400,12 +385,27 @@ pub fn inductive_fields_list_to_map(
     )
 }
 
+pub fn flatten_visible_parent_recurses() -> i64 {
+    0
+}
+
+pub fn reset_flatten_visible_profile() -> () {
+    {}
+}
+
+pub fn reset_type_env_lookup_profile() -> () {
+    reset_flatten_visible_profile()
+}
+
+pub fn maybe_print_type_env_lookup_profile() -> () {
+    {}
+}
+
 pub fn flatten_visible_bindings(env: Rc<TypeEnv>) -> Rc<HashMap<String, Rc<TypeBinding>>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let from_parents = env.parents.clone().iter().cloned().fold(
             v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
             |acc: Rc<HashMap<String, Rc<TypeBinding>>>, parent: Rc<TypeEnv>| {
-                FLATTEN_VISIBLE_PARENT_RECURSES.fetch_add(1, Ordering::Relaxed);
                 v1_rt::rc_map_merge(flatten_visible_bindings(parent.clone()), acc)
             },
         );
@@ -476,7 +476,7 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
             recursive_type_set: merged_recursive_set,
             inductive_fields: merged_inductive_fields,
             source_indices: merged_source_indices,
-            intern_table: merged_intern_table.clone(),
+            intern_table: merged_intern_table,
         })
     }
 }

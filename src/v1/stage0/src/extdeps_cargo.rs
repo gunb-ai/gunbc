@@ -64,14 +64,14 @@ pub fn default_rust_edition() -> RustEdition {
     CACHED.with(|c: &RustEdition| c.clone())
 }
 
-pub fn min_cargo_version() -> CargoToolVersionFloor {
+pub fn min_cargo_version() -> SemVerConstraint {
     thread_local! {
-        static CACHED: CargoToolVersionFloor = {
+        static CACHED: SemVerConstraint = {
             serde_json::from_value(serde_json::json!(">= 1.56"))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &CargoToolVersionFloor| c.clone())
+    CACHED.with(|c: &SemVerConstraint| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -139,7 +139,7 @@ pub fn cargo_target_source_path(
                     segments: Rc::new(vec![
                         "src".to_string(),
                         "bin".to_string(),
-                        v1_rt::concat(name.clone(), ".rs".to_string()),
+                        v1_rt::concat(name, ".rs".to_string()),
                     ]),
                 })
             }
@@ -147,19 +147,19 @@ pub fn cargo_target_source_path(
         CargoTarget::CargoTest { name: name, .. } => Rc::new(FilePathParts {
             segments: Rc::new(vec![
                 "tests".to_string(),
-                v1_rt::concat(name.clone(), ".rs".to_string()),
+                v1_rt::concat(name, ".rs".to_string()),
             ]),
         }),
         CargoTarget::Example { name: name, .. } => Rc::new(FilePathParts {
             segments: Rc::new(vec![
                 "examples".to_string(),
-                v1_rt::concat(name.clone(), ".rs".to_string()),
+                v1_rt::concat(name, ".rs".to_string()),
             ]),
         }),
         CargoTarget::Bench { name: name, .. } => Rc::new(FilePathParts {
             segments: Rc::new(vec![
                 "benches".to_string(),
-                v1_rt::concat(name.clone(), ".rs".to_string()),
+                v1_rt::concat(name, ".rs".to_string()),
             ]),
         }),
     }

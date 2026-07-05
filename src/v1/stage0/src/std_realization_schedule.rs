@@ -36,8 +36,8 @@ pub enum CostBasis {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
     pub time: Rc<Measure<(), S, Nat>>,
-    pub space: Box<ByteSize>,
-    pub power: Box<Watt>,
+    pub space: ByteSize,
+    pub power: Watt,
     pub basis: CostBasis,
     pub _phantom: std::marker::PhantomData<S>,
 }
@@ -45,24 +45,28 @@ pub struct CostAccount<S> {
 pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time_measure(0),
-        space: Box::new(byte_size(0)),
-        power: Box::new(watt(0)),
+        space: byte_size(0),
+        power: watt(0),
         basis: CostBasis::Predicted,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn cost_account_measured<S>(time: Rc<Measure<(), S, Nat>>) -> Rc<CostAccount<S>> {
+pub fn cost_account_measured<S>(
+    time: Rc<Measure<(), S, Rc<CommutativeSemiring<Magnitude>>>>,
+) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time,
-        space: Box::new(byte_size(0)),
-        power: Box::new(watt(0)),
+        space: byte_size(0),
+        power: watt(0),
         basis: CostBasis::Measured,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Nat {
+pub fn cost_account_time_count<S>(
+    account: Rc<CostAccount<S>>,
+) -> Rc<CommutativeSemiring<Magnitude>> {
     measure_count(account.time.clone())
 }
 
@@ -79,7 +83,7 @@ pub struct ScheduleWitnessEntry {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RunnableMemoryPeak {
-    pub predicted_peak: Box<ByteSize>,
+    pub predicted_peak: ByteSize,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -108,10 +112,12 @@ pub fn runnable_memory_negligible() -> Rc<RunnableMemoryClass> {
     Rc::new(RunnableMemoryClass::RunnableMemoryNegligible)
 }
 
-pub fn runnable_memory_substantial(predicted_peak: ByteSize) -> Rc<RunnableMemoryClass> {
+pub fn runnable_memory_substantial(
+    predicted_peak: Rc<Measure<(), (), Nat>>,
+) -> Rc<RunnableMemoryClass> {
     Rc::new(RunnableMemoryClass::RunnableMemorySubstantial {
         peak: Rc::new(RunnableMemoryPeak {
-            predicted_peak: Box::new(predicted_peak),
+            predicted_peak: predicted_peak,
         }),
     })
 }
@@ -128,8 +134,8 @@ pub fn runnable_memory_class_eq(
         RunnableMemoryClass::RunnableMemorySubstantial { peak: lp, .. } => match (*right).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => false,
             RunnableMemoryClass::RunnableMemorySubstantial { peak: rp, .. } => {
-                (byte_size_count((*lp.predicted_peak).clone())
-                    == byte_size_count((*rp.predicted_peak).clone()))
+                (byte_size_count(lp.predicted_peak.clone())
+                    == byte_size_count(rp.predicted_peak.clone()))
             }
         },
     }
@@ -143,13 +149,13 @@ pub fn runnable_memory_substantial_sum(
         let left_count = match (*left).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => 0,
             RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-                byte_size_count((*p.predicted_peak).clone())
+                byte_size_count(p.predicted_peak.clone())
             }
         };
         let right_count = match (*right).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => 0,
             RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-                byte_size_count((*p.predicted_peak).clone())
+                byte_size_count(p.predicted_peak.clone())
             }
         };
         runnable_memory_substantial(byte_size((left_count + right_count)))
@@ -196,19 +202,17 @@ pub fn runnable_heavy_whole_tree_resolve(profile: Rc<RunnableResourceProfile>) -
     profile.heavy_whole_tree_resolve.clone()
 }
 
-pub fn runnable_predicted_space(profile: Rc<RunnableResourceProfile>) -> ByteSize {
+pub fn runnable_predicted_space(profile: Rc<RunnableResourceProfile>) -> Rc<Measure<(), (), Nat>> {
     match (*profile.memory.clone()).clone() {
         RunnableMemoryClass::RunnableMemoryNegligible => byte_size(0),
-        RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-            (*p.predicted_peak).clone()
-        }
+        RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => p.predicted_peak.clone(),
     }
 }
 
 pub fn runnable_profile(r: Rc<Runnable>) -> Rc<RunnableResourceProfile> {
     match (*r).clone() {
-        Runnable::RunnableSingleClaim { profile: p, .. } => p.clone(),
-        Runnable::RunnableDiscoveryBatch { profile: p, .. } => p.clone(),
+        Runnable::RunnableSingleClaim { profile: p, .. } => p,
+        Runnable::RunnableDiscoveryBatch { profile: p, .. } => p,
         Runnable::RunnableKernelWorkload {
             fused_op_count: _, ..
         } => runnable_resource_profile_negligible(),
@@ -219,7 +223,7 @@ pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
     match (*r).clone() {
         Runnable::RunnableDiscoveryBatch { .. } => false,
         Runnable::RunnableSingleClaim { profile: p, .. } => {
-            runnable_excludes_corpus_co_residence(p.clone())
+            runnable_excludes_corpus_co_residence(p)
         }
         Runnable::RunnableKernelWorkload {
             fused_op_count: _, ..
@@ -265,14 +269,14 @@ pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
 pub struct RealizationPlan<S> {
     pub target: ContentHash,
     pub objective: Rc<RealizationObjective>,
-    pub schedule: Box<Schedule>,
+    pub schedule: Schedule,
     pub total: Rc<CostAccount<S>>,
     pub _phantom: std::marker::PhantomData<S>,
 }
 
 pub fn runnable_step_label(r: Rc<Runnable>) -> String {
     match (*r).clone() {
-        Runnable::RunnableSingleClaim { function: f, .. } => f.clone(),
+        Runnable::RunnableSingleClaim { function: f, .. } => f,
         Runnable::RunnableDiscoveryBatch { .. } => "__discovery_corpus__".to_string(),
         Runnable::RunnableKernelWorkload {
             fused_op_count: _, ..
@@ -335,7 +339,7 @@ pub fn schedule_lens_violation_diagnostic(
             ScheduleLensViolation::CompileGateNotFirst {
                 expected: expected, ..
             } => Rc::new(LensVerdictDiagnostic {
-                reason: ("schedule_lens_compile_gate_not_first:".to_string() + &expected.clone()),
+                reason: ("schedule_lens_compile_gate_not_first:".to_string() + &expected),
                 at: at,
             }),
             ScheduleLensViolation::CorpusBeforeCompile => Rc::new(LensVerdictDiagnostic {
@@ -354,7 +358,7 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
     plan: Rc<RealizationPlan<S>>,
     compile_gate_fn: String,
 ) -> Rc<LensVerdict> {
-    if (((*plan.schedule).clone().len() as i64) == 0) {
+    if ((plan.schedule.clone().len() as i64) == 0) {
         Rc::new(LensVerdict::Violation {
             diagnostic: schedule_lens_violation_diagnostic(
                 Rc::new(ScheduleLensViolation::EmptySchedule),
@@ -362,7 +366,7 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
             ),
         })
     } else {
-        if (((*plan.schedule).clone().len() as i64) < 2) {
+        if ((plan.schedule.clone().len() as i64) < 2) {
             Rc::new(LensVerdict::Violation {
                 diagnostic: schedule_lens_violation_diagnostic(
                     Rc::new(ScheduleLensViolation::SingleBatchOnly),
@@ -371,7 +375,7 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
             })
         } else {
             {
-                let batch0 = (*plan.schedule).clone().first().cloned();
+                let batch0 = plan.schedule.clone().first().cloned();
                 if ((batch0.clone().expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) != 1) {
                     Rc::new(LensVerdict::Violation {
     diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileGateNotFirst {
@@ -386,13 +390,13 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
 }), compile_gate_fn.clone()),
 })
                     } else {
-                        if schedule_batch_contains_label(batch0.clone().expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), "__discovery_corpus__".to_string()) {
+                        if schedule_batch_contains_label(batch0.expect("fail-closed: an optional value flowed into non-optional parameter 0 of schedule_batch_contains_label (empty Optional at runtime)"), "__discovery_corpus__".to_string()) {
                             Rc::new(LensVerdict::Violation {
     diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CorpusBeforeCompile), compile_gate_fn.clone()),
 })
                         } else {
                             {
-                                let batch1 = (*plan.schedule).clone().get(1 as usize).cloned();
+                                let batch1 = plan.schedule.clone().get(1 as usize).cloned();
 if ((batch1.expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) < 2) {
                                     Rc::new(LensVerdict::Violation {
     diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::SingleBatchOnly), compile_gate_fn.clone()),
@@ -413,7 +417,7 @@ pub fn schedule_generates_same_batch_count<S>(
     left: Rc<RealizationPlan<S>>,
     right: Rc<RealizationPlan<S>>,
 ) -> bool {
-    (((*left.schedule).clone().len() as i64) == ((*right.schedule).clone().len() as i64))
+    ((left.schedule.clone().len() as i64) == (right.schedule.clone().len() as i64))
 }
 
 pub fn schedule_witness_entry_eq(a: Rc<ScheduleWitnessEntry>, b: Rc<ScheduleWitnessEntry>) -> bool {
@@ -488,10 +492,7 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                 function: rf,
                 profile: rp,
                 ..
-            } => {
-                (((le.clone() == re.clone()) && (lf.clone() == rf.clone()))
-                    && runnable_resource_profile_eq(lp.clone(), rp.clone()))
-            }
+            } => (((le == re) && (lf == rf)) && runnable_resource_profile_eq(lp, rp)),
             Runnable::RunnableDiscoveryBatch { .. } => false,
             Runnable::RunnableKernelWorkload {
                 fused_op_count: _, ..
@@ -520,14 +521,13 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                 profile: rp,
                 ..
             } => {
-                (((((((string_list_eq(lsr.clone(), rsr.clone())
-                    && string_list_eq(lsd.clone(), rsd.clone()))
-                    && schedule_witness_entry_list_eq(lex.clone(), rex.clone()))
-                    && (lskip.clone() == rskip.clone()))
-                    && string_list_eq(lex2.clone(), rex2.clone()))
-                    && string_list_eq(lsc.clone(), rsc.clone()))
-                    && (lwc.clone() == rwc.clone()))
-                    && runnable_resource_profile_eq(lp.clone(), rp.clone()))
+                (((((((string_list_eq(lsr, rsr) && string_list_eq(lsd, rsd))
+                    && schedule_witness_entry_list_eq(lex, rex))
+                    && (lskip == rskip))
+                    && string_list_eq(lex2, rex2))
+                    && string_list_eq(lsc, rsc))
+                    && (lwc == rwc))
+                    && runnable_resource_profile_eq(lp, rp))
             }
             Runnable::RunnableKernelWorkload {
                 fused_op_count: _, ..
@@ -542,7 +542,7 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
             Runnable::RunnableKernelWorkload {
                 fused_op_count: rcount,
                 ..
-            } => (lleft.clone() == rcount.clone()),
+            } => (lleft == rcount),
         },
     }
 }
@@ -602,7 +602,7 @@ pub fn schedule_generates_identical_schedule<S>(
     plan: Rc<RealizationPlan<S>>,
     schedule: Schedule,
 ) -> bool {
-    schedule_eq((*plan.schedule).clone(), schedule)
+    schedule_eq(plan.schedule.clone(), schedule)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]

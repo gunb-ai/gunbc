@@ -284,7 +284,7 @@ pub fn build_struct_field_summaries(
             |acc: Rc<HashMap<String, Rc<FieldSummary>>>, pair: (i64, Rc<Node>)| {
                 let idx = pair.0.clone();
                 let child = pair.1.clone();
-                if (child.inferred.clone() == None) {
+                if ((*child.inferred).clone() == None) {
                     acc.clone()
                 } else {
                     {
@@ -321,8 +321,8 @@ pub fn find_first_enum_field_node(
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
     match variants.first().cloned() {
-        Some(variant) => match find_child_named(variant.clone(), field_name, source_indices) {
-            Some(field_child) => Some(field_child.clone()),
+        Some(variant) => match find_child_named(variant, field_name, source_indices) {
+            Some(field_child) => Some(field_child),
             None => None,
         },
         None => None,
@@ -452,8 +452,7 @@ pub fn build_field_type_map(
 ) -> Rc<HashMap<String, String>> {
     children.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, child: Rc<Node>| match child
-            .inferred
+        |acc: Rc<HashMap<String, String>>, child: Rc<Node>| match (*child.inferred)
             .clone()
             .as_deref()
             .cloned()
@@ -463,8 +462,8 @@ pub fn build_field_type_map(
                     source_indices.clone(),
                     normalize_access_type_node(ft.clone()),
                 );
-                let ft_is_type_var = if (ft.inferred.clone() != None) {
-                    is_type_variable(ft.inferred.clone().clone().unwrap())
+                let ft_is_type_var = if ((*ft.inferred).clone() != None) {
+                    is_type_variable((*ft.inferred).clone().clone().unwrap())
                 } else {
                     false
                 };
@@ -489,7 +488,7 @@ pub fn build_type_summary(
     {
         if (((item.connective.clone() == Connective::NoConnective)
             || (item.connective.clone() == Connective::Arrow))
-            || (item.transport.clone() != None))
+            || ((*item.transport).clone() != None))
         {
             return None;
         }
@@ -504,7 +503,7 @@ pub fn build_type_summary(
         let has_fn = {
             let mut __found = false;
             for child in item.children.clone().iter().cloned() {
-                if match child.inferred.clone().as_deref().cloned() {
+                if match (*child.inferred).clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => {
                         (rt.connective.clone() == Connective::Arrow)
                     }
@@ -664,7 +663,7 @@ pub fn add_emit_item_summary(
                                     let v_has_fn = {
                                         let mut __found = false;
                                         for vc in variant.children.clone().iter().cloned() {
-                                            if match vc.inferred.clone().as_deref().cloned() {
+                                            if match (*vc.inferred).clone().as_deref().cloned() {
                                                 Some(InferredNode::Resolved {
                                                     node: rt, ..
                                                 }) => (rt.connective.clone() == Connective::Arrow),
@@ -708,8 +707,7 @@ pub fn add_emit_item_summary(
                 }
                 _ => state.type_summaries.clone(),
             };
-            let next_summaries =
-                v1_rt::rc_map_insert(with_variants, summary.name.clone(), summary.clone());
+            let next_summaries = v1_rt::rc_map_insert(with_variants, summary.name.clone(), summary);
             Rc::new(EmitInfoBuildState {
                 type_summaries: next_summaries,
             })

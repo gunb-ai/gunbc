@@ -73,6 +73,8 @@ const GENERATED_STAGE0_FILES: &[&str] = &[
     "v1_compiler_compile.rs",
     "v1_compiler_compiler_tests_rust.rs",
     "v1_compiler_complexity.rs",
+    "v1_compiler_dag_collect.rs",
+    "v1_compiler_dag_collect_support.rs",
     "v1_compiler_effect_derivation.rs",
     "v1_compiler_emit.rs",
     "v1_compiler_emit_core_support.rs",

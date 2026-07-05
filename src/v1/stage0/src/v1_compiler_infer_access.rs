@@ -83,8 +83,8 @@ pub fn keyed_collection_parts(
         match n.children.clone().first().cloned() {
             Some(key_child) => match n.children.clone().get(1 as usize).cloned() {
                 Some(value_child) => Some(Rc::new(KeyedCollectionParts {
-                    key_type: resolved_type(key_child.clone()),
-                    value_type: resolved_type(value_child.clone()),
+                    key_type: resolved_type(key_child),
+                    value_type: resolved_type(value_child),
                 })),
                 None => None,
             },
@@ -131,8 +131,8 @@ pub fn check_index_access_node(
             match keyed_collection_parts(normed.clone(), source_indices.clone()) {
                 Some(parts) => {
                     let key_diags = if node_type_equals(
-                        parts.key_type.clone(),
-                        normed_index.clone(),
+                        (*parts.key_type).clone(),
+                        normed_index,
                         source_indices.clone(),
                     ) {
                         Rc::new(vec![])
@@ -140,7 +140,7 @@ pub fn check_index_access_node(
                         Rc::new(vec![access_error("keyed collection index key type does not match the collection key type".to_string(), span.clone(), module_name)])
                     };
                     access_result(
-                        with_optional_cardinality(parts.value_type.clone()),
+                        with_optional_cardinality((*parts.value_type).clone()),
                         key_diags,
                         span.clone(),
                         "invalid keyed collection index access".to_string(),
@@ -171,10 +171,8 @@ pub fn check_index_access_node(
                         )) && index_is_int)
                         {
                             {
-                                let elem = for_each_element_type_node(
-                                    normed.clone(),
-                                    source_indices.clone(),
-                                );
+                                let elem =
+                                    for_each_element_type_node(normed, source_indices.clone());
                                 access_result(
                                     with_optional_cardinality(elem),
                                     Rc::new(vec![]),

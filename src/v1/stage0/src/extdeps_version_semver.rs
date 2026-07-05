@@ -55,7 +55,7 @@ pub struct SemVerVersion {
     pub build: Rc<Vec<Rc<SemVerIdentifier>>>,
 }
 
-pub fn semver_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
+pub fn semver_compare_non_negative_int(a: Nat, b: Nat) -> Ordering {
     nat_compare(a, b)
 }
 
@@ -63,7 +63,7 @@ pub fn semver_compare_identifier(a: Rc<SemVerIdentifier>, b: Rc<SemVerIdentifier
     match (*a).clone() {
         SemVerIdentifier::SemVerNumericIdentifier { value: av, .. } => match (*b).clone() {
             SemVerIdentifier::SemVerNumericIdentifier { value: bv, .. } => {
-                semver_compare_non_negative_int(av.clone(), bv.clone())
+                semver_compare_non_negative_int(av, bv)
             }
             SemVerIdentifier::SemVerAlphanumericIdentifier { label: _, .. } => Ordering::Less,
         },
@@ -73,7 +73,7 @@ pub fn semver_compare_identifier(a: Rc<SemVerIdentifier>, b: Rc<SemVerIdentifier
                 if (al.clone() < bl.clone()) {
                     Ordering::Less
                 } else {
-                    if (al.clone() > bl.clone()) {
+                    if (al > bl) {
                         Ordering::Greater
                     } else {
                         Ordering::Equal
@@ -142,20 +142,20 @@ pub fn semver_compare(a: Rc<SemVerVersion>, b: Rc<SemVerVersion>) -> Ordering {
                         Ordering::Equal => {
                             semver_compare_pre_release(a.pre_release.clone(), b.pre_release.clone())
                         }
-                        other => other.clone(),
+                        other => other,
                     }
                 }
-                other => other.clone(),
+                other => other,
             }
         }
-        other => other.clone(),
+        other => other,
     }
 }
 
 pub fn semver_identifier_label(id: Rc<SemVerIdentifier>) -> String {
     match (*id).clone() {
-        SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => format!("{}", v.clone()),
-        SemVerIdentifier::SemVerAlphanumericIdentifier { label: s, .. } => s.clone(),
+        SemVerIdentifier::SemVerNumericIdentifier { value: v, .. } => format!("{}", v),
+        SemVerIdentifier::SemVerAlphanumericIdentifier { label: s, .. } => s,
     }
 }
 
@@ -212,7 +212,7 @@ pub fn semver_identity_compare(a: NonEmptyStr, b: NonEmptyStr) -> Ordering {
     if (a.clone() == b.clone()) {
         Ordering::Equal
     } else {
-        if (a.clone() < b.clone()) {
+        if (a < b) {
             Ordering::Less
         } else {
             Ordering::Greater

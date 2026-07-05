@@ -117,16 +117,16 @@ pub fn emit_python(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
                 for tm in typed.modules.clone().iter().cloned() {
                     __result.push(emit_py_test_file(
                         authored_name_at(
-                            tm.type_env.clone().source_indices.clone(),
-                            tm.module.clone(),
+                            (*tm.type_env).clone().source_indices.clone(),
+                            (*tm.module).clone(),
                         ),
                         Rc::new({
                             let mut __result = Vec::new();
                             for p in test_projections.clone().iter().cloned() {
                                 if (p.module_name.clone()
                                     == authored_name_at(
-                                        tm.type_env.clone().source_indices.clone(),
-                                        tm.module.clone(),
+                                        (*tm.type_env).clone().source_indices.clone(),
+                                        (*tm.module).clone(),
                                     ))
                                 {
                                     __result.push(p);
@@ -165,7 +165,7 @@ pub fn py_derive_attribute() -> String {
         .derive_attribute
         .clone()
     {
-        Some(attr) => attr.clone(),
+        Some(attr) => attr,
         None => "@dataclass".to_string(),
     }
 }
@@ -175,7 +175,7 @@ pub fn py_default_value() -> String {
         .default_value
         .clone()
     {
-        Some(value) => value.clone(),
+        Some(value) => value,
         None => "None".to_string(),
     }
 }
@@ -187,8 +187,8 @@ pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
             for tm in modules.iter().cloned() {
                 __result.push({
                     let mod_name = module_to_filename(authored_name_at(
-                        tm.type_env.clone().source_indices.clone(),
-                        tm.module.clone(),
+                        (*tm.type_env).clone().source_indices.clone(),
+                        (*tm.module).clone(),
                     ));
                     let items = language_spec(RenderTarget::Python).items.clone();
                     v1_rt::concat(
@@ -216,7 +216,7 @@ pub fn emit_init_py(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<TextFile> {
             .module_init_file
             .clone()
         {
-            Some(path) => path.clone(),
+            Some(path) => path,
             None => "__init__.py".to_string(),
         };
         Rc::new(TextFile {
@@ -267,7 +267,7 @@ pub fn python_test_signature_comment(projection: Rc<TestProjection>) -> String {
                 ") -> ".to_string(),
             ),
             emit_node_type(
-                projection.inferred.clone(),
+                (*projection.inferred).clone(),
                 RenderTarget::Python,
                 projection.source_indices.clone(),
             ),
@@ -334,7 +334,7 @@ pub fn emit_py_operation_test(projection: Rc<TestProjection>, depth: i64) -> Str
             __result
         })
         .join(&"\n".to_string());
-        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(language_spec(RenderTarget::Python).items.clone().func_keyword.clone(), " ".to_string()), test_name), "() -> None:\n".to_string()), indent.clone()), python_test_signature_comment(projection.clone())), "\n".to_string()), indent.clone()), mock_setup), "\n".to_string()), indent.clone()), "# TODO: add dry-run support to Python service emission for full invocation tests\n".to_string()), indent.clone()), "assert True  # mock data setup verified\n".to_string())
+        v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(language_spec(RenderTarget::Python).items.clone().func_keyword.clone(), " ".to_string()), test_name), "() -> None:\n".to_string()), indent.clone()), python_test_signature_comment(projection.clone())), "\n".to_string()), indent.clone()), mock_setup), "\n".to_string()), indent.clone()), "# TODO: add dry-run support to Python service emission for full invocation tests\n".to_string()), indent), "assert True  # mock data setup verified\n".to_string())
     }
 }
 
@@ -364,16 +364,16 @@ pub fn emit_py_module(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<TextFile> {
     {
-        let m = typed_module.module.clone();
+        let m = (*typed_module.module).clone();
         let scope = module_emit_scope(typed_module.clone());
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = (*scope.type_env).clone().source_indices.clone();
         let mod_name_str = authored_name_at(si.clone(), m.clone());
         let prelude = emit_py_prelude(typed_module.clone());
-        let imports_str = emit_py_imports(module_imports(m.clone()), si.clone());
+        let imports_str = emit_py_imports(module_imports(m), si);
         let imports_section = if (imports_str.clone() == "".to_string()) {
             "".to_string()
         } else {
-            v1_rt::concat("\n".to_string(), imports_str.clone())
+            v1_rt::concat("\n".to_string(), imports_str)
         };
         let items_str = Rc::new({
             let mut __result = Vec::new();
@@ -399,7 +399,7 @@ pub fn emit_py_module(
                                         "# Generated by v1 compiler -- do not edit.\n".to_string(),
                                         "# Source module: ".to_string(),
                                     ),
-                                    mod_name_str.clone(),
+                                    mod_name_str,
                                 ),
                                 "\n\n".to_string(),
                             ),
@@ -537,7 +537,7 @@ pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> String {
         };
         let has_services = {
             let mut __found = false;
-            for item in items.clone().iter().cloned() {
+            for item in items.iter().cloned() {
                 if is_service_item(item.clone()) {
                     __found = true;
                     break;
@@ -556,7 +556,7 @@ pub fn emit_py_prelude(typed_module: Rc<TypedModule>) -> String {
         } else {
             "".to_string()
         };
-        let typing_import = if (has_structs.clone() || has_enums.clone()) {
+        let typing_import = if (has_structs || has_enums) {
             "from typing import Optional, Union\n".to_string()
         } else {
             "".to_string()
@@ -582,10 +582,10 @@ pub fn emit_py_typed_item(
     scope: Rc<InferScope>,
 ) -> String {
     {
-        let env = scope.type_env.clone();
+        let env = (*scope.type_env).clone();
         let item_text = authored_name(env.clone(), item.clone());
         if is_type_def_item(item.clone()) {
-            emit_py_type_def_from_connective(item.clone(), env.clone())
+            emit_py_type_def_from_connective(item.clone(), env)
         } else {
             if is_type_alias_item(item.clone(), env.source_indices.clone()) {
                 v1_rt::concat(
@@ -607,7 +607,7 @@ pub fn emit_py_typed_item(
                                 item.params.clone(),
                                 resolved_type(item.clone()),
                                 item.uses.clone(),
-                                item.body.clone().clone().unwrap(),
+                                (*item.body).clone().clone().unwrap(),
                                 registry,
                                 scope.clone(),
                             )
@@ -616,7 +616,7 @@ pub fn emit_py_typed_item(
                                 item_text,
                                 item.params.clone(),
                                 resolved_type(item.clone()),
-                                item.body.clone().clone().unwrap(),
+                                (*item.body).clone().clone().unwrap(),
                                 registry,
                                 scope.clone(),
                             )
@@ -625,17 +625,17 @@ pub fn emit_py_typed_item(
                         if is_data_def_item(item.clone()) {
                             emit_py_data_def(
                                 item_text,
-                                item.type_annotation.clone().clone().unwrap(),
-                                item.body.clone().clone().unwrap(),
+                                (*item.type_annotation).clone().clone().unwrap(),
+                                (*item.body).clone().clone().unwrap(),
                                 registry,
                                 scope.clone(),
                             )
                         } else {
                             if is_service_def_item(item.clone()) {
-                                emit_py_service_def(item.clone(), registry, env.clone())
+                                emit_py_service_def(item.clone(), registry, env)
                             } else {
                                 if is_resource_def_item(item.clone()) {
-                                    emit_py_resource_def(item.clone(), env.clone())
+                                    emit_py_resource_def(item.clone(), env)
                                 } else {
                                     v1_rt::concat("# unhandled node: ".to_string(), item_text)
                                 }
@@ -876,7 +876,7 @@ pub fn emit_py_fn_def(
 ) -> String {
     {
         let depth = 0;
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = (*scope.type_env).clone().source_indices.clone();
         let params_str = emit_params_shared(params.clone(), RenderTarget::Python, si.clone());
         let ret_str = emit_inferred_shared(inferred, RenderTarget::Python, si.clone());
         let body_scope = build_params_scope(scope.clone(), params.clone());
@@ -919,7 +919,7 @@ pub fn emit_py_fn_def(
                             ),
                             ":\n".to_string(),
                         ),
-                        make_indent((depth.clone() + 1)),
+                        make_indent((depth + 1)),
                     ),
                     body_str,
                 )
@@ -960,7 +960,7 @@ pub fn emit_py_fn_def(
                                 ),
                                 ":\n".to_string(),
                             ),
-                            make_indent((depth.clone() + 1)),
+                            make_indent((depth + 1)),
                         ),
                         "return ".to_string(),
                     ),
@@ -990,15 +990,15 @@ pub fn emit_py_func_def(
             params.clone(),
             uses.clone(),
             service_names,
-            scope.type_env.clone().source_indices.clone(),
+            (*scope.type_env).clone().source_indices.clone(),
         );
         let ret_str = emit_inferred_shared(
             inferred,
             RenderTarget::Python,
-            scope.type_env.clone().source_indices.clone(),
+            (*scope.type_env).clone().source_indices.clone(),
         );
         let body_scope = build_params_scope(scope.clone(), params.clone());
-        let si = scope.type_env.clone().source_indices.clone();
+        let si = (*scope.type_env).clone().source_indices.clone();
         let body_scope = uses.clone().iter().cloned().fold(
             body_scope.clone(),
             |s: Rc<InferScope>, u: Rc<Node>| {
@@ -1014,7 +1014,7 @@ pub fn emit_py_func_def(
             body,
             RenderTarget::Python,
             registry.clone(),
-            body_scope.clone(),
+            body_scope,
             (depth.clone() + 1),
         );
         let items = language_spec(RenderTarget::Python).items.clone();
@@ -1045,7 +1045,7 @@ pub fn emit_py_func_def(
                     ),
                     ":\n".to_string(),
                 ),
-                make_indent((depth.clone() + 1)),
+                make_indent((depth + 1)),
             ),
             body_str,
         )
@@ -1123,7 +1123,7 @@ pub fn emit_py_typed_expr(
             emit_unified_pattern(
                 pat.clone(),
                 RenderTarget::Python,
-                scope.type_env.clone().source_indices.clone(),
+                (*scope.type_env).clone().source_indices.clone(),
             )
         },
     )
@@ -1182,7 +1182,7 @@ pub fn emit_py_service_init(
             language_spec(RenderTarget::Python).service_fields.clone(),
         );
         let assigns = service_field_ctors(
-            fs.clone(),
+            fs,
             language_spec(RenderTarget::Python).service_fields.clone(),
         );
         if ((params.clone().len() as i64) == 0) {
@@ -1190,7 +1190,7 @@ pub fn emit_py_service_init(
         } else {
             {
                 let params_str =
-                    v1_rt::concat("self, ".to_string(), params.clone().join(&", ".to_string()));
+                    v1_rt::concat("self, ".to_string(), params.join(&", ".to_string()));
                 let assigns_str = Rc::new({
                     let mut __result = Vec::new();
                     for a in assigns.iter().cloned() {
@@ -1293,7 +1293,7 @@ pub fn emit_py_headers_dict(
         let all_entries = if (auth_entry.clone() == "".to_string()) {
             header_entries.join(&", ".to_string())
         } else {
-            v1_rt::concat(auth_entry.clone(), header_entries.join(&", ".to_string()))
+            v1_rt::concat(auth_entry, header_entries.join(&", ".to_string()))
         };
         v1_rt::concat(
             v1_rt::concat("headers = {".to_string(), all_entries),
@@ -1473,7 +1473,7 @@ pub fn emit_py_capability_method(cap_node: Rc<Node>, env: Rc<TypeEnv>) -> String
         let all_params = if (params_str.clone() == "".to_string()) {
             "self".to_string()
         } else {
-            v1_rt::concat("self, ".to_string(), params_str.clone())
+            v1_rt::concat("self, ".to_string(), params_str)
         };
         let ret = emit_node_type(
             resolved_type(cap_node.clone()),
@@ -1536,7 +1536,7 @@ pub fn emit_py_data_def(
         let ty_str = emit_node_type(
             type_node,
             RenderTarget::Python,
-            scope.type_env.clone().source_indices.clone(),
+            (*scope.type_env).clone().source_indices.clone(),
         );
         let upper_name = to_screaming_snake(name);
         let val_str = emit_py_typed_expr(value, registry, scope.clone(), 0, 1024);

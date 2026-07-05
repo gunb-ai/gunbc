@@ -54,11 +54,49 @@ pub fn last_path_param(template: Rc<PathTemplate>) -> Option<String> {
             __result
         });
         match params.last().cloned() {
-            Some(tok) => match (*tok.clone()).clone() {
-                UrlPathToken::ParamToken { name: n, .. } => Some(n.clone()),
+            Some(tok) => match (*tok).clone() {
+                UrlPathToken::ParamToken { name: n, .. } => Some(n),
                 UrlPathToken::LiteralToken { .. } => None,
             },
             None => None,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PathParamBinding {
+    pub name: String,
+    pub value: String,
+}
+
+pub fn path_param_value(params: Rc<Vec<Rc<PathParamBinding>>>, name: String) -> String {
+    params.iter().cloned().fold(
+        "".to_string(),
+        |acc: String, binding: Rc<PathParamBinding>| {
+            if (acc.clone() != "".to_string()) {
+                acc.clone()
+            } else {
+                if (binding.name.clone() == name.clone()) {
+                    binding.value.clone()
+                } else {
+                    acc.clone()
+                }
+            }
+        },
+    )
+}
+
+pub fn render_path_template(
+    template: Rc<PathTemplate>,
+    params: Rc<Vec<Rc<PathParamBinding>>>,
+) -> String {
+    template.tokens.clone().iter().cloned().fold(
+        "".to_string(),
+        |acc: String, tok: Rc<UrlPathToken>| match (*tok.clone()).clone() {
+            UrlPathToken::LiteralToken { text: t, .. } => v1_rt::concat(acc.clone(), t.clone()),
+            UrlPathToken::ParamToken { name: n, .. } => {
+                v1_rt::concat(acc.clone(), path_param_value(params.clone(), n.clone()))
+            }
+        },
+    )
 }

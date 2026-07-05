@@ -98,7 +98,7 @@ pub fn can_cast(target: RenderTarget, source_type: String, target_type: String) 
 pub fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
     {
         let syntax = match target_cast_syntax(target) {
-            Some(s) => s.clone(),
+            Some(s) => s,
             None => Rc::new(CastSyntax {
                 template: "{expr}".to_string(),
                 cast_rules: Rc::new(vec![]),
@@ -129,7 +129,7 @@ pub fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> Option<Rc<Ty
 pub fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
     match lookup_checkpoint(target, dag_name.clone()) {
         Some(cp) => cp.target_type.clone(),
-        None => dag_name.clone(),
+        None => dag_name,
     }
 }
 
@@ -143,7 +143,7 @@ pub fn is_copy(target: RenderTarget, dag_name: String) -> Option<bool> {
 pub fn literal_suffix(target: RenderTarget, dag_name: String) -> Option<String> {
     match lookup_checkpoint(target, dag_name) {
         Some(cp) => match cp.literal_suffix.clone() {
-            Some(s) => Some(s.clone()),
+            Some(s) => Some(s),
             None => Some("".to_string()),
         },
         None => None,
@@ -166,7 +166,7 @@ pub fn lookup_inhabitant(target: RenderTarget, algebra: String) -> Option<Rc<Inh
 
 pub fn coerce_container_template(target: RenderTarget, container_name: String) -> Option<String> {
     match container_template_algebra(container_name) {
-        Some(algebra) => match lookup_inhabitant(target, algebra.clone()) {
+        Some(algebra) => match lookup_inhabitant(target, algebra) {
             Some(inh) => Some(inh.template.clone()),
             None => None,
         },
@@ -240,7 +240,7 @@ pub fn checkpoint_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
                 ),
                 assertions: Rc::new({
                     let mut __result = Vec::new();
-                    for cp in cps.clone().iter().cloned() {
+                    for cp in cps.iter().cloned() {
                         __result.push(Rc::new(CoercionAssertion::CheckpointAssertion {
                             target: target.clone(),
                             dag_name: cp.dag_name.clone(),
@@ -289,7 +289,7 @@ pub fn inhabitant_tests(target: RenderTarget) -> Rc<Vec<Rc<CoercionTestEntry>>> 
                     v1_rt::concat("coercion_".to_string(), label),
                     "_inhabitant_resolves_containers".to_string(),
                 ),
-                assertions: assertions.clone(),
+                assertions: assertions,
             })])
         }
     }
@@ -321,7 +321,7 @@ pub fn copy_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
         } else {
             Rc::new(vec![Rc::new(CoercionTestEntry {
                 test_name: "coercion_is_copy_from_checkpoint".to_string(),
-                assertions: copy_assertions.clone(),
+                assertions: copy_assertions,
             })])
         }
     }
@@ -401,7 +401,7 @@ pub fn template_application_tests() -> Rc<Vec<Rc<CoercionTestEntry>>> {
         } else {
             Rc::new(vec![Rc::new(CoercionTestEntry {
                 test_name: "coercion_template_application".to_string(),
-                assertions: assertions.clone(),
+                assertions: assertions,
             })])
         }
     }

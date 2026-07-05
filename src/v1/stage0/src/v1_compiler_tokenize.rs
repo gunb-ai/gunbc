@@ -234,12 +234,12 @@ pub fn scan_next_token(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult>
                             ),
                             TokenShape::ShRBrace,
                         ),
-                        interp_depth: replace_last(pos.interp_depth.clone(), (top.clone() - 1)),
+                        interp_depth: replace_last(pos.interp_depth.clone(), (top - 1)),
                     });
                 }
             }
         }
-        scan_token(source.clone(), pos.clone(), ch.clone())
+        scan_token(source.clone(), pos.clone(), ch)
     }
 }
 
@@ -250,7 +250,7 @@ pub fn tokenize_loop(
     mut fuel: i64,
 ) -> Rc<TokenizerState> {
     loop {
-        let s = skip_spaces(source.clone(), pos);
+        let s = skip_spaces(source.clone(), pos.clone());
         if (s.pos.clone() >= source_len(source.clone())) {
             return Rc::new(TokenizerState {
                 pos: s.pos.clone(),
@@ -389,7 +389,7 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
                 source.file.clone(),
             );
         }
-        if ((ch.clone() == 46) && (next_ch.clone() == 46)) {
+        if ((ch.clone() == 46) && (next_ch == 46)) {
             return emit(
                 pos.clone(),
                 TokenShape::ShDotDot,
@@ -483,24 +483,20 @@ pub fn scan_token(source: Rc<SourceRef>, pos: Rc<TokPos>, ch: i64) -> Rc<ScanRes
                 );
                 return Rc::new(ScanResult {
                     pos: (pos.pos.clone() + 1),
-                    token: tok.clone(),
+                    token: tok,
                     interp_depth: pos.interp_depth.clone(),
                 });
             }
         }
         let ch_text = source_char(source.clone(), pos.pos.clone());
         match v1_rt::lookup(&single_punct(), ch_text.clone()) {
-            v1_rt::Witness::Holds { value: sh, .. } => emit(
-                pos.clone(),
-                sh.clone(),
-                ch_text.clone(),
-                1,
-                source.file.clone(),
-            ),
+            v1_rt::Witness::Holds { value: sh, .. } => {
+                emit(pos.clone(), sh, ch_text, 1, source.file.clone())
+            }
             v1_rt::Witness::Violates { diagnostic: _, .. } => emit(
                 pos.clone(),
                 TokenShape::ShUnknown,
-                ch_text.clone(),
+                ch_text,
                 1,
                 source.file.clone(),
             ),
@@ -543,12 +539,12 @@ pub fn scan_ident(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
             }
         };
         let token = make_token(
-            text.clone(),
+            text,
             make_file_span(source.file.clone(), pos.pos.clone(), end.clone()),
             shape,
         );
         Rc::new(ScanResult {
-            pos: end.clone(),
+            pos: end,
             token: token,
             interp_depth: pos.interp_depth.clone(),
         })
@@ -571,7 +567,7 @@ pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
                     TokenShape::ShLitFloat,
                 );
                 return Rc::new(ScanResult {
-                    pos: frac_end.clone(),
+                    pos: frac_end,
                     token: token.clone(),
                     interp_depth: pos.interp_depth.clone(),
                 });
@@ -584,13 +580,13 @@ pub fn scan_number(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
             None => TokenShape::ShUnknown,
         };
         let token = make_token(
-            text.clone(),
+            text,
             make_file_span(source.file.clone(), pos.pos.clone(), int_end.clone()),
             shape,
         );
         Rc::new(ScanResult {
-            pos: int_end.clone(),
-            token: token.clone(),
+            pos: int_end,
+            token: token,
             interp_depth: pos.interp_depth.clone(),
         })
     }
@@ -629,14 +625,14 @@ pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
             StringScanResult::ClosedString {
                 content, end_pos, ..
             } => {
-                let processed = process_escapes(content.clone());
+                let processed = process_escapes(content);
                 let token = make_token(
                     processed,
                     make_file_span(source.file.clone(), span_start, (end_pos.clone() + 1)),
                     TokenShape::ShLitStr,
                 );
                 Rc::new(ScanResult {
-                    pos: (end_pos.clone() + 1),
+                    pos: (end_pos + 1),
                     token: token,
                     interp_depth: pos.interp_depth.clone(),
                 })
@@ -644,14 +640,14 @@ pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
             StringScanResult::InterpolationStart {
                 content, end_pos, ..
             } => {
-                let processed = process_escapes(content.clone());
+                let processed = process_escapes(content);
                 let token = make_token(
                     processed,
                     make_file_span(source.file.clone(), span_start, (end_pos.clone() + 1)),
                     TokenShape::ShStrBegin,
                 );
                 Rc::new(ScanResult {
-                    pos: (end_pos.clone() + 1),
+                    pos: (end_pos + 1),
                     token: token,
                     interp_depth: Rc::new(v1_rt::append(pos.interp_depth.clone(), 0)),
                 })
@@ -659,14 +655,14 @@ pub fn scan_string(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<ScanResult> {
             StringScanResult::UnterminatedString {
                 content, end_pos, ..
             } => {
-                let processed = process_escapes(content.clone());
+                let processed = process_escapes(content);
                 let token = make_token(
                     processed,
                     make_file_span(source.file.clone(), span_start, end_pos.clone()),
                     TokenShape::ShUnknown,
                 );
                 Rc::new(ScanResult {
-                    pos: end_pos.clone(),
+                    pos: end_pos,
                     token: token,
                     interp_depth: pos.interp_depth.clone(),
                 })
@@ -682,14 +678,14 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
             StringScanResult::ClosedString {
                 content, end_pos, ..
             } => {
-                let processed = process_escapes(content.clone());
+                let processed = process_escapes(content);
                 let token = make_token(
                     processed,
                     make_file_span(source.file.clone(), span_start, (end_pos.clone() + 1)),
                     TokenShape::ShStrEnd,
                 );
                 Rc::new(ScanResult {
-                    pos: (end_pos.clone() + 1),
+                    pos: (end_pos + 1),
                     token: token,
                     interp_depth: pos.interp_depth.clone(),
                 })
@@ -697,14 +693,14 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
             StringScanResult::InterpolationStart {
                 content, end_pos, ..
             } => {
-                let processed = process_escapes(content.clone());
+                let processed = process_escapes(content);
                 let token = make_token(
                     processed,
                     make_file_span(source.file.clone(), span_start, (end_pos.clone() + 1)),
                     TokenShape::ShStrMid,
                 );
                 Rc::new(ScanResult {
-                    pos: (end_pos.clone() + 1),
+                    pos: (end_pos + 1),
                     token: token,
                     interp_depth: Rc::new(v1_rt::append(pos.interp_depth.clone(), 0)),
                 })
@@ -712,14 +708,14 @@ pub fn scan_str_cont(source: Rc<SourceRef>, pos: Rc<TokPos>, span_start: i64) ->
             StringScanResult::UnterminatedString {
                 content, end_pos, ..
             } => {
-                let processed = process_escapes(content.clone());
+                let processed = process_escapes(content);
                 let token = make_token(
                     processed,
                     make_file_span(source.file.clone(), span_start, end_pos.clone()),
                     TokenShape::ShUnknown,
                 );
                 Rc::new(ScanResult {
-                    pos: end_pos.clone(),
+                    pos: end_pos,
                     token: token,
                     interp_depth: pos.interp_depth.clone(),
                 })
@@ -736,14 +732,14 @@ pub fn scan_string_body(
     loop {
         if (pos.clone() >= source_len(source.clone())) {
             break Rc::new(StringScanResult::UnterminatedString {
-                content: acc.join(&"".to_string()),
+                content: acc.clone().join(&"".to_string()),
                 end_pos: pos.clone(),
             });
         } else {
             let ch = source_char(source.clone(), pos.clone());
             if (ch.clone() == "\"".to_string()) {
                 break Rc::new(StringScanResult::ClosedString {
-                    content: acc.join(&"".to_string()),
+                    content: acc.clone().join(&"".to_string()),
                     end_pos: pos.clone(),
                 });
             } else {
@@ -754,7 +750,7 @@ pub fn scan_string_body(
                             let __tco_0 = (pos + 2);
                             let __tco_1 = v1_rt::rc_list_push(
                                 v1_rt::rc_list_push(acc, "\\".to_string()),
-                                escaped,
+                                escaped.clone(),
                             );
                             pos = __tco_0;
                             acc = __tco_1;
@@ -762,7 +758,7 @@ pub fn scan_string_body(
                         }
                     } else {
                         break Rc::new(StringScanResult::UnterminatedString {
-                            content: v1_rt::rc_list_push(acc, "\\".to_string())
+                            content: v1_rt::rc_list_push(acc.clone(), "\\".to_string())
                                 .join(&"".to_string()),
                             end_pos: (pos.clone() + 1),
                         });
@@ -771,7 +767,7 @@ pub fn scan_string_body(
                     if (ch.clone() == "{".to_string()) {
                         if should_start_interpolation(source.clone(), pos.clone()) {
                             break Rc::new(StringScanResult::InterpolationStart {
-                                content: acc.join(&"".to_string()),
+                                content: acc.clone().join(&"".to_string()),
                                 end_pos: pos.clone(),
                             });
                         } else {
@@ -805,7 +801,7 @@ pub fn should_start_interpolation(source: Rc<SourceRef>, pos: i64) -> bool {
         {
             let next = source_code_point(source.clone(), (pos.clone() + 1));
             (((is_ident_start(next.clone()) || (next.clone() == 40)) || (next.clone() == 33))
-                || (next.clone() == 45))
+                || (next == 45))
         }
     }
 }
@@ -817,7 +813,7 @@ pub fn process_escapes(raw: String) -> String {
 pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<String>>) -> String {
     loop {
         if (pos.clone() >= v1_rt::string_length(&source)) {
-            break acc.join(&"".to_string());
+            break acc.clone().join(&"".to_string());
         } else {
             let ch = v1_rt::char_at(&source, pos.clone());
             if ((ch.clone() == "\\".to_string())
@@ -851,7 +847,7 @@ pub fn process_escapes_loop(mut source: String, mut pos: i64, mut acc: Rc<Vec<St
                 };
                 {
                     let __tco_0 = (pos + 2);
-                    let __tco_1 = v1_rt::rc_list_push(acc, resolved);
+                    let __tco_1 = v1_rt::rc_list_push(acc, resolved.clone());
                     pos = __tco_0;
                     acc = __tco_1;
                     continue;
@@ -911,7 +907,7 @@ pub fn skip_spaces(source: Rc<SourceRef>, pos: Rc<TokPos>) -> Rc<TokPos> {
 }
 
 pub fn is_digit(ch: i64) -> bool {
-    ((ch.clone() >= 48) && (ch.clone() <= 57))
+    ((ch.clone() >= 48) && (ch <= 57))
 }
 
 pub fn is_ident_start(ch: i64) -> bool {
@@ -919,7 +915,7 @@ pub fn is_ident_start(ch: i64) -> bool {
 }
 
 pub fn is_ident_char(ch: i64) -> bool {
-    (v1_rt::is_xid_continue(ch.clone()) || v1_rt::is_emoji_ident(ch.clone()))
+    (v1_rt::is_xid_continue(ch.clone()) || v1_rt::is_emoji_ident(ch))
 }
 
 pub fn is_hex_upper_digit(ch: i64) -> bool {
@@ -932,7 +928,7 @@ pub fn all_hex_upper_in_range(mut text: String, mut pos: i64, mut end: i64) -> b
             break true;
         } else {
             let ch = v1_rt::code_point(v1_rt::char_at(&text, pos.clone()));
-            if is_hex_upper_digit(ch) {
+            if is_hex_upper_digit(ch.clone()) {
                 {
                     let __tco_0 = (pos + 1);
                     pos = __tco_0;
@@ -1007,23 +1003,19 @@ pub fn is_reserved_emit_sentinel(text: String) -> bool {
         if (n.clone() < ((pfx_len.clone() + sfx_len.clone()) + 1)) {
             false
         } else {
-            if !sentinel_prefix_matches(text.clone(), pfx.clone(), 0, pfx_len.clone()) {
+            if !sentinel_prefix_matches(text.clone(), pfx, 0, pfx_len.clone()) {
                 false
             } else {
                 if !sentinel_suffix_matches(
                     text.clone(),
-                    sfx.clone(),
+                    sfx,
                     0,
                     sfx_len.clone(),
                     (n.clone() - sfx_len.clone()),
                 ) {
                     false
                 } else {
-                    all_hex_upper_in_range(
-                        text.clone(),
-                        pfx_len.clone(),
-                        (n.clone() - sfx_len.clone()),
-                    )
+                    all_hex_upper_in_range(text.clone(), pfx_len, (n - sfx_len))
                 }
             }
         }

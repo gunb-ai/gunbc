@@ -60,7 +60,7 @@ pub fn is_typed_service_call_receiver(
                     .first()
                     .cloned()
                 {
-                    Some(ch) => ((ch.clone() >= 65) && (ch.clone() <= 90)),
+                    Some(ch) => ((ch.clone() >= 65) && (ch <= 90)),
                     None => false,
                 },
                 _ => false,
@@ -82,7 +82,7 @@ pub fn extract_typed_service_name(
                 ExprData::ExprVar {
                     binding_kind: _, ..
                 } => {
-                    let ns = expr_var_name_at(b.clone(), source_indices.clone());
+                    let ns = expr_var_name_at(b, source_indices.clone());
                     Some(v1_rt::concat(v1_rt::concat(ns, ".".to_string()), f))
                 }
                 _ => None,
@@ -122,7 +122,7 @@ pub fn collect_typed_service_calls_into(
             } => {
                 let r = method_receiver(texpr.clone());
                 if is_typed_service_call_receiver(r.clone(), source_indices.clone()) {
-                    match extract_typed_service_name(r.clone(), source_indices.clone()) {
+                    match extract_typed_service_name(r, source_indices.clone()) {
                         Some(service_name) => {
                             if emit_map_has(acc.seen.clone(), service_name.clone()) {
                                 acc.clone()
@@ -133,10 +133,7 @@ pub fn collect_typed_service_calls_into(
                                         service_name.clone(),
                                         true,
                                     ),
-                                    result: v1_rt::rc_list_push(
-                                        acc.result.clone(),
-                                        service_name.clone(),
-                                    ),
+                                    result: v1_rt::rc_list_push(acc.result.clone(), service_name),
                                 })
                             }
                         }
@@ -149,7 +146,7 @@ pub fn collect_typed_service_calls_into(
             _ => acc.clone(),
         };
         let result = texpr.children.clone().iter().cloned().fold(
-            this_acc.clone(),
+            this_acc,
             |a: Rc<UniqueAccum>, child: Rc<Node>| {
                 collect_typed_service_calls_into(child.clone(), a, source_indices.clone())
             },
@@ -172,14 +169,14 @@ pub fn collect_called_func_names_into(
                 } else {
                     Rc::new(UniqueAccum {
                         seen: v1_rt::rc_map_insert(acc.seen.clone(), f.clone(), true),
-                        result: v1_rt::rc_list_push(acc.result.clone(), f.clone()),
+                        result: v1_rt::rc_list_push(acc.result.clone(), f),
                     })
                 }
             }
             _ => acc.clone(),
         };
         let result = texpr.children.clone().iter().cloned().fold(
-            this_acc.clone(),
+            this_acc,
             |a: Rc<UniqueAccum>, child: Rc<Node>| {
                 collect_called_func_names_into(child.clone(), a, source_indices.clone())
             },
@@ -209,16 +206,16 @@ pub fn expand_transitive_services_once(
     modules: Rc<Vec<Rc<TypedModule>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
 ) -> Rc<HashMap<String, Rc<ItemInfo>>> {
-    modules.iter().cloned().fold(registry.clone(), |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| {
-        let item_name = authored_name_at(m.type_env.clone().source_indices.clone(), item.clone());
+    modules.iter().cloned().fold(registry, |reg: Rc<HashMap<String, Rc<ItemInfo>>>, m: Rc<TypedModule>| m.items.clone().iter().cloned().fold(reg, |reg2: Rc<HashMap<String, Rc<ItemInfo>>>, item: Rc<Node>| {
+        let item_name = authored_name_at((*m.type_env).clone().source_indices.clone(), item.clone());
 match v1_rt::map_get(&reg2, item_name.clone()) {
     Some(info) => {
-            let has_no_body = (item.body.clone() == None);
+            let has_no_body = ((*item.body).clone() == None);
 if has_no_body.clone() {
                 reg2.clone()
             } else {
                 {
-                    let called = collect_called_func_names(item.body.clone().clone().unwrap(), m.type_env.clone().source_indices.clone());
+                    let called = collect_called_func_names((*item.body).clone().clone().unwrap(), (*m.type_env).clone().source_indices.clone());
 let extra = Rc::new({ let mut __result = Vec::new(); for callee_name in called.clone().iter().cloned() { __result.extend((*match v1_rt::map_get(&reg2, callee_name.clone()) {
     Some(callee_info) => callee_info.service_names.clone(),
     None => Rc::new(vec![]),
@@ -272,7 +269,7 @@ pub fn expand_transitive_services(
             let before = total_service_count(registry.clone());
             let next = expand_transitive_services_once(modules.clone(), registry.clone());
             let after = total_service_count(next.clone());
-            if (before == after) {
+            if (before.clone() == after.clone()) {
                 break registry.clone();
             } else {
                 {
@@ -305,7 +302,7 @@ pub fn check_service_field_access_node(
                 field,
             );
             match v1_rt::map_get(&service_registry, path.clone()) {
-                Some(_) => Some(nominal_type_ref(path.clone())),
+                Some(_) => Some(nominal_type_ref(path)),
                 None => None,
             }
         }
@@ -330,7 +327,7 @@ pub fn check_service_method_call_node(
             Some(ops) => {
                 let matching = Rc::new({
                     let mut __result = Vec::new();
-                    for op in ops.clone().iter().cloned() {
+                    for op in ops.iter().cloned() {
                         if (op.name.clone() == method.clone()) {
                             __result.push(op);
                         }
@@ -414,7 +411,7 @@ pub fn service_op_entry(
     Rc::new(OpEntry {
         name: authored_name_at(source_indices.clone(), child.clone()),
         outputs: inferred_to_outputs(
-            child.inferred.clone(),
+            (*child.inferred).clone(),
             child.span.clone(),
             source_indices.clone(),
         ),

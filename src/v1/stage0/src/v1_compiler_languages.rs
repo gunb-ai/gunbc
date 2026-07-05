@@ -305,7 +305,7 @@ impl ServiceReturnStrategy {
 
 pub fn service_self_param(spec: Rc<LanguageSpec>) -> String {
     match (*spec.service_method.clone()).clone() {
-        ServiceMethodStrategy::SelfInParams { self_param: sp, .. } => sp.clone(),
+        ServiceMethodStrategy::SelfInParams { self_param: sp, .. } => sp,
         ServiceMethodStrategy::ExternalReceiver { var_name: _, .. } => "".to_string(),
     }
 }
@@ -315,7 +315,7 @@ pub fn service_receiver_str(spec: Rc<LanguageSpec>, service_name: String) -> Str
         ServiceMethodStrategy::SelfInParams { self_param: _, .. } => "".to_string(),
         ServiceMethodStrategy::ExternalReceiver { var_name: v, .. } => v1_rt::concat(
             v1_rt::concat(
-                v1_rt::concat(v1_rt::concat("(".to_string(), v.clone()), " *".to_string()),
+                v1_rt::concat(v1_rt::concat("(".to_string(), v), " *".to_string()),
                 service_name,
             ),
             ") ".to_string(),
@@ -345,7 +345,7 @@ pub fn service_return_str(spec: Rc<LanguageSpec>, ret_type: String) -> String {
         ServiceReturnStrategy::ErrorTupleReturn { error_type: et, .. } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(v1_rt::concat(" (".to_string(), ret_type), ", ".to_string()),
-                et.clone(),
+                et,
             ),
             ")".to_string(),
         ),
@@ -1224,18 +1224,18 @@ pub fn language_spec_for_target(target: RenderTarget) -> Rc<LanguageSpec> {
 pub fn target_keyword(target: RenderTarget, key: String) -> String {
     match target {
         RenderTarget::Rust => match v1_rt::lookup(&rust_keywords(), key.clone()) {
-            v1_rt::Witness::Holds { value: kw, .. } => kw.clone(),
-            v1_rt::Witness::Violates { diagnostic: _, .. } => key.clone(),
+            v1_rt::Witness::Holds { value: kw, .. } => kw,
+            v1_rt::Witness::Violates { diagnostic: _, .. } => key,
         },
         RenderTarget::Go => match v1_rt::lookup(&go_keywords(), key.clone()) {
-            v1_rt::Witness::Holds { value: kw, .. } => kw.clone(),
-            v1_rt::Witness::Violates { diagnostic: _, .. } => key.clone(),
+            v1_rt::Witness::Holds { value: kw, .. } => kw,
+            v1_rt::Witness::Violates { diagnostic: _, .. } => key,
         },
         RenderTarget::Python => match v1_rt::lookup(&python_keywords(), key.clone()) {
-            v1_rt::Witness::Holds { value: kw, .. } => kw.clone(),
-            v1_rt::Witness::Violates { diagnostic: _, .. } => key.clone(),
+            v1_rt::Witness::Holds { value: kw, .. } => kw,
+            v1_rt::Witness::Violates { diagnostic: _, .. } => key,
         },
-        RenderTarget::Dag => key.clone(),
+        RenderTarget::Dag => key,
     }
 }
 
@@ -1285,10 +1285,10 @@ pub fn binop_symbol(
             None => None,
         };
         let result = match specific.clone() {
-            Some(_) => specific.clone(),
+            Some(_) => specific,
             None => Rc::new({
                 let mut __result = Vec::new();
-                for spec in op_matching.clone().iter().cloned() {
+                for spec in op_matching.iter().cloned() {
                     if (spec.algebra_field.clone() == None) {
                         __result.push(spec);
                     }

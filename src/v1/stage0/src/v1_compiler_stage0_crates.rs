@@ -94,11 +94,11 @@ pub fn render_stage0_crate_dep(dep: Rc<CargoDependency>) -> String {
     match (*dep.source.clone()).clone() {
         CargoDepSource::RegistryDep {
             version, features, ..
-        } => emit_cargo_dep(dep.name.clone(), version.clone(), features.clone()),
+        } => emit_cargo_dep(dep.name.clone(), version, features),
         CargoDepSource::LocalPathDep { path: path, .. } => v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(dep.name.clone(), " = { path = \"".to_string()),
-                path.clone(),
+                path,
             ),
             "\" }\n".to_string(),
         ),

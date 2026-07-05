@@ -28,11 +28,11 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub type CargoPackageVersion = SemVerIdentity;
+pub type CargoPackageVersion = VersionIdentity;
 
-pub type CargoVersionRequirement = SemVerConstraint;
+pub type CargoVersionRequirement = VersionConstraint;
 
-pub type CargoToolVersionFloor = SemVerConstraint;
+pub type CargoToolVersionFloor = VersionConstraint;
 
 pub fn default_stage0_package_version() -> String {
     thread_local! {
