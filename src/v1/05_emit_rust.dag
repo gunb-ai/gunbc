@@ -4775,10 +4775,7 @@ fn emit_typed_field_access(base: Node, field: String, summary: FieldSummary?, re
               _ => false
             }
             let field_is_boxed = field_access_field_is_boxed(base: base, field: field, scope: scope, shared_types: shared_types, emit_info: emit_info)
-            if field_is_boxed {
-
-              concat("(*", base_str, ".", emit_ident(name: field, target: Rust), ").clone()")
-            } else if base_is_owned {
+            if base_is_owned && !field_is_boxed {
               concat(base_str, ".", emit_ident(name: field, target: Rust))
             } else {
               apply_type_template1(template: sharing.clone_value, arg0: concat(base_str, ".", emit_ident(name: field, target: Rust)))
