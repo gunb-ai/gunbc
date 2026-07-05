@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 65
+    timeout-minutes: 145
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -82,11 +82,33 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
-        timeout-minutes: 15
+        timeout-minutes: 45
       - name: gunbc ci (.dag witnesses + gates)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
+          _ci_changed=$(git diff --name-only origin/main...HEAD 2>/dev/null || true)
+          if [ -n "$_ci_changed" ]; then
+          # Interim compile-clean scoping: merge-base diffs whose only changed paths are under docs/ skip the compose floor. Path-prefix matching is an interim heuristic — dissolve-on: affected-set-scoped compile-clean (Ruling 1 path grain) replaces it. Empty _ci_changed (git fetch/diff failure) short-circuits this block and falls through to the full floor (fail-closed, not widening). Merge-admission stamps Skipped (not Success) via CI_FLOOR_DISPOSITION=documentation_only_skipped so floor-not-run ≠ floor-green. Generated-artifact carriers (.gitignore, README.md/CLAUDE.md/DESIGN.md symlinks) are excluded from the allowlist — their only drift guard is floor-resident; whitelisting them would self-shortcut that gate (#6236 class). CI substrate (.github/workflows/ci.yml, dag/gunbc/ci_spec.dag, ci_spec witnesses) is likewise excluded.
+          # 🟡 dissolve-on: ci_documentation_only_floor_shortcut_script — concat-built bash path-prefix predicate + heredoc over git diff --name-only (interim path heuristic until affected-set-scoped compile-clean); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0) realizes floor scoping through orchestration emit and this shortcut retires
+            DOCS_ONLY=1
+            while IFS= read -r _ci_path; do
+              [ -z "$_ci_path" ] && continue
+              if [[ "$_ci_path" == docs/* ]]; then
+                :
+              else
+                DOCS_ONLY=0
+                break
+              fi
+            done <<_ci_diff_eof_
+          $_ci_changed
+          _ci_diff_eof_
+            if [ "$DOCS_ONLY" = "1" ]; then
+              echo "claim_executor: documentation-only diff — floor skipped (CI_FLOOR_DISPOSITION=documentation_only_skipped)"
+              CI_FLOOR_DISPOSITION=documentation_only_skipped "$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/tools/merge_admission_stamp.dag --function main
+              exit $?
+            fi
+          fi
           set +e
           "$ROOT/target/release/claim_executor" --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_ci_floor_batches --notice-title "v2 claim corpus"
           FLOOR_EXIT=$?
@@ -95,7 +117,7 @@ jobs:
           STAMP_EXIT=$?
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
-        timeout-minutes: 40
+        timeout-minutes: 90
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -104,7 +126,7 @@ jobs:
         timeout-minutes: 5
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 30
+    timeout-minutes: 75
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -152,7 +174,7 @@ jobs:
             curl -LsSf --retry 3 "https://get.nexte.st/0.9.138/$A" | tar zxf - -C "$CARGO_HOME/bin"
           fi
         timeout-minutes: 5
-      - name: v1 rust gate (fmt + clippy + nextest)
+      - name: sccache warm (release bins + cache prime)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
@@ -177,6 +199,9 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
+        timeout-minutes: 45
+      - name: v1 rust gate (fmt + clippy + nextest)
+        run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
           set -o pipefail

@@ -510,10 +510,14 @@ fn render_rust_shared_type_if_needed(type_name: String, rendered: String, shared
   } else { rendered }
 }
 
+fn render_rust_shared_type_with_optional(n: Node, type_name: String, rendered: String, shared_types: Set<String>) -> String {
+  rust_carrier_optional_wrap(n: n, rendered: render_rust_shared_type_if_needed(type_name: type_name, rendered: rendered, shared_types: shared_types))
+}
+
 fn render_rust_applied_type_shared(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   let rendered = render_rust_applied_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   let type_name = authored_name_at(source_indices: source_indices, node: n)
-  render_rust_shared_type_if_needed(type_name: type_name, rendered: rendered, shared_types: shared_types)
+  render_rust_shared_type_with_optional(n: n, type_name: type_name, rendered: rendered, shared_types: shared_types)
 }
 
 fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, corpus_repr: RustCorpusRepr, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
@@ -535,10 +539,10 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
       } else if n.connective == NoConnective && n.children |> count == 0 && applied_prop == none && set_contains(shared_types, name) {
         let rendered = rust_render_type_leaf_name(name: name, variant_to_enum: variant_to_enum)
-        render_rust_shared_type_if_needed(type_name: name, rendered: rendered, shared_types: shared_types)
+        render_rust_shared_type_with_optional(n: n, type_name: name, rendered: rendered, shared_types: shared_types)
       } else if n.connective == NoConnective && n.children |> count > 0 {
         if !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
-          render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
+          render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
         } else {
         let base = rust_applied_type_base(name: name, corpus_repr: corpus_repr)
         let peel = is_parametric_opaque_type_by_name(env: env, type_name: name)
@@ -569,7 +573,7 @@ fn render_rust_decl_type(n: Node, generic_param_names: List<String>, shared_type
         } else {
           concat(base, "<", arg_list |> join(separator: ", "), ">")
         }
-        render_rust_shared_type_if_needed(type_name: name, rendered: applied_ty, shared_types: shared_types)
+        render_rust_shared_type_with_optional(n: n, type_name: name, rendered: applied_ty, shared_types: shared_types)
         }
       } else {
         render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
@@ -622,9 +626,9 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
   if n.connective == NoConnective && n.children |> count == 0 && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
   } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, corpus_repr: corpus_repr) {
-    render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
+    render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
-    render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
+    render_rust_shared_type_with_optional(n: n, type_name: name, rendered: name, shared_types: shared_types)
   } else if generic_param_names |> count > 0 {
     render_rust_decl_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   } else {
@@ -638,7 +642,7 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, c
       if applied.children |> count > 0 {
         let outer_name = authored_name_at(source_indices: source_indices, node: n)
         if outer_name != "" && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
-          render_rust_shared_type_if_needed(type_name: outer_name, rendered: outer_name, shared_types: shared_types)
+          render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
         } else {
           render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
         }
@@ -3391,9 +3395,9 @@ fn render_rust_type_with_applied_binding(n: Node, shared_types: Set<String>, cor
         let applied_name = authored_name_at(source_indices: source_indices, node: applied)
         if outer_name != "" && n.connective == NoConnective && (n.children |> count) == 0 {
           if outer_name != applied_name {
-            render_rust_shared_type_if_needed(type_name: outer_name, rendered: outer_name, shared_types: shared_types)
+            render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
           } else if set_contains(shared_types, outer_name) {
-            render_rust_shared_type_if_needed(type_name: outer_name, rendered: outer_name, shared_types: shared_types)
+            render_rust_shared_type_with_optional(n: n, type_name: outer_name, rendered: outer_name, shared_types: shared_types)
           } else {
             render_rust_applied_type_shared(n: applied, generic_param_names: [], shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices, variant_to_enum: empty_map(), env: TypeEnv { bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: empty_intern_table() })
           }

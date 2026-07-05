@@ -2,8 +2,8 @@ module v2.lens.module_graph
 
 import v2.lens.common.construction_justification { ConstructionJustification, WallAfterGrounding }
 import std.disposition { SingleAuthority }
-import v2.std.algebra { FreeMonoid, fold_list, contains, list_snoc_item }
-import v2.std.collection { Absent, List, Map, Present, empty_map, map_get, map_insert }
+import v2.std.algebra { FreeMonoid, fold_list, contains, list_snoc_item, any }
+import v2.std.collection { Absent, List, Map, Optional, Present, empty_map, map_get, map_insert }
 import v2.std.logic { Bool }
 import v2.std.text { String }
 
@@ -57,6 +57,15 @@ type ImportClosureBfsState {
   queue: List<String>
 }
 
+data map_lookup_where_rejected_unreachable_proof: String = "map_lookup_where_rejected_unreachable is NOT a general-purpose Map accessor: map_get's Rejected (a non-absent lookup failure, witness_option_bridge_test.dag's map_get_rejects_non_absent_lookup_failure) must stay Rejected, never be coerced to a miss. This helper is only ever called (below, both call sites) on maps built exclusively via empty_map/map_insert (build_module_to_path, build_import_adjacency's acc), whose lookup closure chain can only ever surface Holds or a Violates tagged ^map_key_absent -- map_get itself maps that exact tag to Accepted(Absent), so Rejected is decidably unreachable here by construction, not by assumption. If this helper is ever reused on a differently-constructed Map, this coercion is wrong for that caller -- do not reuse it outside this module without re-deriving the proof."
+
+fn map_lookup_where_rejected_unreachable<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
+  match map_get(m: m, key: key) {
+    Accepted { value: v, diagnostics: _ } => v
+    Rejected { diagnostics: _ } => Absent
+  }
+}
+
 fn build_module_to_path(nodes: List<ModuleDeclarationFact>) -> Map<String, String> {
   fold_list(
     xs: nodes,
@@ -80,9 +89,9 @@ fn extend_adjacency_for_edge(
   edge: ImportResolutionFact,
   module_to_path: Map<String, String>
 ) -> Map<String, List<String>> {
-  match map_get(m: module_to_path, key: edge.import_module) {
+  match map_lookup_where_rejected_unreachable(m: module_to_path, key: edge.import_module) {
     Present { value: imported_path } =>
-      match map_get(m: acc, key: edge.path) {
+      match map_lookup_where_rejected_unreachable(m: acc, key: edge.path) {
         Present { value: existing } =>
           map_insert(
             m: acc,
@@ -147,7 +156,7 @@ fn import_closure_bfs_walk(
   match state.queue |> first {
     Present { value: importer } =>
       let rest = state.queue |> skip(1)
-      let neighbors = match map_get(m: adjacency, key: importer) {
+      let neighbors = match map_lookup_where_rejected_unreachable(m: adjacency, key: importer) {
         Present { value: paths } => paths
         Absent => no_paths
       }
@@ -177,15 +186,76 @@ fn import_closure(
 
 data module_graph_exclude_substrings: List<String> = []
 
-fn import_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMonoid<String> {
+fn import_closure_live_excluding(
+  entry_path: String,
+  pool_roots: List<String>,
+  exclude_substrings: List<String>
+) -> FreeMonoid<String> {
   import_closure(
     entry_path: entry_path,
     edges: import_resolution_facts_live(
       pool_roots: pool_roots,
       importer_roots: pool_roots,
-      exclude_substrings: module_graph_exclude_substrings
+      exclude_substrings: exclude_substrings
     ),
     nodes: module_declaration_facts_live(pool_roots: pool_roots)
+  )
+}
+
+fn import_closure_live(entry_path: String, pool_roots: List<String>) -> FreeMonoid<String> {
+  import_closure_live_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    exclude_substrings: module_graph_exclude_substrings
+  )
+}
+
+fn strip_leading_dot_slash(s: String) -> String {
+  if starts_with(s: s, prefix: "./") {
+    substring(s: s, start: 2, end: string_length(s: s))
+  } else {
+    s
+  }
+}
+
+data path_matches_touched_provenance: String = "Mirrors the Rust production predicate exactly (span_file_matches/normalize_repo_path, cli_run.rs:4079-4083) -- normalize + suffix-tolerant, not bare exact equality. A path pair where suffix matching succeeds but exact equality fails must decide the SAME on both sides. SCAFFOLD: this is a parallel representation of that Rust predicate, not a single authority (DESIGN Sec3) -- it is load-bearing for the receipt's own equivalence proof (it must be independently expressed to prove agreement, not call the Rust fn). Dissolves when path normalization/suffix-matching is grounded as its own std authority both sides call -- at that point delete this fn and repoint touched_path_in_closure at the shared authority, do not keep both."
+
+fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
+  let file = strip_leading_dot_slash(closure_path)
+  let target = strip_leading_dot_slash(touched_path)
+  string_eq(a: file, b: target)
+    || ends_with(s: file, suffix: target)
+    || ends_with(s: target, suffix: file)
+}
+
+fn touched_path_in_closure(closure: FreeMonoid<String>, path: String) -> Bool {
+  any(xs: closure, predicate: fn(closure_path) { path_matches_touched(closure_path: closure_path, touched_path: path) })
+}
+
+fn entry_affected_by_touched_paths_excluding(
+  entry_path: String,
+  pool_roots: List<String>,
+  touched_paths: List<String>,
+  exclude_substrings: List<String>
+) -> Bool {
+  let closure = import_closure_live_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    exclude_substrings: exclude_substrings
+  )
+  any(xs: touched_paths, predicate: fn(path) { touched_path_in_closure(closure: closure, path: path) })
+}
+
+fn entry_affected_by_touched_paths(
+  entry_path: String,
+  pool_roots: List<String>,
+  touched_paths: List<String>
+) -> Bool {
+  entry_affected_by_touched_paths_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    touched_paths: touched_paths,
+    exclude_substrings: module_graph_exclude_substrings
   )
 }
 

@@ -1,0 +1,37 @@
+module test.claim.runner_slot_allocation_witness
+
+import gunbc.runner_slot_allocation {
+  gunbc_runner_slot_allocation_wall_holds,
+  gunbc_runner_slot_oversubscription_within_slice,
+  gunbc_runner_slot_desired,
+  gunbc_runner_slots_per_host,
+  gunbc_runner_slice_cap_declared,
+  gunbc_committed_runner_slot_allocations,
+}
+import std.measure { byte_size, byte_size_count }
+
+test fn runner_slot_allocation_wall_holds() -> Bool {
+  gunbc_runner_slot_allocation_wall_holds()
+}
+
+test fn runner_slot_allocation_oversubscription_boundary_exact() -> Bool {
+  let per_slot = gunbc_runner_slot_desired()
+  gunbc_runner_slot_oversubscription_within_slice(
+    slots: gunbc_runner_slots_per_host(),
+    per_slot: per_slot.memory_max,
+    slice_cap: gunbc_runner_slice_cap_declared()
+  )
+}
+
+test fn runner_slot_allocation_committed_hosts_nonempty() -> Bool {
+  gunbc_committed_runner_slot_allocations() |> count == 2
+}
+
+test fn runner_slot_allocation_RED_oversubscription_exceeds_slice() -> Bool {
+  let per_slot = gunbc_runner_slot_desired()
+  !gunbc_runner_slot_oversubscription_within_slice(
+    slots: gunbc_runner_slots_per_host() + 1,
+    per_slot: per_slot.memory_max,
+    slice_cap: gunbc_runner_slice_cap_declared()
+  )
+}

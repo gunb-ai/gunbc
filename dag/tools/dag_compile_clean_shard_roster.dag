@@ -1,0 +1,60 @@
+module tools.dag_compile_clean_shard_roster
+
+import tools.dag_compile_clean_partition {
+  CompileCleanModuleShard,
+  compile_clean_partition_boundary
+}
+import std.types { String, Bool, Int, List, list_length }
+
+type CompileCleanModuleDeclFact {
+  module: String
+  path: String
+}
+
+fn compile_clean_entry_module_facts() -> List<CompileCleanModuleDeclFact> {
+  module_declaration_facts(pool_roots: [compile_clean_partition_boundary().entry_root])
+}
+
+fn compile_clean_module_shard_from_decl(decl: CompileCleanModuleDeclFact) -> CompileCleanModuleShard {
+  CompileCleanModuleShard { entry_path: decl.path }
+}
+
+fn compile_clean_module_shard_roster() -> List<CompileCleanModuleShard> {
+  fold(compile_clean_entry_module_facts(), init: [], f: fn(acc, decl) {
+    concat(acc, [compile_clean_module_shard_from_decl(decl: decl)])
+  })
+}
+
+fn compile_clean_shard_entry_paths() -> List<String> {
+  fold(compile_clean_module_shard_roster(), init: [], f: fn(acc, shard) {
+    concat(acc, [shard.entry_path])
+  })
+}
+
+fn compile_clean_shard_roster_count() -> Int {
+  list_length(items: compile_clean_module_shard_roster())
+}
+
+fn compile_clean_shard_roster_nonempty() -> Bool {
+  compile_clean_shard_roster_count() > 0
+}
+
+fn list_contains_path(xs: List<String>, target: String) -> Bool {
+  fold(xs, init: false, f: fn(found, p) { found || (p == target) })
+}
+
+fn path_occurrence_count(xs: List<String>, target: String) -> Int {
+  fold(xs, init: 0, f: fn(n, p) { if p == target { n + 1 } else { n } })
+}
+
+fn compile_clean_shard_roster_paths_duplicate_free() -> Bool {
+  let paths = compile_clean_shard_entry_paths()
+  fold(paths, init: true, f: fn(ok, path) {
+    ok && (path_occurrence_count(xs: paths, target: path) == 1)
+  })
+}
+
+fn witness_shard_roster_boundary_is_entry_root_only() -> Bool {
+  list_length(items: [compile_clean_partition_boundary().entry_root]) == 1
+    && compile_clean_partition_boundary().entry_root == "dag"
+}
