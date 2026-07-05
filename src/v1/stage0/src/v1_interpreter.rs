@@ -96,6 +96,53 @@ impl SymbolInterner {
 thread_local! {
     static ACTIVE_CTX: std::cell::Cell<Option<*const InterpContext>> =
         const { std::cell::Cell::new(None) };
+    static LEXICAL_BASE_ENV: std::cell::RefCell<Option<Rc<Env>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+thread_local! {
+    static CALL_ENV_DEPTH_PEAK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn with_lexical_base_env<R>(base: &Rc<Env>, f: impl FnOnce() -> R) -> R {
+    LEXICAL_BASE_ENV.with(|cell| {
+        let prev = cell.borrow_mut().take();
+        cell.borrow_mut().replace(base.clone());
+        struct LexicalBaseGuard {
+            prev: Option<Rc<Env>>,
+        }
+        impl Drop for LexicalBaseGuard {
+            fn drop(&mut self) {
+                LEXICAL_BASE_ENV.with(|cell| {
+                    *cell.borrow_mut() = self.prev.take();
+                });
+            }
+        }
+        let _guard = LexicalBaseGuard { prev };
+        #[cfg(any(test, feature = "interp_test_witness"))]
+        CALL_ENV_DEPTH_PEAK.with(|peak| peak.set(0));
+        f()
+    })
+}
+
+fn lexical_base_env(caller_env: &Rc<Env>) -> Rc<Env> {
+    LEXICAL_BASE_ENV.with(|cell| {
+        cell.borrow()
+            .clone()
+            .unwrap_or_else(|| Env::root(caller_env))
+    })
+}
+
+#[cfg(any(test, feature = "interp_test_witness"))]
+fn record_call_env_depth(env: &Env) {
+    let depth = env.chain_depth();
+    CALL_ENV_DEPTH_PEAK.with(|peak| {
+        let current = peak.get();
+        if depth > current {
+            peak.set(depth);
+        }
+    });
 }
 
 fn with_active_ctx<R>(ctx: &InterpContext, f: impl FnOnce() -> R) -> R {
@@ -572,6 +619,24 @@ impl Env {
         } else {
             None
         }
+    }
+
+    /// Outermost frame of the parent-linked chain (globals / eager data env).
+    pub fn root(env: &Rc<Self>) -> Rc<Self> {
+        let mut current = env.clone();
+        while let Some(parent) = current.parent.clone() {
+            current = parent;
+        }
+        current
+    }
+
+    #[cfg(any(test, feature = "interp_test_witness"))]
+    pub fn chain_depth(&self) -> usize {
+        1 + self
+            .parent
+            .as_ref()
+            .map(|parent| parent.chain_depth())
+            .unwrap_or(0)
     }
 }
 
@@ -1187,7 +1252,7 @@ pub fn run_in_context(
             Env::empty()
         };
 
-        call_function(ctx, &item_node, &[], &env)
+        with_lexical_base_env(&env, || call_function(ctx, &item_node, &[], &env))
     })
 }
 
@@ -1207,8 +1272,15 @@ pub fn run_in_context_with_args(
         } else {
             Env::empty()
         };
-        call_function(ctx, &item_node, args, &env)
+        with_lexical_base_env(&env, || call_function(ctx, &item_node, args, &env))
     })
+}
+
+/// Peak parent-chain depth observed across `call_function` frames in the last
+/// `run_in_context*` invocation (test witness for lexical-base scoping).
+#[cfg(any(test, feature = "interp_test_witness"))]
+pub fn call_env_depth_peak_snapshot() -> usize {
+    CALL_ENV_DEPTH_PEAK.with(|peak| peak.get())
 }
 
 fn build_initial_env(ctx: &InterpContext) -> InterpResult<Rc<Env>> {
@@ -1325,7 +1397,9 @@ fn call_function(
         }
     }
 
-    let call_env = Env::extend(env, bindings);
+    let call_env = Env::extend(&lexical_base_env(env), bindings);
+    #[cfg(any(test, feature = "interp_test_witness"))]
+    record_call_env_depth(&call_env);
 
     match eval_expr(body, &call_env, ctx) {
         Err(InterpError::EarlyReturn { value }) => Ok(value),
@@ -3281,7 +3355,7 @@ fn eval_algebra_method(
                 raw_map_lookup(&receiver, key, env, ctx)
             } else if let Ok(items) = expect_list(&receiver, "get") {
                 let idx = expect_int(args.first(), "get")?;
-                Ok(items.get(idx as usize).cloned().unwrap_or(Value::Null))
+                Ok(list_get_at_or_null(&items, idx))
             } else {
                 let key = args.first().ok_or_else(|| InterpError::TypeError {
                     msg: "get requires a key argument".to_string(),
@@ -5085,6 +5159,15 @@ fn eval_builtin(
             Ok(Some(Value::Str(s)))
         }
 
+        "get" => match positional.as_slice() {
+            [list_val, idx_val] if free_monoid_to_vec(list_val).is_some() => {
+                let items = expect_list(list_val, "get")?;
+                let idx = expect_int(Some(idx_val), "get")?;
+                Ok(Some(list_get_at_or_null(&items, idx)))
+            }
+            _ => Ok(None),
+        },
+
         "parse_int" => {
             let s = expect_str(positional.first().copied(), "parse_int")?;
             match s.parse::<i64>() {
@@ -6327,6 +6410,10 @@ fn value_to_list_carrier(val: &Value) -> Option<(Rc<RrbVector<Value>>, u64)> {
             (Rc::new(RrbVector::from(items)), copied)
         }),
     }
+}
+
+fn list_get_at_or_null(items: &RrbVector<Value>, idx: i64) -> Value {
+    items.get(idx as usize).cloned().unwrap_or(Value::Null)
 }
 
 fn expect_list(val: &Value, context: &str) -> InterpResult<Rc<RrbVector<Value>>> {

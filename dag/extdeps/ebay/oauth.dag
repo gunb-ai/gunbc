@@ -1,0 +1,150 @@
+module extdeps.ebay.oauth
+
+import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.ebay.ebay { production_api_base }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "developer.ebay.com/api-docs/static/oauth-tokens.html"
+  }
+}
+
+type EbayTokenType = ApplicationAccessToken | UserAccessToken
+
+data application_access_token_wire: String = "Application Access Token"
+
+data user_access_token_wire: String = "User Access Token"
+
+fn ebay_token_type_wire_label(t: EbayTokenType) -> String {
+  match t {
+    ApplicationAccessToken => application_access_token_wire
+    UserAccessToken => user_access_token_wire
+  }
+}
+
+fn parse_ebay_token_type(raw: String) -> EbayTokenType? {
+  if raw == application_access_token_wire { Present { value: ApplicationAccessToken } }
+  else if raw == user_access_token_wire { Present { value: UserAccessToken } }
+  else { none }
+}
+
+type EbayOAuthTokenResponse {
+  access_token: String
+  token_type: String
+  expires_in: Int
+  refresh_token: String?
+  refresh_token_expires_in: Int?
+}
+
+type EbayOAuthErrorShape {
+  error: String
+  error_description: String?
+}
+
+data client_credentials_grant_type: NonEmptyStr = "client_credentials"
+
+data refresh_token_grant_type: NonEmptyStr = "refresh_token"
+
+data authorization_code_grant_type: NonEmptyStr = "authorization_code"
+
+data api_scope_root: NonEmptyStr = "https://api.ebay.com/oauth/api_scope"
+
+data sell_inventory_scope: NonEmptyStr = "https://api.ebay.com/oauth/api_scope/sell.inventory"
+
+data user_authorization_endpoint: NonEmptyStr = "https://auth.ebay.com/oauth2/authorize"
+
+service ebay.OAuth {
+  config {
+    endpoint: production_api_base
+
+    rate_limit: { requests: 1000, per: minute, scope: oauth }
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
+  }
+
+  operation MintApplicationToken {
+    input {
+      client_id: String
+      client_secret: Secret
+      scope: String
+    }
+    output {
+      access_token: Secret from "access_token"
+      expires_in: Int from "expires_in"
+      token_type: String from "token_type"
+    }
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/identity/v1/oauth2/token",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: { grant_type: client_credentials_grant_type, scope: scope }
+    }
+    response {
+      200 => EbayOAuthTokenResponse
+      400 => EbayOAuthErrorShape
+      401 => EbayOAuthErrorShape
+      429 => EbayOAuthErrorShape
+      5xx => EbayOAuthErrorShape
+    }
+  }
+
+  operation MintUserToken {
+    input {
+      client_id: String
+      client_secret: Secret
+      refresh_token: Secret
+      scope: String
+    }
+    output {
+      access_token: Secret from "access_token"
+      expires_in: Int from "expires_in"
+      token_type: String from "token_type"
+    }
+    idempotent
+    transport rest {
+      method: POST,
+      path: "/identity/v1/oauth2/token",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: { grant_type: refresh_token_grant_type, refresh_token: refresh_token, scope: scope }
+    }
+    response {
+      200 => EbayOAuthTokenResponse
+      400 => EbayOAuthErrorShape
+      401 => EbayOAuthErrorShape
+      429 => EbayOAuthErrorShape
+      5xx => EbayOAuthErrorShape
+    }
+  }
+
+  operation ExchangeAuthorizationCode {
+    input {
+      client_id: String
+      client_secret: Secret
+      code: Secret
+      redirect_uri: String
+    }
+    output {
+      access_token: Secret from "access_token"
+      refresh_token: Secret from "refresh_token"
+      expires_in: Int from "expires_in"
+      refresh_token_expires_in: Int from "refresh_token_expires_in"
+    }
+    transport rest {
+      method: POST,
+      path: "/identity/v1/oauth2/token",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: { grant_type: authorization_code_grant_type, code: code, redirect_uri: redirect_uri }
+    }
+    response {
+      200 => EbayOAuthTokenResponse
+      400 => EbayOAuthErrorShape
+      401 => EbayOAuthErrorShape
+      429 => EbayOAuthErrorShape
+      5xx => EbayOAuthErrorShape
+    }
+  }
+}

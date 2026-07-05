@@ -1,0 +1,68 @@
+module extdeps.tcgplayer.pricing
+
+import std.types { NonEmptyStr, HttpMethod, AuthScheme }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+import extdeps.tcgplayer.tcgplayer { production_api_base, TcgplayerErrorEnvelope }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "docs.tcgplayer.com/reference/pricing_getproductprices-1"
+  }
+}
+
+data tcgplayer_pricing_money_measure_grounding_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: TCGplayer money fields here (ProductPriceRow low/mid/high/market/directLow prices, GetProductPrices market_price output) mirror the wire as bare Float (JSON numbers TCGplayer returns for USD prices) pending value-Measure grounding on std.measure MoneyAmountMicro. BLOCKED on a numeric-tower decimal-dollars <-> money_amount_micro conversion that std does not have yet (no Float->Nat micros primitive); wire-fidelity Float is the reviewer-sanctioned transport-seam representation until it lands. See gunbc.tools.card_intake tcgplayer_money_measure_grounding_dissolution_trigger for the shared gate. DISSOLVES WHEN std.measure gains that conversion and the operation output decodes into MoneyAmountMicro at the seam."
+
+type ProductPriceRow {
+  productId: Int
+  lowPrice: Float?
+  midPrice: Float?
+  highPrice: Float?
+  marketPrice: Float?
+  directLowPrice: Float?
+  subTypeName: String?
+}
+
+type ProductPricesResponse {
+  success: Bool
+  errors: List<String>?
+  results: List<ProductPriceRow>?
+}
+
+data structural_coverage_gap_pricing_operations_residual: List<String> = [
+  "sku-level pricing (GET /pricing/sku/ by sku id list) and market price by product condition id are",
+  "unmodeled; extend when the listing flow prices per-condition skus instead of products"
+]
+
+service tcgplayer.Pricing {
+  config {
+    endpoint: production_api_base
+    auth: Bearer
+    auth_input: bearer_token
+
+    retry: { max_attempts: 3, backoff: exponential, retry_on: [429, 500, 502, 503] }
+  }
+
+  operation GetProductPrices {
+    input {
+      bearer_token: Secret
+      product_ids: NonEmptyStr
+    }
+    output {
+      market_price: Float? from "results/0/marketPrice"
+      sub_type_name: String? from "results/0/subTypeName"
+    }
+    readonly
+    transport rest {
+      method: GET,
+      path: "/pricing/product/\{product_ids\}"
+    }
+    response {
+      200 => ProductPricesResponse
+      401 => TcgplayerErrorEnvelope
+      404 => TcgplayerErrorEnvelope
+      5xx => TcgplayerErrorEnvelope
+    }
+  }
+}
