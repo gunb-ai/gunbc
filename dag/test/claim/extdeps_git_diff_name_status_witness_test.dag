@@ -150,6 +150,26 @@ fn w_recognized_entries_are_never_flagged_unknown() -> Bool {
   !git_diff_status_entries_any_unknown(entries: entries)
 }
 
+fn w_lone_trailing_status_token_is_typed_truncated_not_empty() -> Bool {
+  let raw = join_name_status_tokens(["M"])
+  let state = git_diff_name_status_parse_state(raw: raw)
+  state.entries.length() == 0
+    && git_diff_name_status_parse_state_is_truncated(state: state)
+}
+
+fn w_rename_missing_new_path_is_typed_truncated_not_empty() -> Bool {
+  let raw = join_name_status_tokens(["R100", "old.txt"])
+  let state = git_diff_name_status_parse_state(raw: raw)
+  state.entries.length() == 0
+    && git_diff_name_status_parse_state_is_truncated(state: state)
+}
+
+fn w_complete_stream_is_never_flagged_truncated() -> Bool {
+  let raw = join_name_status_tokens(["M", "a.txt", "R100", "old.txt", "new.txt"])
+  let state = git_diff_name_status_parse_state(raw: raw)
+  !git_diff_name_status_parse_state_is_truncated(state: state)
+}
+
 fn w_touched_paths_derives_both_sides_of_a_rename() -> Bool {
   let raw = join_name_status_tokens(["M", "a.txt", "R100", "old_d.txt", "new_d.txt"])
   let entries = parse_git_diff_name_status_z(raw: raw)
@@ -193,6 +213,9 @@ test fn extdeps_git_diff_name_status_witnesses() -> Bool {
     && w_malformed_rename_score_is_typed_unknown_not_absorbed()
     && w_malformed_rename_score_corruption_stays_fail_closed_downstream()
     && w_recognized_entries_are_never_flagged_unknown()
+    && w_lone_trailing_status_token_is_typed_truncated_not_empty()
+    && w_rename_missing_new_path_is_typed_truncated_not_empty()
+    && w_complete_stream_is_never_flagged_truncated()
     && w_touched_paths_derives_both_sides_of_a_rename()
     && w_departed_paths_names_deletions_and_rename_sources_only()
     && w_empty_raw_produces_no_entries()
