@@ -65,7 +65,30 @@ Per-function name-sets cannot express "move `acc.seen` here because `acc` dies o
 path". The verdict moves from per-name to per-site (Perceus-style last-use; `.dag` is pure
 and tree-shaped, so last-use is mechanical — no borrow checker needed).
 
-Status: proof-side machinery is implemented in `ownership.dag`
+Status: proof-side machinery AND whole-value emitter consumption are implemented;
+field-move emitter consumption (entry take-owned generalization) remains. Wired:
+`OwnershipBuildResult.move_sites_index` → `EmitGraphInfo.move_sites_index` / per-fn
+`move_sites` (TCO functions get an empty map — loop-rewritten bodies reuse bindings across
+iterations, so per-site last-use does not transfer; fail closed) → `emit_var_ref` moves
+when `movable` (per-name) OR `move_licensed_at_site` (per-site, span-keyed,
+`read_only_params` excluded, span-0 refused). Validation-time obligations: (a) a counted
+licensed-but-cloned check in `count_ownership_violations` so a span-keying drift is
+observable, not a silent clone (parent guard); (b) `count_ownership_violations` /
+`ownership_movable_test` call `build_movable_set` with the new `param_names` arg once the
+regenerated seed lands (the seed-side Rust test still compiles against the old signature
+until then); (c) a by-execution RED/GREEN test for `take_owned_counted` counts.
+
+Field-move step (not yet wired, design addendum): emitting `base.field` as a move is only
+valid on an owned (non-`Rc`) base, so licensed field moves require the generalized entry
+take-owned: params whose every use is a `Projected` edge (zero whole-value edges) on a
+shared-type param get `let x = v1_rt::take_owned_counted(x, site)` at fn entry; licensed
+projection sites then move, unlicensed ones clone the field (cheap `Rc` bump for container
+fields). This is what deletes `owned_bindings` as an authority — the fold accumulator
+becomes the special case of the same rule. Held for compile feedback (post-fixpoint):
+blind-writing the `emit_fn_def` entry rewrite without `cargo build` of a regenerated seed
+risks template-level use-after-move that only rustc can adjudicate.
+
+Model (in `ownership.dag`, the one authority):
 (`build_move_site_licenses` — a backward liveness walk in reverse evaluation order,
 O(AST)) with unit witnesses in `ownership_movable_test.dag`; emitter consumption is the
 remaining step. Guards baked in: a zero/absent span never licenses (synthetic nodes fail
