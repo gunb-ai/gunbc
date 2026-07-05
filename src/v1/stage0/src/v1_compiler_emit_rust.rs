@@ -467,10 +467,7 @@ pub fn rust_seed_host_numeric_alias(name: String, corpus_repr: RustCorpusRepr) -
     }
     // Nat authority (`std.nat`: `type Nat = CommutativeSemiring<Magnitude>`) must
     // project to the host scalar before alias-rhs expansion names the semiring.
-    if name == "Nat"
-        || name == "Int"
-        || name == "CommutativeSemiring"
-    {
+    if name == "Nat" || name == "Int" || name == "CommutativeSemiring" {
         Some("i64".to_string())
     } else {
         None
