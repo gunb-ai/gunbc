@@ -6612,7 +6612,7 @@ fn export_index_merge_module(acc: Map<String, TypeNameExportFacts>, m: TypedModu
     if set_contains(state.seen_names, name) {
       state
     } else {
-      let canonical = match filter(m.type_env.bindings |> map_values, b => b.name == name) |> last {
+      let canonical = match filter(m.type_env.bindings |> map_values, b => b.name == name) |> first {
         Present { value: b } => b
         Absent => binding
       }

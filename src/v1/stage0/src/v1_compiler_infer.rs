@@ -14807,7 +14807,7 @@ pub fn build_type_name_export_index(
                         .bindings
                         .values()
                         .filter(|b| b.name == name)
-                        .last()
+                        .next()
                         .cloned()
                         .unwrap_or(binding);
                     match v1_rt::map_get(&acc2, name.clone()) {
