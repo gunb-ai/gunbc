@@ -11580,7 +11580,15 @@ fn count_ownership_violations(
     let try_unwrap_fallbacks = count_pattern(&emitted, "unwrap_or_else(|rc| (*rc).clone())");
 
     for proof in result.ownership.iter() {
-        let movable = build_movable_set(proof.clone());
+        // Mirror build_ownership_results: params are the bindings seeded without a
+        // binding_kind by analyze_ownership.
+        let param_names: std::collections::BTreeSet<String> = proof
+            .bindings
+            .values()
+            .filter(|u| u.binding_kind.is_none())
+            .map(|u| u.name.clone())
+            .collect();
+        let movable = build_movable_set(proof.clone(), std::rc::Rc::new(param_names));
         for name in movable.iter() {
             let clone_pattern = format!("{}.clone()", name);
             let clones_in_emitted = count_pattern(&emitted, &clone_pattern);
