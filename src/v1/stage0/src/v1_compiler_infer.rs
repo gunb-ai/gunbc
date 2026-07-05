@@ -771,7 +771,7 @@ pub fn internal_expr_error_node(message: String, span: Rc<SourceSpan>) -> Rc<Nod
 pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option<String> {
     match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
         Some(binding) => {
-            match Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(lookup_type_for))))))))((*scope.type_env).clone(), (*binding.resolved).clone()) {
+            match Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(lookup_type_for))))))))))))))))))))))))))))))((*scope.type_env).clone(), (*binding.resolved).clone()) {
                 Some(parent) => {
                     let is_coproduct = (parent.connective.clone() == Connective::Disj);
                     if is_coproduct {
@@ -810,7 +810,7 @@ pub fn variant_owner_node_authority() -> String {
 pub fn variant_owner_node(scope: Rc<InferScope>, name: String) -> Option<Rc<Node>> {
     match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
         Some(binding) => {
-            match Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(lookup_type_for))))))))((*scope.type_env).clone(), (*binding.resolved).clone()) {
+            match Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(lookup_type_for))))))))))))))))))))))))))))))((*scope.type_env).clone(), (*binding.resolved).clone()) {
                 Some(owner) => {
                     let owner_is_coproduct = (owner.connective.clone() == Connective::Disj);
                     if owner_is_coproduct {
@@ -3202,7 +3202,7 @@ pub fn infer_expr(
                             if module_skips_direct_call_arg_check(scope.module_name.clone()) {
                                 Rc::new(vec![])
                             } else {
-                                Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(direct_call_arg_mismatch_diags))))))))(
+                                Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(direct_call_arg_mismatch_diags))))))))))))))))))))))))))))))(
                                     value_params_for_check,
                                     typed_args.clone(),
                                     call_subst.clone(),
@@ -4199,7 +4199,7 @@ match bare_s {
                     PatternSubject::PatternResolved {
                         node: resolved_scrutinee,
                         ..
-                    } => Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(check_match_exhaustiveness))))))))(
+                    } => Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(check_match_exhaustiveness))))))))))))))))))))))))))))))(
                         resolved_scrutinee.clone(),
                         typed_arms.clone(),
                         (*scope.type_env).clone(),
@@ -10077,7 +10077,7 @@ pub fn arm_ctx_from_variant_provenance(
                         } else {
                             match v1_rt::map_get(&variant_field_map, field_label.clone()) {
                                 Some(param_map) => {
-                                    let composed = Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(compose_callee_param_map))))))))(
+                                    let composed = Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(compose_callee_param_map))))))))))))))))))))))))))))))(
                                         param_map.clone(),
                                         call_args.clone(),
                                         c.param_order.clone(),
@@ -11109,7 +11109,7 @@ pub fn infer_item(item: Rc<Node>, scope: Rc<InferScope>) -> Rc<TypedItemResult> 
                         (*scope.type_env).clone().source_indices.clone(),
                     );
                     let annotated_body = if is_recursive.clone() {
-                        Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(annotate_descent_evidence))))))))(
+                        Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(annotate_descent_evidence))))))))))))))))))))))))))))))(
                             body_typed.clone(),
                             authored_name_at(
                                 (*scope.type_env).clone().source_indices.clone(),
@@ -13938,7 +13938,7 @@ pub fn typecheck_module(
             }
             __result
         });
-        let updated_func_env = Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(populate_output_provenance))))))))(
+        let updated_func_env = Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(populate_output_provenance))))))))))))))))))))))))))))))(
             typed_items.clone(),
             (*ctx.func_env).clone(),
             env.clone(),
@@ -14144,7 +14144,7 @@ pub fn topo_resolve_types(
                                 let pre = (*binding.resolved).clone();
                                 let result =
                                     resolve_node(Rc::new(pre.clone()), env.clone(), module_name.clone());
-                                let resolved = Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(preserve_nominal_brand_on_resolve))))))))(
+                                let resolved = Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(preserve_nominal_brand_on_resolve))))))))))))))))))))))))))))))(
                                     pre.clone(),
                                     (*result.resolved).clone(),
                                     binding.name.clone(),
@@ -14207,7 +14207,7 @@ pub fn topo_resolve_types(
                     Some(binding) => {
                         let pre = (*binding.resolved).clone();
                         let result = resolve_node(Rc::new(pre.clone()), env.clone(), module_name.clone());
-                        let resolved = Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(preserve_nominal_brand_on_resolve))))))))(
+                        let resolved = Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(preserve_nominal_brand_on_resolve))))))))))))))))))))))))))))))(
                             pre.clone(),
                             (*result.resolved).clone(),
                             binding.name.clone(),

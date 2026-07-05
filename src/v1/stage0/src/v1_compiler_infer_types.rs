@@ -898,7 +898,7 @@ pub fn instantiate_algebra_type(
                 let sb =
                     instantiate_algebra_type(second.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_tuple_type))))))))((*fb.ty).clone(), (*sb.ty).clone()),
+                    ty: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_tuple_type))))))))))))))))))))))))))))))((*fb.ty).clone(), (*sb.ty).clone()),
                     diagnostics: v1_rt::concat(fb.diagnostics.clone(), sb.diagnostics.clone()),
                 })
             }
@@ -934,7 +934,7 @@ pub fn instantiate_algebra_type(
                 });
                 let rb = instantiate_algebra_type(r.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_callable_type))))))))(param_nodes, (*rb.ty).clone()),
+                    ty: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_callable_type))))))))))))))))))))))))))))))(param_nodes, (*rb.ty).clone()),
                     diagnostics: v1_rt::concat(param_diags, rb.diagnostics.clone()),
                 })
             }
@@ -979,7 +979,7 @@ pub fn instantiate_algebra_field(
             source_indices.clone(),
         );
         let field_ty = if ((param_types.clone().len() as i64) > 0) {
-            Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(algebra_method_field))))))))(
+            Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(algebra_method_field))))))))))))))))))))))))))))))(
                 template.name.clone(),
                 param_types.clone(),
                 (*return_b.ty).clone(),
@@ -1527,7 +1527,7 @@ pub fn apply_type_substitution(
                 source_indices.clone(),
             );
             Rc::new(KernelTypeBuild {
-                ty: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_tuple_type))))))))((*fb.ty).clone(), (*sb.ty).clone()),
+                ty: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_tuple_type))))))))))))))))))))))))))))))((*fb.ty).clone(), (*sb.ty).clone()),
                 diagnostics: v1_rt::concat(fb.diagnostics.clone(), sb.diagnostics.clone()),
             })
         }

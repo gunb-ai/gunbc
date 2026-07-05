@@ -8628,11 +8628,11 @@ pub fn cost_of_expr(
                         );
                         Rc::new(SummaryResult {
                             summary: Rc::new(ComplexitySummary {
-                                work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                                work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                                     (*acc.summary.clone().work).clone(),
                                     (*ar.summary.clone().work).clone(),
                                 ),
-                                span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                                span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                                     (*acc.summary.clone().span).clone(),
                                     (*ar.summary.clone().span).clone(),
                                 ),
@@ -8645,11 +8645,11 @@ pub fn cost_of_expr(
                 );
                 Rc::new(SummaryResult {
                     summary: Rc::new(ComplexitySummary {
-                        work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                        work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                             (*args_result.summary.clone().work).clone(),
                             (*callee_result.summary.clone().work).clone(),
                         ),
-                        span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                        span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                             (*args_result.summary.clone().span).clone(),
                             (*callee_result.summary.clone().span).clone(),
                         ),
@@ -8745,11 +8745,11 @@ pub fn cost_of_expr(
                                 );
                                 Rc::new(SummaryResult {
                                     summary: Rc::new(ComplexitySummary {
-                                        work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                                        work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                                             (*acc.summary.clone().work).clone(),
                                             (*ar.summary.clone().work).clone(),
                                         ),
-                                        span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                                        span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                                             (*acc.summary.clone().span).clone(),
                                             (*ar.summary.clone().span).clone(),
                                         ),
@@ -8822,11 +8822,11 @@ pub fn cost_of_expr(
                         Rc::new(MatchCostAccum {
                             result: Rc::new(SummaryResult {
                                 summary: Rc::new(ComplexitySummary {
-                                    work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_par))))))))(
+                                    work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_par))))))))))))))))))))))))))))))(
                                         (*(*acc.result).clone().summary.clone().work).clone(),
                                         (*ar.summary.clone().work).clone(),
                                     ),
-                                    span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_par))))))))(
+                                    span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_par))))))))))))))))))))))))))))))(
                                         (*(*acc.result).clone().summary.clone().span).clone(),
                                         (*ar.summary.clone().span).clone(),
                                     ),
@@ -8963,11 +8963,11 @@ pub fn cost_of_expr(
                         );
                         Rc::new(SummaryResult {
                             summary: Rc::new(ComplexitySummary {
-                                work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                                work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                                     (*v_r.summary.clone().work).clone(),
                                     (*b_r.summary.clone().work).clone(),
                                 ),
-                                span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                                span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                                     (*v_r.summary.clone().span).clone(),
                                     (*b_r.summary.clone().span).clone(),
                                 ),
@@ -9002,11 +9002,11 @@ pub fn cost_of_expr(
                     );
                     Rc::new(SummaryResult {
                         summary: Rc::new(ComplexitySummary {
-                            work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                            work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                                 (*acc.summary.clone().work).clone(),
                                 (*sr.summary.clone().work).clone(),
                             ),
-                            span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                            span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                                 (*acc.summary.clone().span).clone(),
                                 (*sr.summary.clone().span).clone(),
                             ),
@@ -9074,11 +9074,11 @@ pub fn cost_of_expr(
                     );
                     Rc::new(SummaryResult {
                         summary: Rc::new(ComplexitySummary {
-                            work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                            work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                                 (*acc.summary.clone().work).clone(),
                                 (*cr.summary.clone().work).clone(),
                             ),
-                            span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                            span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                                 (*acc.summary.clone().span).clone(),
                                 (*cr.summary.clone().span).clone(),
                             ),
@@ -9111,11 +9111,11 @@ pub fn cost_of_expr(
                     );
                     Rc::new(SummaryResult {
                         summary: Rc::new(ComplexitySummary {
-                            work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                            work: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                                 (*acc.summary.clone().work).clone(),
                                 (*cr.summary.clone().work).clone(),
                             ),
-                            span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))(
+                            span: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(cost_seq))))))))))))))))))))))))))))))(
                                 (*acc.summary.clone().span).clone(),
                                 (*cr.summary.clone().span).clone(),
                             ),

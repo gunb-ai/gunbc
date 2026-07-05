@@ -12077,7 +12077,7 @@ pub fn parse_match_arm(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Arm
                 err: r.err.clone(),
             });
         }
-        let arm = Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_arm_node))))))))(pat, guard, (*r.expr).clone(), arm_span);
+        let arm = Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_arm_node))))))))))))))))))))))))))))))(pat, guard, (*r.expr).clone(), arm_span);
         Rc::new(ArmResult {
             arm: arm,
             tokens: r.tokens.clone(),
