@@ -117,6 +117,41 @@ separate std-induction PR so the termination checker's soundness is reviewed on 
 - **v1-burndown (sharp-deer)**: this reform IS v1-burndown-aligned (it's the resolve model the burndown
   wants gone) — coordinate so v2's `std.type_env` is the shared target.
 
+## 7.5 Profile redirection (loyal-heron partial profile, 2026-07-05)
+
+85-source self-compile subset: Tokenize 274ms · Parse 3.19s · **Resolve 63ms · Reconcile 12.46s · Emit
+58.34s** · Total 74.3s. So **emit ≈78%, typecheck/reconcile ≈17%, resolve <1%.** This CONTRADICTS the
+earlier "~710s resolve+typecheck dominates" grounding (likely stale / different fixture / pre-#6242).
+
+IMPLICATION: the dominant O(M?) cost is **emit — `emit_imports`** (the per-module transitive re-export
+closure recompute, audit finding #1), NOT `build_type_env`'s ancestry materialization (reconcile, the 17%).
+BUT it is the SAME fix: both re-derive the import closure per module. So the `SymbolIndex` single authority
+is consumed by BOTH — and the **first realization should target `emit_imports`** (the 78%), then
+`build_type_env` (the 17%). The design is unchanged; the ORDER of consumers flips to emit-first.
+
+CAVEAT: 85-module RATIOS ≠ 876-module SCALING. Which stage is O(M²) vs high-linear is settled only by the
+scaling curve (100/200/400/800), loyal-heron's next deliverable. Do NOT start surgery until it lands — it
+decides emit-first vs both-at-once and confirms the target is superlinear, not a fat constant.
+
+## 7.6 Preserve-invariants the reform MUST NOT break (loyal-heron infer review)
+
+These are RED controls — each must stay green through the reform (existing witnesses noted):
+1. **Import-DAG cycles**: resolve topo-sorts and EXCLUDES cycle participants (acyclic_resolved only). The
+   `SymbolIndex` prepass must use the same `ModuleGraph.modules` order; do NOT index cycle modules as if
+   parents exist; mirror `import_diags` / missing-parent fail-closed.
+2. **Forward refs within a module**: NOT solved by inter-module `SymbolIndex`. `build_type_env` still needs
+   local `detect_type_cycles_kahn` + `topo_resolve_types` over the local `deps_map`. The scope cursor
+   carries local `str_bindings`; `SymbolIndex` is qualified cross-module lookup ONLY.
+3. **Multi-import overlay**: today ancestry is single-parent copy when |imports|==1 else
+   `merge_type_env_cache` union. Reform must preserve overlay semantics (kernel + import overlay-wins), not
+   assume a single parent chain.
+4. **std.types filter**: `type_env_for_import` strips type-variable names — easy to miss in a flat index;
+   needs an explicit rule or qualified entries.
+5. **Single-exporter canonical pick** (`rewire_...`: last `TypedModule` in list wins): reform must not
+   silently change import-order authority; multi-exporter names defer to overlay-wins.
+6. **variant_surfaces re-export** (P3+P5 incremental, own-wins): keep or subsume; the `E = A | B` re-export
+   chain witness (kept by #6239) is the RED control for re-export semantics.
+
 ## 8. Resolved decisions (operator, 2026-07-05)
 
 - **provenance split**: design it unwritable (§4), do not audit-and-trust. DONE in this doc.
