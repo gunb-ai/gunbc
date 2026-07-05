@@ -38,11 +38,9 @@ type CoverageReceipt {
   self_application_status: SelfApplicationStatus
 }
 
-data lens_contract_cost_mode_repromotion_trigger: String = "🟡 dissolve-on: lens_contract_cost.mode is AuditOnly because the enforcement gate PROVES the Blocking claim false today (derived consumer_observed = WitnessOnly - the bound budget witness is not enrolled in gunbc.commit_workflow.commit_gate_roster; design anti-overcomplication rule: no lens may claim Blocking unless the gate can prove it). RE-PROMOTES TO Blocking in the same PR that enrolls this contract's consumer_witness on the GithubActionsCiJob surface and updates the pinned complexity_repo_wide expectation in enforcement_live_witness_test.dag."
-
 data lens_contract_cost: LensContract = {
   entry: lens_registry_v0_cost,
-  mode: AuditOnly,
+  mode: Blocking,
   claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: BoundConsumerWitness {
     witness: ScheduleWitnessEntry {

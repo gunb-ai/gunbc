@@ -1288,9 +1288,9 @@ fn intern(table: InternTable, s: String) -> InternResult {
 }
 
 fn intern_str(table: InternTable, id: Int) -> String {
-  match table.strings |> skip(id) |> first {
-    Present { value: s } => s
-    Absent => ""
+  match table.strings |> get(id) {
+    null => ""
+    other => other
   }
 }
 
