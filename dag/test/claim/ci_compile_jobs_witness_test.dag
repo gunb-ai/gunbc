@@ -1,8 +1,12 @@
 module test.claim.ci_compile_jobs_witness
 
 import std.types { Int, Bool, String, List }
-import std.measure { hardware_thread_count, ByteSize, byte_size }
-import gunbc.ci_compile_measurement { CompileJobMeasurement, CompileJobMeasured }
+import std.measure { hardware_thread_count, ByteSize, byte_size, byte_size_count }
+import gunbc.ci_compile_measurement {
+  CompileJobMeasurement, CompileJobMeasured, CompileJobUnmeasured,
+  gunbc_ci_compile_measurement
+}
+import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_memory_max_live }
 import gunbc.ci_compile_jobs {
   DerivedCompileJobs, CompileJobs, CompileJobsRefuse,
   ci_compile_jobs, ci_compile_jobs_for, compile_jobs_count_or_serial
@@ -40,8 +44,34 @@ fn hypothetical_peak() -> ByteSize {
   byte_size(2100028416)
 }
 
-fn witness_committed_unmeasured_refuses() -> Bool {
-  jobs_is_refuse(ci_compile_jobs(memory_budget: byte_size(137438953472), force_serial: false))
+fn live_derived_jobs() -> Int {
+  jobs_count_or(
+    ci_compile_jobs(memory_budget: gunbc_ci_runner_slot_memory_max_live, force_serial: false),
+    0
+  )
+}
+
+fn witness_committed_measurement_derives_multi_lane() -> Bool {
+  let n = live_derived_jobs()
+  n >= 2 && n <= 128
+}
+
+fn witness_committed_lanes_fit_live_slot_cap() -> Bool {
+  let n = live_derived_jobs()
+  match gunbc_ci_compile_measurement {
+    CompileJobMeasured { per_rustc_peak: peak, procs_per_job: _, pids_budget: _ } =>
+      n * byte_size_count(b: peak) <= byte_size_count(b: gunbc_ci_runner_slot_memory_max_live)
+    CompileJobUnmeasured => false
+  }
+}
+
+fn witness_unmeasured_still_refuses() -> Bool {
+  jobs_is_refuse(ci_compile_jobs_for(
+    measurement: CompileJobUnmeasured,
+    hardware_threads: hardware_thread_count(128),
+    memory_budget: byte_size(137438953472),
+    force_serial: false
+  ))
 }
 
 fn witness_pids_budget_binds_the_count() -> Bool {
@@ -68,7 +98,7 @@ fn witness_memory_budget_binds_the_count() -> Bool {
   ) == 2
 }
 
-fn witness_force_serial_overrides_unmeasured() -> Bool {
+fn witness_force_serial_overrides_committed_row() -> Bool {
   jobs_count_or(ci_compile_jobs(memory_budget: byte_size(137438953472), force_serial: true), 0) == 1
 }
 
@@ -112,20 +142,23 @@ fn witness_count_or_serial_refuse_falls_to_serial() -> Bool {
   compile_jobs_count_or_serial(jobs: CompileJobsRefuse { reason: "unmeasured" }) == 1
 }
 
-fn witness_live_rust_gate_is_failclosed_serial() -> Bool {
-  join_space(xs: rust_gate_build_jobs_args()) == "--build-jobs 1"
+fn witness_live_rust_gate_uses_slot_budget_lanes() -> Bool {
+  let expected = concat("--build-jobs ", to_string(live_derived_jobs()))
+  join_space(xs: rust_gate_build_jobs_args()) == expected
 }
 
 test fn ci_compile_jobs_witnesses() -> Bool {
-  witness_committed_unmeasured_refuses()
+  witness_committed_measurement_derives_multi_lane()
+    && witness_committed_lanes_fit_live_slot_cap()
+    && witness_unmeasured_still_refuses()
     && witness_pids_budget_binds_the_count()
     && witness_memory_budget_binds_the_count()
-    && witness_force_serial_overrides_unmeasured()
+    && witness_force_serial_overrides_committed_row()
     && witness_force_serial_beats_wide_budget()
     && witness_unreadable_budget_falls_back_serial()
     && witness_nextest_flag_spelling()
     && witness_build_flag_spelling()
     && witness_count_or_serial_passes_measured_count()
     && witness_count_or_serial_refuse_falls_to_serial()
-    && witness_live_rust_gate_is_failclosed_serial()
+    && witness_live_rust_gate_uses_slot_budget_lanes()
 }

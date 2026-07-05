@@ -1,0 +1,50 @@
+module v2.test.manual.forensics_6280_synth_producer
+
+import v2.test.manual.forensics_6280_synth_owner_a { SynthOwnerAAlt }
+import v2.test.manual.forensics_6280_synth_owner_b { SynthOwnerBAlt }
+import v2.test.manual.forensics_6280_synth_owner_c { SynthOwnerCAlt }
+import v2.test.manual.forensics_6280_synth_unrelated_decoy { SynthUnrelatedDecoyOne }
+import v2.test.manual.forensics_6280_synth_decoy_01 { SynthDecoy01One }
+import v2.test.manual.forensics_6280_synth_decoy_02 { SynthDecoy02One }
+import v2.test.manual.forensics_6280_synth_decoy_03 { SynthDecoy03One }
+import v2.test.manual.forensics_6280_synth_decoy_04 { SynthDecoy04One }
+import v2.test.manual.forensics_6280_synth_decoy_05 { SynthDecoy05One }
+import v2.test.manual.forensics_6280_synth_decoy_06 { SynthDecoy06One }
+import v2.test.manual.forensics_6280_synth_decoy_07 { SynthDecoy07One }
+import v2.test.manual.forensics_6280_synth_decoy_08 { SynthDecoy08One }
+import v2.test.manual.forensics_6280_synth_decoy_09 { SynthDecoy09One }
+import v2.test.manual.forensics_6280_synth_decoy_10 { SynthDecoy10One }
+import v2.test.manual.forensics_6280_synth_decoy_11 { SynthDecoy11One }
+import v2.test.manual.forensics_6280_synth_decoy_12 { SynthDecoy12One }
+import v2.test.manual.forensics_6280_synth_decoy_13 { SynthDecoy13One }
+import v2.test.manual.forensics_6280_synth_decoy_14 { SynthDecoy14One }
+import v2.test.manual.forensics_6280_synth_decoy_15 { SynthDecoy15One }
+import v2.test.manual.forensics_6280_synth_decoy_16 { SynthDecoy16One }
+import v2.test.manual.forensics_6280_synth_decoy_17 { SynthDecoy17One }
+import v2.test.manual.forensics_6280_synth_decoy_18 { SynthDecoy18One }
+import v2.test.manual.forensics_6280_synth_decoy_19 { SynthDecoy19One }
+import v2.test.manual.forensics_6280_synth_decoy_20 { SynthDecoy20One }
+import v2.test.manual.forensics_6280_synth_decoy_21 { SynthDecoy21One }
+import v2.test.manual.forensics_6280_synth_decoy_22 { SynthDecoy22One }
+import v2.test.manual.forensics_6280_synth_decoy_23 { SynthDecoy23One }
+import v2.test.manual.forensics_6280_synth_decoy_24 { SynthDecoy24One }
+import v2.test.manual.forensics_6280_synth_decoy_25 { SynthDecoy25One }
+import v2.test.manual.forensics_6280_synth_decoy_26 { SynthDecoy26One }
+import v2.test.manual.forensics_6280_synth_decoy_27 { SynthDecoy27One }
+import v2.test.manual.forensics_6280_synth_decoy_28 { SynthDecoy28One }
+import v2.test.manual.forensics_6280_synth_decoy_29 { SynthDecoy29One }
+import v2.test.manual.forensics_6280_synth_decoy_30 { SynthDecoy30One }
+import v2.test.manual.forensics_6280_synth_decoy_31 { SynthDecoy31One }
+import v2.test.manual.forensics_6280_synth_decoy_32 { SynthDecoy32One }
+import v2.test.manual.forensics_6280_synth_decoy_33 { SynthDecoy33One }
+import v2.test.manual.forensics_6280_synth_decoy_34 { SynthDecoy34One }
+import v2.test.manual.forensics_6280_synth_decoy_35 { SynthDecoy35One }
+import v2.test.manual.forensics_6280_synth_decoy_36 { SynthDecoy36One }
+import v2.test.manual.forensics_6280_synth_decoy_37 { SynthDecoy37One }
+import v2.test.manual.forensics_6280_synth_decoy_38 { SynthDecoy38One }
+import v2.test.manual.forensics_6280_synth_decoy_39 { SynthDecoy39One }
+import v2.test.manual.forensics_6280_synth_decoy_40 { SynthDecoy40One }
+
+fn forensics_6280_synth_produce() -> SynthOwnerA<String> {
+  Rejected { reason: "forensics_6280_synth_probe_tag" }
+}
