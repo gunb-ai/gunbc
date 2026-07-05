@@ -136,6 +136,12 @@ fn w_malformed_rename_score_is_typed_unknown_not_absorbed() -> Bool {
     && git_diff_status_entries_any_unknown(entries: entries)
 }
 
+fn w_malformed_rename_score_corruption_stays_fail_closed_downstream() -> Bool {
+  let raw = join_name_status_tokens(["Rxx", "old.txt", "new.txt", "M", "trailing.txt"])
+  let entries = parse_git_diff_name_status_z(raw: raw)
+  git_diff_status_entries_any_unknown(entries: entries)
+}
+
 fn w_recognized_entries_are_never_flagged_unknown() -> Bool {
   let raw = join_name_status_tokens(["M", "a.txt", "A", "b.txt"])
   let entries = parse_git_diff_name_status_z(raw: raw)
@@ -183,6 +189,7 @@ test fn extdeps_git_diff_name_status_witnesses() -> Bool {
     && w_mixed_multi_entry_blob_preserves_order_and_arity()
     && w_unrecognized_status_letter_is_typed_not_absorbed()
     && w_malformed_rename_score_is_typed_unknown_not_absorbed()
+    && w_malformed_rename_score_corruption_stays_fail_closed_downstream()
     && w_recognized_entries_are_never_flagged_unknown()
     && w_touched_paths_derives_both_sides_of_a_rename()
     && w_departed_paths_names_deletions_and_rename_sources_only()
