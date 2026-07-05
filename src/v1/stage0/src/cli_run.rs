@@ -6392,7 +6392,7 @@ mod floor_witness_a_prove {
 #[cfg(test)]
 mod module_grain_affected_equivalence_tests {
     use super::{
-        build_multi_entry_index, import_closure_files_from_graph,
+        build_multi_entry_index, floor_diff_edits_from_diff_text, import_closure_files_from_graph,
         import_resolution_facts_call_count_for_test, make_eval_context,
         module_declaration_facts_call_count_for_test, module_graph_facts_build_count_for_test,
         peak_rss_vhwm_bytes, reset_import_resolution_facts_call_counts_for_test,
@@ -6431,26 +6431,22 @@ mod module_grain_affected_equivalence_tests {
         ws.join(rel).to_string_lossy().into_owned()
     }
 
-    fn touched_paths_for_commit(sha: &str) -> Vec<String> {
+    // Full unified diff for `sha` (NOT `--name-only`) — the same shape the live floor parses via
+    // `parse_unified_diff_line_ranges`/`parse_unified_diff_changed_new_lines`.
+    fn diff_text_for_commit(sha: &str) -> String {
         let output = std::process::Command::new("git")
-            .args(["show", "--format=", "--name-only", sha])
+            .args(["show", sha])
             .current_dir(workspace_root())
             .output()
-            .unwrap_or_else(|e| panic!("git show --name-only {sha}: {e}"));
+            .unwrap_or_else(|e| panic!("git show {sha}: {e}"));
         assert!(
             output.status.success(),
-            "git show --name-only {sha} failed: {}",
+            "git show {sha} failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let mut paths: Vec<String> = String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .map(|l| l.trim().to_string())
-            .filter(|l| !l.is_empty())
-            .collect();
-        paths.sort();
-        paths.dedup();
-        assert!(!paths.is_empty(), "commit {sha} touched zero files");
-        paths
+        let text = String::from_utf8_lossy(&output.stdout).into_owned();
+        assert!(!text.trim().is_empty(), "commit {sha} produced empty diff text");
+        text
     }
 
     fn str_list_value(items: &[String]) -> Value {
@@ -6492,13 +6488,11 @@ mod module_grain_affected_equivalence_tests {
     }
 
     fn rust_entry_affected(
-        ws: &PathBuf,
         index: &MultiEntryIndex,
         entry_rel: &str,
         touched: &[String],
     ) -> bool {
-        let entry_abs = abs(ws, entry_rel);
-        let (graph, _) = resolve_entry_with_index_for_discovery_corpus(index, &entry_abs)
+        let (graph, _) = resolve_entry_with_index_for_discovery_corpus(index, entry_rel)
             .unwrap_or_else(|e| panic!("resolve {entry_rel}: {e}"));
         let closure_files: HashSet<String> = import_closure_files_from_graph(&graph);
         touched
@@ -6514,19 +6508,39 @@ mod module_grain_affected_equivalence_tests {
 
     fn run_equivalence_for_commit(sha: &str, entries: &[&str]) -> EquivalenceReceipt {
         let ws = workspace_root();
-        let roots = setup_roots(&ws);
+        // `entry_source_from_index_or_disk` and `floor_diff_edits_from_line_ranges` both read
+        // paths off disk relative to cwd, matching the live floor's process cwd == workspace
+        // root. Use the SAME relative roots/paths the live floor uses throughout (`dag`,
+        // `src/v2`, `src/v2/workflow/affected_set_floor_runner.dag`-style constants) rather than
+        // absolute paths — mixing the two conventions for the same physical file inside one
+        // `MultiEntryIndex` re-resolves it under a second identity and trips the interpreter's
+        // "duplicate module declaration" / circular-dependency guard.
+        std::env::set_current_dir(&ws).expect("chdir workspace");
         let rel_roots = pool_roots_rel();
-        let touched = touched_paths_for_commit(sha);
 
-        let index = build_multi_entry_index(&roots);
+        let index = build_multi_entry_index(&rel_roots);
+        let diff_text = diff_text_for_commit(sha);
+        let edits = floor_diff_edits_from_diff_text(&index, &diff_text).unwrap_or_else(|e| {
+            panic!(
+                "floor_diff_edits_from_diff_text failed for commit {sha}: {e} — pick a \
+                 different all-`M`-status dag/ or src/v2/ commit whose diffs never touch line 1"
+            )
+        });
+        let mut touched: Vec<String> = edits.touched_entry_files.into_iter().collect();
+        touched.sort();
+        assert!(
+            !touched.is_empty(),
+            "commit {sha} produced an empty touched_entry_files set — pick a commit whose diff \
+             touches at least one non-data, non-test-fn declaration"
+        );
         let (mg_graph, mg_indices) =
-            resolve_entry_with_index_for_discovery_corpus(&index, &abs(&ws, MODULE_GRAPH_ENTRY))
+            resolve_entry_with_index_for_discovery_corpus(&index, MODULE_GRAPH_ENTRY)
                 .expect("module_graph.dag resolves as an interpreter entry");
         let dag_ctx = make_eval_context(&mg_graph, mg_indices, ExecutionMode::Wet);
 
         let mut rows = Vec::new();
         for entry in entries {
-            let rust_decision = rust_entry_affected(&ws, &index, entry, &touched);
+            let rust_decision = rust_entry_affected(&index, entry, &touched);
             let dag_decision = dag_entry_affected(&dag_ctx, entry, &rel_roots, &touched);
             rows.push((entry.to_string(), rust_decision, dag_decision));
         }
@@ -6570,8 +6584,12 @@ mod module_grain_affected_equivalence_tests {
         eprintln!("--- module-grain affected-set receipt: {name} ---\n{out}");
     }
 
-    // Real diff 1: dag/-only merged commit (15 new files, ebay/tcgplayer integration + witnesses).
-    const DAG_ONLY_SHA: &str = "81febee85b23f96f12f393b64a9642973e17bafa";
+    // Real diff 1: dag/-only merged commit, all-status-`M` (4 modified files: healthz grammar
+    // JSON + structured shell in v1_dag_parse transport, #6166) — chosen over the original
+    // all-new-file commit because `floor_diff_edits_from_line_ranges` fail-closes on any diff
+    // that touches a file's line 1 (every wholly-new file does), which the real production path
+    // can never reach for an all-added-files commit; a modify-only commit exercises it for real.
+    const DAG_ONLY_SHA: &str = "6edafbb5e29370c0ac791038a1c64e1a4ddbd40d";
     // Real diff 2: src/v2/-only merged commit (6 modified files, bash orchestration-emit dissolve).
     const V2_ONLY_SHA: &str = "bb6e65649c9625d021467b0d7fe33ca7dd086e4f";
 
