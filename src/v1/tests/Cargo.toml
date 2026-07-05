@@ -7,7 +7,7 @@ publish = false
 description = "Integration tests for the v2 self-hosted compiler"
 
 [dependencies]
-v1-compiler = { path = "../stage0", features = ["text_lookup_work_counter"] }
+v1-compiler = { path = "../stage0", features = ["text_lookup_work_counter", "interp_test_witness"] }
 
 [dev-dependencies]
 serde = { workspace = true }

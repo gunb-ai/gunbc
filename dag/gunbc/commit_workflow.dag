@@ -99,6 +99,13 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     surfaces: [GitPrePushHook]
   },
   CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/enforcement_live_witness_test.dag",
+      check_fns: ["enforcement_consistency_gate_holds", "complexity_repo_wide_verdict_matches_roadmap"]
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
     check: CommitCargoFmtCheck,
     surfaces: [GitPrePushHook]
   }

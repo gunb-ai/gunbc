@@ -1,0 +1,78 @@
+module extdeps.ebay.mock_corpus
+
+import std.hermetic_replay { PublishedMockCase }
+
+data ebay_oauth_mock_case_mint_application_token: PublishedMockCase = PublishedMockCase {
+  operation_key: "ebay.OAuth.MintApplicationToken",
+  service: "ebay.OAuth",
+  operation: "MintApplicationToken",
+  case_id: 0
+}
+
+data ebay_oauth_mock_case_mint_user_token: PublishedMockCase = PublishedMockCase {
+  operation_key: "ebay.OAuth.MintUserToken",
+  service: "ebay.OAuth",
+  operation: "MintUserToken",
+  case_id: 0
+}
+
+data ebay_oauth_mock_case_exchange_authorization_code: PublishedMockCase = PublishedMockCase {
+  operation_key: "ebay.OAuth.ExchangeAuthorizationCode",
+  service: "ebay.OAuth",
+  operation: "ExchangeAuthorizationCode",
+  case_id: 0
+}
+
+data ebay_inventory_mock_case_create_or_replace_inventory_item: PublishedMockCase = PublishedMockCase {
+  operation_key: "ebay.Inventory.CreateOrReplaceInventoryItem",
+  service: "ebay.Inventory",
+  operation: "CreateOrReplaceInventoryItem",
+  case_id: 0
+}
+
+data ebay_inventory_mock_case_get_inventory_item: PublishedMockCase = PublishedMockCase {
+  operation_key: "ebay.Inventory.GetInventoryItem",
+  service: "ebay.Inventory",
+  operation: "GetInventoryItem",
+  case_id: 0
+}
+
+data ebay_inventory_mock_case_get_inventory_items: PublishedMockCase = PublishedMockCase {
+  operation_key: "ebay.Inventory.GetInventoryItems",
+  service: "ebay.Inventory",
+  operation: "GetInventoryItems",
+  case_id: 0
+}
+
+data ebay_inventory_mock_case_create_offer: PublishedMockCase = PublishedMockCase {
+  operation_key: "ebay.Inventory.CreateOffer",
+  service: "ebay.Inventory",
+  operation: "CreateOffer",
+  case_id: 0
+}
+
+data ebay_inventory_mock_case_get_offers: PublishedMockCase = PublishedMockCase {
+  operation_key: "ebay.Inventory.GetOffers",
+  service: "ebay.Inventory",
+  operation: "GetOffers",
+  case_id: 0
+}
+
+data ebay_inventory_mock_case_publish_offer: PublishedMockCase = PublishedMockCase {
+  operation_key: "ebay.Inventory.PublishOffer",
+  service: "ebay.Inventory",
+  operation: "PublishOffer",
+  case_id: 0
+}
+
+data ebay_published_mock_corpus: List<PublishedMockCase> = [
+  ebay_oauth_mock_case_mint_application_token,
+  ebay_oauth_mock_case_mint_user_token,
+  ebay_oauth_mock_case_exchange_authorization_code,
+  ebay_inventory_mock_case_create_or_replace_inventory_item,
+  ebay_inventory_mock_case_get_inventory_item,
+  ebay_inventory_mock_case_get_inventory_items,
+  ebay_inventory_mock_case_create_offer,
+  ebay_inventory_mock_case_get_offers,
+  ebay_inventory_mock_case_publish_offer
+]

@@ -16,12 +16,11 @@ import v2.lens.enforcement.vocab {
   SelfApplicationStatus, self_application_ok
 }
 import v2.lens.enforcement.contract {
-  LensContract, CoverageReceipt, lens_contract_registry, coverage_receipt_registry
+  LensContract, CoverageReceipt
 }
 import v2.lens.enforcement.standing_intent {
   StandingIntent, IntentProperty, LensFamily, LensHygieneLiveness,
-  LensHygieneSelfApply, ModelAnemia, SingleAuthorityConsolidation,
-  standing_intent_complexity_repo_wide
+  LensHygieneSelfApply, ModelAnemia, SingleAuthorityConsolidation
 }
 
 type LegVerdict = LegHolds | LegFails { reason: String }
@@ -105,22 +104,25 @@ fn discovered_covers_required(required_subjects: SubjectRoster, discovered: Subj
   subject_roster_covers(claimed: discovered, desired: required_subjects)
 }
 
-fn contract_answers_at_mode(c: LensContract, intent: StandingIntent) -> Bool {
-  contract_answers(c: c, p: intent.property) && enforcement_mode_satisfies(actual: c.mode, required: intent.default_mode)
-}
-
 fn find_answering_contract(intent: StandingIntent, contracts: List<LensContract>) -> ContractLookup {
-  match list_head(xs: filter(xs: contracts, predicate: fn(c) { contract_answers_at_mode(c: c, intent: intent) })) {
+  match list_head(xs: filter(xs: contracts, predicate: fn(c) { contract_answers(c: c, p: intent.property) })) {
     HeadFound { value: c } => ContractFound { value: c }
     HeadAbsent => ContractAbsent
   }
+}
+
+fn claimed_mode_leg(c: LensContract, intent: StandingIntent) -> LegVerdict {
+  leg_of(
+    ok: enforcement_mode_satisfies(actual: c.mode, required: intent.default_mode),
+    reason: "answering contract's mode does not satisfy the intent's required mode"
+  )
 }
 
 fn intent_family_verdict(intent: StandingIntent, contracts: List<LensContract>, receipts: List<CoverageReceipt>) -> IntentVerdict {
   match find_answering_contract(intent: intent, contracts: contracts) {
     ContractAbsent => IntentVerdict {
       intent_id: intent.id,
-      claimed: LegFails { reason: "no contract claims this property at the required mode" },
+      claimed: LegFails { reason: "no contract claims this property" },
       scope_covered: LegFails { reason: "unproven: no answering contract" },
       subjects_covered: LegFails { reason: "unproven: no answering contract" },
       live_consumer: LegFails { reason: "unproven: no answering contract" },
@@ -130,7 +132,7 @@ fn intent_family_verdict(intent: StandingIntent, contracts: List<LensContract>, 
     ContractFound { value: c } => match find_receipt(cid: c.entry.lens_id, receipts: receipts) {
       ReceiptAbsent => IntentVerdict {
         intent_id: intent.id,
-        claimed: LegHolds,
+        claimed: claimed_mode_leg(c: c, intent: intent),
         scope_covered: LegFails { reason: "no coverage receipt for this contract" },
         subjects_covered: LegFails { reason: "no coverage receipt for this contract" },
         live_consumer: LegFails { reason: "no coverage receipt for this contract" },
@@ -139,7 +141,7 @@ fn intent_family_verdict(intent: StandingIntent, contracts: List<LensContract>, 
       }
       ReceiptFound { value: r } => IntentVerdict {
         intent_id: intent.id,
-        claimed: LegHolds,
+        claimed: claimed_mode_leg(c: c, intent: intent),
         scope_covered: scope_leg(intent: intent, s: r.scope_satisfaction),
         subjects_covered: leg_of(ok: discovered_covers_required(required_subjects: intent.required_subjects, discovered: r.discovered_subjects), reason: "discovered subjects do not cover required_subjects (the decl_facts / v1-reach gap, e.g. build_type_env)"),
         live_consumer: leg_of(ok: consumer_satisfies(actual: r.consumer_observed, required: intent.required_consumer), reason: "observed consumer does not satisfy the required consumer"),
@@ -161,10 +163,6 @@ fn intent_verdict_holds(v: IntentVerdict) -> Bool {
 
 fn intent_family_holds(intent: StandingIntent, contracts: List<LensContract>, receipts: List<CoverageReceipt>) -> Bool {
   intent_verdict_holds(v: intent_family_verdict(intent: intent, contracts: contracts, receipts: receipts))
-}
-
-fn complexity_repo_wide_verdict() -> IntentVerdict {
-  intent_family_verdict(intent: standing_intent_complexity_repo_wide, contracts: lens_contract_registry, receipts: coverage_receipt_registry)
 }
 
 fn contract_internally_consistent(c: LensContract, receipts: List<CoverageReceipt>) -> Bool {
