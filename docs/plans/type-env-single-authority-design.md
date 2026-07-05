@@ -57,12 +57,36 @@ Reverse-from-request + per-module flatten is exactly what forced the copies; for
 
 ## 4. New/changed types (model-before-implement — these land first)
 
-- `SymbolIndex` (new): `Map<QualifiedName, Node>` single authority. Filled once by the DFS.
-- `Scope` (cursor): local bindings `Map<String, LocalBinding>` + a visibility view (the module's imports).
-  `LocalBinding { name, resolved: Node, provenance: SubValueRelation }` — provenance stays HERE.
-- `ImportBinding` (or reuse a lean `name → Node`): the import population, provenance-free.
+The split is BY CONSTRUCTION, not validation (operator 2026-07-05: "why guess — design it this way").
+We do not trust that import bindings carry `SubValueUnknown`; we make a stray provenance *unwritable* by
+giving the import population a type with no provenance field.
+
+- `SymbolIndex` (new): `Map<QualifiedName, Node>` single authority. Filled once by the DFS prepass.
+- `ImportBinding { name: String, resolved: Node }` — the import population. **No `provenance` field** — a
+  provenance on an import is not "always Unknown," it is *unrepresentable*. (§5 correctness-by-construction.)
+- `ScopeBinding { name: String, resolved: Node, provenance: SubValueRelation }` — the cursor window (params,
+  match-bound sub-values). The ONLY carrier of provenance.
 - `TypeEnv` loses `ancestry_str_bindings` (materialized copy) and the parallel String/Int keyings
   (`04_env.dag:34` dissolution). `parents` compositional view is subsumed by the scope + index.
+
+### 4.1 `SubValueRelation` cleanup (operator: "Unknown isn't helpful — categorize further")
+
+`SubValueRelation` (`std/induction.dag:60`) is already a lattice (`StrictSubValue`, `IteratedSubValue`,
+`ArithmeticDescent`, `PreservedValue`, `NonIncreasingValue`, `StrictAxisErased`, `MixedTop`,
+`SubValueUnknown`). The reason `SubValueUnknown` reads as unhelpful is that it fuses **two unrelated
+states** (the §5 state-space-conflation antipattern):
+1. **not-applicable** — a top-level/import definition, which is not a value with a descent relation at all;
+2. **undetermined** — a local value whose descent relation the analysis genuinely could not compute.
+
+The §4 provenance split ELIMINATES (1) by construction: imports no longer carry provenance, so nothing
+top-level can land in `SubValueUnknown`. What remains is (2), the honest fail-closed "undetermined" — which
+`std/termination.dag` already models as `DescentUnknown` (the fail-closed bottom). So after the split,
+`SubValueUnknown` means exactly one thing.
+
+FOLLOW-UP (needs termination-soundness review — `SubValueRelation` is std/load-bearing): if the remaining
+`undetermined` cases are themselves distinguishable (e.g. "unanalyzed — recursion shape not yet handled" vs
+"analyzed — provably no descent axis"), split them into named variants too. Not in the v1 hot path; a
+separate std-induction PR so the termination checker's soundness is reviewed on its own.
 
 ## 5. Migration
 
@@ -93,10 +117,17 @@ Reverse-from-request + per-module flatten is exactly what forced the copies; for
 - **v1-burndown (sharp-deer)**: this reform IS v1-burndown-aligned (it's the resolve model the burndown
   wants gone) — coordinate so v2's `std.type_env` is the shared target.
 
-## 8. Open questions for operator review
+## 8. Resolved decisions (operator, 2026-07-05)
 
-- `provenance` split: confirm no ancestry binding ever carries meaningful (non-Unknown) provenance
-  (audit says no; want your confirmation before deleting the field from the import population).
-- Does the forward DFS need the shared `SymbolIndex` to be mutable-during-walk (fill as you go), or built
-  in a prepass over the import DAG in topo order? (affects the cursor's purity.)
-- v2 sequencing: apply to `std.type_env` immediately after v1, or once v1's scaling receipt is green?
+- **provenance split**: design it unwritable (§4), do not audit-and-trust. DONE in this doc.
+- **SubValueUnknown**: categorize further; the split removes the not-applicable case for free, residual
+  undetermined refinement is a separate termination-reviewed std PR (§4.1). DONE.
+- **`SymbolIndex` fill**: **topo-order prepass over the import DAG**, keeping the cursor PURE (the latter
+  option) — assuming the prepass is not itself a perf problem on large graphs. GUARD: the prepass is one
+  pass over the import DAG (O(V+E)); the scaling receipt (§6) must show the prepass stays linear, else
+  reconsider fill-as-you-go. The cursor never mutates the index — it only reads it + pushes/pops local scope.
+- **#6239 (loyal-heron)**: NOT force-paused. Operator: "if they finish it and we delete it, it's fine."
+  Inform loyal-heron the reform subsumes it; let them choose to finish or pivot. Their profile is still
+  wanted regardless.
+- **v2 sequencing**: apply to `std.type_env` after v1, **gated on v1's green scaling receipt** — "see what
+  happens with v1" first, then port the proven model.
