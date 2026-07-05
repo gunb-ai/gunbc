@@ -59,7 +59,7 @@ Ordered by divergence risk. **Claims** = what the name/provenance implies; **Exe
 | `src/v2/test/claim/intent_linearity/lens_unit/import_closure_completeness_test.dag:35–44` | 3× completeness fold tests | declared consumed-input closure = derived `import_closure_live` | Rust `import_closure_is_clean_live` only; `.dag` `import_closure_is_clean` not evaluated |
 | `src/v2/test/claim/intent_linearity/lens_unit/import_graph_live_test.dag:42–58` | 3× live lens row tests | declared vs derived import closure | Rust `import_closure_is_clean_live` only |
 
-**Counterexample (class a, correct pattern):** `src/v2/test/claim/module_graph/import_closure_live_test.dag:55–60` calls `.dag` `import_closure_live(...)` through the interpreter and compares to declared conformance closure. This is the witness that would have caught the `map_get`/`Outcome` bugs.
+**Positive counterexample (class-a template):** `src/v2/test/claim/module_graph/import_closure_live_test.dag:55–60` calls `.dag` `import_closure_live(...)` through the interpreter and compares to declared conformance closure — the class-(a) twin of the class-(b) Rust `import_closure_equivalence_tests`. This is the witness pattern a dual-oracle enrollment gate would enforce: every class-(b) host reimpl must be paired with a class-(a) interpreter call to the same `.dag` authority on a discriminating fixture. It would have caught the `map_get`/`Outcome` bugs had it been the sole green signal (instead of the Rust mirror).
 
 ### Tier 2 — Lens scanner walls (`*_live` bypasses `.dag` lens)
 
@@ -130,9 +130,16 @@ These are **legible interim** where the subject is intentionally pre-model (emit
 | Scan | Count |
 |------|-------|
 | Correct `Accepted`/`Rejected` unwraps in `src/v2/**` importing `v2.std.collection` | 32 |
-| **Hazard sites** (`match map_get → Present/Absent` without `Accepted`) | **3** — all in `src/v2/lens/module_graph.dag:83,85,150` |
+| **Hazard sites at audit time** (`match map_get → Present/Absent` without `Accepted`) | **3** — all in `src/v2/lens/module_graph.dag:83,85,150` |
+| **Status** | **Fixed, pending merge** — [PR #6274](https://github.com/gunb-ai/gunbc/pull/6274) (deep-koi-309, at review bar) |
 
-All other `src/v2` consumers (`affected_set`, `frontier_observation`, `03_resolve`, `witness_option_bridge_test`, etc.) unwrap correctly. The 3 hazard sites are exactly the PR 6274 fix locus; they remain in tree at audit time (interpreter execution of `import_closure_live_test` would go red on unfixed code).
+All other `src/v2` consumers (`affected_set`, `frontier_observation`, `03_resolve`, `witness_option_bridge_test`, etc.) unwrap correctly. The 3 hazard sites were open at census time on `main`; **#6274 fixes them in-flight** by introducing `map_lookup` (unwraps `Outcome` correctly) and repointing all 3 call sites. Before/after (from #6274 body):
+
+- `extend_adjacency_for_edge` (~line 90): `match map_get(m: module_to_path, …) { Present … Absent … }` → `match map_lookup(m: module_to_path, …) { Present … Absent … }`
+- `extend_adjacency_for_edge` nested (~line 92): same `map_get` → `map_lookup` on `acc`
+- `import_closure_bfs_walk` (~line 157): `match map_get(m: adjacency, …)` → `match map_lookup(m: adjacency, …)`
+
+#6274's `module_grain_affected_equivalence_tests` are the first witnesses to run `v2.lens.module_graph`'s actual `.dag` source through the interpreter — which is how the bug surfaced after #6231's Rust-only equivalence tests stayed green.
 
 ---
 
