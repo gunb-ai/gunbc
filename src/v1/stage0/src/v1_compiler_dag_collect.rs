@@ -84,39 +84,6 @@ pub fn is_module_shell_node(n: Rc<Node>) -> bool {
         })
 }
 
-pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
-    match (*node.expr_data.clone()).clone() {
-        ExprData::NoExprData => match node.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: _, .. }) => {
-                ((((node.body.clone() == None) && (node.transport.clone() == None))
-                    && ((node.children.clone().len() as i64) == 0))
-                    && ((node.params.clone().len() as i64) == 0))
-            }
-            _ => false,
-        },
-        _ => false,
-    }
-}
-
-pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
-    loop {
-        if dag_node_is_resolved_identity_shell(node.clone()) {
-            match node.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: target, .. }) => {
-                    let __tco_0 = target.clone();
-                    node = __tco_0;
-                    continue;
-                }
-                _ => {
-                    break node.clone();
-                }
-            }
-        } else {
-            break node.clone();
-        }
-    }
-}
-
 pub fn dag_node_key(node: Rc<Node>) -> String {
     let anchor = dag_node_collection_anchor(node);
     let ptr = Rc::as_ptr(&anchor) as usize;
