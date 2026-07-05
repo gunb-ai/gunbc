@@ -1,0 +1,47 @@
+module v2.test.manual.forensics_6280_tokenize_reject_locus
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.tokenize { tokenize }
+import v2.compiler.parse { parse_module }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected }
+
+data forensics_6280_task_note: String = "Task: 'Forensics: 6280 memo commit flips census tokenize-reject to parse-reject on 01_tokenize.dag - name the mechanism.' Ground truth (this file's own witnesses, re-run independently 5x across processes, plus a v2.lens.enforcement.grammar_coverage direct-call replication on PR #6252's own branch): src/v1/01_tokenize.dag TOKENIZES CLEAN and REJECTS AT PARSE. It never rejected at tokenize on either side of #6280 -- #6280 only threads a packrat memo table through 02_parse.dag and never touches tokenize/lex code, so it cannot be the cause of a tokenize-reject verdict that ground truth says never existed."
+
+data forensics_6280_mechanism_note: String = "NAMED MECHANISM (joint finding with sunny-wren-799, cross-session, 2026-07-05): a constructor-owner collision wall gap, not a #6280 regression. dag/std/markup.dag declares a MarkupSerializeResult.Rejected variant with field reason of type String; src/v2/std/diagnostic.dag declares an Outcome.Rejected variant with field diagnostics of type NonEmptyDiagnostics -- two owners for one bare constructor name, loaded into the same process whenever a census-style tool runs with both --source-root dag and --source-root src/v2 (as v2.lens.enforcement.grammar_coverage's witnesses do). The per-file constructor-owner ruling (v1_compiler_infer.rs build_imported_variants/unique_imported_variant_owner) only assigns a deterministic single owner to a bare constructor name if that name appears in one of the importing module's OWN explicit specific-name imports. src/v2/compiler/02_parse.dag explicitly imports Rejected alongside Accepted (line 8-19) and is covered. src/v2/compiler/01_tokenize.dag imports Accepted but NOT Rejected (line 4) despite constructing a bare Rejected record with a diagnostics field at lines 503 and 519 -- so tokenize.dag's own Rejected sites carry no per-module owner entry and fall through to whatever un-walled fallback resolves a bare, un-imported constructor name across the full loaded corpus. That fallback is where the markup/diagnostic collision can surface: 01_tokenize.dag is the only Outcome.Rejected-constructing file in the pipeline missing the explicit import that would otherwise pin it. This reproduces the census flip without needing #6280's memo change at all -- #6280 is a correlated-in-time, not causal, commit; it happened to land near the point the E1a census lens (#6252) first ran the whole-corpus (dag+src/v2) walk that puts both Rejected owners in one process."
+
+data forensics_6280_quarantine_note: String = "QUARANTINE BOUNDARY: any census/lens verdict produced by a tool that loads BOTH --source-root dag and --source-root src/v2 and calls a pipeline stage (tokenize/parse/normalize) whose constructing module has a bare, un-imported coproduct constructor colliding in name with an unrelated type elsewhere in the loaded corpus, is UNTRUSTED for that stage until the constructor-owner wall is extended to cover un-imported bare constructors (not just explicitly-imported ones). Known live instance: v2.lens.enforcement.grammar_coverage's tokenize-stage verdict for src/v1/01_tokenize.dag (PR #6252). FIX DIRECTION (not landed here, needs operator sign-off per the constructor-owner ruling's own lane): extend build_imported_variants-style coverage so a bare constructor with >=2 candidate owners visible in the loaded corpus and NO owning explicit import is a typed VariantCollision refusal at resolve time, not a silent fallback pick -- this is an engine-lane fix (v1_compiler_infer.rs / v1_compiler_resolve.rs), not a rename of markup.Rejected or a sort added to v1_rt.rs's map iteration."
+
+type Verdict
+  = TokenizeReject { reason: Symbol }
+  | ParseReject { reason: Symbol }
+  | ParsedClean
+
+fn forensics_6280_probe_verdict() -> Verdict {
+  let lm = dag_language_model_wave1()
+  let source_text = filesystem_read(path: "src/v1/01_tokenize.dag").content
+  match tokenize(text: source_text, file: ^forensics_6280_probe_file_anchor, rules: lm.lex) {
+    Rejected { diagnostics: d } => TokenizeReject { reason: d.head.reason }
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: d } => ParseReject { reason: d.head.reason }
+        Accepted { value: _, diagnostics: _ } => ParsedClean
+      }
+  }
+}
+
+fn forensics_6280_witness_ground_truth_is_not_tokenize_reject() -> Bool {
+  match forensics_6280_probe_verdict() {
+    TokenizeReject { reason: _ } => false
+    ParseReject { reason: _ } => true
+    ParsedClean => true
+  }
+}
+
+fn forensics_6280_witness_ground_truth_is_parse_reject() -> Bool {
+  match forensics_6280_probe_verdict() {
+    TokenizeReject { reason: _ } => false
+    ParseReject { reason: _ } => true
+    ParsedClean => false
+  }
+}
