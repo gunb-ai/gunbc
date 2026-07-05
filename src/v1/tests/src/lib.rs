@@ -29,8 +29,6 @@ mod cross_representation_equality_test;
 #[cfg(test)]
 mod dag_collect_fingerprint_witness_test;
 #[cfg(test)]
-mod emit_dag_timing_probe;
-#[cfg(test)]
 mod dag_comment_wall_test;
 #[cfg(test)]
 mod data_cache_scoping_test;
