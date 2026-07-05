@@ -136,16 +136,20 @@ fn interface_hash_for_module_path(
   summaries: List<InterfaceSummary>,
   module_path: String
 ) -> InterfaceHash? {
-  fold(summaries, init: Absent, f: fn(found, summary) {
-    match found {
-      Present { value: _ } => found
-      Absent =>
-        match module_path_eq(a: summary.module_path, b: module_path) {
-          true => Present { value: summary.interface_hash }
-          false => found
-        }
+  fold_list(
+    xs: summaries,
+    empty: Absent,
+    cons: fn(found, summary) {
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          match module_path_eq(a: summary.module_path, b: module_path) {
+            true => Present { value: summary.interface_hash }
+            false => found
+          }
+      }
     }
-  })
+  )
 }
 
 fn direct_import_modules(
@@ -204,16 +208,20 @@ fn interface_summary_for_module(
   module_path: NonEmptyStr,
   pool_roots: List<String>
 ) -> InterfaceSummary? {
-  fold(interface_summaries_live(pool_roots: pool_roots), init: Absent, f: fn(found, summary) {
-    match found {
-      Present { value: _ } => found
-      Absent =>
-        match module_path_eq(a: summary.module_path, b: module_path) {
-          true => Present { value: summary }
-          false => found
-        }
+  fold_list(
+    xs: interface_summaries_live(pool_roots: pool_roots),
+    empty: Absent,
+    cons: fn(found, summary) {
+      match found {
+        Present { value: _ } => found
+        Absent =>
+          match module_path_eq(a: summary.module_path, b: module_path) {
+            true => Present { value: summary }
+            false => found
+          }
+      }
     }
-  })
+  )
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {
