@@ -869,7 +869,10 @@ fn load_sources_for_entry_with_index(
 
     let sources = resolve_transitively(vec![entry_source.clone()], index, facts)?;
     let mut sources = sources;
-    if !sources.iter().any(|s| s.path == rel_path) {
+    if !sources
+        .iter()
+        .any(|s| s.path == rel_path || same_canonical_file(&s.path, &rel_path))
+    {
         sources.push(entry_source);
     }
     Ok(sources)
@@ -11871,9 +11874,10 @@ mod import_closure_equivalence_tests {
     use super::{
         build_module_graph_facts_live, build_module_index, build_multi_entry_index,
         closure_subject_for_entry, default_source_roots, floor_discovery_path_excluded,
-        import_closure_live_paths, module_graph_facts_build_count_for_test,
-        reset_module_graph_facts_build_count_for_test, resolve_transitively,
-        resolve_transitively_bfs_legacy, witness_layer_roots, workspace_relative_repo_path,
+        import_closure_live_paths, load_sources_for_entry_with_index,
+        module_graph_facts_build_count_for_test, reset_module_graph_facts_build_count_for_test,
+        resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
+        witness_layer_roots, workspace_relative_repo_path,
     };
     use std::collections::{BTreeSet, HashMap};
     use std::path::{Path, PathBuf};
@@ -12218,6 +12222,29 @@ mod import_closure_equivalence_tests {
             1,
             "multi-entry resolve_transitively must not re-scan when facts are threaded"
         );
+    }
+
+    #[test]
+    fn load_sources_for_entry_does_not_duplicate_entry_under_path_alias() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace root");
+        let roots = default_source_roots();
+        let index = build_module_index(&roots);
+        let facts = build_module_graph_facts_live(&roots);
+        let entry_rel = "src/v2/workflow/floor_diff_observe.dag";
+        let sources =
+            load_sources_for_entry_with_index(&index, &facts, entry_rel).expect("load closure");
+        let entry_norm = workspace_relative_repo_path(entry_rel);
+        let entry_count = sources
+            .iter()
+            .filter(|s| workspace_relative_repo_path(&s.path) == entry_norm)
+            .count();
+        assert_eq!(
+            entry_count, 1,
+            "relative entry path must not duplicate an absolute-indexed closure member"
+        );
+        resolve_entry_with_index(&build_multi_entry_index(&roots), entry_rel)
+            .expect("floor_diff_observe must resolve without duplicate-module error");
     }
 
     #[test]
