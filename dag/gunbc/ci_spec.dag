@@ -20,10 +20,7 @@ import std.realization_schedule { ScheduleWitnessEntry }
 import gunbc.ci_failure_class { infra_retry_grep_alternation }
 import gunbc.ci_deploy_access { DeployAccess, ci_deploy_srv1_access }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
-import gunbc.merge_admission_produce {
-  ci_floor_stamp_merge_admission_script,
-  merge_admission_stamp_invoke,
-}
+import gunbc.merge_admission_produce { ci_floor_stamp_merge_admission_script }
 import extdeps.github.actions { RunnerSpec }
 
 type DiffMode = DiffMergeBase | DiffTwoDot
@@ -204,81 +201,6 @@ fn join_slash(parts: List<String>) -> String {
   fold(parts, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, "/"), p) })
 }
 
-data ci_documentation_only_diff_note: String = "Interim compile-clean scoping: merge-base diffs touching only docs/, root doc symlinks, or .gitignore skip the compose floor. CI substrate (.github/workflows/ci.yml, dag/gunbc/ci_spec.dag, ci_spec witnesses) is excluded — those paths always run the full floor so drift gates cannot be self-shortcut. dissolve-on: affected-set-scoped compile-clean or batch-1 fits the 10-minute step budget."
-
-fn ci_merge_base_diff_range(policy: DiffPolicy) -> String {
-  match policy.mode {
-    DiffMergeBase => concat(concat(policy.base, "..."), policy.head)
-    DiffTwoDot => concat(concat(policy.base, ".."), policy.head)
-  }
-}
-
-fn ci_documentation_only_floor_shortcut_script(policy: DiffPolicy) -> String {
-  let range = ci_merge_base_diff_range(policy: policy)
-  concat(
-    concat(
-      concat(
-        concat("_ci_changed=$(git diff --name-only ", range),
-        " 2>/dev/null || true)\n"
-      ),
-      concat(
-        "if [ -n \"$_ci_changed\" ]; then\n",
-        concat("# ", concat(ci_documentation_only_diff_note, "\n"))
-      )
-    ),
-    concat(
-      concat(
-        concat(
-          "  DOCS_ONLY=1\n",
-          "  while IFS= read -r _ci_path; do\n"
-        ),
-        "    [ -z \"$_ci_path\" ] && continue\n"
-      ),
-      concat(
-        concat(
-          concat(
-            "    if [[ \"$_ci_path\" == docs/* ]] || [[ \"$_ci_path\" == README.md ]] || [[ \"$_ci_path\" == CLAUDE.md ]] || [[ \"$_ci_path\" == DESIGN.md ]] || [[ \"$_ci_path\" == .gitignore ]]; then\n",
-            "      :\n"
-          ),
-          "    else\n"
-        ),
-        concat(
-          concat(
-            "      DOCS_ONLY=0\n",
-            "      break\n"
-          ),
-          concat(
-            "    fi\n",
-            concat(
-              "  done <<_ci_diff_eof_\n",
-              "$_ci_changed\n"
-            )
-          )
-        )
-      )
-    ),
-    concat(
-      concat(
-        "_ci_diff_eof_\n",
-        "  if [ \"$DOCS_ONLY\" = \"1\" ]; then\n"
-      ),
-      concat(
-        concat(
-          "    echo \"claim_executor: documentation-only diff — skipping compose floor\"\n",
-          "    FLOOR_EXIT=0\n"
-        ),
-        concat(
-          concat("    CI_FLOOR_EXIT=0 ", merge_admission_stamp_invoke()),
-          concat(
-            "    exit $?\n",
-            "  fi\nfi\n"
-          )
-        )
-      )
-    )
-  )
-}
-
 fn git_fetch_script(policy: DiffPolicy) -> String {
   let parts = split(s: policy.base, delimiter: "/")
   let remote = parts.first()
@@ -311,11 +233,8 @@ fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
     concat(
       concat(git_fetch_script(policy: spec.diff_policy), "\n"),
       concat(
-        concat(ci_documentation_only_floor_shortcut_script(policy: spec.diff_policy), "\n"),
-        concat(
-          concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
-          ci_floor_stamp_merge_admission_script()
-        )
+        concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
+        ci_floor_stamp_merge_admission_script()
       )
     )
   )

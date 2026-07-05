@@ -14,7 +14,6 @@ import gunbc.ci_spec {
   scheduler_invoke, gunbc_ci_run_script, gunbc_ci_workflow_run, gunbc_ci_floor_only_script, git_fetch_script,
   ci_release_build_script, gunbc_ci_rust_job_run, gunbc_ci_rust_gate_only_script, ci_floor_build_verify_script,
   gunbc_ci_rust_gate_invoke, ci_repo_root_shell,
-  ci_documentation_only_diff_note,
 }
 
 data golden_floor_build_verify_script: String = "\"$ROOT/target/release/claim_executor\" --verify-build-artifacts \"$ROOT/target/release/claim_executor\" \"$ROOT/target/release/gunbc\"\n"
@@ -202,14 +201,6 @@ fn witness_workflow_run_is_floor_only_script() -> Bool {
   gunbc_ci_workflow_run(spec: gunbc_ci_spec) == gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
 }
 
-fn witness_documentation_only_shortcut_in_floor_script() -> Bool {
-  let script = gunbc_ci_floor_only_script(spec: gunbc_ci_spec)
-  string_contains(s: script, pattern: "documentation-only diff") &&
-    string_contains(s: script, pattern: "[[ \"$_ci_path\" == docs/* ]]") &&
-    string_contains(s: script, pattern: ci_documentation_only_diff_note) &&
-    !string_contains(s: script, pattern: ".github/workflows/ci.yml")
-}
-
 fn witness_collapsed_run_script_is_build_plus_floor() -> Bool {
   gunbc_ci_run_script(spec: gunbc_ci_spec) == concat(
     concat(ci_release_build_script(), "\n"),
@@ -231,7 +222,6 @@ test fn ci_spec_witnesses() -> Bool {
     witness_floor_build_verify_script_byte_identical() &&
     witness_scheduler_uses_release_binary() &&
     witness_workflow_run_is_floor_only_script() &&
-    witness_documentation_only_shortcut_in_floor_script() &&
     witness_collapsed_run_script_is_build_plus_floor() &&
     witness_rust_gate_step_is_gate_only_script() &&
     witness_collapsed_rust_job_is_build_plus_gate() &&
