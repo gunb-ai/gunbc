@@ -4,14 +4,18 @@ import tools.dag_compile_clean_partition {
   CompileCleanModuleShard,
   compile_clean_partition_boundary
 }
-import v2.lens.module_graph { module_declaration_facts_live, ModuleDeclarationFact }
 import std.types { String, Bool, Int, List, list_length }
 
-fn compile_clean_entry_module_facts() -> List<ModuleDeclarationFact> {
-  module_declaration_facts_live(pool_roots: [compile_clean_partition_boundary().entry_root])
+type CompileCleanModuleDeclFact {
+  module: String
+  path: String
 }
 
-fn compile_clean_module_shard_from_decl(decl: ModuleDeclarationFact) -> CompileCleanModuleShard {
+fn compile_clean_entry_module_facts() -> List<CompileCleanModuleDeclFact> {
+  module_declaration_facts(pool_roots: [compile_clean_partition_boundary().entry_root])
+}
+
+fn compile_clean_module_shard_from_decl(decl: CompileCleanModuleDeclFact) -> CompileCleanModuleShard {
   CompileCleanModuleShard { entry_path: decl.path }
 }
 

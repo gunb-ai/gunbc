@@ -42,9 +42,9 @@ fn compile_clean_partition_totality_verdict_from(
     let glob_paths = nonempty_lines(glob_stdout)
     let orphans = filter(xs: glob_paths, f: fn(p) { !list_contains_path(xs: roster_paths, target: p) })
     let duplicated = duplicated_entry_paths(paths: roster_paths)
-    if !orphans.is_empty() {
+    if list_length(items: orphans) > 0 {
       PartitionOrphan { unclaimed_paths: orphans }
-    } else if !duplicated.is_empty() {
+    } else if list_length(items: duplicated) > 0 {
       PartitionDuplicateClaim { duplicated_paths: duplicated }
     } else {
       PartitionTotal { module_count: list_length(items: roster_paths) }
@@ -64,10 +64,10 @@ fn compile_clean_partition_totality_verdict_live() -> PartitionTotalityVerdict {
 
 fn compile_clean_partition_totality_is_total(v: PartitionTotalityVerdict) -> Bool {
   match v {
-    PartitionTotal { .. } => true
-    PartitionOrphan { .. } => false
-    PartitionDuplicateClaim { .. } => false
-    PartitionGlobUnavailable { .. } => false
+    PartitionTotal { module_count: n } => true
+    PartitionOrphan { unclaimed_paths: paths } => false
+    PartitionDuplicateClaim { duplicated_paths: paths } => false
+    PartitionGlobUnavailable { stderr: s } => false
   }
 }
 
