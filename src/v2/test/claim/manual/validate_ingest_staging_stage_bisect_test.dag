@@ -169,9 +169,9 @@ fn bisect_single_module_parse_expr() -> Bool {
                 table: parse_table_empty(),
                 prov: parse_prov_initial()
               ) {
-                ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _ } =>
+                ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: _ } =>
                   outcome_accepted(value: true)
-                ParseExprRejected { diagnostics: _ } =>
+                ParseExprRejected { diagnostics: _, table: _ } =>
                   outcome_accepted(value: true)
               }
             Violates { diagnostic: _ } =>

@@ -41,7 +41,7 @@ test fn gap4_match_arm_let_stmt_parses_holds() -> Bool {
 
 test fn gap4_match_arm_chained_lets_tail_record_parses_holds() -> Bool {
   parses(
-    src: "module m.t\nfn f() -> Int {\n  match inner {\n    ParseExprRejected { diagnostics: diags } => ParseExprRejected { diagnostics: diags }\n    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>\n      let merged_prov = inner_prov\n      let stamped = captured\n      ParseExprAccepted {\n        remaining: remaining,\n        captured: stamped,\n        diagnostics: diags,\n        prov: merged_prov\n      }\n  }\n}\n"
+    src: "module m.t\nfn f() -> Int {\n  match inner {\n    ParseExprRejected { diagnostics: diags, table: _ } => ParseExprRejected { diagnostics: diags, table: table }\n    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: _ } =>\n      let merged_prov = inner_prov\n      let stamped = captured\n      ParseExprAccepted {\n        remaining: remaining,\n        captured: stamped,\n        diagnostics: diags,\n        prov: merged_prov,\n        table: table\n      }\n  }\n}\n"
   )
 }
 
