@@ -331,24 +331,7 @@ fn scheduler_invoke(spec: CiSpec) -> String {
   )
 }
 
-fn gunbc_ci_run_script(spec: CiSpec) -> String {
-  concat(
-    concat(
-      concat(ci_release_build_script(), "\n"),
-      concat(git_fetch_script(policy: spec.diff_policy), "\n")
-    ),
-    concat(
-      concat("set +e\n", concat(scheduler_invoke(spec: spec), "\n")),
-      ci_floor_stamp_merge_admission_script()
-    )
-  )
-}
-
-fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
-  gunbc_ci_run_script(spec: spec)
-}
-
-fn gunbc_ci_floor_only_run(spec: CiSpec) -> String {
+fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
   concat(
     concat("ROOT=", ci_repo_root_shell(), "\n"),
     concat(
@@ -385,17 +368,7 @@ fn gunbc_ci_rust_gate_invoke() -> String {
   )
 }
 
-fn gunbc_ci_rust_job_run() -> String {
-  concat(
-    concat(ci_release_build_script(), "\n"),
-    concat(
-      concat(git_fetch_script(policy: gunbc_ci_spec.diff_policy), "\n"),
-      gunbc_ci_rust_gate_invoke()
-    )
-  )
-}
-
-fn gunbc_ci_rust_gate_only_run() -> String {
+fn gunbc_ci_rust_gate_only_script() -> String {
   concat(
     concat("ROOT=", ci_repo_root_shell(), "\n"),
     concat(
@@ -403,6 +376,10 @@ fn gunbc_ci_rust_gate_only_run() -> String {
       gunbc_ci_rust_gate_invoke()
     )
   )
+}
+
+fn gunbc_ci_rust_job_run() -> String {
+  concat(concat(ci_release_build_script(), "\n"), gunbc_ci_rust_gate_only_script())
 }
 
 fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
