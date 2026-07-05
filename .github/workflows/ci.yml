@@ -126,11 +126,7 @@ jobs:
         timeout-minutes: 5
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
-<<<<<<< HEAD
     timeout-minutes: 75
-=======
-    timeout-minutes: 105
->>>>>>> origin/main
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -178,11 +174,7 @@ jobs:
             curl -LsSf --retry 3 "https://get.nexte.st/0.9.138/$A" | tar zxf - -C "$CARGO_HOME/bin"
           fi
         timeout-minutes: 5
-<<<<<<< HEAD
       - name: sccache warm (release bins + cache prime)
-=======
-      - name: Build release bins (claim_executor + gunbc)
->>>>>>> origin/main
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
@@ -232,7 +224,7 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-        timeout-minutes: 45
+        timeout-minutes: 15
       - name: rust_tests cgroup peak (placement divisor)
         run: |
           BIN="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/claim_executor"
@@ -308,4 +300,3 @@ jobs:
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
           "$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
-
