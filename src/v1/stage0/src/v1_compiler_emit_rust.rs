@@ -147,8 +147,8 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
 use im_rc::HashMap;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
 pub fn render_rust_type(

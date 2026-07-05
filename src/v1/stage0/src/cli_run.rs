@@ -1,5 +1,5 @@
-use std::cell::RefCell;
 use im_rc::HashMap;
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -288,7 +288,8 @@ fn resolve_virtual_source_with_imports(
             }
         }
     }
-    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+        seen.into_iter().map(|(_, v)| v).collect();
     sources.sort_by(|a, b| a.path.cmp(&b.path));
     sources.push(Rc::new(v1_compiler_compile::SourceFile {
         path: entry_path.to_string(),
@@ -785,7 +786,7 @@ pub(crate) fn module_graph_facts_build_count_for_test() -> usize {
 mod shared_cache_collision_guard_tests {
     use super::check_module_source_identity;
     use std::cell::RefCell;
-    use std::collections::HashMap;
+    use im_rc::HashMap;
 
     // Collision-honesty receipt (union-resolve §6.3): the shared typed-module cache's
     // source-identity guard fails LOUD when one module name resolves from two declaring files
@@ -5601,7 +5602,8 @@ mod floor_skip_frontier_tests {
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
     use crate::v1_std_core::{authored_name_at, byte_to_line_col};
-    use std::collections::{HashMap, HashSet};
+    use im_rc::HashMap;
+    use std::collections::HashSet;
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -6144,7 +6146,7 @@ mod floor_witness_a_prove {
         DiscoveryRow, FileLineRange, NodeFrontierSeeds,
     };
     use crate::v1_interpreter::{self, ExecutionMode, Value};
-    use std::collections::HashMap;
+    use im_rc::HashMap;
     use std::path::PathBuf;
 
     const FIXTURE_REL: &str = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
@@ -8063,7 +8065,8 @@ mod construction_justification_hygiene_tests {
         declares_construction_justification, discover_floor_corpus_rows, unjustified_lens_modules,
         wall_now_authority_refs, FLOOR_DISCOVERY_EXCLUDES,
     };
-    use std::collections::{BTreeSet, HashMap};
+    use std::collections::HashMap;
+    use std::collections::BTreeSet;
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -8704,7 +8707,8 @@ pub fn import_resolution_facts(
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let abs_importer_roots = pool_roots_abs(importer_roots);
     let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
-        .into_iter().map(|(k, _)| k)
+        .into_iter()
+        .map(|(k, _)| k)
         .collect();
     let mut out = Vec::new();
     for root in &abs_importer_roots {
@@ -11967,7 +11971,7 @@ pub fn extdeps_external_authority_live_shadow_mask_holds() -> bool {
 #[cfg(test)]
 mod doc_reachability_tests {
     use super::*;
-    use std::collections::HashMap;
+    use im_rc::HashMap;
 
     fn edges_of(pairs: &[(&str, &[&str])]) -> HashMap<String, Vec<String>> {
         pairs
@@ -12460,7 +12464,8 @@ mod import_closure_equivalence_tests {
         resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
         witness_layer_roots, workspace_relative_repo_path,
     };
-    use std::collections::{BTreeSet, HashMap};
+    use im_rc::HashMap;
+    use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
     use std::rc::Rc;
 

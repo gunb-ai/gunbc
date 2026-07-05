@@ -172,7 +172,7 @@ fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
         .collect()
 }
 
-fn empty_source_indices() -> Rc<std::collections::HashMap<String, Rc<NewlineIndex>>> {
+fn empty_source_indices() -> Rc<HashMap<String, Rc<NewlineIndex>>> {
     Rc::new(im_rc::HashMap::new())
 }
 
@@ -1096,11 +1096,11 @@ fn resolve_node_uses_node_name_for_lookup() {
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
     });
     let env = Rc::new(TypeEnv {
-        bindings: Rc::new(std::collections::HashMap::from([(
+        bindings: Rc::new(im_rc::HashMap::from_iter([(
             user_intern.id,
             user_binding.clone(),
         )])),
-        str_bindings: Rc::new(std::collections::HashMap::from([(
+        str_bindings: Rc::new(im_rc::HashMap::from_iter([(
             "User".to_string(),
             user_binding,
         )])),
@@ -1613,11 +1613,11 @@ fn resolve_applied_generic_struct_expands_to_conj_for_field_lookup() {
         provenance: Rc::new(SubValueRelation::SubValueUnknown),
     });
     let env = Rc::new(TypeEnv {
-        bindings: Rc::new(std::collections::HashMap::from([(
+        bindings: Rc::new(im_rc::HashMap::from_iter([(
             box_intern.id,
             box_binding.clone(),
         )])),
-        str_bindings: Rc::new(std::collections::HashMap::from([(
+        str_bindings: Rc::new(im_rc::HashMap::from_iter([(
             "Box".to_string(),
             box_binding,
         )])),

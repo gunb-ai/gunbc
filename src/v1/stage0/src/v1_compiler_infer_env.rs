@@ -14,8 +14,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{InternTable, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
 use im_rc::HashMap;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
 

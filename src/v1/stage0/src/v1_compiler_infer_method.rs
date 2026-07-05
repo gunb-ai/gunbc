@@ -16,8 +16,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{Cardinality, Connective, ErrorNode, ExprData, InferredNode, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
 use im_rc::HashMap;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
 pub fn type_variable_node(id: String) -> Rc<Node> {

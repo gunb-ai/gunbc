@@ -20,8 +20,8 @@ use crate::v1_rt;
 use crate::v1_rt::Witness::Violates;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
 use im_rc::HashMap;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
 #[derive(

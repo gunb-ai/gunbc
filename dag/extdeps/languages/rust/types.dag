@@ -48,7 +48,7 @@ data rust_algebra_inhabitants: List<InhabitantDecl> = [
     template: "HashMap<\{0\}, \{1\}>",
     arity: 2,
     identity_expr: "HashMap::new()",
-    import_path: "use std::collections::HashMap;",
+    import_path: "use im_rc::HashMap;",
     is_copy: false },
 
   { algebra: "OrderedRing",

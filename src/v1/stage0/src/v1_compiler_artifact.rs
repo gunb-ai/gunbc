@@ -13,8 +13,8 @@ use crate::v1_rt::Witness::{Holds, Violates};
 pub use crate::v1_std_core::TextFile;
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
 use im_rc::HashMap;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
 #[derive(

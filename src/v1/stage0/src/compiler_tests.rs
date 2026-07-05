@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod compiler_tests {
     use crate::v1_compiler_tokenize::tokenize;
-    use std::collections::HashMap;
+    use im_rc::HashMap;
 
     /// Find workspace root by walking up from the current directory looking for Cargo.toml + dag/
     fn workspace_root() -> std::path::PathBuf {
@@ -237,7 +237,7 @@ mod compiler_tests {
         );
         let result = crate::v1_compiler_parse::parse(
             tokens,
-            std::rc::Rc::new(std::collections::HashMap::new()),
+            std::rc::Rc::new(im_rc::HashMap::new()),
         );
         assert!(
             result.module.is_some(),
@@ -267,7 +267,7 @@ mod compiler_tests {
 
                 let result = crate::v1_compiler_parse::parse(
                     tokens,
-                    std::rc::Rc::new(std::collections::HashMap::new()),
+                    std::rc::Rc::new(im_rc::HashMap::new()),
                 );
 
                 assert!(
@@ -473,7 +473,7 @@ mod compiler_tests {
                     );
                     let result = crate::v1_compiler_parse::parse(
                         tokens,
-                        std::rc::Rc::new(std::collections::HashMap::new()),
+                        std::rc::Rc::new(im_rc::HashMap::new()),
                     );
                     assert!(
                         result.module.is_some(),
@@ -1076,7 +1076,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                use std::collections::HashMap;
+                use im_rc::HashMap;
                 use std::time::Instant;
 
                 let sources = self_compile_sources();
@@ -1552,7 +1552,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                use std::collections::HashMap;
+                use im_rc::HashMap;
                 use std::time::Instant;
 
                 let sources = self_compile_sources();

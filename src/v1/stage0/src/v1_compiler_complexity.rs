@@ -92,8 +92,8 @@ pub use crate::v1_std_core::{
 pub use crate::v1_std_core::{ExprData, MatchPattern, MethodSemantics, NewlineIndex, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
 use im_rc::HashMap;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

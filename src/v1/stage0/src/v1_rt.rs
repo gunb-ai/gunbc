@@ -3,8 +3,8 @@
 
 #![allow(unused_variables, dead_code)]
 
-use std::collections::BTreeSet;
 use im_rc::HashMap;
+use std::collections::BTreeSet;
 use std::rc::Rc;
 
 #[cfg(feature = "text_lookup_work_counter")]
