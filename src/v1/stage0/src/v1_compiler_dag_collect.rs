@@ -119,9 +119,12 @@ pub fn dag_collect_nodes_list(
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-    nodes.iter().cloned().fold(slots, |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, n: Rc<Node>| {
-        dag_collect_insert_slots(n, s, collision_errors.clone())
-    })
+    nodes.iter().cloned().fold(
+        slots,
+        |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, n: Rc<Node>| {
+            dag_collect_insert_slots(n, s, collision_errors.clone())
+        },
+    )
 }
 
 pub fn dag_collect_optional_node(
@@ -156,13 +159,14 @@ pub fn dag_collect_match_pattern(
     match (*pattern).clone() {
         MatchPattern::Bind { name: _, .. } => slots,
         MatchPattern::LitPattern { value: _, .. } => slots,
-        MatchPattern::VariantPattern { field_bindings, .. } => field_bindings
-            .clone()
-            .iter()
-            .cloned()
-            .fold(slots, |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, fb: Rc<Node>| {
-                dag_collect_insert_slots(fb, s, collision_errors.clone())
-            }),
+        MatchPattern::VariantPattern { field_bindings, .. } => {
+            field_bindings.clone().iter().cloned().fold(
+                slots,
+                |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, fb: Rc<Node>| {
+                    dag_collect_insert_slots(fb, s, collision_errors.clone())
+                },
+            )
+        }
         MatchPattern::Wildcard => slots,
     }
 }
@@ -182,8 +186,11 @@ pub fn dag_collect_node_tree(
     let slots = dag_collect_optional_node(node.body.clone(), slots, collision_errors.clone());
     let slots = dag_collect_optional_node(node.transport.clone(), slots, collision_errors.clone());
     let slots = dag_collect_nodes_list(node.properties.clone(), slots, collision_errors.clone());
-    let slots =
-        dag_collect_optional_node(node.type_annotation.clone(), slots, collision_errors.clone());
+    let slots = dag_collect_optional_node(
+        node.type_annotation.clone(),
+        slots,
+        collision_errors.clone(),
+    );
     let slots = dag_collect_inferred(node.inferred.clone(), slots, collision_errors.clone());
     match node.match_pattern.clone() {
         Some(p) => dag_collect_match_pattern(p, slots, collision_errors),
@@ -233,14 +240,12 @@ pub fn dag_collect_from_module(
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
     let slots = dag_collect_insert_slots(module.module.clone(), slots, collision_errors.clone());
-    module
-        .items
-        .clone()
-        .iter()
-        .cloned()
-        .fold(slots, |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, item: Rc<Node>| {
+    module.items.clone().iter().cloned().fold(
+        slots,
+        |s: Rc<HashMap<String, Rc<DagCollectSlot>>>, item: Rc<Node>| {
             dag_collect_insert_slots(item, s, collision_errors.clone())
-        })
+        },
+    )
 }
 
 pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
