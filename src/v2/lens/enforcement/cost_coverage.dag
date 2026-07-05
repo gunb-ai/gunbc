@@ -5,6 +5,8 @@ import v2.compiler.normalize { normalize }
 import v2.compiler.parse { parse_module }
 import v2.compiler.tokenize { tokenize }
 import v2.extdeps.languages.dag {
+  ParseSubtreeAbsent,
+  ParseSubtreeFound,
   dag_language_model_wave1,
   parse_production_emitted_identity_optional,
   parse_subtree_find_production_captured
@@ -12,27 +14,22 @@ import v2.extdeps.languages.dag {
 import v2.lens.cost {
   AsymptoticClass,
   ClassUnknown,
-  SymbolicCost,
-  asymptotic_class_of_cost,
-  cost_lens
+  asymptotic_class_of_cost
 }
 import v2.lens.enforcement.grammar_coverage {
-  grammar_coverage_corpus_roster_live,
   grammar_coverage_distinct_rel_paths,
-  grammar_coverage_paths_for_tree,
-  grammar_coverage_take_n,
-  grammar_coverage_tree_root_for_path
+  grammar_coverage_paths_for_tree
 }
 import v2.lens.enforcement.receipts { BodyJudged, BodyUnavailable, judge_subject_node }
 import v2.lens.enforcement.standing_intent { whole_corpus_scope }
-import v2.std.algebra { Empty, filter, fold_list, length, list_append }
-import v2.std.collection { List }
-import v2.std.decl_index { DeclFact, decl_facts }
-import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.algebra { Empty, fold_list, length, list_append }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.decl_index { decl_facts }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
 import v2.std.logic { Bool }
-import v2.std.node { Node }
+import v2.std.node { Node, Symbol }
 import v2.std.text { String }
-import v2.std.witness { Holds, Violates, Witness }
+import v2.std.witness { Holds, Violates }
 
 type CostCoverageIngestVerdict
   = IngestParsedClean
@@ -131,11 +128,11 @@ fn cost_coverage_fn_verdict_from_body(body: Node) -> CostCoverageFnVerdict {
         Violates { diagnostic: d } =>
           FnCostUnknown { reason: d.reason }
         Holds { value: cost } =>
-          let class = asymptotic_class_of_cost(cost: cost)
-          if class == ClassUnknown {
-            FnCostUnknown { reason: cost_coverage_unknown_asymptotic_class }
-          } else {
-            FnCostKnown { asymptotic_class: class }
+          match asymptotic_class_of_cost(cost: cost) {
+            ClassUnknown =>
+              FnCostUnknown { reason: cost_coverage_unknown_asymptotic_class }
+            class =>
+              FnCostKnown { asymptotic_class: class }
           }
       }
   }
@@ -382,13 +379,11 @@ fn cost_coverage_corpus_roster_live() -> List<String> {
 
 fn cost_coverage_receipt_totality_holds(receipt: CostCoverageTreeReceipt) -> Bool {
   (receipt.files_attempted == (receipt.files_parsed_clean + receipt.files_rejected))
-    && (receipt.fn_attempted
-      == (receipt.fn_known + receipt.fn_unknown + receipt.fn_body_unavailable))
+    && (receipt.fn_attempted == (receipt.fn_known + receipt.fn_unknown + receipt.fn_body_unavailable))
 }
 
 fn cost_coverage_file_totality_holds(receipt: CostCoverageFileReceipt) -> Bool {
-  receipt.fn_attempted
-    == (receipt.fn_known + receipt.fn_unknown + receipt.fn_body_unavailable)
+  receipt.fn_attempted == (receipt.fn_known + receipt.fn_unknown + receipt.fn_body_unavailable)
 }
 
 fn cost_coverage_tree_receipt_eq(a: CostCoverageTreeReceipt, b: CostCoverageTreeReceipt) -> Bool {
@@ -403,9 +398,8 @@ fn cost_coverage_tree_receipt_eq(a: CostCoverageTreeReceipt, b: CostCoverageTree
 }
 
 fn cost_coverage_unknown_fraction_bps(receipt: CostCoverageTreeReceipt) -> Int {
-  if receipt.fn_attempted == 0 {
-    0
-  } else {
-    (receipt.fn_unknown * 10000) / receipt.fn_attempted
+  match receipt.fn_attempted == 0 {
+    true => 0
+    false => (receipt.fn_unknown * 10000) / receipt.fn_attempted
   }
 }
