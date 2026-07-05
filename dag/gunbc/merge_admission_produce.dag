@@ -7,6 +7,7 @@ import extdeps.github.checks {
   parse_check_conclusion,
   Success,
   Failure,
+  Skipped,
 }
 import gunbc.merge_admission {
   MergeAdmissionReceipt,
@@ -149,8 +150,20 @@ fn git_fetch_script_for_gate() -> String {
   )
 }
 
+data merge_admission_floor_disposition_documentation_only_skipped: String = "documentation_only_skipped"
+
+data merge_admission_stamp_documentation_only_skip_policy: String = "CI_FLOOR_DISPOSITION=documentation_only_skipped stamps merge-admission conclusion Skipped (not Success) — floor-not-run ≠ floor-green per §5; distinct from CI_FLOOR_EXIT=0 laundering"
+
 fn floor_exit_to_check_conclusion(exit_code: Int) -> CheckConclusion {
   if exit_code == 0 { Success } else { Failure }
+}
+
+fn floor_disposition_to_check_conclusion(disposition: String) -> CheckConclusion? {
+  if disposition == merge_admission_floor_disposition_documentation_only_skipped {
+    Present { value: Skipped }
+  } else {
+    none
+  }
 }
 
 fn stamp_floor_receipt(
@@ -159,12 +172,26 @@ fn stamp_floor_receipt(
   base_tree_hash: ContentHash,
   floor_exit_code: Int,
 ) -> MergeAdmissionReceipt {
+  stamp_floor_receipt_with_conclusion(
+    pr_number: pr_number,
+    head_sha: head_sha,
+    base_tree_hash: base_tree_hash,
+    conclusion: floor_exit_to_check_conclusion(exit_code: floor_exit_code),
+  )
+}
+
+fn stamp_floor_receipt_with_conclusion(
+  pr_number: Int?,
+  head_sha: CommitSha,
+  base_tree_hash: ContentHash,
+  conclusion: CheckConclusion,
+) -> MergeAdmissionReceipt {
   mint_merge_admission_receipt(
     pr_number: pr_number,
     head_sha: head_sha,
     base_tree_hash: base_tree_hash,
     gate_roster_hash: current_gate_roster_hash,
-    conclusion: floor_exit_to_check_conclusion(exit_code: floor_exit_code),
+    conclusion: conclusion,
   )
 }
 
