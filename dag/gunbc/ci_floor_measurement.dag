@@ -18,6 +18,7 @@ import std.realization_width {
 }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import gunbc.runner_slot_allocation { gunbc_runner_slot_desired }
 
 data gunbc_ci_floor_measured_peak: ConcurrentMemoryPeakSample = ConcurrentMemoryPeakSample {
   peak: byte_size(6452113408)
@@ -48,12 +49,6 @@ data gunbc_ci_floor_host_compiler_spawn_peak_source: Disposition = Terminal {
 
 fn gunbc_ci_floor_per_shard_peak_rss_bytes() -> ByteSize {
   gunbc_ci_floor_per_shard_peak_max()
-}
-
-import gunbc.runner_slot_allocation {
-  gunbc_runner_slot_desired,
-  gunbc_runner_slice_cap_declared,
-  gunbc_runner_slots_per_host
 }
 
 data gunbc_ci_runner_cgroup_memory_cap: ByteSize = gunbc_runner_slot_desired().memory_max
