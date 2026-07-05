@@ -6,7 +6,6 @@ import v2.workflow.affected_set_floor_runner {
   FrontierProduced,
   RunWitness,
   SkipAssumedGreen,
-  Refused,
   floor_kernel_would_skip,
   floor_witness_run_disposition
 }
@@ -60,7 +59,6 @@ fn disposition_both_axes_false_skips_holds() -> Bool {
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
-    Refused { cause: _ } => false
   }
 }
 
@@ -74,7 +72,6 @@ fn disposition_either_axis_runs_holds() -> Bool {
   ) {
     RunWitness { reason: _ } => true
     SkipAssumedGreen => false
-    Refused { cause: _ } => false
   }
     && match floor_witness_run_disposition(
       diff: DiffPathsProduced { changed_paths: [disposition_fixture_changed_path] },
@@ -85,7 +82,6 @@ fn disposition_either_axis_runs_holds() -> Bool {
     ) {
       RunWitness { reason: _ } => true
       SkipAssumedGreen => false
-      Refused { cause: _ } => false
     }
 }
 

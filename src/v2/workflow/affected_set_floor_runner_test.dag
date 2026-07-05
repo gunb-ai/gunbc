@@ -28,9 +28,6 @@ import v2.workflow.affected_set_floor_runner {
   FrontierProduced,
   RunWitness,
   SkipAssumedGreen,
-  Refused,
-  DiffObservationRefusal,
-  FrontierQueryRefusal,
   floor_any_claim_touches_rerun_frontier,
   floor_claim_touches_rerun_frontier,
   floor_host_scaffold_would_skip,
@@ -142,7 +139,6 @@ test fn floor_test_untouched_skips_assumed_green_holds() -> Bool {
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
-    Refused { cause: _ } => false
   }
 }
 
@@ -156,7 +152,6 @@ test fn floor_test_touched_runs_holds() -> Bool {
   ) {
     RunWitness { reason: _ } => true
     SkipAssumedGreen => false
-    Refused { cause: _ } => false
   }
 }
 
@@ -171,7 +166,6 @@ test fn floor_test_function_edited_runs_holds() -> Bool {
     RunWitness { reason: reason } =>
       reason == "witness test fn declaration directly edited"
     SkipAssumedGreen => false
-    Refused { cause: _ } => false
   }
 }
 
@@ -186,25 +180,23 @@ test fn floor_test_entry_file_touched_runs_holds() -> Bool {
     RunWitness { reason: reason } =>
       reason == "witness entry import-closure has non-data fn edit in diff"
     SkipAssumedGreen => false
-    Refused { cause: _ } => false
   }
 }
 
-test fn floor_test_empty_diff_flows_general_skip_holds() -> Bool {
+test fn floor_test_empty_diff_runs_all_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_empty,
-    frontier: FrontierProduced { nodes: [] },
+    frontier: floor_test_frontier_touched,
     touches_frontier: false,
     function_edited: false,
     entry_file_touched: false
   ) {
-    SkipAssumedGreen => true
-    RunWitness { reason: _ } => false
-    Refused { cause: _ } => false
+    RunWitness { reason: reason } => reason == "empty diff — run full corpus (fail-closed)"
+    SkipAssumedGreen => false
   }
 }
 
-test fn floor_test_diff_fail_closed_refuses_holds() -> Bool {
+test fn floor_test_diff_fail_closed_runs_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_fail_closed,
     frontier: floor_test_frontier_touched,
@@ -212,17 +204,12 @@ test fn floor_test_diff_fail_closed_refuses_holds() -> Bool {
     function_edited: false,
     entry_file_touched: false
   ) {
-    Refused { cause: cause } =>
-      match cause {
-        DiffObservationRefusal { reason: reason } => reason == "git diff unavailable"
-        FrontierQueryRefusal { reason: _ } => false
-      }
-    RunWitness { reason: _ } => false
+    RunWitness { reason: reason } => reason == "git diff unavailable"
     SkipAssumedGreen => false
   }
 }
 
-test fn floor_test_frontier_fail_closed_refuses_holds() -> Bool {
+test fn floor_test_frontier_fail_closed_runs_holds() -> Bool {
   match floor_witness_run_disposition(
     diff: floor_test_diff_nonempty,
     frontier: floor_test_frontier_fail_closed,
@@ -230,12 +217,7 @@ test fn floor_test_frontier_fail_closed_refuses_holds() -> Bool {
     function_edited: false,
     entry_file_touched: false
   ) {
-    Refused { cause: cause } =>
-      match cause {
-        FrontierQueryRefusal { reason: reason } => reason == "provenance unavailable"
-        DiffObservationRefusal { reason: _ } => false
-      }
-    RunWitness { reason: _ } => false
+    RunWitness { reason: reason } => reason == "provenance unavailable"
     SkipAssumedGreen => false
   }
 }
@@ -303,12 +285,6 @@ test fn floor_test_precompute_skip_holds() -> Bool {
     edited_test_fn_count: 0,
     touched_entry_file_count: 0
   )
-    && floor_precompute_would_skip(
-      diff: floor_test_diff_empty,
-      frontier: FrontierProduced { nodes: [] },
-      edited_test_fn_count: 0,
-      touched_entry_file_count: 0
-    )
     && !floor_precompute_would_skip(
       diff: floor_test_diff_nonempty,
       frontier: floor_test_frontier_touched,
@@ -441,8 +417,8 @@ test fn floor_test_rust_run_implies_dag_run_superset_holds() -> Bool {
 
 test fn floor_runner_unaffected_assumed_green_skips_holds() -> Bool {
   floor_test_untouched_skips_assumed_green_holds()
-    && floor_test_empty_diff_flows_general_skip_holds()
-    && floor_test_diff_fail_closed_refuses_holds()
+    && floor_test_empty_diff_runs_all_holds()
+    && floor_test_diff_fail_closed_runs_holds()
 }
 
 test fn floor_runner_node_frontier_policy_holds() -> Bool {
@@ -452,9 +428,9 @@ test fn floor_runner_node_frontier_policy_holds() -> Bool {
     && floor_test_entry_file_touched_runs_holds()
     && floor_test_fn_declaration_edited_holds()
     && floor_test_rust_run_implies_dag_run_superset_holds()
-    && floor_test_empty_diff_flows_general_skip_holds()
-    && floor_test_diff_fail_closed_refuses_holds()
-    && floor_test_frontier_fail_closed_refuses_holds()
+    && floor_test_empty_diff_runs_all_holds()
+    && floor_test_diff_fail_closed_runs_holds()
+    && floor_test_frontier_fail_closed_runs_holds()
     && floor_test_claim_touch_discriminates_holds()
     && floor_test_inner_frontier_discriminates_holds()
     && floor_test_host_scaffold_never_skips_when_kernel_would_holds()

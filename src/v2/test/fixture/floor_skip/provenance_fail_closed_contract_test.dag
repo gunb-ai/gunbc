@@ -24,9 +24,6 @@ import v2.workflow.affected_set_floor_runner {
   FrontierProduced,
   RunWitness,
   SkipAssumedGreen,
-  Refused,
-  DiffObservationRefusal,
-  FrontierQueryRefusal,
   floor_precompute_would_skip,
   floor_witness_run_disposition
 }
@@ -72,19 +69,14 @@ data scout_provenance_absent_frontier: FloorRerunFrontier = FrontierFailClosed {
 
 test fn provenance_fail_closed_contract_holds() -> Bool {
   let manifest_absent = scout_manifest_provenance_live == false
-  let absent_witness_refuses = match floor_witness_run_disposition(
+  let absent_witness_runs = match floor_witness_run_disposition(
     diff: scout_nonempty_diff,
     frontier: scout_provenance_absent_frontier,
     touches_frontier: false,
     function_edited: false,
     entry_file_touched: false
   ) {
-    Refused { cause: cause } =>
-      match cause {
-        FrontierQueryRefusal { reason: reason } => reason == "provenance unavailable"
-        DiffObservationRefusal { reason: _ } => false
-      }
-    RunWitness { reason: _ } => false
+    RunWitness { reason: _ } => true
     SkipAssumedGreen => false
   }
   let present_witness_skips = match floor_witness_run_disposition(
@@ -96,7 +88,6 @@ test fn provenance_fail_closed_contract_holds() -> Bool {
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
-    Refused { cause: _ } => false
   }
   let absent_precompute_runs_all = !floor_precompute_would_skip(
     diff: scout_nonempty_diff,
@@ -104,5 +95,5 @@ test fn provenance_fail_closed_contract_holds() -> Bool {
     edited_test_fn_count: 0,
     touched_entry_file_count: 0
   )
-  manifest_absent && absent_witness_refuses && present_witness_skips && absent_precompute_runs_all
+  manifest_absent && absent_witness_runs && present_witness_skips && absent_precompute_runs_all
 }

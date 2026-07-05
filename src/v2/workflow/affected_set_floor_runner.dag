@@ -22,16 +22,9 @@ type FloorRerunFrontier
   = FrontierProduced { nodes: List<Node> }
   | FrontierFailClosed { reason: String }
 
-type WitnessRefusalCause
-  = DiffObservationRefusal { reason: String }
-  | FrontierQueryRefusal { reason: String }
-
 type WitnessRunDisposition
   = RunWitness { reason: String }
   | SkipAssumedGreen
-  | Refused { cause: WitnessRefusalCause }
-
-data floor_disposition_refusal_note: String = "Operator rulings (2026-07-05): a failure arm must refuse, never widen. Refused replaces the prior DiffObservationFailClosed/FrontierFailClosed -> RunWitness absorbing arms: the witness is NOT run, the refusal is a per-row typed red (siblings continue; the floor exits nonzero while any refusal count is nonzero), and each cause is its own variant so each failure class has an observable frequency. Empty diff is NOT a state: an empty touched-path set flows through the general disposition (nothing affected -> SkipAssumedGreen) - the prior special arm (empty diff -> run full corpus) was the section-5 absorbing fallback, deleted together with the tests that asserted its reason string. Feature-flag-off is a host config state (skip_unaffected_node_frontier: false), never conflated with an empty diff; observation FAILURE (git could not produce a diff) is the only ignorance state and maps to DiffObservationRefusal. Git-interface grain (name-status, rename pairs, base-ref resolution) is deliberately open - see PR-A body."
 
 type FloorWitnessRow {
   label: String
@@ -127,21 +120,25 @@ fn floor_witness_run_disposition(
 ) -> WitnessRunDisposition {
   match diff {
     DiffObservationFailClosed { reason: reason } =>
-      Refused { cause: DiffObservationRefusal { reason: reason } }
-    DiffPathsProduced { changed_paths: _ } =>
-      match frontier {
-        FrontierFailClosed { reason: reason } =>
-          Refused { cause: FrontierQueryRefusal { reason: reason } }
-        FrontierProduced { nodes: _ } =>
-          if touches_frontier {
-            RunWitness { reason: "witness node-closure intersects rerun frontier" }
-          } else if function_edited {
-            RunWitness { reason: "witness test fn declaration directly edited" }
-          } else if entry_file_touched {
-            RunWitness { reason: "witness entry import-closure has non-data fn edit in diff" }
-          } else {
-            SkipAssumedGreen
-          }
+      RunWitness { reason: reason }
+    DiffPathsProduced { changed_paths: paths } =>
+      if length(xs: paths) == 0 {
+        RunWitness { reason: "empty diff — run full corpus (fail-closed)" }
+      } else {
+        match frontier {
+          FrontierFailClosed { reason: reason } =>
+            RunWitness { reason: reason }
+          FrontierProduced { nodes: _ } =>
+            if touches_frontier {
+              RunWitness { reason: "witness node-closure intersects rerun frontier" }
+            } else if function_edited {
+              RunWitness { reason: "witness test fn declaration directly edited" }
+            } else if entry_file_touched {
+              RunWitness { reason: "witness entry import-closure has non-data fn edit in diff" }
+            } else {
+              SkipAssumedGreen
+            }
+        }
       }
   }
 }
@@ -162,11 +159,8 @@ fn floor_kernel_would_skip(
   ) {
     SkipAssumedGreen => true
     RunWitness { reason: _ } => false
-    Refused { cause: _ } => false
   }
 }
-
-data floor_kernel_would_skip_refused_arm_note: String = "The Refused arm in floor_kernel_would_skip is unreachable by construction: the wrapper builds only DiffPathsProduced/FrontierProduced, and the host errors out on observation/frontier failure before calling it. The arm exists for match totality; refusal semantics live at the disposition authority (floor_witness_run_disposition), which the host consumes directly for failure states. Collapsing refusal into a Bool would be the state-space conflation this PR removes - do not route refusals through this wrapper."
 
 data floor_host_scaffold_would_skip_note: String = "Host-scan walls read the live tree via host intrinsics (`layer_import_facts`, `*_facts_live`, ...). Node-frontier skip is unsound for them: an unrelated diff can leave a corpus-wide violation red while the witness is assumed green."
 
@@ -188,13 +182,17 @@ fn floor_precompute_would_skip(
 ) -> Bool {
   match diff {
     DiffObservationFailClosed { reason: _ } => false
-    DiffPathsProduced { changed_paths: _ } =>
-      match frontier {
-        FrontierFailClosed { reason: _ } => false
-        FrontierProduced { nodes: nodes } =>
-          (length(xs: nodes) == 0)
-            && (edited_test_fn_count == 0)
-            && (touched_entry_file_count == 0)
+    DiffPathsProduced { changed_paths: paths } =>
+      if length(xs: paths) == 0 {
+        false
+      } else {
+        match frontier {
+          FrontierFailClosed { reason: _ } => false
+          FrontierProduced { nodes: nodes } =>
+            (length(xs: nodes) == 0)
+              && (edited_test_fn_count == 0)
+              && (touched_entry_file_count == 0)
+        }
       }
   }
 }
