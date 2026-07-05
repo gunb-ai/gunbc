@@ -8535,7 +8535,6 @@ mod nfr_tests {
     }
 }
 
-
 const LANGUAGES_AUTHORITY_REL: &str = "dag/std/languages.dag";
 
 fn languages_census_collect_source_files(dir: &Path, out: &mut Vec<PathBuf>) {

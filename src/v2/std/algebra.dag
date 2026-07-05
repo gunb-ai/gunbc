@@ -706,7 +706,6 @@ fn list_snoc_item<T>(xs: FreeMonoid<T>, item: T) -> FreeMonoid<T> {
   list_append(left: xs, right: Cons { head: item, tail: Empty })
 }
 
-// R1 copied-port facts — left/xs/base port copies the fold accumulator each step (fold-over-left / map_merge clone).
 type CopiedPortFact {
   combiner: Symbol
   copied_port_index: Int

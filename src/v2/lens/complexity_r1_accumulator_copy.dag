@@ -26,11 +26,10 @@ import v2.std.collection {
   Optional,
   Present,
   Absent,
-  list_at_optional,
-  optional_absent,
-  optional_present
+  list_at_optional
 }
 import v2.std.diagnostic { Diagnostic, Textual, WholeFile }
+import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
@@ -91,15 +90,23 @@ fn r1_row_matches_combiner(row: CopiedPortFact, combiner: Symbol) -> Bool {
   r1_symbols_equal(a: row.combiner, b: combiner)
 }
 
+fn r1_some_copied_port_index(idx: Int) -> Optional<Int> {
+  Present { value: idx }
+}
+
 fn r1_copied_port_index(combiner: Symbol) -> Optional<Int> {
   if r1_row_matches_combiner(row: copied_port_fact_list_append_left, combiner: combiner) {
-    optional_present(value: copied_port_fact_list_append_left.copied_port_index)
-  } else if r1_row_matches_combiner(row: copied_port_fact_list_snoc_left, combiner: combiner) {
-    optional_present(value: copied_port_fact_list_snoc_left.copied_port_index)
-  } else if r1_row_matches_combiner(row: copied_port_fact_map_merge_base, combiner: combiner) {
-    optional_present(value: copied_port_fact_map_merge_base.copied_port_index)
+    r1_some_copied_port_index(idx: copied_port_fact_list_append_left.copied_port_index)
   } else {
-    optional_absent<Int>()
+    if r1_row_matches_combiner(row: copied_port_fact_list_snoc_left, combiner: combiner) {
+      r1_some_copied_port_index(idx: copied_port_fact_list_snoc_left.copied_port_index)
+    } else {
+      if r1_row_matches_combiner(row: copied_port_fact_map_merge_base, combiner: combiner) {
+        r1_some_copied_port_index(idx: copied_port_fact_map_merge_base.copied_port_index)
+      } else {
+        Absent
+      }
+    }
   }
 }
 

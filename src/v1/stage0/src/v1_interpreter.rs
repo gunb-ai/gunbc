@@ -6048,7 +6048,6 @@ fn eval_builtin(
                 crate::cli_run::complexity_linearity_syntactic_site_fired(&site),
             )))
         }
-
         "census_corpus_roots_follow_layer_authority" => Ok(Some(Value::Bool(
             crate::cli_run::census_corpus_roots_follow_layer_authority(),
         ))),
