@@ -1,6 +1,6 @@
 module gunbc.ci_layer_roots
 
-data witness_layer_roots: List<String> = ["dag", "src/v2"]
+data witness_layer_roots: List<String> = ["dag", "src/v2", "src/v1"]
 
 data compile_clean_source_roots_note: String = "Compile-clean pool extends witness_layer_roots with src/v1 for cross-tree import resolution only (e.g. dag/test/claim/ownership_movable_test imports v1.compiler.ownership). src/v1 stays excluded from floor witness_layer_roots per gunbc.plans.seed_debt_bundle_item_2 §1 (parse-cursor fork deferred — no floor witness discovery over src/v1)."
 
