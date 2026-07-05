@@ -76,7 +76,7 @@ fn token_stream_position(stream: TokenStream) -> Int {
 }
 
 fn token_stream_first(stream: TokenStream) -> Token? {
-  get(xs: stream.all, index: stream.pos)
+  skip(xs: stream.all, n: stream.pos) |> first
 }
 
 fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
@@ -84,7 +84,7 @@ fn token_stream_advance(stream: TokenStream, n: Int) -> TokenStream {
 }
 
 fn token_stream_peek(stream: TokenStream, offset: Int) -> Token? {
-  get(xs: stream.all, index: stream.pos + offset)
+  skip(xs: stream.all, n: stream.pos + offset) |> first
 }
 
 type ParseContext {
