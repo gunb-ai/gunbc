@@ -179,8 +179,12 @@ fn floor_unified_diff_from_reconciliation(
   match r {
     Converged { evidence: e, applied: _ } =>
       match e {
-        ShellEffectApplied { stdout: text, exit_code: _ } =>
-          UnifiedDiffOk { text: text }
+        ShellEffectApplied { stdout: text, exit_code: code } =>
+          if code == 0 {
+            UnifiedDiffOk { text: text }
+          } else {
+            UnifiedDiffFail { reason: "git diff -U0 exited nonzero: invalid ref or not a git repository" }
+          }
       }
     NotConverged { reason: why, applied: _ } =>
       UnifiedDiffFail { reason: why }
@@ -295,14 +299,17 @@ fn floor_name_status_diff_from_reconciliation(
   match r {
     Converged { evidence: e, applied: _ } =>
       match e {
-        ShellEffectApplied { stdout: text, exit_code: _ } => {
-          let entries = parse_git_diff_name_status_z(raw: text)
-          if git_diff_status_entries_any_unknown(entries: entries) {
-            NameStatusDiffFail { reason: "unrecognized git diff --name-status status letter in observation" }
+        ShellEffectApplied { stdout: text, exit_code: code } =>
+          if code != 0 {
+            NameStatusDiffFail { reason: "git diff --name-status -z exited nonzero: invalid ref or not a git repository" }
           } else {
-            NameStatusDiffOk { changed_paths: git_diff_status_entries_touched_paths(entries: entries) }
+            let entries = parse_git_diff_name_status_z(raw: text)
+            if git_diff_status_entries_any_unknown(entries: entries) {
+              NameStatusDiffFail { reason: "unrecognized git diff --name-status status letter in observation" }
+            } else {
+              NameStatusDiffOk { changed_paths: git_diff_status_entries_touched_paths(entries: entries) }
+            }
           }
-        }
       }
     NotConverged { reason: why, applied: _ } =>
       NameStatusDiffFail { reason: why }
