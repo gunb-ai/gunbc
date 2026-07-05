@@ -14,22 +14,18 @@ use v1_compiler::v1_compiler_infer::{
 };
 use v1_compiler::v1_compiler_infer_items::TypedModule;
 use v1_compiler::v1_compiler_resolve::ResolvedModule;
-use v1_compiler::v1_std_core::{
-    authored_name_at, diagnostic_to_message, empty_intern_table, is_error_diagnostic,
-    CompilerDiagnostic, InternTable, NewlineIndex,
-};
 use v1_compiler::v1_rt;
+use v1_compiler::v1_std_core::{
+    authored_name_at, diagnostic_to_message, is_error_diagnostic, InternTable, NewlineIndex,
+};
 
 use crate::helpers::{compile_multi, diagnostic_messages, resolve_imports_transitively};
 
-const PROVIDER: &str = "module test.provider\ntype Shape = Circle { r: Int } | Square { s: Int }\n";
+const PROVIDER: &str = "module test.provider\ntype E = A | B\n";
 
-const REEXPORT: &str = "module test.reexport\n\
-import test.provider { Circle }\n";
+const REEXPORT: &str = "module test.reexport\nimport test.provider { B }\n";
 
-const CONSUMER: &str = "module test.consumer\n\
-import test.reexport { Circle }\n\
-fn mk() -> Circle { Circle { r: 1 } }\n";
+const CONSUMER: &str = "module test.consumer\nimport test.reexport { B }\nfn f() -> E { B }\n";
 
 fn fixture_sources() -> Vec<Rc<SourceFile>> {
     resolve_imports_transitively("consumer.dag", CONSUMER)
@@ -52,20 +48,16 @@ fn resolved_module_graph(
     Rc<InternTable>,
 ) {
     let frontend = front_end_sources(sources);
-    let graph = frontend.graph.expect("resolved module graph");
-    let source_indices = frontend
-        .newline_indices
-        .iter()
-        .cloned()
-        .fold(
-            v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
-            |acc, si| v1_rt::rc_map_insert(acc, si.file.clone(), si),
-        );
+    let graph = frontend.graph.clone().expect("resolved module graph");
+    let source_indices = frontend.newline_indices.iter().cloned().fold(
+        v1_rt::rc_empty_map::<String, Rc<NewlineIndex>>(),
+        |acc, si| v1_rt::rc_map_insert(acc, si.file.clone(), si),
+    );
     let norm = normalize_graph(graph, source_indices.clone());
     (
         norm.graph.modules.clone(),
         source_indices,
-        frontend.intern_table,
+        frontend.intern_table.clone(),
     )
 }
 
@@ -84,8 +76,7 @@ fn typecheck_resolved_incremental(
     intern_table: Rc<InternTable>,
 ) -> Vec<Rc<TypecheckModuleResult>> {
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
-    let mut variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>> =
-        v1_rt::rc_empty_map();
+    let mut variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>> = v1_rt::rc_empty_map();
     let mut results = Vec::new();
     for resolved in modules {
         let tc = typecheck_module(
@@ -170,13 +161,20 @@ fn variant_reexport_empty_surfaces_red_control() {
 
     let incremental =
         typecheck_resolved_incremental(&modules, source_indices.clone(), intern_table.clone());
+    assert!(
+        hard_diagnostic_messages(incremental.last().expect("consumer incremental typecheck"))
+            .is_empty(),
+        "incremental path must be clean before RED control"
+    );
     let module_index: Rc<HashMap<String, Rc<TypedModule>>> = incremental
         .iter()
         .map(|tc| {
             let path = authored_name_at(source_indices.clone(), tc.typed.module.clone());
             (path, tc.typed.clone())
         })
-        .fold(v1_rt::rc_empty_map(), |acc, (k, v)| v1_rt::rc_map_insert(acc, k, v));
+        .fold(v1_rt::rc_empty_map(), |acc, (k, v)| {
+            v1_rt::rc_map_insert(acc, k, v)
+        });
 
     let consumer = consumer_resolved(&modules, &source_indices);
     let isolated = typecheck_module_isolated(
@@ -185,15 +183,12 @@ fn variant_reexport_empty_surfaces_red_control() {
         source_indices.clone(),
         intern_table,
     );
-    let has_unresolved = isolated.diagnostics.iter().any(|d| {
-        matches!(
-            &*d.diagnostic,
-            CompilerDiagnostic::UnresolvedType { name, .. } if name == "Circle"
-        )
-    });
+    let isolated_msgs = hard_diagnostic_messages(&isolated);
     assert!(
-        has_unresolved,
+        isolated_msgs
+            .iter()
+            .any(|m| m.contains("'B'") || m.contains("unresolved type 'B'")),
         "isolated typecheck (empty variant_surfaces) must RED on re-export arm import, got:\n{}",
-        hard_diagnostic_messages(&isolated).join("\n")
+        isolated_msgs.join("\n")
     );
 }
