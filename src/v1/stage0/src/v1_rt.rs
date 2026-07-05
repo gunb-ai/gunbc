@@ -302,13 +302,21 @@ pub fn rc_empty_set<T: Ord>() -> Rc<BTreeSet<T>> {
     Rc::new(BTreeSet::new())
 }
 
+#[track_caller]
 pub fn rc_set_insert<T: Ord + Clone>(mut s: Rc<BTreeSet<T>>, x: T) -> Rc<BTreeSet<T>> {
+    if Rc::strong_count(&s) > 1 {
+        rc_shared_update_guard("rc_set_insert", Rc::strong_count(&s));
+    }
     Rc::make_mut(&mut s).insert(x);
     s
 }
 
+#[track_caller]
 pub fn rc_set_union<T: Ord + Clone>(a: Rc<BTreeSet<T>>, b: Rc<BTreeSet<T>>) -> Rc<BTreeSet<T>> {
     let mut out = a;
+    if Rc::strong_count(&out) > 1 {
+        rc_shared_update_guard("rc_set_union", Rc::strong_count(&out));
+    }
     for x in b.iter().cloned() {
         Rc::make_mut(&mut out).insert(x);
     }
@@ -335,33 +343,106 @@ pub fn replace(s: String, from: String, to: String) -> String {
 // will call these. Read-only functions (map_get, map_keys, map_values, lookup,
 // map_contains_key, map_has) work with Rc<HashMap> via auto-deref.
 
+// Shared-Rc update guard (operator ruling 2026-07-05): a clone fallback in an
+// rc_* update is a degradation arm — it must refuse (fail) or be counted and
+// loud (count), never silent (DESIGN.md 5). GUNBC_CLONE_FALLBACK=fail|count|allow,
+// default fail. #[track_caller] threads the generated caller's file:line into
+// the diagnostic so each refusal names the exact emitted site to license.
+thread_local! {
+    static RC_CLONE_FALLBACKS: std::cell::RefCell<HashMap<String, u64>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+fn clone_fallback_mode() -> u8 {
+    static MODE: std::sync::OnceLock<u8> = std::sync::OnceLock::new();
+    *MODE.get_or_init(
+        || match std::env::var("GUNBC_CLONE_FALLBACK").as_deref() {
+            Ok("allow") => 0,
+            Ok("count") => 1,
+            _ => 2,
+        },
+    )
+}
+
+#[track_caller]
+fn rc_shared_update_guard(op: &str, strong: usize) {
+    match clone_fallback_mode() {
+        0 => {}
+        1 => {
+            let key = format!("{} at {}", op, std::panic::Location::caller());
+            RC_CLONE_FALLBACKS.with(|m| {
+                let mut m = m.borrow_mut();
+                let n = m.entry(key.clone()).or_insert(0);
+                *n += 1;
+                if *n == 1 {
+                    eprintln!("clone-fallback (count): {}", key);
+                }
+            });
+        }
+        _ => panic!(
+            "clone-fallback refused: {} at {} on a shared Rc (strong={}) — this update \
+             deep-copies the whole container. Last use? -> missing move license \
+             (emitter site). Genuinely still live? -> the copy needs structural \
+             sharing, not a clone. GUNBC_CLONE_FALLBACK=count to degrade-and-count, \
+             =allow to silence.",
+            op,
+            std::panic::Location::caller(),
+            strong
+        ),
+    }
+}
+
+pub fn rc_clone_fallback_counts() -> Vec<(String, u64)> {
+    RC_CLONE_FALLBACKS.with(|m| {
+        let mut v: Vec<(String, u64)> = m.borrow().iter().map(|(k, n)| (k.clone(), *n)).collect();
+        v.sort();
+        v
+    })
+}
+
+#[track_caller]
 pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
     let mut v = list;
+    if Rc::strong_count(&v) > 1 {
+        rc_shared_update_guard("rc_list_push", Rc::strong_count(&v));
+    }
     Rc::make_mut(&mut v).push(item);
     v
 }
 
+#[track_caller]
 pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     let mut result = a;
+    if Rc::strong_count(&result) > 1 {
+        rc_shared_update_guard("rc_list_concat", Rc::strong_count(&result));
+    }
     Rc::make_mut(&mut result).extend(b.iter().cloned());
     result
 }
 
+#[track_caller]
 pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     map: Rc<HashMap<K, V>>,
     key: K,
     value: V,
 ) -> Rc<HashMap<K, V>> {
     let mut m = map;
+    if Rc::strong_count(&m) > 1 {
+        rc_shared_update_guard("rc_map_insert", Rc::strong_count(&m));
+    }
     Rc::make_mut(&mut m).insert(key, value);
     m
 }
 
+#[track_caller]
 pub fn rc_map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     base: Rc<HashMap<K, V>>,
     overlay: Rc<HashMap<K, V>>,
 ) -> Rc<HashMap<K, V>> {
     let mut result = base;
+    if Rc::strong_count(&result) > 1 {
+        rc_shared_update_guard("rc_map_merge", Rc::strong_count(&result));
+    }
     let inner = Rc::make_mut(&mut result);
     for (k, v) in overlay.iter() {
         inner.insert(k.clone(), v.clone());
@@ -669,6 +750,15 @@ thread_local! {
 /// per-site observability this function exists to provide (DESIGN.md 5).
 pub fn take_owned_counted<T: Clone>(x: Rc<T>, site: &'static str) -> T {
     Rc::try_unwrap(x).unwrap_or_else(|rc| {
+        if clone_fallback_mode() == 2 {
+            panic!(
+                "clone-fallback refused: take_owned at emitted site {} on a shared Rc \
+                 (strong={}) — the licensed move found the value still shared. \
+                 GUNBC_CLONE_FALLBACK=count to degrade-and-count, =allow to silence.",
+                site,
+                Rc::strong_count(&rc)
+            );
+        }
         TAKE_OWNED_CLONE_FALLBACKS.with(|m| *m.borrow_mut().entry(site).or_insert(0) += 1);
         (*rc).clone()
     })
