@@ -14084,6 +14084,21 @@ pub fn typecheck_module(
     }
 }
 
+pub fn typecheck_module_isolated(
+    resolved: Rc<ResolvedModule>,
+    parent_index: Rc<HashMap<String, Rc<TypedModule>>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+) -> Rc<TypecheckModuleResult> {
+    typecheck_module(
+        resolved,
+        parent_index,
+        Rc::new(HashMap::new()),
+        source_indices,
+        intern_table,
+    )
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EnvResolveResult {
     pub env: Rc<TypeEnv>,
