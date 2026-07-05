@@ -100,7 +100,7 @@ thread_local! {
         const { std::cell::RefCell::new(None) };
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "interp_test_witness"))]
 thread_local! {
     static CALL_ENV_DEPTH_PEAK: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
@@ -120,7 +120,7 @@ fn with_lexical_base_env<R>(base: &Rc<Env>, f: impl FnOnce() -> R) -> R {
             }
         }
         let _guard = LexicalBaseGuard { prev };
-        #[cfg(test)]
+        #[cfg(any(test, feature = "interp_test_witness"))]
         CALL_ENV_DEPTH_PEAK.with(|peak| peak.set(0));
         f()
     })
@@ -134,7 +134,7 @@ fn lexical_base_env(caller_env: &Rc<Env>) -> Rc<Env> {
     })
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "interp_test_witness"))]
 fn record_call_env_depth(env: &Env) {
     let depth = env.chain_depth();
     CALL_ENV_DEPTH_PEAK.with(|peak| {
@@ -630,7 +630,7 @@ impl Env {
         current
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "interp_test_witness"))]
     pub fn chain_depth(&self) -> usize {
         1 + self
             .parent
@@ -1278,7 +1278,7 @@ pub fn run_in_context_with_args(
 
 /// Peak parent-chain depth observed across `call_function` frames in the last
 /// `run_in_context*` invocation (test witness for lexical-base scoping).
-#[cfg(test)]
+#[cfg(any(test, feature = "interp_test_witness"))]
 pub fn call_env_depth_peak_snapshot() -> usize {
     CALL_ENV_DEPTH_PEAK.with(|peak| peak.get())
 }
@@ -1398,7 +1398,7 @@ fn call_function(
     }
 
     let call_env = Env::extend(&lexical_base_env(env), bindings);
-    #[cfg(test)]
+    #[cfg(any(test, feature = "interp_test_witness"))]
     record_call_env_depth(&call_env);
 
     match eval_expr(body, &call_env, ctx) {
