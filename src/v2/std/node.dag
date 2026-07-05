@@ -1,7 +1,5 @@
 module v2.std.node
 
-import v2.std.algebra { fold_list }
-
 type Symbol
 type Hash
 
@@ -300,25 +298,23 @@ type NamedEdgeTargetLookup
   | Absent
 
 fn named_edge_target_lookup(children: List<Edge>, name: Symbol) -> NamedEdgeTargetLookup {
-  fold_list(
-    xs: children,
-    empty: Absent,
-    cons: fn(acc, e) {
+  match children |> first {
+    Present { value: e } =>
       match e.label {
         Named { name: sym } =>
           if sym == name {
-            match acc {
+            match named_edge_target_lookup(children: children |> skip(1), name: name) {
               Absent => Found { target: e.target }
               Found { target: _ } => Ambiguous
               Ambiguous => Ambiguous
             }
           } else {
-            acc
+            named_edge_target_lookup(children: children |> skip(1), name: name)
           }
-        Positional => acc
+        Positional => named_edge_target_lookup(children: children |> skip(1), name: name)
       }
-    }
-  )
+    Absent => Absent
+  }
 }
 
 fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
