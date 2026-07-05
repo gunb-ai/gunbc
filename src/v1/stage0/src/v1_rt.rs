@@ -559,6 +559,16 @@ fn expect_hash_digest(s: &str, arg: &str) {
 /// Stage-boundary trace mark — the v1-seed interim realization of the v2 per-RealizedStep
 /// CostAccount (std.realization_measurement). One stderr line per mark; consecutive marks
 /// define the segments of a natural Gantt read directly off any run log.
+///
+/// **Dissolution trigger (DESIGN §6):** delete this fn, the `trace_mark` registry row in
+/// `04_method.dag` (+ hand-synced twin `v1_compiler_infer_method.rs`), the nine
+/// `trace_mark(...)` marks in `compile.dag` (+ hand-synced `v1_compiler_compile.rs`), and
+/// the interpreter arm in `v1_interpreter.rs` when realization_measurement_loop **Phase 0**
+/// (`docs/plans/realization-measurement-loop.md`) lands a `.dag` `PerformanceReceipt`
+/// per-stage carrier that a floor witness consumes by execution (the same retirement event
+/// as `phase_profile.rs` / `GUNBC_FLOOR_GANTT`, per `docs/plans/ci-floor-fractal-gantt.md`
+/// § dissolution). Receipt = that witness green with these marks deleted and stage walls
+/// still attributable from the model path.
 pub fn trace_mark(label: String) {
     use std::sync::OnceLock;
     use std::time::Instant;
