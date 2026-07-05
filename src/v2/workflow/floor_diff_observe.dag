@@ -31,10 +31,22 @@ import extdeps.languages.bash.program {
   OrElse,
   lit, var_ref, command, assign, serialize_bash
 }
+import extdeps.git {
+  GitDiffNameStatusComplete,
+  GitDiffNameStatusTruncated,
+  git_diff_name_status_parse,
+  git_diff_status_entries_touched_paths,
+  git_diff_status_entries_departed_paths,
+  git_diff_status_entries_any_unknown
+}
 
 type FloorUnifiedDiffResult
   = UnifiedDiffOk { text: String }
   | UnifiedDiffFail { reason: String }
+
+type FloorNameStatusDiffResult
+  = NameStatusDiffOk { changed_paths: List<String>, departed_paths: List<String> }
+  | NameStatusDiffFail { reason: String }
 
 fn floor_ci_host_os() -> NodeControlPlane {
   HostOs { node: gunbc_ci_host }
@@ -170,8 +182,12 @@ fn floor_unified_diff_from_reconciliation(
   match r {
     Converged { evidence: e, applied: _ } =>
       match e {
-        ShellEffectApplied { stdout: text, exit_code: _ } =>
-          UnifiedDiffOk { text: text }
+        ShellEffectApplied { stdout: text, exit_code: code } =>
+          if code == 0 {
+            UnifiedDiffOk { text: text }
+          } else {
+            UnifiedDiffFail { reason: "git diff -U0 exited nonzero: invalid ref or not a git repository" }
+          }
       }
     NotConverged { reason: why, applied: _ } =>
       UnifiedDiffFail { reason: why }
@@ -193,9 +209,150 @@ fn floor_observe_git_diff_unified_for_ci() -> FloorUnifiedDiffResult {
   floor_observe_git_diff_unified(policy: gunbc_ci_spec.diff_policy)
 }
 
+fn floor_name_status_diff_injection_stmts() -> List<ShellStmt> {
+  [
+    If {
+      cond: floor_test_n(name: "GUNBC_CI_DIFF_NAME_STATUS"),
+      then: [
+        command(words: [
+          lit(text: "printf"),
+          lit(text: "%s"),
+          var_ref(name: "GUNBC_CI_DIFF_NAME_STATUS")
+        ]),
+        Exit { code: 0 }
+      ]
+    }
+  ]
+}
+
+fn floor_git_diff_name_status_two_dot_stmt() -> ShellStmt {
+  command(words: [
+    lit(text: "git"),
+    lit(text: "diff"),
+    lit(text: "--name-status"),
+    lit(text: "-z"),
+    var_ref(name: "BASE"),
+    var_ref(name: "HEAD")
+  ])
+}
+
+fn floor_git_diff_name_status_merge_base_stmt() -> ShellStmt {
+  command(words: [
+    lit(text: "git"),
+    lit(text: "diff"),
+    lit(text: "--name-status"),
+    lit(text: "-z"),
+    Concat { parts: [var_ref(name: "BASE"), lit(text: "..."), var_ref(name: "HEAD")] }
+  ])
+}
+
+fn floor_git_diff_name_status_merge_base_mode_stmts() -> List<ShellStmt> {
+  [
+    If {
+      cond: floor_merge_base_uses_two_dot_range(),
+      then: [floor_git_diff_name_status_two_dot_stmt()]
+    },
+    If {
+      cond: Negation {
+        stmt: Subshell { body: [floor_merge_base_uses_two_dot_range()] }
+      },
+      then: [floor_git_diff_name_status_merge_base_stmt()]
+    }
+  ]
+}
+
+fn floor_git_diff_name_status_tail_stmts(policy: DiffPolicy) -> List<ShellStmt> {
+  match policy.mode {
+    DiffMergeBase => floor_git_diff_name_status_merge_base_mode_stmts()
+    DiffTwoDot => [floor_git_diff_name_status_two_dot_stmt()]
+  }
+}
+
+fn floor_git_diff_name_status_program(policy: DiffPolicy) -> ShellProgram {
+  ShellProgram {
+    set_e: true,
+    statements: concat(
+      floor_name_status_diff_injection_stmts(),
+      concat(
+        floor_assign_from_env_or_default(
+          env: "GUNBC_CI_DIFF_BASE",
+          default: policy.base,
+          target: "BASE"
+        ),
+        concat(
+          floor_assign_from_env_or_default(
+            env: "GUNBC_CI_DIFF_HEAD",
+            default: policy.head,
+            target: "HEAD"
+          ),
+          floor_git_diff_name_status_tail_stmts(policy: policy)
+        )
+      )
+    )
+  }
+}
+
+fn floor_git_diff_name_status_script(policy: DiffPolicy) -> String {
+  serialize_bash(p: floor_git_diff_name_status_program(policy: policy))
+}
+
+fn floor_name_status_diff_from_reconciliation(
+  r: Reconciliation<HostEffectIntent, HostEffectEvidence>
+) -> FloorNameStatusDiffResult {
+  match r {
+    Converged { evidence: e, applied: _ } =>
+      match e {
+        ShellEffectApplied { stdout: text, exit_code: code } =>
+          if code != 0 {
+            NameStatusDiffFail { reason: "git diff --name-status -z exited nonzero: invalid ref or not a git repository" }
+          } else {
+            match git_diff_name_status_parse(raw: text) {
+              GitDiffNameStatusTruncated { pending: _, entries: _ } =>
+                NameStatusDiffFail { reason: "git diff --name-status -z observation ended mid-record (truncated stream)" }
+              GitDiffNameStatusComplete { entries: entries } =>
+                if git_diff_status_entries_any_unknown(entries: entries) {
+                  NameStatusDiffFail { reason: "unrecognized git diff --name-status status letter in observation" }
+                } else {
+                  NameStatusDiffOk {
+                    changed_paths: git_diff_status_entries_touched_paths(entries: entries),
+                    departed_paths: git_diff_status_entries_departed_paths(entries: entries)
+                  }
+                }
+            }
+          }
+      }
+    NotConverged { reason: why, applied: _ } =>
+      NameStatusDiffFail { reason: why }
+  }
+}
+
+fn floor_observe_git_diff_name_status(policy: DiffPolicy) -> FloorNameStatusDiffResult {
+  floor_name_status_diff_from_reconciliation(
+    r: host_effect_apply(
+      target: floor_ci_host_os(),
+      effect: ShellCommand { script: floor_git_diff_name_status_script(policy: policy) },
+      evidence: host_effect_read_evidence,
+      transport: LocalShell
+    )
+  )
+}
+
+fn floor_observe_git_diff_name_status_for_ci() -> FloorNameStatusDiffResult {
+  floor_observe_git_diff_name_status(policy: gunbc_ci_spec.diff_policy)
+}
+
 fn floor_diff_script_serializes_git_diff_unified() -> Bool {
   let script = floor_git_diff_unified_script(policy: gunbc_ci_spec.diff_policy)
   string_contains(s: script, pattern: "'git'")
     && string_contains(s: script, pattern: "'diff'")
     && string_contains(s: script, pattern: "GUNBC_CI_DIFF_UNIFIED")
+}
+
+fn floor_diff_script_serializes_git_diff_name_status() -> Bool {
+  let script = floor_git_diff_name_status_script(policy: gunbc_ci_spec.diff_policy)
+  string_contains(s: script, pattern: "'git'")
+    && string_contains(s: script, pattern: "'diff'")
+    && string_contains(s: script, pattern: "'--name-status'")
+    && string_contains(s: script, pattern: "'-z'")
+    && string_contains(s: script, pattern: "GUNBC_CI_DIFF_NAME_STATUS")
 }
