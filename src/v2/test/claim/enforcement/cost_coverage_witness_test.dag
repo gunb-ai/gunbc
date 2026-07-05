@@ -65,7 +65,8 @@ test fn cost_coverage_dag_logic_has_three_fn_bodies() -> Bool {
   (receipt.files_attempted == 1)
     && (receipt.files_parsed_clean == 1)
     && (receipt.fn_attempted == 3)
-    && (receipt.fn_body_unavailable == 0)
+    && (receipt.fn_body_not_located == 0)
+    && (receipt.fn_body_parse_tree_opaque == 3)
 }
 
 test fn cost_coverage_reject_is_typed_not_silent() -> Bool {
@@ -122,6 +123,7 @@ test fn cost_coverage_file_row_totality_holds_on_smoke() -> Bool {
     IngestParsedClean =>
       cost_coverage_file_totality_holds(receipt: file_row)
         && (file_row.fn_attempted == 3)
+        && (file_row.fn_body_parse_tree_opaque == 3)
     IngestRejected { stage: _, reason: _ } => false
   }
 }
@@ -130,7 +132,9 @@ test fn cost_coverage_v2_ingested_body_is_not_decl_facts_skeleton() -> Bool {
   let file_row = cost_coverage_file_receipt(rel_path: "dag/std/logic.dag")
   match file_row.ingest_verdict {
     IngestParsedClean =>
-      (file_row.fn_known + file_row.fn_unknown) > 0
+      (file_row.fn_attempted == 3)
+        && (file_row.fn_body_not_located == 0)
+        && (file_row.fn_body_parse_tree_opaque == 3)
     IngestRejected { stage: _, reason: _ } => false
   }
 }

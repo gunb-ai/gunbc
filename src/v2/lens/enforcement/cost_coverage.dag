@@ -55,7 +55,6 @@ type CostCoverageFileReceipt {
   fn_attempted: Int
   fn_known: Int
   fn_unknown: Int
-  fn_body_unavailable: Int
   fn_body_parse_tree_opaque: Int
   fn_body_not_located: Int
   fn_rows: List<CostCoverageFnReceipt>
@@ -69,7 +68,6 @@ type CostCoverageTreeReceipt {
   fn_attempted: Int
   fn_known: Int
   fn_unknown: Int
-  fn_body_unavailable: Int
   fn_body_parse_tree_opaque: Int
   fn_body_not_located: Int
   file_rows: List<CostCoverageFileReceipt>
@@ -82,7 +80,6 @@ type CostCoverageCensusAcc {
   fn_attempted: Int
   fn_known: Int
   fn_unknown: Int
-  fn_body_unavailable: Int
   fn_body_parse_tree_opaque: Int
   fn_body_not_located: Int
   file_rows: List<CostCoverageFileReceipt>
@@ -95,10 +92,6 @@ data cost_coverage_unknown_asymptotic_class: Symbol = ^cost_coverage_unknown_asy
 data cost_coverage_file_anchor: Symbol = ^cost_coverage_file_anchor
 
 data cost_coverage_reject_probe: Symbol = ^cost_coverage_reject_probe
-
-fn cost_coverage_string_eq(a: String, b: String) -> Bool {
-  a == b
-}
 
 fn cost_coverage_is_fn_decl(node: Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
@@ -131,7 +124,7 @@ fn cost_coverage_fn_body_from_decl(fn_decl: Node) -> Optional<Node> {
 fn cost_coverage_fn_verdict_from_body(body: Node) -> CostCoverageFnVerdict {
   match judge_subject_node(n: body) {
     BodyUnavailable =>
-      FnBodyUnavailable
+      FnBodyParseTreeOpaque
     BodyJudged { verdict: witness } =>
       match witness {
         Violates { diagnostic: d } =>
@@ -161,9 +154,16 @@ fn cost_coverage_fn_verdict_is_known(verdict: CostCoverageFnVerdict) -> Bool {
   }
 }
 
-fn cost_coverage_fn_verdict_is_body_unavailable(verdict: CostCoverageFnVerdict) -> Bool {
+fn cost_coverage_fn_verdict_is_parse_tree_opaque(verdict: CostCoverageFnVerdict) -> Bool {
   match verdict {
-    FnBodyUnavailable => true
+    FnBodyParseTreeOpaque => true
+    _ => false
+  }
+}
+
+fn cost_coverage_fn_verdict_is_body_not_located(verdict: CostCoverageFnVerdict) -> Bool {
+  match verdict {
+    FnBodyNotLocated => true
     _ => false
   }
 }
@@ -182,7 +182,7 @@ fn cost_coverage_fn_receipt_step(
           CostCoverageFnReceipt {
             rel_path: rel_path,
             fn_index: fn_index,
-            verdict: FnBodyUnavailable
+            verdict: FnBodyNotLocated
           }
         ]
       )
@@ -232,6 +232,19 @@ fn cost_coverage_count_fn_verdict(
   )
 }
 
+fn cost_coverage_empty_file_counts() -> CostCoverageFileReceipt {
+  CostCoverageFileReceipt {
+    rel_path: "",
+    ingest_verdict: IngestRejected { stage: "", reason: ^cost_coverage_reject_probe },
+    fn_attempted: 0,
+    fn_known: 0,
+    fn_unknown: 0,
+    fn_body_parse_tree_opaque: 0,
+    fn_body_not_located: 0,
+    fn_rows: Empty
+  }
+}
+
 fn cost_coverage_file_receipt_from_module(
   rel_path: String,
   module_root: Node
@@ -250,9 +263,13 @@ fn cost_coverage_file_receipt_from_module(
       rows: fn_rows,
       predicate: cost_coverage_fn_verdict_is_unknown
     ),
-    fn_body_unavailable: cost_coverage_count_fn_verdict(
+    fn_body_parse_tree_opaque: cost_coverage_count_fn_verdict(
       rows: fn_rows,
-      predicate: cost_coverage_fn_verdict_is_body_unavailable
+      predicate: cost_coverage_fn_verdict_is_parse_tree_opaque
+    ),
+    fn_body_not_located: cost_coverage_count_fn_verdict(
+      rows: fn_rows,
+      predicate: cost_coverage_fn_verdict_is_body_not_located
     ),
     fn_rows: fn_rows
   }
@@ -281,14 +298,16 @@ fn cost_coverage_rejected_file_receipt(
   stage: String,
   reason: Symbol
 ) -> CostCoverageFileReceipt {
+  let empty = cost_coverage_empty_file_counts()
   CostCoverageFileReceipt {
     rel_path: rel_path,
     ingest_verdict: IngestRejected { stage: stage, reason: reason },
-    fn_attempted: 0,
-    fn_known: 0,
-    fn_unknown: 0,
-    fn_body_unavailable: 0,
-    fn_rows: Empty
+    fn_attempted: empty.fn_attempted,
+    fn_known: empty.fn_known,
+    fn_unknown: empty.fn_unknown,
+    fn_body_parse_tree_opaque: empty.fn_body_parse_tree_opaque,
+    fn_body_not_located: empty.fn_body_not_located,
+    fn_rows: empty.fn_rows
   }
 }
 
@@ -320,7 +339,8 @@ fn cost_coverage_census_fold_step(
         fn_attempted: acc.fn_attempted + file_row.fn_attempted,
         fn_known: acc.fn_known + file_row.fn_known,
         fn_unknown: acc.fn_unknown + file_row.fn_unknown,
-        fn_body_unavailable: acc.fn_body_unavailable + file_row.fn_body_unavailable,
+        fn_body_parse_tree_opaque: acc.fn_body_parse_tree_opaque + file_row.fn_body_parse_tree_opaque,
+        fn_body_not_located: acc.fn_body_not_located + file_row.fn_body_not_located,
         file_rows: list_append(left: acc.file_rows, right: [file_row])
       }
     IngestRejected { stage: _, reason: _ } =>
@@ -331,9 +351,24 @@ fn cost_coverage_census_fold_step(
         fn_attempted: acc.fn_attempted,
         fn_known: acc.fn_known,
         fn_unknown: acc.fn_unknown,
-        fn_body_unavailable: acc.fn_body_unavailable,
+        fn_body_parse_tree_opaque: acc.fn_body_parse_tree_opaque,
+        fn_body_not_located: acc.fn_body_not_located,
         file_rows: list_append(left: acc.file_rows, right: [file_row])
       }
+  }
+}
+
+fn cost_coverage_empty_census_acc() -> CostCoverageCensusAcc {
+  CostCoverageCensusAcc {
+    files_attempted: 0,
+    files_parsed_clean: 0,
+    files_rejected: 0,
+    fn_attempted: 0,
+    fn_known: 0,
+    fn_unknown: 0,
+    fn_body_parse_tree_opaque: 0,
+    fn_body_not_located: 0,
+    file_rows: Empty
   }
 }
 
@@ -343,16 +378,7 @@ fn cost_coverage_tree_census(
 ) -> CostCoverageTreeReceipt {
   let acc = fold_list(
     xs: paths,
-    empty: CostCoverageCensusAcc {
-      files_attempted: 0,
-      files_parsed_clean: 0,
-      files_rejected: 0,
-      fn_attempted: 0,
-      fn_known: 0,
-      fn_unknown: 0,
-      fn_body_unavailable: 0,
-      file_rows: Empty
-    },
+    empty: cost_coverage_empty_census_acc(),
     cons: fn(a, p) {
       cost_coverage_census_fold_step(acc: a, path: p)
     }
@@ -365,7 +391,8 @@ fn cost_coverage_tree_census(
     fn_attempted: acc.fn_attempted,
     fn_known: acc.fn_known,
     fn_unknown: acc.fn_unknown,
-    fn_body_unavailable: acc.fn_body_unavailable,
+    fn_body_parse_tree_opaque: acc.fn_body_parse_tree_opaque,
+    fn_body_not_located: acc.fn_body_not_located,
     file_rows: acc.file_rows
   }
 }
@@ -386,13 +413,35 @@ fn cost_coverage_corpus_roster_live() -> List<String> {
   )
 }
 
+fn cost_coverage_fn_verdict_totality_holds(
+  attempted: Int,
+  known: Int,
+  unknown: Int,
+  parse_tree_opaque: Int,
+  not_located: Int
+) -> Bool {
+  attempted == (known + unknown + parse_tree_opaque + not_located)
+}
+
 fn cost_coverage_receipt_totality_holds(receipt: CostCoverageTreeReceipt) -> Bool {
   (receipt.files_attempted == (receipt.files_parsed_clean + receipt.files_rejected))
-    && (receipt.fn_attempted == (receipt.fn_known + receipt.fn_unknown + receipt.fn_body_unavailable))
+    && cost_coverage_fn_verdict_totality_holds(
+      attempted: receipt.fn_attempted,
+      known: receipt.fn_known,
+      unknown: receipt.fn_unknown,
+      parse_tree_opaque: receipt.fn_body_parse_tree_opaque,
+      not_located: receipt.fn_body_not_located
+    )
 }
 
 fn cost_coverage_file_totality_holds(receipt: CostCoverageFileReceipt) -> Bool {
-  receipt.fn_attempted == (receipt.fn_known + receipt.fn_unknown + receipt.fn_body_unavailable)
+  cost_coverage_fn_verdict_totality_holds(
+    attempted: receipt.fn_attempted,
+    known: receipt.fn_known,
+    unknown: receipt.fn_unknown,
+    parse_tree_opaque: receipt.fn_body_parse_tree_opaque,
+    not_located: receipt.fn_body_not_located
+  )
 }
 
 fn cost_coverage_tree_receipt_eq(a: CostCoverageTreeReceipt, b: CostCoverageTreeReceipt) -> Bool {
@@ -403,7 +452,8 @@ fn cost_coverage_tree_receipt_eq(a: CostCoverageTreeReceipt, b: CostCoverageTree
     && (a.fn_attempted == b.fn_attempted)
     && (a.fn_known == b.fn_known)
     && (a.fn_unknown == b.fn_unknown)
-    && (a.fn_body_unavailable == b.fn_body_unavailable)
+    && (a.fn_body_parse_tree_opaque == b.fn_body_parse_tree_opaque)
+    && (a.fn_body_not_located == b.fn_body_not_located)
 }
 
 fn cost_coverage_unknown_fraction_bps(receipt: CostCoverageTreeReceipt) -> Int {
