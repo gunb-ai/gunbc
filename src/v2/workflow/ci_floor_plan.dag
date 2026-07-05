@@ -5,7 +5,8 @@ import gunbc.ci_spec {
   gunbc_ci_spec, CiSpec,
   Gate, RustMonolithGate, EmitHostGate, LayeringImportsGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate,
-  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate
+  SourceRootIngestGate, RegenVerifyGate, SelfHostRealizedComparisonGate, EmitDeterminismGate,
+  gunbc_ci_executor_spec,
 }
 import v2.std.algebra { filter, length, list_snoc_item, skip, zip_map }
 import v2.std.collection { List }
@@ -355,8 +356,22 @@ fn floor_resource_dependencies(spec: CiSpec) -> List<DependencyView> {
   )
 }
 
+fn floor_data_dependencies_for_spec(spec: CiSpec) -> List<DependencyView> {
+  let has_compile_gate = fold(spec.gates, init: false, f: fn(acc, g) {
+    match g {
+      DagCompileCleanGate => true
+      _ => acc
+    }
+  })
+  if has_compile_gate {
+    floor_data_dependencies(spec: spec)
+  } else {
+    []
+  }
+}
+
 fn floor_dependencies_with(spec: CiSpec, serialize_heavy: Bool) -> List<DependencyView> {
-  let data_deps = floor_data_dependencies(spec: spec)
+  let data_deps = floor_data_dependencies_for_spec(spec: spec)
   if serialize_heavy {
     concat(data_deps, floor_resource_dependencies(spec: spec))
   } else {
@@ -428,6 +443,10 @@ fn gunbc_ci_floor_realization_plan() -> RealizationPlan {
 
 fn gunbc_ci_floor_batches() -> List<List<Runnable>> {
   gunbc_ci_floor_realization_plan().schedule
+}
+
+fn gunbc_ci_floor_executor_batches() -> List<List<Runnable>> {
+  gunbc_ci_floor_realization_plan_for(spec: gunbc_ci_executor_spec).schedule
 }
 
 fn gunbc_ci_floor_schedule_lens_holds() -> Bool {
