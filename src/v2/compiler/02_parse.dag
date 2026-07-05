@@ -118,14 +118,24 @@ type ParseStampResult {
   prov: ParseProvenanceState
 }
 
-type ParseExprResult
-  = ParseExprAccepted {
+type ParseMemoEntry
+  = ParseMemoAccepted {
       remaining: List<Token>,
       captured: Node,
       diagnostics: List<Diagnostic>,
       prov: ParseProvenanceState
     }
-  | ParseExprRejected { diagnostics: List<Diagnostic> }
+  | ParseMemoRejected { diagnostics: List<Diagnostic> }
+
+type ParseExprResult
+  = ParseExprAccepted {
+      remaining: List<Token>,
+      captured: Node,
+      diagnostics: List<Diagnostic>,
+      prov: ParseProvenanceState,
+      table: ParseTable
+    }
+  | ParseExprRejected { diagnostics: List<Diagnostic>, table: ParseTable }
 
 type ParseSyncState {
   found_sync: Bool
@@ -138,6 +148,7 @@ type ParseRepeatAcc {
   acc_diags: List<Diagnostic>
   done: Bool
   prov: ParseProvenanceState
+  table: ParseTable
 }
 
 type GrammarExprCornerFold {
@@ -158,7 +169,7 @@ type ParseTableRealization {
   interface: Symbol
   grammar_digest: Hash
   token_stream_digest: Hash
-  entries: Map<ParsePositionKey, ParseExprResult>
+  entries: Map<ParsePositionKey, ParseMemoEntry>
 }
 
 type ParseTable = ParseTableRealization
@@ -226,11 +237,32 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
   }
 }
 
-fn parse_table_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<ParseExprResult> {
+fn parse_table_lookup(table: ParseTable, key: ParsePositionKey) -> Witness<ParseMemoEntry> {
   table.entries.lookup(key)
 }
 
-fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseExprResult) -> ParseTable {
+fn parse_memo_entry_from_expr(result: ParseExprResult) -> ParseMemoEntry {
+  match result {
+    ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diagnostics, prov: prov, table: _ } =>
+      ParseMemoAccepted {
+        remaining: remaining,
+        captured: captured,
+        diagnostics: diagnostics,
+        prov: prov
+      }
+    ParseExprRejected { diagnostics: diagnostics, table: _ } =>
+      ParseMemoRejected { diagnostics: diagnostics }
+  }
+}
+
+fn parse_expr_result_table(result: ParseExprResult) -> ParseTable {
+  match result {
+    ParseExprAccepted { remaining: _, captured: _, diagnostics: _, prov: _, table: table } => table
+    ParseExprRejected { diagnostics: _, table: table } => table
+  }
+}
+
+fn parse_table_insert(table: ParseTable, key: ParsePositionKey, value: ParseMemoEntry) -> ParseTable {
   ParseTableRealization {
     artifact_kind: table.artifact_kind,
     interface: table.interface,
@@ -539,6 +571,7 @@ type ParseMatchArmStmtAcc {
   acc_diags: List<Diagnostic>
   done: Bool
   prov: ParseProvenanceState
+  table: ParseTable
 }
 
 fn parse_char_is_arm_pattern_lead(c: Char) -> Bool {
@@ -647,14 +680,15 @@ fn parse_match_arm_stmt_body(
   prov: ParseProvenanceState
 ) -> ParseExprResult {
   if parse_looks_like_match_arm_start(tokens: tokens) {
-    ParseExprRejected { diagnostics: [] }
+    ParseExprRejected { diagnostics: [], table: table }
   } else {
     let init = ParseMatchArmStmtAcc {
       remaining: tokens,
       acc_nodes: [],
       acc_diags: [],
       done: false,
-      prov: prov
+      prov: prov,
+      table: table
     }
     let result = fold_list(
       xs: tokens,
@@ -669,33 +703,36 @@ fn parse_match_arm_stmt_body(
                 acc_nodes: acc.acc_nodes,
                 acc_diags: acc.acc_diags,
                 done: true,
-                prov: acc.prov
+                prov: acc.prov,
+                table: acc.table
               }
             } else {
               match parse_nonterminal_memoized_core(
                 all_tokens: all_tokens,
                 tokens: acc.remaining,
                 root: root,
-                table: table,
+                table: acc.table,
                 prod_name: ^dag_production_stmt,
                 prov: acc.prov
               ) {
-                ParseExprRejected { diagnostics: _ } =>
+                ParseExprRejected { diagnostics: _, table: _ } =>
                   ParseMatchArmStmtAcc {
                     remaining: acc.remaining,
                     acc_nodes: acc.acc_nodes,
                     acc_diags: acc.acc_diags,
                     done: true,
-                    prov: acc.prov
+                    prov: acc.prov,
+                    table: acc.table
                   }
-                ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
+                ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
                   if length(xs: rest) != length(xs: acc.remaining) {
                     ParseMatchArmStmtAcc {
                       remaining: rest,
                       acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
                       acc_diags: list_append(left: acc.acc_diags, right: diags),
                       done: false,
-                      prov: prov1
+                      prov: prov1,
+                      table: table1
                     }
                   } else {
                     ParseMatchArmStmtAcc {
@@ -703,7 +740,8 @@ fn parse_match_arm_stmt_body(
                       acc_nodes: acc.acc_nodes,
                       acc_diags: acc.acc_diags,
                       done: true,
-                      prov: acc.prov
+                      prov: acc.prov,
+                      table: acc.table
                     }
                   }
               }
@@ -712,14 +750,15 @@ fn parse_match_arm_stmt_body(
       }
     )
     if is_empty(xs: result.acc_nodes) {
-      ParseExprRejected { diagnostics: [] }
+      ParseExprRejected { diagnostics: [], table: result.table }
     } else {
       let stamped = parse_stamp_match_arm_stmt_nodes(acc_nodes: result.acc_nodes, prov: result.prov)
       ParseExprAccepted {
         remaining: result.remaining,
         captured: stamped.node,
         diagnostics: result.acc_diags,
-        prov: stamped.prov
+        prov: stamped.prov,
+        table: result.table
       }
     }
   }
@@ -739,15 +778,14 @@ fn parse_nonterminal_memoized_core(
   }
   match grammar_lookup_production(root: root, name: prod_name) {
     Violates { diagnostic: d } =>
-      ParseExprRejected { diagnostics: [d] }
+      ParseExprRejected { diagnostics: [d], table: table }
     Holds { value: production } =>
       match parse_table_lookup(table: table, key: key) {
         Holds { value: inner } =>
-
           match inner {
-            ParseExprRejected { diagnostics: diags } =>
-              ParseExprRejected { diagnostics: diags }
-            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
+            ParseMemoRejected { diagnostics: diags } =>
+              ParseExprRejected { diagnostics: diags, table: table }
+            ParseMemoAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
               let merged_prov = parse_prov_merge(base: prov, incoming: inner_prov)
               let stamped = parse_wrap_production_captured(
                 production: production,
@@ -758,7 +796,8 @@ fn parse_nonterminal_memoized_core(
                 remaining: remaining,
                 captured: stamped.node,
                 diagnostics: diags,
-                prov: stamped.prov
+                prov: stamped.prov,
+                table: table
               }
           }
         Violates { diagnostic: _ } =>
@@ -770,12 +809,15 @@ fn parse_nonterminal_memoized_core(
             table: table,
             prov: prov
           )
-
-          let _memo = parse_table_insert(table: table, key: key, value: inner)
+          let table_after_memo = parse_table_insert(
+            table: parse_expr_result_table(result: inner),
+            key: key,
+            value: parse_memo_entry_from_expr(result: inner)
+          )
           match inner {
-            ParseExprRejected { diagnostics: diags } =>
-              ParseExprRejected { diagnostics: diags }
-            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
+            ParseExprRejected { diagnostics: diags, table: _ } =>
+              ParseExprRejected { diagnostics: diags, table: table_after_memo }
+            ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: _ } =>
               let stamped = parse_wrap_production_captured(
                 production: production,
                 captured: captured,
@@ -785,7 +827,8 @@ fn parse_nonterminal_memoized_core(
                 remaining: remaining,
                 captured: stamped.node,
                 diagnostics: diags,
-                prov: stamped.prov
+                prov: stamped.prov,
+                table: table_after_memo
               }
           }
       }
@@ -1084,9 +1127,9 @@ fn parse_expr(
     expr: expr,
     algebra: GrammarExprFold {
       terminal: fn(token_class, stamp) {
-        ParseThunk { apply: fn(tok_in, _all_toks, _root_in, _table_in, prov_in) {
+        ParseThunk { apply: fn(tok_in, _all_toks, _root_in, table_in, prov_in) {
           match parse_token_first(tokens: tok_in) {
-            Absent => ParseExprRejected { diagnostics: [] }
+            Absent => ParseExprRejected { diagnostics: [], table: table_in }
             Present { value: tok } =>
               match tok.class == token_class {
                 true =>
@@ -1097,11 +1140,12 @@ fn parse_expr(
                         remaining: remaining,
                         captured: stamped.node,
                         diagnostics: [],
-                        prov: stamped.prov
+                        prov: stamped.prov,
+                        table: table_in
                       }
-                    TailAbsent => ParseExprRejected { diagnostics: [] }
+                    TailAbsent => ParseExprRejected { diagnostics: [], table: table_in }
                   }
-                false => ParseExprRejected { diagnostics: [] }
+                false => ParseExprRejected { diagnostics: [], table: table_in }
               }
           } } }
       },
@@ -1120,19 +1164,20 @@ fn parse_expr(
       sequence: fn(left_thunk, right_thunk) {
         ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
           match left_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in) {
-            ParseExprRejected { diagnostics: diags } =>
-              ParseExprRejected { diagnostics: diags }
-            ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1, prov: prov1 } =>
-              match right_thunk.apply(rest1, all_toks, root_in, table_in, prov1) {
-                ParseExprRejected { diagnostics: diags2 } =>
-                  ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2) }
-                ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2, prov: prov2 } =>
+            ParseExprRejected { diagnostics: diags, table: table1 } =>
+              ParseExprRejected { diagnostics: diags, table: table1 }
+            ParseExprAccepted { remaining: rest1, captured: cap1, diagnostics: diags1, prov: prov1, table: table1 } =>
+              match right_thunk.apply(rest1, all_toks, root_in, table1, prov1) {
+                ParseExprRejected { diagnostics: diags2, table: table2 } =>
+                  ParseExprRejected { diagnostics: list_append(left: diags1, right: diags2), table: table2 }
+                ParseExprAccepted { remaining: rest2, captured: cap2, diagnostics: diags2, prov: prov2, table: table2 } =>
                   let stamped = parse_stamp_derived_conj(cap1: cap1, cap2: cap2, prov: prov2)
                   ParseExprAccepted {
                     remaining: rest2,
                     captured: stamped.node,
                     diagnostics: list_append(left: diags1, right: diags2),
-                    prov: stamped.prov
+                    prov: stamped.prov,
+                    table: table2
                   }
               }
           }
@@ -1141,24 +1186,25 @@ fn parse_expr(
       choice: fn(left_thunk, right_thunk) {
         ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
           match left_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in) {
-            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
-              ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
-            ParseExprRejected { diagnostics: _ } =>
-              right_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in)
+            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
+              ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 }
+            ParseExprRejected { diagnostics: _, table: table1 } =>
+              right_thunk.apply(tok_in, all_toks, root_in, table1, prov_in)
           }
         } }
       },
       optional: fn(element_thunk) {
         ParseThunk { apply: fn(tok_in, all_toks, root_in, table_in, prov_in) {
           match element_thunk.apply(tok_in, all_toks, root_in, table_in, prov_in) {
-            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
-              ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 }
-            ParseExprRejected { diagnostics: _ } =>
+            ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
+              ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 }
+            ParseExprRejected { diagnostics: _, table: table1 } =>
               ParseExprAccepted {
                 remaining: tok_in,
                 captured: grammar_empty_node(),
                 diagnostics: [],
-                prov: prov_in
+                prov: prov_in,
+                table: table1
               }
           }
         } }
@@ -1170,7 +1216,8 @@ fn parse_expr(
             acc_nodes: [],
             acc_diags: [],
             done: false,
-            prov: prov_in
+            prov: prov_in,
+            table: table_in
           }
           let result = fold_list(
             xs: tok_in,
@@ -1179,16 +1226,17 @@ fn parse_expr(
               match acc.done {
                 true => acc
                 false =>
-                  match element_thunk.apply(acc.remaining, all_toks, root_in, table_in, acc.prov) {
-                    ParseExprRejected { diagnostics: _ } =>
+                  match element_thunk.apply(acc.remaining, all_toks, root_in, acc.table, acc.prov) {
+                    ParseExprRejected { diagnostics: _, table: table1 } =>
                       ParseRepeatAcc {
                         remaining: acc.remaining,
                         acc_nodes: acc.acc_nodes,
                         acc_diags: acc.acc_diags,
                         done: true,
-                        prov: acc.prov
+                        prov: acc.prov,
+                        table: table1
                       }
-                    ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1 } =>
+                    ParseExprAccepted { remaining: rest, captured: cap, diagnostics: diags, prov: prov1, table: table1 } =>
                       match length(xs: rest) != length(xs: acc.remaining) {
                         true =>
                           ParseRepeatAcc {
@@ -1196,7 +1244,8 @@ fn parse_expr(
                             acc_nodes: list_snoc_item(xs: acc.acc_nodes, item: cap),
                             acc_diags: list_append(left: acc.acc_diags, right: diags),
                             done: false,
-                            prov: prov1
+                            prov: prov1,
+                            table: table1
                           }
                         false =>
                           ParseRepeatAcc {
@@ -1204,7 +1253,8 @@ fn parse_expr(
                             acc_nodes: acc.acc_nodes,
                             acc_diags: acc.acc_diags,
                             done: true,
-                            prov: acc.prov
+                            prov: acc.prov,
+                            table: acc.table
                           }
                       }
                   }
@@ -1216,7 +1266,8 @@ fn parse_expr(
             remaining: result.remaining,
             captured: stamped.node,
             diagnostics: result.acc_diags,
-            prov: stamped.prov
+            prov: stamped.prov,
+            table: result.table
           }
         } }
       }
@@ -1244,7 +1295,7 @@ fn parse_production(
         table: table,
         prov: prov
       ) {
-        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov } =>
+        ParseExprAccepted { remaining: remaining, captured: captured, diagnostics: diags, prov: inner_prov, table: _ } =>
           if is_empty(xs: remaining) {
             let stamped = parse_wrap_production_captured(
               production: production,
@@ -1258,7 +1309,7 @@ fn parse_production(
           } else {
             Rejected { diagnostics: diagnostics_singleton(d: parse_g0_tokens_remain_diagnostic(at: at)) }
           }
-        ParseExprRejected { diagnostics: diags } =>
+        ParseExprRejected { diagnostics: diags, table: _ } =>
           Rejected {
             diagnostics: parse_diags_to_non_empty(
               diags: diags,
