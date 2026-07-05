@@ -44,21 +44,15 @@ fn is_unit_variant_node(variant: Node) -> Bool {
   (variant.children |> count) == 0
 }
 
-fn unit_variant_in_coproduct_children(env: TypeEnv, children: List<Node>, variant_name: String) -> Node? {
-  match children |> first {
-    Present { value: v } =>
-      if authored_name_at(source_indices: env.source_indices, node: v) == variant_name && is_unit_variant_node(variant: v) {
-        Present { value: v }
-      } else {
-        unit_variant_in_coproduct_children(env: env, children: children |> skip(1), variant_name: variant_name)
-      }
-    Absent => none
-  }
-}
-
 fn unit_variant_in_coproduct(env: TypeEnv, ty: Node, variant_name: String) -> Node? {
   match ty.connective {
-    Disj => unit_variant_in_coproduct_children(env: env, children: ty.children, variant_name: variant_name)
+    Disj =>
+      fold(ty.children, init: none, f: (acc, v) =>
+        if acc != none { acc }
+        else if authored_name_at(source_indices: env.source_indices, node: v) == variant_name && is_unit_variant_node(variant: v) {
+          Present { value: v }
+        } else { none }
+      )
     _ => none
   }
 }
@@ -236,7 +230,6 @@ fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult
 
 data parameterized_use_site_prefers_parameterized_decl: String = "A use site WITH type arguments (children > 0) whose primary name lookup lands on a PARAMLESS decl is definitionally mis-resolved - type args imply a generic declaration. The concrete seam: the kernel prelude binding for a name (e.g. the kernel Optional) shadows an explicitly imported user generic of the same name in the ancestry rung, so v2's Optional<T> consumers resolved the paramless kernel decl, is_user_generic_use_site went false, the sig return was never expanded, and pattern bindings went error-typed with zero diagnostics (the interpreted-parse cascade; pre-existing on main). Retry the DIRECT import parents (str_bindings) for a parameterized decl before accepting the paramless one - the params filter naturally excludes the kernel parent, and the ancestry rung itself carries the kernel-shadowed entry so it cannot serve as the retry source."
 
-<<<<<<< HEAD
 fn resolve_paramless_generic_use_decl_with_children(env: TypeEnv, n: Node, decl: Node, brand: String) -> Node {
   match env.parents |> filter(parent =>
     match map_get(parent.str_bindings, brand) {
@@ -247,29 +240,6 @@ fn resolve_paramless_generic_use_decl_with_children(env: TypeEnv, n: Node, decl:
     Present { value: parent } =>
       match map_get(parent.str_bindings, brand) {
         Present { value: b } => b.resolved
-=======
-fn parameterized_decl_in_parents(parents: List<TypeEnv>, brand: String) -> Node? {
-  match parents |> first {
-    Present { value: parent } =>
-      match map_get(parent.str_bindings, brand) {
-        Present { value: b } =>
-          if b.resolved.params |> count > 0 {
-            Present { value: b.resolved }
-          } else {
-            parameterized_decl_in_parents(parents: parents |> skip(1), brand: brand)
-          }
-        Absent => parameterized_decl_in_parents(parents: parents |> skip(1), brand: brand)
-      }
-    Absent => Absent
-  }
-}
-
-fn resolve_paramless_generic_name_fallback(env: TypeEnv, n: Node, decl: Node, brand: String) -> Node {
-  match n.name != "" && n.name != brand {
-    true =>
-      match lookup_type_by_name(env: env, name: n.name) {
-        Present { value: structural } => structural
->>>>>>> c46d43af28 (WIP: InterfaceSummary v0: std carrier + first consumer)
         Absent => decl
       }
     Absent =>
@@ -283,19 +253,8 @@ fn resolve_paramless_generic_name_fallback(env: TypeEnv, n: Node, decl: Node, br
 }
 
 fn resolve_paramless_generic_use_decl(env: TypeEnv, n: Node, decl: Node, brand: String) -> Node {
-<<<<<<< HEAD
   if n.children |> count == 0 { decl }
   else { resolve_paramless_generic_use_decl_with_children(env: env, n: n, decl: decl, brand: brand) }
-=======
-  match n.children |> count > 0 {
-    true =>
-      match parameterized_decl_in_parents(parents: env.parents, brand: brand) {
-        Present { value: user_decl } => user_decl
-        Absent => resolve_paramless_generic_name_fallback(env: env, n: n, decl: decl, brand: brand)
-      }
-    false => decl
-  }
->>>>>>> c46d43af28 (WIP: InterfaceSummary v0: std carrier + first consumer)
 }
 
 fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
