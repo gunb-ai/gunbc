@@ -35,6 +35,7 @@ type GrammarCoverageTreeReceipt {
   parsed_clean: Int
   rejected_count: Int
   rejected_rows: List<GrammarCoverageRejectedRow>
+  file_rows: List<GrammarCoverageFileReceipt>
 }
 
 type GrammarCoverageTimingPoint {
@@ -166,17 +167,38 @@ fn grammar_coverage_ingest_path(path: String) -> GrammarCoverageParseVerdict {
   )
 }
 
+fn grammar_coverage_file_receipt(rel_path: String) -> GrammarCoverageFileReceipt {
+  GrammarCoverageFileReceipt {
+    rel_path: rel_path,
+    verdict: grammar_coverage_ingest_path(path: rel_path)
+  }
+}
+
+fn grammar_coverage_file_reject_locus_matches(
+  receipt: GrammarCoverageFileReceipt,
+  stage: String,
+  reason: Symbol
+) -> Bool {
+  match receipt.verdict {
+    ParsedClean => false
+    ParseRejected { stage: s, reason: r } =>
+      (s == stage) && (r == reason)
+  }
+}
+
 fn grammar_coverage_census_fold_step(
   acc: GrammarCoverageCensusAcc,
   path: String
 ) -> GrammarCoverageCensusAcc {
-  match grammar_coverage_ingest_path(path: path) {
+  let file_row = grammar_coverage_file_receipt(rel_path: path)
+  match file_row.verdict {
     ParsedClean =>
       GrammarCoverageCensusAcc {
         files_attempted: acc.files_attempted + 1,
         parsed_clean: acc.parsed_clean + 1,
         rejected_count: acc.rejected_count,
-        rejected_rows: acc.rejected_rows
+        rejected_rows: acc.rejected_rows,
+        file_rows: list_append(left: acc.file_rows, right: [file_row])
       }
     ParseRejected { stage: stage, reason: reason } =>
       GrammarCoverageCensusAcc {
@@ -186,7 +208,8 @@ fn grammar_coverage_census_fold_step(
         rejected_rows: list_append(
           left: [GrammarCoverageRejectedRow { stage: stage, reason: reason, count: 1 }],
           right: acc.rejected_rows
-        )
+        ),
+        file_rows: list_append(left: acc.file_rows, right: [file_row])
       }
   }
 }
@@ -201,7 +224,8 @@ fn grammar_coverage_tree_census(
       files_attempted: 0,
       parsed_clean: 0,
       rejected_count: 0,
-      rejected_rows: Empty
+      rejected_rows: Empty,
+      file_rows: Empty
     },
     cons: fn(a, p) {
       grammar_coverage_census_fold_step(acc: a, path: p)
@@ -212,7 +236,8 @@ fn grammar_coverage_tree_census(
     files_attempted: acc.files_attempted,
     parsed_clean: acc.parsed_clean,
     rejected_count: acc.rejected_count,
-    rejected_rows: acc.rejected_rows
+    rejected_rows: acc.rejected_rows,
+    file_rows: acc.file_rows
   }
 }
 
