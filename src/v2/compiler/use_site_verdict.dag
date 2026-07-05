@@ -38,6 +38,8 @@ data use_site_verdict_borrow_tag: Symbol = ^use_site_verdict_borrow
 data use_site_verdict_clone_shared_tag: Symbol = ^use_site_verdict_clone_shared
 data use_site_verdict_unclassified_tag: Symbol = ^use_site_verdict_unclassified
 
+data use_site_verdict_carrier_staged_ahead_dissolution_trigger: String = "🟡 dissolve-on: this carrier is STAGED-AHEAD infrastructure — the v2-side UseSiteVerdict type plus node attach/lookup round-trip — landed WITHOUT a producer, because v2 has no ownership-analysis pass to populate it yet. The live move/last-use fact currently lives v1-side as an ad-hoc Map<String,Bool> (move_sites_index in src/v1/ownership.dag), which is being deleted with v1. Operator ruled (c) 2026-07-05 (stage, do not force a producer): forcing attach_use_site_verdict from v1's mechanism would be a §2/§3 parallel-representation fork, not the de-fork this carrier exists to enable. DISSOLVES WHEN v2 grows its first ownership-analysis pass and populates use_site_verdict via attach_use_site_verdict at real use sites (the emit de-fork + the complexity lens then read this single node-attached fact instead of re-deriving it), retiring v1's ad-hoc move_sites_index. Until then this module has round-trip witnesses (use_site_verdict_test) but no live consumer by design."
+
 fn use_site_verdict_atom(tag: Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: tag } }, children: [])
 }
