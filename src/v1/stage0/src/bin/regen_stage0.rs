@@ -8,8 +8,8 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::v1_compiler_artifact::RenderTarget;
-use v1_compiler::v1_compiler_compile::{compile_sources, SourceFile};
 use v1_compiler::v1_compiler_compile::stage0_self_compile_refusal_message;
+use v1_compiler::v1_compiler_compile::{compile_sources, SourceFile};
 
 const BOOTSTRAP_TIMING_RECEIPT_VERSION: u32 = 2;
 const BOOTSTRAP_TIMING_RECEIPT_SCHEMA: &str = "gunbc.bootstrap_timing_receipt.v2";
