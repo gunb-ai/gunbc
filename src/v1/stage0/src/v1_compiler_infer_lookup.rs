@@ -149,7 +149,7 @@ pub fn lookup_field_type_node(
                         }
                     }
                 } else {
-                    match (*n.inferred).clone().as_deref().cloned() {
+                    match n.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: target, .. }) => {
                             lookup_field_type_node(
                                 target.clone(),
@@ -237,8 +237,8 @@ pub fn resolve_scrutinee_type_node_seen(
     seen: Rc<HashMap<String, bool>>,
 ) -> Rc<Node> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let n_is_type_var = if ((*n.inferred).clone() != None) {
-            is_type_variable((*n.inferred).clone().clone().unwrap())
+        let n_is_type_var = if (n.inferred.clone() != None) {
+            is_type_variable(n.inferred.clone().clone().unwrap())
         } else {
             false
         };
@@ -248,9 +248,9 @@ pub fn resolve_scrutinee_type_node_seen(
         let normed = normalize_access_type_node(n.clone());
         if (((normed.connective.clone() == Connective::NoConnective)
             && ((normed.children.clone().len() as i64) > 0))
-            && ((*normed.inferred).clone() != None))
+            && (normed.inferred.clone() != None))
         {
-            match (*normed.inferred).clone().as_deref().cloned() {
+            match normed.inferred.clone().as_deref().cloned() {
                 Some(InferredNode::Resolved { node: target, .. }) => {
                     resolve_scrutinee_type_node_seen(env.clone(), target.clone(), seen.clone())
                 }
@@ -262,18 +262,18 @@ pub fn resolve_scrutinee_type_node_seen(
             {
                 {
                     let canonical = authored_name(env.clone(), normed.clone());
-                    if ((*normed.inferred).clone() != None) {
+                    if (normed.inferred.clone() != None) {
                         {
                             let next_seen = if (canonical.clone() == "".to_string()) {
                                 seen.clone()
                             } else {
                                 v1_rt::rc_map_insert(seen.clone(), canonical.clone(), true)
                             };
-                            match (*normed.inferred).clone().as_deref().cloned() {
+                            match normed.inferred.clone().as_deref().cloned() {
                                 Some(InferredNode::Resolved { node: target, .. }) => {
                                     if ((((authored_name(env.clone(), target.clone())
                                         == canonical.clone())
-                                        && ((*target.inferred).clone() == None))
+                                        && (target.inferred.clone() == None))
                                         && (target.connective.clone() == Connective::NoConnective))
                                         && ((target.children.clone().len() as i64) == 0))
                                     {
@@ -305,7 +305,7 @@ pub fn resolve_scrutinee_type_node_seen(
                                     Some(resolved) => {
                                         if ((((authored_name(env.clone(), resolved.clone())
                                             == canonical.clone())
-                                            && ((*resolved.inferred).clone() == None))
+                                            && (resolved.inferred.clone() == None))
                                             && (resolved.connective.clone()
                                                 == Connective::NoConnective))
                                             && ((resolved.children.clone().len() as i64) == 0))
@@ -471,10 +471,10 @@ pub struct StructuralMethodLookup {
 }
 
 pub fn product_field_result_type(field: Rc<Node>) -> Option<Rc<Node>> {
-    match (*field.inferred).clone().as_deref().cloned() {
+    match field.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => {
             if ((rt.params.clone().len() as i64) > 0) {
-                match (*rt.inferred).clone().as_deref().cloned() {
+                match rt.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved {
                         node: return_type, ..
                     }) => Some(return_type.clone()),

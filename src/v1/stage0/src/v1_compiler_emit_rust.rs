@@ -2100,7 +2100,7 @@ pub fn resolve_wire_serde_policy(
     wire_item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<RustEnumWireSerde> {
-    match (*wire_item.body).clone() {
+    match wire_item.body.clone() {
     Some(ve) => resolve_wire_serde_policy_from_encoding_node(ve.clone(), source_indices),
     None => match (*wire_item.expr_data.clone()).clone() {
     ExprData::ExprRecordLit { parent_enum: _, .. } => resolve_wire_serde_policy_from_encoding_node(wire_item.clone(), source_indices),
@@ -2146,7 +2146,7 @@ pub fn resolve_wire_serde_policy_for_coproduct_seen(
                 }
                 Some(wc) => {
                     if is_data_def_item(wc.clone()) {
-                        match (*wc.body).clone() {
+                        match wc.body.clone() {
                             None => {
                                 break rust_serde_error_policy(
                                     "wire_contract: data item has no initializer body".to_string(),
@@ -2293,7 +2293,7 @@ pub fn coproduct_wire_contract_encoding(
     contract_item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<Node>> {
-    match (*contract_item.body).clone() {
+    match contract_item.body.clone() {
         Some(body) => field_value_by_name(body.clone(), "encoding".to_string(), source_indices),
         None => None,
     }
@@ -2311,7 +2311,7 @@ pub fn coproduct_wire_contract_targets(
     coproduct_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match (*contract_item.body).clone() {
+    match contract_item.body.clone() {
         Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
             Some(target_name) => (target_name.clone() == coproduct_name),
             None => false,
@@ -2370,7 +2370,7 @@ pub fn data_item_type_is_coproduct_wire_contract(
     imports: Rc<Vec<Rc<Node>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    match (*item.type_annotation).clone() {
+    match item.type_annotation.clone() {
         Some(type_node) => {
             ((authored_name_at(source_indices.clone(), type_node.clone())
                 == "CoproductWireContract".to_string())
@@ -2423,7 +2423,7 @@ pub fn is_coproduct_wire_contract_row(
             ) {
                 false
             } else {
-                match (*item.body).clone() {
+                match item.body.clone() {
                     Some(body) => {
                         ((field_value_by_name(
                             body.clone(),
@@ -2448,7 +2448,7 @@ pub fn emit_coproduct_wire_contract_target_validation(
     local_coproduct_names: Rc<Vec<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
-    match (*contract_item.body).clone() {
+    match contract_item.body.clone() {
         Some(body) => match coproduct_decl_ref_decl_name(body.clone(), source_indices) {
             Some(target_name) => {
                 if {
@@ -3266,7 +3266,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                 Rc::new({
                     let mut __result = Vec::new();
                     for item in m.items.clone().iter().cloned() {
-                        if ((*item.body).clone() != None) {
+                        if (item.body.clone() != None) {
                             __result.push(item);
                         }
                     }
@@ -3278,7 +3278,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                     v1_rt::rc_set_union(
                         inner,
                         collect_callable_refs(
-                            (*item.body).clone().clone().unwrap(),
+                            item.body.clone().clone().unwrap(),
                             (*m.type_env).clone().source_indices.clone(),
                         ),
                     )
@@ -3294,7 +3294,7 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                         for item in Rc::new({
                             let mut __result = Vec::new();
                             for item in m.items.clone().iter().cloned() {
-                                if ((*item.body).clone() != None) {
+                                if (item.body.clone() != None) {
                                     __result.push(item);
                                 }
                             }
@@ -3329,12 +3329,12 @@ pub fn build_ownership_results(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<Ownershi
                                     proof: analyze_ownership(
                                         authored_name_at(si.clone(), item.clone()),
                                         item.params.clone(),
-                                        (*item.body).clone().clone().unwrap(),
+                                        item.body.clone().clone().unwrap(),
                                         si.clone(),
                                     ),
                                     param_names: pnames.clone(),
                                     move_sites: build_move_site_licenses(
-                                        (*item.body).clone().clone().unwrap(),
+                                        item.body.clone().clone().unwrap(),
                                         si.clone(),
                                     ),
                                 })
@@ -5912,8 +5912,8 @@ pub fn is_parametric_opaque_type_decl_item(
     item: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    ((((((item.params.clone().len() as i64) > 0) && ((*item.body).clone() == None))
-        && ((*item.transport).clone() == None))
+    ((((((item.params.clone().len() as i64) > 0) && (item.body.clone() == None))
+        && (item.transport.clone() == None))
         && ((item.children.clone().len() as i64) == 0))
         && (!is_type_alias_return_node(resolved_type(item.clone()), source_indices.clone())
             || is_self_referential_opaque_type_resolved(item.clone(), source_indices.clone())))
@@ -7501,7 +7501,7 @@ pub fn emit_typed_item(
                             };
                             let item_is_tco = is_tco_eligible(
                                 authored_name(env.clone(), item.clone()),
-                                (*item.body).clone().clone().unwrap(),
+                                item.body.clone().clone().unwrap(),
                                 registry.clone(),
                                 env.source_indices.clone(),
                             );
@@ -7561,7 +7561,7 @@ pub fn emit_typed_item(
                                     item.params.clone(),
                                     resolved_type(item.clone()),
                                     item.uses.clone(),
-                                    (*item.body).clone().clone().unwrap(),
+                                    item.body.clone().clone().unwrap(),
                                     registry.clone(),
                                     scope.clone(),
                                     shared_types,
@@ -7572,7 +7572,7 @@ pub fn emit_typed_item(
                                     item_text.clone(),
                                     item.params.clone(),
                                     resolved_type(item.clone()),
-                                    (*item.body).clone().clone().unwrap(),
+                                    item.body.clone().clone().unwrap(),
                                     registry.clone(),
                                     scope.clone(),
                                     shared_types,
@@ -7584,8 +7584,8 @@ pub fn emit_typed_item(
                         if is_data_def_item(item.clone()) {
                             emit_data_def(
                                 item_text.clone(),
-                                (*item.type_annotation).clone().clone().unwrap(),
-                                (*item.body).clone().clone().unwrap(),
+                                item.type_annotation.clone().clone().unwrap(),
+                                item.body.clone().clone().unwrap(),
                                 registry.clone(),
                                 scope.clone(),
                                 0,
@@ -12119,7 +12119,7 @@ pub fn explicit_record_struct_name(
             }
         }
         let has_structure = (inferred_node.connective.clone() != Connective::NoConnective);
-        let n = if (((*inferred_node.type_annotation).clone() != None) && has_structure) {
+        let n = if ((inferred_node.type_annotation.clone() != None) && has_structure) {
             match inferred_node.children.clone().first().cloned() {
                 Some(base) => base.clone(),
                 None => inferred_node.clone(),
@@ -15289,7 +15289,7 @@ pub fn emit_rust_fold_method_call(
                 Some(concrete_type) => concrete_type.clone(),
                 None => match args.clone().first().cloned() {
                     Some(init_arg) => {
-                        if ((*arg_value(init_arg.clone()).inferred).clone() != None) {
+                        if (arg_value(init_arg.clone()).inferred.clone() != None) {
                             resolved_type(arg_value(init_arg.clone()))
                         } else {
                             type_variable_node("fold_accum".to_string())
@@ -21734,7 +21734,7 @@ pub fn advance_wire_path_projection(
     } else {
         if path_segment_is_list_index(seg.clone()) {
             {
-                let next_node = match (*state.node).clone() {
+                let next_node = match state.node.clone() {
                     Some(n) => Some(for_each_element_type_node(
                         n.clone(),
                         source_indices.clone(),
@@ -21770,7 +21770,7 @@ pub fn advance_wire_path_projection(
                 })
             }
         } else {
-            match (*state.node).clone() {
+            match state.node.clone() {
                 Some(n) => {
                     match wire_child_for_segment(n.clone(), seg.clone(), source_indices.clone()) {
                         Some(ch) => Rc::new(WirePathProjection {
@@ -23006,7 +23006,7 @@ pub fn data_def_annotation_is_named_refinement(
     {
         let ann_name = authored_name_at(source_indices.clone(), annotation.clone());
         ((((ann_name.clone() != "".to_string())
-            && ((*annotation.type_annotation).clone() != None))
+            && (annotation.type_annotation.clone() != None))
             && !is_container_type(ann_name.clone()))
             && !is_host_text_carrier_type(
                 annotation.clone(),
@@ -23646,7 +23646,7 @@ pub fn rust_test_signature_comment(
                 ") -> ".to_string(),
             ),
             emit_node_type(
-                projection.inferred.clone(),
+                (*projection.inferred).clone(),
                 RenderTarget::Rust,
                 projection.source_indices.clone(),
             ),
@@ -23905,7 +23905,7 @@ pub fn resolve_param_default(
                     .first()
                     .cloned()
                     {
-                        Some(data_item) => match (*data_item.body).clone() {
+                        Some(data_item) => match data_item.body.clone() {
                             Some(body) => extract_literal_string(body.clone()),
                             None => None,
                         },
@@ -23978,7 +23978,7 @@ pub fn is_workflow_item(
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
-    if ((*item.body).clone() == None) {
+    if (item.body.clone() == None) {
         false
     } else {
         if ((item.uses.clone().len() as i64) > 0) {

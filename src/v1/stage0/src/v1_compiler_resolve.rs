@@ -220,7 +220,7 @@ pub fn resolve_module_imports(
             for r in Rc::new({
                 let mut __result = Vec::new();
                 for r in results.clone().iter().cloned() {
-                    if (((*r.resolved.clone().target_module).clone() != None)
+                    if ((r.resolved.clone().target_module.clone() != None)
                         && ((r.diagnostics.clone().len() as i64) == 0))
                     {
                         __result.push(r);

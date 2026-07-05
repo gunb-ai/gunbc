@@ -1949,7 +1949,7 @@ pub fn is_conj_with_children(n: Rc<Node>) -> bool {
 }
 
 pub fn child_inferred_or_empty(ch: Rc<Node>) -> Rc<Node> {
-    match (*ch.inferred).clone().as_deref().cloned() {
+    match ch.inferred.clone().as_deref().cloned() {
         Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
         _ => error_type(),
     }
@@ -1964,7 +1964,7 @@ pub fn node_inferred_to_outputs(
             let all_children_typed = {
                 let mut __all = true;
                 for ch in rt.children.clone().iter().cloned() {
-                    if !(match (*ch.inferred).clone().as_deref().cloned() {
+                    if !(match ch.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: _, .. }) => true,
                         _ => false,
                     }) {
@@ -1982,7 +1982,7 @@ pub fn node_inferred_to_outputs(
                             authored_name_at(source_indices.clone(), ch.clone()),
                             child_inferred_or_empty(ch.clone()),
                             Cardinality::Required,
-                            (*ch.body).clone(),
+                            ch.body.clone(),
                             None,
                             ch.span.clone(),
                             node_name_span(ch.clone()),
@@ -2596,7 +2596,7 @@ pub fn parse_item_prefix(
         let tokens = ret_result.tokens.clone();
         let ctx = ret_result.ctx.clone();
         let missing_required_ret = (form.return_required.clone()
-            && match (*ret_result.inferred).clone() {
+            && match ret_result.inferred.clone() {
                 Some(_) => false,
                 None => true,
             });
@@ -2638,7 +2638,7 @@ pub fn parse_item_prefix(
                 name_span: name_span.clone(),
                 type_params: tp_result.params.clone(),
                 params: params_result.params.clone(),
-                inferred: (*ret_result.inferred).clone(),
+                inferred: ret_result.inferred.clone(),
                 uses: Rc::new(vec![]),
                 tokens: uses_result.tokens.clone(),
                 ctx: uses_result.ctx.clone(),
@@ -2650,7 +2650,7 @@ pub fn parse_item_prefix(
             name_span: name_span.clone(),
             type_params: tp_result.params.clone(),
             params: params_result.params.clone(),
-            inferred: (*ret_result.inferred).clone(),
+            inferred: ret_result.inferred.clone(),
             uses: uses_result.uses.clone(),
             tokens: uses_result.tokens.clone(),
             ctx: uses_result.ctx.clone(),
@@ -4954,16 +4954,16 @@ pub fn maybe_optional(
                 children: te.children.clone(),
                 connective: te.connective.clone(),
                 params: te.params.clone(),
-                inferred: (*te.inferred).clone(),
+                inferred: te.inferred.clone(),
                 return_cardinality: Cardinality::CardOptional,
                 uses: te.uses.clone(),
-                body: (*te.body).clone(),
-                transport: (*te.transport).clone(),
+                body: te.body.clone(),
+                transport: te.transport.clone(),
                 properties: te.properties.clone(),
-                type_annotation: (*te.type_annotation).clone(),
+                type_annotation: te.type_annotation.clone(),
                 is_self_recursive: te.is_self_recursive.clone(),
                 has_non_tail_self_call: te.has_non_tail_self_call.clone(),
-                match_pattern: (*te.match_pattern).clone(),
+                match_pattern: te.match_pattern.clone(),
                 expr_data: te.expr_data.clone(),
                 ident: None,
             });
@@ -5325,7 +5325,7 @@ pub fn parse_fn_after_kw(
                 err: ret.err.clone(),
             });
         }
-        let inferred = (*ret.inferred).clone();
+        let inferred = ret.inferred.clone();
         let tokens = ret.tokens.clone();
         let ctx = ret.ctx.clone();
         let r = parse_block(skip_newlines(tokens.clone()), ctx.clone());
@@ -5376,7 +5376,7 @@ pub fn parse_fn_body_from_prefix(
         let name_span = prefix.name_span.clone();
         let type_params = prefix.type_params.clone();
         let params = prefix.params.clone();
-        let inferred = (*prefix.inferred).clone();
+        let inferred = prefix.inferred.clone();
         let ctx = prefix.ctx.clone();
         let all_params = v1_rt::concat(type_params, params);
         let named_dummy = Rc::new(Node {
@@ -5638,7 +5638,7 @@ pub fn parse_block_item_after_kw(
                 err: ret.err.clone(),
             });
         }
-        let inferred = (*ret.inferred).clone();
+        let inferred = ret.inferred.clone();
         let tokens = ret.tokens.clone();
         let ctx = ret.ctx.clone();
         let uses_r = if form.has_uses.clone() {
@@ -5709,7 +5709,7 @@ pub fn parse_block_body_from_prefix(
         let name = prefix.name.clone();
         let name_span = prefix.name_span.clone();
         let params = prefix.params.clone();
-        let inferred = (*prefix.inferred).clone();
+        let inferred = prefix.inferred.clone();
         let uses = prefix.uses.clone();
         let ctx = prefix.ctx.clone();
         let named_dummy = Rc::new(Node {
@@ -5782,7 +5782,7 @@ pub fn parse_no_body_from_prefix(
             ident_span: Some(prefix.name_span.clone()),
             children: Rc::new(vec![]),
             params: prefix.params.clone(),
-            inferred: (*prefix.inferred).clone(),
+            inferred: prefix.inferred.clone(),
             return_cardinality: Cardinality::Required,
             uses: prefix.uses.clone(),
             body: None,
@@ -5941,17 +5941,17 @@ pub fn parse_uses_entry(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Re
                     ident_span: (*r3.type_expr).clone().ident_span.clone(),
                     children: (*r3.type_expr).clone().children.clone(),
                     params: (*r3.type_expr).clone().params.clone(),
-                    inferred: (*(*r3.type_expr).clone().inferred).clone(),
+                    inferred: (*r3.type_expr).clone().inferred.clone(),
                     return_cardinality: (*r3.type_expr).clone().return_cardinality.clone(),
                     uses: (*r3.type_expr).clone().uses.clone(),
-                    body: (*(*r3.type_expr).clone().body).clone(),
+                    body: (*r3.type_expr).clone().body.clone(),
                     connective: (*r3.type_expr).clone().connective.clone(),
-                    transport: (*(*r3.type_expr).clone().transport).clone(),
+                    transport: (*r3.type_expr).clone().transport.clone(),
                     properties: ar.fields.clone(),
-                    type_annotation: (*(*r3.type_expr).clone().type_annotation).clone(),
+                    type_annotation: (*r3.type_expr).clone().type_annotation.clone(),
                     is_self_recursive: (*r3.type_expr).clone().is_self_recursive.clone(),
                     has_non_tail_self_call: (*r3.type_expr).clone().has_non_tail_self_call.clone(),
-                    match_pattern: (*(*r3.type_expr).clone().match_pattern).clone(),
+                    match_pattern: (*r3.type_expr).clone().match_pattern.clone(),
                     expr_data: (*r3.type_expr).clone().expr_data.clone(),
                     ident: None,
                 });
@@ -6242,11 +6242,11 @@ pub fn parse_service_after_kw(
         let svc_props = match r.config.clone() {
             Some(cfg) => service_config_properties(
                 (*cfg.endpoint).clone(),
-                (*cfg.auth).clone(),
-                (*cfg.auth_input).clone(),
-                (*cfg.auth_source).clone(),
-                (*cfg.rate_limit).clone(),
-                (*cfg.retry).clone(),
+                cfg.auth.clone(),
+                cfg.auth_input.clone(),
+                cfg.auth_source.clone(),
+                cfg.rate_limit.clone(),
+                cfg.retry.clone(),
             ),
             None => Rc::new(vec![]),
         };
@@ -7313,7 +7313,7 @@ pub fn parse_operation_v2_inline(
         }
         let tokens = ret.tokens.clone();
         let ctx = ret.ctx.clone();
-        let outputs = match (*ret.inferred).clone().as_deref().cloned() {
+        let outputs = match ret.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: rt, .. }) => {
                 node_inferred_to_outputs(rt.clone(), ctx.source_indices.clone())
             }
@@ -7435,7 +7435,7 @@ pub fn parse_operation_v1_body(
             r2.mock_props.clone(),
             r2.exit_props.clone(),
             r2.modifier_props.clone(),
-            (*r2.transport).clone(),
+            r2.transport.clone(),
             start_span.clone(),
             ctx.source_indices.clone(),
         );
@@ -8065,7 +8065,7 @@ pub fn node_to_name_str(
                 None => v1_rt::concat(opt_prefix, effective_name.clone()),
             }
         } else {
-            if ((*effective_n.type_annotation).clone() != None) {
+            if (effective_n.type_annotation.clone() != None) {
                 match effective_n.children.clone().first().cloned() {
                     Some(ch) => v1_rt::concat(
                         opt_prefix,
@@ -9188,7 +9188,7 @@ pub fn parse_capability(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Ca
                             err: ret.err.clone(),
                         });
                     }
-                    let outputs = match (*ret.inferred).clone().as_deref().cloned() {
+                    let outputs = match ret.inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => node_inferred_to_outputs(
                             rt.clone(),
                             ret.ctx.clone().source_indices.clone(),
@@ -9953,17 +9953,17 @@ pub fn parse_constrained_assignment(
             ident_span: node.ident_span.clone(),
             children: node.children.clone(),
             params: node.params.clone(),
-            inferred: (*node.inferred).clone(),
+            inferred: node.inferred.clone(),
             return_cardinality: node.return_cardinality.clone(),
             uses: node.uses.clone(),
-            body: (*node.body).clone(),
+            body: node.body.clone(),
             connective: node.connective.clone(),
-            transport: (*node.transport).clone(),
+            transport: node.transport.clone(),
             properties: cr.constraints.clone(),
-            type_annotation: (*node.type_annotation).clone(),
+            type_annotation: node.type_annotation.clone(),
             is_self_recursive: node.is_self_recursive.clone(),
             has_non_tail_self_call: node.has_non_tail_self_call.clone(),
-            match_pattern: (*node.match_pattern).clone(),
+            match_pattern: node.match_pattern.clone(),
             expr_data: node.expr_data.clone(),
             ident: None,
         });
@@ -10048,7 +10048,7 @@ pub fn parse_node_decl(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Exp
             children: Rc::new(vec![(*r3.expr).clone()]),
             connective: Connective::NoConnective,
             params: Rc::new(vec![]),
-            inferred: (*ret.inferred).clone(),
+            inferred: ret.inferred.clone(),
             return_cardinality: Cardinality::Required,
             uses: Rc::new(vec![]),
             body: None,
@@ -10123,17 +10123,17 @@ pub fn parse_bare_assignment(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> 
                     ident_span: node.ident_span.clone(),
                     children: node.children.clone(),
                     params: node.params.clone(),
-                    inferred: (*node.inferred).clone(),
+                    inferred: node.inferred.clone(),
                     return_cardinality: node.return_cardinality.clone(),
                     uses: node.uses.clone(),
-                    body: (*node.body).clone(),
+                    body: node.body.clone(),
                     connective: node.connective.clone(),
-                    transport: (*node.transport).clone(),
+                    transport: node.transport.clone(),
                     properties: cr.constraints.clone(),
-                    type_annotation: (*node.type_annotation).clone(),
+                    type_annotation: node.type_annotation.clone(),
                     is_self_recursive: node.is_self_recursive.clone(),
                     has_non_tail_self_call: node.has_non_tail_self_call.clone(),
-                    match_pattern: (*node.match_pattern).clone(),
+                    match_pattern: node.match_pattern.clone(),
                     expr_data: node.expr_data.clone(),
                     ident: None,
                 });
@@ -12051,7 +12051,7 @@ pub fn parse_match_arm(tokens: Rc<TokenStream>, ctx: Rc<ParseContext>) -> Rc<Arm
                 err: guard_r.err.clone(),
             });
         }
-        let guard = (*guard_r.guard).clone();
+        let guard = guard_r.guard.clone();
         let tokens = guard_r.tokens.clone();
         let ctx = guard_r.ctx.clone();
         let r = expect(tokens.clone(), Rc::new(ExpectedToken::ExpectFatArrow));

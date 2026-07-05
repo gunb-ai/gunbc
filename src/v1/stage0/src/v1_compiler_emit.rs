@@ -1249,7 +1249,7 @@ pub fn named_type_vars_in_inferred(inferred: Option<Rc<InferredNode>>) -> Rc<Vec
 
 pub fn named_type_vars_in_node(n: Rc<Node>) -> Rc<Vec<String>> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let self_vars = named_type_vars_in_inferred((*n.inferred).clone());
+        let self_vars = named_type_vars_in_inferred(n.inferred.clone());
         let child_vars = Rc::new({
             let mut __result = Vec::new();
             for ch in n.children.clone().iter().cloned() {
@@ -1326,13 +1326,13 @@ pub fn render_node_type(
 ) -> String {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         let tn = authored_name_at(source_indices.clone(), n.clone());
-        let n_is_error = if ((*n.inferred).clone() != None) {
-            is_compiler_error((*n.inferred).clone().clone().unwrap())
+        let n_is_error = if (n.inferred.clone() != None) {
+            is_compiler_error(n.inferred.clone().clone().unwrap())
         } else {
             false
         };
-        let n_is_type_var = if ((*n.inferred).clone() != None) {
-            is_type_variable((*n.inferred).clone().clone().unwrap())
+        let n_is_type_var = if (n.inferred.clone() != None) {
+            is_type_variable(n.inferred.clone().clone().unwrap())
         } else {
             false
         };
@@ -1340,7 +1340,7 @@ pub fn render_node_type(
             && ((n.children.clone().len() as i64) == 0))
         {
             {
-                let is_named_type_var = match (*n.inferred).clone().as_deref().cloned() {
+                let is_named_type_var = match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::TypeVariable { id: var_id, .. }) => {
                         ((tn.clone() != "".to_string()) && (tn.clone() == var_id.clone()))
                     }
@@ -1379,7 +1379,7 @@ pub fn render_node_type(
                     __result
                 });
                 let param_str = param_strs.clone().join(&repr.param_separator.clone());
-                let ret_str = match (*n.inferred).clone().as_deref().cloned() {
+                let ret_str = match n.inferred.clone().as_deref().cloned() {
                     Some(InferredNode::Resolved { node: rt, .. }) => render_node_type(
                         rt.clone(),
                         target.clone(),
@@ -1463,7 +1463,7 @@ pub fn render_node_type(
         }
         if is_conj {
             {
-                if ((*n.type_annotation).clone() != None) {
+                if (n.type_annotation.clone() != None) {
                     {
                         let refined_str = match n.children.clone().first().cloned() {
                             Some(base) => render_node_type(
@@ -1484,7 +1484,7 @@ pub fn render_node_type(
                     {
                         let first_child = match n.children.clone().first().cloned() {
                             Some(c) => {
-                                if ((*c.inferred).clone() != None) {
+                                if (c.inferred.clone() != None) {
                                     render_node_type(
                                         resolved_type(c.clone()),
                                         target.clone(),
@@ -1504,7 +1504,7 @@ pub fn render_node_type(
                         };
                         let second_child = match n.children.clone().get(1 as usize).cloned() {
                             Some(c) => {
-                                if ((*c.inferred).clone() != None) {
+                                if (c.inferred.clone() != None) {
                                     render_node_type(
                                         resolved_type(c.clone()),
                                         target.clone(),
@@ -1813,15 +1813,15 @@ pub fn has_service_items(typed: Rc<ResolvedGraph>) -> bool {
 }
 
 pub fn service_fallback_transport(item: Rc<Node>) -> Rc<Node> {
-    if ((*item.transport).clone() == None) {
+    if (item.transport.clone() == None) {
         local_transport_node(item.span.clone())
     } else {
-        (*item.transport).clone().clone().unwrap()
+        item.transport.clone().clone().unwrap()
     }
 }
 
 pub fn effective_operation_transport(op_node: Rc<Node>, fallback: Rc<Node>) -> Rc<Node> {
-    match (*op_node.transport).clone() {
+    match op_node.transport.clone() {
         Some(op_transport) => op_transport.clone(),
         None => fallback,
     }
@@ -1837,9 +1837,9 @@ pub fn service_has_rest(
         let from_ops = {
             let mut __found = false;
             for op in op_children.iter().cloned() {
-                if if ((*op.transport).clone() != None) {
+                if if (op.transport.clone() != None) {
                     is_rest_transport(
-                        (*op.transport).clone().clone().unwrap(),
+                        op.transport.clone().clone().unwrap(),
                         source_indices.clone(),
                     )
                 } else {
@@ -1861,8 +1861,8 @@ pub fn service_has_shell(fallback_transport: Rc<Node>, op_children: Rc<Vec<Rc<No
         let from_ops = {
             let mut __found = false;
             for op in op_children.iter().cloned() {
-                if if ((*op.transport).clone() != None) {
-                    is_shell_transport((*op.transport).clone().clone().unwrap())
+                if if (op.transport.clone() != None) {
+                    is_shell_transport(op.transport.clone().clone().unwrap())
                 } else {
                     false
                 } {
@@ -1886,9 +1886,9 @@ pub fn service_has_file(
         let from_ops = {
             let mut __found = false;
             for op in op_children.iter().cloned() {
-                if if ((*op.transport).clone() != None) {
+                if if (op.transport.clone() != None) {
                     is_file_transport(
-                        (*op.transport).clone().clone().unwrap(),
+                        op.transport.clone().clone().unwrap(),
                         source_indices.clone(),
                     )
                 } else {
@@ -1920,9 +1920,9 @@ pub fn service_has_rest_auth(
         let from_ops = {
             let mut __found = false;
             for op in op_children.iter().cloned() {
-                if if ((*op.transport).clone() != None) {
+                if if (op.transport.clone() != None) {
                     {
-                        let t = (*op.transport).clone().clone().unwrap();
+                        let t = op.transport.clone().clone().unwrap();
                         if is_rest_transport(t.clone(), source_indices.clone()) {
                             transport_has_auth(t.clone(), source_indices.clone())
                         } else {
@@ -4118,7 +4118,7 @@ pub fn emit_typed_cast_shared(
     {
         let expr_str = recurse(expr.clone());
         let ty_str = emit_node_type(cast_target_node, target.clone(), source_indices.clone());
-        let src_ty = match (*expr.inferred).clone().as_deref().cloned() {
+        let src_ty = match expr.inferred.clone().as_deref().cloned() {
             Some(InferredNode::Resolved { node: n, .. }) => {
                 emit_node_type(n.clone(), target.clone(), source_indices.clone())
             }

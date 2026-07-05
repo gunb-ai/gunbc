@@ -717,7 +717,7 @@ pub fn emit_go_typed_item(
                                 item.params.clone(),
                                 resolved_type(item.clone()),
                                 item.uses.clone(),
-                                (*item.body).clone().clone().unwrap(),
+                                item.body.clone().clone().unwrap(),
                                 registry,
                                 scope.clone(),
                             )
@@ -726,7 +726,7 @@ pub fn emit_go_typed_item(
                                 item_text,
                                 item.params.clone(),
                                 resolved_type(item.clone()),
-                                (*item.body).clone().clone().unwrap(),
+                                item.body.clone().clone().unwrap(),
                                 registry,
                                 scope.clone(),
                             )
@@ -735,8 +735,8 @@ pub fn emit_go_typed_item(
                         if is_data_def_item(item.clone()) {
                             emit_go_data_def(
                                 item_text,
-                                (*item.type_annotation).clone().clone().unwrap(),
-                                (*item.body).clone().clone().unwrap(),
+                                item.type_annotation.clone().clone().unwrap(),
+                                item.body.clone().clone().unwrap(),
                                 registry,
                                 scope.clone(),
                                 0,
