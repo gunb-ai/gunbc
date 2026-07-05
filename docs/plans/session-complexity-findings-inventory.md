@@ -102,3 +102,27 @@ It MISSES three classes that together account for a large share of the measured 
 **Headline:** a shape-reading complexity lens would have caught roughly half the findings by count, but the
 two biggest single costs (intern O(k²), dag_collect O(M²)) are BOTH MISS-ownership — so the lens's most
 important growth is composition with the ownership model, not more shape rules.
+
+## Corrections — calm-dove-209 located research 2026-07-05 (SUPERSEDES the audit-synthesis rows above)
+The static parse audit over-claimed; call sites were verified, and located reality supersedes:
+- **#11 `pre_intern_tokens` is NOT dead and NOT O(k²).** Both call sites are read downstream
+  (`compile.dag:894` corpus-wide; `02_parse.dag:836` per-file). It is **~2× LINEAR-redundant**: the per-file
+  rerun re-interns tokens already in the shared corpus-wide table, all hitting cheap `Present` branches.
+  Fix = drop the redundant per-file rerun once callers rely solely on the corpus-wide table (NOT a blind
+  delete — load-bearing on both sides). Reclassify **MISS-constant (~2×)**, not MISS-ownership+necessity.
+  The MISS-necessity/dead-work example is **retracted** — pre_intern is redundant, not dead.
+- **#12 is 4 sites, not 7, and LOW severity.** All 4 in `01_tokenize.dag`, Rc-clone-whole-vec-per-call, but
+  bounded by interpolation-NESTING-DEPTH, not corpus size → not a corpus-scaled quadratic. Low priority.
+- **NEW higher-severity finding (ROOT D, reference-carrier): `intern_str` O(table-size) lookup scan** at
+  `00_core.dag:1290` — a `skip |> first` scan over the intern table instead of an O(1) index lookup, called
+  once per identifier reference from `04_env`/`04_infer` → genuine **O(n·k) corpus-scaled**. This is the
+  SAME anti-pattern as the already-fixed P2 `token_stream` `skip |> first` (#6241/#6255), so the fix mirrors
+  it: reference the existing index by key (O(1)), not re-scan. This is the real parse/core corpus-quadratic
+  here and it DISPLACES #11 as the parse/core priority. REFERENCE-carrier item; lens verdict CAUGHT-adjacent.
+- **Deliverable-3 receipt:** `analyze_ownership` `merge_branch_usages` O(body²)→O(touched) fix compiles
+  clean (901 sources, 0 errors); scaling receipt pending.
+
+**§5 lesson:** the static audit synthesis is a *hypothesis*; located-by-execution reality corrects it.
+pre_intern's "O(k²)+dead" was the audit reading the shape; the call sites say ~2× linear + load-bearing.
+This is exactly the "treat your own output as unverified until a consumer runs it" discipline, applied to
+an audit.
