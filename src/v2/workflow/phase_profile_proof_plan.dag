@@ -10,7 +10,7 @@ import std.types { List }
 
 data phase_profile_proof_plan_note: String = "Acceptance fixture for GUNBC_FLOOR_PHASE_PROFILE: single-witness plan at spawn_width=1. Phase ticks are a process-global last-writer-wins sampler (not per-thread trace); width=1 keeps the witness deterministic. Parallel-width heartbeat semantics are covered by the module doc in phase_profile.rs. (Was a // comment block: the v1 interpreter grammar has no comments, so claim_executor --plan-entry on this file failed to resolve; found during the 2026-07-04 CI witness opt-in inversion.)"
 
-data phase_profile_gate_entry: String = "dsl/tools/floor_effect_gate_witness.dag"
+data phase_profile_gate_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 
 fn phase_profile_proof_batches() -> List<List<Runnable>> {
   [[

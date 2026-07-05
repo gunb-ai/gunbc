@@ -3,8 +3,9 @@ module v2.test.lens_enforcement.gate_test
 import v2.std.logic { Bool }
 import v2.std.collection { List }
 import v2.lens.registry { Parallelism, lens_registry_v0_parallelism }
+import v2.std.qualified_name { qualified_name_from_dotted_string }
 import v2.lens.enforcement.vocab {
-  SubjectRoster,
+  SubjectRoster, ScopeRoster,
   Blocking, AuditOnly, Advisory,
   ConsumerRequirement, Exact, AnyLiveConsumer, OneOf,
   FloorGate, WitnessOnly, MergeAdmission,
@@ -36,7 +37,7 @@ data synthetic_intent: StandingIntent = {
   mechanism_class: "synthetic mechanism",
   recurring: true,
   receiptable: true,
-  desired_scope: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
+  desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   required_subjects: SubjectRoster { entries: [] },
   default_mode: Blocking,
   required_consumer: Exact { kind: FloorGate },
@@ -48,7 +49,7 @@ data synthetic_intent: StandingIntent = {
 data synthetic_contract: LensContract = {
   entry: lens_registry_v0_parallelism,
   mode: Blocking,
-  claimed_scope: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
   boundary: ConstructionJustification { class: RatchetForever }
@@ -57,7 +58,7 @@ data synthetic_contract: LensContract = {
 data synthetic_contract_audit_only: LensContract = {
   entry: lens_registry_v0_parallelism,
   mode: AuditOnly,
-  claimed_scope: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
+  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
   boundary: ConstructionJustification { class: RatchetForever }
@@ -65,7 +66,7 @@ data synthetic_contract_audit_only: LensContract = {
 
 data synthetic_receipt_good: CoverageReceipt = {
   contract_id: Parallelism,
-  discovered_subjects: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
+  discovered_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   scope_satisfaction: ScopeCovers,
   consumer_observed: FloorGate,
   consumer_receipt_ref: NoReceiptRef,
@@ -75,9 +76,9 @@ data synthetic_receipt_good: CoverageReceipt = {
 
 data synthetic_receipt_narrow: CoverageReceipt = {
   contract_id: Parallelism,
-  discovered_subjects: SubjectRoster { entries: ["src/v2"] },
+  discovered_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   scope_satisfaction: ScopeNarrowed {
-    missing: SubjectRoster { entries: ["dag", "src/v1"] },
+    missing: ScopeRoster { roots: ["dag", "src/v1"] },
     reason: ExternalRuntimeOnly { reason: "synthetic off-substrate gap" }
   },
   consumer_observed: FloorGate,
@@ -88,7 +89,7 @@ data synthetic_receipt_narrow: CoverageReceipt = {
 
 data synthetic_receipt_redfail: CoverageReceipt = {
   contract_id: Parallelism,
-  discovered_subjects: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
+  discovered_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   scope_satisfaction: ScopeCovers,
   consumer_observed: FloorGate,
   consumer_receipt_ref: NoReceiptRef,
@@ -98,7 +99,7 @@ data synthetic_receipt_redfail: CoverageReceipt = {
 
 data synthetic_receipt_witness_only: CoverageReceipt = {
   contract_id: Parallelism,
-  discovered_subjects: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
+  discovered_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   scope_satisfaction: ScopeCovers,
   consumer_observed: WitnessOnly,
   consumer_receipt_ref: NoReceiptRef,
@@ -113,8 +114,8 @@ data synthetic_intent_with_subject: StandingIntent = {
   mechanism_class: "synthetic mechanism",
   recurring: true,
   receiptable: true,
-  desired_scope: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
-  required_subjects: SubjectRoster { entries: ["dag"] },
+  desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   default_mode: Blocking,
   required_consumer: Exact { kind: FloorGate },
   self_application_required: true,
@@ -129,8 +130,24 @@ data synthetic_intent_missing_subject: StandingIntent = {
   mechanism_class: "synthetic mechanism",
   recurring: true,
   receiptable: true,
-  desired_scope: SubjectRoster { entries: ["dag", "src/v1", "src/v2"] },
-  required_subjects: SubjectRoster { entries: ["not-discovered"] },
+  desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.not_discovered")] },
+  default_mode: Blocking,
+  required_consumer: Exact { kind: FloorGate },
+  self_application_required: true,
+  allowed_narrowing: [],
+  fallback_when_unavailable: Refuse
+}
+
+data synthetic_intent_permuted_subject: StandingIntent = {
+  id: "synthetic.parallelism.permuted-subject",
+  property: LensFamily { lens: Parallelism },
+  displaced_cost: "synthetic fixture cost",
+  mechanism_class: "synthetic mechanism",
+  recurring: true,
+  receiptable: true,
+  desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "fixture.synthetic.subject_alpha")] },
   default_mode: Blocking,
   required_consumer: Exact { kind: FloorGate },
   self_application_required: true,
@@ -148,6 +165,11 @@ data receipts_witness_only: List<CoverageReceipt> = [synthetic_receipt_witness_o
 test fn subjects_leg_discriminates() -> Bool {
   return leg_holds(l: intent_family_verdict(intent: synthetic_intent_with_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
     && leg_fails(l: intent_family_verdict(intent: synthetic_intent_missing_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
+}
+
+test fn permuted_segment_subject_does_not_cover() -> Bool {
+  return leg_fails(l: intent_family_verdict(intent: synthetic_intent_permuted_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
+    && leg_holds(l: intent_family_verdict(intent: synthetic_intent_with_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)
 }
 
 test fn gate_passes_a_fully_consistent_intent() -> Bool {
