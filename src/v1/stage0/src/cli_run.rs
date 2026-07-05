@@ -4996,6 +4996,25 @@ fn parse_unified_diff_departed_paths(diff_text: &str) -> HashSet<String> {
     departed
 }
 
+fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
+    // Wholly-added files (`--- /dev/null` → `+++ b/path`) necessarily touch line 1
+    // (the module header). Attribute at declaration grain; do not conflate with
+    // modify-side module renames (fail-closed below).
+    let mut added = HashSet::new();
+    let mut minus_is_null = false;
+    for line in diff_text.lines() {
+        if let Some(rest) = line.strip_prefix("--- ") {
+            minus_is_null = rest.trim() == "/dev/null";
+        } else if let Some(rest) = line.strip_prefix("+++ b/") {
+            if minus_is_null {
+                added.insert(normalize_repo_path(rest));
+            }
+            minus_is_null = false;
+        }
+    }
+    added
+}
+
 fn floor_diff_edits_from_diff_text(
     index: &MultiEntryIndex,
     diff_text: &str,
@@ -5003,7 +5022,8 @@ fn floor_diff_edits_from_diff_text(
     let line_ranges = parse_unified_diff_line_ranges(diff_text);
     let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
-    floor_diff_edits_from_line_ranges(index, &line_ranges, &changed, &departed)
+    let added = parse_unified_diff_added_paths(diff_text);
+    floor_diff_edits_from_line_ranges(index, &line_ranges, &changed, &departed, &added)
 }
 
 fn floor_diff_edits_from_line_ranges(
@@ -5011,6 +5031,7 @@ fn floor_diff_edits_from_line_ranges(
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
     changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
     departed_paths: &HashSet<String>,
+    added_paths: &HashSet<String>,
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
@@ -5102,8 +5123,9 @@ fn floor_diff_edits_from_line_ranges(
                 }
             }
         }
-        // Module-line edits (line 1) stay fail-closed — renaming can change entry identity.
-        if changed.contains(&1) {
+        // Module-line edits (line 1) stay fail-closed for modifies — renaming can
+        // change entry identity. Wholly-added files necessarily touch line 1.
+        if changed.contains(&1) && !added_paths.contains(&file_norm) {
             return Err(format!("diff before first declaration in {file_path}"));
         }
         let has_pre_decl = changed.iter().any(|&l| l < first_decl_line);
@@ -5343,6 +5365,7 @@ pub fn run_discovery_corpus_with_options(
             &line_ranges_by_file,
             &changed_new_lines_by_file,
             &name_status_departed_paths,
+            &parse_unified_diff_added_paths(&diff_text),
         ) {
             Ok(edits) => (true, edits),
             Err(msg) => {
@@ -5741,8 +5764,9 @@ fn run_discovery_rows(
 mod floor_skip_frontier_tests {
     use super::{
         build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
-        list_value_from_vec, parse_unified_diff_changed_new_lines, parse_unified_diff_line_ranges,
-        rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange,
+        list_value_from_vec, parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
+        parse_unified_diff_line_ranges, rerun_frontier_nodes_for_entry, scan_test_decl_lines,
+        FileLineRange,
     };
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
@@ -5827,6 +5851,22 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let changed = parse_unified_diff_changed_new_lines(diff);
         let file = "src/v2/lens/affected_set.dag";
         assert_eq!(changed.get(file), Some(&HashSet::from([42])));
+    }
+
+    #[test]
+    fn parse_unified_diff_added_paths_detects_new_files() {
+        let diff = "\
+diff --git a/dag/tools/new_transport.dag b/dag/tools/new_transport.dag
+new file mode 100644
+--- /dev/null
++++ b/dag/tools/new_transport.dag
+@@ -0,0 +1,3 @@
++module tools.new_transport
++
++fn run() -> Bool { true }
+";
+        let added = parse_unified_diff_added_paths(diff);
+        assert!(added.contains("dag/tools/new_transport.dag"));
     }
 
     #[test]
