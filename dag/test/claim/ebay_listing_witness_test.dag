@@ -1,0 +1,120 @@
+module test.claim.ebay_listing_witness
+
+import extdeps.ebay.ebay {
+  MarketplaceEnum,
+  EbayUs,
+  EbayGb,
+  marketplace_wire_label,
+  parse_marketplace,
+}
+import extdeps.ebay.inventory {
+  ConditionEnum,
+  New,
+  UsedExcellent,
+  ForPartsOrNotWorking,
+  condition_wire_label,
+  parse_condition,
+  FormatTypeEnum,
+  Auction,
+  FixedPrice,
+  format_type_wire_label,
+  parse_format_type,
+}
+import extdeps.ebay.errors {
+  EbayErrorCategory,
+  Request,
+  error_category_wire_label,
+  parse_error_category,
+}
+import extdeps.ebay.oauth {
+  EbayTokenType,
+  UserAccessToken,
+  parse_ebay_token_type,
+}
+import gunbc.tools.ebay_listing { default_marketplace }
+
+test fn witness_condition_new_roundtrip() -> Bool {
+  condition_wire_label(c: New) == "NEW"
+}
+
+test fn witness_condition_used_excellent_decodes() -> Bool {
+  match parse_condition(raw: "USED_EXCELLENT") {
+    Present { value: UsedExcellent } => true
+    _ => false
+  }
+}
+
+test fn witness_condition_for_parts_roundtrip() -> Bool {
+  match parse_condition(raw: condition_wire_label(c: ForPartsOrNotWorking)) {
+    Present { value: ForPartsOrNotWorking } => true
+    _ => false
+  }
+}
+
+test fn witness_condition_lowercase_does_not_decode() -> Bool {
+  match parse_condition(raw: "new") {
+    none => true
+    _ => false
+  }
+}
+
+test fn witness_format_fixed_price_roundtrip() -> Bool {
+  format_type_wire_label(f: FixedPrice) == "FIXED_PRICE"
+}
+
+test fn witness_format_auction_decodes() -> Bool {
+  match parse_format_type(raw: "AUCTION") {
+    Present { value: Auction } => true
+    _ => false
+  }
+}
+
+test fn witness_marketplace_us_wire_label() -> Bool {
+  marketplace_wire_label(m: EbayUs) == "EBAY_US"
+}
+
+test fn witness_marketplace_gb_decodes() -> Bool {
+  match parse_marketplace(raw: "EBAY_GB") {
+    Present { value: EbayGb } => true
+    _ => false
+  }
+}
+
+test fn witness_marketplace_lowercase_does_not_decode() -> Bool {
+  match parse_marketplace(raw: "ebay_us") {
+    none => true
+    _ => false
+  }
+}
+
+test fn witness_error_category_request_decodes() -> Bool {
+  match parse_error_category(raw: "REQUEST") {
+    Present { value: Request } => true
+    _ => false
+  }
+}
+
+test fn witness_error_category_mixed_case_does_not_decode() -> Bool {
+  match parse_error_category(raw: "Request") {
+    none => true
+    _ => false
+  }
+}
+
+test fn witness_user_token_type_decodes() -> Bool {
+  match parse_ebay_token_type(raw: "User Access Token") {
+    Present { value: UserAccessToken } => true
+    _ => false
+  }
+}
+
+test fn witness_token_type_lowercase_does_not_decode() -> Bool {
+  match parse_ebay_token_type(raw: "user access token") {
+    none => true
+    _ => false
+  }
+}
+
+test fn witness_default_listing_policy_targets_us_marketplace() -> Bool {
+  marketplace_wire_label(m: default_marketplace) == "EBAY_US"
+}
