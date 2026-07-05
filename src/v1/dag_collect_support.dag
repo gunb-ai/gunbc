@@ -9,28 +9,16 @@ import v1.std.core {
 }
 import v1.compiler.emit { escape_json_string }
 
-type DagCollectSlot {
-  key: String
-  fp: String
-  node: Node
-  seq: Int
-}
-
 type DagCollectAcc {
   seen: Map<String, String>
   order: List<Node>
   collision_errors: List<ErrorNode>
 }
 
-fn dag_collect_slot_seq(slots: Map<String, DagCollectSlot>) -> Int {
-  slots |> count
-}
-
-fn dag_collect_pack_slots(slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> DagCollectAcc {
-  let ordered_slots = slots |> map_values |> sort_by(s => s.seq)
-  let order = ordered_slots |> map(s => s.node)
-  let seen = ordered_slots |> fold(init: empty_map(), f: (acc, s) => map_insert(acc, s.key, s.fp))
-  DagCollectAcc { seen: seen, order: order, collision_errors: collision_errors }
+type DagCollectPending {
+  anchor: Node
+  key: String
+  fp: String
 }
 
 fn json_quote(s: String) -> String {
@@ -115,7 +103,7 @@ fn dag_node_surface_fingerprint_rec(node: Node) -> String {
 }
 
 fn dag_node_surface_fingerprint(node: Node) -> String {
-  dag_node_surface_fingerprint_rec(node: node)
+  dag_node_surface_fingerprint_memo(node: node)
 }
 
 data dag_collect_fp_memo_dissolve_on: String = "Dissolve-on: ground on std.content_hash + node-keyed memo table once v2 adoption clears for this stage. Realization threads a per-collect memo reset at collect_dag_nodes entry; Rust seed uses Rc::as_ptr until then."
@@ -125,7 +113,7 @@ fn dag_collect_fp_memo_reset() -> Bool {
 }
 
 fn dag_node_surface_fingerprint_memo(node: Node) -> String {
-  dag_node_surface_fingerprint(node: node)
+  dag_node_surface_fingerprint_rec(node: node)
 }
 
 fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {
