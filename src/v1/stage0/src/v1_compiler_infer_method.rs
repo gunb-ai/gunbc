@@ -44,24 +44,28 @@ pub fn type_variable_node(id: String) -> Rc<Node> {
 }
 
 pub fn map_of_type_variables() -> Rc<Node> {
-    (*make_map_type(
+    make_map_type(
         type_variable_node("map_key".to_string()),
         type_variable_node("map_value".to_string()),
     )
-    .ty)
-        .clone()
+    .ty
+    .clone()
 }
 
 pub fn list_of_type_variable(id: String) -> Rc<Node> {
-    (*make_container_type("List".to_string(), type_variable_node(id)).ty).clone()
+    make_container_type("List".to_string(), type_variable_node(id))
+        .ty
+        .clone()
 }
 
 pub fn list_of_element(element: Rc<Node>) -> Rc<Node> {
-    (*make_container_type("List".to_string(), element).ty).clone()
+    make_container_type("List".to_string(), element).ty.clone()
 }
 
 pub fn witness_of_element(element: Rc<Node>) -> Rc<Node> {
-    (*make_container_type("Witness".to_string(), element).ty).clone()
+    make_container_type("Witness".to_string(), element)
+        .ty
+        .clone()
 }
 
 pub fn seed_node_map(key: String, value: Rc<Node>) -> Rc<HashMap<String, Rc<Node>>> {
@@ -123,12 +127,12 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(m.clone(), "map_insert".to_string(), map_of_type_variables());
         let m = v1_rt::rc_map_insert(m.clone(), "map_merge".to_string(), map_of_type_variables());
         let m = v1_rt::rc_map_insert(m.clone(), "with".to_string(), map_of_type_variables());
-        let set_ty = (*make_container_type(
+        let set_ty = make_container_type(
             "Set".to_string(),
             type_variable_node("set_elem".to_string()),
         )
-        .ty)
-            .clone();
+        .ty
+        .clone();
         let m = v1_rt::rc_map_insert(m.clone(), "empty_set".to_string(), set_ty.clone());
         let m = v1_rt::rc_map_insert(m.clone(), "set_insert".to_string(), set_ty.clone());
         let m = v1_rt::rc_map_insert(m.clone(), "set_union".to_string(), set_ty.clone());
@@ -168,11 +172,6 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             m.clone(),
             "reverse".to_string(),
             list_of_type_variable("collection_element".to_string()),
-        );
-        let m = v1_rt::rc_map_insert(
-            m.clone(),
-            "get".to_string(),
-            with_optional_cardinality(type_variable_node("collection_element".to_string())),
         );
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -250,6 +249,41 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
             int_type(),
         );
         let m = v1_rt::rc_map_insert(m.clone(), "doc_graph_doc_count".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_debt_module_count".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_debt_total_loc".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_debt_total_test_fns".to_string(),
+            int_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_debt_module_names".to_string(),
+            list_of_type_variable("test_migration_debt_module_name_elem".to_string()),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_debt_known_covered_module_is_not_debt".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_delete_guard_holds".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "test_migration_delete_guard_uncovered_deletes".to_string(),
+            list_of_type_variable("test_migration_delete_guard_uncovered_delete_elem".to_string()),
+        );
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "inert_carrier_names_live".to_string(),
