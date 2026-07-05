@@ -1596,7 +1596,7 @@ fn build_ownership_results(modules: List<TypedModule>) -> OwnershipBuildResult {
   proofs |> fold(init: OwnershipBuildResult { ownership_index: empty_map(), read_only_params_index: empty_map() }, f: (acc, entry) =>
     let read_only = if set_contains(callable_set, entry.proof.func_name) { empty_set() }
       else { build_read_only_params(proof: entry.proof, param_names: entry.param_names) }
-    let movable = build_movable_set(proof: entry.proof)
+    let movable = build_movable_set(proof: entry.proof, param_names: entry.param_names)
     OwnershipBuildResult {
       ownership_index: map_insert(acc.ownership_index, entry.name, movable),
       read_only_params_index: map_insert(acc.read_only_params_index, entry.name, read_only)
