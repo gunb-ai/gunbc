@@ -108,6 +108,15 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
   },
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
+      entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag",
+      check_fns: ["complexity_budget_roster_family_gate_holds"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
       entry: "src/v2/test/claim/enforcement_live_witness_test.dag",
       check_fns: ["enforcement_consistency_gate_holds", "complexity_repo_wide_verdict_matches_roadmap"],
       kind: CorpusWitnessKind,
