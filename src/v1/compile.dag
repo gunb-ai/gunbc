@@ -796,6 +796,7 @@ fn serialize_diagnostic(diagnostic: ErrorNode) -> String {
 
 fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   let collected = collect_dag_nodes(typed: typed)
+  let _ = trace_mark("compile.emit.dag.collect.done")
   if collected.collision_errors |> count > 0 {
     return EmitResult { files: [], diagnostics: collected.collision_errors }
   }
@@ -817,6 +818,7 @@ fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
     "],\n  \"diagnostics\": [", diagnostics_json,
     "],\n  \"files\": []\n}"
   )
+  let _ = trace_mark("compile.emit.dag.serialize.done")
   EmitResult {
     files: [TextFile { path: "dag-artifact.json", content: json }],
     diagnostics: []
@@ -958,7 +960,9 @@ fn compile_to_resolved_discovery_corpus_advisory(sources: List<SourceFile>) -> R
 }
 
 fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompilePipelineOptions) -> ResolvedPipelineResult {
+  let _ = trace_mark("compile.frontend.begin")
   let frontend = front_end_sources(sources: sources)
+  let _ = trace_mark("compile.frontend.done")
   let newline_indices = frontend.newline_indices
   match frontend.graph {
     Absent =>
@@ -973,8 +977,10 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
     Present { value: graph } => {
       let source_indices = fold(newline_indices, init: empty_map(), f: (acc, index) => map_insert(acc, index.file, index))
       let norm = normalize_graph(graph: graph, source_indices: source_indices)
+      let _ = trace_mark("compile.normalize.done")
       let norm_diags = norm.diagnostics
       let typed = reconcile(graph: norm.graph, source_indices: source_indices, intern_table: frontend.intern_table)
+      let _ = trace_mark("compile.reconcile.done")
       let typed_diags = typed.diagnostics
       let complexity = if options.analyze_complexity {
         run_complexity_analysis(typed: typed, source_indices: source_indices)
@@ -989,6 +995,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
       let all_diags = concat(typed_diags, complexity_diags)
       let ownership = extract_ownership_proofs(typed: typed)
       let ownership_diags = ownership_diagnostics(proofs: ownership)
+      let _ = trace_mark("compile.analyses.done")
       ResolvedPipelineResult {
         graph: typed,
         diagnostics: concat(frontend.diagnostics, norm_diags, all_diags, ownership_diags),
@@ -1018,7 +1025,9 @@ fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarg
         root_modules: typed.modules |> map(m => authored_name_at(source_indices: resolved.source_indices, node: m.module)),
         target: target
       )
+      let _ = trace_mark("compile.emit.begin")
       let emit_result = emit_from_artifact_plan(emittable: emittable, artifact_plan: artifact_plan)
+      let _ = trace_mark("compile.emit.done")
       let emit_files = emit_result.files
       let emit_diags = emit_result.diagnostics
       let emit_errors = emit_diags |> filter(d => is_error_diagnostic(d: d.diagnostic))
