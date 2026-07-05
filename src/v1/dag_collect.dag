@@ -114,24 +114,19 @@ fn dag_collect_node_tree(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
   }
 }
 
+data dag_collect_synthetic_key_note: String = "Synthetic span-0 keys embed the fingerprint; the Absent branch recovers it by substring and must not re-hash."
+
 fn dag_collect_insert(node: Node, acc: DagCollectAcc) -> DagCollectAcc {
   let anchor = dag_node_collection_anchor(node: node)
   let key = dag_node_key(node: anchor)
-  let fp = dag_node_fingerprint(node: anchor)
   match map_get(acc.seen, key) {
-    Present { value: prior } =>
-      if prior == fp {
-        acc
-      } else if anchor.span.start == 0 && anchor.span.end == 0 {
-        DagCollectAcc {
-          seen: acc.seen,
-          order: acc.order,
-          collision_errors: list_push(acc.collision_errors, dag_node_key_collision_error(key: key, span: anchor.span))
-        }
-      } else {
-        acc
-      }
+    Present { value: _ } => acc
     Absent => {
+      let fp = if anchor.span.start == 0 && anchor.span.end == 0 {
+        substring(s: key, start: 6, end: string_length(s: key))
+      } else {
+        dag_node_fingerprint(node: anchor)
+      }
       [DagCollectPending { anchor: anchor, key: key, fp: fp }]
         |> fold(
           init: acc,

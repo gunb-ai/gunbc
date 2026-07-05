@@ -2,7 +2,8 @@
 // Source module: v1.compiler.dag_collect
 
 pub use crate::v1_compiler_dag_collect_support::{
-    dag_node_key_collision_error, dag_node_surface_fingerprint,
+    dag_collect_fp_memo_reset, dag_node_key_collision_error, dag_node_surface_fingerprint,
+    dag_node_surface_fingerprint_memo,
 };
 pub use crate::v1_compiler_dag_collect_support::{DagCollectAcc, DagCollectPending};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
@@ -17,9 +18,18 @@ use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{Connective, ExprData, InferredNode, MatchPattern, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
+use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::rc::Rc;
+
+thread_local! {
+    static DAG_NODE_KEY_MEMO: RefCell<HashMap<usize, String>> = RefCell::new(HashMap::new());
+}
+
+fn dag_collect_key_memo_reset() {
+    DAG_NODE_KEY_MEMO.with(|memo| memo.borrow_mut().clear());
+}
 
 pub fn is_import_slot_node(n: Rc<Node>) -> bool {
     (import_is_all(n.clone())
@@ -80,37 +90,47 @@ pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn dag_node_key(node: Rc<Node>) -> String {
-    {
-        let anchor = dag_node_collection_anchor(node);
-        if ((anchor.span.clone().start.clone() == 0) && (anchor.span.clone().end.clone() == 0)) {
-            v1_rt::concat(
-                ":0..0:".to_string(),
-                dag_node_surface_fingerprint(anchor.clone()),
-            )
-        } else {
+fn dag_node_key_uncached(anchor: Rc<Node>) -> String {
+    if ((anchor.span.clone().start.clone() == 0) && (anchor.span.clone().end.clone() == 0)) {
+        v1_rt::concat(
+            ":0..0:".to_string(),
+            dag_node_surface_fingerprint_memo(anchor.clone()),
+        )
+    } else {
+        v1_rt::concat(
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(anchor.span.clone().file.clone(), ":".to_string()),
-                            (anchor.span.clone().start.clone()).to_string(),
-                        ),
-                        "..".to_string(),
+                        v1_rt::concat(anchor.span.clone().file.clone(), ":".to_string()),
+                        (anchor.span.clone().start.clone()).to_string(),
                     ),
-                    (anchor.span.clone().end.clone()).to_string(),
+                    "..".to_string(),
                 ),
-                match anchor.ident.clone() {
-                    Some(id) => v1_rt::concat(":".to_string(), (id.clone()).to_string()),
-                    None => "".to_string(),
-                },
-            )
-        }
+                (anchor.span.clone().end.clone()).to_string(),
+            ),
+            match anchor.ident.clone() {
+                Some(id) => v1_rt::concat(":".to_string(), (id.clone()).to_string()),
+                None => "".to_string(),
+            },
+        )
     }
 }
 
+pub fn dag_node_key(node: Rc<Node>) -> String {
+    let anchor = dag_node_collection_anchor(node);
+    let ptr = Rc::as_ptr(&anchor) as usize;
+    DAG_NODE_KEY_MEMO.with(|memo| {
+        if let Some(key) = memo.borrow().get(&ptr) {
+            return key.clone();
+        }
+        let key = dag_node_key_uncached(anchor);
+        memo.borrow_mut().insert(ptr, key.clone());
+        key
+    })
+}
+
 pub fn dag_node_fingerprint(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint(dag_node_collection_anchor(node))
+    dag_node_surface_fingerprint_memo(dag_node_collection_anchor(node))
 }
 
 pub fn dag_collect_nodes_list(
@@ -188,29 +208,21 @@ pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagColle
     {
         let anchor = dag_node_collection_anchor(node);
         let key = dag_node_key(anchor.clone());
-        let fp = dag_node_fingerprint(anchor.clone());
         match v1_rt::map_get(&acc.seen.clone(), key.clone()) {
-            Some(prior) => {
-                if (prior.clone() == fp) {
-                    acc.clone()
+            Some(_) => acc.clone(),
+            None => {
+                let fp = if ((anchor.span.clone().start.clone() == 0)
+                    && (anchor.span.clone().end.clone() == 0))
+                {
+                    v1_rt::substring(
+                        &key,
+                        6,
+                        v1_rt::string_length(&key),
+                    )
                 } else {
-                    if ((anchor.span.clone().start.clone() == 0)
-                        && (anchor.span.clone().end.clone() == 0))
-                    {
-                        Rc::new(DagCollectAcc {
-                            seen: acc.seen.clone(),
-                            order: acc.order.clone(),
-                            collision_errors: v1_rt::rc_list_push(
-                                acc.collision_errors.clone(),
-                                dag_node_key_collision_error(key.clone(), anchor.span.clone()),
-                            ),
-                        })
-                    } else {
-                        acc.clone()
-                    }
-                }
-            }
-            None => Rc::new(vec![Rc::new(DagCollectPending {
+                    dag_node_fingerprint(anchor.clone())
+                };
+                Rc::new(vec![Rc::new(DagCollectPending {
                 anchor: anchor.clone(),
                 key: key.clone(),
                 fp: fp,
@@ -233,7 +245,8 @@ pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagColle
                         }),
                     )
                 },
-            ),
+            )
+            }
         }
     }
 }
@@ -256,6 +269,8 @@ pub fn dag_collect_from_module(
 }
 
 pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
+    dag_collect_fp_memo_reset();
+    dag_collect_key_memo_reset();
     typed.modules.clone().iter().cloned().fold(
         Rc::new(DagCollectAcc {
             seen: v1_rt::rc_empty_map::<String, String>(),
