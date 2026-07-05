@@ -75,6 +75,8 @@ mod ir_fixture_seam_soundness_test;
 #[cfg(test)]
 mod kernel_shadow_seams_test;
 #[cfg(test)]
+mod lexical_base_env_test;
+#[cfg(test)]
 mod list_free_monoid_chokepoint_test;
 #[cfg(test)]
 mod map_literal_string_key_test;

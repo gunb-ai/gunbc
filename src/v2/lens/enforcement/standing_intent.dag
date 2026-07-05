@@ -42,7 +42,9 @@ type StandingIntent {
 
 data fallback_when_unavailable_dissolution_trigger: String = "🟡 dissolve-on: StandingIntent.fallback_when_unavailable is declared but not yet consumed by gate.dag — when contract_answers returns false (every non-LensFamily property today: the task-E ModelAnemia / SingleAuthorityConsolidation / LensHygiene* intents), the verdict lands a flat LegFails regardless of Refuse vs AuditOnlyWithReason. DISSOLVES WHEN task E wires those properties' consumers: on absent contract, apply the intent's fallback (AuditOnlyWithReason downgrades to an audit verdict with reason instead of a hard fail) rather than the uniform no-contract LegFails."
 
-data whole_corpus_scope: SubjectRoster = { entries: ["dsl", "src/v1", "src/v2"] }
+data whole_corpus_scope: SubjectRoster = { entries: ["dag", "src/v1", "src/v2"] }
+
+data whole_corpus_scope_root_sentinel_note: String = "whole_corpus_scope roots are guarded by per-root non-vacuity sentinels in enforcement_live_witness_test.dag: the decl_facts corpus walk is TOLERANT (a nonexistent root silently contributes zero files - coproduct_reflection.rs:919), so a renamed tree (the dsl->dag rename left this row silently dropping a third of the corpus until 2026-07-04) must fail a sentinel, never shrink coverage silently"
 
 data standing_intent_complexity_repo_wide: StandingIntent = {
   id: "complexity.repo-wide",
@@ -52,7 +54,7 @@ data standing_intent_complexity_repo_wide: StandingIntent = {
   recurring: true,
   receiptable: true,
   desired_scope: whole_corpus_scope,
-  required_subjects: SubjectRoster { entries: ["build_type_env"] },
+  required_subjects: SubjectRoster { entries: ["v1.compiler.infer.build_type_env"] },
   default_mode: Blocking,
   required_consumer: Exact { kind: FloorGate },
   self_application_required: true,
