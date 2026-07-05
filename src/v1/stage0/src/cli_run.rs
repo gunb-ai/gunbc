@@ -201,9 +201,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                     .to_string_lossy()
                     .replace('\\', "/");
                 if let Some(existing_in_root) = seen_in_root.get(&module_path) {
-                    if existing_in_root != &rel
-                        && !same_canonical_file(existing_in_root, &rel)
-                    {
+                    if existing_in_root != &rel && !same_canonical_file(existing_in_root, &rel) {
                         panic!(
                             "module-path collision within source root '{}': module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3)",
                             root, module_path, existing_in_root, rel
