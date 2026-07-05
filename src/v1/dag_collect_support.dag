@@ -118,9 +118,6 @@ fn dag_node_surface_fingerprint(node: Node) -> String {
   dag_node_surface_fingerprint_rec(node: node)
 }
 
-// Dissolve-on: ground on std.content_hash + node-keyed memo table once v2 adoption
-// clears for this stage. Realization threads a per-collect memo reset at
-// collect_dag_nodes entry; Rust seed uses Rc::as_ptr until then.
 fn dag_collect_fp_memo_reset() -> Bool {
   true
 }
