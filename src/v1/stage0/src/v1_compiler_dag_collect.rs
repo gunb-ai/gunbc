@@ -2,7 +2,8 @@
 // Source module: v1.compiler.dag_collect
 
 pub use crate::v1_compiler_dag_collect_support::{
-    dag_collect_fp_memo_reset, dag_collect_pack_slots, dag_node_surface_fingerprint,
+    dag_collect_fp_memo_reset, dag_collect_pack_slots, dag_node_collection_anchor,
+    dag_node_is_resolved_identity_shell, dag_node_surface_fingerprint,
     dag_node_surface_fingerprint_memo,
 };
 pub use crate::v1_compiler_dag_collect_support::{DagCollectAcc, DagCollectSlot};
