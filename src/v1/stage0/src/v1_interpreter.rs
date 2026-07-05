@@ -5239,16 +5239,6 @@ fn eval_builtin(
 
         "record_source_chars_index_lookup" => Ok(Some(Value::Unit)),
 
-        // Scaffold arm — dissolution trigger lives on `v1_rt::trace_mark`'s doc comment
-        // (realization_measurement_loop Phase 0, docs/plans/realization-measurement-loop.md):
-        // delete this arm with the rest of the trace_mark deletion set named there.
-        "trace_mark" => {
-            if let [Value::Str(s)] = positional.as_slice() {
-                v1_rt::trace_mark(s.clone());
-            }
-            Ok(Some(Value::Unit))
-        }
-
         "concat" => {
             if positional.len() >= 2 && positional.iter().all(|v| matches!(v, Value::Str(_))) {
                 let mut result = String::new();
@@ -6060,6 +6050,14 @@ fn eval_builtin(
                 ),
             )))
         }
+
+        "witness_layer_roots_compile_clean_check" => Ok(Some(Value::Bool(
+            crate::cli_run::witness_layer_roots_compile_clean_check(),
+        ))),
+
+        "witness_layer_roots_compile_clean_emit_check" => Ok(Some(Value::Bool(
+            crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
+        ))),
 
         "test_migration_debt_module_count" => Ok(Some(Value::Int(
             crate::cli_run::test_migration_debt_module_count(),

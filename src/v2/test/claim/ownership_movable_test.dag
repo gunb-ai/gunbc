@@ -1,4 +1,4 @@
-module test.claim.ownership_movable
+module v2.test.claim.ownership_movable
 
 import v1.compiler.ownership { build_movable_set, make_decision, BindingUsage, EdgeClassification, EdgeKind, OwnershipProof, OwnershipDecision, MoveLicenseAccum, record_whole_use_site, record_field_use_site, merge_branch_licenses, move_site_key }
 

@@ -1,0 +1,10 @@
+module test.claim.dag_collect_fingerprint_witness_test
+
+import tools.dag_collect_fingerprint_witness_transport { run_dag_collect_fingerprint_witness }
+import v2.std.logic { Bool }
+
+data dag_collect_fingerprint_witness_provenance: String = "Floor witness migrated from src/v1/tests/src/dag_collect_fingerprint_witness_test.rs (11 v1 #[test] fns): bag/seq hash commutativity, recursive dag_node_surface_fingerprint discrimination (param order, Arrow child order, Conj/Disj insensitivity), and the leaf_mix contrastive control proving recursive fingerprint necessity. Executed via dag_collect_fingerprint_witness host physics until v1.compiler.dag_collect_support is witness-layer importable."
+
+test fn dag_collect_fingerprint_witness_keystone_holds() -> Bool {
+  run_dag_collect_fingerprint_witness()
+}
