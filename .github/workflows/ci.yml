@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -101,7 +101,7 @@ jobs:
         timeout-minutes: 5
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v5

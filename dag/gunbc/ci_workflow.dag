@@ -320,7 +320,7 @@ fn ci_job() -> Job {
     outputs: none,
     if_condition: none,
     strategy: none,
-    timeout_minutes: Present { value: gunbc_ci_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: gunbc_ci_job_timeout_policy_minutes },
     continue_on_error: none,
     concurrency: none
   }
@@ -337,7 +337,7 @@ fn rust_tests_job() -> Job {
     outputs: none,
     if_condition: none,
     strategy: none,
-    timeout_minutes: Present { value: gunbc_ci_rust_job_backstop_timeout_minutes() },
+    timeout_minutes: Present { value: gunbc_ci_job_timeout_policy_minutes },
     continue_on_error: none,
     concurrency: none
   }
