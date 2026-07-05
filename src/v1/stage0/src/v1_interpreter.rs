@@ -2954,7 +2954,8 @@ fn str_identity_cast_if_string_family(
     let Value::Str(s) = val else {
         return None;
     };
-    if cast_target_underlying_kernel(ctx, target) == "String" {
+    let kernel = cast_target_underlying_kernel(ctx, target);
+    if kernel.is_empty() || kernel == "String" {
         Some(Value::Str(s.clone()))
     } else {
         None
