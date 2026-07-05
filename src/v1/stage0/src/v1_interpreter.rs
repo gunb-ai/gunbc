@@ -5968,12 +5968,11 @@ fn eval_builtin(
             let file_path = expect_str(positional.get(1).copied(), name)?;
             let includes = expect_str_list(positional.get(2).copied(), name)?;
             let excludes = expect_str_list(positional.get(3).copied(), name)?;
-            Ok(Some(Value::Bool(crate::cli_run::compile_dag_rust_emit_check(
-                &source,
-                &file_path,
-                &includes,
-                &excludes,
-            ))))
+            Ok(Some(Value::Bool(
+                crate::cli_run::compile_dag_rust_emit_check(
+                    &source, &file_path, &includes, &excludes,
+                ),
+            )))
         }
 
         "test_migration_debt_module_count" => Ok(Some(Value::Int(
