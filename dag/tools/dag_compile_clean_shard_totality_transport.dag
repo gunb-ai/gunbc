@@ -1,6 +1,8 @@
 module tools.dag_compile_clean_shard_totality_transport
 
 import extdeps.shell
+import std.disposition { Disposition, Scaffold, RealizationDispatch }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import extdeps.languages.bash.program {
   ShellProgram, ShellStmt, ShellWord,
   Command, Pipe,
@@ -9,6 +11,15 @@ import extdeps.languages.bash.program {
 }
 import tools.host_prelude { assign_root_stmt }
 import std.types { String, Bool, List }
+
+data dag_entry_glob_transport_invocation_substring_witness_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.lens.medium_structure_containment",
+    decl_name: "medium_structure_containment_holds",
+    field: WholeDeclaration
+  }
+}
 
 fn live_dag_entry_glob_program() -> ShellProgram {
   let root = var_ref(name: "ROOT")
