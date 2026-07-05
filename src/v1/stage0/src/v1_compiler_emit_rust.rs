@@ -62,9 +62,7 @@ pub use crate::v1_compiler_infer_emit_info::{
 pub use crate::v1_compiler_infer_emit_info::{
     EmitGraphInfo, RustCorpusRepr, TypeRepr, TypeSummary,
 };
-pub use crate::v1_compiler_infer_env::{
-    authored_name, is_recursive_type_by_name, lookup_type_by_name, lookup_type_for,
-};
+pub use crate::v1_compiler_infer_env::{authored_name, lookup_type_by_name, lookup_type_for};
 pub use crate::v1_compiler_infer_env::{TypeBinding, TypeEnv};
 use crate::v1_compiler_infer_items::ItemKind::{DataItem, OtherItem, TypeItem};
 pub use crate::v1_compiler_infer_items::{ItemInfo, ItemKind, ResolvedGraph, TypedModule};
@@ -1180,6 +1178,19 @@ pub fn rust_fn_sig_peel_closed_alias(env: Rc<TypeEnv>, n: Rc<Node>) -> bool {
     }
 }
 
+pub fn rust_fn_sig_preserves_authored_alias_leaf(
+    name: String,
+    corpus_repr: RustCorpusRepr,
+) -> bool {
+    if is_kernel_type(name.clone()) {
+        false
+    } else if name.clone() == "Nat".to_string() {
+        true
+    } else {
+        rust_seed_host_numeric_alias(name.clone(), corpus_repr.clone()) == None
+    }
+}
+
 pub fn rust_carrier_optional_wrap(n: Rc<Node>, rendered: String) -> String {
     {
         let is_optional = (n.return_cardinality.clone() == Cardinality::CardOptional);
@@ -1224,40 +1235,45 @@ pub fn render_rust_fn_sig_type(
             );
         }
         let name = authored_name_at(source_indices.clone(), n.clone());
-        if ((((n.connective.clone() == Connective::NoConnective)
-            && ((n.children.clone().len() as i64) == 0))
-            && (name.clone() == "String".to_string()))
-            && corpus_repr_is_faithful(corpus_repr.clone()))
+        let is_leaf = (n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) == 0);
+        if is_leaf
+            && (name.clone() == "String".to_string())
+            && corpus_repr_is_faithful(corpus_repr.clone())
         {
             rust_carrier_optional_wrap(n.clone(), render_rust_text_carrier(shared_types.clone()))
+        } else if is_leaf
+            && (name.clone() != "".to_string())
+            && (name.clone() != "String".to_string())
+            && !is_container_type(name.clone())
+            && rust_fn_sig_peel_closed_alias(env.clone(), n.clone())
+            && rust_fn_sig_preserves_authored_alias_leaf(name.clone(), corpus_repr.clone())
+        {
+            render_rust_shared_type_if_needed(name.clone(), name.clone(), shared_types.clone())
+        } else if (n.connective.clone() == Connective::NoConnective)
+            && ((n.children.clone().len() as i64) > 0)
+            && !is_container_type(name.clone())
+            && rust_fn_sig_peel_closed_alias(env.clone(), n.clone())
+        {
+            render_rust_shared_type_if_needed(name.clone(), name.clone(), shared_types.clone())
+        } else if ((generic_param_names.clone().len() as i64) > 0) {
+            render_rust_decl_type(
+                n.clone(),
+                generic_param_names.clone(),
+                shared_types.clone(),
+                corpus_repr.clone(),
+                source_indices.clone(),
+                variant_to_enum.clone(),
+                env.clone(),
+            )
         } else {
-            if ((((n.connective.clone() == Connective::NoConnective)
-                && ((n.children.clone().len() as i64) > 0))
-                && !is_container_type(name.clone()))
-                && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
-            {
-                render_rust_shared_type_if_needed(name.clone(), name.clone(), shared_types.clone())
-            } else {
-                if ((generic_param_names.clone().len() as i64) > 0) {
-                    render_rust_decl_type(
-                        n.clone(),
-                        generic_param_names.clone(),
-                        shared_types.clone(),
-                        corpus_repr.clone(),
-                        source_indices.clone(),
-                        variant_to_enum.clone(),
-                        env.clone(),
-                    )
-                } else {
-                    render_rust_fn_sig_type_applied_binding(
-                        n.clone(),
-                        shared_types.clone(),
-                        corpus_repr.clone(),
-                        source_indices.clone(),
-                        env.clone(),
-                    )
-                }
-            }
+            render_rust_fn_sig_type_applied_binding(
+                n.clone(),
+                shared_types.clone(),
+                corpus_repr.clone(),
+                source_indices.clone(),
+                env.clone(),
+            )
         }
     }
 }
@@ -1281,7 +1297,11 @@ pub fn render_rust_fn_sig_type_applied_binding(
                     if ((((outer_name.clone() != "".to_string())
                         && (n.connective.clone() == Connective::NoConnective))
                         && ((n.children.clone().len() as i64) == 0))
-                        && rust_fn_sig_peel_closed_alias(env, n.clone()))
+                        && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
+                        && rust_fn_sig_preserves_authored_alias_leaf(
+                            outer_name.clone(),
+                            corpus_repr.clone(),
+                        )
                     {
                         render_rust_shared_type_if_needed(
                             outer_name.clone(),
@@ -12480,7 +12500,6 @@ pub fn field_access_field_is_boxed(
                             shared_types,
                             scope.type_env.clone().source_indices.clone(),
                         )
-                        || is_recursive_type_by_name(scope.type_env.clone(), field_ty_name.clone())
                 }
             }
             None => false,
@@ -12628,15 +12647,12 @@ pub fn emit_typed_field_access(
                                 emit_info.clone(),
                             );
                             if field_is_boxed {
-                                v1_rt::concat(
+                                apply_type_template1(
+                                    sharing.deref_clone.clone(),
                                     v1_rt::concat(
-                                        v1_rt::concat(
-                                            v1_rt::concat("(*".to_string(), base_str),
-                                            ".".to_string(),
-                                        ),
+                                        v1_rt::concat(base_str, ".".to_string()),
                                         emit_ident(field.clone(), RenderTarget::Rust),
                                     ),
-                                    ").clone()".to_string(),
                                 )
                             } else {
                                 if base_is_owned {
@@ -22896,15 +22912,29 @@ pub fn emit_data_def(
 ) -> String {
     {
         let annotation_type_node = type_node.clone();
+        let ann_name = authored_name_at(
+            scope.type_env.clone().source_indices.clone(),
+            annotation_type_node.clone(),
+        );
+        let preserves_declared_brand = ((ann_name.clone() != "".to_string())
+            && ((annotation_type_node.children.clone().len() as i64) == 0))
+            && !is_container_type(ann_name.clone())
+            && !is_kernel_type(ann_name.clone());
         let render_type_node = if ((annotation_type_node.children.clone().len() as i64) > 0) {
             annotation_type_node.clone()
         } else {
-            match value.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
-                _ => annotation_type_node.clone(),
+            if preserves_declared_brand {
+                annotation_type_node.clone()
+            } else {
+                match value.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => rt.clone(),
+                    _ => annotation_type_node.clone(),
+                }
             }
         };
-        let raw_ty_str = if data_def_annotation_is_named_refinement(
+        let raw_ty_str = if preserves_declared_brand {
+            ann_name.clone()
+        } else if data_def_annotation_is_named_refinement(
             annotation_type_node.clone(),
             scope.type_env.clone().source_indices.clone(),
         ) {

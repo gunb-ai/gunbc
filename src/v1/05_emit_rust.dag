@@ -72,7 +72,7 @@ import v1.compiler.coercion { coerce_primitive_type, is_copy, lookup_checkpoint 
 
 import std.types { is_container_type, is_kernel_type }
 import std.serialization { CoproductWireContract, VariantEncoding, VariantNaming }
-import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for, is_recursive_type_by_name }
+import v1.compiler.infer_env { TypeEnv, TypeBinding, authored_name, lookup_type_by_name, lookup_type_for }
 import v1.compiler.infer_types {
   resolved_type, normalize_access_type_node, for_each_element_type_node,
   child_type_node, emit_map_has,
@@ -594,6 +594,16 @@ fn rust_fn_sig_peel_closed_alias(env: TypeEnv, n: Node) -> Bool {
   (binding.params |> count) == 0
 }
 
+fn rust_fn_sig_preserves_authored_alias_leaf(name: String, corpus_repr: RustCorpusRepr) -> Bool {
+  if is_kernel_type(name: name) {
+    false
+  } else if name == "Nat" {
+    true
+  } else {
+    rust_seed_host_numeric_alias(name: name, corpus_repr: corpus_repr) == none
+  }
+}
+
 fn rust_carrier_optional_wrap(n: Node, rendered: String) -> String {
   let is_optional = n.return_cardinality == CardOptional
   if is_optional {
@@ -611,6 +621,8 @@ fn render_rust_fn_sig_type(n: Node, generic_param_names: List<String>, shared_ty
   let name = authored_name_at(source_indices: source_indices, node: n)
   if n.connective == NoConnective && n.children |> count == 0 && name == "String" && corpus_repr_is_faithful(corpus_repr: corpus_repr) {
     rust_carrier_optional_wrap(n: n, rendered: render_rust_text_carrier(shared_types: shared_types))
+  } else if n.connective == NoConnective && n.children |> count == 0 && name != "" && name != "String" && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: name, corpus_repr: corpus_repr) {
+    render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
   } else if n.connective == NoConnective && n.children |> count > 0 && !is_container_type(name: name) && rust_fn_sig_peel_closed_alias(env: env, n: n) {
     render_rust_shared_type_if_needed(type_name: name, rendered: name, shared_types: shared_types)
   } else if generic_param_names |> count > 0 {
@@ -625,7 +637,7 @@ fn render_rust_fn_sig_type_applied_binding(n: Node, shared_types: Set<String>, c
     Present { value: applied } =>
       if applied.children |> count > 0 {
         let outer_name = authored_name_at(source_indices: source_indices, node: n)
-        if outer_name != "" && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) {
+        if outer_name != "" && n.connective == NoConnective && (n.children |> count) == 0 && rust_fn_sig_peel_closed_alias(env: env, n: n) && rust_fn_sig_preserves_authored_alias_leaf(name: outer_name, corpus_repr: corpus_repr) {
           render_rust_shared_type_if_needed(type_name: outer_name, rendered: outer_name, shared_types: shared_types)
         } else {
           render_rust_type_with_applied_binding(n: n, shared_types: shared_types, corpus_repr: corpus_repr, source_indices: source_indices)
@@ -4761,7 +4773,7 @@ fn field_access_field_is_boxed(base: Node, field: String, scope: InferScope, sha
       if grounds_to_host_scalar { false }
       else {
         let faithful_nat_field = emit_info.corpus_repr == FaithfulFreeMonoid && (field_ty_name == "Nat" || substring(s: field_ty_name, start: 0, end: 4) == "Nat<")
-        faithful_nat_field || needs_box_wrapping(n: field_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices) || is_recursive_type_by_name(env: scope.type_env, name: field_ty_name)
+        faithful_nat_field || needs_box_wrapping(n: field_ty, recursive_types: emit_info.recursive_type_set, shared_types: shared_types, source_indices: scope.type_env.source_indices)
       }
     Absent => false
   }
@@ -8078,7 +8090,11 @@ fn data_def_annotation_is_named_refinement(annotation: Node, source_indices: Map
 
 fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<String, ItemInfo>, scope: InferScope, depth: Int, shared_types: Set<String>, emit_info: EmitGraphInfo) -> String {
   let annotation_type_node = type_node
+  let ann_name = authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node)
+  let preserves_declared_brand = ann_name != "" && annotation_type_node.children |> count == 0 && !is_container_type(name: ann_name) && !is_kernel_type(name: ann_name)
   let render_type_node = if annotation_type_node.children |> count > 0 {
+    annotation_type_node
+  } else if preserves_declared_brand {
     annotation_type_node
   } else {
     match value.inferred {
@@ -8086,7 +8102,9 @@ fn emit_data_def(name: String, type_node: Node, value: Node, registry: Map<Strin
       _ => annotation_type_node
     }
   }
-  let raw_ty_str = if data_def_annotation_is_named_refinement(annotation: annotation_type_node, source_indices: scope.type_env.source_indices) {
+  let raw_ty_str = if preserves_declared_brand {
+    ann_name
+  } else if data_def_annotation_is_named_refinement(annotation: annotation_type_node, source_indices: scope.type_env.source_indices) {
     coerce_primitive_type(target: Rust, dag_name: authored_name_at(source_indices: scope.type_env.source_indices, node: annotation_type_node))
   } else {
     render_rust_type_with_applied_binding(n: render_type_node, shared_types: shared_types, corpus_repr: emit_info.corpus_repr, source_indices: scope.type_env.source_indices)
