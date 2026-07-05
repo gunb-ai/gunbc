@@ -42,23 +42,38 @@ deficit never ranks — the textbook absorbing fallback DESIGN.md §5 names. The
 
 `build_movable_set` now filters on `make_decision(usage) == SoleOwner` and admits params
 via a `param_names` argument (call site `build_ownership_results` passes
-`entry.param_names`). Borrow edges (Read/Projected/Threaded) no longer disqualify a move;
-exactly-one-Consumed does the work. Discriminating witness:
-`dag/test/claim/ownership_movable_test.dag` (read-then-consume param movable; double-consume
-not; zero-consume not).
+`entry.param_names`). Discriminating witness:
+`dag/test/claim/ownership_movable_test.dag` (projected-then-consume param movable;
+double-consume not; zero-consume not; whole-read-then-consume not; threaded-then-consume
+not).
 
-Soundness note: `movable` gates only whole-value *reference* emission; Projected sites emit
-the bare ident as a field-access base (no consume), so a single-Consumed binding with any
-number of borrow uses moves exactly once, at its consume site — which is the last use in
-evaluation order for the SoleOwner shape (borrows precede the consume on every path where
-both occur; see increment 2 for the per-site generalization that makes this a proof
-obligation instead of an argument).
+Soundness (the wall that makes per-name movability sound at all): `movable` gates **every**
+whole-value var-ref emission (`emit_rust_expr_var` → `emit_var_ref` is reached for call
+args, fold inits, record fields — not just tail returns), so a per-name move license is
+sound only if the binding has exactly **one** whole-value use site. `Consumed` is recorded
+only at tail position (last in evaluation order); `Read`/`Threaded` edges are whole-value
+positions emitted *before* it, so any such edge plus a licensed move = use-after-move.
+Hence the rule: SoleOwner **and** zero Read/Threaded edges (`whole_value_borrow_count == 0`).
+`Projected` edges stay compatible because field-access bases emit the bare ident
+(`emit_typed_expr_base`), never a whole-value consume. The original increment-1 draft
+admitted Read-then-Consume; that was a latent use-after-move and is fixed here — the
+per-site verdict below recovers those sites soundly.
 
 ## Increment 2 — de-fork set 3 (field moves) on a per-site verdict [design]
 
 Per-function name-sets cannot express "move `acc.seen` here because `acc` dies on this
 path". The verdict moves from per-name to per-site (Perceus-style last-use; `.dag` is pure
 and tree-shaped, so last-use is mechanical — no borrow checker needed).
+
+Status: proof-side machinery is implemented in `ownership.dag`
+(`build_move_site_licenses` — a backward liveness walk in reverse evaluation order,
+O(AST)) with unit witnesses in `ownership_movable_test.dag`; emitter consumption is the
+remaining step. Guards baked in: a zero/absent span never licenses (synthetic nodes fail
+closed); lambda/foreach bodies license nothing and poison their captures live; branch arms
+compute licenses per-path from the shared continuation liveness and merge by union
+(licenses) / OR-union (liveness). The emitter must look up a verdict by the same key the
+walk recorded: `name@span_start` of the var node for whole moves, of the field-access node
+for field moves.
 
 Model (in `ownership.dag`, the one authority):
 

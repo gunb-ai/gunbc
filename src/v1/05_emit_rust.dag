@@ -5588,7 +5588,8 @@ fn emit_typed_fold_lambda(lambda_expr: Node, acc_type_str: String, elem_type_str
       let needs_unwrap = acc_name != "" && set_contains(emit_info.owned_bindings, acc_name)
       if needs_unwrap {
         let acc_ident = emit_ident(name: acc_name, target: Rust)
-        concat("|", params_str, "| { let ", acc_ident, " = Rc::try_unwrap(", acc_ident, ").unwrap_or_else(|rc| (*rc).clone()); ", body_str, " }")
+        let site = concat(lambda_expr.span.file, ":", to_string(value: lambda_expr.span.start), ":", acc_name)
+        concat("|", params_str, "| { let ", acc_ident, " = v1_rt::take_owned_counted(", acc_ident, ", \"", site, "\"); ", body_str, " }")
       } else {
         concat("|", params_str, "| ", body_str)
       }
