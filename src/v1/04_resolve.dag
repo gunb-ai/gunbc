@@ -234,8 +234,9 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
   let brand = authored_name(env: env, node: n)
   match lookup_type_for(env: env, node: n) {
     Present { value: decl } =>
-      if decl.params |> count > 0 { decl }
-      else if n.children |> count > 0 {
+      if decl.params |> count > 0 {
+        decl
+      } else if n.children |> count > 0 {
         let ancestry_generic = fold(env.parents, init: none, f: (acc, parent) =>
           if acc != none { acc }
           else {
@@ -256,7 +257,9 @@ fn resolve_generic_use_decl(env: TypeEnv, n: Node) -> Node {
               }
             } else { decl }
         }
-      } else { decl }
+      } else {
+        decl
+      }
     Absent =>
       match lookup_type_by_name(env: env, name: n.name) {
         Present { value: decl } => decl
