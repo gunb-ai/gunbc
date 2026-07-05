@@ -220,6 +220,7 @@ data dcc_target_dag_marker: String = "'--target' 'dag'"
 data dcc_source_root_marker: String = "'--source-root'"
 data dcc_witness_root_dag_marker: String = "'dag'"
 data dcc_witness_root_v2_marker: String = "'src/v2'"
+data dcc_witness_root_v1_marker: String = "'src/v1'"
 data dcc_pool_index_marker: String = "'--dependency-pool-index' 'primary-precedence'"
 
 data clean_tree_compile_invocation_marker: String = "'compile' '--source-root' 'dag'"
@@ -237,6 +238,7 @@ fn shell_serializes_dcc_common_compile_invocation(script: String) -> Bool {
     && string_contains(s: script, pattern: dcc_source_root_marker)
     && string_contains(s: script, pattern: dcc_witness_root_dag_marker)
     && string_contains(s: script, pattern: dcc_witness_root_v2_marker)
+    && string_contains(s: script, pattern: dcc_witness_root_v1_marker)
     && string_contains(s: script, pattern: dcc_pool_index_marker)
 }
 

@@ -5300,6 +5300,21 @@ fn eval_builtin(
             Ok(Some(Value::Bool(s.contains(&sub))))
         }
 
+        "starts_with" => {
+            let s = expect_str(positional.first().copied(), "starts_with")?;
+            let prefix = expect_str(positional.get(1).copied(), "starts_with prefix")?;
+            Ok(Some(Value::Bool(s.starts_with(prefix))))
+        }
+
+        "length" => match positional.first() {
+            Some(Value::Str(s)) => Ok(Some(Value::Int(s.chars().count() as i64))),
+            Some(v) => match free_monoid_to_vec(v) {
+                Some(items) => Ok(Some(Value::Int(items.len() as i64))),
+                None => Ok(None),
+            },
+            None => Ok(None),
+        },
+
         "contains" => match positional.as_slice() {
             [Value::Str(s), Value::Str(sub), ..] => Ok(Some(Value::Bool(s.contains(sub)))),
             [xs, target, ..] => match free_monoid_to_vec(xs) {
