@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -92,14 +92,16 @@ jobs:
           STAMP_EXIT=$?
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
+        timeout-minutes: 10
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main
           "$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/tools/merge_admission_gate.dag --function main
+        timeout-minutes: 5
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -147,6 +149,7 @@ jobs:
             case "$(uname -m)" in aarch64|arm64) A=linux-arm ;; *) A=linux ;; esac
             curl -LsSf --retry 3 "https://get.nexte.st/0.9.138/$A" | tar zxf - -C "$CARGO_HOME/bin"
           fi
+        timeout-minutes: 5
       - name: v1 rust gate (fmt + clippy + nextest)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -193,11 +196,13 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
+        timeout-minutes: 15
       - name: rust_tests cgroup peak (placement divisor)
         run: |
           BIN="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/claim_executor"
           if [ -x "$BIN" ]; then "$BIN" --measure-cgroup-peak; else echo "[measurement] cgroup peak: unavailable (claim_executor not built)"; fi
         if: always()
+        timeout-minutes: 5
   deploy_dashboard_srv1:
     runs-on: [self-hosted, linux, arm64, srv1]
     needs: [ci]
