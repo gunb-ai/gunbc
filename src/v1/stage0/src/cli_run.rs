@@ -6824,20 +6824,22 @@ mod floor_witness_a_prove {
 // §6 dissolution trigger) — the equivalence lens itself moves on-carrier at that point, this
 // hand-Rust harness is no longer needed to exercise it.
 //
-// It proves the module-grain "affected" decision
-// computed by the `.dag` authority (`v2.lens.module_graph.entry_affected_by_touched_paths`, a
-// thin projection over `import_closure_live`) agrees with the Rust host's module-grain
-// `entry_file_touched` decision (`touched_file_in_import_closure` over
-// `import_closure_files_from_graph` — the exact function `run_discovery_rows` uses to compute
-// `current_entry_closure_files` for the live floor skip decision) on real merged-commit diffs.
-// Both sides are fed by the same host-realized `import_resolution_facts`/`module_declaration_facts`,
-// so this is a decision-level proof (§5: execution, not a grep/typecheck spec), not a re-proof of
-// closure membership (already covered by `import_closure_equivalence_tests` above).
+// It proves the module-grain "affected" decision computed by the `.dag` authority
+// (`v2.lens.module_graph.entry_affected_by_touched_paths`, a thin projection over
+// `import_closure_live`) agrees with an independent Rust oracle (`touched_file_in_import_closure`
+// over `import_closure_files_from_graph`) on real merged-commit diffs. Live production
+// (`run_discovery_rows`) now calls the `.dag` query directly via
+// `call_entry_affected_by_touched_paths`; this receipt keeps the Rust closure walk as a
+// deliberately separate implementation so agreement is proved by execution, not tautology.
+// Both sides are fed by the same host-realized `import_resolution_facts`/
+// `module_declaration_facts`, so this is a decision-level proof (§5: execution, not a
+// grep/typecheck spec), not a re-proof of closure membership (already covered by
+// `import_closure_equivalence_tests` above).
 //
 // Touched-paths derivation (fixed post-#6274 review): the input fed to BOTH sides is NOT the raw
 // `git show --name-only` file list. `entry_file_touched` in live production
-// (`run_discovery_rows`, cli_run.rs:5217-5221) is decided over `diff_edits.touched_entry_files` —
-// the FILTERED set `floor_diff_edits_from_line_ranges` produces after excluding pure data-item
+// (`run_discovery_rows`, cli_run.rs:5376-5395) is decided over `diff_edits.touched_entry_files`
+// — the FILTERED set `floor_diff_edits_from_line_ranges` produces after excluding pure data-item
 // edits (→ `overlapping_data_items`) and test-fn edits (→ `edited_test_fns`); only non-data,
 // non-test-fn declaration edits land in `touched_entry_files`. A raw touched-path superset can
 // diverge from this filtered set, so proving equivalence against raw paths only proves a
@@ -6848,7 +6850,7 @@ mod floor_witness_a_prove {
 // sibling `green_import_closure_helper_fn_edit_runs_importer_entry` pattern above.
 //
 // `floor_diff_edits_from_line_ranges` fail-closes (`Err`) when a touched `.dag` file's diff
-// includes changed line 1 (the module declaration line) — see cli_run.rs:4703-4705 — so a commit
+// includes changed line 1 (the module declaration line) — see cli_run.rs:4831-4832 — so a commit
 // that wholly ADDS new files (every new file's diff touches line 1) cannot be exercised via this
 // real path (`entry_file_touched` is unreachable for that commit shape upstream of this receipt).
 // Both SHAs below were chosen to be all-status-`M` (modify-only) commits for this reason.
