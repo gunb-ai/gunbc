@@ -785,8 +785,8 @@ pub(crate) fn module_graph_facts_build_count_for_test() -> usize {
 #[cfg(test)]
 mod shared_cache_collision_guard_tests {
     use super::check_module_source_identity;
-    use std::cell::RefCell;
     use im_rc::HashMap;
+    use std::cell::RefCell;
 
     // Collision-honesty receipt (union-resolve §6.3): the shared typed-module cache's
     // source-identity guard fails LOUD when one module name resolves from two declaring files
@@ -8065,8 +8065,8 @@ mod construction_justification_hygiene_tests {
         declares_construction_justification, discover_floor_corpus_rows, unjustified_lens_modules,
         wall_now_authority_refs, FLOOR_DISCOVERY_EXCLUDES,
     };
-    use std::collections::HashMap;
     use std::collections::BTreeSet;
+    use std::collections::HashMap;
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {

@@ -235,10 +235,8 @@ mod compiler_tests {
             "module test\ntype Foo { x: Int }\n".to_string(),
             "test.dag".to_string(),
         );
-        let result = crate::v1_compiler_parse::parse(
-            tokens,
-            std::rc::Rc::new(im_rc::HashMap::new()),
-        );
+        let result =
+            crate::v1_compiler_parse::parse(tokens, std::rc::Rc::new(im_rc::HashMap::new()));
         assert!(
             result.module.is_some(),
             "valid module should parse successfully"
