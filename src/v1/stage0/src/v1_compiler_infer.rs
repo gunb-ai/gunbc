@@ -14681,12 +14681,11 @@ pub fn seed_kernel_intern_table(intern_table: Rc<InternTable>) -> Rc<InternTable
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct TypecheckAccum {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
+pub struct RealizeState {
     pub module_index: Rc<HashMap<String, Rc<TypedModule>>>,
     pub variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    pub diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
+    pub diags_by_name: Rc<HashMap<String, Rc<Vec<Rc<ErrorNode>>>>>,
 }
 
 pub fn typecheck(
@@ -14696,27 +14695,69 @@ pub fn typecheck(
 ) -> Rc<TypedGraph> {
     {
         let intern_table = seed_kernel_intern_table(intern_table.clone());
-        let final_acc = typecheck_batches(
-            graph.batches.clone(),
-            Rc::new(vec![]),
-            v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
-            v1_rt::rc_empty_map::<String, Rc<VariantExportSurface>>(),
-            v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
-            Rc::new(vec![]),
-            source_indices,
-            intern_table.clone(),
+        let resolved_by_name = graph.modules.clone().iter().cloned().fold(
+            v1_rt::rc_empty_map::<String, Rc<ResolvedModule>>(),
+            |acc: Rc<HashMap<String, Rc<ResolvedModule>>>, rm: Rc<ResolvedModule>| {
+                v1_rt::rc_map_insert(
+                    acc,
+                    authored_name_at(source_indices.clone(), rm.module.clone()),
+                    rm.clone(),
+                )
+            },
         );
-        let expanded_registry = expand_transitive_services(
-            final_acc.modules.clone(),
-            final_acc.item_registry.clone(),
-            5,
+        let state = graph.modules.clone().iter().cloned().fold(
+            Rc::new(RealizeState {
+                module_index: v1_rt::rc_empty_map::<String, Rc<TypedModule>>(),
+                variant_surfaces: v1_rt::rc_empty_map::<String, Rc<VariantExportSurface>>(),
+                item_registry: v1_rt::rc_empty_map::<String, Rc<ItemInfo>>(),
+                diags_by_name: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<ErrorNode>>>>(),
+            }),
+            |st: Rc<RealizeState>, rm: Rc<ResolvedModule>| {
+                realize_module(
+                    authored_name_at(source_indices.clone(), rm.module.clone()),
+                    resolved_by_name.clone(),
+                    st,
+                    source_indices.clone(),
+                    intern_table.clone(),
+                )
+            },
         );
+        let modules = Rc::new({
+            let mut __result: Vec<Rc<TypedModule>> = Vec::new();
+            for rm in graph.modules.clone().iter().cloned() {
+                match v1_rt::map_get(
+                    &state.module_index,
+                    authored_name_at(source_indices.clone(), rm.module.clone()),
+                ) {
+                    Some(typed) => __result.push(typed.clone()),
+                    None => {}
+                }
+            }
+            __result
+        });
+        let diag_chunks = Rc::new({
+            let mut __result: Vec<Rc<Vec<Rc<ErrorNode>>>> = Vec::new();
+            for rm in graph.modules.clone().iter().cloned() {
+                __result.push(
+                    match v1_rt::map_get(
+                        &state.diags_by_name,
+                        authored_name_at(source_indices.clone(), rm.module.clone()),
+                    ) {
+                        Some(d) => d.clone(),
+                        None => Rc::new(vec![]),
+                    },
+                );
+            }
+            __result
+        });
+        let expanded_registry =
+            expand_transitive_services(modules.clone(), state.item_registry.clone(), 5);
         Rc::new(TypedGraph {
-            modules: final_acc.modules.clone(),
+            modules: modules.clone(),
             item_registry: expanded_registry,
             diagnostics: Rc::new({
                 let mut __result = Vec::new();
-                for c in final_acc.diag_chunks.iter().cloned() {
+                for c in diag_chunks.iter().cloned() {
                     __result.extend((*c.clone()).iter().cloned());
                 }
                 __result
@@ -14725,135 +14766,74 @@ pub fn typecheck(
     }
 }
 
-pub fn typecheck_batches(
-    mut remaining_batches: Rc<Vec<Rc<Vec<Rc<ResolvedModule>>>>>,
-    mut modules: Rc<Vec<Rc<TypedModule>>>,
-    mut module_index: Rc<HashMap<String, Rc<TypedModule>>>,
-    mut variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
-    mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut intern_table: Rc<InternTable>,
-) -> Rc<TypecheckAccum> {
-    loop {
-        match remaining_batches.clone().first().cloned() {
-            None => {
-                break Rc::new(TypecheckAccum {
-                    modules: modules.clone(),
-                    module_index: module_index.clone(),
-                    variant_surfaces: variant_surfaces.clone(),
-                    item_registry: item_registry.clone(),
-                    diag_chunks: diag_chunks.clone(),
-                });
-            }
-            Some(batch) => {
-                v1_rt::trace_mark("compile.reconcile.batch.done".to_string());
-                let batch_acc = typecheck_modules(
-                    batch.clone(),
-                    modules.clone(),
-                    module_index.clone(),
-                    variant_surfaces.clone(),
-                    item_registry.clone(),
-                    diag_chunks.clone(),
-                    source_indices.clone(),
-                    intern_table.clone(),
-                );
-                {
-                    let __tco_0 = Rc::new(
-                        remaining_batches
-                            .iter()
-                            .cloned()
-                            .skip(1 as usize)
-                            .collect::<Vec<_>>(),
-                    );
-                    let __tco_1 = batch_acc.modules.clone();
-                    let __tco_2 = batch_acc.module_index.clone();
-                    let __tco_3 = batch_acc.variant_surfaces.clone();
-                    let __tco_4 = batch_acc.item_registry.clone();
-                    let __tco_5 = batch_acc.diag_chunks.clone();
-                    remaining_batches = __tco_0;
-                    modules = __tco_1;
-                    module_index = __tco_2;
-                    variant_surfaces = __tco_3;
-                    item_registry = __tco_4;
-                    diag_chunks = __tco_5;
-                    continue;
-                }
-            }
-        }
-    }
-}
-
-pub fn typecheck_modules(
-    mut remaining: Rc<Vec<Rc<ResolvedModule>>>,
-    mut modules: Rc<Vec<Rc<TypedModule>>>,
-    mut module_index: Rc<HashMap<String, Rc<TypedModule>>>,
-    mut variant_surfaces: Rc<HashMap<String, Rc<VariantExportSurface>>>,
-    mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
-    mut diag_chunks: Rc<Vec<Rc<Vec<Rc<ErrorNode>>>>>,
-    mut source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-    mut intern_table: Rc<InternTable>,
-) -> Rc<TypecheckAccum> {
-    loop {
-        match remaining.clone().first().cloned() {
-            None => {
-                break Rc::new(TypecheckAccum {
-                    modules: modules.clone(),
-                    module_index: module_index.clone(),
-                    variant_surfaces: variant_surfaces.clone(),
-                    item_registry: item_registry.clone(),
-                    diag_chunks: diag_chunks.clone(),
-                });
-            }
+pub fn realize_module(
+    name: String,
+    resolved_by_name: Rc<HashMap<String, Rc<ResolvedModule>>>,
+    state: Rc<RealizeState>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    intern_table: Rc<InternTable>,
+) -> Rc<RealizeState> {
+    match v1_rt::map_get(&state.module_index, name.clone()) {
+        Some(_) => state,
+        None => match v1_rt::map_get(&resolved_by_name, name.clone()) {
+            None => state,
             Some(resolved) => {
+                let dep_state = resolved.resolved_imports.clone().iter().cloned().fold(
+                    state.clone(),
+                    |st: Rc<RealizeState>, imp: Rc<ResolvedImport>| {
+                        realize_module(
+                            imp.module_path.clone(),
+                            resolved_by_name.clone(),
+                            st,
+                            source_indices.clone(),
+                            intern_table.clone(),
+                        )
+                    },
+                );
                 let parent_result = collect_parent_envs(
                     resolved.clone(),
-                    module_index.clone(),
+                    dep_state.module_index.clone(),
                     source_indices.clone(),
                 );
                 let tc_result = typecheck_module(
                     resolved.clone(),
-                    module_index.clone(),
-                    variant_surfaces.clone(),
+                    dep_state.module_index.clone(),
+                    dep_state.variant_surfaces.clone(),
                     source_indices.clone(),
                     intern_table.clone(),
                 );
                 let typed = tc_result.typed.clone();
-                let tc_diags = tc_result.diagnostics.clone();
                 let typed_path = authored_name_at(source_indices.clone(), typed.module.clone());
-                variant_surfaces = v1_rt::rc_map_insert(
-                    variant_surfaces.clone(),
-                    typed_path.clone(),
-                    build_variant_export_surface(
+                Rc::new(RealizeState {
+                    module_index: v1_rt::rc_map_insert(
+                        dep_state.module_index.clone(),
+                        typed_path.clone(),
                         typed.clone(),
-                        variant_surfaces.clone(),
-                        source_indices.clone(),
                     ),
-                );
-                {
-                    let __tco_0 = Rc::new(
-                        remaining
-                            .iter()
-                            .cloned()
-                            .skip(1 as usize)
-                            .collect::<Vec<_>>(),
-                    );
-                    let __tco_1 = v1_rt::rc_list_push(modules, typed.clone());
-                    let __tco_2 = v1_rt::rc_map_insert(module_index, typed_path, typed.clone());
-                    let __tco_3 = v1_rt::rc_map_merge(item_registry, typed.item_registry.clone());
-                    let __tco_4 = v1_rt::rc_list_push(
-                        v1_rt::rc_list_push(diag_chunks, parent_result.diagnostics.clone()),
-                        tc_diags,
-                    );
-                    remaining = __tco_0;
-                    modules = __tco_1;
-                    module_index = __tco_2;
-                    item_registry = __tco_3;
-                    diag_chunks = __tco_4;
-                    continue;
-                }
+                    variant_surfaces: v1_rt::rc_map_insert(
+                        dep_state.variant_surfaces.clone(),
+                        typed_path.clone(),
+                        build_variant_export_surface(
+                            typed.clone(),
+                            dep_state.variant_surfaces.clone(),
+                            source_indices.clone(),
+                        ),
+                    ),
+                    item_registry: v1_rt::rc_map_merge(
+                        dep_state.item_registry.clone(),
+                        typed.item_registry.clone(),
+                    ),
+                    diags_by_name: v1_rt::rc_map_insert(
+                        dep_state.diags_by_name.clone(),
+                        typed_path.clone(),
+                        v1_rt::concat(
+                            parent_result.diagnostics.clone(),
+                            tc_result.diagnostics.clone(),
+                        ),
+                    ),
+                })
             }
-        }
+        },
     }
 }
 

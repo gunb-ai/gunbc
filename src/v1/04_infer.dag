@@ -6542,102 +6542,85 @@ fn seed_kernel_intern_table(intern_table: InternTable) -> InternTable {
   fold(map_keys(compiler_recursive_types), init: intern_table, f: (t, name) => intern(table: t, s: name).table)
 }
 
-type TypecheckAccum {
-  modules: List<TypedModule>
+type RealizeState {
   module_index: Map<String, TypedModule>
   variant_surfaces: Map<String, VariantExportSurface>
   item_registry: Map<String, ItemInfo>
-  diag_chunks: List<List<ErrorNode>>
+  diags_by_name: Map<String, List<ErrorNode>>
 }
 
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {
   let intern_table = seed_kernel_intern_table(intern_table: intern_table)
-  let final_acc = typecheck_batches(
-    remaining_batches: graph.batches,
-    modules: [],
+  let resolved_by_name = graph.modules |> fold(init: empty_map(), f: (acc, rm) =>
+    map_insert(acc, authored_name_at(source_indices: source_indices, node: rm.module), rm)
+  )
+  let state = graph.modules |> fold(init: RealizeState {
     module_index: empty_map(),
     variant_surfaces: empty_map(),
     item_registry: empty_map(),
-    diag_chunks: [],
-    source_indices: source_indices,
-    intern_table: intern_table
+    diags_by_name: empty_map()
+  }, f: (st, rm) =>
+    realize_module(
+      name: authored_name_at(source_indices: source_indices, node: rm.module),
+      resolved_by_name: resolved_by_name,
+      state: st,
+      source_indices: source_indices,
+      intern_table: intern_table
+    )
   )
-  let expanded_registry = expand_transitive_services(modules: final_acc.modules, registry: final_acc.item_registry, remaining_passes: 5)
-  TypedGraph { modules: final_acc.modules, item_registry: expanded_registry, diagnostics: flat_map(final_acc.diag_chunks, c => c) }
+  let modules = graph.modules |> flat_map(rm =>
+    match map_get(state.module_index, authored_name_at(source_indices: source_indices, node: rm.module)) {
+      Present { value: typed } => [typed]
+      Absent => []
+    }
+  )
+  let diag_chunks = graph.modules |> map(rm =>
+    match map_get(state.diags_by_name, authored_name_at(source_indices: source_indices, node: rm.module)) {
+      Present { value: d } => d
+      Absent => []
+    }
+  )
+  let expanded_registry = expand_transitive_services(modules: modules, registry: state.item_registry, remaining_passes: 5)
+  TypedGraph { modules: modules, item_registry: expanded_registry, diagnostics: flat_map(diag_chunks, c => c) }
 }
 
-fn typecheck_batches(
-  remaining_batches: List<List<ResolvedModule>>,
-  modules: List<TypedModule>,
-  module_index: Map<String, TypedModule>,
-  variant_surfaces: Map<String, VariantExportSurface>,
-  item_registry: Map<String, ItemInfo>,
-  diag_chunks: List<List<ErrorNode>>,
+fn realize_module(
+  name: String,
+  resolved_by_name: Map<String, ResolvedModule>,
+  state: RealizeState,
   source_indices: Map<String, NewlineIndex>,
   intern_table: InternTable
-) -> TypecheckAccum {
-  match remaining_batches |> first {
+) -> RealizeState {
+  match map_get(state.module_index, name) {
+    Present { value: _ } => state
     Absent =>
-      TypecheckAccum { modules: modules, module_index: module_index, variant_surfaces: variant_surfaces, item_registry: item_registry, diag_chunks: diag_chunks }
-    Present { value: batch } =>
-      let _ = trace_mark("compile.reconcile.batch.done")
-      let batch_acc = typecheck_modules(
-        remaining: batch,
-        modules: modules,
-        module_index: module_index,
-        variant_surfaces: variant_surfaces,
-        item_registry: item_registry,
-        diag_chunks: diag_chunks,
-        source_indices: source_indices,
-        intern_table: intern_table
-      )
-      typecheck_batches(
-        remaining_batches: remaining_batches |> skip(1),
-        modules: batch_acc.modules,
-        module_index: batch_acc.module_index,
-        variant_surfaces: batch_acc.variant_surfaces,
-        item_registry: batch_acc.item_registry,
-        diag_chunks: batch_acc.diag_chunks,
-        source_indices: source_indices,
-        intern_table: intern_table
-      )
-  }
-}
-
-fn typecheck_modules(
-  remaining: List<ResolvedModule>,
-  modules: List<TypedModule>,
-  module_index: Map<String, TypedModule>,
-  variant_surfaces: Map<String, VariantExportSurface>,
-  item_registry: Map<String, ItemInfo>,
-  diag_chunks: List<List<ErrorNode>>,
-  source_indices: Map<String, NewlineIndex>,
-  intern_table: InternTable
-) -> TypecheckAccum {
-  match remaining |> first {
-    Absent =>
-      TypecheckAccum { modules: modules, module_index: module_index, variant_surfaces: variant_surfaces, item_registry: item_registry, diag_chunks: diag_chunks }
-    Present { value: resolved } =>
-      let parent_result = collect_parent_envs(resolved: resolved, module_index: module_index, source_indices: source_indices)
-      let tc_result = typecheck_module(resolved: resolved, parent_index: module_index, variant_surfaces: variant_surfaces, source_indices: source_indices, intern_table: intern_table)
-      let typed = tc_result.typed
-      let tc_diags = tc_result.diagnostics
-      let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
-      let variant_surfaces = map_insert(
-        variant_surfaces,
-        typed_path,
-        build_variant_export_surface(tm: typed, surfaces: variant_surfaces, source_indices: source_indices)
-      )
-      typecheck_modules(
-        remaining: remaining |> skip(1),
-        modules: list_push(modules, typed),
-        module_index: map_insert(module_index, typed_path, typed),
-        variant_surfaces: variant_surfaces,
-        item_registry: map_merge(item_registry, typed.item_registry),
-        diag_chunks: list_push(list_push(diag_chunks, parent_result.diagnostics), tc_diags),
-        source_indices: source_indices,
-        intern_table: intern_table
-      )
+      match map_get(resolved_by_name, name) {
+        Absent => state
+        Present { value: resolved } =>
+          let dep_state = resolved.resolved_imports |> fold(init: state, f: (st, imp) =>
+            realize_module(
+              name: imp.module_path,
+              resolved_by_name: resolved_by_name,
+              state: st,
+              source_indices: source_indices,
+              intern_table: intern_table
+            )
+          )
+          let parent_result = collect_parent_envs(resolved: resolved, module_index: dep_state.module_index, source_indices: source_indices)
+          let tc_result = typecheck_module(resolved: resolved, parent_index: dep_state.module_index, variant_surfaces: dep_state.variant_surfaces, source_indices: source_indices, intern_table: intern_table)
+          let typed = tc_result.typed
+          let typed_path = authored_name_at(source_indices: source_indices, node: typed.module)
+          RealizeState {
+            module_index: map_insert(dep_state.module_index, typed_path, typed),
+            variant_surfaces: map_insert(
+              dep_state.variant_surfaces,
+              typed_path,
+              build_variant_export_surface(tm: typed, surfaces: dep_state.variant_surfaces, source_indices: source_indices)
+            ),
+            item_registry: map_merge(dep_state.item_registry, typed.item_registry),
+            diags_by_name: map_insert(dep_state.diags_by_name, typed_path, concat(parent_result.diagnostics, tc_result.diagnostics))
+          }
+      }
   }
 }
 
