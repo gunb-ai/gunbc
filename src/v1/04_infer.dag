@@ -6601,21 +6601,38 @@ fn import_module_path_at(imp: Node, source_indices: Map<String, NewlineIndex>) -
   authored_name_at(source_indices: source_indices, node: imp)
 }
 
-fn build_type_name_export_index(modules: List<TypedModule>) -> Map<String, TypeNameExportFacts> {
-  fold(modules, init: empty_map(), f: (acc, m) =>
-    fold(m.type_env.bindings |> map_values, init: acc, f: (acc2, binding) =>
-      let name = binding.name
-      match map_get(acc2, name) {
+type ExportIndexModuleAccum {
+  index: Map<String, TypeNameExportFacts>
+  seen_names: Set<String>
+}
+
+fn export_index_merge_module(acc: Map<String, TypeNameExportFacts>, m: TypedModule) -> Map<String, TypeNameExportFacts> {
+  fold(m.type_env.bindings |> map_values, init: ExportIndexModuleAccum { index: acc, seen_names: empty_set() }, f: (state, binding) =>
+    let name = binding.name
+    if set_contains(state.seen_names, name) {
+      state
+    } else {
+      let canonical = match filter(m.type_env.bindings |> map_values, b => b.name == name) |> last {
+        Present { value: b } => b
+        Absent => binding
+      }
+      let seen_names = set_insert(state.seen_names, name)
+      let index = match map_get(state.index, name) {
         Absent =>
-          map_insert(acc2, name, TypeNameExportFacts { exporter_count: 1, canonical_binding: Present { value: binding } })
+          map_insert(state.index, name, TypeNameExportFacts { exporter_count: 1, canonical_binding: Present { value: canonical } })
         Present { value: facts } =>
-          map_insert(acc2, name, TypeNameExportFacts {
+          map_insert(state.index, name, TypeNameExportFacts {
             exporter_count: facts.exporter_count + 1,
-            canonical_binding: Present { value: binding }
+            canonical_binding: Present { value: canonical }
           })
       }
-    )
-  )
+      ExportIndexModuleAccum { index: index, seen_names: seen_names }
+    }
+  ).index
+}
+
+fn build_type_name_export_index(modules: List<TypedModule>) -> Map<String, TypeNameExportFacts> {
+  fold(modules, init: empty_map(), f: (acc, m) => export_index_merge_module(acc: acc, m: m))
 }
 
 fn module_exports_type_name(m: TypedModule, name: String) -> Bool {

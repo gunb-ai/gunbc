@@ -14792,31 +14792,39 @@ pub fn build_type_name_export_index(
     modules.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, Rc<TypeNameExportFacts>>(),
         |acc: Rc<HashMap<String, Rc<TypeNameExportFacts>>>, m: Rc<TypedModule>| {
-            m.type_env
-                .bindings
-                .values()
-                .cloned()
-                .fold(acc, |acc2, binding| {
-                    let name = binding.name.clone();
-                    match v1_rt::map_get(&acc2, name.clone()) {
-                        None => v1_rt::rc_map_insert(
-                            acc2,
-                            name,
-                            Rc::new(TypeNameExportFacts {
-                                exporter_count: 1,
-                                canonical_binding: Some(binding),
-                            }),
-                        ),
-                        Some(facts) => v1_rt::rc_map_insert(
-                            acc2,
-                            name,
-                            Rc::new(TypeNameExportFacts {
-                                exporter_count: facts.exporter_count + 1,
-                                canonical_binding: Some(binding),
-                            }),
-                        ),
-                    }
-                })
+            let mut seen_names = std::collections::HashSet::<String>::new();
+            m.type_env.bindings.values().cloned().fold(acc, |acc2, binding| {
+                let name = binding.name.clone();
+                if !seen_names.insert(name.clone()) {
+                    return acc2;
+                }
+                let canonical = m
+                    .type_env
+                    .bindings
+                    .values()
+                    .filter(|b| b.name == name)
+                    .last()
+                    .cloned()
+                    .unwrap_or(binding);
+                match v1_rt::map_get(&acc2, name.clone()) {
+                    None => v1_rt::rc_map_insert(
+                        acc2,
+                        name,
+                        Rc::new(TypeNameExportFacts {
+                            exporter_count: 1,
+                            canonical_binding: Some(canonical),
+                        }),
+                    ),
+                    Some(facts) => v1_rt::rc_map_insert(
+                        acc2,
+                        name,
+                        Rc::new(TypeNameExportFacts {
+                            exporter_count: facts.exporter_count + 1,
+                            canonical_binding: Some(canonical),
+                        }),
+                    ),
+                }
+            })
         },
     )
 }
