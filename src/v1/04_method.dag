@@ -88,6 +88,7 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "map_keys", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "map_values", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "reverse", list_of_type_variable(id: "collection_element"))
+  let m = map_insert(m, "get", with_optional_cardinality(n: type_variable_node(id: "collection_element")))
   let m = map_insert(m, "list_push", list_of_type_variable(id: "collection_element"))
   let m = map_insert(m, "hash_combine", hash_type)
   let m = map_insert(m, "atom_identity_hash", hash_type)
