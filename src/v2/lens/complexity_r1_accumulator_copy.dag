@@ -24,13 +24,14 @@ import v2.std.collection {
   Absent,
   list_at_optional
 }
-import v2.std.diagnostic { Diagnostic, Textual, WholeFile }
+import v2.std.diagnostic { Diagnostic, Textual, WholeFile, Unavailable, ExternalContractUnknown }
 import v2.std.integer { Int }
 import v2.std.logic { Bool }
 import v2.std.node {
   Atom,
   Edge,
   Instantiation,
+  Named,
   Node,
   Positional,
   Symbol,
@@ -234,14 +235,16 @@ fn r1_judge_fold_step(n: Node) -> R1JudgeResult {
 fn complexity_r1_flow_opaque_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^complexity_r1_flow_opaque_residue,
-    at: Textual { file: ^complexity_r1_lens_virtual_file, extent: WholeFile }
+    at: Textual { file: ^complexity_r1_lens_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
 fn complexity_r1_malformed_subject_diagnostic() -> Diagnostic {
   Diagnostic {
     reason: ^complexity_r1_malformed_fold_step_subject,
-    at: Textual { file: ^complexity_r1_lens_virtual_file, extent: WholeFile }
+    at: Textual { file: ^complexity_r1_lens_virtual_file, extent: WholeFile },
+    correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
