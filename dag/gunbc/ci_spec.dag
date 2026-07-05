@@ -260,14 +260,18 @@ fn gunbc_ci_rust_gate_invoke() -> String {
   )
 }
 
-fn gunbc_ci_rust_job_run() -> String {
+fn gunbc_ci_rust_gate_only_script() -> String {
   concat(
-    concat(ci_release_build_script(), "\n"),
+    concat("ROOT=", ci_repo_root_shell(), "\n"),
     concat(
       concat(git_fetch_script(policy: gunbc_ci_spec.diff_policy), "\n"),
       gunbc_ci_rust_gate_invoke()
     )
   )
+}
+
+fn gunbc_ci_rust_job_run() -> String {
+  concat(concat(ci_release_build_script(), "\n"), gunbc_ci_rust_gate_only_script())
 }
 
 fn gunbc_ci_deploy_invoke(stage: DeployStage) -> String {
