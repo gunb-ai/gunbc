@@ -4519,22 +4519,6 @@ fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Val
     v1_interpreter::list_value(items)
 }
 
-#[derive(Clone, Default)]
-struct NodeFrontierSeeds {
-    overlapping_data_items: HashSet<(String, String)>,
-    edited_test_fns: HashSet<(String, String)>,
-    force_run_all: bool,
-}
-
-impl NodeFrontierSeeds {
-    fn run_all() -> Self {
-        Self {
-            force_run_all: true,
-            ..Default::default()
-        }
-    }
-}
-
 fn decl_span_end_line(sorted_decl_lines: &[i64], decl_line: i64) -> i64 {
     sorted_decl_lines
         .iter()
@@ -4579,132 +4563,18 @@ fn collect_sorted_decl_lines_for_file(
     Ok(decls)
 }
 
-fn collect_frontier_seeds_from_diff_line_ranges(
-    index: &MultiEntryIndex,
-    line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
-) -> Result<NodeFrontierSeeds, String> {
-    let mut overlapping_data_items = HashSet::new();
-    let mut edited_test_fns = HashSet::new();
-    for (file_path, ranges) in line_ranges_by_file {
-        if !file_path.ends_with(".dag") {
-            return Ok(NodeFrontierSeeds::run_all());
-        }
-        let file_norm = normalize_repo_path(file_path);
-        let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
-            Ok(pair) => pair,
-            Err(_) => return Ok(NodeFrontierSeeds::run_all()),
-        };
-        let content = match std::fs::read_to_string(file_path) {
-            Ok(c) => c,
-            Err(_) => return Ok(NodeFrontierSeeds::run_all()),
-        };
-        let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
-        let mut decls: Vec<(i64, String, bool)> = Vec::new();
-        for module in graph.modules.iter() {
-            for item in module.items.iter() {
-                if !span_file_matches(&item.span.file, &file_norm) {
-                    continue;
-                }
-                let Some(nl) = newline_index_for_span(&item.span, &source_indices).cloned() else {
-                    return Ok(NodeFrontierSeeds::run_all());
-                };
-                let line = byte_to_line_col(nl, item.span.start).line;
-                let name = authored_name_at(source_indices.clone(), item.clone());
-                let is_data = item_kind(item.clone()) == ItemKind::DataItem;
-                decls.push((line, name, is_data));
-            }
-        }
-        for (name, line) in scan_test_decl_lines(&content) {
-            if !decls.iter().any(|(_, n, _)| n == &name) {
-                decls.push((line, name, false));
-            }
-        }
-        if decls.is_empty() {
-            return Ok(NodeFrontierSeeds::run_all());
-        }
-        decls.sort_by_key(|(line, _, _)| *line);
-        if ranges.iter().any(|r| r.start < decls[0].0) {
-            return Ok(NodeFrontierSeeds::run_all());
-        }
-        for i in 0..decls.len() {
-            let (line, name, is_data) = &decls[i];
-            let decl_end =
-                decl_span_end_line(&decls.iter().map(|(l, _, _)| *l).collect::<Vec<_>>(), *line);
-            if !ranges.iter().any(|r| *line <= r.end && decl_end >= r.start) {
-                continue;
-            }
-            if test_fn_names.contains(name) {
-                edited_test_fns.insert((file_norm.clone(), name.clone()));
-            } else if *is_data {
-                overlapping_data_items.insert((file_norm.clone(), name.clone()));
-            } else {
-                return Ok(NodeFrontierSeeds::run_all());
-            }
-        }
-    }
-    Ok(NodeFrontierSeeds {
-        overlapping_data_items,
-        edited_test_fns,
-        force_run_all: false,
-    })
-}
-
-fn entry_frontier_nodes_from_seeds(
-    ctx: &v1_interpreter::InterpContext,
-    entry_path: &str,
-    seeds: &NodeFrontierSeeds,
-) -> Result<Vec<v1_interpreter::Value>, String> {
-    let mut out = Vec::new();
-    let mut seen = HashSet::new();
-    for (_file, name) in &seeds.overlapping_data_items {
-        if !ctx.item_registry.contains_key(name) {
-            continue;
-        }
-        let Some(val) = v1_interpreter::with_active_context(ctx, || {
-            v1_interpreter::eval_data_item_value(ctx, name)
-        })
-        .map_err(|e| format!("re-eval `{name}` in {entry_path}: {e}"))?
-        else {
-            continue;
-        };
-        let mut item_nodes = Vec::new();
-        collect_node_values(&val, ctx, &mut item_nodes);
-        for node in item_nodes {
-            let key = ctx.format_value(&node);
-            if seen.insert(key) {
-                out.push(node);
-            }
-        }
-    }
-    Ok(out)
-}
-
-fn entry_touches_frontier_seeds(
-    ctx: &v1_interpreter::InterpContext,
-    entry_path: &str,
-    seeds: &NodeFrontierSeeds,
-) -> Result<bool, String> {
-    let entry_frontier = entry_frontier_nodes_from_seeds(ctx, entry_path, seeds)?;
-    if entry_frontier.is_empty() {
-        return Ok(false);
-    }
-    entry_touches_rerun_frontier(ctx, &list_value_from_vec(entry_frontier))
-}
-
 // SCAFFOLD (DESIGN §6–§7): host-side diff→declaration attribution
 // (`floor_diff_edits_from_line_ranges`) and per-entry frontier materialization
-// (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`) are Implementation 2
-// in docs/plans/affected-set-precompute-pruning.md — parallel to `v2.lens.affected_set`
-// until ROADMAP `1-affected-set-defork` Steps 3–5 land. Skip/precompute **verdicts** already
-// read `.dag` via `floor_kernel_would_skip` / `floor_kernel_precompute_would_skip`; this block
-// is the I/O + frontier-input bridge only, not a second skip policy.
+// (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`) remain host
+// realization until provenance ingest lands. Skip/precompute **verdicts** read `.dag`
+// via `floor_kernel_would_skip` / `floor_kernel_precompute_would_skip`; the
+// `entry_file_touched` axis now reads `.dag` via `entry_affected_by_touched_paths`
+// (`v2.lens.module_graph`, #6274 equivalence receipt).
 // Dissolve-on: `affected_set_reading_from_git_diff_provenance` + floor-runtime provenance ingest
 // expose edit-locus → delete `floor_diff_edits_from_line_ranges`, `rerun_frontier_nodes_for_entry`,
 // `entry_touches_rerun_frontier`, and the inline floor-runner `resolve_entry_with_index` (census:
 // `rg 'floor_diff_edits_from_line_ranges|rerun_frontier_nodes_for_entry' src/v1/stage0/src/cli_run.rs`
-// must be empty). `entry_file_touched` is marshaled from the entry's transitive import-closure
-// (not entry-path equality alone) so cross-file helper-fn edits fail-closed for importers until
-// the real `v2.lens.affected_set` fn axis lands (ROADMAP `1-affected-set-defork` Step 5).
+// must be empty).
 //
 // Host-side diff→declaration attribution only (line-range I/O). Skip verdicts live in
 // `v2.workflow.affected_set_floor_runner` — the executor reads `.dag`, never recomputes frontier.
@@ -4717,8 +4587,60 @@ struct FloorDiffEdits {
 }
 
 const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
+const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 // Keep in sync with `floor_host_scaffold_witness_marker` in affected_set_floor_runner.dag.
 const FLOOR_HOST_SCAFFOLD_WITNESS_MARKER: &str = "floor:host_scaffold";
+
+fn call_entry_affected_by_touched_paths(
+    ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
+    pool_roots: &[String],
+    touched_paths: &[String],
+) -> Result<bool, String> {
+    if !ctx
+        .item_registry
+        .contains_key("entry_affected_by_touched_paths")
+    {
+        return Err(
+            "entry_affected_by_touched_paths missing from module_graph context".to_string(),
+        );
+    }
+    let roots: Vec<v1_interpreter::Value> = pool_roots
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let touched: Vec<v1_interpreter::Value> = touched_paths
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let args = [
+        (
+            Some("entry_path".to_string()),
+            v1_interpreter::Value::Str(entry_path.to_string()),
+        ),
+        (
+            Some("pool_roots".to_string()),
+            list_value_from_vec(roots),
+        ),
+        (
+            Some("touched_paths".to_string()),
+            list_value_from_vec(touched),
+        ),
+    ];
+    match v1_interpreter::run_in_context_with_args(
+        ctx,
+        "entry_affected_by_touched_paths",
+        &args,
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "entry_affected_by_touched_paths returned `{}`, expected Bool",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("entry_affected_by_touched_paths: {e}")),
+    }
+}
 
 fn call_floor_kernel_would_skip(
     ctx: &v1_interpreter::InterpContext,
@@ -5398,6 +5320,22 @@ pub fn run_discovery_corpus_with_options(
     } else {
         None
     };
+    let module_graph_ctx = if options.skip_unaffected_node_frontier {
+        match resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY) {
+            Ok((graph, source_indices)) => {
+                Some(make_eval_context(&graph, source_indices, execution_mode))
+            }
+            Err(msg) => {
+                return Err(format!(
+                    "module_graph resolve failed ({msg}) — skip_unaffected_node_frontier: \
+                     true declares the module-grain affected-set query ({MODULE_GRAPH_ENTRY}) \
+                     and it must resolve; no silent full-corpus fallback"
+                ));
+            }
+        }
+    } else {
+        None
+    };
     let skip_precompute = if skip_enabled {
         let host_scaffold_corpus = discovery_rows_include_host_scaffold(&rows)?;
         match floor_runner_ctx.as_ref() {
@@ -5465,6 +5403,7 @@ pub fn run_discovery_corpus_with_options(
             &changed_paths,
             &diff_edits,
             floor_runner_ctx.as_ref(),
+            module_graph_ctx.as_ref(),
             whole_tree_published_keys.clone(),
         );
     }
@@ -5510,6 +5449,22 @@ pub fn run_discovery_corpus_with_options(
             } else {
                 None
             };
+            let module_graph = if skip_for_shards {
+                match resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY) {
+                    Ok((graph, source_indices)) => {
+                        Some(make_eval_context(&graph, source_indices, execution_mode))
+                    }
+                    Err(msg) => {
+                        return Err(format!(
+                            "module_graph resolve failed in shard ({msg}) — declared \
+                             module-grain affected-set query must resolve; no silent \
+                             run-everything fallback"
+                        ));
+                    }
+                }
+            } else {
+                None
+            };
             run_discovery_rows(
                 &shard_rows,
                 &index,
@@ -5518,6 +5473,7 @@ pub fn run_discovery_corpus_with_options(
                 &paths,
                 &seeds,
                 runner.as_ref(),
+                module_graph.as_ref(),
                 keys,
             )
         }));
@@ -5597,6 +5553,7 @@ fn run_discovery_rows(
     changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
+    module_graph_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
@@ -5615,8 +5572,14 @@ fn run_discovery_rows(
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
     let mut current_entry_touches = true;
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
-    let mut current_entry_closure_files: HashSet<String> = HashSet::new();
+    let mut current_entry_file_touched = true;
     let mut current_entry_content: String = String::new();
+    let touched_entry_paths: Vec<String> = diff_edits
+        .touched_entry_files
+        .iter()
+        .cloned()
+        .collect();
+    let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
@@ -5640,7 +5603,6 @@ fn run_discovery_rows(
                 resolve_nanos,
             });
             current_closure_subject = Some(closure_subject);
-            current_entry_closure_files = import_closure_files_from_graph(&graph);
             let entry_ctx = make_eval_context_with_runtime_options(
                 &graph,
                 source_indices,
@@ -5659,9 +5621,31 @@ fn run_discovery_rows(
                         &list_value_from_vec(current_entry_frontier_nodes.clone()),
                     )?
                 };
+                current_entry_file_touched = if touched_entry_paths.is_empty() {
+                    false
+                } else {
+                    match module_graph_ctx {
+                        Some(mg_ctx) => call_entry_affected_by_touched_paths(
+                            mg_ctx,
+                            &workspace_relative_repo_path(&row.entry),
+                            &pool_roots,
+                            &touched_entry_paths,
+                        )?,
+                        None => {
+                            return Err(format!(
+                                "module_graph context missing for entry {} — \
+                                 skip_unaffected_node_frontier declares the module-grain \
+                                 affected-set query and it must resolve; no silent \
+                                 run-everything fallback",
+                                row.entry
+                            ));
+                        }
+                    }
+                };
             } else {
                 current_entry_frontier_nodes.clear();
                 current_entry_touches = true;
+                current_entry_file_touched = true;
             }
             ctx = Some(entry_ctx);
             current_entry = Some(row.entry.clone());
@@ -5671,11 +5655,7 @@ fn run_discovery_rows(
             && diff_edits.edited_test_fns.iter().any(|(file, func)| {
                 diff_file_matches_entry(file, &row.entry) && func == &row.function
             });
-        let entry_file_touched = skip_enabled
-            && diff_edits
-                .touched_entry_files
-                .iter()
-                .any(|file| touched_file_in_import_closure(file, &current_entry_closure_files));
+        let entry_file_touched = skip_enabled && current_entry_file_touched;
         let should_skip = if skip_enabled {
             let host_scaffold_witness =
                 witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
@@ -6024,9 +6004,9 @@ new file mode 100644
 #[cfg(test)]
 mod floor_disposition_kernel_alignment {
     use super::{
-        build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
-        diff_file_matches_entry, entry_touches_frontier_seeds, make_eval_context,
-        parse_unified_diff_line_ranges, resolve_entry_with_index, DiscoveryRow,
+        build_multi_entry_index, diff_file_matches_entry, entry_touches_rerun_frontier,
+        floor_diff_edits_from_diff_text, list_value_from_vec, make_eval_context,
+        rerun_frontier_nodes_for_entry, resolve_entry_with_index, DiscoveryRow,
     };
     use crate::v1_interpreter::{self, ExecutionMode, Value};
     use std::path::PathBuf;
@@ -6119,11 +6099,23 @@ mod floor_disposition_kernel_alignment {
         skip_enabled && !entry_touches && !function_edited
     }
 
-    fn function_edited_for_row(seeds: &super::NodeFrontierSeeds, row: &DiscoveryRow) -> bool {
-        seeds
+    fn function_edited_for_row(edits: &super::FloorDiffEdits, row: &DiscoveryRow) -> bool {
+        edits
             .edited_test_fns
             .iter()
             .any(|(file, func)| diff_file_matches_entry(file, &row.entry) && func == &row.function)
+    }
+
+    fn entry_touches_from_edits(
+        entry_ctx: &v1_interpreter::InterpContext,
+        entry_path: &str,
+        edits: &super::FloorDiffEdits,
+    ) -> Result<bool, String> {
+        let frontier_nodes = rerun_frontier_nodes_for_entry(entry_ctx, entry_path, edits)?;
+        if frontier_nodes.is_empty() {
+            return Ok(false);
+        }
+        entry_touches_rerun_frontier(entry_ctx, &list_value_from_vec(frontier_nodes))
     }
 
     struct Scenario {
