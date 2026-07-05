@@ -898,7 +898,7 @@ pub fn instantiate_algebra_type(
                 let sb =
                     instantiate_algebra_type(second.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_tuple_type))))))))))))))))))))))))))))))((*fb.ty).clone(), (*sb.ty).clone()),
+                    ty: make_tuple_type(fb.ty.clone(), sb.ty.clone()),
                     diagnostics: v1_rt::concat(fb.diagnostics.clone(), sb.diagnostics.clone()),
                 })
             }
@@ -928,13 +928,13 @@ pub fn instantiate_algebra_type(
                 let param_nodes = Rc::new({
                     let mut __result = Vec::new();
                     for b in param_bs.clone().iter().cloned() {
-                        __result.push((*b.ty).clone());
+                        __result.push(b.ty.clone());
                     }
                     __result
                 });
                 let rb = instantiate_algebra_type(r.clone(), base.clone(), source_indices.clone());
                 Rc::new(KernelTypeBuild {
-                    ty: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_callable_type))))))))))))))))))))))))))))))(param_nodes, (*rb.ty).clone()),
+                    ty: make_callable_type(param_nodes, rb.ty.clone()),
                     diagnostics: v1_rt::concat(param_diags, rb.diagnostics.clone()),
                 })
             }
@@ -962,7 +962,7 @@ pub fn instantiate_algebra_field(
         let param_types = Rc::new({
             let mut __result = Vec::new();
             for b in param_bs.clone().iter().cloned() {
-                __result.push((*b.ty).clone());
+                __result.push(b.ty.clone());
             }
             __result
         });
@@ -979,10 +979,10 @@ pub fn instantiate_algebra_field(
             source_indices.clone(),
         );
         let field_ty = if ((param_types.clone().len() as i64) > 0) {
-            Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(algebra_method_field))))))))))))))))))))))))))))))(
+            algebra_method_field(
                 template.name.clone(),
                 param_types.clone(),
-                (*return_b.ty).clone(),
+                return_b.ty.clone(),
             )
         } else {
             algebra_value_field(template.name.clone(), return_b.ty.clone())
@@ -1017,7 +1017,7 @@ pub fn enrich_kernel_type(
                 let fields = Rc::new({
                     let mut __result = Vec::new();
                     for b in field_bs.clone().iter().cloned() {
-                        __result.push((*b.ty).clone());
+                        __result.push(b.ty.clone());
                     }
                     __result
                 });
@@ -1527,7 +1527,7 @@ pub fn apply_type_substitution(
                 source_indices.clone(),
             );
             Rc::new(KernelTypeBuild {
-                ty: Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(Rc::new(make_tuple_type))))))))))))))))))))))))))))))((*fb.ty).clone(), (*sb.ty).clone()),
+                ty: make_tuple_type(fb.ty.clone(), sb.ty.clone()),
                 diagnostics: v1_rt::concat(fb.diagnostics.clone(), sb.diagnostics.clone()),
             })
         }
@@ -1551,7 +1551,7 @@ pub fn apply_type_substitution(
             let param_nodes = Rc::new({
                 let mut __result = Vec::new();
                 for b in param_bs.clone().iter().cloned() {
-                    __result.push((*b.ty).clone());
+                    __result.push(b.ty.clone());
                 }
                 __result
             });
@@ -1575,7 +1575,7 @@ pub fn apply_type_substitution(
                         for pn in param_nodes.iter().cloned() {
                             __result.push(make_param_node(
                                 "_".to_string(),
-                                Rc::new(pn.clone()),
+                                pn.clone(),
                                 None,
                                 no_span(),
                                 no_span(),
@@ -2291,7 +2291,8 @@ pub fn node_type_equals_core(
                                                     if (params_eq == false) {
                                                         false
                                                     } else {
-                                                        match left.inferred
+                                                        match left
+                                                            .inferred
                                                             .clone()
                                                             .as_deref()
                                                             .cloned()
@@ -2299,7 +2300,8 @@ pub fn node_type_equals_core(
                                                             Some(InferredNode::Resolved {
                                                                 node: left_ret,
                                                                 ..
-                                                            }) => match right.inferred
+                                                            }) => match right
+                                                                .inferred
                                                                 .clone()
                                                                 .as_deref()
                                                                 .cloned()
@@ -2639,11 +2641,7 @@ pub fn infer_binop_type_node(
             let is_product = (left_type.connective.clone() == Connective::Conj);
             if is_product {
                 match first_matching_algebra_field(left_type.clone(), candidates, source_indices) {
-                    Some(m) => match (*m.field_node).clone().inferred
-                        .clone()
-                        .as_deref()
-                        .cloned()
-                    {
+                    Some(m) => match m.field_node.clone().inferred.clone().as_deref().cloned() {
                         Some(InferredNode::Resolved { node: rt, .. }) => {
                             if ((rt.params.clone().len() as i64) > 0) {
                                 match rt.inferred.clone().as_deref().cloned() {

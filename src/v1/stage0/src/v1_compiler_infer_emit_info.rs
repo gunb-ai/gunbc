@@ -83,8 +83,6 @@ pub struct EmitGraphInfo {
     pub movable: Rc<std::collections::BTreeSet<String>>,
     pub variant_to_enum: Rc<HashMap<String, String>>,
     pub owned_bindings: Rc<std::collections::BTreeSet<String>>,
-    pub move_sites_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    pub move_sites: Rc<HashMap<String, bool>>,
     pub read_only_params_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
     pub read_only_params: Rc<std::collections::BTreeSet<String>>,
     pub corpus_repr: RustCorpusRepr,
@@ -106,8 +104,6 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         movable: v1_rt::rc_empty_set::<String>(),
         variant_to_enum: v1_rt::rc_empty_map::<String, String>(),
         owned_bindings: v1_rt::rc_empty_set::<String>(),
-        move_sites_index: v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-        move_sites: v1_rt::rc_empty_map::<String, bool>(),
         read_only_params_index: v1_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
         ),
         read_only_params: v1_rt::rc_empty_set::<String>(),
@@ -452,7 +448,8 @@ pub fn build_field_type_map(
 ) -> Rc<HashMap<String, String>> {
     children.iter().cloned().fold(
         v1_rt::rc_empty_map::<String, String>(),
-        |acc: Rc<HashMap<String, String>>, child: Rc<Node>| match child.inferred
+        |acc: Rc<HashMap<String, String>>, child: Rc<Node>| match child
+            .inferred
             .clone()
             .as_deref()
             .cloned()
