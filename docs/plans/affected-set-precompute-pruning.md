@@ -151,7 +151,7 @@ The `fail_closed_lockdown.dag` INERT marker on `affected_set.dag` is removed whe
 
 **(b) N→1 confirmed** — the Rust path (Step 5) is deleted; `NodeFrontierSeeds` no longer exists in the codebase. CI floor stays green. Proves de-fork completed, not merely layered.
 
-**(c) Real gunbc floor wall-clock + peak-RSS drop on scoped diff** — `gunbc test` on a 1-file diff with empty node frontier AND empty `edited_test_fns`: floor runs 0 witnesses AND skips the precompute. Logged wall-clock and peak-RSS drop materially vs a full-corpus baseline. On the REAL floor with live glob-discovery, not a synthetic fixture.
+**(c) Real gunbc floor wall-clock + peak-RSS drop on scoped diff** — `gunbc test` on a 1-file diff with empty node frontier AND empty `edited_test_fns` AND empty `touched_entry_files`: floor runs 0 witnesses AND skips the precompute. Logged wall-clock and peak-RSS drop materially vs a full-corpus baseline. On the REAL floor with live glob-discovery, not a synthetic fixture.
 
 Sign-off on this sketch = commitment to deliver all three receipts green before merge.
 
