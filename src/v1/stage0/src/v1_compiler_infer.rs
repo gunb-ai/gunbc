@@ -14606,8 +14606,6 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             movable: v1_rt::rc_empty_set::<String>(),
             variant_to_enum: vtoe,
             owned_bindings: v1_rt::rc_empty_set::<String>(),
-            move_sites_index: v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-            move_sites: v1_rt::rc_empty_map::<String, bool>(),
             read_only_params_index: v1_rt::rc_empty_map::<
                 String,
                 Rc<std::collections::BTreeSet<String>>,
