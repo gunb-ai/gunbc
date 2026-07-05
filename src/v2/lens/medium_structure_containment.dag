@@ -192,10 +192,12 @@ data medium_structure_exception_roster: List<String> = [
   "dag/gunbc/srv3_os_install_reconcile_receipt.dag",
   "dag/gunbc/srv3_os_install_reconcile_apply.dag",
   "dag/gunbc/srv3_os_install_reconcile_dry_run.dag",
-  "dag/gunbc/srv3_os_install_reconcile_record_approval.dag"
+  "dag/gunbc/srv3_os_install_reconcile_record_approval.dag",
+
+  "dag/tools/dag_compile_clean_seam_transport.dag"
 ]
 
-data medium_structure_exception_roster_size_baseline: Int = 52
+data medium_structure_exception_roster_size_baseline: Int = 53
 
 fn roster_growth_ratchet_holds(live_size: Int, baseline: Int) -> Bool {
   live_size <= baseline

@@ -16,7 +16,16 @@ data cross_shard_seam_break_needle: String = "type Classical = True | False"
 data cross_shard_seam_break_replacement: String = "type ClassicalRenamedBug = True | False"
 data cross_shard_seam_class_marker: String = "Classical"
 
-data cross_shard_seam_disposition_note: String = "🟡 dissolve-on: cross-shard seam probe body composed as RawLine shell text (medium-as-string, matching the established ubuntu_install_media_fetch.dag precedent) because the ShellStmt/Redir grammar has no combinator yet for 'capture stdout+stderr and exit code of one command into named vars without aborting under set -e'; DISSOLVES WHEN the bash.program grammar grows a CaptureOutputAndStatus (or equivalent 2>&1 + $? ) ShellStmt row and this probe re-expresses fully in structured combinators."
+data cross_shard_seam_disposition_note: String = "🟡 dissolve-on: cross-shard seam probe body composed as RawLine shell text (medium-as-string, matching the established ubuntu_install_media_fetch.dag precedent) because the ShellStmt/Redir grammar has no combinator yet for 'capture stdout+stderr and exit code of one command into named vars without aborting under set -e'; DISSOLVES WHEN the bash.program grammar grows a CaptureOutputAndStatus (or equivalent 2>&1 + $? ) ShellStmt row and this probe re-expresses fully in structured combinators; retire medium_structure_exception_roster entry for dag/tools/dag_compile_clean_seam_transport.dag"
+
+data cross_shard_seam_transport_invocation_substring_witness_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "v2.lens.medium_structure_containment",
+    decl_name: "medium_structure_containment_holds",
+    field: WholeDeclaration
+  }
+}
 
 fn cross_shard_seam_sed_line() -> String {
   let p1 = concat("sed -i 's/", cross_shard_seam_break_needle)
