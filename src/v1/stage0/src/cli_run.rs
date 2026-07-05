@@ -9675,17 +9675,21 @@ fn test_migration_debt_stem_covered(v1_stem: &str, floor_stems: &[String]) -> bo
 // from the debt roster and authorizes its delete through the delete-guard. The typed disposition
 // and its justification live in the `.dag` decl (`test.retirement.model`, single authority,
 // type-checked by the compile-clean gate); this guard reads only the filename stem, exactly as
-// it reads floor witnesses. A file counts only if it actually declares a `TestModuleRetirement`,
-// so an empty stub cannot silence the guard.
+// it reads floor witnesses. A file counts only if it actually *constructs* a `TestModuleRetirement`
+// (the `TestModuleRetirement {` constructor form) — an empty stub, or one that merely imports the
+// type without declaring a retirement (`{ TestModuleRetirement }`), cannot silence the guard. The
+// compile-clean gate independently type-checks the constructed value against `test.retirement.model`.
 fn test_migration_retired_stems() -> Vec<String> {
     let mut stems: Vec<String> = corpus_dag_files()
         .into_iter()
-        .filter(|(_, content)| content.contains("TestModuleRetirement"))
+        .filter(|(_, content)| content.contains("TestModuleRetirement {"))
         .filter_map(|(path, _)| {
             let file_name = std::path::Path::new(&path)
                 .file_name()
                 .and_then(|n| n.to_str())?;
-            file_name.strip_suffix("_retired.dag").map(|s| s.to_string())
+            file_name
+                .strip_suffix("_retired.dag")
+                .map(|s| s.to_string())
         })
         .collect();
     stems.sort();
