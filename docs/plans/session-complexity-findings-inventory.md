@@ -42,6 +42,20 @@ O(n²) is the runtime `Rc::make_mut` deep-clone when the accumulator Rc is alias
 | 12 | parse aliased accumulators (7 sites) | 02_parse.dag:1313/1561/3015/3652/3727 | O(m²) | open | **MISS-ownership** |
 | 13 | generated `.clone()` clone-fallback (§5 absorbing) | 05_emit_rust ownership | O(n²) runtime | snappy-newt #6249 | **MISS-ownership** |
 
+**Deciding-fact taxonomy (requirements the wall hands the ownership lane — per sunny-wren-799).**
+The fix is NOT a smarter lens (that violates the "lens reads SHAPE" structural law + §4 no-heuristic). It is to land
+the missing fact as a SUBSTRATE FACT on the node, so the *same* pure-shape rule reads it. Which fact decides each:
+- #10 dag_collect — **move/last-use**: is `seen` dead after the `rc_push` (→ move, O(1)) or aliased/live (→ copy, O(n))?
+- #11 intern/pre_intern_tokens — **move/last-use** (the `table` is still live at the push → copy) **+ consumer-count**
+  (the dead-work half: interned ids consumed at 3 sites only → the necessity axis, Section D/R3).
+- #12 parse accumulators — **move/last-use**: is `acc.clone()` a copy because `acc` is still aliased downstream?
+- #13 clone-fallback — **move/last-use** (per-site last-use verdict; the de-fork's `owned_bindings`/Perceus fact).
+All four reduce to the SAME fact — **move/last-use** (aliasing-at-site is its dual) — which the ownership de-fork
+already lands. #11 additionally needs **consumer-count** for its dead-work half. Interim honest verdict for any such
+site until the fact exists in-tree: **counted `Unknown(OwnershipUnmodeled)`** — never silently `Linear`/`Constant` (§5
+refusal, not absorption). A census that grades `fold(xs, rc_push(acc.clone(), x))` as Linear without an ownership
+fact is WRONG, and that is the RED control.
+
 ## C — Constant-factor (the lens MISSES — below asymptotic resolution)
 | # | Finding | Location | Cost | Status | Verdict |
 |---|---------|----------|------|--------|---------|
