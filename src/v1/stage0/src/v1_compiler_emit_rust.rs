@@ -892,6 +892,18 @@ pub fn render_rust_shared_type_if_needed(
     }
 }
 
+pub fn render_rust_shared_type_with_optional(
+    n: Rc<Node>,
+    type_name: String,
+    rendered: String,
+    shared_types: Rc<std::collections::BTreeSet<String>>,
+) -> String {
+    rust_carrier_optional_wrap(
+        n.clone(),
+        render_rust_shared_type_if_needed(type_name, rendered, shared_types),
+    )
+}
+
 pub fn render_rust_applied_type_shared(
     n: Rc<Node>,
     generic_param_names: Rc<Vec<String>>,
@@ -912,7 +924,7 @@ pub fn render_rust_applied_type_shared(
             env,
         );
         let type_name = authored_name_at(source_indices.clone(), n.clone());
-        render_rust_shared_type_if_needed(type_name, rendered, shared_types.clone())
+        render_rust_shared_type_with_optional(n.clone(), type_name, rendered, shared_types.clone())
     }
 }
 
@@ -992,7 +1004,8 @@ pub fn render_rust_decl_type(
                                     name.clone(),
                                     variant_to_enum.clone(),
                                 );
-                                render_rust_shared_type_if_needed(
+                                render_rust_shared_type_with_optional(
+                                    n.clone(),
                                     name.clone(),
                                     rendered,
                                     shared_types.clone(),
@@ -1005,7 +1018,8 @@ pub fn render_rust_decl_type(
                                 if (!is_container_type(name.clone())
                                     && rust_fn_sig_peel_closed_alias(env.clone(), n.clone()))
                                 {
-                                    render_rust_shared_type_if_needed(
+                                    render_rust_shared_type_with_optional(
+                                        n.clone(),
                                         name.clone(),
                                         name.clone(),
                                         shared_types.clone(),
@@ -1135,7 +1149,8 @@ pub fn render_rust_decl_type(
                                                 }
                                             }
                                         };
-                                        render_rust_shared_type_if_needed(
+                                        render_rust_shared_type_with_optional(
+                                            n.clone(),
                                             name.clone(),
                                             applied_ty,
                                             shared_types.clone(),
@@ -1249,13 +1264,23 @@ pub fn render_rust_fn_sig_type(
             && rust_fn_sig_peel_closed_alias(env.clone(), n.clone())
             && rust_fn_sig_preserves_authored_alias_leaf(name.clone(), corpus_repr.clone())
         {
-            render_rust_shared_type_if_needed(name.clone(), name.clone(), shared_types.clone())
+            render_rust_shared_type_with_optional(
+                n.clone(),
+                name.clone(),
+                name.clone(),
+                shared_types.clone(),
+            )
         } else if (n.connective.clone() == Connective::NoConnective)
             && ((n.children.clone().len() as i64) > 0)
             && !is_container_type(name.clone())
             && rust_fn_sig_peel_closed_alias(env.clone(), n.clone())
         {
-            render_rust_shared_type_if_needed(name.clone(), name.clone(), shared_types.clone())
+            render_rust_shared_type_with_optional(
+                n.clone(),
+                name.clone(),
+                name.clone(),
+                shared_types.clone(),
+            )
         } else if ((generic_param_names.clone().len() as i64) > 0) {
             render_rust_decl_type(
                 n.clone(),
@@ -1303,7 +1328,8 @@ pub fn render_rust_fn_sig_type_applied_binding(
                             corpus_repr.clone(),
                         )
                     {
-                        render_rust_shared_type_if_needed(
+                        render_rust_shared_type_with_optional(
+                            n.clone(),
                             outer_name.clone(),
                             outer_name.clone(),
                             shared_types,
@@ -8173,14 +8199,16 @@ pub fn render_rust_type_with_applied_binding(
                             && ((n.children.clone().len() as i64) == 0))
                         {
                             if (outer_name.clone() != applied_name) {
-                                render_rust_shared_type_if_needed(
+                                render_rust_shared_type_with_optional(
+                                    n.clone(),
                                     outer_name.clone(),
                                     outer_name.clone(),
                                     shared_types.clone(),
                                 )
                             } else {
                                 if v1_rt::set_contains(&shared_types, outer_name.clone()) {
-                                    render_rust_shared_type_if_needed(
+                                    render_rust_shared_type_with_optional(
+                                        n.clone(),
                                         outer_name.clone(),
                                         outer_name.clone(),
                                         shared_types.clone(),

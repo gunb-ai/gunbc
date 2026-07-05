@@ -355,6 +355,10 @@ fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
   gunbc_ci_floor_only_script(spec: spec)
 }
 
+fn gunbc_ci_floor_run(spec: CiSpec) -> String {
+  gunbc_ci_floor_only_script(spec: spec)
+}
+
 fn gunbc_ci_rust_gate_invoke() -> String {
   ci_cargo_eagain_retry_script(
     command: concat(

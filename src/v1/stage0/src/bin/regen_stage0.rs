@@ -8,8 +8,8 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use v1_compiler::v1_compiler_artifact::RenderTarget;
+use v1_compiler::v1_compiler_compile::stage0_self_compile_refusal_message;
 use v1_compiler::v1_compiler_compile::{compile_sources, SourceFile};
-use v1_compiler::v1_std_core::{diagnostic_to_message, diagnostic_to_span, CompilerDiagnostic};
 
 const BOOTSTRAP_TIMING_RECEIPT_VERSION: u32 = 2;
 const BOOTSTRAP_TIMING_RECEIPT_SCHEMA: &str = "gunbc.bootstrap_timing_receipt.v2";
@@ -617,36 +617,8 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
     let roots = vec![workspace.join("src/v1"), workspace.join("dag")];
     let sources = source_files_for_roots(&roots, workspace)?;
     let result = compile_sources(Rc::new(sources), RenderTarget::Rust);
-
-    let hard_errors: Vec<String> = result
-        .diagnostics
-        .iter()
-        .filter(|d| {
-            !matches!(
-                *d.diagnostic.clone(),
-                CompilerDiagnostic::ComplexityUnknown { .. }
-            )
-        })
-        .map(|d| {
-            let span = diagnostic_to_span(d.diagnostic.clone());
-            format!(
-                "{} ({}:{}-{})",
-                diagnostic_to_message(d.diagnostic.clone()),
-                span.file,
-                span.start,
-                span.end
-            )
-        })
-        .collect();
-    if !hard_errors.is_empty() {
-        return Err(format!(
-            "v2 self-compile produced {} hard diagnostic(s):\n{}",
-            hard_errors.len(),
-            hard_errors.join("\n")
-        ));
-    }
-    if result.files.is_empty() {
-        return Err("v2 self-compile emitted no files".to_string());
+    if let Some(message) = stage0_self_compile_refusal_message(result.clone()) {
+        return Err(message);
     }
 
     let mut out = HashMap::new();
@@ -1283,6 +1255,13 @@ mod tests {
             .all(|input| input.content_hash.starts_with("fnv1a64:") && input.len_bytes > 0));
 
         let _ = fs::remove_dir_all(workspace);
+    }
+
+    #[test]
+    fn compile_stage0_uses_shared_refusal_authority() {
+        let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/bin/regen_stage0.rs");
+        let source = fs::read_to_string(path).expect("read regen_stage0.rs");
+        assert!(source.contains("stage0_self_compile_refusal_message"));
     }
 
     #[test]

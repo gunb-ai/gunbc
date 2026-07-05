@@ -1993,6 +1993,7 @@ pub fn serialize_diagnostic(diagnostic: Rc<ErrorNode>) -> String {
 pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
     {
         let collected = collect_dag_nodes(typed.clone());
+        let _ = v1_rt::trace_mark("compile.emit.dag.collect.done".to_string());
         if ((collected.collision_errors.clone().len() as i64) > 0) {
             return Rc::new(EmitResult {
                 files: Rc::new(vec![]),
@@ -2063,6 +2064,7 @@ pub fn emit_dag_artifact(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
             ),
             "],\n  \"files\": []\n}".to_string(),
         );
+        let _ = v1_rt::trace_mark("compile.emit.dag.serialize.done".to_string());
         Rc::new(EmitResult {
             files: Rc::new(vec![Rc::new(TextFile {
                 path: "dag-artifact.json".to_string(),
@@ -2324,6 +2326,77 @@ pub fn compile_sources_with_options(
     emit_resolved_for_target(compile_to_resolved_with_options(sources, options), target)
 }
 
+pub fn interpreter_blocking_diagnostic_messages(
+    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
+) -> Rc<Vec<String>> {
+    Rc::new({
+        let mut __result = Vec::new();
+        for d in Rc::new({
+            let mut __result = Vec::new();
+            for d in diagnostics.iter().cloned() {
+                if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
+                    __result.push(d);
+                }
+            }
+            __result
+        })
+        .iter()
+        .cloned()
+        {
+            __result.push({
+                let span = diagnostic_to_span(d.diagnostic.clone());
+                v1_rt::concat(
+                    v1_rt::concat(
+                        v1_rt::concat(
+                            v1_rt::concat(
+                                v1_rt::concat(
+                                    v1_rt::concat(
+                                        v1_rt::concat(
+                                            diagnostic_to_message(d.diagnostic.clone()),
+                                            " (".to_string(),
+                                        ),
+                                        span.file.clone(),
+                                    ),
+                                    ":".to_string(),
+                                ),
+                                (span.start.clone()).to_string(),
+                            ),
+                            "-".to_string(),
+                        ),
+                        (span.end.clone()).to_string(),
+                    ),
+                    ")".to_string(),
+                )
+            });
+        }
+        __result
+    })
+}
+
+pub fn stage0_self_compile_refusal_message(result: Rc<PipelineResult>) -> Option<String> {
+    {
+        let hard_messages = interpreter_blocking_diagnostic_messages(result.diagnostics.clone());
+        if ((hard_messages.clone().len() as i64) > 0) {
+            Some(v1_rt::concat(
+                v1_rt::concat(
+                    v1_rt::concat(
+                        "v2 self-compile produced ".to_string(),
+                        (hard_messages.clone().len() as i64).to_string(),
+                    ),
+                    " hard diagnostic(s):\n".to_string(),
+                ),
+                hard_messages.clone().join(&"\n".to_string()),
+            ))
+        } else {
+            if ((result.files.clone().len() as i64) == 0) {
+                Some("v2 self-compile emitted no files".to_string())
+            } else {
+                None
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ResolvedPipelineResult {
     pub graph: Option<Rc<ResolvedGraph>>,
@@ -2349,7 +2422,9 @@ pub fn compile_to_resolved_with_options(
     options: CompilePipelineOptions,
 ) -> Rc<ResolvedPipelineResult> {
     {
+        let _ = v1_rt::trace_mark("compile.frontend.begin".to_string());
         let frontend = front_end_sources(sources);
+        let _ = v1_rt::trace_mark("compile.frontend.done".to_string());
         let newline_indices = frontend.newline_indices.clone();
         match frontend.graph.clone() {
             None => Rc::new(ResolvedPipelineResult {
@@ -2368,12 +2443,14 @@ pub fn compile_to_resolved_with_options(
                     },
                 );
                 let norm = normalize_graph(graph.clone(), source_indices.clone());
+                let _ = v1_rt::trace_mark("compile.normalize.done".to_string());
                 let norm_diags = norm.diagnostics.clone();
                 let typed = reconcile(
                     norm.graph.clone(),
                     source_indices.clone(),
                     frontend.intern_table.clone(),
                 );
+                let _ = v1_rt::trace_mark("compile.reconcile.done".to_string());
                 let typed_diags = typed.diagnostics.clone();
                 let complexity = if options.analyze_complexity.clone() {
                     run_complexity_analysis(typed.clone(), source_indices.clone())
@@ -2388,6 +2465,7 @@ pub fn compile_to_resolved_with_options(
                 let all_diags = v1_rt::concat(typed_diags, complexity_diags);
                 let ownership = extract_ownership_proofs(typed.clone());
                 let ownership_diags = ownership_diagnostics(ownership.clone());
+                let _ = v1_rt::trace_mark("compile.analyses.done".to_string());
                 Rc::new(ResolvedPipelineResult {
                     graph: Some(typed.clone()),
                     diagnostics: v1_rt::concat(
@@ -2435,7 +2513,9 @@ pub fn emit_resolved_for_target(
                 }),
                 target,
             );
+            let _ = v1_rt::trace_mark("compile.emit.begin".to_string());
             let emit_result = emit_from_artifact_plan(emittable.clone(), artifact_plan.clone());
+            let _ = v1_rt::trace_mark("compile.emit.done".to_string());
             let emit_files = emit_result.files.clone();
             let emit_diags = emit_result.diagnostics.clone();
             let emit_errors = Rc::new({
