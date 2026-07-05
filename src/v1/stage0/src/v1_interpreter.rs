@@ -2914,13 +2914,33 @@ fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<Stri
     alias_rhs_next_name(ctx, rhs)
 }
 
+fn cast_target_seed_name(ctx: &InterpContext, target: Rc<Node>) -> String {
+    let direct = authored_name_at(ctx.si(), target.clone());
+    if !direct.is_empty() {
+        return direct;
+    }
+    if let Some(name) = alias_rhs_next_name(ctx, target.clone()) {
+        return name;
+    }
+    if let Some(InferredNode::Resolved { node }) = target.inferred.as_deref() {
+        let inner = authored_name_at(ctx.si(), node.clone());
+        if !inner.is_empty() {
+            return inner;
+        }
+        if let Some(name) = alias_rhs_next_name(ctx, node.clone()) {
+            return name;
+        }
+    }
+    String::new()
+}
+
 fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
-    let mut current = authored_name_at(ctx.si(), target);
+    let mut current = cast_target_seed_name(ctx, target);
     let mut seen = BTreeSet::new();
 
     for _ in 0..32 {
         if current.is_empty() {
-            return String::new();
+            break;
         }
         if !seen.insert(current.clone()) {
             return current;
@@ -2978,9 +2998,17 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         (Value::Float(n), "String") => Ok(Value::Str(n.to_string())),
         (Value::Bool(b), "String") => Ok(Value::Str(b.to_string())),
         (v, "String") => Ok(Value::Str(format!("{}", v))),
-        (v, t) => Err(InterpError::TypeError {
-            msg: format!("cannot cast {} to {}", v.type_label(), t),
-        }),
+        (v, "") if cast_target_underlying_kernel(ctx, target_node.clone()) == "String" => Ok(v),
+        (v, t) => {
+            let label = if t.is_empty() {
+                cast_target_seed_name(ctx, target_node.clone())
+            } else {
+                t.to_string()
+            };
+            Err(InterpError::TypeError {
+                msg: format!("cannot cast {} to {}", v.type_label(), label),
+            })
+        }
     }
 }
 
@@ -4246,6 +4274,24 @@ fn dispatch_shell(
     })
 }
 
+fn list_element_type_from_field(field_node: &Rc<Node>, ctx: &InterpContext) -> Option<Rc<Node>> {
+    let ty = match field_node.inferred.as_deref()? {
+        InferredNode::Resolved { node } => node.clone(),
+        _ => return None,
+    };
+    if authored_name_at(ctx.si(), ty.clone()) != "List" || ty.children.is_empty() {
+        return None;
+    }
+    Some(ty.children[0].clone())
+}
+
+fn coerce_stdout_line_for_field(line: Value, field_node: &Rc<Node>, ctx: &InterpContext) -> Value {
+    let Some(element_type) = list_element_type_from_field(field_node, ctx) else {
+        return line;
+    };
+    str_identity_cast_if_string_family(&line, ctx, element_type).unwrap_or(line)
+}
+
 fn map_shell_outputs(
     result: &ShellResult,
     op_node: &Rc<Node>,
@@ -4276,7 +4322,9 @@ fn map_shell_outputs(
                 let lines: Vec<Value> = result
                     .stdout
                     .lines()
-                    .map(|l| Value::Str(l.to_string()))
+                    .map(|l| {
+                        coerce_stdout_line_for_field(Value::Str(l.to_string()), child, ctx)
+                    })
                     .collect();
                 list_value((lines))
             }
