@@ -246,6 +246,20 @@ fn ci_nextest_install_step() -> Step {
   }
 }
 
+fn ci_rust_sccache_warm_step() -> Step {
+  RunStep {
+    name: Present { value: "sccache warm (release bins + cache prime)" },
+    id: none,
+    run: ci_release_build_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_rust_sccache_warm_step_timeout_minutes }
+  }
+}
+
 fn ci_rust_gate_step() -> Step {
   RunStep {
     name: Present { value: "v1 rust gate (fmt + clippy + nextest)" },
@@ -298,6 +312,8 @@ data gunbc_ci_job_timeout_policy_minutes: Int = 40
 
 data gunbc_ci_rust_gate_step_timeout_minutes: Int = 15
 
+data gunbc_ci_rust_sccache_warm_step_timeout_minutes: Int = 45
+
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
 data gunbc_ci_prelude_allowance_minutes: Int = 5
@@ -311,7 +327,7 @@ fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
 }
 
 fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_rust_gate_step_timeout_minutes
+  gunbc_ci_rust_sccache_warm_step_timeout_minutes
     + gunbc_ci_rust_gate_step_timeout_minutes
     + gunbc_ci_aux_step_timeout_minutes
     + gunbc_ci_aux_step_timeout_minutes
@@ -363,7 +379,7 @@ fn rust_tests_job() -> Job {
     runner: gunbc_ci_runner_spec(),
     steps: concat(
       ci_prelude_steps(),
-      [ci_nextest_install_step(), ci_release_build_step(), ci_rust_gate_step(), ci_rust_cgroup_measurement_step()]
+      [ci_nextest_install_step(), ci_rust_sccache_warm_step(), ci_rust_gate_step(), ci_rust_cgroup_measurement_step()]
     ),
     needs: [],
     env: none,
