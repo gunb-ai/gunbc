@@ -18,7 +18,6 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    needs: [rust_tests]
     timeout-minutes: 10
     steps:
       - name: Checkout
@@ -56,9 +55,8 @@ jobs:
             ${{ runner.temp }}/cargo/registry/cache/
             ${{ runner.temp }}/cargo/git/db/
             target/
-          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}
+          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
-            cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}-
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: gunbc ci (.dag witnesses + gates)
         run: |
@@ -138,9 +136,8 @@ jobs:
             ${{ runner.temp }}/cargo/registry/cache/
             ${{ runner.temp }}/cargo/git/db/
             target/
-          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}
+          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
-            cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}-
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: Install cargo-nextest
         run: |
@@ -242,9 +239,8 @@ jobs:
             ${{ runner.temp }}/cargo/registry/cache/
             ${{ runner.temp }}/cargo/git/db/
             target/
-          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}-${{ github.sha }}
+          key: cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: |
-            cargo-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}-
             cargo-ci-${{ runner.os }}-${{ runner.arch }}-
       - name: Deploy dashboard to srv1 (live_deploy_apply_srv1_wet)
         run: |
@@ -272,4 +268,3 @@ jobs:
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
           "$ROOT/target/release/gunbc" run --source-root dag --source-root src/v2 --entry dag/gunbc/live_deploy/apply.dag --function live_deploy_apply_srv1_wet
-
