@@ -6370,6 +6370,25 @@ mod floor_witness_a_prove {
 // Both sides are fed by the same host-realized `import_resolution_facts`/`module_declaration_facts`,
 // so this is a decision-level proof (§5: execution, not a grep/typecheck spec), not a re-proof of
 // closure membership (already covered by `import_closure_equivalence_tests` above).
+//
+// Touched-paths derivation (fixed post-#6274 review): the input fed to BOTH sides is NOT the raw
+// `git show --name-only` file list. `entry_file_touched` in live production
+// (`run_discovery_rows`, cli_run.rs:5217-5221) is decided over `diff_edits.touched_entry_files` —
+// the FILTERED set `floor_diff_edits_from_line_ranges` produces after excluding pure data-item
+// edits (→ `overlapping_data_items`) and test-fn edits (→ `edited_test_fns`); only non-data,
+// non-test-fn declaration edits land in `touched_entry_files`. A raw touched-path superset can
+// diverge from this filtered set, so proving equivalence against raw paths only proves a
+// stronger/looser predicate, not the live decision. This receipt instead runs the exact same
+// production call the floor uses — `floor_diff_edits_from_diff_text(&index, &git_show_diff_text)`
+// — on each commit's full unified diff (`git show <sha>`, not `--name-only`) and feeds
+// `.touched_entry_files` to both `dag_entry_affected` and `rust_entry_affected`, matching the
+// sibling `green_import_closure_helper_fn_edit_runs_importer_entry` pattern above.
+//
+// `floor_diff_edits_from_line_ranges` fail-closes (`Err`) when a touched `.dag` file's diff
+// includes changed line 1 (the module declaration line) — see cli_run.rs:4703-4705 — so a commit
+// that wholly ADDS new files (every new file's diff touches line 1) cannot be exercised via this
+// real path (`entry_file_touched` is unreachable for that commit shape upstream of this receipt).
+// Both SHAs below were chosen to be all-status-`M` (modify-only) commits for this reason.
 #[cfg(test)]
 mod module_grain_affected_equivalence_tests {
     use super::{
