@@ -3364,6 +3364,34 @@ fn eval_algebra_method(
             }
         }
 
+        "map_keys" => {
+            let m = expect_map(&receiver, "map_keys")?;
+            let keys: Vec<Value> = m.keys().map(|k| k.key.clone()).collect();
+            Ok(list_value((keys)))
+        }
+
+        "map_values" => {
+            let m = expect_map(&receiver, "map_values")?;
+            let vals: Vec<Value> = m.values().cloned().collect();
+            Ok(list_value((vals)))
+        }
+
+        "map_contains_key" | "map_has" => {
+            let m = expect_map(&receiver, "map_contains_key")?;
+            let key = args.first().ok_or_else(|| InterpError::TypeError {
+                msg: "map_contains_key requires a key argument".to_string(),
+            })?;
+            match CanonKey::new(key.clone()) {
+                Some(ck) => Ok(Value::Bool(m.contains_key(&ck))),
+                None => Ok(Value::Bool(false)),
+            }
+        }
+
+        "map_is_empty" => {
+            let m = expect_map(&receiver, "map_is_empty")?;
+            Ok(Value::Bool(m.is_empty()))
+        }
+
         "insert" | "map_insert" => {
             let m = expect_map(&receiver, "insert")?;
             let (key, val) = match args {
