@@ -397,7 +397,7 @@ fn main() {
                     render_targets[0].1.clone(),
                 );
                 if let Some(message) =
-                    v1_compiler_compile::stage0_self_compile_refusal_message(result.as_ref())
+                    v1_compiler_compile::stage0_self_compile_refusal_message(result.clone())
                 {
                     eprintln!("{message}");
                     std::process::exit(1);
@@ -419,7 +419,7 @@ fn main() {
                         render_target,
                     );
                     if let Some(message) =
-                        v1_compiler_compile::stage0_self_compile_refusal_message(result.as_ref())
+                        v1_compiler_compile::stage0_self_compile_refusal_message(result.clone())
                     {
                         eprintln!("{message}");
                         std::process::exit(1);

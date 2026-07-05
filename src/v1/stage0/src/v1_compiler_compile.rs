@@ -2324,40 +2324,26 @@ pub fn compile_sources_with_options(
     emit_resolved_for_target(compile_to_resolved_with_options(sources, options), target)
 }
 
-pub fn interpreter_blocking_diagnostic_messages(
-    diagnostics: Rc<Vec<Rc<ErrorNode>>>,
-) -> Rc<Vec<String>> {
-    Rc::new({
-        let mut messages = Vec::new();
-        for d in diagnostics.iter().cloned() {
-            if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
-                let span = diagnostic_to_span(d.diagnostic.clone());
-                messages.push(format!(
-                    "{} ({}:{}-{})",
-                    diagnostic_to_message(d.diagnostic.clone()),
-                    span.file,
-                    span.start,
-                    span.end
-                ));
-            }
-        }
-        messages
-    })
+pub fn interpreter_blocking_diagnostic_messages(diagnostics: Rc<Vec<Rc<ErrorNode>>>) -> Rc<Vec<String>> {
+    Rc::new({ let mut __result = Vec::new(); for d in Rc::new({ let mut __result = Vec::new(); for d in diagnostics.iter().cloned() { if is_interpreter_blocking_diagnostic(d.diagnostic.clone()) { __result.push(d); } } __result }).iter().cloned() { __result.push({
+        let span = diagnostic_to_span(d.diagnostic.clone());
+v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat(diagnostic_to_message(d.diagnostic.clone()), " (".to_string()), span.file.clone()), ":".to_string()), (span.start.clone()).to_string()), "-".to_string()), (span.end.clone()).to_string()), ")".to_string())
+}); } __result })
 }
 
-pub fn stage0_self_compile_refusal_message(result: &PipelineResult) -> Option<String> {
-    let hard_messages = interpreter_blocking_diagnostic_messages(result.diagnostics.clone());
-    if !hard_messages.is_empty() {
-        Some(format!(
-            "v2 self-compile produced {} hard diagnostic(s):\n{}",
-            hard_messages.len(),
-            hard_messages.join("\n")
-        ))
-    } else if result.files.is_empty() {
-        Some("v2 self-compile emitted no files".to_string())
-    } else {
-        None
-    }
+pub fn stage0_self_compile_refusal_message(result: Rc<PipelineResult>) -> Option<String> {
+    {
+        let hard_messages = interpreter_blocking_diagnostic_messages(result.diagnostics.clone());
+if ((hard_messages.clone().len() as i64) > 0) {
+            Some(v1_rt::concat(v1_rt::concat(v1_rt::concat("v2 self-compile produced ".to_string(), ((hard_messages.clone().len() as i64)).to_string()), " hard diagnostic(s):\n".to_string()), hard_messages.clone().join(&"\n".to_string())))
+        } else {
+            if ((result.files.clone().len() as i64) == 0) {
+                Some("v2 self-compile emitted no files".to_string())
+            } else {
+                None
+            }
+        }
+}
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
