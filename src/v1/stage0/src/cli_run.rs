@@ -198,18 +198,18 @@ fn source_root_ingest_manifest_overlay_in_later_roots(
 }
 
 fn module_path_collision_panic_message(
-    module_path: &str,
-    existing: &str,
-    candidate: &str,
+    declaring_module: &str,
+    existing_path: &str,
+    candidate_path: &str,
 ) -> String {
     format!(
-        "module-path collision: module '{module_path}' is declared by both '{existing}' and '{candidate}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side"
+        "module-path collision: module '{declaring_module}' is declared by both '{existing_path}' and '{candidate_path}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side"
     )
 }
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
     let ws = workspace_root();
-    let mut index = HashMap::new();
+    let mut index: HashMap<String, String> = HashMap::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let root_path = Path::new(root);
         if !root_path.is_dir() {
