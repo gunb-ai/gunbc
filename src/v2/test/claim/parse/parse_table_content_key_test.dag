@@ -11,7 +11,9 @@ fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {
     interface: ^parse_table_memo,
     grammar_digest: grammar,
     token_stream_digest: tokens,
-    entries: empty_map()
+    entries: empty_map(),
+    memo_hits: 0,
+    memo_misses: 0
   }
 }
 
