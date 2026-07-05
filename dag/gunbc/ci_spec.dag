@@ -241,10 +241,7 @@ fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
 }
 
 fn gunbc_ci_run_script(spec: CiSpec) -> String {
-  concat(
-    concat(concat(ci_release_build_script(), "\n"), gunbc_ci_floor_only_script(spec: spec)),
-    ""
-  )
+  concat(concat(ci_release_build_script(), "\n"), gunbc_ci_floor_only_script(spec: spec))
 }
 
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
