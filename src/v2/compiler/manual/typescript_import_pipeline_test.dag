@@ -16,7 +16,7 @@ import v2.extdeps.languages.typescript {
   ts_wave2a_lex
 }
 import v2.std.algebra { fold_list }
-import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, optional_present }
+import v2.std.collection { Absent, Map, Optional, Present, empty_map, map_insert, optional_absent, optional_present }
 import v2.std.compilers.target_model { TargetModel, target_model_emit_transforms_empty }
 import v2.std.diagnostic {
   Accepted,
@@ -77,7 +77,7 @@ fn ts_import_pipeline_target(third_seg: Symbol, third_spell: String) -> TargetMo
 fn ts_import_pipeline_find_import_node_children(tree: Node) -> Optional<Node> {
   fold_list(
     xs: tree.children,
-    empty: Absent,
+    empty: optional_absent(),
     cons: fn(acc, edge) {
       match acc {
         Present { value: _ } => acc
