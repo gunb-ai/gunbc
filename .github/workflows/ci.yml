@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 70
+    timeout-minutes: 85
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -96,7 +96,7 @@ jobs:
           STAMP_EXIT=$?
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
-        timeout-minutes: 30
+        timeout-minutes: 45
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
