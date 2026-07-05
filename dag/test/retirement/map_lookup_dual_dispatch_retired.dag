@@ -1,0 +1,10 @@
+module test.retirement.map_lookup_dual_dispatch_retired
+
+import test.retirement.model { TestModuleRetirement, DeleteRedundant }
+
+data map_lookup_dual_dispatch_retirement: TestModuleRetirement = TestModuleRetirement {
+  module: "map_lookup_dual_dispatch_test.rs",
+  disposition: DeleteRedundant {
+    covered_by: ^map_lookup_dispatch_witness_provenance
+  }
+}

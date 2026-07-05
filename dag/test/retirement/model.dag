@@ -1,0 +1,13 @@
+module test.retirement.model
+
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+type RetirementDisposition
+  = DeleteRedundant { covered_by: Symbol }
+  | DeleteLowValue { reason: String }
+
+type TestModuleRetirement {
+  module: String
+  disposition: RetirementDisposition
+}
