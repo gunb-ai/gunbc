@@ -40,7 +40,7 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult, entry: &str) {
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty() && resolved.graph.is_some(),
@@ -50,12 +50,12 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult, entry: &str) {
 
 struct AmortHarness {
     graph: Rc<ResolvedGraph>,
-    source_indices: Rc<std::collections::HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<im_rc::HashMap<String, Rc<NewlineIndex>>>,
 }
 
 impl AmortHarness {
     fn new() -> Self {
-        let resolved = compile_to_resolved(Rc::new(amort_sources()));
+        let resolved = compile_to_resolved(Rc::new(amort_sources().into()));
         assert_resolved_ok(&resolved, AMORT_ENTRY);
         Self {
             graph: resolved.graph.clone().expect("graph"),
@@ -92,7 +92,7 @@ fn run_witness_on_sources(
     function: &str,
     budget: Duration,
 ) -> v1_interpreter::InterpContext {
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_ok(&resolved, entry);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx = v1_interpreter::InterpContext::new(

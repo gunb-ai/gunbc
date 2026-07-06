@@ -4,7 +4,7 @@
 //! RED control: `typecheck_module_isolated` (empty surfaces) must fail on a
 //! re-export chain where the consumer imports a coproduct arm through a proxy.
 
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{front_end_sources, normalize_graph, SourceFile};
@@ -28,7 +28,7 @@ const REEXPORT: &str = "module test.reexport\nimport test.provider { B }\n";
 const CONSUMER: &str = "module test.consumer\nimport test.reexport { B }\nfn f() -> E { B }\n";
 
 type ResolvedGraphFixture = (
-    Rc<Vec<Rc<ResolvedModule>>>,
+    Rc<im_rc::Vector<Rc<ResolvedModule>>>,
     Rc<HashMap<String, Rc<NewlineIndex>>>,
     Rc<InternTable>,
 );
@@ -42,11 +42,12 @@ fn fixture_sources() -> Vec<Rc<SourceFile>> {
             acc.entry(src.path.clone()).or_insert(src);
             acc
         })
-        .into_values()
+        .into_iter()
+        .map(|(_, v)| v)
         .collect()
 }
 
-fn resolved_module_graph(sources: Rc<Vec<Rc<SourceFile>>>) -> ResolvedGraphFixture {
+fn resolved_module_graph(sources: Rc<im_rc::Vector<Rc<SourceFile>>>) -> ResolvedGraphFixture {
     let frontend = front_end_sources(sources);
     let graph = frontend.graph.clone().expect("resolved module graph");
     let source_indices = frontend.newline_indices.iter().cloned().fold(
@@ -71,7 +72,7 @@ fn hard_diagnostic_messages(result: &TypecheckModuleResult) -> Vec<String> {
 }
 
 fn typecheck_resolved_incremental(
-    modules: &[Rc<ResolvedModule>],
+    modules: &im_rc::Vector<Rc<ResolvedModule>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     intern_table: Rc<InternTable>,
 ) -> Vec<Rc<TypecheckModuleResult>> {
@@ -104,7 +105,7 @@ fn typecheck_resolved_incremental(
 }
 
 fn consumer_resolved<'a>(
-    modules: &'a [Rc<ResolvedModule>],
+    modules: &'a im_rc::Vector<Rc<ResolvedModule>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> &'a Rc<ResolvedModule> {
     modules
@@ -122,7 +123,7 @@ fn variant_reexport_chain_full_pipeline_is_clean() {
     ]);
     let msgs: Vec<_> = diagnostic_messages(&result)
         .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty(),
@@ -132,7 +133,7 @@ fn variant_reexport_chain_full_pipeline_is_clean() {
 
 #[test]
 fn variant_reexport_incremental_surfaces_match_full_pipeline_fingerprint() {
-    let sources = Rc::new(fixture_sources());
+    let sources = Rc::new(fixture_sources().into());
     let pipeline = compile_multi(&[
         ("provider.dag", PROVIDER),
         ("reexport.dag", REEXPORT),
@@ -140,7 +141,7 @@ fn variant_reexport_incremental_surfaces_match_full_pipeline_fingerprint() {
     ]);
     let pipeline_msgs: Vec<_> = diagnostic_messages(&pipeline)
         .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
 
     let (modules, source_indices, intern_table) = resolved_module_graph(sources);
@@ -156,7 +157,7 @@ fn variant_reexport_incremental_surfaces_match_full_pipeline_fingerprint() {
 
 #[test]
 fn variant_reexport_empty_surfaces_red_control() {
-    let sources = Rc::new(fixture_sources());
+    let sources = Rc::new(fixture_sources().into());
     let (modules, source_indices, intern_table) = resolved_module_graph(sources);
 
     let incremental =

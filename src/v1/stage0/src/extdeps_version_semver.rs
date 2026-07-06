@@ -13,12 +13,14 @@ pub use crate::std_nat::nat_compare;
 pub use crate::std_types::List;
 pub use crate::std_types::NonEmptyStr;
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
+use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
+use im_rc::{OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {

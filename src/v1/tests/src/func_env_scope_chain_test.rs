@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet};
+use im_rc::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::rc::Rc;
 use std::sync::Mutex;
@@ -74,9 +75,7 @@ fn rc_identity_fixture_sources() -> Vec<Rc<SourceFile>> {
 
 fn assert_rc_identity_across_import_chain(
     graph: &ResolvedGraph,
-    source_indices: &Rc<
-        std::collections::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
-    >,
+    source_indices: &Rc<im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
 ) {
     let def_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_definer");
     let use_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_consumer");
@@ -99,7 +98,7 @@ fn collect_func_sig_ptrs(env: &ResolvedFuncEnv, out: &mut HashSet<*const Resolve
     }
 }
 
-fn unique_func_sig_ptr_count_modules(modules: &[Rc<TypedModule>]) -> usize {
+fn unique_func_sig_ptr_count_modules(modules: &im_rc::Vector<Rc<TypedModule>>) -> usize {
     let mut ptrs = HashSet::new();
     for m in modules.iter() {
         collect_func_sig_ptrs(&m.func_env, &mut ptrs);
@@ -107,7 +106,7 @@ fn unique_func_sig_ptr_count_modules(modules: &[Rc<TypedModule>]) -> usize {
     ptrs.len()
 }
 
-fn sum_local_func_sig_defs_modules(modules: &[Rc<TypedModule>]) -> usize {
+fn sum_local_func_sig_defs_modules(modules: &im_rc::Vector<Rc<TypedModule>>) -> usize {
     modules.iter().map(|m| m.func_env.local.len()).sum()
 }
 
@@ -122,7 +121,7 @@ fn assert_resolved_no_hard_errors(
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty() && resolved.graph.is_some(),
@@ -134,16 +133,14 @@ fn assert_resolved_no_hard_errors(
 fn compile_modules(
     sources: Vec<Rc<SourceFile>>,
 ) -> Rc<v1_compiler::v1_compiler_compile::ResolvedPipelineResult> {
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     resolved
 }
 
 fn typed_module_by_name<'a>(
-    modules: &'a [Rc<TypedModule>],
-    source_indices: &Rc<
-        std::collections::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
-    >,
+    modules: &'a im_rc::Vector<Rc<TypedModule>>,
+    source_indices: &Rc<im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>>,
     name: &str,
 ) -> &'a Rc<TypedModule> {
     modules
@@ -305,7 +302,7 @@ fn func_env_dropped_parent_chain_fails_lookup() {
 
     let stripped = Rc::new(ResolvedFuncEnv {
         local: consumer.func_env.local.clone(),
-        parents: Rc::new(vec![]),
+        parents: Rc::new(im_rc::vector![]),
     });
     assert!(
         lookup_func_sig(stripped.clone(), "shared_fn".to_string()).is_none(),

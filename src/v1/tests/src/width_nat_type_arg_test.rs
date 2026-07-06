@@ -52,7 +52,7 @@ fn v1_std_integer_dag_resolves_with_literal_machine_width() {
         &content,
         &source_roots(),
     );
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let msgs = blocking_diagnostics(resolved.as_ref());
     assert!(
         msgs.is_empty(),
@@ -68,7 +68,7 @@ fn v1_std_float_dag_resolves_with_literal_machine_width() {
         &content,
         &source_roots(),
     );
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let msgs = blocking_diagnostics(resolved.as_ref());
     assert!(
         msgs.is_empty(),
@@ -93,7 +93,7 @@ fn machine_width_phantom_arg_rust_emit_peels_literal_width_to_unit() {
         .to_string();
     let sources = cli_run::load_sources_for_entry(&roots, &entry)
         .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
-    let result = compile_sources(std::rc::Rc::new(sources), RenderTarget::Rust);
+    let result = compile_sources(std::rc::Rc::new(sources.into()), RenderTarget::Rust);
     let integer_rs = result
         .files
         .iter()

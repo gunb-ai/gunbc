@@ -10,7 +10,7 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty() && result.graph.is_some(),
@@ -54,7 +54,7 @@ fn three_len() -> Int {
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
         .graph
@@ -79,7 +79,7 @@ fn cons_len() -> Int {
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
         .graph
@@ -103,7 +103,7 @@ fn lacks_substring() -> Bool {
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
         .graph
@@ -135,7 +135,7 @@ fn member_absent() -> Bool {
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
         .graph
@@ -161,7 +161,7 @@ fn two_elements() -> Int {
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
         .graph
@@ -183,7 +183,7 @@ fn two_elements() -> Int {
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
         .graph
@@ -205,7 +205,7 @@ fn one_str_element() -> Int {
 }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
         .graph

@@ -36,7 +36,7 @@ fn run_wet(entry: &str) -> Value {
     let roots = crate::helpers::v2_layer_roots();
     let sources: Vec<Rc<SourceFile>> =
         resolve_imports_transitively_with_source_roots("shell_stdin_wet_test.dag", SOURCE, &roots);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let graph = resolved
         .graph
         .as_ref()

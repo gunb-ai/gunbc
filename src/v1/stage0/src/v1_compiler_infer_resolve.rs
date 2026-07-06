@@ -17,6 +17,7 @@ pub use crate::v1_compiler_infer_types::{
     child_type_node, is_declared_container_alias_spelling, node_is_keyed_collection, resolved_type,
 };
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
@@ -51,8 +52,8 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_unit_variant_node(variant: Rc<Node>) -> bool {
@@ -221,6 +222,7 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                             env.clone(),
                             module_name.clone(),
                             0,
+                            false,
                         )
                         .resolved
                         .clone(),
@@ -229,14 +231,21 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                             env.clone(),
                             module_name.clone(),
                             0,
+                            false,
                         )
                         .resolved
                         .clone(),
                     }
                 } else {
-                    resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
-                        .resolved
-                        .clone()
+                    resolve_node_bounded(
+                        resolved.clone(),
+                        env.clone(),
+                        module_name.clone(),
+                        0,
+                        false,
+                    )
+                    .resolved
+                    .clone()
                 };
                 if (((brand.clone() != "".to_string())
                     && (brand.clone()
@@ -260,6 +269,7 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                                     env.clone(),
                                     module_name.clone(),
                                     0,
+                                    false,
                                 )
                                 .resolved
                                 .clone();
@@ -344,7 +354,7 @@ pub struct ResourceUseResult {
 }
 
 pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NodeResolveResult> {
-    resolve_node_bounded(n, env, module_name, 0)
+    resolve_node_bounded(n, env, module_name, 0, true)
 }
 
 pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
@@ -578,7 +588,7 @@ pub fn resolve_alias_target(
 ) -> Rc<Node> {
     match classify_alias(target.clone()) {
         AliasKind::AliasParameterized => {
-            resolve_node_bounded(target.clone(), env.clone(), module_name, (depth + 1))
+            resolve_node_bounded(target.clone(), env.clone(), module_name, (depth + 1), false)
                 .resolved
                 .clone()
         }
@@ -672,6 +682,7 @@ pub fn resolve_node_bounded(
     env: Rc<TypeEnv>,
     module_name: String,
     depth: i64,
+    masked: bool,
 ) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (depth.clone() > 100) {
@@ -705,6 +716,7 @@ pub fn resolve_node_bounded(
                                     env.clone(),
                                     module_name.clone(),
                                     (depth.clone() + 1),
+                                    masked,
                                 );
                                 let base_resolved = base_result.resolved.clone();
                                 let base_diags = base_result.diagnostics.clone();
@@ -755,6 +767,7 @@ pub fn resolve_node_bounded(
                                                 env.clone(),
                                                 module_name.clone(),
                                                 (depth.clone() + 1),
+                                                masked,
                                             );
                                             let rt_resolved = rt_result.resolved.clone();
                                             let rt_diags = rt_result.diagnostics.clone();
@@ -846,6 +859,7 @@ pub fn resolve_node_bounded(
                                     env.clone(),
                                     module_name.clone(),
                                     (depth.clone() + 1),
+                                    masked,
                                 );
                                 let inner_resolved = inner_result.resolved.clone();
                                 let inner_diags = inner_result.diagnostics.clone();
@@ -904,6 +918,7 @@ pub fn resolve_node_bounded(
                                                                         env.clone(),
                                                                         module_name.clone(),
                                                                         (depth.clone() + 1),
+                                                                        masked,
                                                                     )
                                                                 };
                                                                 let rt_resolved =
@@ -1060,6 +1075,7 @@ pub fn resolve_node_bounded(
                                 env.clone(),
                                 module_name.clone(),
                                 (depth.clone() + 1),
+                                masked,
                             ));
                         }
                         __result
@@ -1157,6 +1173,7 @@ pub fn resolve_node_bounded(
                                 env.clone(),
                                 module_name.clone(),
                                 (depth.clone() + 1),
+                                false,
                             );
                             let is_recursive =
                                 is_recursive_type_by_name(env.clone(), type_name.clone());
@@ -1296,6 +1313,7 @@ pub fn resolve_node_bounded(
                                 env.clone(),
                                 module_name.clone(),
                                 (depth.clone() + 1),
+                                masked,
                             );
                             let key_resolved = key_result.resolved.clone();
                             let key_diags = key_result.diagnostics.clone();
@@ -1304,6 +1322,7 @@ pub fn resolve_node_bounded(
                                 env.clone(),
                                 module_name.clone(),
                                 (depth.clone() + 1),
+                                masked,
                             );
                             let val_resolved = val_result.resolved.clone();
                             let val_diags = val_result.diagnostics.clone();
@@ -1403,6 +1422,7 @@ pub fn resolve_node_bounded(
                                             env.clone(),
                                             module_name.clone(),
                                             (depth.clone() + 1),
+                                            masked,
                                         );
                                         let el_resolved = el_result.resolved.clone();
                                         let el_diags = el_result.diagnostics.clone();
@@ -1544,6 +1564,7 @@ pub fn resolve_node_bounded(
                                                                     env.clone(),
                                                                     module_name.clone(),
                                                                     (depth.clone() + 1),
+                                                                    false,
                                                                 )
                                                                 .resolved
                                                                 .clone()
@@ -1563,9 +1584,30 @@ pub fn resolve_node_bounded(
                                                 } else {
                                                     structurally_resolved
                                                 };
+                                                let unlisted_diags = if masked
+                                                    && !env.source_visible_names.is_empty()
+                                                    && !v1_rt::map_has(
+                                                        &env.source_visible_names.clone(),
+                                                        authored_name(env.clone(), n.clone()),
+                                                    ) {
+                                                    Rc::new(vec![make_error_node(
+                                                        Rc::new(
+                                                            crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse {
+                                                                name: authored_name(
+                                                                    env.clone(),
+                                                                    n.clone(),
+                                                                ),
+                                                                span: n.span.clone(),
+                                                            },
+                                                        ),
+                                                        module_name.clone(),
+                                                    )])
+                                                } else {
+                                                    Rc::new(vec![])
+                                                };
                                                 Rc::new(NodeResolveResult {
                                                     resolved: final_resolved,
-                                                    diagnostics: Rc::new(vec![]),
+                                                    diagnostics: unlisted_diags,
                                                 })
                                             }
                                             None => {
@@ -3037,6 +3079,11 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                     inductive_fields: e.inductive_fields.clone(),
                     source_indices: e.source_indices.clone(),
                     intern_table: e.intern_table.clone(),
+                    source_visible_names: v1_rt::rc_map_insert(
+                        e.source_visible_names.clone(),
+                        tp_name.clone(),
+                        true,
+                    ),
                 })
             },
         );

@@ -1,6 +1,7 @@
 #![allow(clippy::disallowed_macros)]
 
-use std::collections::{HashMap, HashSet};
+use im_rc::HashMap;
+use std::collections::HashSet;
 use std::process::ExitCode;
 use std::rc::Rc;
 
@@ -198,7 +199,7 @@ fn main() -> ExitCode {
         .iter()
         .filter(|d| is_idempotent_effect(d.shape.clone()))
         .count();
-    let obligations = generate_idempotency_obligations(Rc::new(derived.clone()));
+    let obligations = generate_idempotency_obligations(Rc::new(derived.clone().into()));
     if obligations.len() != idempotent_count {
         return fail(format!(
             "obligation count {} != idempotent op count {idempotent_count}",

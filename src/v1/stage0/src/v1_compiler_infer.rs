@@ -111,6 +111,7 @@ use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_std_core::empty_intern_table;
 // HAND-PATCH (§1c re-export chains): accessor for the chain followers below.
+use crate::v1_rt::VecCompat;
 use crate::v1_std_core::import_specific_names_at;
 use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
@@ -167,8 +168,8 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_witness_type_name(name: String) -> bool {
@@ -525,7 +526,7 @@ pub struct FieldRecursionResult {
 pub fn classify_field_recursion(
     field_node: Rc<Node>,
     parent_name: String,
-    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    recursive_type_set: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<Rc<FieldRecursionResult>> {
     {
@@ -615,7 +616,7 @@ pub fn collect_fields_inductive(
     fields: Rc<Vec<Rc<Node>>>,
     parent_name: String,
     variant_name: String,
-    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    recursive_type_set: Rc<BTreeSet<String>>,
     acc: Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
@@ -644,7 +645,7 @@ pub fn collect_fields_inductive(
 
 pub fn collect_item_inductive_fields(
     item: Rc<Node>,
-    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    recursive_type_set: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     {
@@ -679,7 +680,7 @@ pub fn collect_item_inductive_fields(
 
 pub fn build_item_inductive_fields(
     items: Rc<Vec<Rc<Node>>>,
-    recursive_type_set: Rc<std::collections::BTreeSet<String>>,
+    recursive_type_set: Rc<BTreeSet<String>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<HashMap<String, Rc<Vec<Rc<InductiveField>>>>> {
     items.iter().cloned().fold(
@@ -12130,6 +12131,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                 inductive_fields: parent_env.inductive_fields.clone(),
                 source_indices: parent_env.source_indices.clone(),
                 intern_table: parent_env.intern_table.clone(),
+                source_visible_names: parent_env.source_visible_names.clone(),
             })
         }
     } else {
@@ -12333,6 +12335,7 @@ pub fn compiler_kernel_type_env(
         inductive_fields: node_fields,
         source_indices: source_indices.clone(),
         intern_table: intern_table.clone(),
+        source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
     })
 }
 
@@ -12764,6 +12767,57 @@ pub fn build_type_env(
         } else {
             ancestry_cache.str_bindings.clone()
         };
+        let svn_local = Rc::new(v1_rt::map_keys(&local_str_bindings.clone()))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<String, bool>(),
+                |acc: Rc<HashMap<String, bool>>, n: String| v1_rt::rc_map_insert(acc, n, true),
+            );
+        let svn_kernel = Rc::new(v1_rt::map_keys(&kernel_type_set()))
+            .iter()
+            .cloned()
+            .fold(svn_local, |acc: Rc<HashMap<String, bool>>, n: String| {
+                v1_rt::rc_map_insert(acc, n, true)
+            });
+        let source_visible_names = module.resolved_imports.clone().iter().cloned().fold(
+            svn_kernel,
+            |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
+                if imp.is_all {
+                    if let Some(parent_mod) = v1_rt::map_get(&parent_index, imp.module_path.clone())
+                    {
+                        let a1 =
+                            Rc::new(v1_rt::map_keys(&parent_mod.type_env.str_bindings.clone()))
+                                .iter()
+                                .cloned()
+                                .fold(acc.clone(), |x: Rc<HashMap<String, bool>>, n: String| {
+                                    v1_rt::rc_map_insert(x, n, true)
+                                });
+                        Rc::new(v1_rt::map_keys(
+                            &parent_mod.type_env.ancestry_str_bindings.clone(),
+                        ))
+                        .iter()
+                        .cloned()
+                        .fold(
+                            a1,
+                            |x: Rc<HashMap<String, bool>>, n: String| {
+                                v1_rt::rc_map_insert(x, n, true)
+                            },
+                        )
+                    } else {
+                        acc.clone()
+                    }
+                } else {
+                    imp.specific_names
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .fold(acc.clone(), |x: Rc<HashMap<String, bool>>, n: String| {
+                            v1_rt::rc_map_insert(x, n, true)
+                        })
+                }
+            },
+        );
         let unresolved_env = Rc::new(TypeEnv {
             bindings: all_local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
@@ -12774,6 +12828,7 @@ pub fn build_type_env(
             inductive_fields: merged_inductive_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            source_visible_names: source_visible_names.clone(),
         });
         let resolved = resolve_env_bindings(
             unresolved_env,
@@ -12793,6 +12848,7 @@ pub fn build_type_env(
             inductive_fields: resolved_env_out.inductive_fields.clone(),
             source_indices: resolved_env_out.source_indices.clone(),
             intern_table: intern_table.clone(),
+            source_visible_names: source_visible_names.clone(),
         });
         let cache_str_bindings = v1_rt::rc_map_merge(
             final_env.ancestry_str_bindings.clone(),
@@ -12972,6 +13028,7 @@ pub fn build_type_env_unresolved(
             inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
         });
         let module_name_str = authored_name_at(source_indices.clone(), module.module.clone());
         let import_parents = Rc::new({
@@ -13227,6 +13284,7 @@ pub fn build_type_env_unresolved(
             inductive_fields: merged_inductive_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
         });
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),
@@ -14270,6 +14328,7 @@ pub fn topo_resolve_types(
                         inductive_fields: env.inductive_fields.clone(),
                         source_indices: env.source_indices.clone(),
                         intern_table: env.intern_table.clone(),
+                        source_visible_names: env.source_visible_names.clone(),
                     }),
                     diagnostics: v1_rt::concat(
                         diagnostics.clone(),
@@ -14349,6 +14408,7 @@ pub fn topo_resolve_types(
                 inductive_fields: env.inductive_fields.clone(),
                 source_indices: env.source_indices.clone(),
                 intern_table: env.intern_table.clone(),
+                source_visible_names: env.source_visible_names.clone(),
             });
             let __tco_2 = v1_rt::concat(diagnostics, ready_accum.diagnostics.clone());
             let __tco_3 = (fuel - 1);
@@ -14436,7 +14496,7 @@ pub fn variant_has_positional_payload_shape(
 pub fn build_fielded_variants(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<std::collections::BTreeSet<String>> {
+) -> Rc<BTreeSet<String>> {
     {
         let result = modules.iter().cloned().fold(
             v1_rt::rc_empty_set::<_>(),
@@ -14502,15 +14562,15 @@ pub fn build_fielded_variants(
 pub fn build_positional_payload_variants(
     modules: Rc<Vec<Rc<TypedModule>>>,
     type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-) -> Rc<std::collections::BTreeSet<String>> {
+) -> Rc<BTreeSet<String>> {
     modules.iter().cloned().fold(
         v1_rt::rc_empty_set::<String>(),
-        |acc: Rc<std::collections::BTreeSet<String>>, m: Rc<TypedModule>| {
+        |acc: Rc<BTreeSet<String>>, m: Rc<TypedModule>| {
             let items = m.items.clone();
             let si = m.type_env.clone().source_indices.clone();
             items.clone().iter().cloned().fold(
                 acc,
-                |inner: Rc<std::collections::BTreeSet<String>>, item: Rc<Node>| {
+                |inner: Rc<BTreeSet<String>>, item: Rc<Node>| {
                     let is_enum = match v1_rt::map_get(
                         &type_summaries,
                         authored_name_at(si.clone(), item.clone()),
@@ -14527,8 +14587,7 @@ pub fn build_positional_payload_variants(
                             let variants = item.children.clone();
                             variants.clone().iter().cloned().fold(
                                 inner.clone(),
-                                |vacc: Rc<std::collections::BTreeSet<String>>,
-                                 variant: Rc<Node>| {
+                                |vacc: Rc<BTreeSet<String>>, variant: Rc<Node>| {
                                     if variant_has_positional_payload_shape(
                                         variant.clone(),
                                         si.clone(),
@@ -14638,15 +14697,11 @@ pub fn build_emit_graph_info(modules: Rc<Vec<Rc<TypedModule>>>) -> Rc<EmitGraphI
             fielded_variants: fielded,
             positional_payload_variants: positional,
             shared_types: v1_rt::rc_empty_set::<String>(),
-            ownership_index: v1_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
-            ),
+            ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             movable: v1_rt::rc_empty_set::<String>(),
             variant_to_enum: vtoe,
             owned_bindings: v1_rt::rc_empty_set::<String>(),
-            read_only_params_index: v1_rt::rc_empty_map::<
-                String,
-                Rc<std::collections::BTreeSet<String>>,
-            >(),
+            read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
             read_only_params: v1_rt::rc_empty_set::<String>(),
             corpus_repr: rust_corpus_repr(modules.clone()),
         })
@@ -14945,6 +15000,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                     inductive_fields: m.type_env.inductive_fields.clone(),
                     source_indices: m.type_env.source_indices.clone(),
                     intern_table: m.type_env.intern_table.clone(),
+                    source_visible_names: m.type_env.source_visible_names.clone(),
                 }),
                 type_env_cache: m.type_env_cache.clone(),
                 func_env: m.func_env.clone(),
@@ -15028,6 +15084,7 @@ pub fn rewire_type_env_parent_links(
                             inductive_fields: m.type_env.clone().inductive_fields.clone(),
                             source_indices: m.type_env.clone().source_indices.clone(),
                             intern_table: m.type_env.clone().intern_table.clone(),
+                            source_visible_names: m.type_env.source_visible_names.clone(),
                         }),
                         type_env_cache: m.type_env_cache.clone(),
                         func_env: m.func_env.clone(),

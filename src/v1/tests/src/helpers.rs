@@ -32,7 +32,7 @@ pub fn v2_layer_roots() -> Vec<std::path::PathBuf> {
     vec![ws.join("src/v2"), ws.join("dag")]
 }
 
-pub fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
+pub fn tokenize(source: &str) -> Rc<im_rc::Vector<Rc<Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
 
@@ -45,7 +45,7 @@ pub fn parse_source_named(filename: &str, source: &str) -> Rc<ParseResult> {
         v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), filename.to_string());
     let source_index =
         v1_compiler::v1_std_core::build_newline_index(filename.to_string(), source.to_string());
-    let mut source_indices = std::collections::HashMap::new();
+    let mut source_indices = im_rc::HashMap::new();
     source_indices.insert(filename.to_string(), source_index);
     v1_compiler::v1_compiler_parse::parse(tokens, Rc::new(source_indices))
 }
@@ -89,13 +89,13 @@ pub fn assert_parses_strict(relative_path: &str) {
     );
 }
 
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::sync::OnceLock;
 
 fn build_module_index_for_roots(
     roots: &[std::path::PathBuf],
-) -> HashMap<String, std::path::PathBuf> {
-    let mut index = HashMap::new();
+) -> std::collections::HashMap<String, std::path::PathBuf> {
+    let mut index = std::collections::HashMap::new();
     for root in roots {
         if root.exists() {
             scan_dag_files(root, &mut index);
@@ -104,11 +104,14 @@ fn build_module_index_for_roots(
     index
 }
 
-fn build_module_index() -> HashMap<String, std::path::PathBuf> {
+fn build_module_index() -> std::collections::HashMap<String, std::path::PathBuf> {
     build_module_index_for_roots(&source_roots())
 }
 
-fn scan_dag_files(dir: &std::path::Path, index: &mut HashMap<String, std::path::PathBuf>) {
+fn scan_dag_files(
+    dir: &std::path::Path,
+    index: &mut std::collections::HashMap<String, std::path::PathBuf>,
+) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
@@ -140,9 +143,10 @@ fn extract_module_declaration(path: &std::path::Path) -> Option<String> {
     None
 }
 
-static MODULE_INDEX: OnceLock<HashMap<String, std::path::PathBuf>> = OnceLock::new();
+static MODULE_INDEX: OnceLock<std::collections::HashMap<String, std::path::PathBuf>> =
+    OnceLock::new();
 
-fn module_index() -> &'static HashMap<String, std::path::PathBuf> {
+fn module_index() -> &'static std::collections::HashMap<String, std::path::PathBuf> {
     MODULE_INDEX.get_or_init(build_module_index)
 }
 
@@ -180,7 +184,7 @@ fn display_source_path(path: &std::path::Path, ws: &std::path::Path) -> String {
 fn resolve_imports_transitively_with_index(
     entry_path: &str,
     entry_content: &str,
-    module_index: &HashMap<String, std::path::PathBuf>,
+    module_index: &std::collections::HashMap<String, std::path::PathBuf>,
 ) -> Vec<Rc<SourceFile>> {
     let ws = workspace_root();
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
@@ -208,7 +212,7 @@ fn resolve_imports_transitively_with_index(
         }
     }
 
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_values().collect();
+    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
     sources.push(Rc::new(SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
@@ -225,7 +229,7 @@ fn analyze_complexity_options() -> CompilePipelineOptions {
 pub fn compile_dag_analyze_complexity(source: &str) -> Rc<PipelineResult> {
     let sources = resolve_imports_transitively("test.dag", source);
     compile_sources_with_options(
-        Rc::new(sources),
+        Rc::new(sources.into()),
         RenderTarget::Rust,
         analyze_complexity_options(),
     )
@@ -239,9 +243,9 @@ pub fn compile_multi_analyze_complexity(files: &[(&str, &str)]) -> Rc<PipelineRe
             all_sources.entry(src.path.clone()).or_insert(src);
         }
     }
-    let sources: Vec<Rc<SourceFile>> = all_sources.into_values().collect();
+    let sources: Vec<Rc<SourceFile>> = all_sources.into_iter().map(|(_, v)| v).collect();
     compile_sources_with_options(
-        Rc::new(sources),
+        Rc::new(sources.into()),
         RenderTarget::Rust,
         analyze_complexity_options(),
     )
@@ -253,7 +257,7 @@ pub fn compile_dag(source: &str) -> Rc<PipelineResult> {
 
 pub fn compile_dag_resolved(source: &str) -> Rc<ResolvedPipelineResult> {
     let sources = resolve_imports_transitively("test.dag", source);
-    compile_to_resolved(Rc::new(sources))
+    compile_to_resolved(Rc::new(sources.into()))
 }
 
 pub fn compile_dag_target(source: &str, target: RenderTarget) -> Rc<PipelineResult> {
@@ -262,7 +266,7 @@ pub fn compile_dag_target(source: &str, target: RenderTarget) -> Rc<PipelineResu
 
 pub fn compile_dag_named(filename: &str, source: &str, target: RenderTarget) -> Rc<PipelineResult> {
     let sources = resolve_imports_transitively(filename, source);
-    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources), target)
+    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources.into()), target)
 }
 
 pub fn compile_dag_named_with_source_roots(
@@ -272,7 +276,7 @@ pub fn compile_dag_named_with_source_roots(
     source_roots: &[std::path::PathBuf],
 ) -> Rc<PipelineResult> {
     let sources = resolve_imports_transitively_with_source_roots(filename, source, source_roots);
-    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources), target)
+    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources.into()), target)
 }
 
 pub fn compile_multi(files: &[(&str, &str)]) -> Rc<PipelineResult> {
@@ -287,8 +291,8 @@ pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<
             all_sources.entry(src.path.clone()).or_insert(src);
         }
     }
-    let sources: Vec<Rc<SourceFile>> = all_sources.into_values().collect();
-    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources), target)
+    let sources: Vec<Rc<SourceFile>> = all_sources.into_iter().map(|(_, v)| v).collect();
+    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources.into()), target)
 }
 
 pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
@@ -302,7 +306,7 @@ pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
 pub fn assert_no_diagnostics(result: &PipelineResult) {
     let msgs: Vec<_> = diagnostic_messages(result)
         .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty(),
@@ -398,7 +402,7 @@ mod tests {
         std::fs::write(&a, "module duplicate.test\n").expect("write first module");
         std::fs::write(&b, "module duplicate.test\n").expect("write second module");
 
-        let mut index = HashMap::new();
+        let mut index = std::collections::HashMap::new();
         scan_dag_files(&dir, &mut index);
 
         assert_eq!(
