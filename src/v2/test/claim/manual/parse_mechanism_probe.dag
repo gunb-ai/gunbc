@@ -1,0 +1,86 @@
+module v2.test.manual.parse_mechanism_probe
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.parse {
+  ParseMemoStats,
+  grammar_validate_for_parse,
+  parse_module,
+  parse_production_memo_stats
+}
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.compilers.lexing { token_stream_remaining }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.grammar { ModeledGrammar, VoidGrammar }
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data pmp_anchor: Symbol = ^pmp_anchor
+
+fn pmp_tokenize_parse_text(source_text: String) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source_text, file: pmp_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+fn pmp_tokenize_parse_path(path: String) -> Bool {
+  let source = filesystem_read(path: path).content
+  pmp_tokenize_parse_text(source_text: source)
+}
+
+fn pmp_memo_stats_text(source_text: String) -> ParseMemoStats {
+  let lm = dag_language_model_wave1()
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match tokenize(text: source_text, file: pmp_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } =>
+      ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+    Accepted { value: stream, diagnostics: _ } =>
+      match lm.grammar {
+        VoidGrammar =>
+          ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+        ModeledGrammar { root: root } =>
+          match grammar_validate_for_parse(root: root, at: at) {
+            Rejected { diagnostics: _ } =>
+              ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+            Accepted { value: validated, diagnostics: _ } =>
+              parse_production_memo_stats(
+                tokens: token_stream_remaining(stream: stream),
+                validated: validated,
+                production_name: validated.root.start
+              )
+          }
+      }
+  }
+}
+
+fn pmp_memo_stats_path(path: String) -> ParseMemoStats {
+  let source = filesystem_read(path: path).content
+  pmp_memo_stats_text(source_text: source)
+}
+
+fn pmp_memo_stats_report_path(path: String) -> List<Int> {
+  let stats = pmp_memo_stats_path(path: path)
+  Cons {
+    head: stats.hits,
+    tail: Cons {
+      head: stats.misses,
+      tail: Cons { head: stats.lookup_calls, tail: Empty }
+    }
+  }
+}
+
+data pmp_through_decimal_path: String =
+  "src/v2/test/fixture/integer_census_trunc/through_decimal_compare.txt"
+
+fn pmp_through_decimal_memo_report() -> List<Int> {
+  pmp_memo_stats_report_path(path: pmp_through_decimal_path)
+}
