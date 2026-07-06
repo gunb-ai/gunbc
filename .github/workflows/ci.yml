@@ -18,7 +18,11 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
+<<<<<<< HEAD
     timeout-minutes: 10
+=======
+    timeout-minutes: 235
+>>>>>>> f0dc8efde9 (Bump ci floor step budget 135m→180m after plan-resolve + batch-1 timeout.)
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -117,7 +121,7 @@ jobs:
           STAMP_EXIT=$?
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
-        timeout-minutes: 135
+        timeout-minutes: 180
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
