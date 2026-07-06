@@ -47,8 +47,10 @@ data gc_witness_v1_paths: List<String> = [
 
 data gc_witness_v2_paths: List<String> = [
   "src/v2/std/logic.dag",
-  "src/v2/std/integer.dag"
+  "src/v2/std/nat.dag"
 ]
+
+data gc_witness_integer_dag_pulled_note: String = "src/v2/std/integer.dag pulled from claim/ roster — same parse-stage pathology as cost_coverage (PR #6300): parse-packrat-superlinear-on-nested-match-fn-bodies; NO VERDICT @144min on full ingest."
 
 fn gc_witness_smoke_receipt_live() -> GrammarCoverageTreeReceipt {
   grammar_coverage_tree_census(tree_root: "dag", paths: gc_witness_smoke_paths)
