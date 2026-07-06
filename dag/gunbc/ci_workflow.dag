@@ -343,12 +343,12 @@ fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
-data gunbc_ci_rust_tests_job_timeout_minutes: Int = 30
-
-data gunbc_ci_rust_tests_job_timeout_minutes_measure_grounding_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: gunbc_ci_rust_tests_job_timeout_minutes names GitHub Actions job timeout-minutes on the wire (extdeps/github/actions.dag Job.timeout_minutes projects Int). Carrier is bare Int (minute magnitude, interim until CI job budgets ground on std.measure time with explicit unit at the model layer and Int projection moves to GHA emit-only realization). DISSOLVES WHEN all gunbc CI job timeout authorities use a grounded measure carrier and timeout_minutes Int is derived at the workflow emit seam only — same dissolution family as gunbc_ci_floor_step_timeout_minutes_measure_grounding_dissolution_trigger."
+fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
+  gunbc_ci_rust_sccache_warm_step_timeout_minutes + gunbc_ci_rust_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+}
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
-  reason: "gunbc CI budget semantics (operator ruling 2026-07-06): floor step gunbc_ci_floor_step_timeout_minutes (10m) enforced at STEP level (RED-by-failure); ci job backstop gunbc_ci_job_backstop_timeout_minutes() = release build + floor + aux + prelude (65m) so cold release build is not killed by a job cap shorter than gunbc_ci_release_build_step_timeout_minutes (receipt run 28819559597 @ 201371c: 10m job kill aborted cargo mid-build). rust_tests job gunbc_ci_rust_tests_job_timeout_minutes (30m) with warm 15m + gate 10m step budgets. dissolve-on: compile-clean scoping/memoization shrinks floor under measured envelope."
+  reason: "gunbc CI budget semantics (operator ruling 2026-07-06): floor step gunbc_ci_floor_step_timeout_minutes (10m) enforced at STEP level (RED-by-failure); ci job backstop gunbc_ci_job_backstop_timeout_minutes() = release build + floor + aux + prelude (65m) so cold release build is not killed by a job cap shorter than gunbc_ci_release_build_step_timeout_minutes (receipt run 28819559597 @ 201371c: 10m job kill aborted cargo mid-build). rust_tests keeps step-sum job backstop gunbc_ci_rust_job_backstop_timeout_minutes() = warm + gate + aux + prelude (40m at current step carriers: 15+10+5+5+5) — job cap must cover step budgets so gates reach RED-by-step-failure, not job-cancelled silent-pass (#6323 starvation-kill scoped to ci/floor only on main). dissolve-on: compile-clean scoping/memoization shrinks floor under measured envelope."
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
@@ -403,7 +403,7 @@ fn rust_tests_job() -> Job {
     outputs: none,
     if_condition: none,
     strategy: none,
-    timeout_minutes: Present { value: gunbc_ci_rust_tests_job_timeout_minutes },
+    timeout_minutes: Present { value: gunbc_ci_rust_job_backstop_timeout_minutes() },
     continue_on_error: none,
     concurrency: none
   }
