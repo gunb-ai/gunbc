@@ -8064,6 +8064,19 @@ fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> Result<St
     Ok(out)
 }
 
+fn emit_source_root_ref_import(records: &[SourceRootReadRecord]) -> String {
+    let mut variants: Vec<&str> = records.iter().map(|r| r.source_root.as_str()).collect();
+    variants.sort_unstable();
+    variants.dedup();
+    if variants.is_empty() {
+        return String::new();
+    }
+    format!(
+        "import v2.std.cross_tree.import_model {{ {} }}\n",
+        variants.join(", ")
+    )
+}
+
 pub fn emit_source_root_ingest_manifest(
     path: &Path,
     records: &[SourceRootReadRecord],
@@ -8093,6 +8106,9 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import v2.std.text { String }\n");
+    if !inline_records.is_empty() {
+        out.push_str(&emit_source_root_ref_import(inline_records));
+    }
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");
         out.push_str("  Admission,\n");
