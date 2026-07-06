@@ -171,26 +171,28 @@ impl CompositionVerdict {
 }
 
 pub fn compose_effects(effects: Rc<Vec<Rc<OperationEffect>>>) -> Rc<CompositionVerdict> {
-    {
-        let non_idempotent = Rc::new({
-            let mut __result = Vec::new();
-            for e in effects.iter().cloned() {
-                if match (*e.evidence.clone()).clone() {
-                    IdempotencyEvidence::NonIdempotent { .. } => true,
-                    _ => false,
-                } {
-                    __result.push(e);
+    effects.iter().cloned().fold(
+        Rc::new(CompositionVerdict::IdempotentComposition),
+        |acc: Rc<CompositionVerdict>, e: Rc<OperationEffect>| match (*acc.clone()).clone() {
+            CompositionVerdict::BrokenBy {
+                first_breaker: breaker,
+                ..
+            } => acc.clone(),
+            CompositionVerdict::IdempotentComposition => match (*e.evidence.clone()).clone() {
+                IdempotencyEvidence::NonIdempotent { shape, reason, .. } => {
+                    Rc::new(CompositionVerdict::BrokenBy {
+                        first_breaker: e.clone(),
+                    })
                 }
-            }
-            __result
-        });
-        match non_idempotent.first().cloned() {
-            Some(op) => Rc::new(CompositionVerdict::BrokenBy {
-                first_breaker: op.clone(),
-            }),
-            None => Rc::new(CompositionVerdict::IdempotentComposition),
-        }
-    }
+                IdempotencyEvidence::LatticeEffect { shape: shape, .. } => {
+                    Rc::new(CompositionVerdict::IdempotentComposition)
+                }
+                IdempotencyEvidence::IdentityEffect => {
+                    Rc::new(CompositionVerdict::IdempotentComposition)
+                }
+            },
+        },
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

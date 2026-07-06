@@ -55,7 +55,7 @@ pub struct SemVerVersion {
     pub build: Rc<Vec<Rc<SemVerIdentifier>>>,
 }
 
-pub fn semver_compare_non_negative_int(a: NonNegativeInt, b: NonNegativeInt) -> Ordering {
+pub fn semver_compare_non_negative_int(a: Nat, b: Nat) -> Ordering {
     nat_compare(a, b)
 }
 

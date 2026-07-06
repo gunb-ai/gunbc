@@ -3525,9 +3525,9 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
 }
 
 pub fn intern_str(table: Rc<InternTable>, id: i64) -> String {
-    match table.strings.clone().get(id as usize).cloned() {
-        Some(s) => s.clone(),
+    match table.strings.clone().get(id) {
         None => "".to_string(),
+        other => other.clone(),
     }
 }
 

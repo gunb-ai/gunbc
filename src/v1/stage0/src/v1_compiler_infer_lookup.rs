@@ -217,18 +217,14 @@ pub fn resolve_method_receiver_type(receiver_type: Rc<Node>, env: Rc<TypeEnv>) -
                     resolve_scrutinee_type_node(env.clone(), receiver_type.clone()),
                     env.source_indices.clone(),
                 );
-                if (resolved.connective.clone() == Connective::Conj) {
+                let resolved_name = authored_name_at(env.source_indices.clone(), resolved.clone());
+                if ((resolved.connective.clone() == Connective::Conj)
+                    || ((resolved_name.clone() != raw_name.clone())
+                        && is_declared_container_alias_spelling(resolved_name.clone())))
+                {
                     resolved.clone()
                 } else {
-                    let resolved_name =
-                        authored_name_at(env.source_indices.clone(), resolved.clone());
-                    if ((resolved_name.clone() != raw_name.clone())
-                        && is_declared_container_alias_spelling(resolved_name.clone()))
-                    {
-                        resolved.clone()
-                    } else {
-                        receiver_type.clone()
-                    }
+                    receiver_type.clone()
                 }
             }
         }
