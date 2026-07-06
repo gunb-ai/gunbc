@@ -1552,9 +1552,30 @@ pub fn resolve_node_bounded(
                                                 } else {
                                                     structurally_resolved
                                                 };
+                                                let unlisted_diags = if masked
+                                                    && !env.source_visible_names.is_empty()
+                                                    && !v1_rt::map_has(
+                                                        &env.source_visible_names.clone(),
+                                                        authored_name(env.clone(), n.clone()),
+                                                    ) {
+                                                    Rc::new(vec![make_error_node(
+                                                        Rc::new(
+                                                            crate::v1_std_core::CompilerDiagnostic::UnlistedImportUse {
+                                                                name: authored_name(
+                                                                    env.clone(),
+                                                                    n.clone(),
+                                                                ),
+                                                                span: n.span.clone(),
+                                                            },
+                                                        ),
+                                                        module_name.clone(),
+                                                    )])
+                                                } else {
+                                                    Rc::new(vec![])
+                                                };
                                                 Rc::new(NodeResolveResult {
                                                     resolved: final_resolved,
-                                                    diagnostics: Rc::new(vec![]),
+                                                    diagnostics: unlisted_diags,
                                                 })
                                             }
                                             None => {

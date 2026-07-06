@@ -9,7 +9,7 @@ import v1.std.core {
   make_field_node, field_node_name_at, field_node_type_expr, field_node_cardinality, field_node_default_value, field_node_from_key,
   InferredNode, Resolved, CompilerError, TypeVariable, is_compiler_error,
   ErrorNode, make_error_node,
-  InternalError, ArityMismatch, UnresolvedType,
+  InternalError, ArityMismatch, UnresolvedType, UnlistedImportUse,
   Cardinality, Required,
   StringPart, Text, Interpolation,
   MatchPattern, Wildcard,
