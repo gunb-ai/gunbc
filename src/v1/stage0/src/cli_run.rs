@@ -5344,6 +5344,7 @@ pub fn run_discovery_corpus_with_options(
         line_ranges_by_file.entry(path.clone()).or_default();
     }
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
+    let added_paths = parse_unified_diff_added_paths(&diff_text);
     let changed_paths: Vec<String> = name_status_changed_paths;
     // Union-resolve S1 (docs/plans/resolver-graph-major-design.md §7): ONE index for the
     // whole process step. Frontier attribution, the floor runner context, and every roster
@@ -5365,7 +5366,7 @@ pub fn run_discovery_corpus_with_options(
             &line_ranges_by_file,
             &changed_new_lines_by_file,
             &name_status_departed_paths,
-            &parse_unified_diff_added_paths(&diff_text),
+            &added_paths,
         ) {
             Ok(edits) => (true, edits),
             Err(msg) => {
