@@ -1600,16 +1600,6 @@ fn parse_diags_to_non_empty(diags: List<Diagnostic>, default: Diagnostic) -> Non
   }
 }
 
-fn grammar_choice_ambiguity_diagnostics_optional(at: Locus, root: GrammarRoot) -> Diagnostics {
-  if grammar_has_choice_ambiguity(root: root) {
-    parse_diags_to_diagnostics(
-      diags: grammar_choice_ambiguity_row_diagnostic_list(at: at, root: root)
-    )
-  } else {
-    None
-  }
-}
-
 fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<ValidatedGrammarRoot> {
   if grammar_has_undefined_nonterminals(root: root) {
     Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
@@ -1620,9 +1610,12 @@ fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<Validated
       if grammar_has_left_recursion(root: root) {
         Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
       } else {
-        Accepted {
-          value: ValidatedGrammarRoot { root: root },
-          diagnostics: grammar_choice_ambiguity_diagnostics_optional(at: at, root: root)
+        if grammar_has_choice_ambiguity(root: root) {
+          Rejected {
+            diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, root: root)
+          }
+        } else {
+          Accepted { value: ValidatedGrammarRoot { root: root }, diagnostics: None }
         }
       }
     }
