@@ -2914,8 +2914,34 @@ fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<Stri
     alias_rhs_next_name(ctx, rhs)
 }
 
+fn cast_target_seed_name(ctx: &InterpContext, target: Rc<Node>) -> String {
+    let from_span = authored_name_at(ctx.si(), target.clone());
+    if !from_span.is_empty() {
+        return from_span;
+    }
+    if !target.name.is_empty() {
+        return target.name.clone();
+    }
+    if let Some(name) = alias_rhs_next_name(ctx, target.clone()) {
+        return name;
+    }
+    if let Some(InferredNode::Resolved { node }) = target.inferred.as_deref() {
+        let from_inferred = authored_name_at(ctx.si(), node.clone());
+        if !from_inferred.is_empty() {
+            return from_inferred;
+        }
+        if !node.name.is_empty() {
+            return node.name.clone();
+        }
+        if let Some(name) = alias_rhs_next_name(ctx, node.clone()) {
+            return name;
+        }
+    }
+    String::new()
+}
+
 fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
-    let mut current = authored_name_at(ctx.si(), target);
+    let mut current = cast_target_seed_name(ctx, target);
     let mut seen = BTreeSet::new();
 
     for _ in 0..32 {
@@ -2954,7 +2980,8 @@ fn str_identity_cast_if_string_family(
     let Value::Str(s) = val else {
         return None;
     };
-    if cast_target_underlying_kernel(ctx, target) == "String" {
+    let kernel = cast_target_underlying_kernel(ctx, target);
+    if kernel.is_empty() || kernel == "String" {
         Some(Value::Str(s.clone()))
     } else {
         None
@@ -2964,7 +2991,7 @@ fn str_identity_cast_if_string_family(
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
-    let target_name = authored_name_at(ctx.si(), target_node.clone());
+    let target_name = cast_target_seed_name(ctx, target_node.clone());
 
     if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
         return Ok(v);
@@ -6060,6 +6087,14 @@ fn eval_builtin(
                 ),
             )))
         }
+
+        "witness_layer_roots_compile_clean_check" => Ok(Some(Value::Bool(
+            crate::cli_run::witness_layer_roots_compile_clean_check(),
+        ))),
+
+        "witness_layer_roots_compile_clean_emit_check" => Ok(Some(Value::Bool(
+            crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
+        ))),
 
         "test_migration_debt_module_count" => Ok(Some(Value::Int(
             crate::cli_run::test_migration_debt_module_count(),
