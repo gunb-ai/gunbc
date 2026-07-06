@@ -381,8 +381,7 @@ fn parse_table_for_production(
   validated: ValidatedGrammarRoot,
   all_tokens: List<Token>
 ) -> ParseTable {
-  let nullable_set = compute_nullable_set(root: validated.root)
-  let first_rows = compute_production_first_rows(root: validated.root, nullable_set: nullable_set)
+  let analysis = compute_grammar_first_analysis(root: validated.root)
   ParseTableRealization {
     artifact_kind: parse_table_artifact_kind,
     interface: parse_table_memo_interface,
@@ -392,8 +391,8 @@ fn parse_table_for_production(
     memo_hits: 0,
     memo_misses: 0,
     memo_lookup_calls: 0,
-    nullable_set: nullable_set,
-    first_rows: first_rows
+    nullable_set: analysis.nullable_set,
+    first_rows: analysis.first_rows
   }
 }
 
@@ -976,6 +975,11 @@ type GrammarChoiceAmbiguityRow {
   both_nullable: Bool
 }
 
+type GrammarFirstAnalysis {
+  nullable_set: Set<Symbol>
+  first_rows: List<ProductionFirstRow>
+}
+
 fn grammar_empty_terminal_list() -> List<Symbol> {
   Empty
 }
@@ -1221,9 +1225,18 @@ fn collect_choice_ambiguities_in_expr(
   }
 }
 
-fn grammar_choice_ambiguity_roster(root: GrammarRoot) -> List<GrammarChoiceAmbiguityRow> {
+fn compute_grammar_first_analysis(root: GrammarRoot) -> GrammarFirstAnalysis {
   let nullable_set = compute_nullable_set(root: root)
-  let first_rows = compute_production_first_rows(root: root, nullable_set: nullable_set)
+  GrammarFirstAnalysis {
+    nullable_set: nullable_set,
+    first_rows: compute_production_first_rows(root: root, nullable_set: nullable_set)
+  }
+}
+
+fn grammar_choice_ambiguity_roster_from_analysis(
+  root: GrammarRoot,
+  analysis: GrammarFirstAnalysis
+) -> List<GrammarChoiceAmbiguityRow> {
   fold_list(
     xs: root.productions,
     empty: Empty,
@@ -1231,149 +1244,27 @@ fn grammar_choice_ambiguity_roster(root: GrammarRoot) -> List<GrammarChoiceAmbig
       collect_choice_ambiguities_in_expr(
         expr: p.expression,
         production: p.name,
-        nullable_set: nullable_set,
-        first_rows: first_rows,
+        nullable_set: analysis.nullable_set,
+        first_rows: analysis.first_rows,
         acc: acc
       )
     }
   )
 }
 
-fn grammar_has_choice_ambiguity(root: GrammarRoot) -> Bool {
-  grammar_choice_ambiguity_exists(root: root)
-}
-
-fn grammar_choice_ambiguity_exists(root: GrammarRoot) -> Bool {
-  let nullable_set = compute_nullable_set(root: root)
-  let first_rows = compute_production_first_rows(root: root, nullable_set: nullable_set)
-  any(
-    xs: root.productions,
-    predicate: fn(p) {
-      choice_ambiguity_exists_in_expr(
-        expr: p.expression,
-        production: p.name,
-        nullable_set: nullable_set,
-        first_rows: first_rows
-      )
-    }
+fn grammar_choice_ambiguity_roster(root: GrammarRoot) -> List<GrammarChoiceAmbiguityRow> {
+  grammar_choice_ambiguity_roster_from_analysis(
+    root: root,
+    analysis: compute_grammar_first_analysis(root: root)
   )
 }
 
-fn choice_ambiguity_exists_in_expr(
-  expr: GrammarExpr,
-  production: Symbol,
-  nullable_set: Set<Symbol>,
-  first_rows: List<ProductionFirstRow>
-) -> Bool {
-  match expr {
-    Terminal { token_class: _, stamp: _ } => false
-    Nonterminal { production: _ } => false
-    Sequence { left: left, right: right } =>
-      choice_ambiguity_exists_in_expr(
-        expr: left,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows
-      ) || choice_ambiguity_exists_in_expr(
-        expr: right,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows
-      )
-    Choice { left: left, right: right } => {
-      let left_first = expr_first_fold(expr: left, nullable_set: nullable_set, first_rows: first_rows)
-      let right_first = expr_first_fold(expr: right, nullable_set: nullable_set, first_rows: first_rows)
-      if choice_branches_ambiguous(left: left_first, right: right_first) {
-        true
-      } else {
-        choice_ambiguity_exists_in_expr(
-          expr: left,
-          production: production,
-          nullable_set: nullable_set,
-          first_rows: first_rows
-        ) || choice_ambiguity_exists_in_expr(
-          expr: right,
-          production: production,
-          nullable_set: nullable_set,
-          first_rows: first_rows
-        )
-      }
-    }
-    Optional { element: element } =>
-      choice_ambiguity_exists_in_expr(
-        expr: element,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows
-      )
-    Repeat { element: element } =>
-      choice_ambiguity_exists_in_expr(
-        expr: element,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows
-      )
-  }
-}
-
-fn choice_ambiguity_tally_at_branch(left: GrammarExprFirstFold, right: GrammarExprFirstFold) -> Int {
-  if choice_branches_ambiguous(left: left, right: right) { 1 } else { 0 }
-}
-
-fn tally_choice_ambiguities_in_expr(
-  expr: GrammarExpr,
-  production: Symbol,
-  nullable_set: Set<Symbol>,
-  first_rows: List<ProductionFirstRow>
-) -> Int {
-  match expr {
-    Terminal { token_class: _, stamp: _ } => 0
-    Nonterminal { production: _ } => 0
-    Sequence { left: left, right: right } =>
-      tally_choice_ambiguities_in_expr(
-        expr: left,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows
-      ) + tally_choice_ambiguities_in_expr(
-        expr: right,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows
-      )
-    Choice { left: left, right: right } => choice_ambiguity_tally_at_branch(left: expr_first_fold(expr: left, nullable_set: nullable_set, first_rows: first_rows), right: expr_first_fold(expr: right, nullable_set: nullable_set, first_rows: first_rows)) + tally_choice_ambiguities_in_expr(expr: left, production: production, nullable_set: nullable_set, first_rows: first_rows) + tally_choice_ambiguities_in_expr(expr: right, production: production, nullable_set: nullable_set, first_rows: first_rows)
-    Optional { element: element } =>
-      tally_choice_ambiguities_in_expr(
-        expr: element,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows
-      )
-    Repeat { element: element } =>
-      tally_choice_ambiguities_in_expr(
-        expr: element,
-        production: production,
-        nullable_set: nullable_set,
-        first_rows: first_rows
-      )
-  }
+fn grammar_has_choice_ambiguity(root: GrammarRoot) -> Bool {
+  !is_empty(xs: grammar_choice_ambiguity_roster(root: root))
 }
 
 fn grammar_choice_ambiguity_count(root: GrammarRoot) -> Int {
-  let nullable_set = compute_nullable_set(root: root)
-  let first_rows = compute_production_first_rows(root: root, nullable_set: nullable_set)
-  fold_list(
-    xs: root.productions,
-    empty: 0,
-    cons: fn(acc, p) {
-      acc + tally_choice_ambiguities_in_expr(
-        expr: p.expression,
-        production: p.name,
-        nullable_set: nullable_set,
-        first_rows: first_rows
-      )
-    }
-  )
+  length(xs: grammar_choice_ambiguity_roster(root: root))
 }
 
 fn parse_grammar_choice_ambiguity_diagnostic(at: Locus, count: Int) -> Diagnostic {
@@ -1395,9 +1286,12 @@ fn parse_grammar_choice_ambiguity_row_diagnostic(at: Locus, row: GrammarChoiceAm
   )
 }
 
-fn grammar_choice_ambiguity_row_diagnostic_list(at: Locus, root: GrammarRoot) -> List<Diagnostic> {
+fn grammar_choice_ambiguity_row_diagnostic_list(
+  at: Locus,
+  roster: List<GrammarChoiceAmbiguityRow>
+) -> List<Diagnostic> {
   fold_list(
-    xs: grammar_choice_ambiguity_roster(root: root),
+    xs: roster,
     empty: Empty,
     cons: fn(acc, row) {
       list_snoc_item(
@@ -1408,12 +1302,15 @@ fn grammar_choice_ambiguity_row_diagnostic_list(at: Locus, root: GrammarRoot) ->
   )
 }
 
-fn grammar_choice_ambiguity_rejection_diagnostics(at: Locus, root: GrammarRoot) -> NonEmptyDiagnostics {
+fn grammar_choice_ambiguity_rejection_diagnostics(
+  at: Locus,
+  roster: List<GrammarChoiceAmbiguityRow>
+) -> NonEmptyDiagnostics {
   parse_diags_to_non_empty(
-    diags: grammar_choice_ambiguity_row_diagnostic_list(at: at, root: root),
+    diags: grammar_choice_ambiguity_row_diagnostic_list(at: at, roster: roster),
     default: parse_grammar_choice_ambiguity_diagnostic(
       at: at,
-      count: grammar_choice_ambiguity_count(root: root)
+      count: length(xs: roster)
     )
   )
 }
@@ -1610,9 +1507,10 @@ fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<Validated
       if grammar_has_left_recursion(root: root) {
         Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
       } else {
-        if grammar_has_choice_ambiguity(root: root) {
+        let ambiguity_roster = grammar_choice_ambiguity_roster(root: root)
+        if !is_empty(xs: ambiguity_roster) {
           Rejected {
-            diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, root: root)
+            diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, roster: ambiguity_roster)
           }
         } else {
           Accepted { value: ValidatedGrammarRoot { root: root }, diagnostics: None }
