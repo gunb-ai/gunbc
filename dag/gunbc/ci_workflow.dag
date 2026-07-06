@@ -5,7 +5,7 @@ import gunbc.ci_workflow_expressions {
   ci_concurrency_group, ci_setup_rust_home, ci_cache_path, ci_cache_key, ci_cache_restore_keys
 }
 import gunbc.ci_spec {
-  CiSpec, gunbc_ci_spec, gunbc_ci_workflow_run, gunbc_ci_rust_job_run,
+  CiSpec, gunbc_ci_spec, gunbc_ci_floor_run,
   gunbc_ci_deploy_stages, DeployStage, gunbc_ci_deploy_run_script,
   ci_release_build_script,
   gunbc_ci_rust_gate_only_script,
@@ -20,6 +20,7 @@ import gunbc.ci_compile_jobs { ci_compile_jobs, compile_jobs_count_or_serial }
 import gunbc.ci_floor_measurement { gunbc_ci_runner_slot_memory_max_live }
 import std.disposition { Disposition, Scaffold, SingleAuthority, Terminal }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { Duration }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep,
   WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
@@ -182,13 +183,13 @@ fn ci_floor_step() -> Step {
   RunStep {
     name: Present { value: "gunbc ci (.dag witnesses + gates)" },
     id: none,
-    run: gunbc_ci_workflow_run(spec: ci_floor_spec_from_roster()),
+    run: gunbc_ci_floor_run(spec: ci_floor_spec_from_roster()),
     shell: none,
     env: none,
     working_directory: none,
     if_condition: none,
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_job_timeout_policy_minutes }
+    timeout_minutes: Present { value: gunbc_ci_floor_step_timeout_minutes }
   }
 }
 
@@ -246,11 +247,25 @@ fn ci_nextest_install_step() -> Step {
   }
 }
 
+fn ci_rust_sccache_warm_step() -> Step {
+  RunStep {
+    name: Present { value: "sccache warm (release bins + cache prime)" },
+    id: none,
+    run: ci_release_build_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: Present { value: gunbc_ci_rust_sccache_warm_step_timeout_minutes }
+  }
+}
+
 fn ci_rust_gate_step() -> Step {
   RunStep {
     name: Present { value: "v1 rust gate (fmt + clippy + nextest)" },
     id: none,
-    run: gunbc_ci_rust_job_run(),
+    run: gunbc_ci_rust_gate_only_script(),
     shell: none,
     env: none,
     working_directory: none,
@@ -296,26 +311,44 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 
 data gunbc_ci_job_timeout_policy_minutes: Int = 90
 
-data gunbc_ci_rust_gate_step_timeout_minutes: Int = 15
+data gunbc_ci_floor_step_timeout_minutes: Duration = 135
 
-data gunbc_ci_release_build_step_timeout_minutes: Int = 30
+data gunbc_ci_floor_step_timeout_minutes_measure_grounding_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: gunbc_ci_floor_step_timeout_minutes names GitHub Actions step timeout-minutes on the wire (extdeps/github/actions.dag RunStep.timeout_minutes projects Int). Carrier is std.types.Duration (minute magnitude, interim until CI budgets ground on std.measure time with explicit unit at the model layer and Int projection moves to GHA emit-only realization). DISSOLVES WHEN all gunbc CI step timeout authorities use a grounded measure carrier and timeout_minutes Int is derived at the workflow emit seam only."
+
+data gunbc_ci_rust_gate_step_timeout_minutes: Int = 30
+
+data gunbc_ci_rust_gate_step_budget_note: String = "Budgeted rust-gate-only step (fmt/clippy/nextest after sccache warm): 30m interim after v1-compiler stage0 edits — clippy --all-targets still in-flight at 15m step kill (receipt: rust_tests job 85269811605, run 28758588865 on 1588cf3; warm step 10m07s then clippy from 23:39:02 to step-FAILURE at 23:54:02 with zero gate verdict). Steady-state target remains 15m once clippy fits after warm; cold-cache storms stay in gunbc_ci_rust_sccache_warm_step_timeout_minutes (45m), not absorbed here (operator ruling, cool-hawk-899 / valiant-bee-192)."
+
+data ci_rust_build_gate_step_split_note: String = "Build and rust gate are separate workflow steps (same discipline as ci_build_floor_step_split_note): bundling cargo build + rust_gates_ci under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: rust_tests job 85237415376, run 28746200534 on dfbff0f). Warm step ci_rust_sccache_warm_step carries gunbc_ci_rust_sccache_warm_step_timeout_minutes; rust gate step carries gunbc_ci_rust_gate_step_timeout_minutes."
+
+data gunbc_ci_rust_sccache_warm_step_timeout_minutes: Int = 45
+
+data gunbc_ci_rust_sccache_warm_step_budget_note: String = "Observable sccache-warm step (release bins + cache prime) before the budgeted rust gate: cold-cache fallback storms are counted here, not in gunbc_ci_rust_gate_step_timeout_minutes (operator ruling, cool-hawk-899 / valiant-bee-192). Receipt: PRs 6286/6274/6290 timed out at 15m with clippy never finishing under sccache cold-cache fallback while bundled with build."
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
 data gunbc_ci_prelude_allowance_minutes: Int = 5
 
+data ci_build_floor_step_split_note: String = "Build and floor are separate workflow steps so gate budgets apply to claim_executor only, not cargo build: bundling both under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: PR #6259 ci job 85192573905, 2026-07-05). Build step carries gunbc_ci_release_build_step_timeout_minutes; floor step carries gunbc_ci_floor_step_timeout_minutes."
+
+data gunbc_ci_release_build_step_timeout_minutes: Int = 45
+
+data gunbc_ci_release_build_step_budget_note: String = "Interim release-build step budget until cold v1-compiler fits 15m: 45 = prior 30m + margin after main merge (CARGO_BUILD_JOBS=6, text_lookup_work_counter). Receipt: job 85235032962 timed out at 30m still Compiling v1-compiler (~25m dep prelude + compile in progress; run 28745277854 on 1ba1895). Prior: job 85194701830 at 15m. Re-derive DOWNWARD when fleet cache/build path stabilizes."
+
+data gunbc_ci_floor_gate_step_budget_note: String = "Superseded by gunbc_ci_floor_step_timeout_minutes (Duration=135, interim 2026-07-05): batch-1 dag_compile_clean_gate runs in-process witness_layer_roots_compile_clean_check (resolve leg only; receipt run 28748751115 showed emit on batch-1 exhausting 90m before batch-2 witnesses). Re-derive DOWNWARD when S2a node store / compile-clean scoping lands."
+
 data gunbc_ci_deploy_job_backstop_timeout_minutes: Int = 10
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
-  reason: "gunbc CI budget semantics (operator ruling, 2026-07-05): any timed-out gate is a FAILURE, not a silent pass - no verdict == failure. The budget is enforced at the STEP level (GitHub Actions step timeout-minutes fails the step, conclusion=failure, logs + [t+Xs] phase marks intact), never as a job-level kill: the prior 10-minute job-kill policy (2026-07-04) produced conclusion=cancelled, which every consumer treated as not-red - operationally a silent pass. Receipt: the last successful main ci run was 2026-07-01T01:00Z; 29 of the next 30 main runs were cancelled; four days of merges landed with zero gate verdicts while two latent reds entered the tree (04_resolve.dag emit-fresh hard diagnostics; inert_lens witness-builtin scope errors). Step budgets are authored on-carrier: floor gunbc_ci_job_timeout_policy_minutes (90m interim landing knob — batch-1 dag_compile_clean_gate runs five sequential compile shells; receipt run 28741451143 timed out at 50m on srv1-09 with compile-clean still in first shell pass; prior receipt 28739462879 at 25m — dissolve-on: affected-set-scoped compile-clean restores the 10m forcing budget), release build gunbc_ci_release_build_step_timeout_minutes (30m — receipt runs 28746525941 srv1-08 and 28746406899 srv1-09: cold v1-compiler release compile still in-flight at 15m step kill; rust gate gunbc_ci_rust_gate_step_timeout_minutes stays 15 for rust_tests job), aux gunbc_ci_aux_step_timeout_minutes (5). Until resolver-graph work fits the floor inside the forcing budget, main runs red-by-STEP-FAILURE with [t+Xs] phase attribution: an honest, countable deficit signal, unlike the cancelled-silence it replaces. Job-level timeouts are retained only as per-job backstops = that job's step-budget sum + prelude allowance: step timeouts start at step start, so a tighter backstop could job-cancel (silence) before a step fails red, resurrecting the exact defect this policy removes. Every post-prelude step is step-budgeted and fails RED first; a backstop firing means a wedged prelude - itself a mechanism bug to investigate, never a gate verdict. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default - workflow-layer policy on top."
+  reason: "gunbc CI budget semantics (operator ruling, 2026-07-05): any timed-out gate is a FAILURE, not a silent pass - no verdict == failure. The budget is enforced at the STEP level (GitHub Actions step timeout-minutes fails the step, conclusion=failure, logs + [t+Xs] phase marks intact), never as a job-level kill: the prior 10-minute job-kill policy (2026-07-04) produced conclusion=cancelled, which every consumer treated as not-red - operationally a silent pass. Receipt: the last successful main ci run was 2026-07-01T01:00Z; 29 of the next 30 main runs were cancelled; four days of merges landed with zero gate verdicts while two latent reds entered the tree (04_resolve.dag emit-fresh hard diagnostics; inert_lens witness-builtin scope errors). Breach semantics stay RED-by-step-failure; step budgets on-carrier: release build gunbc_ci_release_build_step_timeout_minutes (45m), rust sccache-warm gunbc_ci_rust_sccache_warm_step_timeout_minutes (45m — cold-cache storms isolated from gate budget per #6296), rust gate gunbc_ci_rust_gate_step_timeout_minutes (30m interim — clippy in-flight at 15m after v1-compiler warm; receipt run 28758588865), aux steps 5. The floor step is a separate authority — gunbc_ci_floor_step_timeout_minutes (135, interim 2026-07-05): batch-1 dag_compile_clean_gate runs in-process witness_layer_roots_compile_clean_check (resolve leg only; receipt run 28748751115 showed emit on batch-1 exhausting the 90m step alone before batch-2 witnesses); --target dag emit green-by-execution is enrolled on dag_compile_clean_clean_tree_emit_execution_holds in batch-2+ (same builtin). Perturb/cross-tree/dag-shell receipts stay in enrolled corpus witness dag_compile_clean_perturb_receipts_test.dag (batch-2+). Opt-in enrolled corpus witnesses share this step after batch-1. Until resolver-graph work (S2a node store, compile-clean scoping/memoization) shrinks the floor under a shorter budget, the floor step carries this interim headroom — not a second undocumented policy fork. Job backstops = ci: release build + floor step + aux + prelude (190m); rust_tests: sccache warm + rust gate + aux + prelude + aux (90m). dissolve-on: re-profile after compile-clean scoping/memoization; reduce gunbc_ci_floor_step_timeout_minutes when batch-1 resolve + enrolled emit witness + peers complete inside a shorter measured envelope. default_job_timeout_minutes (extdeps/github/actions.dag) still models GitHub's 360min platform default - workflow-layer policy on top."
 }
 
 fn gunbc_ci_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_job_timeout_policy_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_floor_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_rust_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc_ci_rust_sccache_warm_step_timeout_minutes + gunbc_ci_rust_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
@@ -361,7 +394,10 @@ fn rust_tests_job() -> Job {
     id: "rust_tests",
     name: none,
     runner: gunbc_ci_runner_spec(),
-    steps: concat(ci_prelude_steps(), [ci_nextest_install_step(), ci_rust_gate_step(), ci_rust_cgroup_measurement_step()]),
+    steps: concat(
+      ci_prelude_steps(),
+      [ci_nextest_install_step(), ci_rust_sccache_warm_step(), ci_rust_gate_step(), ci_rust_cgroup_measurement_step()]
+    ),
     needs: [],
     env: none,
     outputs: none,

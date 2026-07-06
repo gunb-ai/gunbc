@@ -185,7 +185,10 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         );
         let m = v1_rt::rc_map_insert(m.clone(), "hash_combine".to_string(), hash_type());
         let m = v1_rt::rc_map_insert(m.clone(), "atom_identity_hash".to_string(), hash_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "trace_mark".to_string(), unit_type());
         let m = v1_rt::rc_map_insert(m.clone(), "string_contains".to_string(), bool_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "length".to_string(), int_type());
+        let m = v1_rt::rc_map_insert(m.clone(), "starts_with".to_string(), bool_type());
         let m = v1_rt::rc_map_insert(m.clone(), "replace".to_string(), string_type());
         let m = v1_rt::rc_map_insert(
             m.clone(),
@@ -257,6 +260,16 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
         let m = v1_rt::rc_map_insert(
             m.clone(),
             "compile_dag_rust_emit_check".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "witness_layer_roots_compile_clean_check".to_string(),
+            bool_type(),
+        );
+        let m = v1_rt::rc_map_insert(
+            m.clone(),
+            "witness_layer_roots_compile_clean_emit_check".to_string(),
             bool_type(),
         );
         let m = v1_rt::rc_map_insert(

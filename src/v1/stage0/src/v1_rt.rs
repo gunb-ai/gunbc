@@ -556,6 +556,41 @@ fn expect_hash_digest(s: &str, arg: &str) {
     }
 }
 
+/// Stage-boundary trace mark — the v1-seed interim realization of the v2 per-RealizedStep
+/// CostAccount (std.realization_measurement). One stderr line per mark; consecutive marks
+/// define the segments of a natural Gantt read directly off any run log.
+///
+/// **Dissolution trigger (DESIGN §6):** delete this fn, the `trace_mark` registry row in
+/// `04_method.dag` (+ hand-synced twin `v1_compiler_infer_method.rs`), the nine
+/// `trace_mark(...)` marks in `compile.dag` (+ hand-synced `v1_compiler_compile.rs`), and
+/// the interpreter arm in `v1_interpreter.rs` when realization_measurement_loop **Phase 0**
+/// (`docs/plans/realization-measurement-loop.md`) lands a `.dag` `PerformanceReceipt`
+/// per-stage carrier that a floor witness consumes by execution (the same retirement event
+/// as `phase_profile.rs` / `GUNBC_FLOOR_GANTT`, per `docs/plans/ci-floor-fractal-gantt.md`
+/// § dissolution). Receipt = that witness green with these marks deleted and stage walls
+/// still attributable from the model path.
+pub fn trace_mark(label: String) {
+    use std::sync::OnceLock;
+    use std::time::Instant;
+    static TRACE_T0: OnceLock<Instant> = OnceLock::new();
+    let ms = TRACE_T0.get_or_init(Instant::now).elapsed().as_millis();
+    let mut rss_mib = String::from("absent");
+    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+        for line in status.lines() {
+            if let Some(rest) = line.strip_prefix("VmRSS:") {
+                if let Some(kib) = rest
+                    .split_whitespace()
+                    .next()
+                    .and_then(|k| k.parse::<i64>().ok())
+                {
+                    rss_mib = (kib / 1024).to_string();
+                }
+            }
+        }
+    }
+    eprintln!("[gantt] {} t_ms={} rss_mib={}", label, ms, rss_mib);
+}
+
 /// Content hash over raw bytes — the byte-level single authority. `atom_identity_hash`
 /// is the `String` projection of this. Use this directly for arbitrary binary content
 /// (e.g. an executable or serialized payload): routing bytes through `String`/

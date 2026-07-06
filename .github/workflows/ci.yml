@@ -18,7 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 130
+    timeout-minutes: 190
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -62,14 +62,14 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
-              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins ) 2>&1 | tee "$RETRY_LOG"; then
+              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc ) 2>&1 | tee "$RETRY_LOG"; then
                 if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
-                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
+                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc || exit 1
                 else
                   exit 1
                 fi
@@ -82,7 +82,7 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
-        timeout-minutes: 30
+        timeout-minutes: 45
       - name: gunbc ci (.dag witnesses + gates)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -117,7 +117,7 @@ jobs:
           STAMP_EXIT=$?
           if [ "$FLOOR_EXIT" -ne 0 ]; then exit "$FLOOR_EXIT"; fi
           exit "$STAMP_EXIT"
-        timeout-minutes: 90
+        timeout-minutes: 135
       - name: Merge-admission gate (receipt required; freshness block held until GatingEnforced)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
@@ -126,7 +126,7 @@ jobs:
         timeout-minutes: 5
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 30
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -174,19 +174,19 @@ jobs:
             curl -LsSf --retry 3 "https://get.nexte.st/0.9.138/$A" | tar zxf - -C "$CARGO_HOME/bin"
           fi
         timeout-minutes: 5
-      - name: v1 rust gate (fmt + clippy + nextest)
+      - name: sccache warm (release bins + cache prime)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
-              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins ) 2>&1 | tee "$RETRY_LOG"; then
+              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc ) 2>&1 | tee "$RETRY_LOG"; then
                 if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
-                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
+                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc || exit 1
                 else
                   exit 1
                 fi
@@ -199,6 +199,9 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
+        timeout-minutes: 45
+      - name: v1 rust gate (fmt + clippy + nextest)
+        run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           git fetch --no-tags origin main 2>/dev/null || true
           set -o pipefail
@@ -221,7 +224,7 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
-        timeout-minutes: 15
+        timeout-minutes: 30
       - name: rust_tests cgroup peak (placement divisor)
         run: |
           BIN="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/claim_executor"
@@ -276,14 +279,14 @@ jobs:
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
           set -o pipefail
           BUILD_LOG=$(mktemp)
-          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins) 2>&1 | tee "$BUILD_LOG"; then
+          if ! ("$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc) 2>&1 | tee "$BUILD_LOG"; then
             if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$BUILD_LOG"; then
               echo "::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)"
               RETRY_LOG=$(mktemp)
-              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins ) 2>&1 | tee "$RETRY_LOG"; then
+              if ! ( CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc ) 2>&1 | tee "$RETRY_LOG"; then
                 if grep -qiE 'Resource temporarily unavailable|failed to spawn|sccache: encountered fatal error|(exit status: 254)|sccache: error: failed to execute compile' "$RETRY_LOG"; then
                   echo "::warning::cargo/sccache still failing; retry without RUSTC_WRAPPER"
-                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bins || exit 1
+                  env -u RUSTC_WRAPPER CARGO_BUILD_JOBS=1 "$CARGO_HOME/bin/cargo" build -p v1-compiler --release --features text_lookup_work_counter --bin claim_executor --bin gunbc || exit 1
                 else
                   exit 1
                 fi

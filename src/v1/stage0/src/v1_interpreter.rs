@@ -2264,6 +2264,11 @@ pub(crate) const STD_FN_INDEX_BRIDGE_FNS: &[&str] = &["fn_arrow_decl_facts_live"
 
 pub(crate) const STD_DATA_INDEX_BRIDGE_FNS: &[&str] = &["data_init_decl_facts_live"];
 
+pub(crate) const INERT_LENS_BRIDGE_FNS: &[&str] = &[
+    "inert_lens_unreached_module_count",
+    "inert_lens_top_level_module_count",
+];
+
 pub fn std_node_bridge_fn_names() -> &'static [&'static str] {
     STD_NODE_BRIDGE_FNS
 }
@@ -2351,6 +2356,15 @@ fn is_v4_std_qualified_name_bridge_call(ctx: &InterpContext, func_name: &str) ->
         .is_some_and(|info| info.module_name == "v2.std.qualified_name")
 }
 
+fn is_v4_inert_lens_bridge_call(ctx: &InterpContext, func_name: &str) -> bool {
+    if !INERT_LENS_BRIDGE_FNS.contains(&func_name) {
+        return false;
+    }
+    ctx.item_registry
+        .get(func_name)
+        .is_some_and(|info| info.module_name == "v2.lens.inert_lens")
+}
+
 fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let func_name = {
         let key = Rc::as_ptr(node) as usize;
@@ -2434,6 +2448,18 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
                 crate::coproduct_reflection::eval_data_init_decl_facts_live(ctx, &args)
             }
             _ => unreachable!("data_index bridge fn set mismatch"),
+        };
+    }
+
+    if is_v4_inert_lens_bridge_call(ctx, &func_name) {
+        return match func_name.as_str() {
+            "inert_lens_unreached_module_count" => Ok(Value::Int(
+                crate::cli_run::inert_lens_unreached_module_count(),
+            )),
+            "inert_lens_top_level_module_count" => Ok(Value::Int(
+                crate::cli_run::inert_lens_top_level_module_count(),
+            )),
+            _ => unreachable!("inert_lens bridge fn set mismatch"),
         };
     }
 
@@ -2888,8 +2914,34 @@ fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<Stri
     alias_rhs_next_name(ctx, rhs)
 }
 
+fn cast_target_seed_name(ctx: &InterpContext, target: Rc<Node>) -> String {
+    let from_span = authored_name_at(ctx.si(), target.clone());
+    if !from_span.is_empty() {
+        return from_span;
+    }
+    if !target.name.is_empty() {
+        return target.name.clone();
+    }
+    if let Some(name) = alias_rhs_next_name(ctx, target.clone()) {
+        return name;
+    }
+    if let Some(InferredNode::Resolved { node }) = target.inferred.as_deref() {
+        let from_inferred = authored_name_at(ctx.si(), node.clone());
+        if !from_inferred.is_empty() {
+            return from_inferred;
+        }
+        if !node.name.is_empty() {
+            return node.name.clone();
+        }
+        if let Some(name) = alias_rhs_next_name(ctx, node.clone()) {
+            return name;
+        }
+    }
+    String::new()
+}
+
 fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
-    let mut current = authored_name_at(ctx.si(), target);
+    let mut current = cast_target_seed_name(ctx, target);
     let mut seen = BTreeSet::new();
 
     for _ in 0..32 {
@@ -2928,7 +2980,8 @@ fn str_identity_cast_if_string_family(
     let Value::Str(s) = val else {
         return None;
     };
-    if cast_target_underlying_kernel(ctx, target) == "String" {
+    let kernel = cast_target_underlying_kernel(ctx, target);
+    if kernel.is_empty() || kernel == "String" {
         Some(Value::Str(s.clone()))
     } else {
         None
@@ -2938,7 +2991,7 @@ fn str_identity_cast_if_string_family(
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
-    let target_name = authored_name_at(ctx.si(), target_node.clone());
+    let target_name = cast_target_seed_name(ctx, target_node.clone());
 
     if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
         return Ok(v);
@@ -5213,6 +5266,16 @@ fn eval_builtin(
 
         "record_source_chars_index_lookup" => Ok(Some(Value::Unit)),
 
+        // Scaffold arm — dissolution trigger lives on `v1_rt::trace_mark`'s doc comment
+        // (realization_measurement_loop Phase 0, docs/plans/realization-measurement-loop.md):
+        // delete this arm with the rest of the trace_mark deletion set named there.
+        "trace_mark" => {
+            if let [Value::Str(s)] = positional.as_slice() {
+                v1_rt::trace_mark(s.clone());
+            }
+            Ok(Some(Value::Unit))
+        }
+
         "concat" => {
             if positional.len() >= 2 && positional.iter().all(|v| matches!(v, Value::Str(_))) {
                 let mut result = String::new();
@@ -5308,6 +5371,21 @@ fn eval_builtin(
             let sub = expect_str(positional.get(1).copied(), "contains sub")?;
             Ok(Some(Value::Bool(s.contains(&sub))))
         }
+
+        "starts_with" => {
+            let s = expect_str(positional.first().copied(), "starts_with")?;
+            let prefix = expect_str(positional.get(1).copied(), "starts_with prefix")?;
+            Ok(Some(Value::Bool(s.starts_with(&prefix))))
+        }
+
+        "length" => match positional.first() {
+            Some(Value::Str(s)) => Ok(Some(Value::Int(s.chars().count() as i64))),
+            Some(v) => match free_monoid_to_vec(v) {
+                Some(items) => Ok(Some(Value::Int(items.len() as i64))),
+                None => Ok(None),
+            },
+            None => Ok(None),
+        },
 
         "contains" => match positional.as_slice() {
             [Value::Str(s), Value::Str(sub), ..] => Ok(Some(Value::Bool(s.contains(sub)))),
@@ -6009,6 +6087,14 @@ fn eval_builtin(
                 ),
             )))
         }
+
+        "witness_layer_roots_compile_clean_check" => Ok(Some(Value::Bool(
+            crate::cli_run::witness_layer_roots_compile_clean_check(),
+        ))),
+
+        "witness_layer_roots_compile_clean_emit_check" => Ok(Some(Value::Bool(
+            crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
+        ))),
 
         "test_migration_debt_module_count" => Ok(Some(Value::Int(
             crate::cli_run::test_migration_debt_module_count(),

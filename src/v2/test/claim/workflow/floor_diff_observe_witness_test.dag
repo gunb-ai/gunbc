@@ -6,9 +6,15 @@ import v2.workflow.floor_diff_observe {
   FloorUnifiedDiffResult,
   UnifiedDiffOk,
   UnifiedDiffFail,
+  FloorNameStatusDiffResult,
+  NameStatusDiffOk,
+  NameStatusDiffFail,
   floor_observe_git_diff_unified,
   floor_observe_git_diff_unified_for_ci,
-  floor_diff_script_serializes_git_diff_unified
+  floor_diff_script_serializes_git_diff_unified,
+  floor_observe_git_diff_name_status,
+  floor_observe_git_diff_name_status_for_ci,
+  floor_diff_script_serializes_git_diff_name_status
 }
 
 fn witness_ci_policy_observation_succeeds() -> Bool {
@@ -31,8 +37,31 @@ fn witness_invalid_base_fails_closed() -> Bool {
   }
 }
 
+fn witness_ci_policy_name_status_observation_succeeds() -> Bool {
+  match floor_observe_git_diff_name_status_for_ci() {
+    NameStatusDiffOk { changed_paths: _, departed_paths: _ } => true
+    NameStatusDiffFail { reason: _ } => false
+  }
+}
+
+fn witness_invalid_base_name_status_fails_closed() -> Bool {
+  match floor_observe_git_diff_name_status(
+    policy: DiffPolicy {
+      base: "__gunbc_invalid_diff_base__",
+      head: "HEAD",
+      mode: DiffMergeBase
+    }
+  ) {
+    NameStatusDiffFail { reason: _ } => true
+    NameStatusDiffOk { changed_paths: _, departed_paths: _ } => false
+  }
+}
+
 test fn floor_diff_observe_host_effect_apply_holds() -> Bool {
   floor_diff_script_serializes_git_diff_unified()
     && witness_ci_policy_observation_succeeds()
     && witness_invalid_base_fails_closed()
+    && floor_diff_script_serializes_git_diff_name_status()
+    && witness_ci_policy_name_status_observation_succeeds()
+    && witness_invalid_base_name_status_fails_closed()
 }

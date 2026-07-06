@@ -125,6 +125,42 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
     surfaces: [GithubActionsCiJob]
   },
   CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "dag/test/claim/parse_test.dag",
+      check_fns: ["parse_witness_floor_holds", "parse_witness_perf_holds"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "dag/test/claim/dag_collect_fingerprint_witness_test.dag",
+      check_fns: ["dag_collect_fingerprint_witness_keystone_holds"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "dag/test/claim/dag_compile_clean_perturb_receipts_test.dag",
+      check_fns: ["dag_compile_clean_perturb_receipts_holds"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
+    check: CommitWitnessClaim {
+      entry: "dag/test/claim/dag_compile_clean_witness_test.dag",
+      check_fns: ["dag_compile_clean_clean_tree_emit_execution_holds"],
+      kind: CorpusWitnessKind,
+      span: SpanUndeclared
+    },
+    surfaces: [GithubActionsCiJob]
+  },
+  CommitCheckEnrollment {
     check: CommitCargoFmtCheck,
     surfaces: [GitPrePushHook]
   }
