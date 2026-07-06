@@ -10885,6 +10885,16 @@ pub fn test_migration_delete_guard_holds() -> bool {
 mod witness_layer_roots_compile_clean_tests {
     use super::*;
 
+    fn with_workspace_cwd<F: FnOnce()>(f: F) {
+        let ws = workspace_root();
+        let prior = std::env::current_dir().ok();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        f();
+        if let Some(p) = prior {
+            let _ = std::env::set_current_dir(p);
+        }
+    }
+
     /// Hand-Rust receipt: the emit leg is a strict superset of resolve for the same sources.
     #[test]
     fn emit_success_implies_resolve_success_on_live_witness_roots() {
@@ -10896,30 +10906,37 @@ mod witness_layer_roots_compile_clean_tests {
     /// Lever-a receipt: docs-only touched paths skip compile-clean (no affected dag entries).
     #[test]
     fn scoped_plan_skips_docs_only_touch() {
-        let plan = compile_clean_scope_plan_from_touched_paths(&["docs/plans/example.md".to_string()])
-            .expect("scope disposition");
-        assert_eq!(
-            plan,
-            CompileCleanScopePlan::SkipNoAffected {
-                reason: "no compile-clean entry import-closure intersects touched paths".to_string()
-            }
-        );
+        with_workspace_cwd(|| {
+            let plan =
+                compile_clean_scope_plan_from_touched_paths(&["docs/plans/example.md".to_string()])
+                    .expect("scope disposition");
+            assert_eq!(
+                plan,
+                CompileCleanScopePlan::SkipNoAffected {
+                    reason: "no compile-clean entry import-closure intersects touched paths"
+                        .to_string()
+                }
+            );
+        });
     }
 
     /// Lever-a receipt: a direct dag entry touch scopes to at least that entry.
     #[test]
     fn scoped_plan_includes_touched_dag_entry() {
-        let plan = compile_clean_scope_plan_from_touched_paths(&["dag/std/logic.dag".to_string()])
-            .expect("scope disposition");
-        match plan {
-            CompileCleanScopePlan::Scoped { entry_paths } => {
-                assert!(
-                    entry_paths.iter().any(|p| p == "dag/std/logic.dag"),
-                    "expected dag/std/logic.dag in {entry_paths:?}"
-                );
+        with_workspace_cwd(|| {
+            let plan =
+                compile_clean_scope_plan_from_touched_paths(&["dag/std/logic.dag".to_string()])
+                    .expect("scope disposition");
+            match plan {
+                CompileCleanScopePlan::Scoped { entry_paths } => {
+                    assert!(
+                        entry_paths.iter().any(|p| p == "dag/std/logic.dag"),
+                        "expected dag/std/logic.dag in {entry_paths:?}"
+                    );
+                }
+                other => panic!("expected ScopedRun, got {other:?}"),
             }
-            other => panic!("expected ScopedRun, got {other:?}"),
-        }
+        });
     }
 
     /// Lever-a receipt: diff observation failure refuses — never widens to whole-tree.
