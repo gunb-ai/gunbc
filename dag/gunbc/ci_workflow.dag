@@ -347,10 +347,6 @@ data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
   reason: "gunbc CI budget semantics — operator ruling 2026-07-06: ci/floor job JOB-level killed at gunbc_ci_floor_job_runner_starvation_kill_minutes (10m); rust_tests job at gunbc_ci_rust_tests_job_timeout_minutes (30m). Under the #6239 v2-resolve compile-wall the floor step cannot complete within 10m (plan-entry resolve alone ~75m); the job kill returns conclusion=cancelled (silent-pass trade-off, runner starvation dominates). rust_tests scoped to 30m job cap. Step-level budgets on-carrier remain for observability when job timeout permits. dissolve-on: compile-clean scoping/memoization (S2a node store) shrinks floor under a real budget → restore step-level job backstops with RED-by-step-failure."
 }
 
-fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_rust_sccache_warm_step_timeout_minutes + gunbc_ci_rust_gate_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
-}
-
 fn ci_deploy_job(stage: DeployStage) -> Job {
   Job {
     id: stage.id,
