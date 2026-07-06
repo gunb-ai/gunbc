@@ -4881,14 +4881,17 @@ fn floor_diff_edits_from_line_ranges(
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
     let mut touched_entry_files = HashSet::new();
-    let mut saw_non_dag = false;
-    let mut saw_dag = false;
     for (file_path, ranges) in line_ranges_by_file {
         if !file_path.ends_with(".dag") {
-            saw_non_dag = true;
+            // A non-.dag changed path is a structural-∅ for the .dag frontier: it declares no
+            // .dag nodes, so there is nothing to attribute, and its coverage lives in the Rust
+            // gates (rust_tests), not the .dag witnesses. Skipping it yields an empty .dag
+            // frontier -- the SAME nominal outcome as an empty diff. This is NOT ignorance: the
+            // only ignorance state is a failed git-diff observation (UnifiedDiffFail upstream,
+            // floor_diff_observe.dag; operator ruling 2026-07-05). Structural-∅ and ignorance
+            // are different states -- the mirror of the departed-.dag-path arm below.
             continue;
         }
-        saw_dag = true;
         let file_norm = normalize_repo_path(file_path);
         if !std::path::Path::new(file_path).exists() {
             if departed_paths.contains(&file_norm) {
