@@ -11,6 +11,33 @@ import std.types { String, Bool, List, list_length }
 type CompileCleanScopeDisposition
   = ScopedRun { entry_paths: List<String> }
   | SkipNoAffectedEntries { reason: String }
+  | RequireWholeTree { reason: String }
+
+fn compile_clean_touched_path_norm(path: String) -> String {
+  if starts_with(s: path, prefix: "./") {
+    substring(s: path, start: 2, end: string_length(s: path))
+  } else {
+    path
+  }
+}
+
+fn compile_clean_touched_path_is_docs_only(path: String) -> Bool {
+  starts_with(
+    s: compile_clean_touched_path_norm(path: path),
+    prefix: "docs/"
+  )
+}
+
+/// Empty or docs-only touches may skip compile-clean; infra/Rust/CI-only diffs with no shard
+/// intersection require whole-tree (pre-lever-a baseline), not silent green.
+fn compile_clean_touches_allow_skip(touched_paths: List<String>) -> Bool {
+  list_length(items: touched_paths) == 0
+    || fold(
+      touched_paths,
+      init: true,
+      f: fn(ok, p) { ok && compile_clean_touched_path_is_docs_only(path: p) }
+    )
+}
 
 fn compile_clean_pool_roots() -> List<String> {
   compile_clean_partition_boundary().pool_roots
@@ -51,9 +78,13 @@ fn compile_clean_scope_disposition_from_touched(
   )
   if list_length(items: affected) > 0 {
     ScopedRun { entry_paths: affected }
-  } else {
+  } else if compile_clean_touches_allow_skip(touched_paths: touched_paths) {
     SkipNoAffectedEntries {
       reason: "no compile-clean entry import-closure intersects touched paths"
+    }
+  } else {
+    RequireWholeTree {
+      reason: "non-empty non-docs diff with no shard intersection — whole-tree baseline"
     }
   }
 }
@@ -92,6 +123,27 @@ fn witness_std_logic_touch_scopes() -> Bool {
   ) {
     ScopedRun { entry_paths: paths } =>
       fold(paths, init: false, f: fn(found, p) { found || (p == "dag/std/logic.dag") })
+    SkipNoAffectedEntries { reason: _ } => false
+    RequireWholeTree { reason: _ } => false
+  }
+}
+
+fn witness_rust_only_touch_requires_whole_tree() -> Bool {
+  match compile_clean_scope_disposition_from_touched(
+    touched_paths: ["src/v1/stage0/src/cli_run.rs"]
+  ) {
+    RequireWholeTree { reason: _ } => true
+    ScopedRun { entry_paths: _ } => false
+    SkipNoAffectedEntries { reason: _ } => false
+  }
+}
+
+fn witness_ci_yaml_touch_requires_whole_tree() -> Bool {
+  match compile_clean_scope_disposition_from_touched(
+    touched_paths: [".github/workflows/ci.yml"]
+  ) {
+    RequireWholeTree { reason: _ } => true
+    ScopedRun { entry_paths: _ } => false
     SkipNoAffectedEntries { reason: _ } => false
   }
 }

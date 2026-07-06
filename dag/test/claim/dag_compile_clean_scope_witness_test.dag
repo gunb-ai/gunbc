@@ -4,6 +4,8 @@ import tools.dag_compile_clean_scope {
   witness_empty_touched_skips,
   witness_docs_only_touch_skips,
   witness_std_logic_touch_scopes,
+  witness_rust_only_touch_requires_whole_tree,
+  witness_ci_yaml_touch_requires_whole_tree,
   witness_entry_root_is_first_witness_layer_root,
   witness_pool_roots_match_witness_layer_roots,
   compile_clean_scope_disposition_from_touched
@@ -21,6 +23,14 @@ test fn dag_compile_clean_scope_std_logic_touch_scopes_holds() -> Bool {
   witness_std_logic_touch_scopes()
 }
 
+test fn dag_compile_clean_scope_rust_only_touch_requires_whole_tree_holds() -> Bool {
+  witness_rust_only_touch_requires_whole_tree()
+}
+
+test fn dag_compile_clean_scope_ci_yaml_touch_requires_whole_tree_holds() -> Bool {
+  witness_ci_yaml_touch_requires_whole_tree()
+}
+
 test fn dag_compile_clean_scope_partition_authority_holds() -> Bool {
   witness_entry_root_is_first_witness_layer_root()
     && witness_pool_roots_match_witness_layer_roots()
@@ -35,5 +45,6 @@ test fn dag_compile_clean_scope_importer_touched_by_v2_logic_edit_holds() -> Boo
         found || (p == "dag/test/claim/parse_test.dag")
       })
     SkipNoAffectedEntries { reason: _ } => false
+    RequireWholeTree { reason: _ } => false
   }
 }
