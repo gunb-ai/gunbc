@@ -918,7 +918,13 @@ fn verify_hand_maintained_candidates(
         no_candidate: Vec::new(),
     };
     for file_name in HAND_MAINTAINED_STAGE0_FILES {
-        let Some(candidate) = emitted.get(*file_name) else {
+        // compile_stage0's emitted map is keyed by output path (e.g. "src/main.rs"),
+        // while the roster lists bare filenames; look up both so a genuinely-emitted
+        // hand file is not misreported as absent.
+        let candidate = emitted
+            .get(&format!("src/{file_name}"))
+            .or_else(|| emitted.get(*file_name));
+        let Some(candidate) = candidate else {
             report.no_candidate.push((*file_name).to_string());
             continue;
         };
@@ -965,7 +971,8 @@ fn print_hand_verify_report(report: &HandVerifyReport) {
     }
     if !report.no_candidate.is_empty() {
         println!(
-            "  NO CANDIDATE (host-physics pin, no .dag source -- cargo-green only): {}",
+            "  NO CANDIDATE (not in the fresh emit closure -- a host-physics pin with no \
+             .dag source, or a module the closure does not reach; cargo-green only): {}",
             report.no_candidate.join(", ")
         );
     }
