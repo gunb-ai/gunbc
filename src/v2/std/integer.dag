@@ -131,39 +131,47 @@ fn decimal_digit_value(d: DecimalDigit) -> Int {
   }
 }
 
+data decimal_digit_roster: List<DecimalDigit> = [D0, D1, D2, D3, D4, D5, D6, D7, D8, D9]
+
+data nonzero_decimal_digit_roster: List<NonZeroDecimalDigit> = [
+  NonZeroD1, NonZeroD2, NonZeroD3, NonZeroD4, NonZeroD5, NonZeroD6, NonZeroD7, NonZeroD8, NonZeroD9
+]
+
+fn decimal_digit_of_units(value: Int) -> DecimalDigit {
+  if value >= 10 {
+    decimal_digit_of_units(value: value - 10)
+  } else {
+    fold_list(
+      xs: decimal_digit_roster,
+      empty: D0,
+      cons: fn(acc, d) { if decimal_digit_value(d: d) == value { d } else { acc } }
+    )
+  }
+}
+
+fn nonzero_decimal_digit_of_positive_units(value: Int) -> NonZeroDecimalDigit {
+  fold_list(
+    xs: nonzero_decimal_digit_roster,
+    empty: NonZeroD1,
+    cons: fn(acc, d) {
+      if decimal_digit_value(d: integer_nonzero_decimal_digit_widen(digit: d)) == value { d } else { acc }
+    }
+  )
+}
+
 type DecimalDigitStep {
   digit: DecimalDigit
   carry: Bool
 }
 
 fn decimal_digit_double(d: DecimalDigit, carry_in: Bool) -> DecimalDigitStep {
-  match d {
-    D0 => if carry_in { DecimalDigitStep { digit: D1, carry: false } } else { DecimalDigitStep { digit: D0, carry: false } }
-    D1 => if carry_in { DecimalDigitStep { digit: D3, carry: false } } else { DecimalDigitStep { digit: D2, carry: false } }
-    D2 => if carry_in { DecimalDigitStep { digit: D5, carry: false } } else { DecimalDigitStep { digit: D4, carry: false } }
-    D3 => if carry_in { DecimalDigitStep { digit: D7, carry: false } } else { DecimalDigitStep { digit: D6, carry: false } }
-    D4 => if carry_in { DecimalDigitStep { digit: D9, carry: false } } else { DecimalDigitStep { digit: D8, carry: false } }
-    D5 => if carry_in { DecimalDigitStep { digit: D1, carry: true } } else { DecimalDigitStep { digit: D0, carry: true } }
-    D6 => if carry_in { DecimalDigitStep { digit: D3, carry: true } } else { DecimalDigitStep { digit: D2, carry: true } }
-    D7 => if carry_in { DecimalDigitStep { digit: D5, carry: true } } else { DecimalDigitStep { digit: D4, carry: true } }
-    D8 => if carry_in { DecimalDigitStep { digit: D7, carry: true } } else { DecimalDigitStep { digit: D6, carry: true } }
-    D9 => if carry_in { DecimalDigitStep { digit: D9, carry: true } } else { DecimalDigitStep { digit: D8, carry: true } }
-  }
+  let doubled = (2 * decimal_digit_value(d: d)) + (if carry_in { 1 } else { 0 })
+  DecimalDigitStep { digit: decimal_digit_of_units(value: doubled), carry: doubled >= 10 }
 }
 
 fn decimal_digit_sub_borrow(d: DecimalDigit, borrow_in: Bool) -> DecimalDigitStep {
-  match d {
-    D0 => if borrow_in { DecimalDigitStep { digit: D9, carry: true } } else { DecimalDigitStep { digit: D0, carry: false } }
-    D1 => if borrow_in { DecimalDigitStep { digit: D0, carry: false } } else { DecimalDigitStep { digit: D1, carry: false } }
-    D2 => if borrow_in { DecimalDigitStep { digit: D1, carry: false } } else { DecimalDigitStep { digit: D2, carry: false } }
-    D3 => if borrow_in { DecimalDigitStep { digit: D2, carry: false } } else { DecimalDigitStep { digit: D3, carry: false } }
-    D4 => if borrow_in { DecimalDigitStep { digit: D3, carry: false } } else { DecimalDigitStep { digit: D4, carry: false } }
-    D5 => if borrow_in { DecimalDigitStep { digit: D4, carry: false } } else { DecimalDigitStep { digit: D5, carry: false } }
-    D6 => if borrow_in { DecimalDigitStep { digit: D5, carry: false } } else { DecimalDigitStep { digit: D6, carry: false } }
-    D7 => if borrow_in { DecimalDigitStep { digit: D6, carry: false } } else { DecimalDigitStep { digit: D7, carry: false } }
-    D8 => if borrow_in { DecimalDigitStep { digit: D7, carry: false } } else { DecimalDigitStep { digit: D8, carry: false } }
-    D9 => if borrow_in { DecimalDigitStep { digit: D8, carry: false } } else { DecimalDigitStep { digit: D9, carry: false } }
-  }
+  let difference = decimal_digit_value(d: d) - (if borrow_in { 1 } else { 0 })
+  DecimalDigitStep { digit: decimal_digit_of_units(value: difference + 10), carry: difference < 0 }
 }
 
 type DecimalDigitsStep {
@@ -203,17 +211,15 @@ fn decimal_digits_to_magnitude(digits: FreeMonoid<DecimalDigit>) -> DecimalMagni
   match digits {
     Empty => DecimalZero
     Cons { head, tail } =>
-      match head {
-        D0 => decimal_digits_to_magnitude(digits: tail)
-        D1 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: tail } }
-        D2 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD2, tail: tail } }
-        D3 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD3, tail: tail } }
-        D4 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD4, tail: tail } }
-        D5 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD5, tail: tail } }
-        D6 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD6, tail: tail } }
-        D7 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD7, tail: tail } }
-        D8 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD8, tail: tail } }
-        D9 => DecimalNonZero { magnitude: DecimalNonZeroMagnitude { lead: NonZeroD9, tail: tail } }
+      if decimal_digit_value(d: head) == 0 {
+        decimal_digits_to_magnitude(digits: tail)
+      } else {
+        DecimalNonZero {
+          magnitude: DecimalNonZeroMagnitude {
+            lead: nonzero_decimal_digit_of_positive_units(value: decimal_digit_value(d: head)),
+            tail: tail
+          }
+        }
       }
   }
 }
@@ -223,16 +229,11 @@ type NonZeroDoubleLead
   | NonZeroDoubleOverflows { pushed: DecimalDigit }
 
 fn nonzero_decimal_digit_double_lead(lead: NonZeroDecimalDigit, carry_in: Bool) -> NonZeroDoubleLead {
-  match lead {
-    NonZeroD1 => if carry_in { NonZeroDoubleStays { lead: NonZeroD3 } } else { NonZeroDoubleStays { lead: NonZeroD2 } }
-    NonZeroD2 => if carry_in { NonZeroDoubleStays { lead: NonZeroD5 } } else { NonZeroDoubleStays { lead: NonZeroD4 } }
-    NonZeroD3 => if carry_in { NonZeroDoubleStays { lead: NonZeroD7 } } else { NonZeroDoubleStays { lead: NonZeroD6 } }
-    NonZeroD4 => if carry_in { NonZeroDoubleStays { lead: NonZeroD9 } } else { NonZeroDoubleStays { lead: NonZeroD8 } }
-    NonZeroD5 => if carry_in { NonZeroDoubleOverflows { pushed: D1 } } else { NonZeroDoubleOverflows { pushed: D0 } }
-    NonZeroD6 => if carry_in { NonZeroDoubleOverflows { pushed: D3 } } else { NonZeroDoubleOverflows { pushed: D2 } }
-    NonZeroD7 => if carry_in { NonZeroDoubleOverflows { pushed: D5 } } else { NonZeroDoubleOverflows { pushed: D4 } }
-    NonZeroD8 => if carry_in { NonZeroDoubleOverflows { pushed: D7 } } else { NonZeroDoubleOverflows { pushed: D6 } }
-    NonZeroD9 => if carry_in { NonZeroDoubleOverflows { pushed: D9 } } else { NonZeroDoubleOverflows { pushed: D8 } }
+  let doubled = (2 * decimal_digit_value(d: integer_nonzero_decimal_digit_widen(digit: lead))) + (if carry_in { 1 } else { 0 })
+  if doubled >= 10 {
+    NonZeroDoubleOverflows { pushed: decimal_digit_of_units(value: doubled) }
+  } else {
+    NonZeroDoubleStays { lead: nonzero_decimal_digit_of_positive_units(value: doubled) }
   }
 }
 
@@ -249,17 +250,9 @@ fn decimal_nonzero_double(m: DecimalNonZeroMagnitude) -> DecimalNonZeroMagnitude
 }
 
 fn nonzero_decimal_digit_minus_borrow(lead: NonZeroDecimalDigit, borrow_in: Bool) -> DecimalDigit {
-  match lead {
-    NonZeroD1 => if borrow_in { D0 } else { D1 }
-    NonZeroD2 => if borrow_in { D1 } else { D2 }
-    NonZeroD3 => if borrow_in { D2 } else { D3 }
-    NonZeroD4 => if borrow_in { D3 } else { D4 }
-    NonZeroD5 => if borrow_in { D4 } else { D5 }
-    NonZeroD6 => if borrow_in { D5 } else { D6 }
-    NonZeroD7 => if borrow_in { D6 } else { D7 }
-    NonZeroD8 => if borrow_in { D7 } else { D8 }
-    NonZeroD9 => if borrow_in { D8 } else { D9 }
-  }
+  decimal_digit_of_units(
+    value: decimal_digit_value(d: integer_nonzero_decimal_digit_widen(digit: lead)) - (if borrow_in { 1 } else { 0 })
+  )
 }
 
 fn decimal_nonzero_sub_one(m: DecimalNonZeroMagnitude) -> DecimalMagnitude {
