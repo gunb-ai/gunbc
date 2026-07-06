@@ -80,42 +80,40 @@ fn redfish_system_inventory(
 }
 
 fn redfish_power_consumed_total_watts(controls: List<RedfishPowerControl>) -> Watt? {
-  match controls |> first {
-    Present { value: ctrl } =>
+  fold(
+    controls,
+    init: Absent,
+    f: (acc, ctrl) =>
       match ctrl.power_consumed_watts {
-        Absent =>
-          redfish_power_consumed_total_watts(controls: controls |> skip(1))
+        Absent => acc
         Present { value: w } =>
-          match redfish_power_consumed_total_watts(controls: controls |> skip(1)) {
-            Present { value: sum } => Present { value: watt(count: watt_count(sum) + watt_count(w)) }
+          match acc {
             Absent => Present { value: w }
+            Present { value: sum } => Present { value: watt(count: watt_count(sum) + watt_count(w)) }
           }
       }
-    Absent => Absent
-  }
+  )
 }
 
 fn redfish_sensors_power_total_watts(sensors: List<RedfishSensorReading>) -> Watt? {
-  match sensors |> first {
-    Present { value: sensor } =>
+  fold(
+    sensors,
+    init: Absent,
+    f: (acc, sensor) =>
       match sensor {
         PowerSensor { name: _, watts: reading } =>
           match reading {
-            Absent =>
-              redfish_sensors_power_total_watts(sensors: sensors |> skip(1))
+            Absent => acc
             Present { value: w } =>
-              match redfish_sensors_power_total_watts(sensors: sensors |> skip(1)) {
-                Present { value: sum } => Present { value: watt(count: watt_count(sum) + watt_count(w)) }
+              match acc {
                 Absent => Present { value: w }
+                Present { value: sum } => Present { value: watt(count: watt_count(sum) + watt_count(w)) }
               }
           }
-        TemperatureSensor { name: _, celsius: _ } =>
-          redfish_sensors_power_total_watts(sensors: sensors |> skip(1))
-        FanTachSensor { name: _, rpm: _ } =>
-          redfish_sensors_power_total_watts(sensors: sensors |> skip(1))
+        TemperatureSensor { name: _, celsius: _ } => acc
+        FanTachSensor { name: _, rpm: _ } => acc
       }
-    Absent => Absent
-  }
+  )
 }
 
 fn bmc_telemetry_power_consumed_watts(snapshot: BmcTelemetrySnapshot) -> Watt? {
@@ -138,10 +136,15 @@ fn bmc_telemetry_power_consumed_watts(snapshot: BmcTelemetrySnapshot) -> Watt? {
 }
 
 fn redfish_primary_power_control(power: RedfishPowerSubsystem) -> RedfishPowerControl? {
-  match power.controls |> first {
-    Present { value: ctrl } => Present { value: ctrl }
-    Absent => Absent
-  }
+  fold(
+    power.controls,
+    init: Absent,
+    f: (acc, ctrl) =>
+      match acc {
+        Present { value: _ } => acc
+        Absent => Present { value: ctrl }
+      }
+  )
 }
 
 fn bmc_ground_host_observations(snapshot: BmcTelemetrySnapshot) -> BmcGroundedHostObservations {

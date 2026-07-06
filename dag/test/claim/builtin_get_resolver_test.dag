@@ -1,25 +1,21 @@
 module test.claim.builtin_get_resolver
 
-import v2.std.collection { list_at_optional, Present, Absent }
-
-data builtin_get_resolver_compile_note: String = "Bare-compile witness: list_at_optional exercises the same indexed Optional lookup surface as the get builtin (get remains covered by regen/self-compile)."
-
 fn witness_get_in_bounds_returns_element() -> Bool {
-  match list_at_optional(xs: [10, 20, 30], index: 1) {
+  match get(xs: [10, 20, 30], index: 1) {
     Present { value: v } => v == 20
     Absent => false
   }
 }
 
 fn witness_get_out_of_bounds_is_absent() -> Bool {
-  match list_at_optional(xs: [10, 20, 30], index: 7) {
+  match get(xs: [10, 20, 30], index: 7) {
     Present { value: _ } => false
     Absent => true
   }
 }
 
 fn witness_get_negative_index_is_absent() -> Bool {
-  match list_at_optional(xs: [10, 20, 30], index: 0 - 1) {
+  match get(xs: [10, 20, 30], index: 0 - 1) {
     Present { value: _ } => false
     Absent => true
   }
