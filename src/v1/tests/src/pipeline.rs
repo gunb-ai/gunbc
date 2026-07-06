@@ -30,7 +30,7 @@ fn full_dag_compiles() {
 
     let hard_diags: Vec<_> = diagnostic_messages(&dag_result)
         .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     if !hard_diags.is_empty() {
         panic!(
@@ -218,7 +218,7 @@ fn bare_alias_unknown_rhs_fails_closed() {
     let source = "module typo_test\ntype Foo = NotARealType\nfn f(x: Foo) -> Foo { x }\n";
     let msgs: Vec<_> = diagnostic_messages(&compile_dag(source))
         .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.iter()
@@ -272,7 +272,7 @@ fn std_os_types_resolves_with_t_question_and_leading_pipe() {
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty(),

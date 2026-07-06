@@ -124,7 +124,7 @@ fn assert_resolved_no_hard_errors(
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty() && resolved.graph.is_some(),
@@ -298,6 +298,7 @@ fn type_env_import_resolves_via_str_bindings_index() {
         inductive_fields: consumer.type_env.inductive_fields.clone(),
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
+        source_visible_names: Rc::new(im_rc::HashMap::new()),
     });
     assert!(
         lookup_type_by_name(stripped, "Shared".to_string()).is_none(),
@@ -329,6 +330,7 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         inductive_fields: consumer.type_env.inductive_fields.clone(),
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
+        source_visible_names: Rc::new(im_rc::HashMap::new()),
     });
     assert!(
         lookup_type_by_name(stripped.clone(), "Shared".to_string()).is_some(),
@@ -344,6 +346,7 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         inductive_fields: consumer.type_env.inductive_fields.clone(),
         source_indices: consumer.type_env.source_indices.clone(),
         intern_table: consumer.type_env.intern_table.clone(),
+        source_visible_names: Rc::new(im_rc::HashMap::new()),
     });
     assert!(
         lookup_type_by_name(stripped_index, "Shared".to_string()).is_none(),
@@ -562,6 +565,7 @@ fn type_env_std_types_type_variable_filtered_from_import() {
             }),
         )])),
         intern_table: intern_table.clone(),
+        source_visible_names: Rc::new(im_rc::HashMap::new()),
     });
     let filtered = type_env_for_import("std.types".to_string(), parent);
     for tv in ["T", "K", "V", "MappedElement", "FoldAccumulator"] {
