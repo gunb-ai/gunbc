@@ -136,7 +136,7 @@ fn field_unit_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
 fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
   match carrier.kind {
     TypeNode { connective: _ } =>
-      fold(carrier.children, init: Absent, f: fn(acc, edge) {
+      fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {
         optional_prefer_first_present(left: acc, right: field_unit_violation(carrier: carrier, edge: edge))
       })
     ComputationNode { behavior: _ } => Absent
@@ -144,7 +144,7 @@ fn carrier_first_unit_violation(carrier: Node) -> Optional<Diagnostic> {
 }
 
 fn subtree_first_unit_violation(node: Node) -> Optional<Diagnostic> {
-  fold(node_subtree_nodes(root: node), init: Absent, f: fn(acc, n) {
+  fold(node_subtree_nodes(root: node), init: optional_absent(), f: fn(acc, n) {
     optional_prefer_first_present(left: acc, right: carrier_first_unit_violation(carrier: n))
   })
 }
