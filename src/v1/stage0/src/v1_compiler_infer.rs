@@ -12131,6 +12131,7 @@ pub fn type_env_for_import(module_path: String, parent_env: Rc<TypeEnv>) -> Rc<T
                 inductive_fields: parent_env.inductive_fields.clone(),
                 source_indices: parent_env.source_indices.clone(),
                 intern_table: parent_env.intern_table.clone(),
+                source_visible_names: parent_env.source_visible_names.clone(),
             })
         }
     } else {
@@ -12334,6 +12335,7 @@ pub fn compiler_kernel_type_env(
         inductive_fields: node_fields,
         source_indices: source_indices.clone(),
         intern_table: intern_table.clone(),
+        source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
     })
 }
 
@@ -12765,6 +12767,57 @@ pub fn build_type_env(
         } else {
             ancestry_cache.str_bindings.clone()
         };
+        let svn_local = Rc::new(v1_rt::map_keys(&local_str_bindings.clone()))
+            .iter()
+            .cloned()
+            .fold(
+                v1_rt::rc_empty_map::<String, bool>(),
+                |acc: Rc<HashMap<String, bool>>, n: String| v1_rt::rc_map_insert(acc, n, true),
+            );
+        let svn_kernel = Rc::new(v1_rt::map_keys(&kernel_type_set()))
+            .iter()
+            .cloned()
+            .fold(svn_local, |acc: Rc<HashMap<String, bool>>, n: String| {
+                v1_rt::rc_map_insert(acc, n, true)
+            });
+        let source_visible_names = module.resolved_imports.clone().iter().cloned().fold(
+            svn_kernel,
+            |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
+                if imp.is_all {
+                    if let Some(parent_mod) = v1_rt::map_get(&parent_index, imp.module_path.clone())
+                    {
+                        let a1 =
+                            Rc::new(v1_rt::map_keys(&parent_mod.type_env.str_bindings.clone()))
+                                .iter()
+                                .cloned()
+                                .fold(acc.clone(), |x: Rc<HashMap<String, bool>>, n: String| {
+                                    v1_rt::rc_map_insert(x, n, true)
+                                });
+                        Rc::new(v1_rt::map_keys(
+                            &parent_mod.type_env.ancestry_str_bindings.clone(),
+                        ))
+                        .iter()
+                        .cloned()
+                        .fold(
+                            a1,
+                            |x: Rc<HashMap<String, bool>>, n: String| {
+                                v1_rt::rc_map_insert(x, n, true)
+                            },
+                        )
+                    } else {
+                        acc.clone()
+                    }
+                } else {
+                    imp.specific_names
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .fold(acc.clone(), |x: Rc<HashMap<String, bool>>, n: String| {
+                            v1_rt::rc_map_insert(x, n, true)
+                        })
+                }
+            },
+        );
         let unresolved_env = Rc::new(TypeEnv {
             bindings: all_local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
@@ -12775,6 +12828,7 @@ pub fn build_type_env(
             inductive_fields: merged_inductive_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            source_visible_names: source_visible_names.clone(),
         });
         let resolved = resolve_env_bindings(
             unresolved_env,
@@ -12794,6 +12848,7 @@ pub fn build_type_env(
             inductive_fields: resolved_env_out.inductive_fields.clone(),
             source_indices: resolved_env_out.source_indices.clone(),
             intern_table: intern_table.clone(),
+            source_visible_names: source_visible_names.clone(),
         });
         let cache_str_bindings = v1_rt::rc_map_merge(
             final_env.ancestry_str_bindings.clone(),
@@ -12973,6 +13028,7 @@ pub fn build_type_env_unresolved(
             inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
         });
         let module_name_str = authored_name_at(source_indices.clone(), module.module.clone());
         let import_parents = Rc::new({
@@ -13228,6 +13284,7 @@ pub fn build_type_env_unresolved(
             inductive_fields: merged_inductive_fields,
             source_indices: source_indices.clone(),
             intern_table: intern_table.clone(),
+            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
         });
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),
@@ -14271,6 +14328,7 @@ pub fn topo_resolve_types(
                         inductive_fields: env.inductive_fields.clone(),
                         source_indices: env.source_indices.clone(),
                         intern_table: env.intern_table.clone(),
+                        source_visible_names: env.source_visible_names.clone(),
                     }),
                     diagnostics: v1_rt::concat(
                         diagnostics.clone(),
@@ -14350,6 +14408,7 @@ pub fn topo_resolve_types(
                 inductive_fields: env.inductive_fields.clone(),
                 source_indices: env.source_indices.clone(),
                 intern_table: env.intern_table.clone(),
+                source_visible_names: env.source_visible_names.clone(),
             });
             let __tco_2 = v1_rt::concat(diagnostics, ready_accum.diagnostics.clone());
             let __tco_3 = (fuel - 1);
@@ -14999,6 +15058,7 @@ pub fn rewire_type_env_import_str_binding_identity(
                     inductive_fields: m.type_env.inductive_fields.clone(),
                     source_indices: m.type_env.source_indices.clone(),
                     intern_table: m.type_env.intern_table.clone(),
+                    source_visible_names: m.type_env.source_visible_names.clone(),
                 }),
                 type_env_cache: m.type_env_cache.clone(),
                 func_env: m.func_env.clone(),
@@ -15082,6 +15142,7 @@ pub fn rewire_type_env_parent_links(
                             inductive_fields: m.type_env.clone().inductive_fields.clone(),
                             source_indices: m.type_env.clone().source_indices.clone(),
                             intern_table: m.type_env.clone().intern_table.clone(),
+                            source_visible_names: m.type_env.source_visible_names.clone(),
                         }),
                         type_env_cache: m.type_env_cache.clone(),
                         func_env: m.func_env.clone(),
