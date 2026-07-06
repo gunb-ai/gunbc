@@ -856,6 +856,17 @@ fn compile_clean_scoping_active() -> bool {
             .unwrap_or(false)
 }
 
+/// CI may skip compile-clean only when the diff is genuinely irrelevant to the
+/// witness-tree gate: empty, or docs-only. Non-empty Rust/CI/infra touches with no
+/// shard intersection still run whole-tree (pre-lever-a baseline), not silent green.
+fn compile_clean_touched_paths_allow_ci_skip(touched_paths: &[String]) -> bool {
+    touched_paths.is_empty()
+        || touched_paths.iter().all(|p| {
+            let norm = p.strip_prefix("./").unwrap_or(p).replace('\\', "/");
+            norm.starts_with("docs/")
+        })
+}
+
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     if !compile_clean_scoping_active() {
         return CompileCleanScopePlan::WholeTree;
@@ -863,6 +874,14 @@ fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
     match floor_git_diff_name_status_range() {
         Ok((changed_paths, _departed)) => {
             match compile_clean_scope_plan_from_touched_paths(&changed_paths) {
+                Ok(CompileCleanScopePlan::SkipNoAffected { reason })
+                    if !compile_clean_touched_paths_allow_ci_skip(&changed_paths) =>
+                {
+                    eprintln!(
+                        "compile-clean scope: non-empty non-docs diff with no shard intersection — whole-tree (not skip)"
+                    );
+                    CompileCleanScopePlan::WholeTree
+                }
                 Ok(plan) => plan,
                 Err(msg) => CompileCleanScopePlan::Refused {
                     reason: format!("compile-clean scope disposition failed: {msg}"),
@@ -917,6 +936,8 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
 /// In CI (`GITHUB_ACTIONS=true`) or when `GUNBC_CI_DIFF_BASE` is set, scopes to affected
 /// shard entries from `tools.dag_compile_clean_scope` (lever a) using `gunbc_ci_spec.diff_policy`
 /// defaults via `floor_diff_observe`; diff/disposition failure refuses (never widens).
+/// Empty/docs-only diffs skip; non-empty non-docs diffs with no shard intersection fall back
+/// to whole-tree (compiler/infra edits must not silently bypass the gate).
 pub fn witness_layer_roots_compile_clean_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
@@ -11019,6 +11040,22 @@ mod witness_layer_roots_compile_clean_tests {
             let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
             assert!(compile_clean_scoping_active());
         });
+    }
+
+    /// Lever-a receipt: non-empty non-docs touches with no shard intersection widen to
+    /// whole-tree in CI — never silent green skip (Rust/CI-only PRs keep pre-lever baseline).
+    #[test]
+    fn ci_skip_allowed_only_for_empty_or_docs_only_touches() {
+        assert!(compile_clean_touched_paths_allow_ci_skip(&[]));
+        assert!(compile_clean_touched_paths_allow_ci_skip(&[
+            "docs/plans/foo.md".to_string()
+        ]));
+        assert!(!compile_clean_touched_paths_allow_ci_skip(&[
+            "src/v1/stage0/src/cli_run.rs".to_string()
+        ]));
+        assert!(!compile_clean_touched_paths_allow_ci_skip(&[
+            ".github/workflows/ci.yml".to_string()
+        ]));
     }
 
     /// Hand-Rust receipt: primary-precedence pool defers to the first witness root.
