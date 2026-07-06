@@ -5036,10 +5036,9 @@ fn floor_diff_edits_from_line_ranges(
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
     let mut touched_entry_files = HashSet::new();
-<<<<<<< HEAD
-=======
-    let mut saw_non_dag = false;
-    let mut saw_dag = false;
+    // #6269 attributes src/v1/ .dag changes through a dedicated index; the structural-∅ fix
+    // dropped the saw_non_dag/saw_dag refusal (a non-.dag-only diff is a nominal empty frontier,
+    // handled by the `continue` arm below), so neither flag is needed here.
     let v1_attribution_index = if line_ranges_by_file
         .keys()
         .any(|p| normalize_repo_path(p).starts_with("src/v1/"))
@@ -5048,7 +5047,6 @@ fn floor_diff_edits_from_line_ranges(
     } else {
         None
     };
->>>>>>> origin/main
     for (file_path, ranges) in line_ranges_by_file {
         if !file_path.ends_with(".dag") {
             // A non-.dag changed path is a structural-∅ for the .dag frontier: it declares no
@@ -5850,15 +5848,18 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
 
     #[test]
     fn non_dag_only_diff_is_structural_empty_frontier_not_refusal() {
-        // A present diff whose changed paths are all non-.dag (e.g. a hand-maintained seed .rs
-        // edit like regen_stage0.rs) is a structural-∅ for the .dag frontier -- no .dag nodes
-        // are declared, so nothing is attributable and every .dag row takes the not-affected
-        // skip, exactly as an empty diff does. It is NOT an ignorance state (the only ignorance
-        // state is a failed git-diff observation, refused upstream). RED CONTROL: before the
-        // arity fix this returned Err("non-.dag file changed with no .dag paths in diff") and
-        // reddened the discovery-corpus batch for every pure-.rs PR.
+        // A present diff whose changed paths are all non-.dag (a Rust/TOML/doc edit) is a
+        // structural-∅ for the .dag frontier -- no .dag nodes are declared, so nothing is
+        // attributable and every .dag row takes the not-affected skip, exactly as an empty diff
+        // does. It is NOT an ignorance state (the only ignorance state is a failed git-diff
+        // observation, refused upstream). RED CONTROL: before the arity fix this returned
+        // Err("non-.dag file changed with no .dag paths in diff") and reddened the
+        // discovery-corpus batch for every pure-.rs PR.
+        // NB: use a non-src/v1 path -- #6269 eagerly builds the v1-attribution index for any
+        // src/v1/ path, which reads the real workspace tree and cannot run from the unit-test
+        // cwd. The structural-∅ arm is path-agnostic, so this isolates exactly that behavior.
         let index = build_multi_entry_index(&[]);
-        let rs_only_diff = unified_diff_for_line("src/v1/stage0/src/regen_stage0.rs", 42);
+        let rs_only_diff = unified_diff_for_line("crates/widget/src/lib.rs", 42);
         let edits = floor_diff_edits_from_diff_text(&index, &rs_only_diff)
             .expect("non-.dag-only diff must be a nominal empty frontier, not a refusal");
         assert!(
@@ -8137,17 +8138,14 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import v2.std.text { String }\n");
-<<<<<<< HEAD
     // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef` (V2Tree/DagTree,
-    // #5473/#5486). The emitted value references those constructors, so the manifest must import
-    // them or every witness fails to resolve with `undefined variable 'V2Tree'` — the source_root
-    // ingest gate's persistent RED. Both constructors are imported since a scan may span trees.
-    out.push_str("import v2.std.cross_tree.import_model { DagTree, V2Tree }\n");
-=======
+    // #5473/#5486), so the manifest must import the constructors it references or every witness
+    // fails with `undefined variable 'V2Tree'` (the source_root ingest gate's persistent RED).
+    // #6269's emit_source_root_ref_import derives exactly the referenced constructors from the
+    // records (supersedes the earlier hardcoded-both-constructors form).
     if !inline_records.is_empty() {
         out.push_str(&emit_source_root_ref_import(inline_records));
     }
->>>>>>> origin/main
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");
         out.push_str("  Admission,\n");
