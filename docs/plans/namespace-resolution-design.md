@@ -257,11 +257,21 @@ values `{ import-scoped (§1c, today) , namespace-only-X , namespace-only-Y }`. 
    Reproduce the red in isolation by adding `"Nat"` to `kernel_type_set` on main (lively-raven's
    #6325 delta). This is §8's acceptance witness — it must go from `Err(NoSuchVariable)` to the
    coproduct greens under the flip, with a same-depth control asserting `Ambiguous`.
-5. Retire imports to `alias`-only once no subtree depends on import-scoped resolution.
+5. **TERMINAL STEP — delete the import syntax itself (operator directive, 2026-07-06).** Once
+   every subtree has flipped and no module depends on import-scoped resolution, **delete the
+   `import` grammar production and its supporting resolve/env code** so `import …` becomes an
+   *actual parse error*, not an inert-but-tolerated form. Imports do not "retire to alias-only"
+   — they are removed. The dependency graph (build order, `SymbolIndex` fill traversal) is then
+   **derived from the `container.member` references themselves** (each reference names its
+   container → that IS the edge), so the import statement is redundant on *both* its axes
+   (visibility *and* dependency-declaration) and leaves nothing behind. Rule 1 end-state: one
+   representation (references), zero vestigial syntax. Sequencing: this is LAST — deleting the
+   production while any unmigrated module still uses `import` would parse-error that module, so
+   the grammar drop lands only after corpus-wide flip is green.
 
 The current selective-import mask is thereby the **interim realization** of the
 `import-scoped` policy value — it is not thrown away mid-flight, it is the thing the policy
-flip retires, subtree by subtree.
+flip retires, subtree by subtree, until step 5 deletes the syntax outright.
 
 ## 9. Open / to-verify
 
