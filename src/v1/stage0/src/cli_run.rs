@@ -208,7 +208,6 @@ fn module_path_collision_panic_message(
 }
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
-    let ws = workspace_root();
     let mut index: HashMap<String, String> = HashMap::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let root_path = Path::new(root);
@@ -222,17 +221,7 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                 panic!("build_module_path_index: failed to read {:?}: {}", path, e)
             });
             if let Some(module_path) = extract_module_path(&content) {
-                let rel = path
-                    .strip_prefix(&ws)
-                    .unwrap_or_else(|_| {
-                        panic!(
-                            "build_module_path_index: path {} is not under workspace {}",
-                            path.display(),
-                            ws.display()
-                        )
-                    })
-                    .to_string_lossy()
-                    .replace('\\', "/");
+                let rel = workspace_relative_repo_path(&path.to_string_lossy());
                 if is_source_root_ingest_manifest_stub_rel(&rel)
                     && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
                 {
