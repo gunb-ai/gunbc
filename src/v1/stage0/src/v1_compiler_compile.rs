@@ -398,7 +398,7 @@ pub fn dag_emit_check_ref_target(
 }
 
 pub fn dag_emit_check_optional_ref_target(
-    value: Rc<Node>,
+    value: Option<Rc<Node>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     match value {
@@ -408,7 +408,7 @@ pub fn dag_emit_check_optional_ref_target(
 }
 
 pub fn dag_emit_check_inferred_ref_target(
-    value: Rc<InferredNode>,
+    value: Option<Rc<InferredNode>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> Rc<Vec<Rc<ErrorNode>>> {
     match value.as_deref().cloned() {
@@ -560,7 +560,10 @@ pub fn serialize_node_ref(node: Rc<Node>, key_to_id: Rc<HashMap<String, String>>
     }
 }
 
-pub fn json_optional_node_ref(value: Rc<Node>, key_to_id: Rc<HashMap<String, String>>) -> String {
+pub fn json_optional_node_ref(
+    value: Option<Rc<Node>>,
+    key_to_id: Rc<HashMap<String, String>>,
+) -> String {
     match value {
         Some(inner) => serialize_node_ref(inner.clone(), key_to_id),
         None => "null".to_string(),
@@ -568,7 +571,7 @@ pub fn json_optional_node_ref(value: Rc<Node>, key_to_id: Rc<HashMap<String, Str
 }
 
 pub fn json_optional_inferred_node_ref(
-    value: Rc<InferredNode>,
+    value: Option<Rc<InferredNode>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {
     match value {
@@ -966,7 +969,7 @@ pub fn serialize_call_semantics(value: Option<CallSemantics>) -> String {
 }
 
 pub fn serialize_method_semantics(
-    value: Rc<MethodSemantics>,
+    value: Option<Rc<MethodSemantics>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     key_to_id: Rc<HashMap<String, String>>,
 ) -> String {

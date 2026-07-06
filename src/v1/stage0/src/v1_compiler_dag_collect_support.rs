@@ -17,7 +17,6 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-<<<<<<< Updated upstream
 use im_rc::HashMap;
 use im_rc::{OrdSet as BTreeSet, Vector as Vec};
 use std::cell::RefCell;
@@ -109,12 +108,6 @@ pub struct DagCollectSlot {
     pub seq: i64,
 }
 
-=======
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::rc::Rc;
-
->>>>>>> Stashed changes
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DagCollectAcc {
     pub seen: Rc<HashMap<String, String>>,
@@ -153,7 +146,7 @@ pub fn json_quote(s: String) -> String {
     )
 }
 
-pub fn inferred_fingerprint(value: Rc<InferredNode>) -> String {
+pub fn inferred_fingerprint(value: Option<Rc<InferredNode>>) -> String {
     match value.as_deref().cloned() {
         None => "none".to_string(),
         Some(InferredNode::Resolved { node: _, .. }) => "Resolved".to_string(),
@@ -261,52 +254,11 @@ pub fn dag_node_surface_leaf_mix(node: Rc<Node>) -> String {
 }
 
 pub fn dag_node_surface_fingerprint_rec(node: Rc<Node>) -> String {
-<<<<<<< Updated upstream
     dag_node_surface_fingerprint_memo(node)
-=======
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        let child_hashes = Rc::new({
-            let mut __result = Vec::new();
-            for c in node.children.clone().iter().cloned() {
-                __result.push(dag_node_surface_fingerprint_rec(c.clone()));
-            }
-            __result
-        });
-        let param_hashes = Rc::new({
-            let mut __result = Vec::new();
-            for p in node.params.clone().iter().cloned() {
-                __result.push(dag_node_surface_fingerprint_rec(p.clone()));
-            }
-            __result
-        });
-        let with_children = v1_rt::hash_combine(
-            dag_node_surface_leaf_mix(node.clone()),
-            child_subtree_hash(node.connective.clone(), child_hashes),
-        );
-        v1_rt::hash_combine(with_children, dag_node_seq_hash(param_hashes))
-    })
->>>>>>> Stashed changes
 }
 
 pub fn dag_node_surface_fingerprint(node: Rc<Node>) -> String {
     dag_node_surface_fingerprint_memo(node)
-}
-
-pub fn dag_collect_fp_memo_dissolve_on() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Dissolve-on: ground on std.content_hash + node-keyed memo table once v2 adoption clears for this stage. Realization threads a per-collect memo reset at collect_dag_nodes entry; Rust seed uses Rc::as_ptr until then.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn dag_collect_fp_memo_reset() -> bool {
-    true
-}
-
-pub fn dag_node_surface_fingerprint_memo(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint_rec(node)
 }
 
 pub fn dag_node_key_collision_error(key: String, span: Rc<SourceSpan>) -> Rc<ErrorNode> {

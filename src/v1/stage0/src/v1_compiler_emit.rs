@@ -1237,7 +1237,7 @@ pub fn emit_node_type(
     render_node_type(n, target, v1_rt::rc_empty_set::<String>(), source_indices)
 }
 
-pub fn named_type_vars_in_inferred(inferred: Rc<InferredNode>) -> Rc<Vec<String>> {
+pub fn named_type_vars_in_inferred(inferred: Option<Rc<InferredNode>>) -> Rc<Vec<String>> {
     match inferred.as_deref().cloned() {
         Some(InferredNode::TypeVariable { id: var_id, .. }) => Rc::new(vec![var_id.clone()]),
         Some(InferredNode::Resolved { node: rt, .. }) => named_type_vars_in_node(rt.clone()),
@@ -4514,7 +4514,7 @@ pub fn emit_init_block_stmts_shared(
 pub fn emit_typed_let_shared(
     name: String,
     value_str: String,
-    body: Rc<Node>,
+    body: Option<Rc<Node>>,
     target: RenderTarget,
     recurse: impl Fn(Rc<Node>, Rc<InferScope>) -> String + Clone,
     scope: Rc<InferScope>,
@@ -4543,8 +4543,8 @@ pub fn emit_typed_let_shared(
 pub fn emit_typed_if_shared(
     cond_str: String,
     then_branch: Rc<Node>,
-    else_branch: Rc<Node>,
-    if_result_type: Rc<Node>,
+    else_branch: Option<Rc<Node>>,
+    if_result_type: Option<Rc<Node>>,
     depth: i64,
     target: RenderTarget,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
@@ -5237,7 +5237,7 @@ pub fn emit_typed_method_call_unified(
     receiver: Rc<Node>,
     method: String,
     args: Rc<Vec<Rc<Node>>>,
-    method_semantics: Rc<MethodSemantics>,
+    method_semantics: Option<Rc<MethodSemantics>>,
     target: RenderTarget,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,

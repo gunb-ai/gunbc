@@ -1607,8 +1607,7 @@ mod compiler_tests {
                 let sources = self_compile_sources();
 
                 eprintln!(
-                    "
-=== PER-MODULE RECONCILE PROFILE ({} sources) ===",
+                    "\n=== PER-MODULE RECONCILE PROFILE ({} sources) ===",
                     sources.len()
                 );
 
@@ -1671,11 +1670,7 @@ mod compiler_tests {
                     setup_time,
                     format_bytes(rss_baseline)
                 );
-                eprintln!(
-                    "  Modules to reconcile: {}
-",
-                    graph.modules.len()
-                );
+                eprintln!("  Modules to reconcile: {}\n", graph.modules.len());
 
                 let mut mi_raw = HashMap::<
                     String,
@@ -1826,15 +1821,11 @@ mod compiler_tests {
 
                 let rss_final = get_rss_bytes();
                 eprintln!(
-                    "
-  RSS final: {} (from baseline: +{})",
+                    "\n  RSS final: {} (from baseline: +{})",
                     format_bytes(rss_final),
                     format_bytes(rss_final.saturating_sub(rss_baseline))
                 );
-                eprintln!(
-                    "=== DONE ===
-"
-                );
+                eprintln!("=== DONE ===\n");
             })
             .expect("failed to spawn thread")
             .join();

@@ -167,7 +167,7 @@ pub enum InferredNode {
     },
 }
 
-pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Rc<Node> {
+pub fn inferred_to_node(inferred: Rc<InferredNode>) -> Option<Rc<Node>> {
     match (*inferred).clone() {
         InferredNode::Resolved { node: n, .. } => Some(n.clone()),
         InferredNode::CompilerError { .. } => None,
@@ -799,7 +799,7 @@ pub fn empty_node_list() -> Rc<Vec<Rc<Node>>> {
 pub fn make_expr_node(
     expr_data: Rc<ExprData>,
     children: Rc<Vec<Rc<Node>>>,
-    inferred: Rc<InferredNode>,
+    inferred: Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
@@ -828,7 +828,7 @@ pub fn make_named_expr_node(
     name: String,
     expr_data: Rc<ExprData>,
     children: Rc<Vec<Rc<Node>>>,
-    inferred: Rc<InferredNode>,
+    inferred: Option<Rc<InferredNode>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
@@ -923,7 +923,7 @@ pub fn make_arg_node(
 
 pub fn make_arm_node(
     pattern: Rc<MatchPattern>,
-    guard: Rc<Node>,
+    guard: Option<Rc<Node>>,
     body: Rc<Node>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
@@ -1122,7 +1122,7 @@ pub fn make_interp_part_node(expr: Rc<Node>, span: Rc<SourceSpan>) -> Rc<Node> {
 pub fn make_param_node(
     name: String,
     type_expr: Rc<Node>,
-    default_value: Rc<Node>,
+    default_value: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
 ) -> Rc<Node> {
@@ -1157,7 +1157,7 @@ pub fn make_param_node(
 pub fn make_resolved_param_node(
     name: String,
     type_expr: Rc<Node>,
-    default_value: Rc<Node>,
+    default_value: Option<Rc<Node>>,
     properties: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
@@ -1242,7 +1242,7 @@ pub fn find_child_named(
     n: Rc<Node>,
     name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     match Rc::new({
         let mut __result = Vec::new();
         for c in n.children.clone().iter().cloned() {
@@ -1288,7 +1288,7 @@ pub fn param_node_type_expr(n: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn param_node_default_value(n: Rc<Node>) -> Rc<Node> {
+pub fn param_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
         n.children.clone().get(1 as usize).cloned()
     } else {
@@ -1304,7 +1304,7 @@ pub fn make_field_node(
     name: String,
     type_expr: Rc<Node>,
     cardinality: Cardinality,
-    default_value: Rc<Node>,
+    default_value: Option<Rc<Node>>,
     from_key: Option<String>,
     span: Rc<SourceSpan>,
     name_span: Rc<SourceSpan>,
@@ -1387,7 +1387,7 @@ pub fn field_node_cardinality(n: Rc<Node>) -> Cardinality {
     n.return_cardinality.clone()
 }
 
-pub fn field_node_default_value(n: Rc<Node>) -> Rc<Node> {
+pub fn field_node_default_value(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) > 1) {
         n.children.clone().get(1 as usize).cloned()
     } else {
@@ -1695,7 +1695,7 @@ pub fn arm_pattern(n: Rc<Node>) -> Rc<MatchPattern> {
     }
 }
 
-pub fn arm_guard(n: Rc<Node>) -> Rc<Node> {
+pub fn arm_guard(n: Rc<Node>) -> Option<Rc<Node>> {
     if ((n.children.clone().len() as i64) == 2) {
         n.children.clone().first().cloned()
     } else {
@@ -1740,7 +1740,7 @@ pub fn if_then_branch(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr, 1, "if then-branch".to_string())
 }
 
-pub fn if_else_branch(texpr: Rc<Node>) -> Rc<Node> {
+pub fn if_else_branch(texpr: Rc<Node>) -> Option<Rc<Node>> {
     texpr.children.clone().get(2 as usize).cloned()
 }
 
@@ -1837,7 +1837,7 @@ pub fn expr_method_name_at(
     authored_name_at(source_indices, texpr)
 }
 
-pub fn expr_method_call_semantics(texpr: Rc<Node>) -> Rc<MethodSemantics> {
+pub fn expr_method_call_semantics(texpr: Rc<Node>) -> Option<Rc<MethodSemantics>> {
     match (*texpr.expr_data.clone()).clone() {
         ExprData::ExprMethodCall {
             method_semantics: ms,
@@ -1879,7 +1879,7 @@ pub fn let_value(texpr: Rc<Node>) -> Rc<Node> {
     expr_child_at(texpr, 0, "let value".to_string())
 }
 
-pub fn let_body(texpr: Rc<Node>) -> Rc<Node> {
+pub fn let_body(texpr: Rc<Node>) -> Option<Rc<Node>> {
     texpr.children.clone().get(1 as usize).cloned()
 }
 
@@ -2066,7 +2066,7 @@ pub fn transport_headers_key() -> String {
 pub fn make_transport_node(
     properties: Rc<Vec<Rc<Node>>>,
     children: Rc<Vec<Rc<Node>>>,
-    body: Rc<Node>,
+    body: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     Rc::new(Node {
@@ -2099,11 +2099,11 @@ pub fn rest_transport_node(
     base_url: Rc<Node>,
     auth_props: Rc<Vec<Rc<Node>>>,
     headers: Rc<Vec<Rc<Node>>>,
-    method: Rc<Node>,
-    path: Rc<Node>,
-    query: Rc<Node>,
-    request_body: Rc<Node>,
-    response_format: Rc<Node>,
+    method: Option<Rc<Node>>,
+    path: Option<Rc<Node>>,
+    query: Option<Rc<Node>>,
+    request_body: Option<Rc<Node>>,
+    response_format: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
@@ -2185,7 +2185,7 @@ pub fn rest_transport_node(
 pub fn shell_transport_node(
     argv: Rc<Vec<Rc<Node>>>,
     env: Rc<Vec<Rc<Node>>>,
-    stdin: Rc<Node>,
+    stdin: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
 ) -> Rc<Node> {
     {
@@ -2259,7 +2259,7 @@ pub fn find_property(
     props: Rc<Vec<Rc<Node>>>,
     prop_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     match Rc::new({
         let mut __result = Vec::new();
         for p in props.iter().cloned() {
@@ -2299,7 +2299,7 @@ pub fn find_property_string(
 pub fn transport_base_path(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(t.properties.clone(), transport_path_key(), source_indices)
 }
 
@@ -2366,14 +2366,14 @@ pub fn operation_modifier_name(modifier: OperationModifier) -> String {
 pub fn transport_base_url(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(t.properties.clone(), transport_url_key(), source_indices)
 }
 
 pub fn transport_auth_token(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
         transport_auth_token_key(),
@@ -2409,14 +2409,14 @@ pub fn transport_has_auth(
 pub fn transport_method(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(t.properties.clone(), transport_method_key(), source_indices)
 }
 
 pub fn transport_path_template(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
         transport_path_template_key(),
@@ -2427,28 +2427,28 @@ pub fn transport_path_template(
 pub fn transport_query(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(t.properties.clone(), transport_query_key(), source_indices)
 }
 
 pub fn transport_request_body(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(t.properties.clone(), transport_body_key(), source_indices)
 }
 
 pub fn transport_stdin(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(t.properties.clone(), transport_stdin_key(), source_indices)
 }
 
 pub fn transport_response_format(
     t: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(
         t.properties.clone(),
         transport_response_format_key(),
@@ -2829,11 +2829,11 @@ pub fn expr_has_non_tail_self_call(
 
 pub fn service_config_properties(
     endpoint: Rc<Node>,
-    auth: Rc<Node>,
-    auth_input: Rc<Node>,
-    auth_source: Rc<Node>,
-    rate_limit: Rc<Node>,
-    retry: Rc<Node>,
+    auth: Option<Rc<Node>>,
+    auth_input: Option<Rc<Node>>,
+    auth_source: Option<Rc<Node>>,
+    rate_limit: Option<Rc<Node>>,
+    retry: Option<Rc<Node>>,
 ) -> Rc<Vec<Rc<Node>>> {
     {
         let zero_span = make_span(0, 0);
@@ -2922,7 +2922,7 @@ pub fn has_service_config(
 pub fn service_config_endpoint(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(
         n.properties.clone(),
         "svc_endpoint".to_string(),
@@ -2933,14 +2933,14 @@ pub fn service_config_endpoint(
 pub fn service_config_auth(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(n.properties.clone(), "svc_auth".to_string(), source_indices)
 }
 
 pub fn service_config_rate_limit(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(
         n.properties.clone(),
         "svc_rate_limit".to_string(),
@@ -2951,7 +2951,7 @@ pub fn service_config_rate_limit(
 pub fn service_config_retry(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(
         n.properties.clone(),
         "svc_retry".to_string(),
@@ -2962,7 +2962,7 @@ pub fn service_config_retry(
 pub fn service_config_auth_input(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(
         n.properties.clone(),
         "svc_auth_input".to_string(),
@@ -2973,7 +2973,7 @@ pub fn service_config_auth_input(
 pub fn service_config_auth_source(
     n: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     find_property(
         n.properties.clone(),
         "svc_auth_source".to_string(),
@@ -3542,9 +3542,9 @@ pub fn intern(table: Rc<InternTable>, s: String) -> Rc<InternResult> {
 }
 
 pub fn intern_str(table: Rc<InternTable>, id: i64) -> String {
-    match table.strings.clone().get(id) {
+    match table.strings.clone().get(id as usize).cloned() {
+        Some(s) => s.clone(),
         None => "".to_string(),
-        other => other.clone(),
     }
 }
 

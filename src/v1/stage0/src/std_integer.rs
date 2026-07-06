@@ -45,7 +45,7 @@ pub type UInt128 =
 
 pub type Int = i64;
 
-pub type UInt = Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>;
+pub type UInt = i64;
 
 pub type IntPlatform = crate::std_machine_constraints::Compose<
     i64,
@@ -57,6 +57,6 @@ pub type UIntPlatform = crate::std_machine_constraints::Compose<
     crate::std_machine_constraints::MachineWidth<PointerWidth>,
 >;
 
-pub type NonNegativeInt = Rc<crate::std_algebra::CommutativeSemiring<Magnitude>>;
+pub type NonNegativeInt = i64;
 
-pub type PositiveInt = Rc<CommutativeSemiring<Magnitude>>;
+pub type PositiveInt = Nat;

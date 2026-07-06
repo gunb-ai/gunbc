@@ -25,7 +25,7 @@ use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
-use crate::v1_std_core::CompilerDiagnostic::{InternalError, ParseError};
+use crate::v1_std_core::CompilerDiagnostic::ParseError;
 use crate::v1_std_core::Connective::{Arrow, Conj, Disj, NoConnective};
 use crate::v1_std_core::ExprData::{
     ExprBinOp, ExprBlock, ExprCall, ExprCast, ExprFieldAccess, ExprForEach, ExprIf, ExprIndex,
@@ -93,11 +93,7 @@ pub fn token_stream_position(stream: Rc<TokenStream>) -> i64 {
 }
 
 pub fn token_stream_first(stream: Rc<TokenStream>) -> Option<Rc<Token>> {
-    stream
-        .all
-        .clone()
-        .get((stream.pos.clone()) as usize)
-        .cloned()
+    stream.all.clone().get(stream.pos.clone() as usize).cloned()
 }
 
 pub fn token_stream_advance(stream: Rc<TokenStream>, n: i64) -> Rc<TokenStream> {
@@ -1737,7 +1733,7 @@ pub fn parser_result_base_var(
 pub fn parser_helper_state_arg_expr(
     call_node: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     Rc::new(
         call_node
             .children
@@ -1812,7 +1808,7 @@ pub fn parser_helper_identity(callee: String) -> Option<ParserHelperIdentity> {
 pub fn parser_passthrough_state_expr(
     expr: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprCall { .. } => {
             match parser_helper_identity(expr_call_func_at(expr.clone(), source_indices.clone())) {
@@ -2854,7 +2850,7 @@ pub fn outputs_to_inferred(
     outputs: Rc<Vec<Rc<Node>>>,
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<InferredNode> {
+) -> Option<Rc<InferredNode>> {
     if ((outputs.clone().len() as i64) > 0) {
         Some(Rc::new(InferredNode::Resolved {
             node: Rc::new(Node {
@@ -2898,7 +2894,7 @@ pub fn make_operation_node(
     mock_props: Rc<Vec<Rc<Node>>>,
     exit_props: Rc<Vec<Rc<Node>>>,
     modifier_props: Rc<Vec<Rc<Node>>>,
-    transport: Rc<Node>,
+    transport: Option<Rc<Node>>,
     span: Rc<SourceSpan>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
@@ -6476,12 +6472,12 @@ pub fn parse_service_config_block(
 pub fn parse_config_fields(
     mut tokens: Rc<TokenStream>,
     mut ctx: Rc<ParseContext>,
-    mut endpoint: Rc<Node>,
-    mut auth: Rc<Node>,
-    mut auth_input: Rc<Node>,
-    mut auth_source: Rc<Node>,
-    mut rate_limit: Rc<Node>,
-    mut retry: Rc<Node>,
+    mut endpoint: Option<Rc<Node>>,
+    mut auth: Option<Rc<Node>>,
+    mut auth_input: Option<Rc<Node>>,
+    mut auth_source: Option<Rc<Node>>,
+    mut rate_limit: Option<Rc<Node>>,
+    mut retry: Option<Rc<Node>>,
 ) -> Rc<ConfigResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -6800,12 +6796,12 @@ pub fn parse_rest_binding_body(
 pub fn parse_rest_fields(
     mut tokens: Rc<TokenStream>,
     mut ctx: Rc<ParseContext>,
-    mut base_url: Rc<Node>,
-    mut method: Rc<Node>,
-    mut path_template: Rc<Node>,
-    mut query: Rc<Node>,
-    mut request_body: Rc<Node>,
-    mut response_format: Rc<Node>,
+    mut base_url: Option<Rc<Node>>,
+    mut method: Option<Rc<Node>>,
+    mut path_template: Option<Rc<Node>>,
+    mut query: Option<Rc<Node>>,
+    mut request_body: Option<Rc<Node>>,
+    mut response_format: Option<Rc<Node>>,
     mut headers: Rc<Vec<Rc<Node>>>,
 ) -> Rc<TransportResult> {
     loop {
@@ -6965,7 +6961,7 @@ pub fn parse_shell_fields(
     mut tokens: Rc<TokenStream>,
     mut ctx: Rc<ParseContext>,
     mut argv: Rc<Vec<Rc<Node>>>,
-    mut stdin: Rc<Node>,
+    mut stdin: Option<Rc<Node>>,
 ) -> Rc<TransportResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -7103,7 +7099,7 @@ pub fn parse_file_binding_body(
 pub fn parse_file_fields(
     mut tokens: Rc<TokenStream>,
     mut ctx: Rc<ParseContext>,
-    mut base_path: Rc<Node>,
+    mut base_path: Option<Rc<Node>>,
 ) -> Rc<TransportResult> {
     loop {
         tokens = skip_newlines(tokens.clone());
@@ -7456,7 +7452,7 @@ pub fn parse_op_body_entries(
     mut inputs: Rc<Vec<Rc<Node>>>,
     mut outputs: Rc<Vec<Rc<Node>>>,
     mut modifier_props: Rc<Vec<Rc<Node>>>,
-    mut transport: Rc<Node>,
+    mut transport: Option<Rc<Node>>,
     mut exit_props: Rc<Vec<Rc<Node>>>,
     mut response_props: Rc<Vec<Rc<Node>>>,
     mut mock_props: Rc<Vec<Rc<Node>>>,

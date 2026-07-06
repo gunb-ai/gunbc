@@ -144,14 +144,12 @@ pub struct OwnershipProof {
 pub struct UsageAccum {
     pub bindings: Rc<HashMap<String, Rc<BindingUsage>>>,
     pub fold_call_nodes: Rc<Vec<Rc<Node>>>,
-    pub touched: Rc<Vec<String>>,
 }
 
 pub fn empty_usage_accum() -> Rc<UsageAccum> {
     Rc::new(UsageAccum {
         bindings: v1_rt::rc_empty_map::<String, Rc<BindingUsage>>(),
         fold_call_nodes: Rc::new(vec![]),
-        touched: Rc::new(vec![]),
     })
 }
 
@@ -190,7 +188,6 @@ pub fn record_use(
         Rc::new(UsageAccum {
             bindings: v1_rt::rc_map_insert(accum.bindings.clone(), name.clone(), updated),
             fold_call_nodes: accum.fold_call_nodes.clone(),
-            touched: v1_rt::rc_list_push(accum.touched.clone(), name.clone()),
         })
     }
 }
@@ -218,14 +215,6 @@ pub fn map_usage_merge_at(
     }
 }
 
-pub fn branch_seed(from: Rc<UsageAccum>) -> Rc<UsageAccum> {
-    Rc::new(UsageAccum {
-        bindings: from.bindings.clone(),
-        fold_call_nodes: from.fold_call_nodes.clone(),
-        touched: Rc::new(vec![]),
-    })
-}
-
 pub fn merge_branch_usages(
     base: Rc<UsageAccum>,
     branches: Rc<Vec<Rc<UsageAccum>>>,
@@ -234,22 +223,15 @@ pub fn merge_branch_usages(
         let binding_merged = branches.clone().iter().cloned().fold(
             base.bindings.clone(),
             |merged: Rc<HashMap<String, Rc<BindingUsage>>>, branch: Rc<UsageAccum>| {
-                branch.touched.clone().iter().cloned().fold(
-                    merged,
-                    |acc: Rc<HashMap<String, Rc<BindingUsage>>>, name: String| match v1_rt::map_get(
-                        &branch.bindings.clone(),
-                        name.clone(),
-                    ) {
-                        Some(usage) => map_usage_merge_at(acc.clone(), name.clone(), usage.clone()),
-                        None => acc.clone(),
-                    },
-                )
-            },
-        );
-        let touched_merged = branches.clone().iter().cloned().fold(
-            base.touched.clone(),
-            |acc: Rc<Vec<String>>, branch: Rc<UsageAccum>| {
-                v1_rt::concat(acc, branch.touched.clone())
+                Rc::new(v1_rt::map_values(&branch.bindings.clone()))
+                    .iter()
+                    .cloned()
+                    .fold(
+                        merged,
+                        |acc: Rc<HashMap<String, Rc<BindingUsage>>>, usage: Rc<BindingUsage>| {
+                            map_usage_merge_at(acc, usage.name.clone(), usage.clone())
+                        },
+                    )
             },
         );
         let base_fold_count = (base.fold_call_nodes.clone().len() as i64);
@@ -274,7 +256,6 @@ pub fn merge_branch_usages(
         Rc::new(UsageAccum {
             bindings: binding_merged,
             fold_call_nodes: v1_rt::concat(base.fold_call_nodes.clone(), branch_fold_nodes),
-            touched: touched_merged,
         })
     }
 }
@@ -455,7 +436,6 @@ pub fn walk_expr(
                                 walked.fold_call_nodes.clone(),
                                 texpr.clone(),
                             ),
-                            touched: walked.touched.clone(),
                         })
                     }
                 } else {
@@ -474,12 +454,11 @@ pub fn walk_expr(
                 let scrut = match_scrutinee(texpr.clone());
                 let arm_nodes = match_arm_nodes(texpr.clone());
                 let s_accum = walk_expr(accum, scrut, false, si.clone());
-                let seed = branch_seed(s_accum.clone());
                 let branch_accums = Rc::new({
                     let mut __result = Vec::new();
                     for arm_node in arm_nodes.iter().cloned() {
                         __result.push(walk_expr(
-                            seed.clone(),
+                            s_accum.clone(),
                             arm_body(arm_node.clone()),
                             in_tail.clone(),
                             si.clone(),
@@ -493,11 +472,10 @@ pub fn walk_expr(
                 let c = if_condition(texpr.clone());
                 let t = if_then_branch(texpr.clone());
                 let c_accum = walk_expr(accum, c, false, si.clone());
-                let seed = branch_seed(c_accum.clone());
-                let t_accum = walk_expr(seed.clone(), t, in_tail.clone(), si.clone());
+                let t_accum = walk_expr(c_accum.clone(), t, in_tail.clone(), si.clone());
                 let e_accum = match if_else_branch(texpr.clone()) {
-                    Some(eb) => walk_expr(seed.clone(), eb.clone(), in_tail.clone(), si.clone()),
-                    None => seed.clone(),
+                    Some(eb) => walk_expr(c_accum.clone(), eb.clone(), in_tail.clone(), si.clone()),
+                    None => c_accum.clone(),
                 };
                 merge_branch_usages(c_accum.clone(), Rc::new(vec![t_accum, e_accum]))
             }
@@ -568,8 +546,16 @@ pub fn walk_expr(
                     .iter()
                     .cloned()
                     .fold(accum, |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
-                        record_use(
+                        let a1 = record_use(
                             acc,
+                            usage.name.clone(),
+                            EdgeKind::Read,
+                            "lambda-capture".to_string(),
+                            None,
+                            0,
+                        );
+                        record_use(
+                            a1.clone(),
                             usage.name.clone(),
                             EdgeKind::Read,
                             "lambda-capture".to_string(),
@@ -583,7 +569,6 @@ pub fn walk_expr(
                         binding_merged.fold_call_nodes.clone(),
                         inner.fold_call_nodes.clone(),
                     ),
-                    touched: binding_merged.touched.clone(),
                 })
             }
             ExprData::ExprForEach => {
@@ -597,8 +582,16 @@ pub fn walk_expr(
                     .fold(
                         coll_accum.clone(),
                         |acc: Rc<UsageAccum>, usage: Rc<BindingUsage>| {
-                            record_use(
+                            let a1 = record_use(
                                 acc,
+                                usage.name.clone(),
+                                EdgeKind::Read,
+                                "foreach-capture".to_string(),
+                                None,
+                                0,
+                            );
+                            record_use(
+                                a1.clone(),
                                 usage.name.clone(),
                                 EdgeKind::Read,
                                 "foreach-capture".to_string(),
@@ -613,7 +606,6 @@ pub fn walk_expr(
                         binding_merged.fold_call_nodes.clone(),
                         inner.fold_call_nodes.clone(),
                     ),
-                    touched: binding_merged.touched.clone(),
                 })
             }
             _ => texpr.children.clone().iter().cloned().fold(
@@ -699,43 +691,14 @@ pub fn is_owned_local(kind: Option<Rc<VarBindingKind>>) -> bool {
     }
 }
 
-<<<<<<< Updated upstream
 pub fn build_movable_set(proof: Rc<OwnershipProof>) -> Rc<BTreeSet<String>> {
-=======
-pub fn whole_value_borrow_count(usage: Rc<BindingUsage>) -> i64 {
-    (Rc::new({
-        let mut __result = Vec::new();
-        for c in usage.consumers.clone().iter().cloned() {
-            if match c.kind.clone() {
-                EdgeKind::Read => true,
-                EdgeKind::Threaded => true,
-                _ => false,
-            } {
-                __result.push(c);
-            }
-        }
-        __result
-    })
-    .len() as i64)
-}
-
-pub fn build_movable_set(
-    proof: Rc<OwnershipProof>,
-    param_names: Rc<std::collections::BTreeSet<String>>,
-) -> Rc<std::collections::BTreeSet<String>> {
->>>>>>> Stashed changes
     Rc::new({
         let mut __result = Vec::new();
         for usage in Rc::new(v1_rt::map_values(&proof.bindings.clone()))
             .iter()
             .cloned()
         {
-            if ((match (*make_decision(usage.clone())).clone() {
-                OwnershipDecision::SoleOwner { .. } => true,
-                _ => false,
-            } && (whole_value_borrow_count(usage.clone()) == 0))
-                && (is_owned_local(usage.binding_kind.clone())
-                    || v1_rt::set_contains(&param_names, usage.name.clone())))
+            if ((binding_fan_out(usage.clone()) == 1) && is_owned_local(usage.binding_kind.clone()))
             {
                 __result.push(usage);
             }
@@ -1243,7 +1206,6 @@ pub fn analyze_ownership(
                                 }),
                             ),
                             fold_call_nodes: acc.fold_call_nodes,
-                            touched: acc.touched,
                         })
                     }
                 });
@@ -1269,337 +1231,6 @@ pub fn analyze_ownership(
             decisions: decisions,
             fold_acc_unwrap: fold_proofs,
         })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LiveState {
-    pub name: String,
-    pub whole: bool,
-    pub any_field: bool,
-    pub fields: Rc<std::collections::BTreeSet<String>>,
-}
-
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct MoveLicenseAccum {
-    pub live: Rc<HashMap<String, Rc<LiveState>>>,
-    pub licensed: Rc<HashMap<String, bool>>,
-}
-
-pub fn move_site_key(name: String, span_start: i64) -> String {
-    v1_rt::concat(
-        v1_rt::concat(name, "@".to_string()),
-        (span_start).to_string(),
-    )
-}
-
-pub fn empty_live_state(name: String) -> Rc<LiveState> {
-    Rc::new(LiveState {
-        name: name,
-        whole: false,
-        any_field: false,
-        fields: v1_rt::rc_empty_set::<String>(),
-    })
-}
-
-pub fn live_state_of(acc: Rc<MoveLicenseAccum>, name: String) -> Rc<LiveState> {
-    match v1_rt::map_get(&acc.live.clone(), name.clone()) {
-        Some(st) => st.clone(),
-        None => empty_live_state(name.clone()),
-    }
-}
-
-pub fn record_whole_use_site(
-    acc: Rc<MoveLicenseAccum>,
-    name: String,
-    span_start: i64,
-    in_capture: bool,
-) -> Rc<MoveLicenseAccum> {
-    {
-        let st = live_state_of(acc.clone(), name.clone());
-        let movable_here = (((!in_capture && (span_start.clone() != 0)) && !st.whole.clone())
-            && !st.any_field.clone());
-        let licensed = if movable_here {
-            v1_rt::rc_map_insert(
-                acc.licensed.clone(),
-                move_site_key(name.clone(), span_start.clone()),
-                true,
-            )
-        } else {
-            acc.licensed.clone()
-        };
-        Rc::new(MoveLicenseAccum {
-            live: v1_rt::rc_map_insert(
-                acc.live.clone(),
-                name.clone(),
-                Rc::new(LiveState {
-                    name: name.clone(),
-                    whole: true,
-                    any_field: st.any_field.clone(),
-                    fields: st.fields.clone(),
-                }),
-            ),
-            licensed: licensed,
-        })
-    }
-}
-
-pub fn record_field_use_site(
-    acc: Rc<MoveLicenseAccum>,
-    name: String,
-    field: String,
-    span_start: i64,
-    in_capture: bool,
-) -> Rc<MoveLicenseAccum> {
-    {
-        let st = live_state_of(acc.clone(), name.clone());
-        let movable_here = (((!in_capture && (span_start.clone() != 0)) && !st.whole.clone())
-            && !v1_rt::set_contains(&st.fields.clone(), field.clone()));
-        let licensed = if movable_here {
-            v1_rt::rc_map_insert(
-                acc.licensed.clone(),
-                move_site_key(name.clone(), span_start.clone()),
-                true,
-            )
-        } else {
-            acc.licensed.clone()
-        };
-        Rc::new(MoveLicenseAccum {
-            live: v1_rt::rc_map_insert(
-                acc.live.clone(),
-                name.clone(),
-                Rc::new(LiveState {
-                    name: name.clone(),
-                    whole: st.whole.clone(),
-                    any_field: true,
-                    fields: v1_rt::rc_set_insert(st.fields.clone(), field.clone()),
-                }),
-            ),
-            licensed: licensed,
-        })
-    }
-}
-
-pub fn merge_live_states(a: Rc<LiveState>, b: Rc<LiveState>) -> Rc<LiveState> {
-    Rc::new(LiveState {
-        name: a.name.clone(),
-        whole: (a.whole.clone() || b.whole.clone()),
-        any_field: (a.any_field.clone() || b.any_field.clone()),
-        fields: v1_rt::rc_set_union(a.fields.clone(), b.fields.clone()),
-    })
-}
-
-pub fn merge_branch_licenses(branches: Rc<Vec<Rc<MoveLicenseAccum>>>) -> Rc<MoveLicenseAccum> {
-    branches.iter().cloned().fold(
-        Rc::new(MoveLicenseAccum {
-            live: v1_rt::rc_empty_map::<String, Rc<LiveState>>(),
-            licensed: v1_rt::rc_empty_map::<String, bool>(),
-        }),
-        |acc: Rc<MoveLicenseAccum>, br: Rc<MoveLicenseAccum>| {
-            let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
-            {
-                let live_merged = Rc::new(v1_rt::map_keys(&br.live.clone()))
-                    .iter()
-                    .cloned()
-                    .fold(
-                        acc.live,
-                        |lm: Rc<HashMap<String, Rc<LiveState>>>, k: String| {
-                            let b_st = match v1_rt::map_get(&br.live.clone(), k.clone()) {
-                                Some(s) => s.clone(),
-                                None => empty_live_state(k.clone()),
-                            };
-                            match v1_rt::map_get(&lm, k.clone()) {
-                                Some(a_st) => v1_rt::rc_map_insert(
-                                    lm.clone(),
-                                    k.clone(),
-                                    merge_live_states(a_st.clone(), b_st.clone()),
-                                ),
-                                None => v1_rt::rc_map_insert(lm.clone(), k.clone(), b_st.clone()),
-                            }
-                        },
-                    );
-                let lic_merged = Rc::new(v1_rt::map_keys(&br.licensed.clone()))
-                    .iter()
-                    .cloned()
-                    .fold(acc.licensed, |l: Rc<HashMap<String, bool>>, k: String| {
-                        v1_rt::rc_map_insert(l, k.clone(), true)
-                    });
-                Rc::new(MoveLicenseAccum {
-                    live: live_merged.clone(),
-                    licensed: lic_merged.clone(),
-                })
-            }
-        },
-    )
-}
-
-pub fn license_walk(
-    acc: Rc<MoveLicenseAccum>,
-    texpr: Rc<Node>,
-    in_capture: bool,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<MoveLicenseAccum> {
-    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
-        match (*texpr.expr_data.clone()).clone() {
-            ExprData::ExprVar {
-                binding_kind: _, ..
-            } => record_whole_use_site(
-                acc.clone(),
-                expr_var_name_at(texpr.clone(), si.clone()),
-                texpr.span.clone().start.clone(),
-                in_capture.clone(),
-            ),
-            ExprData::ExprLiteral { value: _, .. } => acc.clone(),
-            ExprData::ExprFieldAccess { .. } => {
-                let base_node = field_access_base(texpr.clone());
-                match (*base_node.expr_data.clone()).clone() {
-                    ExprData::ExprVar {
-                        binding_kind: _, ..
-                    } => record_field_use_site(
-                        acc.clone(),
-                        expr_var_name_at(base_node.clone(), si.clone()),
-                        field_access_field_at(texpr.clone(), si.clone()),
-                        texpr.span.clone().start.clone(),
-                        in_capture.clone(),
-                    ),
-                    _ => license_walk(
-                        acc.clone(),
-                        base_node.clone(),
-                        in_capture.clone(),
-                        si.clone(),
-                    ),
-                }
-            }
-            ExprData::ExprCall { .. } => v1_rt::reverse(texpr.children.clone())
-                .iter()
-                .cloned()
-                .fold(acc.clone(), |a: Rc<MoveLicenseAccum>, arg: Rc<Node>| {
-                    license_walk(a, arg_value(arg.clone()), in_capture.clone(), si.clone())
-                }),
-            ExprData::ExprMethodCall { .. } => {
-                let args_acc = v1_rt::reverse(method_arg_nodes(texpr.clone()))
-                    .iter()
-                    .cloned()
-                    .fold(acc.clone(), |a: Rc<MoveLicenseAccum>, arg: Rc<Node>| {
-                        license_walk(a, arg_value(arg.clone()), in_capture.clone(), si.clone())
-                    });
-                license_walk(
-                    args_acc,
-                    method_receiver(texpr.clone()),
-                    in_capture.clone(),
-                    si.clone(),
-                )
-            }
-            ExprData::ExprIf => {
-                let t_acc = license_walk(
-                    acc.clone(),
-                    if_then_branch(texpr.clone()),
-                    in_capture.clone(),
-                    si.clone(),
-                );
-                let e_acc = match if_else_branch(texpr.clone()) {
-                    Some(eb) => {
-                        license_walk(acc.clone(), eb.clone(), in_capture.clone(), si.clone())
-                    }
-                    None => acc.clone(),
-                };
-                let merged = merge_branch_licenses(Rc::new(vec![t_acc, e_acc]));
-                license_walk(
-                    merged,
-                    if_condition(texpr.clone()),
-                    in_capture.clone(),
-                    si.clone(),
-                )
-            }
-            ExprData::ExprMatch => {
-                let branch_accs = Rc::new({
-                    let mut __result = Vec::new();
-                    for arm_node in match_arm_nodes(texpr.clone()).iter().cloned() {
-                        __result.push(license_walk(
-                            acc.clone(),
-                            arm_body(arm_node.clone()),
-                            in_capture.clone(),
-                            si.clone(),
-                        ));
-                    }
-                    __result
-                });
-                let merged = merge_branch_licenses(branch_accs);
-                license_walk(
-                    merged,
-                    match_scrutinee(texpr.clone()),
-                    in_capture.clone(),
-                    si.clone(),
-                )
-            }
-            ExprData::ExprLet => {
-                let body_acc = match let_body(texpr.clone()) {
-                    Some(b) => license_walk(acc.clone(), b.clone(), in_capture.clone(), si.clone()),
-                    None => acc.clone(),
-                };
-                license_walk(
-                    body_acc,
-                    let_value(texpr.clone()),
-                    in_capture.clone(),
-                    si.clone(),
-                )
-            }
-            ExprData::ExprBlock => v1_rt::reverse(texpr.children.clone()).iter().cloned().fold(
-                acc.clone(),
-                |a: Rc<MoveLicenseAccum>, child: Rc<Node>| {
-                    license_walk(a, child.clone(), in_capture.clone(), si.clone())
-                },
-            ),
-            ExprData::ExprReturn => v1_rt::reverse(texpr.children.clone()).iter().cloned().fold(
-                acc.clone(),
-                |a: Rc<MoveLicenseAccum>, child: Rc<Node>| {
-                    license_walk(a, child.clone(), in_capture.clone(), si.clone())
-                },
-            ),
-            ExprData::ExprLambda => {
-                license_walk(acc.clone(), lambda_body(texpr.clone()), true, si.clone())
-            }
-            ExprData::ExprForEach => {
-                let body_acc =
-                    license_walk(acc.clone(), foreach_body(texpr.clone()), true, si.clone());
-                license_walk(
-                    body_acc,
-                    foreach_collection(texpr.clone()),
-                    in_capture.clone(),
-                    si.clone(),
-                )
-            }
-            ExprData::ExprRecordLit { .. } => v1_rt::reverse(texpr.children.clone())
-                .iter()
-                .cloned()
-                .fold(acc.clone(), |a: Rc<MoveLicenseAccum>, field: Rc<Node>| {
-                    license_walk(a, arg_value(field.clone()), in_capture.clone(), si.clone())
-                }),
-            _ => v1_rt::reverse(texpr.children.clone()).iter().cloned().fold(
-                acc.clone(),
-                |a: Rc<MoveLicenseAccum>, child: Rc<Node>| {
-                    license_walk(a, child.clone(), in_capture.clone(), si.clone())
-                },
-            ),
-        }
-    })
-}
-
-pub fn build_move_site_licenses(
-    body: Rc<Node>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<HashMap<String, bool>> {
-    {
-        let walked = license_walk(
-            Rc::new(MoveLicenseAccum {
-                live: v1_rt::rc_empty_map::<String, Rc<LiveState>>(),
-                licensed: v1_rt::rc_empty_map::<String, bool>(),
-            }),
-            body,
-            false,
-            si,
-        );
-        walked.licensed.clone()
     }
 }
 

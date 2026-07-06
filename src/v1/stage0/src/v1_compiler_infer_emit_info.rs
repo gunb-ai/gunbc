@@ -82,17 +82,9 @@ pub struct EmitGraphInfo {
     pub ownership_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     pub movable: Rc<BTreeSet<String>>,
     pub variant_to_enum: Rc<HashMap<String, String>>,
-<<<<<<< Updated upstream
     pub owned_bindings: Rc<BTreeSet<String>>,
     pub read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
     pub read_only_params: Rc<BTreeSet<String>>,
-=======
-    pub owned_bindings: Rc<std::collections::BTreeSet<String>>,
-    pub move_sites_index: Rc<HashMap<String, Rc<HashMap<String, bool>>>>,
-    pub move_sites: Rc<HashMap<String, bool>>,
-    pub read_only_params_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
-    pub read_only_params: Rc<std::collections::BTreeSet<String>>,
->>>>>>> Stashed changes
     pub corpus_repr: RustCorpusRepr,
 }
 
@@ -112,14 +104,7 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         movable: v1_rt::rc_empty_set::<String>(),
         variant_to_enum: v1_rt::rc_empty_map::<String, String>(),
         owned_bindings: v1_rt::rc_empty_set::<String>(),
-<<<<<<< Updated upstream
         read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
-=======
-        move_sites_index: v1_rt::rc_empty_map::<String, Rc<HashMap<String, bool>>>(),
-        move_sites: v1_rt::rc_empty_map::<String, bool>(),
-        read_only_params_index: v1_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
-        ),
->>>>>>> Stashed changes
         read_only_params: v1_rt::rc_empty_set::<String>(),
         corpus_repr: RustCorpusRepr::FaithfulFreeMonoid,
     })
@@ -329,7 +314,7 @@ pub fn find_first_enum_field_node(
     variants: Rc<Vec<Rc<Node>>>,
     field_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Rc<Node> {
+) -> Option<Rc<Node>> {
     match variants.first().cloned() {
         Some(variant) => match find_child_named(variant.clone(), field_name, source_indices) {
             Some(field_child) => Some(field_child.clone()),

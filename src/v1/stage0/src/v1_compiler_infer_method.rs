@@ -445,7 +445,7 @@ pub fn builtin_function_registry() -> Rc<HashMap<String, Rc<Node>>> {
     }
 }
 
-pub fn infer_builtin_call_type(name: String) -> Rc<Node> {
+pub fn infer_builtin_call_type(name: String) -> Option<Rc<Node>> {
     v1_rt::map_get(&builtin_function_registry(), name)
 }
 

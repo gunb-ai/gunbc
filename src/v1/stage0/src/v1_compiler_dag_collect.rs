@@ -2,13 +2,9 @@
 // Source module: v1.compiler.dag_collect
 
 pub use crate::v1_compiler_dag_collect_support::{
-<<<<<<< Updated upstream
     dag_collect_fp_memo_reset, dag_collect_pack_slots, dag_node_collection_anchor,
     dag_node_is_resolved_identity_shell, dag_node_surface_fingerprint,
     dag_node_surface_fingerprint_memo,
-=======
-    dag_node_key_collision_error, dag_node_surface_fingerprint,
->>>>>>> Stashed changes
 };
 pub use crate::v1_compiler_dag_collect_support::{DagCollectAcc, DagCollectSlot};
 pub use crate::v1_compiler_infer_items::{ResolvedGraph, TypedModule};
@@ -23,7 +19,6 @@ use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-<<<<<<< Updated upstream
 use im_rc::HashMap;
 use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::cell::RefCell;
@@ -45,101 +40,24 @@ fn dag_node_key_uncached(anchor: Rc<Node>) -> String {
         )
     } else {
         v1_rt::concat(
-=======
-use std::collections::BTreeSet;
-use std::collections::HashMap;
-use std::rc::Rc;
-
-pub fn is_import_slot_node(n: Rc<Node>) -> bool {
-    (import_is_all(n.clone())
-        || (((((n.params.clone().len() as i64) == 0) && (n.ident_span.clone() != None))
-            && (n.body.clone() == None))
-            && (n.expr_data.clone() == Rc::new(ExprData::NoExprData))))
-}
-
-pub fn is_module_shell_node(n: Rc<Node>) -> bool {
-    (((((((n.inferred.clone() == None)
-        && (n.expr_data.clone() == Rc::new(ExprData::NoExprData)))
-        && (n.connective.clone() == Connective::NoConnective))
-        && (n.body.clone() == None))
-        && (n.transport.clone() == None))
-        && ((n.uses.clone().len() as i64) == 0))
-        && {
-            let mut __all = true;
-            for p in n.params.clone().iter().cloned() {
-                if !(is_import_slot_node(p.clone())) {
-                    __all = false;
-                    break;
-                }
-            }
-            __all
-        })
-}
-
-pub fn dag_node_is_resolved_identity_shell(node: Rc<Node>) -> bool {
-    match (*node.expr_data.clone()).clone() {
-        ExprData::NoExprData => match node.inferred.clone().as_deref().cloned() {
-            Some(InferredNode::Resolved { node: _, .. }) => {
-                ((((node.body.clone() == None) && (node.transport.clone() == None))
-                    && ((node.children.clone().len() as i64) == 0))
-                    && ((node.params.clone().len() as i64) == 0))
-            }
-            _ => false,
-        },
-        _ => false,
-    }
-}
-
-pub fn dag_node_collection_anchor(mut node: Rc<Node>) -> Rc<Node> {
-    loop {
-        if dag_node_is_resolved_identity_shell(node.clone()) {
-            match node.inferred.clone().as_deref().cloned() {
-                Some(InferredNode::Resolved { node: target, .. }) => {
-                    let __tco_0 = target.clone();
-                    node = __tco_0;
-                    continue;
-                }
-                _ => {
-                    break node.clone();
-                }
-            }
-        } else {
-            break node.clone();
-        }
-    }
-}
-
-pub fn dag_node_key(node: Rc<Node>) -> String {
-    {
-        let anchor = dag_node_collection_anchor(node);
-        if ((anchor.span.clone().start.clone() == 0) && (anchor.span.clone().end.clone() == 0)) {
-            v1_rt::concat(
-                ":0..0:".to_string(),
-                dag_node_surface_fingerprint(anchor.clone()),
-            )
-        } else {
->>>>>>> Stashed changes
             v1_rt::concat(
                 v1_rt::concat(
                     v1_rt::concat(
-                        v1_rt::concat(
-                            v1_rt::concat(anchor.span.clone().file.clone(), ":".to_string()),
-                            (anchor.span.clone().start.clone()).to_string(),
-                        ),
-                        "..".to_string(),
+                        v1_rt::concat(anchor.span.clone().file.clone(), ":".to_string()),
+                        (anchor.span.clone().start.clone()).to_string(),
                     ),
-                    (anchor.span.clone().end.clone()).to_string(),
+                    "..".to_string(),
                 ),
-                match anchor.ident.clone() {
-                    Some(id) => v1_rt::concat(":".to_string(), (id.clone()).to_string()),
-                    None => "".to_string(),
-                },
-            )
-        }
+                (anchor.span.clone().end.clone()).to_string(),
+            ),
+            match anchor.ident.clone() {
+                Some(id) => v1_rt::concat(":".to_string(), (id.clone()).to_string()),
+                None => "".to_string(),
+            },
+        )
     }
 }
 
-<<<<<<< Updated upstream
 pub fn is_import_slot_node(n: Rc<Node>) -> bool {
     (import_is_all(n.clone())
         || (((((n.params.clone().len() as i64) == 0) && (n.ident_span.clone() != None))
@@ -179,10 +97,8 @@ pub fn dag_node_key(node: Rc<Node>) -> String {
     })
 }
 
-=======
->>>>>>> Stashed changes
 pub fn dag_node_fingerprint(node: Rc<Node>) -> String {
-    dag_node_surface_fingerprint(dag_node_collection_anchor(node))
+    dag_node_surface_fingerprint_memo(dag_node_collection_anchor(node))
 }
 
 pub fn dag_collect_nodes_list(
@@ -198,30 +114,22 @@ pub fn dag_collect_nodes_list(
     )
 }
 
-<<<<<<< Updated upstream
 pub fn dag_collect_optional_node(
     value: Option<Rc<Node>>,
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-=======
-pub fn dag_collect_optional_node(value: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
->>>>>>> Stashed changes
     match value {
         Some(inner) => dag_collect_insert_slots(inner, slots, collision_errors),
         None => slots,
     }
 }
 
-<<<<<<< Updated upstream
 pub fn dag_collect_inferred(
     value: Option<Rc<InferredNode>>,
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
     collision_errors: Rc<Vec<Rc<ErrorNode>>>,
 ) -> Rc<HashMap<String, Rc<DagCollectSlot>>> {
-=======
-pub fn dag_collect_inferred(value: Rc<InferredNode>, acc: Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
->>>>>>> Stashed changes
     match value.as_deref().cloned() {
         Some(InferredNode::Resolved { node: n, .. }) => {
             dag_collect_insert_slots(n, slots, collision_errors)
@@ -250,7 +158,6 @@ pub fn dag_collect_match_pattern(
     }
 }
 
-<<<<<<< Updated upstream
 pub fn dag_collect_node_tree(
     node: Rc<Node>,
     slots: Rc<HashMap<String, Rc<DagCollectSlot>>>,
@@ -310,59 +217,6 @@ pub fn dag_collect_insert_slots(
                 ),
                 collision_errors,
             )
-=======
-pub fn dag_collect_synthetic_key_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Synthetic span-0 keys embed the fingerprint; the Absent branch recovers it by substring and must not re-hash.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn dag_collect_insert(node: Rc<Node>, acc: Rc<DagCollectAcc>) -> Rc<DagCollectAcc> {
-    {
-        let anchor = dag_node_collection_anchor(node);
-        let key = dag_node_key(anchor.clone());
-        match v1_rt::map_get(&acc.seen.clone(), key.clone()) {
-            Some(_) => acc.clone(),
-            None => {
-                let fp = if ((anchor.span.clone().start.clone() == 0)
-                    && (anchor.span.clone().end.clone() == 0))
-                {
-                    v1_rt::substring(&key, 6, v1_rt::string_length(&key))
-                } else {
-                    dag_node_fingerprint(anchor.clone())
-                };
-                Rc::new(vec![Rc::new(DagCollectPending {
-                    anchor: anchor.clone(),
-                    key: key.clone(),
-                    fp: fp,
-                })])
-                .iter()
-                .cloned()
-                .fold(
-                    acc.clone(),
-                    |inner: Rc<DagCollectAcc>, pending: Rc<DagCollectPending>| {
-                        dag_collect_node_tree(
-                            pending.anchor.clone(),
-                            Rc::new(DagCollectAcc {
-                                seen: v1_rt::rc_map_insert(
-                                    inner.seen.clone(),
-                                    pending.key.clone(),
-                                    pending.fp.clone(),
-                                ),
-                                order: v1_rt::rc_list_push(
-                                    inner.order.clone(),
-                                    pending.anchor.clone(),
-                                ),
-                                collision_errors: inner.collision_errors.clone(),
-                            }),
-                        )
-                    },
-                )
-            }
->>>>>>> Stashed changes
         }
     }
 }
@@ -382,7 +236,6 @@ pub fn dag_collect_from_module(
 }
 
 pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
-<<<<<<< Updated upstream
     dag_collect_fp_memo_reset();
     dag_collect_key_memo_reset();
     let collision_errors = Rc::new(vec![]);
@@ -393,14 +246,4 @@ pub fn collect_dag_nodes(typed: Rc<ResolvedGraph>) -> Rc<DagCollectAcc> {
         },
     );
     dag_collect_pack_slots(slots, collision_errors)
-=======
-    typed.modules.clone().iter().cloned().fold(
-        Rc::new(DagCollectAcc {
-            seen: v1_rt::rc_empty_map::<String, String>(),
-            order: Rc::new(vec![]),
-            collision_errors: Rc::new(vec![]),
-        }),
-        |acc: Rc<DagCollectAcc>, m: Rc<TypedModule>| dag_collect_from_module(m.clone(), acc),
-    )
->>>>>>> Stashed changes
 }
