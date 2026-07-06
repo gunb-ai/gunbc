@@ -92,13 +92,7 @@ fn empty_type_env_cache() -> TypeEnvCache {
   }
 }
 
-fn reset_type_env_lookup_profile() -> Unit { }
-fn maybe_print_type_env_lookup_profile() -> Unit { }
-fn build_type_env_calls() -> Int { 0 }
-fn merge_type_env_cache_calls() -> Int { 0 }
-fn rewire_type_env_parent_links_calls() -> Int { 0 }
-fn rewire_type_env_import_str_binding_calls() -> Int { 0 }
-data type_env_counter_dissolution: String = "The 2026-07-04 use-site inference pathology instrument (env-amplification counters) dissolves with the pathology it measured: the record_* statement calls and their stub fns are deleted (they were also the only corpus instances of a statement-then-expression block the Rust emitter mis-renders — that emitter deficiency is ledgered with the emit-stage work). The Int getter stubs below stay for API compatibility with the hand-maintained phase_profile heartbeat until that consumer drops them."
+data type_env_counter_dissolution: String = "The 2026-07-04 use-site inference pathology instrument (env-amplification counters) dissolved with the pathology it measured: the record_* statement calls and their stub fns were deleted (they were also the only corpus instances of a statement-then-expression block the Rust emitter mis-renders — that emitter deficiency is ledgered with the emit-stage work). 2026-07-06: the getter stubs, their hand-injected AtomicU64 realization in the generated seed, the phase_profile heartbeat reads, and the counter-equality witness tests are deleted together (operator ruling: counter witnesses are a parallel representation). The live scaling witnesses are the time-based import-chain tests in src/v1/tests/src/type_env_scope_chain_test.rs."
 
 fn merge_type_env_cache(base: TypeEnvCache, overlay: TypeEnvCache) -> TypeEnvCache {
   TypeEnvCache {

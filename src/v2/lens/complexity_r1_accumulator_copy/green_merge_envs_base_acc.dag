@@ -47,7 +47,7 @@ fn green_merge_envs_base_acc_claim_rhs() -> Node {
 }
 
 data claim_green_merge_envs_base_acc: TestClaim = EqualsClaim {
-  label: "lens_complexity_r1/green_merge_envs_base_acc: merge_envs live shape (acc in map_merge base port, src/v1/04_env.dag:226-228) is not R1",
+  label: "lens_complexity_r1/green_merge_envs_base_acc: acc in map_merge base port is not R1 (shape formerly live as merge_envs, deleted from src/v1/04_env.dag 2026-07-06)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: green_merge_envs_base_acc_input,
   rhs: green_merge_envs_base_acc_claim_rhs(),
