@@ -58,7 +58,7 @@ fn corpus_scope_largest_family_size() -> Int {
   )
 }
 
-fn corpus_scope_has_no_sigma_families() -> Bool {
+test fn corpus_scope_has_no_sigma_families() -> Bool {
   let trees = corpus_subject_trees()
   let family_total = fold_list(
     xs: trees,
@@ -114,7 +114,7 @@ fn planted_fixture_trees() -> List<Node> {
   }
 }
 
-fn corpus_red_control_planted_family_fires() -> Bool {
+test fn corpus_red_control_planted_family_fires() -> Bool {
   let count = fold_list(
     xs: planted_fixture_trees(),
     empty: 0,

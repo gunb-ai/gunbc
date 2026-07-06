@@ -48,23 +48,23 @@ fn structurally_different_def() -> Node {
   conj_of(kids: [atom_node(id: ^shared_head), atom_node(id: ^flat_tail)])
 }
 
-fn witness_pair_related() -> Bool {
+test fn witness_pair_related() -> Bool {
   sigma_family_related(a: family_member(leaf: ^alpha), b: family_member(leaf: ^beta))
 }
 
-fn witness_structural_difference_unrelated() -> Bool {
+test fn witness_structural_difference_unrelated() -> Bool {
   sigma_family_related(a: family_member(leaf: ^alpha), b: structurally_different_def()) == false
 }
 
-fn witness_bare_atoms_unrelated() -> Bool {
+test fn witness_bare_atoms_unrelated() -> Bool {
   sigma_family_related(a: atom_node(id: ^alpha), b: atom_node(id: ^beta)) == false
 }
 
-fn witness_identical_defs_related() -> Bool {
+test fn witness_identical_defs_related() -> Bool {
   sigma_family_related(a: family_member(leaf: ^alpha), b: family_member(leaf: ^alpha))
 }
 
-fn witness_three_member_family_found() -> Bool {
+test fn witness_three_member_family_found() -> Bool {
   let findings = sigma_families_of_defs(defs: [
     family_member(leaf: ^alpha),
     family_member(leaf: ^beta),
@@ -74,7 +74,7 @@ fn witness_three_member_family_found() -> Bool {
   length(xs: findings) == 1
 }
 
-fn witness_family_member_count_and_holes() -> Bool {
+test fn witness_family_member_count_and_holes() -> Bool {
   let findings = sigma_families_of_defs(defs: [
     family_member(leaf: ^alpha),
     family_member(leaf: ^beta),
@@ -87,7 +87,7 @@ fn witness_family_member_count_and_holes() -> Bool {
   )
 }
 
-fn witness_disjoint_defs_no_family() -> Bool {
+test fn witness_disjoint_defs_no_family() -> Bool {
   let findings = sigma_families_of_defs(defs: [
     family_member(leaf: ^alpha),
     structurally_different_def()
@@ -108,10 +108,10 @@ fn synthetic_module_tree() -> Node {
   ])
 }
 
-fn witness_subject_extraction_finds_two() -> Bool {
+test fn witness_subject_extraction_finds_two() -> Bool {
   length(xs: module_fn_decl_subtrees(tree: synthetic_module_tree())) == 2
 }
 
-fn witness_module_family_count_one() -> Bool {
+test fn witness_module_family_count_one() -> Bool {
   module_sigma_family_count(tree: synthetic_module_tree()) == 1
 }
