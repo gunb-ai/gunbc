@@ -30,7 +30,11 @@ fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, Exit
     }
 }
 
-fn int_from_value(ctx: &v1_interpreter::InterpContext, value: &Value, label: &str) -> Result<i64, ExitCode> {
+fn int_from_value(
+    ctx: &v1_interpreter::InterpContext,
+    value: &Value,
+    label: &str,
+) -> Result<i64, ExitCode> {
     match value {
         Value::Int(n) => Ok(*n),
         other => {
@@ -100,26 +104,26 @@ fn run() -> Result<ExitCode, ExitCode> {
          ({modules_excluded} excluded)",
         source_roots.len(),
     );
-    eprintln!(
-        "[measurement] whole-tree-resolve wall_ms={resolve_ms} modules={modules_resolved}"
-    );
+    eprintln!("[measurement] whole-tree-resolve wall_ms={resolve_ms} modules={modules_resolved}");
 
     let view_started = Instant::now();
-    let edge_count_val = v1_interpreter::run_in_context(&ctx, EDGE_COUNT_FN, false).map_err(|e| {
-        eprintln!(
-            "measure_dependency_view_build: interpreter error running {EDGE_COUNT_FN}: {e}"
-        );
-        ExitCode::from(2)
-    })?;
+    let edge_count_val =
+        v1_interpreter::run_in_context(&ctx, EDGE_COUNT_FN, false).map_err(|e| {
+            eprintln!(
+                "measure_dependency_view_build: interpreter error running {EDGE_COUNT_FN}: {e}"
+            );
+            ExitCode::from(2)
+        })?;
     let view_ms = view_started.elapsed().as_millis();
     let edge_count = int_from_value(&ctx, &edge_count_val, EDGE_COUNT_FN)?;
 
-    let decl_count_val = v1_interpreter::run_in_context(&ctx, DECL_COUNT_FN, false).map_err(|e| {
-        eprintln!(
-            "measure_dependency_view_build: interpreter error running {DECL_COUNT_FN}: {e}"
-        );
-        ExitCode::from(2)
-    })?;
+    let decl_count_val =
+        v1_interpreter::run_in_context(&ctx, DECL_COUNT_FN, false).map_err(|e| {
+            eprintln!(
+                "measure_dependency_view_build: interpreter error running {DECL_COUNT_FN}: {e}"
+            );
+            ExitCode::from(2)
+        })?;
     let decl_count = int_from_value(&ctx, &decl_count_val, DECL_COUNT_FN)?;
 
     match peak_rss_vhwm_bytes() {
