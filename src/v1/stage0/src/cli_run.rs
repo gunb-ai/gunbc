@@ -5021,8 +5021,9 @@ fn collect_sorted_decl_lines_for_file(
 // (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`) remain host
 // realization until provenance ingest lands. Skip/precompute **verdicts** read `.dag`
 // via `floor_kernel_would_skip` / `floor_kernel_precompute_would_skip`; the
-// `entry_file_touched` axis now reads `.dag` via `entry_affected_by_touched_paths`
-// (`v2.lens.module_graph`, #6274 equivalence receipt).
+// `entry_file_touched` axis now reads `.dag` via `entry_affected_by_dependency_view`
+// (`v2.lens.affected_set.entry_selection`, lever-a slice 2). Per-PR live execution
+// blocked-on-#6239 on-carrier (`corpus_dependency_view_per_pr_execution_gate`).
 // Dissolve-on: `affected_set_reading_from_git_diff_provenance` + floor-runtime provenance ingest
 // expose edit-locus → delete `floor_diff_edits_from_line_ranges`, `rerun_frontier_nodes_for_entry`,
 // `entry_touches_rerun_frontier`, and the inline floor-runner `resolve_entry_with_index` (census:
@@ -5040,9 +5041,58 @@ struct FloorDiffEdits {
 }
 
 const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
+const ENTRY_SELECTION_ENTRY: &str = "src/v2/lens/affected_set/entry_selection.dag";
 const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 // Keep in sync with `floor_host_scaffold_witness_marker` in affected_set_floor_runner.dag.
 const FLOOR_HOST_SCAFFOLD_WITNESS_MARKER: &str = "floor:host_scaffold";
+
+fn call_entry_affected_by_dependency_view(
+    ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
+    pool_roots: &[String],
+    touched_paths: &[String],
+) -> Result<bool, String> {
+    if !ctx
+        .item_registry
+        .contains_key("entry_affected_by_dependency_view")
+    {
+        return Err(
+            "entry_affected_by_dependency_view missing from entry_selection context".to_string(),
+        );
+    }
+    let roots: Vec<v1_interpreter::Value> = pool_roots
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let touched: Vec<v1_interpreter::Value> = touched_paths
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let args = [
+        (
+            Some("entry_path".to_string()),
+            v1_interpreter::Value::Str(entry_path.to_string()),
+        ),
+        (Some("pool_roots".to_string()), list_value_from_vec(roots)),
+        (
+            Some("touched_paths".to_string()),
+            list_value_from_vec(touched),
+        ),
+    ];
+    match v1_interpreter::run_in_context_with_args(
+        ctx,
+        "entry_affected_by_dependency_view",
+        &args,
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "entry_affected_by_dependency_view returned `{}`, expected Bool",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("entry_affected_by_dependency_view: {e}")),
+    }
+}
 
 fn call_entry_affected_by_touched_paths(
     ctx: &v1_interpreter::InterpContext,
@@ -5780,15 +5830,15 @@ pub fn run_discovery_corpus_with_options(
     } else {
         None
     };
-    let module_graph_ctx = if options.node_frontier_selection != NodeFrontierSelectionMode::Off {
-        match resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY) {
+    let entry_selection_ctx = if options.node_frontier_selection != NodeFrontierSelectionMode::Off {
+        match resolve_entry_with_index(&index, ENTRY_SELECTION_ENTRY) {
             Ok((graph, source_indices)) => {
                 Some(make_eval_context(&graph, source_indices, execution_mode))
             }
             Err(msg) => {
                 return Err(format!(
-                    "module_graph resolve failed ({msg}) — a non-Off node_frontier_selection \
-                     declares the module-grain affected-set query ({MODULE_GRAPH_ENTRY}) \
+                    "entry_selection resolve failed ({msg}) — a non-Off node_frontier_selection \
+                     declares the DependencyView entry selector ({ENTRY_SELECTION_ENTRY}) \
                      and it must resolve; no silent full-corpus fallback"
                 ));
             }
@@ -5863,7 +5913,7 @@ pub fn run_discovery_corpus_with_options(
             &changed_paths,
             &diff_edits,
             floor_runner_ctx.as_ref(),
-            module_graph_ctx.as_ref(),
+            entry_selection_ctx.as_ref(),
             whole_tree_published_keys.clone(),
         );
     }
@@ -5909,15 +5959,15 @@ pub fn run_discovery_corpus_with_options(
             } else {
                 None
             };
-            let module_graph = if selection_for_shards != NodeFrontierSelectionMode::Off {
-                match resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY) {
+            let entry_selection = if selection_for_shards != NodeFrontierSelectionMode::Off {
+                match resolve_entry_with_index(&index, ENTRY_SELECTION_ENTRY) {
                     Ok((graph, source_indices)) => {
                         Some(make_eval_context(&graph, source_indices, execution_mode))
                     }
                     Err(msg) => {
                         return Err(format!(
-                            "module_graph resolve failed in shard ({msg}) — declared \
-                             module-grain affected-set query must resolve; no silent \
+                            "entry_selection resolve failed in shard ({msg}) — declared \
+                             DependencyView entry selector must resolve; no silent \
                              run-everything fallback"
                         ));
                     }
@@ -5933,7 +5983,7 @@ pub fn run_discovery_corpus_with_options(
                 &paths,
                 &seeds,
                 runner.as_ref(),
-                module_graph.as_ref(),
+                entry_selection.as_ref(),
                 keys,
             )
         }));
@@ -6019,7 +6069,7 @@ fn run_discovery_rows(
     changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
-    module_graph_ctx: Option<&v1_interpreter::InterpContext>,
+    entry_selection_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
@@ -6089,18 +6139,18 @@ fn run_discovery_rows(
                 current_entry_file_touched = if touched_entry_paths.is_empty() {
                     false
                 } else {
-                    match module_graph_ctx {
-                        Some(mg_ctx) => call_entry_affected_by_touched_paths(
-                            mg_ctx,
+                    match entry_selection_ctx {
+                        Some(es_ctx) => call_entry_affected_by_dependency_view(
+                            es_ctx,
                             &workspace_relative_repo_path(&row.entry),
                             &pool_roots,
                             &touched_entry_paths,
                         )?,
                         None => {
                             return Err(format!(
-                                "module_graph context missing for entry {} — \
-                                 a non-Off node_frontier_selection declares the module-grain \
-                                 affected-set query and it must resolve; no silent \
+                                "entry_selection context missing for entry {} — \
+                                 a non-Off node_frontier_selection declares the DependencyView \
+                                 entry selector and it must resolve; no silent \
                                  run-everything fallback",
                                 row.entry
                             ));

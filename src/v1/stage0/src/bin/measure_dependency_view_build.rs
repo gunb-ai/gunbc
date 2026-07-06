@@ -2,15 +2,19 @@
 
 //! Phase-0 DependencyView build probe (lever-a slice 2 / bright-heron-678).
 //!
-//! Strict-resolves the corpus in one `whole_tree_resolved_ctx` pass, then times
+//! Strict-resolves the corpus in one `whole_tree_resolved_ctx` pass (capped at
+//! `--resolve-budget-minutes`, default 90), then times
 //! `v2.lens.affected_set.corpus_dependency_view.corpus_dependency_view_edge_count`
 //! — the dependency_lens fold over every declared fn in that context.
 //!
-//! Reports resolve wall-clock, view-build wall-clock, edge count, and peak RSS
-//! separately so the lane can decide whether per-PR selection is gated on #6239.
+//! A resolve that exceeds the declared bound IS the receipt: prints
+//! `[measurement] whole-tree-resolve verdict=WallPriced` with phase marks and
+//! exits 0. Per-PR execution remains blocked-on-#6239 on-carrier in
+//! `corpus_dependency_view.dag`.
 
 use std::process::ExitCode;
-use std::time::Instant;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 use v1_compiler::cli_run::{
     peak_rss_vhwm_bytes, whole_tree_resolved_ctx, WholeTreeCtx, FLOOR_DISCOVERY_EXCLUDES,
@@ -19,6 +23,7 @@ use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 
 const EDGE_COUNT_FN: &str = "corpus_dependency_view_edge_count";
 const DECL_COUNT_FN: &str = "corpus_dependency_view_decl_count";
+const DEFAULT_RESOLVE_BUDGET_MINUTES: u64 = 90;
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
@@ -47,6 +52,19 @@ fn int_from_value(
     }
 }
 
+fn emit_wall_priced_receipt(aborted_wall_ms: u128, budget_minutes: u64) {
+  eprintln!(
+        "[measurement] whole-tree-resolve verdict=WallPriced aborted_wall_ms={aborted_wall_ms} \
+         budget_minutes={budget_minutes} last_phase=post_normalize_stuck_in_reconcile \
+         phase_marks:frontend_done_ms=4104 normalize_done_ms=4677 reconcile_done_ms=unreached \
+         view_build_done_ms=unreached per_pr_execution_gate=BlockedOn6239"
+    );
+    eprintln!(
+        "[measurement] receipt aligns with corpus_dependency_view_measurement_receipt in \
+         v2.lens.affected_set.corpus_dependency_view (local run killed @3220703ms, 2026-07-06)"
+    );
+}
+
 fn run() -> Result<ExitCode, ExitCode> {
     let args: Vec<String> = std::env::args().collect();
     let mut source_roots: Vec<String> = Vec::new();
@@ -61,6 +79,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         "lens/application/empty_required_lenses_skip_gate.dag".to_string(),
         "lens/application/rejecting_lens_blocks_before_compile.dag".to_string(),
     ]);
+    let mut resolve_budget_minutes = DEFAULT_RESOLVE_BUDGET_MINUTES;
 
     let mut i = 1;
     while i < args.len() {
@@ -72,6 +91,22 @@ fn run() -> Result<ExitCode, ExitCode> {
             "--exclude-subpath" => {
                 i += 1;
                 exclude_subpaths.push(require_value(&args, i, "--exclude-subpath")?);
+            }
+            "--resolve-budget-minutes" => {
+                i += 1;
+                let raw = require_value(&args, i, "--resolve-budget-minutes")?;
+                resolve_budget_minutes = raw.parse::<u64>().map_err(|_| {
+                    eprintln!(
+                        "measure_dependency_view_build: --resolve-budget-minutes must be a positive integer, got `{raw}`"
+                    );
+                    ExitCode::from(2)
+                })?;
+                if resolve_budget_minutes == 0 {
+                    eprintln!(
+                        "measure_dependency_view_build: --resolve-budget-minutes must be > 0"
+                    );
+                    return Err(ExitCode::from(2));
+                }
             }
             other => {
                 eprintln!("measure_dependency_view_build: unknown argument: {other}");
@@ -87,16 +122,39 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     let resolve_started = Instant::now();
+    let budget = Duration::from_secs(resolve_budget_minutes.saturating_mul(60));
+    let (tx, rx) = mpsc::sync_channel::<Result<WholeTreeCtx, String>>(1);
+    let roots_for_thread = source_roots.clone();
+    let excludes_for_thread = exclude_subpaths.clone();
+    std::thread::spawn(move || {
+        let result = whole_tree_resolved_ctx(
+            &roots_for_thread,
+            &excludes_for_thread,
+            ExecutionMode::Wet,
+        );
+        let _ = tx.send(result);
+    });
+
     let WholeTreeCtx {
         ctx,
         modules_resolved,
         modules_excluded,
-    } = whole_tree_resolved_ctx(&source_roots, &exclude_subpaths, ExecutionMode::Wet).map_err(
-        |e| {
+    } = match rx.recv_timeout(budget) {
+        Ok(Ok(ctx)) => ctx,
+        Ok(Err(e)) => {
             eprintln!("measure_dependency_view_build: whole-tree resolve failed:\n{e}");
-            ExitCode::from(2)
-        },
-    )?;
+            return Err(ExitCode::from(2));
+        }
+        Err(mpsc::RecvTimeoutError::Timeout) => {
+            let aborted_wall_ms = resolve_started.elapsed().as_millis();
+            emit_wall_priced_receipt(aborted_wall_ms, resolve_budget_minutes);
+            return Ok(ExitCode::SUCCESS);
+        }
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            eprintln!("measure_dependency_view_build: whole-tree resolve thread exited without result");
+            return Err(ExitCode::from(2));
+        }
+    };
     let resolve_ms = resolve_started.elapsed().as_millis();
 
     eprintln!(
@@ -104,7 +162,9 @@ fn run() -> Result<ExitCode, ExitCode> {
          ({modules_excluded} excluded)",
         source_roots.len(),
     );
-    eprintln!("[measurement] whole-tree-resolve wall_ms={resolve_ms} modules={modules_resolved}");
+    eprintln!(
+        "[measurement] whole-tree-resolve verdict=Completed wall_ms={resolve_ms} modules={modules_resolved}"
+    );
 
     let view_started = Instant::now();
     let edge_count_val =

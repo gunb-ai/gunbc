@@ -1,6 +1,6 @@
 module v2.lens.affected_set.corpus_dependency_view
 
-import std.disposition { ConstructionMechanism, Disposition, Scaffold, SingleAuthority }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import v2.std.algebra { length }
 import v2.std.collection { List }
