@@ -38,7 +38,6 @@ import v2.std.decl_index {
 import v2.std.node { Node, content_hash }
 import v2.std.algebra { Empty, list_snoc_item }
 import v2.std.collection { Present, Absent, optional_absent }
-import v2.std.logic { Bool }
 
 fn decl_kind_to_export_kind(kind: ItemKind) -> ExportKind? {
   match kind {
@@ -71,13 +70,9 @@ fn export_entry_from_decl_fact(fact: DeclFact) -> ExportEntry? {
   }
 }
 
-fn rel_path_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
 fn export_entries_for_rel_path(rel_path: String, facts: List<DeclFact>) -> List<ExportEntry> {
   fold(facts, init: Empty, f: fn(acc, fact) {
-    if rel_path_eq(a: fact.rel_path, b: rel_path) {
+    if fact.rel_path == rel_path {
       match export_entry_from_decl_fact(fact: fact) {
         Present { value: entry } => list_snoc_item(xs: acc, item: entry)
         Absent => acc
@@ -128,10 +123,6 @@ fn interface_summaries_live(pool_roots: List<String>) -> List<InterfaceSummary> 
   )
 }
 
-fn module_path_eq(a: String, b: String) -> Bool {
-  a == b
-}
-
 fn interface_hash_for_module_path(
   summaries: List<InterfaceSummary>,
   module_path: String
@@ -140,7 +131,7 @@ fn interface_hash_for_module_path(
     match found {
       Present { value: _ } => found
       Absent =>
-        match module_path_eq(a: summary.module_path, b: module_path) {
+        match summary.module_path == module_path {
           true => Present { value: summary.interface_hash }
           false => found
         }
@@ -153,7 +144,7 @@ fn direct_import_modules(
   edges: List<ImportResolutionFact>
 ) -> List<String> {
   fold(edges, init: Empty, f: fn(acc, edge) {
-    if rel_path_eq(a: edge.path, b: rel_path) {
+    if edge.path == rel_path {
       list_snoc_item(xs: acc, item: edge.import_module)
     } else {
       acc
@@ -208,7 +199,7 @@ fn interface_summary_for_module(
     match found {
       Present { value: _ } => found
       Absent =>
-        match module_path_eq(a: summary.module_path, b: module_path) {
+        match summary.module_path == module_path {
           true => Present { value: summary }
           false => found
         }
