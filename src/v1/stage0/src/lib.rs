@@ -13,6 +13,8 @@
 )]
 #![recursion_limit = "256"]
 
+use im_rc::{OrdSet as BTreeSet, Vector as Vec};
+
 pub mod cli_run;
 pub mod coproduct_reflection;
 pub mod extdeps_cargo;
@@ -110,10 +112,27 @@ pub mod wt_a;
 pub mod wt_b;
 pub mod wt_common;
 
-#[derive(Debug, Clone, PartialEq)]
 pub struct NonEmptyVec<T>(Vec<T>);
 
-impl<T> NonEmptyVec<T> {
+impl<T: Clone + std::fmt::Debug> std::fmt::Debug for NonEmptyVec<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("NonEmptyVec").field(&self.0).finish()
+    }
+}
+
+impl<T: Clone> Clone for NonEmptyVec<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T: Clone + PartialEq> PartialEq for NonEmptyVec<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<T: Clone> NonEmptyVec<T> {
     pub fn new(items: Vec<T>) -> Result<Self, &'static str> {
         if items.is_empty() {
             Err("NonEmptyVec requires at least one element")
@@ -122,20 +141,16 @@ impl<T> NonEmptyVec<T> {
         }
     }
 
-    pub fn as_slice(&self) -> &[T] {
-        &self.0
-    }
-
     pub fn into_vec(self) -> Vec<T> {
         self.0
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct NonEmptyBTreeSet<T: Ord>(std::collections::BTreeSet<T>);
+pub struct NonEmptyBTreeSet<T: Ord>(BTreeSet<T>);
 
 impl<T: Ord> NonEmptyBTreeSet<T> {
-    pub fn new(items: std::collections::BTreeSet<T>) -> Result<Self, &'static str> {
+    pub fn new(items: BTreeSet<T>) -> Result<Self, &'static str> {
         if items.is_empty() {
             Err("NonEmptyBTreeSet requires at least one element")
         } else {
@@ -143,11 +158,11 @@ impl<T: Ord> NonEmptyBTreeSet<T> {
         }
     }
 
-    pub fn as_set(&self) -> &std::collections::BTreeSet<T> {
+    pub fn as_set(&self) -> &BTreeSet<T> {
         &self.0
     }
 
-    pub fn into_set(self) -> std::collections::BTreeSet<T> {
+    pub fn into_set(self) -> BTreeSet<T> {
         self.0
     }
 }

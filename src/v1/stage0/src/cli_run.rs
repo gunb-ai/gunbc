@@ -1,5 +1,6 @@
+use im_rc::HashMap;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -287,7 +288,8 @@ fn resolve_virtual_source_with_imports(
             }
         }
     }
-    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = seen.into_values().collect();
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+        seen.into_iter().map(|(_, v)| v).collect();
     sources.sort_by(|a, b| a.path.cmp(&b.path));
     sources.push(Rc::new(v1_compiler_compile::SourceFile {
         path: entry_path.to_string(),
@@ -311,7 +313,7 @@ pub fn compile_dag_rust_emit_check(
     let module_index = build_module_path_index_from_witness_roots();
     let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
     let result = v1_compiler_compile::compile_sources(
-        Rc::new(sources),
+        Rc::new(sources.into()),
         crate::v1_compiler_artifact::RenderTarget::Rust,
     );
     let hard_diagnostics = result
@@ -757,7 +759,7 @@ fn compile_clean_resolve_has_hard_errors(
     compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
 }
 
-fn compile_clean_pipeline_has_hard_errors(diagnostics: &[Rc<ErrorNode>]) -> bool {
+fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) -> bool {
     use crate::v1_std_core::CompilerDiagnostic;
     diagnostics.iter().any(|d| {
         !matches!(
@@ -782,7 +784,7 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
         Some(sources) => sources,
         None => return false,
     };
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
     !compile_clean_resolve_has_hard_errors(&result)
 }
 
@@ -794,7 +796,7 @@ pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
         Some(sources) => sources,
         None => return false,
     };
-    let result = v1_compiler_compile::compile_sources(Rc::new(sources), RenderTarget::Dag);
+    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
     !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
 }
 
@@ -934,8 +936,8 @@ pub(crate) fn module_graph_facts_build_count_for_test() -> usize {
 #[cfg(test)]
 mod shared_cache_collision_guard_tests {
     use super::check_module_source_identity;
+    use im_rc::HashMap;
     use std::cell::RefCell;
-    use std::collections::HashMap;
 
     // Collision-honesty receipt (union-resolve §6.3): the shared typed-module cache's
     // source-identity guard fails LOUD when one module name resolves from two declaring files
@@ -1011,7 +1013,7 @@ fn resolve_transitively_bfs_legacy(
             }
         }
     }
-    let mut result: Vec<_> = seen.into_values().collect();
+    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();
     result.sort_by(|a, b| a.path.cmp(&b.path));
     result
 }
@@ -1440,7 +1442,8 @@ fn resolve_entry_with_parse_cache(
     let source_indices = Rc::new(si_map);
     let global_table = index.intern_table.borrow().clone();
 
-    let graph = v1_compiler_resolve::resolve_modules(Rc::new(modules), source_indices.clone());
+    let graph =
+        v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
 
     if graph
         .diagnostics
@@ -1544,10 +1547,10 @@ fn reconcile_with_typed_cache(
     module_identity: &RefCell<HashMap<String, String>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     reset_type_env_lookup_profile();
-    let mut modules: Rc<Vec<Rc<TypedModule>>> = Rc::new(Vec::new());
+    let mut modules: Rc<im_rc::Vector<Rc<TypedModule>>> = Rc::new(im_rc::Vector::new());
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = v1_rt::rc_empty_map();
-    let mut diag_chunks: Vec<Rc<Vec<Rc<ErrorNode>>>> = Vec::new();
+    let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
 
@@ -1622,8 +1625,8 @@ fn reconcile_with_typed_cache(
 
     let expanded_registry =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
-    let diagnostics: Rc<Vec<Rc<ErrorNode>>> = Rc::new({
-        let mut acc = Vec::new();
+    let diagnostics: Rc<im_rc::Vector<Rc<ErrorNode>>> = Rc::new({
+        let mut acc = im_rc::Vector::new();
         for chunk in &diag_chunks {
             acc.extend(chunk.iter().cloned());
         }
@@ -1671,7 +1674,7 @@ fn format_error_node(
 }
 
 fn format_error_nodes(
-    diags: &Rc<Vec<Rc<ErrorNode>>>,
+    diags: &Rc<im_rc::Vector<Rc<ErrorNode>>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     diags
@@ -1693,9 +1696,13 @@ fn resolved_graph_from_sources(
     String,
 > {
     let result = match typecheck_gate {
-        ResolveTypecheckGate::Strict => v1_compiler_compile::compile_to_resolved(Rc::new(sources)),
+        ResolveTypecheckGate::Strict => {
+            v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()))
+        }
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
-            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(sources))
+            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(
+                sources.into(),
+            ))
         }
     };
 
@@ -2099,7 +2106,7 @@ pub fn whole_corpus_semantic_oracle_snapshot(
     use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
 
     let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources));
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources.into()));
     let graph = result.graph.as_ref().ok_or_else(|| {
         let si: HashMap<String, Rc<NewlineIndex>> = result
             .newline_indices
@@ -2307,7 +2314,7 @@ pub fn handle_run_with_options(
     };
     eprintln!("resolved {} sources", sources.len());
 
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
 
     let has_errors = result
         .diagnostics
@@ -3005,7 +3012,7 @@ pub fn discover_owned_data_decls(
     let mut all_records = Vec::new();
     for group in groups {
         let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-            group.sources.into_values().collect();
+            group.sources.into_iter().map(|(_, v)| v).collect();
         sources.sort_by(|a, b| a.path.cmp(&b.path));
         let (graph, source_indices) =
             resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)?;
@@ -3319,6 +3326,11 @@ pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
     pub skipped: usize,
+    /// PredictOnly mode: rows the selection predicted unaffected (they still ran).
+    pub predicted_unaffected: Vec<(String, String)>,
+    /// PredictOnly mode: predicted-unaffected rows whose cold run was red — each line is a
+    /// counted, typed attribution of a missing selection edge (never a rerun trigger).
+    pub divergences: Vec<String>,
     pub failures: Vec<String>,
     pub witness_outcomes: Vec<DiscoveryWitnessOutcome>,
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
@@ -4187,8 +4199,19 @@ fn inert_lens_modules(
     inert
 }
 
+/// Host realization of std.realization_schedule.NodeFrontierSelection (signed design:
+/// docs/plans/affected-set-differential-falsifier.md). PredictOnly computes would-skip
+/// per row, RECORDS the prediction, and runs the row anyway — the falsifier cadence
+/// compares predictions against cold verdicts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeFrontierSelectionMode {
+    Off,
+    Applied,
+    PredictOnly,
+}
+
 pub struct DiscoveryCorpusOptions {
-    pub skip_unaffected_node_frontier: bool,
+    pub node_frontier_selection: NodeFrontierSelectionMode,
     pub explicit_roster_only: bool,
     /// Path-substring exclusion list. Non-plan callers default to FLOOR_DISCOVERY_EXCLUDES;
     /// plan-driven paths supply this from RunnableDiscoveryBatch.exclude_substrings (the model authority).
@@ -4205,7 +4228,7 @@ pub struct DiscoveryCorpusOptions {
 impl Default for DiscoveryCorpusOptions {
     fn default() -> Self {
         Self {
-            skip_unaffected_node_frontier: false,
+            node_frontier_selection: NodeFrontierSelectionMode::Off,
             explicit_roster_only: false,
             exclude_substrings: FLOOR_DISCOVERY_EXCLUDES
                 .iter()
@@ -4519,22 +4542,6 @@ fn list_value_from_vec(items: Vec<v1_interpreter::Value>) -> v1_interpreter::Val
     v1_interpreter::list_value(items)
 }
 
-#[derive(Clone, Default)]
-struct NodeFrontierSeeds {
-    overlapping_data_items: HashSet<(String, String)>,
-    edited_test_fns: HashSet<(String, String)>,
-    force_run_all: bool,
-}
-
-impl NodeFrontierSeeds {
-    fn run_all() -> Self {
-        Self {
-            force_run_all: true,
-            ..Default::default()
-        }
-    }
-}
-
 fn decl_span_end_line(sorted_decl_lines: &[i64], decl_line: i64) -> i64 {
     sorted_decl_lines
         .iter()
@@ -4579,132 +4586,18 @@ fn collect_sorted_decl_lines_for_file(
     Ok(decls)
 }
 
-fn collect_frontier_seeds_from_diff_line_ranges(
-    index: &MultiEntryIndex,
-    line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
-) -> Result<NodeFrontierSeeds, String> {
-    let mut overlapping_data_items = HashSet::new();
-    let mut edited_test_fns = HashSet::new();
-    for (file_path, ranges) in line_ranges_by_file {
-        if !file_path.ends_with(".dag") {
-            return Ok(NodeFrontierSeeds::run_all());
-        }
-        let file_norm = normalize_repo_path(file_path);
-        let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
-            Ok(pair) => pair,
-            Err(_) => return Ok(NodeFrontierSeeds::run_all()),
-        };
-        let content = match std::fs::read_to_string(file_path) {
-            Ok(c) => c,
-            Err(_) => return Ok(NodeFrontierSeeds::run_all()),
-        };
-        let test_fn_names: HashSet<String> = scan_test_decl_names(&content).into_iter().collect();
-        let mut decls: Vec<(i64, String, bool)> = Vec::new();
-        for module in graph.modules.iter() {
-            for item in module.items.iter() {
-                if !span_file_matches(&item.span.file, &file_norm) {
-                    continue;
-                }
-                let Some(nl) = newline_index_for_span(&item.span, &source_indices).cloned() else {
-                    return Ok(NodeFrontierSeeds::run_all());
-                };
-                let line = byte_to_line_col(nl, item.span.start).line;
-                let name = authored_name_at(source_indices.clone(), item.clone());
-                let is_data = item_kind(item.clone()) == ItemKind::DataItem;
-                decls.push((line, name, is_data));
-            }
-        }
-        for (name, line) in scan_test_decl_lines(&content) {
-            if !decls.iter().any(|(_, n, _)| n == &name) {
-                decls.push((line, name, false));
-            }
-        }
-        if decls.is_empty() {
-            return Ok(NodeFrontierSeeds::run_all());
-        }
-        decls.sort_by_key(|(line, _, _)| *line);
-        if ranges.iter().any(|r| r.start < decls[0].0) {
-            return Ok(NodeFrontierSeeds::run_all());
-        }
-        for i in 0..decls.len() {
-            let (line, name, is_data) = &decls[i];
-            let decl_end =
-                decl_span_end_line(&decls.iter().map(|(l, _, _)| *l).collect::<Vec<_>>(), *line);
-            if !ranges.iter().any(|r| *line <= r.end && decl_end >= r.start) {
-                continue;
-            }
-            if test_fn_names.contains(name) {
-                edited_test_fns.insert((file_norm.clone(), name.clone()));
-            } else if *is_data {
-                overlapping_data_items.insert((file_norm.clone(), name.clone()));
-            } else {
-                return Ok(NodeFrontierSeeds::run_all());
-            }
-        }
-    }
-    Ok(NodeFrontierSeeds {
-        overlapping_data_items,
-        edited_test_fns,
-        force_run_all: false,
-    })
-}
-
-fn entry_frontier_nodes_from_seeds(
-    ctx: &v1_interpreter::InterpContext,
-    entry_path: &str,
-    seeds: &NodeFrontierSeeds,
-) -> Result<Vec<v1_interpreter::Value>, String> {
-    let mut out = Vec::new();
-    let mut seen = HashSet::new();
-    for (_file, name) in &seeds.overlapping_data_items {
-        if !ctx.item_registry.contains_key(name) {
-            continue;
-        }
-        let Some(val) = v1_interpreter::with_active_context(ctx, || {
-            v1_interpreter::eval_data_item_value(ctx, name)
-        })
-        .map_err(|e| format!("re-eval `{name}` in {entry_path}: {e}"))?
-        else {
-            continue;
-        };
-        let mut item_nodes = Vec::new();
-        collect_node_values(&val, ctx, &mut item_nodes);
-        for node in item_nodes {
-            let key = ctx.format_value(&node);
-            if seen.insert(key) {
-                out.push(node);
-            }
-        }
-    }
-    Ok(out)
-}
-
-fn entry_touches_frontier_seeds(
-    ctx: &v1_interpreter::InterpContext,
-    entry_path: &str,
-    seeds: &NodeFrontierSeeds,
-) -> Result<bool, String> {
-    let entry_frontier = entry_frontier_nodes_from_seeds(ctx, entry_path, seeds)?;
-    if entry_frontier.is_empty() {
-        return Ok(false);
-    }
-    entry_touches_rerun_frontier(ctx, &list_value_from_vec(entry_frontier))
-}
-
 // SCAFFOLD (DESIGN §6–§7): host-side diff→declaration attribution
 // (`floor_diff_edits_from_line_ranges`) and per-entry frontier materialization
-// (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`) are Implementation 2
-// in docs/plans/affected-set-precompute-pruning.md — parallel to `v2.lens.affected_set`
-// until ROADMAP `1-affected-set-defork` Steps 3–5 land. Skip/precompute **verdicts** already
-// read `.dag` via `floor_kernel_would_skip` / `floor_kernel_precompute_would_skip`; this block
-// is the I/O + frontier-input bridge only, not a second skip policy.
+// (`rerun_frontier_nodes_for_entry`, `entry_touches_rerun_frontier`) remain host
+// realization until provenance ingest lands. Skip/precompute **verdicts** read `.dag`
+// via `floor_kernel_would_skip` / `floor_kernel_precompute_would_skip`; the
+// `entry_file_touched` axis now reads `.dag` via `entry_affected_by_touched_paths`
+// (`v2.lens.module_graph`, #6274 equivalence receipt).
 // Dissolve-on: `affected_set_reading_from_git_diff_provenance` + floor-runtime provenance ingest
 // expose edit-locus → delete `floor_diff_edits_from_line_ranges`, `rerun_frontier_nodes_for_entry`,
 // `entry_touches_rerun_frontier`, and the inline floor-runner `resolve_entry_with_index` (census:
 // `rg 'floor_diff_edits_from_line_ranges|rerun_frontier_nodes_for_entry' src/v1/stage0/src/cli_run.rs`
-// must be empty). `entry_file_touched` is marshaled from the entry's transitive import-closure
-// (not entry-path equality alone) so cross-file helper-fn edits fail-closed for importers until
-// the real `v2.lens.affected_set` fn axis lands (ROADMAP `1-affected-set-defork` Step 5).
+// must be empty).
 //
 // Host-side diff→declaration attribution only (line-range I/O). Skip verdicts live in
 // `v2.workflow.affected_set_floor_runner` — the executor reads `.dag`, never recomputes frontier.
@@ -4717,8 +4610,57 @@ struct FloorDiffEdits {
 }
 
 const FLOOR_RUNNER_ENTRY: &str = "src/v2/workflow/affected_set_floor_runner.dag";
+const MODULE_GRAPH_ENTRY: &str = "src/v2/lens/module_graph.dag";
 // Keep in sync with `floor_host_scaffold_witness_marker` in affected_set_floor_runner.dag.
 const FLOOR_HOST_SCAFFOLD_WITNESS_MARKER: &str = "floor:host_scaffold";
+
+fn call_entry_affected_by_touched_paths(
+    ctx: &v1_interpreter::InterpContext,
+    entry_path: &str,
+    pool_roots: &[String],
+    touched_paths: &[String],
+) -> Result<bool, String> {
+    if !ctx
+        .item_registry
+        .contains_key("entry_affected_by_touched_paths")
+    {
+        return Err(
+            "entry_affected_by_touched_paths missing from module_graph context".to_string(),
+        );
+    }
+    let roots: Vec<v1_interpreter::Value> = pool_roots
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let touched: Vec<v1_interpreter::Value> = touched_paths
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let args = [
+        (
+            Some("entry_path".to_string()),
+            v1_interpreter::Value::Str(entry_path.to_string()),
+        ),
+        (Some("pool_roots".to_string()), list_value_from_vec(roots)),
+        (
+            Some("touched_paths".to_string()),
+            list_value_from_vec(touched),
+        ),
+    ];
+    match v1_interpreter::run_in_context_with_args(
+        ctx,
+        "entry_affected_by_touched_paths",
+        &args,
+        false,
+    ) {
+        Ok(v1_interpreter::Value::Bool(b)) => Ok(b),
+        Ok(other) => Err(format!(
+            "entry_affected_by_touched_paths returned `{}`, expected Bool",
+            ctx.format_value(&other)
+        )),
+        Err(e) => Err(format!("entry_affected_by_touched_paths: {e}")),
+    }
+}
 
 fn call_floor_kernel_would_skip(
     ctx: &v1_interpreter::InterpContext,
@@ -5036,8 +4978,9 @@ fn floor_diff_edits_from_line_ranges(
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
     let mut touched_entry_files = HashSet::new();
-    let mut saw_non_dag = false;
-    let mut saw_dag = false;
+    // #6269 attributes src/v1/ .dag changes through a dedicated index; the structural-∅ fix
+    // dropped the saw_non_dag/saw_dag refusal (a non-.dag-only diff is a nominal empty frontier,
+    // handled by the `continue` arm below), so neither flag is needed here.
     let v1_attribution_index = if line_ranges_by_file
         .keys()
         .any(|p| normalize_repo_path(p).starts_with("src/v1/"))
@@ -5048,10 +4991,15 @@ fn floor_diff_edits_from_line_ranges(
     };
     for (file_path, ranges) in line_ranges_by_file {
         if !file_path.ends_with(".dag") {
-            saw_non_dag = true;
+            // A non-.dag changed path is a structural-∅ for the .dag frontier: it declares no
+            // .dag nodes, so there is nothing to attribute, and its coverage lives in the Rust
+            // gates (rust_tests), not the .dag witnesses. Skipping it yields an empty .dag
+            // frontier -- the SAME nominal outcome as an empty diff. This is NOT ignorance: the
+            // only ignorance state is a failed git-diff observation (UnifiedDiffFail upstream,
+            // floor_diff_observe.dag; operator ruling 2026-07-05). Structural-∅ and ignorance
+            // are different states -- the mirror of the departed-.dag-path arm below.
             continue;
         }
-        saw_dag = true;
         let file_norm = normalize_repo_path(file_path);
         if !std::path::Path::new(file_path).exists() {
             if departed_paths.contains(&file_norm) {
@@ -5151,9 +5099,11 @@ fn floor_diff_edits_from_line_ranges(
             }
         }
     }
-    if saw_non_dag && !saw_dag {
-        return Err("non-.dag file changed with no .dag paths in diff".to_string());
-    }
+    // A present diff whose changed paths are all non-.dag lands here with an empty frontier
+    // (structural-∅): it flows through as every row's not-affected skip -- nominal and
+    // transparent, exactly like an empty diff, never a refusal. Observation failure (the only
+    // ignorance state) is refused upstream in floor_git_diff_range; a successful observation
+    // with an empty .dag subset is not ignorance.
     Ok(FloorDiffEdits {
         overlapping_data_items,
         edited_test_fns,
@@ -5300,18 +5250,19 @@ pub fn run_discovery_corpus_with_options(
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
     set_phase(FloorPhase::Discovery, "discovery-roster");
-    // No degradation arm: skip_unaffected_node_frontier: true is a DECLARED capability,
+    let selection_enabled = options.node_frontier_selection != NodeFrontierSelectionMode::Off;
+    // No degradation arm: a non-Off node_frontier_selection is a DECLARED capability,
     // so every input it needs (the git-diff observation, the frontier attribution, the
     // affected-set runner) must be present — a failure is a loud typed error, never a
     // silent run-everything fallback. To run without selection, declare the flag false.
-    let diff_text = if options.skip_unaffected_node_frontier {
+    let diff_text = if selection_enabled {
         floor_git_diff_range().map_err(|msg| {
             format!(
                 "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git diff \
                  observation failed ({msg}); observation failure is the only ignorance \
                  state (operator ruling 2026-07-05) and refuses every enrolled row rather \
-                 than widening to a full-corpus run (declare skip_unaffected_node_frontier: \
-                 false to run without selection)",
+                 than widening to a full-corpus run (declare node_frontier_selection: \
+                 SelectionOff to run without selection)",
                 rows.len()
             )
         })?
@@ -5324,14 +5275,14 @@ pub fn run_discovery_corpus_with_options(
     // machine surface for path identity/rename, so it is the single authority —
     // the unified diff below stays scoped to LINE grain (hunk ranges) only.
     let (name_status_changed_paths, name_status_departed_paths) =
-        if options.skip_unaffected_node_frontier {
+        if options.node_frontier_selection != NodeFrontierSelectionMode::Off {
             floor_git_diff_name_status_range().map_err(|msg| {
                 format!(
                     "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git \
                      diff --name-status observation failed ({msg}); observation failure \
                      is the only ignorance state (operator ruling 2026-07-05) and \
                      refuses every enrolled row rather than widening to a full-corpus \
-                     run (declare skip_unaffected_node_frontier: false to run without \
+                     run (declare node_frontier_selection: SelectionOff to run without \
                      selection)",
                     rows.len()
                 )
@@ -5344,6 +5295,7 @@ pub fn run_discovery_corpus_with_options(
         line_ranges_by_file.entry(path.clone()).or_default();
     }
     let changed_new_lines_by_file = parse_unified_diff_changed_new_lines(&diff_text);
+    let added_paths = parse_unified_diff_added_paths(&diff_text);
     let changed_paths: Vec<String> = name_status_changed_paths;
     // Union-resolve S1 (docs/plans/resolver-graph-major-design.md §7): ONE index for the
     // whole process step. Frontier attribution, the floor runner context, and every roster
@@ -5359,13 +5311,13 @@ pub fn run_discovery_corpus_with_options(
     // set flows through the general selection machinery — empty frontier, zero edited
     // fns — so every row takes the normal not-affected skip. Disabling selection here
     // was the run-everything absorbing arm.
-    let (skip_enabled, diff_edits) = if options.skip_unaffected_node_frontier {
+    let (skip_enabled, diff_edits) = if selection_enabled {
         match floor_diff_edits_from_line_ranges(
             &index,
             &line_ranges_by_file,
             &changed_new_lines_by_file,
             &name_status_departed_paths,
-            &parse_unified_diff_added_paths(&diff_text),
+            &added_paths,
         ) {
             Ok(edits) => (true, edits),
             Err(msg) => {
@@ -5379,7 +5331,7 @@ pub fn run_discovery_corpus_with_options(
     } else {
         (false, FloorDiffEdits::default())
     };
-    let floor_runner_ctx = if options.skip_unaffected_node_frontier {
+    let floor_runner_ctx = if selection_enabled {
         // Resolve the floor runner through the SAME shared index as the rows (union-resolve
         // S1) rather than a private per-call resolve — its closure shares the std/spec prefix
         // with the roster, so co-resolving here means that prefix is not typechecked twice.
@@ -5389,9 +5341,25 @@ pub fn run_discovery_corpus_with_options(
             }
             Err(msg) => {
                 return Err(format!(
-                    "floor runner resolve failed ({msg}) — skip_unaffected_node_frontier: \
-                     true declares the affected-set machinery ({FLOOR_RUNNER_ENTRY}) and it \
+                    "floor runner resolve failed ({msg}) — a non-Off node_frontier_selection \
+                     declares the affected-set machinery ({FLOOR_RUNNER_ENTRY}) and it \
                      must resolve; no silent full-corpus fallback"
+                ));
+            }
+        }
+    } else {
+        None
+    };
+    let module_graph_ctx = if options.node_frontier_selection != NodeFrontierSelectionMode::Off {
+        match resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY) {
+            Ok((graph, source_indices)) => {
+                Some(make_eval_context(&graph, source_indices, execution_mode))
+            }
+            Err(msg) => {
+                return Err(format!(
+                    "module_graph resolve failed ({msg}) — a non-Off node_frontier_selection \
+                     declares the module-grain affected-set query ({MODULE_GRAPH_ENTRY}) \
+                     and it must resolve; no silent full-corpus fallback"
                 ));
             }
         }
@@ -5461,10 +5429,11 @@ pub fn run_discovery_corpus_with_options(
             &rows,
             &index,
             execution_mode,
-            skip_enabled,
+            options.node_frontier_selection,
             &changed_paths,
             &diff_edits,
             floor_runner_ctx.as_ref(),
+            module_graph_ctx.as_ref(),
             whole_tree_published_keys.clone(),
         );
     }
@@ -5475,7 +5444,7 @@ pub fn run_discovery_corpus_with_options(
         shards.iter().filter(|s| !s.is_empty()).count()
     );
     let source_roots_owned = source_roots.to_vec();
-    let skip_for_shards = skip_enabled;
+    let selection_for_shards = options.node_frontier_selection;
     let mut handles = Vec::new();
     for shard in shards {
         if shard.is_empty() {
@@ -5494,7 +5463,7 @@ pub fn run_discovery_corpus_with_options(
             // runner's closure privately alongside the rows' — the std/spec prefix typechecks
             // once per shard, not twice.
             let index = build_multi_entry_index(&roots);
-            let runner = if skip_for_shards {
+            let runner = if selection_for_shards != NodeFrontierSelectionMode::Off {
                 match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
                     Ok((graph, source_indices)) => {
                         Some(make_eval_context(&graph, source_indices, execution_mode))
@@ -5510,14 +5479,31 @@ pub fn run_discovery_corpus_with_options(
             } else {
                 None
             };
+            let module_graph = if selection_for_shards != NodeFrontierSelectionMode::Off {
+                match resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY) {
+                    Ok((graph, source_indices)) => {
+                        Some(make_eval_context(&graph, source_indices, execution_mode))
+                    }
+                    Err(msg) => {
+                        return Err(format!(
+                            "module_graph resolve failed in shard ({msg}) — declared \
+                             module-grain affected-set query must resolve; no silent \
+                             run-everything fallback"
+                        ));
+                    }
+                }
+            } else {
+                None
+            };
             run_discovery_rows(
                 &shard_rows,
                 &index,
                 execution_mode,
-                skip_for_shards,
+                selection_for_shards,
                 &paths,
                 &seeds,
                 runner.as_ref(),
+                module_graph.as_ref(),
                 keys,
             )
         }));
@@ -5564,6 +5550,8 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         total: 0,
         passed: 0,
         skipped: 0,
+        predicted_unaffected: Vec::new(),
+        divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::new(),
         entry_resolve_receipts: Vec::new(),
@@ -5575,6 +5563,10 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         merged.total += summary.total;
         merged.passed += summary.passed;
         merged.skipped += summary.skipped;
+        merged
+            .predicted_unaffected
+            .extend(summary.predicted_unaffected);
+        merged.divergences.extend(summary.divergences);
         merged.failures.extend(summary.failures);
         merged.witness_outcomes.extend(summary.witness_outcomes);
         merged
@@ -5593,16 +5585,19 @@ fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
     execution_mode: v1_interpreter::ExecutionMode,
-    skip_enabled: bool,
+    selection: NodeFrontierSelectionMode,
     changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
+    module_graph_ctx: Option<&v1_interpreter::InterpContext>,
     whole_tree_published_keys: Option<std::collections::HashSet<String>>,
 ) -> Result<DiscoverySummary, String> {
     let mut summary = DiscoverySummary {
         total: rows.len(),
         passed: 0,
         skipped: 0,
+        predicted_unaffected: Vec::new(),
+        divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::with_capacity(rows.len()),
         entry_resolve_receipts: Vec::new(),
@@ -5610,13 +5605,16 @@ fn run_discovery_rows(
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
     };
+    let skip_enabled = selection != NodeFrontierSelectionMode::Off;
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
     let mut current_entry_touches = true;
     let mut current_entry_frontier_nodes: Vec<v1_interpreter::Value> = Vec::new();
-    let mut current_entry_closure_files: HashSet<String> = HashSet::new();
+    let mut current_entry_file_touched = true;
     let mut current_entry_content: String = String::new();
+    let touched_entry_paths: Vec<String> = diff_edits.touched_entry_files.iter().cloned().collect();
+    let pool_roots = witness_layer_roots();
     let whole_tree_published_keys = whole_tree_published_keys.map(Rc::new);
     for row in rows {
         if current_entry.as_deref() != Some(row.entry.as_str()) {
@@ -5640,7 +5638,6 @@ fn run_discovery_rows(
                 resolve_nanos,
             });
             current_closure_subject = Some(closure_subject);
-            current_entry_closure_files = import_closure_files_from_graph(&graph);
             let entry_ctx = make_eval_context_with_runtime_options(
                 &graph,
                 source_indices,
@@ -5659,9 +5656,31 @@ fn run_discovery_rows(
                         &list_value_from_vec(current_entry_frontier_nodes.clone()),
                     )?
                 };
+                current_entry_file_touched = if touched_entry_paths.is_empty() {
+                    false
+                } else {
+                    match module_graph_ctx {
+                        Some(mg_ctx) => call_entry_affected_by_touched_paths(
+                            mg_ctx,
+                            &workspace_relative_repo_path(&row.entry),
+                            &pool_roots,
+                            &touched_entry_paths,
+                        )?,
+                        None => {
+                            return Err(format!(
+                                "module_graph context missing for entry {} — \
+                                 a non-Off node_frontier_selection declares the module-grain \
+                                 affected-set query and it must resolve; no silent \
+                                 run-everything fallback",
+                                row.entry
+                            ));
+                        }
+                    }
+                };
             } else {
                 current_entry_frontier_nodes.clear();
                 current_entry_touches = true;
+                current_entry_file_touched = true;
             }
             ctx = Some(entry_ctx);
             current_entry = Some(row.entry.clone());
@@ -5671,12 +5690,8 @@ fn run_discovery_rows(
             && diff_edits.edited_test_fns.iter().any(|(file, func)| {
                 diff_file_matches_entry(file, &row.entry) && func == &row.function
             });
-        let entry_file_touched = skip_enabled
-            && diff_edits
-                .touched_entry_files
-                .iter()
-                .any(|file| touched_file_in_import_closure(file, &current_entry_closure_files));
-        let should_skip = if skip_enabled {
+        let entry_file_touched = skip_enabled && current_entry_file_touched;
+        let would_skip = if skip_enabled {
             let host_scaffold_witness =
                 witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
             match floor_runner_ctx {
@@ -5717,13 +5732,29 @@ fn run_discovery_rows(
         } else {
             false
         };
-        if should_skip {
-            summary.skipped += 1;
-            eprintln!(
-                "SKIP [assumed-green node-frontier] {} ({})",
-                row.function, row.entry
-            );
-            continue;
+        if would_skip {
+            match selection {
+                NodeFrontierSelectionMode::Applied => {
+                    summary.skipped += 1;
+                    eprintln!(
+                        "SKIP [assumed-green node-frontier] {} ({})",
+                        row.function, row.entry
+                    );
+                    continue;
+                }
+                NodeFrontierSelectionMode::PredictOnly => {
+                    // Falsifier semantics: record the prediction and run the row cold anyway.
+                    summary
+                        .predicted_unaffected
+                        .push((row.entry.clone(), row.function.clone()));
+                    eprintln!(
+                        "PREDICT [unaffected node-frontier] {} ({})",
+                        row.function, row.entry
+                    );
+                }
+                // would_skip is only computed when selection is enabled.
+                NodeFrontierSelectionMode::Off => {}
+            }
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
         let closure_subject = current_closure_subject
@@ -5741,6 +5772,20 @@ fn run_discovery_rows(
             function: row.function.clone(),
             outcome: outcome.clone(),
         });
+        if selection == NodeFrontierSelectionMode::PredictOnly
+            && would_skip
+            && !matches!(outcome, ClaimOutcome::Pass)
+        {
+            // The red itself already fails the batch through the failure channel below;
+            // this line is the ATTRIBUTION receipt — a missing selection edge, counted.
+            let line = format!(
+                "DIVERGENCE [affected-set-falsifier] {} ({}) predicted=unaffected \
+                 actual=red class=node-frontier",
+                row.function, row.entry
+            );
+            eprintln!("{line}");
+            summary.divergences.push(line);
+        }
         match outcome {
             ClaimOutcome::Pass => summary.passed += 1,
             ClaimOutcome::Fail => summary.failures.push(format!(
@@ -5771,7 +5816,8 @@ mod floor_skip_frontier_tests {
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
     use crate::v1_std_core::{authored_name_at, byte_to_line_col};
-    use std::collections::{HashMap, HashSet};
+    use im_rc::HashMap;
+    use std::collections::HashSet;
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -5835,6 +5881,30 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
                 start: 101,
                 end: 103
             }])
+        );
+    }
+
+    #[test]
+    fn non_dag_only_diff_is_structural_empty_frontier_not_refusal() {
+        // A present diff whose changed paths are all non-.dag (a Rust/TOML/doc edit) is a
+        // structural-∅ for the .dag frontier -- no .dag nodes are declared, so nothing is
+        // attributable and every .dag row takes the not-affected skip, exactly as an empty diff
+        // does. It is NOT an ignorance state (the only ignorance state is a failed git-diff
+        // observation, refused upstream). RED CONTROL: before the arity fix this returned
+        // Err("non-.dag file changed with no .dag paths in diff") and reddened the
+        // discovery-corpus batch for every pure-.rs PR.
+        // NB: use a non-src/v1 path -- #6269 eagerly builds the v1-attribution index for any
+        // src/v1/ path, which reads the real workspace tree and cannot run from the unit-test
+        // cwd. The structural-∅ arm is path-agnostic, so this isolates exactly that behavior.
+        let index = build_multi_entry_index(&[]);
+        let rs_only_diff = unified_diff_for_line("crates/widget/src/lib.rs", 42);
+        let edits = floor_diff_edits_from_diff_text(&index, &rs_only_diff)
+            .expect("non-.dag-only diff must be a nominal empty frontier, not a refusal");
+        assert!(
+            edits.overlapping_data_items.is_empty()
+                && edits.edited_test_fns.is_empty()
+                && edits.touched_entry_files.is_empty(),
+            "non-.dag-only diff must produce an empty .dag frontier, got {edits:?}"
         );
     }
 
@@ -6024,9 +6094,9 @@ new file mode 100644
 #[cfg(test)]
 mod floor_disposition_kernel_alignment {
     use super::{
-        build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
-        diff_file_matches_entry, entry_touches_frontier_seeds, make_eval_context,
-        parse_unified_diff_line_ranges, resolve_entry_with_index, DiscoveryRow,
+        build_multi_entry_index, diff_file_matches_entry, entry_touches_rerun_frontier,
+        floor_diff_edits_from_diff_text, list_value_from_vec, make_eval_context,
+        rerun_frontier_nodes_for_entry, resolve_entry_with_index, DiscoveryRow,
     };
     use crate::v1_interpreter::{self, ExecutionMode, Value};
     use std::path::PathBuf;
@@ -6119,11 +6189,23 @@ mod floor_disposition_kernel_alignment {
         skip_enabled && !entry_touches && !function_edited
     }
 
-    fn function_edited_for_row(seeds: &super::NodeFrontierSeeds, row: &DiscoveryRow) -> bool {
-        seeds
+    fn function_edited_for_row(edits: &super::FloorDiffEdits, row: &DiscoveryRow) -> bool {
+        edits
             .edited_test_fns
             .iter()
             .any(|(file, func)| diff_file_matches_entry(file, &row.entry) && func == &row.function)
+    }
+
+    fn entry_touches_from_edits(
+        entry_ctx: &v1_interpreter::InterpContext,
+        entry_path: &str,
+        edits: &super::FloorDiffEdits,
+    ) -> Result<bool, String> {
+        let frontier_nodes = rerun_frontier_nodes_for_entry(entry_ctx, entry_path, edits)?;
+        if frontier_nodes.is_empty() {
+            return Ok(false);
+        }
+        entry_touches_rerun_frontier(entry_ctx, &list_value_from_vec(frontier_nodes))
     }
 
     struct Scenario {
@@ -6145,19 +6227,13 @@ mod floor_disposition_kernel_alignment {
             .expect("node_precise_discriminator fixture readable");
         let line = fixture_line(&text, scenario.diff_line_needle);
         let diff = unified_diff_for_line(FIXTURE_REL, line);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
-            .unwrap_or_else(|e| panic!("{}: seeds collection failed: {e}", scenario.label));
-        assert!(
-            !seeds.force_run_all,
-            "{}: diff must be node-precise (not force_run_all)",
-            scenario.label
-        );
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .unwrap_or_else(|e| panic!("{}: diff edits failed: {e}", scenario.label));
 
         let (graph, source_indices) =
             resolve_entry_with_index(&index, &fixture_abs).expect("fixture resolves");
         let entry_ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
-        let entry_touches = entry_touches_frontier_seeds(&entry_ctx, &fixture_abs, &seeds)
+        let entry_touches = entry_touches_from_edits(&entry_ctx, &fixture_abs, &edits)
             .unwrap_or_else(|e| panic!("{}: entry touch check failed: {e}", scenario.label));
 
         if scenario.expect_node_frontier_fires {
@@ -6169,13 +6245,13 @@ mod floor_disposition_kernel_alignment {
         }
         if scenario.expect_function_edited_fires {
             assert!(
-                seeds
+                edits
                     .edited_test_fns
                     .iter()
                     .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
                 "{}: function-edited axis must populate edited_test_fns (got {:?})",
                 scenario.label,
-                seeds.edited_test_fns
+                edits.edited_test_fns
             );
         }
 
@@ -6188,7 +6264,7 @@ mod floor_disposition_kernel_alignment {
         let mut saw_function_edited_run = false;
 
         for row in roster {
-            let function_edited = function_edited_for_row(&seeds, row);
+            let function_edited = function_edited_for_row(&edits, row);
             let rust_skip = rust_row_would_skip(true, entry_touches, function_edited);
             let dag_skip = call_floor_kernel_would_skip(
                 &runner_ctx,
@@ -6292,7 +6368,7 @@ mod floor_disposition_kernel_alignment {
     }
 
     #[test]
-    fn disposition_kernel_seeds_populated_on_referenced_node_diff() {
+    fn disposition_kernel_edits_populated_on_referenced_node_diff() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
         let roots = setup_roots(&ws);
@@ -6300,15 +6376,14 @@ mod floor_disposition_kernel_alignment {
         let text = std::fs::read_to_string(ws.join(FIXTURE_REL)).expect("fixture readable");
         let line = fixture_line(&text, "^floor_disc_node_c_symbol");
         let diff = unified_diff_for_line(FIXTURE_REL, line);
-        let ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &ranges)
-            .expect("seeds from referenced-node diff");
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("edits from referenced-node diff");
         assert!(
-            !seeds.overlapping_data_items.is_empty(),
+            !edits.overlapping_data_items.is_empty(),
             "referenced-node diff must populate overlapping_data_items"
         );
         assert!(
-            seeds.edited_test_fns.is_empty(),
+            edits.edited_test_fns.is_empty(),
             "data-item diff must not populate edited_test_fns"
         );
     }
@@ -6317,20 +6392,20 @@ mod floor_disposition_kernel_alignment {
 // Step 3 witness (a) PARTIAL — impl-vs-impl PROVE gate (#5994).
 // Stable floor witnesses use deterministic fixture unified diffs (same structured shape as CI
 // git diff parsing) so every checkout executes the proof — not branch-only origin/main...HEAD
-// asserts. Node-frontier axis vs Rust NodeFrontierSeeds on whole-tree InferredTree remains
-// blocked on resolve grounding (ROADMAP 1-affected-set-defork); receipt in
-// docs/plans/affected-set-precompute-pruning.md §Step 3 partial.
+// asserts. Node-frontier axis vs whole-tree InferredTree remains blocked on resolve grounding
+// (ROADMAP 1-affected-set-defork); receipt in docs/plans/affected-set-precompute-pruning.md
+// §Step 3 partial. `NodeFrontierSeeds` deleted — production and witnesses use `FloorDiffEdits`.
 
 #[cfg(test)]
 mod floor_witness_a_prove {
     use super::{
-        build_multi_entry_index, collect_frontier_seeds_from_diff_line_ranges,
-        diff_file_matches_entry, entry_touches_frontier_seeds, make_eval_context,
-        parse_unified_diff_line_ranges, resolve_entry_with_index, scan_test_decl_lines,
-        DiscoveryRow, FileLineRange, NodeFrontierSeeds,
+        build_multi_entry_index, diff_file_matches_entry, entry_touches_rerun_frontier,
+        floor_diff_edits_from_diff_text, list_value_from_vec, make_eval_context,
+        parse_unified_diff_line_ranges, rerun_frontier_nodes_for_entry, resolve_entry_with_index,
+        scan_test_decl_lines, DiscoveryRow, FileLineRange, FloorDiffEdits,
     };
     use crate::v1_interpreter::{self, ExecutionMode, Value};
-    use std::collections::HashMap;
+    use im_rc::HashMap;
     use std::path::PathBuf;
 
     const FIXTURE_REL: &str = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
@@ -6501,11 +6576,23 @@ mod floor_witness_a_prove {
         }
     }
 
-    fn rust_function_edited_for_row(seeds: &NodeFrontierSeeds, row: &DiscoveryRow) -> bool {
-        seeds
+    fn rust_function_edited_for_row(edits: &FloorDiffEdits, row: &DiscoveryRow) -> bool {
+        edits
             .edited_test_fns
             .iter()
             .any(|(file, func)| diff_file_matches_entry(file, &row.entry) && func == &row.function)
+    }
+
+    fn rust_entry_touches_from_edits(
+        entry_ctx: &v1_interpreter::InterpContext,
+        entry_path: &str,
+        edits: &FloorDiffEdits,
+    ) -> Result<bool, String> {
+        let frontier_nodes = rerun_frontier_nodes_for_entry(entry_ctx, entry_path, edits)?;
+        if frontier_nodes.is_empty() {
+            return Ok(false);
+        }
+        entry_touches_rerun_frontier(entry_ctx, &list_value_from_vec(frontier_nodes))
     }
 
     fn dag_function_edited_for_row(
@@ -6589,12 +6676,8 @@ mod floor_witness_a_prove {
             !line_ranges.is_empty(),
             "PROVE diff must contain at least one .dag hunk"
         );
-        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &line_ranges)
-            .unwrap_or_else(|e| panic!("real-diff seeds collection failed: {e}"));
-        assert!(
-            !seeds.force_run_all,
-            "dag-only real diff must not hit force_run_all during PROVE"
-        );
+        let edits = floor_diff_edits_from_diff_text(&index, diff_text)
+            .unwrap_or_else(|e| panic!("real-diff edits failed: {e}"));
         let touches = diff_line_touches_from_ranges(&line_ranges);
 
         let (runner_graph, runner_indices) =
@@ -6608,7 +6691,7 @@ mod floor_witness_a_prove {
         let (graph, source_indices) =
             resolve_entry_with_index(&index, &fixture_abs).expect("fixture resolves");
         let entry_ctx = make_eval_context(&graph, source_indices, ExecutionMode::Wet);
-        let rust_entry_touches = entry_touches_frontier_seeds(&entry_ctx, &fixture_abs, &seeds)
+        let rust_entry_touches = rust_entry_touches_from_edits(&entry_ctx, &fixture_abs, &edits)
             .expect("rust entry touch check");
 
         let changed_paths: Vec<String> = line_ranges.keys().cloned().collect();
@@ -6626,7 +6709,7 @@ mod floor_witness_a_prove {
         let mut saw_function_edited_run = false;
 
         for row in roster {
-            let rust_func = rust_function_edited_for_row(&seeds, row);
+            let rust_func = rust_function_edited_for_row(&edits, row);
             let dag_func = dag_function_edited_for_row(&runner_ctx, &index, &touches, row)
                 .unwrap_or_else(|e| panic!("dag function_edited for {}: {e}", row.function));
             let rust_touches = if diff_file_matches_entry(FIXTURE_REL, &row.entry) {
@@ -6690,26 +6773,22 @@ mod floor_witness_a_prove {
         let diff = unified_diff_for_line(FIXTURE_REL, line);
         let roots = setup_roots(&ws);
         let index = build_multi_entry_index(&roots);
-        let line_ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &line_ranges)
-            .expect("seeds from function-edited fixture diff");
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("edits from function-edited fixture diff");
         assert!(
-            !seeds.force_run_all,
-            "fixture diff must be node-precise (not force_run_all)"
-        );
-        assert!(
-            seeds
+            edits
                 .edited_test_fns
                 .iter()
                 .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
             "function-edited fixture must populate edited_test_fns"
         );
+        let line_ranges = parse_unified_diff_line_ranges(&diff);
         let touches = diff_line_touches_from_ranges(&line_ranges);
         let (runner_graph, runner_indices) =
             resolve_entry_with_index(&index, FLOOR_RUNNER).expect("floor runner resolves");
         let runner_ctx = make_eval_context(&runner_graph, runner_indices, ExecutionMode::Wet);
 
-        for (file, func) in &seeds.edited_test_fns {
+        for (file, func) in &edits.edited_test_fns {
             let content = std::fs::read_to_string(file)
                 .unwrap_or_else(|e| panic!("read {file} for decl line: {e}"));
             let decl_line = scan_test_decl_lines(&content)
@@ -6744,16 +6823,16 @@ mod floor_witness_a_prove {
         let diff = unified_diff_for_line(FIXTURE_REL, 83);
         let roots = setup_roots(&ws);
         let index = build_multi_entry_index(&roots);
-        let line_ranges = parse_unified_diff_line_ranges(&diff);
-        let seeds = collect_frontier_seeds_from_diff_line_ranges(&index, &line_ranges)
-            .expect("seeds from body-touch fixture diff");
+        let edits = floor_diff_edits_from_diff_text(&index, &diff)
+            .expect("edits from body-touch fixture diff");
         assert!(
-            seeds
+            edits
                 .edited_test_fns
                 .iter()
                 .any(|(_, name)| name == "floor_disc_witness_a_only_holds"),
             "body-only diff touch must populate edited_test_fns via decl span (not decl line only)"
         );
+        let line_ranges = parse_unified_diff_line_ranges(&diff);
         let touches = diff_line_touches_from_ranges(&line_ranges);
         let (runner_graph, runner_indices) =
             resolve_entry_with_index(&index, FLOOR_RUNNER).expect("floor runner resolves");
@@ -6842,20 +6921,22 @@ mod floor_witness_a_prove {
 // §6 dissolution trigger) — the equivalence lens itself moves on-carrier at that point, this
 // hand-Rust harness is no longer needed to exercise it.
 //
-// It proves the module-grain "affected" decision
-// computed by the `.dag` authority (`v2.lens.module_graph.entry_affected_by_touched_paths`, a
-// thin projection over `import_closure_live`) agrees with the Rust host's module-grain
-// `entry_file_touched` decision (`touched_file_in_import_closure` over
-// `import_closure_files_from_graph` — the exact function `run_discovery_rows` uses to compute
-// `current_entry_closure_files` for the live floor skip decision) on real merged-commit diffs.
-// Both sides are fed by the same host-realized `import_resolution_facts`/`module_declaration_facts`,
-// so this is a decision-level proof (§5: execution, not a grep/typecheck spec), not a re-proof of
-// closure membership (already covered by `import_closure_equivalence_tests` above).
+// It proves the module-grain "affected" decision computed by the `.dag` authority
+// (`v2.lens.module_graph.entry_affected_by_touched_paths`, a thin projection over
+// `import_closure_live`) agrees with an independent Rust oracle (`touched_file_in_import_closure`
+// over `import_closure_files_from_graph`) on real merged-commit diffs. Live production
+// (`run_discovery_rows`) now calls the `.dag` query directly via
+// `call_entry_affected_by_touched_paths`; this receipt keeps the Rust closure walk as a
+// deliberately separate implementation so agreement is proved by execution, not tautology.
+// Both sides are fed by the same host-realized `import_resolution_facts`/
+// `module_declaration_facts`, so this is a decision-level proof (§5: execution, not a
+// grep/typecheck spec), not a re-proof of closure membership (already covered by
+// `import_closure_equivalence_tests` above).
 //
 // Touched-paths derivation (fixed post-#6274 review): the input fed to BOTH sides is NOT the raw
 // `git show --name-only` file list. `entry_file_touched` in live production
-// (`run_discovery_rows`, cli_run.rs:5217-5221) is decided over `diff_edits.touched_entry_files` —
-// the FILTERED set `floor_diff_edits_from_line_ranges` produces after excluding pure data-item
+// (`run_discovery_rows`, cli_run.rs:5376-5395) is decided over `diff_edits.touched_entry_files`
+// — the FILTERED set `floor_diff_edits_from_line_ranges` produces after excluding pure data-item
 // edits (→ `overlapping_data_items`) and test-fn edits (→ `edited_test_fns`); only non-data,
 // non-test-fn declaration edits land in `touched_entry_files`. A raw touched-path superset can
 // diverge from this filtered set, so proving equivalence against raw paths only proves a
@@ -6866,7 +6947,7 @@ mod floor_witness_a_prove {
 // sibling `green_import_closure_helper_fn_edit_runs_importer_entry` pattern above.
 //
 // `floor_diff_edits_from_line_ranges` fail-closes (`Err`) when a touched `.dag` file's diff
-// includes changed line 1 (the module declaration line) — see cli_run.rs:4703-4705 — so a commit
+// includes changed line 1 (the module declaration line) — see cli_run.rs:4831-4832 — so a commit
 // that wholly ADDS new files (every new file's diff touches line 1) cannot be exercised via this
 // real path (`entry_file_touched` is unreachable for that commit shape upstream of this receipt).
 // Both SHAs below were chosen to be all-status-`M` (modify-only) commits for this reason.
@@ -7596,6 +7677,28 @@ mod node_frontier_plumbing_controls {
     }
 
     #[test]
+    fn wholly_new_dag_file_does_not_fail_closed_on_module_line() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let rel = "src/v2/test/claim/manual/integer_census_stage_receipt.dag";
+        let content = std::fs::read_to_string(rel).expect("read receipt");
+        let line_count = content.lines().count();
+        let mut diff = format!(
+            "diff --git a/{rel} b/{rel}\nnew file mode 100644\n--- /dev/null\n+++ b/{rel}\n"
+        );
+        diff.push_str(&format!("@@ -0,0 +1,{line_count} @@\n"));
+        for line in content.lines() {
+            diff.push('+');
+            diff.push_str(line);
+            diff.push('\n');
+        }
+        floor_diff_edits_from_diff_text(&index, &diff)
+            .unwrap_or_else(|e| panic!("wholly new receipt file must not fail-closed: {e}"));
+    }
+
+    #[test]
     fn import_preamble_plus_fn_body_populates_touched_entry_not_fail_closed() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
@@ -8106,6 +8209,11 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import v2.std.text { String }\n");
+    // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef` (V2Tree/DagTree,
+    // #5473/#5486), so the manifest must import the constructors it references or every witness
+    // fails with `undefined variable 'V2Tree'` (the source_root ingest gate's persistent RED).
+    // #6269's emit_source_root_ref_import derives exactly the referenced constructors from the
+    // records (supersedes the earlier hardcoded-both-constructors form).
     if !inline_records.is_empty() {
         out.push_str(&emit_source_root_ref_import(inline_records));
     }
@@ -8141,6 +8249,43 @@ pub fn emit_source_root_ingest_manifest(
     }
 
     std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
+}
+
+#[cfg(test)]
+mod source_root_ingest_manifest_tests {
+    use super::{emit_source_root_ingest_manifest, SourceRootReadRecord};
+
+    #[test]
+    fn manifest_imports_grounded_source_root_constructors() {
+        // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef`
+        // (V2Tree/DagTree, #5473/#5486). The manifest references those constructors, so it
+        // MUST import them from v2.std.cross_tree.import_model -- otherwise every witness that
+        // imports the manifest fails to resolve with `undefined variable 'V2Tree'`, which was
+        // the source_root_ingest gate's persistent main-RED. RED CONTROL: delete the
+        // cross_tree.import_model import line in the emitter and this test fails.
+        let tmp = std::env::temp_dir().join(format!(
+            "sri_manifest_import_test_{}.dag",
+            std::process::id()
+        ));
+        let records = vec![SourceRootReadRecord {
+            file_path: "src/v2/x.dag".to_string(),
+            module_path: "x".to_string(),
+            source: "module x\n".to_string(),
+            source_root: "V2Tree".to_string(),
+        }];
+        emit_source_root_ingest_manifest(&tmp, &records, None).expect("emit manifest");
+        let out = std::fs::read_to_string(&tmp).expect("read manifest");
+        let _ = std::fs::remove_file(&tmp);
+        assert!(
+            out.contains("source_root: V2Tree"),
+            "manifest must emit the grounded source_root value"
+        );
+        assert!(
+            out.contains("import v2.std.cross_tree.import_model"),
+            "manifest referencing V2Tree/DagTree must import them or witnesses hit \
+             `undefined variable`; got:\n{out}"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -8265,7 +8410,8 @@ mod construction_justification_hygiene_tests {
         declares_construction_justification, discover_floor_corpus_rows, unjustified_lens_modules,
         wall_now_authority_refs, FLOOR_DISCOVERY_EXCLUDES,
     };
-    use std::collections::{BTreeSet, HashMap};
+    use std::collections::BTreeSet;
+    use std::collections::HashMap;
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -8540,6 +8686,8 @@ mod witness_timing_attribution_tests {
             total: 3,
             passed: 3,
             skipped: 0,
+            predicted_unaffected: Vec::new(),
+            divergences: Vec::new(),
             failures: Vec::new(),
             witness_outcomes: vec![
                 DiscoveryWitnessOutcome {
@@ -8906,7 +9054,8 @@ pub fn import_resolution_facts(
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let abs_importer_roots = pool_roots_abs(importer_roots);
     let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
-        .into_keys()
+        .into_iter()
+        .map(|(k, _)| k)
         .collect();
     let mut out = Vec::new();
     for root in &abs_importer_roots {
@@ -11031,7 +11180,10 @@ fn resolve_dag_path_for_transport_script(path: &str) -> PathBuf {
 
 fn parse_module_items_for_transport_script(
     path: &str,
-) -> (Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
+) -> (
+    Rc<im_rc::Vector<Rc<Node>>>,
+    Rc<HashMap<String, Rc<NewlineIndex>>>,
+) {
     let resolved = resolve_dag_path_for_transport_script(path);
     let path_str = resolved.to_string_lossy();
     let content = std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
@@ -11511,7 +11663,7 @@ pub struct ExtdepsShapeTransportPolicyModuleFacts {
 pub fn parse_extdeps_module_items(
     path: &str,
 ) -> (
-    Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
     use crate::v1_compiler_parse::parse;
@@ -11559,7 +11711,7 @@ pub fn shell_argv_nodes_for_operation(
     service: String,
     operation: String,
 ) -> (
-    Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
     let (items, source_indices) = parse_extdeps_module_items(&path);
@@ -11688,7 +11840,7 @@ fn extdeps_module_source_nickname_count_in_node(
 }
 
 fn extdeps_gist_create_declares_filename_for_items(
-    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::param_node_name_at;
@@ -11732,7 +11884,7 @@ fn extdeps_gist_map_keys_use_filename(
 }
 
 fn extdeps_gist_create_files_keyed_by_filename_for_items(
-    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::{is_rest_transport, transport_request_body};
@@ -11866,7 +12018,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
     }
 
     let index = build_module_path_index_from_witness_roots();
-    let real_paths: std::collections::HashSet<String> = index.into_values().collect();
+    let real_paths: std::collections::HashSet<String> = index.into_iter().map(|(_, v)| v).collect();
     let mut source_nickname_literal_count = 0i64;
     for item in items.iter() {
         source_nickname_literal_count +=
@@ -11935,7 +12087,7 @@ fn external_authority_scheme_identity_from_value_node(
 }
 
 fn read_external_authority_anchor_from_items(
-    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> ExternalAuthorityAnchorProjection {
     use crate::v1_compiler_emit_core_support::is_data_def_item;
@@ -12200,7 +12352,7 @@ pub fn extdeps_external_authority_live_shadow_mask_holds() -> bool {
 #[cfg(test)]
 mod doc_reachability_tests {
     use super::*;
-    use std::collections::HashMap;
+    use im_rc::HashMap;
 
     fn edges_of(pairs: &[(&str, &[&str])]) -> HashMap<String, Vec<String>> {
         pairs
@@ -12340,7 +12492,7 @@ pub struct RestTransportCollectResult {
 }
 
 fn rest_transport_field_string(
-    props: Rc<Vec<Rc<Node>>>,
+    props: Rc<im_rc::Vector<Rc<Node>>>,
     prop_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
@@ -12601,7 +12753,7 @@ fn serialize_variant_to_wire_json(
     };
     let policy = resolve_coproduct_wire_policy(
         type_name,
-        ctx.modules.iter().as_ref(),
+        &ctx.modules.iter().cloned().collect::<std::vec::Vec<_>>(),
         ctx.source_indices.as_ref(),
     )
     .unwrap_or_else(|| rust_tagged_object_policy());
@@ -12693,7 +12845,8 @@ mod import_closure_equivalence_tests {
         resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
         witness_layer_roots, workspace_relative_repo_path,
     };
-    use std::collections::{BTreeSet, HashMap};
+    use im_rc::HashMap;
+    use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
     use std::rc::Rc;
 

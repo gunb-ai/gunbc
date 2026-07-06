@@ -204,7 +204,7 @@ fn measure_dag_rust_emit_terminates() {
     let entry = entry.to_string_lossy().to_string();
     let sources = cli_run::load_sources_for_entry(&roots, &entry)
         .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
-    let result = compile_sources(Rc::new(sources), RenderTarget::Rust);
+    let result = compile_sources(Rc::new(sources.into()), RenderTarget::Rust);
     let msgs: Vec<String> = result
         .diagnostics
         .iter()
@@ -232,7 +232,7 @@ fn measure_dag_v2_loads_without_field_errors() {
     let entry = entry.to_string_lossy().to_string();
     let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &entry)
         .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
-    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
     let msgs = hard_diagnostic_messages(resolved.as_ref());
     assert!(
         msgs.is_empty(),

@@ -1,0 +1,178 @@
+module v2.test.manual.integer_census_stage_receipt
+
+import extdeps.filesystem.filesystem_io
+import v2.compiler.normalize { normalize }
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.lens.enforcement.cost_coverage {
+  IngestParsedClean,
+  IngestRejected,
+  cost_coverage_file_receipt,
+  cost_coverage_tree_census
+}
+import v2.std.algebra { Cons, Empty }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+import v2.std.text { String }
+
+data ics_path: String = "src/v2/std/integer.dag"
+data ics_anchor: Symbol = ^ics_anchor
+
+data ics_trunc_eighth_path: String = "src/v2/test/fixture/integer_census_trunc/eighth.txt"
+data ics_trunc_quarter_path: String = "src/v2/test/fixture/integer_census_trunc/quarter.txt"
+data ics_trunc_half_path: String = "src/v2/test/fixture/integer_census_trunc/half.txt"
+data ics_trunc_full_path: String = "src/v2/test/fixture/integer_census_trunc/full.txt"
+
+data ics_content_through_compose_path: String = "src/v2/test/fixture/integer_census_trunc/through_compose_types.txt"
+data ics_content_through_decimal_path: String = "src/v2/test/fixture/integer_census_trunc/through_decimal_compare.txt"
+data ics_content_through_match_path: String = "src/v2/test/fixture/integer_census_trunc/through_standard_type_match.txt"
+data ics_content_through_decode_path: String = "src/v2/test/fixture/integer_census_trunc/through_decode_if_chain.txt"
+
+data ics_pathology_name: String = "parse-packrat-superlinear-on-nested-match-fn-bodies"
+
+data ics_timing_note: String = "Wall-clock stage-split receipt (manual/; not enrolled). Session clever-hawk-315, main@1db2e00b52, release gunbc built with CTRL_BUILD_BYPASS_SHIMS=1 cargo build --release -p v1-compiler --bin gunbc. Command template: timeout <cap>s target/release/gunbc run --claim-run --source-root src/v2 --source-root dag --entry src/v2/test/claim/manual/integer_census_stage_receipt.dag --function <fn>. Killed = NO VERDICT. STAGE-SPLIT: (1) ics_stage_tokenize_full_holds COMPLETED 147s; (2) ics_stage_tokenize_parse_full_holds NO VERDICT @1200s; (3) ics_stage_judge_full_holds NOT RUN — parse blocks ingest. TOKENIZE byte-bisect (~linear ~2x/doubling): eighth 3256B 16s · quarter 6512B 28s · half 13024B 56s · full 26048B 147s. PARSE byte-bisect: eighth 29s reject (truncated syntax) · quarter 6512B NO VERDICT @600s · half 13024B NO VERDICT @600s. PARSE content-bisect: through_compose_types 1560B 18s (Compose rows ruled out as sole trigger) · through_decimal_compare 4451B 144s (nested DecimalDigit match fn bodies — cliff onset band) · through_standard_type_match 5097B 151s · through_decode_if_chain 6637B NO VERDICT @600s. CONTRAST: logic.dag+nat.dag E1b census 57s (parent brief). ORIGINAL: integer.dag alone killed @144min no verdict. FIX LANE: 02_parse.dag packrat memo effectiveness on cumulative nested-match fn bodies — not cost_lens."
+
+fn ics_tokenize_text_accepts(source_text: String) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source_text, file: ics_anchor, rules: lm.lex) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn ics_tokenize_path_accepts(path: String) -> Bool {
+  let source = filesystem_read(path: path).content
+  ics_tokenize_text_accepts(source_text: source)
+}
+
+fn ics_tokenize_parse_text_accepts(source_text: String) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source_text, file: ics_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: _, diagnostics: _ } => true
+      }
+  }
+}
+
+fn ics_tokenize_parse_path_accepts(path: String) -> Bool {
+  let source = filesystem_read(path: path).content
+  ics_tokenize_parse_text_accepts(source_text: source)
+}
+
+fn ics_ingest_text_accepts(source_text: String) -> Bool {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source_text, file: ics_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => false
+    Accepted { value: ts, diagnostics: _ } =>
+      match parse_module(tokens: ts, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => false
+        Accepted { value: artifact, diagnostics: _ } =>
+          match normalize(parse_tree: artifact.tree) {
+            Rejected { diagnostics: _ } => false
+            Accepted { value: _, diagnostics: _ } => true
+          }
+      }
+  }
+}
+
+fn ics_ingest_path_accepts(path: String) -> Bool {
+  let source = filesystem_read(path: path).content
+  ics_ingest_text_accepts(source_text: source)
+}
+
+fn ics_stage_tokenize_full_holds() -> Bool {
+  ics_tokenize_path_accepts(path: ics_path)
+}
+
+fn ics_stage_tokenize_parse_full_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_path)
+}
+
+fn ics_stage_ingest_full_holds() -> Bool {
+  ics_ingest_path_accepts(path: ics_path)
+}
+
+fn ics_stage_judge_full_holds() -> Bool {
+  match cost_coverage_file_receipt(rel_path: ics_path).ingest_verdict {
+    IngestParsedClean => true
+    IngestRejected { stage: _, reason: _ } => false
+  }
+}
+
+fn ics_stage_census_tree_holds() -> Bool {
+  let receipt = cost_coverage_tree_census(
+    tree_root: "src/v2",
+    paths: Cons { head: ics_path, tail: Empty }
+  )
+  (receipt.files_attempted == 1) && (receipt.files_parsed_clean == 1)
+}
+
+fn ics_trunc_eighth_tokenize_holds() -> Bool {
+  ics_tokenize_path_accepts(path: ics_trunc_eighth_path)
+}
+
+fn ics_trunc_quarter_tokenize_holds() -> Bool {
+  ics_tokenize_path_accepts(path: ics_trunc_quarter_path)
+}
+
+fn ics_trunc_half_tokenize_holds() -> Bool {
+  ics_tokenize_path_accepts(path: ics_trunc_half_path)
+}
+
+fn ics_trunc_full_tokenize_holds() -> Bool {
+  ics_tokenize_path_accepts(path: ics_trunc_full_path)
+}
+
+fn ics_trunc_eighth_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_trunc_eighth_path)
+}
+
+fn ics_trunc_quarter_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_trunc_quarter_path)
+}
+
+fn ics_trunc_half_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_trunc_half_path)
+}
+
+fn ics_trunc_full_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_trunc_full_path)
+}
+
+fn ics_trunc_eighth_ingest_holds() -> Bool {
+  ics_ingest_path_accepts(path: ics_trunc_eighth_path)
+}
+
+fn ics_trunc_quarter_ingest_holds() -> Bool {
+  ics_ingest_path_accepts(path: ics_trunc_quarter_path)
+}
+
+fn ics_trunc_half_ingest_holds() -> Bool {
+  ics_ingest_path_accepts(path: ics_trunc_half_path)
+}
+
+fn ics_trunc_full_ingest_holds() -> Bool {
+  ics_ingest_path_accepts(path: ics_trunc_full_path)
+}
+
+fn ics_content_through_compose_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_content_through_compose_path)
+}
+
+fn ics_content_through_decimal_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_content_through_decimal_path)
+}
+
+fn ics_content_through_match_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_content_through_match_path)
+}
+
+fn ics_content_through_decode_tokenize_parse_holds() -> Bool {
+  ics_tokenize_parse_path_accepts(path: ics_content_through_decode_path)
+}

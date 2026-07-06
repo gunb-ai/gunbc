@@ -3,8 +3,7 @@
 
 #![allow(unused_variables, dead_code)]
 
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::{HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[cfg(feature = "text_lookup_work_counter")]
@@ -66,6 +65,38 @@ pub fn record_source_chars_index_lookup() {
 #[cfg(not(feature = "text_lookup_work_counter"))]
 pub fn record_source_chars_index_lookup() {}
 
+// Vec here is im_rc's persistent Vector (one realization with the
+// interpreter's Value::List). VecCompat papers the std-Vec API deltas the
+// emitter's method rows rely on (first/push/with_capacity; join via VecJoin)
+// so emitted call sites stay identical across carriers.
+pub trait VecCompat<T> {
+    fn first(&self) -> Option<&T>;
+    fn push(&mut self, item: T);
+    fn with_capacity(capacity: usize) -> Self;
+}
+
+impl<T: Clone> VecCompat<T> for Vec<T> {
+    fn first(&self) -> Option<&T> {
+        self.front()
+    }
+    fn push(&mut self, item: T) {
+        self.push_back(item);
+    }
+    fn with_capacity(_capacity: usize) -> Self {
+        Vec::new()
+    }
+}
+
+pub trait VecJoin {
+    fn join(&self, sep: &str) -> String;
+}
+
+impl VecJoin for Vec<String> {
+    fn join(&self, sep: &str) -> String {
+        self.iter().cloned().collect::<std::vec::Vec<_>>().join(sep)
+    }
+}
+
 pub trait V2Concat {
     fn v1_concat(self, other: Self) -> Self;
 }
@@ -77,7 +108,7 @@ impl V2Concat for String {
     }
 }
 
-impl<T> V2Concat for Vec<T> {
+impl<T: Clone> V2Concat for Vec<T> {
     fn v1_concat(mut self, other: Vec<T>) -> Vec<T> {
         self.extend(other);
         self
@@ -152,7 +183,7 @@ pub fn trim(s: String) -> String {
     s.trim().to_string()
 }
 
-pub fn count<T>(items: Rc<Vec<T>>) -> i64 {
+pub fn count<T: Clone>(items: Rc<Vec<T>>) -> i64 {
     items.len() as i64
 }
 
@@ -201,7 +232,7 @@ pub fn empty_map<K: std::cmp::Eq + std::hash::Hash, V>() -> HashMap<K, V> {
     HashMap::new()
 }
 
-pub fn map_insert<K: std::cmp::Eq + std::hash::Hash, V>(
+pub fn map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     mut map: HashMap<K, V>,
     key: K,
     value: V,
@@ -210,7 +241,7 @@ pub fn map_insert<K: std::cmp::Eq + std::hash::Hash, V>(
     map
 }
 
-pub fn map_merge<K: std::cmp::Eq + std::hash::Hash, V>(
+pub fn map_merge<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     mut base: HashMap<K, V>,
     overlay: HashMap<K, V>,
 ) -> HashMap<K, V> {
@@ -258,19 +289,19 @@ pub fn map_values<K, V: Clone>(m: &HashMap<K, V>) -> Vec<V> {
     m.values().cloned().collect()
 }
 
-pub fn list_concat<T>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
+pub fn list_concat<T: Clone>(mut a: Vec<T>, b: Vec<T>) -> Vec<T> {
     a.extend(b);
     a
 }
 
-pub fn list_push<T>(mut list: Vec<T>, item: T) -> Vec<T> {
+pub fn list_push<T: Clone>(mut list: Vec<T>, item: T) -> Vec<T> {
     list.push(item);
     list
 }
 
 pub fn append<T: Clone>(list: Rc<Vec<T>>, item: T) -> Vec<T> {
     let mut v = (*list).clone();
-    v.push(item);
+    v.push_back(item);
     v
 }
 
@@ -280,10 +311,17 @@ pub fn chars_to_string(chars: &Rc<Vec<i64>>, start: i64, end: i64) -> String {
     let end = (end.max(0) as usize).min(len).max(start);
     let units = (end.saturating_sub(start)) as u64;
     record_source_chars_slice_walked(units);
-    chars[start..end]
-        .iter()
-        .filter_map(|&cp| char::from_u32(cp as u32))
-        .collect()
+    // Focus caches the current RRB chunk, so per-char access is contiguous-slice
+    // speed; a plain iter().skip(start) walks O(start) per call, which summed
+    // quadratically across a tokenize pass (profiled 2026-07-06).
+    let mut focus = chars.focus();
+    let mut out = String::with_capacity(end - start);
+    for i in start..end {
+        if let Some(ch) = char::from_u32(*focus.index(i) as u32) {
+            out.push(ch);
+        }
+    }
+    out
 }
 
 pub fn parse_int(s: String) -> Option<i64> {
@@ -320,9 +358,7 @@ pub fn set_contains<T: Ord, S: AsRef<BTreeSet<T>>>(s: S, x: T) -> bool {
 }
 
 pub fn reverse<T: Clone>(list: Rc<Vec<T>>) -> Rc<Vec<T>> {
-    let mut v = (*list).clone();
-    v.reverse();
-    Rc::new(v)
+    Rc::new(list.iter().cloned().rev().collect())
 }
 
 pub fn replace(s: String, from: String, to: String) -> String {
@@ -337,7 +373,7 @@ pub fn replace(s: String, from: String, to: String) -> String {
 
 pub fn rc_list_push<T: Clone>(list: Rc<Vec<T>>, item: T) -> Rc<Vec<T>> {
     let mut v = list;
-    Rc::make_mut(&mut v).push(item);
+    Rc::make_mut(&mut v).push_back(item);
     v
 }
 
@@ -347,6 +383,13 @@ pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
     result
 }
 
+// Map updates carry no shared-Rc guard: HashMap here is im_rc's persistent
+// HAMT (one realization with the interpreter's Value::Map), so make_mut's
+// clone arm is O(1) structural sharing and each insert copies an O(log n)
+// node path — a designed update, not a degradation arm. Lists (im_rc::Vector)
+// and sets (im_rc::OrdSet) above are likewise persistent carriers now, so
+// they carry no guard either — the guard's whole class dissolved with the
+// Rc<std container> carriers it existed to police.
 pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     map: Rc<HashMap<K, V>>,
     key: K,
@@ -687,40 +730,11 @@ pub fn contiguous_loop_elementwise_kernel(
     out
 }
 
-// take_owned_counted: the fail-closed replacement for the silent
-// `Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())` fallback (DESIGN.md §5:
-// a failure arm must refuse or be counted, never silently widen). The ownership
-// proof licenses the take-owned; a shared Rc at runtime is a proof deficit whose
-// per-site frequency must stay observable, so the clone arm counts per emitted
-// site (site = "<module>:<span_start>" of the use-site the emitter rewrote).
-thread_local! {
-    static TAKE_OWNED_CLONE_FALLBACKS: std::cell::RefCell<HashMap<&'static str, u64>> =
-        std::cell::RefCell::new(HashMap::new());
-}
-
-/// INVARIANT: `site` must be a string literal (the emitter always passes one).
-/// Counts key on `&'static str`; a non-literal static with duplicate content
-/// could fragment one site's count across entries and silently degrade the
-/// per-site observability this function exists to provide (DESIGN.md 5).
-pub fn take_owned_counted<T: Clone>(x: Rc<T>, site: &'static str) -> T {
-    Rc::try_unwrap(x).unwrap_or_else(|rc| {
-        TAKE_OWNED_CLONE_FALLBACKS.with(|m| *m.borrow_mut().entry(site).or_insert(0) += 1);
-        (*rc).clone()
-    })
-}
-
-pub fn take_owned_clone_fallback_counts() -> Vec<(String, u64)> {
-    TAKE_OWNED_CLONE_FALLBACKS.with(|m| {
-        let mut v: Vec<(String, u64)> = m
-            .borrow()
-            .iter()
-            .map(|(site, n)| (site.to_string(), *n))
-            .collect();
-        v.sort();
-        v
-    })
-}
-
-pub fn reset_take_owned_clone_fallbacks() {
-    TAKE_OWNED_CLONE_FALLBACKS.with(|m| m.borrow_mut().clear());
+// take_owned: move out of a uniquely-held Rc; clone when shared. With every
+// container realized persistently (im_rc), the shared-arm clone is cheap
+// structural sharing — an ordinary designed path, not a degradation arm, so
+// no counter and no refusal (the clone-fallback guard class was deleted with
+// the Rc<std container> carriers it policed).
+pub fn take_owned<T: Clone>(x: Rc<T>) -> T {
+    Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())
 }

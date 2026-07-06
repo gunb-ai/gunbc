@@ -1,6 +1,7 @@
 module test.claim.realization_schedule_witness
 
 import std.realization_schedule {
+  SelectionOff,
   RealizationPlan,
   RealizationObjective,
   Runnable,
@@ -24,7 +25,7 @@ fn synthetic_correct_schedule() -> List<List<Runnable>> {
         source_roots: ["dag"]
         scan_dirs: []
         explicit_entries: []
-        skip_unaffected_node_frontier: false
+        node_frontier_selection: SelectionOff
         profile: runnable_resource_profile_negligible()
       },
       RunnableSingleClaim { entry: gate_entry, function: "rust_monolith_gate_passes", profile: runnable_resource_profile_negligible() }

@@ -1,11 +1,14 @@
+use crate::v1_rt::VecCompat;
+use im_rc::HashMap;
 use std::cell::{Cell, RefCell};
-use std::collections::{BTreeSet, HashMap};
+use std::collections::BTreeSet;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::time::Instant;
 
 use im_rc::HashMap as HamtMap;
+use im_rc::OrdSet;
 use im_rc::Vector as RrbVector;
 
 use crate::cli_run::value_to_wire_json;
@@ -377,7 +380,7 @@ pub enum Value {
     Str(String),
     List(Rc<RrbVector<Value>>),
     Map(Rc<HamtMap<CanonKey, Value>>),
-    Set(Rc<BTreeSet<String>>),
+    Set(Rc<OrdSet<String>>),
     Record {
         type_name: Symbol,
         fields: Rc<Vec<(Symbol, Value)>>,
@@ -991,7 +994,7 @@ impl ExecutionMode {
 }
 
 pub struct InterpContext {
-    pub modules: Rc<Vec<Rc<TypedModule>>>,
+    pub modules: Rc<im_rc::Vector<Rc<TypedModule>>>,
     pub item_registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     fn_nodes: HashMap<String, Rc<Node>>,
@@ -1733,6 +1736,33 @@ fn cross_representation_numeric_straddle(a: &Value, b: &Value) -> Option<String>
         {
             Some(format!(
                 "{} vs {} — a number and its coproduct (Nat Zero/Succ) encoding are \
+                 two representations of one value; Value::eq cannot decide them, so \
+                 `==` would silently fabricate `false` (DESIGN §5). Ground the \
+                 primitive into its realization to compare (DESIGN §1/§2/§7).",
+                describe_repr(a),
+                describe_repr(b),
+            ))
+        }
+        (
+            Value::Bool(_),
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            },
+        )
+        | (
+            Value::Variant {
+                variant_name,
+                fields,
+                ..
+            },
+            Value::Bool(_),
+        ) if fields.is_empty()
+            && matches!(resolve_sym(*variant_name).as_str(), "True" | "False") =>
+        {
+            Some(format!(
+                "{} vs {} — a native Bool and its True/False coproduct encoding are \
                  two representations of one value; Value::eq cannot decide them, so \
                  `==` would silently fabricate `false` (DESIGN §5). Ground the \
                  primitive into its realization to compare (DESIGN §1/§2/§7).",
@@ -2914,8 +2944,34 @@ fn type_item_alias_rhs_name(ctx: &InterpContext, item: &Rc<Node>) -> Option<Stri
     alias_rhs_next_name(ctx, rhs)
 }
 
+fn cast_target_seed_name(ctx: &InterpContext, target: Rc<Node>) -> String {
+    let from_span = authored_name_at(ctx.si(), target.clone());
+    if !from_span.is_empty() {
+        return from_span;
+    }
+    if !target.name.is_empty() {
+        return target.name.clone();
+    }
+    if let Some(name) = alias_rhs_next_name(ctx, target.clone()) {
+        return name;
+    }
+    if let Some(InferredNode::Resolved { node }) = target.inferred.as_deref() {
+        let from_inferred = authored_name_at(ctx.si(), node.clone());
+        if !from_inferred.is_empty() {
+            return from_inferred;
+        }
+        if !node.name.is_empty() {
+            return node.name.clone();
+        }
+        if let Some(name) = alias_rhs_next_name(ctx, node.clone()) {
+            return name;
+        }
+    }
+    String::new()
+}
+
 fn cast_target_underlying_kernel(ctx: &InterpContext, target: Rc<Node>) -> String {
-    let mut current = authored_name_at(ctx.si(), target);
+    let mut current = cast_target_seed_name(ctx, target);
     let mut seen = BTreeSet::new();
 
     for _ in 0..32 {
@@ -2965,7 +3021,7 @@ fn str_identity_cast_if_string_family(
 fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResult<Value> {
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
-    let target_name = authored_name_at(ctx.si(), target_node.clone());
+    let target_name = cast_target_seed_name(ctx, target_node.clone());
 
     if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
         return Ok(v);
@@ -5440,7 +5496,7 @@ fn eval_builtin(
 
         "empty_map" => Ok(Some(map_value(HamtMap::new()))),
 
-        "empty_set" => Ok(Some(Value::Set(Rc::new(BTreeSet::new())))),
+        "empty_set" => Ok(Some(Value::Set(Rc::new(OrdSet::new())))),
 
         "set_insert" => match positional.as_slice() {
             [Value::Set(s), Value::Str(k)] => {
