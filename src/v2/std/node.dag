@@ -298,23 +298,21 @@ type NamedEdgeTargetLookup
   | Absent
 
 fn named_edge_target_lookup(children: List<Edge>, name: Symbol) -> NamedEdgeTargetLookup {
-  match children |> first {
-    Present { value: e } =>
-      match e.label {
-        Named { name: sym } =>
-          if sym == name {
-            match named_edge_target_lookup(children: children |> skip(1), name: name) {
-              Absent => Found { target: e.target }
-              Found { target: _ } => Ambiguous
-              Ambiguous => Ambiguous
-            }
-          } else {
-            named_edge_target_lookup(children: children |> skip(1), name: name)
+  fold(children, init: Absent, f: fn(acc, e) {
+    match e.label {
+      Named { name: sym } =>
+        if sym == name {
+          match acc {
+            Absent => Found { target: e.target }
+            Found { target: _ } => Ambiguous
+            Ambiguous => Ambiguous
           }
-        Positional => named_edge_target_lookup(children: children |> skip(1), name: name)
-      }
-    Absent => Absent
-  }
+        } else {
+          acc
+        }
+      Positional => acc
+    }
+  })
 }
 
 fn arrow_body_target_lookup(children: List<Edge>) -> NamedEdgeTargetLookup {
