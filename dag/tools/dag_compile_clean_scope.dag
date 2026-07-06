@@ -78,7 +78,7 @@ fn compile_clean_scope_disposition_from_touched(
     ScopedRun { entry_paths: affected }
   } else if compile_clean_touches_allow_skip(touched_paths: touched_paths) {
     SkipNoAffectedEntries {
-      reason: "no compile-clean entry import-closure intersects touched paths"
+      reason: "no compile-clean entry DependencyView frontier intersects touched paths"
     }
   } else {
     RequireWholeTree {

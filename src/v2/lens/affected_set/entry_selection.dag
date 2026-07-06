@@ -10,8 +10,8 @@ import v2.lens.module_graph {
   ModuleDeclarationFact,
   module_graph_exclude_substrings
 }
-import v2.std.algebra { any, contains, fold, length, list_snoc_item }
-import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.algebra { any, contains, length, list_snoc_item }
+import v2.std.collection { Absent, List, Optional, Present, list_at_optional }
 import v2.std.dependency { DependencyView }
 import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
 import v2.std.logic { Bool }
@@ -47,17 +47,17 @@ fn decl_belongs_to_module(decl: FnArrowDecl, module: String) -> Bool {
 }
 
 fn module_path_for_decl(decl: FnArrowDecl, modules: List<ModuleDeclarationFact>) -> Optional<String> {
-  fold(modules, init: Absent, f: fn(found, fact) {
-    match found {
-      Present { value: _ } => found
-      Absent =>
-        if decl_belongs_to_module(decl: decl, module: fact.module) {
-          Present { value: fact.path }
-        } else {
-          Absent
-        }
+  let matches = fold(modules, init: [], f: fn(acc, fact) {
+    if decl_belongs_to_module(decl: decl, module: fact.module) {
+      list_snoc_item(xs: acc, item: fact.path)
+    } else {
+      acc
     }
   })
+  match list_at_optional(xs: matches, index: 0) {
+    Present { value: path } => Present { value: path }
+    Absent => Absent
+  }
 }
 
 fn modules_matching_touched_path(

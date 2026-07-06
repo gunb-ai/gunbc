@@ -13,8 +13,8 @@
 //! `corpus_dependency_view.dag`.
 
 use std::process::ExitCode;
-use std::sync::mpsc;
-use std::time::{Duration, Instant};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
 use v1_compiler::cli_run::{
     peak_rss_vhwm_bytes, whole_tree_resolved_ctx, WholeTreeCtx, FLOOR_DISCOVERY_EXCLUDES,
@@ -24,6 +24,7 @@ use v1_compiler::v1_interpreter::{self, ExecutionMode, Value};
 const EDGE_COUNT_FN: &str = "corpus_dependency_view_edge_count";
 const DECL_COUNT_FN: &str = "corpus_dependency_view_decl_count";
 const DEFAULT_RESOLVE_BUDGET_MINUTES: u64 = 90;
+static RESOLVE_BUDGET_EXCEEDED: AtomicBool = AtomicBool::new(false);
 
 fn require_value(args: &[String], idx: usize, flag: &str) -> Result<String, ExitCode> {
     match args.get(idx) {
@@ -122,39 +123,29 @@ fn run() -> Result<ExitCode, ExitCode> {
     }
 
     let resolve_started = Instant::now();
-    let budget = Duration::from_secs(resolve_budget_minutes.saturating_mul(60));
-    let (tx, rx) = mpsc::sync_channel::<Result<WholeTreeCtx, String>>(1);
-    let roots_for_thread = source_roots.clone();
-    let excludes_for_thread = exclude_subpaths.clone();
+    let budget_secs = resolve_budget_minutes.saturating_mul(60);
     std::thread::spawn(move || {
-        let result = whole_tree_resolved_ctx(
-            &roots_for_thread,
-            &excludes_for_thread,
-            ExecutionMode::Wet,
-        );
-        let _ = tx.send(result);
+        std::thread::sleep(std::time::Duration::from_secs(budget_secs));
+        if !RESOLVE_BUDGET_EXCEEDED.swap(true, Ordering::SeqCst) {
+            let aborted_wall_ms = resolve_started.elapsed().as_millis();
+            emit_wall_priced_receipt(aborted_wall_ms, resolve_budget_minutes);
+            std::process::exit(0);
+        }
     });
 
     let WholeTreeCtx {
         ctx,
         modules_resolved,
         modules_excluded,
-    } = match rx.recv_timeout(budget) {
-        Ok(Ok(ctx)) => ctx,
-        Ok(Err(e)) => {
+    } = whole_tree_resolved_ctx(&source_roots, &exclude_subpaths, ExecutionMode::Wet).map_err(
+        |e| {
             eprintln!("measure_dependency_view_build: whole-tree resolve failed:\n{e}");
-            return Err(ExitCode::from(2));
-        }
-        Err(mpsc::RecvTimeoutError::Timeout) => {
-            let aborted_wall_ms = resolve_started.elapsed().as_millis();
-            emit_wall_priced_receipt(aborted_wall_ms, resolve_budget_minutes);
-            return Ok(ExitCode::SUCCESS);
-        }
-        Err(mpsc::RecvTimeoutError::Disconnected) => {
-            eprintln!("measure_dependency_view_build: whole-tree resolve thread exited without result");
-            return Err(ExitCode::from(2));
-        }
-    };
+            ExitCode::from(2)
+        },
+    )?;
+    if RESOLVE_BUDGET_EXCEEDED.load(Ordering::SeqCst) {
+        return Ok(ExitCode::SUCCESS);
+    }
     let resolve_ms = resolve_started.elapsed().as_millis();
 
     eprintln!(
