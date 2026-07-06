@@ -1,0 +1,26 @@
+module v2.lens.affected_set.corpus_dependency_view
+
+import v2.std.algebra { length, list_append }
+import v2.std.collection { List }
+import v2.std.dependency { DependencyView, append_dependency_views, dependency_lens }
+import v2.std.fn_index { fn_arrow_decl_facts_live }
+import v2.std.integer { Int }
+
+data corpus_dependency_view_measurement_note: String = "Phase-0 DependencyView build probe (lever-a slice 2). Folds dependency_lens over every FnArrowDecl in the resolved whole-tree context (fn_arrow_decl_facts_live) — the same whole-corpus substrate wiring_liveness uses. Production affected_set uses dependency_lens(root: InferredTree.root) once; whole-tree InferredTree root is gated on resolve grounding (#6239). This probe upper-bounds single-root fold cost by summing per-decl folds; dissolve-on: InferredTree.root lands, repoint probe at dependency_lens(root: tree.root) and delete the per-decl aggregation."
+
+fn corpus_dependency_views_live() -> List<DependencyView> {
+  fold(fn_arrow_decl_facts_live(), init: [], f: fn(acc, decl) {
+    append_dependency_views(
+      left: acc,
+      right: dependency_lens(root: decl.output)
+    )
+  })
+}
+
+fn corpus_dependency_view_edge_count() -> Int {
+  length(xs: corpus_dependency_views_live())
+}
+
+fn corpus_dependency_view_decl_count() -> Int {
+  length(xs: fn_arrow_decl_facts_live())
+}
