@@ -4985,9 +4985,11 @@ fn floor_diff_edits_from_line_ranges(
             }
         }
     }
-    if saw_non_dag && !saw_dag {
-        return Err("non-.dag file changed with no .dag paths in diff".to_string());
-    }
+    // A present diff whose changed paths are all non-.dag lands here with an empty frontier
+    // (structural-∅): it flows through as every row's not-affected skip -- nominal and
+    // transparent, exactly like an empty diff, never a refusal. Observation failure (the only
+    // ignorance state) is refused upstream in floor_git_diff_range; a successful observation
+    // with an empty .dag subset is not ignorance.
     Ok(FloorDiffEdits {
         overlapping_data_items,
         edited_test_fns,
@@ -5667,6 +5669,27 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
                 start: 101,
                 end: 103
             }])
+        );
+    }
+
+    #[test]
+    fn non_dag_only_diff_is_structural_empty_frontier_not_refusal() {
+        // A present diff whose changed paths are all non-.dag (e.g. a hand-maintained seed .rs
+        // edit like regen_stage0.rs) is a structural-∅ for the .dag frontier -- no .dag nodes
+        // are declared, so nothing is attributable and every .dag row takes the not-affected
+        // skip, exactly as an empty diff does. It is NOT an ignorance state (the only ignorance
+        // state is a failed git-diff observation, refused upstream). RED CONTROL: before the
+        // arity fix this returned Err("non-.dag file changed with no .dag paths in diff") and
+        // reddened the discovery-corpus batch for every pure-.rs PR.
+        let index = build_multi_entry_index(&[]);
+        let rs_only_diff = unified_diff_for_line("src/v1/stage0/src/regen_stage0.rs", 42);
+        let edits = floor_diff_edits_from_diff_text(&index, &rs_only_diff)
+            .expect("non-.dag-only diff must be a nominal empty frontier, not a refusal");
+        assert!(
+            edits.overlapping_data_items.is_empty()
+                && edits.edited_test_fns.is_empty()
+                && edits.touched_entry_files.is_empty(),
+            "non-.dag-only diff must produce an empty .dag frontier, got {edits:?}"
         );
     }
 
