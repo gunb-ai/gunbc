@@ -1,10 +1,28 @@
+#![allow(clippy::disallowed_macros)]
+
+//! Host-physics floor witness for dag_collect fingerprint oracle suite
+//! (migrated from `src/v1/tests/src/dag_collect_fingerprint_witness_test.rs`).
+//! Exercises bag/seq hash commutativity, recursive surface fingerprint
+//! discrimination, and the leaf_mix contrastive control until
+//! `v1.compiler.dag_collect_support` is witness-layer importable.
+
+use std::process::ExitCode;
 use std::rc::Rc;
+
 use v1_compiler::v1_compiler_dag_collect_support::{
-    dag_node_bag_hash, dag_node_seq_hash, dag_node_surface_fingerprint, dag_node_surface_leaf_mix,
+    dag_collect_fp_memo_reset, dag_node_bag_hash, dag_node_seq_hash, dag_node_surface_fingerprint,
+    dag_node_surface_leaf_mix,
 };
 use v1_compiler::v1_rt::atom_identity_hash;
 use v1_compiler::v1_std_core::empty_node_list;
 use v1_compiler::v1_std_core::{Cardinality, Connective, ExprData, Node, SourceSpan};
+
+type WitnessCase = (&'static str, fn());
+
+fn fail(msg: impl std::fmt::Display) -> ExitCode {
+    eprintln!("dag_collect_fingerprint_witness: {msg}");
+    ExitCode::from(1)
+}
 
 fn hashes(labels: Vec<&str>) -> Rc<Vec<String>> {
     Rc::new(
@@ -51,9 +69,6 @@ fn shell_node(
     })
 }
 
-// --- primitive bag/seq hash properties ---
-
-#[test]
 fn bag_hash_is_commutative() {
     assert_eq!(
         dag_node_bag_hash(hashes(vec!["a", "b"])),
@@ -62,7 +77,6 @@ fn bag_hash_is_commutative() {
     );
 }
 
-#[test]
 fn seq_hash_is_order_sensitive() {
     assert_ne!(
         dag_node_seq_hash(hashes(vec!["a", "b"])),
@@ -71,7 +85,6 @@ fn seq_hash_is_order_sensitive() {
     );
 }
 
-#[test]
 fn bag_hash_distinguishes_different_content() {
     assert_ne!(
         dag_node_bag_hash(hashes(vec!["a", "b"])),
@@ -80,7 +93,6 @@ fn bag_hash_distinguishes_different_content() {
     );
 }
 
-#[test]
 fn seq_hash_distinguishes_different_content() {
     assert_ne!(
         dag_node_seq_hash(hashes(vec!["a", "b"])),
@@ -89,7 +101,6 @@ fn seq_hash_distinguishes_different_content() {
     );
 }
 
-#[test]
 fn empty_bag_and_seq_hash_are_different() {
     assert_ne!(
         dag_node_bag_hash(hashes(vec![])),
@@ -98,9 +109,6 @@ fn empty_bag_and_seq_hash_are_different() {
     );
 }
 
-// --- end-to-end fingerprint on real Node trees ---
-
-#[test]
 fn recursive_fingerprint_distinguishes_same_named_child_subtrees() {
     let child_a_conj = shell_node("a", Connective::Conj, vec![], vec![]);
     let child_a_disj = shell_node("a", Connective::Disj, vec![], vec![]);
@@ -113,7 +121,6 @@ fn recursive_fingerprint_distinguishes_same_named_child_subtrees() {
     );
 }
 
-#[test]
 fn recursive_fingerprint_distinguishes_param_order() {
     let p_x = shell_node("x", Connective::NoConnective, vec![], vec![]);
     let p_y = shell_node("y", Connective::NoConnective, vec![], vec![]);
@@ -131,7 +138,6 @@ fn recursive_fingerprint_distinguishes_param_order() {
     );
 }
 
-#[test]
 fn recursive_fingerprint_distinguishes_arrow_child_order() {
     let c_x = shell_node("x", Connective::NoConnective, vec![], vec![]);
     let c_y = shell_node("y", Connective::NoConnective, vec![], vec![]);
@@ -149,7 +155,6 @@ fn recursive_fingerprint_distinguishes_arrow_child_order() {
     );
 }
 
-#[test]
 fn recursive_fingerprint_conj_child_order_insensitive() {
     let c_a = shell_node("a", Connective::NoConnective, vec![], vec![]);
     let c_b = shell_node("b", Connective::NoConnective, vec![], vec![]);
@@ -167,7 +172,6 @@ fn recursive_fingerprint_conj_child_order_insensitive() {
     );
 }
 
-#[test]
 fn recursive_fingerprint_disj_child_order_insensitive() {
     let c_a = shell_node("a", Connective::NoConnective, vec![], vec![]);
     let c_b = shell_node("b", Connective::NoConnective, vec![], vec![]);
@@ -185,16 +189,6 @@ fn recursive_fingerprint_disj_child_order_insensitive() {
     );
 }
 
-// --- GUARD-2: contrastive control — leaf_mix collides where recursive fingerprint distinguishes ---
-//
-// Proves that the recursive model was NECESSARY: two 0..0-span nodes that are identical at the
-// leaf level (same name, connective, expr_data, inferred) but differ only in their children have
-// the same dag_node_surface_leaf_mix (a simple name-only fingerprint would assign them the same
-// dag_node_key → dag_node_key_collision_error), but dag_node_surface_fingerprint is different
-// (the recursive model distinguishes them → distinct keys, no collision).  This locks §5 against
-// any future simplify regression that would flatten the recursive fingerprint back to a leaf hash.
-
-#[test]
 fn recursive_fingerprint_necessary_leaf_mix_collides_recursive_distinguishes() {
     let child_conj = shell_node("child", Connective::Conj, vec![], vec![]);
     let child_disj = shell_node("child", Connective::Disj, vec![], vec![]);
@@ -210,4 +204,62 @@ fn recursive_fingerprint_necessary_leaf_mix_collides_recursive_distinguishes() {
         dag_node_surface_fingerprint(node_b),
         "recursive fingerprint must distinguish the two nodes despite identical leaf_mix"
     );
+}
+
+const WITNESS_CASES: &[WitnessCase] = &[
+    ("bag_hash_is_commutative", bag_hash_is_commutative),
+    ("seq_hash_is_order_sensitive", seq_hash_is_order_sensitive),
+    (
+        "bag_hash_distinguishes_different_content",
+        bag_hash_distinguishes_different_content,
+    ),
+    (
+        "seq_hash_distinguishes_different_content",
+        seq_hash_distinguishes_different_content,
+    ),
+    (
+        "empty_bag_and_seq_hash_are_different",
+        empty_bag_and_seq_hash_are_different,
+    ),
+    (
+        "recursive_fingerprint_distinguishes_same_named_child_subtrees",
+        recursive_fingerprint_distinguishes_same_named_child_subtrees,
+    ),
+    (
+        "recursive_fingerprint_distinguishes_param_order",
+        recursive_fingerprint_distinguishes_param_order,
+    ),
+    (
+        "recursive_fingerprint_distinguishes_arrow_child_order",
+        recursive_fingerprint_distinguishes_arrow_child_order,
+    ),
+    (
+        "recursive_fingerprint_conj_child_order_insensitive",
+        recursive_fingerprint_conj_child_order_insensitive,
+    ),
+    (
+        "recursive_fingerprint_disj_child_order_insensitive",
+        recursive_fingerprint_disj_child_order_insensitive,
+    ),
+    (
+        "recursive_fingerprint_necessary_leaf_mix_collides_recursive_distinguishes",
+        recursive_fingerprint_necessary_leaf_mix_collides_recursive_distinguishes,
+    ),
+];
+
+fn main() -> ExitCode {
+    for (name, case) in WITNESS_CASES {
+        dag_collect_fp_memo_reset();
+        if let Err(e) = std::panic::catch_unwind(case) {
+            let msg = if let Some(s) = e.downcast_ref::<&str>() {
+                (*s).to_string()
+            } else if let Some(s) = e.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "assertion failed".to_string()
+            };
+            return fail(format!("{name}: {msg}"));
+        }
+    }
+    ExitCode::SUCCESS
 }

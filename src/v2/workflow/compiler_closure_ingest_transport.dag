@@ -78,9 +78,25 @@ func run_compiler_closure_ingest_gate() -> Bool {
       command(words: [lit(text: "cd"), var_ref(name: "ROOT")]),
       closure_gunbc_claim_run_no_overlay(function: closure_witness_layer_roots),
       closure_gunbc_gap4_claim_run(),
+      command(words: [
+        lit(text: "mkdir"),
+        lit(text: "-p"),
+        Concat { parts: [var_ref(name: "ROOT"), lit(text: "/target")] }
+      ]),
       assign(
         name: "CLOSURE_MANIFEST_DIR",
-        value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }
+        value: CmdSubst {
+          body: command(words: [
+            lit(text: "mktemp"),
+            lit(text: "-d"),
+            Concat {
+              parts: [
+                var_ref(name: "ROOT"),
+                lit(text: "/target/closure-ingest-XXXXXX")
+              ]
+            }
+          ])
+        }
       ),
       emit_closure_manifest_stmt(),
       closure_gunbc_claim_run(function: closure_witness_module_count),

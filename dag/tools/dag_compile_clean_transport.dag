@@ -21,30 +21,43 @@ fn dcc_pool_index_flags() -> List<ShellWord> {
   [lit(text: "--dependency-pool-index"), lit(text: "primary-precedence")]
 }
 
-fn clean_tree_compile_program() -> ShellProgram {
-  let root = var_ref(name: "ROOT")
+fn clean_tree_compile_body_stmts() -> List<ShellStmt> {
   let gunbc = var_ref(name: "GUNBC")
   let out = var_ref(name: "OUT")
+  [
+    assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+    command(words: concat(
+      [gunbc, lit(text: "compile")],
+      concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
+        lit(text: "--output-dir"), out,
+        lit(text: "--target"), lit(text: "dag")
+      ]))
+    )),
+    command(words: [lit(text: "rm"), lit(text: "-rf"), out])
+  ]
+}
+
+fn clean_tree_compile_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
   ShellProgram {
     set_e: true,
-    statements: concat(ensure_gunbc_built(), [
-      command(words: [lit(text: "cd"), root]),
-      assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      command(words: concat(
-        [gunbc, lit(text: "compile")],
-        concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
-          lit(text: "--output-dir"), out,
-          lit(text: "--target"), lit(text: "dag")
-        ]))
-      )),
-      command(words: [lit(text: "rm"), lit(text: "-rf"), out])
-    ])
+    statements: concat(ensure_gunbc_built(), concat([
+      command(words: [lit(text: "cd"), root])
+    ], clean_tree_compile_body_stmts()))
   }
 }
 
 fn run_clean_tree_compile() -> Bool {
-  let result = shell.Exec.Run(script: serialize_bash(p: clean_tree_compile_program()))
-  result.success
+  witness_layer_roots_compile_clean_check()
+}
+
+data clean_tree_compile_gate_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "tools.dag_compile_clean_transport",
+    decl_name: "clean_tree_compile_program",
+    field: WholeDeclaration
+  }
 }
 
 data perturb_module_source: String = "module test.perturb_compile_clean_red\nfn probe() -> String? {\n  match Present { value: \"x\" } {\n    Some { value: s } => Some { value: s }\n    None => none\n  }\n}"
@@ -53,39 +66,43 @@ data cross_tree_green_module_source: String = "module test.perturb_compile_clean
 
 data dag_shell_primary_module_source: String = "module test.perturb_compile_clean_dag_shell_primary\nimport extdeps.shell\nfn probe() -> String? {\n  shell.Env.Get(name: \"PATH\")\n}"
 
-fn compile_clean_perturb_program() -> ShellProgram {
-  let root = var_ref(name: "ROOT")
+fn compile_clean_perturb_red_body_stmts() -> List<ShellStmt> {
   let gunbc = var_ref(name: "GUNBC")
   let tmp = var_ref(name: "TMP")
+  [
+    assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+    Heredoc {
+      path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_red.dag")] },
+      delimiter: "PERTURB",
+      body: perturb_module_source
+    },
+    If {
+      cond: WithRedir {
+        stmt: command(words: concat(
+          [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
+          concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
+            lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
+            lit(text: "--target"), lit(text: "dag")
+          ]))
+        )),
+        redir: StdoutAndStderrToNull
+      },
+      then: [
+        command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
+        Exit { code: 1 }
+      ]
+    },
+    command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
+  ]
+}
+
+fn compile_clean_perturb_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
   ShellProgram {
     set_e: true,
-    statements: concat(ensure_gunbc_built(), [
-      command(words: [lit(text: "cd"), root]),
-      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      Heredoc {
-        path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_red.dag")] },
-        delimiter: "PERTURB",
-        body: perturb_module_source
-      },
-      If {
-        cond: WithRedir {
-          stmt: command(words: concat(
-            [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
-            concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
-              lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
-              lit(text: "--target"), lit(text: "dag")
-            ]))
-          )),
-          redir: StdoutAndStderrToNull
-        },
-        then: [
-          command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
-          Exit { code: 1 }
-        ]
-      },
-      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
-      Exit { code: 0 }
-    ])
+    statements: concat(ensure_gunbc_built(), concat([
+      command(words: [lit(text: "cd"), root])
+    ], concat(compile_clean_perturb_red_body_stmts(), [Exit { code: 0 }])))
   }
 }
 
@@ -96,39 +113,43 @@ fn run_perturb_optional_skew_red_receipt() -> Bool {
 
 data unresolved_import_perturb_source: String = "module test.perturb_compile_clean_unresolved_import\nimport totally.nonexistent.module { Foo }\nfn probe() -> Int { 42 }"
 
-fn compile_clean_unresolved_import_perturb_program() -> ShellProgram {
-  let root = var_ref(name: "ROOT")
+fn compile_clean_unresolved_import_body_stmts() -> List<ShellStmt> {
   let gunbc = var_ref(name: "GUNBC")
   let tmp = var_ref(name: "TMP")
+  [
+    assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+    Heredoc {
+      path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_unresolved_import.dag")] },
+      delimiter: "PERTURB_UNRESOLVED",
+      body: unresolved_import_perturb_source
+    },
+    If {
+      cond: WithRedir {
+        stmt: command(words: concat(
+          [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
+          concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
+            lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
+            lit(text: "--target"), lit(text: "dag")
+          ]))
+        )),
+        redir: StdoutAndStderrToNull
+      },
+      then: [
+        command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
+        Exit { code: 1 }
+      ]
+    },
+    command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
+  ]
+}
+
+fn compile_clean_unresolved_import_perturb_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
   ShellProgram {
     set_e: true,
-    statements: concat(ensure_gunbc_built(), [
-      command(words: [lit(text: "cd"), root]),
-      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      Heredoc {
-        path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_unresolved_import.dag")] },
-        delimiter: "PERTURB_UNRESOLVED",
-        body: unresolved_import_perturb_source
-      },
-      If {
-        cond: WithRedir {
-          stmt: command(words: concat(
-            [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
-            concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
-              lit(text: "--output-dir"), Concat { parts: [tmp, lit(text: "/out")] },
-              lit(text: "--target"), lit(text: "dag")
-            ]))
-          )),
-          redir: StdoutAndStderrToNull
-        },
-        then: [
-          command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
-          Exit { code: 1 }
-        ]
-      },
-      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp]),
-      Exit { code: 0 }
-    ])
+    statements: concat(ensure_gunbc_built(), concat([
+      command(words: [lit(text: "cd"), root])
+    ], concat(compile_clean_unresolved_import_body_stmts(), [Exit { code: 0 }])))
   }
 }
 
@@ -137,32 +158,37 @@ fn run_perturb_unresolved_import_red_receipt() -> Bool {
   result.success
 }
 
-fn compile_cross_tree_green_program() -> ShellProgram {
-  let root = var_ref(name: "ROOT")
+fn compile_cross_tree_green_body_stmts() -> List<ShellStmt> {
   let gunbc = var_ref(name: "GUNBC")
   let tmp = var_ref(name: "TMP")
   let out = var_ref(name: "OUT")
+  [
+    assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+    Heredoc {
+      path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_cross_tree_green.dag")] },
+      delimiter: "CROSS_TREE_GREEN",
+      body: cross_tree_green_module_source
+    },
+    assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+    command(words: concat(
+      [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
+      concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
+        lit(text: "--output-dir"), out,
+        lit(text: "--target"), lit(text: "dag")
+      ]))
+    )),
+    command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
+    command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
+  ]
+}
+
+fn compile_cross_tree_green_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
   ShellProgram {
     set_e: true,
-    statements: concat(ensure_gunbc_built(), [
-      command(words: [lit(text: "cd"), root]),
-      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      Heredoc {
-        path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_cross_tree_green.dag")] },
-        delimiter: "CROSS_TREE_GREEN",
-        body: cross_tree_green_module_source
-      },
-      assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      command(words: concat(
-        [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
-        concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
-          lit(text: "--output-dir"), out,
-          lit(text: "--target"), lit(text: "dag")
-        ]))
-      )),
-      command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
-      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
-    ])
+    statements: concat(ensure_gunbc_built(), concat([
+      command(words: [lit(text: "cd"), root])
+    ], compile_cross_tree_green_body_stmts()))
   }
 }
 
@@ -171,33 +197,76 @@ fn run_cross_tree_import_green_receipt() -> Bool {
   result.success
 }
 
-fn compile_dag_shell_primary_precedence_program() -> ShellProgram {
-  let root = var_ref(name: "ROOT")
+fn compile_dag_shell_primary_body_stmts() -> List<ShellStmt> {
   let gunbc = var_ref(name: "GUNBC")
   let tmp = var_ref(name: "TMP")
   let out = var_ref(name: "OUT")
+  [
+    assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+    Heredoc {
+      path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_dag_shell_primary.dag")] },
+      delimiter: "DAG_SHELL_PRIMARY",
+      body: dag_shell_primary_module_source
+    },
+    assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
+    command(words: concat(
+      [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
+      concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
+        lit(text: "--output-dir"), out,
+        lit(text: "--target"), lit(text: "dag")
+      ]))
+    )),
+    command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
+    command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
+  ]
+}
+
+fn compile_dag_shell_primary_precedence_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
   ShellProgram {
     set_e: true,
-    statements: concat(ensure_gunbc_built(), [
-      command(words: [lit(text: "cd"), root]),
-      assign(name: "TMP", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      Heredoc {
-        path: Concat { parts: [tmp, lit(text: "/_perturb_compile_clean_dag_shell_primary.dag")] },
-        delimiter: "DAG_SHELL_PRIMARY",
-        body: dag_shell_primary_module_source
-      },
-      assign(name: "OUT", value: CmdSubst { body: command(words: [lit(text: "mktemp"), lit(text: "-d")]) }),
-      command(words: concat(
-        [gunbc, lit(text: "compile"), lit(text: "--source-root"), tmp],
-        concat(dcc_source_root_flags(), concat(dcc_pool_index_flags(), [
-          lit(text: "--output-dir"), out,
-          lit(text: "--target"), lit(text: "dag")
-        ]))
-      )),
-      command(words: [lit(text: "rm"), lit(text: "-rf"), out]),
-      command(words: [lit(text: "rm"), lit(text: "-rf"), tmp])
-    ])
+    statements: concat(ensure_gunbc_built(), concat([
+      command(words: [lit(text: "cd"), root])
+    ], compile_dag_shell_primary_body_stmts()))
   }
+}
+
+data dag_compile_clean_gate_program_disposition: Disposition = Scaffold {
+  dissolves_to: RealizationDispatch,
+  bind: DeclarationRef {
+    module_path: "tools.dag_compile_clean_transport",
+    decl_name: "dag_compile_clean_gate_transport_serializes_dcc_invocation",
+    field: WholeDeclaration
+  }
+}
+
+data dag_compile_clean_gate_program_note: String = "Composed shell program (clean-tree + all perturb/cross-tree/dag-shell body_stmts) kept for serialize-shape witness dag_compile_clean_gate_transport_serializes_dcc_invocation only — batch-1 dag_compile_clean_gate calls witness_layer_roots_compile_clean_check in-process; perturb receipts run via enrolled batch-2 corpus witness dag_compile_clean_perturb_receipts_test.dag."
+
+fn dag_compile_clean_gate_program() -> ShellProgram {
+  let root = var_ref(name: "ROOT")
+  ShellProgram {
+    set_e: true,
+    statements: concat(ensure_gunbc_built(), concat([
+      command(words: [lit(text: "cd"), root])
+    ], concat(
+      clean_tree_compile_body_stmts(),
+      concat(
+        compile_clean_perturb_red_body_stmts(),
+        concat(
+          compile_clean_unresolved_import_body_stmts(),
+          concat(
+            compile_cross_tree_green_body_stmts(),
+            compile_dag_shell_primary_body_stmts()
+          )
+        )
+      )
+    )))
+  }
+}
+
+fn run_dag_compile_clean_gate_shell() -> Bool {
+  let result = shell.Exec.Run(script: serialize_bash(p: dag_compile_clean_gate_program()))
+  result.success
 }
 
 fn run_dag_shell_primary_precedence_receipt() -> Bool {
@@ -263,11 +332,23 @@ fn red_empty_shell_program_fails_dcc_invocation_check() -> Bool {
 }
 
 fn dag_compile_clean_transport_programs_serialize_compile_invocations() -> Bool {
-  clean_tree_transport_serializes_dcc_invocation()
+  dag_compile_clean_gate_transport_serializes_dcc_invocation()
+    && clean_tree_transport_serializes_dcc_invocation()
     && perturb_red_transport_serializes_dcc_invocation()
     && unresolved_import_transport_serializes_dcc_invocation()
     && cross_tree_green_transport_serializes_dcc_invocation()
     && dag_shell_primary_transport_serializes_dcc_invocation()
+}
+
+fn dag_compile_clean_gate_transport_serializes_dcc_invocation() -> Bool {
+  let script = serialize_bash(p: dag_compile_clean_gate_program())
+  shell_serializes_dcc_common_compile_invocation(script: script)
+    && string_contains(s: script, pattern: clean_tree_compile_invocation_marker)
+    && string_contains(s: script, pattern: perturb_red_transport_marker)
+    && string_contains(s: script, pattern: unresolved_import_transport_marker)
+    && string_contains(s: script, pattern: cross_tree_green_transport_marker)
+    && string_contains(s: script, pattern: dag_shell_primary_transport_marker)
+    && string_contains(s: script, pattern: perturb_tmp_compile_invocation_marker)
 }
 
 fn clean_tree_transport_serializes_dcc_invocation() -> Bool {

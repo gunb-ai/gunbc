@@ -2954,7 +2954,8 @@ fn str_identity_cast_if_string_family(
     let Value::Str(s) = val else {
         return None;
     };
-    if cast_target_underlying_kernel(ctx, target) == "String" {
+    let kernel = cast_target_underlying_kernel(ctx, target);
+    if kernel.is_empty() || kernel == "String" {
         Some(Value::Str(s.clone()))
     } else {
         None
@@ -6060,6 +6061,14 @@ fn eval_builtin(
                 ),
             )))
         }
+
+        "witness_layer_roots_compile_clean_check" => Ok(Some(Value::Bool(
+            crate::cli_run::witness_layer_roots_compile_clean_check(),
+        ))),
+
+        "witness_layer_roots_compile_clean_emit_check" => Ok(Some(Value::Bool(
+            crate::cli_run::witness_layer_roots_compile_clean_emit_check(),
+        ))),
 
         "test_migration_debt_module_count" => Ok(Some(Value::Int(
             crate::cli_run::test_migration_debt_module_count(),
