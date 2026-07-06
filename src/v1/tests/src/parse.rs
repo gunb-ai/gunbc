@@ -21,7 +21,7 @@ fn median_tokenize_secs(source: &str) -> (f64, usize) {
 }
 
 fn tokenizer_source_ref(source: &str) -> Rc<SourceRef> {
-    let chars = Rc::new(source.chars().map(|c| c as i64).collect::<Vec<_>>());
+    let chars = Rc::new(source.chars().map(|c| c as i64).collect::<im_rc::Vector<_>>());
     Rc::new(SourceRef {
         file: "tokenizer_lookup_flat.v3".to_string(),
         text: source.to_string(),
@@ -676,14 +676,14 @@ fn parser_scales_linearly_with_token_count() {
     let start = Instant::now();
     let _small_result = v1_compiler::v1_compiler_parse::parse(
         small_tokens.clone(),
-        Rc::new(std::collections::HashMap::new()),
+        Rc::new(im_rc::HashMap::new()),
     );
     let small_time = start.elapsed();
 
     let start = Instant::now();
     let _large_result = v1_compiler::v1_compiler_parse::parse(
         large_tokens.clone(),
-        Rc::new(std::collections::HashMap::new()),
+        Rc::new(im_rc::HashMap::new()),
     );
     let large_time = start.elapsed();
 

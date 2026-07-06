@@ -50,12 +50,12 @@ fn assert_resolved_ok(resolved: &ResolvedPipelineResult, entry: &str) {
 
 struct AmortHarness {
     graph: Rc<ResolvedGraph>,
-    source_indices: Rc<std::collections::HashMap<String, Rc<NewlineIndex>>>,
+    source_indices: Rc<im_rc::HashMap<String, Rc<NewlineIndex>>>,
 }
 
 impl AmortHarness {
     fn new() -> Self {
-        let resolved = compile_to_resolved(Rc::new(amort_sources()));
+        let resolved = compile_to_resolved(Rc::new(amort_sources().into()));
         assert_resolved_ok(&resolved, AMORT_ENTRY);
         Self {
             graph: resolved.graph.clone().expect("graph"),

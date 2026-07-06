@@ -69,9 +69,9 @@ fn rc_identity_fixture_sources() -> Vec<Rc<SourceFile>> {
 }
 
 fn typed_module_by_name<'a>(
-    modules: &'a [Rc<TypedModule>],
+    modules: &'a im_rc::Vector<Rc<TypedModule>>,
     source_indices: &Rc<
-        std::collections::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
+        im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
     >,
     name: &str,
 ) -> &'a Rc<TypedModule> {
@@ -84,7 +84,7 @@ fn typed_module_by_name<'a>(
 fn assert_rc_identity_across_import_chain(
     graph: &ResolvedGraph,
     source_indices: &Rc<
-        std::collections::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
+        im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
     >,
 ) {
     let def_mod = typed_module_by_name(&graph.modules, source_indices, "test.type_env_rc_definer");
@@ -113,7 +113,7 @@ fn collect_binding_ptrs(
     }
 }
 
-fn unique_binding_ptr_count_modules(modules: &[Rc<TypedModule>]) -> usize {
+fn unique_binding_ptr_count_modules(modules: &im_rc::Vector<Rc<TypedModule>>) -> usize {
     let mut ptrs = HashSet::new();
     for m in modules.iter() {
         collect_binding_ptrs(&m.type_env, &mut ptrs);
@@ -294,8 +294,8 @@ fn type_env_import_resolves_via_str_bindings_index() {
 
     let stripped = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
         bindings: consumer.type_env.bindings.clone(),
-        str_bindings: Rc::new(std::collections::HashMap::new()),
-        ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
+        str_bindings: Rc::new(im_rc::HashMap::new()),
+        ancestry_str_bindings: Rc::new(im_rc::HashMap::new()),
         parents: consumer.type_env.parents.clone(),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
@@ -327,7 +327,7 @@ fn type_env_dropped_parent_chain_fails_lookup() {
         bindings: consumer.type_env.bindings.clone(),
         str_bindings: consumer.type_env.str_bindings.clone(),
         ancestry_str_bindings: consumer.type_env.ancestry_str_bindings.clone(),
-        parents: Rc::new(vec![]),
+        parents: Rc::new(im_rc::vector![]),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
         inductive_fields: consumer.type_env.inductive_fields.clone(),
@@ -340,9 +340,9 @@ fn type_env_dropped_parent_chain_fails_lookup() {
     );
     let stripped_index = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
         bindings: consumer.type_env.bindings.clone(),
-        str_bindings: Rc::new(std::collections::HashMap::new()),
-        ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
-        parents: Rc::new(vec![]),
+        str_bindings: Rc::new(im_rc::HashMap::new()),
+        ancestry_str_bindings: Rc::new(im_rc::HashMap::new()),
+        parents: Rc::new(im_rc::vector![]),
         recursive_types: consumer.type_env.recursive_types.clone(),
         recursive_type_set: consumer.type_env.recursive_type_set.clone(),
         inductive_fields: consumer.type_env.inductive_fields.clone(),
@@ -544,25 +544,25 @@ fn type_env_std_types_type_variable_filtered_from_import() {
     let t_id = intern(intern_table.clone(), "T".to_string()).id;
     let int_id = intern(intern_table.clone(), "Int".to_string()).id;
     let parent = Rc::new(v1_compiler::v1_compiler_infer_env::TypeEnv {
-        bindings: Rc::new(std::collections::HashMap::from([
+        bindings: Rc::new(im_rc::HashMap::from_iter([
             (t_id, t_binding.clone()),
             (int_id, int_binding.clone()),
         ])),
-        str_bindings: Rc::new(std::collections::HashMap::from([
+        str_bindings: Rc::new(im_rc::HashMap::from_iter([
             ("T".to_string(), t_binding),
             ("Int".to_string(), int_binding),
         ])),
-        ancestry_str_bindings: Rc::new(std::collections::HashMap::new()),
-        parents: Rc::new(vec![]),
-        recursive_types: Rc::new(vec![]),
-        recursive_type_set: Rc::new(std::collections::HashMap::new()),
-        inductive_fields: Rc::new(std::collections::HashMap::new()),
-        source_indices: Rc::new(std::collections::HashMap::from([(
+        ancestry_str_bindings: Rc::new(im_rc::HashMap::new()),
+        parents: Rc::new(im_rc::vector![]),
+        recursive_types: Rc::new(im_rc::vector![]),
+        recursive_type_set: Rc::new(im_rc::HashMap::new()),
+        inductive_fields: Rc::new(im_rc::HashMap::new()),
+        source_indices: Rc::new(im_rc::HashMap::from_iter([(
             "stub.dag".to_string(),
             Rc::new(v1_compiler::v1_std_core::NewlineIndex {
                 file: "stub.dag".to_string(),
-                offsets: Rc::new(vec![0]),
-                char_codes: Rc::new(vec![]),
+                offsets: Rc::new(im_rc::vector![0]),
+                char_codes: Rc::new(im_rc::vector![]),
             }),
         )])),
         intern_table: intern_table.clone(),

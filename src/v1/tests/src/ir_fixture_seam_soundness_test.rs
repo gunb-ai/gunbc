@@ -54,11 +54,11 @@ fn resolved_pipeline_from_cached(cached: CachedResolvedGraph) -> Rc<ResolvedPipe
     );
     Rc::new(ResolvedPipelineResult {
         graph: Some(cached.graph),
-        diagnostics: Rc::new(vec![]),
+        diagnostics: Rc::new(im_rc::vector![]),
         source_indices: cached.source_indices,
         complexity: empty_complexity_report(),
-        ownership: Rc::new(vec![]),
-        newline_indices,
+        ownership: Rc::new(im_rc::vector![]),
+        newline_indices: Rc::new(newline_indices.iter().cloned().collect()),
     })
 }
 
@@ -79,7 +79,7 @@ fn strip_intern_table_from_fixture(cached: CachedResolvedGraph) -> CachedResolve
     );
     CachedResolvedGraph {
         graph: Rc::new(ResolvedGraph {
-            modules,
+            modules: Rc::new(modules.iter().cloned().collect()),
             item_registry: graph.item_registry.clone(),
             diagnostics: graph.diagnostics.clone(),
             emit_graph_info: graph.emit_graph_info.clone(),
@@ -125,7 +125,7 @@ fn remap_binding_intern_name_mismatch(cached: CachedResolvedGraph) -> CachedReso
     );
     CachedResolvedGraph {
         graph: Rc::new(ResolvedGraph {
-            modules,
+            modules: Rc::new(modules.iter().cloned().collect()),
             item_registry: graph.item_registry.clone(),
             diagnostics: graph.diagnostics.clone(),
             emit_graph_info: graph.emit_graph_info.clone(),

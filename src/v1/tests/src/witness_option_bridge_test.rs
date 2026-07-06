@@ -9,6 +9,7 @@
 //! - rust_emitter_lowers_*: unit tests of the v1 Rust emitter's variant-pattern
 //!   lowering — v1-EMITTER-coupled (lane ruling): they die with the Route-A
 //!   emitter retirement, not before; migrating them would cement the v1 emitter.
+use im_rc::{OrdSet as BTreeSet};
 use std::rc::Rc;
 
 use v1_compiler::v1_compiler_compile::{compile_to_resolved, ResolvedPipelineResult, SourceFile};
@@ -70,10 +71,10 @@ fn match_pattern_does_not_bridge_witness_to_some_none() {
 #[test]
 fn rust_emitter_lowers_present_absent_only_for_optional_parent() {
     let info = empty_emit_graph_info();
-    let empty_bindings = Rc::new(vec![]);
-    let empty_path = Rc::new(vec![]);
-    let empty_shared = Rc::new(std::collections::BTreeSet::new());
-    let empty_indices = Rc::new(std::collections::HashMap::new());
+    let empty_bindings = Rc::new(im_rc::vector![]);
+    let empty_path = Rc::new(im_rc::vector![]);
+    let empty_shared = Rc::new(im_rc::OrdSet::new());
+    let empty_indices = Rc::new(im_rc::HashMap::new());
 
     let non_optional = emit_variant_pattern(
         "Absent".to_string(),
@@ -109,10 +110,10 @@ fn rust_emitter_lowers_present_absent_only_for_optional_parent() {
 #[test]
 fn rust_emitter_lowers_holds_violates_only_for_witness_parent() {
     let info = empty_emit_graph_info();
-    let empty_bindings = Rc::new(vec![]);
-    let empty_path = Rc::new(vec![]);
-    let empty_shared = Rc::new(std::collections::BTreeSet::new());
-    let empty_indices = Rc::new(std::collections::HashMap::new());
+    let empty_bindings = Rc::new(im_rc::vector![]);
+    let empty_path = Rc::new(im_rc::vector![]);
+    let empty_shared = Rc::new(im_rc::OrdSet::new());
+    let empty_indices = Rc::new(im_rc::HashMap::new());
 
     let non_witness = emit_variant_pattern(
         "Holds".to_string(),

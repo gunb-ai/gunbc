@@ -104,7 +104,7 @@ fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
 /// Resolve the witness once and emit both source fragments we need, so the
 /// (expensive) resolve happens a single time per test.
 fn emit_add_and_field_access() -> (String, String) {
-    let resolved = compile_to_resolved(Rc::new(witness_sources()));
+    let resolved = compile_to_resolved(Rc::new(witness_sources().into()));
     let blocking: Vec<String> = resolved
         .diagnostics
         .iter()

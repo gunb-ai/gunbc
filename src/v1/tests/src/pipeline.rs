@@ -1,8 +1,9 @@
 #![allow(clippy::disallowed_macros)]
 
+use im_rc::{OrdSet as BTreeSet};
 use crate::helpers::*;
 use serde_json::Value;
-use std::collections::{BTreeSet, HashMap};
+use im_rc::HashMap;
 use std::rc::Rc;
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::SourceFile;
@@ -23,7 +24,7 @@ fn full_dag_compiles() {
     );
 
     let dag_result = v1_compiler::v1_compiler_compile::compile_sources(
-        Rc::new(dag_sources.clone()),
+        Rc::new(dag_sources.clone().into()),
         RenderTarget::Rust,
     );
 
@@ -150,7 +151,7 @@ fn parser_progress_witnesses_construct_strict_without_unary_promotion() {
         DescentUnknown
     );
 
-    let consumed_true_set = Rc::new(HashMap::from([("eat_result".to_string(), true)]));
+    let consumed_true_set = Rc::new(HashMap::from_iter([("eat_result".to_string(), true)]));
     assert_eq!(
         parser_result_state_progress(
             Rc::new(ParserResultSource::ParserResultEat {
@@ -163,7 +164,7 @@ fn parser_progress_witnesses_construct_strict_without_unary_promotion() {
         Strict
     );
 
-    let parser_always_advancing = Rc::new(HashMap::from([("parse_tail".to_string(), true)]));
+    let parser_always_advancing = Rc::new(HashMap::from_iter([("parse_tail".to_string(), true)]));
     assert_eq!(
         parser_result_state_progress(
             Rc::new(ParserResultSource::ParserResultCall {
@@ -1795,7 +1796,7 @@ fn compile_dag_with_complexity(
     use v1_compiler::v1_compiler_infer::reconcile;
     use v1_compiler::v1_compiler_normalize::normalize_graph;
     let sources = resolve_imports_transitively("test.dag", source);
-    let frontend = front_end_sources(Rc::new(sources));
+    let frontend = front_end_sources(Rc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
@@ -1918,7 +1919,7 @@ fn dag_artifact_deref_node<'a>(artifact: &'a Value, node_ref: &'a Value) -> &'a 
 
 fn normalize_typed_graph(
     value: &Value,
-    name_map: &std::collections::HashMap<&str, String>,
+    name_map: &im_rc::HashMap<&str, String>,
 ) -> Value {
     match value {
         Value::Object(map) => {
@@ -1930,7 +1931,10 @@ fn normalize_typed_graph(
                 }
                 if k == "diagnostics" {
                     if let Value::Array(arr) = v {
-                        out.insert(k.clone(), Value::Array(vec![Value::Null; arr.len()]));
+                        out.insert(
+                            k.clone(),
+                            Value::Array(std::iter::repeat(Value::Null).take(arr.len()).collect()),
+                        );
                         continue;
                     }
                 }
@@ -1986,8 +1990,8 @@ fn assert_scrambled_name_structural_eq(
     let graph_a = typed_graph_json(source_a);
     let graph_b = typed_graph_json(source_b);
 
-    let mut map_a = std::collections::HashMap::new();
-    let mut map_b = std::collections::HashMap::new();
+    let mut map_a = im_rc::HashMap::new();
+    let mut map_b = im_rc::HashMap::new();
     for (i, (na, nb)) in names_a.iter().zip(names_b.iter()).enumerate() {
         let ordinal = format!("__T{}", i);
         map_a.insert(*na, ordinal.clone());
@@ -2373,7 +2377,7 @@ fn diag_parser_scc_edges() {
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v1/02_parse.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v1/02_parse.dag", &content);
-    let frontend = front_end_sources(Rc::new(sources));
+    let frontend = front_end_sources(Rc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
@@ -2467,7 +2471,7 @@ fn diag_parse_node_decl_env() {
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v1/02_parse.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v1/02_parse.dag", &content);
-    let frontend = front_end_sources(Rc::new(sources));
+    let frontend = front_end_sources(Rc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
@@ -4309,7 +4313,7 @@ fn empty_batch() -> Batch {
     );
     let content = find_file(&result, "src/test_rc_list_construct.rs");
     let has_rc_field = content.contains("Rc<Vec<");
-    let has_rc_construction = content.contains("Rc::new(vec![");
+    let has_rc_construction = content.contains("Rc::new(im_rc::vector![");
     assert_eq!(
         has_rc_field, has_rc_construction,
         "list field Rc wrapping must match construction.\n\
@@ -4317,8 +4321,8 @@ fn empty_batch() -> Batch {
         has_rc_field, has_rc_construction, content
     );
     assert!(
-        content.contains("Rc::new(vec!["),
-        "list construction should use Rc::new(vec![...]) to match Rc<Vec<>> field type, got:\n{}",
+        content.contains("Rc::new(im_rc::vector!["),
+        "list construction should use Rc::new(im_rc::vector![...]) to match Rc<Vec<>> field type, got:\n{}",
         content
     );
 }
@@ -4542,7 +4546,7 @@ fn type_rendering_bare_list_not_map() {
     use v1_compiler::v1_compiler_emit::render_node_type;
 
     let list_node = test_leaf_node("List");
-    let shared_types = Rc::new(BTreeSet::from(["List".to_string()]));
+    let shared_types = Rc::new(BTreeSet::from_iter(["List".to_string()]));
 
     let rendered = render_node_type(
         list_node,
@@ -4568,7 +4572,7 @@ fn type_rendering_bare_map_stays_hashmap() {
     use v1_compiler::v1_compiler_emit::render_node_type;
 
     let map_node = test_leaf_node("Map");
-    let shared_types = Rc::new(BTreeSet::from(["Map".to_string()]));
+    let shared_types = Rc::new(BTreeSet::from_iter(["Map".to_string()]));
 
     let rendered = render_node_type(
         map_node,
@@ -4599,7 +4603,7 @@ fn type_rendering_named_conj_with_container_template() {
         })),
         ..(*test_leaf_node("")).clone()
     });
-    let shared_types = Rc::new(BTreeSet::from(["FreeMonoid".to_string()]));
+    let shared_types = Rc::new(BTreeSet::from_iter(["FreeMonoid".to_string()]));
 
     let rendered = render_node_type(
         free_monoid_conj,
@@ -5926,7 +5930,7 @@ fn review_dag_compiles_to_rust() {
         .filter(|l| l.starts_with("error[") || (l.starts_with("error") && !l.starts_with("error:")))
         .count();
 
-    let mut categories: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut categories: im_rc::HashMap<String, usize> = im_rc::HashMap::new();
     for line in check_stderr.lines() {
         if line.starts_with("error[") {
             let code = line.split(']').next().unwrap_or("unknown").to_string() + "]";
@@ -9435,7 +9439,7 @@ fn dump_complexity_report() {
 
     eprintln!("Compiling {} .dag files...", all_sources.len());
     let result = v1_compiler::v1_compiler_compile::compile_sources_with_options(
-        Rc::new(all_sources),
+        Rc::new(all_sources.into()),
         RenderTarget::Rust,
         v1_compiler::v1_compiler_compile::CompilePipelineOptions {
             analyze_complexity: true,
@@ -9495,7 +9499,7 @@ fn diag_render_node_type_evidence() {
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v1/05_emit.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v1/05_emit.dag", &content);
-    let frontend = front_end_sources(Rc::new(sources));
+    let frontend = front_end_sources(Rc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
@@ -9586,7 +9590,7 @@ fn diag_emitter_scc() {
     let ws = crate::helpers::workspace_root();
     let content = std::fs::read_to_string(ws.join("src/v1/05_emit_rust.dag")).unwrap();
     let sources = crate::helpers::resolve_imports_transitively("src/v1/05_emit_rust.dag", &content);
-    let frontend = front_end_sources(Rc::new(sources));
+    let frontend = front_end_sources(Rc::new(sources.into()));
     let graph = frontend
         .graph
         .clone()
@@ -9606,7 +9610,7 @@ fn diag_emitter_scc() {
     let func_index = Rc::new(func_index);
 
     let scc_result = build_scc_index(
-        Rc::new(func_entries.to_vec()),
+        func_entries.clone(),
         func_index.clone(),
         Rc::new(HashMap::new()),
     );

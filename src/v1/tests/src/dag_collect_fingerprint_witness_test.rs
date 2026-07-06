@@ -6,7 +6,7 @@ use v1_compiler::v1_rt::atom_identity_hash;
 use v1_compiler::v1_std_core::empty_node_list;
 use v1_compiler::v1_std_core::{Cardinality, Connective, ExprData, Node, SourceSpan};
 
-fn hashes(labels: Vec<&str>) -> Rc<Vec<String>> {
+fn hashes(labels: Vec<&str>) -> Rc<im_rc::Vector<String>> {
     Rc::new(
         labels
             .into_iter()
@@ -34,9 +34,9 @@ fn shell_node(
         ident: None,
         span: synth_span(),
         ident_span: None,
-        children: Rc::new(children),
+        children: Rc::new(children.into()),
         connective,
-        params: Rc::new(params),
+        params: Rc::new(params.into()),
         inferred: None,
         return_cardinality: Cardinality::Required,
         uses: empty_node_list(),

@@ -1,4 +1,5 @@
-use std::collections::{HashMap, HashSet};
+use im_rc::HashMap;
+use std::collections::HashSet;
 use std::fs;
 use std::rc::Rc;
 use std::sync::Mutex;
@@ -75,7 +76,7 @@ fn rc_identity_fixture_sources() -> Vec<Rc<SourceFile>> {
 fn assert_rc_identity_across_import_chain(
     graph: &ResolvedGraph,
     source_indices: &Rc<
-        std::collections::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
+        im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
     >,
 ) {
     let def_mod = typed_module_by_name(&graph.modules, source_indices, "test.func_env_rc_definer");
@@ -99,7 +100,7 @@ fn collect_func_sig_ptrs(env: &ResolvedFuncEnv, out: &mut HashSet<*const Resolve
     }
 }
 
-fn unique_func_sig_ptr_count_modules(modules: &[Rc<TypedModule>]) -> usize {
+fn unique_func_sig_ptr_count_modules(modules: &im_rc::Vector<Rc<TypedModule>>) -> usize {
     let mut ptrs = HashSet::new();
     for m in modules.iter() {
         collect_func_sig_ptrs(&m.func_env, &mut ptrs);
@@ -107,7 +108,7 @@ fn unique_func_sig_ptr_count_modules(modules: &[Rc<TypedModule>]) -> usize {
     ptrs.len()
 }
 
-fn sum_local_func_sig_defs_modules(modules: &[Rc<TypedModule>]) -> usize {
+fn sum_local_func_sig_defs_modules(modules: &im_rc::Vector<Rc<TypedModule>>) -> usize {
     modules.iter().map(|m| m.func_env.local.len()).sum()
 }
 
@@ -140,9 +141,9 @@ fn compile_modules(
 }
 
 fn typed_module_by_name<'a>(
-    modules: &'a [Rc<TypedModule>],
+    modules: &'a im_rc::Vector<Rc<TypedModule>>,
     source_indices: &Rc<
-        std::collections::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
+        im_rc::HashMap<String, Rc<v1_compiler::v1_std_core::NewlineIndex>>,
     >,
     name: &str,
 ) -> &'a Rc<TypedModule> {
@@ -305,7 +306,7 @@ fn func_env_dropped_parent_chain_fails_lookup() {
 
     let stripped = Rc::new(ResolvedFuncEnv {
         local: consumer.func_env.local.clone(),
-        parents: Rc::new(vec![]),
+        parents: Rc::new(im_rc::vector![]),
     });
     assert!(
         lookup_func_sig(stripped.clone(), "shared_fn".to_string()).is_none(),

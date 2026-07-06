@@ -294,7 +294,7 @@ mod compiler_tests {
                     path: "test.dag".to_string(),
                     content: "module test\ntype Foo { x: Int, name: String }\nfn add(a: Int, b: Int) -> Int { a + b }\n".to_string(),
                 });
-                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(vec![source]), crate::v1_compiler_artifact::RenderTarget::Rust);
+                let result = crate::v1_compiler_compile::compile_sources(std::rc::Rc::new(im_rc::vector![source]), crate::v1_compiler_artifact::RenderTarget::Rust);
 
                 assert!(
                     !result.files.is_empty(),
@@ -335,7 +335,7 @@ mod compiler_tests {
                     content: "module module_b\nimport module_a { Sealed }\nfn bad_ctor(v: String) -> Sealed { Sealed { x: v } }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(vec![module_a, module_b]),
+                    std::rc::Rc::new(im_rc::vector![module_a, module_b]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
@@ -388,7 +388,7 @@ mod compiler_tests {
                     content: "module module_b\nimport module_a { FieldlessFoo }\nfn bad_ctor() -> FieldlessFoo { FieldlessFoo { } }\n".to_string(),
                 });
                 let result = crate::v1_compiler_compile::compile_sources(
-                    std::rc::Rc::new(vec![module_a, module_b]),
+                    std::rc::Rc::new(im_rc::vector![module_a, module_b]),
                     crate::v1_compiler_artifact::RenderTarget::Rust,
                 );
                 let sole_ctor_errors: Vec<_> = result.diagnostics.iter()
@@ -949,15 +949,15 @@ mod compiler_tests {
             ident: None,
             span: span.clone(),
             ident_span: Some(span),
-            children: std::rc::Rc::new(children),
+            children: std::rc::Rc::new(children.into()),
             connective: crate::v1_std_core::Connective::NoConnective,
-            params: std::rc::Rc::new(Vec::new()),
+            params: std::rc::Rc::new(im_rc::Vector::new()),
             inferred: None,
             return_cardinality: crate::v1_std_core::Cardinality::Required,
-            uses: std::rc::Rc::new(Vec::new()),
+            uses: std::rc::Rc::new(im_rc::Vector::new()),
             body: None,
             transport: None,
-            properties: std::rc::Rc::new(Vec::new()),
+            properties: std::rc::Rc::new(im_rc::Vector::new()),
             type_annotation: None,
             is_self_recursive: false,
             has_non_tail_self_call: false,
@@ -1181,7 +1181,7 @@ mod compiler_tests {
                     },
                 );
                 let graph = crate::v1_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules),
+                    std::rc::Rc::new(modules.into()),
                     resolve_si,
                 );
                 let resolve_total = t_stage.elapsed();
@@ -1357,7 +1357,7 @@ mod compiler_tests {
                     },
                 );
                 let graph = crate::v1_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules),
+                    std::rc::Rc::new(modules.into()),
                     resolve_si,
                 );
                 let resolve_elapsed = t.elapsed();
@@ -1609,7 +1609,7 @@ mod compiler_tests {
                     },
                 );
                 let graph = crate::v1_compiler_resolve::resolve_modules(
-                    std::rc::Rc::new(modules),
+                    std::rc::Rc::new(modules.into()),
                     resolve_si,
                 );
                 let setup_time = t0.elapsed();
