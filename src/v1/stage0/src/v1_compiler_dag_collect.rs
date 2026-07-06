@@ -19,9 +19,9 @@ use crate::v1_std_core::MatchPattern::*;
 pub use crate::v1_std_core::{Connective, ErrorNode, ExprData, InferredNode, MatchPattern, Node};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
+use im_rc::HashMap;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::cell::RefCell;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 thread_local! {

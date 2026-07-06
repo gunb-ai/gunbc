@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_macros)]
 
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::process::ExitCode;
 use std::rc::Rc;
 
@@ -53,7 +53,7 @@ where
     cold.output().expect("failed to spawn cargo cold retry")
 }
 
-fn tokenize_for_parse(source: &str) -> Rc<Vec<Rc<v1_compiler::v1_std_core::Token>>> {
+fn tokenize_for_parse(source: &str) -> Rc<im_rc::Vector<Rc<v1_compiler::v1_std_core::Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
 
@@ -160,7 +160,7 @@ fn resolve_imports_transitively_with_index(
         }
     }
 
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_values().collect();
+    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
     sources.push(Rc::new(SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
@@ -174,7 +174,7 @@ fn resolve_imports_transitively(entry_path: &str, entry_content: &str) -> Vec<Rc
 
 fn compile_dag_named(filename: &str, source: &str, target: RenderTarget) -> Rc<PipelineResult> {
     let sources = resolve_imports_transitively(filename, source);
-    compile_sources(Rc::new(sources), target)
+    compile_sources(Rc::new(sources.into()), target)
 }
 
 fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
@@ -902,7 +902,7 @@ fn ci_full_dag() {
     );
 
     let dag_result = v1_compiler::v1_compiler_compile::compile_sources(
-        std::rc::Rc::new(dag_sources.clone()),
+        std::rc::Rc::new(dag_sources.clone().into()),
         v1_compiler::v1_compiler_artifact::RenderTarget::Rust,
     );
 

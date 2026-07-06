@@ -46,7 +46,7 @@ fn non_complexity_errors(
 #[test]
 fn body_producer_infer_perf_witness_resolves_clean() {
     let sources = sources_for(ENTRY);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let errs = non_complexity_errors(&resolved);
     assert!(
         errs.is_empty() && resolved.graph.is_some(),
@@ -60,7 +60,7 @@ fn body_producer_infer_perf_witness_wrong_type_still_rejects() {
         "src/v2/test/claim/manual/pbp_body_producer_wrong_type_repro.dag",
         WRONG_TYPE_SRC,
     );
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let errs = non_complexity_errors(&resolved);
     assert!(
         !errs.is_empty(),

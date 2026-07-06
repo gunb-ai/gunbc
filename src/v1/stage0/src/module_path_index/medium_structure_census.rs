@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use crate::v1_rt::VecCompat;
+use im_rc::HashMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -29,7 +30,7 @@ fn rel_path(path: &Path) -> String {
 /// Parse-only module items for one `.dag` file (no resolve). Shared substrate for
 /// `decl_facts(roots)` (#5966) and emit-only corpus audits.
 pub struct ParsedDagFile {
-    pub items: Rc<Vec<Rc<Node>>>,
+    pub items: Rc<im_rc::Vector<Rc<Node>>>,
     pub source_indices: SourceIndices,
 }
 
@@ -52,11 +53,11 @@ pub fn parse_dag_file(path: &Path) -> Option<ParsedDagFile> {
     })
 }
 
-pub fn parse_file(path: &Path) -> Option<(Rc<Vec<Rc<Node>>>, SourceIndices)> {
+pub fn parse_file(path: &Path) -> Option<(Rc<im_rc::Vector<Rc<Node>>>, SourceIndices)> {
     parse_dag_file(path).map(|parsed| (parsed.items, parsed.source_indices))
 }
 
-fn function_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
+fn function_bodies(items: &Rc<im_rc::Vector<Rc<Node>>>) -> Vec<Rc<Node>> {
     let mut bodies = Vec::new();
     for item in items.iter() {
         if !matches!(
@@ -72,7 +73,7 @@ fn function_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
     bodies
 }
 
-fn item_value_bodies(items: &Rc<Vec<Rc<Node>>>) -> Vec<Rc<Node>> {
+fn item_value_bodies(items: &Rc<im_rc::Vector<Rc<Node>>>) -> Vec<Rc<Node>> {
     items.iter().filter_map(|item| item.body.clone()).collect()
 }
 

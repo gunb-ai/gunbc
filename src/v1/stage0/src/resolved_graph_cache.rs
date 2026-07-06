@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
