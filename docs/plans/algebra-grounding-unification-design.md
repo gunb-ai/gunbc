@@ -24,10 +24,11 @@ The two files are **not** byte-identical — only the `FreeMonoid` coproduct is.
 | Structure records (`Magma`…`BooleanAlgebra`) | present (record-of-methods) | present (record-of-methods) | **YES** — shared unqualified names |
 | `FreeMonoid` / `Empty` / `Cons` | coproduct (line 111) | coproduct (line 73) | **YES** — the variant-drop hazard |
 | Template/profile machinery (`AlgebraProfile`, `AlgebraFieldTemplate`, `kernel_algebra_profile`, `free_monoid_scalar_templates`, `algebra_templates_for_profile`) | **only here** (complexity-analyzer inhabitance projection) | absent | no |
-| Operational fold ops (`fold_list`, `fold_list_right`, `list_head`, `list_tail`, `skip`, `freemonoid_empty`) | **absent** | **only here** | no |
-| Node-encoding machinery (`algebra_inhabitance_node`, `*_type_node`, `*_node`) | absent | **only here** (encodes algebra AS `Node` for `04_infer`) | no |
+| Operational FreeMonoid ops (**25 node-free fns** + 4 helper types — full census in §7.1 step 1) | **absent** | **only here** | no |
+| Node-encoding machinery (`algebra_inhabitance_node`, `*_type_node`, `*_node`; **47 decls**) | absent | **only here** (encodes algebra AS `Node` for `04_infer`, imports `v2.std.node`) | no |
+| v2-only non-fork extras (`Equivalence`, `Homomorphism`, `Ordering`-mirror, `CopiedPortFact`/`copied_port_fact_*` lens fixtures) | mixed (see §7.1) | present | no (not FreeMonoid) |
 
-So the disjoint machinery (templates vs operational-fold vs Node-encoding) is safe; the **collision is exactly the structure records + `FreeMonoid` coproduct** — the concepts, not the derived surface. Per the operator ruling (§3b): the coproduct is the structural authority; the `dag` record-of-methods surface is *derived from inhabitance* (DESIGN §4 — ops from inhabitance, no per-type ops), a projection, **not** a second definition.
+So the disjoint machinery (templates vs operational-fold vs Node-encoding vs the non-fork extras) is safe; the **collision is exactly the structure records + `FreeMonoid` coproduct** — the concepts, not the derived surface. Per the operator ruling (§3b): the coproduct is the structural authority; the `dag` record-of-methods surface is *derived from inhabitance* (DESIGN §4 — ops from inhabitance, no per-type ops), a projection, **not** a second definition.
 
 ## 3. The target authority (consequence of §1–§2 + the ruling)
 
