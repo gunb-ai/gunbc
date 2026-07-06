@@ -22,7 +22,7 @@ The fold is not aspirational here — it is the actual architecture, at scale:
 - **#4699** — `06_translate` de-accumulated: 4,912 → 3,973 lines, `_go` accumulators **35 → 0**. The single largest "stop hand-rolling recursion-with-accumulator" receipt in the tree.
 - **#5512** — front-end de-pyramided: `compile_ingest_staging` went from a 5-deep `bind_outcome` pyramid to a fold of five first-class typed stages under **`then_outcome`** (Kleisli for the `Outcome` monad); `cached_stage` wired live (seam consumed, not stranded). The seed this lane names.
 - **#5428 / cardinality P4** — numeric tower grounded fail-closed; cardinality propagates through folds as a homomorphism, uint8 overflow → typed `Rejected`. A model↔realization fork instance *closed*.
-- **`merge_envs`** — a 6-line root fix cut reconcile from 81% → 6% of the pipeline (~2× self-compile). The canonical "fix the language layer, not the symptom" win — the lane's whole thesis in one diff.
+- **a 6-line type-env root fix** — cut reconcile from 81% → 6% of the pipeline (~2× self-compile). The canonical "fix the language layer, not the symptom" win — the lane's whole thesis in one diff.
 
 ## 2. The diagnosis — two roots, the lane's two halves
 

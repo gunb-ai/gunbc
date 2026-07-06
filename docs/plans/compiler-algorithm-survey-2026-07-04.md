@@ -1,5 +1,7 @@
 # Compiler algorithm survey — raw stage catalogs (2026-07-04)
 
+> **Superseded note (2026-07-06):** the `flatten_visible_bindings` and `merge_envs` rows below (verdict SUSPICIOUS/latent — "loaded gun") were **deleted outright in #6331** — one-level visibility by construction, so that gun is removed. This survey is preserved verbatim as a dated snapshot; its `04_env.dag` line anchors for those two functions predate the deletion.
+
 **Provenance:** eight parallel read-only survey agents, one per stage group, each instructed with the resolver reference lesson (request-major redundancy + per-unit whole-env scan) and asked to catalog every pass with unit, asymptotic class in named scaling variables, memoization story, and a verdict (OPTIMAL / ACCEPTABLE / SUSPICIOUS / PATHOLOGICAL), citing file:line anchors. Run 2026-07-04 on branch `claude/ci-witness-opt-in-10h2he` at the post-engine-PR state (constructor-owner ruling landed, suite 656/0/85 green).
 
 **Status of claims:** these are READ-verdicts — asymptotic classes argued from code with anchors, not yet measured. The four highest-leverage claims were spot-verified against the live tree by the synthesizer (see the roadmap's Survey results section). Every PATHOLOGICAL row still owes a corpus-scale measurement before its fix lands (roadmap §B method, step 3).

@@ -104,7 +104,7 @@ The **meta relationship** is Blocking now — it is decidable and cheap: scope-m
 1. **standing-intent-carrier** — `StandingIntent` type + the `complexity.repo-wide`, `lenses.must-be-live`, `lenses.self-apply-or-exempt` rows. Reuses `LensIdV0` (the existing lens-property coproduct — NOT a new `PropertyClass`), `SubjectRoster`, `ConstructionJustification`.
 2. **lens-contract-extend** — grow `LensRegistryEntryV0` → `LensContract`; classify `complexity_lens` precisely (fixture-only vs live-syntactic; blocking vs advisory); record claimed scope + discovered subject counts. `build_type_env` / former `flatten` present-or-absent **by execution**.
 3. **enforcement-intent-gate** — the join (§4). RED controls: absent-`src/v1` reds; whole-corpus-claim-but-scans-only-`src/v2` reds; blocking-without-consumer reds; blocking-without-red-control reds; audit-only passes only in `AuditOnly`.
-4. **complexity-bad-shape-wall (R1)** — the first real wall: accumulator-in-copied-port (`map_merge` overlay / `list_append` left), with the v1 fixtures and the `merge_envs` negative test; floor-enrolled *through* the enforcement-intent gate so it cannot be inert.
+4. **complexity-bad-shape-wall (R1)** — the first real wall: accumulator-in-copied-port (`map_merge` overlay / `list_append` left), with the v1 fixtures and the accumulator-copy negative test (`green_merge_envs_base_acc`); floor-enrolled *through* the enforcement-intent gate so it cannot be inert.
 
 Do 1–3 before adding many object rules, else task 4 is just one more possibly-inert lens.
 

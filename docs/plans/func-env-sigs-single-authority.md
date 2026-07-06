@@ -206,7 +206,7 @@ GREEN: `lookup_func_sig` finds sig, typecheck passes. **RED perturbation**: buil
 | `build_type_env_unresolved` | same |
 | `seed_kernel_intern_table` | inside build_type_env family |
 | `03_resolve.dag` and resolver internals | DESIGN load-bearing |
-| `collect_parent_envs`, `merge_envs`, `resolve_env_bindings` | type_env path, untouched |
+| `collect_parent_envs`, `resolve_env_bindings` | type_env path, untouched |
 
 ## Equivalence and memory witnesses (landed @ `054b9e7995`)
 

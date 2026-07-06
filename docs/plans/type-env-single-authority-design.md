@@ -17,7 +17,9 @@ ancestry (`5719/5727`). A `std` prelude binding is physically materialized in ~8
 (the `resolved: Node` values are Rc-shared, so it is entry/String-key churn, not deep-definition copy).
 
 This was a deliberate B1 tradeoff (`04_env.dag:36` invariant): B1 replaced a per-lookup
-`flatten_visible_bindings` (O(depth)/lookup) with the per-module precompute. It traded lookup cost for
+whole-env flatten (O(depth)/lookup) with the per-module precompute (that flatten has since been
+deleted outright — one-level visibility by construction — leaving the precompute as the sole remaining
+materialization this doc targets). It traded lookup cost for
 materialization cost. It is already marked scaffold: `type_env_compositional_authority_dissolution_trigger`
 (`04_env.dag:31`) and `type_env_cache_parallel_repr_dissolution_trigger` (`04_env.dag:34`) name the target
 as **v2 `std.type_env`**.
