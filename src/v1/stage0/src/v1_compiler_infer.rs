@@ -12784,8 +12784,7 @@ pub fn build_type_env(
             svn_kernel,
             |acc: Rc<HashMap<String, bool>>, imp: Rc<ResolvedImport>| {
                 if imp.is_all {
-                    if let Some(parent_mod) =
-                        v1_rt::map_get(&parent_index, imp.module_path.clone())
+                    if let Some(parent_mod) = v1_rt::map_get(&parent_index, imp.module_path.clone())
                     {
                         let a1 =
                             Rc::new(v1_rt::map_keys(&parent_mod.type_env.str_bindings.clone()))
@@ -12799,17 +12798,23 @@ pub fn build_type_env(
                         ))
                         .iter()
                         .cloned()
-                        .fold(a1, |x: Rc<HashMap<String, bool>>, n: String| {
-                            v1_rt::rc_map_insert(x, n, true)
-                        })
+                        .fold(
+                            a1,
+                            |x: Rc<HashMap<String, bool>>, n: String| {
+                                v1_rt::rc_map_insert(x, n, true)
+                            },
+                        )
                     } else {
                         acc.clone()
                     }
                 } else {
-                    imp.specific_names.clone().iter().cloned().fold(
-                        acc.clone(),
-                        |x: Rc<HashMap<String, bool>>, n: String| v1_rt::rc_map_insert(x, n, true),
-                    )
+                    imp.specific_names
+                        .clone()
+                        .iter()
+                        .cloned()
+                        .fold(acc.clone(), |x: Rc<HashMap<String, bool>>, n: String| {
+                            v1_rt::rc_map_insert(x, n, true)
+                        })
                 }
             },
         );

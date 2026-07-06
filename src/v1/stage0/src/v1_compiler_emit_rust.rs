@@ -8244,7 +8244,8 @@ pub fn render_rust_type_with_applied_binding(
                                             ),
                                             source_indices: source_indices.clone(),
                                             intern_table: empty_intern_table(),
-                                            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
+                                            source_visible_names: v1_rt::rc_empty_map::<String, bool>(
+                                            ),
                                         }),
                                     )
                                 }
