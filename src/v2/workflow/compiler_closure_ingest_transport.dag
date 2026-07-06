@@ -92,7 +92,11 @@ func run_compiler_closure_ingest_gate() -> Bool {
             Concat {
               parts: [
                 var_ref(name: "ROOT"),
+<<<<<<< HEAD
                 lit(text: "/target/closure-ingest-XXXXXX")
+=======
+                lit(text: "/target/.closure-manifest.XXXXXX")
+>>>>>>> 99328b7380 (fix(ci): source-root ingest gate + rust gate 25m budget)
               ]
             }
           ])

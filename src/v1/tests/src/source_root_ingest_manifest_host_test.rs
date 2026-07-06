@@ -62,7 +62,9 @@ fn manifest_emits_source_root_ref_import_for_tagged_reads() {
     let manifest_path = temp.join("manifest.dag");
     let records = discover_source_root_reads(
         &[ws.join("src/v2").to_string_lossy().to_string()],
-        "src/v2/test/fixture/program_assembly",
+        &ws.join("src/v2/test/fixture/program_assembly")
+            .to_string_lossy()
+            .to_string(),
         &[],
     )
     .expect("discover reads");

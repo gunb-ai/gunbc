@@ -224,7 +224,11 @@ jobs:
             fi
           fi
           rm -f "$BUILD_LOG"
+<<<<<<< HEAD
         timeout-minutes: 30
+=======
+        timeout-minutes: 25
+>>>>>>> 99328b7380 (fix(ci): source-root ingest gate + rust gate 25m budget)
       - name: rust_tests cgroup peak (placement divisor)
         run: |
           BIN="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/target/release/claim_executor"
