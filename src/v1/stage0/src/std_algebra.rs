@@ -152,30 +152,15 @@ pub struct BooleanAlgebra<T> {
     pub _phantom: std::marker::PhantomData<T>,
 }
 
-#[derive(Clone)]
-pub struct FreeMonoid<T> {
-    pub concat: Rc<dyn Fn(Rc<Vec<T>>, Rc<Vec<T>>) -> Rc<Vec<T>>>,
-    pub empty: Rc<Vec<T>>,
-    pub append: Rc<dyn Fn(T) -> Rc<Vec<T>>>,
-    pub slice: Rc<dyn Fn(i64, i64) -> Rc<Vec<T>>>,
-    pub length: Rc<dyn Fn() -> i64>,
-    pub is_empty: Rc<dyn Fn() -> bool>,
-    pub count: Rc<dyn Fn() -> i64>,
-    pub first: Rc<dyn Fn() -> Option<T>>,
-    pub last: Rc<dyn Fn() -> Option<T>>,
-    pub map: Rc<dyn Fn(Rc<dyn Fn(T) -> T>) -> Rc<Vec<T>>>,
-    pub filter: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> Rc<Vec<T>>>,
-    pub fold: Rc<dyn Fn(T, Rc<dyn Fn(T, T) -> T>) -> T>,
-    pub flat_map: Rc<dyn Fn(Rc<dyn Fn(T) -> Rc<Vec<T>>>) -> Rc<Vec<T>>>,
-    pub any: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> bool>,
-    pub all: Rc<dyn Fn(Rc<dyn Fn(T) -> bool>) -> bool>,
-    pub enumerate: Rc<dyn Fn() -> Rc<Vec<(i64, T)>>>,
-    pub reverse: Rc<dyn Fn() -> Rc<Vec<T>>>,
-    pub skip: Rc<dyn Fn(i64) -> Rc<Vec<T>>>,
-    pub take: Rc<dyn Fn(i64) -> Rc<Vec<T>>>,
-    pub sort_by: Rc<dyn Fn(Rc<dyn Fn(T, T) -> i64>) -> Rc<Vec<T>>>,
-    pub contains: Rc<dyn Fn(T) -> bool>,
-    pub _phantom: std::marker::PhantomData<T>,
+pub type FreeMonoid<T> = Vec<T>;
+
+pub fn free_monoid_coproduct_authority() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Structural authority = the coproduct (operator ruling 2026-06-22, dag-v2-defork-audit §3b): the record-of-methods surface this decl once carried is DERIVED from inhabitance (DESIGN §4 — ops from inhabitance, no per-type ops); the method-type table lives in free_monoid_scalar_templates/free_monoid_collection_templates, which never read this decl. The prior record form shadowed src/v2/std/algebra.dag's byte-identical coproduct on the unqualified name and silently dropped Empty/Cons variant bindings in any closure containing both trees (undefined variable: Empty — reproduced 2026-07-05).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 #[derive(Clone)]

@@ -229,12 +229,6 @@ pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
 }
 
-pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
-    let mut keys = map_keys(m);
-    keys.sort();
-    keys
-}
-
 pub fn map_is_empty<K, V>(m: &HashMap<K, V>) -> bool {
     m.is_empty()
 }
@@ -556,41 +550,6 @@ fn expect_hash_digest(s: &str, arg: &str) {
     }
 }
 
-/// Stage-boundary trace mark — the v1-seed interim realization of the v2 per-RealizedStep
-/// CostAccount (std.realization_measurement). One stderr line per mark; consecutive marks
-/// define the segments of a natural Gantt read directly off any run log.
-///
-/// **Dissolution trigger (DESIGN §6):** delete this fn, the `trace_mark` registry row in
-/// `04_method.dag` (+ hand-synced twin `v1_compiler_infer_method.rs`), the nine
-/// `trace_mark(...)` marks in `compile.dag` (+ hand-synced `v1_compiler_compile.rs`), and
-/// the interpreter arm in `v1_interpreter.rs` when realization_measurement_loop **Phase 0**
-/// (`docs/plans/realization-measurement-loop.md`) lands a `.dag` `PerformanceReceipt`
-/// per-stage carrier that a floor witness consumes by execution (the same retirement event
-/// as `phase_profile.rs` / `GUNBC_FLOOR_GANTT`, per `docs/plans/ci-floor-fractal-gantt.md`
-/// § dissolution). Receipt = that witness green with these marks deleted and stage walls
-/// still attributable from the model path.
-pub fn trace_mark(label: String) {
-    use std::sync::OnceLock;
-    use std::time::Instant;
-    static TRACE_T0: OnceLock<Instant> = OnceLock::new();
-    let ms = TRACE_T0.get_or_init(Instant::now).elapsed().as_millis();
-    let mut rss_mib = String::from("absent");
-    if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
-        for line in status.lines() {
-            if let Some(rest) = line.strip_prefix("VmRSS:") {
-                if let Some(kib) = rest
-                    .split_whitespace()
-                    .next()
-                    .and_then(|k| k.parse::<i64>().ok())
-                {
-                    rss_mib = (kib / 1024).to_string();
-                }
-            }
-        }
-    }
-    eprintln!("[gantt] {} t_ms={} rss_mib={}", label, ms, rss_mib);
-}
-
 /// Content hash over raw bytes — the byte-level single authority. `atom_identity_hash`
 /// is the `String` projection of this. Use this directly for arbitrary binary content
 /// (e.g. an executable or serialized payload): routing bytes through `String`/
@@ -685,42 +644,4 @@ pub fn contiguous_loop_elementwise_kernel(
         out.push(int_relu(tmp));
     }
     out
-}
-
-// take_owned_counted: the fail-closed replacement for the silent
-// `Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())` fallback (DESIGN.md §5:
-// a failure arm must refuse or be counted, never silently widen). The ownership
-// proof licenses the take-owned; a shared Rc at runtime is a proof deficit whose
-// per-site frequency must stay observable, so the clone arm counts per emitted
-// site (site = "<module>:<span_start>" of the use-site the emitter rewrote).
-thread_local! {
-    static TAKE_OWNED_CLONE_FALLBACKS: std::cell::RefCell<HashMap<&'static str, u64>> =
-        std::cell::RefCell::new(HashMap::new());
-}
-
-/// INVARIANT: `site` must be a string literal (the emitter always passes one).
-/// Counts key on `&'static str`; a non-literal static with duplicate content
-/// could fragment one site's count across entries and silently degrade the
-/// per-site observability this function exists to provide (DESIGN.md 5).
-pub fn take_owned_counted<T: Clone>(x: Rc<T>, site: &'static str) -> T {
-    Rc::try_unwrap(x).unwrap_or_else(|rc| {
-        TAKE_OWNED_CLONE_FALLBACKS.with(|m| *m.borrow_mut().entry(site).or_insert(0) += 1);
-        (*rc).clone()
-    })
-}
-
-pub fn take_owned_clone_fallback_counts() -> Vec<(String, u64)> {
-    TAKE_OWNED_CLONE_FALLBACKS.with(|m| {
-        let mut v: Vec<(String, u64)> = m
-            .borrow()
-            .iter()
-            .map(|(site, n)| (site.to_string(), *n))
-            .collect();
-        v.sort();
-        v
-    })
-}
-
-pub fn reset_take_owned_clone_fallbacks() {
-    TAKE_OWNED_CLONE_FALLBACKS.with(|m| m.borrow_mut().clear());
 }
