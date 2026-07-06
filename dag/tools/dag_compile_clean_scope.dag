@@ -28,8 +28,6 @@ fn compile_clean_touched_path_is_docs_only(path: String) -> Bool {
   )
 }
 
-/// Empty or docs-only touches may skip compile-clean; infra/Rust/CI-only diffs with no shard
-/// intersection require whole-tree (pre-lever-a baseline), not silent green.
 fn compile_clean_touches_allow_skip(touched_paths: List<String>) -> Bool {
   list_length(items: touched_paths) == 0
     || fold(
