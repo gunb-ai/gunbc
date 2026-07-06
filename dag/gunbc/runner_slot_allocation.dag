@@ -62,8 +62,8 @@ fn gunbc_runner_slot_demand_sum_memory_max(slots: Int, per_slot: ByteSize) -> By
 }
 
 fn gunbc_runner_slot_oversubscription_within_slice(slots: Int, per_slot: ByteSize, slice_cap: ByteSize) -> Bool {
-  byte_size_count(b: gunbc_runner_slot_demand_sum_memory_max(slots: slots, per_slot: per_slot)) <=
-    byte_size_count(b: slice_cap)
+  byte_size_count(b: gunbc_runner_slot_demand_sum_memory_max(slots: slots, per_slot: per_slot))
+    <= byte_size_count(b: slice_cap)
 }
 
 fn gunbc_committed_host_runner_slot_allocation(host: HostIdentity) -> HostRunnerSlotAllocation {
