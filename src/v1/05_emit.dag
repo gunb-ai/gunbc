@@ -270,7 +270,7 @@ fn emit_simple_string_interp(parts: List<StringPart>, target: RenderTarget, sour
 
 fn empty_emit_scope() -> InferScope {
   InferScope {
-    type_env: TypeEnv { bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table() },
+    type_env: TypeEnv { bindings: empty_map(), str_bindings: empty_map(), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: empty_map(), intern_table: empty_intern_table(), source_visible_names: empty_map() },
     func_env: ResolvedFuncEnv { local: empty_map(), parents: [] },
     locals: empty_map(),
     match_bound_names: empty_map(),

@@ -432,6 +432,10 @@ pub enum CompilerDiagnostic {
         type_name: String,
         span: Rc<SourceSpan>,
     },
+    UnlistedImportUse {
+        name: String,
+        span: Rc<SourceSpan>,
+    },
 }
 impl CompilerDiagnostic {
     pub fn span(&self) -> Rc<SourceSpan> {
@@ -453,6 +457,7 @@ impl CompilerDiagnostic {
             CompilerDiagnostic::OwnershipViolation { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::VariantCollision { span: __val, .. } => __val.clone(),
             CompilerDiagnostic::SoleConstructorViolation { span: __val, .. } => __val.clone(),
+            CompilerDiagnostic::UnlistedImportUse { span: __val, .. } => __val.clone(),
         }
     }
 }
@@ -487,6 +492,7 @@ pub fn diagnostic_to_span(d: Rc<CompilerDiagnostic>) -> Rc<SourceSpan> {
         CompilerDiagnostic::OwnershipViolation { span: s, .. } => s.clone(),
         CompilerDiagnostic::VariantCollision { span: s, .. } => s.clone(),
         CompilerDiagnostic::SoleConstructorViolation { span: s, .. } => s.clone(),
+        CompilerDiagnostic::UnlistedImportUse { span: s, .. } => s.clone(),
     }
 }
 
@@ -676,16 +682,24 @@ pub fn diagnostic_to_message(d: Rc<CompilerDiagnostic>) -> String {
             v1_rt::concat("sole_constructor type '".to_string(), t.clone()),
             "' cannot be constructed outside its defining module".to_string(),
         ),
+        CompilerDiagnostic::UnlistedImportUse { name: n, .. } => v1_rt::concat(
+            v1_rt::concat("unlisted import use '".to_string(), n.clone()),
+            "' (referenced but not in any import's name list)".to_string(),
+        ),
     }
 }
 
 pub fn is_error_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
-    true
+    match (*d).clone() {
+        CompilerDiagnostic::UnlistedImportUse { .. } => false,
+        _ => true,
+    }
 }
 
 pub fn is_interpreter_blocking_diagnostic(d: Rc<CompilerDiagnostic>) -> bool {
     match (*d).clone() {
         CompilerDiagnostic::ComplexityUnknown { .. } => false,
+        CompilerDiagnostic::UnlistedImportUse { .. } => false,
         _ => true,
     }
 }
@@ -701,6 +715,7 @@ pub fn is_discovery_corpus_advisory_typecheck_diagnostic(d: Rc<CompilerDiagnosti
         CompilerDiagnostic::MissingAnnotation { .. } => true,
         CompilerDiagnostic::VariantCollision { .. } => true,
         CompilerDiagnostic::SoleConstructorViolation { .. } => true,
+        CompilerDiagnostic::UnlistedImportUse { .. } => true,
         _ => false,
     }
 }

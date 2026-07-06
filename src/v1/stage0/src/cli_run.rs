@@ -65,9 +65,12 @@ fn log_discovery_advisory_typecheck(
     if gate != ResolveTypecheckGate::DiscoveryCorpusAdvisory {
         return;
     }
-    if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone())
-        && is_interpreter_blocking_diagnostic(d.diagnostic.clone())
-    {
+    // Surface ALL discovery-corpus advisory diagnostics, not only those that also
+    // interpreter-block. Every advisory diagnostic except UnlistedImportUse is already
+    // interpreter-blocking, so this is a no-op for them; it wires UnlistedImportUse
+    // (advisory + non-blocking, the diagnostic-collect signal) into the reporting path
+    // instead of leaving it emitted-but-unobservable (§5 spec-without-execution).
+    if is_discovery_corpus_advisory_typecheck_diagnostic(d.diagnostic.clone()) {
         let span = diagnostic_to_span(d.diagnostic.clone());
         let loc = format_error_loc(&span.file, span.start, source_indices);
         eprintln!(
