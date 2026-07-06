@@ -4,6 +4,7 @@ import std.types { NonEmptyStr, Bool, List, String }
 import std.disposition { Disposition, Terminal }
 import extdeps.dhcp.v4 {
   DhcpLeaseObservation,
+  DhcpClientHostNameOption12,
   DynamicDhcpLease,
   StaticDhcpReservation,
   Active,
@@ -39,7 +40,7 @@ data srv3_fleet_slot_host_name: HostName = HostName {
 }
 
 fn dynamic_lease_hostname_subsumes_fleet_slot(
-  reported: HostName,
+  reported: DhcpClientHostNameOption12,
   fleet_slot: HostIdentity,
 ) -> Bool {
   match deployed_intent_v1_desired_hostname_short(fleet_slot: fleet_slot) {
