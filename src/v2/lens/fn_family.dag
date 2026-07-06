@@ -5,10 +5,9 @@ import std.disposition { SingleAuthority }
 import v2.std.anti_unification {
   ChainGeneralization, anti_unify_chain, fillings_all_leaves, is_hole
 }
-import v2.std.node {
-  Node, Edge, NodeKind, TypeNode, ComputationNode, Connective, Atom, Symbol,
-  node_subtree_nodes
-}
+import v2.extdeps.languages.dag { parse_production_emitted_identity_optional }
+import v2.std.node { Node, Symbol, node_subtree_nodes }
+import v2.std.collection { Absent, Optional, Present }
 import v2.std.algebra {
   FreeMonoid, fold_list, filter, any, length, is_empty, list_snoc_item
 }
@@ -17,7 +16,7 @@ import v2.std.logic { Bool }
 import v2.std.integer { Int }
 import v2.std.text { String }
 
-data fn_family_charter: String = "sigma-family wall (intent-linearity, ChangeTime axis): k top-level fn decls whose parse subtrees anti-unify with leaf-only fillings over a shared internal spine are ONE parameterized core plus data rows, spelled as name-suffix copies (DESIGN section 2 horizontal redundancy). The criterion is EXACT, no similarity threshold: a family holds iff fillings_all_leaves(anti_unify_chain(members)) AND the template keeps at least one internal (childed, non-hole) node. Members differing at any internal position fall OUTSIDE the wall by construction - near-families are ratchet territory, counted separately, never conflated with the wall. Findings locate by module item ordinal because wave1 fn-decl ident terminals drop their name text at parse (qualified-name segments keep theirs) - the name-fidelity relation-row fix restores symbol-level location when it lands."
+data fn_family_charter: String = "sigma-family wall (intent-linearity, ChangeTime axis): k top-level fn decls whose parse subtrees anti-unify with leaf-only fillings over a shared internal spine are ONE parameterized core plus data rows, spelled as name-suffix copies (DESIGN section 2 horizontal redundancy). The criterion is EXACT, no similarity threshold: a family holds iff fillings_all_leaves(anti_unify_chain(members)) AND the template keeps at least one internal (childed, non-hole) node. Members differing at any internal position fall OUTSIDE the wall by construction - near-families are ratchet territory, counted separately, never conflated with the wall. Findings locate by module item ordinal because wave1 fn-decl ident terminals drop their name text at parse (qualified-name segments keep theirs) - the name-fidelity relation-row fix restores symbol-level location when it lands. Subject extraction reads the parse authority parse_production_emitted_identity_optional (the grammar_production_identity_node_projection named edge stamped by parse_wrap_production_captured) - never a hand-rolled node shape. Registry consolidation LANDED: this lens is consumed as the sigma_fn_family LinearityRule row (ChangeTime x DeclForest) in v2.lens.intent_linearity.linearity_registry."
 
 fn bool_not(b: Bool) -> Bool {
   if b { false } else { true }
@@ -152,26 +151,11 @@ fn sigma_families_of_defs(defs: FreeMonoid<Node>) -> FreeMonoid<FnFamilyFinding>
 
 data fn_family_fn_decl_surface: Symbol = ^dag_surface_fn_decl
 
-fn connective_is_fn_decl_marker(c: Connective) -> Bool {
-  match c {
-    Atom { identity: id } => id == fn_family_fn_decl_surface
-    Conj => false
-    Disj => false
-    Arrow => false
-    Cardinality => false
-    Instantiation => false
-  }
-}
-
-fn node_is_fn_decl_marker(n: Node) -> Bool {
-  match n.kind {
-    TypeNode { connective: c } => connective_is_fn_decl_marker(c: c)
-    ComputationNode { behavior: _ } => false
-  }
-}
-
 fn node_is_fn_decl_subtree_head(n: Node) -> Bool {
-  any(xs: n.children, predicate: fn(e) { node_is_fn_decl_marker(n: e.target) })
+  match parse_production_emitted_identity_optional(node: n) {
+    Present { value: id } => id == fn_family_fn_decl_surface
+    Absent => false
+  }
 }
 
 fn module_fn_decl_subtrees(tree: Node) -> FreeMonoid<Node> {

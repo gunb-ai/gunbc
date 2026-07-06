@@ -4,6 +4,8 @@ import v2.lens.fn_family {
   sigma_family_related, sigma_families_of_defs, module_fn_decl_subtrees,
   module_sigma_family_count, FnFamilyFinding
 }
+import v2.lens.intent_linearity { decl_forest_is_redundant }
+import v2.std.grammar { grammar_named_edge }
 import v2.std.node {
   Node, Edge, NodeKind, TypeNode, Connective, Atom, Conj, Symbol, Positional,
   node_synthetic
@@ -95,8 +97,18 @@ test fn witness_disjoint_defs_no_family() -> Bool {
   length(xs: findings) == 0
 }
 
+fn parse_wrapped_fn_decl(body: Node) -> Node {
+  node_synthetic(
+    kind: TypeNode { connective: Conj },
+    children: [
+      grammar_named_edge(name: ^grammar_production_identity_node_projection, target: atom_node(id: ^dag_surface_fn_decl)),
+      grammar_named_edge(name: ^grammar_production_captured_node_projection, target: body)
+    ]
+  )
+}
+
 fn fn_decl_marked_subtree(leaf: Symbol) -> Node {
-  conj_of(kids: [atom_node(id: ^dag_surface_fn_decl), conj_of(kids: [atom_node(id: leaf), atom_node(id: ^shared_tail)])])
+  parse_wrapped_fn_decl(body: conj_of(kids: [atom_node(id: leaf), atom_node(id: ^shared_tail)]))
 }
 
 fn synthetic_module_tree() -> Node {
@@ -114,4 +126,18 @@ test fn witness_subject_extraction_finds_two() -> Bool {
 
 test fn witness_module_family_count_one() -> Bool {
   module_sigma_family_count(tree: synthetic_module_tree()) == 1
+}
+
+test fn witness_sigma_family_fires_through_linearity_registry() -> Bool {
+  decl_forest_is_redundant(decls: [
+    family_member(leaf: ^alpha),
+    family_member(leaf: ^beta)
+  ])
+}
+
+test fn witness_disjoint_decls_quiet_through_linearity_registry() -> Bool {
+  decl_forest_is_redundant(decls: [
+    family_member(leaf: ^alpha),
+    structurally_different_def()
+  ]) == false
 }
