@@ -167,7 +167,7 @@ fn ci_floor_spec_from_roster() -> CiSpec {
 
 fn ci_release_build_step() -> Step {
   RunStep {
-    name: Present { value: "Build v1-compiler (release)" },
+    name: Present { value: "Build release bins (claim_executor + gunbc)" },
     id: none,
     run: ci_release_build_script(),
     shell: none,

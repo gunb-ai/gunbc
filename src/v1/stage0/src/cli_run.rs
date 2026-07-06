@@ -5128,7 +5128,10 @@ fn floor_diff_edits_from_line_ranges(
         }
         // Module-line edits (line 1) stay fail-closed for modifies — renaming can
         // change entry identity. Wholly-added files necessarily touch line 1.
-        if changed.contains(&1) && !added_paths.contains(&file_norm) {
+        if changed.contains(&1)
+            && !added_paths.contains(&file_norm)
+            && !added_paths.contains(file_path)
+        {
             return Err(format!("diff before first declaration in {file_path}"));
         }
         let has_pre_decl = changed.iter().any(|&l| l < first_decl_line);
