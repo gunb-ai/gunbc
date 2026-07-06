@@ -311,7 +311,7 @@ fn ci_deploy_step(stage: DeployStage) -> Step {
 
 data gunbc_ci_job_timeout_policy_minutes: Int = 90
 
-data gunbc_ci_floor_step_timeout_minutes: Duration = 135
+data gunbc_ci_floor_step_timeout_minutes: Duration = 200
 
 data gunbc_ci_floor_step_timeout_minutes_measure_grounding_dissolution_trigger: String = "🟡 feature:value-Measure dissolve-on: gunbc_ci_floor_step_timeout_minutes names GitHub Actions step timeout-minutes on the wire (extdeps/github/actions.dag RunStep.timeout_minutes projects Int). Carrier is std.types.Duration (minute magnitude, interim until CI budgets ground on std.measure time with explicit unit at the model layer and Int projection moves to GHA emit-only realization). DISSOLVES WHEN all gunbc CI step timeout authorities use a grounded measure carrier and timeout_minutes Int is derived at the workflow emit seam only."
 
