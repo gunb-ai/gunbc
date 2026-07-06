@@ -1663,9 +1663,6 @@ fn parse_token_at_optional(tokens: List<Token>, index: Int) -> Optional<Token> {
   parse_token_first(tokens: parse_tokens_drop(tokens: tokens, count: index))
 }
 
-type ParseThunk {
-  apply: fn(List<Token>, List<Token>, GrammarRoot, ParseTable, ParseProvenanceState) -> ParseExprResult
-}
 
 fn parse_expr_terminal(
   token_class: Symbol,
