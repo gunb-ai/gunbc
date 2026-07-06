@@ -99,9 +99,38 @@ test fn probe_row0_prod_stmt() -> Bool {
   roster_prod_eq(index: 0, prod: ^dag_production_stmt)
 }
 
-test fn probe_row1_prod_primary_expr() -> Bool {
-  roster_prod_eq(index: 1, prod: ^dag_production_primary_expr)
+test fn probe_row1_prod_arg() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_arg)
 }
+
+test fn probe_row2_prod_arg() -> Bool {
+  roster_prod_eq(index: 2, prod: ^dag_production_arg)
+}
+
+test fn probe_row1_prod_stmt() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_stmt)
+}
+
+test fn probe_row1_prod_unary_expr() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_unary_expr)
+}
+
+test fn probe_row1_prod_type_expr() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_type_expr)
+}
+
+test fn probe_row1_prod_pattern() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_pattern)
+}
+
+test fn probe_row1_prod_primary_ident_suffix() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_primary_ident_suffix)
+}
+
+test fn probe_row1_prod_qualified_name() -> Bool {
+  roster_prod_eq(index: 1, prod: ^dag_production_qualified_name)
+}
+
 
 test fn probe_row1_prod_binary_expr() -> Bool {
   roster_prod_eq(index: 1, prod: ^dag_production_binary_expr)
@@ -167,6 +196,46 @@ test fn probe_row4_prod_primary_expr() -> Bool {
   roster_prod_eq(index: 4, prod: ^dag_production_primary_expr)
 }
 
-test fn probe_row4_prod_type_expr() -> Bool {
-  roster_prod_eq(index: 4, prod: ^dag_production_type_expr)
+test fn probe_row2_prod_pattern() -> Bool {
+  roster_prod_eq(index: 2, prod: ^dag_production_pattern)
+}
+
+test fn probe_row2_prod_primary_expr() -> Bool {
+  roster_prod_eq(index: 2, prod: ^dag_production_primary_expr)
+}
+
+test fn probe_row2_prod_stmt() -> Bool {
+  roster_prod_eq(index: 2, prod: ^dag_production_stmt)
+}
+
+test fn probe_row2_prod_unary_expr() -> Bool {
+  roster_prod_eq(index: 2, prod: ^dag_production_unary_expr)
+}
+
+test fn probe_row2_prod_type_expr() -> Bool {
+  roster_prod_eq(index: 2, prod: ^dag_production_type_expr)
+}
+
+test fn probe_row3_prod_pattern() -> Bool {
+  roster_prod_eq(index: 3, prod: ^dag_production_pattern)
+}
+
+test fn probe_row3_prod_primary_expr() -> Bool {
+  roster_prod_eq(index: 3, prod: ^dag_production_primary_expr)
+}
+
+test fn probe_row3_prod_stmt() -> Bool {
+  roster_prod_eq(index: 3, prod: ^dag_production_stmt)
+}
+
+test fn probe_row3_prod_unary_expr() -> Bool {
+  roster_prod_eq(index: 3, prod: ^dag_production_unary_expr)
+}
+
+test fn probe_row3_prod_type_expr() -> Bool {
+  roster_prod_eq(index: 3, prod: ^dag_production_type_expr)
+}
+
+test fn probe_row4_prod_if_expr() -> Bool {
+  roster_prod_eq(index: 4, prod: ^dag_production_if_expr)
 }

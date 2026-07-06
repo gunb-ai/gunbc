@@ -1,0 +1,46 @@
+module v2.test.manual.ambiguity_row_probe
+
+import v2.compiler.parse { grammar_choice_ambiguity_roster }
+import v2.extdeps.languages.dag { dag_wave1_grammar_root }
+import v2.std.collection { list_at_optional, Present, Absent }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+fn roster_prod_eq(index: Int, prod: Symbol) -> Bool {
+  match list_at_optional(xs: grammar_choice_ambiguity_roster(root: dag_wave1_grammar_root()), index: index) {
+    Present { value: row } => row.production == prod
+    Absent => false
+  }
+}
+
+test fn row2_postfix_expr() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_postfix_expr) }
+test fn row2_binary_expr() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_binary_expr) }
+test fn row2_fn_literal() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_fn_literal) }
+test fn row2_block_expr() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_block_expr) }
+test fn row2_match_expr() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_match_expr) }
+test fn row2_constructor_pattern() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_constructor_pattern) }
+test fn row2_field_init() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_field_init) }
+test fn row2_match_arm() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_match_arm) }
+test fn row2_top_level_item() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_top_level_item) }
+test fn row2_fn_decl() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_fn_decl) }
+test fn row2_data_decl() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_data_decl) }
+test fn row2_type_decl() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_type_decl) }
+test fn row2_import_decl() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_import_decl) }
+test fn row2_primary_ident_suffix() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_primary_ident_suffix) }
+test fn row2_qualified_name() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_qualified_name) }
+test fn row2_fn_type() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_fn_type) }
+test fn row2_type_variant() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_type_variant) }
+test fn row2_type_alias_rhs() -> Bool { roster_prod_eq(index: 2, prod: ^dag_production_type_alias_rhs) }
+test fn row3_postfix_expr() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_postfix_expr) }
+test fn row3_binary_expr() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_binary_expr) }
+test fn row3_fn_literal() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_fn_literal) }
+test fn row3_block_expr() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_block_expr) }
+test fn row3_match_expr() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_match_expr) }
+test fn row3_constructor_pattern() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_constructor_pattern) }
+test fn row3_field_init() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_field_init) }
+test fn row3_match_arm() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_match_arm) }
+test fn row3_top_level_item() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_top_level_item) }
+test fn row3_primary_ident_suffix() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_primary_ident_suffix) }
+test fn row3_qualified_name() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_qualified_name) }
+test fn row3_fn_type() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_fn_type) }
+test fn row3_type_variant() -> Bool { roster_prod_eq(index: 3, prod: ^dag_production_type_variant) }

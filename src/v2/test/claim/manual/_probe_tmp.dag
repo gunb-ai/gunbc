@@ -1,0 +1,14 @@
+module v2.test.manual._probe_tmp
+import v2.compiler.parse { grammar_choice_ambiguity_roster }
+import v2.extdeps.languages.dag { dag_wave1_grammar_root }
+import v2.std.collection { list_at_optional, Present, Absent }
+import v2.std.logic { Bool }
+fn roster_eq(row: Int, prod: Symbol) -> Bool {
+  match list_at_optional(xs: grammar_choice_ambiguity_roster(root: dag_wave1_grammar_root()), index: row) {
+    Present { value: r } => r.production == prod
+    Absent => false
+  }
+}
+test fn r2() -> Bool { roster_eq(row: 2, prod: ^dag_production_constructor_pattern) }
+test fn r3() -> Bool { roster_eq(row: 3, prod: ^dag_production_constructor_pattern) }
+test fn r4() -> Bool { roster_eq(row: 4, prod: ^dag_production_constructor_pattern) }
