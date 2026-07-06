@@ -89,3 +89,30 @@ fn append_family_row(a2: List<Int>, f: FnFamilyFinding) -> List<Int> {
     cons: fn(x, o) { list_snoc_item(xs: x, item: o) }
   )
 }
+
+data planted_family_fixture_path: String = "src/v2/test/fixture/fn_family/planted_family.dag"
+
+fn planted_fixture_trees() -> List<Node> {
+  let lm = dag_language_model_wave1()
+  match tokenize(
+    text: filesystem_read(path: planted_family_fixture_path).content,
+    file: corpus_sigma_anchor,
+    rules: lm.lex
+  ) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => []
+        Accepted { value: artifact, diagnostics: _ } => [artifact.tree]
+      }
+  }
+}
+
+fn corpus_red_control_planted_family_fires() -> Bool {
+  let count = fold_list(
+    xs: planted_fixture_trees(),
+    empty: 0,
+    cons: fn(acc, tree) { acc + module_sigma_family_count(tree: tree) }
+  )
+  (length(xs: planted_fixture_trees()) == 1) && (count == 1)
+}
