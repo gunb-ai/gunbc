@@ -321,7 +321,7 @@ data gunbc_ci_rust_gate_step_budget_note: String = "Budgeted rust-gate-only step
 
 data ci_rust_build_gate_step_split_note: String = "Build and rust gate are separate workflow steps (same discipline as ci_build_floor_step_split_note): bundling cargo build + rust_gates_ci under one step timeout produced step-FAILURE during v1-compiler compile with zero gate verdict (receipt: rust_tests job 85237415376, run 28746200534 on dfbff0f). Warm step ci_rust_sccache_warm_step carries gunbc_ci_rust_sccache_warm_step_timeout_minutes; rust gate step carries gunbc_ci_rust_gate_step_timeout_minutes."
 
-data gunbc_ci_rust_sccache_warm_step_timeout_minutes: Int = 45
+data gunbc_ci_rust_sccache_warm_step_timeout_minutes: Int = 46
 
 data gunbc_ci_rust_sccache_warm_step_budget_note: String = "Observable sccache-warm step (release bins + cache prime) before the budgeted rust gate: cold-cache fallback storms are counted here, not in gunbc_ci_rust_gate_step_timeout_minutes (operator ruling, cool-hawk-899 / valiant-bee-192). Receipt: PRs 6286/6274/6290 timed out at 15m with clippy never finishing under sccache cold-cache fallback while bundled with build."
 

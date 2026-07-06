@@ -126,7 +126,7 @@ jobs:
         timeout-minutes: 5
   rust_tests:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 105
+    timeout-minutes: 106
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -199,7 +199,7 @@ jobs:
           rm -f "$BUILD_LOG"
           "$ROOT/target/release/claim_executor" --verify-build-artifacts "$ROOT/target/release/claim_executor" "$ROOT/target/release/gunbc"
           sccache --show-stats 2>/dev/null || true
-        timeout-minutes: 45
+        timeout-minutes: 46
       - name: v1 rust gate (fmt + clippy + nextest)
         run: |
           ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
