@@ -479,6 +479,7 @@ pub fn merge_envs(envs: Rc<Vec<Rc<TypeEnv>>>) -> Rc<TypeEnv> {
             inductive_fields: merged_inductive_fields,
             source_indices: merged_source_indices,
             intern_table: merged_intern_table.clone(),
+            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
         })
     }
 }

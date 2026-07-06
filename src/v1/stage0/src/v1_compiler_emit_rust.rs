@@ -193,6 +193,7 @@ pub fn render_rust_type(
                                 >(),
                                 source_indices: source_indices.clone(),
                                 intern_table: empty_intern_table(),
+                                source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
                             }),
                         )
                     } else {
@@ -246,6 +247,7 @@ pub fn render_rust_type_without_applied_binding(
                     inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
                     source_indices: source_indices.clone(),
                     intern_table: empty_intern_table(),
+                    source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
                 }),
             )
         } else {
@@ -8242,6 +8244,7 @@ pub fn render_rust_type_with_applied_binding(
                                             ),
                                             source_indices: source_indices.clone(),
                                             intern_table: empty_intern_table(),
+                                            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
                                         }),
                                     )
                                 }
@@ -8270,6 +8273,7 @@ pub fn render_rust_type_with_applied_binding(
                                     >(),
                                     source_indices: source_indices.clone(),
                                     intern_table: empty_intern_table(),
+                                    source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
                                 }),
                             )
                         }
@@ -23529,6 +23533,7 @@ pub fn rust_test_signature_comment(
             inductive_fields: v1_rt::rc_empty_map::<String, Rc<Vec<Rc<InductiveField>>>>(),
             source_indices: projection.source_indices.clone(),
             intern_table: empty_intern_table(),
+            source_visible_names: v1_rt::rc_empty_map::<String, bool>(),
         });
         let params_str = Rc::new({
             let mut __result = Vec::new();

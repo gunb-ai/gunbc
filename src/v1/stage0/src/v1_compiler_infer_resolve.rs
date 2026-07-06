@@ -221,21 +221,19 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                             target.clone(),
                             env.clone(),
                             module_name.clone(),
-                            0,
-                        )
+                            0, false,)
                         .resolved
                         .clone(),
                         _ => resolve_node_bounded(
                             resolved.clone(),
                             env.clone(),
                             module_name.clone(),
-                            0,
-                        )
+                            0, false,)
                         .resolved
                         .clone(),
                     }
                 } else {
-                    resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0)
+                    resolve_node_bounded(resolved.clone(), env.clone(), module_name.clone(), 0, false)
                         .resolved
                         .clone()
                 };
@@ -260,8 +258,7 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                                     target.clone(),
                                     env.clone(),
                                     module_name.clone(),
-                                    0,
-                                )
+                                    0, false,)
                                 .resolved
                                 .clone();
                                 with_authored_identity(n.clone(), target_resolved)
@@ -345,7 +342,7 @@ pub struct ResourceUseResult {
 }
 
 pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<NodeResolveResult> {
-    resolve_node_bounded(n, env, module_name, 0)
+    resolve_node_bounded(n, env, module_name, 0, true)
 }
 
 pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
@@ -579,7 +576,7 @@ pub fn resolve_alias_target(
 ) -> Rc<Node> {
     match classify_alias(target.clone()) {
         AliasKind::AliasParameterized => {
-            resolve_node_bounded(target.clone(), env.clone(), module_name, (depth + 1))
+            resolve_node_bounded(target.clone(), env.clone(), module_name, (depth + 1), false)
                 .resolved
                 .clone()
         }
@@ -673,6 +670,7 @@ pub fn resolve_node_bounded(
     env: Rc<TypeEnv>,
     module_name: String,
     depth: i64,
+    masked: bool,
 ) -> Rc<NodeResolveResult> {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if (depth.clone() > 100) {
@@ -705,8 +703,7 @@ pub fn resolve_node_bounded(
                                     base.clone(),
                                     env.clone(),
                                     module_name.clone(),
-                                    (depth.clone() + 1),
-                                );
+                                    (depth.clone() + 1), masked,);
                                 let base_resolved = base_result.resolved.clone();
                                 let base_diags = base_result.diagnostics.clone();
                                 Rc::new(NodeResolveResult {
@@ -755,8 +752,7 @@ pub fn resolve_node_bounded(
                                                 child_rt.clone(),
                                                 env.clone(),
                                                 module_name.clone(),
-                                                (depth.clone() + 1),
-                                            );
+                                                (depth.clone() + 1), masked,);
                                             let rt_resolved = rt_result.resolved.clone();
                                             let rt_diags = rt_result.diagnostics.clone();
                                             Rc::new(NodeResolveResult {
@@ -846,8 +842,7 @@ pub fn resolve_node_bounded(
                                     inner,
                                     env.clone(),
                                     module_name.clone(),
-                                    (depth.clone() + 1),
-                                );
+                                    (depth.clone() + 1), masked,);
                                 let inner_resolved = inner_result.resolved.clone();
                                 let inner_diags = inner_result.diagnostics.clone();
                                 Rc::new(NodeResolveResult {
@@ -904,8 +899,7 @@ pub fn resolve_node_bounded(
                                                                         field_rt.clone(),
                                                                         env.clone(),
                                                                         module_name.clone(),
-                                                                        (depth.clone() + 1),
-                                                                    )
+                                                                        (depth.clone() + 1), masked,)
                                                                 };
                                                                 let rt_resolved =
                                                                     rt_result.resolved.clone();
@@ -1060,8 +1054,7 @@ pub fn resolve_node_bounded(
                                 child.clone(),
                                 env.clone(),
                                 module_name.clone(),
-                                (depth.clone() + 1),
-                            ));
+                                (depth.clone() + 1), masked,));
                         }
                         __result
                     });
@@ -1157,8 +1150,7 @@ pub fn resolve_node_bounded(
                                 alias_target,
                                 env.clone(),
                                 module_name.clone(),
-                                (depth.clone() + 1),
-                            );
+                                (depth.clone() + 1), false,);
                             let is_recursive =
                                 is_recursive_type_by_name(env.clone(), type_name.clone());
                             let expanded_node = Rc::new(Node {
@@ -1296,16 +1288,14 @@ pub fn resolve_node_bounded(
                                 key_type,
                                 env.clone(),
                                 module_name.clone(),
-                                (depth.clone() + 1),
-                            );
+                                (depth.clone() + 1), masked,);
                             let key_resolved = key_result.resolved.clone();
                             let key_diags = key_result.diagnostics.clone();
                             let val_result = resolve_node_bounded(
                                 val_type,
                                 env.clone(),
                                 module_name.clone(),
-                                (depth.clone() + 1),
-                            );
+                                (depth.clone() + 1), masked,);
                             let val_resolved = val_result.resolved.clone();
                             let val_diags = val_result.diagnostics.clone();
                             let key_param_name = if (key_child_node.inferred.clone() != None) {
@@ -1403,8 +1393,7 @@ pub fn resolve_node_bounded(
                                             el_type,
                                             env.clone(),
                                             module_name.clone(),
-                                            (depth.clone() + 1),
-                                        );
+                                            (depth.clone() + 1), masked,);
                                         let el_resolved = el_result.resolved.clone();
                                         let el_diags = el_result.diagnostics.clone();
                                         let el_param_name = if (child_node.inferred.clone() != None)
@@ -1544,8 +1533,7 @@ pub fn resolve_node_bounded(
                                                                     target.clone(),
                                                                     env.clone(),
                                                                     module_name.clone(),
-                                                                    (depth.clone() + 1),
-                                                                )
+                                                                    (depth.clone() + 1), false,)
                                                                 .resolved
                                                                 .clone()
                                                             } else {
@@ -3038,6 +3026,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                     inductive_fields: e.inductive_fields.clone(),
                     source_indices: e.source_indices.clone(),
                     intern_table: e.intern_table.clone(),
+                    source_visible_names: v1_rt::rc_map_insert(e.source_visible_names.clone(), tp_name.clone(), true),
                 })
             },
         );
