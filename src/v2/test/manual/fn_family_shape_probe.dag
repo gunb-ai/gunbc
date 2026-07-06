@@ -1,0 +1,103 @@
+module v2.test.manual.fn_family_shape_probe
+
+import v2.compiler.parse { parse_module }
+import v2.compiler.tokenize { tokenize }
+import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.node { Node, NodeKind, TypeNode, ComputationNode, Connective, Atom, Symbol, node_subtree_nodes }
+import v2.std.algebra { FreeMonoid, filter, length, fold_list, list_snoc_item }
+import v2.std.collection { List }
+import v2.std.logic { Bool }
+import v2.std.integer { Int }
+import v2.std.text { String }
+
+data probe_anchor: Symbol = ^fn_family_shape_probe_anchor
+
+data probe_two_fn_source: String = "module probe_m\n\nfn aaa(x: Int) -> Int \{ x \}\n\nfn bbb(y: Int) -> Int \{ y \}\n"
+
+fn probe_parse_tree(source_text: String) -> List<Node> {
+  let lm = dag_language_model_wave1()
+  match tokenize(text: source_text, file: probe_anchor, rules: lm.lex) {
+    Rejected { diagnostics: _ } => []
+    Accepted { value: stream, diagnostics: _ } =>
+      match parse_module(tokens: stream, grammar: lm.grammar) {
+        Rejected { diagnostics: _ } => []
+        Accepted { value: artifact, diagnostics: _ } => [artifact.tree]
+      }
+  }
+}
+
+fn node_is_atom_of(n: Node, id: Symbol) -> Bool {
+  match n.kind {
+    TypeNode { connective: c } =>
+      match c {
+        Atom { identity: found } => found == id
+        Conj => false
+        Disj => false
+        Arrow => false
+        Cardinality => false
+        Instantiation => false
+      }
+    ComputationNode { behavior: _ } => false
+  }
+}
+
+fn probe_parses() -> Int {
+  length(xs: probe_parse_tree(source_text: probe_two_fn_source))
+}
+
+fn probe_total_nodes() -> Int {
+  fold_list(
+    xs: probe_parse_tree(source_text: probe_two_fn_source),
+    empty: 0,
+    cons: fn(acc, tree) { acc + length(xs: node_subtree_nodes(root: tree)) }
+  )
+}
+
+fn probe_count_atom(id: Symbol) -> Int {
+  fold_list(
+    xs: probe_parse_tree(source_text: probe_two_fn_source),
+    empty: 0,
+    cons: fn(acc, tree) {
+      acc + length(xs: filter(
+        xs: node_subtree_nodes(root: tree),
+        predicate: fn(n) { node_is_atom_of(n: n, id: id) }
+      ))
+    }
+  )
+}
+
+fn probe_fn_decl_surface_count() -> Int {
+  probe_count_atom(id: ^dag_surface_fn_decl)
+}
+
+fn probe_name_atom_count() -> Int {
+  probe_count_atom(id: ^aaa) + probe_count_atom(id: ^bbb)
+}
+
+fn probe_root_child_kinds() -> List<Symbol> {
+  fold_list(
+    xs: probe_parse_tree(source_text: probe_two_fn_source),
+    empty: [],
+    cons: fn(acc, tree) {
+      fold_list(
+        xs: tree.children,
+        empty: acc,
+        cons: fn(a2, edge) {
+          match edge.target.kind {
+            TypeNode { connective: c } =>
+              match c {
+                Atom { identity: found } => list_snoc_item(xs: a2, item: found)
+                Conj => list_snoc_item(xs: a2, item: ^probe_conj)
+                Disj => list_snoc_item(xs: a2, item: ^probe_disj)
+                Arrow => list_snoc_item(xs: a2, item: ^probe_arrow)
+                Cardinality => list_snoc_item(xs: a2, item: ^probe_cardinality)
+                Instantiation => list_snoc_item(xs: a2, item: ^probe_instantiation)
+              }
+            ComputationNode { behavior: _ } => list_snoc_item(xs: a2, item: ^probe_computation)
+          }
+        }
+      )
+    }
+  )
+}
