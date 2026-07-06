@@ -100,20 +100,16 @@ fn interface_summaries_from_facts(
   modules: List<ModuleDeclarationFact>,
   facts: List<DeclFact>
 ) -> List<InterfaceSummary> {
-  fold_list(
-    xs: modules,
-    empty: Empty,
-    cons: fn(acc, mod_fact) {
-      list_snoc_item(
-        xs: acc,
-        item: interface_summary_for_module_path(
-          module_path: mod_fact.module,
-          rel_path: mod_fact.path,
-          facts: facts
-        )
+  fold(modules, init: Empty, f: fn(acc, mod_fact) {
+    list_snoc_item(
+      xs: acc,
+      item: interface_summary_for_module_path(
+        module_path: mod_fact.module,
+        rel_path: mod_fact.path,
+        facts: facts
       )
-    }
-  )
+    )
+  })
 }
 
 fn interface_summaries_live(pool_roots: List<String>) -> List<InterfaceSummary> {
