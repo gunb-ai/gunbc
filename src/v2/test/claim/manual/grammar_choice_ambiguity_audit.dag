@@ -6,28 +6,14 @@ import v2.compiler.parse {
   grammar_has_choice_ambiguity,
   grammar_validate_for_parse
 }
-import v2.extdeps.languages.dag { dag_language_model_wave1 }
+import v2.extdeps.languages.dag { dag_wave1_grammar_root }
 import v2.extdeps.languages.python { python_wave1_grammar_root }
 import v2.std.collection { list_at_optional, Present, Absent }
 import v2.std.diagnostic { Accepted, Rejected, port_locus }
-import v2.std.grammar { GrammarRoot, ModeledGrammar, VoidGrammar }
 import v2.std.logic { Bool }
 import v2.std.node { Symbol }
 
-data gca_audit_note: String = "Manual ambiguity stomper receipt (not CI-enrolled). dag_wave1: zero FIRST overlaps; grammar_validate_for_parse fail-closed on ambiguity (rejection carries grammar_choice_ambiguity_rejection_diagnostics roster). Runtime choice: FIRST-dispatch when disjoint, named backtrack residue when overlap. python_wave1 count=1 positive control (validate rejects). Remaining parser fallback: match_arm_stmt_body memo bypass."
-
-fn dag_wave1_grammar_root() -> GrammarRoot {
-  match dag_language_model_wave1().grammar {
-    ModeledGrammar { root: root } => root
-    VoidGrammar => dag_wave1_void_grammar_unexpected()
-  }
-}
-
-fn dag_wave1_void_grammar_unexpected() -> GrammarRoot {
-  match dag_wave1_void_grammar_unexpected() {
-    _ => dag_wave1_void_grammar_unexpected()
-  }
-}
+data gca_audit_note: String = "Manual ambiguity stomper receipt (not CI-enrolled). dag_wave1: zero FIRST overlaps; grammar_validate_for_parse fail-closed on ambiguity (rejection carries grammar_choice_ambiguity_rejection_diagnostics roster). Runtime choice: FIRST-dispatch when disjoint, named backtrack residue when overlap. python_wave1 count=1 positive control (validate rejects). Remaining parser fallback: match_arm_stmt_body memo bypass. dag_wave1 grammar root: extdeps authority (dag_wave1_grammar_root), not re-extracted from LanguageModel."
 
 fn witness_python_wave1_choice_ambiguity_count() -> Int {
   grammar_choice_ambiguity_count(root: python_wave1_grammar_root())
