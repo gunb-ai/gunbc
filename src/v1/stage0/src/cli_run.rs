@@ -208,6 +208,7 @@ fn module_path_collision_panic_message(
 }
 
 pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, String> {
+    let ws = workspace_root();
     let mut index: HashMap<String, String> = HashMap::new();
     for (root_idx, root) in source_roots.iter().enumerate() {
         let root_path = Path::new(root);
@@ -221,7 +222,17 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
                 panic!("build_module_path_index: failed to read {:?}: {}", path, e)
             });
             if let Some(module_path) = extract_module_path(&content) {
-                let rel = workspace_relative_repo_path(&path.to_string_lossy());
+                let rel = path
+                    .strip_prefix(&ws)
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "build_module_path_index: path {} is not under workspace {}",
+                            path.display(),
+                            ws.display()
+                        )
+                    })
+                    .to_string_lossy()
+                    .replace('\\', "/");
                 if is_source_root_ingest_manifest_stub_rel(&rel)
                     && source_root_ingest_manifest_overlay_in_later_roots(source_roots, root_idx)
                 {
@@ -8111,24 +8122,8 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import v2.std.text { String }\n");
-<<<<<<< HEAD
     if !inline_records.is_empty() {
         out.push_str(&emit_source_root_ref_import(inline_records));
-=======
-    let needs_v2 = records.iter().any(|r| r.source_root == "V2Tree");
-    let needs_dag = records.iter().any(|r| r.source_root == "DagTree");
-    if needs_v2 || needs_dag {
-        out.push_str("import v2.std.cross_tree.import_model { ");
-        let mut variants = Vec::new();
-        if needs_v2 {
-            variants.push("V2Tree");
-        }
-        if needs_dag {
-            variants.push("DagTree");
-        }
-        out.push_str(&variants.join(", "));
-        out.push_str(" }\n");
->>>>>>> 63da5ba73d (WIP: InterfaceSummary v0: std carrier + first consumer)
     }
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");
