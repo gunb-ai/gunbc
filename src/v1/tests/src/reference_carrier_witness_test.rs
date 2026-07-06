@@ -66,6 +66,63 @@ fn compile_modules(sources: Vec<Rc<SourceFile>>) {
     assert_resolved_no_hard_errors(&resolved);
 }
 
+/// WIDE (multi-import) ancestry: each module imports its previous `fan_in` modules and references
+/// each parent's canonical type, forcing the |imports|>1 `map_merge` UNION path in build_type_env.
+/// The single-parent `ancestry_cache_sharing` borrow (#6304/#6310) does NOT cover this path — this is
+/// the shape sharp-wolf's 82,713-recurse real module exposes and the shallow single-parent chain
+/// (`floor_scaling_curve_import_chain`) HIDES. Discriminating probe for the build_type_env->SymbolIndex
+/// surgery: expected superlinear NOW, must go flat after the reform.
+fn synthetic_wide_ancestry_sources(depth: usize, fan_in: usize) -> Vec<Rc<SourceFile>> {
+    (0..depth)
+        .map(|i| {
+            let mut content = format!("module test.wide_{i}\n");
+            let lo = i.saturating_sub(fan_in);
+            for j in lo..i {
+                content.push_str(&format!("import test.wide_{j}\n"));
+            }
+            if i == 0 {
+                content.push_str("type T0 = Int\n");
+            } else {
+                content.push_str(&format!("type T{i} = T{}\n", i - 1));
+                for (k, j) in (lo..i.saturating_sub(1)).enumerate() {
+                    content.push_str(&format!("type T{i}_a{k} = T{j}\n"));
+                }
+            }
+            Rc::new(SourceFile {
+                path: format!("wide_{i}.dag"),
+                content,
+            })
+        })
+        .collect()
+}
+
+fn time_wide_ancestry_compile(depth: usize, fan_in: usize) -> Duration {
+    let sources = synthetic_wide_ancestry_sources(depth, fan_in);
+    compile_modules(sources.clone());
+    let mut samples = Vec::new();
+    for _ in 0..5 {
+        let start = Instant::now();
+        compile_modules(sources.clone());
+        samples.push(start.elapsed());
+    }
+    samples.sort();
+    samples[samples.len() / 2]
+}
+
+#[test]
+fn wide_ancestry_scaling_probe() {
+    let fan_in = 3;
+    let d50 = time_wide_ancestry_compile(50, fan_in);
+    let d100 = time_wide_ancestry_compile(100, fan_in);
+    let d200 = time_wide_ancestry_compile(200, fan_in);
+    let r1 = d100.as_secs_f64() / d50.as_secs_f64().max(1e-9);
+    let r2 = d200.as_secs_f64() / d100.as_secs_f64().max(1e-9);
+    eprintln!(
+        "WIDE-ANCESTRY (fan_in={fan_in}) scaling: d50={d50:?} d100={d100:?} d200={d200:?} \
+         r100/50={r1:.2} r200/100={r2:.2} (2x=linear, 4x=quadratic; single-parent chain was ~2.5-2.9)"
+    );
+}
+
 fn time_import_chain_compile(depth: usize) -> Duration {
     let sources = synthetic_import_chain_sources(depth);
     compile_modules(sources.clone());
