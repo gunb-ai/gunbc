@@ -35,6 +35,7 @@ fresh_doc() {
 fresh_artifact_path() {
   case "$1" in
     .github/workflows/ci.yml*) return 0 ;;
+    .github/workflows/falsifier.yml*) return 0 ;;
     .gitignore*) return 0 ;;
     ROADMAP.md*) return 0 ;;
     DESIGN.md*) return 0 ;;

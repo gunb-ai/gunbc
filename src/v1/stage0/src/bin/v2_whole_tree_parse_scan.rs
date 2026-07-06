@@ -65,7 +65,7 @@ fn run() -> Result<ExitCode, ExitCode> {
         eprintln!("v2_whole_tree_parse_scan: harness load failed: {e}");
         ExitCode::from(2)
     })?;
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let hard: Vec<String> = resolved
         .diagnostics
         .iter()

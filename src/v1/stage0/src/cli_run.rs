@@ -1,5 +1,6 @@
+use im_rc::HashMap;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -287,7 +288,8 @@ fn resolve_virtual_source_with_imports(
             }
         }
     }
-    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = seen.into_values().collect();
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+        seen.into_iter().map(|(_, v)| v).collect();
     sources.sort_by(|a, b| a.path.cmp(&b.path));
     sources.push(Rc::new(v1_compiler_compile::SourceFile {
         path: entry_path.to_string(),
@@ -311,7 +313,7 @@ pub fn compile_dag_rust_emit_check(
     let module_index = build_module_path_index_from_witness_roots();
     let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
     let result = v1_compiler_compile::compile_sources(
-        Rc::new(sources),
+        Rc::new(sources.into()),
         crate::v1_compiler_artifact::RenderTarget::Rust,
     );
     let hard_diagnostics = result
@@ -757,7 +759,7 @@ fn compile_clean_resolve_has_hard_errors(
     compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
 }
 
-fn compile_clean_pipeline_has_hard_errors(diagnostics: &[Rc<ErrorNode>]) -> bool {
+fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) -> bool {
     use crate::v1_std_core::CompilerDiagnostic;
     diagnostics.iter().any(|d| {
         !matches!(
@@ -782,7 +784,7 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
         Some(sources) => sources,
         None => return false,
     };
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
     !compile_clean_resolve_has_hard_errors(&result)
 }
 
@@ -794,7 +796,7 @@ pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
         Some(sources) => sources,
         None => return false,
     };
-    let result = v1_compiler_compile::compile_sources(Rc::new(sources), RenderTarget::Dag);
+    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
     !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
 }
 
@@ -934,8 +936,8 @@ pub(crate) fn module_graph_facts_build_count_for_test() -> usize {
 #[cfg(test)]
 mod shared_cache_collision_guard_tests {
     use super::check_module_source_identity;
+    use im_rc::HashMap;
     use std::cell::RefCell;
-    use std::collections::HashMap;
 
     // Collision-honesty receipt (union-resolve §6.3): the shared typed-module cache's
     // source-identity guard fails LOUD when one module name resolves from two declaring files
@@ -1011,7 +1013,7 @@ fn resolve_transitively_bfs_legacy(
             }
         }
     }
-    let mut result: Vec<_> = seen.into_values().collect();
+    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();
     result.sort_by(|a, b| a.path.cmp(&b.path));
     result
 }
@@ -1440,7 +1442,8 @@ fn resolve_entry_with_parse_cache(
     let source_indices = Rc::new(si_map);
     let global_table = index.intern_table.borrow().clone();
 
-    let graph = v1_compiler_resolve::resolve_modules(Rc::new(modules), source_indices.clone());
+    let graph =
+        v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
 
     if graph
         .diagnostics
@@ -1544,10 +1547,10 @@ fn reconcile_with_typed_cache(
     module_identity: &RefCell<HashMap<String, String>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     reset_type_env_lookup_profile();
-    let mut modules: Rc<Vec<Rc<TypedModule>>> = Rc::new(Vec::new());
+    let mut modules: Rc<im_rc::Vector<Rc<TypedModule>>> = Rc::new(im_rc::Vector::new());
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = v1_rt::rc_empty_map();
-    let mut diag_chunks: Vec<Rc<Vec<Rc<ErrorNode>>>> = Vec::new();
+    let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
 
@@ -1622,8 +1625,8 @@ fn reconcile_with_typed_cache(
 
     let expanded_registry =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
-    let diagnostics: Rc<Vec<Rc<ErrorNode>>> = Rc::new({
-        let mut acc = Vec::new();
+    let diagnostics: Rc<im_rc::Vector<Rc<ErrorNode>>> = Rc::new({
+        let mut acc = im_rc::Vector::new();
         for chunk in &diag_chunks {
             acc.extend(chunk.iter().cloned());
         }
@@ -1671,7 +1674,7 @@ fn format_error_node(
 }
 
 fn format_error_nodes(
-    diags: &Rc<Vec<Rc<ErrorNode>>>,
+    diags: &Rc<im_rc::Vector<Rc<ErrorNode>>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     diags
@@ -1693,9 +1696,13 @@ fn resolved_graph_from_sources(
     String,
 > {
     let result = match typecheck_gate {
-        ResolveTypecheckGate::Strict => v1_compiler_compile::compile_to_resolved(Rc::new(sources)),
+        ResolveTypecheckGate::Strict => {
+            v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()))
+        }
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
-            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(sources))
+            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(
+                sources.into(),
+            ))
         }
     };
 
@@ -2099,7 +2106,7 @@ pub fn whole_corpus_semantic_oracle_snapshot(
     use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
 
     let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources));
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources.into()));
     let graph = result.graph.as_ref().ok_or_else(|| {
         let si: HashMap<String, Rc<NewlineIndex>> = result
             .newline_indices
@@ -2307,7 +2314,7 @@ pub fn handle_run_with_options(
     };
     eprintln!("resolved {} sources", sources.len());
 
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
 
     let has_errors = result
         .diagnostics
@@ -3005,7 +3012,7 @@ pub fn discover_owned_data_decls(
     let mut all_records = Vec::new();
     for group in groups {
         let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-            group.sources.into_values().collect();
+            group.sources.into_iter().map(|(_, v)| v).collect();
         sources.sort_by(|a, b| a.path.cmp(&b.path));
         let (graph, source_indices) =
             resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)?;
@@ -3319,6 +3326,11 @@ pub struct DiscoverySummary {
     pub total: usize,
     pub passed: usize,
     pub skipped: usize,
+    /// PredictOnly mode: rows the selection predicted unaffected (they still ran).
+    pub predicted_unaffected: Vec<(String, String)>,
+    /// PredictOnly mode: predicted-unaffected rows whose cold run was red — each line is a
+    /// counted, typed attribution of a missing selection edge (never a rerun trigger).
+    pub divergences: Vec<String>,
     pub failures: Vec<String>,
     pub witness_outcomes: Vec<DiscoveryWitnessOutcome>,
     pub entry_resolve_receipts: Vec<EntryResolveReceipt>,
@@ -4187,8 +4199,19 @@ fn inert_lens_modules(
     inert
 }
 
+/// Host realization of std.realization_schedule.NodeFrontierSelection (signed design:
+/// docs/plans/affected-set-differential-falsifier.md). PredictOnly computes would-skip
+/// per row, RECORDS the prediction, and runs the row anyway — the falsifier cadence
+/// compares predictions against cold verdicts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NodeFrontierSelectionMode {
+    Off,
+    Applied,
+    PredictOnly,
+}
+
 pub struct DiscoveryCorpusOptions {
-    pub skip_unaffected_node_frontier: bool,
+    pub node_frontier_selection: NodeFrontierSelectionMode,
     pub explicit_roster_only: bool,
     /// Path-substring exclusion list. Non-plan callers default to FLOOR_DISCOVERY_EXCLUDES;
     /// plan-driven paths supply this from RunnableDiscoveryBatch.exclude_substrings (the model authority).
@@ -4205,7 +4228,7 @@ pub struct DiscoveryCorpusOptions {
 impl Default for DiscoveryCorpusOptions {
     fn default() -> Self {
         Self {
-            skip_unaffected_node_frontier: false,
+            node_frontier_selection: NodeFrontierSelectionMode::Off,
             explicit_roster_only: false,
             exclude_substrings: FLOOR_DISCOVERY_EXCLUDES
                 .iter()
@@ -4955,8 +4978,9 @@ fn floor_diff_edits_from_line_ranges(
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
     let mut touched_entry_files = HashSet::new();
-    let mut saw_non_dag = false;
-    let mut saw_dag = false;
+    // #6269 attributes src/v1/ .dag changes through a dedicated index; the structural-∅ fix
+    // dropped the saw_non_dag/saw_dag refusal (a non-.dag-only diff is a nominal empty frontier,
+    // handled by the `continue` arm below), so neither flag is needed here.
     let v1_attribution_index = if line_ranges_by_file
         .keys()
         .any(|p| normalize_repo_path(p).starts_with("src/v1/"))
@@ -4967,10 +4991,15 @@ fn floor_diff_edits_from_line_ranges(
     };
     for (file_path, ranges) in line_ranges_by_file {
         if !file_path.ends_with(".dag") {
-            saw_non_dag = true;
+            // A non-.dag changed path is a structural-∅ for the .dag frontier: it declares no
+            // .dag nodes, so there is nothing to attribute, and its coverage lives in the Rust
+            // gates (rust_tests), not the .dag witnesses. Skipping it yields an empty .dag
+            // frontier -- the SAME nominal outcome as an empty diff. This is NOT ignorance: the
+            // only ignorance state is a failed git-diff observation (UnifiedDiffFail upstream,
+            // floor_diff_observe.dag; operator ruling 2026-07-05). Structural-∅ and ignorance
+            // are different states -- the mirror of the departed-.dag-path arm below.
             continue;
         }
-        saw_dag = true;
         let file_norm = normalize_repo_path(file_path);
         if !std::path::Path::new(file_path).exists() {
             if departed_paths.contains(&file_norm) {
@@ -5070,9 +5099,11 @@ fn floor_diff_edits_from_line_ranges(
             }
         }
     }
-    if saw_non_dag && !saw_dag {
-        return Err("non-.dag file changed with no .dag paths in diff".to_string());
-    }
+    // A present diff whose changed paths are all non-.dag lands here with an empty frontier
+    // (structural-∅): it flows through as every row's not-affected skip -- nominal and
+    // transparent, exactly like an empty diff, never a refusal. Observation failure (the only
+    // ignorance state) is refused upstream in floor_git_diff_range; a successful observation
+    // with an empty .dag subset is not ignorance.
     Ok(FloorDiffEdits {
         overlapping_data_items,
         edited_test_fns,
@@ -5219,18 +5250,19 @@ pub fn run_discovery_corpus_with_options(
         return Err("discovery roster produced no rows (empty corpus → fail closed)".to_string());
     }
     set_phase(FloorPhase::Discovery, "discovery-roster");
-    // No degradation arm: skip_unaffected_node_frontier: true is a DECLARED capability,
+    let selection_enabled = options.node_frontier_selection != NodeFrontierSelectionMode::Off;
+    // No degradation arm: a non-Off node_frontier_selection is a DECLARED capability,
     // so every input it needs (the git-diff observation, the frontier attribution, the
     // affected-set runner) must be present — a failure is a loud typed error, never a
     // silent run-everything fallback. To run without selection, declare the flag false.
-    let diff_text = if options.skip_unaffected_node_frontier {
+    let diff_text = if selection_enabled {
         floor_git_diff_range().map_err(|msg| {
             format!(
                 "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git diff \
                  observation failed ({msg}); observation failure is the only ignorance \
                  state (operator ruling 2026-07-05) and refuses every enrolled row rather \
-                 than widening to a full-corpus run (declare skip_unaffected_node_frontier: \
-                 false to run without selection)",
+                 than widening to a full-corpus run (declare node_frontier_selection: \
+                 SelectionOff to run without selection)",
                 rows.len()
             )
         })?
@@ -5243,14 +5275,14 @@ pub fn run_discovery_corpus_with_options(
     // machine surface for path identity/rename, so it is the single authority —
     // the unified diff below stays scoped to LINE grain (hunk ranges) only.
     let (name_status_changed_paths, name_status_departed_paths) =
-        if options.skip_unaffected_node_frontier {
+        if options.node_frontier_selection != NodeFrontierSelectionMode::Off {
             floor_git_diff_name_status_range().map_err(|msg| {
                 format!(
                     "AFFECTED-SET REFUSAL cause=DiffObservationRefusal rows={} — git \
                      diff --name-status observation failed ({msg}); observation failure \
                      is the only ignorance state (operator ruling 2026-07-05) and \
                      refuses every enrolled row rather than widening to a full-corpus \
-                     run (declare skip_unaffected_node_frontier: false to run without \
+                     run (declare node_frontier_selection: SelectionOff to run without \
                      selection)",
                     rows.len()
                 )
@@ -5279,7 +5311,7 @@ pub fn run_discovery_corpus_with_options(
     // set flows through the general selection machinery — empty frontier, zero edited
     // fns — so every row takes the normal not-affected skip. Disabling selection here
     // was the run-everything absorbing arm.
-    let (skip_enabled, diff_edits) = if options.skip_unaffected_node_frontier {
+    let (skip_enabled, diff_edits) = if selection_enabled {
         match floor_diff_edits_from_line_ranges(
             &index,
             &line_ranges_by_file,
@@ -5299,7 +5331,7 @@ pub fn run_discovery_corpus_with_options(
     } else {
         (false, FloorDiffEdits::default())
     };
-    let floor_runner_ctx = if options.skip_unaffected_node_frontier {
+    let floor_runner_ctx = if selection_enabled {
         // Resolve the floor runner through the SAME shared index as the rows (union-resolve
         // S1) rather than a private per-call resolve — its closure shares the std/spec prefix
         // with the roster, so co-resolving here means that prefix is not typechecked twice.
@@ -5309,8 +5341,8 @@ pub fn run_discovery_corpus_with_options(
             }
             Err(msg) => {
                 return Err(format!(
-                    "floor runner resolve failed ({msg}) — skip_unaffected_node_frontier: \
-                     true declares the affected-set machinery ({FLOOR_RUNNER_ENTRY}) and it \
+                    "floor runner resolve failed ({msg}) — a non-Off node_frontier_selection \
+                     declares the affected-set machinery ({FLOOR_RUNNER_ENTRY}) and it \
                      must resolve; no silent full-corpus fallback"
                 ));
             }
@@ -5318,15 +5350,15 @@ pub fn run_discovery_corpus_with_options(
     } else {
         None
     };
-    let module_graph_ctx = if options.skip_unaffected_node_frontier {
+    let module_graph_ctx = if options.node_frontier_selection != NodeFrontierSelectionMode::Off {
         match resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY) {
             Ok((graph, source_indices)) => {
                 Some(make_eval_context(&graph, source_indices, execution_mode))
             }
             Err(msg) => {
                 return Err(format!(
-                    "module_graph resolve failed ({msg}) — skip_unaffected_node_frontier: \
-                     true declares the module-grain affected-set query ({MODULE_GRAPH_ENTRY}) \
+                    "module_graph resolve failed ({msg}) — a non-Off node_frontier_selection \
+                     declares the module-grain affected-set query ({MODULE_GRAPH_ENTRY}) \
                      and it must resolve; no silent full-corpus fallback"
                 ));
             }
@@ -5397,7 +5429,7 @@ pub fn run_discovery_corpus_with_options(
             &rows,
             &index,
             execution_mode,
-            skip_enabled,
+            options.node_frontier_selection,
             &changed_paths,
             &diff_edits,
             floor_runner_ctx.as_ref(),
@@ -5412,7 +5444,7 @@ pub fn run_discovery_corpus_with_options(
         shards.iter().filter(|s| !s.is_empty()).count()
     );
     let source_roots_owned = source_roots.to_vec();
-    let skip_for_shards = skip_enabled;
+    let selection_for_shards = options.node_frontier_selection;
     let mut handles = Vec::new();
     for shard in shards {
         if shard.is_empty() {
@@ -5431,7 +5463,7 @@ pub fn run_discovery_corpus_with_options(
             // runner's closure privately alongside the rows' — the std/spec prefix typechecks
             // once per shard, not twice.
             let index = build_multi_entry_index(&roots);
-            let runner = if skip_for_shards {
+            let runner = if selection_for_shards != NodeFrontierSelectionMode::Off {
                 match resolve_entry_with_index(&index, FLOOR_RUNNER_ENTRY) {
                     Ok((graph, source_indices)) => {
                         Some(make_eval_context(&graph, source_indices, execution_mode))
@@ -5447,7 +5479,7 @@ pub fn run_discovery_corpus_with_options(
             } else {
                 None
             };
-            let module_graph = if skip_for_shards {
+            let module_graph = if selection_for_shards != NodeFrontierSelectionMode::Off {
                 match resolve_entry_with_index(&index, MODULE_GRAPH_ENTRY) {
                     Ok((graph, source_indices)) => {
                         Some(make_eval_context(&graph, source_indices, execution_mode))
@@ -5467,7 +5499,7 @@ pub fn run_discovery_corpus_with_options(
                 &shard_rows,
                 &index,
                 execution_mode,
-                skip_for_shards,
+                selection_for_shards,
                 &paths,
                 &seeds,
                 runner.as_ref(),
@@ -5518,6 +5550,8 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         total: 0,
         passed: 0,
         skipped: 0,
+        predicted_unaffected: Vec::new(),
+        divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::new(),
         entry_resolve_receipts: Vec::new(),
@@ -5529,6 +5563,10 @@ fn merge_discovery_summaries(summaries: Vec<DiscoverySummary>) -> DiscoverySumma
         merged.total += summary.total;
         merged.passed += summary.passed;
         merged.skipped += summary.skipped;
+        merged
+            .predicted_unaffected
+            .extend(summary.predicted_unaffected);
+        merged.divergences.extend(summary.divergences);
         merged.failures.extend(summary.failures);
         merged.witness_outcomes.extend(summary.witness_outcomes);
         merged
@@ -5547,7 +5585,7 @@ fn run_discovery_rows(
     rows: &[DiscoveryRow],
     index: &MultiEntryIndex,
     execution_mode: v1_interpreter::ExecutionMode,
-    skip_enabled: bool,
+    selection: NodeFrontierSelectionMode,
     changed_paths: &[String],
     diff_edits: &FloorDiffEdits,
     floor_runner_ctx: Option<&v1_interpreter::InterpContext>,
@@ -5558,6 +5596,8 @@ fn run_discovery_rows(
         total: rows.len(),
         passed: 0,
         skipped: 0,
+        predicted_unaffected: Vec::new(),
+        divergences: Vec::new(),
         failures: Vec::new(),
         witness_outcomes: Vec::with_capacity(rows.len()),
         entry_resolve_receipts: Vec::new(),
@@ -5565,6 +5605,7 @@ fn run_discovery_rows(
         performance_receipts: Vec::new(),
         total_measured_nanos: 0,
     };
+    let skip_enabled = selection != NodeFrontierSelectionMode::Off;
     let mut current_entry: Option<String> = None;
     let mut current_closure_subject: Option<String> = None;
     let mut ctx: Option<v1_interpreter::InterpContext> = None;
@@ -5628,7 +5669,7 @@ fn run_discovery_rows(
                         None => {
                             return Err(format!(
                                 "module_graph context missing for entry {} — \
-                                 skip_unaffected_node_frontier declares the module-grain \
+                                 a non-Off node_frontier_selection declares the module-grain \
                                  affected-set query and it must resolve; no silent \
                                  run-everything fallback",
                                 row.entry
@@ -5650,7 +5691,7 @@ fn run_discovery_rows(
                 diff_file_matches_entry(file, &row.entry) && func == &row.function
             });
         let entry_file_touched = skip_enabled && current_entry_file_touched;
-        let should_skip = if skip_enabled {
+        let would_skip = if skip_enabled {
             let host_scaffold_witness =
                 witness_test_fn_uses_live_host_scan(&current_entry_content, &row.function);
             match floor_runner_ctx {
@@ -5691,13 +5732,29 @@ fn run_discovery_rows(
         } else {
             false
         };
-        if should_skip {
-            summary.skipped += 1;
-            eprintln!(
-                "SKIP [assumed-green node-frontier] {} ({})",
-                row.function, row.entry
-            );
-            continue;
+        if would_skip {
+            match selection {
+                NodeFrontierSelectionMode::Applied => {
+                    summary.skipped += 1;
+                    eprintln!(
+                        "SKIP [assumed-green node-frontier] {} ({})",
+                        row.function, row.entry
+                    );
+                    continue;
+                }
+                NodeFrontierSelectionMode::PredictOnly => {
+                    // Falsifier semantics: record the prediction and run the row cold anyway.
+                    summary
+                        .predicted_unaffected
+                        .push((row.entry.clone(), row.function.clone()));
+                    eprintln!(
+                        "PREDICT [unaffected node-frontier] {} ({})",
+                        row.function, row.entry
+                    );
+                }
+                // would_skip is only computed when selection is enabled.
+                NodeFrontierSelectionMode::Off => {}
+            }
         }
         let ctx_ref = ctx.as_ref().expect("ctx set above");
         let closure_subject = current_closure_subject
@@ -5715,6 +5772,20 @@ fn run_discovery_rows(
             function: row.function.clone(),
             outcome: outcome.clone(),
         });
+        if selection == NodeFrontierSelectionMode::PredictOnly
+            && would_skip
+            && !matches!(outcome, ClaimOutcome::Pass)
+        {
+            // The red itself already fails the batch through the failure channel below;
+            // this line is the ATTRIBUTION receipt — a missing selection edge, counted.
+            let line = format!(
+                "DIVERGENCE [affected-set-falsifier] {} ({}) predicted=unaffected \
+                 actual=red class=node-frontier",
+                row.function, row.entry
+            );
+            eprintln!("{line}");
+            summary.divergences.push(line);
+        }
         match outcome {
             ClaimOutcome::Pass => summary.passed += 1,
             ClaimOutcome::Fail => summary.failures.push(format!(
@@ -5745,7 +5816,8 @@ mod floor_skip_frontier_tests {
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
     use crate::v1_std_core::{authored_name_at, byte_to_line_col};
-    use std::collections::{HashMap, HashSet};
+    use im_rc::HashMap;
+    use std::collections::HashSet;
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -5809,6 +5881,30 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
                 start: 101,
                 end: 103
             }])
+        );
+    }
+
+    #[test]
+    fn non_dag_only_diff_is_structural_empty_frontier_not_refusal() {
+        // A present diff whose changed paths are all non-.dag (a Rust/TOML/doc edit) is a
+        // structural-∅ for the .dag frontier -- no .dag nodes are declared, so nothing is
+        // attributable and every .dag row takes the not-affected skip, exactly as an empty diff
+        // does. It is NOT an ignorance state (the only ignorance state is a failed git-diff
+        // observation, refused upstream). RED CONTROL: before the arity fix this returned
+        // Err("non-.dag file changed with no .dag paths in diff") and reddened the
+        // discovery-corpus batch for every pure-.rs PR.
+        // NB: use a non-src/v1 path -- #6269 eagerly builds the v1-attribution index for any
+        // src/v1/ path, which reads the real workspace tree and cannot run from the unit-test
+        // cwd. The structural-∅ arm is path-agnostic, so this isolates exactly that behavior.
+        let index = build_multi_entry_index(&[]);
+        let rs_only_diff = unified_diff_for_line("crates/widget/src/lib.rs", 42);
+        let edits = floor_diff_edits_from_diff_text(&index, &rs_only_diff)
+            .expect("non-.dag-only diff must be a nominal empty frontier, not a refusal");
+        assert!(
+            edits.overlapping_data_items.is_empty()
+                && edits.edited_test_fns.is_empty()
+                && edits.touched_entry_files.is_empty(),
+            "non-.dag-only diff must produce an empty .dag frontier, got {edits:?}"
         );
     }
 
@@ -6309,7 +6405,7 @@ mod floor_witness_a_prove {
         scan_test_decl_lines, DiscoveryRow, FileLineRange, FloorDiffEdits,
     };
     use crate::v1_interpreter::{self, ExecutionMode, Value};
-    use std::collections::HashMap;
+    use im_rc::HashMap;
     use std::path::PathBuf;
 
     const FIXTURE_REL: &str = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
@@ -8113,6 +8209,11 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import v2.std.text { String }\n");
+    // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef` (V2Tree/DagTree,
+    // #5473/#5486), so the manifest must import the constructors it references or every witness
+    // fails with `undefined variable 'V2Tree'` (the source_root ingest gate's persistent RED).
+    // #6269's emit_source_root_ref_import derives exactly the referenced constructors from the
+    // records (supersedes the earlier hardcoded-both-constructors form).
     if !inline_records.is_empty() {
         out.push_str(&emit_source_root_ref_import(inline_records));
     }
@@ -8148,6 +8249,43 @@ pub fn emit_source_root_ingest_manifest(
     }
 
     std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
+}
+
+#[cfg(test)]
+mod source_root_ingest_manifest_tests {
+    use super::{emit_source_root_ingest_manifest, SourceRootReadRecord};
+
+    #[test]
+    fn manifest_imports_grounded_source_root_constructors() {
+        // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef`
+        // (V2Tree/DagTree, #5473/#5486). The manifest references those constructors, so it
+        // MUST import them from v2.std.cross_tree.import_model -- otherwise every witness that
+        // imports the manifest fails to resolve with `undefined variable 'V2Tree'`, which was
+        // the source_root_ingest gate's persistent main-RED. RED CONTROL: delete the
+        // cross_tree.import_model import line in the emitter and this test fails.
+        let tmp = std::env::temp_dir().join(format!(
+            "sri_manifest_import_test_{}.dag",
+            std::process::id()
+        ));
+        let records = vec![SourceRootReadRecord {
+            file_path: "src/v2/x.dag".to_string(),
+            module_path: "x".to_string(),
+            source: "module x\n".to_string(),
+            source_root: "V2Tree".to_string(),
+        }];
+        emit_source_root_ingest_manifest(&tmp, &records, None).expect("emit manifest");
+        let out = std::fs::read_to_string(&tmp).expect("read manifest");
+        let _ = std::fs::remove_file(&tmp);
+        assert!(
+            out.contains("source_root: V2Tree"),
+            "manifest must emit the grounded source_root value"
+        );
+        assert!(
+            out.contains("import v2.std.cross_tree.import_model"),
+            "manifest referencing V2Tree/DagTree must import them or witnesses hit \
+             `undefined variable`; got:\n{out}"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -8272,7 +8410,8 @@ mod construction_justification_hygiene_tests {
         declares_construction_justification, discover_floor_corpus_rows, unjustified_lens_modules,
         wall_now_authority_refs, FLOOR_DISCOVERY_EXCLUDES,
     };
-    use std::collections::{BTreeSet, HashMap};
+    use std::collections::BTreeSet;
+    use std::collections::HashMap;
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -8547,6 +8686,8 @@ mod witness_timing_attribution_tests {
             total: 3,
             passed: 3,
             skipped: 0,
+            predicted_unaffected: Vec::new(),
+            divergences: Vec::new(),
             failures: Vec::new(),
             witness_outcomes: vec![
                 DiscoveryWitnessOutcome {
@@ -8913,7 +9054,8 @@ pub fn import_resolution_facts(
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let abs_importer_roots = pool_roots_abs(importer_roots);
     let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
-        .into_keys()
+        .into_iter()
+        .map(|(k, _)| k)
         .collect();
     let mut out = Vec::new();
     for root in &abs_importer_roots {
@@ -11038,7 +11180,10 @@ fn resolve_dag_path_for_transport_script(path: &str) -> PathBuf {
 
 fn parse_module_items_for_transport_script(
     path: &str,
-) -> (Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
+) -> (
+    Rc<im_rc::Vector<Rc<Node>>>,
+    Rc<HashMap<String, Rc<NewlineIndex>>>,
+) {
     let resolved = resolve_dag_path_for_transport_script(path);
     let path_str = resolved.to_string_lossy();
     let content = std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
@@ -11518,7 +11663,7 @@ pub struct ExtdepsShapeTransportPolicyModuleFacts {
 pub fn parse_extdeps_module_items(
     path: &str,
 ) -> (
-    Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
     use crate::v1_compiler_parse::parse;
@@ -11566,7 +11711,7 @@ pub fn shell_argv_nodes_for_operation(
     service: String,
     operation: String,
 ) -> (
-    Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
     let (items, source_indices) = parse_extdeps_module_items(&path);
@@ -11695,7 +11840,7 @@ fn extdeps_module_source_nickname_count_in_node(
 }
 
 fn extdeps_gist_create_declares_filename_for_items(
-    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::param_node_name_at;
@@ -11739,7 +11884,7 @@ fn extdeps_gist_map_keys_use_filename(
 }
 
 fn extdeps_gist_create_files_keyed_by_filename_for_items(
-    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::{is_rest_transport, transport_request_body};
@@ -11873,7 +12018,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
     }
 
     let index = build_module_path_index_from_witness_roots();
-    let real_paths: std::collections::HashSet<String> = index.into_values().collect();
+    let real_paths: std::collections::HashSet<String> = index.into_iter().map(|(_, v)| v).collect();
     let mut source_nickname_literal_count = 0i64;
     for item in items.iter() {
         source_nickname_literal_count +=
@@ -11942,7 +12087,7 @@ fn external_authority_scheme_identity_from_value_node(
 }
 
 fn read_external_authority_anchor_from_items(
-    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> ExternalAuthorityAnchorProjection {
     use crate::v1_compiler_emit_core_support::is_data_def_item;
@@ -12207,7 +12352,7 @@ pub fn extdeps_external_authority_live_shadow_mask_holds() -> bool {
 #[cfg(test)]
 mod doc_reachability_tests {
     use super::*;
-    use std::collections::HashMap;
+    use im_rc::HashMap;
 
     fn edges_of(pairs: &[(&str, &[&str])]) -> HashMap<String, Vec<String>> {
         pairs
@@ -12347,7 +12492,7 @@ pub struct RestTransportCollectResult {
 }
 
 fn rest_transport_field_string(
-    props: Rc<Vec<Rc<Node>>>,
+    props: Rc<im_rc::Vector<Rc<Node>>>,
     prop_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
@@ -12608,7 +12753,7 @@ fn serialize_variant_to_wire_json(
     };
     let policy = resolve_coproduct_wire_policy(
         type_name,
-        ctx.modules.iter().as_ref(),
+        &ctx.modules.iter().cloned().collect::<std::vec::Vec<_>>(),
         ctx.source_indices.as_ref(),
     )
     .unwrap_or_else(|| rust_tagged_object_policy());
@@ -12700,7 +12845,8 @@ mod import_closure_equivalence_tests {
         resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
         witness_layer_roots, workspace_relative_repo_path,
     };
-    use std::collections::{BTreeSet, HashMap};
+    use im_rc::HashMap;
+    use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
     use std::rc::Rc;
 

@@ -1,5 +1,6 @@
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::rc::Rc;
+use v1_compiler::v1_rt::VecCompat;
 
 use v1_compiler::v1_compiler_artifact::RenderTarget;
 use v1_compiler::v1_compiler_compile::{compile_sources, compile_to_resolved, SourceFile};
@@ -11,12 +12,17 @@ use v1_compiler::v1_std_core::{
     diagnostic_to_message, empty_intern_table, is_error_diagnostic, ExprData, TokenShape,
 };
 
-fn tokenize_expr(src: &str) -> Rc<Vec<Rc<v1_compiler::v1_std_core::Token>>> {
+fn tokenize_expr(src: &str) -> Rc<im_rc::Vector<Rc<v1_compiler::v1_std_core::Token>>> {
     tokenize(src.to_string(), "test.dag".to_string())
 }
 
-fn token_stream_remaining(stream: &TokenStream) -> &[Rc<v1_compiler::v1_std_core::Token>] {
-    stream.all.get(stream.pos as usize..).unwrap_or(&[])
+fn token_stream_remaining(stream: &TokenStream) -> Vec<Rc<v1_compiler::v1_std_core::Token>> {
+    stream
+        .all
+        .iter()
+        .skip(stream.pos as usize)
+        .cloned()
+        .collect()
 }
 
 fn parse_ctx() -> Rc<ParseContext> {
@@ -72,7 +78,8 @@ fn parse_expr_caret_paren_full_pipeline() {
     let tokens = tokenize_expr("^(1)");
     let r = parse_expr(token_stream_new(tokens), parse_ctx());
     assert!(r.err.is_none(), "{:?}", r.err);
-    let non_eof: Vec<_> = token_stream_remaining(&r.tokens)
+    let remaining = token_stream_remaining(&r.tokens);
+    let non_eof: Vec<_> = remaining
         .iter()
         .filter(|t| t.shape != TokenShape::ShEof)
         .collect();
@@ -117,7 +124,7 @@ fn probe() -> Bool {
   true
 }
 "#;
-    let sources = Rc::new(vec![Rc::new(SourceFile {
+    let sources = Rc::new(im_rc::vector![Rc::new(SourceFile {
         path: "caret_probe5b.dag".to_string(),
         content: src.to_string(),
     })]);
@@ -134,7 +141,7 @@ fn probe() -> Bool {
 }
 
 fn compile_rust_sources(content: &str, path: &str) -> String {
-    let sources = Rc::new(vec![Rc::new(SourceFile {
+    let sources = Rc::new(im_rc::vector![Rc::new(SourceFile {
         path: path.to_string(),
         content: content.to_string(),
     })]);

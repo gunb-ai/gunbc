@@ -61,7 +61,7 @@ fn synthetic_import_chain_sources(depth: usize) -> Vec<Rc<SourceFile>> {
 }
 
 fn compile_modules(sources: Vec<Rc<SourceFile>>) {
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
 }
 
