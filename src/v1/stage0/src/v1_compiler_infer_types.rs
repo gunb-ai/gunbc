@@ -27,9 +27,9 @@ pub use crate::std_types::{
     container_template_alias_algebra, is_container_type,
 };
 use crate::v1_rt;
-use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
+use crate::v1_rt::{VecCompat, VecJoin};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::InternalError;
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
@@ -49,8 +49,7 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use im_rc::HashMap;
-use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{vector as vec, HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {

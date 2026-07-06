@@ -1,0 +1,179 @@
+module v2.test.claim.integer.interval_derivation
+
+import v2.std.algebra { Cons, Empty, Equal, FreeMonoid, Ordering, fold_list, length }
+import v2.std.collection { List }
+import v2.std.diagnostic { Accepted, Outcome, Rejected }
+import v2.std.logic { Bool }
+import v2.std.integer {
+  D0, D1, D2, D3, D4, D5, D6, D7, D8, D9,
+  DecimalNonZeroMagnitude,
+  IntegerBoundNegative, IntegerBoundNonNegative,
+  IntegerIntervalBound, IntegerIntervalSpec,
+  NonZeroD1, NonZeroD2, NonZeroD3, NonZeroD4, NonZeroD6, NonZeroD9,
+  Signed, Unsigned, Signedness,
+  StandardIntegerType,
+  Int8, Int16, Int32, Int64, Int128,
+  UInt8, UInt16, UInt32, UInt64, UInt128,
+  integer_concrete_bound, integer_concrete_zero, integer_interval,
+  integer_interval_bound_compare, integer_interval_bound_less_or_equal,
+  integer_interval_spec_node,
+  integer_machine_interval_spec,
+  integer_pow2_magnitude,
+  integer_standard_integer_type_from_node,
+  integer_standard_integer_type_interval_spec,
+  integer_standard_integer_type_roster,
+  integer_standard_integer_type_signedness,
+  integer_standard_integer_type_width_bits,
+  integer_nonzero_decimal_digit_widen
+}
+
+data legacy_oracle_note: String = "These rows are the pre-remodel hand-spelled interval bounds, frozen VERBATIM as migration oracles: the derivation (integer_machine_interval_spec via decimal doubling + sub-one) must reproduce every one of them exactly. They are test controls, not authorities - the single authority is the derivation in v2.std.integer. Deleting a row here weakens the migration proof; do not sync these against the lens."
+
+data legacy_int8_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D2, D8] }),
+  inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D2, D7] })
+)
+
+data legacy_int16_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD3, tail: [D2, D7, D6, D8] }),
+  inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD3, tail: [D2, D7, D6, D7] })
+)
+
+data legacy_int32_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD2, tail: [D1, D4, D7, D4, D8, D3, D6, D4, D8] }),
+  inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD2, tail: [D1, D4, D7, D4, D8, D3, D6, D4, D7] })
+)
+
+data legacy_int64_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD9, tail: [D2, D2, D3, D3, D7, D2, D0, D3, D6, D8, D5, D4, D7, D7, D5, D8, D0, D8] }),
+  inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD9, tail: [D2, D2, D3, D3, D7, D2, D0, D3, D6, D8, D5, D4, D7, D7, D5, D8, D0, D7] })
+)
+
+data legacy_int128_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D7, D0, D1, D4, D1, D1, D8, D3, D4, D6, D0, D4, D6, D9, D2, D3, D1, D7, D3, D1, D6, D8, D7, D3, D0, D3, D7, D1, D5, D8, D8, D4, D1, D0, D5, D7, D2, D8] }),
+  inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D7, D0, D1, D4, D1, D1, D8, D3, D4, D6, D0, D4, D6, D9, D2, D3, D1, D7, D3, D1, D6, D8, D7, D3, D0, D3, D7, D1, D5, D8, D8, D4, D1, D0, D5, D7, D2, D7] })
+)
+
+data legacy_uint8_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_concrete_zero(),
+  inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD2, tail: [D5, D5] })
+)
+
+data legacy_uint16_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_concrete_zero(),
+  inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD6, tail: [D5, D5, D3, D5] })
+)
+
+data legacy_uint32_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_concrete_zero(),
+  inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD4, tail: [D2, D9, D4, D9, D6, D7, D2, D9, D5] })
+)
+
+data legacy_uint64_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_concrete_zero(),
+  inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D8, D4, D4, D6, D7, D4, D4, D0, D7, D3, D7, D0, D9, D5, D5, D1, D6, D1, D5] })
+)
+
+data legacy_uint128_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_concrete_zero(),
+  inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD3, tail: [D4, D0, D2, D8, D2, D3, D6, D6, D9, D2, D0, D9, D3, D8, D4, D6, D3, D4, D6, D3, D3, D7, D4, D6, D0, D7, D4, D3, D1, D7, D6, D8, D2, D1, D1, D4, D5, D5] })
+)
+
+fn bound_eq(a: IntegerIntervalBound, b: IntegerIntervalBound) -> Bool {
+  match integer_interval_bound_compare(left: a, right: b) {
+    Equal => true
+    _ => false
+  }
+}
+
+fn spec_eq(a: IntegerIntervalSpec, b: IntegerIntervalSpec) -> Bool {
+  bound_eq(a: a.inclusive_min, b: b.inclusive_min)
+    && bound_eq(a: a.inclusive_max, b: b.inclusive_max)
+}
+
+fn derived_matches_legacy(standard_integer_type: StandardIntegerType, legacy: IntegerIntervalSpec) -> Bool {
+  spec_eq(
+    a: integer_standard_integer_type_interval_spec(standard_integer_type: standard_integer_type),
+    b: legacy
+  )
+}
+
+test fn interval_derivation_matches_all_legacy_spelled_bounds() -> Bool {
+  derived_matches_legacy(standard_integer_type: Int8, legacy: legacy_int8_spec)
+    && derived_matches_legacy(standard_integer_type: Int16, legacy: legacy_int16_spec)
+    && derived_matches_legacy(standard_integer_type: Int32, legacy: legacy_int32_spec)
+    && derived_matches_legacy(standard_integer_type: Int64, legacy: legacy_int64_spec)
+    && derived_matches_legacy(standard_integer_type: Int128, legacy: legacy_int128_spec)
+    && derived_matches_legacy(standard_integer_type: UInt8, legacy: legacy_uint8_spec)
+    && derived_matches_legacy(standard_integer_type: UInt16, legacy: legacy_uint16_spec)
+    && derived_matches_legacy(standard_integer_type: UInt32, legacy: legacy_uint32_spec)
+    && derived_matches_legacy(standard_integer_type: UInt64, legacy: legacy_uint64_spec)
+    && derived_matches_legacy(standard_integer_type: UInt128, legacy: legacy_uint128_spec)
+}
+
+data planted_wrong_int8_spec: IntegerIntervalSpec = integer_interval(
+  inclusive_min: integer_concrete_bound(sign: IntegerBoundNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D2, D8] }),
+  inclusive_max: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D2, D8] })
+)
+
+test fn derivation_discriminates_planted_off_by_one() -> Bool {
+  !derived_matches_legacy(standard_integer_type: Int8, legacy: planted_wrong_int8_spec)
+}
+
+test fn pow2_digit_shapes_hold() -> Bool {
+  let one = integer_pow2_magnitude(exponent: 0)
+  let one_two_eight = integer_pow2_magnitude(exponent: 7)
+  let two_pow_127 = integer_pow2_magnitude(exponent: 127)
+  (length(xs: one.tail) == 0)
+    && bound_eq(
+      a: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: one_two_eight),
+      b: integer_concrete_bound(sign: IntegerBoundNonNegative, magnitude: DecimalNonZeroMagnitude { lead: NonZeroD1, tail: [D2, D8] })
+    )
+    && (length(xs: two_pow_127.tail) == 38)
+}
+
+test fn interval_min_not_above_max_for_all_standard_types() -> Bool {
+  fold_list(
+    xs: integer_standard_integer_type_roster,
+    empty: true,
+    cons: fn(acc, t) {
+      let spec = integer_standard_integer_type_interval_spec(standard_integer_type: t)
+      acc && integer_interval_bound_less_or_equal(left: spec.inclusive_min, right: spec.inclusive_max)
+    }
+  )
+}
+
+fn signedness_eq(a: Signedness, b: Signedness) -> Bool {
+  match a {
+    Signed => match b {
+      Signed => true
+      Unsigned => false
+    }
+    Unsigned => match b {
+      Signed => false
+      Unsigned => true
+    }
+  }
+}
+
+fn standard_integer_type_eq(a: StandardIntegerType, b: StandardIntegerType) -> Bool {
+  signedness_eq(
+    a: integer_standard_integer_type_signedness(standard_integer_type: a),
+    b: integer_standard_integer_type_signedness(standard_integer_type: b)
+  )
+    && (integer_standard_integer_type_width_bits(standard_integer_type: a) == integer_standard_integer_type_width_bits(standard_integer_type: b))
+}
+
+test fn from_node_round_trips_all_standard_types() -> Bool {
+  fold_list(
+    xs: integer_standard_integer_type_roster,
+    empty: true,
+    cons: fn(acc, t) {
+      let node = integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: t))
+      acc && match integer_standard_integer_type_from_node(node: node) {
+        Accepted { value: decoded, diagnostics: _ } => standard_integer_type_eq(a: decoded, b: t)
+        Rejected { diagnostics: _ } => false
+      }
+    }
+  )
+}

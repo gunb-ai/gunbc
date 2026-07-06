@@ -1,20 +1,22 @@
 module v2.test.parse.parse_table_content_key
 
-import v2.compiler.parse { ParseTable, ParseTableRealization, ParsePositionKey, parse_table_subject }
-import v2.std.collection { empty_map }
+import v2.compiler.parse { ParseTable, ParseTableRealization, ParsePositionKey, parse_table_empty, parse_table_subject }
 import v2.std.node { Hash }
 import v2.std.logic { Bool }
 
 fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {
+  let base = parse_table_empty()
   ParseTableRealization {
-    artifact_kind: ^parse_table,
-    interface: ^parse_table_memo,
+    artifact_kind: base.artifact_kind,
+    interface: base.interface,
     grammar_digest: grammar,
     token_stream_digest: tokens,
-    entries: empty_map(),
-    memo_hits: 0,
-    memo_misses: 0,
-    memo_lookup_calls: 0
+    entries: base.entries,
+    memo_hits: base.memo_hits,
+    memo_misses: base.memo_misses,
+    memo_lookup_calls: base.memo_lookup_calls,
+    nullable_set: base.nullable_set,
+    first_rows: base.first_rows
   }
 }
 

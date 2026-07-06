@@ -252,107 +252,35 @@ fn witness_memory_term_non_binding_uses_shard_count(
   ) == shard_count
 }
 
-fn witness_tight_budget_backs_off_below_shard_count() -> Bool {
-  memory_aware_width_value(
-    shard_count: 7,
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(6442450944),
-    per_shard_peak: byte_size(2100028416),
-    conservative_fallback_width: 4
-  ) == 2
+type MemoryAwareWidthWitnessStamp { shard_count: Int, hardware_threads: HardwareThreadCount, memory_budget: ByteSize, per_shard_peak: ByteSize, conservative_fallback_width: Int, expected: Int }
+type ProcessMemoryAwareWidthWitnessStamp { hardware_threads: HardwareThreadCount, memory_budget: ByteSize, per_job_peak: ByteSize, pids_budget: Int, procs_per_job: Int, conservative_fallback_width: Int, expected: Int }
+
+fn witness_memory_aware_width_stamp_holds(stamp: MemoryAwareWidthWitnessStamp) -> Bool {
+  memory_aware_width_value(shard_count: stamp.shard_count, hardware_threads: stamp.hardware_threads, memory_budget: stamp.memory_budget, per_shard_peak: stamp.per_shard_peak, conservative_fallback_width: stamp.conservative_fallback_width) == stamp.expected
 }
 
-fn witness_unreadable_budget_falls_back_conservative() -> Bool {
-  memory_aware_width_value(
-    shard_count: 7,
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(0),
-    per_shard_peak: byte_size(2100028416),
-    conservative_fallback_width: 4
-  ) == 4
+fn process_memory_aware_width_value(hardware_threads: HardwareThreadCount, memory_budget: ByteSize, per_job_peak: ByteSize, pids_budget: Int, procs_per_job: Int, conservative_fallback_width: Int) -> Int {
+  hardware_thread_count_value(t: process_memory_aware_spawn_width(hardware_threads: hardware_threads, memory_budget: memory_budget, per_job_peak: per_job_peak, pids_budget: pids_budget, procs_per_job: procs_per_job, conservative_fallback_width: conservative_fallback_width))
 }
 
-fn witness_safety_fraction_is_load_bearing() -> Bool {
-  let peak = 2100028416
-  memory_aware_width_value(
-    shard_count: 7,
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(peak * 2),
-    per_shard_peak: byte_size(peak),
-    conservative_fallback_width: 4
-  ) == 1
+fn witness_process_memory_aware_width_stamp_holds(stamp: ProcessMemoryAwareWidthWitnessStamp) -> Bool {
+  process_memory_aware_width_value(hardware_threads: stamp.hardware_threads, memory_budget: stamp.memory_budget, per_job_peak: stamp.per_job_peak, pids_budget: stamp.pids_budget, procs_per_job: stamp.procs_per_job, conservative_fallback_width: stamp.conservative_fallback_width) == stamp.expected
 }
 
-fn witness_subunit_budget_admits_one() -> Bool {
-  memory_aware_width_value(
-    shard_count: 7,
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(1000000000),
-    per_shard_peak: byte_size(2100028416),
-    conservative_fallback_width: 4
-  ) == 1
-}
+data witness_stamp_tight_budget_backs_off_below_shard_count: MemoryAwareWidthWitnessStamp = MemoryAwareWidthWitnessStamp { shard_count: 7, hardware_threads: hardware_thread_count(128), memory_budget: byte_size(6442450944), per_shard_peak: byte_size(2100028416), conservative_fallback_width: 4, expected: 2 }
+data witness_stamp_unreadable_budget_falls_back_conservative: MemoryAwareWidthWitnessStamp = MemoryAwareWidthWitnessStamp { shard_count: 7, hardware_threads: hardware_thread_count(128), memory_budget: byte_size(0), per_shard_peak: byte_size(2100028416), conservative_fallback_width: 4, expected: 4 }
+data witness_stamp_subunit_budget_admits_one: MemoryAwareWidthWitnessStamp = MemoryAwareWidthWitnessStamp { shard_count: 7, hardware_threads: hardware_thread_count(128), memory_budget: byte_size(1000000000), per_shard_peak: byte_size(2100028416), conservative_fallback_width: 4, expected: 1 }
+data witness_stamp_safety_fraction_is_load_bearing: MemoryAwareWidthWitnessStamp = MemoryAwareWidthWitnessStamp { shard_count: 7, hardware_threads: hardware_thread_count(128), memory_budget: byte_size(4200056832), per_shard_peak: byte_size(2100028416), conservative_fallback_width: 4, expected: 1 }
+data witness_stamp_pids_term_binds_below_cores_and_memory: ProcessMemoryAwareWidthWitnessStamp = ProcessMemoryAwareWidthWitnessStamp { hardware_threads: hardware_thread_count(128), memory_budget: byte_size(137438953472), per_job_peak: byte_size(2100028416), pids_budget: 24, procs_per_job: 3, conservative_fallback_width: 1, expected: 8 }
+data witness_stamp_memory_term_still_binds_under_three_term_fold: ProcessMemoryAwareWidthWitnessStamp = ProcessMemoryAwareWidthWitnessStamp { hardware_threads: hardware_thread_count(128), memory_budget: byte_size(6442450944), per_job_peak: byte_size(2100028416), pids_budget: 4096, procs_per_job: 3, conservative_fallback_width: 1, expected: 2 }
+data witness_stamp_unreadable_pids_budget_falls_back_conservative: ProcessMemoryAwareWidthWitnessStamp = ProcessMemoryAwareWidthWitnessStamp { hardware_threads: hardware_thread_count(128), memory_budget: byte_size(137438953472), per_job_peak: byte_size(2100028416), pids_budget: 0, procs_per_job: 3, conservative_fallback_width: 4, expected: 4 }
+data witness_stamp_subunit_pids_budget_admits_one: ProcessMemoryAwareWidthWitnessStamp = ProcessMemoryAwareWidthWitnessStamp { hardware_threads: hardware_thread_count(128), memory_budget: byte_size(137438953472), per_job_peak: byte_size(2100028416), pids_budget: 2, procs_per_job: 3, conservative_fallback_width: 4, expected: 1 }
 
-fn process_memory_aware_width_value(
-  hardware_threads: HardwareThreadCount,
-  memory_budget: ByteSize,
-  per_job_peak: ByteSize,
-  pids_budget: Int,
-  procs_per_job: Int,
-  conservative_fallback_width: Int
-) -> Int {
-  hardware_thread_count_value(
-    t: process_memory_aware_spawn_width(
-      hardware_threads: hardware_threads,
-      memory_budget: memory_budget,
-      per_job_peak: per_job_peak,
-      pids_budget: pids_budget,
-      procs_per_job: procs_per_job,
-      conservative_fallback_width: conservative_fallback_width
-    )
-  )
-}
-
-fn witness_pids_term_binds_below_cores_and_memory() -> Bool {
-  process_memory_aware_width_value(
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(137438953472),
-    per_job_peak: byte_size(2100028416),
-    pids_budget: 24,
-    procs_per_job: 3,
-    conservative_fallback_width: 1
-  ) == 8
-}
-
-fn witness_memory_term_still_binds_under_three_term_fold() -> Bool {
-  process_memory_aware_width_value(
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(6442450944),
-    per_job_peak: byte_size(2100028416),
-    pids_budget: 4096,
-    procs_per_job: 3,
-    conservative_fallback_width: 1
-  ) == 2
-}
-
-fn witness_unreadable_pids_budget_falls_back_conservative() -> Bool {
-  process_memory_aware_width_value(
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(137438953472),
-    per_job_peak: byte_size(2100028416),
-    pids_budget: 0,
-    procs_per_job: 3,
-    conservative_fallback_width: 4
-  ) == 4
-}
-
-fn witness_subunit_pids_budget_admits_one() -> Bool {
-  process_memory_aware_width_value(
-    hardware_threads: hardware_thread_count(128),
-    memory_budget: byte_size(137438953472),
-    per_job_peak: byte_size(2100028416),
-    pids_budget: 2,
-    procs_per_job: 3,
-    conservative_fallback_width: 4
-  ) == 1
-}
+fn witness_tight_budget_backs_off_below_shard_count() -> Bool { witness_memory_aware_width_stamp_holds(stamp: witness_stamp_tight_budget_backs_off_below_shard_count) }
+fn witness_unreadable_budget_falls_back_conservative() -> Bool { witness_memory_aware_width_stamp_holds(stamp: witness_stamp_unreadable_budget_falls_back_conservative) }
+fn witness_subunit_budget_admits_one() -> Bool { witness_memory_aware_width_stamp_holds(stamp: witness_stamp_subunit_budget_admits_one) }
+fn witness_safety_fraction_is_load_bearing() -> Bool { witness_memory_aware_width_stamp_holds(stamp: witness_stamp_safety_fraction_is_load_bearing) }
+fn witness_pids_term_binds_below_cores_and_memory() -> Bool { witness_process_memory_aware_width_stamp_holds(stamp: witness_stamp_pids_term_binds_below_cores_and_memory) }
+fn witness_memory_term_still_binds_under_three_term_fold() -> Bool { witness_process_memory_aware_width_stamp_holds(stamp: witness_stamp_memory_term_still_binds_under_three_term_fold) }
+fn witness_unreadable_pids_budget_falls_back_conservative() -> Bool { witness_process_memory_aware_width_stamp_holds(stamp: witness_stamp_unreadable_pids_budget_falls_back_conservative) }
+fn witness_subunit_pids_budget_admits_one() -> Bool { witness_process_memory_aware_width_stamp_holds(stamp: witness_stamp_subunit_pids_budget_admits_one) }

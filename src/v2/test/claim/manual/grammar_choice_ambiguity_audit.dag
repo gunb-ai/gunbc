@@ -1,0 +1,54 @@
+module v2.test.manual.grammar_choice_ambiguity_audit
+
+import v2.compiler.parse {
+  grammar_choice_ambiguity_count,
+  grammar_choice_ambiguity_roster,
+  grammar_has_choice_ambiguity,
+  grammar_validate_for_parse
+}
+import v2.extdeps.languages.dag { dag_wave1_grammar_root }
+import v2.extdeps.languages.python { python_wave1_grammar_root }
+import v2.std.collection { list_at_optional, Present, Absent }
+import v2.std.diagnostic { Accepted, Rejected, port_locus }
+import v2.std.logic { Bool }
+import v2.std.node { Symbol }
+
+data gca_audit_note: String = "Manual ambiguity stomper receipt (not CI-enrolled). dag_wave1: zero FIRST overlaps; grammar_validate_for_parse fail-closed on ambiguity (rejection carries grammar_choice_ambiguity_rejection_diagnostics roster). Runtime choice: FIRST-dispatch when disjoint, named backtrack residue when overlap. python_wave1 count=1 positive control (validate rejects). Remaining parser fallback: match_arm_stmt_body memo bypass. dag_wave1 grammar root: extdeps authority (dag_wave1_grammar_root), not re-extracted from LanguageModel."
+
+fn witness_python_wave1_choice_ambiguity_count() -> Int {
+  grammar_choice_ambiguity_count(root: python_wave1_grammar_root())
+}
+
+fn witness_python_wave1_grammar_validate_rejects_ambiguity() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: python_wave1_grammar_root(), at: at) {
+    Accepted { value: _, diagnostics: _ } => false
+    Rejected { diagnostics: _ } => true
+  }
+}
+
+fn witness_dag_wave1_choice_ambiguity_count() -> Int {
+  grammar_choice_ambiguity_count(root: dag_wave1_grammar_root())
+}
+
+fn witness_dag_wave1_grammar_has_zero_choice_ambiguity() -> Bool {
+  !grammar_has_choice_ambiguity(root: dag_wave1_grammar_root())
+}
+
+fn witness_dag_wave1_grammar_validate_accepts() -> Bool {
+  let at = port_locus(port: ^parse_stage_locus_port)
+  match grammar_validate_for_parse(root: dag_wave1_grammar_root(), at: at) {
+    Accepted { value: _, diagnostics: _ } => true
+    Rejected { diagnostics: _ } => false
+  }
+}
+
+fn witness_dag_wave1_first_choice_ambiguity_production() -> Symbol {
+  match list_at_optional(
+    xs: grammar_choice_ambiguity_roster(root: dag_wave1_grammar_root()),
+    index: 0
+  ) {
+    Present { value: row } => row.production
+    Absent => ^grammar_choice_ambiguity_roster_empty
+  }
+}
