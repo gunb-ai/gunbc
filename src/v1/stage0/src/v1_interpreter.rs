@@ -4322,9 +4322,7 @@ fn map_shell_outputs(
                 let lines: Vec<Value> = result
                     .stdout
                     .lines()
-                    .map(|l| {
-                        coerce_stdout_line_for_field(Value::Str(l.to_string()), child, ctx)
-                    })
+                    .map(|l| coerce_stdout_line_for_field(Value::Str(l.to_string()), child, ctx))
                     .collect();
                 list_value((lines))
             }
