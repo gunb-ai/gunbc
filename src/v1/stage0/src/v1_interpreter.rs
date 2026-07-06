@@ -2994,6 +2994,18 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
     let val = eval_expr(&cast_expr(node.clone()), env, ctx)?;
     let target_node = cast_target(node.clone());
     let target_name = authored_name_at(ctx.si(), target_node.clone());
+    if target_name.is_empty() {
+        let isp = target_node.ident_span.clone();
+        eprintln!(
+            "[cast-debug] name={:?} ident_span={:?} si_has_file={:?} char_codes_len={:?}",
+            target_node.name,
+            isp.as_ref().map(|sp| (sp.file.clone(), sp.start, sp.end)),
+            isp.as_ref()
+                .map(|sp| ctx.si().contains_key(&sp.file)),
+            isp.as_ref().and_then(|sp| v1_rt::map_get(&ctx.si(), sp.file.clone())
+                .map(|ix| ix.char_codes.len()))
+        );
+    }
 
     if let Some(v) = str_identity_cast_if_string_family(&val, ctx, target_node) {
         return Ok(v);
@@ -3007,7 +3019,14 @@ fn eval_cast(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
         (Value::Bool(b), "String") => Ok(Value::Str(b.to_string())),
         (v, "String") => Ok(Value::Str(format!("{}", v))),
         (v, t) => Err(InterpError::TypeError {
-            msg: format!("cannot cast {} to {}", v.type_label(), t),
+            msg: format!(
+                "cannot cast {} to {} [DEBUG span {}:{}..{}]",
+                v.type_label(),
+                t,
+                node.span.file,
+                node.span.start,
+                node.span.end
+            ),
         }),
     }
 }
