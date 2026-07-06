@@ -783,7 +783,7 @@ const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/tools/dag_compile_clean_scope.dag";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CompileCleanScopePlan {
-    /// Local dev only — no `GUNBC_CI_DIFF_BASE` in the environment.
+    /// Local dev only — neither `GITHUB_ACTIONS` nor `GUNBC_CI_DIFF_BASE` active.
     WholeTree,
     SkipNoAffected { reason: String },
     Scoped { entry_paths: Vec<String> },
@@ -843,8 +843,15 @@ fn compile_clean_scope_plan_from_touched_paths(
     }
 }
 
+fn compile_clean_scoping_active() -> bool {
+    std::env::var("GUNBC_CI_DIFF_BASE").is_ok()
+        || std::env::var("GITHUB_ACTIONS")
+            .map(|v| v == "true")
+            .unwrap_or(false)
+}
+
 fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
-    if std::env::var("GUNBC_CI_DIFF_BASE").is_err() {
+    if !compile_clean_scoping_active() {
         return CompileCleanScopePlan::WholeTree;
     }
     match floor_git_diff_name_status_range() {
@@ -907,8 +914,9 @@ fn witness_layer_roots_compile_clean_sources_for_plan(
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
 /// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
 /// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
-/// When `GUNBC_CI_DIFF_BASE` is set (CI), scopes to affected shard entries from
-/// `tools.dag_compile_clean_scope` (lever a); diff/disposition failure refuses (never widens).
+/// In CI (`GITHUB_ACTIONS=true`) or when `GUNBC_CI_DIFF_BASE` is set, scopes to affected
+/// shard entries from `tools.dag_compile_clean_scope` (lever a) using `gunbc_ci_spec.diff_policy`
+/// defaults via `floor_diff_observe`; diff/disposition failure refuses (never widens).
 pub fn witness_layer_roots_compile_clean_check() -> bool {
     match witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()) {
         Ok(None) => true,
@@ -10972,6 +10980,48 @@ mod witness_layer_roots_compile_clean_tests {
         assert!(
             matches!(plan, CompileCleanScopePlan::Refused { .. }),
             "expected Refused on diff failure, got {plan:?}"
+        );
+    }
+
+    /// Lever-a receipt: `GITHUB_ACTIONS=true` activates scoping (same signal as
+    /// `floor_diff_observe` / `install_group_syntax`) without requiring `GUNBC_CI_DIFF_BASE`.
+    #[test]
+    fn github_actions_activates_compile_clean_scoping() {
+        struct EnvGuard {
+            key: &'static str,
+            prior: Option<String>,
+        }
+        impl EnvGuard {
+            fn set(key: &'static str, value: &str) -> Self {
+                let prior = std::env::var(key).ok();
+                // SAFETY: serialized by test harness (single-threaded test module).
+                unsafe { std::env::set_var(key, value) };
+                Self { key, prior }
+            }
+            fn remove(key: &'static str) -> Self {
+                let prior = std::env::var(key).ok();
+                // SAFETY: serialized by test harness (single-threaded test module).
+                unsafe { std::env::remove_var(key) };
+                Self { key, prior }
+            }
+        }
+        impl Drop for EnvGuard {
+            fn drop(&mut self) {
+                unsafe {
+                    match &self.prior {
+                        Some(v) => std::env::set_var(self.key, v),
+                        None => std::env::remove_var(self.key),
+                    }
+                }
+            }
+        }
+        let _ga = EnvGuard::set("GITHUB_ACTIONS", "true");
+        let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
+        assert!(compile_clean_scoping_active());
+        let plan = compile_clean_scope_plan_for_ci();
+        assert!(
+            !matches!(plan, CompileCleanScopePlan::WholeTree),
+            "GITHUB_ACTIONS must not fall back to whole-tree, got {plan:?}"
         );
     }
 
