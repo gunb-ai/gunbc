@@ -1,0 +1,108 @@
+module tools.dag_compile_clean_scope
+
+import gunbc.ci_layer_roots { witness_layer_roots }
+import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
+import v2.lens.module_graph {
+  entry_affected_by_touched_paths,
+  module_declaration_facts_live
+}
+import std.types { String, Bool, List, list_length }
+
+type CompileCleanScopeDisposition
+  = ScopedRun { entry_paths: List<String> }
+  | SkipNoAffectedEntries { reason: String }
+
+fn compile_clean_pool_roots() -> List<String> {
+  compile_clean_partition_boundary().pool_roots
+}
+
+fn compile_clean_entry_root() -> String {
+  compile_clean_partition_boundary().entry_root
+}
+
+fn compile_clean_entry_module_paths(entry_root: String) -> List<String> {
+  fold(
+    module_declaration_facts_live(pool_roots: [entry_root]),
+    init: [],
+    f: fn(acc, decl) { concat(acc, [decl.path]) }
+  )
+}
+
+fn compile_clean_affected_entry_paths(
+  pool_roots: List<String>,
+  entry_root: String,
+  touched_paths: List<String>
+) -> List<String> {
+  fold(
+    compile_clean_entry_module_paths(entry_root: entry_root),
+    init: [],
+    f: fn(acc, entry_path) {
+      if entry_affected_by_touched_paths(
+        entry_path: entry_path,
+        pool_roots: pool_roots,
+        touched_paths: touched_paths
+      ) {
+        concat(acc, [entry_path])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn compile_clean_scope_disposition_from_touched(
+  touched_paths: List<String>
+) -> CompileCleanScopeDisposition {
+  let pool_roots = compile_clean_pool_roots()
+  let entry_root = compile_clean_entry_root()
+  let affected = compile_clean_affected_entry_paths(
+    pool_roots: pool_roots,
+    entry_root: entry_root,
+    touched_paths: touched_paths
+  )
+  if list_length(items: affected) > 0 {
+    ScopedRun { entry_paths: affected }
+  } else {
+    SkipNoAffectedEntries {
+      reason: "no compile-clean entry import-closure intersects touched paths"
+    }
+  }
+}
+
+fn witness_pool_roots_match_witness_layer_roots() -> Bool {
+  fold(witness_layer_roots, init: true, f: fn(ok, root) {
+    ok && fold(compile_clean_pool_roots(), init: false, f: fn(found, pool_root) {
+      found || (pool_root == root)
+    })
+  })
+}
+
+fn witness_entry_root_is_first_witness_layer_root() -> Bool {
+  compile_clean_entry_root() == witness_layer_roots.first()
+}
+
+fn witness_empty_touched_skips() -> Bool {
+  match compile_clean_scope_disposition_from_touched(touched_paths: []) {
+    SkipNoAffectedEntries { reason: _ } => true
+    ScopedRun { entry_paths: _ } => false
+  }
+}
+
+fn witness_docs_only_touch_skips() -> Bool {
+  match compile_clean_scope_disposition_from_touched(
+    touched_paths: ["docs/plans/example.md"]
+  ) {
+    SkipNoAffectedEntries { reason: _ } => true
+    ScopedRun { entry_paths: _ } => false
+  }
+}
+
+fn witness_std_logic_touch_scopes() -> Bool {
+  match compile_clean_scope_disposition_from_touched(
+    touched_paths: ["dag/std/logic.dag"]
+  ) {
+    ScopedRun { entry_paths: paths } =>
+      fold(paths, init: false, f: fn(found, p) { found || (p == "dag/std/logic.dag") })
+    SkipNoAffectedEntries { reason: _ } => false
+  }
+}

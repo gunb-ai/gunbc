@@ -718,6 +718,7 @@ fn load_compile_clean_entry_sources(
     source_roots: &[String],
     index: &ModuleSourceIndex,
     facts: &ModuleGraphFactsLive,
+    entry_path_filter: Option<&std::collections::HashSet<String>>,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let first_root = std::path::Path::new(&source_roots[0]);
     let mut entry_files = Vec::new();
@@ -725,6 +726,12 @@ fn load_compile_clean_entry_sources(
         let mut dag_paths = Vec::new();
         collect_dag_files(first_root, &mut dag_paths);
         for path in dag_paths {
+            let rel = workspace_relative_repo_path(&path.to_string_lossy());
+            if let Some(filter) = entry_path_filter {
+                if !filter.contains(&rel) && !filter.contains(&path.to_string_lossy().to_string()) {
+                    continue;
+                }
+            }
             let content = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
             entry_files.push((path.to_string_lossy().to_string(), content));
@@ -772,20 +779,145 @@ fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNo
     })
 }
 
+const COMPILE_CLEAN_SCOPE_ENTRY: &str = "dag/tools/dag_compile_clean_scope.dag";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum CompileCleanScopePlan {
+    WholeTree,
+    SkipNoAffected { reason: String },
+    Scoped { entry_paths: Vec<String> },
+}
+
+fn compile_clean_scope_plan_from_touched_paths(
+    touched_paths: &[String],
+) -> Result<CompileCleanScopePlan, String> {
+    let roots = default_source_roots();
+    let (graph, indices) = resolve_entry_graph_shared(&roots, COMPILE_CLEAN_SCOPE_ENTRY)
+        .map_err(|e| format!("dag_compile_clean_scope resolve: {e}"))?;
+    let ctx = make_eval_context(&graph, indices, v1_interpreter::ExecutionMode::Wet);
+    let paths: Vec<v1_interpreter::Value> = touched_paths
+        .iter()
+        .map(|s| v1_interpreter::Value::Str(s.clone()))
+        .collect();
+    let args = [(
+        Some("touched_paths".to_string()),
+        list_value_from_vec(paths),
+    )];
+    let result = v1_interpreter::run_in_context_with_args(
+        &ctx,
+        "compile_clean_scope_disposition_from_touched",
+        &args,
+        false,
+    )
+    .map_err(|e| format!("compile_clean_scope_disposition_from_touched: {e}"))?;
+    match &result {
+        v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "ScopedRun") => {
+            let entry_paths = match ctx.field(fields, "entry_paths") {
+                Some(v) => string_list_from_value(v, "entry_paths")?,
+                None => return Err("ScopedRun missing `entry_paths`".to_string()),
+            };
+            Ok(CompileCleanScopePlan::Scoped { entry_paths })
+        }
+        v1_interpreter::Value::Variant {
+            variant_name,
+            fields,
+            ..
+        } if ctx.sym_eq(*variant_name, "SkipNoAffectedEntries") => {
+            let reason = match ctx.field(fields, "reason") {
+                Some(v1_interpreter::Value::Str(r)) => r.clone(),
+                _ => "no compile-clean entry affected".to_string(),
+            };
+            Ok(CompileCleanScopePlan::SkipNoAffected { reason })
+        }
+        other => Err(format!(
+            "compile_clean_scope_disposition_from_touched returned `{}`, expected ScopedRun | SkipNoAffectedEntries",
+            ctx.format_value(other)
+        )),
+    }
+}
+
+fn compile_clean_scope_plan_for_ci() -> CompileCleanScopePlan {
+    if std::env::var("GUNBC_CI_DIFF_BASE").is_err() {
+        return CompileCleanScopePlan::WholeTree;
+    }
+    match floor_git_diff_name_status_range() {
+        Ok((changed_paths, _departed)) => {
+            if changed_paths.is_empty() {
+                return CompileCleanScopePlan::SkipNoAffected {
+                    reason: "empty diff — no touched paths".to_string(),
+                };
+            }
+            match compile_clean_scope_plan_from_touched_paths(&changed_paths) {
+                Ok(plan) => plan,
+                Err(msg) => {
+                    eprintln!(
+                        "compile-clean scope: disposition query failed ({msg}) — \
+                         running whole-tree check (fail-closed)"
+                    );
+                    CompileCleanScopePlan::WholeTree
+                }
+            }
+        }
+        Err(msg) => {
+            eprintln!(
+                "compile-clean scope: diff observation failed ({msg}) — \
+                 running whole-tree check (fail-closed)"
+            );
+            CompileCleanScopePlan::WholeTree
+        }
+    }
+}
+
 fn witness_layer_roots_compile_clean_sources() -> Option<Vec<Rc<v1_compiler_compile::SourceFile>>> {
-    let roots = witness_layer_roots();
-    let index = build_module_index_primary_precedence(&roots);
-    let facts = build_module_graph_facts_live(&roots);
-    load_compile_clean_entry_sources(&roots, &index, &facts).ok()
+    witness_layer_roots_compile_clean_sources_for_plan(&compile_clean_scope_plan_for_ci()).ok()
+}
+
+fn witness_layer_roots_compile_clean_sources_for_plan(
+    plan: &CompileCleanScopePlan,
+) -> Result<Option<Vec<Rc<v1_compiler_compile::SourceFile>>>, String> {
+    match plan {
+        CompileCleanScopePlan::SkipNoAffected { reason } => {
+            eprintln!("compile-clean scope: skipped ({reason})");
+            Ok(None)
+        }
+        CompileCleanScopePlan::WholeTree => {
+            let roots = witness_layer_roots();
+            let index = build_module_index_primary_precedence(&roots);
+            let facts = build_module_graph_facts_live(&roots);
+            load_compile_clean_entry_sources(&roots, &index, &facts, None)
+                .map(Some)
+        }
+        CompileCleanScopePlan::Scoped { entry_paths } => {
+            eprintln!(
+                "compile-clean scope: {} affected entr{} (of whole-tree gate)",
+                entry_paths.len(),
+                if entry_paths.len() == 1 { "y" } else { "ies" }
+            );
+            let filter: std::collections::HashSet<String> = entry_paths
+                .iter()
+                .map(|p| workspace_relative_repo_path(p))
+                .collect();
+            let roots = witness_layer_roots();
+            let index = build_module_index_primary_precedence(&roots);
+            let facts = build_module_graph_facts_live(&roots);
+            load_compile_clean_entry_sources(&roots, &index, &facts, Some(&filter)).map(Some)
+        }
+    }
 }
 
 /// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
 /// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
 /// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
+/// When `GUNBC_CI_DIFF_BASE` is set (CI), scopes to the affected entry import-closure
+/// (lever a: `tools.dag_compile_clean_scope`); diff observation failure falls back to whole-tree.
 pub fn witness_layer_roots_compile_clean_check() -> bool {
     let sources = match witness_layer_roots_compile_clean_sources() {
         Some(sources) => sources,
-        None => return false,
+        None => return true,
     };
     let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
     !compile_clean_resolve_has_hard_errors(&result)
@@ -797,7 +929,7 @@ pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
     use crate::v1_compiler_artifact::RenderTarget;
     let sources = match witness_layer_roots_compile_clean_sources() {
         Some(sources) => sources,
-        None => return false,
+        None => return true,
     };
     let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
     !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
@@ -1129,7 +1261,7 @@ fn load_sources(
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let index = build_module_index(source_roots);
     let facts = build_module_graph_facts_live(source_roots);
-    load_compile_clean_entry_sources(source_roots, &index, &facts)
+    load_compile_clean_entry_sources(source_roots, &index, &facts, None)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
