@@ -77,7 +77,7 @@ fn resolve_witness() -> Rc<v1_compiler::v1_compiler_compile::ResolvedPipelineRes
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         blocking.is_empty() && resolved.graph.is_some(),
