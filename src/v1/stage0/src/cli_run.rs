@@ -4978,8 +4978,9 @@ fn floor_diff_edits_from_line_ranges(
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
     let mut touched_entry_files = HashSet::new();
-    let mut saw_non_dag = false;
-    let mut saw_dag = false;
+    // #6269 attributes src/v1/ .dag changes through a dedicated index; the structural-∅ fix
+    // dropped the saw_non_dag/saw_dag refusal (a non-.dag-only diff is a nominal empty frontier,
+    // handled by the `continue` arm below), so neither flag is needed here.
     let v1_attribution_index = if line_ranges_by_file
         .keys()
         .any(|p| normalize_repo_path(p).starts_with("src/v1/"))
@@ -4990,10 +4991,15 @@ fn floor_diff_edits_from_line_ranges(
     };
     for (file_path, ranges) in line_ranges_by_file {
         if !file_path.ends_with(".dag") {
-            saw_non_dag = true;
+            // A non-.dag changed path is a structural-∅ for the .dag frontier: it declares no
+            // .dag nodes, so there is nothing to attribute, and its coverage lives in the Rust
+            // gates (rust_tests), not the .dag witnesses. Skipping it yields an empty .dag
+            // frontier -- the SAME nominal outcome as an empty diff. This is NOT ignorance: the
+            // only ignorance state is a failed git-diff observation (UnifiedDiffFail upstream,
+            // floor_diff_observe.dag; operator ruling 2026-07-05). Structural-∅ and ignorance
+            // are different states -- the mirror of the departed-.dag-path arm below.
             continue;
         }
-        saw_dag = true;
         let file_norm = normalize_repo_path(file_path);
         if !std::path::Path::new(file_path).exists() {
             if departed_paths.contains(&file_norm) {
@@ -5093,9 +5099,11 @@ fn floor_diff_edits_from_line_ranges(
             }
         }
     }
-    if saw_non_dag && !saw_dag {
-        return Err("non-.dag file changed with no .dag paths in diff".to_string());
-    }
+    // A present diff whose changed paths are all non-.dag lands here with an empty frontier
+    // (structural-∅): it flows through as every row's not-affected skip -- nominal and
+    // transparent, exactly like an empty diff, never a refusal. Observation failure (the only
+    // ignorance state) is refused upstream in floor_git_diff_range; a successful observation
+    // with an empty .dag subset is not ignorance.
     Ok(FloorDiffEdits {
         overlapping_data_items,
         edited_test_fns,
@@ -5873,6 +5881,30 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
                 start: 101,
                 end: 103
             }])
+        );
+    }
+
+    #[test]
+    fn non_dag_only_diff_is_structural_empty_frontier_not_refusal() {
+        // A present diff whose changed paths are all non-.dag (a Rust/TOML/doc edit) is a
+        // structural-∅ for the .dag frontier -- no .dag nodes are declared, so nothing is
+        // attributable and every .dag row takes the not-affected skip, exactly as an empty diff
+        // does. It is NOT an ignorance state (the only ignorance state is a failed git-diff
+        // observation, refused upstream). RED CONTROL: before the arity fix this returned
+        // Err("non-.dag file changed with no .dag paths in diff") and reddened the
+        // discovery-corpus batch for every pure-.rs PR.
+        // NB: use a non-src/v1 path -- #6269 eagerly builds the v1-attribution index for any
+        // src/v1/ path, which reads the real workspace tree and cannot run from the unit-test
+        // cwd. The structural-∅ arm is path-agnostic, so this isolates exactly that behavior.
+        let index = build_multi_entry_index(&[]);
+        let rs_only_diff = unified_diff_for_line("crates/widget/src/lib.rs", 42);
+        let edits = floor_diff_edits_from_diff_text(&index, &rs_only_diff)
+            .expect("non-.dag-only diff must be a nominal empty frontier, not a refusal");
+        assert!(
+            edits.overlapping_data_items.is_empty()
+                && edits.edited_test_fns.is_empty()
+                && edits.touched_entry_files.is_empty(),
+            "non-.dag-only diff must produce an empty .dag frontier, got {edits:?}"
         );
     }
 
@@ -8177,6 +8209,11 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import v2.std.text { String }\n");
+    // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef` (V2Tree/DagTree,
+    // #5473/#5486), so the manifest must import the constructors it references or every witness
+    // fails with `undefined variable 'V2Tree'` (the source_root ingest gate's persistent RED).
+    // #6269's emit_source_root_ref_import derives exactly the referenced constructors from the
+    // records (supersedes the earlier hardcoded-both-constructors form).
     if !inline_records.is_empty() {
         out.push_str(&emit_source_root_ref_import(inline_records));
     }
@@ -8212,6 +8249,43 @@ pub fn emit_source_root_ingest_manifest(
     }
 
     std::fs::write(path, out).map_err(|e| format!("failed to write manifest {:?}: {}", path, e))
+}
+
+#[cfg(test)]
+mod source_root_ingest_manifest_tests {
+    use super::{emit_source_root_ingest_manifest, SourceRootReadRecord};
+
+    #[test]
+    fn manifest_imports_grounded_source_root_constructors() {
+        // Each DagSourceReadWitness carries a grounded `source_root: SourceRootRef`
+        // (V2Tree/DagTree, #5473/#5486). The manifest references those constructors, so it
+        // MUST import them from v2.std.cross_tree.import_model -- otherwise every witness that
+        // imports the manifest fails to resolve with `undefined variable 'V2Tree'`, which was
+        // the source_root_ingest gate's persistent main-RED. RED CONTROL: delete the
+        // cross_tree.import_model import line in the emitter and this test fails.
+        let tmp = std::env::temp_dir().join(format!(
+            "sri_manifest_import_test_{}.dag",
+            std::process::id()
+        ));
+        let records = vec![SourceRootReadRecord {
+            file_path: "src/v2/x.dag".to_string(),
+            module_path: "x".to_string(),
+            source: "module x\n".to_string(),
+            source_root: "V2Tree".to_string(),
+        }];
+        emit_source_root_ingest_manifest(&tmp, &records, None).expect("emit manifest");
+        let out = std::fs::read_to_string(&tmp).expect("read manifest");
+        let _ = std::fs::remove_file(&tmp);
+        assert!(
+            out.contains("source_root: V2Tree"),
+            "manifest must emit the grounded source_root value"
+        );
+        assert!(
+            out.contains("import v2.std.cross_tree.import_model"),
+            "manifest referencing V2Tree/DagTree must import them or witnesses hit \
+             `undefined variable`; got:\n{out}"
+        );
+    }
 }
 
 #[cfg(test)]

@@ -333,6 +333,16 @@ fn run() -> Result<(), String> {
 
     let mut phases = Vec::new();
     let emitted = time_phase(&mut phases, "compile_stage0", || compile_stage0(&workspace))?;
+    // Hand-maintained verification: diff each hand file against its fresh emit candidate
+    // (without overwriting it) so the gate's exclusion of hand files stops being silent.
+    // Runs before the crate assembly / registry asserts so the report is always visible on
+    // an emit-fresh run, independent of later failures.
+    if emit_fresh.is_some() {
+        let report = time_phase(&mut phases, "verify_hand_maintained_candidates", || {
+            verify_hand_maintained_candidates(&emitted, &stage0_src, &fresh_dir.join(".handverify"))
+        })?;
+        print_hand_verify_report(&report);
+    }
     time_phase(&mut phases, "write_emitted_crate", || {
         write_emitted_crate(&fresh_dir, &emitted)
     })?;
@@ -853,6 +863,147 @@ fn rustfmt_generated_crate(dir: &Path) -> Result<(), String> {
             dir.display(),
             String::from_utf8_lossy(&output.stderr)
         ))
+    }
+}
+
+/// A HAND_MAINTAINED file's status relative to what the emitter would produce for it.
+/// The regen gate copies hand files verbatim and never diffs them against a fresh emit,
+/// so a bad hand-sync -- or an emitter that has quietly caught up -- is invisible. This
+/// classification turns that silent exclusion into a countable, located signal.
+struct HandVerifyReport {
+    /// Emitter produces a candidate byte-identical (after identical rustfmt normalization)
+    /// to the committed hand file: the HAND entry is now a dead scaffold and the file
+    /// should be flipped into GENERATED_STAGE0_FILES.
+    matches: Vec<String>,
+    /// Emitter produces a candidate that differs from committed: either the known emitter
+    /// gap that justifies hand-maintenance, or an unintended hand-edit. Inspect the diff.
+    drifts: Vec<String>,
+    /// No emit candidate exists (a pure host-physics pin with no `.dag` source): not
+    /// regen-verifiable, covered only by the fresh-crate cargo-green check.
+    no_candidate: Vec<String>,
+    /// A candidate exists but could not be rustfmt-normalized (an unparseable / incomplete
+    /// emit candidate, or an rustfmt spawn / IO failure): the comparison is inconclusive.
+    /// Kept DISTINCT from `drifts` on purpose -- collapsing a normalization failure into
+    /// "drift" is the §5 absorbing-fallback this very gate exists to eliminate (infra failure
+    /// made indistinguishable from real content drift, its frequency uncountable). Each entry
+    /// carries the reason so a genuine content diff stays countable and a tooling failure stays
+    /// loud. (Infra failure formatting the *committed* file is hard-propagated upstream, so a
+    /// candidate-side failure here is normally the emitter producing un-formattable output.)
+    unverifiable: Vec<String>,
+}
+
+/// rustfmt `content` standalone (edition 2021), returning the formatted text. Emitting to
+/// stdout leaves no file behind. Returns Err with rustfmt's stderr when the content does not
+/// parse, and with the spawn/IO error when rustfmt cannot be run at all -- callers keep those
+/// cases distinct from a real content difference rather than folding them into "drift".
+fn rustfmt_normalize(content: &str, work_dir: &Path, tag: &str) -> Result<String, String> {
+    fs::create_dir_all(work_dir).map_err(|e| format!("create {}: {e}", work_dir.display()))?;
+    let path = work_dir.join(format!("{tag}.rs"));
+    fs::write(&path, content).map_err(|e| format!("write {}: {e}", path.display()))?;
+    let output = Command::new("rustfmt")
+        .arg("--edition")
+        .arg("2021")
+        .arg("--emit")
+        .arg("stdout")
+        .arg(&path)
+        .output()
+        .map_err(|e| format!("spawn rustfmt for {}: {e}", path.display()))?;
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).to_string())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).to_string())
+    }
+}
+
+/// Verify the hand-maintained files against what the emitter would produce, WITHOUT
+/// overwriting them. Both the emit candidate and the committed file are pushed through the
+/// same standalone rustfmt so the comparison isolates content drift from formatting noise.
+fn verify_hand_maintained_candidates(
+    emitted: &HashMap<String, String>,
+    stage0_src: &Path,
+    work_dir: &Path,
+) -> Result<HandVerifyReport, String> {
+    let mut report = HandVerifyReport {
+        matches: Vec::new(),
+        drifts: Vec::new(),
+        no_candidate: Vec::new(),
+        unverifiable: Vec::new(),
+    };
+    for file_name in HAND_MAINTAINED_STAGE0_FILES {
+        // compile_stage0's emitted map is keyed by output path (e.g. "src/main.rs"),
+        // while the roster lists bare filenames; look up both so a genuinely-emitted
+        // hand file is not misreported as absent.
+        let candidate = emitted
+            .get(&format!("src/{file_name}"))
+            .or_else(|| emitted.get(*file_name));
+        let Some(candidate) = candidate else {
+            report.no_candidate.push((*file_name).to_string());
+            continue;
+        };
+        let committed_path = stage0_src.join(file_name);
+        let committed = fs::read_to_string(&committed_path)
+            .map_err(|e| format!("read committed hand file {}: {e}", committed_path.display()))?;
+        let committed_norm = rustfmt_normalize(&committed, work_dir, "committed")
+            .map_err(|e| format!("rustfmt committed hand file {file_name}: {e}"))?;
+        match rustfmt_normalize(candidate, work_dir, "candidate") {
+            Ok(candidate_norm) if candidate_norm == committed_norm => {
+                report.matches.push((*file_name).to_string())
+            }
+            // Both files normalized and the content differs: a real drift.
+            Ok(_) => report.drifts.push((*file_name).to_string()),
+            // The candidate would not normalize -- inconclusive, NOT drift. Keep it loud and
+            // countable with its reason instead of fabricating a drift count.
+            Err(reason) => {
+                let first_line = reason.lines().next().unwrap_or("").trim();
+                report
+                    .unverifiable
+                    .push(format!("{file_name} ({first_line})"));
+            }
+        }
+    }
+    // Directory pins (e.g. module_path_index) have no single emit candidate keyed by path.
+    for dir_name in HAND_MAINTAINED_STAGE0_DIRS {
+        report.no_candidate.push(format!("{dir_name}/ (dir pin)"));
+    }
+    Ok(report)
+}
+
+/// Print the hand-maintained verification report. MATCH is the actionable signal (flip to
+/// GENERATED); DRIFT is expected for files parked on a known emitter gap; NO CANDIDATE marks
+/// the terminal-kernel host-physics pins that regen cannot cross-check.
+fn print_hand_verify_report(report: &HandVerifyReport) {
+    println!(
+        "regen_stage0 hand-maintained verification: {} match / {} drift / {} no-candidate / {} unverifiable",
+        report.matches.len(),
+        report.drifts.len(),
+        report.no_candidate.len(),
+        report.unverifiable.len()
+    );
+    if !report.matches.is_empty() {
+        println!(
+            "  MATCH (emitter reproduces these -- flip to GENERATED_STAGE0_FILES): {}",
+            report.matches.join(", ")
+        );
+    }
+    if !report.drifts.is_empty() {
+        println!(
+            "  DRIFT (emit candidate differs -- known emitter gap or hand-edit, inspect): {}",
+            report.drifts.join(", ")
+        );
+    }
+    if !report.no_candidate.is_empty() {
+        println!(
+            "  NO CANDIDATE (not in the fresh emit closure -- a host-physics pin with no \
+             .dag source, or a module the closure does not reach; cargo-green only): {}",
+            report.no_candidate.join(", ")
+        );
+    }
+    if !report.unverifiable.is_empty() {
+        println!(
+            "  UNVERIFIABLE (candidate did not rustfmt-normalize -- inconclusive, not counted \
+             as drift; inspect the reason): {}",
+            report.unverifiable.join(", ")
+        );
     }
 }
 
