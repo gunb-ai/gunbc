@@ -386,8 +386,10 @@ pub fn rc_list_concat<T: Clone>(a: Rc<Vec<T>>, b: Rc<Vec<T>>) -> Rc<Vec<T>> {
 // Map updates carry no shared-Rc guard: HashMap here is im_rc's persistent
 // HAMT (one realization with the interpreter's Value::Map), so make_mut's
 // clone arm is O(1) structural sharing and each insert copies an O(log n)
-// node path — a designed update, not a degradation arm. Lists/sets above
-// remain O(n)-copy carriers and keep the guard until they migrate too.
+// node path — a designed update, not a degradation arm. Lists (im_rc::Vector)
+// and sets (im_rc::OrdSet) above are likewise persistent carriers now, so
+// they carry no guard either — the guard's whole class dissolved with the
+// Rc<std container> carriers it existed to police.
 pub fn rc_map_insert<K: std::cmp::Eq + std::hash::Hash + Clone, V: Clone>(
     map: Rc<HashMap<K, V>>,
     key: K,
