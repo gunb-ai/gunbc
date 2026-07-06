@@ -57,7 +57,7 @@ fn read_declared_closures() -> Vec<DeclaredClosure> {
     let entry = entry.to_string_lossy().to_string();
     let sources = cli_run::load_sources_for_entry(&roots, &entry)
         .unwrap_or_else(|e| panic!("failed to load {GATES_ENTRY}: {e}"));
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let msgs = blocking_diagnostics(&resolved);
     assert!(msgs.is_empty(), "{GATES_ENTRY} should resolve: {msgs:?}");
     let graph = resolved.graph.as_ref().expect("graph");

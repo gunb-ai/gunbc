@@ -2,11 +2,9 @@
 
 #![allow(unused_parens, clippy::all, clippy::disallowed_macros)]
 
-use crate::v1_rt::VecCompat;
 use clap::{Parser, Subcommand};
 
 use im_rc::HashMap;
-use im_rc::{Vector as Vec};
 use std::rc::Rc;
 use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile;
@@ -395,7 +393,7 @@ fn main() {
 
             if render_targets.len() == 1 {
                 let result = v1_compiler_compile::compile_sources(
-                    Rc::new(sources),
+                    Rc::new(sources.into()),
                     render_targets[0].1.clone(),
                 );
                 if let Some(message) =
@@ -412,7 +410,7 @@ fn main() {
                 );
                 render_diagnostics(&result);
             } else {
-                let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+                let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
                 let mut total_files = 0usize;
                 let mut total_diagnostics = 0usize;
                 for (name, render_target) in render_targets {

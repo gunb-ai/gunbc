@@ -199,7 +199,7 @@ fn main() -> ExitCode {
         .iter()
         .filter(|d| is_idempotent_effect(d.shape.clone()))
         .count();
-    let obligations = generate_idempotency_obligations(Rc::new(derived.clone()));
+    let obligations = generate_idempotency_obligations(Rc::new(derived.clone().into()));
     if obligations.len() != idempotent_count {
         return fail(format!(
             "obligation count {} != idempotent op count {idempotent_count}",

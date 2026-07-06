@@ -1,6 +1,8 @@
 #![allow(clippy::disallowed_macros)]
 
 use im_rc::HashMap;
+use im_rc::{vector as vec, Vector as Vec};
+use v1_compiler::v1_rt::VecCompat;
 use std::process::ExitCode;
 use std::rc::Rc;
 
@@ -108,7 +110,7 @@ fn resolve_imports_transitively(
     let mut seen: HashMap<String, Rc<SourceFile>> = HashMap::new();
     let mut queue = vec![(entry_path.to_string(), entry_content.to_string())];
 
-    while let Some((_path, content)) = queue.pop() {
+    while let Some((_path, content)) = queue.pop_back() {
         for module_path in extract_imports(&content) {
             if seen.contains_key(&module_path) {
                 continue;
@@ -144,13 +146,13 @@ fn resolve_imports_transitively(
 fn compile_dag(source: &str) -> Rc<PipelineResult> {
     let module_index = build_module_index();
     let sources = resolve_imports_transitively("test.dag", source, &module_index);
-    compile_sources(Rc::new(sources), RenderTarget::Rust)
+    compile_sources(Rc::new(sources.into()), RenderTarget::Rust)
 }
 
 fn compile_dag_resolved(source: &str) -> Rc<ResolvedPipelineResult> {
     let module_index = build_module_index();
     let sources = resolve_imports_transitively("test.dag", source, &module_index);
-    compile_to_resolved(Rc::new(sources))
+    compile_to_resolved(Rc::new(sources.into()))
 }
 
 fn assert_no_diagnostics(result: &PipelineResult) {

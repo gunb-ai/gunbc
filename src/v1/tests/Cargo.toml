@@ -10,5 +10,6 @@ description = "Integration tests for the v2 self-hosted compiler"
 v1-compiler = { path = "../stage0", features = ["text_lookup_work_counter", "interp_test_witness"] }
 
 [dev-dependencies]
+im-rc = { version = "15.1", features = ["serde"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

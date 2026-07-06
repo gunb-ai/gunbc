@@ -11282,7 +11282,7 @@ pub struct ExtdepsShapeTransportPolicyModuleFacts {
 pub fn parse_extdeps_module_items(
     path: &str,
 ) -> (
-    Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
     use crate::v1_compiler_parse::parse;
@@ -11330,7 +11330,7 @@ pub fn shell_argv_nodes_for_operation(
     service: String,
     operation: String,
 ) -> (
-    Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
     let (items, source_indices) = parse_extdeps_module_items(&path);
@@ -11459,7 +11459,7 @@ fn extdeps_module_source_nickname_count_in_node(
 }
 
 fn extdeps_gist_create_declares_filename_for_items(
-    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::param_node_name_at;
@@ -11503,7 +11503,7 @@ fn extdeps_gist_map_keys_use_filename(
 }
 
 fn extdeps_gist_create_files_keyed_by_filename_for_items(
-    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::{is_rest_transport, transport_request_body};
@@ -11706,7 +11706,7 @@ fn external_authority_scheme_identity_from_value_node(
 }
 
 fn read_external_authority_anchor_from_items(
-    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> ExternalAuthorityAnchorProjection {
     use crate::v1_compiler_emit_core_support::is_data_def_item;
@@ -12372,7 +12372,7 @@ fn serialize_variant_to_wire_json(
     };
     let policy = resolve_coproduct_wire_policy(
         type_name,
-        ctx.modules.iter().as_ref(),
+        &ctx.modules.iter().cloned().collect::<std::vec::Vec<_>>(),
         ctx.source_indices.as_ref(),
     )
     .unwrap_or_else(|| rust_tagged_object_policy());

@@ -21,7 +21,7 @@ fn unbox(b: Box) -> Int { b.v }
 
 fn resolved_from_source() -> Rc<ResolvedPipelineResult> {
     let sources = resolve_imports_transitively("fixture_seam.dag", FIXTURE_SOURCE);
-    compile_to_resolved(Rc::new(sources))
+    compile_to_resolved(Rc::new(sources.into()))
 }
 
 fn emit_rust(

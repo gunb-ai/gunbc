@@ -52,7 +52,7 @@ fn v1_std_integer_dag_resolves_with_literal_machine_width() {
         &content,
         &source_roots(),
     );
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let msgs = blocking_diagnostics(resolved.as_ref());
     assert!(
         msgs.is_empty(),
@@ -68,7 +68,7 @@ fn v1_std_float_dag_resolves_with_literal_machine_width() {
         &content,
         &source_roots(),
     );
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let msgs = blocking_diagnostics(resolved.as_ref());
     assert!(
         msgs.is_empty(),

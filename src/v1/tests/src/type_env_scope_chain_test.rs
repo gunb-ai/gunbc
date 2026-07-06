@@ -140,7 +140,7 @@ fn assert_resolved_no_hard_errors(
 fn compile_modules(
     sources: Vec<Rc<SourceFile>>,
 ) -> Rc<v1_compiler::v1_compiler_compile::ResolvedPipelineResult> {
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     resolved
 }
@@ -603,7 +603,7 @@ fn local_variant_over_glob_imported_variant_is_a_collision() {
     ];
     // Raw compile (not compile_modules): the collision IS the expected outcome,
     // so the no-hard-errors helper assertion does not apply here.
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let has_collision = resolved.diagnostics.iter().any(|d| {
         matches!(
             &*d.diagnostic,

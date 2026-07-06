@@ -244,7 +244,7 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
 
 fn resolve(module_index: &ModuleIndex, src: &str) -> Rc<ResolvedPipelineResult> {
     let sources = resolve_imports_transitively("test.dag", src, module_index);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     resolved
 }

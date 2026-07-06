@@ -147,7 +147,7 @@ fn compile_multi(module_index: &ModuleIndex, files: &[(&str, &str)]) -> Rc<Pipel
         }
     }
     let sources: Vec<Rc<SourceFile>> = all_sources.into_iter().map(|(_, v)| v).collect();
-    compile_sources(Rc::new(sources), RenderTarget::Rust)
+    compile_sources(Rc::new(sources.into()), RenderTarget::Rust)
 }
 
 fn diag_line_col(diag: &ErrorNode, source: &str, file: &str) -> (i64, i64) {

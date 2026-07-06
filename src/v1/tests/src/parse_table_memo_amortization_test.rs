@@ -92,7 +92,7 @@ fn run_witness_on_sources(
     function: &str,
     budget: Duration,
 ) -> v1_interpreter::InterpContext {
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_ok(&resolved, entry);
     let graph = resolved.graph.as_ref().expect("graph");
     let ctx = v1_interpreter::InterpContext::new(

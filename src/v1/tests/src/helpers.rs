@@ -253,7 +253,7 @@ pub fn compile_dag(source: &str) -> Rc<PipelineResult> {
 
 pub fn compile_dag_resolved(source: &str) -> Rc<ResolvedPipelineResult> {
     let sources = resolve_imports_transitively("test.dag", source);
-    compile_to_resolved(Rc::new(sources))
+    compile_to_resolved(Rc::new(sources.into()))
 }
 
 pub fn compile_dag_target(source: &str, target: RenderTarget) -> Rc<PipelineResult> {
@@ -262,7 +262,7 @@ pub fn compile_dag_target(source: &str, target: RenderTarget) -> Rc<PipelineResu
 
 pub fn compile_dag_named(filename: &str, source: &str, target: RenderTarget) -> Rc<PipelineResult> {
     let sources = resolve_imports_transitively(filename, source);
-    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources), target)
+    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources.into()), target)
 }
 
 pub fn compile_dag_named_with_source_roots(
@@ -272,7 +272,7 @@ pub fn compile_dag_named_with_source_roots(
     source_roots: &[std::path::PathBuf],
 ) -> Rc<PipelineResult> {
     let sources = resolve_imports_transitively_with_source_roots(filename, source, source_roots);
-    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources), target)
+    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources.into()), target)
 }
 
 pub fn compile_multi(files: &[(&str, &str)]) -> Rc<PipelineResult> {
@@ -288,7 +288,7 @@ pub fn compile_multi_target(files: &[(&str, &str)], target: RenderTarget) -> Rc<
         }
     }
     let sources: Vec<Rc<SourceFile>> = all_sources.into_values().collect();
-    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources), target)
+    v1_compiler::v1_compiler_compile::compile_sources(Rc::new(sources.into()), target)
 }
 
 pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {

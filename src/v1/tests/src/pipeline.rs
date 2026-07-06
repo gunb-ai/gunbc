@@ -266,7 +266,7 @@ fn std_os_types_resolves_with_t_question_and_leading_pipe() {
         .to_string();
     let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &entry)
         .unwrap_or_else(|e| panic!("failed to load {entry}: {e}"));
-    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
     let msgs: Vec<String> = resolved
         .diagnostics
         .iter()
@@ -1257,7 +1257,7 @@ fn parse_resilience_unmasked_typecheck_debt_receipt() {
         .into_owned();
     let sources = v1_compiler::cli_run::load_sources_for_entry(&roots, &sample)
         .expect("load ci_floor_plan closure");
-    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let resolved = v1_compiler::v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
     for d in resolved.diagnostics.iter() {
         if !is_interpreter_blocking_diagnostic(d.diagnostic.clone()) {
             continue;
@@ -1324,7 +1324,7 @@ fn front_end_resilience_partial_graph_excludes_only_the_broken_module() {
             content: "module test.broken\nfn bad( -> Int\n".to_string(),
         }),
     ];
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let graph = resolved
         .graph
         .as_ref()

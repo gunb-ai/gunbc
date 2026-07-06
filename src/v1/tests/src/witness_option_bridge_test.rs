@@ -40,7 +40,7 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
 fn run_v4_module(entry: &str, content: &str, witness_fn: &str) -> Value {
     let sources: Vec<Rc<SourceFile>> =
         resolve_imports_transitively_with_source_roots(entry, content, &v2_source_roots());
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
         .graph

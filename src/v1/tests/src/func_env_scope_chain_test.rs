@@ -134,7 +134,7 @@ fn assert_resolved_no_hard_errors(
 fn compile_modules(
     sources: Vec<Rc<SourceFile>>,
 ) -> Rc<v1_compiler::v1_compiler_compile::ResolvedPipelineResult> {
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     resolved
 }
