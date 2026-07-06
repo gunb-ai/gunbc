@@ -129,6 +129,36 @@ The 2% decomposes into four kinds, and only a sliver is genuine forced verbosity
 either already bare, a fork that Rule 1 deletes, or file-local. The census doubles as a
 **fork worklist** for the operator's broader §3 audit.
 
+### 5.1 Precise census — declared `module` paths (2026-07-06)
+
+Re-run on the declared `module X.Y.Z` path (not the dir-proxy), split by decl-kind. 2,092 type
+names / 2,673 variant names / 8,340 fn names; **collisions: 26 types, 103 variants, 23 fns.** The
+sharper split changes the reading in one important way — **most collisions are the v1-seed-vs-v2-std
+fork, which nearest-wins resolves for free:**
+
+- **v1-seed re-declarations** dominate. `v1.compiler.languages` re-declares `std.languages`
+  (`ForEachSyntax`, `ImportRule`, `LanguageSpec`, `NamingCase`, `ReservedWords`, `ProjectScaffold`…);
+  `v1.std.core` re-declares `std.constructors` (`Cardinality`); `v1.compiler.{parse,infer,resolve}`
+  share internal result types (`FieldResult`, `ItemResult`, `VariantResult`). These are the
+  DESIGN §7 shrinking-seed duplication, **not consolidation targets now** — and crucially they
+  are in **disjoint subtrees** (`v1.*` vs `std.*`), so nearest-wins resolves each at its use-site
+  (v1 code sees v1's, std code sees std's) with **zero qualification and zero ambiguity**. They
+  dissolve as the seed shrinks, not by qualifying.
+- **Genuine cross-tree forks (identical variant-set → same concept): only 2** — `ImportTrigger`
+  (`std.languages` vs `v1.compiler.languages`, same 5 variants — a seed fork) and `Reconciliation`
+  = `Converged|NotConverged` (`product.budget_tree` vs `std.realization_reconcile` — a real §3
+  fork to consolidate). That is the entire "consolidate now" worklist the census forces.
+- **Same-subtree variant collisions** — the `github` conclusion families (`Success`/`Failure`/
+  `Cancelled` across `extdeps.github.{actions,checks,workflow_runs}`, `CheckConclusion` itself
+  actions-vs-checks with *different* variant sets) — are genuinely co-visible in github code and
+  are the **(Y) context-resolution** population: bare at typed sites, qualify only in untyped ones.
+
+**Net:** under (Y) + nearest-wins the forced-qualification residue is a **handful** — the
+same-subtree homonyms with no typed context — because (a) cross-tree seed forks resolve by
+subtree, (b) github-style collisions resolve by expected type, (c) file-local helpers never
+collide. The census's standing value is the two-item fork worklist plus a clean quantification of
+the v1→v2 seed-duplication surface.
+
 ## 6. Resolution mechanics carried from §1c (unchanged, re-homed)
 
 `resolve(name, position)` *is* the §1c constructor-owner ruling generalized from constructors
@@ -182,6 +212,15 @@ O(M²) `ancestry_str_bindings` materialization. **That `SymbolIndex` is exactly 
   position instead. These are the two values of the §8 `ResolutionPolicy` row —
   `import-scoped` (their v1 perf fix, ships first) and `namespace-only-Y` (this pivot, on top).
   Same `SymbolIndex` underneath both.
+
+**The invariant that makes "one index, two policies" sound (lively-raven-355, 2026-07-06):**
+the **fill stays policy-agnostic** — the topo prepass fills *everything import-DAG-reachable* —
+and the `ResolutionPolicy` gates **lookup only, never fill.** `import-scoped` filters the filled
+map by the import list at lookup; `namespace-only-Y` filters by structural position at lookup;
+both read the *same* fully-filled `Map<QualifiedName, Node>`. If a policy ever narrowed the
+*fill*, the two policies would each materialize a different index — the exact dual-representation
+Rule 1 forbids. So the guard is explicit: **policy is a lookup filter; fill is one, complete, and
+shared** — which also keeps the O(M²) fix policy-agnostic (fill-once stands under either policy).
 
 **Sequencing consequence:** `SymbolIndex` lands first (it is the substrate *and* the O(M²) fix,
 gated on loyal-heron's scaling receipt per that doc's §7.5). Namespace-only is then a policy
