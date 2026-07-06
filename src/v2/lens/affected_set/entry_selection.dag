@@ -1,0 +1,226 @@
+module v2.lens.affected_set.entry_selection
+
+import v2.lens.affected_set.corpus_dependency_view {
+  corpus_dependency_view_per_pr_execution_gate,
+  corpus_dependency_view_per_pr_execution_gate_note,
+  corpus_dependency_views_live
+}
+import v2.lens.module_graph {
+  module_declaration_facts_live,
+  ModuleDeclarationFact,
+  module_graph_exclude_substrings
+}
+import v2.std.algebra { any, contains, fold, length, list_snoc_item }
+import v2.std.collection { Absent, List, Optional, Present }
+import v2.std.dependency { DependencyView }
+import v2.std.fn_index { FnArrowDecl, fn_arrow_decl_facts_live }
+import v2.std.logic { Bool }
+import v2.std.node { Node }
+import v2.std.text { String }
+import v2.lens.affected_set { AffectedSetClosureAcc, affected_set_closure }
+
+data entry_selection_query_note: String = "Production entry selector (lever-a slice 2): reverse-reachability over DependencyView at node-grain, projected node -> containing module file path -> shard entry match. Replaces import-closure entry_affected_by_touched_paths. Edit-locus resolution uses module_declaration_facts path match + fn_arrow_decl output nodes for the touched module (dissolve-on: NodeArtifactProvenance over whole-tree InferredTree when #6239 lands). Per-PR live execution: corpus_dependency_view_per_pr_execution_gate (blocked-on-#6239)."
+
+fn strip_leading_dot_slash(s: String) -> String {
+  if starts_with(s: s, prefix: "./") {
+    substring(s: s, start: 2, end: string_length(s: s))
+  } else {
+    s
+  }
+}
+
+fn path_matches_touched(closure_path: String, touched_path: String) -> Bool {
+  let file = strip_leading_dot_slash(closure_path)
+  let target = strip_leading_dot_slash(touched_path)
+  string_eq(a: file, b: target)
+    || ends_with(s: file, suffix: target)
+    || ends_with(s: target, suffix: file)
+}
+
+fn string_eq(a: String, b: String) -> Bool {
+  a == b
+}
+
+fn decl_belongs_to_module(decl: FnArrowDecl, module: String) -> Bool {
+  starts_with(s: decl.qualified_name, prefix: concat(module, "."))
+    || (decl.qualified_name == module)
+}
+
+fn module_path_for_decl(decl: FnArrowDecl, modules: List<ModuleDeclarationFact>) -> Optional<String> {
+  fold(modules, init: Absent, f: fn(found, fact) {
+    match found {
+      Present { value: _ } => found
+      Absent =>
+        if decl_belongs_to_module(decl: decl, module: fact.module) {
+          Present { value: fact.path }
+        } else {
+          Absent
+        }
+    }
+  })
+}
+
+fn modules_matching_touched_path(
+  pool_roots: List<String>,
+  touched_path: String
+) -> List<ModuleDeclarationFact> {
+  fold(
+    module_declaration_facts_live(pool_roots: pool_roots),
+    init: [],
+    f: fn(acc, fact) {
+      if path_matches_touched(closure_path: fact.path, touched_path: touched_path) {
+        concat(acc, [fact])
+      } else {
+        acc
+      }
+    }
+  )
+}
+
+fn edit_locus_nodes_for_module(
+  module: String,
+  decls: List<FnArrowDecl>
+) -> List<Node> {
+  fold(decls, init: [], f: fn(acc, decl) {
+    if decl_belongs_to_module(decl: decl, module: module) {
+      list_snoc_item(xs: acc, item: decl.output)
+    } else {
+      acc
+    }
+  })
+}
+
+fn edit_locus_nodes_for_touched_path(
+  pool_roots: List<String>,
+  touched_path: String
+) -> List<Node> {
+  let decls = fn_arrow_decl_facts_live()
+  fold(
+    modules_matching_touched_path(pool_roots: pool_roots, touched_path: touched_path),
+    init: [],
+    f: fn(acc, fact) {
+      fold(
+        edit_locus_nodes_for_module(module: fact.module, decls: decls),
+        init: acc,
+        f: fn(nodes, node) {
+          if contains(xs: nodes, item: node, eq: fn(left, right) { left == right }) {
+            nodes
+          } else {
+            list_snoc_item(xs: nodes, item: node)
+          }
+        }
+      )
+    }
+  )
+}
+
+fn merge_frontier_nodes(acc: List<Node>, more: List<Node>) -> List<Node> {
+  fold(more, init: acc, f: fn(nodes, node) {
+    if contains(xs: nodes, item: node, eq: fn(left, right) { left == right }) {
+      nodes
+    } else {
+      list_snoc_item(xs: nodes, item: node)
+    }
+  })
+}
+
+fn affected_frontier_for_edit_loci(
+  dependencies: List<DependencyView>,
+  edit_loci: List<Node>
+) -> List<Node> {
+  fold(edit_loci, init: [], f: fn(frontier, locus) {
+    merge_frontier_nodes(
+      acc: frontier,
+      more: affected_set_closure(dependencies: dependencies, edit_locus: locus).frontier
+    )
+  })
+}
+
+fn file_paths_for_frontier_nodes(
+  frontier: List<Node>,
+  pool_roots: List<String>
+) -> List<String> {
+  let decls = fn_arrow_decl_facts_live()
+  let modules = module_declaration_facts_live(pool_roots: pool_roots)
+  fold(frontier, init: [], f: fn(paths, node) {
+    fold(decls, init: paths, f: fn(acc, decl) {
+      if decl.output == node {
+        match module_path_for_decl(decl: decl, modules: modules) {
+          Present { value: path } =>
+            if contains(xs: acc, item: path, eq: string_eq) {
+              acc
+            } else {
+              list_snoc_item(xs: acc, item: path)
+            }
+          Absent => acc
+        }
+      } else {
+        acc
+      }
+    })
+  })
+}
+
+fn affected_file_paths_for_touched_paths(
+  pool_roots: List<String>,
+  touched_paths: List<String>
+) -> List<String> {
+  let dependencies = corpus_dependency_views_live()
+  let frontier = fold(touched_paths, init: [], f: fn(acc, touched_path) {
+    merge_frontier_nodes(
+      acc: acc,
+      more: edit_locus_nodes_for_touched_path(
+        pool_roots: pool_roots,
+        touched_path: touched_path
+      )
+    )
+  })
+  let rerun_frontier = affected_frontier_for_edit_loci(
+    dependencies: dependencies,
+    edit_loci: frontier
+  )
+  file_paths_for_frontier_nodes(
+    frontier: rerun_frontier,
+    pool_roots: pool_roots
+  )
+}
+
+fn entry_path_in_affected_file_paths(
+  entry_path: String,
+  affected_paths: List<String>
+) -> Bool {
+  any(xs: affected_paths, predicate: fn(path) {
+    path_matches_touched(closure_path: path, touched_path: entry_path)
+  })
+}
+
+fn entry_affected_by_dependency_view_excluding(
+  entry_path: String,
+  pool_roots: List<String>,
+  touched_paths: List<String>,
+  exclude_substrings: List<String>
+) -> Bool {
+  let _gate = corpus_dependency_view_per_pr_execution_gate
+  let _gate_note = corpus_dependency_view_per_pr_execution_gate_note
+  let _exclude = exclude_substrings
+  entry_path_in_affected_file_paths(
+    entry_path: entry_path,
+    affected_paths: affected_file_paths_for_touched_paths(
+      pool_roots: pool_roots,
+      touched_paths: touched_paths
+    )
+  )
+}
+
+fn entry_affected_by_dependency_view(
+  entry_path: String,
+  pool_roots: List<String>,
+  touched_paths: List<String>
+) -> Bool {
+  entry_affected_by_dependency_view_excluding(
+    entry_path: entry_path,
+    pool_roots: pool_roots,
+    touched_paths: touched_paths,
+    exclude_substrings: module_graph_exclude_substrings
+  )
+}

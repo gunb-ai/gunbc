@@ -3,8 +3,8 @@ module tools.dag_compile_clean_scope
 import gunbc.ci_layer_roots { witness_layer_roots }
 import tools.dag_compile_clean_partition { compile_clean_partition_boundary }
 import tools.dag_compile_clean_shard_roster { compile_clean_shard_entry_paths }
-import v2.lens.module_graph {
-  entry_affected_by_touched_paths
+import v2.lens.affected_set.entry_selection {
+  entry_affected_by_dependency_view
 }
 import std.types { String, Bool, List, list_length }
 
@@ -53,7 +53,7 @@ fn compile_clean_affected_entry_paths(
     compile_clean_shard_entry_paths(),
     init: [],
     f: fn(acc, entry_path) {
-      if entry_affected_by_touched_paths(
+      if entry_affected_by_dependency_view(
         entry_path: entry_path,
         pool_roots: pool_roots,
         touched_paths: touched_paths
