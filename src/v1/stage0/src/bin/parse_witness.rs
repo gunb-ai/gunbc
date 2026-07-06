@@ -6,7 +6,7 @@
 //! behavior, and lookup/performance invariants until v1.compiler.parse/tokenize
 //! are witness-layer importable.
 
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::process::ExitCode;
 use std::rc::Rc;
 use std::time::Instant;
@@ -34,7 +34,7 @@ fn read_v2_file(relative_path: &str) -> String {
         .unwrap_or_else(|e| panic!("failed to read {}: {}", path.display(), e))
 }
 
-fn tokenize(source: &str) -> Rc<Vec<Rc<Token>>> {
+fn tokenize(source: &str) -> Rc<im_rc::Vector<Rc<Token>>> {
     v1_compiler::v1_compiler_tokenize::tokenize(source.to_string(), "test.dag".to_string())
 }
 

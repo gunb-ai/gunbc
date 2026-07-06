@@ -759,7 +759,7 @@ fn compile_clean_resolve_has_hard_errors(
     compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
 }
 
-fn compile_clean_pipeline_has_hard_errors(diagnostics: &[Rc<ErrorNode>]) -> bool {
+fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) -> bool {
     use crate::v1_std_core::CompilerDiagnostic;
     diagnostics.iter().any(|d| {
         !matches!(
@@ -784,7 +784,7 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
         Some(sources) => sources,
         None => return false,
     };
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
     !compile_clean_resolve_has_hard_errors(&result)
 }
 
@@ -796,7 +796,7 @@ pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
         Some(sources) => sources,
         None => return false,
     };
-    let result = v1_compiler_compile::compile_sources(Rc::new(sources), RenderTarget::Dag);
+    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
     !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
 }
 
