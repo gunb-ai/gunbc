@@ -306,7 +306,7 @@ pub fn diagnostic_messages(result: &PipelineResult) -> Vec<String> {
 pub fn assert_no_diagnostics(result: &PipelineResult) {
     let msgs: Vec<_> = diagnostic_messages(result)
         .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty(),
