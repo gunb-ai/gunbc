@@ -7597,6 +7597,28 @@ mod node_frontier_plumbing_controls {
     }
 
     #[test]
+    fn wholly_new_dag_file_does_not_fail_closed_on_module_line() {
+        let ws = workspace_root();
+        std::env::set_current_dir(&ws).expect("chdir workspace");
+        let roots = setup_roots(&ws);
+        let index = build_multi_entry_index(&roots);
+        let rel = "src/v2/test/claim/manual/integer_census_stage_receipt.dag";
+        let content = std::fs::read_to_string(rel).expect("read receipt");
+        let line_count = content.lines().count();
+        let mut diff = format!(
+            "diff --git a/{rel} b/{rel}\nnew file mode 100644\n--- /dev/null\n+++ b/{rel}\n"
+        );
+        diff.push_str(&format!("@@ -0,0 +1,{line_count} @@\n"));
+        for line in content.lines() {
+            diff.push('+');
+            diff.push_str(line);
+            diff.push('\n');
+        }
+        floor_diff_edits_from_diff_text(&index, &diff)
+            .unwrap_or_else(|e| panic!("wholly new receipt file must not fail-closed: {e}"));
+    }
+
+    #[test]
     fn import_preamble_plus_fn_body_populates_touched_entry_not_fail_closed() {
         let ws = workspace_root();
         std::env::set_current_dir(&ws).expect("chdir workspace");
