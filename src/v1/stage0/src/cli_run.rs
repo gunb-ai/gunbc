@@ -10930,6 +10930,10 @@ mod witness_layer_roots_compile_clean_tests {
     /// Hand-Rust receipt: the emit leg is a strict superset of resolve for the same sources.
     #[test]
     fn emit_success_implies_resolve_success_on_live_witness_roots() {
+        // Whole-tree path only: this receipt is about emit⊇resolve, not lever-a scoping.
+        // In CI `GITHUB_ACTIONS=true` would route through the live shard-roster disposition.
+        let _ga = EnvGuard::remove("GITHUB_ACTIONS");
+        let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
         if witness_layer_roots_compile_clean_emit_check() {
             assert!(witness_layer_roots_compile_clean_check());
         }
@@ -10987,16 +10991,13 @@ mod witness_layer_roots_compile_clean_tests {
 
     /// Lever-a receipt: `GITHUB_ACTIONS=true` activates scoping (same signal as
     /// `floor_diff_observe` / `install_group_syntax`) without requiring `GUNBC_CI_DIFF_BASE`.
+    /// Disposition soundness (not `WholeTree`) is covered by `.dag` witnesses — calling
+    /// `compile_clean_scope_plan_for_ci` here would run the live shard-roster scan.
     #[test]
     fn github_actions_activates_compile_clean_scoping() {
         let _ga = EnvGuard::set("GITHUB_ACTIONS", "true");
         let _base = EnvGuard::remove("GUNBC_CI_DIFF_BASE");
         assert!(compile_clean_scoping_active());
-        let plan = compile_clean_scope_plan_for_ci();
-        assert!(
-            !matches!(plan, CompileCleanScopePlan::WholeTree),
-            "GITHUB_ACTIONS must not fall back to whole-tree, got {plan:?}"
-        );
     }
 
     /// Hand-Rust receipt: primary-precedence pool defers to the first witness root.
