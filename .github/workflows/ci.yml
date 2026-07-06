@@ -18,11 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-<<<<<<< HEAD
     timeout-minutes: 10
-=======
-    timeout-minutes: 235
->>>>>>> f0dc8efde9 (Bump ci floor step budget 135m→180m after plan-resolve + batch-1 timeout.)
     steps:
       - name: Checkout
         uses: actions/checkout@v5
