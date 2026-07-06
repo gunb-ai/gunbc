@@ -2,7 +2,7 @@
 module test.claim.generated_artifact_drift
 
 import gunbc.generated_artifact {
-  GeneratedArtifact, CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, RunnerDeployArtifact, FleetConvergeArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
+  GeneratedArtifact, CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, RunnerDeployArtifact, FleetConvergeArtifact, AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   RepoConsumer, GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler,
   CommitPolicy, CommitRequired, NotCommitted,
   generated_artifact_registry,
@@ -29,6 +29,7 @@ fn witness_per_artifact_red_receipts() -> Bool {
 
 fn witness_all_known_committed() -> Bool {
   artifact_is_committed(a: CiYamlArtifact)
+    && artifact_is_committed(a: FalsifierYamlArtifact)
     && artifact_is_committed(a: GitignoreArtifact)
     && artifact_is_committed(a: RoadmapArtifact)
     && artifact_is_committed(a: DesignArtifact)
@@ -39,6 +40,7 @@ fn witness_all_known_committed() -> Bool {
     && !artifact_is_committed(a: AutoinstallUserDataArtifact { spec: srv3_autoinstall_spec })
     && !artifact_is_committed(a: ProxyDhcpDnsmasqArtifact { spec: srv3_install_server_spec })
     && !path_is_ignored(path: ".github/workflows/ci.yml")
+    && !path_is_ignored(path: ".github/workflows/falsifier.yml")
     && !path_is_ignored(path: ".gitignore")
     && !path_is_ignored(path: "ROADMAP.md")
     && !path_is_ignored(path: "DESIGN.md")
@@ -58,8 +60,9 @@ fn witness_ignored_paths_excluded() -> Bool {
 }
 
 fn witness_registry_complete() -> Bool {
-  count(generated_artifact_registry) == (7 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
+  count(generated_artifact_registry) == (8 + count(fleet_autoinstall_specs) + count(fleet_install_server_specs) + count(all_plans))
     && registry_contains(a: CiYamlArtifact)
+    && registry_contains(a: FalsifierYamlArtifact)
     && registry_contains(a: GitignoreArtifact)
     && registry_contains(a: RoadmapArtifact)
     && registry_contains(a: DesignArtifact)
@@ -70,6 +73,7 @@ fn witness_registry_complete() -> Bool {
     && registry_contains(a: PlanArtifact { plan: idea_machine_plan })
     && fleet_install_server_specs.length() == 0
     && artifact_is_committed(a: CiYamlArtifact)
+    && artifact_is_committed(a: FalsifierYamlArtifact)
     && artifact_is_committed(a: GitignoreArtifact)
     && artifact_is_committed(a: RoadmapArtifact)
     && artifact_is_committed(a: DesignArtifact)
@@ -97,6 +101,7 @@ fn witness_commit_policy_reasons() -> Bool {
   consumer_is(a: GitignoreArtifact, expected: GitProtocol)
     && consumer_is(a: GithooksPrePushArtifact, expected: GitProtocol)
     && consumer_is(a: CiYamlArtifact, expected: GithubActionsWorkflow)
+    && consumer_is(a: FalsifierYamlArtifact, expected: GithubActionsWorkflow)
     && consumer_is(a: RoadmapArtifact, expected: ProjectDocumentation)
     && consumer_is(a: DesignArtifact, expected: ProjectDocumentation)
     && consumer_is(a: PlanArtifact { plan: idea_machine_plan }, expected: ProjectDocumentation)
@@ -111,6 +116,7 @@ fn witness_extra_validation_wired() -> Bool {
     && artifact_extra_valid(a: RoadmapArtifact)
     && artifact_extra_valid(a: DesignArtifact)
     && artifact_extra_valid(a: CiYamlArtifact)
+    && artifact_extra_valid(a: FalsifierYamlArtifact)
 }
 
 test fn generated_artifact_drift_witnesses() -> Bool {

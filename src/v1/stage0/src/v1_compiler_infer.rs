@@ -12765,8 +12765,6 @@ pub fn build_type_env(
         } else {
             ancestry_cache.str_bindings.clone()
         };
-        let visible_str_bindings =
-            v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
         let unresolved_env = Rc::new(TypeEnv {
             bindings: all_local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
@@ -12797,9 +12795,13 @@ pub fn build_type_env(
             source_indices: resolved_env_out.source_indices.clone(),
             intern_table: intern_table.clone(),
         });
+        let cache_str_bindings = v1_rt::rc_map_merge(
+            final_env.ancestry_str_bindings.clone(),
+            final_env.str_bindings.clone(),
+        );
         let type_env_cache = Rc::new(TypeEnvCache {
             deps_map: all_deps_map.clone(),
-            str_bindings: visible_str_bindings,
+            str_bindings: cache_str_bindings,
             cycle_set_str: cycle_set_str.clone(),
             variant_locals: v1_rt::rc_empty_map::<String, Rc<TypeBinding>>(),
         });
