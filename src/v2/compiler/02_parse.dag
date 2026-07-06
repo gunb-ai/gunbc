@@ -959,6 +959,8 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
 
 data parse_first_ambiguity_note: String = "FIRST-set analysis + choice ambiguity roster (construction over caching; sunny-wren-799)."
 
+data production_first_rows_fixpoint_note: String = "compute_production_first_rows uses |productions| outer sweeps (same outer-counter pattern as compute_nullable_set). Each sweep is monotone: FIRST terminal sets only grow via first_list_union. A terminal enters production P only after nullable-prefix dependencies through other productions stabilize; longest chain length is |productions|, so |productions| sweeps suffice."
+
 type GrammarExprFirstFold {
   terminals: List<Symbol>
   nullable: Bool
