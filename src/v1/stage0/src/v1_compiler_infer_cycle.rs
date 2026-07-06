@@ -3,18 +3,19 @@
 
 pub use crate::v1_compiler_infer_env::TypeBinding;
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn compute_in_graph_deps(
     all_names: Rc<Vec<String>>,
     deps_map: Rc<HashMap<String, Rc<Vec<String>>>>,
-    name_set: Rc<std::collections::BTreeSet<String>>,
+    name_set: Rc<BTreeSet<String>>,
 ) -> Rc<HashMap<String, Rc<Vec<String>>>> {
     {
         let result = all_names.iter().cloned().fold(
@@ -160,7 +161,7 @@ pub fn kahn_cycle_drain(
                 removed_count: removed_count.clone(),
             }),
             |state: Rc<KahnState>, node: String| {
-                let state = Rc::try_unwrap(state).unwrap_or_else(|rc| (*rc).clone());
+                let state = v1_rt::take_owned(state);
                 {
                     let dependents = match v1_rt::map_get(&reverse_adj, node.clone()) {
                         Some(v) => v.clone(),

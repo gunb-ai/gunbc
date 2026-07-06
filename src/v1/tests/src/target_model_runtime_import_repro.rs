@@ -67,7 +67,7 @@ fn compile_claim_with_target_model_patch(patch: TargetModelPatch) -> (usize, usi
         })
         .collect();
     let source_count = sources.len();
-    let result = compile_to_resolved(Rc::new(sources));
+    let result = compile_to_resolved(Rc::new(sources.into()));
     let msgs: Vec<String> = result
         .diagnostics
         .iter()

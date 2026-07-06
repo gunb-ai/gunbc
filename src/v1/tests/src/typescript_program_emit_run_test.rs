@@ -72,7 +72,7 @@ fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
 }
 
 fn resolve_witness() -> Rc<v1_compiler::v1_compiler_compile::ResolvedPipelineResult> {
-    let resolved = compile_to_resolved(Rc::new(witness_sources()));
+    let resolved = compile_to_resolved(Rc::new(witness_sources().into()));
     let blocking: Vec<String> = resolved
         .diagnostics
         .iter()

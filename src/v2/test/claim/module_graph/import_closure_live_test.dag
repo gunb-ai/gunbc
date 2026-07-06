@@ -2,11 +2,23 @@ module v2.test.module_graph.import_closure_live
 
 import v2.lens.module_graph { import_closure_live }
 import gunbc.ci_layer_roots { witness_layer_roots }
-import tools.rust_stage0_gates { coproduct_reflection_conformance_consumed_closure }
 import v2.std.algebra { FreeMonoid, contains, for_all, list_snoc_item, fold_list }
 import v2.std.collection { List }
 import v2.std.logic { Bool }
 import v2.std.text { String }
+
+data expected_conformance_closure_note: String = "Golden test expectation for import_closure_live on the conformance entry — the §5 discriminating input proving the deriver by execution, updated when the entry's real imports change. This is NOT a declared parallel representation consumed by production: the rust gate derives its closure live from import_closure_live (tools.rust_stage0_gates), nothing reads this list but these witnesses."
+
+data expected_conformance_closure: FreeMonoid<String> = [
+  "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
+  "src/v2/std/algebra.dag",
+  "src/v2/std/collection.dag",
+  "src/v2/std/diagnostic.dag",
+  "src/v2/std/logic.dag",
+  "src/v2/std/node.dag",
+  "src/v2/std/node_query.dag",
+  "src/v2/std/witness.dag"
+]
 
 data conformance_entry: String = "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag"
 
@@ -27,7 +39,7 @@ fn set_equal(xs: FreeMonoid<String>, ys: FreeMonoid<String>) -> Bool {
 }
 
 fn declared_paths() -> FreeMonoid<String> {
-  coproduct_reflection_conformance_consumed_closure.consumed_dag_paths
+  expected_conformance_closure
 }
 
 fn declared_without_entry() -> FreeMonoid<String> {

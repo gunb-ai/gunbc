@@ -45,6 +45,8 @@ pub use crate::v1_compiler_resolve::resolve_modules;
 pub use crate::v1_compiler_resolve::ModuleGraph;
 pub use crate::v1_compiler_tokenize::tokenize;
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
+use crate::v1_rt::VecJoin;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_std_core::BinOp::*;
@@ -85,8 +87,8 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -2243,7 +2245,7 @@ pub fn front_end_sources(sources: Rc<Vec<Rc<SourceFile>>>) -> Rc<FrontendResult>
                 intern_table: intern_table,
             }),
             |acc: Rc<FrontendAccum>, p: Rc<FrontendPrepared>| {
-                let acc = Rc::try_unwrap(acc).unwrap_or_else(|rc| (*rc).clone());
+                let acc = v1_rt::take_owned(acc);
                 {
                     let parsed = parse_with_table(
                         p.tokens.clone(),

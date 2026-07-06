@@ -22,7 +22,7 @@ fn assert_resolved_no_hard_errors(result: &ResolvedPipelineResult) {
 
 fn run_witness(src: &str, witness_fn: &str) -> Value {
     let sources = resolve_imports_transitively("test/string_family_cast.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
         .graph
@@ -69,7 +69,7 @@ test fn int_secret_cast_holds() -> Bool {
 }
 "#;
     let sources = resolve_imports_transitively("test/int_secret_cast.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     assert_resolved_no_hard_errors(&resolved);
     let graph = resolved
         .graph

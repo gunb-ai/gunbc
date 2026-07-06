@@ -6528,8 +6528,6 @@ fn build_emit_graph_info(modules: List<TypedModule>) -> EmitGraphInfo {
     movable: empty_set(),
     variant_to_enum: vtoe,
     owned_bindings: empty_set(),
-    move_sites_index: empty_map(),
-    move_sites: empty_map(),
     read_only_params_index: empty_map(),
     read_only_params: empty_set(),
     corpus_repr: rust_corpus_repr(modules: modules)

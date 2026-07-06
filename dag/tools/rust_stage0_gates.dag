@@ -3,6 +3,8 @@ module tools.rust_stage0_gates
 import std.list { List }
 import std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
+import v2.lens.module_graph { entry_affected_by_touched_paths }
+import gunbc.ci_layer_roots { witness_layer_roots }
 
 fn rust_monolith_suffixes() -> List<String> {
   [".rs", "Cargo.toml", "Cargo.lock", "rust-toolchain.toml",
@@ -18,62 +20,33 @@ fn any_rust_monolith(paths: List<String>) -> Bool {
 }
 
 data consumed_input_closure_concept_note: Disposition = Terminal {
-  reason: "ConsumedInputClosure is the first std-layer authority for dag-layer input-consumption selection; consume-input vs produce-artifact is a permanent §3 distinction (different direction + domain from NodeArtifactProvenance), so this dag-layer instance is the FIRST authority, not a parallel mint"
+  reason: "consume-input vs produce-artifact is a permanent §3 distinction (different direction + domain from NodeArtifactProvenance). The declared fact here is ENROLLMENT ONLY (unit + entry_path): the consumed .dag closure itself is DERIVED at read time from the single authority v2.lens.module_graph.import_closure_live (via entry_affected_by_touched_paths over gunbc.ci_layer_roots.witness_layer_roots), so declared-vs-derived closure drift is unwritable by construction. The former drift walls (src/v1 consumed_input_closure_drift_test.rs and the import_closure_completeness floor witness) were deleted with the hand-typed path list they guarded, not relocated"
 }
 
-data consumed_input_closure_convergence_candidate: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "std.consumed_input",
-    decl_name: "ConsumedInputClosure",
-    field: WholeDeclaration
-  }
-}
-
-data consumed_input_closure_slice1_status: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "tools.rust_stage0_gates",
-    decl_name: "structural_closure_derivation",
-    field: WholeDeclaration
-  }
-}
-
-type ConsumedInputClosure {
+type ConsumedInputUnit {
   unit: String
   entry_path: String
-  consumed_dag_paths: List<String>
 }
 
-data coproduct_reflection_conformance_consumed_closure: ConsumedInputClosure = ConsumedInputClosure {
+data coproduct_reflection_conformance_consumed_unit: ConsumedInputUnit = ConsumedInputUnit {
   unit: "coproduct_reflection_conformance_test",
-  entry_path: "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
-  consumed_dag_paths: [
-    "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag",
-    "src/v2/std/algebra.dag",
-    "src/v2/std/collection.dag",
-    "src/v2/std/diagnostic.dag",
-    "src/v2/std/logic.dag",
-    "src/v2/std/node.dag",
-    "src/v2/std/node_query.dag",
-    "src/v2/std/witness.dag"
-  ]
+  entry_path: "src/v2/test/claim/manual/coproduct_reflection_conformance_test.dag"
 }
 
-data declared_consumed_input_closures: List<ConsumedInputClosure> = [
-  coproduct_reflection_conformance_consumed_closure
+data declared_consumed_input_units: List<ConsumedInputUnit> = [
+  coproduct_reflection_conformance_consumed_unit
 ]
 
-fn closure_contains_path(closure: ConsumedInputClosure, path: String) -> Bool {
-  fold(closure.consumed_dag_paths, false, fn(acc, p) { acc || (p == path) })
+fn unit_is_affected(u: ConsumedInputUnit, paths: List<String>) -> Bool {
+  entry_affected_by_touched_paths(
+    entry_path: u.entry_path,
+    pool_roots: witness_layer_roots,
+    touched_paths: paths
+  )
 }
 
-fn closure_hit_by_any(closure: ConsumedInputClosure, paths: List<String>) -> Bool {
-  fold(paths, false, fn(acc, p) { acc || closure_contains_path(closure: closure, path: p) })
-}
-
-fn any_declared_closure_hit(paths: List<String>) -> Bool {
-  fold(declared_consumed_input_closures, false, fn(acc, c) { acc || closure_hit_by_any(closure: c, paths: paths) })
+fn any_declared_unit_affected(paths: List<String>) -> Bool {
+  fold(declared_consumed_input_units, false, fn(acc, u) { acc || unit_is_affected(u: u, paths: paths) })
 }
 
 data unit_must_run_failclosed_note: Disposition = Terminal {
@@ -90,18 +63,18 @@ data unit_must_run_staged_note: Disposition = Scaffold {
 }
 
 fn unit_must_run(unit: String, paths: List<String>) -> Bool {
-  fold(declared_consumed_input_closures, true, fn(acc, c) {
-    if c.unit == unit { closure_hit_by_any(closure: c, paths: paths) } else { acc }
+  fold(declared_consumed_input_units, true, fn(acc, u) {
+    if u.unit == unit { unit_is_affected(u: u, paths: paths) } else { acc }
   })
 }
 
 data should_run_gates_coverage_note: Disposition = Terminal {
-  reason: "Coverage fire (Edge-(b)) is a permanent §5 design invariant: the rust gate ALSO runs when a changed .dag is in the union of declared consumed-input closures, only ever ADDING fires, never newly skipping"
+  reason: "Coverage fire (Edge-(b)) is a permanent §5 design invariant: the rust gate ALSO runs when a changed .dag affects a declared unit's derived import closure, only ever ADDING fires, never newly skipping"
 }
 
 fn should_run_gates(paths: List<String>, git_success: Bool) -> Bool {
   if git_success {
-    any_rust_monolith(paths: paths) || any_declared_closure_hit(paths: paths)
+    any_rust_monolith(paths: paths) || any_declared_unit_affected(paths: paths)
   } else {
     true
   }

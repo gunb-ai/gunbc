@@ -4,7 +4,7 @@
 
 use clap::{Parser, Subcommand};
 
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::rc::Rc;
 use v1_compiler::cli_run;
 use v1_compiler::v1_compiler_compile;
@@ -241,7 +241,7 @@ fn resolve_transitively_with_seen(
         }
     }
 
-    let mut result: Vec<_> = seen.into_values().collect();
+    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();
     result.sort_by(|a, b| a.path.cmp(&b.path));
     result
 }
@@ -393,7 +393,7 @@ fn main() {
 
             if render_targets.len() == 1 {
                 let result = v1_compiler_compile::compile_sources(
-                    Rc::new(sources),
+                    Rc::new(sources.into()),
                     render_targets[0].1.clone(),
                 );
                 if let Some(message) =
@@ -410,7 +410,7 @@ fn main() {
                 );
                 render_diagnostics(&result);
             } else {
-                let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+                let resolved = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
                 let mut total_files = 0usize;
                 let mut total_diagnostics = 0usize;
                 for (name, render_target) in render_targets {

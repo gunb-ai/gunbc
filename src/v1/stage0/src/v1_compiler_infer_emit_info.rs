@@ -7,6 +7,7 @@ pub use crate::v1_compiler_infer_types::{
     child_type_node, emit_map_has, node_type_equals, normalize_access_type_node,
 };
 use crate::v1_rt;
+use crate::v1_rt::VecCompat;
 use crate::v1_rt::Witness;
 use crate::v1_rt::Witness::{Holds, Violates};
 use crate::v1_std_core::Cardinality::CardOptional;
@@ -24,8 +25,8 @@ pub use crate::v1_std_core::{
 };
 use crate::NonEmptyBTreeSet;
 use crate::NonEmptyVec;
-use std::collections::BTreeSet;
-use std::collections::HashMap;
+use im_rc::HashMap;
+use im_rc::{vector as vec, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 pub fn is_type_variable(inferred: Rc<InferredNode>) -> bool {
@@ -75,16 +76,16 @@ pub enum RustCorpusRepr {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    pub recursive_type_set: Rc<std::collections::BTreeSet<String>>,
-    pub fielded_variants: Rc<std::collections::BTreeSet<String>>,
-    pub positional_payload_variants: Rc<std::collections::BTreeSet<String>>,
-    pub shared_types: Rc<std::collections::BTreeSet<String>>,
-    pub ownership_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
-    pub movable: Rc<std::collections::BTreeSet<String>>,
+    pub recursive_type_set: Rc<BTreeSet<String>>,
+    pub fielded_variants: Rc<BTreeSet<String>>,
+    pub positional_payload_variants: Rc<BTreeSet<String>>,
+    pub shared_types: Rc<BTreeSet<String>>,
+    pub ownership_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    pub movable: Rc<BTreeSet<String>>,
     pub variant_to_enum: Rc<HashMap<String, String>>,
-    pub owned_bindings: Rc<std::collections::BTreeSet<String>>,
-    pub read_only_params_index: Rc<HashMap<String, Rc<std::collections::BTreeSet<String>>>>,
-    pub read_only_params: Rc<std::collections::BTreeSet<String>>,
+    pub owned_bindings: Rc<BTreeSet<String>>,
+    pub read_only_params_index: Rc<HashMap<String, Rc<BTreeSet<String>>>>,
+    pub read_only_params: Rc<BTreeSet<String>>,
     pub corpus_repr: RustCorpusRepr,
 }
 
@@ -100,12 +101,11 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
         fielded_variants: v1_rt::rc_empty_set::<String>(),
         positional_payload_variants: v1_rt::rc_empty_set::<String>(),
         shared_types: v1_rt::rc_empty_set::<String>(),
-        ownership_index: v1_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(),
+        ownership_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         movable: v1_rt::rc_empty_set::<String>(),
         variant_to_enum: v1_rt::rc_empty_map::<String, String>(),
         owned_bindings: v1_rt::rc_empty_set::<String>(),
-        read_only_params_index: v1_rt::rc_empty_map::<String, Rc<std::collections::BTreeSet<String>>>(
-        ),
+        read_only_params_index: v1_rt::rc_empty_map::<String, Rc<BTreeSet<String>>>(),
         read_only_params: v1_rt::rc_empty_set::<String>(),
         corpus_repr: RustCorpusRepr::FaithfulFreeMonoid,
     })
@@ -565,7 +565,7 @@ pub fn build_type_summary(
 pub fn type_summary_reaches_fn(
     name: String,
     summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
-    visited: Rc<std::collections::BTreeSet<String>>,
+    visited: Rc<BTreeSet<String>>,
 ) -> bool {
     stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
         if v1_rt::set_contains(&visited, name.clone()) {

@@ -2,6 +2,7 @@ module test.claim.seed_debt_bundle_item_2_floor_scope
 
 import gunbc.ci_layer_roots { witness_layer_roots }
 import std.realization_schedule {
+  SelectionOff,
   Runnable,
   RunnableDiscoveryBatch,
   ScheduleWitnessEntry,
@@ -26,7 +27,7 @@ fn seed_debt_floor_scope_batches() -> List<List<Runnable>> {
       source_roots: witness_layer_roots,
       scan_dirs: [],
       explicit_entries: seed_debt_witness_entries(),
-      skip_unaffected_node_frontier: false
+      node_frontier_selection: SelectionOff
     }
   ]]
 }
