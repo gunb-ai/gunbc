@@ -2,8 +2,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use v1_compiler::cli_run::{
-    discover_source_root_reads, discover_source_root_reads_for_entry,
-    emit_source_root_ingest_manifest, parse_source_root_entry_admission,
+    discover_source_root_reads_for_entry, emit_source_root_ingest_manifest,
+    parse_source_root_entry_admission,
 };
 
 use crate::helpers::workspace_root;
@@ -46,36 +46,18 @@ fn manifest_entry_admission_qualified_name_is_well_formed() {
         .expect("emit manifest");
     let manifest = fs::read_to_string(&manifest_path).expect("read manifest");
     assert!(
-        manifest.contains(
-            "Cons { head: ^v2, tail: Cons { head: ^compiler, tail: Cons { head: ^compile, tail: Empty } } }"
-        ),
-        "manifest admission subject QN malformed:\n{manifest}"
-    );
-    let _ = fs::remove_dir_all(&temp);
-}
-
-#[test]
-fn manifest_emits_source_root_ref_import_for_tagged_reads() {
-    let ws = workspace_root();
-    let temp = unique_temp_dir("manifest-sr-ref");
-    fs::create_dir_all(&temp).expect("temp dir");
-    let manifest_path = temp.join("manifest.dag");
-    let scan_dir = ws.join("src/v2/test/fixture/program_assembly");
-    let records = discover_source_root_reads(
-        &[ws.join("src/v2").to_string_lossy().into_owned()],
-        scan_dir.to_str().expect("scan dir utf-8"),
-        &[],
-    )
-    .expect("discover reads");
-    emit_source_root_ingest_manifest(&manifest_path, &records, None).expect("emit manifest");
-    let manifest = fs::read_to_string(&manifest_path).expect("read manifest");
-    assert!(
-        manifest.contains("import v2.std.cross_tree.import_model { V2Tree }"),
+        manifest.contains("import v2.std.cross_tree.import_model { V2Tree"),
         "manifest must import grounded SourceRootRef variants:\n{manifest}"
     );
     assert!(
         manifest.contains("source_root: V2Tree"),
-        "manifest witness rows must carry V2Tree tag:\n{manifest}"
+        "manifest witness rows must carry grounded source_root tags:\n{manifest}"
+    );
+    assert!(
+        manifest.contains(
+            "Cons { head: ^v2, tail: Cons { head: ^compiler, tail: Cons { head: ^compile, tail: Empty } } }"
+        ),
+        "manifest admission subject QN malformed:\n{manifest}"
     );
     let _ = fs::remove_dir_all(&temp);
 }

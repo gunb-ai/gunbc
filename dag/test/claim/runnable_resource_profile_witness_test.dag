@@ -1,7 +1,6 @@
 module test.claim.runnable_resource_profile
 
 import std.realization_schedule {
-  SelectionOff,
   Runnable,
   RunnableSingleClaim,
   RunnableDiscoveryBatch,
@@ -37,7 +36,7 @@ fn witness_corpus_never_forbids_co_residence() -> Bool {
     source_roots: []
     scan_dirs: []
     explicit_entries: []
-    node_frontier_selection: SelectionOff
+    skip_unaffected_node_frontier: false
     profile: runnable_resource_profile(
       heavy_whole_tree_resolve: true,
       spawns_host_compiler: false,

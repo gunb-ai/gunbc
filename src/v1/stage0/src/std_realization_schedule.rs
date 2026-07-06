@@ -2,7 +2,6 @@
 // Source module: std.realization_schedule
 
 use self::CostBasis::*;
-use self::NodeFrontierSelection::*;
 use self::Runnable::*;
 use self::RunnableMemoryClass::*;
 use self::ScheduleLensViolation::*;
@@ -228,48 +227,6 @@ pub fn runnable_forbids_corpus_co_residence(r: Rc<Runnable>) -> bool {
     }
 }
 
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
-)]
-#[serde(tag = "_variant")]
-pub enum NodeFrontierSelection {
-    SelectionOff,
-    SelectionApplied,
-    SelectionPredictOnly,
-}
-
-pub fn node_frontier_selection_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Affected-set selection mode for a discovery batch (signed design: docs/plans/affected-set-differential-falsifier.md, 2026-07-05). SelectionOff: no diff observation, every row runs. SelectionApplied: would-skip is computed AND applied (unaffected rows skip assumed-green). SelectionPredictOnly: would-skip is computed and RECORDED per row but every row still runs cold — the falsifier cadence compares predictions against cold verdicts; a predicted-unaffected row that runs red is a counted divergence naming a missing selection edge. Formerly a Bool (skip_unaffected_node_frontier), which could not express predict-without-apply; two Bools would conflate the state space.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn node_frontier_selection_eq(
-    left: NodeFrontierSelection,
-    right: NodeFrontierSelection,
-) -> bool {
-    match left {
-        NodeFrontierSelection::SelectionOff => match right {
-            NodeFrontierSelection::SelectionOff => true,
-            NodeFrontierSelection::SelectionApplied => false,
-            NodeFrontierSelection::SelectionPredictOnly => false,
-        },
-        NodeFrontierSelection::SelectionApplied => match right {
-            NodeFrontierSelection::SelectionOff => false,
-            NodeFrontierSelection::SelectionApplied => true,
-            NodeFrontierSelection::SelectionPredictOnly => false,
-        },
-        NodeFrontierSelection::SelectionPredictOnly => match right {
-            NodeFrontierSelection::SelectionOff => false,
-            NodeFrontierSelection::SelectionApplied => false,
-            NodeFrontierSelection::SelectionPredictOnly => true,
-        },
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "_variant")]
 pub enum Runnable {
@@ -282,7 +239,7 @@ pub enum Runnable {
         source_roots: Rc<Vec<String>>,
         scan_dirs: Rc<Vec<String>>,
         explicit_entries: Rc<Vec<Rc<ScheduleWitnessEntry>>>,
-        node_frontier_selection: NodeFrontierSelection,
+        skip_unaffected_node_frontier: bool,
         exclude_substrings: Rc<Vec<String>>,
         discovery_scope_dirs: Rc<Vec<String>>,
         spawn_width_cap: i64,
@@ -544,7 +501,7 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
             source_roots: lsr,
             scan_dirs: lsd,
             explicit_entries: lex,
-            node_frontier_selection: lskip,
+            skip_unaffected_node_frontier: lskip,
             exclude_substrings: lex2,
             discovery_scope_dirs: lsc,
             spawn_width_cap: lwc,
@@ -556,7 +513,7 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                 source_roots: rsr,
                 scan_dirs: rsd,
                 explicit_entries: rex,
-                node_frontier_selection: rskip,
+                skip_unaffected_node_frontier: rskip,
                 exclude_substrings: rex2,
                 discovery_scope_dirs: rsc,
                 spawn_width_cap: rwc,
@@ -566,7 +523,7 @@ pub fn runnable_eq(left: Rc<Runnable>, right: Rc<Runnable>) -> bool {
                 (((((((string_list_eq(lsr.clone(), rsr.clone())
                     && string_list_eq(lsd.clone(), rsd.clone()))
                     && schedule_witness_entry_list_eq(lex.clone(), rex.clone()))
-                    && node_frontier_selection_eq(lskip.clone(), rskip.clone()))
+                    && (lskip.clone() == rskip.clone()))
                     && string_list_eq(lex2.clone(), rex2.clone()))
                     && string_list_eq(lsc.clone(), rsc.clone()))
                     && (lwc.clone() == rwc.clone()))

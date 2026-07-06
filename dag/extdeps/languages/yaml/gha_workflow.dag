@@ -7,10 +7,9 @@ import extdeps.languages.yaml.types {
   yaml_string, yaml_int, yaml_bool, yaml_mapping, yaml_sequence, kv,
   empty_yaml_values
 }
-import extdeps.cron.schedule_model { render_cron_schedule }
 import extdeps.github.actions {
   Workflow, Job, Step, RunStep, UsesStep, ActionRef,
-  WorkflowTrigger, Push, PullRequest, WorkflowDispatch, Schedule,
+  WorkflowTrigger, Push, PullRequest, WorkflowDispatch,
   PullRequestActivity, Opened, Synchronize, Reopened, ReadyForReview, Closed,
   WorkflowPermissions, PermissionLevel, PermRead, PermWrite, PermNone,
   ConcurrencySpec, ConcurrencyScalar, ConcurrencyMappingQueueMax, ConcurrencyMappingQueueNotMax,
@@ -26,8 +25,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
     locator: "docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
   }
 }
-
-data gha_schedule_trigger_note: String = "schedule renders as the GHA-required list-of-mappings - a schedule key holding a sequence of cron mappings, each cron value a 5-field POSIX string (authority above). Formerly a payload-dropping stub (bare schedule: key — invalid GHA syntax); first live constructor is the affected-set falsifier workflow. GHA quirks vs plain crontab, per the cited syntax authority: cron strings are evaluated in UTC only, and the shortest supported interval is 5 minutes."
 
 fn permission_level_yaml(level: PermissionLevel) -> YamlValue {
   match level {
@@ -101,10 +98,8 @@ fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
         kv(key: "branches", value: string_list_flow(items: bs)),
         kv(key: "types", value: pr_activities_flow(types: ts))
       ]))
-    Schedule { cron: c } =>
-      kv(key: "schedule", value: yaml_sequence(elements: [
-        yaml_mapping(entries: [kv(key: "cron", value: yaml_string(s: render_cron_schedule(s: c)))])
-      ]))
+    Schedule { cron: _ } =>
+      kv(key: "schedule", value: YamlNull)
     WorkflowCall { inputs: _ } =>
       kv(key: "workflow_call", value: YamlNull)
   }

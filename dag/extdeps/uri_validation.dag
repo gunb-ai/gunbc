@@ -55,37 +55,41 @@ type RejectedUrl {
   reason: RejectedUrlScheme
 }
 
+fn find_first_rejected_url_in_attrs(attrs: List<MarkupAttr>) -> RejectedUrl? {
+  match attrs |> first {
+    Present { value: a } =>
+      match attr_is_url_attr(name: a.name) {
+        true =>
+          match validate_href(url: a.value) {
+            SafeHref { url: _ } =>
+              find_first_rejected_url_in_attrs(attrs: attrs |> skip(1))
+            RejectedHref { reason: rs } =>
+              Present { value: RejectedUrl { url: a.value, reason: rs } }
+          }
+        false => find_first_rejected_url_in_attrs(attrs: attrs |> skip(1))
+      }
+    Absent => Absent
+  }
+}
+
+fn find_first_rejected_url_in_children(children: List<MarkupNode>) -> RejectedUrl? {
+  match children |> first {
+    Present { value: c } =>
+      match find_first_rejected_url(node: c) {
+        Present { value: r } => Present { value: r }
+        Absent => find_first_rejected_url_in_children(children: children |> skip(1))
+      }
+    Absent => Absent
+  }
+}
+
 fn find_first_rejected_url(node: MarkupNode) -> RejectedUrl? {
   match node {
     TextNode { text: _ } => Absent
-    ElementNode { tag: _, attrs, children } => {
-      let from_attr = fold(attrs,
-        init: Absent,
-        f: (acc, a) => match acc {
-          Present { value: r } => Present { value: r }
-          Absent =>
-            if attr_is_url_attr(name: a.name) {
-              match validate_href(url: a.value) {
-                SafeHref { url: _ } => Absent
-                RejectedHref { reason: rs } =>
-                  Present { value: RejectedUrl { url: a.value, reason: rs } }
-              }
-            } else {
-              Absent
-            }
-        }
-      )
-      match from_attr {
+    ElementNode { tag: _, attrs, children } =>
+      match find_first_rejected_url_in_attrs(attrs: attrs) {
         Present { value: r } => Present { value: r }
-        Absent =>
-          fold(children,
-            init: Absent,
-            f: (acc, c) => match acc {
-              Present { value: r } => Present { value: r }
-              Absent => find_first_rejected_url(node: c)
-            }
-          )
+        Absent => find_first_rejected_url_in_children(children: children)
       }
-    }
   }
 }

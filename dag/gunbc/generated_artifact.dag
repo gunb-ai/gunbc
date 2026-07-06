@@ -7,7 +7,6 @@ import gunbc.plan_registry { all_plans }
 
 type GeneratedArtifact
   = CiYamlArtifact
-  | FalsifierYamlArtifact
   | GitignoreArtifact
   | RoadmapArtifact
   | DesignArtifact
@@ -21,7 +20,7 @@ type GeneratedArtifact
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(
     concat(
-      [CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, RunnerDeployArtifact, FleetConvergeArtifact],
+      [CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact, GithooksPrePushArtifact, RunnerDeployArtifact, FleetConvergeArtifact],
       map(fleet_autoinstall_specs, s => AutoinstallUserDataArtifact { spec: s })
     ),
     map(fleet_install_server_specs, s => ProxyDhcpDnsmasqArtifact { spec: s })
@@ -42,7 +41,6 @@ type CommitPolicy
 fn artifact_path(a: GeneratedArtifact) -> String {
   match a {
     CiYamlArtifact => ".github/workflows/ci.yml"
-    FalsifierYamlArtifact => ".github/workflows/falsifier.yml"
     GitignoreArtifact => ".gitignore"
     RoadmapArtifact => "ROADMAP.md"
     DesignArtifact => "DESIGN.md"
@@ -60,7 +58,6 @@ fn artifact_commit_policy(a: GeneratedArtifact) -> CommitPolicy {
     GitignoreArtifact => CommitRequired { consumer: GitProtocol }
     GithooksPrePushArtifact => CommitRequired { consumer: GitProtocol }
     CiYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
-    FalsifierYamlArtifact => CommitRequired { consumer: GithubActionsWorkflow }
     RoadmapArtifact => CommitRequired { consumer: ProjectDocumentation }
     DesignArtifact => CommitRequired { consumer: ProjectDocumentation }
     PlanArtifact { plan: _ } => CommitRequired { consumer: ProjectDocumentation }
@@ -85,7 +82,6 @@ fn committed_generated_artifacts() -> List<GeneratedArtifact> {
 fn artifact_eq(a: GeneratedArtifact, b: GeneratedArtifact) -> Bool {
   match a {
     CiYamlArtifact => match b { CiYamlArtifact => true  _ => false }
-    FalsifierYamlArtifact => match b { FalsifierYamlArtifact => true  _ => false }
     GitignoreArtifact => match b { GitignoreArtifact => true  _ => false }
     RoadmapArtifact => match b { RoadmapArtifact => true  _ => false }
     DesignArtifact => match b { DesignArtifact => true  _ => false }

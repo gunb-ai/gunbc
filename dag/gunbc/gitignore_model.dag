@@ -79,7 +79,6 @@ type IgnoreArtifact
   | V2InspectErrorsFile
   | GithubCLICacheDir
   | PythonLocalDevScriptFile
-  | PythonAuditScriptAllowlisted
   | PythonBytecodeCacheDir
   | PythonCompiledBytecode
   | ClaimMapDir

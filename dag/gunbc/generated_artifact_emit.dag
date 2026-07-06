@@ -3,13 +3,12 @@ module gunbc.generated_artifact_emit
 
 import gunbc.generated_artifact {
   GeneratedArtifact,
-  CiYamlArtifact, FalsifierYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact,
+  CiYamlArtifact, GitignoreArtifact, RoadmapArtifact, DesignArtifact,
   RunnerDeployArtifact, FleetConvergeArtifact, GithooksPrePushArtifact,
   AutoinstallUserDataArtifact, ProxyDhcpDnsmasqArtifact, PlanArtifact,
   artifact_path
 }
 import gunbc.ci_yaml_emit { expected_ci_yml }
-import gunbc.falsifier_workflow { expected_falsifier_yml }
 import gunbc.ci_yaml_validate { ci_yml_parses }
 import gunbc.gitignore_emit { expected_gitignore }
 import gunbc.roadmap_authority { expected_roadmap_md }
@@ -24,7 +23,6 @@ import gunbc.plan { expected_plan_md }
 fn artifact_generate(a: GeneratedArtifact) -> String {
   match a {
     CiYamlArtifact => expected_ci_yml()
-    FalsifierYamlArtifact => expected_falsifier_yml()
     GitignoreArtifact => expected_gitignore()
     RoadmapArtifact => expected_roadmap_md()
     DesignArtifact => expected_design_md()
@@ -40,7 +38,6 @@ fn artifact_generate(a: GeneratedArtifact) -> String {
 fn artifact_extra_valid(a: GeneratedArtifact) -> Bool {
   match a {
     CiYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
-    FalsifierYamlArtifact => ci_yml_parses(path: artifact_path(a: a))
     GitignoreArtifact => true
     RoadmapArtifact => true
     DesignArtifact => true

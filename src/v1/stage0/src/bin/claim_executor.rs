@@ -13,7 +13,7 @@ use v1_compiler::cli_run::{
     compute_histogram_data, compute_witness_timing_rows, make_eval_context, resolve_entry_graph,
     resolve_entry_graph_shared, run_claim, run_discovery_corpus_with_options, run_value, set_phase,
     top_n_slowest_witnesses, ClaimOutcome, DiscoveryCorpusOptions, DiscoverySummary, FloorPhase,
-    HistogramData, NodeFrontierSelectionMode, PhaseProfile, TimingPercentiles, WitnessTimingRow,
+    HistogramData, PhaseProfile, TimingPercentiles, WitnessTimingRow,
     DEFAULT_SLOWEST_WITNESS_ATTRIBUTION_N,
 };
 use v1_compiler::v1_interpreter::{
@@ -31,7 +31,7 @@ enum Runnable {
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
         explicit_entries: Vec<(String, String)>,
-        node_frontier_selection: NodeFrontierSelectionMode,
+        skip_unaffected_node_frontier: bool,
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         spawn_width_cap: usize,
@@ -187,41 +187,19 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 }
                 None => Vec::new(),
             };
-            let node_frontier_selection = match ctx.field(fields, "node_frontier_selection") {
-                Some(Value::Variant { variant_name, .. }) => {
-                    if ctx.sym_eq(*variant_name, "SelectionOff") {
-                        NodeFrontierSelectionMode::Off
-                    } else if ctx.sym_eq(*variant_name, "SelectionApplied") {
-                        NodeFrontierSelectionMode::Applied
-                    } else if ctx.sym_eq(*variant_name, "SelectionPredictOnly") {
-                        NodeFrontierSelectionMode::PredictOnly
-                    } else {
-                        return Err(format!(
-                            "RunnableDiscoveryBatch.node_frontier_selection: unknown \
-                                 NodeFrontierSelection variant `{}`",
-                            ctx.resolve(*variant_name)
-                        ));
-                    }
-                }
-                Some(other) => {
-                    return Err(format!(
-                        "RunnableDiscoveryBatch.node_frontier_selection must be a \
-                             NodeFrontierSelection variant, got {}",
+            let skip_unaffected_node_frontier =
+                match ctx.field(fields, "skip_unaffected_node_frontier") {
+                    Some(v) => match v {
+                        Value::Bool(b) => *b,
+                        other => {
+                            return Err(format!(
+                        "RunnableDiscoveryBatch.skip_unaffected_node_frontier must be Bool, got {}",
                         other.type_label_public()
                     ))
-                }
-                // Absent is a REFUSAL, not a default: the former Bool defaulted to false
-                // when the field was missing — a fail-open where a stale plan silently
-                // ran without its declared selection semantics.
-                None => {
-                    return Err(
-                        "RunnableDiscoveryBatch.node_frontier_selection is absent — the \
-                             plan row must declare its selection mode (SelectionOff / \
-                             SelectionApplied / SelectionPredictOnly); no silent default"
-                            .to_string(),
-                    )
-                }
-            };
+                        }
+                    },
+                    None => false,
+                };
             let exclude_substrings = match ctx.field(fields, "exclude_substrings") {
                 Some(v) => str_list_from_value(v, ctx)?,
                 // Field absent means the plan author specified no exclusions — default is empty,
@@ -240,7 +218,7 @@ fn runnable_from_value(value: &Value, ctx: &InterpContext) -> Result<Runnable, S
                 source_roots,
                 scan_dirs,
                 explicit_entries,
-                node_frontier_selection,
+                skip_unaffected_node_frontier,
                 exclude_substrings,
                 discovery_scope_dirs,
                 spawn_width_cap,
@@ -305,7 +283,7 @@ enum BatchUnit {
         source_roots: Vec<String>,
         scan_dirs: Vec<String>,
         explicit_entries: Vec<(String, String)>,
-        node_frontier_selection: NodeFrontierSelectionMode,
+        skip_unaffected_node_frontier: bool,
         exclude_substrings: Vec<String>,
         discovery_scope_dirs: Vec<String>,
         spawn_width_cap: usize,
@@ -359,7 +337,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 source_roots,
                 scan_dirs,
                 explicit_entries,
-                node_frontier_selection,
+                skip_unaffected_node_frontier,
                 exclude_substrings,
                 discovery_scope_dirs,
                 spawn_width_cap,
@@ -367,7 +345,7 @@ fn group_batch_units(batch: &[Runnable]) -> Vec<BatchUnit> {
                 source_roots: source_roots.clone(),
                 scan_dirs: scan_dirs.clone(),
                 explicit_entries: explicit_entries.clone(),
-                node_frontier_selection: *node_frontier_selection,
+                skip_unaffected_node_frontier: *skip_unaffected_node_frontier,
                 exclude_substrings: exclude_substrings.clone(),
                 discovery_scope_dirs: discovery_scope_dirs.clone(),
                 spawn_width_cap: *spawn_width_cap,
@@ -448,7 +426,7 @@ fn run_batch_unit(
             source_roots: roots,
             scan_dirs,
             explicit_entries,
-            node_frontier_selection,
+            skip_unaffected_node_frontier,
             exclude_substrings,
             discovery_scope_dirs,
             spawn_width_cap,
@@ -456,7 +434,7 @@ fn run_batch_unit(
             roots,
             scan_dirs,
             explicit_entries,
-            node_frontier_selection,
+            skip_unaffected_node_frontier,
             exclude_substrings,
             discovery_scope_dirs,
             spawn_width,
@@ -783,7 +761,7 @@ fn run_discovery_batch_node(
     source_roots: Vec<String>,
     scan_dirs: Vec<String>,
     explicit_entries: Vec<(String, String)>,
-    node_frontier_selection: NodeFrontierSelectionMode,
+    skip_unaffected_node_frontier: bool,
     exclude_substrings: Vec<String>,
     discovery_scope_dirs: Vec<String>,
     spawn_width: usize,
@@ -803,7 +781,7 @@ fn run_discovery_batch_node(
         ExecutionMode::Wet,
         spawn_width,
         DiscoveryCorpusOptions {
-            node_frontier_selection,
+            skip_unaffected_node_frontier,
             explicit_roster_only: false,
             exclude_substrings,
             discovery_scope_dirs,
@@ -1631,7 +1609,7 @@ fn run_perturb_check(
                         source_roots: roots,
                         scan_dirs,
                         explicit_entries,
-                        node_frontier_selection,
+                        skip_unaffected_node_frontier,
                         exclude_substrings,
                         discovery_scope_dirs,
                         spawn_width_cap,
@@ -1639,7 +1617,7 @@ fn run_perturb_check(
                         source_roots: roots.iter().map(|r| remap_root(r)).collect(),
                         scan_dirs: scan_dirs.iter().map(|d| remap_root(d)).collect(),
                         explicit_entries: explicit_entries.clone(),
-                        node_frontier_selection: *node_frontier_selection,
+                        skip_unaffected_node_frontier: *skip_unaffected_node_frontier,
                         exclude_substrings: exclude_substrings.clone(),
                         discovery_scope_dirs: discovery_scope_dirs.clone(),
                         spawn_width_cap: *spawn_width_cap,
@@ -1916,7 +1894,7 @@ mod tests {
             source_roots: vec!["src/v2".to_string()],
             scan_dirs: vec![],
             explicit_entries: vec![],
-            node_frontier_selection: NodeFrontierSelectionMode::Applied,
+            skip_unaffected_node_frontier: true,
             exclude_substrings: vec![],
             discovery_scope_dirs: vec![],
             spawn_width_cap: 0,
