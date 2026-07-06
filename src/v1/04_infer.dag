@@ -5734,7 +5734,6 @@ fn build_type_env(module: ResolvedModule, parent_index: Map<String, TypedModule>
   } else {
     ancestry_cache.str_bindings
   }
-  let visible_str_bindings = map_merge(ancestry_str_bindings, local_str_bindings)
   let unresolved_env = TypeEnv { bindings: all_local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table }
   let resolved = resolve_env_bindings(env: unresolved_env, module_name: module_name_str, local_names: local_name_set, deps_map: all_deps_map)
   let resolved_env_out = resolved.env

@@ -12764,8 +12764,6 @@ pub fn build_type_env(
         } else {
             ancestry_cache.str_bindings.clone()
         };
-        let visible_str_bindings =
-            v1_rt::rc_map_merge(ancestry_str_bindings.clone(), local_str_bindings.clone());
         let unresolved_env = Rc::new(TypeEnv {
             bindings: all_local_bindings.clone(),
             str_bindings: local_str_bindings.clone(),
