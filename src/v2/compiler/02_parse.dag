@@ -1369,8 +1369,42 @@ fn parse_grammar_choice_ambiguity_diagnostic(at: Locus, count: Int) -> Diagnosti
   Diagnostic {
     reason: ^parse_grammar_choice_ambiguity,
     at: at,
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: match count > 0 {
+      true => Unavailable { reason: ExternalContractUnknown }
+      false => Unavailable { reason: UserInputBoundary }
+    }
   }
+}
+
+fn parse_grammar_choice_ambiguity_row_diagnostic(at: Locus, row: GrammarChoiceAmbiguityRow) -> Diagnostic {
+  let overlap_count = length(xs: row.overlap_terminals)
+  parse_grammar_choice_ambiguity_diagnostic(
+    at: at,
+    count: if row.both_nullable && overlap_count == 0 { 1 } else { overlap_count }
+  )
+}
+
+fn grammar_choice_ambiguity_row_diagnostic_list(at: Locus, root: GrammarRoot) -> List<Diagnostic> {
+  fold_list(
+    xs: grammar_choice_ambiguity_roster(root: root),
+    empty: Empty,
+    cons: fn(acc, row) {
+      list_snoc_item(
+        xs: acc,
+        item: parse_grammar_choice_ambiguity_row_diagnostic(at: at, row: row)
+      )
+    }
+  )
+}
+
+fn grammar_choice_ambiguity_rejection_diagnostics(at: Locus, root: GrammarRoot) -> NonEmptyDiagnostics {
+  parse_diags_to_non_empty(
+    diags: grammar_choice_ambiguity_row_diagnostic_list(at: at, root: root),
+    default: parse_grammar_choice_ambiguity_diagnostic(
+      at: at,
+      count: grammar_choice_ambiguity_count(root: root)
+    )
+  )
 }
 
 fn grammar_empty_corner_list() -> List<Symbol> {
@@ -1543,9 +1577,7 @@ fn grammar_validate_for_parse(root: GrammarRoot, at: Locus) -> Outcome<Validated
       } else {
         if grammar_has_choice_ambiguity(root: root) {
           Rejected {
-            diagnostics: diagnostics_singleton(
-              d: parse_grammar_choice_ambiguity_diagnostic(at: at, count: 1)
-            )
+            diagnostics: grammar_choice_ambiguity_rejection_diagnostics(at: at, root: root)
           }
         } else {
           Accepted { value: ValidatedGrammarRoot { root: root }, diagnostics: None }
