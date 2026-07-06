@@ -18,11 +18,7 @@ env:
 jobs:
   ci:
     runs-on: [self-hosted, linux, arm64]
-<<<<<<< HEAD
     timeout-minutes: 10
-=======
-    timeout-minutes: 250
->>>>>>> e8ace0627b (CI: raise floor step budget 135m→195m (compile-clean timeout receipts).)
     steps:
       - name: Checkout
         uses: actions/checkout@v5
