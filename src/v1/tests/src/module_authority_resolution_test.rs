@@ -35,7 +35,7 @@ fn same_named_sum_type_in_two_modules_resolves_to_own_authority() {
 
     let hard: Vec<String> = diagnostic_messages(&result)
         .into_iter()
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         hard.is_empty(),

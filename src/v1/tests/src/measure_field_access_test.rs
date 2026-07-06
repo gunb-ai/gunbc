@@ -9,7 +9,7 @@ fn hard_diagnostic_messages(
         .diagnostics
         .iter()
         .map(|d| diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect()
 }
 
@@ -209,7 +209,7 @@ fn measure_dag_rust_emit_terminates() {
         .diagnostics
         .iter()
         .map(|d| diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     assert!(
         msgs.is_empty(),

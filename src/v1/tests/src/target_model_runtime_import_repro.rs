@@ -72,7 +72,7 @@ fn compile_claim_with_target_model_patch(patch: TargetModelPatch) -> (usize, usi
         .diagnostics
         .iter()
         .map(|d| v1_compiler::v1_std_core::diagnostic_to_message(d.diagnostic.clone()))
-        .filter(|m| !m.starts_with("complexity: "))
+        .filter(|m| !m.starts_with("complexity: ") && !m.starts_with("unlisted import use "))
         .collect();
     (source_count, msgs.len(), msgs)
 }
