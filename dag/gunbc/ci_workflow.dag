@@ -348,11 +348,7 @@ fn gunbc_ci_rust_job_backstop_timeout_minutes() -> Int {
 }
 
 data gunbc_ci_job_timeout_policy_disposition: Disposition = Terminal {
-<<<<<<< HEAD
   reason: "gunbc CI budget semantics (operator ruling 2026-07-06): floor step gunbc_ci_floor_step_timeout_minutes (10m) enforced at STEP level (RED-by-failure); ci job backstop gunbc_ci_job_backstop_timeout_minutes() = release build + floor + aux + prelude (65m) so cold release build is not killed by a job cap shorter than gunbc_ci_release_build_step_timeout_minutes (receipt run 28819559597 @ 201371c: 10m job kill aborted cargo mid-build). rust_tests keeps step-sum job backstop gunbc_ci_rust_job_backstop_timeout_minutes() = warm + gate + aux + prelude (106m at current step carriers: 46+45+5+5+5; warm strictly > gate is the serializer-witnessed separation - cold-cache storms land in warm, never eat the gate budget) — job cap must cover step budgets so gates reach RED-by-step-failure, not job-cancelled silent-pass (#6323 starvation-kill scoped to ci/floor only on main). dissolve-on: compile-clean scoping/memoization shrinks floor under measured envelope."
-=======
-  reason: "gunbc CI budget semantics (operator ruling 2026-07-06): floor step gunbc_ci_floor_step_timeout_minutes (10m) enforced at STEP level (RED-by-failure); ci job backstop gunbc_ci_job_backstop_timeout_minutes() = release build + floor + aux + prelude (65m) so cold release build is not killed by a job cap shorter than gunbc_ci_release_build_step_timeout_minutes (receipt run 28819559597 @ 201371c: 10m job kill aborted cargo mid-build). rust_tests keeps step-sum job backstop gunbc_ci_rust_job_backstop_timeout_minutes() = warm + gate + aux + prelude (75m at current step carriers: 15+45+5+5+5) — job cap must cover step budgets so gates reach RED-by-step-failure, not job-cancelled silent-pass (#6323 starvation-kill scoped to ci/floor only on main). dissolve-on: compile-clean scoping/memoization shrinks floor under measured envelope."
->>>>>>> origin/main
 }
 
 fn ci_deploy_job(stage: DeployStage) -> Job {
