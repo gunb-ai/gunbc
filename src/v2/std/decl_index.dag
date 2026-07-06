@@ -31,6 +31,8 @@ fn export_signature_facts(pool_roots: List<String>) -> List<DeclFact> {
   export_signature_facts(pool_roots: pool_roots)
 }
 
+data export_signature_facts_host_scaffold_dissolution_trigger: String = "SCAFFOLD (§7 hand-Rust shrink-to-zero): stage0 SOURCE projection in src/v1/stage0/src/coproduct_reflection.rs (`marshal_fn_export_signature_node`, `eval_export_signature_facts`). Strict sibling of `decl_facts` / `marshal_decl_fact_node` — reuses `decl_facts_for_roots` (#5966 neat-fox-279 corpus walker); no second whole-tree walk authority. DISSOLVES WHEN `dag/std/interface_summary.dag::interface_summary_v0_dissolution_trigger` (v2 native signature export, FLAG D). Census: deletes with the #5966 decl_facts host-builtin family, not as an independent Rust island."
+
 fn logical_qualified_name_from_module(module_name: String, name: String) -> String {
   let start = if module_name.starts_with(prefix: "v2.") { 3 } else { 0 }
   let logical = module_name.substring(start: start, end: module_name.length())

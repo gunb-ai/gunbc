@@ -156,14 +156,19 @@ fn import_interface_hashes_for_module(
   rel_path: String,
   edges: List<ImportResolutionFact>,
   summaries: List<InterfaceSummary>
-) -> List<InterfaceHash> {
+) -> List<InterfaceHash>? {
   fold(
     direct_import_modules(rel_path: rel_path, edges: edges),
-    init: Empty,
+    init: Present { value: Empty },
     f: fn(acc, import_module) {
-      match interface_hash_for_module_path(summaries: summaries, module_path: import_module) {
-        Present { value: hash } => list_snoc_item(xs: acc, item: hash)
-        Absent => acc
+      match acc {
+        Absent => Absent
+        Present { value: hashes } =>
+          match interface_hash_for_module_path(summaries: summaries, module_path: import_module) {
+            Present { value: hash } =>
+              Present { value: list_snoc_item(xs: hashes, item: hash) }
+            Absent => Absent
+          }
       }
     }
   )
@@ -174,21 +179,27 @@ fn module_key_for_rel_path(
   module_path: NonEmptyStr,
   source_hash: ContentHash,
   pool_roots: List<String>
-) -> ModuleKey {
+) -> ModuleKey? {
   let summaries = interface_summaries_live(pool_roots: pool_roots)
   let edges = import_resolution_facts_live(
     pool_roots: pool_roots,
     importer_roots: pool_roots,
     exclude_substrings: []
   )
-  module_key(
-    source_hash: source_hash,
-    direct_import_interface_hashes: import_interface_hashes_for_module(
-      rel_path: rel_path,
-      edges: edges,
-      summaries: summaries
-    )
-  )
+  match import_interface_hashes_for_module(
+    rel_path: rel_path,
+    edges: edges,
+    summaries: summaries
+  ) {
+    Present { value: import_hashes } =>
+      Present {
+        value: module_key(
+          source_hash: source_hash,
+          direct_import_interface_hashes: import_hashes
+        )
+      }
+    Absent => Absent
+  }
 }
 
 fn interface_summary_for_module(
@@ -205,6 +216,24 @@ fn interface_summary_for_module(
         }
     }
   })
+}
+
+test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool {
+  let edges = [
+    ImportResolutionFact {
+      path: "src/mod.dag",
+      import_module: "missing.other",
+      target_declared: true
+    }
+  ]
+  match import_interface_hashes_for_module(
+    rel_path: "src/mod.dag",
+    edges: edges,
+    summaries: Empty
+  ) {
+    Absent => true
+    Present { value: _ } => false
+  }
 }
 
 data construction_justification: ConstructionJustification = ConstructionJustification {

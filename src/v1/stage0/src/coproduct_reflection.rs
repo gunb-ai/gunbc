@@ -1045,9 +1045,11 @@ fn marshal_decl_fact_node(
     }
 }
 
+// SCAFFOLD (§7 hand-Rust shrink-to-zero): see
+// `v2.std.decl_index::export_signature_facts_host_scaffold_dissolution_trigger`.
 // Host SOURCE half for `export_signature_facts`; strict sibling of `marshal_decl_fact_node` /
-// `eval_decl_facts`. Dissolves when v2 exposes signature export natively — same trigger as
-// `dag/std/interface_summary.dag::interface_summary_v0_dissolution_trigger`.
+// `eval_decl_facts`. Reuses `decl_facts_for_roots` (#5966 neat-fox-279) — no new corpus walk.
+// Dissolves per `dag/std/interface_summary.dag::interface_summary_v0_dissolution_trigger`.
 fn marshal_fn_export_signature_node(
     ctx: &InterpContext,
     si: &Rc<HashMap<String, Rc<NewlineIndex>>>,

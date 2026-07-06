@@ -4,6 +4,7 @@ import std.interface_summary { export_entry_fingerprint }
 import std.types { ContentHash, NonEmptyStr, List }
 import v2.lens.interface_summary { interface_summary_for_module }
 import v2.std.collection { Present, Absent, optional_absent }
+import v2.std.decl_index { export_signature_facts_host_scaffold_dissolution_trigger }
 import v2.std.logic { Bool }
 
 data interface_summary_firewall_host_scaffold_note: String = "Host-scaffold witness: reads the live tree via export_signature_facts and module_declaration_facts_live host intrinsics (_facts_live( pattern); floor:host_scaffold — never node-skipped on the CI floor."
@@ -97,4 +98,16 @@ test fn interface_summary_firewall_body_only_edit_is_green() -> Bool {
 
 test fn interface_summary_firewall_signature_edit_is_red() -> Bool {
   signature_edit_changes_export_fingerprint()
+}
+
+test fn export_signature_facts_host_scaffold_receipt_cites_dissolution_authorities() -> Bool {
+  string_contains(s: export_signature_facts_host_scaffold_dissolution_trigger, pattern: "#5966")
+    && string_contains(
+      s: export_signature_facts_host_scaffold_dissolution_trigger,
+      pattern: "interface_summary_v0_dissolution_trigger"
+    )
+    && string_contains(
+      s: export_signature_facts_host_scaffold_dissolution_trigger,
+      pattern: "decl_facts_for_roots"
+    )
 }
