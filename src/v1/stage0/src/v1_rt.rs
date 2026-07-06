@@ -3,8 +3,7 @@
 
 #![allow(unused_variables, dead_code)]
 
-use im_rc::HashMap;
-use im_rc::{OrdSet as BTreeSet, Vector as Vec};
+use im_rc::{HashMap, OrdSet as BTreeSet, Vector as Vec};
 use std::rc::Rc;
 
 #[cfg(feature = "text_lookup_work_counter")]
@@ -66,9 +65,10 @@ pub fn record_source_chars_index_lookup() {
 #[cfg(not(feature = "text_lookup_work_counter"))]
 pub fn record_source_chars_index_lookup() {}
 
-// Vec here is im_rc's persistent Vector (one realization with the interpreter's
-// Value::List). VecCompat papers the two API deltas the emitter's method rows
-// rely on (first/join) so emitted call sites stay identical across carriers.
+// Vec here is im_rc's persistent Vector (one realization with the
+// interpreter's Value::List). VecCompat papers the std-Vec API deltas the
+// emitter's method rows rely on (first/push/with_capacity; join via VecJoin)
+// so emitted call sites stay identical across carriers.
 pub trait VecCompat<T> {
     fn first(&self) -> Option<&T>;
     fn push(&mut self, item: T);

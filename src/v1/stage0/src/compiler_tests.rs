@@ -428,7 +428,7 @@ mod compiler_tests {
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
                 let entry_pairs = discover_dag_files("dag/extdeps/llm");
-                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dag"]));
+                let sources = std::rc::Rc::new(resolve_source_closure(entry_pairs, &["dag"]).into());
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,
                     crate::v1_compiler_artifact::RenderTarget::Rust,
@@ -497,7 +497,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = std::rc::Rc::new(self_compile_sources());
+                let sources = std::rc::Rc::new(self_compile_sources().into());
                 let result = crate::v1_compiler_compile::resolve_sources(sources);
 
                 let errors: Vec<_> = result
@@ -529,7 +529,8 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = std::rc::Rc::new(self_compile_sources());
+                let sources: std::rc::Rc<im_rc::Vector<_>> =
+                    std::rc::Rc::new(self_compile_sources().into());
                 let source_count = sources.len();
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,
@@ -585,7 +586,7 @@ mod compiler_tests {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
             .spawn(|| {
-                let sources = std::rc::Rc::new(self_compile_sources());
+                let sources = std::rc::Rc::new(self_compile_sources().into());
 
                 let result = crate::v1_compiler_compile::compile_sources(
                     sources,

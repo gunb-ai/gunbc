@@ -49,9 +49,6 @@ type EmitGraphInfo {
   variant_to_enum: Map<String, String>
   owned_bindings: Set<String>
 
-  move_sites_index: Map<String, Map<String, Bool>>
-  move_sites: Map<String, Bool>
-
   read_only_params_index: Map<String, Set<String>>
   read_only_params: Set<String>
 
