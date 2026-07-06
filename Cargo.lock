@@ -318,6 +318,7 @@ dependencies = [
  "bitmaps",
  "rand_core",
  "rand_xoshiro",
+ "serde",
  "sized-chunks",
  "typenum",
  "version_check",
@@ -722,6 +723,7 @@ dependencies = [
 name = "v1-compiler-tests"
 version = "0.1.0"
 dependencies = [
+ "im-rc",
  "serde",
  "serde_json",
  "v1-compiler",
@@ -731,6 +733,7 @@ dependencies = [
 name = "v1-stage0-core"
 version = "0.1.0"
 dependencies = [
+ "im-rc",
  "serde",
  "serde_json",
  "stacker",
@@ -742,6 +745,7 @@ dependencies = [
 name = "v1-stage0-emit-core"
 version = "0.1.0"
 dependencies = [
+ "im-rc",
  "serde",
  "stacker",
  "v1-stage0-core",

@@ -78,7 +78,7 @@ fn apply_rec<T>(x: T, g: fn(T) -> Int) -> Int { g(x) }
 fn use_bad() -> Int { apply_rec(x: Rec { v: 7 }, g: fn(r) { r.nope }) }
 "#;
     let sources = resolve_imports_transitively("test.dag", src);
-    let resolved = compile_to_resolved(Rc::new(sources));
+    let resolved = compile_to_resolved(Rc::new(sources.into()));
     let has_diag = resolved
         .diagnostics
         .iter()

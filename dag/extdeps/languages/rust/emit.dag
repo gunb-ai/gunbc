@@ -18,7 +18,7 @@ data rust_keywords: Map<String, String> = {
 }
 
 data rust_container_templates: Map<String, String> = {
-  "list": "Vec<\{0\}>", "set": "std::collections::BTreeSet<\{0\}>",
+  "list": "Vec<\{0\}>", "set": "BTreeSet<\{0\}>",
   "optional": "Option<\{0\}>", "map": "HashMap<\{0\}, \{1\}>",
   "free_monoid": "Vec<\{0\}>", "partial_function": "HashMap<\{0\}, \{1\}>",
   "boolean_algebra": "bool"

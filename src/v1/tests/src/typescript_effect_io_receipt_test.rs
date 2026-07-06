@@ -74,7 +74,7 @@ fn decode_freemonoid_string(val: &Value, ctx: &InterpContext) -> String {
 }
 
 fn emitted_source(function: &str) -> String {
-    let resolved = compile_to_resolved(Rc::new(witness_sources()));
+    let resolved = compile_to_resolved(Rc::new(witness_sources().into()));
     let blocking: Vec<String> = resolved
         .diagnostics
         .iter()

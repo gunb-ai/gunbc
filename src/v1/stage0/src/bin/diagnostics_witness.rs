@@ -5,7 +5,7 @@
 //! Exercises compile-time diagnostic variants, grounded messages, and span
 //! mapping via `compile_multi` until that harness is witness-layer importable.
 
-use std::collections::HashMap;
+use im_rc::HashMap;
 use std::env;
 use std::process::ExitCode;
 use std::rc::Rc;
@@ -130,7 +130,7 @@ fn resolve_imports_transitively(
         }
     }
 
-    let mut sources: Vec<Rc<SourceFile>> = seen.into_values().collect();
+    let mut sources: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
     sources.push(Rc::new(SourceFile {
         path: entry_path.to_string(),
         content: entry_content.to_string(),
@@ -146,8 +146,8 @@ fn compile_multi(module_index: &ModuleIndex, files: &[(&str, &str)]) -> Rc<Pipel
             all_sources.entry(src.path.clone()).or_insert(src);
         }
     }
-    let sources: Vec<Rc<SourceFile>> = all_sources.into_values().collect();
-    compile_sources(Rc::new(sources), RenderTarget::Rust)
+    let sources: Vec<Rc<SourceFile>> = all_sources.into_iter().map(|(_, v)| v).collect();
+    compile_sources(Rc::new(sources.into()), RenderTarget::Rust)
 }
 
 fn diag_line_col(diag: &ErrorNode, source: &str, file: &str) -> (i64, i64) {

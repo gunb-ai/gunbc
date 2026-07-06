@@ -1,5 +1,6 @@
+use im_rc::HashMap;
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -287,7 +288,8 @@ fn resolve_virtual_source_with_imports(
             }
         }
     }
-    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = seen.into_values().collect();
+    let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
+        seen.into_iter().map(|(_, v)| v).collect();
     sources.sort_by(|a, b| a.path.cmp(&b.path));
     sources.push(Rc::new(v1_compiler_compile::SourceFile {
         path: entry_path.to_string(),
@@ -311,7 +313,7 @@ pub fn compile_dag_rust_emit_check(
     let module_index = build_module_path_index_from_witness_roots();
     let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
     let result = v1_compiler_compile::compile_sources(
-        Rc::new(sources),
+        Rc::new(sources.into()),
         crate::v1_compiler_artifact::RenderTarget::Rust,
     );
     let hard_diagnostics = result
@@ -757,7 +759,7 @@ fn compile_clean_resolve_has_hard_errors(
     compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
 }
 
-fn compile_clean_pipeline_has_hard_errors(diagnostics: &[Rc<ErrorNode>]) -> bool {
+fn compile_clean_pipeline_has_hard_errors(diagnostics: &im_rc::Vector<Rc<ErrorNode>>) -> bool {
     use crate::v1_std_core::CompilerDiagnostic;
     diagnostics.iter().any(|d| {
         !matches!(
@@ -782,7 +784,7 @@ pub fn witness_layer_roots_compile_clean_check() -> bool {
         Some(sources) => sources,
         None => return false,
     };
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
     !compile_clean_resolve_has_hard_errors(&result)
 }
 
@@ -794,7 +796,7 @@ pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
         Some(sources) => sources,
         None => return false,
     };
-    let result = v1_compiler_compile::compile_sources(Rc::new(sources), RenderTarget::Dag);
+    let result = v1_compiler_compile::compile_sources(Rc::new(sources.into()), RenderTarget::Dag);
     !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
 }
 
@@ -934,8 +936,8 @@ pub(crate) fn module_graph_facts_build_count_for_test() -> usize {
 #[cfg(test)]
 mod shared_cache_collision_guard_tests {
     use super::check_module_source_identity;
+    use im_rc::HashMap;
     use std::cell::RefCell;
-    use std::collections::HashMap;
 
     // Collision-honesty receipt (union-resolve §6.3): the shared typed-module cache's
     // source-identity guard fails LOUD when one module name resolves from two declaring files
@@ -1011,7 +1013,7 @@ fn resolve_transitively_bfs_legacy(
             }
         }
     }
-    let mut result: Vec<_> = seen.into_values().collect();
+    let mut result: Vec<_> = seen.into_iter().map(|(_, v)| v).collect();
     result.sort_by(|a, b| a.path.cmp(&b.path));
     result
 }
@@ -1440,7 +1442,8 @@ fn resolve_entry_with_parse_cache(
     let source_indices = Rc::new(si_map);
     let global_table = index.intern_table.borrow().clone();
 
-    let graph = v1_compiler_resolve::resolve_modules(Rc::new(modules), source_indices.clone());
+    let graph =
+        v1_compiler_resolve::resolve_modules(Rc::new(modules.into()), source_indices.clone());
 
     if graph
         .diagnostics
@@ -1544,10 +1547,10 @@ fn reconcile_with_typed_cache(
     module_identity: &RefCell<HashMap<String, String>>,
 ) -> Result<Rc<ResolvedGraph>, String> {
     reset_type_env_lookup_profile();
-    let mut modules: Rc<Vec<Rc<TypedModule>>> = Rc::new(Vec::new());
+    let mut modules: Rc<im_rc::Vector<Rc<TypedModule>>> = Rc::new(im_rc::Vector::new());
     let mut module_index: Rc<HashMap<String, Rc<TypedModule>>> = v1_rt::rc_empty_map();
     let mut item_registry: Rc<HashMap<String, Rc<ItemInfo>>> = v1_rt::rc_empty_map();
-    let mut diag_chunks: Vec<Rc<Vec<Rc<ErrorNode>>>> = Vec::new();
+    let mut diag_chunks: Vec<Rc<im_rc::Vector<Rc<ErrorNode>>>> = Vec::new();
     let mut variant_surfaces: Rc<HashMap<String, Rc<v1_compiler_infer::VariantExportSurface>>> =
         v1_rt::rc_empty_map();
 
@@ -1622,8 +1625,8 @@ fn reconcile_with_typed_cache(
 
     let expanded_registry =
         v1_compiler_infer::expand_transitive_services(modules.clone(), item_registry, 5);
-    let diagnostics: Rc<Vec<Rc<ErrorNode>>> = Rc::new({
-        let mut acc = Vec::new();
+    let diagnostics: Rc<im_rc::Vector<Rc<ErrorNode>>> = Rc::new({
+        let mut acc = im_rc::Vector::new();
         for chunk in &diag_chunks {
             acc.extend(chunk.iter().cloned());
         }
@@ -1671,7 +1674,7 @@ fn format_error_node(
 }
 
 fn format_error_nodes(
-    diags: &Rc<Vec<Rc<ErrorNode>>>,
+    diags: &Rc<im_rc::Vector<Rc<ErrorNode>>>,
     source_indices: &Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> String {
     diags
@@ -1693,9 +1696,13 @@ fn resolved_graph_from_sources(
     String,
 > {
     let result = match typecheck_gate {
-        ResolveTypecheckGate::Strict => v1_compiler_compile::compile_to_resolved(Rc::new(sources)),
+        ResolveTypecheckGate::Strict => {
+            v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()))
+        }
         ResolveTypecheckGate::DiscoveryCorpusAdvisory => {
-            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(sources))
+            v1_compiler_compile::compile_to_resolved_discovery_corpus_advisory(Rc::new(
+                sources.into(),
+            ))
         }
     };
 
@@ -2099,7 +2106,7 @@ pub fn whole_corpus_semantic_oracle_snapshot(
     use crate::v1_compiler_infer_emit_info::RustCorpusRepr::{FaithfulFreeMonoid, HostNative};
 
     let picked = whole_tree_strict_sources(source_roots, exclude_substrings)?;
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources));
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(picked.sources.into()));
     let graph = result.graph.as_ref().ok_or_else(|| {
         let si: HashMap<String, Rc<NewlineIndex>> = result
             .newline_indices
@@ -2307,7 +2314,7 @@ pub fn handle_run_with_options(
     };
     eprintln!("resolved {} sources", sources.len());
 
-    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources.into()));
 
     let has_errors = result
         .diagnostics
@@ -3005,7 +3012,7 @@ pub fn discover_owned_data_decls(
     let mut all_records = Vec::new();
     for group in groups {
         let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> =
-            group.sources.into_values().collect();
+            group.sources.into_iter().map(|(_, v)| v).collect();
         sources.sort_by(|a, b| a.path.cmp(&b.path));
         let (graph, source_indices) =
             resolved_graph_from_sources(sources, ResolveTypecheckGate::DiscoveryCorpusAdvisory)?;
@@ -5801,7 +5808,8 @@ mod floor_skip_frontier_tests {
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
     use crate::v1_std_core::{authored_name_at, byte_to_line_col};
-    use std::collections::{HashMap, HashSet};
+    use im_rc::HashMap;
+    use std::collections::HashSet;
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -6365,7 +6373,7 @@ mod floor_witness_a_prove {
         scan_test_decl_lines, DiscoveryRow, FileLineRange, FloorDiffEdits,
     };
     use crate::v1_interpreter::{self, ExecutionMode, Value};
-    use std::collections::HashMap;
+    use im_rc::HashMap;
     use std::path::PathBuf;
 
     const FIXTURE_REL: &str = "src/v2/test/fixture/floor_skip/node_precise_discriminator_test.dag";
@@ -8328,7 +8336,8 @@ mod construction_justification_hygiene_tests {
         declares_construction_justification, discover_floor_corpus_rows, unjustified_lens_modules,
         wall_now_authority_refs, FLOOR_DISCOVERY_EXCLUDES,
     };
-    use std::collections::{BTreeSet, HashMap};
+    use std::collections::BTreeSet;
+    use std::collections::HashMap;
     use std::path::PathBuf;
 
     fn workspace_root() -> PathBuf {
@@ -8971,7 +8980,8 @@ pub fn import_resolution_facts(
     let abs_pool_roots = pool_roots_abs(pool_roots);
     let abs_importer_roots = pool_roots_abs(importer_roots);
     let declared: HashSet<String> = build_module_path_index(&abs_pool_roots)
-        .into_keys()
+        .into_iter()
+        .map(|(k, _)| k)
         .collect();
     let mut out = Vec::new();
     for root in &abs_importer_roots {
@@ -11096,7 +11106,10 @@ fn resolve_dag_path_for_transport_script(path: &str) -> PathBuf {
 
 fn parse_module_items_for_transport_script(
     path: &str,
-) -> (Rc<Vec<Rc<Node>>>, Rc<HashMap<String, Rc<NewlineIndex>>>) {
+) -> (
+    Rc<im_rc::Vector<Rc<Node>>>,
+    Rc<HashMap<String, Rc<NewlineIndex>>>,
+) {
     let resolved = resolve_dag_path_for_transport_script(path);
     let path_str = resolved.to_string_lossy();
     let content = std::fs::read_to_string(&resolved).unwrap_or_else(|e| {
@@ -11576,7 +11589,7 @@ pub struct ExtdepsShapeTransportPolicyModuleFacts {
 pub fn parse_extdeps_module_items(
     path: &str,
 ) -> (
-    Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
     use crate::v1_compiler_parse::parse;
@@ -11624,7 +11637,7 @@ pub fn shell_argv_nodes_for_operation(
     service: String,
     operation: String,
 ) -> (
-    Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) {
     let (items, source_indices) = parse_extdeps_module_items(&path);
@@ -11753,7 +11766,7 @@ fn extdeps_module_source_nickname_count_in_node(
 }
 
 fn extdeps_gist_create_declares_filename_for_items(
-    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::param_node_name_at;
@@ -11797,7 +11810,7 @@ fn extdeps_gist_map_keys_use_filename(
 }
 
 fn extdeps_gist_create_files_keyed_by_filename_for_items(
-    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> bool {
     use crate::v1_std_core::{is_rest_transport, transport_request_body};
@@ -11931,7 +11944,7 @@ pub fn extdeps_shape_transport_policy_module_facts(
     }
 
     let index = build_module_path_index_from_witness_roots();
-    let real_paths: std::collections::HashSet<String> = index.into_values().collect();
+    let real_paths: std::collections::HashSet<String> = index.into_iter().map(|(_, v)| v).collect();
     let mut source_nickname_literal_count = 0i64;
     for item in items.iter() {
         source_nickname_literal_count +=
@@ -12000,7 +12013,7 @@ fn external_authority_scheme_identity_from_value_node(
 }
 
 fn read_external_authority_anchor_from_items(
-    items: &Rc<Vec<Rc<crate::v1_std_core::Node>>>,
+    items: &Rc<im_rc::Vector<Rc<crate::v1_std_core::Node>>>,
     source_indices: &Rc<HashMap<String, Rc<crate::v1_std_core::NewlineIndex>>>,
 ) -> ExternalAuthorityAnchorProjection {
     use crate::v1_compiler_emit_core_support::is_data_def_item;
@@ -12265,7 +12278,7 @@ pub fn extdeps_external_authority_live_shadow_mask_holds() -> bool {
 #[cfg(test)]
 mod doc_reachability_tests {
     use super::*;
-    use std::collections::HashMap;
+    use im_rc::HashMap;
 
     fn edges_of(pairs: &[(&str, &[&str])]) -> HashMap<String, Vec<String>> {
         pairs
@@ -12405,7 +12418,7 @@ pub struct RestTransportCollectResult {
 }
 
 fn rest_transport_field_string(
-    props: Rc<Vec<Rc<Node>>>,
+    props: Rc<im_rc::Vector<Rc<Node>>>,
     prop_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
@@ -12666,7 +12679,7 @@ fn serialize_variant_to_wire_json(
     };
     let policy = resolve_coproduct_wire_policy(
         type_name,
-        ctx.modules.iter().as_ref(),
+        &ctx.modules.iter().cloned().collect::<std::vec::Vec<_>>(),
         ctx.source_indices.as_ref(),
     )
     .unwrap_or_else(|| rust_tagged_object_policy());
@@ -12758,7 +12771,8 @@ mod import_closure_equivalence_tests {
         resolve_entry_with_index, resolve_transitively, resolve_transitively_bfs_legacy,
         witness_layer_roots, workspace_relative_repo_path,
     };
-    use std::collections::{BTreeSet, HashMap};
+    use im_rc::HashMap;
+    use std::collections::BTreeSet;
     use std::path::{Path, PathBuf};
     use std::rc::Rc;
 

@@ -1,4 +1,5 @@
-use std::collections::{BTreeSet, HashMap};
+use im_rc::HashMap;
+use std::collections::BTreeSet;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -616,7 +617,7 @@ fn assert_registry_is_partitioned() -> Result<(), String> {
 fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
     let roots = vec![workspace.join("src/v1"), workspace.join("dag")];
     let sources = source_files_for_roots(&roots, workspace)?;
-    let result = compile_sources(Rc::new(sources), RenderTarget::Rust);
+    let result = compile_sources(Rc::new(sources.into()), RenderTarget::Rust);
     if let Some(message) = stage0_self_compile_refusal_message(result.clone()) {
         return Err(message);
     }
@@ -681,7 +682,7 @@ fn source_files_for_roots(
         }
     }
 
-    let mut result: Vec<Rc<SourceFile>> = seen.into_values().collect();
+    let mut result: Vec<Rc<SourceFile>> = seen.into_iter().map(|(_, v)| v).collect();
     result.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(result)
 }
