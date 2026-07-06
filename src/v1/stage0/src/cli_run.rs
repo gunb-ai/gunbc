@@ -647,6 +647,157 @@ fn build_module_index(source_roots: &[String]) -> ModuleSourceIndex {
     index
 }
 
+/// `primary-precedence` pool indexing: the first root is authoritative; later roots
+/// fill only modules not already present (matches `gunbc compile --dependency-pool-index
+/// primary-precedence` in `dag_compile_clean_transport`).
+fn build_module_index_primary_precedence(source_roots: &[String]) -> ModuleSourceIndex {
+    let mut index = ModuleSourceIndex::new();
+    if source_roots.is_empty() {
+        return index;
+    }
+    index_source_root_into_module_index(&source_roots[0], &mut index, false);
+    for root in &source_roots[1..] {
+        index_source_root_into_module_index(root, &mut index, true);
+    }
+    index
+}
+
+fn index_source_root_into_module_index(
+    root: &str,
+    index: &mut ModuleSourceIndex,
+    pool_fill_only: bool,
+) {
+    let root_path = std::path::Path::new(root);
+    if !root_path.exists() {
+        panic!("source root does not exist: {}", root);
+    }
+    let mut dag_files = Vec::new();
+    collect_dag_files(root_path, &mut dag_files);
+    let mut within_root: HashMap<String, String> = HashMap::new();
+    for path in dag_files {
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+        if let Some(module_path) = extract_module_path(&content) {
+            let rel_path = path.to_string_lossy().to_string();
+            if pool_fill_only {
+                if index.contains_key(&module_path) {
+                    continue;
+                }
+            } else if let Some(existing) = index.get(&module_path) {
+                if existing.path != rel_path {
+                    panic!(
+                        "module-path collision: module '{}' is declared by both '{}' and '{}' — one module, one authority (DESIGN §3); silent last-root-wins shadowing broke the floor (extdeps.shell, 2026-07-01) — de-fork or rename one side",
+                        module_path, existing.path, rel_path
+                    );
+                }
+            }
+            if let Some(existing_path) = within_root.get(&module_path) {
+                panic!(
+                    "duplicate module path '{}' within source root '{}': declared in both '{}' and '{}'",
+                    module_path, root, existing_path, rel_path
+                );
+            }
+            within_root.insert(module_path.clone(), rel_path.clone());
+            index.insert(
+                module_path,
+                Rc::new(v1_compiler_compile::SourceFile {
+                    path: rel_path,
+                    content,
+                }),
+            );
+        }
+    }
+}
+
+fn load_compile_clean_entry_sources(
+    source_roots: &[String],
+    index: &ModuleSourceIndex,
+    facts: &ModuleGraphFactsLive,
+) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
+    let first_root = std::path::Path::new(&source_roots[0]);
+    let mut entry_files = Vec::new();
+    if first_root.is_dir() {
+        let mut dag_paths = Vec::new();
+        collect_dag_files(first_root, &mut dag_paths);
+        for path in dag_paths {
+            let content = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
+            entry_files.push((path.to_string_lossy().to_string(), content));
+        }
+    }
+
+    let skipped_moduleless = moduleless_dag_entry_paths(&entry_files);
+    report_moduleless_dag_entry_skips(&skipped_moduleless);
+
+    let mut entry_for_queue = Vec::new();
+    for (path, content) in &entry_files {
+        if extract_module_path(content).is_some() {
+            entry_for_queue.push(Rc::new(v1_compiler_compile::SourceFile {
+                path: path.clone(),
+                content: content.clone(),
+            }));
+        }
+    }
+
+    let mut sources = resolve_transitively(entry_for_queue, index, facts)?;
+    for (path, content) in entry_files {
+        if extract_module_path(&content).is_none() {
+            continue;
+        }
+        if !sources.iter().any(|s| s.path == path) {
+            sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
+        }
+    }
+    Ok(sources)
+}
+
+fn compile_clean_resolve_has_hard_errors(
+    result: &v1_compiler_compile::ResolvedPipelineResult,
+) -> bool {
+    compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref())
+}
+
+fn compile_clean_pipeline_has_hard_errors(diagnostics: &[Rc<ErrorNode>]) -> bool {
+    use crate::v1_std_core::CompilerDiagnostic;
+    diagnostics.iter().any(|d| {
+        !matches!(
+            *d.diagnostic.clone(),
+            CompilerDiagnostic::ComplexityUnknown { .. }
+        )
+    })
+}
+
+fn witness_layer_roots_compile_clean_sources() -> Option<Vec<Rc<v1_compiler_compile::SourceFile>>> {
+    let roots = witness_layer_roots();
+    let index = build_module_index_primary_precedence(&roots);
+    let facts = build_module_graph_facts_live(&roots);
+    load_compile_clean_entry_sources(&roots, &index, &facts).ok()
+}
+
+/// Resolve/typecheck leg of compile-clean over `witness_layer_roots` (`dag` + `src/v2` only).
+/// Uses `primary-precedence` pool indexing like shell compile, but a narrower root set than
+/// `compile_clean_source_roots()` (which adds `src/v1` for cross-tree perturb receipts).
+pub fn witness_layer_roots_compile_clean_check() -> bool {
+    let sources = match witness_layer_roots_compile_clean_sources() {
+        Some(sources) => sources,
+        None => return false,
+    };
+    let result = v1_compiler_compile::compile_to_resolved(Rc::new(sources));
+    !compile_clean_resolve_has_hard_errors(&result)
+}
+
+/// Emit leg: `--target dag` compile over witness layer roots without shell or disk write.
+/// Green-by-execution consumer for the batch-1 compile-clean gate (DESIGN §5).
+pub fn witness_layer_roots_compile_clean_emit_check() -> bool {
+    use crate::v1_compiler_artifact::RenderTarget;
+    let sources = match witness_layer_roots_compile_clean_sources() {
+        Some(sources) => sources,
+        None => return false,
+    };
+    let result = v1_compiler_compile::compile_sources(Rc::new(sources), RenderTarget::Dag);
+    !compile_clean_pipeline_has_hard_errors(result.diagnostics.as_ref()) && !result.files.is_empty()
+}
+
 /// Workspace-relative path for module-graph closure queries (`v2.lens.module_graph`).
 fn workspace_relative_repo_path(path: &str) -> String {
     let norm = path.strip_prefix("./").unwrap_or(path).replace('\\', "/");
@@ -973,42 +1124,7 @@ fn load_sources(
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
     let index = build_module_index(source_roots);
     let facts = build_module_graph_facts_live(source_roots);
-    let first_root = std::path::Path::new(&source_roots[0]);
-    let mut entry_files = Vec::new();
-    if first_root.is_dir() {
-        let mut dag_paths = Vec::new();
-        collect_dag_files(first_root, &mut dag_paths);
-        for path in dag_paths {
-            let content = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("failed to read {:?}: {}", path, e));
-            entry_files.push((path.to_string_lossy().to_string(), content));
-        }
-    }
-
-    let skipped_moduleless = moduleless_dag_entry_paths(&entry_files);
-    report_moduleless_dag_entry_skips(&skipped_moduleless);
-
-    let mut entry_for_queue = Vec::new();
-    for (path, content) in &entry_files {
-        if let Some(_mod_path) = extract_module_path(content) {
-            let source = Rc::new(v1_compiler_compile::SourceFile {
-                path: path.clone(),
-                content: content.clone(),
-            });
-            entry_for_queue.push(source);
-        }
-    }
-
-    let mut sources = resolve_transitively(entry_for_queue, &index, &facts)?;
-    for (path, content) in entry_files {
-        if extract_module_path(&content).is_none() {
-            continue;
-        }
-        if !sources.iter().any(|s| s.path == path) {
-            sources.push(Rc::new(v1_compiler_compile::SourceFile { path, content }));
-        }
-    }
-    Ok(sources)
+    load_compile_clean_entry_sources(source_roots, &index, &facts)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1177,6 +1293,24 @@ pub fn build_multi_entry_index(source_roots: &[String]) -> MultiEntryIndex {
     MultiEntryIndex {
         source_files: build_module_index(source_roots),
         module_graph_facts: build_module_graph_facts_live(source_roots),
+        intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
+        parse_cache: RefCell::new(HashMap::new()),
+        typed_module_cache: RefCell::new(HashMap::new()),
+        module_source_identity: RefCell::new(HashMap::new()),
+    }
+}
+
+/// Primary-precedence pool for affected-set attribution of `src/v1/*.dag` edits:
+/// witness_layer_roots (dag + src/v2) cannot resolve v1.compiler.* modules alone.
+fn build_v1_attribution_multi_entry_index() -> MultiEntryIndex {
+    let roots = vec![
+        "dag".to_string(),
+        "src/v2".to_string(),
+        "src/v1".to_string(),
+    ];
+    MultiEntryIndex {
+        source_files: build_module_index_primary_precedence(&roots),
+        module_graph_facts: build_module_graph_facts_live(&roots),
         intern_table: RefCell::new(seed_kernel_intern_names(empty_intern_table())),
         parse_cache: RefCell::new(HashMap::new()),
         typed_module_cache: RefCell::new(HashMap::new()),
@@ -4862,6 +4996,25 @@ fn parse_unified_diff_departed_paths(diff_text: &str) -> HashSet<String> {
     departed
 }
 
+fn parse_unified_diff_added_paths(diff_text: &str) -> HashSet<String> {
+    // Wholly-added files (`--- /dev/null` → `+++ b/path`) necessarily touch line 1
+    // (the module header). Attribute at declaration grain; do not conflate with
+    // modify-side module renames (fail-closed below).
+    let mut added = HashSet::new();
+    let mut minus_is_null = false;
+    for line in diff_text.lines() {
+        if let Some(rest) = line.strip_prefix("--- ") {
+            minus_is_null = rest.trim() == "/dev/null";
+        } else if let Some(rest) = line.strip_prefix("+++ b/") {
+            if minus_is_null {
+                added.insert(normalize_repo_path(rest));
+            }
+            minus_is_null = false;
+        }
+    }
+    added
+}
+
 fn floor_diff_edits_from_diff_text(
     index: &MultiEntryIndex,
     diff_text: &str,
@@ -4869,7 +5022,8 @@ fn floor_diff_edits_from_diff_text(
     let line_ranges = parse_unified_diff_line_ranges(diff_text);
     let changed = parse_unified_diff_changed_new_lines(diff_text);
     let departed = parse_unified_diff_departed_paths(diff_text);
-    floor_diff_edits_from_line_ranges(index, &line_ranges, &changed, &departed)
+    let added = parse_unified_diff_added_paths(diff_text);
+    floor_diff_edits_from_line_ranges(index, &line_ranges, &changed, &departed, &added)
 }
 
 fn floor_diff_edits_from_line_ranges(
@@ -4877,12 +5031,21 @@ fn floor_diff_edits_from_line_ranges(
     line_ranges_by_file: &HashMap<String, Vec<FileLineRange>>,
     changed_new_lines_by_file: &HashMap<String, HashSet<i64>>,
     departed_paths: &HashSet<String>,
+    added_paths: &HashSet<String>,
 ) -> Result<FloorDiffEdits, String> {
     let mut overlapping_data_items = HashSet::new();
     let mut edited_test_fns = HashSet::new();
     let mut touched_entry_files = HashSet::new();
     let mut saw_non_dag = false;
     let mut saw_dag = false;
+    let v1_attribution_index = if line_ranges_by_file
+        .keys()
+        .any(|p| normalize_repo_path(p).starts_with("src/v1/"))
+    {
+        Some(build_v1_attribution_multi_entry_index())
+    } else {
+        None
+    };
     for (file_path, ranges) in line_ranges_by_file {
         if !file_path.ends_with(".dag") {
             saw_non_dag = true;
@@ -4907,7 +5070,12 @@ fn floor_diff_edits_from_line_ranges(
                  and the diff does not mark it departed (deletion/rename)"
             ));
         }
-        let (graph, source_indices) = match resolve_entry_with_index(index, file_path) {
+        let resolve_index = if file_norm.starts_with("src/v1/") {
+            v1_attribution_index.as_ref().expect("v1 attribution index")
+        } else {
+            index
+        };
+        let (graph, source_indices) = match resolve_entry_with_index(resolve_index, file_path) {
             Ok(pair) => pair,
             Err(e) => return Err(format!("resolve failed for {file_path}: {e}")),
         };
@@ -4955,8 +5123,9 @@ fn floor_diff_edits_from_line_ranges(
                 }
             }
         }
-        // Module-line edits (line 1) stay fail-closed — renaming can change entry identity.
-        if changed.contains(&1) {
+        // Module-line edits (line 1) stay fail-closed for modifies — renaming can
+        // change entry identity. Wholly-added files necessarily touch line 1.
+        if changed.contains(&1) && !added_paths.contains(&file_norm) {
             return Err(format!("diff before first declaration in {file_path}"));
         }
         let has_pre_decl = changed.iter().any(|&l| l < first_decl_line);
@@ -5196,6 +5365,7 @@ pub fn run_discovery_corpus_with_options(
             &line_ranges_by_file,
             &changed_new_lines_by_file,
             &name_status_departed_paths,
+            &parse_unified_diff_added_paths(&diff_text),
         ) {
             Ok(edits) => (true, edits),
             Err(msg) => {
@@ -5594,8 +5764,9 @@ fn run_discovery_rows(
 mod floor_skip_frontier_tests {
     use super::{
         build_multi_entry_index, entry_touches_rerun_frontier, floor_diff_edits_from_diff_text,
-        list_value_from_vec, parse_unified_diff_changed_new_lines, parse_unified_diff_line_ranges,
-        rerun_frontier_nodes_for_entry, scan_test_decl_lines, FileLineRange,
+        list_value_from_vec, parse_unified_diff_added_paths, parse_unified_diff_changed_new_lines,
+        parse_unified_diff_line_ranges, rerun_frontier_nodes_for_entry, scan_test_decl_lines,
+        FileLineRange,
     };
     use crate::v1_compiler_infer_items::{item_kind, ItemKind, ResolvedGraph};
     use crate::v1_interpreter::ExecutionMode;
@@ -5680,6 +5851,22 @@ diff --git a/src/v2/lens/affected_set.dag b/src/v2/lens/affected_set.dag
         let changed = parse_unified_diff_changed_new_lines(diff);
         let file = "src/v2/lens/affected_set.dag";
         assert_eq!(changed.get(file), Some(&HashSet::from([42])));
+    }
+
+    #[test]
+    fn parse_unified_diff_added_paths_detects_new_files() {
+        let diff = "\
+diff --git a/dag/tools/new_transport.dag b/dag/tools/new_transport.dag
+new file mode 100644
+--- /dev/null
++++ b/dag/tools/new_transport.dag
+@@ -0,0 +1,3 @@
++module tools.new_transport
++
++fn run() -> Bool { true }
+";
+        let added = parse_unified_diff_added_paths(diff);
+        assert!(added.contains("dag/tools/new_transport.dag"));
     }
 
     #[test]
@@ -7877,6 +8064,19 @@ fn emit_source_root_ingest_monoid(records: &[SourceRootReadRecord]) -> Result<St
     Ok(out)
 }
 
+fn emit_source_root_ref_import(records: &[SourceRootReadRecord]) -> String {
+    let mut variants: Vec<&str> = records.iter().map(|r| r.source_root.as_str()).collect();
+    variants.sort_unstable();
+    variants.dedup();
+    if variants.is_empty() {
+        return String::new();
+    }
+    format!(
+        "import v2.std.cross_tree.import_model {{ {} }}\n",
+        variants.join(", ")
+    )
+}
+
 pub fn emit_source_root_ingest_manifest(
     path: &Path,
     records: &[SourceRootReadRecord],
@@ -7906,6 +8106,9 @@ pub fn emit_source_root_ingest_manifest(
     out.push_str("import v2.std.algebra { Cons, Empty }\n");
     out.push_str("import v2.std.artifact { Artifact, SourceFile }\n");
     out.push_str("import v2.std.text { String }\n");
+    if !inline_records.is_empty() {
+        out.push_str(&emit_source_root_ref_import(inline_records));
+    }
     if entry_admission.is_some() {
         out.push_str("import v2.compiler.name_resolve {\n");
         out.push_str("  Admission,\n");
@@ -10682,6 +10885,37 @@ pub fn test_migration_delete_guard_holds() -> bool {
     match test_migration_delete_guard_uncovered_deletes_inner() {
         Ok(violations) => violations.is_empty(),
         Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod witness_layer_roots_compile_clean_tests {
+    use super::*;
+
+    /// Hand-Rust receipt: the emit leg is a strict superset of resolve for the same sources.
+    #[test]
+    fn emit_success_implies_resolve_success_on_live_witness_roots() {
+        if witness_layer_roots_compile_clean_emit_check() {
+            assert!(witness_layer_roots_compile_clean_check());
+        }
+    }
+
+    /// Hand-Rust receipt: primary-precedence pool defers to the first witness root.
+    #[test]
+    fn primary_precedence_pool_fills_only_absent_modules() {
+        let roots = witness_layer_roots();
+        if roots.len() < 2 {
+            return;
+        }
+        let strict = build_module_index(&roots);
+        let pooled = build_module_index_primary_precedence(&roots);
+        assert!(pooled.len() >= strict.len());
+        for (module_path, source) in &strict {
+            let pooled_source = pooled
+                .get(module_path)
+                .unwrap_or_else(|| panic!("missing pooled entry for {module_path}"));
+            assert_eq!(pooled_source.path, source.path);
+        }
     }
 }
 

@@ -114,7 +114,7 @@ fn ci_release_build_line() -> String {
       "\"$CARGO_HOME/bin/cargo\" build -p v1-compiler --release --features ",
       ci_release_features
     ),
-    " --bins"
+    " --bin claim_executor --bin gunbc"
   )
 }
 

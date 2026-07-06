@@ -1,0 +1,14 @@
+module test.claim.parse_test
+
+import tools.parse_witness_transport { run_parse_witness_floor, run_parse_witness_perf }
+import v2.std.logic { Bool }
+
+data parse_witness_provenance: String = "Floor witness migrated from src/v1/tests/src/parse.rs (52 v1 #[test] fns, 915 LOC): syntax parsing, span grounding, strict corpus parses, tokenizer smoke/keyword/operator checks, keyword-as-field-name allow/forbid matrix, gist transitive-closure parse, and lookup/performance invariants. Executed via parse_witness host physics (floor suite: 44 checks; perf suite: 7 scaling/lookup checks) until v1.compiler.parse/tokenize are witness-layer importable. Not carried: parse_multiline_pipe_chain was #[ignore]d (40s hang, never run in CI)."
+
+test fn parse_witness_floor_holds() -> Bool {
+  run_parse_witness_floor()
+}
+
+test fn parse_witness_perf_holds() -> Bool {
+  run_parse_witness_perf()
+}

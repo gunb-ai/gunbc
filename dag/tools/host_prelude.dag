@@ -23,6 +23,22 @@ fn assign_root_stmt() -> ShellStmt {
 }
 
 fn build_bin_if_absent_stmt(bin_path: ShellWord, root: ShellWord, bin_name: String) -> ShellStmt {
+  build_bin_if_absent_stmt_with_features(bin_path: bin_path, root: root, bin_name: bin_name, features: "")
+}
+
+fn build_bin_if_absent_stmt_with_features(bin_path: ShellWord, root: ShellWord, bin_name: String, features: String) -> ShellStmt {
+  let cargo_build = if features == "" {
+    command(words: [
+      lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
+      lit(text: "--release"), lit(text: "--bin"), lit(text: bin_name)
+    ])
+  } else {
+    command(words: [
+      lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
+      lit(text: "--release"), lit(text: "--features"), lit(text: features),
+      lit(text: "--bin"), lit(text: bin_name)
+    ])
+  }
   If {
     cond: test_not_executable(path: bin_path),
     then: [
@@ -31,10 +47,7 @@ fn build_bin_if_absent_stmt(bin_path: ShellWord, root: ShellWord, bin_name: Stri
           AndOr {
             left: command(words: [lit(text: "cd"), root]),
             op: AndThen,
-            right: command(words: [
-              lit(text: "cargo"), lit(text: "build"), lit(text: "-p"), lit(text: "v1-compiler"),
-              lit(text: "--release"), lit(text: "--bin"), lit(text: bin_name)
-            ])
+            right: cargo_build
           }
         ] },
         op: OrElse,
@@ -42,6 +55,21 @@ fn build_bin_if_absent_stmt(bin_path: ShellWord, root: ShellWord, bin_name: Stri
       }
     ]
   }
+}
+
+fn ensure_bin_built_and_verified_with_features(var_name: String, bin_name: String, features: String) -> List<ShellStmt> {
+  let root = var_ref(name: "ROOT")
+  let bin = var_ref(name: var_name)
+  concat(
+    [
+      assign_root_stmt(),
+      assign(name: var_name, value: Concat { parts: [root, lit(text: concat("/target/release/", bin_name))] }),
+      build_bin_if_absent_stmt_with_features(bin_path: bin, root: root, bin_name: bin_name, features: features)
+    ],
+    emit_verifications(
+      produces: [BuildArtifact { path: bin, name: bin_name }]
+    )
+  )
 }
 
 fn ensure_bin_built_and_verified(var_name: String, bin_name: String) -> List<ShellStmt> {
@@ -101,6 +129,18 @@ fn ensure_interp_recorded_fixture_witness_built() -> List<ShellStmt> {
 
 fn ensure_diagnostics_witness_built() -> List<ShellStmt> {
   ensure_bin_built_and_verified(var_name: "DIAGNOSTICS_WITNESS", bin_name: "diagnostics_witness")
+}
+
+fn ensure_dag_collect_fingerprint_witness_built() -> List<ShellStmt> {
+  ensure_bin_built_and_verified(var_name: "DAG_COLLECT_FINGERPRINT_WITNESS", bin_name: "dag_collect_fingerprint_witness")
+}
+
+fn ensure_parse_witness_built() -> List<ShellStmt> {
+  ensure_bin_built_and_verified_with_features(
+    var_name: "PARSE_WITNESS",
+    bin_name: "parse_witness",
+    features: "text_lookup_work_counter"
+  )
 }
 
 fn ensure_regen_stage0_built() -> List<ShellStmt> {

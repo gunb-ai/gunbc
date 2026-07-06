@@ -155,3 +155,16 @@ path = "src/bin/interp_recorded_fixture_witness.rs"
 [[bin]]
 name = "diagnostics_witness"
 path = "src/bin/diagnostics_witness.rs"
+
+# Host-physics floor witness for dag_collect fingerprint oracle suite
+# (dag_collect_fingerprint_witness_test.rs). Exercises bag/seq hash and
+# recursive surface fingerprint discrimination until v1.compiler.dag_collect_support
+# is witness-layer importable from pure .dag floor witnesses.
+[[bin]]
+name = "dag_collect_fingerprint_witness"
+path = "src/bin/dag_collect_fingerprint_witness.rs"
+
+# Host-physics floor witness for parse/tokenize oracle suite (parse.rs).
+[[bin]]
+name = "parse_witness"
+path = "src/bin/parse_witness.rs"

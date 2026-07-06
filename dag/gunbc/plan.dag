@@ -37,7 +37,7 @@ fn plan_to_document(p: Plan) -> MarkdownDocument {
 
 fn plan_has_dissolution_trigger(p: Plan) -> Bool {
   match p.dissolution {
-    HasTrigger { text } => length(text) > 0
+    HasTrigger { text } => text.length() > 0
     NoTrigger => false
   }
 }
@@ -47,7 +47,7 @@ fn plans_all_have_dissolution_trigger(plans: List<Plan>) -> Bool {
 }
 
 fn plan_title_is_present(p: Plan) -> Bool {
-  length(p.title) > 0
+  p.title.length() > 0
 }
 
 fn plans_all_titled(plans: List<Plan>) -> Bool {
