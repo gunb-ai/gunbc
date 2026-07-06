@@ -66,6 +66,7 @@ pub mod std_serialization;
 pub mod std_syntax;
 pub mod std_termination;
 pub mod std_types;
+pub mod test_claim_ownership_movable;
 pub mod v1_compiler_artifact;
 pub mod v1_compiler_coercion;
 pub mod v1_compiler_compile;

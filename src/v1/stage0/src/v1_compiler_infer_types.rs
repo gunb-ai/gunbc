@@ -97,7 +97,7 @@ pub fn child_type_node(ch: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn child_type_at(n: Rc<Node>, index: i64) -> Option<Rc<Node>> {
+pub fn child_type_at(n: Rc<Node>, index: i64) -> Rc<Node> {
     match n.children.clone().get(index as usize).cloned() {
         Some(ch) => Some(child_type_node(ch.clone())),
         None => None,
@@ -279,7 +279,7 @@ pub fn is_fully_resolved(
     })
 }
 
-pub fn bare_map_node() -> Option<Rc<Node>> {
+pub fn bare_map_node() -> Rc<Node> {
     match container_param_name("Map".to_string(), 0) {
         Some(key_id) => match container_param_name("Map".to_string(), 1) {
             Some(val_id) => Some(Rc::new(Node {
@@ -353,7 +353,7 @@ pub fn bare_map_node() -> Option<Rc<Node>> {
     }
 }
 
-pub fn bare_set_node() -> Option<Rc<Node>> {
+pub fn bare_set_node() -> Rc<Node> {
     match container_param_name("Set".to_string(), 0) {
         Some(elem_id) => Some(Rc::new(Node {
             name: "Set".to_string(),

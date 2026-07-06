@@ -64,14 +64,14 @@ pub fn default_rust_edition() -> RustEdition {
     CACHED.with(|c: &RustEdition| c.clone())
 }
 
-pub fn min_cargo_version() -> CargoToolVersionFloor {
+pub fn min_cargo_version() -> SemVerConstraint {
     thread_local! {
-        static CACHED: CargoToolVersionFloor = {
+        static CACHED: SemVerConstraint = {
             serde_json::from_value(serde_json::json!(">= 1.56"))
                 .expect("valid data definition")
         };
     }
-    CACHED.with(|c: &CargoToolVersionFloor| c.clone())
+    CACHED.with(|c: &SemVerConstraint| c.clone())
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

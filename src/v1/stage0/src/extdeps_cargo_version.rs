@@ -28,19 +28,19 @@ pub fn extdeps_external_authority_anchor() -> Rc<ExternalAuthority> {
     CACHED.with(|c: &Rc<ExternalAuthority>| c.clone())
 }
 
-pub type CargoPackageVersion = SemVerIdentity;
+pub type CargoPackageVersion = VersionIdentity;
 
-pub type CargoVersionRequirement = SemVerConstraint;
+pub type CargoVersionRequirement = VersionConstraint;
 
-pub type CargoToolVersionFloor = SemVerConstraint;
+pub type CargoToolVersionFloor = VersionConstraint;
 
-pub fn default_stage0_package_version() -> String {
+pub fn default_stage0_package_version() -> CargoPackageVersion {
     thread_local! {
-        static CACHED: String = {
+        static CACHED: CargoPackageVersion = {
             "0.1.0".to_string()
         };
     }
-    CACHED.with(|c: &String| c.clone())
+    CACHED.with(|c: &CargoPackageVersion| c.clone())
 }
 
 pub fn render_cargo_package_version_field(version: CargoPackageVersion) -> String {

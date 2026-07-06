@@ -6,6 +6,8 @@ use self::NodeFrontierSelection::*;
 use self::Runnable::*;
 use self::RunnableMemoryClass::*;
 use self::ScheduleLensViolation::*;
+use self::WitnessKind::*;
+use self::WitnessSpan::*;
 use crate::std_lens_verdict::LensVerdict::{Holds, Violation};
 use crate::std_lens_verdict::LensVerdictLocus::ModuleWholeFile;
 pub use crate::std_lens_verdict::{LensVerdict, LensVerdictDiagnostic, LensVerdictLocus};
@@ -38,8 +40,8 @@ pub enum CostBasis {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CostAccount<S> {
     pub time: Rc<Measure<(), S, Nat>>,
-    pub space: Box<ByteSize>,
-    pub power: Box<Watt>,
+    pub space: ByteSize,
+    pub power: Watt,
     pub basis: CostBasis,
     pub _phantom: std::marker::PhantomData<S>,
 }
@@ -47,24 +49,28 @@ pub struct CostAccount<S> {
 pub fn cost_account_predicted_zero<S>() -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time_measure(0),
-        space: Box::new(byte_size(0)),
-        power: Box::new(watt(0)),
+        space: byte_size(0),
+        power: watt(0),
         basis: CostBasis::Predicted,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn cost_account_measured<S>(time: Rc<Measure<(), S, Nat>>) -> Rc<CostAccount<S>> {
+pub fn cost_account_measured<S>(
+    time: Rc<Measure<(), S, Rc<CommutativeSemiring<Magnitude>>>>,
+) -> Rc<CostAccount<S>> {
     Rc::new(CostAccount {
         time: time,
-        space: Box::new(byte_size(0)),
-        power: Box::new(watt(0)),
+        space: byte_size(0),
+        power: watt(0),
         basis: CostBasis::Measured,
         _phantom: std::marker::PhantomData,
     })
 }
 
-pub fn cost_account_time_count<S>(account: Rc<CostAccount<S>>) -> Nat {
+pub fn cost_account_time_count<S>(
+    account: Rc<CostAccount<S>>,
+) -> Rc<CommutativeSemiring<Magnitude>> {
     measure_count(account.time.clone())
 }
 
@@ -73,15 +79,77 @@ pub struct RealizationObjective {
     pub goals: Rc<Vec<AxisGoal>>,
 }
 
+pub fn witness_kind_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WitnessKind is the declared kind fact for enrolled witnesses (design: docs/plans/interface-summary-declared-use-arity.md section 4). v0 carries exactly the two kinds with a live scheduling consumer: the corpus/execution partition in v2.workflow.ci_floor_plan (formerly a path-prefix convention, now a declared fact). Further kinds (lens-unit, scanner) land only when a consumer projects them; the host-scaffold/live-tree axis stays on the floor:host_scaffold marker authority (v2.workflow.affected_set_floor_runner) and is NOT a kind. Partition consumers must discriminate by exhaustive match, never by equality: a missed kind stamp is Value-absent at runtime, and an exhaustive match refuses loudly where an eq would silently return false.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum WitnessKind {
+    CorpusWitnessKind,
+    ExecutionWitnessKind,
+}
+
+pub fn witness_span_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "WitnessSpan declares which pipeline seam(s) a witness asserts (producer/consumer module-path pair grain). SpanUndeclared is the honest default for the existing population - typed absent, never fabricated. Consumers today: span well-formedness witnessing over the enrollment roster (gunbc.commit_workflow). The derivability/factorability refusal (a span witness derivable from the seam basis is redundant) waits on seam contracts (InterfaceSummary contract slots) and a segment-witness basis; until then span is a declared fact plus well-formedness, nothing more.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WitnessSeam {
+    pub producer: String,
+    pub consumer: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum WitnessSpan {
+    SpanUndeclared,
+    SpanSeams { seams: Rc<Vec<Rc<WitnessSeam>>> },
+}
+impl WitnessSpan {
+    pub fn seams(&self) -> Rc<Vec<Rc<WitnessSeam>>> {
+        match self {
+            WitnessSpan::SpanUndeclared => panic!("no seams on unit variant"),
+            WitnessSpan::SpanSeams { seams: __val, .. } => __val.clone(),
+        }
+    }
+}
+
+pub fn witness_kind_eq(a: WitnessKind, b: WitnessKind) -> bool {
+    match a {
+        WitnessKind::CorpusWitnessKind => match b {
+            WitnessKind::CorpusWitnessKind => true,
+            WitnessKind::ExecutionWitnessKind => false,
+        },
+        WitnessKind::ExecutionWitnessKind => match b {
+            WitnessKind::ExecutionWitnessKind => true,
+            WitnessKind::CorpusWitnessKind => false,
+        },
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScheduleWitnessEntry {
     pub entry: String,
     pub function: String,
+    pub kind: WitnessKind,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RunnableMemoryPeak {
-    pub predicted_peak: Box<ByteSize>,
+    pub predicted_peak: ByteSize,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -110,10 +178,12 @@ pub fn runnable_memory_negligible() -> Rc<RunnableMemoryClass> {
     Rc::new(RunnableMemoryClass::RunnableMemoryNegligible)
 }
 
-pub fn runnable_memory_substantial(predicted_peak: ByteSize) -> Rc<RunnableMemoryClass> {
+pub fn runnable_memory_substantial(
+    predicted_peak: Rc<Measure<(), (), Nat>>,
+) -> Rc<RunnableMemoryClass> {
     Rc::new(RunnableMemoryClass::RunnableMemorySubstantial {
         peak: Rc::new(RunnableMemoryPeak {
-            predicted_peak: Box::new(predicted_peak),
+            predicted_peak: predicted_peak,
         }),
     })
 }
@@ -130,8 +200,8 @@ pub fn runnable_memory_class_eq(
         RunnableMemoryClass::RunnableMemorySubstantial { peak: lp, .. } => match (*right).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => false,
             RunnableMemoryClass::RunnableMemorySubstantial { peak: rp, .. } => {
-                (byte_size_count((*lp.predicted_peak).clone())
-                    == byte_size_count((*rp.predicted_peak).clone()))
+                (byte_size_count(lp.predicted_peak.clone())
+                    == byte_size_count(rp.predicted_peak.clone()))
             }
         },
     }
@@ -145,13 +215,13 @@ pub fn runnable_memory_substantial_sum(
         let left_count = match (*left).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => 0,
             RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-                byte_size_count((*p.predicted_peak).clone())
+                byte_size_count(p.predicted_peak.clone())
             }
         };
         let right_count = match (*right).clone() {
             RunnableMemoryClass::RunnableMemoryNegligible => 0,
             RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-                byte_size_count((*p.predicted_peak).clone())
+                byte_size_count(p.predicted_peak.clone())
             }
         };
         runnable_memory_substantial(byte_size((left_count + right_count)))
@@ -198,12 +268,10 @@ pub fn runnable_heavy_whole_tree_resolve(profile: Rc<RunnableResourceProfile>) -
     profile.heavy_whole_tree_resolve.clone()
 }
 
-pub fn runnable_predicted_space(profile: Rc<RunnableResourceProfile>) -> ByteSize {
+pub fn runnable_predicted_space(profile: Rc<RunnableResourceProfile>) -> Rc<Measure<(), (), Nat>> {
     match (*profile.memory.clone()).clone() {
         RunnableMemoryClass::RunnableMemoryNegligible => byte_size(0),
-        RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => {
-            (*p.predicted_peak).clone()
-        }
+        RunnableMemoryClass::RunnableMemorySubstantial { peak: p, .. } => p.predicted_peak.clone(),
     }
 }
 
@@ -309,7 +377,7 @@ pub type Schedule = Rc<Vec<Rc<Vec<Rc<Runnable>>>>>;
 pub struct RealizationPlan<S> {
     pub target: ContentHash,
     pub objective: Rc<RealizationObjective>,
-    pub schedule: Box<Schedule>,
+    pub schedule: Schedule,
     pub total: Rc<CostAccount<S>>,
     pub _phantom: std::marker::PhantomData<S>,
 }
@@ -398,7 +466,7 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
     plan: Rc<RealizationPlan<S>>,
     compile_gate_fn: String,
 ) -> Rc<LensVerdict> {
-    if (((*plan.schedule).clone().len() as i64) == 0) {
+    if ((plan.schedule.clone().len() as i64) == 0) {
         Rc::new(LensVerdict::Violation {
             diagnostic: schedule_lens_violation_diagnostic(
                 Rc::new(ScheduleLensViolation::EmptySchedule),
@@ -406,7 +474,7 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
             ),
         })
     } else {
-        if (((*plan.schedule).clone().len() as i64) < 2) {
+        if ((plan.schedule.clone().len() as i64) < 2) {
             Rc::new(LensVerdict::Violation {
                 diagnostic: schedule_lens_violation_diagnostic(
                     Rc::new(ScheduleLensViolation::SingleBatchOnly),
@@ -415,7 +483,7 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
             })
         } else {
             {
-                let batch0 = (*plan.schedule).clone().first().cloned();
+                let batch0 = plan.schedule.clone().first().cloned();
                 if ((batch0.clone().expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) != 1) {
                     Rc::new(LensVerdict::Violation {
     diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::CompileGateNotFirst {
@@ -436,7 +504,7 @@ pub fn schedule_lens_verdict_for_ci_floor<S>(
 })
                         } else {
                             {
-                                let batch1 = (*plan.schedule).clone().get(1 as usize).cloned();
+                                let batch1 = plan.schedule.clone().get(1 as usize).cloned();
 if ((batch1.expect("fail-closed: Optional receiver for method count (empty Optional at runtime)").len() as i64) < 2) {
                                     Rc::new(LensVerdict::Violation {
     diagnostic: schedule_lens_violation_diagnostic(Rc::new(ScheduleLensViolation::SingleBatchOnly), compile_gate_fn.clone()),
@@ -457,11 +525,12 @@ pub fn schedule_generates_same_batch_count<S>(
     left: Rc<RealizationPlan<S>>,
     right: Rc<RealizationPlan<S>>,
 ) -> bool {
-    (((*left.schedule).clone().len() as i64) == ((*right.schedule).clone().len() as i64))
+    ((left.schedule.clone().len() as i64) == (right.schedule.clone().len() as i64))
 }
 
 pub fn schedule_witness_entry_eq(a: Rc<ScheduleWitnessEntry>, b: Rc<ScheduleWitnessEntry>) -> bool {
-    ((a.entry.clone() == b.entry.clone()) && (a.function.clone() == b.function.clone()))
+    (((a.entry.clone() == b.entry.clone()) && (a.function.clone() == b.function.clone()))
+        && witness_kind_eq(a.kind.clone(), b.kind.clone()))
 }
 
 pub fn string_list_eq(mut left: Rc<Vec<String>>, mut right: Rc<Vec<String>>) -> bool {
@@ -646,10 +715,14 @@ pub fn schedule_generates_identical_schedule<S>(
     plan: Rc<RealizationPlan<S>>,
     schedule: Schedule,
 ) -> bool {
-    schedule_eq((*plan.schedule).clone(), schedule)
+    schedule_eq(plan.schedule.clone(), schedule)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Predicted;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Measured;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CorpusWitnessKind;
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ExecutionWitnessKind;

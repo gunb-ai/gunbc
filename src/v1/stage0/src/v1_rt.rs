@@ -260,12 +260,6 @@ pub fn map_keys<K: Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
     m.keys().cloned().collect()
 }
 
-pub fn sorted_map_keys<K: Ord + Clone, V>(m: &HashMap<K, V>) -> Vec<K> {
-    let mut keys = map_keys(m);
-    keys.sort();
-    keys
-}
-
 pub fn map_is_empty<K, V>(m: &HashMap<K, V>) -> bool {
     m.is_empty()
 }
@@ -729,6 +723,7 @@ pub fn contiguous_loop_elementwise_kernel(
     }
     out
 }
+<<<<<<< Updated upstream
 
 // take_owned: move out of a uniquely-held Rc; clone when shared. With every
 // container realized persistently (im_rc), the shared-arm clone is cheap
@@ -738,3 +733,5 @@ pub fn contiguous_loop_elementwise_kernel(
 pub fn take_owned<T: Clone>(x: Rc<T>) -> T {
     Rc::try_unwrap(x).unwrap_or_else(|rc| (*rc).clone())
 }
+=======
+>>>>>>> Stashed changes

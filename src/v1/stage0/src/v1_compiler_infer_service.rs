@@ -292,7 +292,7 @@ pub fn check_service_field_access_node(
     field: String,
     service_registry: Rc<HashMap<String, Rc<Vec<Rc<OpEntry>>>>>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+) -> Rc<Node> {
     if ((base_type.connective.clone() == Connective::NoConnective)
         && ((base_type.children.clone().len() as i64) == 0))
     {

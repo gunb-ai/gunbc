@@ -60,11 +60,7 @@ pub fn is_unit_variant_node(variant: Rc<Node>) -> bool {
     ((variant.children.clone().len() as i64) == 0)
 }
 
-pub fn unit_variant_in_coproduct(
-    env: Rc<TypeEnv>,
-    ty: Rc<Node>,
-    variant_name: String,
-) -> Option<Rc<Node>> {
+pub fn unit_variant_in_coproduct(env: Rc<TypeEnv>, ty: Rc<Node>, variant_name: String) -> Rc<Node> {
     match ty.connective.clone() {
         Connective::Disj => {
             ty.children
@@ -101,10 +97,7 @@ pub fn structural_type_for_variant_lookup(env: Rc<TypeEnv>, ty: Rc<Node>) -> Rc<
     }
 }
 
-pub fn lookup_unit_variant_phantom_type(
-    env: Rc<TypeEnv>,
-    variant_name: String,
-) -> Option<Rc<Node>> {
+pub fn lookup_unit_variant_phantom_type(env: Rc<TypeEnv>, variant_name: String) -> Rc<Node> {
     {
         let matches = collect_unit_variant_phantom_matches(env, variant_name);
         if ((matches.clone().len() as i64) == 1) {
@@ -116,6 +109,15 @@ pub fn lookup_unit_variant_phantom_type(
             None
         }
     }
+}
+
+pub fn phantom_match_flat_scope() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Constructor-owner ruling (§1c): the nullary-variant-as-type fallback searches the FLAT visible set — the module's own str_bindings plus its direct parents' str_bindings, one level, never the recursive ancestry flatten. Unique match resolves; anything else falls through to the UnresolvedType error at the caller (fail-closed).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
 }
 
 pub fn collect_unit_variant_phantom_matches(
@@ -188,13 +190,22 @@ pub fn with_authored_identity(identity: Rc<Node>, structural: Rc<Node>) -> Rc<No
     })
 }
 
+pub fn transparent_primitive_alias_rhs_dissolution_trigger() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "🟢 intentional: resolve-side predicate for kernel-type transparent alias RHS — skip nominal re-brand in preserve_nominal_brand_on_resolve / peel_nominal_alias_identity until ParamKind partition lands.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn is_transparent_primitive_alias_rhs(
     structural: Rc<Node>,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> bool {
     (((structural.connective.clone() == Connective::NoConnective)
         && ((structural.children.clone().len() as i64) == 0))
-        && is_kernel_type(authored_name_at(source_indices.clone(), structural.clone())))
+        && is_kernel_type(authored_name_at(source_indices, structural.clone())))
 }
 
 pub fn preserve_nominal_brand_on_resolve(
@@ -203,9 +214,9 @@ pub fn preserve_nominal_brand_on_resolve(
     brand_name: String,
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Rc<Node> {
-    if (((brand_name.clone() != "".to_string())
+    if ((((brand_name.clone() != "".to_string())
         && (brand_name.clone() != authored_name_at(source_indices.clone(), structural.clone())))
-        && !is_declared_container_alias_spelling(brand_name.clone())
+        && !is_declared_container_alias_spelling(brand_name.clone()))
         && !is_transparent_primitive_alias_rhs(structural.clone(), source_indices.clone()))
     {
         with_authored_identity(identity, structural.clone())
@@ -255,10 +266,10 @@ pub fn peel_nominal_alias_identity(n: Rc<Node>, env: Rc<TypeEnv>, module_name: S
                     .resolved
                     .clone()
                 };
-                if (((brand.clone() != "".to_string())
+                if ((((brand.clone() != "".to_string())
                     && (brand.clone()
                         != authored_name_at(source_indices.clone(), structural.clone())))
-                    && !is_declared_container_alias_spelling(brand.clone())
+                    && !is_declared_container_alias_spelling(brand.clone()))
                     && !is_transparent_primitive_alias_rhs(
                         structural.clone(),
                         source_indices.clone(),
@@ -365,6 +376,69 @@ pub fn resolve_node(n: Rc<Node>, env: Rc<TypeEnv>, module_name: String) -> Rc<No
     resolve_node_bounded(n, env, module_name, 0, true)
 }
 
+pub fn parameterized_use_site_prefers_parameterized_decl() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "A use site WITH type arguments (children > 0) whose primary name lookup lands on a PARAMLESS decl is definitionally mis-resolved - type args imply a generic declaration. The concrete seam: the kernel prelude binding for a name (e.g. the kernel Optional) shadows an explicitly imported user generic of the same name in the ancestry rung, so v2's Optional<T> consumers resolved the paramless kernel decl, is_user_generic_use_site went false, the sig return was never expanded, and pattern bindings went error-typed with zero diagnostics (the interpreted-parse cascade; pre-existing on main). Retry the DIRECT import parents (str_bindings) for a parameterized decl before accepting the paramless one - the params filter naturally excludes the kernel parent, and the ancestry rung itself carries the kernel-shadowed entry so it cannot serve as the retry source.".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn resolve_paramless_generic_use_decl_with_children(
+    env: Rc<TypeEnv>,
+    n: Rc<Node>,
+    decl: Rc<Node>,
+    brand: String,
+) -> Rc<Node> {
+    match env
+        .parents
+        .clone()
+        .iter()
+        .cloned()
+        .fold(None, |acc: _, parent: Rc<TypeEnv>| {
+            if (acc.clone() != None) {
+                acc.clone()
+            } else {
+                match v1_rt::map_get(&parent.str_bindings.clone(), brand.clone()) {
+                    Some(b) => {
+                        if ((b.resolved.clone().params.clone().len() as i64) > 0) {
+                            Some(b.resolved.clone())
+                        } else {
+                            acc.clone()
+                        }
+                    }
+                    None => acc.clone(),
+                }
+            }
+        }) {
+        Some(user_decl) => user_decl.clone(),
+        None => {
+            if ((n.name.clone() != "".to_string()) && (n.name.clone() != brand.clone())) {
+                match lookup_type_by_name(env.clone(), n.name.clone()) {
+                    Some(structural) => structural.clone(),
+                    None => decl,
+                }
+            } else {
+                decl
+            }
+        }
+    }
+}
+
+pub fn resolve_paramless_generic_use_decl(
+    env: Rc<TypeEnv>,
+    n: Rc<Node>,
+    decl: Rc<Node>,
+    brand: String,
+) -> Rc<Node> {
+    if ((n.children.clone().len() as i64) == 0) {
+        decl
+    } else {
+        resolve_paramless_generic_use_decl_with_children(env, n.clone(), decl, brand)
+    }
+}
+
 pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
     {
         let brand = authored_name(env.clone(), n.clone());
@@ -372,45 +446,8 @@ pub fn resolve_generic_use_decl(env: Rc<TypeEnv>, n: Rc<Node>) -> Rc<Node> {
             Some(decl) => {
                 if ((decl.params.clone().len() as i64) > 0) {
                     decl.clone()
-                } else if ((n.children.clone().len() as i64) > 0) {
-                    // HAND-PATCH (parameterized use site prefers parameterized
-                    // decl; replaced at regen): a use site WITH type args whose
-                    // primary lookup lands paramless (kernel prelude shadowing
-                    // an imported user generic, e.g. Optional) retries the
-                    // ancestry binding for a parameterized decl.
-                    let ancestry_generic = env.parents.iter().fold(
-                        None,
-                        |acc: Option<Rc<Node>>, parent: &Rc<TypeEnv>| {
-                            if acc.is_some() {
-                                return acc;
-                            }
-                            match v1_rt::map_get(&parent.str_bindings, brand.clone()) {
-                                Some(b) => {
-                                    if ((b.resolved.params.clone().len() as i64) > 0) {
-                                        Some(b.resolved.clone())
-                                    } else {
-                                        acc
-                                    }
-                                }
-                                None => acc,
-                            }
-                        },
-                    );
-                    match ancestry_generic {
-                        Some(user_decl) => user_decl,
-                        None => {
-                            if ((n.name.clone() != "".to_string()) && (n.name.clone() != brand)) {
-                                match lookup_type_by_name(env.clone(), n.name.clone()) {
-                                    Some(structural) => structural.clone(),
-                                    None => decl.clone(),
-                                }
-                            } else {
-                                decl.clone()
-                            }
-                        }
-                    }
                 } else {
-                    decl.clone()
+                    resolve_paramless_generic_use_decl(env.clone(), n.clone(), decl.clone(), brand)
                 }
             }
             None => match lookup_type_by_name(env.clone(), n.name.clone()) {
@@ -1712,7 +1749,7 @@ pub fn missing_generic_args_diagnostics(
 }
 
 pub fn resolve_optional_node(
-    n: Option<Rc<InferredNode>>,
+    n: Rc<InferredNode>,
     env: Rc<TypeEnv>,
     module_name: String,
 ) -> Rc<NodeResolveResult> {
@@ -3078,7 +3115,7 @@ pub fn resolve_item_types(item: Rc<Node>, env: Rc<TypeEnv>, module_name: String)
                     str_bindings: v1_rt::rc_map_insert(
                         e.str_bindings.clone(),
                         tp_name.clone(),
-                        tp_binding,
+                        tp_binding.clone(),
                     ),
                     ancestry_str_bindings: e.ancestry_str_bindings.clone(),
                     parents: e.parents.clone(),

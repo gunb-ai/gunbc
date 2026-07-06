@@ -40,8 +40,3 @@ pub fn classical_or(a: Classical, b: Classical) -> Classical {
         Classical::False => b,
     }
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct True;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct False;

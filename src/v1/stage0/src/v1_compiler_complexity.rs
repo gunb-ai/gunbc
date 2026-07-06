@@ -315,16 +315,14 @@ pub struct SccEdgeBlockAcc {
     pub vars: Rc<HashMap<String, bool>>,
 }
 
-pub fn is_algebra_iteration_method(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
+pub fn is_algebra_iteration_method(method_semantics: Rc<MethodSemantics>) -> bool {
     match method_semantics.as_deref().cloned() {
         Some(MethodSemantics::AlgebraMethodSemantics { .. }) => true,
         _ => false,
     }
 }
 
-pub fn method_size_effect(
-    method_semantics: Option<Rc<MethodSemantics>>,
-) -> Option<CollectionSizeEffect> {
+pub fn method_size_effect(method_semantics: Rc<MethodSemantics>) -> Option<CollectionSizeEffect> {
     match method_semantics.as_deref().cloned() {
         Some(MethodSemantics::AlgebraMethodSemantics {
             size_effect: se, ..
@@ -333,9 +331,7 @@ pub fn method_size_effect(
     }
 }
 
-pub fn method_callback_element_position(
-    method_semantics: Option<Rc<MethodSemantics>>,
-) -> Option<i64> {
+pub fn method_callback_element_position(method_semantics: Rc<MethodSemantics>) -> Option<i64> {
     match method_semantics.as_deref().cloned() {
         Some(MethodSemantics::AlgebraMethodSemantics {
             algebra_template: at,
@@ -349,7 +345,7 @@ pub fn method_callback_element_position(
 }
 
 pub fn iteration_element_name(
-    method_semantics: Option<Rc<MethodSemantics>>,
+    method_semantics: Rc<MethodSemantics>,
     lambda: Rc<Node>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
 ) -> Option<String> {
@@ -480,7 +476,7 @@ pub fn parser_state_arg_expr(
     call_node: Rc<Node>,
     state_param: Rc<ParserStateParam>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+) -> Rc<Node> {
     Rc::new(
         call_node
             .children
@@ -1153,7 +1149,7 @@ pub fn parser_record_field_value(
     expr: Rc<Node>,
     field_name: String,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+) -> Rc<Node> {
     Rc::new({
         let mut __result = Vec::new();
         for child in Rc::new({
@@ -2873,7 +2869,7 @@ pub fn is_generalized_shrink(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIn
 pub fn list_passthrough_inner(
     expr: Rc<Node>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+) -> Rc<Node> {
     parser_passthrough_state_expr(expr, si)
 }
 
@@ -2884,7 +2880,7 @@ pub fn is_list_passthrough_call(expr: Rc<Node>, si: Rc<HashMap<String, Rc<Newlin
 pub fn list_passthrough_inner_arg(
     expr: Rc<Node>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+) -> Rc<Node> {
     list_passthrough_inner(expr, si)
 }
 
@@ -2905,10 +2901,7 @@ pub fn is_tokens_consuming_call(
     }
 }
 
-pub fn consuming_tokens_arg(
-    expr: Rc<Node>,
-    si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+pub fn consuming_tokens_arg(expr: Rc<Node>, si: Rc<HashMap<String, Rc<NewlineIndex>>>) -> Rc<Node> {
     expr.children
         .clone()
         .iter()
@@ -4020,7 +4013,7 @@ pub fn all_self_calls_descend_inc(
     })
 }
 
-pub fn unwrap_to_match(mut body: Rc<Node>) -> Option<Rc<Node>> {
+pub fn unwrap_to_match(mut body: Rc<Node>) -> Rc<Node> {
     loop {
         match (*body.expr_data.clone()).clone() {
             ExprData::ExprMatch => {
@@ -7427,7 +7420,7 @@ pub fn scalar_output() -> Rc<HashMap<String, Rc<CostExpr>>> {
     v1_rt::rc_empty_map::<String, Rc<CostExpr>>()
 }
 
-pub fn method_preserves_collection_size(method_semantics: Option<Rc<MethodSemantics>>) -> bool {
+pub fn method_preserves_collection_size(method_semantics: Rc<MethodSemantics>) -> bool {
     if (method_semantics.clone() == None) {
         false
     } else {
@@ -7500,7 +7493,7 @@ pub fn size_binder_name(size: Rc<SizeExpr>) -> String {
 pub fn resolve_lambda_arg(
     mc_arg_nodes: Rc<Vec<Rc<Node>>>,
     si: Rc<HashMap<String, Rc<NewlineIndex>>>,
-) -> Option<Rc<Node>> {
+) -> Rc<Node> {
     {
         let f_arg = Rc::new({
             let mut __result = Vec::new();
@@ -7529,7 +7522,7 @@ pub fn resolve_lambda_arg(
 }
 
 pub fn resolve_callback_cost(
-    lambda_arg: Option<Rc<Node>>,
+    lambda_arg: Rc<Node>,
     recv_r: Rc<SummaryResult>,
     func_index: Rc<HashMap<String, Rc<FuncEntry>>>,
     scc_index: Rc<HashMap<String, Rc<SccInfo>>>,

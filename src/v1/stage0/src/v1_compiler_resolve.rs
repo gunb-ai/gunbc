@@ -187,7 +187,7 @@ pub fn resolve_modules(
     }
 }
 
-pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) -> Option<Rc<Node>> {
+pub fn find_module(module_index: Rc<HashMap<String, Rc<Node>>>, path: String) -> Rc<Node> {
     v1_rt::map_get(&module_index, path)
 }
 
